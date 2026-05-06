@@ -223,6 +223,20 @@ The portable `cypilot <workflow>: ...` form is the best default. Slash commands 
 
 `plan`, `generate`, and `analyze` are reusable workflow modes, not a fixed mandatory sequence. They define how work is framed; the next section shows one common delivery order in which teams often combine them.
 
+### Language complexity (global UX setting)
+
+All Cypilot user-facing output (chat + artifacts/documentation) respects a configurable `language_complexity` level: **`low`** (short sentences, common words only — for non-native A2-B1 readers), **`middle`** (everyday vocabulary, ≤25-word sentences, technical terms with brief gloss — default; for non-native B2 / mixed audiences), **`high`** (full register, idioms / academic vocabulary fine — for native or specialist audiences). Set in `{cypilot_path}/config/core.toml` under `[language] complexity = "middle"`. Mid-session override: `change language complexity to {low|middle|high}`; `remember new language complexity` persists. Source quotes from input artifacts are exempt (verbatim). See [`requirements/language-complexity.md`](requirements/language-complexity.md) for the full spec.
+
+### Explain mode (storytelling companion)
+
+`analyze` has an interactive **storytelling** companion for pedagogically-paced engagement with an artifact / PR / codebase region. Canonical invocation: **`cypilot analyze: explain <target>`** (any explain-style verb works — `walk me through`, `teach me`, `present`, `onboard me to`, `quiz me on`, `explain --resume {session-id}`). The methodology activates `EXPLAIN_MODE`, asks the user to pick one of six modes — `presentation` (default; explain & teach), `review` (panel critiques the artifact with line-anchored comments), `onboarding`, `decision` (alternatives + recommendation), `socratic` (agent quizzes you), `change-impact` — then delivers the input in small no-scroll portions with 6-slot navigation (Next / Deeper / Lateral / Recap / Ask / Wrap), audience-adapted diagrams, clickable source refs, and immediate-effect artifact handling (chat-only / save-to-file / post-to-resource).
+
+To produce a hand-off-able **package** (READMEs, training material, guides) instead of a chat session: **`cypilot generate: explain package for <target>`** / `cypilot generate: make a README from <target>` / `cypilot generate: build onboarding doc set for <target>`. Writes a navigable folder of Markdown files under `{cypilot_path}/.cache/explain/packages/`.
+
+Plain `cypilot analyze: review my changes` keeps the standard analyze contract (defect-finding with `Fix Prompt` / `Plan Prompt`); explain mode requires explicit explain-family verbs.
+
+Full methodology spec: [`requirements/storytelling.md`](requirements/storytelling.md) (router) + four modules (`storytelling-phases.md`, `storytelling-modes.md`, `storytelling-export.md`, `storytelling-preferences.md`).
+
 For default routing priorities and detailed workflow-choice advice, use **[guides/USAGE-GUIDE.md](guides/USAGE-GUIDE.md)**.
 
 ## Typical delivery sequence

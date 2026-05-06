@@ -12,29 +12,30 @@ purpose: Universal workflow for analysing any Cypilot artifact or code
 
 <!-- toc -->
 
-- [Analyze](#analyze)
-  - [Rules](#rules)
-  - [Overview](#overview)
-  - [Context Budget \& Overflow Prevention (CRITICAL)](#context-budget--overflow-prevention-critical)
-  - [Mode Detection](#mode-detection)
-  - [Phase 0: Ensure Dependencies](#phase-0-ensure-dependencies)
-  - [Phase 0.1: Plan Escalation Gate](#phase-01-plan-escalation-gate)
-  - [Phase 0.5: Clarify Analysis Scope](#phase-05-clarify-analysis-scope)
-  - [Phase 1: File Existence Check](#phase-1-file-existence-check)
-  - [Phase 2: Deterministic Gate](#phase-2-deterministic-gate)
-  - [Phase 3: Semantic Review (Conditional)](#phase-3-semantic-review-conditional)
-    - [Semantic Review Content (STRICT mode)](#semantic-review-content-strict-mode)
-  - [Phase 4: Output](#phase-4-output)
-    - [Standard Analysis Output (non-prompt review)](#standard-analysis-output-non-prompt-review)
-    - [Prompt Review Output (PROMPT\_REVIEW)](#prompt-review-output-prompt_review)
-    - [Fix Prompt](#fix-prompt)
-    - [Plan Prompt](#plan-prompt)
-    - [Semantic-Only Output (`/cypilot-analyze semantic`)](#semantic-only-output-cypilot-analyze-semantic)
-  - [Phase 5: Offer Next Steps](#phase-5-offer-next-steps)
-  - [State Summary](#state-summary)
-  - [Key Principles](#key-principles)
-  - [Agent Self-Test (STRICT mode — AFTER completing work)](#agent-self-test-strict-mode--after-completing-work)
-  - [Validation Criteria](#validation-criteria)
+- [Rules](#rules)
+- [Overview](#overview)
+- [Context Budget & Overflow Prevention (CRITICAL)](#context-budget--overflow-prevention-critical)
+- [Mode Detection](#mode-detection)
+- [Phase 0: Ensure Dependencies](#phase-0-ensure-dependencies)
+- [Phase 0.1: Plan Escalation Gate](#phase-01-plan-escalation-gate)
+- [Phase 0.5: Clarify Analysis Scope](#phase-05-clarify-analysis-scope)
+- [Phase 1: File Existence Check](#phase-1-file-existence-check)
+- [Phase 2: Deterministic Gate](#phase-2-deterministic-gate)
+- [Phase 3: Semantic Review (Conditional)](#phase-3-semantic-review-conditional)
+  - [Semantic Review Content (STRICT mode)](#semantic-review-content-strict-mode)
+  - [Phase 3 → Phase 4 Checkpoint (Context Budget Recovery)](#phase-3--phase-4-checkpoint-context-budget-recovery)
+- [Phase 4: Output](#phase-4-output)
+  - [Standard Analysis Output (non-prompt review)](#standard-analysis-output-non-prompt-review)
+  - [Prompt Review Output (PROMPT_REVIEW)](#prompt-review-output-promptreview)
+  - [Storytelling Output (EXPLAIN_MODE)](#storytelling-output-explainmode)
+  - [Fix Prompt](#fix-prompt)
+  - [Plan Prompt](#plan-prompt)
+  - [Semantic-Only Output (`/cypilot-analyze semantic`)](#semantic-only-output-cypilot-analyze-semantic)
+- [Phase 5: Offer Next Steps](#phase-5-offer-next-steps)
+- [State Summary](#state-summary)
+- [Key Principles](#key-principles)
+- [Agent Self-Test (STRICT mode — AFTER completing work)](#agent-self-test-strict-mode--after-completing-work)
+- [Validation Criteria](#validation-criteria)
 
 <!-- /toc -->
 
@@ -62,6 +63,14 @@ WHEN this rule triggers, ALWAYS also open and follow `{cypilot_path}/.core/requi
 
 ALWAYS open and follow `{cypilot_path}/.core/requirements/prompt-bug-finding.md` WHEN user requests bug hunting, hidden failure modes, unsafe behavior, regressions, instruction conflicts, routing defects, or root-cause search in prompts, agent instructions, workflows, skills, or other AI instruction documents; this direct trigger remains mandatory even when `prompt-engineering.md` was not the reason prompt review was selected
 
+ALWAYS open and follow `{cypilot_path}/.core/requirements/storytelling.md` WHEN user requests **explicit storytelling-style engagement** — pedagogical walkthrough, presentation, teaching, onboarding, quiz, or resume of a prior storytelling session. Triggering verbs: `explain`, `tell me about`, `walk me through`, `teach me`, `present`, `introduce`, `let's understand`, `make sense of`, `onboard me to`, `getting started with`, `I'm new to`, `quiz me on`, `test my understanding`, `explain --resume {id}`, `resume explain session {id}`, plus equivalent phrases in any user language (intent-based, not exact-string). Storytelling delivers content in pedagogically-paced portions with mode resolution (presentation / review / onboarding / decision / socratic / change-impact) chosen via the always-ask prompt at session start; mode-specific verbs like `review`, `audit`, `decide between`, `what changed`, `compare alternatives` only inform the **suggested-mode default** AFTER `EXPLAIN_MODE` is already active — they do NOT auto-activate `EXPLAIN_MODE` on their own.
+
+**Plain analyze intent stays in standard analyze**: ordinary review / audit / inspection requests (`review my changes`, `review this PR`, `review this diff`, `audit this design`, `inspect this code`, `check what changed`, `find bugs in X`) MUST NOT auto-enter `EXPLAIN_MODE` — they continue through the standard analyze contract (deterministic gate + semantic checklist + Fix/Plan Prompts on actionable issues). Storytelling mode-coupled review requires explicit storytelling intent: `explain this PR review-style`, `walk me through this PR with panel feedback`, `storytelling review of X`, or any `explain`-family verb followed by a review-mode pick at the always-ask prompt.
+
+WHEN this rule triggers, set `EXPLAIN_MODE=true`, skip Phase 2 deterministic gate, skip Phase 3 standard semantic checklist, use the Storytelling Output schema in Phase 4, skip Phase 5 (Storytelling Output already emits Suggested Next Steps), and override `enforceRemediationPrompts` (do NOT emit `Fix Prompt` / `Plan Prompt` — open questions are author-routed by user, not Cypilot-routed). If both `EXPLAIN_MODE` and `PROMPT_REVIEW` intents are detected on the same request, ask the user to disambiguate before loading either methodology.
+
+**Routing invariant — handoff is fail-stop**: WHEN the storytelling rule triggers, the **next user-visible assistant message MUST be the E0/E1 explain-session opener** — specifically the Phase E0 pre-flight log line (input access resolution / existing-session scan), or the Phase E1 gate-1 mode-resolution prompt, or a resume-prompt if `--resume` was used, or a narrow-to-section prompt if the input is oversized. ANY direct explanation, summary, change-overview, "Document Overview", "Change Summary", review verdict, walkthrough content, or other answer-style output emitted **before** the user has explicitly resolved the four E1 gates (mode → disposition → audience → plan approval) is **INVALID** and MUST be discarded. The agent MUST then restart the storytelling session by emitting the E0/E1 opener. This invariant is duplicated in `storytelling.md` Anti-Pattern #0 — both must hold for the handoff to be considered correct. Setting `EXPLAIN_MODE=true` and then producing a normal one-shot answer is a CRITICAL violation regardless of how clear the user's initial request looked.
+
 When `prompt-engineering.md` or `prompt-bug-finding.md` is loaded for instruction analysis, treat compact-prompts optimization as a **HIGH-priority requirement**: explicitly look for safe ways to reduce loaded context while preserving clarity, determinism, constraints, and recovery behavior.
 
 When `prompt-engineering.md` or `prompt-bug-finding.md` is loaded for instruction analysis, treat interaction UX as a **CRITICAL requirement**: explicitly check whether user-facing questions explain why input is needed, make option meanings and outcomes obvious, mark the most relevant option when one path is clearly favored, and make reply format trivial to understand.
@@ -74,7 +83,7 @@ When `prompt-engineering.md` or `prompt-bug-finding.md` is loaded for instructio
 
 **One missed issue = INVALID analysis**
 
-**Completion contract** (enforced at response finalization): when actionable issues exist (`FAIL`, `PARTIAL`, blocking validator errors, or any recommendation requiring artifact/code/workflow changes), the response MUST NOT end without emitting BOTH a `Fix Prompt` AND a `Plan Prompt` as the final two sections. An analysis summary alone is not completion. A validation report alone is not completion. A next-step menu alone is not completion. See Phase 4 `enforceRemediationPrompts` for full rules.
+**Completion contract** (enforced at response finalization): when actionable issues exist (`FAIL`, `PARTIAL`, blocking validator errors, or any recommendation requiring artifact/code/workflow changes) AND `EXPLAIN_MODE=false`, the response MUST NOT end without emitting BOTH a `Fix Prompt` AND a `Plan Prompt` as the final two sections. An analysis summary alone is not completion. A validation report alone is not completion. A next-step menu alone is not completion. See Phase 4 `enforceRemediationPrompts` for full rules. **Exception**: when `EXPLAIN_MODE=true`, this completion contract does NOT apply — storytelling output is pedagogical, not a validation report; the Storytelling Output schema (Phase 4) is the complete output and Fix/Plan prompts MUST NOT be emitted.
 
 **Reference**: `{cypilot_path}/.core/requirements/agent-compliance.md` for the full anti-pattern list.
 - `AP-001 SKIP_SEMANTIC`: reporting overall PASS from deterministic checks alone.
@@ -101,7 +110,8 @@ For code-review-style requests such as `review my changes`, `review this diff`, 
 ## Mode Detection
 - `/cypilot-analyze semantic` or `cypilot analyze semantic` → `SEMANTIC_ONLY=true`; skip Phase 2 and go to Phase 3; semantic review remains mandatory.
 - Prompt/instruction review context → `PROMPT_REVIEW=true`; open `prompt-engineering.md` and `prompt-bug-finding.md`; run the 10-layer prompt-engineering review, explicitly search for safe context-reduction opportunities per compact-prompts methodology, treat decision-point UX and suggested-option quality as critical review scope, run prompt-bug-finding as the behavioral defect-search companion, skip standard Cypilot artifact/code checklist analysis, and use the prompt-review output contract from Phase 4. Do **not** pre-mark traceability, registry, or similar checks as `N/A`; mark `N/A` only when the reviewed document explicitly makes a check inapplicable, otherwise report `FAIL` or `PARTIAL` per the loaded prompt methodologies.
-- Otherwise → `SEMANTIC_ONLY=false`, `PROMPT_REVIEW=false`; run full analysis.
+- Explain / storytelling context → `EXPLAIN_MODE=true`; open `storytelling.md`; skip Phase 2 deterministic gate; skip Phase 3 standard semantic checklist (replaced by Storytelling Protocol phases E0-E5 inside `storytelling.md`); use the Storytelling Output schema (Phase E5 Wrap) in Phase 4 instead of the standard schema; skip Phase 5 (Offer Next Steps — the Storytelling Output schema already emits a contextual `Suggested Next Steps` section); override `enforceRemediationPrompts` and do NOT emit `Fix Prompt` / `Plan Prompt`. Open questions accumulated during the session are author-routed by the user, not Cypilot-routed. `EXPLAIN_MODE` and `PROMPT_REVIEW` are mutually exclusive: if both intents are detected, ask the user to disambiguate before loading either methodology.
+- Otherwise → `SEMANTIC_ONLY=false`, `PROMPT_REVIEW=false`, `EXPLAIN_MODE=false`; run full analysis.
 
 ## Phase 0: Ensure Dependencies
 After `execution-protocol.md`, you have `KITS_PATH`, `TEMPLATE`, `CHECKLIST`, `EXAMPLE`, `REQUIREMENTS`, and `VALIDATION_CHECKS`.
@@ -271,7 +281,9 @@ Print to chat only; create no files.
 
 If the result contains any actionable issue (`FAIL`, `PARTIAL`, blocking validator errors, or any recommendation that requires artifact, code, or workflow/instruction changes), the agent MUST append both a final `Fix Prompt` section and a final `Plan Prompt` section after the analysis output. This requirement applies equally to artifact analysis, code analysis, PR-style review, and plain-language review requests such as `review my changes`.
 
-Apply `enforceRemediationPrompts` at response finalization: detect actionable findings; require both `Fix Prompt` and `Plan Prompt`; require `Fix Prompt` to appear before `Plan Prompt`; and fail finalization with a clear validation error if either prompt is missing, out of order, or the response ends before both prompt blocks are emitted. An analysis summary alone is not completion. The validation report alone is not completion. The next-step menu alone is not completion.
+**EXPLAIN_MODE override**: when `EXPLAIN_MODE=true`, `enforceRemediationPrompts` is **disabled** for this run. Storytelling output is pedagogical, not a validation report — open questions accumulated during the session are gaps for the artifact's author to address, not actionable Cypilot findings, so `Fix Prompt` and `Plan Prompt` MUST NOT be emitted. Use the Storytelling Output schema (defined below) instead of the Standard Analysis Output schema.
+
+Apply `enforceRemediationPrompts` at response finalization (when `EXPLAIN_MODE=false`): detect actionable findings; require both `Fix Prompt` and `Plan Prompt`; require `Fix Prompt` to appear before `Plan Prompt`; and fail finalization with a clear validation error if either prompt is missing, out of order, or the response ends before both prompt blocks are emitted. An analysis summary alone is not completion. The validation report alone is not completion. The next-step menu alone is not completion.
 
 Both remediation prompts MUST be **self-contained final prompts** usable in a fresh chat without any prior context:
 - explicitly contain the sentence `Invoke skill cypilot`
@@ -351,6 +363,19 @@ When `prompt-bug-finding.md` is also loaded, the `Summary` MUST begin with its r
 
 Do **not** mark prompt-review checks `N/A` unless the reviewed document explicitly makes them inapplicable. If applicability or hotspot-relevant normative effect remains unresolved, report `FAIL` or `PARTIAL` as required by the loaded prompt methodologies.
 
+### Storytelling Output (EXPLAIN_MODE)
+`EXPLAIN_MODE=true` does **not** use the Standard Analysis Output template above and does **not** emit `Fix Prompt` / `Plan Prompt`. It MUST use the Storytelling Output contract from `storytelling.md` Phase E5 (Wrap):
+
+1. `Storytelling Wrap-up` heading
+2. `Session` block (role, audience, input, progress, diagrams, open questions, bookmarks, glossary counts)
+3. `Key Takeaways` (3-5 bullets, each with source reference; bookmarked items appear verbatim)
+4. `Open Questions` list with save prompt and default path
+5. `Glossary` (only if non-empty)
+6. `Bookmarked Takeaways Export` save prompt (only if bookmarks non-empty)
+7. `Suggested Next Steps` (2-3 contextual options; never list all four candidates)
+
+The wrap response is the **complete** Phase 4 output for `EXPLAIN_MODE`. Do NOT append `Fix Prompt`, `Plan Prompt`, or any analysis-style headings.
+
 ### Fix Prompt
 (copy-paste into new chat — self-contained, no prior context needed)
 ```text
@@ -400,6 +425,8 @@ If actionable issues exist in semantic-only mode, append the same final `Fix Pro
 
 ## Phase 5: Offer Next Steps
 
+When `EXPLAIN_MODE=true`, **skip this phase entirely** — the Storytelling Output schema (Phase 4) already emits a contextual `Suggested Next Steps` section, so running Phase 5 would produce a redundant menu. See the Mode Detection branch and `storytelling.md` Agent Instructions for the full EXPLAIN_MODE skip-list.
+
 Read `## Next Steps` from `rules.md` and present applicable options.
 
 PASS:
@@ -432,6 +459,7 @@ If actionable issues exist, the next-step menu is informational only; `enforceRe
 |-------|-------------|---------------|----------------|-------------|
 | Analysing artifact | artifact | ✓ | ✓ | parent only |
 | Analysing code | code | ✗ | ✓ | ✓ |
+| Explaining (EXPLAIN_MODE) | artifact or code | ✗ (uses storytelling protocol) | ✗ (replaced by storytelling protocol) | parent + linked-via-registry |
 
 ## Key Principles
 
@@ -454,7 +482,8 @@ Answer these AFTER doing the work and include evidence in the output.
 | Did I provide evidence (quotes, line numbers) for each PASS/FAIL/N/A? | Evidence column in category table. |
 | For N/A claims, did I quote explicit "Not applicable" statements from the document? | Quote lines showing the author marked N/A. |
 | Am I reporting from actual file content, not memory/summary? | Fresh Read tool call visible this turn. |
-| If I reported actionable issues, did I include both `Fix Prompt` and `Plan Prompt`? | Final output contains both sections with issue-specific content. |
+| If I reported actionable issues, did I include both `Fix Prompt` and `Plan Prompt`? | Final output contains both sections with issue-specific content. (N/A when `EXPLAIN_MODE=true` — see next row.) |
+| If `EXPLAIN_MODE=true`, was `Fix Prompt` / `Plan Prompt` suppressed and the Storytelling Output schema (Phase E5 Wrap) used in Phase 4? | Wrap output emitted with Session / Key Takeaways / Open Questions / (optional Glossary, Bookmark Export) / Suggested Next Steps; no `Fix Prompt` / `Plan Prompt` headings. |
 
 Sample:
 ```markdown
@@ -468,6 +497,7 @@ Sample:
 | N/A has document quotes? | YES | Lines 698, 712, 725 |
 | Based on fresh read? | YES | Read tool called this turn |
 | Fix and Plan prompts included? | YES | Both sections present with issue-specific content |
+| EXPLAIN_MODE Storytelling schema used? | N/A | EXPLAIN_MODE=false (this run is standard analyze) |
 ```
 **If ANY answer is NO or lacks evidence → Analysis is INVALID, must restart**
 
@@ -500,3 +530,9 @@ RELAXED mode disclaimer:
 - [ ] Output to chat only
 - [ ] Next steps suggested
 - [ ] No completed `/cypilot-analyze` path bypassed Phase 3; incomplete semantic review is reported as `PARTIAL` with resume guidance
+- [ ] When `EXPLAIN_MODE=true`: Storytelling Protocol phases E0-E5 from `storytelling.md` were followed in order
+- [ ] When `EXPLAIN_MODE=true`: storytelling `{mode}` (presentation / review / onboarding / decision / socratic / change-impact) was resolved at session start via the **always-ask** prompt (methodology emitted the 6-mode prompt with a suggested default, waited for explicit user confirmation; mode was NEVER auto-selected from intent verbs / KIND defaults / project preference) and applied consistently throughout (audience composition, slot semantics, body style, wrap-output schema match the resolved mode)
+- [ ] When `EXPLAIN_MODE=true`: Phase 4 used the Storytelling Output schema (Wrap section) and did NOT emit `Fix Prompt` / `Plan Prompt`
+- [ ] When `EXPLAIN_MODE=true`: Phase 5 (Offer Next Steps) was skipped — only the Storytelling Output schema's `Suggested Next Steps` section was emitted; no second/duplicate next-step menu
+- [ ] When `EXPLAIN_MODE=true`: every portion ≤ resolved page-size soft target (default 200 words; configurable per Page Size Preference, fits on half a screen — no scrolling) with 6-slot navigation block in Next-first order (Next / Deeper / Lateral / Recap / Ask / Wrap) and one `→ suggested`
+- [ ] When `EXPLAIN_MODE=true`: every non-trivial claim has a source reference emitted as a **clickable Markdown link** (e.g. `(see [DESIGN.md §4.2](DESIGN.md#42-data-model))`, never plain-text); ungrounded claims silently skipped (no agent-initiated `[?]` markers in the methodology's narrative); open-questions buffer entries originate ONLY from user-asked questions the input cannot answer

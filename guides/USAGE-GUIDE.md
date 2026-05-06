@@ -715,6 +715,40 @@ Examples that reference `PRD`, `DESIGN`, `DECOMPOSITION`, or `FEATURE` assume th
 - 💬 `cypilot auto-config`
 - 💬 `cypilot analyze: explain the current project conventions and likely architecture boundaries`
 
+### Storytelling / explain mode (interactive pedagogical engagement)
+
+`cypilot analyze: explain ...` is the **canonical invocation** for the storytelling companion. The methodology activates EXPLAIN_MODE, asks you to pick one of six modes at session start (presentation / review / onboarding / decision / socratic / change-impact), and delivers the target in small no-scroll portions with 6-slot navigation (Next / Deeper / Lateral / Recap / Ask / Wrap). Mode resolution is **always interactive** — the agent will NEVER auto-pick a mode; intent verbs / artifact KIND only feed the suggested default in the prompt.
+
+Canonical prompts:
+
+- 💬 `cypilot analyze: explain DESIGN.md` — pedagogical walkthrough of a local artifact (default mode = presentation; pick another at the prompt)
+- 💬 `cypilot analyze: explain REQ-001` — explain a registered Cypilot artifact by ID
+- 💬 `cypilot analyze: explain https://github.com/cyberfabric/DNA/pull/25` — fetch a GitHub PR via the Phase E0 access chain (MCP → skill → CLI → user fallback) and walk through it; for review-mode pick `2.review` at the prompt
+- 💬 `cypilot analyze: walk me through the auth flow as architect for new joiners` — explicit role + audience hint feeds the suggested default
+- 💬 `cypilot analyze: onboard me to this repo` — onboarding mode (suggested at prompt)
+- 💬 `cypilot analyze: quiz me on the data-model section of DESIGN.md` — socratic mode
+- 💬 `cypilot analyze: what changed in this PR — walk me through it` — change-impact mode (note plain `review my changes` stays in standard analyze, NOT explain — explain requires explicit explain-family verbs)
+- 💬 `cypilot analyze: explain --resume 20260506T164904Z` — resume a previously-saved session by ISO-timestamp
+
+To produce a **hand-off-able package** (READMEs, training material, guides) instead of a chat session, route through `generate`:
+
+- 💬 `cypilot generate: explain package for DESIGN.md` — full multi-file Markdown package under `{cypilot_path}/.cache/explain/packages/`
+- 💬 `cypilot generate: make a README from public-interface/PLID.md`
+- 💬 `cypilot generate: build onboarding doc set for the auth subsystem`
+- 💬 `cypilot generate: training material for new joiners covering the deployment story`
+
+The package contains an `index.md` with a Mermaid navigation graph + per-portion Markdown files + mode-specific extras (reading roadmap for onboarding; recommendation + dissenting opinions for decision; impact map for change-impact; review-comments file for review).
+
+**Explain vs standard analyze** — when to use which:
+
+| Intent | Goes to | Why |
+|---|---|---|
+| Pedagogical walkthrough; "help me understand" | `explain` | interactive, plan + portions + navigation |
+| Defect-finding review; "find bugs / issues" | standard `analyze` | deterministic gate + Fix/Plan prompts |
+| Audit / inspection of an artifact | standard `analyze` | validation + checklist |
+| Panel-critique walkthrough of a PR | `explain` (review mode) | structured discussion + line-anchored comments |
+| Hand-off-able guide / README | `generate: explain package` | written package, not chat |
+
 ### Marker recovery
 
 - 💬 `cypilot generate: add the missing @cpt-* markers to the code changed for this FEATURE and keep the implementation behavior unchanged`

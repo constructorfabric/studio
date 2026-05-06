@@ -65,3 +65,9 @@ coverage.xml
 .ralphex/progress/
 # generated analysis output
 /out/
+# Cypilot explain/storytelling runtime cache (session checkpoints, diagrams,
+# open-questions, key-takeaways). Methodology writes to {cypilot_path}/.cache/explain/
+# which resolves per project config. The legacy hardcoded `.cypilot/` directory
+# is also ignored here so older runs do not pollute git status.
+.cypilot/
+**/.cache/explain/

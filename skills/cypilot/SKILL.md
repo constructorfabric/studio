@@ -128,6 +128,7 @@ Cypilot Context:
 - Specs loaded: {list paths or "none required"}
 ```
 - ALWAYS stop and re-run Protocol Guard when required specs should have been loaded but were not
+- ALWAYS open and follow `{cypilot_path}/.core/requirements/language-complexity.md` for the global UX rule on output language complexity. Resolved level (`low` / `middle` / `high`, default `middle`) applies to ALL Cypilot user-facing output across every workflow / methodology / skill — chat messages AND user-facing artifact / documentation bodies. Source quotes from input artifacts and spec/normative files (workflows, requirements, kits, agent definitions) are exempt. Resolution: mid-session override `change language complexity to {X}` → `[language] complexity` in `{cypilot_path}/config/core.toml` → default `middle`. Override `remember new language complexity` persists to `core.toml`.
 
 ## Cypilot Mode
 
@@ -195,7 +196,7 @@ Completion invariants for workflow outputs:
 | Execute phase | `execute phase`, `run next phase`, `continue plan`, `resume plan`, `execute plan phase`, `run plan phase`, `execute the next phase` | Open and follow `{cypilot_path}/.core/skills/cypilot/agents/cypilot-phase-runner.md` |
 | Plan | `plan`, `create a plan`, `execution plan`, `break down`, `decompose`, or `plan to ...` | Open and follow `{cypilot_path}/.core/workflows/plan.md` first |
 | Generate | `create`, `edit`, `fix`, `update`, `implement`, `refactor`, `delete`, `add`, `setup`, `configure`, `build`, `code` and user did not say `plan` | Open and follow `{cypilot_path}/.core/workflows/generate.md` |
-| Analyze | `analyze`, `validate`, `review`, `check`, `inspect`, `audit`, `compare`, `list`, `show`, `find` and user did not say `plan` | Open and follow `{cypilot_path}/.core/workflows/analyze.md` |
+| Analyze | `analyze`, `validate`, `review`, `check`, `inspect`, `audit`, `compare`, `list`, `show`, `find`, `explain`, `tell me about`, `walk me through`, `teach me`, `present`, `introduce`, `let's understand`, `make sense of` (or equivalents in any user language; intent matching is language-agnostic) and user did not say `plan` | Open and follow `{cypilot_path}/.core/workflows/analyze.md` (storytelling intent activates `EXPLAIN_MODE=true` via the WHEN-rule for `requirements/storytelling.md`) |
  | Workspace | `workspace`, `multi-repo`, `add source`, `add repo`, `cross-reference`, `cross-repo` | Open and follow `{cypilot_path}/.core/workflows/workspace.md` |
  | Unclear | `help`, `look at`, `work with`, `handle` | Ask `Why this input is needed: I need the Cypilot mode to route your request correctly. Reply with plan / generate / analyze. plan = phased execution for large or multi-step work; generate = create or modify files; analyze = read-only inspection or review. Suggested: generate for requested changes; analyze for inspection-only requests.` and stop if the user cancels |
  
