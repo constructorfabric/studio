@@ -25,7 +25,8 @@ purpose: Universal workflow for creating or updating any artifact or code
 - [Phase 3: Summary](#phase-3-summary)
 - [Phase 4: Write](#phase-4-write)
 - [Phase 5: Analyze](#phase-5-analyze)
-  - [Step 1: Deterministic Validation (tool-based)](#step-1-deterministic-validation-tool-based)
+  - [Phase 5a: Deterministic Validation (tool-based)](#phase-5a-deterministic-validation-tool-based)
+  - [Phase 5b: Semantic Review + Results Assembly](#phase-5b-semantic-review--results-assembly)
 - [Phase 6: Offer Next Steps](#phase-6-offer-next-steps)
 - [Error Handling](#error-handling)
 - [State Summary](#state-summary)
@@ -57,6 +58,8 @@ Reply with `yes`, `no`, or `skip`.
 ```
 
 If user confirms `yes`: execute auto-config methodology (Phases 1→6), then return to generate. If user says `skip`: proceed without task-matched project-specific specs/rules. If user says `no`: cancel.
+
+ALWAYS open and follow `{cypilot_path}/.core/requirements/storytelling.md` WHEN user requests an explanatory / educational / presentation / guide / README / training-material **package** to be written to disk (intent like `generate guide for X`, `make a README from X`, `export explain package`, `create training material from X`, `build onboarding doc set for X`, `write a how-to package about X`, or equivalents in any user language). WHEN this rule triggers, set BOTH `EXPLAIN_MODE=true` AND `EXPLAIN_EXPORT=true`; the storytelling methodology handles plan + portion construction; the package is written under `{cypilot_path}/.cache/explain/packages/{slug}-{ISO-timestamp}/`. Standard `generate.md` write-permission gates apply (user confirmation before writing files; do NOT add `--yes`/`-y` to write-capable commands unless the user explicitly requested non-interactive behavior). The hybrid execution from `storytelling.md` Export Mode applies: Phases E0/E1 (pre-flight, role/audience confirmation, plan approval) remain interactive; portion construction runs in batch after plan approval and writes files directly (no per-portion chat navigation prompts).
 
 ## Overview
 
