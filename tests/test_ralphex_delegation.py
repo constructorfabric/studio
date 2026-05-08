@@ -292,14 +292,13 @@ class TestAC03MissingRalphexDiagnostic:
         assert result["level"] == "WARN"
         assert result["name"] == "inst-check-ralphex"
 
-    def test_doctor_reads_cypilot_adapter_config(self):
-        """Doctor discovers ralphex via cypilot/config/core.toml (not just .bootstrap)."""
+    def test_doctor_reads_install_config(self):
+        """Doctor discovers ralphex via .cf-constructor/config/core.toml."""
         from cypilot.commands._core_config import load_core_config as _load_core_config
 
         with TemporaryDirectory() as tmp:
             project_root = Path(tmp)
-            # Only create cypilot adapter config (no .bootstrap)
-            config_dir = project_root / "cypilot" / "config"
+            config_dir = project_root / ".cf-constructor" / "config"
             config_dir.mkdir(parents=True)
             (config_dir / "core.toml").write_text(
                 '[ralphex]\npath = "/usr/local/bin/ralphex"\n',
@@ -308,30 +307,13 @@ class TestAC03MissingRalphexDiagnostic:
             config = _load_core_config(project_root)
         assert config.get("ralphex", {}).get("path") == "/usr/local/bin/ralphex"
 
-    def test_doctor_prefers_bootstrap_over_cypilot_config(self):
-        """Doctor checks .bootstrap before cypilot adapter config."""
-        from cypilot.commands._core_config import load_core_config as _load_core_config
-
-        with TemporaryDirectory() as tmp:
-            project_root = Path(tmp)
-            # Create both adapter configs with different paths
-            for adapter, path_val in [(".bootstrap", "/opt/bootstrap/ralphex"), ("cypilot", "/opt/cypilot/ralphex")]:
-                config_dir = project_root / adapter / "config"
-                config_dir.mkdir(parents=True)
-                (config_dir / "core.toml").write_text(
-                    f'[ralphex]\npath = "{path_val}"\n',
-                    encoding="utf-8",
-                )
-            config = _load_core_config(project_root)
-        assert config["ralphex"]["path"] == "/opt/bootstrap/ralphex"
-
-    def test_doctor_check_finds_ralphex_from_cypilot_config(self):
-        """Doctor _check_ralphex finds ralphex when path is only in cypilot/config/core.toml."""
+    def test_doctor_check_finds_ralphex_from_install_config(self):
+        """Doctor _check_ralphex finds ralphex when path is only in .cf-constructor/config/core.toml."""
         from cypilot.commands.doctor import _check_ralphex
 
         with TemporaryDirectory() as tmp:
             project_root = Path(tmp)
-            config_dir = project_root / "cypilot" / "config"
+            config_dir = project_root / ".cf-constructor" / "config"
             config_dir.mkdir(parents=True)
             # Write a config with the correct key structure for discover()
             fake_bin = project_root / "fake-ralphex"

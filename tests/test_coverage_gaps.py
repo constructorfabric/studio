@@ -118,7 +118,7 @@ class TestCoreConfigExceptionBranch:
         """load_core_config returns {} when core.toml contains invalid TOML."""
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
-            config_dir = root / ".bootstrap" / "config"
+            config_dir = root / ".cf-constructor" / "config"
             config_dir.mkdir(parents=True)
             (config_dir / "core.toml").write_text("this is not valid toml [[[", encoding="utf-8")
             result = load_core_config(root)
@@ -128,7 +128,7 @@ class TestCoreConfigExceptionBranch:
         """load_core_config returns {} when the file cannot be opened."""
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
-            config_dir = root / ".bootstrap" / "config"
+            config_dir = root / ".cf-constructor" / "config"
             config_dir.mkdir(parents=True)
             core_path = config_dir / "core.toml"
             core_path.write_text("[integrations]\n", encoding="utf-8")

@@ -5,8 +5,8 @@ DESCRIPTION: Initialize Cyber Constructor config for a project
 ARGUMENTS:
 
 OPTIONS:
-  --project-root  <path>  Project root directory (default: parent of Cyber Constructor core)
-  --cf-constructor-root  <path>  Explicit Cyber Constructor core root (optional override)
+  --project-root  <path>  Project root directory (default: current directory)
+  --install-dir  <path>  Cyber Constructor directory relative to project root (default: .cf-constructor)
   --project-name  <string>  Project name used in AGENTS.md (default: project root folder name)
   --yes  <boolean>  Do not prompt; accept defaults
   --dry-run  <boolean>  Compute changes without writing files
