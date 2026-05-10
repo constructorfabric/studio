@@ -1,5 +1,5 @@
 ---
-cypilot: true
+cf-constructor: true
 type: requirement
 name: Storytelling Phases (E0-E5)
 version: 1.0
@@ -40,13 +40,13 @@ Loaded by `requirements/storytelling.md` (router). Defines the E0-E5 protocol sh
 Before any user interaction:
 
 - [ ] **Invocation handling** — interpret the user's prompt:
-  - **Resume intent** — prompt contains `explain --resume {session-id}` or `resume explain session {session-id}` (or equivalent in the user's language) → load the checkpoint at `{cypilot_path}/.cache/explain/session-{slug}-{session-id}.json` directly (skip session-discovery listing) and continue from saved state. Verify `input_hash` and abort if input is missing per the resume rules in `storytelling-preferences.md` Checkpoint and Resume.
-  - **No target / unresolvable target** (typo, ambiguous, unknown ID) → enter **session-discovery mode**: list saved sessions from `{cypilot_path}/.cache/explain/session-*.json` newest-first with role / audience / progress / age / input-status (`unchanged` / `changed since checkpoint` / `missing`); user resumes by number or specifies a target; offer `start new` and `cancel`. If no saved sessions exist, prompt for a target directly.
+  - **Resume intent** — prompt contains `explain --resume {session-id}` or `resume explain session {session-id}` (or equivalent in the user's language) → load the checkpoint at `{cf-constructor-path}/.cache/explain/session-{slug}-{session-id}.json` directly (skip session-discovery listing) and continue from saved state. Verify `input_hash` and abort if input is missing per the resume rules in `storytelling-preferences.md` Checkpoint and Resume.
+  - **No target / unresolvable target** (typo, ambiguous, unknown ID) → enter **session-discovery mode**: list saved sessions from `{cf-constructor-path}/.cache/explain/session-*.json` newest-first with role / audience / progress / age / input-status (`unchanged` / `changed since checkpoint` / `missing`); user resumes by number or specifies a target; offer `start new` and `cancel`. If no saved sessions exist, prompt for a target directly.
   - **Clear target** (file path, registered artifact ID, or recognized external resource) → set `{target}` and continue to Input access resolution.
 
 - [ ] **Input access resolution** — resolve how to read the target's content. Branch by shape:
   - **Local file path** → check existence/readability/non-empty (inherits `analyze.md` Phase 1).
-  - **Cypilot artifact ID** (`REQ-001` etc.) → resolve via `cpt --json where-defined {id}`, continue as local file.
+  - **Cypilot artifact ID** (`REQ-001` etc.) → resolve via `{cfc_cmd} --json where-defined {id}`, continue as local file.
   - **External resource** (HTTP/HTTPS URL, `gh:owner/repo#123`, `JIRA-456`, Notion / Linear / Confluence / Slack URL, etc.) → run the **access chain** in priority order, falling through on absence or fetch failure:
     1. **MCP** — check for an MCP server that handles the resource type (e.g. `mcp__github__*`, `mcp__plugin_Notion_notion__*`, `mcp__plugin_atlassian_jira__*`, `mcp__plugin_chrome-devtools-mcp_chrome-devtools__*`, `mcp__plugin_playwright_*`). Fetch via the MCP tool. Telemetry: `External input resolved via MCP {server}.{tool}`.
     2. **Skill** — scan registered skills (e.g. `Notion:find` / `Notion:search`, `coderabbit:autofix`). Telemetry: `via skill {name}`.
@@ -66,18 +66,18 @@ Before any user interaction:
 
   `{slug}` derivation for external resources: lowercase + hyphenate. Examples: GitHub PR → `gh-{owner}-{repo}-pr-{N}`, Jira ticket → `jira-{key}`, Notion page → `notion-{slugified-title}`, generic URL → `url-{domain}-{path}`.
 
-- [ ] **Existing-session scan** — before building a new plan, scan `{cypilot_path}/.cache/explain/session-*.json` for prior sessions on this target. Three-tier match:
+- [ ] **Existing-session scan** — before building a new plan, scan `{cf-constructor-path}/.cache/explain/session-*.json` for prior sessions on this target. Three-tier match:
   1. Exact stored-input-path match AND `input_hash` matches current → tier-1 "exact match, input unchanged"
   2. Exact stored-input-path match but `input_hash` differs → tier-2 "same file, content changed since checkpoint"
   3. Same `{slug}` but different stored path → tier-3 collision (NOT auto-offered)
 
   Tier-1/2 matches are offered with `Start fresh` and `Cancel` alternatives before E1 Discovery proceeds.
 
-- [ ] **Input size guards**: `<50 lines` → warn "input small, continue?" (default yes); `≤2000 lines` → proceed; `>2000 lines` → offer **narrow-to-section** (NOT `/cypilot-plan` — that workflow is for autonomous execution): parse top-level headings (markdown `^#{1,3} ` for docs; entry-points / module boundaries for code; best-effort heuristics elsewhere); show as scope options; default suggestion = High-level overview. If user picks a section, narrow Read-range; override (continue full) tagged as reduced fidelity.
+- [ ] **Input size guards**: `<50 lines` → warn "input small, continue?" (default yes); `≤2000 lines` → proceed; `>2000 lines` → offer **narrow-to-section** (NOT `/cf-constructor-plan` — that workflow is for autonomous execution): parse top-level headings (markdown `^#{1,3} ` for docs; entry-points / module boundaries for code; best-effort heuristics elsewhere); show as scope options; default suggestion = High-level overview. If user picks a section, narrow Read-range; override (continue full) tagged as reduced fidelity.
 
-- [ ] **Registry resolution**: target in `artifacts.toml` → load KIND, retrieve linked artifacts via `cpt --json where-defined {id}` and `cpt --json where-used {id}`. Unregistered → graceful degrade (role defaults to SME, no auto-Lateral candidates).
+- [ ] **Registry resolution**: target in `artifacts.toml` → load KIND, retrieve linked artifacts via `{cfc_cmd} --json where-defined {id}` and `{cfc_cmd} --json where-used {id}`. Unregistered → graceful degrade (role defaults to SME, no auto-Lateral candidates).
 
-- [ ] **Language config**: respect `[validation] allowed_content_languages` from `.cypilot-workspace.toml` for source quotes.
+- [ ] **Language config**: respect `[validation] allowed_content_languages` from `.cf-constructor-workspace.toml` for source quotes.
 
 ## Phase E1: Discovery
 
@@ -150,7 +150,7 @@ Approve and proceed?
 → suggested: 1 (Go)
 ```
 
-User confirms by number / keyword / Enter for the suggestion. Free-text shorthand also accepted: `go`/`yes`/Enter → E2; `edit X` / `swap N and M` → adjust; `pivot to {topic}` → rebuild; `cancel` → exit. Cancel ack: `Explain mode cancelled. Run /cypilot-analyze for standard analysis.`
+User confirms by number / keyword / Enter for the suggestion. Free-text shorthand also accepted: `go`/`yes`/Enter → E2; `edit X` / `swap N and M` → adjust; `pivot to {topic}` → rebuild; `cancel` → exit. Cancel ack: `Explain mode cancelled. Run /cf-constructor-analyze for standard analysis.`
 
 ## Phase E2: Portion Delivery Loop
 
@@ -235,7 +235,7 @@ Recognition is intent-based; user may type these in any language (methodology MU
 | Free-text question answerable from input | Answer with source ref |
 | Free-text question NOT answerable from input | Acknowledge briefly + push as Q-{N} entry to the open-questions buffer (the **only** path that creates entries) |
 | `change role to {X}` / `change audience to {X}` / `change diagram format to {X}` / `change plan` / `change mode to {X}` / `change page size to {soft}[/{hard}]` / `change artifact language to {X}` / `change disposition to {X}` | Update preference, ack, continue from next portion (mid-session override; does NOT update project preference unless followed by `remember new {field}`). For `disposition`, `{X}` ∈ {`chat-only`, `save-to-file`, `post-to-resource`, `mixed`} |
-| `remember new mode` / `remember new page size` / `remember new language` / `remember new disposition` | Persist current value to `{cypilot_path}/.cache/explain/preferences.json` |
+| `remember new mode` / `remember new page size` / `remember new language` / `remember new disposition` | Persist current value to `{cf-constructor-path}/.cache/explain/preferences.json` |
 | `bookmark` / `mark` / `важно` (or equivalents) | Push current point to takeaways buffer |
 | `stop` / `wrap` / `enough` | Jump to Phase E5 (user-triggered wrap) |
 
@@ -263,11 +263,11 @@ Hard rules, enforced inside every portion:
 3. **Source reference required** for every non-trivial claim, as a **clickable Markdown link** (plain-text refs like `(DESIGN.md §4.2)` are forbidden):
    - Unregistered file with heading: `(see [{file} §{section}]({path}#{anchor}))` — ex: `(see [DESIGN.md §4.2 Data Model](DESIGN.md#42-data-model))`
    - Unregistered file no anchor: `(see [{file}]({path}))`
-   - Registered Cypilot artifact: `(see [{ID} §{section}]({resolved-path}#{anchor}))` — resolve path via `cpt --json where-defined {id}`
+   - Registered Cypilot artifact: `(see [{ID} §{section}]({resolved-path}#{anchor}))` — resolve path via `{cfc_cmd} --json where-defined {id}`
    - Code single line: `(see [{file}:{line}]({path}#L{line}))`
    - Code line range: `(see [{file}:{a}-{b}]({path}#L{a}-L{b}))`
    - Multiple refs same file: `(see [{file} §a]({path}#a), [§b]({path}#b))` — file name only on first
-   - Anchor derivation matches GitHub-flavored Markdown / `cpt --json toc`: lowercase, drop punctuation other than spaces and hyphens, replace spaces with hyphens, collapse repeats. Ex: `## 4.2 Data Model & Schemas` → `#42-data-model--schemas`
+   - Anchor derivation matches GitHub-flavored Markdown / `{cfc_cmd} --json toc`: lowercase, drop punctuation other than spaces and hyphens, replace spaces with hyphens, collapse repeats. Ex: `## 4.2 Data Model & Schemas` → `#42-data-model--schemas`
    - **PR-target rule** (when target is a PR/MR): files-in-the-diff MUST use the PR-view inline-diff URL, NOT a commit-SHA blob URL. GitHub: `https://github.com/{owner}/{repo}/pull/{N}/files#diff-{file-hash}R{a}-R{b}` (R=right/added, L=left/removed; `{file-hash}` from `gh pr view --json files`). GitLab MR: `/merge_requests/{N}/diffs#{hash}_{a}_{b}`. Bitbucket PR: `/pull-requests/{N}/diff#chg-{path}`. Files NOT in the diff fall back to upstream + head-SHA blob URL (never branch — fork branches 404).
    - Trivial framing/connective sentences exempt.
 
@@ -308,7 +308,7 @@ Diagrams MUST be self-contained — a reader looking only at the diagram should 
 ```text
 Render this diagram as:
   1. ASCII inline in chat — instant, no files
-  2. Mermaid in {cypilot_path}/.cache/explain/diagrams-{slug}-{date}.md — open in renderer
+  2. Mermaid in {cf-constructor-path}/.cache/explain/diagrams-{slug}-{date}.md — open in renderer
   3. Both
 → suggested: 1
 Choice applies to all diagrams this session. Override: `change diagram format to mermaid`.
@@ -346,8 +346,8 @@ Two triggers:
      ```text
      Session not complete — at portion {X} of {N}, plan items remaining: {list}.
      Save a checkpoint to resume later? (yes / no)
-     - yes → write `{cypilot_path}/.cache/explain/session-{slug}-{ISO-timestamp}.json`
-       with the latest state. Resume by writing `explain --resume {session-id}` (or `resume explain session {session-id}`) in any new chat — the `analyze.md` WHEN-rule recognises the resume intent and routes here, then the methodology loads the checkpoint via Phase E0 invocation handling. There is no dedicated `cypilot explain` CLI subcommand — resume is a methodology-level intent-routed action.
+     - yes → write `{cf-constructor-path}/.cache/explain/session-{slug}-{ISO-timestamp}.json`
+       with the latest state. Resume by writing `explain --resume {session-id}` (or `resume explain session {session-id}`) in any new chat — the `analyze.md` WHEN-rule recognises the resume intent and routes here, then the methodology loads the checkpoint via Phase E0 invocation handling. There is no dedicated `cf-constructor explain` CLI subcommand — resume is a methodology-level intent-routed action.
      - no → continue to wrap output without writing a checkpoint. **No state is
        persisted; the session cannot be resumed.**
      → suggested: yes
@@ -383,21 +383,21 @@ Two triggers:
 
 Disposition for open questions this session: **{disposition}**.
 - If `chat-only` → entries shown above are the only copy; copy them now or they're gone at session end.
-- If `save-to-file` → already saved during the session to `{cypilot_path}/.cache/explain/open-questions-{slug}-{YYYY-MM-DD}.md` ({K} entries). No re-prompt.
+- If `save-to-file` → already saved during the session to `{cf-constructor-path}/.cache/explain/open-questions-{slug}-{YYYY-MM-DD}.md` ({K} entries). No re-prompt.
 - If `post-to-resource` → already posted during the session ({K} succeeded, {failed} fell back to save-to-file → {fallback-path}). No re-prompt.
 
 ### Glossary ({G}) — if any
 - **{term}**: {definition} — [{file} §{section}]({path}#{anchor})
 
 ### Bookmarked Takeaways Export ({B}) — if any
-Same disposition rules as Open Questions above — `chat-only` shown inline (copy now); `save-to-file` already saved during the session to `{cypilot_path}/.cache/explain/key-takeaways-{slug}-{YYYY-MM-DD}.md` (no re-prompt); `post-to-resource` already posted (no re-prompt).
+Same disposition rules as Open Questions above — `chat-only` shown inline (copy now); `save-to-file` already saved during the session to `{cf-constructor-path}/.cache/explain/key-takeaways-{slug}-{YYYY-MM-DD}.md` (no re-prompt); `post-to-resource` already posted (no re-prompt).
 
 ### Suggested Next Steps (2-3, contextual; max 4 candidates)
 0. **Resume this session**: write `explain --resume {session-id}` (or `resume explain session {session-id}`) in your next chat (checkpoint: `{path}`) — appears ONLY when a fresh checkpoint was written this turn (mid-session early wrap, user accepted save). Resume is a methodology-level intent-routed action, not a dedicated CLI subcommand.
 1. `explain {linked-artifact-id}` — when registered linked artifacts exist
-2. `validate `{path}` via /cypilot-analyze` — **only when target is a Cypilot-registered artifact** (resolved via `cpt --json where-defined {id}` / present in `artifacts.toml`); for unregistered files / external resources / generic codebase paths, this entry MUST NOT appear because `cpt validate` would fail with `Artifact not in Cypilot registry`
+2. `validate `{path}` via /cf-constructor-analyze` — **only when target is a Cypilot-registered artifact** (resolved via `{cfc_cmd} --json where-defined {id}` / present in `artifacts.toml`); for unregistered files / external resources / generic codebase paths, this entry MUST NOT appear because `{cfc_cmd} validate` would fail with `Artifact not in Cypilot registry`
 3. `forward open-questions to {likely-author}` — when buffer non-empty
-4. `/cypilot-plan implement {path}` — only when KIND ∈ {PRD, DESIGN, FEATURE, ADR, DECOMPOSITION}
+4. `/cf-constructor-plan implement {path}` — only when KIND ∈ {PRD, DESIGN, FEATURE, ADR, DECOMPOSITION}
 ```
 
 Pick 2-3 of the candidate next-steps contextually. **No `Fix Prompt` / `Plan Prompt`** — explicit override of `enforceRemediationPrompts`.

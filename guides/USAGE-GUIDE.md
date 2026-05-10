@@ -1,4 +1,4 @@
-# Cyber Pilot Usage Guide
+# Cyber Constructor Usage Guide
 
 
 <!-- toc -->
@@ -7,16 +7,16 @@
 - [2. Installation and first-time setup](#2-installation-and-first-time-setup)
   - [One easy operating rule](#one-easy-operating-rule)
   - [Prerequisites](#prerequisites)
-  - [If the repository already includes Cyber Pilot](#if-the-repository-already-includes-cyber-pilot)
+  - [If the repository already includes Cyber Constructor](#if-the-repository-already-includes-cyber-constructor)
   - [1. Install the CLI](#1-install-the-cli)
   - [2. Initialize the repository](#2-initialize-the-repository)
-  - [3. Turn Cyber Pilot on in chat](#3-turn-cyber-pilot-on-in-chat)
+  - [3. Turn Cyber Constructor on in chat](#3-turn-cyber-constructor-on-in-chat)
   - [Common install/setup failures](#common-installsetup-failures)
   - [4. Pick the right first move](#4-pick-the-right-first-move)
   - [What success looks like after the first few minutes](#what-success-looks-like-after-the-first-few-minutes)
 - [3. The shortest mental model](#3-the-shortest-mental-model)
-- [4. When Cyber Pilot is a good fit](#4-when-cyber-pilot-is-a-good-fit)
-- [5. When Cyber Pilot is not the best first move](#5-when-cyber-pilot-is-not-the-best-first-move)
+- [4. When Cyber Constructor is a good fit](#4-when-cyber-constructor-is-a-good-fit)
+- [5. When Cyber Constructor is not the best first move](#5-when-cyber-constructor-is-not-the-best-first-move)
 - [6. Choosing the right workflow](#6-choosing-the-right-workflow)
   - [Use `plan` when](#use-plan-when)
   - [What counts as a large task](#what-counts-as-a-large-task)
@@ -47,7 +47,7 @@
   - [Brownfield understanding](#brownfield-understanding)
   - [Marker recovery](#marker-recovery)
 - [11. Prompt patterns that usually go wrong](#11-prompt-patterns-that-usually-go-wrong)
-- [12. Using Cyber Pilot across multiple repositories](#12-using-cyber-pilot-across-multiple-repositories)
+- [12. Using Cyber Constructor across multiple repositories](#12-using-cyber-constructor-across-multiple-repositories)
   - [Good pattern](#good-pattern)
   - [Bad pattern](#bad-pattern)
   - [Typical commands](#typical-commands)
@@ -65,7 +65,7 @@
 
 <!-- /toc -->
 
-How to use **Cyber Pilot** well in common real-world situations: when to use it, when to skip it, and how to choose the right workflow without unnecessary overhead.
+How to use **Cyber Constructor** well in common real-world situations: when to use it, when to skip it, and how to choose the right workflow without unnecessary overhead.
 
 > **Convention**: 💬 = paste into AI coding tool chat. 🖥️ = run in terminal.
 
@@ -82,11 +82,11 @@ This guide is for the practical questions that come up after onboarding:
 - **When is Cyber Pilot useful, and when is it just overhead?**
 - **How do I get the benefits without using the product badly?**
 
-Use this guide when you already know what Cyber Pilot is and now need help choosing the right workflow in common real-world situations.
+Use this guide when you already know what Cyber Constructor is and now need help choosing the right workflow in common real-world situations.
 
 The focus is not abstract theory.
 
-The focus is operational behavior: how to use Cyber Pilot well in real projects.
+The focus is operational behavior: how to use Cyber Constructor well in real projects.
 
 ## 2. Installation and first-time setup
 
@@ -96,10 +96,10 @@ For the short version, use the setup section in **[README](../README.md)** first
 
 ### One easy operating rule
 
-- use `cpt` in your terminal for setup, validation, updates, and workspace commands
-- use `cypilot ...` in your AI coding tool chat for `plan`, `generate`, and `analyze`
-- do **not** run `cypilot ...` in the terminal
-- the portable `cypilot <workflow>: ...` form is the best default; host-specific slash commands are aliases when a host exposes them
+- use `cfc` in your terminal for setup, validation, updates, and workspace commands
+- use `cf-constructor ...` in your AI coding tool chat for `plan`, `generate`, and `analyze`
+- do **not** run `cf-constructor ...` in the terminal
+- the portable `cf-constructor <workflow>: ...` form is the best default; host-specific slash commands are aliases when a host exposes them
 
 ### Prerequisites
 
@@ -109,16 +109,16 @@ For the short version, use the setup section in **[README](../README.md)** first
 - `pipx` for a global CLI install
 - `gh` if you want PR review or PR status workflows
 
-### If the repository already includes Cyber Pilot
+### If the repository already includes Cyber Constructor
 
-If the repository already has a Cyber Pilot setup directory and generated AI coding tool integration files, you usually do **not** need to install `cpt` globally just to try the project.
+If the repository already has a Cyber Constructor setup directory and generated AI coding tool integration files, you usually do **not** need to install `cfc` globally just to try the project.
 
 In that case:
 
 - ensure Python 3.11+ is available for the repository-local scripts and CI
 - open the repository in your supported AI coding tool
-- activate Cyber Pilot in chat with 💬 `cypilot on`
-- start with one focused request such as 💬 `cypilot analyze: ...` or 💬 `cypilot plan: ...`
+- activate Cyber Constructor in chat with 💬 `cf-constructor on`
+- start with one focused request such as 💬 `cf-constructor analyze: ...` or 💬 `cf-constructor plan: ...`
 
 Use the CLI install path below when you need to bootstrap the repository yourself, run terminal commands directly, or manage setup across multiple repositories.
 
@@ -126,13 +126,13 @@ Use the CLI install path below when you need to bootstrap the repository yoursel
 
 🖥️ **Terminal**:
 ```bash
-pipx install git+https://github.com/cyberfabric/cyber-pilot.git
-cpt --version
+pipx install git+https://github.com/cyberfabric/cyber-constructor.git
+cfc --version
 ```
 
-If `cpt --version` prints a version, the CLI install worked.
+If `cfc --version` prints a version, the CLI install worked.
 
-If `cpt` is not found, open a new terminal and try again before doing anything else.
+If `cfc` is not found, open a new terminal and try again before doing anything else.
 
 **Only if needed on macOS**
 
@@ -171,21 +171,21 @@ From your repository root, run:
 
 🖥️ **Terminal**:
 ```bash
-cpt init
-cpt generate-agents
+cfc init
+cfc generate-agents
 ```
 
-`cpt init` is interactive.
+`cfc init` is interactive.
 
-For a first trial, it is usually safe to accept the default project root, keep the default setup directory `cypilot/` unless you want a custom one, and accept the default SDLC kit if prompted.
+For a first trial, it is usually safe to accept the default project root, keep the default setup directory `.cf-constructor/` unless you want a custom one, and accept the default SDLC kit if prompted.
 
-`cpt init` sets up Cyber Pilot in the repository.
+`cfc init` sets up Cyber Constructor in the repository.
 
-`cpt generate-agents` adds the AI coding tool integration files for that repository.
+`cfc generate-agents` adds the AI coding tool integration files for that repository.
 
-`cpt generate-agents` may preview the files it will create and ask you to confirm before writing them.
+`cfc generate-agents` may preview the files it will create and ask you to confirm before writing them.
 
-In a normal project, this creates a setup directory `cypilot/`, generated host integration files, and user-editable configuration under `config/` inside that setup directory.
+In a normal project, this creates a setup directory `.cf-constructor/`, generated host integration files, and user-editable configuration under `config/` inside that setup directory.
 
 You may also see host-specific folders such as `.windsurf/`, `.cursor/`, `.claude/`, `.github/`, `.codex/`, or `.agents/`.
 
@@ -193,18 +193,18 @@ For a first trial, you do not need to open or edit those generated files manuall
 
 If your AI coding tool is already open on the repository, reload or reopen the repository after this step so the generated integration files are picked up.
 
-### 3. Turn Cyber Pilot on in chat
+### 3. Turn Cyber Constructor on in chat
 
 In the AI coding tool chat attached to the same repository or workspace you just initialized, run:
 
 💬 **AI coding tool chat**:
 ```text
-cypilot on
+cf-constructor on
 ```
 
 If setup worked, you should see a clear activation confirmation in chat. If the chat behaves like a normal assistant and does not confirm activation, reopen the repository in the AI coding tool and try again.
 
-Some hosts may also show the resolved Cyber Pilot path or loaded context.
+Some hosts may also show the resolved Cyber Constructor path or loaded context.
 
 ### Common install/setup failures
 
@@ -213,46 +213,46 @@ Some hosts may also show the resolved Cyber Pilot path or loaded context.
   - macOS: `brew install pipx && pipx ensurepath`
   - Windows: `scoop install pipx && pipx ensurepath`
 
-- **`cpt: command not found` after install**
+- **`cfc: command not found` after install**
   - Open a new terminal first.
   - On macOS `zsh`, run `source ~/.zshrc`.
 
 - **Setup ran in the wrong directory**
-  - Run `cpt init` from the repository root.
+  - Run `cfc init` from the repository root.
 
-- **You are not sure what to choose during `cpt init`**
+- **You are not sure what to choose during `cfc init`**
   - For a first trial, the default project root, default setup directory, and default SDLC kit are usually fine.
 
-- **`cpt generate-agents` looked like it stalled**
+- **`cfc generate-agents` looked like it stalled**
   - It may be previewing generated files or waiting for confirmation before writing them.
 
 - **Generated files exist, but the AI coding tool still does not pick them up**
   - Reload or reopen the repository in the AI coding tool.
 
-- **`cypilot on` behaves like a normal assistant reply**
+- **`cf-constructor on` behaves like a normal assistant reply**
   - Make sure you opened the same repository you initialized.
-  - Make sure `cpt generate-agents` already ran.
-  - Then retry `cypilot on`.
+  - Make sure `cfc generate-agents` already ran.
+  - Then retry `cf-constructor on`.
 
-- **You expected slash commands, but only `cypilot ...` works**
-  - That is normal. `cypilot <workflow>: ...` is the portable default. Slash commands are host-specific aliases.
+- **You expected slash commands, but only `cf-constructor ...` works**
+  - That is normal. `cf-constructor <workflow>: ...` is the portable default. Slash commands are host-specific aliases.
 
 - **Workspace-aware validation feels noisy on a first trial**
   - Start with `cpt validate --local-only`.
 
 ### 4. Pick the right first move
 
-- **First 5-minute trial**: start with `cypilot analyze: ...` or `cypilot plan: ...`, not `generate`
-- **New project or already-structured work**: start with `cypilot generate: ...` or `cypilot plan: ...`
-- **Existing codebase with weak or missing conventions**: run 💬 `cypilot auto-config`, inspect what it inferred, and then refine the generated rules before large changes
-- **After changing workflows, kits, or host integrations**: rerun `cpt generate-agents` or `cpt generate-agents --agent <tool>`
+- **First 5-minute trial**: start with `cf-constructor analyze: ...` or `cf-constructor plan: ...`, not `generate`
+- **New project or already-structured work**: start with `cf-constructor generate: ...` or `cf-constructor plan: ...`
+- **Existing codebase with weak or missing conventions**: run 💬 `cf-constructor auto-config`, inspect what it inferred, and then refine the generated rules before large changes
+- **After changing workflows, kits, or host integrations**: rerun `cfc generate-agents` or `cfc generate-agents --agent <tool>`
 
 For the first trial, use one small real input only: one short requirement, one design note, or one focused change request. Do not start with a repo-wide review or a broad implementation request.
 
 Good first requests:
 
-- 💬 `cypilot analyze: review this requirement and list the top 5 unclear or missing points before implementation`
-- 💬 `cypilot plan: break this change request into 3-7 safe reviewable phases with the main risk in each phase`
+- 💬 `cf-constructor analyze: review this requirement and list the top 5 unclear or missing points before implementation`
+- 💬 `cf-constructor plan: break this change request into 3-7 safe reviewable phases with the main risk in each phase`
 
 ### What success looks like after the first few minutes
 
@@ -266,7 +266,7 @@ For host-specific setup details and troubleshooting, use **[AGENT-TOOLS.md](AGEN
 
 ## 3. The shortest mental model
 
-Cyber Pilot is most useful when a task needs more than raw prompting.
+Cyber Constructor is most useful when a task needs more than raw prompting.
 
 Use your AI coding tool and agent for:
 
@@ -275,7 +275,7 @@ Use your AI coding tool and agent for:
 - **transformation**
 - **implementation judgment**
 
-Use Cyber Pilot for:
+Use Cyber Constructor for:
 
 - **choosing the right workflow**
 - **loading the right context**
@@ -286,14 +286,14 @@ Use Cyber Pilot for:
 
 If the task is tiny or exploratory, direct prompting may be enough.
 
-If the task needs structure, validation, or safe multi-step execution, Cyber Pilot is usually the better fit.
+If the task needs structure, validation, or safe multi-step execution, Cyber Constructor is usually the better fit.
 
 
 ---
 
-## 4. When Cyber Pilot is a good fit
+## 4. When Cyber Constructor is a good fit
 
-Cyber Pilot is a strong fit when one or more of these are true:
+Cyber Constructor is a strong fit when one or more of these are true:
 
 - **You are transforming one structured artifact into another**
   
@@ -330,9 +330,9 @@ Cyber Pilot is a strong fit when one or more of these are true:
 
 ---
 
-## 5. When Cyber Pilot is not the best first move
+## 5. When Cyber Constructor is not the best first move
 
-Cyber Pilot is often not the best first move when:
+Cyber Constructor is often not the best first move when:
 
 - **The task is tiny**
   
@@ -422,17 +422,17 @@ Why this matters:
 
 Use the portable workflow form by default:
 
-- 💬 `cypilot plan: ...`
-- 💬 `cypilot generate: ...`
-- 💬 `cypilot analyze: ...`
+- 💬 `cf-constructor plan: ...`
+- 💬 `cf-constructor generate: ...`
+- 💬 `cf-constructor analyze: ...`
 
-Some hosts also expose slash-command aliases such as `/cypilot-plan`, `/cypilot-generate`, or `/cypilot-analyze`.
+Some hosts also expose slash-command aliases such as `/cf-constructor-plan`, `/cf-constructor-generate`, or `/cf-constructor-analyze`.
 
 Treat those as host-specific aliases, not separate capabilities.
 
 **Good prompt shape**:
 
-- 💬 `cypilot plan: break this auth migration into safe implementation phases`
+- 💬 `cf-constructor plan: break this auth migration into safe implementation phases`
 
 ### Use `generate` when
 
@@ -445,7 +445,7 @@ Treat those as host-specific aliases, not separate capabilities.
 
 When a prompt below references `PRD`, `DESIGN`, `DECOMPOSITION`, or `FEATURE`, it assumes the built-in SDLC kit is installed.
 
-- 💬 `cypilot generate: implement the approved FEATURE for login rate limiting` *(requires SDLC kit)*
+- 💬 `cf-constructor generate: implement the approved FEATURE for login rate limiting` *(requires SDLC kit)*
 
 ### Use `analyze` when
 
@@ -457,7 +457,7 @@ When a prompt below references `PRD`, `DESIGN`, `DECOMPOSITION`, or `FEATURE`, i
 
 **Good prompt shape**:
 
-- 💬 `cypilot analyze: validate architecture/DESIGN.md against the current FEATURE docs` *(requires SDLC kit)*
+- 💬 `cf-constructor analyze: validate architecture/DESIGN.md against the current FEATURE docs` *(requires SDLC kit)*
 
 ### What `analyze` is for in practice
 
@@ -529,8 +529,8 @@ A final **human review is still required** before treating the result as done.
 4. **Validate early and keep validation in the loop**
    - Generate or implement, validate, review, fix, and validate again before drift accumulates.
 
-5. **Use Cyber Pilot for structure; use the agent for judgment**
-   - Let Cyber Pilot enforce structure, validation, routing, and templates. Use the agent for interpretation, tradeoffs, and writing.
+5. **Use Cyber Constructor for structure; use the agent for judgment**
+   - Let Cyber Constructor enforce structure, validation, routing, and templates. Use the agent for interpretation, tradeoffs, and writing.
 
 6. **Be explicit about what must not change**
    - Say what is in scope and what is out of scope.
@@ -544,9 +544,9 @@ A final **human review is still required** before treating the result as done.
 9. **Use a fresh chat for new generation or review work**
    - For substantial `generate` or `analyze` tasks, prefer a new chat. If you stay in the same session, clear context before the next task.
 
-### CI with `cpt` tools
+### CI with `cfc` tools
 
-Use the relevant deterministic `cpt` checks locally before opening a PR, and keep the same checks in CI so review is not the first place they run.
+Use the relevant deterministic `cfc` checks locally before opening a PR, and keep the same checks in CI so review is not the first place they run.
 
 For specialized work such as template/example synchronization or kit changes, include the matching focused checks as well.
 
@@ -557,7 +557,7 @@ Use narrower checks while iterating and broader checks before merge. Let humans 
 
 ## 8. Common mistakes and anti-patterns
 
-1. **Using Cyber Pilot like a generic chat tool**
+1. **Using Cyber Constructor like a generic chat tool**
    - That bypasses the workflows, structure, and validation that make it useful.
 
 2. **Starting with `generate` on a huge ambiguous task**
@@ -590,9 +590,9 @@ Use narrower checks while iterating and broader checks before merge. Let humans 
 
 **Do**:
 
-- 🖥️ `cpt init`
-- 🖥️ `cpt generate-agents`
-- 💬 `cypilot on`
+- 🖥️ `cfc init`
+- 🖥️ `cfc generate-agents`
+- 💬 `cf-constructor on`
 
 **Do not**:
 
@@ -603,7 +603,7 @@ Use narrower checks while iterating and broader checks before merge. Let humans 
 
 **Do**:
 
-- 💬 `cypilot auto-config`
+- 💬 `cf-constructor auto-config`
 - inspect generated rules and config
 - refine what auto-config inferred
 
@@ -692,50 +692,50 @@ Examples that reference `PRD`, `DESIGN`, `DECOMPOSITION`, or `FEATURE` assume th
 
 ### Structured generation
 
-- 💬 `cypilot generate: create a DESIGN from architecture/PRD.md for the billing service`
-- 💬 `cypilot generate: implement the approved FEATURE for rate limiting in the auth service and preserve required @cpt-* code markers`
+- 💬 `cf-constructor generate: create a DESIGN from architecture/PRD.md for the billing service`
+- 💬 `cf-constructor generate: implement the approved FEATURE for rate limiting in the auth service and preserve required @cpt-* code markers`
 
 ### Structured analysis
 
-- 💬 `cypilot analyze: validate architecture/FEATURE-login.md`
-- 💬 `cypilot analyze: review the current code against the approved FEATURE and report missing traceability markers, validation issues, and likely implementation gaps`
+- 💬 `cf-constructor analyze: validate architecture/FEATURE-login.md`
+- 💬 `cf-constructor analyze: review the current code against the approved FEATURE and report missing traceability markers, validation issues, and likely implementation gaps`
 
 ### Planning
 
-- 💬 `cypilot plan: break this monolith-to-service extraction into safe phases with validation points`
-- 💬 `cypilot plan: break this FEATURE implementation into artifact-aware coding phases with validation and review checkpoints`
+- 💬 `cf-constructor plan: break this monolith-to-service extraction into safe phases with validation points`
+- 💬 `cf-constructor plan: break this FEATURE implementation into artifact-aware coding phases with validation and review checkpoints`
 
 ### Context-bounded execution
 
-- 💬 `cypilot generate: implement only phase 2 of the approved migration plan`
-- 💬 `cypilot generate: implement only phase 2 of the approved plan, then validate and summarize any remaining errors before continuing`
+- 💬 `cf-constructor generate: implement only phase 2 of the approved migration plan`
+- 💬 `cf-constructor generate: implement only phase 2 of the approved plan, then validate and summarize any remaining errors before continuing`
 
 ### Brownfield understanding
 
-- 💬 `cypilot auto-config`
-- 💬 `cypilot analyze: explain the current project conventions and likely architecture boundaries`
+- 💬 `cf-constructor auto-config`
+- 💬 `cf-constructor analyze: explain the current project conventions and likely architecture boundaries`
 
 ### Storytelling / explain mode (interactive pedagogical engagement)
 
-`cypilot analyze: explain ...` is the **canonical invocation** for the storytelling companion. The methodology activates EXPLAIN_MODE, asks you to pick one of six modes at session start (presentation / review / onboarding / decision / socratic / change-impact), and delivers the target in small no-scroll portions with 6-slot navigation (Next / Deeper / Lateral / Recap / Ask / Wrap). Mode resolution is **always interactive** — the agent will NEVER auto-pick a mode; intent verbs / artifact KIND only feed the suggested default in the prompt.
+`cf-constructor analyze: explain ...` is the **canonical invocation** for the storytelling companion. The methodology activates EXPLAIN_MODE, asks you to pick one of six modes at session start (presentation / review / onboarding / decision / socratic / change-impact), and delivers the target in small no-scroll portions with 6-slot navigation (Next / Deeper / Lateral / Recap / Ask / Wrap). Mode resolution is **always interactive** — the agent will NEVER auto-pick a mode; intent verbs / artifact KIND only feed the suggested default in the prompt.
 
 Canonical prompts:
 
-- 💬 `cypilot analyze: explain DESIGN.md` — pedagogical walkthrough of a local artifact (default mode = presentation; pick another at the prompt)
-- 💬 `cypilot analyze: explain REQ-001` — explain a registered Cypilot artifact by ID
-- 💬 `cypilot analyze: explain https://github.com/cyberfabric/DNA/pull/25` — fetch a GitHub PR via the Phase E0 access chain (MCP → skill → CLI → user fallback) and walk through it; for review-mode pick `2.review` at the prompt
-- 💬 `cypilot analyze: walk me through the auth flow as architect for new joiners` — explicit role + audience hint feeds the suggested default
-- 💬 `cypilot analyze: onboard me to this repo` — onboarding mode (suggested at prompt)
-- 💬 `cypilot analyze: quiz me on the data-model section of DESIGN.md` — socratic mode
-- 💬 `cypilot analyze: what changed in this PR — walk me through it` — change-impact mode (note plain `review my changes` stays in standard analyze, NOT explain — explain requires explicit explain-family verbs)
-- 💬 `cypilot analyze: explain --resume 20260506T164904Z` — resume a previously-saved session by ISO-timestamp
+- 💬 `cf-constructor analyze: explain DESIGN.md` — pedagogical walkthrough of a local artifact (default mode = presentation; pick another at the prompt)
+- 💬 `cf-constructor analyze: explain REQ-001` — explain a registered Cyber Constructor artifact by ID
+- 💬 `cf-constructor analyze: explain https://github.com/cyberfabric/DNA/pull/25` — fetch a GitHub PR via the Phase E0 access chain (MCP → skill → CLI → user fallback) and walk through it; for review-mode pick `2.review` at the prompt
+- 💬 `cf-constructor analyze: walk me through the auth flow as architect for new joiners` — explicit role + audience hint feeds the suggested default
+- 💬 `cf-constructor analyze: onboard me to this repo` — onboarding mode (suggested at prompt)
+- 💬 `cf-constructor analyze: quiz me on the data-model section of DESIGN.md` — socratic mode
+- 💬 `cf-constructor analyze: what changed in this PR — walk me through it` — change-impact mode (note plain `review my changes` stays in standard analyze, NOT explain — explain requires explicit explain-family verbs)
+- 💬 `cf-constructor analyze: explain --resume 20260506T164904Z` — resume a previously-saved session by ISO-timestamp
 
 To produce a **hand-off-able package** (READMEs, training material, guides) instead of a chat session, route through `generate`:
 
-- 💬 `cypilot generate: explain package for DESIGN.md` — full multi-file Markdown package under `{cypilot_path}/.cache/explain/packages/`
-- 💬 `cypilot generate: make a README from public-interface/PLID.md`
-- 💬 `cypilot generate: build onboarding doc set for the auth subsystem`
-- 💬 `cypilot generate: training material for new joiners covering the deployment story`
+- 💬 `cf-constructor generate: explain package for DESIGN.md` — full multi-file Markdown package under `{cf-constructor-path}/.cache/explain/packages/`
+- 💬 `cf-constructor generate: make a README from public-interface/PLID.md`
+- 💬 `cf-constructor generate: build onboarding doc set for the auth subsystem`
+- 💬 `cf-constructor generate: training material for new joiners covering the deployment story`
 
 The package contains an `index.md` with a Mermaid navigation graph + per-portion Markdown files + mode-specific extras (reading roadmap for onboarding; recommendation + dissenting opinions for decision; impact map for change-impact; review-comments file for review).
 
@@ -751,20 +751,20 @@ The package contains an `index.md` with a Mermaid navigation graph + per-portion
 
 ### Marker recovery
 
-- 💬 `cypilot generate: add the missing @cpt-* markers to the code changed for this FEATURE and keep the implementation behavior unchanged`
+- 💬 `cf-constructor generate: add the missing @cpt-* markers to the code changed for this FEATURE and keep the implementation behavior unchanged`
 
 
 ---
 
 ## 11. Prompt patterns that usually go wrong
 
-- 💬 `cypilot generate: build the whole system`
-- 💬 `cypilot generate: make this project enterprise grade`
-- 💬 `cypilot generate: improve everything`
-- 💬 `cypilot analyze: tell me if this code is good`
-- 💬 `cypilot generate: rewrite the app based on best practices`
-- 💬 `cypilot generate: implement this spec in code and treat the first pass as done without validation`
-- 💬 `cypilot generate: add the feature, markers are not important`
+- 💬 `cf-constructor generate: build the whole system`
+- 💬 `cf-constructor generate: make this project enterprise grade`
+- 💬 `cf-constructor generate: improve everything`
+- 💬 `cf-constructor analyze: tell me if this code is good`
+- 💬 `cf-constructor generate: rewrite the app based on best practices`
+- 💬 `cf-constructor generate: implement this spec in code and treat the first pass as done without validation`
+- 💬 `cf-constructor generate: add the feature, markers are not important`
 
 Why these go wrong:
 
@@ -776,17 +776,17 @@ Why these go wrong:
 
 Better versions:
 
-- Instead of `cypilot generate: build the whole system`: 💬 `cypilot plan: break the auth rewrite into phases constrained to backend API first`
-- Instead of `cypilot analyze: tell me if this code is good`: 💬 `cypilot analyze: review this module for correctness, regression risk, and missing tests`
-- Instead of `cypilot generate: rewrite the app based on best practices`: 💬 `cypilot analyze: find the three highest-risk design and implementation issues in this module`
-- Instead of `cypilot generate: implement this spec in code and treat the first pass as done without validation`: 💬 `cypilot generate: update only the login FEATURE spec using the approved auth DESIGN, then validate the result`
+- Instead of `cf-constructor generate: build the whole system`: 💬 `cf-constructor plan: break the auth rewrite into phases constrained to backend API first`
+- Instead of `cf-constructor analyze: tell me if this code is good`: 💬 `cf-constructor analyze: review this module for correctness, regression risk, and missing tests`
+- Instead of `cf-constructor generate: rewrite the app based on best practices`: 💬 `cf-constructor analyze: find the three highest-risk design and implementation issues in this module`
+- Instead of `cf-constructor generate: implement this spec in code and treat the first pass as done without validation`: 💬 `cf-constructor generate: update only the login FEATURE spec using the approved auth DESIGN, then validate the result`
 
 
 ---
 
-## 12. Using Cyber Pilot across multiple repositories
+## 12. Using Cyber Constructor across multiple repositories
 
-If you work across several small repositories, avoid copying the full Cyber Pilot setup into each one.
+If you work across several small repositories, avoid copying the full Cyber Constructor setup into each one.
 
 A better pattern is to keep one main orchestration repository and connect related repositories through a workspace.
 
@@ -794,7 +794,7 @@ Workspace federation and project extensibility solve different problems. Workspa
 
 ### Good pattern
 
-Keep one dedicated **orchestration repository** with the full Cyber Pilot setup, then connect multiple smaller repos through a workspace.
+Keep one dedicated **orchestration repository** with the full Cyber Constructor setup, then connect multiple smaller repos through a workspace.
 
 That gives you:
 
@@ -811,18 +811,18 @@ Clone the full heavy setup into every tiny service repo even when those repos mo
 
 🖥️ **Terminal**:
 ```bash
-cpt workspace-init
-cpt workspace-add --name docs --path ../docs-repo --role artifacts
-cpt workspace-add --name services --path ../services-repo --role codebase
-cpt workspace-info
+cfc workspace-init
+cfc workspace-add --name docs --path ../docs-repo --role artifacts
+cfc workspace-add --name services --path ../services-repo --role codebase
+cfc workspace-info
 ```
 
 Useful follow-up commands:
 
-- 🖥️ `cpt validate --local-only` — validate only the current repository when you want to skip cross-repo resolution
-- 🖥️ `cpt where-defined --id <id>` — find where an ID is defined across reachable workspace sources
-- 🖥️ `cpt list-ids --source <name>` — inspect IDs from one specific workspace source
-- 🖥️ `cpt workspace-sync` — refresh Git URL workspace sources when your workspace uses remote sources
+- 🖥️ `cfc validate --local-only` — validate only the current repository when you want to skip cross-repo resolution
+- 🖥️ `cfc where-defined --id <id>` — find where an ID is defined across reachable workspace sources
+- 🖥️ `cfc list-ids --source <name>` — inspect IDs from one specific workspace source
+- 🖥️ `cfc workspace-sync` — refresh Git URL workspace sources when your workspace uses remote sources
 
 
 ---
@@ -831,11 +831,11 @@ Useful follow-up commands:
 
 Here, "brownfield" means an existing system with partial docs, unclear conventions, or mixed quality.
 
-Brownfield projects are often a strong Cyber Pilot use case, but only if you are disciplined.
+Brownfield projects are often a strong Cyber Constructor use case, but only if you are disciplined.
 
 ### Good approach
 
-- start with 💬 `cypilot auto-config`
+- start with 💬 `cf-constructor auto-config`
 - inspect inferred rules
 - identify the real source-of-truth artifacts
 - use analysis before generation when the current system is still unclear
@@ -848,12 +848,12 @@ Brownfield projects are often a strong Cyber Pilot use case, but only if you are
 
 ### Good sequence
 
-1. 🖥️ `cpt init`
-2. 🖥️ `cpt generate-agents`
-3. 💬 `cypilot on`
-4. 💬 `cypilot auto-config`
-5. 💬 `cypilot analyze: summarize current conventions and likely architecture boundaries`
-6. 💬 `cypilot plan: break the requested change into safe brownfield phases`
+1. 🖥️ `cfc init`
+2. 🖥️ `cfc generate-agents`
+3. 💬 `cf-constructor on`
+4. 💬 `cf-constructor auto-config`
+5. 💬 `cf-constructor analyze: summarize current conventions and likely architecture boundaries`
+6. 💬 `cf-constructor plan: break the requested change into safe brownfield phases`
 
 
 ---
@@ -902,7 +902,7 @@ If validation produces a false positive, an autonomous loop can optimize for the
 
 If your setup uses RalphEx-backed delegation, run a quick environment check before you rely on it:
 
-- 🖥️ `cpt doctor`
+- 🖥️ `cfc doctor`
 
 Treat warnings or failures in that preflight as a reason to stay interactive until the delegation path is healthy.
 
@@ -915,7 +915,7 @@ A final **human review remains mandatory**.
 
 ## 15. Quick decision checklist
 
-Use Cypilot if most answers are **yes**:
+Use Cyber Constructor if most answers are **yes**:
 
 - **Is there a clear target artifact, code area, or review object?**
 - **Is structure important?**
@@ -942,5 +942,5 @@ If the left-hand answers are mostly yes, Cyber Pilot is probably a good fit. If 
 - **[AGENT-TOOLS.md](AGENT-TOOLS.md)** — host-specific setup details and operational differences
 - **[Configuration guide](CONFIGURATION.md)** — tune rules, kits, and behavior
 - **[Project extensibility guide](PROJECT-EXTENSIBILITY.md)** — extend local behavior inside one repository
-- **[Workspace specification](../requirements/workspace.md)** — use this if you are running Cyber Pilot across multiple repositories
+- **[Workspace specification](../requirements/workspace.md)** — use this if you are running Cyber Constructor across multiple repositories
 - **[Historical story-driven walkthrough](STORY.md)** — older transcript, useful as archive rather than canonical guidance

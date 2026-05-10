@@ -60,7 +60,7 @@ def cmd_get_content(argv: List[str]) -> int:
 
     ctx = CypilotContext.load(artifact_path.parent)
     if not ctx:
-        ui.result({"status": "ERROR", "message": "Cypilot not initialized"})
+        ui.result({"status": "ERROR", "message": "Cyber Constructor not initialized"})
         return 1
 
     meta = ctx.meta

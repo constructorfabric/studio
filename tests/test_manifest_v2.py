@@ -73,7 +73,7 @@ scope = "project"
 _V1_COMPAT = """\
 [manifest]
 version = "1.0"
-root = "{cypilot_path}/config/kits/test"
+root = "{cf-constructor-path}/config/kits/test"
 
 [[resources]]
 id = "agents_md"

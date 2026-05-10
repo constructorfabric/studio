@@ -1,5 +1,5 @@
 ---
-cypilot: true
+cf-constructor: true
 type: requirement
 name: Reverse Engineering Methodology
 version: 1.0
@@ -36,7 +36,7 @@ purpose: Technology-agnostic methodology for systematic project analysis
 
 **ALWAYS open and follow** this file WHEN the user asks to analyze a codebase, search project code or docs, or generate artifacts/code from existing project structure.
 
-**ALWAYS open and follow** `{cypilot_path}/.core/requirements/execution-protocol.md` for workflow context.
+**ALWAYS open and follow** `{cf-constructor-path}/.core/requirements/execution-protocol.md` for workflow context.
 
 **Prerequisites**: confirm the agent has read this methodology, has repository access, will execute layers `1 -> 9` in order, and will checkpoint after each layer.
 
@@ -279,5 +279,5 @@ Reverse engineering builds a progressive mental model of a system. The rule is: 
 
 ## References
 
-- Generate workflow: `{cypilot_path}/.core/workflows/generate.md`
-- Execution protocol: `{cypilot_path}/.core/requirements/execution-protocol.md`
+- Generate workflow: `{cf-constructor-path}/.core/workflows/generate.md`
+- Execution protocol: `{cf-constructor-path}/.core/requirements/execution-protocol.md`

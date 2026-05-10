@@ -37,7 +37,7 @@ def run_validate_kits(
 
     ctx = get_context()
     if not ctx:
-        return 1, {"status": "ERROR", "message": "Cypilot not initialized. Run 'cypilot init' first."}
+        return 1, {"status": "ERROR", "message": "Cyber Constructor not initialized. Run 'cfc init' first."}
     # @cpt-end:cpt-cypilot-algo-kit-validate:p1:inst-init-context
 
     # @cpt-begin:cpt-cypilot-algo-kit-validate:p1:inst-structural-check
@@ -221,7 +221,7 @@ def cmd_validate_kits(argv: List[str]) -> int:
     from ..utils.context import get_context
     ctx = get_context()
     if not ctx:
-        ui.result({"status": "ERROR", "message": "Cypilot not initialized. Run 'cypilot init' first."})
+        ui.result({"status": "ERROR", "message": "Cyber Constructor not initialized. Run 'cfc init' first."})
         return 1
 
     rc, result = run_validate_kits(

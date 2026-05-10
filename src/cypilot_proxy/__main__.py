@@ -1,5 +1,5 @@
 """
-Cypilot Global CLI Proxy — allows running as: python -m cypilot_proxy
+Cyber Constructor Global CLI Proxy — allows running as: python -m cypilot_proxy
 
 @cpt-dod:cpt-cypilot-dod-core-infra-global-package:p1
 """

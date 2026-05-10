@@ -1,5 +1,5 @@
 """
-Cypilot Validator - File System Operations
+Cyber Constructor Validator - File System Operations
 
 File I/O, project root discovery, cypilot detection, path resolution.
 
@@ -17,7 +17,7 @@ from typing import Dict, List, Optional, Tuple
 from ..constants import ARTIFACTS_REGISTRY_FILENAME
 from . import toml_utils
 
-_MARKER_START = "<!-- @cpt:root-agents -->"
+_MARKER_START = "<!-- @cf:root-agents -->"
 _CORE_SUBDIR = ".core"
 _GEN_SUBDIR = ".gen"
 
@@ -57,7 +57,7 @@ def cfg_get_str(cfg: object, *keys: str) -> Optional[str]:
 # @cpt-begin:cpt-cypilot-algo-core-infra-project-root-detection:p1:inst-root-walk-up
 def find_project_root(start: Path) -> Optional[Path]:
     """
-    Find project root by looking for AGENTS.md with @cpt:root-agents marker or .git directory.
+    Find project root by looking for AGENTS.md with @cf:root-agents marker or .git directory.
     Searches up to 25 levels in directory hierarchy.
     """
     # @cpt-begin:cpt-cypilot-algo-core-infra-project-root-detection:p1:inst-root-resolve-start
@@ -92,7 +92,7 @@ def find_project_root(start: Path) -> Optional[Path]:
 
 # @cpt-begin:cpt-cypilot-algo-core-infra-config-management:p1:inst-cfg-read-var
 def _read_cypilot_var(project_root: Path) -> Optional[str]:
-    """Read ``cypilot_path`` (or legacy ``cypilot``) variable from root AGENTS.md TOML block."""
+    """Read ``cf-constructor-path`` variable from root AGENTS.md TOML block."""
     agents_file = project_root / "AGENTS.md"
     if not agents_file.is_file():
         return None
@@ -103,7 +103,7 @@ def _read_cypilot_var(project_root: Path) -> Optional[str]:
     if _MARKER_START not in content:
         return None
     data = toml_utils.parse_toml_from_markdown(content)
-    val = data.get("cypilot_path") or data.get("cypilot")
+    val = data.get("cf-constructor-path")
     return val.strip() if isinstance(val, str) and val.strip() else None
 # @cpt-end:cpt-cypilot-algo-core-infra-config-management:p1:inst-cfg-read-var
 
@@ -127,7 +127,7 @@ def load_project_config(project_root: Path) -> Optional[dict]:
 
 # @cpt-begin:cpt-cypilot-algo-core-infra-config-management:p1:inst-cfg-helpers
 def cypilot_root_from_project_config() -> Optional[Path]:
-    """Get Cypilot core path from config core.toml [paths] section."""
+    """Get Cyber Constructor core path from config core.toml [paths] section."""
     project_root = find_project_root(Path.cwd())
     if project_root is None:
         return None
@@ -159,7 +159,7 @@ def find_cypilot_directory(start: Path, cypilot_root: Optional[Path] = None) -> 
 
     Args:
         start: Starting path for search
-        cypilot_root: Known Cypilot core location (from agent context)
+        cypilot_root: Known Cyber Constructor core location (from agent context)
     """
     project_root = find_project_root(start)
     if project_root is None:
@@ -190,8 +190,8 @@ def find_cypilot_directory(start: Path, cypilot_root: Optional[Path] = None) -> 
         try:
             content = agents_file.read_text(encoding="utf-8")
             
-            # STRONGEST indicator: Extends Cypilot AGENTS.md
-            # Example: **Extends**: `../.cypilot/AGENTS.md`
+            # STRONGEST indicator: Extends Cyber Constructor AGENTS.md
+            # Example: **Extends**: `../.cf-constructor/AGENTS.md`
             if "**Extends**:" in content and "AGENTS.md" in content:
                 # If agent provided cypilot_root, validate the Extends path
                 if cypilot_root is not None:
@@ -209,11 +209,11 @@ def find_cypilot_directory(start: Path, cypilot_root: Optional[Path] = None) -> 
             
             # Look for cypilot-specific markers in content
             adapter_markers = [
-                "# Cypilot Adapter:",
-                ".cypilot-adapter",
-                "cypilot-adapter",
-                "## Cypilot Adapter",
-                "This is an Cypilot adapter",
+                "# Cyber Constructor Adapter:",
+                ".cf-constructor-adapter",
+                "cf-constructor-adapter",
+                "## Cyber Constructor Adapter",
+                "This is a Cyber Constructor adapter",
                 "adapter for",
             ]
             content_lower = content.lower()
@@ -267,8 +267,8 @@ def find_cypilot_directory(start: Path, cypilot_root: Optional[Path] = None) -> 
 # @cpt-begin:cpt-cypilot-algo-core-infra-config-management:p1:inst-cfg-load-config
 def load_cypilot_config(adapter_dir: Path) -> Dict[str, object]:
     """
-    Load Cypilot configuration from AGENTS.md and rules/
-    Returns dict with Cypilot metadata and available rules
+    Load Cyber Constructor configuration from AGENTS.md and rules/
+    Returns dict with Cyber Constructor metadata and available rules
     """
     config: Dict[str, object] = {
         "cypilot_dir": adapter_dir.as_posix(),
@@ -281,8 +281,8 @@ def load_cypilot_config(adapter_dir: Path) -> Dict[str, object]:
             content = agents_file.read_text(encoding="utf-8")
             # Extract project name from heading
             for line in content.splitlines():
-                if line.startswith("# Cypilot Adapter:"):
-                    config["project_name"] = line.replace("# Cypilot Adapter:", "").strip()
+                if line.startswith("# Cyber Constructor Adapter:"):
+                    config["project_name"] = line.replace("# Cyber Constructor Adapter:", "").strip()
                     break
         except (OSError, UnicodeDecodeError):
             pass  # Expected: project_name is optional metadata
@@ -341,7 +341,7 @@ def iter_registry_entries(registry: dict) -> List[dict]:
     return out
 
 def _is_cypilot_root(path: Path) -> bool:
-    """Check if *path* looks like a cypilot root (flat or .core/ layout)."""
+    """Check if *path* looks like a cfc root (flat or .core/ layout)."""
     # New layout: .core/ subdir with requirements + workflows
     core = path / _CORE_SUBDIR
     if core.is_dir() and (core / "requirements").is_dir() and (core / "workflows").is_dir():
@@ -357,16 +357,16 @@ def _is_cypilot_root(path: Path) -> bool:
 
 def cypilot_root_from_this_file() -> Path:
     """
-    Find Cypilot root by walking up directory tree looking for Cypilot markers.
-    Cypilot can be located anywhere (as submodule, copied, etc.)
+    Find Cyber Constructor root by walking up directory tree looking for Cyber Constructor markers.
+    Cyber Constructor can be located anywhere (as submodule, copied, etc.)
     """
     configured = cypilot_root_from_project_config()
     if configured is not None:
         return configured
 
     current = Path(__file__).resolve().parent.parent.parent.parent
-    
-    # Walk up directory tree looking for Cypilot root markers
+
+    # Walk up directory tree looking for Cyber Constructor root markers
     for _ in range(10):  # Limit search depth to avoid infinite loop
         if _is_cypilot_root(current):
             return current

@@ -38,7 +38,7 @@ def cmd_spec_coverage(argv: List[str]) -> int:
     # @cpt-begin:cpt-cypilot-flow-spec-coverage-report:p1:inst-load-context
     ctx = get_context()
     if not ctx:
-        ui.result({"status": "ERROR", "message": "Cypilot not initialized. Run 'cypilot init' first."})
+        ui.result({"status": "ERROR", "message": "Cyber Constructor not initialized. Run 'cfc init' first."})
         return 1
 
     meta = ctx.meta

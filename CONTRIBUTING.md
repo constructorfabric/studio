@@ -1,4 +1,4 @@
-# Contributing to Cyber Pilot
+# Contributing to Cyber Constructor
 
 
 <!-- toc -->
@@ -28,7 +28,7 @@
 
 <!-- /toc -->
 
-Thank you for your interest in contributing to Cyber Pilot! This guide covers the development workflow, versioning scheme, bootstrap architecture, commit requirements, and CI pipeline.
+Thank you for your interest in contributing to Cyber Constructor! This guide covers the development workflow, versioning scheme, bootstrap architecture, commit requirements, and CI pipeline.
 ---
 
 ## Prerequisites
@@ -45,10 +45,10 @@ Thank you for your interest in contributing to Cyber Pilot! This guide covers th
 
 ```bash
 # Clone the repo
-git clone https://github.com/cyberfabric/cyber-pilot.git
-cd cyber-pilot
+git clone https://github.com/cyberfabric/cyber-constructor.git
+cd cyber-constructor
 
-# Install the cpt/cypilot CLI proxy from local source
+# Install the cfc/cf-constructor CLI proxy from local source
 make install-proxy
 
 # Bootstrap: sync .bootstrap/ from local source
@@ -62,10 +62,10 @@ make ci
 
 ## Project Architecture (Self-Hosted Bootstrap)
 
-Cyber Pilot builds itself. The repo is simultaneously the **source code** and a **self-hosted Cyber Pilot project** with its own `.bootstrap/` setup directory.
+Cyber Constructor builds itself. The repo is simultaneously the **source code** and a **self-hosted Cyber Constructor project** with its own `.bootstrap/` setup directory.
 
 ```
-cypilot/                          # Project root
+cyber-constructor/                # Project root
 ├── skills/cypilot/               # CANONICAL source: skill engine + scripts
 ├── src/cypilot_proxy/            # CANONICAL source: CLI proxy (thin shell)
 ├── schemas/                      # CANONICAL source: JSON schemas
@@ -82,8 +82,8 @@ cypilot/                          # Project root
 ### Critical Rule
 
 > **Do not edit files under `.bootstrap/` directly when contributing.**
-> In this self-hosted repo, `.bootstrap/` is a bootstrap copy of a Cyber Pilot version used
-> to develop Cyber Pilot itself — similar to bootstrapping a compiler.
+> In this self-hosted repo, `.bootstrap/` is a bootstrap copy of a Cyber Constructor version used
+> to develop Cyber Constructor itself — similar to bootstrapping a compiler.
 > This is a repo-specific self-hosted setup, not the general user-project layout described in the README.
 > Treat `.bootstrap/.core/` and `.bootstrap/.gen/` as read-only mirrors.
 > Always edit the canonical source files under project root (`skills/`, `kits/`,
@@ -101,7 +101,7 @@ The `make update` command runs `cpt update --source . --force`, which:
 
 ## Versioning
 
-Cyber Pilot has **two independent version tracks**.
+Cyber Constructor has **two independent version tracks**.
 
 ### Version Locations
 
@@ -235,7 +235,7 @@ All CI is driven through `make`. No virtual environment required — tools run v
 | `make vulture` | Dead code scan (report only) | — |
 | `make vulture-ci` | Dead code scan (fails on findings) | Yes |
 | `make install` | Install pytest + pytest-cov via pipx | — |
-| `make install-proxy` | Reinstall `cpt`/`cypilot` CLI from local source | — |
+| `make install-proxy` | Reinstall `cfc`/`cf-constructor` CLI from local source | — |
 | `make update` | Sync `.bootstrap/` from local source | — |
 | `make clean` | Remove `__pycache__`, `.pyc`, `.pytest_cache` | — |
 

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.com/cypilot/workspace.schema.json",
-  "title": "Cypilot Workspace Configuration (.cypilot-workspace.toml)",
+  "$id": "https://example.com/cyber-constructor/workspace.schema.json",
+  "title": "Cyber Constructor Workspace Configuration (.cf-constructor-workspace.toml)",
   "description": "Federation layer for multi-repo workspace support. Maps named sources (repos) to local paths with roles. Standalone file uses TOML format.",
   "type": "object",
   "additionalProperties": false,

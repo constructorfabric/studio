@@ -41,12 +41,12 @@
 Extend cypilot's multi-agent integration to generate two purpose-built subagent definitions for tools that support isolated agent contexts: Claude Code (`.claude/agents/`), Cursor (`.cursor/agents/`), GitHub Copilot (`.github/agents/`), and OpenAI Codex (`.codex/agents/`). Currently `cypilot generate-agents --agent <name>` generates only skills, commands, and workflow proxies — missing the subagent integration surface that four of five supported tools now provide.
 
 Problem: Cypilot workflows cannot run as isolated subagents with scoped tools, model selection, and dedicated prompts.
-Primary value: Users get two cypilot subagents (`cypilot-codegen` for fully-specified code generation, `cypilot-pr-review` for isolated PR review) that their IDE/agent tool can auto-delegate to, with appropriate read/write restrictions per workflow.
+Primary value: Users get two cypilot subagents (`cf-constructor-codegen` for fully-specified code generation, `cf-constructor-pr-review` for isolated PR review) that their IDE/agent tool can auto-delegate to, with appropriate read/write restrictions per workflow.
 Key assumptions: Subagent formats across tools have stabilized sufficiently for code generation. Windsurf does not support subagents and is excluded from this feature. Subagents are purpose-built — not mirrors of existing skills.
 
 ### 1.2 Purpose
 
-Enable `cypilot generate-agents` to generate tool-specific subagent definitions so that two purpose-built workflows (`cypilot-codegen` and `cypilot-pr-review`) run as isolated subagents with appropriate tool restrictions, model selection, and custom prompts.
+Enable `cypilot generate-agents` to generate tool-specific subagent definitions so that two purpose-built workflows (`cf-constructor-codegen` and `cf-constructor-pr-review`) run as isolated subagents with appropriate tool restrictions, model selection, and custom prompts.
 
 **Boundary clarification**: Subagents in this feature are **host-tool-native** — they run as isolated agent contexts within the IDE/chat tool (Claude Code, Cursor, Copilot, Codex). ralphex is **not** modeled as a subagent: it is an external autonomous executor that consumes exported plan files rather than operating within the host tool's agent framework. ralphex delegation is owned by `cpt-cypilot-feature-ralphex-delegation` and does not replace or overlap with the subagent registration surface (see `cpt-cypilot-adr-ralphex-delegation-skill`).
 
@@ -71,7 +71,7 @@ Enable `cypilot generate-agents` to generate tool-specific subagent definitions 
 **Actor**: Developer
 
 **Success Scenarios**:
-- Developer runs `cypilot generate-agents --agent claude` and two subagent files (`cypilot-codegen.md`, `cypilot-pr-review.md`) are generated in `.claude/agents/` alongside existing skills/commands
+- Developer runs `cypilot generate-agents --agent claude` and two subagent files (`cf-constructor-codegen.md`, `cf-constructor-pr-review.md`) are generated in `.claude/agents/` alongside existing skills/commands
 - Developer runs `cypilot generate-agents --agent copilot` and two subagent files are generated in `.github/agents/` with `.agent.md` extension
 - Developer runs with `--dry-run` and sees planned output without file writes
 
@@ -98,8 +98,8 @@ Enable `cypilot generate-agents` to generate tool-specific subagent definitions 
 **Actor**: AI Assistant
 
 **Success Scenarios**:
-- Main session auto-delegates code generation to `cypilot-codegen` subagent when requirements are fully specified
-- Main session delegates PR review to `cypilot-pr-review` subagent for isolated checklist-based analysis
+- Main session auto-delegates code generation to `cf-constructor-codegen` subagent when requirements are fully specified
+- Main session delegates PR review to `cf-constructor-pr-review` subagent for isolated checklist-based analysis
 
 **Error Scenarios**:
 - Subagent files not generated yet — main session falls back to skill invocation
@@ -181,8 +181,8 @@ Not applicable because this is a stateless code generation feature. The `cypilot
 - [ ] `p1` - **ID**: `cpt-cypilot-dod-subagent-reg-claude`
 
 The system **MUST** generate two files in `.claude/agents/` when `cypilot generate-agents --agent claude` is invoked:
-- `cypilot-codegen.md` — YAML frontmatter with tools (Bash, Read, Write, Edit, Glob, Grep), model (inherit), isolation (worktree), and prompt referencing SKILL.md for code generation workflow
-- `cypilot-pr-review.md` — YAML frontmatter with tools (Bash, Read, Glob, Grep), disallowedTools (Write, Edit), model (sonnet), and prompt referencing SKILL.md for PR review workflow
+- `cf-constructor-codegen.md` — YAML frontmatter with tools (Bash, Read, Write, Edit, Glob, Grep), model (inherit), isolation (worktree), and prompt referencing SKILL.md for code generation workflow
+- `cf-constructor-pr-review.md` — YAML frontmatter with tools (Bash, Read, Glob, Grep), disallowedTools (Write, Edit), model (sonnet), and prompt referencing SKILL.md for PR review workflow
 
 **Implements**:
 - `cpt-cypilot-flow-subagent-reg-generate`
@@ -195,8 +195,8 @@ The system **MUST** generate two files in `.claude/agents/` when `cypilot genera
 - [ ] `p1` - **ID**: `cpt-cypilot-dod-subagent-reg-cursor`
 
 The system **MUST** generate two files in `.cursor/agents/` when `cypilot generate-agents --agent cursor` is invoked:
-- `cypilot-codegen.md` — YAML frontmatter with tools (grep, view, edit, bash), model (inherit), and prompt referencing SKILL.md for code generation workflow
-- `cypilot-pr-review.md` — YAML frontmatter with tools (grep, view, bash), readonly (true), model (fast), and prompt referencing SKILL.md for PR review workflow
+- `cf-constructor-codegen.md` — YAML frontmatter with tools (grep, view, edit, bash), model (inherit), and prompt referencing SKILL.md for code generation workflow
+- `cf-constructor-pr-review.md` — YAML frontmatter with tools (grep, view, bash), readonly (true), model (fast), and prompt referencing SKILL.md for PR review workflow
 
 **Implements**:
 - `cpt-cypilot-flow-subagent-reg-generate`
@@ -208,8 +208,8 @@ The system **MUST** generate two files in `.cursor/agents/` when `cypilot genera
 - [ ] `p1` - **ID**: `cpt-cypilot-dod-subagent-reg-copilot`
 
 The system **MUST** generate two files in `.github/agents/` with `.agent.md` extension when `cypilot generate-agents --agent copilot` is invoked:
-- `cypilot-codegen.agent.md` — YAML frontmatter with tools (["*"]) and prompt referencing SKILL.md for code generation workflow
-- `cypilot-pr-review.agent.md` — YAML frontmatter with tools (["read", "search"]) and prompt referencing SKILL.md for PR review workflow
+- `cf-constructor-codegen.agent.md` — YAML frontmatter with tools (["*"]) and prompt referencing SKILL.md for code generation workflow
+- `cf-constructor-pr-review.agent.md` — YAML frontmatter with tools (["read", "search"]) and prompt referencing SKILL.md for PR review workflow
 
 **Implements**:
 - `cpt-cypilot-flow-subagent-reg-generate`
@@ -260,7 +260,7 @@ The system **MUST** support `--dry-run` for subagent generation, showing planned
 
 ## 6. Acceptance Criteria
 
-- [ ] `cypilot generate-agents --agent claude` generates two files in `.claude/agents/` (`cypilot-codegen.md`, `cypilot-pr-review.md`) with correct YAML frontmatter
+- [ ] `cypilot generate-agents --agent claude` generates two files in `.claude/agents/` (`cf-constructor-codegen.md`, `cf-constructor-pr-review.md`) with correct YAML frontmatter
 - [ ] `cypilot generate-agents --agent cursor` generates two files in `.cursor/agents/` with correct YAML frontmatter including readonly for pr-review
 - [ ] `cypilot generate-agents --agent copilot` generates two files in `.github/agents/` with `.agent.md` extension
 - [ ] `cypilot generate-agents --agent openai` generates single `cypilot-agents.toml` with two agent sections in TOML format
@@ -269,7 +269,7 @@ The system **MUST** support `--dry-run` for subagent generation, showing planned
 - [ ] `--dry-run` shows planned subagent files without writing
 - [ ] Generated subagent prompts correctly reference SKILL.md via `{target_agent_path}` resolution
 - [ ] Tool-specific properties (disallowedTools, readonly, isolation, model) are rendered per tool format
-- [ ] `cypilot-codegen` subagent has write tools and isolation; `cypilot-pr-review` subagent is read-only
+- [ ] `cf-constructor-codegen` subagent has write tools and isolation; `cf-constructor-pr-review` subagent is read-only
 - [ ] Built-in defaults are used when `cypilot-agents.json` has no `subagents` section
 
 ## Additional Context
@@ -278,8 +278,8 @@ The system **MUST** support `--dry-run` for subagent generation, showing planned
 
 | Subagent | Purpose | Write Access | Isolation |
 |----------|---------|-------------|-----------|
-| `cypilot-codegen` | Code generation when requirements are 100% clear — no back-and-forth | Yes (full tools) | Yes (worktree on Claude Code) |
-| `cypilot-pr-review` | Structured PR review in isolated context — keeps detailed analysis separate | No (read-only) | No |
+| `cf-constructor-codegen` | Code generation when requirements are 100% clear — no back-and-forth | Yes (full tools) | Yes (worktree on Claude Code) |
+| `cf-constructor-pr-review` | Structured PR review in isolated context — keeps detailed analysis separate | No (read-only) | No |
 
 **Tool-specific property mapping**:
 

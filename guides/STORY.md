@@ -1,4 +1,4 @@
-# Using Cypilot — A Real Conversation (Story)
+# Using Cyber Constructor — A Real Conversation (Story)
 
 > **Historical walkthrough**
 >
@@ -6,11 +6,11 @@
 > Keep it as a historical example, not as the canonical guide to the current product surface.
 > For the current model, start with **[README.md](../README.md)**, then continue with **[USAGE-GUIDE.md](USAGE-GUIDE.md)** and **[AGENT-TOOLS.md](AGENT-TOOLS.md)**.
 
-This is a real IDE conversation with an agent running in **Cypilot mode**.
+This is a real IDE conversation with an agent running in **Cyber Constructor mode**.
 
-The goal of this story is to show what Cypilot looks like in practice:
+The goal of this story is to show what Cyber Constructor looks like in practice:
 
-- How Cypilot routes requests to the correct workflow (analyze vs generate)
+- How Cyber Constructor routes requests to the correct workflow (analyze vs generate)
 - How it loads the required context deterministically (adapter + required docs)
 - How it gates file writes behind explicit confirmation
 
@@ -399,7 +399,7 @@ In Cypilot, an artifact is a registered documentation file (a “source of truth
 Concretely:
 
 - [Where it’s declared] In the artifacts registry:
-  - `{cypilot_path}/config/artifacts.toml` (in this repo: `.cypilot-adapter/artifacts.toml`)
+  - `{cf-constructor-path}/config/artifacts.toml` (in this repo: `.cypilot-adapter/artifacts.toml`)
 - [What it contains] Entries like:
   - `path`: where the file lives (e.g. `architecture/PRD.md`)
   - `kind`: what type it is (`PRD`, `DESIGN`, `ADR`, `DECOMPOSITION`, `SPEC`)

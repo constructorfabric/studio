@@ -122,7 +122,7 @@ def cmd_workspace_info(argv: List[str]) -> int:
             "status": "ERROR",
             "message": "No workspace configuration found",
             "project_root": str(project_root),
-            "hint": "Run 'workspace-init' to scan and create a workspace, add [workspace] to config/core.toml, set workspace = \"<path>\" in core.toml, or place .cypilot-workspace.toml at project root",
+            "hint": "Run 'workspace-init' to scan and create a workspace, add [workspace] to config/core.toml, set workspace = \"<path>\" in core.toml, or place .cf-constructor-workspace.toml at project root",
         })
         return 1
         # @cpt-end:cpt-cypilot-flow-workspace-info:p1:inst-info-if-no-ws

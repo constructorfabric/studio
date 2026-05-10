@@ -17,7 +17,7 @@ decision-makers: project maintainer
   - [Consequences](#consequences)
   - [Confirmation](#confirmation)
 - [Pros and Cons of the Options](#pros-and-cons-of-the-options)
-  - [Option 1: Dedicated `cypilot-ralphex` skill with bounded delegation contract](#option-1-dedicated-cypilot-ralphex-skill-with-bounded-delegation-contract)
+  - [Option 1: Dedicated `cf-constructor-ralphex` skill with bounded delegation contract](#option-1-dedicated-cf-constructor-ralphex-skill-with-bounded-delegation-contract)
   - [Option 2: Hard-wire ralphex into core generate/plan workflows](#option-2-hard-wire-ralphex-into-core-generateplan-workflows)
   - [Option 3: No integrated delegation path](#option-3-no-integrated-delegation-path)
 - [More Information](#more-information)
@@ -53,13 +53,13 @@ The architectural question is: how should Cypilot integrate with the real ralphe
 
 ## Considered Options
 
-1. **Dedicated `cypilot-ralphex` skill with bounded delegation contract** — Cypilot keeps planning and rule resolution; a specialized skill discovers or installs ralphex, compiles Cypilot output into ralphex-compatible plans and optional `.ralphex/` overrides, then invokes ralphex explicitly
+1. **Dedicated `cf-constructor-ralphex` skill with bounded delegation contract** — Cypilot keeps planning and rule resolution; a specialized skill discovers or installs ralphex, compiles Cypilot output into ralphex-compatible plans and optional `.ralphex/` overrides, then invokes ralphex explicitly
 2. **Hard-wire ralphex into core generate/plan workflows** — the main Cypilot workflows invoke ralphex directly as part of ordinary execution, with no separate integration skill
 3. **No integrated delegation path** — keep Cypilot execution chat-native and require users to manually copy plans, rules, and prompts into ralphex
 
 ## Decision Outcome
 
-Accepted option: **Option 1 — Dedicated `cypilot-ralphex` skill with a bounded delegation contract**, because it adds the requested ralphex execution path while keeping Cypilot's planning and SDLC model authoritative, minimizing coupling to one external executor, and allowing projects to opt in only when they actually use ralphex.
+Accepted option: **Option 1 — Dedicated `cf-constructor-ralphex` skill with a bounded delegation contract**, because it adds the requested ralphex execution path while keeping Cypilot's planning and SDLC model authoritative, minimizing coupling to one external executor, and allowing projects to opt in only when they actually use ralphex.
 
 The dedicated integration skill becomes the only ralphex-aware entry point inside Cypilot. Cypilot remains responsible for:
 
@@ -79,7 +79,7 @@ ralphex becomes responsible for:
 * worktree isolation and dashboard serving when enabled
 * optional Claude slash commands as a convenience layer over the CLI
 
-The delegation contract is **artifact-driven and CLI-native**, not a generic opaque packet or a mirror of the full Cypilot adapter. The `cypilot-ralphex` skill compiles Cypilot planning output into a ralphex-compatible Markdown plan and, when needed, a bounded set of `.ralphex/` prompt or agent overrides. The exported execution artifact contains only the minimum authoritative context ralphex needs, such as:
+The delegation contract is **artifact-driven and CLI-native**, not a generic opaque packet or a mirror of the full Cypilot adapter. The `cf-constructor-ralphex` skill compiles Cypilot planning output into a ralphex-compatible Markdown plan and, when needed, a bounded set of `.ralphex/` prompt or agent overrides. The exported execution artifact contains only the minimum authoritative context ralphex needs, such as:
 
 * a plan title and compact overview
 * a `## Validation Commands` section derived from Cypilot's validation contract
@@ -116,7 +116,7 @@ This design decision is accepted. The following implementation exit criteria mus
 
 ## Pros and Cons of the Options
 
-### Option 1: Dedicated `cypilot-ralphex` skill with bounded delegation contract
+### Option 1: Dedicated `cf-constructor-ralphex` skill with bounded delegation contract
 
 Cypilot exposes ralphex through a specialized skill that handles tool discovery, installation, plan export, optional `.ralphex/` scaffolding, delegation, and post-run handoff, while core workflows remain executor-neutral.
 
@@ -161,7 +161,7 @@ The integration follows these ownership rules:
 | SDLC content (`rules.md`, `checklist.md`, templates, kit workflows, kit SKILL/AGENTS) | Cypilot |
 | Intent routing and Protocol Guard | Cypilot |
 | Execution plan generation and phase compilation | Cypilot |
-| Delegation decision (`execute here` vs `delegate to ralphex`) | User + `cypilot-ralphex` skill |
+| Delegation decision (`execute here` vs `delegate to ralphex`) | User + `cf-constructor-ralphex` skill |
 | Autonomous task loop, retries, and reviews | ralphex |
 | Dashboard, worktree mode, and long-running execution monitoring | ralphex |
 | Deterministic post-run validation contract | Cypilot |

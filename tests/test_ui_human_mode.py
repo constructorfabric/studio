@@ -744,7 +744,7 @@ class TestCLIHelpHumanMode(_HumanModeBase):
             rc = main(["--help"])
         self.assertEqual(rc, 0)
         out = buf.getvalue()
-        self.assertIn("Cypilot CLI", out)
+        self.assertIn("Cyber Constructor CLI", out)
         self.assertIn("validate", out)
         self.assertIn("--json", out)
 
@@ -754,7 +754,7 @@ class TestCLIHelpHumanMode(_HumanModeBase):
         with redirect_stderr(buf):
             rc = main([])
         self.assertEqual(rc, 0)
-        self.assertIn("Cypilot CLI", buf.getvalue())
+        self.assertIn("Cyber Constructor CLI", buf.getvalue())
 
 
 # ---------------------------------------------------------------------------
@@ -777,7 +777,7 @@ class TestHumanInitOk(_HumanModeBase):
                 {"sdlc": {"files_written": 10, "artifact_kinds": ["PRD", "DESIGN"]}},
             )
         out = buf.getvalue()
-        self.assertIn("Cypilot Init", out)
+        self.assertIn("Cyber Constructor Init", out)
         self.assertIn("MyProject", out)
         self.assertIn("Core files", out)
         self.assertIn("sdlc", out)
@@ -896,7 +896,7 @@ class TestReadExistingInstall(unittest.TestCase):
         with TemporaryDirectory() as td:
             root = Path(td)
             agents = root / "AGENTS.md"
-            agents.write_text(f"{MARKER_START}\n```toml\ncypilot_path = \"missing\"\n```\n")
+            agents.write_text(f"{MARKER_START}\n```toml\ncf-constructor-path = \"missing\"\n```\n")
             result = _read_existing_install(root)
             self.assertIsNone(result)
 
@@ -1071,6 +1071,69 @@ class TestHumanUpdateOk(_HumanModeBase):
                 {"status": "WARN", "dry_run": False},
             )
         self.assertIn("warnings", buf.getvalue())
+
+    def test_brand_wording_pinned(self):
+        """Lock down public brand wording in update human output (no Cypilot leftover)."""
+        from cypilot.commands.update import _human_update_ok
+        buf = io.StringIO()
+        with redirect_stderr(buf):
+            _human_update_ok({
+                "status": "PASS",
+                "dry_run": False,
+                "project_root": "/tmp/proj",
+                "cypilot_dir": "/tmp/proj/.cf-constructor",
+            })
+        out = buf.getvalue()
+        self.assertIn("Cyber Constructor Update", out)
+        self.assertIn("Cyber Constructor dir", out)
+        self.assertNotIn("Cypilot Update", out)
+        self.assertNotIn("Cypilot dir", out)
+
+
+class TestBrandContractPinned(unittest.TestCase):
+    """Lock down user-facing brand wording so silent rebrand regressions fail CI."""
+
+    def test_workspace_filename_canonical(self):
+        from cypilot.constants import WORKSPACE_CONFIG_FILENAME
+        self.assertEqual(WORKSPACE_CONFIG_FILENAME, ".cf-constructor-workspace.toml")
+
+    def test_init_inject_writes_new_marker_and_key(self):
+        """Fresh _inject_root_agents writes @cf:root-agents + cf-constructor-path (no legacy)."""
+        from cypilot.commands.init import _inject_root_agents
+        from tempfile import TemporaryDirectory
+        from pathlib import Path
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            root.mkdir()
+            _inject_root_agents(root, ".cf-constructor")
+            text = (root / "AGENTS.md").read_text(encoding="utf-8")
+            self.assertIn("<!-- @cf:root-agents -->", text)
+            self.assertIn('cf-constructor-path = ".cf-constructor"', text)
+            self.assertNotIn("@cpt:root-agents", text)
+            self.assertNotIn("cypilot_path", text)
+
+    def test_init_command_human_strings(self):
+        """_human_init_ok renders the new brand in stderr (no Cypilot leftover)."""
+        from cypilot.commands.init import _human_init_ok
+        from cypilot.utils.ui import set_json_mode
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        set_json_mode(False)
+        try:
+            with TemporaryDirectory() as td:
+                buf = io.StringIO()
+                with redirect_stderr(buf):
+                    _human_init_ok(
+                        {"status": "PASS", "dry_run": False, "actions": {}},
+                        Path(td), Path(td) / ".cf-constructor",
+                        ".cf-constructor", "MyApp", {},
+                    )
+                out = buf.getvalue()
+                self.assertIn("Cyber Constructor", out)
+                self.assertNotIn("Cypilot Init", out)
+                self.assertNotIn("cypilot dir", out.lower())
+        finally:
+            set_json_mode(True)
 
 
 class TestHumanWhereDefined(_HumanModeBase):

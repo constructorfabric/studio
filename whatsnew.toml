@@ -1,6 +1,43 @@
-# Cypilot Core — What's New
-# Entries are shown once during `cpt update` when the user hasn't seen them yet.
+# Cyber Constructor — What's New
+# Entries are shown once during `cfc update` when the user hasn't seen them yet.
 # Keys are version strings; only entries missing from config/whatsnew.toml are displayed.
+
+["v4.0.0"]
+date = "2026-05-08"
+title = "Cyber Constructor 4.0.0"
+summary = """
+Project rebrands from Cypilot to Cyber Constructor.
+
+Breaking changes:
+- New defaults: install dir .cf-constructor, global cache ~/.cf-constructor/cache,
+  logs ~/.cf-constructor/logs.
+- Root managed-block TOML key: cypilot_path -> cf-constructor-path (no legacy
+  fallback — projects on older versions must re-run `cfc init` to refresh
+  AGENTS.md/CLAUDE.md, or update the key by hand).
+- Root managed-block marker: <!-- @cpt:root-agents --> -> <!-- @cf:root-agents -->.
+- Template variable: {cypilot_path} -> {cf-constructor-path} (no legacy fallback).
+- Core skill names: cypilot, cypilot-plan, cypilot-analyze, cypilot-generate,
+  cypilot-workspace -> cf-constructor, cf-constructor-plan, cf-constructor-analyze,
+  cf-constructor-generate, cf-constructor-workspace.
+- Agent names: cypilot-* -> cf-constructor-*.
+- CLI flag: --cypilot-root -> --cf-constructor-root (info, generate-agents).
+- Kit slug now resolved exclusively via manifest.toml — kits without a
+  manifest are no longer supported.
+- The v2->v3 migration command (cpt migrate) is removed.
+
+New:
+- CLI binaries: cfc (short) and cf-constructor (long). Coexists with cypilot
+  3.9.0 (which owns cpt and cypilot binaries) — no conflict on upgrade.
+- Main repo renamed: github.com/cyberfabric/cyber-pilot -> cyber-constructor.
+- SDLC kit moved: github.com/cyberfabric/cyber-pilot-kit-sdlc ->
+  cyber-constructor-kit-sdlc.
+- PyPI distribution renamed: cypilot -> cyber-constructor.
+
+Unchanged (intentional):
+- Internal Python package cypilot_proxy.
+- Skill bundle directory skills/cypilot/.
+- All cpt-cypilot-* IDs and @cpt-* markers in source code.
+"""
 
 ["v3.0.3-beta"]
 summary = "Variable-based path references"

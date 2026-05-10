@@ -105,7 +105,7 @@ class TestFindAdapterDirectory(unittest.TestCase):
             adapter_dir.mkdir()
             
             # Create AGENTS.md with adapter markers
-            (adapter_dir / "AGENTS.md").write_text("# Cypilot Adapter: Test\n\nThis is an Cypilot adapter for testing.")
+            (adapter_dir / "AGENTS.md").write_text("# Cyber Constructor Adapter: Test\n\nThis is an Cypilot adapter for testing.")
             
             # Create specs directory (required for validation)
             specs_dir = adapter_dir / "specs"
@@ -123,13 +123,13 @@ class TestFindAdapterDirectory(unittest.TestCase):
             root = Path(tmpdir)
             (root / ".git").mkdir()
             (root / "AGENTS.md").write_text(
-                '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "cfg-adapter"\n```\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "cfg-adapter"\n```\n',
                 encoding="utf-8",
             )
             adapter_dir = root / "cfg-adapter"
             adapter_dir.mkdir()
             (adapter_dir / "config").mkdir()
-            (adapter_dir / "config" / "AGENTS.md").write_text("# Cypilot Adapter: X\n", encoding="utf-8")
+            (adapter_dir / "config" / "AGENTS.md").write_text("# Cyber Constructor Adapter: X\n", encoding="utf-8")
 
             result = find_adapter_directory(root)
             self.assertIsNotNone(result)
@@ -141,7 +141,7 @@ class TestFindAdapterDirectory(unittest.TestCase):
             root = Path(tmpdir)
             (root / ".git").mkdir()
             (root / "AGENTS.md").write_text(
-                '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "missing"\n```\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "missing"\n```\n',
                 encoding="utf-8",
             )
 
@@ -149,7 +149,7 @@ class TestFindAdapterDirectory(unittest.TestCase):
             adapter_dir = root / ".cypilot-adapter"
             adapter_dir.mkdir()
             (adapter_dir / "config").mkdir()
-            (adapter_dir / "config" / "AGENTS.md").write_text("# Cypilot Adapter: X\n", encoding="utf-8")
+            (adapter_dir / "config" / "AGENTS.md").write_text("# Cyber Constructor Adapter: X\n", encoding="utf-8")
 
             result = find_adapter_directory(root)
             self.assertIsNone(result)
@@ -187,7 +187,7 @@ class TestFindAdapterDirectory(unittest.TestCase):
 
             adapter_dir = root / ".cypilot-adapter"
             adapter_dir.mkdir()
-            (adapter_dir / "AGENTS.md").write_text("# Cypilot Adapter: P\n\n**Extends**: `../Cypilot/AGENTS.md`\n", encoding="utf-8")
+            (adapter_dir / "AGENTS.md").write_text("# Cyber Constructor Adapter: P\n\n**Extends**: `../Cypilot/AGENTS.md`\n", encoding="utf-8")
 
             found = find_adapter_directory(root, cypilot_root=cypilot_root)
             self.assertIsNotNone(found)
@@ -211,7 +211,7 @@ class TestConfigHelpers(unittest.TestCase):
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             (root / "AGENTS.md").write_text(
-                '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "adapter"\n```\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "adapter"\n```\n',
                 encoding="utf-8",
             )
             adapter = root / "adapter" / "config"
@@ -231,7 +231,7 @@ class TestConfigHelpers(unittest.TestCase):
 
             # New layout: AGENTS.md TOML block + config/core.toml with [paths] core
             (root / "AGENTS.md").write_text(
-                '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "adapter"\n```\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "adapter"\n```\n',
                 encoding="utf-8",
             )
             adapter = root / "adapter" / "config"
@@ -261,7 +261,7 @@ class TestConfigHelpers(unittest.TestCase):
             (root / ".git").mkdir()
             # AGENTS.md + core.toml exist but no [paths] core key
             (root / "AGENTS.md").write_text(
-                '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "adapter"\n```\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "adapter"\n```\n',
                 encoding="utf-8",
             )
             adapter = root / "adapter" / "config"
@@ -283,7 +283,7 @@ class TestConfigHelpers(unittest.TestCase):
             root = Path(tmpdir)
             (root / ".git").mkdir()
             (root / "AGENTS.md").write_text(
-                '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "adapter"\n```\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "adapter"\n```\n',
                 encoding="utf-8",
             )
             adapter = root / "adapter" / "config"
@@ -304,7 +304,7 @@ class TestLoadAdapterConfig(unittest.TestCase):
         with TemporaryDirectory() as tmpdir:
             ad = Path(tmpdir) / "adapter"
             ad.mkdir()
-            (ad / "AGENTS.md").write_text("# Cypilot Adapter: MyProj\n", encoding="utf-8")
+            (ad / "AGENTS.md").write_text("# Cyber Constructor Adapter: MyProj\n", encoding="utf-8")
             (ad / "config").mkdir()
             (ad / "config" / "rules").mkdir()
             (ad / "config" / "rules" / "a.md").write_text("# A\n", encoding="utf-8")
@@ -318,7 +318,7 @@ class TestLoadAdapterConfig(unittest.TestCase):
         with TemporaryDirectory() as tmpdir:
             ad = Path(tmpdir) / "adapter"
             ad.mkdir()
-            (ad / "AGENTS.md").write_text("# Cypilot Adapter: MyProj\n", encoding="utf-8")
+            (ad / "AGENTS.md").write_text("# Cyber Constructor Adapter: MyProj\n", encoding="utf-8")
             cfg = load_adapter_config(ad)
             self.assertEqual(cfg.get("project_name"), "MyProj")
             self.assertEqual(cfg.get("rules"), [])
@@ -400,7 +400,7 @@ class TestLoadAdapterConfigExceptionHandling(unittest.TestCase):
             ad = Path(tmpdir) / "adapter"
             ad.mkdir()
             agents = ad / "AGENTS.md"
-            agents.write_text("# Cypilot Adapter: Test\n", encoding="utf-8")
+            agents.write_text("# Cyber Constructor Adapter: Test\n", encoding="utf-8")
 
             orig = Path.read_text
 
@@ -430,7 +430,7 @@ class TestIsAdapterDirectoryContentBased(unittest.TestCase):
             adapter_dir.mkdir()
             # AGENTS.md mentions "spec" but no specs/ directory
             (adapter_dir / "AGENTS.md").write_text(
-                "# Cypilot Adapter: Test\n\nSee our spec documents.\n",
+                "# Cyber Constructor Adapter: Test\n\nSee our spec documents.\n",
                 encoding="utf-8",
             )
 
@@ -447,7 +447,7 @@ class TestIsAdapterDirectoryContentBased(unittest.TestCase):
             # Create deeply nested adapter (beyond default max_depth of 5)
             deep = root / "a" / "b" / "c" / "d" / "e" / "f" / "g" / "adapter"
             deep.mkdir(parents=True)
-            (deep / "AGENTS.md").write_text("# Cypilot Adapter: Deep\n", encoding="utf-8")
+            (deep / "AGENTS.md").write_text("# Cyber Constructor Adapter: Deep\n", encoding="utf-8")
             (deep / "specs").mkdir()
 
             result = find_adapter_directory(root)

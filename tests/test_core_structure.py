@@ -67,13 +67,13 @@ class TestBaseStructure:
         return req_files + wf_files
 
     def _has_yaml_frontmatter(self, path: Path) -> bool:
-        """Check if file has YAML frontmatter with cypilot: true."""
+        """Check if file has YAML frontmatter with cf-constructor: true."""
         text = path.read_text(encoding="utf-8")
         parsed = self._parse_frontmatter(text)
         if parsed is None:
             return False
         frontmatter, _body = parsed
-        return str(frontmatter.get("cypilot", "")).strip().lower() == "true"
+        return str(frontmatter.get("cf-constructor", "")).strip().lower() == "true"
 
     def _has_required_frontmatter_fields(self, path: Path) -> bool:
         """Check for required frontmatter fields: type, name, version, purpose."""
@@ -175,7 +175,7 @@ class TestBaseStructure:
         spec_files = [f for f in req_dir.glob("*.md") if f.name not in ("README.md",)]
         assert len(spec_files) > 0, "No requirements/*.md files found"
         for f in spec_files:
-            assert self._has_yaml_frontmatter(f), f"{f.name} missing cypilot: true frontmatter"
+            assert self._has_yaml_frontmatter(f), f"{f.name} missing cf-constructor: true frontmatter"
 
     def test_workflow_files_have_frontmatter(self):
         """Workflow files should have YAML frontmatter."""
@@ -183,7 +183,7 @@ class TestBaseStructure:
         wf_files = [f for f in wf_dir.glob("*.md") if f.name not in ("README.md", "AGENTS.md")]
         assert len(wf_files) > 0, "No workflow files found"
         for f in wf_files:
-            assert self._has_yaml_frontmatter(f), f"{f.name} missing cypilot: true frontmatter"
+            assert self._has_yaml_frontmatter(f), f"{f.name} missing cf-constructor: true frontmatter"
 
 
 class TestRequirementsStructure:
@@ -307,7 +307,7 @@ class TestAgentsStructure:
 
     def _verify_agents_type(self, text):
         """Verify agents file has proper structure."""
-        return "cypilot_path" in text or "ALWAYS" in text or "WHEN" in text
+        return "cf-constructor-path" in text or "ALWAYS" in text or "WHEN" in text
 
     def test_root_agents_exists(self):
         """Root AGENTS.md should exist."""

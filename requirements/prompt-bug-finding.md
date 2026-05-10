@@ -1,5 +1,5 @@
 ---
-cypilot: true
+cf-constructor: true
 type: requirement
 name: Prompt Bug-Finding Methodology
 version: 1.3

@@ -1,8 +1,8 @@
 """
-TOML utilities for Cypilot config files.
+TOML utilities for Cyber Constructor config files.
 
 - Reading: stdlib ``tomllib`` (Python 3.11+)
-- Writing: minimal serializer for the subset Cypilot uses
+- Writing: minimal serializer for the subset Cyber Constructor uses
 - Markdown: extract ``toml`` fenced code blocks from AGENTS.md
 
 @cpt-algo:cpt-cypilot-algo-core-infra-config-management:p1
@@ -50,7 +50,7 @@ def parse_toml_from_markdown(text: str) -> TomlData:
     Used to read config variables embedded in AGENTS.md, e.g.::
 
         ```toml
-        cypilot = ".cypilot-adapter"
+        cfc = ".cf-constructor-adapter"
         ```
 
     If multiple blocks exist, later blocks override earlier keys.

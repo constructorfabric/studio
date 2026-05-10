@@ -964,7 +964,7 @@ def load_manifest(kit_source: Path) -> Optional[Union[Manifest, ManifestV2]]:
 
     return Manifest(
         version=str(meta["version"]).strip(),
-        root=str(meta.get("root", "{cypilot_path}/config/kits/{slug}")).strip(),
+        root=str(meta.get("root", "{cf-constructor-path}/config/kits/{slug}")).strip(),
         user_modifiable=bool(meta.get("user_modifiable", True)),
         resources=resources,
     )

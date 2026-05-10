@@ -1,5 +1,5 @@
 ---
-cypilot: true
+cf-constructor: true
 type: requirement
 name: Storytelling Methodology
 version: 2.0
@@ -21,7 +21,7 @@ purpose: Pedagogical companion methodology for explanatory walkthroughs of artif
 
 <!-- /toc -->
 
-This file is the **router**. The full methodology is split across five files for compact runtime loading: this router (~200 lines) plus four modules under `{cypilot_path}/.core/requirements/storytelling-*.md`. Sibling methodologies are single-file (`prompt-engineering.md`, `bug-finding.md`, `reverse-engineering.md`); the storytelling spec is split because its surface — multi-mode, multi-phase, optional export — is materially larger and would otherwise force chunked loading and reduced determinism guarantees.
+This file is the **router**. The full methodology is split across five files for compact runtime loading: this router (~200 lines) plus four modules under `{cf-constructor-path}/.core/requirements/storytelling-*.md`. Sibling methodologies are single-file (`prompt-engineering.md`, `bug-finding.md`, `reverse-engineering.md`); the storytelling spec is split because its surface — multi-mode, multi-phase, optional export — is materially larger and would otherwise force chunked loading and reduced determinism guarantees.
 
 ## Execution Protocol (MUST NOT be bypassed)
 
@@ -43,7 +43,7 @@ Until the user has explicitly approved the plan at gate 4, the agent MUST NOT em
 
 ALWAYS open and follow this file WHEN the user requests explanation, presentation, walkthrough, teaching, review, onboarding, decision-walk, quiz, or change-impact analysis of any input.
 
-ALWAYS open and follow `{cypilot_path}/.core/requirements/execution-protocol.md` for workflow context.
+ALWAYS open and follow `{cf-constructor-path}/.core/requirements/execution-protocol.md` for workflow context.
 
 WHEN this methodology is loaded:
 - Set `EXPLAIN_MODE=true`
@@ -140,8 +140,8 @@ Concretely: under standard chat-mode `EXPLAIN_MODE=true`, the agent loads three 
 | 28b | Skipping the always-ask **artifact disposition** prompt at session start | After mode resolution and before role/audience confirmation, methodology MUST emit the disposition prompt (chat-only / save-to-file / post-to-resource / mixed) and wait for explicit user confirmation. The project `artifact_disposition` preference informs the suggested default but does NOT bypass the prompt |
 | 28c | Posting comments / open-questions / bookmarks to the resource without per-item user confirmation | Even when disposition = `post-to-resource`, every individual post MUST be confirmed (4-option numbered prompt: Post / Save instead / Discard / Skip rest); on Skip-rest or post failure, fall back to `save-to-file` for remaining items |
 | 28d | Deferring artifact persistence to wrap when disposition is `save-to-file` or `post-to-resource` (saying "I'll save at wrap" instead of writing/posting now) | Wrap ends the session — deferring forces the user to choose between continuing the review and saving artifacts, which is broken UX. All three dispositions take effect **immediately on each artifact-create event** (Comment-slot use, open-question push, bookmark). The session continues normally after each artifact persists; wrap merely reports cumulative results, never re-prompts to save what's already on disk |
-| 28e | Writing absolute paths (`/Users/...`, `/Volumes/...`, `/home/...`, `C:\...`) into any explain-generated artifact body — comments file, open-questions file, key-takeaways file, diagrams file, checkpoint JSON, package portion files, or `index.md` | Absolute paths break immediately when the artifact is shared, the project is cloned elsewhere, or the cache moves. ALL explain-generated artifacts and internal cross-references MUST use **relative paths** per `storytelling-preferences.md` Path Conventions (Portability). Methodology MUST convert `{cypilot_path}` / `{project_root}` template variables to relative-from-project-root before writing to artifact content or displaying in chat |
-| 28f | Emitting chat output or writing artifact bodies that breach the resolved `language_complexity` level — long compound sentences at `low`, rare/archaic words at `middle`, etc. | Global Cypilot rule per `{cypilot_path}/.core/requirements/language-complexity.md`: every chat message AND every artifact write self-checks against the resolved level (`low` / `middle` / `high`, default `middle`) and rewrites before emitting if a draft sentence breaches the level. Source quotes are exempt (verbatim) |
+| 28e | Writing absolute paths (`/Users/...`, `/Volumes/...`, `/home/...`, `C:\...`) into any explain-generated artifact body — comments file, open-questions file, key-takeaways file, diagrams file, checkpoint JSON, package portion files, or `index.md` | Absolute paths break immediately when the artifact is shared, the project is cloned elsewhere, or the cache moves. ALL explain-generated artifacts and internal cross-references MUST use **relative paths** per `storytelling-preferences.md` Path Conventions (Portability). Methodology MUST convert `{cf-constructor-path}` / `{project_root}` template variables to relative-from-project-root before writing to artifact content or displaying in chat |
+| 28f | Emitting chat output or writing artifact bodies that breach the resolved `language_complexity` level — long compound sentences at `low`, rare/archaic words at `middle`, etc. | Global Cypilot rule per `{cf-constructor-path}/.core/requirements/language-complexity.md`: every chat message AND every artifact write self-checks against the resolved level (`low` / `middle` / `high`, default `middle`) and rewrites before emitting if a draft sentence breaches the level. Source quotes are exempt (verbatim) |
 | 29 | Auto-checkpointing during the session (every N portions / on Phase transitions / on pivots) | Forbidden — session state is held in working memory; persistence is wrap-time only |
 | 30 | Resuming session without verifying input unchanged | Risks delivering stale content; methodology MUST verify `input_hash` and warn on mismatch |
 | 31 | Adding `Fix Prompt` / `Plan Prompt` | Analyze contract leakage; open questions are author-routed, not Cypilot-routed |
@@ -168,7 +168,7 @@ Concretely: under standard chat-mode `EXPLAIN_MODE=true`, the agent loads three 
 - [ ] Invocation handling ran; no-target / unresolvable-target → session-discovery mode emitted
 - [ ] Input access resolution ran the chain (local → MCP → skill → CLI → user fallback) for non-local targets; telemetry recorded the resolution method; arbitrary shell-command fallback was NEVER offered or executed
 - [ ] Existing-session scan ran; tier-1 / tier-2 matches offered with `Start fresh` and `Cancel` alternatives; tier-3 collisions NOT auto-offered
-- [ ] Oversized input → narrow-to-section offered (NOT `/cypilot-plan`)
+- [ ] Oversized input → narrow-to-section offered (NOT `/cf-constructor-plan`)
 
 **Phase E1 discovery**:
 - [ ] Role + audience + plan resolved; plan approval received
@@ -207,11 +207,11 @@ Concretely: under standard chat-mode `EXPLAIN_MODE=true`, the agent loads three 
 - [ ] Every Comment-slot use (review mode), every push to open-questions buffer, every bookmark took disposition effect **immediately on the create event** (NOT deferred to wrap): `chat-only` surfaced the artifact as a copy-now block in chat; `save-to-file` appended to the file with one-line confirmation `📝 Q-N appended to {path}`; `post-to-resource` triggered the 4-option numbered post-confirmation prompt right then. Session continued normally after each persistence event
 - [ ] When disposition = `post-to-resource`: every individual post was confirmed by the user via the 4-option prompt (Post / Save instead / Discard / Skip rest); post failures fell back to save-to-file for that item; `Skip rest` switched disposition to save-to-file for remaining items
 - [ ] Wrap output for `save-to-file` and `post-to-resource` dispositions did NOT re-prompt to "save?" (artifacts already persisted); wrap merely reported cumulative counts + paths / post URLs
-- [ ] All explain-generated artifacts (per-portion files, `index.md`, comments file, open-questions file, key-takeaways file, diagrams file, checkpoint JSON) and internal cross-references inside them used **relative paths** — no absolute `/Users/...` / `/Volumes/...` / `/home/...` / `C:\...` strings written into artifact bodies. `{cypilot_path}` / `{project_root}` template variables converted to relative-from-project-root before writing or chat-display
-- [ ] All chat messages and artifact body writes respected the resolved `language_complexity` level per `{cypilot_path}/.core/requirements/language-complexity.md` (default `middle`); long-compound sentences at `low` / rare-archaic words at `middle` / etc. were rewritten before emission. Source quotes from input artifacts were exempt (verbatim)
+- [ ] All explain-generated artifacts (per-portion files, `index.md`, comments file, open-questions file, key-takeaways file, diagrams file, checkpoint JSON) and internal cross-references inside them used **relative paths** — no absolute `/Users/...` / `/Volumes/...` / `/home/...` / `C:\...` strings written into artifact bodies. `{cf-constructor-path}` / `{project_root}` template variables converted to relative-from-project-root before writing or chat-display
+- [ ] All chat messages and artifact body writes respected the resolved `language_complexity` level per `{cf-constructor-path}/.core/requirements/language-complexity.md` (default `middle`); long-compound sentences at `low` / rare-archaic words at `middle` / etc. were rewritten before emission. Source quotes from input artifacts were exempt (verbatim)
 
 **Export mode (when `EXPLAIN_EXPORT=true`)**:
-- [ ] Package written to `{cypilot_path}/.cache/explain/packages/{slug}-{ISO-timestamp}/` with `index.md` + per-portion files + Mermaid navigation graph + mode-specific extras
+- [ ] Package written to `{cf-constructor-path}/.cache/explain/packages/{slug}-{ISO-timestamp}/` with `index.md` + per-portion files + Mermaid navigation graph + mode-specific extras
 - [ ] Per-portion chat navigation prompts NOT emitted; navigation lives in file footers
 - [ ] Final chat message reported package path and file count
 - [ ] When mode = `socratic`: methodology refused export with the required message; no files written

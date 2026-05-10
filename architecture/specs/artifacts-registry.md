@@ -6,7 +6,7 @@ version: 2.0
 purpose: Define structure and usage of artifacts.toml for agent operations
 ---
 
-# Cypilot Artifacts Registry Specification
+# Cyber Constructor Artifacts Registry Specification
 
 ---
 
@@ -35,25 +35,25 @@ purpose: Define structure and usage of artifacts.toml for agent operations
 
 **Add to config AGENTS.md**:
 ```
-ALWAYS open and follow `{cypilot_path}/.core/requirements/artifacts-registry.md` WHEN working with artifacts.toml
+ALWAYS open and follow `{cf-constructor-path}/.core/requirements/artifacts-registry.md` WHEN working with artifacts.toml
 ```
 
-**ALWAYS use**: `python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py info` to discover cypilot location
+**ALWAYS use**: `{cfc_cmd} info` to discover the Cyber Constructor install location
 
-**ALWAYS use**: `cypilot.py` CLI commands for artifact operations (list-ids, where-defined, where-used, validate)
+**ALWAYS use**: `{cfc_cmd}` CLI commands for artifact operations (`{cfc_cmd} list-ids`, `{cfc_cmd} where-defined`, `{cfc_cmd} where-used`, `{cfc_cmd} validate`)
 
 **Prerequisite**: Agent confirms understanding before proceeding:
 - [ ] Agent has read and understood this requirement
-- [ ] Agent knows where artifacts.toml is located (via info)
+- [ ] Agent knows where artifacts.toml is located (via `{cfc_cmd} info`)
 - [ ] Agent will use CLI commands, not direct file manipulation
 
 ---
 
 ## Overview
 
-**What**: `artifacts.toml` is the Cypilot artifact registry — a TOML file that declares all systems, their artifacts, and codebase locations.
+**What**: `artifacts.toml` is the Cyber Constructor artifact registry — a TOML file that declares all systems, their artifacts, and codebase locations.
 
-**Location**: `{cypilot_path}/config/artifacts.toml`
+**Location**: `{cf-constructor-path}/config/artifacts.toml`
 
 **Purpose**:
 - Declares system hierarchy (systems → subsystems → components)
@@ -62,7 +62,7 @@ ALWAYS open and follow `{cypilot_path}/.core/requirements/artifacts-registry.md`
 - Defines global ignore rules for scanning
 - Enables CLI tools to discover and process artifacts automatically
 
-**Not in this file**: kit definitions (format, path, template locations) live in `{cypilot_path}/config/core.toml`. Systems reference kits by ID; the tool resolves kit details from `core.toml`.
+**Not in this file**: kit definitions (format, path, template locations) live in `{cf-constructor-path}/config/core.toml`. Systems reference kits by ID; the tool resolves kit details from `core.toml`.
 
 ---
 
@@ -74,13 +74,13 @@ Schema file: `../schemas/artifacts-registry.schema.json`
 
 Notes:
 
-- Version `2.0` uses TOML format. Legacy `1.x` JSON registries are supported via `cpt migrate-config`.
+- Version `2.0` uses TOML format. Legacy `1.x` JSON registries are no longer supported by Cyber Constructor 4.x — projects on the older format must run a one-shot conversion before upgrading.
 
 ---
 
 ## Root Structure
 
-`version` and `project_root` are defined in `{cypilot_path}/config/core.toml` (authoritative source). They may appear in `artifacts.toml` for standalone or legacy use; the tool merges them at load time.
+`version` and `project_root` are defined in `{cf-constructor-path}/config/core.toml` (authoritative source). They may appear in `artifacts.toml` for standalone or legacy use; the tool merges them at load time.
 
 ```toml
 # artifacts.toml — systems and ignore only (version/project_root in core.toml)
@@ -141,7 +141,7 @@ artifacts_dir = "architecture"
 |-----|------|----------|-------------|
 | `name` | string | YES | Human-readable system/subsystem/component name |
 | `slug` | string | YES | Machine-readable identifier (lowercase, no spaces, hyphen-separated). Used for hierarchical ID generation. Pattern: `^[a-z0-9]+(-[a-z0-9]+)*$` |
-| `kit` | string | YES | Reference to kit ID registered in `{cypilot_path}/config/core.toml` |
+| `kit` | string | YES | Reference to kit ID registered in `{cf-constructor-path}/config/core.toml` |
 | `artifacts_dir` | string | NO | Default base directory for NEW artifacts (default: `architecture`). Subdirectories defined by kit. |
 | `artifacts` | array of tables | NO | Artifacts belonging to this node. Paths are FULL paths relative to `project_root`. |
 | `codebase` | array of tables | NO | Source code directories for this node |
@@ -642,38 +642,38 @@ Codebase paths are resolved directly: `{project_root}/{codebase.path}`
 
 ## CLI Commands
 
-**Note**: All commands use `python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py` where `{cypilot_path}` is the Cypilot installation path. Examples below use `cypilot.py` as shorthand.
+**Note**: All commands use the resolved `{cfc_cmd}` (either the `cfc` proxy from `pipx install cyber-constructor`, or a fallback such as `python3 {cf-constructor-path}/.core/skills/cypilot/scripts/cypilot.py`). Examples below use the placeholder `{cfc_cmd}` literally — substitute with the resolved value.
 
 ### Discovery
 
 ```bash
-# Find cypilot config and registry
-cypilot.py info --root /project
+# Find Cyber Constructor config and registry
+{cfc_cmd} info --root /project
 ```
 
 ### Artifact Operations
 
 ```bash
-# List all IDs from registered Cypilot artifacts
-cypilot.py list-ids
+# List all IDs from registered artifacts
+{cfc_cmd} list-ids
 
 # List IDs from specific artifact
-cypilot.py list-ids --artifact architecture/PRD.md
+{cfc_cmd} list-ids --artifact architecture/PRD.md
 
 # Find where ID is defined
-cypilot.py where-defined --id "myapp-actor-user"
+{cfc_cmd} where-defined --id "myapp-actor-user"
 
 # Find where ID is referenced
-cypilot.py where-used --id "myapp-actor-user"
+{cfc_cmd} where-used --id "myapp-actor-user"
 
 # Validate artifact against template
-cypilot.py validate --artifact architecture/PRD.md
+{cfc_cmd} validate --artifact architecture/PRD.md
 
 # Validate all registered artifacts
-cypilot.py validate
+{cfc_cmd} validate
 
 # Validate kits and templates
-cypilot.py validate-kits
+{cfc_cmd} validate-kits
 ```
 
 ---
@@ -683,7 +683,7 @@ cypilot.py validate-kits
 ### Finding the Registry
 
 1. Run `info` to discover project location
-2. Registry is at `{cypilot_path}/config/artifacts.toml`
+2. Registry is at `{cf-constructor-path}/config/artifacts.toml`
 3. Parse TOML to get registry data
 
 ### Iterating Artifacts
@@ -714,7 +714,7 @@ template_path = f".gen/kits/{kit.slug}/artifacts/{artifact.kind}/template.md"
 kit = core_config.kits[system.kit]
 if kit.format == "Cypilot":
     # Use CLI validation
-    run("cpt validate --artifact {path}")
+    run("{cfc_cmd} validate --artifact {path}")
 else:
     # Custom format - LLM-only processing
     process_semantically(artifact)
@@ -728,9 +728,9 @@ else:
 
 **If artifacts.toml doesn't exist**:
 ```
-⚠️ Registry not found: {cypilot_path}/config/artifacts.toml
+⚠️ Registry not found: {cf-constructor-path}/config/artifacts.toml
 → Registry not initialized
-→ Fix: Run `cpt init` to create registry
+→ Fix: Run `cfc init` to create registry
 ```
 **Action**: STOP — cannot process artifacts without registry.
 
@@ -925,7 +925,7 @@ path = "src/modules/auth"
 extensions = [".ts"]
 ```
 
-**Note**: Artifact paths are FULL paths relative to `project_root`. The `artifacts_dir` defines the default base directory for NEW artifacts — subdirectories for specific kinds (`features/`, `ADR/`) are defined by the kit. Kit definitions (format, path, templates) are resolved from `{cypilot_path}/config/core.toml`.
+**Note**: Artifact paths are FULL paths relative to `project_root`. The `artifacts_dir` defines the default base directory for NEW artifacts — subdirectories for specific kinds (`features/`, `ADR/`) are defined by the kit. Kit definitions (format, path, templates) are resolved from `{cf-constructor-path}/config/core.toml`.
 
 ---
 
@@ -935,7 +935,7 @@ extensions = [".ts"]
 |-------|-------|-----|
 | "Artifact not in Cypilot registry" | Path not registered | Add artifact to system's `artifacts` array |
 | "Could not find template" | Missing template file | Create template at `{kit.path}/artifacts/{KIND}/template.md` |
-| "Invalid kit reference" | System references kit not in `core.toml` | Register kit in `{cypilot_path}/config/core.toml` or fix `kit` field |
+| "Invalid kit reference" | System references kit not in `core.toml` | Register kit in `{cf-constructor-path}/config/core.toml` or fix `kit` field |
 | "Path is a directory" | Artifact path ends with `/` or has no extension | Change to specific file path |
 
 ---
@@ -947,7 +947,7 @@ extensions = [".ts"]
 **CLI**: `skills/cypilot/cypilot.clispec`
 
 **Related**:
-- `sysprompts.md` - Project system prompts (`{cypilot_path}/config/sysprompts/` + `config/AGENTS.md`)
+- `sysprompts.md` - Project system prompts (`{cf-constructor-path}/config/sysprompts/` + `config/AGENTS.md`)
 - `execution-protocol.md` - Workflow execution protocol
 
 ---
@@ -960,12 +960,12 @@ extensions = [".ts"]
 
 | # | Check | Required | How to Verify |
 |---|-------|----------|---------------|
-| R.1 | `artifacts.toml` exists at `{cypilot_path}/config/` | YES | File exists at `{cypilot_path}/config/artifacts.toml` |
+| R.1 | `artifacts.toml` exists at `{cf-constructor-path}/config/` | YES | File exists at `{cf-constructor-path}/config/artifacts.toml` |
 | R.2 | TOML parses without errors | YES | `tomllib.loads()` succeeds |
 | R.3 | `version` field resolvable (from `core.toml` or `artifacts.toml`) | YES | Field exists in at least one source and is string |
 | R.4 | `systems` array present | YES | Array (may be empty) |
 | R.5 | Each system has `name`, `slug`, and `kit` fields | YES | All three fields exist per system |
-| R.6 | System `kit` references exist in `{cypilot_path}/config/core.toml` | YES | Lookup succeeds |
+| R.6 | System `kit` references exist in `{cf-constructor-path}/config/core.toml` | YES | Lookup succeeds |
 | R.7 | `artifacts_dir` is valid path (if specified) | CONDITIONAL | Non-empty string |
 | R.8 | `slug` matches pattern `^[a-z0-9]+(-[a-z0-9]+)*$` | YES | Lowercase, no spaces, hyphen-separated |
 | R.9 | `slug` is unique among siblings | YES | No duplicate slugs at same level |

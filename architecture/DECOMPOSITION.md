@@ -15,13 +15,12 @@
   - [2.7 Version & Config Management ⏳ MEDIUM](#27-version--config-management--medium)
   - [2.8 Developer Experience ⏳ LOW](#28-developer-experience--low)
   - [2.9 Advanced SDLC Workflows (EXTRACTED) ⏳ LOW](#29-advanced-sdlc-workflows-extracted--low)
-  - [2.10 V2 → V3 Migration ⏳ HIGH](#210-v2--v3-migration--high)
-  - [2.11 Spec Coverage ⏳ HIGH](#211-spec-coverage--high)
-  - [2.12 Execution Plans ✅ HIGH](#212-execution-plans--high)
-  - [2.13 Multi-Repo Workspace Federation ✅ DONE](#213-multi-repo-workspace-federation--done)
-  - [2.14 Subagent Registration ⏳ HIGH](#214-subagent-registration--high)
-  - [2.15 ralphex Delegation ⏳ HIGH](#215-ralphex-delegation--high)
-  - [2.16 Project-Level Extensibility ⏳ HIGH](#216-project-level-extensibility--high)
+  - [2.10 Spec Coverage ⏳ HIGH](#210-spec-coverage--high)
+  - [2.11 Execution Plans ✅ HIGH](#211-execution-plans--high)
+  - [2.12 Multi-Repo Workspace Federation ✅ DONE](#212-multi-repo-workspace-federation--done)
+  - [2.13 Subagent Registration ⏳ HIGH](#213-subagent-registration--high)
+  - [2.14 ralphex Delegation ⏳ HIGH](#214-ralphex-delegation--high)
+  - [2.15 Project-Level Extensibility ⏳ HIGH](#215-project-level-extensibility--high)
 - [3. Feature Dependencies](#3-feature-dependencies)
 
 <!-- /toc -->
@@ -430,73 +429,7 @@ Cypilot DESIGN is decomposed into features organized around architectural layers
 > **EXTRACTED per `cpt-cypilot-adr-extract-sdlc-kit`**: This feature has been moved to the SDLC kit repository (`cyberfabric/cyber-pilot-kit-sdlc`). Code generation, brownfield support, feature lifecycle, PR config, and quickstart guides are now provided by the SDLC kit.
 
 
-### 2.10 [V2 → V3 Migration](features/v2-v3-migration.md) ⏳ HIGH
-
-- [x] `p1` - **ID**: `cpt-cypilot-feature-v2-v3-migration`
-
-- **Purpose**: Migrate existing Cypilot v2 projects (adapter-based, `artifacts.toml`, legacy kit structure) to v3 (file-package kits, `artifacts.toml`, global CLI installer, `config/` directory) with zero data loss.
-
-- **Depends On**: `cpt-cypilot-feature-core-infra`, `cpt-cypilot-feature-traceability-validation`
-
-- **Scope**:
-  - Detect v2 installation: identify `.cypilot-adapter/` directory, `artifacts.toml`, legacy kit paths
-  - Convert `artifacts.toml` → `{cypilot_path}/config/artifacts.toml`: map systems, artifacts, codebase, autodetect, ignore rules to TOML format
-  - Convert legacy adapter directory → `config/` structure: migrate adapter-level specs to `config/sysprompts/`
-  - Generate `{cypilot_path}/config/core.toml` from legacy config: extract kit registrations (system definitions go to `artifacts.toml` per `cpt-cypilot-adr-remove-system-from-core-toml`)
-  - Create `{cypilot_path}/config/AGENTS.md` from legacy adapter `AGENTS.md`: convert WHEN rules, update paths
-  - Migrate kit resources: install SDLC kit from cache, copy kit files into `{cypilot_path}/config/kits/sdlc/`
-  - Inject root `AGENTS.md` managed block with new `{cypilot_path}/config/AGENTS.md` path
-  - Regenerate all agent entry points for v3 structure
-  - Preserve all existing artifact files and ID definitions unchanged
-  - Validate migration completeness: all artifacts still resolve, all IDs still discoverable
-  - Rollback support: backup v2 state before migration
-
-- **Out of scope**:
-  - Ongoing v3 updates after migration (Feature 7)
-  - Manual migration of custom scripts or extensions
-  - Supporting v2 and v3 simultaneously in the same project
-
-- **Requirements Covered**:
-
-  - `p1` - `cpt-cypilot-fr-core-init`
-  - `p1` - `cpt-cypilot-fr-core-config`
-
-- **Design Principles Covered**:
-
-  - `p1` - `cpt-cypilot-principle-zero-harm`
-  - `p2` - `cpt-cypilot-principle-no-manual-maintenance`
-
-- **Design Constraints Covered**:
-
-  None
-
-- **Domain Model Entities**:
-  - Config
-  - System
-  - Artifact
-
-- **Design Components**:
-
-  - `p1` - `cpt-cypilot-component-config-manager`
-  - `p1` - `cpt-cypilot-component-kit-manager`
-  - `p1` - `cpt-cypilot-component-skill-engine`
-
-- **API**:
-  - `cpt migrate` (or detected automatically during `cpt init` in v2 project)
-  - `cpt migrate-config`
-
-- **Sequences**:
-
-  None (migration is a one-time init-like flow)
-
-- **Data**:
-  - `.cypilot-adapter/` → `config/` (converted)
-  - `artifacts.toml` → `{cypilot_path}/config/artifacts.toml` (converted)
-  - `.cypilot-adapter/AGENTS.md` → `{cypilot_path}/config/AGENTS.md` (converted)
-  - `.cypilot-adapter/specs/` → `config/sysprompts/` (converted)
-
-
-### 2.11 [Spec Coverage](features/spec-coverage.md) ⏳ HIGH
+### 2.10 [Spec Coverage](features/spec-coverage.md) ⏳ HIGH
 
 - [x] `p1` - **ID**: `cpt-cypilot-feature-spec-coverage`
 
@@ -550,7 +483,7 @@ Cypilot DESIGN is decomposed into features organized around architectural layers
   - Registered codebase entries from `{cypilot_path}/config/artifacts.toml`
 
 
-### 2.12 [Execution Plans](features/execution-plans.md) ✅ HIGH
+### 2.11 [Execution Plans](features/execution-plans.md) ✅ HIGH
 
 - [ ] `p1` - **ID**: `cpt-cypilot-feature-execution-plans`
 
@@ -607,7 +540,7 @@ Cypilot DESIGN is decomposed into features organized around architectural layers
   - `{cypilot_path}/.plans/{task-slug}/phase-{NN}-{slug}.md` — self-contained phase files
 
 
-### 2.13 [Multi-Repo Workspace Federation](features/workspace.md) ✅ DONE
+### 2.12 [Multi-Repo Workspace Federation](features/workspace.md) ✅ DONE
 
 - [x] `p1` - **ID**: `cpt-cypilot-feature-workspace`
 
@@ -685,7 +618,7 @@ Cypilot DESIGN is decomposed into features organized around architectural layers
   - `config/artifacts.toml` `source` fields — per-artifact source references
 
 
-### 2.14 [Subagent Registration](features/subagent-registration.md) ⏳ HIGH
+### 2.13 [Subagent Registration](features/subagent-registration.md) ⏳ HIGH
 
 - [x] `p1` - **ID**: `cpt-cypilot-feature-subagent-registration`
 
@@ -707,7 +640,7 @@ Cypilot DESIGN is decomposed into features organized around architectural layers
   - `cypilot generate-agents --agent <tool>`
 
 
-### 2.15 [ralphex Delegation](features/ralphex-delegation.md) ⏳ HIGH
+### 2.14 [ralphex Delegation](features/ralphex-delegation.md) ⏳ HIGH
 
 - [ ] `p1` - **ID**: `cpt-cypilot-feature-ralphex-delegation`
 
@@ -756,7 +689,7 @@ Cypilot DESIGN is decomposed into features organized around architectural layers
   - `p1` - `cpt-cypilot-component-config-manager` (ralphex path persistence)
 
 - **API**:
-  `cpt delegate` — CLI command that routes delegation requests to the `cypilot-ralphex` skill handler for discovery, export, and execution
+  `cpt delegate` — CLI command that routes delegation requests to the `cf-constructor-ralphex` skill handler for discovery, export, and execution
 
 - **Sequences**:
   - `cpt-cypilot-seq-ralphex-delegation`
@@ -768,7 +701,7 @@ Cypilot DESIGN is decomposed into features organized around architectural layers
   - `core.toml` `[integrations.ralphex]` — persisted executable path
 
 
-### 2.16 [Project-Level Extensibility](features/project-extensibility.md) ⏳ HIGH
+### 2.15 [Project-Level Extensibility](features/project-extensibility.md) ⏳ HIGH
 
 - [ ] `p1` - **ID**: `cpt-cypilot-feature-project-extensibility`
 
@@ -862,8 +795,6 @@ cpt-cypilot-feature-core-infra
     │    │
     │    └─→ cpt-cypilot-feature-spec-coverage
     │
-    ├─→ cpt-cypilot-feature-v2-v3-migration ←── cpt-cypilot-feature-traceability-validation
-    │
     └─→ cpt-cypilot-feature-workspace ←── cpt-cypilot-feature-traceability-validation
 
     (EXTRACTED to cyberfabric/cyber-pilot-kit-sdlc:)
@@ -879,7 +810,6 @@ cpt-cypilot-feature-core-infra
 - `cpt-cypilot-feature-execution-plans` requires `cpt-cypilot-feature-agent-integration`: plan workflow builds on existing generate/analyze workflows and agent entry points
 - `cpt-cypilot-feature-version-config` requires `cpt-cypilot-feature-core-infra`: update command needs config migration
 - `cpt-cypilot-feature-developer-experience` requires `cpt-cypilot-feature-traceability-validation`: VS Code plugin and doctor delegate to validator and traceability engine
-- `cpt-cypilot-feature-v2-v3-migration` requires `cpt-cypilot-feature-core-infra` and `cpt-cypilot-feature-traceability-validation`: migration needs v3 infrastructure and validation to verify completeness
 - `cpt-cypilot-feature-workspace` requires `cpt-cypilot-feature-core-infra` and `cpt-cypilot-feature-traceability-validation`: workspace federation builds on core context loading and extends cross-repo ID resolution in the traceability engine
 - `cpt-cypilot-feature-ralphex-delegation` requires `cpt-cypilot-feature-execution-plans` and `cpt-cypilot-feature-version-config`: delegation compiles exported plans from Cypilot's authoritative decomposition model and persists ralphex integration settings via the config manager
 - SDLC-specific features (F4, F6, F9) have been extracted to `cyberfabric/cyber-pilot-kit-sdlc` per `cpt-cypilot-adr-extract-sdlc-kit`

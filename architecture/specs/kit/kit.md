@@ -31,7 +31,7 @@ drivers:
 
 A **Kit** is a file package that provides domain-specific artifact and codebase definitions for Cypilot. Each kit contains ready-to-use files — rules, templates, checklists, examples, constraints, workflows, and skill extensions — maintained directly by kit authors.
 
-**What a kit provides** (installed into `{cypilot_path}/config/kits/<slug>/`):
+**What a kit provides** (installed into `{cf-constructor-path}/config/kits/<slug>/`):
 - Per-artifact files: `artifacts/<KIND>/` containing `template.md`, `rules.md`, `checklist.md`, `examples/example.md`
 - Codebase files: `codebase/` containing `rules.md`, `checklist.md`
 - Kit-wide: `constraints.toml` (structural validation rules), `conf.toml` (version metadata)
@@ -41,10 +41,10 @@ A **Kit** is a file package that provides domain-specific artifact and codebase 
 - Optional: `manifest.toml` — declarative installation manifest (see below)
 
 **Key properties**:
-- Kit registration (slug, version, config path, resolved resource bindings) is stored in `{cypilot_path}/config/core.toml`; resource binding paths are always relative to `{cypilot_path}` (never absolute; `..` is used for resources outside the adapter tree)
+- Kit registration (slug, version, config path, resolved resource bindings) is stored in `{cf-constructor-path}/config/core.toml`; resource binding paths are always relative to `{cf-constructor-path}` (never absolute; `..` is used for resources outside the adapter tree)
 - All kit files are user-editable after installation
 - User modifications are preserved across kit updates via file-level diff with interactive prompts
-- Kit version is stored in `{cypilot_path}/config/kits/<slug>/conf.toml`
+- Kit version is stored in `{cf-constructor-path}/config/kits/<slug>/conf.toml`
 
 > **Plugin system** (CLI subcommands, validation hooks, generation hooks) is planned for p2 and not covered in this specification.
 >
@@ -54,10 +54,10 @@ A **Kit** is a file package that provides domain-specific artifact and codebase 
 
 ## Kit Directory Structure
 
-When a kit is installed, all files are copied to `{cypilot_path}/config/kits/{slug}/` where users can edit them:
+When a kit is installed, all files are copied to `{cf-constructor-path}/config/kits/{slug}/` where users can edit them:
 
 ```
-{cypilot_path}/config/kits/<slug>/
+{cf-constructor-path}/config/kits/<slug>/
 ├── manifest.toml                  # (optional) Declarative installation manifest
 ├── conf.toml                      # Kit version metadata (slug, version, name)
 ├── SKILL.md                       # Per-kit skill instructions (user-editable)
@@ -87,7 +87,7 @@ Top-level `.gen/` retains only aggregate files: `AGENTS.md`, `SKILL.md`, `README
 **Flow**:
 1. `cpt init` / `cypilot kit install` installs kit files from source:
    - **If `manifest.toml` present**: validate manifest, prompt user for `user_modifiable` resource paths (offering defaults), copy each resource to its resolved path, resolve `{identifier}` template variables in kit files, register all resource bindings in `core.toml` under `[kits.{slug}.resources]`
-   - **If no `manifest.toml`**: copy all kit files from source to `{cypilot_path}/config/kits/{slug}/` (legacy behavior)
+   - **If no `manifest.toml`**: copy all kit files from source to `{cf-constructor-path}/config/kits/{slug}/` (legacy behavior)
    - Register kit in `core.toml`
 2. Regenerate `.gen/AGENTS.md` and `.gen/SKILL.md` to include the new kit's navigation and skill routing
 3. Users may freely edit any kit file at any time
@@ -97,7 +97,7 @@ Top-level `.gen/` retains only aggregate files: `AGENTS.md`, `SKILL.md`, `README
 
 | Mode | Command | Behavior |
 |------|---------|----------|
-| **Force** | `cypilot kit update --force` | Overwrites all kit files in `{cypilot_path}/config/kits/{slug}/`. User edits are discarded. |
+| **Force** | `cypilot kit update --force` | Overwrites all kit files in `{cf-constructor-path}/config/kits/{slug}/`. User edits are discarded. |
 | **Interactive** (default) | `cypilot kit update` | File-level diff: for each file, compare new version against user's installed copy. **IF** identical → no action. **IF** different → present unified diff with `[a]ccept / [d]ecline / [A]ccept all / [D]ecline all / [m]odify` prompts. |
 
 ---
@@ -128,7 +128,7 @@ Each kit file is authored directly by kit authors and user-editable after instal
 
 `taxonomy.md` is an optional kit-level document that aggregates information about the kit's artifact kinds into a single human-readable reference.
 
-**Location**: `{cypilot_path}/config/kits/{slug}/taxonomy.md`
+**Location**: `{cf-constructor-path}/config/kits/{slug}/taxonomy.md`
 
 This file is authored directly by kit authors as part of the kit file package.
 

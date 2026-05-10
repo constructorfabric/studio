@@ -36,7 +36,7 @@ class TestAdapterInfoCommand(unittest.TestCase):
             
             # New layout: AGENTS.md TOML block
             (project_root / "AGENTS.md").write_text(
-                '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = ".cypilot-adapter"\n```\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = ".cypilot-adapter"\n```\n',
                 encoding="utf-8",
             )
             
@@ -48,14 +48,14 @@ class TestAdapterInfoCommand(unittest.TestCase):
             rules_dir.mkdir(parents=True)
             
             # Create config/AGENTS.md
-            (config_dir / "AGENTS.md").write_text("""# Cypilot Adapter: TestProject
+            (config_dir / "AGENTS.md").write_text("""# Cyber Constructor Adapter: TestProject
 
 **Extends**: `../Cypilot/AGENTS.md`
 
 **Version**: 1.0
 """)
             # Create AGENTS.md at adapter root (for project_name extraction)
-            (adapter_dir / "AGENTS.md").write_text("""# Cypilot Adapter: TestProject
+            (adapter_dir / "AGENTS.md").write_text("""# Cyber Constructor Adapter: TestProject
 
 **Extends**: `../Cypilot/AGENTS.md`
 """)
@@ -99,15 +99,15 @@ class TestAdapterInfoCommand(unittest.TestCase):
 
             (project_root / ".git").mkdir()
             (project_root / "AGENTS.md").write_text(
-                '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = ".cypilot-adapter"\n```\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = ".cypilot-adapter"\n```\n',
                 encoding="utf-8",
             )
 
             adapter_dir = project_root / ".cypilot-adapter"
             adapter_dir.mkdir()
             (adapter_dir / "config").mkdir()
-            (adapter_dir / "config" / "AGENTS.md").write_text("# Cypilot Adapter: TestProject\n", encoding="utf-8")
-            (adapter_dir / "AGENTS.md").write_text("# Cypilot Adapter: TestProject\n\n**Extends**: `../AGENTS.md`\n", encoding="utf-8")
+            (adapter_dir / "config" / "AGENTS.md").write_text("# Cyber Constructor Adapter: TestProject\n", encoding="utf-8")
+            (adapter_dir / "AGENTS.md").write_text("# Cyber Constructor Adapter: TestProject\n\n**Extends**: `../AGENTS.md`\n", encoding="utf-8")
 
             # Minimal kit with constraints.toml (rules-only, no template.md)
             kit_root = adapter_dir / "kits" / "k"
@@ -180,7 +180,7 @@ class TestAdapterInfoCommand(unittest.TestCase):
             
             # Create AGENTS.md with Extends (for recursive search)
             agents_file = adapter_dir / "AGENTS.md"
-            agents_file.write_text("""# Cypilot Adapter: MyProject
+            agents_file.write_text("""# Cyber Constructor Adapter: MyProject
 
 **Extends**: `../../Cypilot/AGENTS.md`
 """)
@@ -229,7 +229,7 @@ class TestAdapterInfoCommand(unittest.TestCase):
             
             # AGENTS.md TOML block points to non-existent adapter dir
             (project_root / "AGENTS.md").write_text(
-                '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "invalid-path"\n```\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "invalid-path"\n```\n',
                 encoding="utf-8",
             )
             
@@ -284,7 +284,7 @@ class TestAdapterInfoCommand(unittest.TestCase):
             (adapter_dir / "config").mkdir()
             (adapter_dir / "config" / "rules").mkdir()
             agents_file = adapter_dir / "AGENTS.md"
-            agents_file.write_text("""# Cypilot Adapter: RealProject
+            agents_file.write_text("""# Cyber Constructor Adapter: RealProject
 
 **Extends**: `../Cypilot/AGENTS.md`
 """)
@@ -295,7 +295,7 @@ class TestAdapterInfoCommand(unittest.TestCase):
                 exit_code = main([
                     "info",
                     "--root", str(project_root),
-                    "--cypilot-root", str(cypilot_core)
+                    "--cf-constructor-root", str(cypilot_core)
                 ])
             
             # Verify it found the adapter, not Cypilot core
@@ -312,12 +312,12 @@ class TestAdapterHelperFunctions(unittest.TestCase):
     """Test suite for adapter discovery helper functions."""
     
     def test_find_project_root_with_agents_md(self):
-        """Test find_project_root locates AGENTS.md with @cpt:root-agents marker."""
+        """Test find_project_root locates AGENTS.md with @cf:root-agents marker."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             project_root = Path(tmp_dir) / "project"
             project_root.mkdir()
             (project_root / "AGENTS.md").write_text(
-                '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "adapter"\n```\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "adapter"\n```\n',
                 encoding="utf-8",
             )
             
@@ -357,7 +357,7 @@ class TestAdapterHelperFunctions(unittest.TestCase):
             
             # New layout: AGENTS.md TOML block + config/core.toml
             (project_root / "AGENTS.md").write_text(
-                '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "adapter"\n```\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "adapter"\n```\n',
                 encoding="utf-8",
             )
             adapter = project_root / "adapter" / "config"
@@ -401,7 +401,7 @@ class TestAdapterHelperFunctions(unittest.TestCase):
             
             # Create AGENTS.md TOML block
             (project_root / "AGENTS.md").write_text(
-                '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "custom-adapter"\n```\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "custom-adapter"\n```\n',
                 encoding="utf-8",
             )
             
@@ -425,7 +425,7 @@ class TestAdapterHelperFunctions(unittest.TestCase):
             adapter_dir.mkdir(parents=True)
             (adapter_dir / "config" / "rules").mkdir(parents=True)
             agents_file = adapter_dir / "AGENTS.md"
-            agents_file.write_text("""# Cypilot Adapter: Test
+            agents_file.write_text("""# Cyber Constructor Adapter: Test
 
 **Extends**: `../../Cypilot/AGENTS.md`
 """)
@@ -441,7 +441,7 @@ class TestAdapterHelperFunctions(unittest.TestCase):
             
             # Create AGENTS.md
             agents_file = adapter_dir / "AGENTS.md"
-            agents_file.write_text("""# Cypilot Adapter: MyProject
+            agents_file.write_text("""# Cyber Constructor Adapter: MyProject
 
 **Extends**: `../Cypilot/AGENTS.md`
 **Version**: 2.0
@@ -496,7 +496,7 @@ class TestAdapterInfoRegistryEdgeCases(unittest.TestCase):
     def _bootstrap(self, root):
         (root / ".git").mkdir()
         (root / "AGENTS.md").write_text(
-            '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "adapter"\n```\n<!-- /@cpt:root-agents -->\n',
+            '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "adapter"\n```\n<!-- /@cf:root-agents -->\n',
             encoding="utf-8",
         )
         adapter = root / "adapter"
@@ -561,7 +561,7 @@ class TestAdapterInfoWorkspaceSection(unittest.TestCase):
     def _bootstrap(self, root):
         (root / ".git").mkdir()
         (root / "AGENTS.md").write_text(
-            '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "adapter"\n```\n<!-- /@cpt:root-agents -->\n',
+            '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "adapter"\n```\n<!-- /@cf:root-agents -->\n',
             encoding="utf-8",
         )
         adapter = root / "adapter"
@@ -687,14 +687,14 @@ class TestHumanInfoFormatterBranches(unittest.TestCase):
         from cypilot.commands.adapter_info import _human_info
         data = {
             "project_root": tempfile.gettempdir(),
-            "variables": {"cypilot_path": tempfile.gettempdir() + "/test", "project_root": tempfile.gettempdir()},
+            "variables": {"cf-constructor-path": tempfile.gettempdir() + "/test", "project_root": tempfile.gettempdir()},
         }
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_info(data)
         output = buf.getvalue()
         self.assertIn("Variables", output)
-        self.assertIn("cypilot_path", output)
+        self.assertIn("cf-constructor-path", output)
 
     def test_variables_degraded_warning(self):
         from cypilot.commands.adapter_info import _human_info
@@ -738,7 +738,7 @@ class TestAdapterInfoResolveVarsFailure(unittest.TestCase):
     def _bootstrap(self, root):
         (root / ".git").mkdir()
         (root / "AGENTS.md").write_text(
-            '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "adapter"\n```\n<!-- /@cpt:root-agents -->\n',
+            '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "adapter"\n```\n<!-- /@cf:root-agents -->\n',
             encoding="utf-8",
         )
         adapter = root / "adapter"

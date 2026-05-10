@@ -44,9 +44,9 @@ drivers:
 
 ## Location
 
-**Per-artifact**: `{cypilot_path}/config/kits/<slug>/artifacts/<KIND>/checklist.md`
+**Per-artifact**: `{cf-constructor-path}/config/kits/<slug>/artifacts/<KIND>/checklist.md`
 
-**Codebase**: `{cypilot_path}/config/kits/<slug>/codebase/checklist.md`
+**Codebase**: `{cf-constructor-path}/config/kits/<slug>/codebase/checklist.md`
 
 ---
 

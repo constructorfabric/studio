@@ -1,5 +1,5 @@
 ---
-cypilot: true
+cf-constructor: true
 type: requirement
 name: Language Complexity (global UX rule)
 version: 1.0
@@ -36,7 +36,7 @@ Methodology MUST self-check the resolved level on every chat message and every a
 
 Priority order:
 1. **Mid-session override**: `change language complexity to {low|middle|high}` (in chat) — session-only
-2. **Project config**: `[language] complexity = "{level}"` in `{cypilot_path}/config/core.toml`
+2. **Project config**: `[language] complexity = "{level}"` in `{cf-constructor-path}/config/core.toml`
 3. **Default**: `middle`
 
 `remember new language complexity` persists the current value to `core.toml` (writes the `[language]` table if absent; preserves unrelated keys).

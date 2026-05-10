@@ -758,6 +758,106 @@ class TestCmdTocValidation:
         assert rc == 1
 
 
+class TestStripManualToc:
+    """Cover _strip_manual_toc detection + blank-line stripping (lines 452-471)."""
+
+    def test_removes_manual_toc_section(self, tmp_path: Path):
+        """File with manual ## Table of Contents heading + content gets stripped."""
+        f = tmp_path / "doc.md"
+        # Manual TOC section sandwiched between H1 and another section.
+        # process_file calls _strip_manual_toc which detects the heading
+        # (lines 452-457) and trims surrounding blank lines (463-471).
+        f.write_text(
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "- [Old A](#old-a)\n"
+            "- [Old B](#old-b)\n\n"
+            "## Section A\n\n"
+            "## Section B\n",
+            encoding="utf-8",
+        )
+        result = _process_file(f)
+        assert result.get("manual_toc_removed") is True
+        content = f.read_text(encoding="utf-8")
+        # Old TOC entries gone; new marker-based TOC inserted
+        assert "[Old A]" not in content
+        assert "<!-- toc -->" in content
+
+    def test_manual_toc_followed_by_separator(self, tmp_path: Path):
+        """Manual TOC ended by --- separator (next_heading_or_separator)."""
+        f = tmp_path / "doc.md"
+        f.write_text(
+            "# Title\n\n"
+            "## Table of Contents\n\n"
+            "- [A](#a)\n\n"
+            "---\n\n"
+            "## A\n",
+            encoding="utf-8",
+        )
+        result = _process_file(f)
+        assert result.get("manual_toc_removed") is True
+
+
+class TestInsertTocHeadingFenceAware:
+    """Cover insert_toc_heading fenced-code skip (lines 353-356, 396-399, 413)."""
+
+    def test_skips_fence_when_searching_for_existing_toc(self):
+        """A fake `## Table of Contents` inside a fence must NOT match."""
+        content = (
+            "# Title\n\n"
+            "```\n"
+            "## Table of Contents\n"
+            "```\n\n"
+            "## Real Section\n"
+        )
+        result = insert_toc_heading(content)
+        # The fenced "## Table of Contents" must be ignored — a fresh TOC
+        # section is inserted instead of being treated as existing.
+        assert "## Table of Contents" in result
+        assert "[Real Section](#real-section)" in result
+
+    def test_fallback_prepend_when_no_separator_no_heading(self):
+        """If no --- separator AND no heading line is found, fall back to prepend (line 413)."""
+        # parse_headings (with skip_first=True) needs >=1 heading after the first to
+        # produce a TOC. To trigger the prepend fallback we need a content where
+        # the first heading is consumed by skip_first AND no other heading/--- exists.
+        # Easiest: provide ONLY headings buried inside a fence (so iterations skip),
+        # plus one real heading that's "first" but ensures the loop never finds a
+        # subsequent non-fenced heading.
+        # Use a single H2 (becomes a heading via parse_headings without skip_first).
+        # Trigger: after frontmatter loop and ---  loop, nothing matches in fence-aware
+        # heading scan ⇒ fallback.
+        content = (
+            "## A\n"
+            "## B\n"
+        )
+        result = insert_toc_heading(content)
+        # TOC section was inserted somewhere
+        assert "## Table of Contents" in result
+        assert "[A](#a)" in result or "[B](#b)" in result
+
+
+class TestInsertTocMarkersFenceAware:
+    """Cover insert_toc_markers fenced-code skip during H1 search (lines 293-296)."""
+
+    def test_h1_inside_fence_is_ignored(self):
+        """An H1 inside a fenced block must NOT be picked as the insertion anchor."""
+        content = (
+            "```\n"
+            "# fake h1 inside fence\n"
+            "```\n"
+            "# Real H1\n\n"
+            "## A\n\n"
+            "## B\n"
+        )
+        result = insert_toc_markers(content)
+        assert "<!-- toc -->" in result
+        # Real H1 should still come before the toc markers.
+        real_h1 = result.index("# Real H1")
+        toc_pos = result.index("<!-- toc -->")
+        assert real_h1 < toc_pos
+
+
 class TestArtifactKindConstraintsToc:
     def test_toc_default_true(self):
         from cypilot.utils.constraints import ArtifactKindConstraints

@@ -75,7 +75,7 @@ def _collect_cross_repo_artifacts(
 # @cpt-dod:cpt-cypilot-dod-traceability-validation-cross-refs:p1
 # @cpt-dod:cpt-cypilot-dod-traceability-validation-cdsl:p1
 def cmd_validate(argv: List[str]) -> int:
-    """Validate Cypilot artifacts and code traceability.
+    """Validate Cyber Constructor artifacts and code traceability.
 
     Performs deterministic validation checks (structure, cross-references,
     task statuses, traceability markers) and produces a machine-readable report.
@@ -85,9 +85,9 @@ def cmd_validate(argv: List[str]) -> int:
     # @cpt-begin:cpt-cypilot-flow-traceability-validation-validate:p1:inst-user-validate
     p = argparse.ArgumentParser(
         prog="validate",
-        description="Validate Cypilot artifacts and code traceability (structure + cross-references + traceability)",
+        description="Validate Cyber Constructor artifacts and code traceability (structure + cross-references + traceability)",
     )
-    p.add_argument("--artifact", default=None, help="Path to specific Cypilot artifact (if omitted, validates all registered Cypilot artifacts)")
+    p.add_argument("--artifact", default=None, help="Path to specific Cyber Constructor artifact (if omitted, validates all registered artifacts)")
     p.add_argument("--skip-code", action="store_true", help="Skip code traceability validation")
     p.add_argument("--verbose", action="store_true", help="Print full validation report")
     p.add_argument("--output", default=None, help="Write report to file instead of stdout")
@@ -101,7 +101,7 @@ def cmd_validate(argv: List[str]) -> int:
     ctx = get_context()
     if not ctx:
         # @cpt-begin:cpt-cypilot-state-traceability-validation-report:p1:inst-error
-        ui.result({"status": "ERROR", "message": "Cypilot not initialized. Run 'cypilot init' first."})
+        ui.result({"status": "ERROR", "message": "Cyber Constructor not initialized. Run 'cfc init' first."})
         return 1
         # @cpt-end:cpt-cypilot-state-traceability-validation-report:p1:inst-error
 
@@ -207,7 +207,7 @@ def cmd_validate(argv: List[str]) -> int:
             # Non-workspace: load context from artifact's location
             ctx = CypilotContext.load(artifact_path.parent)
             if not ctx:
-                ui.result({"status": "ERROR", "message": "Cypilot not initialized"})
+                ui.result({"status": "ERROR", "message": "Cyber Constructor not initialized"})
                 return 1
         # @cpt-end:cpt-cypilot-algo-workspace-determine-target:p1:inst-target-resolve-abs
 
@@ -240,10 +240,10 @@ def cmd_validate(argv: List[str]) -> int:
                     template_path = (project_root / template_path_str).resolve()
                     artifacts_to_validate.append((artifact_path, template_path, artifact_meta.kind, artifact_meta.traceability, system_node.kit))
         if not artifacts_to_validate:
-            ui.result({"status": "ERROR", "message": f"Artifact not in Cypilot registry: {args.artifact}"})
+            ui.result({"status": "ERROR", "message": f"Artifact not in registry: {args.artifact}"})
             return 1
     else:
-        # Validate all Cypilot artifacts
+        # Validate all registered artifacts
         for artifact_meta, system_node in meta.iter_all_artifacts():
             pkg = meta.get_kit(system_node.kit)
             if not pkg or not pkg.is_cypilot_format():
@@ -271,7 +271,7 @@ def cmd_validate(argv: List[str]) -> int:
                 "errors": ctx_errors,
             }, human_fn=lambda d: _human_validate(d))
             return 2
-        ui.result({"status": "PASS", "artifacts_validated": 0, "error_count": 0, "warning_count": 0, "message": "No Cypilot artifacts found in registry"})
+        ui.result({"status": "PASS", "artifacts_validated": 0, "error_count": 0, "warning_count": 0, "message": "No artifacts found in registry"})
         return 0
     # @cpt-end:cpt-cypilot-flow-traceability-validation-validate:p1:inst-resolve-artifacts
 
@@ -423,7 +423,7 @@ def cmd_validate(argv: List[str]) -> int:
     # @cpt-end:cpt-cypilot-flow-traceability-validation-validate:p1:inst-if-structure-fail
 
     # @cpt-begin:cpt-cypilot-flow-traceability-validation-validate:p1:inst-cross-validate
-    # Cross-reference validation - load ALL Cypilot artifacts for context
+    # Cross-reference validation - load ALL registered artifacts for context
     # When validating a single artifact, we still need all artifacts to check references
     all_artifacts_for_cross: List[ArtifactRecord] = list(artifact_records)
     validated_paths = {str(p) for p, _, _, _, _ in artifacts_to_validate}
@@ -920,7 +920,7 @@ def _run_content_language_check(
     both workspace mode and single-repo mode.  Returns an empty list when
     allowed_content_languages is not configured.
 
-    Config failures (malformed .cypilot-workspace.toml) are surfaced as
+    Config failures (malformed .cf-constructor-workspace.toml) are surfaced as
     FILE_LOAD_ERROR entries rather than silently disabling validation.
     """
     try:

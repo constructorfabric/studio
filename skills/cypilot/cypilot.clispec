@@ -1,12 +1,12 @@
 COMMAND init
 SYNOPSIS: python3 scripts/cypilot.py init [options]
-DESCRIPTION: Initialize Cypilot config for a project
+DESCRIPTION: Initialize Cyber Constructor config for a project
 
 ARGUMENTS:
 
 OPTIONS:
-  --project-root  <path>  Project root directory (default: parent of Cypilot core)
-  --cypilot-root  <path>  Explicit Cypilot core root (optional override)
+  --project-root  <path>  Project root directory (default: current directory)
+  --install-dir  <path>  Cyber Constructor directory relative to project root (default: .cf-constructor)
   --project-name  <string>  Project name used in AGENTS.md (default: project root folder name)
   --yes  <boolean>  Do not prompt; accept defaults
   --dry-run  <boolean>  Compute changes without writing files
@@ -30,13 +30,13 @@ RELATED:
 
 COMMAND validate
 SYNOPSIS: python3 scripts/cypilot.py validate [--artifact <path>] [--skip-code] [options]
-DESCRIPTION: Validate Cypilot artifacts and code traceability. Validates structure against template, cross-references between artifacts, task statuses, and code traceability markers. By default validates both artifacts and code; use --skip-code to validate artifacts only.
+DESCRIPTION: Validate Cyber Constructor artifacts and code traceability. Validates structure against template, cross-references between artifacts, task statuses, and code traceability markers. By default validates both artifacts and code; use --skip-code to validate artifacts only.
 WORKFLOW: design-validate, features-validate, feature-validate, prd-validate, adr-validate, code-validate
 
 ARGUMENTS:
 
 OPTIONS:
-  --artifact  <path>  Path to specific Cypilot artifact (if omitted, validates all registered Cypilot artifacts)
+  --artifact  <path>  Path to specific Cyber Constructor artifact (if omitted, validates all registered Cyber Constructor artifacts)
   --skip-code  <boolean>  Skip code traceability validation (by default, code is also validated)
   --verbose  <boolean>  Print full validation report (default: compact summary)
   --output  <path>  Save validation report to file (default: stdout)
@@ -45,7 +45,7 @@ OPTIONS:
 
 EXIT CODES:
   0  Validation passed
-  1  File system error or no cypilot found
+  1  File system error or no cf-constructor found
   2  Validation failed
 
 OUTPUT:
@@ -78,7 +78,7 @@ RELATED:
 
 COMMAND validate-kits
 SYNOPSIS: python3 scripts/cypilot.py validate-kits [--kit <id>] [--template <path>] [options]
-DESCRIPTION: Validate Cypilot kit configuration and template files. Checks kit definitions in artifacts.toml and validates template frontmatter, paired markers, and valid marker types/attributes. (Legacy alias: validate-rules; legacy flag alias: --rule)
+DESCRIPTION: Validate Cyber Constructor kit configuration and template files. Checks kit definitions in artifacts.toml and validates template frontmatter, paired markers, and valid marker types/attributes. (Legacy alias: validate-rules; legacy flag alias: --rule)
 WORKFLOW: kits
 
 ARGUMENTS:
@@ -90,7 +90,7 @@ OPTIONS:
 
 EXIT CODES:
   0  Validation passed
-  1  File system error or no cypilot found
+  1  File system error or no cf-constructor found
   2  Validation failed
 
 OUTPUT:
@@ -103,7 +103,7 @@ OUTPUT:
 
 EXAMPLE:
   $ python3 scripts/cypilot.py validate-kits
-  $ python3 scripts/cypilot.py validate-kits --kit cypilot-sdlc
+  $ python3 scripts/cypilot.py validate-kits --kit cf-constructor-sdlc
   $ python3 scripts/cypilot.py validate-kits --template templates/PRD.template.md
   $ python3 scripts/cypilot.py validate-kits --verbose
 
@@ -114,22 +114,22 @@ RELATED:
 
 COMMAND list-ids
 SYNOPSIS: python3 scripts/cypilot.py list-ids [--artifact <path>] [options]
-DESCRIPTION: List all Cypilot IDs from artifacts using template-based parsing. If no artifact is specified, scans all Cypilot-format artifacts registered in the config. Use --include-code to also scan code files for Cypilot marker references.
+DESCRIPTION: List all Cyber Constructor IDs from artifacts using template-based parsing. If no artifact is specified, scans all Cyber Constructor-format artifacts registered in the config. Use --include-code to also scan code files for Cyber Constructor marker references.
 
 ARGUMENTS:
 
 OPTIONS:
-  --artifact  <path>  Path to Cypilot artifact file (optional - if omitted, scans all registered Cypilot artifacts)
+  --artifact  <path>  Path to Cyber Constructor artifact file (optional - if omitted, scans all registered Cyber Constructor artifacts)
   --pattern  <string>  Filter IDs by substring or regex pattern
   --regex  <boolean>  Treat pattern as regular expression
   --kind  <string>  Filter by ID kind from template markers (e.g., 'requirement', 'spec', 'actor')
   --all  <boolean>  Include duplicate IDs in results
-  --include-code  <boolean>  Also scan code files for Cypilot marker references
+  --include-code  <boolean>  Also scan code files for Cyber Constructor marker references
   --source  <string>  Filter by workspace source name (workspace mode only)
 
 EXIT CODES:
   0  Success
-  1  File system error, artifact not found, or no cypilot found
+  1  File system error, artifact not found, or no cf-constructor found
 
 OUTPUT:
   JSON object with:
@@ -159,11 +159,11 @@ DESCRIPTION: List ID kinds that actually exist in artifacts. Parses artifacts ag
 ARGUMENTS:
 
 OPTIONS:
-  --artifact  <path>  Scan specific artifact (if omitted, scans all registered Cypilot artifacts)
+  --artifact  <path>  Scan specific artifact (if omitted, scans all registered Cyber Constructor artifacts)
 
 EXIT CODES:
   0  Success
-  1  File system error, no cypilot found, or artifact not in registry
+  1  File system error, no cf-constructor found, or artifact not in registry
 
 OUTPUT:
   JSON object with:
@@ -183,14 +183,14 @@ RELATED:
 
 COMMAND get-content
 SYNOPSIS: python3 scripts/cypilot.py get-content (--artifact <path> | --code <path>) --id <string> [--inst <string>]
-DESCRIPTION: Get content block for a specific Cypilot ID. Works with both artifacts (template-based parsing) and code files (Cypilot marker parsing).
+DESCRIPTION: Get content block for a specific Cyber Constructor ID. Works with both artifacts (template-based parsing) and code files (Cyber Constructor marker parsing).
 
 ARGUMENTS:
 
 OPTIONS:
-  --artifact  <path>  Path to Cypilot artifact file (mutually exclusive with --code)
+  --artifact  <path>  Path to Cyber Constructor artifact file (mutually exclusive with --code)
   --code  <path>  Path to code file (mutually exclusive with --artifact)
-  --id  <string>  required  Cypilot ID to retrieve content for
+  --id  <string>  required  Cyber Constructor ID to retrieve content for
   --inst  <string>  Instruction ID for code blocks (e.g., 'inst-validate-input')
 
 EXIT CODES:
@@ -211,24 +211,24 @@ RELATED:
 
 COMMAND info
 SYNOPSIS: python3 scripts/cypilot.py info [options]
-DESCRIPTION: Discover Cypilot configuration and location in a project
+DESCRIPTION: Discover Cyber Constructor configuration and location in a project
 
 ARGUMENTS:
 
 OPTIONS:
   --root  <path>  Project root directory to search from (default: current directory)
-  --cypilot-root  <path>  Known Cypilot core location for enhanced validation
+  --cf-constructor-root  <path>  Known Cyber Constructor core location for enhanced validation
 
 EXIT CODES:
-  0  Cypilot found
+  0  Cyber Constructor found
   1  File system error
-  2  Cypilot not found
+  2  Cyber Constructor not found
 
 OUTPUT:
   JSON object with:
   - status: FOUND or NOT_FOUND
   - project_root: Resolved project root path
-  - cypilot_dir: Resolved Cypilot directory path
+  - constructor_dir: Resolved Cyber Constructor directory path
   - project_name: Name derived from project root directory
   - kit_details: Per-kit metadata (version, content_dirs, artifact_kinds, workflows, resources)
   - artifacts_registry: Parsed artifacts.toml contents
@@ -239,7 +239,7 @@ OUTPUT:
 EXAMPLE:
   $ python3 scripts/cypilot.py info
   $ python3 scripts/cypilot.py info --root /path/to/project
-  $ python3 scripts/cypilot.py info --root . --cypilot-root ../Cypilot
+  $ python3 scripts/cypilot.py info --root . --cf-constructor-root ../CyberConstructor
 
 RELATED:
   - @CLI.init
@@ -249,7 +249,7 @@ RELATED:
 
 COMMAND resolve-vars
 SYNOPSIS: python3 scripts/cypilot.py resolve-vars [options]
-DESCRIPTION: Resolve all template variables ({adr_template}, {scripts}, {cypilot_path}, etc.) to absolute file paths. Sources: system variables (cypilot_path, project_root) merged with kit resource bindings from core.toml. Use --kit to filter to a single kit. Use --flat for a plain variable-to-path dict.
+DESCRIPTION: Resolve all template variables ({adr_template}, {scripts}, {cf-constructor-path}, etc.) to absolute file paths. Sources: system variables (cf-constructor-path, project_root) merged with kit resource bindings from core.toml. Use --kit to filter to a single kit. Use --flat for a plain variable-to-path dict.
 
 ARGUMENTS:
 
@@ -260,12 +260,12 @@ OPTIONS:
 
 EXIT CODES:
   0  Variables resolved successfully
-  1  Error (no project root, no cypilot directory, or kit not found)
+  1  Error (no project root, no cf-constructor directory, or kit not found)
 
 OUTPUT:
   JSON object with:
   - status: OK or ERROR
-  - system: System-level variables (cypilot_path, project_root)
+  - system: System-level variables (cf-constructor-path, project_root)
   - kits: Per-kit resource variables {slug: {var: path}}
   - variables: Flat merged dict of all variables for format_map() substitution
   When --flat, outputs only the flat variables dict (no status key).
@@ -282,17 +282,17 @@ RELATED:
 
 COMMAND where-defined
 SYNOPSIS: python3 scripts/cypilot.py where-defined --id <id> [options]
-DESCRIPTION: Find where an Cypilot ID is defined using template-based parsing. Scans all registered Cypilot artifacts.
+DESCRIPTION: Find where a Cyber Constructor ID is defined using template-based parsing. Scans all registered Cyber Constructor artifacts.
 
 ARGUMENTS:
-  id  <string>  required  Cypilot ID to find definition for
+  id  <string>  required  Cyber Constructor ID to find definition for
 
 OPTIONS:
   --artifact  <path>  Limit search to specific artifact (optional)
 
 EXIT CODES:
   0  Exactly one definition found, or no artifacts available to scan (NO_ARTIFACTS)
-  1  File system error or no cypilot found
+  1  File system error or no cf-constructor found
   2  ID not found after scanning (NOT_FOUND) or ambiguous (multiple definitions)
 
 EXAMPLE:
@@ -308,10 +308,10 @@ RELATED:
 
 COMMAND where-used
 SYNOPSIS: python3 scripts/cypilot.py where-used --id <id> [options]
-DESCRIPTION: Find all references to an Cypilot ID using template-based parsing. Scans all registered Cypilot artifacts.
+DESCRIPTION: Find all references to a Cyber Constructor ID using template-based parsing. Scans all registered Cyber Constructor artifacts.
 
 ARGUMENTS:
-  id  <string>  required  Cypilot ID to find references for
+  id  <string>  required  Cyber Constructor ID to find references for
 
 OPTIONS:
   --artifact  <path>  Limit search to specific artifact (optional)
@@ -319,7 +319,7 @@ OPTIONS:
 
 EXIT CODES:
   0  Success (references found or not found)
-  1  File system error or no cypilot found
+  1  File system error or no cf-constructor found
 
 EXAMPLE:
   $ python3 scripts/cypilot.py where-used --id cpt-myapp-actor-admin
@@ -334,15 +334,15 @@ RELATED:
 
 COMMAND generate-agents
 SYNOPSIS: python3 scripts/cypilot.py generate-agents --agent <name> [options]
-DESCRIPTION: Generate/update agent-specific workflow proxies and skill outputs. Creates unified proxy files for workflows (cypilot-generate, cypilot-analyze, cypilot-plan, cypilot-workspace) and the cypilot skill entry point. Supports windsurf, cursor, claude, copilot, openai.
+DESCRIPTION: Generate/update agent-specific workflow proxies and skill outputs. Creates unified proxy files for workflows (cfc-generate, cfc-analyze, cfc-plan, cfc-workspace) and the cfc skill entry point. Supports windsurf, cursor, claude, copilot, openai.
 ARGUMENTS:
 
 OPTIONS:
   --agent  <string>  Agent/IDE key (windsurf, cursor, claude, copilot, openai). Omit to init all supported agents.
   --openai  <boolean>  Shortcut for --agent openai (OpenAI Codex)
   --root  <path>  Project root directory to search from (default: current directory)
-  --cypilot-root  <path>  Explicit Cypilot core root (optional override)
-  --config  <path>  Path to unified agents config JSON (default: {project-root}/cypilot-agents.json)
+  --cf-constructor-root  <path>  Explicit Cyber Constructor core root (optional override)
+  --config  <path>  Path to unified agents config JSON (default: {project-root}/cf-constructor-agents.json)
   --dry-run  <boolean>  Compute changes without writing files
 
 EXIT CODES:
@@ -382,14 +382,14 @@ OPTIONS:
 
 EXIT CODES:
   0  All examples pass validation
-  1  File system error or no cypilot found
+  1  File system error or no cf-constructor found
   2  One or more examples failed validation
 
 OUTPUT:
   JSON object emitted by `commands/self_check.py` with the following top-level fields:
   - status: PASS or FAIL (overall — FAIL if any per-template result fails)
   - project_root: Absolute path of the resolved project root
-  - cypilot_dir: Absolute path of the resolved Cypilot adapter directory
+  - constructor_dir: Absolute path of the resolved Cyber Constructor adapter directory
   - kits_checked: Number of kits checked
   - templates_checked: Number of per-template results returned (length of `results`)
   - results: Array of per-template result objects (one per `(kit, kind)` checked)
@@ -408,7 +408,7 @@ OUTPUT:
 
 EXAMPLE:
   $ python3 scripts/cypilot.py self-check
-  $ python3 scripts/cypilot.py self-check --kit cypilot-sdlc
+  $ python3 scripts/cypilot.py self-check --kit cf-constructor-sdlc
   $ python3 scripts/cypilot.py self-check --verbose
 
 RELATED:
@@ -504,7 +504,7 @@ EXAMPLE:
 
 RELATED:
   - @CLI.info
-  - @Workflow.cypilot-plan
+  - @Workflow.cfc-plan
 ---
 
 COMMAND validate-toc
@@ -542,7 +542,7 @@ RELATED:
 
 COMMAND update
 SYNOPSIS: python3 scripts/cypilot.py update [options]
-DESCRIPTION: Update an existing Cypilot installation. Refreshes .core/ from cache, updates kit reference copies, compares blueprint versions (skip same, warn if migration needed), regenerates .gen/ from user blueprints, and ensures config/ scaffold. Never overwrites user config files.
+DESCRIPTION: Update an existing Cyber Constructor installation. Refreshes .core/ from cache, updates kit reference copies, compares blueprint versions (skip same, warn if migration needed), regenerates .gen/ from user blueprints, and ensures config/ scaffold. Never overwrites user config files.
 
 ARGUMENTS:
 
@@ -560,7 +560,7 @@ OUTPUT:
   JSON object with:
   - status: PASS, WARN, or ABORTED
   - project_root: Resolved project root path
-  - cypilot_dir: Resolved Cypilot directory path
+  - constructor_dir: Resolved Cyber Constructor directory path
   - dry_run: Whether dry-run mode was used
   - actions: Object with core_update, kits, gen_agents, gen_skill, config_* statuses
   - errors: List of errors (if any)
@@ -592,7 +592,7 @@ OPTIONS:
 
 EXIT CODES:
   0  Coverage meets thresholds (or no thresholds specified)
-  1  Error (no cypilot found, no context)
+  1  Error (no cf-constructor found, no context)
   2  Coverage below specified threshold
 
 OUTPUT:
@@ -627,7 +627,7 @@ OPTIONS:
 
 EXIT CODES:
   0  Installation successful
-  1  Error (no project root, no cypilot directory)
+  1  Error (no project root, no cf-constructor directory)
   2  Invalid source or kit already installed
 
 OUTPUT:
@@ -754,70 +754,9 @@ RELATED:
   - @CLI.update
 ---
 
-COMMAND migrate
-SYNOPSIS: python3 scripts/cypilot.py migrate [options]
-DESCRIPTION: Migrate a v2 Cypilot project to v3. Converts adapter-based layout to blueprint-based three-directory layout (.core/, .gen/, config/), migrates artifacts.json to artifacts.toml, converts AGENTS.md format, installs kits, and validates migration.
-
-ARGUMENTS:
-
-OPTIONS:
-  --project-root  <path>  Project root directory (default: current directory)
-  --install-dir  <string>  Cypilot directory relative to project root (default: derived from v2 core path)
-  --yes  <boolean>  Skip confirmation prompt
-  --dry-run  <boolean>  Detect and show plan only
-
-EXIT CODES:
-  0  Migration successful, dry-run complete, or cancelled by user
-  1  Error (detection failed, migration failed)
-
-OUTPUT:
-  JSON object with:
-  - status: PASS, DRY_RUN, CANCELLED, or ERROR
-  - Migration details (steps performed, files converted, etc.)
-
-EXAMPLE:
-  $ python3 scripts/cypilot.py migrate
-  $ python3 scripts/cypilot.py migrate --dry-run
-  $ python3 scripts/cypilot.py migrate --yes
-  $ python3 scripts/cypilot.py migrate --project-root /path/to/project
-
-RELATED:
-  - @CLI.migrate-config
-  - @CLI.init
-  - @CLI.update
----
-
-COMMAND migrate-config
-SYNOPSIS: python3 scripts/cypilot.py migrate-config [options]
-DESCRIPTION: Convert remaining legacy JSON config files to TOML format. Scans for .json config files in the Cypilot directory and converts them to .toml equivalents.
-
-ARGUMENTS:
-
-OPTIONS:
-  --project-root  <path>  Project root directory (default: current directory)
-
-EXIT CODES:
-  0  Conversion complete
-
-OUTPUT:
-  JSON object with:
-  - converted_count: Number of files converted
-  - skipped_count: Number of files skipped
-  - converted: List of converted file paths
-  - skipped: List of skipped file paths
-
-EXAMPLE:
-  $ python3 scripts/cypilot.py migrate-config
-  $ python3 scripts/cypilot.py migrate-config --project-root /path/to/project
-
-RELATED:
-  - @CLI.migrate
-  - @CLI.update
----
-
 COMMAND workspace-init
 SYNOPSIS: python3 scripts/cypilot.py workspace-init [--root <path>] [--output <path>] [--inline] [--force] [--max-depth <N>] [--dry-run]
-DESCRIPTION: Initialize a multi-repo workspace by scanning nested sub-directories for repos with cypilot directories (.git or AGENTS.md marker). Generates a standalone .cypilot-workspace.toml or inline [workspace] section in config/core.toml. Creates an empty workspace when no nested repos are found, allowing incremental source addition via workspace-add.
+DESCRIPTION: Initialize a multi-repo workspace by scanning nested sub-directories for repos with cf-constructor directories (.git or AGENTS.md marker). Generates a standalone .cf-constructor-workspace.toml or inline [workspace] section in config/core.toml. Creates an empty workspace when no nested repos are found, allowing incremental source addition via workspace-add.
 WORKFLOW: workspace
 
 ARGUMENTS:
@@ -870,7 +809,7 @@ OPTIONS:
   --url  <string>  Git remote URL (HTTPS or SSH) for the source
   --branch  <string>  Git branch/ref to checkout
   --role  <string>  Source role: artifacts, codebase, kits, full (default: full)
-  --adapter  <path>  Path to cypilot dir within the source
+  --adapter  <path>  Path to cf-constructor dir within the source
   --inline  <boolean>  Add source inline to config/core.toml instead of standalone workspace file
   --force  <boolean>  Replace existing source with the same name instead of returning an error
 
@@ -883,7 +822,7 @@ OUTPUT:
   JSON object with:
   - status: ADDED
   - message: Human-readable description of the action
-  - config_path: Path to workspace config file (standalone .cypilot-workspace.toml or inline core.toml)
+  - config_path: Path to workspace config file (standalone .cf-constructor-workspace.toml or inline core.toml)
   - source: Object with name, role (always present); path (when path-based), url (when URL-based); adapter, branch (included only when set)
   - replaced: true if an existing source was overwritten (omitted for new sources)
 
@@ -899,7 +838,7 @@ RELATED:
 
 COMMAND workspace-info
 SYNOPSIS: python3 scripts/cypilot.py workspace-info
-DESCRIPTION: Display workspace configuration, list sources, and show per-source status including cypilot directory detection, artifact counts, and reachability.
+DESCRIPTION: Display workspace configuration, list sources, and show per-source status including cf-constructor directory detection, artifact counts, and reachability.
 WORKFLOW: workspace
 
 ARGUMENTS:
@@ -914,7 +853,7 @@ OUTPUT:
   JSON object with:
   - status: OK or ERROR
   - version: Workspace config version string
-  - config_path: Path to workspace config file (standalone .cypilot-workspace.toml or inline core.toml)
+  - config_path: Path to workspace config file (standalone .cf-constructor-workspace.toml or inline core.toml)
   - is_inline: Whether workspace is inline in core.toml
   - project_root: Path to the project root directory
   - sources_count: Number of configured sources
@@ -943,10 +882,10 @@ RELATED:
 
 COMMAND delegate
 SYNOPSIS: python3 scripts/cypilot.py delegate <plan_dir> [options]
-DESCRIPTION: Compile a Cypilot plan and delegate to ralphex for autonomous execution. Discovers ralphex, validates availability, exports the plan, and invokes the delegation command. Supports dry-run mode to assemble the command without invoking.
+DESCRIPTION: Compile a Cyber Constructor plan and delegate to ralphex for autonomous execution. Discovers ralphex, validates availability, exports the plan, and invokes the delegation command. Supports dry-run mode to assemble the command without invoking.
 
 ARGUMENTS:
-  plan_dir  <path>  required  Path to the Cypilot plan directory containing plan.toml
+  plan_dir  <path>  required  Path to the Cyber Constructor plan directory containing plan.toml
 
 OPTIONS:
   --mode  <string>  Delegation mode: execute, tasks-only, or review (default: execute)

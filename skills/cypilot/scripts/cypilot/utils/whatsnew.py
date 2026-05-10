@@ -2,7 +2,7 @@
 Whatsnew Display Utilities
 
 Shared helpers for displaying whatsnew entries from whatsnew.toml files.
-Used by both `cpt update` (core) and `cpt kit update` (kit).
+Used by both `cfc update` (core) and `cfc kit update` (kit).
 """
 
 import logging
@@ -230,7 +230,7 @@ def show_core_whatsnew(
 ) -> bool:
     """Display core whatsnew entries present in cache but missing from installed.
 
-    Used by `cpt update` to show changes between cache and .core/ versions.
+    Used by `cfc update` to show changes between cache and .core/ versions.
 
     Returns True if user acknowledged (or non-interactive), False if declined.
     """
@@ -262,7 +262,7 @@ def show_kit_whatsnew(
 ) -> bool:
     """Display whatsnew entries for kit versions newer than installed.
 
-    Used by `cpt kit update` to show changes between installed and source versions.
+    Used by `cfc kit update` to show changes between installed and source versions.
 
     Args:
         kit_source_dir: Path to kit source containing whatsnew.toml.

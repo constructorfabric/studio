@@ -1,7 +1,7 @@
 """
-Cypilot Validator - Constants and Regex Patterns
+Cyber Constructor Validator - Constants and Regex Patterns
 
-All regular expressions and global constants used throughout the Cypilot validation system.
+All regular expressions and global constants used throughout the Cyber Constructor validation system.
 Extracted for easier maintenance and modification by both humans and AI agents.
 
 @cpt-algo:cpt-cypilot-algo-core-infra-config-management:p1
@@ -14,7 +14,7 @@ import re
 # === PROJECT CONFIGURATION ===
 
 ARTIFACTS_REGISTRY_FILENAME = "artifacts.toml"
-WORKSPACE_CONFIG_FILENAME = ".cypilot-workspace.toml"
+WORKSPACE_CONFIG_FILENAME = ".cf-constructor-workspace.toml"
 
 # === ARTIFACT STRUCTURE PATTERNS ===
 

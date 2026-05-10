@@ -47,7 +47,7 @@ def _make_kit_source_with_manifest(td: Path, slug: str = "testkit") -> Path:
     _write_manifest(kit, """\
         [manifest]
         version = "1.0"
-        root = "{cypilot_path}/config/kits/{slug}"
+        root = "{cf-constructor-path}/config/kits/{slug}"
         user_modifiable = false
 
         [[resources]]
@@ -178,7 +178,7 @@ class TestMigrateLegacyKitToManifest(unittest.TestCase):
             _write_manifest(kit_src, """\
                 [manifest]
                 version = "1.0"
-                root = "{cypilot_path}/config/kits/{slug}"
+                root = "{cf-constructor-path}/config/kits/{slug}"
                 user_modifiable = false
 
                 [[resources]]
@@ -394,7 +394,7 @@ class TestMigrateLegacyKitToManifest(unittest.TestCase):
             _write_manifest(kit_src, """\
                 [manifest]
                 version = "1.0"
-                root = "{cypilot_path}/config/kits/{slug}"
+                root = "{cf-constructor-path}/config/kits/{slug}"
                 user_modifiable = false
 
                 [[resources]]
@@ -458,7 +458,7 @@ class TestMigrateLegacyKitToManifest(unittest.TestCase):
             _write_manifest(kit_src, """\
                 [manifest]
                 version = "1.0"
-                root = "{cypilot_path}/config/kits/{slug}"
+                root = "{cf-constructor-path}/config/kits/{slug}"
                 user_modifiable = false
 
                 [[resources]]
@@ -656,7 +656,7 @@ class TestUpdateKitLegacyMigration(unittest.TestCase):
             _write_manifest(kit_src, """\
                 [manifest]
                 version = "1.0"
-                root = "{cypilot_path}/config/kits/{slug}"
+                root = "{cf-constructor-path}/config/kits/{slug}"
                 user_modifiable = false
 
                 [[resources]]
@@ -721,7 +721,7 @@ class TestUpdateKitLegacyMigration(unittest.TestCase):
             _write_manifest(kit_src, """\
                 [manifest]
                 version = "1.0"
-                root = "{cypilot_path}/config/kits/{slug}"
+                root = "{cf-constructor-path}/config/kits/{slug}"
                 user_modifiable = false
 
                 [[resources]]

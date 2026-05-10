@@ -1,5 +1,5 @@
 ---
-cypilot: true
+cf-constructor: true
 type: requirement
 name: Prompt Engineering Review Methodology
 version: 1.4

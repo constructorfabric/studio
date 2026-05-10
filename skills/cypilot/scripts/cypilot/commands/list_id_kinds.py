@@ -22,8 +22,8 @@ def cmd_list_id_kinds(argv: List[str]) -> int:
     that have at least one ID definition in the artifact(s).
     """
     # @cpt-begin:cpt-cypilot-algo-traceability-validation-list-id-kinds:p1:inst-kinds-parse-args
-    p = argparse.ArgumentParser(prog="list-id-kinds", description="List ID kinds found in Cypilot artifacts")
-    p.add_argument("--artifact", default=None, help="Scan specific artifact (if omitted, scans all registered Cypilot artifacts)")
+    p = argparse.ArgumentParser(prog="list-id-kinds", description="List ID kinds found in registered artifacts")
+    p.add_argument("--artifact", default=None, help="Scan specific artifact (if omitted, scans all registered artifacts)")
     args = p.parse_args(argv)
     # @cpt-end:cpt-cypilot-algo-traceability-validation-list-id-kinds:p1:inst-kinds-parse-args
 
@@ -42,7 +42,7 @@ def cmd_list_id_kinds(argv: List[str]) -> int:
 
         ctx = CypilotContext.load(artifact_path.parent)
         if not ctx:
-            ui.result({"status": "ERROR", "message": "Cypilot not initialized"})
+            ui.result({"status": "ERROR", "message": "Cyber Constructor not initialized"})
             return 1
 
         project_root = ctx.project_root
@@ -68,7 +68,7 @@ def cmd_list_id_kinds(argv: List[str]) -> int:
 
         ctx = get_context()
         if not ctx:
-            ui.result({"status": "ERROR", "message": "Cypilot not initialized. Run 'cypilot init' first."})
+            ui.result({"status": "ERROR", "message": "Cyber Constructor not initialized. Run 'cfc init' first."})
             return 1
 
         meta = ctx.meta

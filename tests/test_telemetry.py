@@ -30,8 +30,8 @@ class TestTrackInvocation(unittest.TestCase):
     """Test the top-level track_invocation function."""
 
     def test_disabled_by_env(self):
-        """When CYPILOT_TELEMETRY=0, no thread is spawned."""
-        with patch.dict(os.environ, {"CYPILOT_TELEMETRY": "0"}):
+        """When CFC_TELEMETRY=0, no thread is spawned."""
+        with patch.dict(os.environ, {"CFC_TELEMETRY": "0"}):
             with patch("cypilot_proxy.telemetry.threading") as mock_threading:
                 track_invocation(["validate"])
                 mock_threading.Thread.assert_not_called()
@@ -39,7 +39,7 @@ class TestTrackInvocation(unittest.TestCase):
     def test_enabled_spawns_daemon_thread(self):
         """When enabled, a daemon thread is spawned and started."""
         env = os.environ.copy()
-        env.pop("CYPILOT_TELEMETRY", None)
+        env.pop("CFC_TELEMETRY", None)
         with patch.dict(os.environ, env, clear=True):
             with patch("cypilot_proxy.telemetry.threading") as mock_threading:
                 mock_thread = MagicMock()
@@ -54,7 +54,7 @@ class TestTrackInvocation(unittest.TestCase):
     def test_empty_args_command(self):
         """Empty args should pass empty string as command."""
         env = os.environ.copy()
-        env.pop("CYPILOT_TELEMETRY", None)
+        env.pop("CFC_TELEMETRY", None)
         with patch.dict(os.environ, env, clear=True):
             with patch("cypilot_proxy.telemetry.threading") as mock_threading:
                 mock_thread = MagicMock()
@@ -66,7 +66,7 @@ class TestTrackInvocation(unittest.TestCase):
     def test_skips_version_command(self):
         """Should not spawn thread for --version."""
         env = os.environ.copy()
-        env.pop("CYPILOT_TELEMETRY", None)
+        env.pop("CFC_TELEMETRY", None)
         with patch.dict(os.environ, env, clear=True):
             with patch("cypilot_proxy.telemetry.threading") as mock_threading:
                 track_invocation(["--version"])
@@ -75,7 +75,7 @@ class TestTrackInvocation(unittest.TestCase):
     def test_skips_help_command(self):
         """Should not spawn thread for --help."""
         env = os.environ.copy()
-        env.pop("CYPILOT_TELEMETRY", None)
+        env.pop("CFC_TELEMETRY", None)
         with patch.dict(os.environ, env, clear=True):
             with patch("cypilot_proxy.telemetry.threading") as mock_threading:
                 track_invocation(["--help"])
@@ -84,7 +84,7 @@ class TestTrackInvocation(unittest.TestCase):
     def test_skips_short_help(self):
         """Should not spawn thread for -h."""
         env = os.environ.copy()
-        env.pop("CYPILOT_TELEMETRY", None)
+        env.pop("CFC_TELEMETRY", None)
         with patch.dict(os.environ, env, clear=True):
             with patch("cypilot_proxy.telemetry.threading") as mock_threading:
                 track_invocation(["-h"])
@@ -191,7 +191,7 @@ class TestRotateLogs(unittest.TestCase):
             new_file = log_dir / "2026-04-02.log"
             new_file.write_text("new")
             with patch("cypilot_proxy.telemetry.LOG_DIR", log_dir):
-                with patch.dict(os.environ, {"CYPILOT_TELEMETRY_RETENTION_DAYS": "5"}):
+                with patch.dict(os.environ, {"CFC_TELEMETRY_RETENTION_DAYS": "5"}):
                     _rotate_logs()
             self.assertFalse(old_file.exists())
             self.assertTrue(new_file.exists())
@@ -204,12 +204,12 @@ class TestRotateLogs(unittest.TestCase):
             recent_file = log_dir / "2026-04-01.log"
             recent_file.write_text("recent")
             with patch("cypilot_proxy.telemetry.LOG_DIR", log_dir):
-                with patch.dict(os.environ, {"CYPILOT_TELEMETRY_RETENTION_DAYS": "5"}):
+                with patch.dict(os.environ, {"CFC_TELEMETRY_RETENTION_DAYS": "5"}):
                     _rotate_logs()
             self.assertTrue(recent_file.exists())
 
     def test_invalid_retention_days_uses_default(self):
-        """Invalid CYPILOT_TELEMETRY_RETENTION_DAYS falls back to default."""
+        """Invalid CFC_TELEMETRY_RETENTION_DAYS falls back to default."""
         with TemporaryDirectory() as tmpdir:
             log_dir = Path(tmpdir) / "logs"
             log_dir.mkdir()
@@ -217,7 +217,7 @@ class TestRotateLogs(unittest.TestCase):
             old_file.write_text("old")
             os.utime(old_file, (0, 0))
             with patch("cypilot_proxy.telemetry.LOG_DIR", log_dir):
-                with patch.dict(os.environ, {"CYPILOT_TELEMETRY_RETENTION_DAYS": "not_a_number"}):
+                with patch.dict(os.environ, {"CFC_TELEMETRY_RETENTION_DAYS": "not_a_number"}):
                     _rotate_logs()
             self.assertFalse(old_file.exists())
 
@@ -229,7 +229,7 @@ class TestRotateLogs(unittest.TestCase):
             today_file = log_dir / datetime.now(timezone.utc).strftime("%Y-%m-%d.log")
             today_file.write_text("today")
             with patch("cypilot_proxy.telemetry.LOG_DIR", log_dir):
-                with patch.dict(os.environ, {"CYPILOT_TELEMETRY_RETENTION_DAYS": "0"}):
+                with patch.dict(os.environ, {"CFC_TELEMETRY_RETENTION_DAYS": "0"}):
                     _rotate_logs()
             self.assertTrue(today_file.exists())
 
@@ -338,7 +338,7 @@ class TestTelemetryWorkerIntegration(unittest.TestCase):
             mock_git.stdout = "user.name Test\nuser.email test@test.com\nremote.origin.url https://example.com"
             with patch("cypilot_proxy.telemetry.LOG_DIR", log_dir), \
                  patch("cypilot_proxy.telemetry.subprocess.run", return_value=mock_git), \
-                 patch.dict(os.environ, {"CYPILOT_TELEMETRY_URL": "http://localhost:4318/v1/logs"}), \
+                 patch.dict(os.environ, {"CFC_TELEMETRY_URL": "http://localhost:4318/v1/logs"}), \
                  patch("cypilot_proxy.telemetry.urlopen") as mock_urlopen, \
                  patch("cypilot_proxy.__version__", "3.5.1-test"):
                 mock_resp = MagicMock()
@@ -356,17 +356,17 @@ class TestTelemetryWorkerIntegration(unittest.TestCase):
                 self.assertEqual(data["git_user_name"], "Test")
                 self.assertEqual(data["git_user_email"], "test@test.com")
                 self.assertEqual(data["git_remote"], "https://example.com")
-                self.assertEqual(data["cypilot_version"], "3.5.1-test")
+                self.assertEqual(data["cf_constructor_version"], "3.5.1-test")
                 mock_urlopen.assert_called_once()
 
     def test_no_http_when_url_not_set(self):
-        """Worker should skip HTTP when CYPILOT_TELEMETRY_URL is not set."""
+        """Worker should skip HTTP when CFC_TELEMETRY_URL is not set."""
         with TemporaryDirectory() as tmpdir:
             log_dir = Path(tmpdir) / "logs"
             mock_git = MagicMock()
             mock_git.stdout = "user.name Test\nuser.email test@test.com"
             env = os.environ.copy()
-            env.pop("CYPILOT_TELEMETRY_URL", None)
+            env.pop("CFC_TELEMETRY_URL", None)
             with patch("cypilot_proxy.telemetry.LOG_DIR", log_dir), \
                  patch("cypilot_proxy.telemetry.subprocess.run", return_value=mock_git), \
                  patch.dict(os.environ, env, clear=True), \
@@ -388,7 +388,7 @@ class TestTelemetryWorkerIntegration(unittest.TestCase):
             mock_git.stdout = "user.name Test\nuser.email test@test.com"
             with patch("cypilot_proxy.telemetry.LOG_DIR", log_dir), \
                  patch("cypilot_proxy.telemetry.subprocess.run", return_value=mock_git), \
-                 patch.dict(os.environ, {"CYPILOT_TELEMETRY_URL": "file:///etc/passwd"}), \
+                 patch.dict(os.environ, {"CFC_TELEMETRY_URL": "file:///etc/passwd"}), \
                  patch("cypilot_proxy.telemetry.urlopen") as mock_urlopen, \
                  patch("cypilot_proxy.__version__", "3.5.1-test"):
 

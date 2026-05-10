@@ -1,5 +1,5 @@
 """
-Adapter Info Command — discover and display Cypilot project configuration.
+Adapter Info Command — discover and display Cyber Constructor project configuration.
 
 Shows project root, cypilot directory, rules, systems, and registry status.
 
@@ -45,15 +45,15 @@ def _read_kit_conf(conf_path: Path) -> dict:
         return {}
 
 def cmd_adapter_info(argv: list[str]) -> int:
-    """Discover and display Cypilot project configuration."""
+    """Discover and display Cyber Constructor project configuration."""
     # @cpt-begin:cpt-cypilot-algo-core-infra-display-info:p1:inst-info-parse-args
-    p = argparse.ArgumentParser(prog="info", description="Discover Cypilot project configuration")
+    p = argparse.ArgumentParser(prog="info", description="Discover Cyber Constructor project configuration")
     p.add_argument("--root", default=".", help="Project root to search from (default: current directory)")
-    p.add_argument("--cypilot-root", default=None, help="Cypilot core location (if agent knows it)")
+    p.add_argument("--cf-constructor-root", default=None, help="Cyber Constructor core location (if agent knows it)")
     args = p.parse_args(argv)
 
     start_path = Path(args.root).resolve()
-    cypilot_root_path = Path(args.cypilot_root).resolve() if args.cypilot_root else None
+    cypilot_root_path = Path(args.cf_constructor_root).resolve() if args.cf_constructor_root else None
     # @cpt-end:cpt-cypilot-algo-core-infra-display-info:p1:inst-info-parse-args
 
     # @cpt-begin:cpt-cypilot-algo-core-infra-display-info:p1:inst-info-find-root
@@ -64,9 +64,9 @@ def cmd_adapter_info(argv: list[str]) -> int:
         # @cpt-begin:cpt-cypilot-algo-core-infra-display-info:p1:inst-info-return-no-root
         ui.result({
             "status": "NOT_FOUND",
-            "message": "No project root found (no AGENTS.md with @cpt:root-agents or .git)",
+            "message": "No project root found (no AGENTS.md with @cf:root-agents or .git)",
             "searched_from": start_path.as_posix(),
-            "hint": "Run 'cypilot init' in your project root",
+            "hint": "Run 'cfc init' in your project root",
         })
         return 1
         # @cpt-end:cpt-cypilot-algo-core-infra-display-info:p1:inst-info-return-no-root
@@ -80,9 +80,9 @@ def cmd_adapter_info(argv: list[str]) -> int:
         # @cpt-begin:cpt-cypilot-algo-core-infra-display-info:p1:inst-info-return-no-cypilot
         ui.result({
             "status": "NOT_FOUND",
-            "message": "Cypilot not initialized in project",
+            "message": "Cyber Constructor not initialized in project",
             "project_root": project_root.as_posix(),
-            "hint": "Run 'cypilot init' to initialize Cypilot for this project",
+            "hint": "Run 'cfc init' to initialize Cyber Constructor for this project",
         })
         return 1
         # @cpt-end:cpt-cypilot-algo-core-infra-display-info:p1:inst-info-return-no-cypilot
@@ -312,7 +312,7 @@ def cmd_adapter_info(argv: list[str]) -> int:
     config["kit_details"] = kit_details
 
     # Agent integrations — detect via shared _is_agent_installed() which checks
-    # Cypilot-specific markers and legacy fallbacks per agent.
+    # Cyber Constructor-specific markers and legacy fallbacks per agent.
     from .agents import _ALL_RECOGNIZED_AGENTS, _is_agent_installed
     agents_found = [
         agent for agent in _ALL_RECOGNIZED_AGENTS
@@ -395,13 +395,13 @@ def cmd_adapter_info(argv: list[str]) -> int:
 # @cpt-begin:cpt-cypilot-algo-core-infra-display-info:p1:inst-info-human-fmt
 def _human_info(data: dict) -> None:
     """Human-friendly formatter for the info command."""
-    ui.header("Cypilot Project Info")
+    ui.header("Cyber Constructor Project Info")
 
     # Basic info
     if data.get("project_name"):
         ui.detail("Project", str(data["project_name"]))
     ui.detail("Project root", str(data.get("project_root", "?")))
-    ui.detail("Cypilot dir", str(data.get("relative_path", data.get("cypilot_dir", "?"))))
+    ui.detail("Adapter dir", str(data.get("relative_path", data.get("cypilot_dir", "?"))))
     if data.get("config_version"):
         ui.detail("Config version", str(data["config_version"]))
 

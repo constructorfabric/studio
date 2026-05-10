@@ -75,7 +75,7 @@ def _emit_add_result(args: argparse.Namespace, replaced: bool, config_path: str,
 
 
 def _add_to_standalone(args: argparse.Namespace, ws_cfg: WorkspaceConfig) -> int:
-    """Add source to an existing standalone .cypilot-workspace.toml."""
+    """Add source to an existing standalone .cf-constructor-workspace.toml."""
     # @cpt-begin:cpt-cypilot-flow-workspace-add:p1:inst-add-check-collision
     replaced = args.name in ws_cfg.sources
     if replaced and not args.force:

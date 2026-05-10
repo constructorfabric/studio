@@ -3,9 +3,9 @@ requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "cypilot"
-version = "3.9.0"
-description = "Cypilot global CLI proxy — deterministic agent tool for structured workflows"
+name = "cyber-constructor"
+version = "4.0.0"
+description = "Cyber Constructor global CLI proxy — deterministic agent tool for structured workflows"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.11.4"
@@ -14,7 +14,8 @@ dependencies = []
 
 [project.scripts]
 # @cpt-dod:cpt-cypilot-dod-core-infra-global-package:p1 — console entry points
-cpt = "cypilot_proxy.cli:main"
+cfc = "cypilot_proxy.cli:main"
+cf-constructor = "cypilot_proxy.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

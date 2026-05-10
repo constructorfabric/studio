@@ -1,5 +1,5 @@
 ---
-cypilot: true
+cf-constructor: true
 type: requirement
 name: Bug-Finding Methodology
 version: 1.0
@@ -159,7 +159,7 @@ For a standalone bug-finding report, use these sections in order; this order is 
 - `Coverage & Residual Risk`: bug classes checked, bug classes only partially checked, unchecked high-risk hotspots, dynamic checks not yet run, checklist mode used, any checklist items or companion coverage still unverified, and a checklist ledger for item-level status accounting when `code-checklist.md` is in scope.
 - `Next Actions`: cheapest confirming validations, required context expansions, or an explicit statement that no further action is currently justified.
 
-When a host workflow already defines mandatory top-level headings, keep that outer structure and map this methodology into it instead of replacing the workflow headings. For `/cypilot-analyze`, keep the six-section `Validation Report` wrapper, place `Review Summary`, `Coverage & Residual Risk`, and `Next Actions` inside the bug-finding portion of `### 3. Semantic Review (MANDATORY)`, and surface actual defects from `Findings` in `### 6. Issues (if any)`. Do not introduce competing top-level headings.
+When a host workflow already defines mandatory top-level headings, keep that outer structure and map this methodology into it instead of replacing the workflow headings. For `/cf-constructor-analyze`, keep the six-section `Validation Report` wrapper, place `Review Summary`, `Coverage & Residual Risk`, and `Next Actions` inside the bug-finding portion of `### 3. Semantic Review (MANDATORY)`, and surface actual defects from `Findings` in `### 6. Issues (if any)`. Do not introduce competing top-level headings.
 
 Inside `Coverage & Residual Risk`, include a compact checklist ledger for checklist items required by the selected review mode or explicitly loaded and assessed in the current pass, using the columns `ID | Status | Rationale`. Allowed status values are `PASS`, `FAIL`, `N/A`, and `NOT REVIEWED`. Preserve item-level accounting for review-mode-excluded items without forcing whole-checklist expansion: record each excluded item as `NOT REVIEWED` with rationale `excluded by review mode`, but compact rows are allowed only when they still enumerate the exact checklist IDs covered by that row, using exact ID lists or contiguous ID ranges/lists only when every ID in that row shares the same status and rationale. Use `NOT REVIEWED` for explicitly checkpointed loaded items only after their governing slice was identified. Keep `Findings` problem-only; record `PASS`, `N/A`, and `NOT REVIEWED` entries in the ledger instead of inventing extra top-level sections, and summarize any other unloaded checklist remainder as unresolved coverage rather than implying whole-checklist review.
 

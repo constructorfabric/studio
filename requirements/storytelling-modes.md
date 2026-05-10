@@ -1,5 +1,5 @@
 ---
-cypilot: true
+cf-constructor: true
 type: requirement
 name: Storytelling Modes
 version: 1.0
@@ -50,7 +50,7 @@ Which storytelling mode for this session?
 → suggested: {S} ({why-suggested})
 ```
 
-`{S}` is computed in priority order: explicit intent verbs → KIND defaults → `default_mode` from `{cypilot_path}/.cache/explain/preferences.json` → fallback `presentation`. `{why-suggested}` is a one-line note (`you said "review this PR"` / `KIND=PRD typically presentation` / `project default per preferences.json` / `fallback default`). User confirms by number / name / Enter for the suggestion. Methodology MUST NOT proceed past this prompt without an explicit user response.
+`{S}` is computed in priority order: explicit intent verbs → KIND defaults → `default_mode` from `{cf-constructor-path}/.cache/explain/preferences.json` → fallback `presentation`. `{why-suggested}` is a one-line note (`you said "review this PR"` / `KIND=PRD typically presentation` / `project default per preferences.json` / `fallback default`). User confirms by number / name / Enter for the suggestion. Methodology MUST NOT proceed past this prompt without an explicit user response.
 
 **Override mid-session**: `change mode to {X}` rebuilds audience and resumes the plan with the new slot semantics and body style; plan items unchanged. `remember new mode` persists `default_mode` (future sessions still always ask; the suggested default updates).
 
@@ -100,7 +100,7 @@ Heuristics applied contextually per portion, not hard rules. Diagram detail leve
 |---|---|---|
 | Plan walk | document structure (top-level sections) | **entry points → core → data → integration**, NOT file order |
 | Source refs | IDs as anchors | file paths + line numbers |
-| Lateral slot | parents/children from registry | linked design artifact (via `@cpt-*` markers from `cpt --json validate`); adjacent module / sibling component |
+| Lateral slot | parents/children from registry | linked design artifact (via `@cpt-*` markers from `{cfc_cmd} --json validate`); adjacent module / sibling component |
 | Diagrams | document semantics (flow, hierarchy, state) | first portion **always** emits ASCII module map (no lazy-ask); subsequent diagrams use lazy-ask normally |
 | Glossary | as needed | heavily used (function names, type names, domain terms) |
 

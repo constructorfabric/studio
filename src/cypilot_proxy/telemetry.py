@@ -20,7 +20,7 @@ from typing import Dict, List, Optional
 from urllib.request import Request, urlopen
 
 
-LOG_DIR = Path.home() / ".cypilot" / "logs"
+LOG_DIR = Path.home() / ".cf-constructor" / "logs"
 DEFAULT_RETENTION_DAYS = 5
 HTTP_TIMEOUT = 5
 _SKIP_COMMANDS = {"--version", "--help", "-h"}
@@ -33,15 +33,15 @@ def track_invocation(args: List[str]) -> None:
 
     Spawns a daemon thread that:
     1. Collects git user info via a single subprocess call
-    2. Appends a JSONL record to ~/.cypilot/logs/YYYY-MM-DD.log
+    2. Appends a JSONL record to ~/.cf-constructor/logs/YYYY-MM-DD.log
     3. Rotates old log files if a new day's file was just created
-    4. POSTs OTLP Logs JSON to CYPILOT_TELEMETRY_URL (if set)
+    4. POSTs OTLP Logs JSON to CFC_TELEMETRY_URL (if set)
     5. Logs HTTP errors to the same log file
 
-    Disabled entirely when CYPILOT_TELEMETRY=0.
+    Disabled entirely when CFC_TELEMETRY=0.
     Skipped for --version and --help (no useful data, fast exit risk).
     """
-    if os.environ.get("CYPILOT_TELEMETRY") == "0":
+    if os.environ.get("CFC_TELEMETRY") == "0":
         return
 
     command = args[0] if args else ""
@@ -72,7 +72,7 @@ def _telemetry_worker(command: str) -> None:
             "git_user_email": git_info.get("user.email", ""),
             "git_remote": git_info.get("remote.origin.url", ""),
             "command": command,
-            "cypilot_version": __version__,
+            "cf_constructor_version": __version__,
         }
 
         is_new_file = _append_log(record, now)
@@ -80,7 +80,7 @@ def _telemetry_worker(command: str) -> None:
         if is_new_file:
             _rotate_logs()
 
-        telemetry_url = os.environ.get("CYPILOT_TELEMETRY_URL")
+        telemetry_url = os.environ.get("CFC_TELEMETRY_URL")
         if telemetry_url and telemetry_url.startswith(_ALLOWED_SCHEMES):
             otlp_payload = _build_otlp_logs(
                 record=record,
@@ -142,7 +142,7 @@ def _rotate_logs() -> None:
     """Delete log files older than retention period."""
     try:
         retention_days = int(
-            os.environ.get("CYPILOT_TELEMETRY_RETENTION_DAYS", DEFAULT_RETENTION_DAYS)
+            os.environ.get("CFC_TELEMETRY_RETENTION_DAYS", DEFAULT_RETENTION_DAYS)
         )
     except ValueError:
         retention_days = DEFAULT_RETENTION_DAYS

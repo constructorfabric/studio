@@ -1,9 +1,9 @@
 ---
 cypilot: true
 type: spec
-name: Cypilot CLI Specification
+name: Cyber Constructor CLI Specification
 version: 1.0
-purpose: Complete CLI interface specification for the cypilot tool
+purpose: Complete CLI interface specification for the cyber-constructor (cfc) tool
 drivers:
   - cpt-cypilot-fr-core-installer
   - cpt-cypilot-fr-core-init
@@ -20,7 +20,7 @@ drivers:
   - cpt-cypilot-interface-cli-json
 ---
 
-# Cypilot CLI Specification
+# Cyber Constructor CLI Specification
 
 
 <!-- toc -->
@@ -75,10 +75,10 @@ drivers:
 
 ## Overview
 
-Cypilot provides a CLI tool invoked as `cpt`. The keyword `cypilot` is reserved for agent chat prompts. The tool follows a two-layer architecture:
+Cyber Constructor provides a CLI tool invoked as `cfc`. The keyword `cf-constructor` is reserved for agent chat prompts. The tool follows a two-layer architecture:
 
 1. **Global CLI Proxy** — a thin shell installed globally via `pipx`, containing zero business logic. It resolves the correct skill bundle and proxies all commands to it.
-2. **Skill Engine** — the actual command executor, installed either in the project (`{cypilot_path}/`) or in the global cache (`~/.cypilot/cache/`).
+2. **Skill Engine** — the actual command executor, installed either in the project (`{cf-constructor-path}/`) or in the global cache (`~/.cf-constructor/cache/`).
 
 All CLI output is JSON to stdout. Human-readable messages go to stderr. This enables piping and programmatic consumption.
 
@@ -87,10 +87,10 @@ All CLI output is JSON to stdout. Human-readable messages go to stderr. This ena
 ## Installation
 
 ```bash
-pipx install git+https://github.com/cyberfabric/cyber-pilot.git
+pipx install git+https://github.com/cyberfabric/cyber-constructor.git
 ```
 
-After installation, `cpt` is available globally as the CLI command. The `cypilot` keyword is reserved for agent chat prompts.
+After installation, `cfc` is available globally as the CLI command. The `cf-constructor` keyword is reserved for agent chat prompts.
 
 **Requirements**:
 - Python 3.11+ (requires `tomllib` from stdlib)
@@ -106,14 +106,14 @@ After installation, `cpt` is available globally as the CLI command. The `cypilot
 
 On every invocation, the CLI Proxy executes the following sequence:
 
-1. **Cache check** — if `~/.cypilot/cache/` does not exist or is empty, download the latest skill bundle from GitHub before proceeding.
-2. **Target resolution** — if the current directory is inside a project with a Cypilot install directory (default: `cypilot/`), proxy to the project-installed skill. Otherwise, proxy to the cached skill.
+1. **Cache check** — if `~/.cf-constructor/cache/` does not exist or is empty, download the latest skill bundle from GitHub before proceeding.
+2. **Target resolution** — if the current directory is inside a project with a Cyber Constructor install directory (default: `.cf-constructor/`), proxy to the project-installed skill. Otherwise, proxy to the cached skill.
 3. **Background version check** — start a non-blocking check for newer versions. The check MUST NOT delay the main command. Concurrent checks are prevented via a lock file. A newly available version becomes visible on the next invocation.
-4. **Version notice** — if the cached version is newer than the project-installed version, display a notice to stderr: `Cypilot {cached_version} available (project has {project_version}). Run 'cpt update' to upgrade.`
+4. **Version notice** — if the cached version is newer than the project-installed version, display a notice to stderr: `cfc: update available ({project_version} → {cached_version}). Run: cfc update`.
 5. **Command execution** — forward all arguments to the resolved skill engine.
 
 ```
-cpt <command> [subcommand] [options] [arguments]
+cfc <command> [subcommand] [options] [arguments]
 ```
 
 ---
@@ -151,41 +151,41 @@ cpt <command> [subcommand] [options] [arguments]
 
 ### init
 
-Initialize Cypilot in a project.
+Initialize Cyber Constructor in a project.
 
 ```
-cpt init [--dir DIR] [--agents AGENTS]
+cfc init [--dir DIR] [--agents AGENTS]
 ```
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--dir` | `cypilot` | Installation directory |
+| `--dir` | `.cf-constructor` | Installation directory |
 | `--agents` | all | Comma-separated agent list: `windsurf,cursor,claude,copilot,openai` |
 
 **Behavior**:
-1. Check if Cypilot is already installed. If yes → abort with message, suggest `cpt update`.
+1. Check if Cyber Constructor is already installed. If yes → abort with message, suggest `cfc update`.
 2. If interactive terminal → prompt for installation directory and agent selection.
 3. Copy skill bundle from cache into the install directory.
 4. Define the **root system** — derive name and slug from the project directory name (e.g., directory `my-app/` → `name = "MyApp"`, `slug = "my-app"`).
-5. Create `{cypilot_path}/config/core.toml` with project root, root system definition, and kit registrations.
-6. Create `{cypilot_path}/config/artifacts.toml` with a fully populated root system entry including default SDLC autodetect rules:
+5. Create `{cf-constructor-path}/config/core.toml` with project root, root system definition, and kit registrations.
+6. Create `{cf-constructor-path}/config/artifacts.toml` with a fully populated root system entry including default SDLC autodetect rules:
    - `artifacts_dir = "architecture"` (default artifact directory)
    - Autodetect rules for standard artifact kinds: `PRD.md`, `DESIGN.md`, `ADR/*.md`, `DECOMPOSITION.md`, `features/*.md` — all with default traceability levels and glob patterns
    - Default codebase entry: `path = "src"`, common extensions
    - Default ignore patterns: `vendor/*`, `node_modules/*`, `.git/*`
-7. Install all available kits by copying kit files into `{cypilot_path}/config/kits/<slug>/` (constraints, artifacts, workflows, SKILL.md) and registering in `core.toml`.
+7. Install all available kits by copying kit files into `{cf-constructor-path}/config/kits/<slug>/` (constraints, artifacts, workflows, SKILL.md) and registering in `core.toml`.
 8. Generate agent entry points for selected agents.
-9. Inject root `AGENTS.md` entry: insert managed `<!-- @cpt:root-agents -->` block at the beginning of `{project_root}/AGENTS.md` (create file if absent).
-10. Create `{cypilot_path}/config/AGENTS.md` with default WHEN rules for standard system prompts.
-11. Output prompt suggestion: `cypilot on` or `cypilot help` (these are agent chat prompts, not CLI commands).
+9. Inject root `AGENTS.md` entry: insert managed `<!-- @cf:root-agents -->` block at the beginning of `{project_root}/AGENTS.md` (create file if absent).
+10. Create `{cf-constructor-path}/config/AGENTS.md` with default WHEN rules for standard system prompts.
+11. Output prompt suggestion: `cf-constructor on` or `cf-constructor help` (these are agent chat prompts, not CLI commands).
 
-**Root AGENTS.md integrity**: every CLI invocation (not just `init`) verifies the `<!-- @cpt:root-agents -->` block in root `AGENTS.md` exists and contains the correct path. If missing or stale, the block is silently re-injected. See [sysprompts.md](./sysprompts.md) for full format.
+**Root AGENTS.md integrity**: every CLI invocation (not just `init`) verifies the `<!-- @cf:root-agents -->` block in root `AGENTS.md` exists and contains the correct path. If missing or stale, the block is silently re-injected. See [sysprompts.md](./sysprompts.md) for full format.
 
 **Output** (JSON):
 ```json
 {
   "status": "ok",
-  "install_dir": "cypilot",
+  "install_dir": ".cf-constructor",
   "kits_installed": ["sdlc"],
   "agents_configured": ["windsurf", "cursor", "claude", "copilot", "openai"],
   "systems": [{"name": "my-project", "slug": "my-project", "kit": "sdlc"}]
@@ -201,7 +201,7 @@ cpt init [--dir DIR] [--agents AGENTS]
 Update project skill to the cached version.
 
 ```
-cpt update [--project-root P] [--dry-run] [--no-interactive] [-y/--yes]
+cfc update [--project-root P] [--dry-run] [--no-interactive] [-y/--yes]
 ```
 
 | Option | Description |
@@ -212,7 +212,7 @@ cpt update [--project-root P] [--dry-run] [--no-interactive] [-y/--yes]
 | `-y`, `--yes` | Auto-approve all prompts (no interaction) |
 
 **Behavior**:
-1. Resolve project root and cypilot directory.
+1. Resolve project root and Cyber Constructor directory.
 2. Replace `.core/` from cache (always force-overwrite).
 3. For each kit in cache: compare kit version (skip same, file-level diff if newer, copy on first install), update kit files in `config/kits/{slug}/` via interactive diff prompts.
 4. Write aggregate `.gen/AGENTS.md` and `.gen/SKILL.md` from collected kit parts.
@@ -227,7 +227,7 @@ cpt update [--project-root P] [--dry-run] [--no-interactive] [-y/--yes]
 {
   "status": "PASS",
   "project_root": "/path/to/project",
-  "cypilot_dir": "/path/to/project/.bootstrap",
+  "relative_path": "/path/to/project/.bootstrap",
   "dry_run": false,
   "actions": {
     "core_update": {"architecture": "updated", "skills": "updated", "...": "..."},
@@ -248,7 +248,7 @@ cpt update [--project-root P] [--dry-run] [--no-interactive] [-y/--yes]
 Validate artifacts.
 
 ```
-cpt validate [--artifact PATH] [--system SYSTEM] [--kind KIND] [--strict]
+cfc validate [--artifact PATH] [--system SYSTEM] [--kind KIND] [--strict]
 ```
 
 | Option | Description |
@@ -260,7 +260,7 @@ cpt validate [--artifact PATH] [--system SYSTEM] [--kind KIND] [--strict]
 | `--local-only` | Skip cross-repo workspace validation (validate local repo only) |
 | `--source SOURCE` | Target a specific workspace source for validation (uses that source's adapter context). Returns error when used outside workspace mode. |
 
-**Workspace flag interaction**: `--local-only` and `--source` are independent and can be combined. `--source` narrows **which** artifacts are validated (a single source's artifacts using its own adapter context). `--local-only` controls **whether cross-repo IDs** from other workspace sources are included as reference context. Examples: `cpt validate --source backend` validates the backend source with cross-repo references; `cpt validate --source backend --local-only` validates the backend source without cross-repo references; `cpt validate --local-only` validates the primary repo only without cross-repo references.
+**Workspace flag interaction**: `--local-only` and `--source` are independent and can be combined. `--source` narrows **which** artifacts are validated (a single source's artifacts using its own adapter context). `--local-only` controls **whether cross-repo IDs** from other workspace sources are included as reference context. Examples: `cfc validate --source backend` validates the backend source with cross-repo references; `cfc validate --source backend --local-only` validates the backend source without cross-repo references; `cfc validate --local-only` validates the primary repo only without cross-repo references.
 
 **Without arguments**: validate all registered artifacts across all systems.
 
@@ -308,7 +308,7 @@ cpt validate [--artifact PATH] [--system SYSTEM] [--kind KIND] [--strict]
 List IDs matching criteria.
 
 ```
-cpt list-ids [--kind KIND] [--pattern PATTERN] [--system SYSTEM] [--format FORMAT]
+cfc list-ids [--kind KIND] [--pattern PATTERN] [--system SYSTEM] [--format FORMAT]
 ```
 
 | Option | Description |
@@ -345,7 +345,7 @@ cpt list-ids [--kind KIND] [--pattern PATTERN] [--system SYSTEM] [--format FORMA
 Find where an ID is defined.
 
 ```
-cpt where-defined --id <id>
+cfc where-defined --id <id>
 ```
 
 **Output** (JSON):
@@ -357,7 +357,7 @@ cpt where-defined --id <id>
     "line": 154,
     "kind": "fr",
     "checked": false,
-    "content_preview": "The system MUST provide an interactive `cpt init` command..."
+    "content_preview": "The system MUST provide an interactive `cfc init` command..."
   }
 }
 ```
@@ -371,7 +371,7 @@ cpt where-defined --id <id>
 Find where an ID is referenced.
 
 ```
-cpt where-used --id <id>
+cfc where-used --id <id>
 ```
 
 **Output** (JSON):
@@ -398,7 +398,7 @@ cpt where-used --id <id>
 Get content block for an ID definition.
 
 ```
-cpt get-content --id <id>
+cfc get-content --id <id>
 ```
 
 **Output** (JSON):
@@ -408,7 +408,7 @@ cpt get-content --id <id>
   "file": "architecture/PRD.md",
   "line_start": 154,
   "line_end": 159,
-  "content": "The system MUST provide an interactive `cpt init` command..."
+  "content": "The system MUST provide an interactive `cfc init` command..."
 }
 ```
 
@@ -421,7 +421,7 @@ cpt get-content --id <id>
 List all ID kinds known to the system.
 
 ```
-cpt list-id-kinds [--system SYSTEM]
+cfc list-id-kinds [--system SYSTEM]
 ```
 
 **Output** (JSON):
@@ -444,22 +444,22 @@ cpt list-id-kinds [--system SYSTEM]
 Show project status and registry information.
 
 ```
-cpt info
+cfc info
 ```
 
 **Output** (JSON):
 ```json
 {
-  "cypilot_dir": "cypilot",
-  "artifacts_toml": "cypilot/config/artifacts.toml",
+  "relative_path": ".cf-constructor",
+  "artifacts_toml": ".cf-constructor/config/artifacts.toml",
   "systems": [
     {
-      "name": "Cypilot",
-      "slug": "cypilot",
+      "name": "MyApp",
+      "slug": "my-app",
       "kit": "sdlc",
       "artifacts_root": "architecture",
       "artifacts_found": 3,
-      "codebase_paths": ["skills/cypilot/scripts/"]
+      "codebase_paths": ["src/"]
     }
   ],
   "kits": [
@@ -477,7 +477,7 @@ cpt info
 Show generated agent integration files without writing anything.
 
 ```
-cpt agents [--agent AGENT | --openai] [--root PATH] [--cypilot-root PATH] [--config PATH]
+cfc agents [--agent AGENT | --openai] [--root PATH] [--cf-constructor-root PATH] [--config PATH]
 ```
 
 | Option | Description |
@@ -485,11 +485,11 @@ cpt agents [--agent AGENT | --openai] [--root PATH] [--cypilot-root PATH] [--con
 | `--agent AGENT` | Limit output to a specific agent: `windsurf`, `cursor`, `claude`, `copilot`, `openai` |
 | `--openai` | Shortcut for `--agent openai` |
 | `--root PATH` | Project root directory to search from (default: current directory) |
-| `--cypilot-root PATH` | Explicit Cypilot core root (optional override) |
+| `--cf-constructor-root PATH` | Explicit Cyber Constructor core root (optional override) |
 | `--config PATH` | Path to agents config JSON (optional; built-in defaults used when omitted) |
 
 **Behavior**:
-1. Resolve project root and cypilot directory.
+1. Resolve project root and Cyber Constructor directory.
 2. Load agent config (or built-in defaults).
 3. Inspect generated workflow proxies, skill shims, and subagent files for the selected agents.
 4. Return a read-only per-agent listing; no files are written.
@@ -503,7 +503,7 @@ cpt agents [--agent AGENT | --openai] [--root PATH] [--cypilot-root PATH] [--con
 Generate or update agent integration files.
 
 ```
-cpt generate-agents [--agent AGENT | --openai] [--root PATH] [--cypilot-root PATH] [--config PATH] [--dry-run]
+cfc generate-agents [--agent AGENT | --openai] [--root PATH] [--cf-constructor-root PATH] [--config PATH] [--dry-run]
 ```
 
 | Option | Description |
@@ -511,7 +511,7 @@ cpt generate-agents [--agent AGENT | --openai] [--root PATH] [--cypilot-root PAT
 | `--agent AGENT` | Generate for a specific agent only: `windsurf`, `cursor`, `claude`, `copilot`, `openai` |
 | `--openai` | Shortcut for `--agent openai` |
 | `--root PATH` | Project root directory to search from (default: current directory) |
-| `--cypilot-root PATH` | Explicit Cypilot core root (optional override) |
+| `--cf-constructor-root PATH` | Explicit Cyber Constructor core root (optional override) |
 | `--config PATH` | Path to agents config JSON (optional; built-in defaults used when omitted) |
 | `--dry-run` | Compute planned changes without writing files |
 
@@ -532,15 +532,15 @@ cpt generate-agents [--agent AGENT | --openai] [--root PATH] [--cypilot-root PAT
 | Cursor | `.cursor/commands/`, `.cursor/agents/`, `.agents/skills/` (shared) |
 | Claude | `.claude/skills/`, `.claude/agents/` |
 | Copilot | `.github/prompts/`, `.github/copilot-instructions.md`, `.github/agents/`, `.agents/skills/` (shared) |
-| OpenAI | `.agents/skills/` (shared), `.codex/.cypilot-installed` (marker), `.codex/agents/` |
+| OpenAI | `.agents/skills/` (shared), `.codex/.cf-constructor-installed` (marker), `.codex/agents/` |
 
 **Detection model** (used by `info` and `update --auto-regenerate`):
-Each agent is detected via Cypilot-specific generated files, not generic tool directories.
-- **Claude**: `.claude/skills/cypilot/SKILL.md`
-- **Windsurf**: `.windsurf/workflows/cypilot.md` (primary) or legacy `.windsurf/skills/cypilot/SKILL.md` with `{cypilot_path}/` follow-link
-- **Cursor**: `.cursor/commands/cypilot.md` (primary) or legacy `.cursor/rules/cypilot.mdc` with `{cypilot_path}/` follow-link
-- **Copilot**: `.github/.cypilot-installed` (primary), `.github/prompts/cypilot.prompt.md`, or `.github/copilot-instructions.md` starting with `# Cypilot` (legacy). User-authored `copilot-instructions.md` files are never overwritten.
-- **OpenAI**: `.codex/.cypilot-installed` (primary), `.codex/agents/` with Cypilot content (legacy mixed-install), or `.agents/skills/cypilot/SKILL.md` only when no other agent's primary or legacy Cypilot marker is present (legacy pure)
+Each agent is detected via Cyber Constructor-specific generated files, not generic tool directories.
+- **Claude**: `.claude/skills/cf-constructor/SKILL.md`
+- **Windsurf**: `.windsurf/workflows/cf-constructor.md` (primary) or legacy `.windsurf/skills/cypilot/SKILL.md` / `.windsurf/skills/cf-constructor/SKILL.md` with `{cf-constructor-path}/` follow-link
+- **Cursor**: `.cursor/commands/cf-constructor.md` (primary) or legacy `.cursor/rules/cypilot.mdc` / `.cursor/rules/cf-constructor.mdc` with `{cf-constructor-path}/` follow-link
+- **Copilot**: `.github/.cf-constructor-installed` (primary), `.github/prompts/cf-constructor.prompt.md` / legacy `.github/prompts/cypilot.prompt.md`, or `.github/copilot-instructions.md` starting with `# Cyber Constructor` / `# Cypilot` (legacy). User-authored `copilot-instructions.md` files are never overwritten.
+- **OpenAI**: `.codex/.cf-constructor-installed` (primary; legacy `.codex/.cypilot-installed` still recognized), `.codex/agents/` with Cyber Constructor content (legacy mixed-install), or `.agents/skills/cf-constructor/SKILL.md` only when no other agent's primary or legacy marker is present (legacy pure)
 
 **Skill file model**:
 - **Kit workflow skills**: Generated as shared `.agents/skills/{id}/SKILL.md` for all non-Claude agents
@@ -556,7 +556,7 @@ Legacy per-tool manifest skill files are migrated away only when they match gene
 
 ### generate-resources
 
-> **DEPRECATED per `cpt-cypilot-adr-remove-blueprint-system`**: This command has been removed. Kit files are now authored directly and installed/updated via `cpt kit install` / `cpt kit update`. No generation step is needed.
+> **DEPRECATED per `cpt-cypilot-adr-remove-blueprint-system`**: This command has been removed. Kit files are now authored directly and installed/updated via `cfc kit install` / `cfc kit update`. No generation step is needed.
 
 **Exit**: 0 on success, 1 on error.
 
@@ -567,7 +567,7 @@ Legacy per-tool manifest skill files are migrated away only when they match gene
 Environment health check.
 
 ```
-cpt doctor
+cfc doctor
 ```
 
 **Checks performed**:
@@ -577,10 +577,10 @@ cpt doctor
 | git available | `git --version` succeeds (optional, not required) |
 | gh CLI | `gh auth status` succeeds (required only for PR commands) |
 | Agent detection | at least one supported agent directory found |
-| Config integrity | `{cypilot_path}/config/core.toml` exists and parses, schema valid |
+| Config integrity | `{cf-constructor-path}/config/core.toml` exists and parses, schema valid |
 | Skill version | project skill matches or is newer than cache |
 | Kit structure | all registered kits have valid entry points |
-| Kit file integrity | all kit files in `{cypilot_path}/config/kits/<slug>/` present and valid (conf.toml, constraints.toml, artifacts/, SKILL.md) |
+| Kit file integrity | all kit files in `{cf-constructor-path}/config/kits/<slug>/` present and valid (conf.toml, constraints.toml, artifacts/, SKILL.md) |
 
 **Output** (JSON):
 ```json
@@ -603,7 +603,7 @@ cpt doctor
 Validate all example artifacts against their templates.
 
 ```
-cpt self-check [--kit KIT] [--verbose]
+cfc self-check [--kit KIT] [--verbose]
 ```
 
 | Option | Description |
@@ -618,7 +618,7 @@ cpt self-check [--kit KIT] [--verbose]
 4. Validate each example artifact against its template structure and constraints.
 5. Report per-kit, per-kind PASS/FAIL with error details.
 
-> **Note**: `self-check` is also invoked automatically at the end of `cpt update`. If it fails, the update status becomes WARN and the self-check report is included in the update output.
+> **Note**: `self-check` is also invoked automatically at the end of `cfc update`. If it fails, the update status becomes WARN and the self-check report is included in the update output.
 
 **Exit**: 0=PASS, 2=FAIL, 1=ERROR.
 
@@ -629,13 +629,13 @@ cpt self-check [--kit KIT] [--verbose]
 Manage project configuration.
 
 ```
-cpt config <subcommand> [options]
+cfc config <subcommand> [options]
 ```
 
 #### config show
 
 ```
-cpt config show [--section SECTION]
+cfc config show [--section SECTION]
 ```
 
 Display current core configuration. Optional `--section` to show only a part (systems, kits, ignore).
@@ -643,15 +643,15 @@ Display current core configuration. Optional `--section` to show only a part (sy
 #### config system add
 
 ```
-cpt config system add --name NAME --slug SLUG --kit KIT
+cfc config system add --name NAME --slug SLUG --kit KIT
 ```
 
-Add a system definition to `{cypilot_path}/config/core.toml`.
+Add a system definition to `{cf-constructor-path}/config/core.toml`.
 
 #### config system remove
 
 ```
-cpt config system remove --slug SLUG
+cfc config system remove --slug SLUG
 ```
 
 Remove a system definition.
@@ -659,13 +659,13 @@ Remove a system definition.
 #### config system rename
 
 ```
-cpt config system rename --slug SLUG --new-name NAME [--new-slug SLUG]
+cfc config system rename --slug SLUG --new-name NAME [--new-slug SLUG]
 ```
 
 #### config ignore add
 
 ```
-cpt config ignore add --pattern PATTERN [--reason REASON]
+cfc config ignore add --pattern PATTERN [--reason REASON]
 ```
 
 Add a path pattern to the ignore list.
@@ -673,13 +673,13 @@ Add a path pattern to the ignore list.
 #### config ignore remove
 
 ```
-cpt config ignore remove --pattern PATTERN
+cfc config ignore remove --pattern PATTERN
 ```
 
 #### config kit install
 
 ```
-cpt config kit install --slug SLUG --path PATH
+cfc config kit install --slug SLUG --path PATH
 ```
 
 Register and install a kit.
@@ -695,11 +695,11 @@ All config subcommands support `--dry-run` to preview changes without writing.
 Manage git pre-commit hooks.
 
 ```
-cpt hook install
-cpt hook uninstall
+cfc hook install
+cfc hook uninstall
 ```
 
-**`install`**: creates a git pre-commit hook that runs `cpt lint` on changed artifact files. The hook MUST complete in ≤ 5 seconds for typical changes.
+**`install`**: creates a git pre-commit hook that runs `cfc lint` on changed artifact files. The hook MUST complete in ≤ 5 seconds for typical changes.
 
 **`uninstall`**: removes the Cypilot pre-commit hook.
 
@@ -712,7 +712,7 @@ cpt hook uninstall
 Manage shell completions.
 
 ```
-cpt completions install [--shell SHELL]
+cfc completions install [--shell SHELL]
 ```
 
 | Option | Default | Description |
@@ -732,7 +732,7 @@ Kit plugins register their own CLI subcommands under the kit's slug namespace.
 #### sdlc autodetect show
 
 ```
-cpt sdlc autodetect show --system SYSTEM
+cfc sdlc autodetect show --system SYSTEM
 ```
 
 Show autodetect rules (artifact patterns, traceability levels, codebase paths) for a system.
@@ -740,19 +740,19 @@ Show autodetect rules (artifact patterns, traceability levels, codebase paths) f
 #### sdlc autodetect add-artifact
 
 ```
-cpt sdlc autodetect add-artifact --system SYSTEM --kind KIND --pattern PATTERN [--traceability FULL|DOCS-ONLY] [--required]
+cfc sdlc autodetect add-artifact --system SYSTEM --kind KIND --pattern PATTERN [--traceability FULL|DOCS-ONLY] [--required]
 ```
 
 #### sdlc autodetect add-codebase
 
 ```
-cpt sdlc autodetect add-codebase --system SYSTEM --name NAME --path PATH --extensions EXTS
+cfc sdlc autodetect add-codebase --system SYSTEM --name NAME --path PATH --extensions EXTS
 ```
 
 #### sdlc pr-review
 
 ```
-cpt sdlc pr-review <number> [--checklist CHECKLIST] [--prompt PROMPT]
+cfc sdlc pr-review <number> [--checklist CHECKLIST] [--prompt PROMPT]
 ```
 
 Review a GitHub PR. Fetches diffs and metadata via `gh` CLI, analyzes against configured prompts and checklists. Read-only (no local modifications). Always re-fetches on each invocation.
@@ -760,7 +760,7 @@ Review a GitHub PR. Fetches diffs and metadata via `gh` CLI, analyzes against co
 #### sdlc pr-status
 
 ```
-cpt sdlc pr-status <number>
+cfc sdlc pr-status <number>
 ```
 
 Check PR status: comment severity classification, CI status, merge conflict state, unreplied comment audit.
@@ -775,24 +775,24 @@ Multi-repo workspace federation commands manage cross-repo artifact traceability
 
 ### workspace-init
 
-Initialize a multi-repo workspace by scanning nested sub-directories for repos with Cypilot adapters.
+Initialize a multi-repo workspace by scanning nested sub-directories for repos with Cyber Constructor installs.
 
 ```
-cpt workspace-init [--root DIR] [--output PATH] [--inline] [--force] [--max-depth N] [--dry-run]
+cfc workspace-init [--root DIR] [--output PATH] [--inline] [--force] [--max-depth N] [--dry-run]
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--root DIR` | Directory to scan for nested repo sub-dirs (default: current project root) |
-| `--output PATH` | Where to write `.cypilot-workspace.toml` (default: scan root) |
+| `--output PATH` | Where to write `.cf-constructor-workspace.toml` (default: scan root) |
 | `--inline` | Write workspace config inline into current repo's `config/core.toml` instead of standalone file |
 | `--force` | Force reinitialization when a workspace config already exists |
 | `--max-depth N` | Maximum directory depth for nested repo scanning (default: 3). Limits filesystem traversal to prevent unbounded scanning. |
 | `--dry-run` | Print what would be generated without writing files |
 
 **Behavior**:
-1. Find project root (`.git` or `AGENTS.md` with `@cpt:root-agents` marker).
-2. Scan nested sub-directories (up to `--max-depth` levels, default 3) for project directories with Cypilot adapters. Symlinks are not followed during scanning to prevent loops and traversal issues.
+1. Find project root (`.git` or `AGENTS.md` with `@cf:root-agents` marker).
+2. Scan nested sub-directories (up to `--max-depth` levels, default 3) for project directories with Cyber Constructor adapters. Symlinks are not followed during scanning to prevent loops and traversal issues.
 3. For each discovered repo: resolve adapter path, compute relative source path, infer role based on directory heuristics:
    - Detect capabilities: source directories (`src/`, `lib/`, `app/`, `pkg/`), documentation directories (`docs/`, `architecture/`, `requirements/`), kits directory (`kits/`)
    - If multiple capabilities present → `full`
@@ -800,7 +800,7 @@ cpt workspace-init [--root DIR] [--output PATH] [--inline] [--force] [--max-dept
    - If no recognized directories → `full` (default)
 4. Build workspace config with version and discovered sources.
 5. Check for existing workspace — reject cross-type conflicts (inline vs standalone) and require `--force` to reinitialize.
-6. Write config: standalone `.cypilot-workspace.toml` or inline `[workspace]` section in `config/core.toml`.
+6. Write config: standalone `.cf-constructor-workspace.toml` or inline `[workspace]` section in `config/core.toml`.
 
 **Constraints**: `--inline` and `--output` are mutually exclusive. `--inline` always writes to `config/core.toml`.
 
@@ -808,8 +808,8 @@ cpt workspace-init [--root DIR] [--output PATH] [--inline] [--force] [--max-dept
 ```json
 {
   "status": "CREATED",
-  "message": "Workspace config created at .cypilot-workspace.toml",
-  "config_path": ".cypilot-workspace.toml",
+  "message": "Workspace config created at .cf-constructor-workspace.toml",
+  "config_path": ".cf-constructor-workspace.toml",
   "sources_count": 3,
   "sources": ["repo-a", "repo-b", "repo-c"]
 }
@@ -824,7 +824,7 @@ cpt workspace-init [--root DIR] [--output PATH] [--inline] [--force] [--max-dept
 Add a source to workspace config.
 
 ```
-cpt workspace-add --name NAME (--path PATH | --url URL) [--branch BRANCH] [--role ROLE] [--adapter PATH] [--inline] [--force]
+cfc workspace-add --name NAME (--path PATH | --url URL) [--branch BRANCH] [--role ROLE] [--adapter PATH] [--inline] [--force]
 ```
 
 | Option | Description |
@@ -834,7 +834,7 @@ cpt workspace-add --name NAME (--path PATH | --url URL) [--branch BRANCH] [--rol
 | `--url URL` | Git remote URL (HTTPS or SSH) for the source |
 | `--branch BRANCH` | Git branch/ref to checkout |
 | `--role ROLE` | Source role: `artifacts`, `codebase`, `kits`, `full` (default: `full`) |
-| `--adapter PATH` | Path to Cypilot dir within the source (e.g., `cypilot`, `.bootstrap`) |
+| `--adapter PATH` | Path to Cyber Constructor dir within the source (e.g., `.cf-constructor`, `.bootstrap`) |
 | `--inline` | Add source inline to `config/core.toml` instead of standalone workspace file |
 | `--force` | Replace existing source with the same name instead of returning an error |
 
@@ -853,7 +853,7 @@ cpt workspace-add --name NAME (--path PATH | --url URL) [--branch BRANCH] [--rol
 {
   "status": "ADDED",
   "message": "Source 'repo-a' added to workspace",
-  "config_path": ".cypilot-workspace.toml",
+  "config_path": ".cf-constructor-workspace.toml",
   "source": {
     "name": "repo-a",
     "path": "../repo-a",
@@ -872,7 +872,7 @@ cpt workspace-add --name NAME (--path PATH | --url URL) [--branch BRANCH] [--rol
 Display workspace configuration and per-source status.
 
 ```
-cpt workspace-info
+cfc workspace-info
 ```
 
 **Behavior**:
@@ -887,7 +887,7 @@ cpt workspace-info
 {
   "status": "OK",
   "version": "1.0",
-  "config_path": ".cypilot-workspace.toml",
+  "config_path": ".cf-constructor-workspace.toml",
   "is_inline": false,
   "project_root": "/path/to/project",
   "sources_count": 2,
@@ -953,7 +953,7 @@ cpt workspace-info
 Fetch and update worktrees for Git URL sources.
 
 ```
-cpt workspace-sync [--source NAME] [--dry-run] [--force]
+cfc workspace-sync [--source NAME] [--dry-run] [--force]
 ```
 
 | Option | Description |
@@ -1036,9 +1036,9 @@ CI pipelines should check for exit code 2 to detect validation failures.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `CYPILOT_CACHE_DIR` | Override cache directory location | `~/.cypilot/cache/` |
-| `CYPILOT_NO_VERSION_CHECK` | Disable background version check | unset |
-| `CYPILOT_NO_COLOR` | Disable colored stderr output | unset |
+| `CFC_CACHE_DIR` | Override cache directory location | `~/.cf-constructor/cache/` |
+| `CFC_NO_VERSION_CHECK` | Disable background version check | unset |
+| `CFC_NO_COLOR` | Disable colored stderr output | unset |
 | `NO_COLOR` | Standard no-color convention (respected) | unset |
 
 ---
@@ -1048,7 +1048,7 @@ CI pipelines should check for exit code 2 to detect validation failures.
 ### Global (per user)
 
 ```
-~/.cypilot/
+~/.cf-constructor/
   cache/                    # Cached skill bundle (latest downloaded)
     skills/
     kits/
@@ -1059,7 +1059,7 @@ CI pipelines should check for exit code 2 to detect validation failures.
 ### Project (per repository)
 
 ```
-{cypilot_path}/             # Install directory (default: cypilot/, configurable via --dir)
+{cf-constructor-path}/             # Install directory (default: .cf-constructor/, configurable via --dir)
   .core/                    # Read-only core files (copied from cache)
     skills/                 # Skill bundle
     workflows/              # Core workflows (generate.md, analyze.md)
@@ -1103,14 +1103,14 @@ CI pipelines should check for exit code 2 to detect validation failures.
 
 | Error Code | Cause | Resolution |
 |------------|-------|------------|
-| `NOT_INITIALIZED` | Command run outside a Cypilot project | Run `cpt init` |
-| `CONFIG_NOT_FOUND` | `{cypilot_path}/config/core.toml` missing or corrupt | Run `cpt init` or `cpt doctor` |
-| `KIT_NOT_REGISTERED` | Referenced kit not in config | Run `cpt config kit install` |
+| `NOT_INITIALIZED` | Command run outside a Cyber Constructor project | Run `cfc init` |
+| `CONFIG_NOT_FOUND` | `{cf-constructor-path}/config/core.toml` missing or corrupt | Run `cfc init` or `cfc doctor` |
+| `KIT_NOT_REGISTERED` | Referenced kit not in config | Run `cfc config kit install` |
 | `ARTIFACT_NOT_FOUND` | Specified artifact path does not exist | Check path |
-| `SCHEMA_VALIDATION` | Config file does not match schema | Run `cpt doctor` for details |
+| `SCHEMA_VALIDATION` | Config file does not match schema | Run `cfc doctor` for details |
 | `GH_CLI_NOT_FOUND` | `gh` CLI not installed (PR commands only) | Install `gh` CLI |
 | `GH_NOT_AUTHENTICATED` | `gh` CLI not authenticated | Run `gh auth login` |
-| `KIT_UPDATE_CONFLICT` | User declined all file updates during kit update | Re-run `cpt kit update` to review changes |
+| `KIT_UPDATE_CONFLICT` | User declined all file updates during kit update | Re-run `cfc kit update` to review changes |
 | `CACHE_EMPTY` | No cached skill and download failed | Check network, retry |
 | `UNSUPPORTED_URL_SCHEME` | Git URL uses scheme other than HTTPS or SSH | Use `https://` or `git@` URL |
 | `SOURCE_ALREADY_EXISTS` | Workspace source name already taken | Use `--force` to replace |
@@ -1136,7 +1136,7 @@ Plus a human-readable message to stderr.
 ## Version Negotiation
 
 ```
-cpt --version
+cfc --version
 ```
 
 **Output** (JSON):
@@ -1149,4 +1149,4 @@ cpt --version
 }
 ```
 
-The proxy version is the version of the globally installed CLI proxy (`pipx` package). The cache version is the version of the skill bundle in `~/.cypilot/cache/`. The project version is the version of the skill installed in the project's `{cypilot_path}/` directory (null if not in a project).
+The proxy version is the version of the globally installed CLI proxy (`pipx` package). The cache version is the version of the skill bundle in `~/.cf-constructor/cache/`. The project version is the version of the skill installed in the project's `{cf-constructor-path}/` directory (null if not in a project).

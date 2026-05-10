@@ -1,7 +1,7 @@
 """
-ralphex Plan Export Compiler - Compile Cypilot plans into ralphex-compatible format.
+ralphex Plan Export Compiler - Compile Cyber Constructor plans into ralphex-compatible format.
 
-Transforms Cypilot plan manifests and phase files into ralphex Markdown plans
+Transforms Cyber Constructor plan manifests and phase files into ralphex Markdown plans
 with ``## Validation Commands`` and ``### Task N:`` sections. Includes post-run
 handoff reporting, delegation lifecycle state tracking, and bootstrap detection.
 
@@ -31,14 +31,14 @@ _GUIDANCE_SUBSECTIONS = {"Engineering", "Quality"}
 
 
 def compile_delegation_plan(plan_dir: str) -> str:
-    """Compile a Cypilot plan into a ralphex-compatible Markdown plan.
+    """Compile a Cyber Constructor plan into a ralphex-compatible Markdown plan.
 
     Reads the plan manifest (``plan.toml``) and phase files from *plan_dir*,
     assembles them into ralphex grammar order: title, overview,
     ``## Validation Commands``, and ``### Task N:`` blocks.
 
     Args:
-        plan_dir: Path to the Cypilot plan directory containing ``plan.toml``
+        plan_dir: Path to the Cyber Constructor plan directory containing ``plan.toml``
                   and phase files.
 
     Returns:
@@ -114,14 +114,14 @@ def map_phase_to_task(
     phase_num: int,
     phase_file: Optional[str] = None,
 ) -> str:
-    """Map a single Cypilot phase to a ralphex ``### Task N:`` block.
+    """Map a single Cyber Constructor phase to a ralphex ``### Task N:`` block.
 
     Emits a compact handoff prompt that points ralphex back to the original
     phase file, summarizes the phase focus, highlights bounded guidance, and
     states what to ignore outside the declared phase scope.
 
     Args:
-        phase_content: Raw Markdown content of the Cypilot phase file.
+        phase_content: Raw Markdown content of the Cyber Constructor phase file.
         phase_num: The phase number (used for ``### Task N:`` header).
         phase_file: Optional original phase file path to reference explicitly.
 
@@ -223,7 +223,7 @@ def _find_project_root(start_path: Path) -> Path:
     for parent in [resolved_start] + list(resolved_start.parents):
         if (parent / ".git").exists() or (parent / ".bootstrap").exists():
             return parent
-        if (parent / "cypilot").exists() or (parent / ".cypilot").exists() or (parent / ".cpt").exists():
+        if (parent / "cypilot").exists() or (parent / ".cf-constructor").exists() or (parent / ".cpt").exists():
             return parent
     return resolved_start.parent
 
@@ -627,7 +627,7 @@ def check_completed_plans(plans_dir: str, task_slug: str) -> dict:
 
 # @cpt-begin:inst-run-validation
 def run_validation_commands(commands: list[str], cwd: Optional[str] = None) -> dict:
-    """Re-run deterministic validation commands from the original Cypilot plan.
+    """Re-run deterministic validation commands from the original Cyber Constructor plan.
 
     Executes each command independently and aggregates results. All commands
     are run regardless of individual failures.
@@ -714,7 +714,7 @@ def report_handoff(
         exit_code: The ralphex process exit code.
         output_refs: Output reference paths from the run.
         completed_plan_path: Path to the completed plan in ``completed/``, or None.
-        validation_passed: Whether Cypilot validation commands passed.
+        validation_passed: Whether Cyber Constructor validation commands passed.
         partial: If True and exit_code != 0, report partial status.
 
     Returns:
@@ -835,7 +835,7 @@ def check_bootstrap_needed(repo_root: str) -> dict:
         "message": (
             "Local ralphex configuration is missing (.ralphex/config not found). "
             "To initialize, run `ralphex --init` in the repo root. "
-            "This requires your explicit approval — Cypilot will never run "
+            "This requires your explicit approval — Cyber Constructor will never run "
             "`ralphex --init` automatically."
         ),
     }
@@ -884,7 +884,7 @@ def run_delegation(
 
     Args:
         config: Parsed core.toml data dict.
-        plan_dir: Path to the Cypilot plan directory containing ``plan.toml``.
+        plan_dir: Path to the Cyber Constructor plan directory containing ``plan.toml``.
         repo_root: Absolute path to the repository root.
         mode: Delegation mode — ``"execute"``, ``"tasks-only"``, or ``"review"``.
         worktree: Whether to request worktree isolation.
@@ -1159,7 +1159,7 @@ REVIEW_PROMPT_RELATIVES = (
 _REVIEW_OVERRIDE_BEGIN = "<!-- @cpt-begin:cypilot-review-override -->"
 _REVIEW_OVERRIDE_END = "<!-- @cpt-end:cypilot-review-override -->"
 _REVIEW_OVERRIDE_INTRO = (
-    "Cypilot-managed final review step."
+    "Cyber Constructor-managed final review step."
 )
 
 
@@ -1169,7 +1169,7 @@ def generate_review_artifacts(plan_dir: str, repo_root: str) -> dict:  # pylint:
     Injects a managed final analyze step into local ralphex review prompts.
 
     Args:
-        plan_dir: Path to the Cypilot plan directory containing ``plan.toml``.
+        plan_dir: Path to the Cyber Constructor plan directory containing ``plan.toml``.
         repo_root: Absolute path to the project/repository root.
 
     Returns:
@@ -1181,7 +1181,7 @@ def generate_review_artifacts(plan_dir: str, repo_root: str) -> dict:  # pylint:
     analyze_workflow = _resolve_analyze_workflow_path(root)
     managed_prompt_paths = _sync_review_override_prompts(root, analyze_workflow)
 
-    logger.info("Injected Cypilot final analyze step into %d review prompt(s)", len(managed_prompt_paths))
+    logger.info("Injected Cyber Constructor final analyze step into %d review prompt(s)", len(managed_prompt_paths))
 
     return {
         "artifacts": [str(path) for path in managed_prompt_paths],
@@ -1194,7 +1194,7 @@ def _resolve_analyze_workflow_path(repo_root: Path) -> str:
     candidates: list[str] = []
     if adapter_rel:
         candidates.append(adapter_rel)
-    for candidate in ("cypilot", ".cypilot", ".bootstrap", ".cpt"):
+    for candidate in ("cypilot", ".cf-constructor", ".bootstrap", ".cpt"):
         if candidate not in candidates:
             candidates.append(candidate)
 
@@ -1205,8 +1205,8 @@ def _resolve_analyze_workflow_path(repo_root: Path) -> str:
             return analyze_workflow.relative_to(repo_root).as_posix()
 
     raise OSError(
-        "Could not resolve Cypilot install directory for final analyze step. "
-        "Ensure root AGENTS.md defines `cypilot_path` or install Cypilot in a standard adapter directory."
+        "Could not resolve Cyber Constructor install directory for final analyze step. "
+        "Ensure root AGENTS.md defines `cf-constructor-path` or install Cyber Constructor in a standard adapter directory."
     )
 
 

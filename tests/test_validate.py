@@ -6,7 +6,6 @@ Only tests for CLI and utils functions are kept.
 """
 
 import sys
-import os
 import json
 from pathlib import Path
 import io
@@ -34,7 +33,7 @@ def _bootstrap_registry(project_root: Path, *, entries: list) -> None:
     (project_root / ".git").mkdir(exist_ok=True)
     # New layout: cypilot_path variable in root AGENTS.md TOML block
     (project_root / "AGENTS.md").write_text(
-        '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "adapter"\n```\n',
+        '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "adapter"\n```\n',
         encoding="utf-8",
     )
     adapter_dir = project_root / "adapter"
@@ -147,7 +146,7 @@ class TestFilesUtilsCoverage(unittest.TestCase):
             (root / ".git").mkdir(exist_ok=True)
             # AGENTS.md points to a non-existent directory
             (root / "AGENTS.md").write_text(
-                '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "missing-adapter"\n```\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "missing-adapter"\n```\n',
                 encoding="utf-8",
             )
             self.assertIsNone(find_cypilot_directory(root))
@@ -476,6 +475,110 @@ class TestRunContentLanguageCheck(unittest.TestCase):
         mock_cfg.validation.allowed_content_languages = []
         results = self._call((mock_cfg, None))
         self.assertEqual(results, [])
+
+    def test_skips_non_md_artifacts(self):
+        """Non-.md artifacts must be skipped (line 971-972 path)."""
+        from unittest.mock import patch
+        from cypilot.commands.validate import _run_content_language_check
+
+        mock_cfg = MagicMock()
+        mock_cfg.validation.allowed_content_languages = ["en"]
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            py_file = root / "code.py"
+            py_file.write_text("print('hello')\n", encoding="utf-8")
+            artifacts = [(py_file, Path("/t"), "CODE", "FULL", "kit")]
+            with patch("cypilot.utils.workspace.find_workspace_config", return_value=(mock_cfg, None)):
+                results = _run_content_language_check(artifacts, root)
+            self.assertEqual(results, [])
+
+    def test_md_with_disallowed_chars_returns_violation(self):
+        """An .md file containing disallowed chars produces a CONTENT_LANGUAGE_VIOLATION error."""
+        from unittest.mock import patch
+        from cypilot.commands.validate import _run_content_language_check
+
+        mock_cfg = MagicMock()
+        mock_cfg.validation.allowed_content_languages = ["en"]
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            md = root / "doc.md"
+            # Cyrillic content not allowed under "en"
+            md.write_text("# Title\n\nПривет мир\n", encoding="utf-8")
+            artifacts = [(md, Path("/t"), "PRD", "FULL", "kit")]
+            with patch("cypilot.utils.workspace.find_workspace_config", return_value=(mock_cfg, None)):
+                results = _run_content_language_check(artifacts, root)
+            self.assertGreaterEqual(len(results), 1)
+            self.assertIn("language", str(results[0].get("category", "")) + str(results[0]))
+
+    def test_md_within_allowed_returns_empty(self):
+        """An .md file with only English chars and "en" allowed returns no violations."""
+        from unittest.mock import patch
+        from cypilot.commands.validate import _run_content_language_check
+
+        mock_cfg = MagicMock()
+        mock_cfg.validation.allowed_content_languages = ["en"]
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            md = root / "doc.md"
+            md.write_text("# Title\n\nHello World\n", encoding="utf-8")
+            artifacts = [(md, Path("/t"), "PRD", "FULL", "kit")]
+            with patch("cypilot.utils.workspace.find_workspace_config", return_value=(mock_cfg, None)):
+                results = _run_content_language_check(artifacts, root)
+            self.assertEqual(results, [])
+
+    def test_lang_scan_error_for_unreadable_file(self):
+        """Triggers LangScanError branch (lines 983-990) when scan_file raises."""
+        from unittest.mock import patch
+        from cypilot.commands.validate import _run_content_language_check
+        from cypilot.utils.content_language import LangScanError
+
+        mock_cfg = MagicMock()
+        mock_cfg.validation.allowed_content_languages = ["en"]
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            md = root / "broken.md"
+            md.write_text("anything\n", encoding="utf-8")
+            artifacts = [(md, Path("/t"), "PRD", "FULL", "kit")]
+
+            def _raise(p, _ranges):
+                raise LangScanError(p, OSError("simulated I/O failure"))
+
+            with patch("cypilot.utils.workspace.find_workspace_config", return_value=(mock_cfg, None)), \
+                 patch("cypilot.utils.content_language.scan_file", side_effect=_raise):
+                results = _run_content_language_check(artifacts, root)
+            self.assertEqual(len(results), 1)
+            self.assertIn("Cannot read file", str(results[0].get("message", "")))
+
+
+class TestCmdValidateArtifactArg(unittest.TestCase):
+    """Cover early-exit branches in cmd_validate driven by --artifact arg."""
+
+    def test_artifact_not_found_returns_error(self):
+        """Hits lines 187-188: artifact path doesn't exist."""
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            _bootstrap_registry(
+                root,
+                entries=[
+                    {"kind": "PRD", "system": "Test", "path": "architecture/PRD.md", "format": "Cypilot"},
+                ],
+            )
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                code = cypilot_cli.main([
+                    "validate",
+                    "--artifact",
+                    str(root / "does-not-exist.md"),
+                ])
+            # ERROR exit code
+            self.assertIn(code, [1, 2])
+            # JSON output should mention "not found"
+            output = buf.getvalue()
+            self.assertIn("not found", output.lower())
 
 
 if __name__ == "__main__":

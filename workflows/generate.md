@@ -1,7 +1,7 @@
 ---
-cypilot: true
+cf-constructor: true
 type: workflow
-name: cypilot-generate
+name: cf-constructor-generate
 description: Create/update artifacts or implement code
 version: 1.0
 purpose: Universal workflow for creating or updating any artifact or code
@@ -41,13 +41,13 @@ purpose: Universal workflow for creating or updating any artifact or code
 For BROWNFIELD work:
 - Use Protocol Guard's matched WHEN-clause spec resolution for the current request; treat only task-matched, applicable project specs/rules as satisfying the brownfield rules gate.
 - If one or more project-specific specs/rules are matched for the current request, load and follow them before generating.
-- If no project-specific specs/rules are matched for the current brownfield request, offer auto-config even when unrelated files exist under `{cypilot_path}/config/rules/` or unrelated specs are registered.
+- If no project-specific specs/rules are matched for the current brownfield request, offer auto-config even when unrelated files exist under `{cf-constructor-path}/config/rules/` or unrelated specs are registered.
 - MUST NOT treat mere on-disk rules-file presence or any unrelated registered spec as sufficient to skip auto-config.
-- ALWAYS open and follow `{cypilot_path}/.core/requirements/auto-config.md` WHEN user accepts auto-config.
+- ALWAYS open and follow `{cf-constructor-path}/.core/requirements/auto-config.md` WHEN user accepts auto-config.
 
 ```text
 Brownfield project detected — existing code found but no task-matched, applicable project-specific specs/rules were found for this request.
-Auto-config can scan your project and generate rules that teach Cypilot your conventions.
+Auto-config can scan your project and generate rules that teach Cyber Constructor your conventions.
 This produces config/rules/, heading-level WHEN rules in config/AGENTS.md, navigation rules for existing project guides, and system entries in config/artifacts.toml.
 
 → Run auto-config now? [yes/no/skip]
@@ -59,11 +59,11 @@ Reply with `yes`, `no`, or `skip`.
 
 If user confirms `yes`: execute auto-config methodology (Phases 1→6), then return to generate. If user says `skip`: proceed without task-matched project-specific specs/rules. If user says `no`: cancel.
 
-ALWAYS open and follow `{cypilot_path}/.core/requirements/storytelling.md` WHEN user requests an explanatory / educational / presentation / guide / README / training-material **package** to be written to disk (intent like `generate guide for X`, `make a README from X`, `export explain package`, `create training material from X`, `build onboarding doc set for X`, `write a how-to package about X`, or equivalents in any user language). WHEN this rule triggers, set BOTH `EXPLAIN_MODE=true` AND `EXPLAIN_EXPORT=true`; the storytelling methodology handles plan + portion construction; the package is written under `{cypilot_path}/.cache/explain/packages/{slug}-{ISO-timestamp}/`. Standard `generate.md` write-permission gates apply (user confirmation before writing files; do NOT add `--yes`/`-y` to write-capable commands unless the user explicitly requested non-interactive behavior). The hybrid execution from `storytelling.md` Export Mode applies: Phases E0/E1 (pre-flight, role/audience confirmation, plan approval) remain interactive; portion construction runs in batch after plan approval and writes files directly (no per-portion chat navigation prompts).
+ALWAYS open and follow `{cf-constructor-path}/.core/requirements/storytelling.md` WHEN user requests an explanatory / educational / presentation / guide / README / training-material **package** to be written to disk (intent like `generate guide for X`, `make a README from X`, `export explain package`, `create training material from X`, `build onboarding doc set for X`, `write a how-to package about X`, or equivalents in any user language). WHEN this rule triggers, set BOTH `EXPLAIN_MODE=true` AND `EXPLAIN_EXPORT=true`; the storytelling methodology handles plan + portion construction; the package is written under `{cf-constructor-path}/.cache/explain/packages/{slug}-{ISO-timestamp}/`. Standard `generate.md` write-permission gates apply (user confirmation before writing files; do NOT add `--yes`/`-y` to write-capable commands unless the user explicitly requested non-interactive behavior). The hybrid execution from `storytelling.md` Export Mode applies: Phases E0/E1 (pre-flight, role/audience confirmation, plan approval) remain interactive; portion construction runs in batch after plan approval and writes files directly (no per-portion chat navigation prompts).
 
 ## Overview
 
-Artifact generation mode = template + example by default; load checklist up front only when the current rules explicitly require it before writing. Code generation mode = design/spec context first; load checklist during validation/review unless the current rules explicitly require it during implementation. Config mode = create/update config files. After `execution-protocol.md`, you have `TARGET_TYPE`, `RULES`, `KIND`, `PATH`, `MODE`, and resolved phase-appropriate dependencies. Key variables: `{cypilot_path}/config/`, `{ARTIFACTS_REGISTRY}`, `{KITS_PATH}`, `{PATH}`. Use `{KITS_PATH}/artifacts/{KIND}/examples/` for style and quality guidance.
+Artifact generation mode = template + example by default; load checklist up front only when the current rules explicitly require it before writing. Code generation mode = design/spec context first; load checklist during validation/review unless the current rules explicitly require it during implementation. Config mode = create/update config files. After `execution-protocol.md`, you have `TARGET_TYPE`, `RULES`, `KIND`, `PATH`, `MODE`, and resolved phase-appropriate dependencies. Key variables: `{cf-constructor-path}/config/`, `{ARTIFACTS_REGISTRY}`, `{KITS_PATH}`, `{PATH}`. Use `{KITS_PATH}/artifacts/{KIND}/examples/` for style and quality guidance.
 
 ## Context Budget & Overflow Prevention (CRITICAL)
 
@@ -75,7 +75,7 @@ Artifact generation mode = template + example by default; load checklist up fron
 
 ## Agent Anti-Patterns (STRICT mode)
 
-**Reference**: `{cypilot_path}/.core/requirements/agent-compliance.md` for the full list.
+**Reference**: `{cf-constructor-path}/.core/requirements/agent-compliance.md` for the full list.
 
 Critical failures: `SKIP_TEMPLATE`, `SKIP_EXAMPLE`, `SKIP_CHECKLIST`, `PLACEHOLDER_SHIP`, `NO_CONFIRMATION`, `SIMULATED_VALIDATION`.
 
@@ -86,24 +86,24 @@ Self-check before writing files (MANDATORY in STRICT mode): template loaded, exa
 STRICT: generation must load the required generation-phase dependencies (typically template + example for artifacts, design/spec context for code), checklist-driven review must run in Phase 5, and Phase 6 requires validation `PASS`. RELAXED: use user-provided or best-effort phase-appropriate dependencies, still attempt post-write validation automatically when practical, and if validation cannot reach `PASS` after recovery, stop with an explicitly unvalidated result instead of treating it as success.
 
 ```text
-⚠️ Generated without Cypilot rules (reduced quality assurance)
+⚠️ Generated without Cyber Constructor rules (reduced quality assurance)
 ```
 
 ## Phase 0: Ensure Dependencies
 
 After `execution-protocol.md`, you have `KITS_PATH`, the phase-appropriate dependency set, and `REQUIREMENTS`.
 
-Variable checkpoint: `{cpt_cmd}`, `{cypilot_path}`, and `{project_root}` are resolved by `execution-protocol.md`. On context loss or new-chat resume, re-run `cpt --json info` to restore these values before any path-dependent step.
+Variable checkpoint: `{cfc_cmd}`, `{cf-constructor-path}`, and `{project_root}` are resolved by `execution-protocol.md`. On context loss or new-chat resume, re-run `{cfc_cmd} --json info` to restore these values before any path-dependent step.
 
 | Condition | Action |
 |-----------|--------|
 | `rules.md` loaded | Phase-appropriate dependencies were already resolved from rules Dependencies; proceed silently. |
 | `rules.md` not loaded | Ask the user to provide/specify the generation-phase dependencies that are actually needed now; request `checklist` only when the current phase or rules explicitly require it. |
-| Code mode additional | Ask the user to specify the design artifact if missing; load `{cypilot_path}/.core/requirements/code-checklist.md` up front only when the current rules explicitly require implementation-time checklist guidance, otherwise defer it to Phase 5 review. |
+| Code mode additional | Ask the user to specify the design artifact if missing; load `{cf-constructor-path}/.core/requirements/code-checklist.md` up front only when the current rules explicitly require implementation-time checklist guidance, otherwise defer it to Phase 5 review. |
 
 **MUST NOT proceed** to Phase 1 until all generation-phase dependencies required for the current target are available.
 
-Raw-input overflow rule: see `{cypilot_path}/.core/requirements/raw-input-overflow.md`. If the direct user prompt plus all provided files exceeds `500` total lines, the agent MUST stop direct generation long enough to offer `/cypilot-plan` versus continuing here with reduced guarantees, exactly as specified in that file.
+Raw-input overflow rule: see `{cf-constructor-path}/.core/requirements/raw-input-overflow.md`. If the direct user prompt plus all provided files exceeds `500` total lines, the agent MUST stop direct generation long enough to offer `/cf-constructor-plan` versus continuing here with reduced guarantees, exactly as specified in that file.
 
 ## Phase 0.1: Plan Escalation Gate
 
@@ -124,14 +124,14 @@ When `> 2500` lines, offer:
 This exceeds the safe single-context budget (~2500 lines). The plan workflow can decompose this into focused phases (≤500 lines each) that ensure every kit rule is followed and nothing is skipped.
 
 Options:
-1. Switch to /cypilot-plan (recommended for full quality)
+1. Switch to /cf-constructor-plan (recommended for full quality)
 2. Continue here (risk: context overflow, rules may be partially applied)
 Reply with `1` or `2`.
-1. Switch to /cypilot-plan — Suggested for full quality; this decomposes the task into focused phases and reduces context-overflow risk.
+1. Switch to /cf-constructor-plan — Suggested for full quality; this decomposes the task into focused phases and reduces context-overflow risk.
 2. Continue here — Faster, but context overflow may reduce rule coverage.
 ```
 
-If user chooses plan: stop and tell them to run `/cypilot-plan generate {KIND}` with the same parameters. If user chooses continue: proceed with aggressive chunking and log _"Proceeding in single-context mode — quality may be reduced for large artifacts."_
+If user chooses plan: stop and tell them to run `/cf-constructor-plan generate {KIND}` with the same parameters. If user chooses continue: proceed with aggressive chunking and log _"Proceeding in single-context mode — quality may be reduced for large artifacts."_
 
 ## Phase 0.5: Clarify Output & Context
 
@@ -156,7 +156,7 @@ Where should the result go?
 Reply with `File`, `Chat only`, or `MCP tool / external system`.
 ```
 
-Then: store the selected system; if file output + using rules, determine the path, plan the `artifacts.toml` entry, and check `UPDATE` vs `CREATE`; for artifacts identify parent references; for code identify design artifacts + requirement IDs + traceability markers; for new IDs use `cpt-{system}-{kind}-{slug}` and verify uniqueness with `{cpt_cmd} --json list-ids`.
+Then: store the selected system; if file output + using rules, determine the path, plan the `artifacts.toml` entry, and check `UPDATE` vs `CREATE`; for artifacts identify parent references; for code identify design artifacts + requirement IDs + traceability markers; for new IDs use `cpt-{system}-{kind}-{slug}` and verify uniqueness with `{cfc_cmd} --json list-ids`.
 
 ## Phase 1: Collect Information
 
@@ -214,7 +214,7 @@ Standard checks:
 - [ ] Has tests (if required)
 - [ ] Traceability markers present (if `to_code="true"`)
 
-Content rules: MUST follow content requirements exactly, use imperative language, wrap IDs in backticks, reference types from the domain model, and use Cypilot DSL (CDSL) for behavioral sections when applicable. MUST NOT leave placeholders, skip required content, redefine parent types, or use code examples in `DESIGN.md`.
+Content rules: MUST follow content requirements exactly, use imperative language, wrap IDs in backticks, reference types from the domain model, and use Cyber Constructor DSL (CDSL) for behavioral sections when applicable. MUST NOT leave placeholders, skip required content, redefine parent types, or use code examples in `DESIGN.md`.
 
 Markdown quality: MUST use empty lines between headings/paragraphs/lists, fenced code blocks with language tags, and proper line-break formatting.
 
@@ -224,7 +224,7 @@ Checkpoint when artifacts have `>10` sections or generation spans multiple turns
 
 ```markdown
 ### Generation Checkpoint
-**Workflow**: /cypilot-generate {KIND}
+**Workflow**: /cf-constructor-generate {KIND}
 **Phase**: 2 complete, ready for Phase 3
 **Inputs collected**: {section summaries}
 **Content generated**: {line count} lines
@@ -245,7 +245,7 @@ Checkpoint policy: default is chat only; write a checkpoint file only if the use
 **Mode**: {MODE}
 **Content preview**: {brief overview of what will be created/changed}
 **Files to write**: `{path}`: {description}; {additional files if any}
-**Artifacts registry**: `{cypilot_path}/config/artifacts.toml`: {entry additions/updates, if any}
+**Artifacts registry**: `{cf-constructor-path}/config/artifacts.toml`: {entry additions/updates, if any}
 **STRICT self-check**: template loaded = {yes/no}; example referenced = {yes/no}; checklist status = {required-and-complete/deferred-to-phase-5}; placeholders absent = {yes/no}; explicit `yes` received = {yes/no}
 **Proceed?** [yes/no/modify]
 Reply with `yes`, `no`, or `modify`.
@@ -258,7 +258,7 @@ Responses: `yes` = create files and validate; `no` = cancel; `modify` = revisit 
 
 ## Phase 4: Write
 
-Only after confirmation: update `{cypilot_path}/config/artifacts.toml` if a new artifact path is introduced, create directories if needed, write file(s), and verify content.
+Only after confirmation: update `{cf-constructor-path}/config/artifacts.toml` if a new artifact path is introduced, create directories if needed, write file(s), and verify content.
 
 ```text
 ✓ Written: {path}
@@ -276,39 +276,39 @@ Attempt deterministic validation automatically after generation; do not list it 
 
 MUST run deterministic validation as an actual terminal command using the canonical agent-safe form.
 
-Deterministic gate is available only when the current Cypilot configuration and current written output support a canonical validator invocation for this target. Treat availability as proven by active config plus CLI support for the concrete validator command(s) selected for the current output; do **not** infer availability or non-availability from kit prose, examples, `format` labels, or the absence of an exact example in this workflow. Before taking a RELAXED `Deterministic gate: SKIPPED` path, MUST record `Validator availability proof` showing which canonical validator route(s) were checked for the current target (for example project-wide `validate`, artifact-scoped `validate --artifact {PATH}`, `validate-toc {PATH}`, or another deterministic validator explicitly required by the current target) and why none is target-applicable for the current written output.
+Deterministic gate is available only when the current Cyber Constructor configuration and current written output support a canonical validator invocation for this target. Treat availability as proven by active config plus CLI support for the concrete validator command(s) selected for the current output; do **not** infer availability or non-availability from kit prose, examples, `format` labels, or the absence of an exact example in this workflow. Before taking a RELAXED `Deterministic gate: SKIPPED` path, MUST record `Validator availability proof` showing which canonical validator route(s) were checked for the current target (for example project-wide `validate`, artifact-scoped `validate --artifact {PATH}`, `validate-toc {PATH}`, or another deterministic validator explicitly required by the current target) and why none is target-applicable for the current written output.
 
 Artifacts:
 
 ```bash
-{cpt_cmd} --json validate
+{cfc_cmd} --json validate
 ```
 
 Specific artifact:
 
 ```bash
-{cpt_cmd} --json validate --artifact {PATH}
+{cfc_cmd} --json validate --artifact {PATH}
 ```
 
 Workflow / instruction Markdown file with TOC requirements:
 
 ```bash
-{cpt_cmd} --json validate-toc {PATH}
+{cfc_cmd} --json validate-toc {PATH}
 ```
 
-Language content check (run after writing any `.md` artifact when `[validation] allowed_content_languages` is configured in `.cypilot-workspace.toml`):
+Language content check (run after writing any `.md` artifact when `[validation] allowed_content_languages` is configured in `.cf-constructor-workspace.toml`):
 
 ```bash
-{cpt_cmd} --json check-language {PATH}
+{cfc_cmd} --json check-language {PATH}
 ```
 
 If `check-language` returns violations (`LANG001`): fix flagged lines — rewrite non-English content in the allowed language(s) — then re-run until `PASS`. Language violations are errors, not warnings; STRICT mode requires `PASS` before Phase 6.
 
 Rules:
 - execute the deterministic validator BEFORE any semantic review
-- choose the target-applicable deterministic validator command(s) for the current output and rules (for example `{cpt_cmd} --json validate`, `{cpt_cmd} --json validate --artifact {PATH}`, `{cpt_cmd} --json validate-toc {PATH}`, or another deterministic validator explicitly required by the current target)
-- use `{cpt_cmd} --json validate-toc {PATH}` as the canonical deterministic validator for workflow / instruction Markdown files when TOC validation applies, and MUST NOT classify that target as having no target-applicable deterministic validator while that route exists
-- treat `{cpt_cmd} --json validate --artifact {PATH}` as artifact-scoped only when the current file is a registered artifact target
+- choose the target-applicable deterministic validator command(s) for the current output and rules (for example `{cfc_cmd} --json validate`, `{cfc_cmd} --json validate --artifact {PATH}`, `{cfc_cmd} --json validate-toc {PATH}`, or another deterministic validator explicitly required by the current target)
+- use `{cfc_cmd} --json validate-toc {PATH}` as the canonical deterministic validator for workflow / instruction Markdown files when TOC validation applies, and MUST NOT classify that target as having no target-applicable deterministic validator while that route exists
+- treat `{cfc_cmd} --json validate --artifact {PATH}` as artifact-scoped only when the current file is a registered artifact target
 - record the exact deterministic validator command(s) executed, including subcommand and path flags, plus each command's actual validator exit code and JSON `status` / `error_count` / `warning_count`
 - record the overall deterministic gate result across the full required validator set
 - if no target-applicable deterministic validator exists for the current written output and RELAXED mode takes the explicitly unvalidated path, record `Deterministic gate: SKIPPED`, explicit `Validator availability proof`, explicit `Skip reason`, and an explicit `Validator-backed evidence note` that no deterministic validator command completed
@@ -376,15 +376,15 @@ Before ending a file-writing response, perform this final self-check: were files
 
 `Review Prompts` rules — both prompts MUST be **self-contained final prompts** usable in a fresh chat without any prior context:
 
-- explicitly begin with the phrase `Invoke skill cypilot`
-- state that `/cypilot-generate` is complete and the next chat is for reviewing the generated changes
+- explicitly begin with the phrase `Invoke skill cf-constructor`
+- state that `/cf-constructor-generate` is complete and the next chat is for reviewing the generated changes
 - embed inline: changed file paths, what was changed per file (brief summary), kind/target, and the completed `Validation Results` body with actual values
 - verify again before emitting the prompts that the `Validation Results` body is present and complete; if not, stop with the Phase 6 prerequisite error instead of generating partial prompts
 - do NOT reference "previous chat", "findings above", or any content outside the prompt itself
 - the prompt alone must give the next agent everything needed to start work immediately
 - generate **two separate prompts**:
- 1. `Plan Review Prompt` — route to `/cypilot-plan` when the review scope is broad, multi-file, or needs to be phased or strict coverage
- 2. `Direct Review Prompt` — route to `/cypilot-analyze` when the review scope is bounded and can be performed immediately
+ 1. `Plan Review Prompt` — route to `/cf-constructor-plan` when the review scope is broad, multi-file, or needs to be phased or strict coverage
+ 2. `Direct Review Prompt` — route to `/cf-constructor-analyze` when the review scope is bounded and can be performed immediately
 - include both prompts in the same final response whenever files were written
 - MUST NOT ask the next agent to regenerate or re-implement the changes
 
@@ -395,9 +395,9 @@ Plan Review Prompt (copy-paste into new chat if needed):
 ```
 
 ```text
-Invoke skill `cypilot`.
+Invoke skill `cf-constructor`.
 
-I just completed `/cypilot-generate` and want a phased review plan for the generated changes.
+I just completed `/cf-constructor-generate` and want a phased review plan for the generated changes.
 
 Target: {TARGET_TYPE} / {KIND}
 Changed files:
@@ -406,7 +406,7 @@ Changed files:
 
 {paste the completed Validation Results body from the canonical template above verbatim, preserving field names, order, values, and any conditional `SKIPPED`-only lines exactly as emitted}
 
-Use `/cypilot-plan` to create a phased review plan for these changes.
+Use `/cf-constructor-plan` to create a phased review plan for these changes.
 Focus on review coverage, risk hotspots, and the minimal set of review phases needed for high confidence.
 After creating the plan, give me the next execution prompt for the first review phase.
 
@@ -418,9 +418,9 @@ Direct Review Prompt (copy-paste into new chat if needed):
 ```
 
 ```text
-Invoke skill `cypilot`.
+Invoke skill `cf-constructor`.
 
-I just completed `/cypilot-generate` and want an immediate review of the generated changes.
+I just completed `/cf-constructor-generate` and want an immediate review of the generated changes.
 
 Target: {TARGET_TYPE} / {KIND}
 Changed files:
@@ -429,7 +429,7 @@ Changed files:
 
 {paste the completed Validation Results body from the canonical template above verbatim, preserving field names, order, values, and any conditional `SKIPPED`-only lines exactly as emitted}
 
-Use `/cypilot-analyze` to review these changes now.
+Use `/cf-constructor-analyze` to review these changes now.
 Report findings with severity, evidence, risks, regressions, and recommended fixes.
 
 Do not regenerate the implementation. Do not ask me to restate the task unless required inputs are missing.
@@ -442,8 +442,8 @@ Tool failure:
 ```text
 ⚠️ Tool error: {error message}
 → Check Python environment and dependencies
-→ Verify cypilot is correctly configured
-→ Run `{cpt_cmd} --json update` to refresh the adapter if the local installation is stale
+→ Verify Cyber Constructor is correctly configured
+→ Run `{cfc_cmd} --json update` to refresh the adapter if the local installation is stale
 ```
 
 STOP — do not continue with incomplete state.
@@ -474,7 +474,7 @@ A legitimate RELAXED `Deterministic gate: SKIPPED` exit for file-writing output 
 
 ## Validation Criteria
 
-- [ ] `{cypilot_path}/.core/requirements/execution-protocol.md` executed
+- [ ] `{cf-constructor-path}/.core/requirements/execution-protocol.md` executed
 - [ ] Phase-appropriate dependencies loaded (generation: template/example unless checklist explicitly required; validation/review: checklist when applicable)
 - [ ] System context clarified (if using rules)
 - [ ] Output destination clarified
@@ -487,7 +487,7 @@ A legitimate RELAXED `Deterministic gate: SKIPPED` exit for file-writing output 
 - [ ] File written after confirmation (if file output)
 - [ ] Artifacts registry updated (if file output + rules)
 - [ ] Validation executed
-- [ ] Language content check executed (`cpt check-language`) when `allowed_content_languages` is configured
+- [ ] Language content check executed (`{cfc_cmd} check-language`) when `allowed_content_languages` is configured
 - [ ] Exact deterministic validator command(s), per-command validator results, and overall deterministic gate recorded
 - [ ] `Validator availability proof` recorded when deterministic gate is `SKIPPED`
 - [ ] `Semantic review basis` recorded

@@ -277,7 +277,7 @@ def _human_result(data: dict, quiet: bool = False) -> None:
 
     ui.hint("Fix: rewrite flagged content in the allowed language(s).")
     ui.hint(
-        "To allow additional scripts, add to .cypilot-workspace.toml:\n"
+        "To allow additional scripts, add to .cf-constructor-workspace.toml:\n"
         "  [validation]\n"
         "  allowed_content_languages = [\"en\", \"ru\"]"
     )

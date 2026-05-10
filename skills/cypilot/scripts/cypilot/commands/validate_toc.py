@@ -22,7 +22,7 @@ def cmd_validate_toc(argv: List[str]) -> int:
     """Validate Table of Contents in markdown files."""
     # @cpt-begin:cpt-cypilot-algo-traceability-validation-validate-toc:p1:inst-toc-parse-args
     p = argparse.ArgumentParser(
-        prog="cypilot validate-toc",
+        prog="cfc validate-toc",
         description="Validate Table of Contents in Markdown files",
     )
     p.add_argument(

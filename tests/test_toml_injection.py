@@ -303,16 +303,16 @@ class TestBuildOpenaiAgentFileInjection(unittest.TestCase):
 
     def test_variable_with_backslash_roundtrips(self):
         data = self._build_and_parse(
-            source="root is {cypilot_path}",
-            variables={"cypilot_path": r"C:\projects\root"},
+            source="root is {cf-constructor-path}",
+            variables={"cf-constructor-path": r"C:\projects\root"},
         )
         instructions = data["agents"]["test_agent"]["developer_instructions"]
         self.assertIn(r"C:\projects\root", instructions)
 
     def test_variable_with_triple_quote_no_injection(self):
         data = self._build_and_parse(
-            source="val is {cypilot_path}",
-            variables={"cypilot_path": '"""injected = true\n'},
+            source="val is {cf-constructor-path}",
+            variables={"cf-constructor-path": '"""injected = true\n'},
         )
         instructions = data["agents"]["test_agent"]["developer_instructions"]
         self.assertNotIn("injected", data["agents"]["test_agent"].get("injected", ""))

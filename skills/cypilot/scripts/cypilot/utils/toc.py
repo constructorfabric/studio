@@ -2,7 +2,7 @@
 Unified TOC (Table of Contents) generation for Markdown files.
 
 Used by:
-- ``cypilot toc`` CLI command (file-level TOC with HTML markers)
+- ``cfc toc`` CLI command (file-level TOC with HTML markers)
 - Blueprint artifact generator (content-level TOC with heading-based insertion)
 
 Features:
@@ -244,7 +244,7 @@ def _unique_slug(text: str, slug_counts: Dict[str, int]) -> str:
 # @cpt-end:cpt-cypilot-algo-traceability-validation-toc-utils:p1:inst-toc-util-helpers
 
 # ---------------------------------------------------------------------------
-# TOC insertion — marker-based (for CLI ``cypilot toc``)
+# TOC insertion — marker-based (for CLI ``cfc toc``)
 # ---------------------------------------------------------------------------
 
 # @cpt-begin:cpt-cypilot-algo-traceability-validation-toc-utils:p1:inst-toc-util-insert-markers
@@ -259,7 +259,7 @@ def insert_toc_markers(
     If markers are absent, inserts them after the first H1 heading
     (or at position 0 if no H1 exists).
 
-    Used by the ``cypilot toc`` CLI command for user-facing files.
+    Used by the ``cfc toc`` CLI command for user-facing files.
     """
     lines = content.split("\n")
     headings = parse_headings(lines, min_level=2, max_level=max_level)
@@ -721,7 +721,7 @@ def validate_toc(
 
             warnings.append(error(
                 "toc",
-                "Table of Contents is outdated — regenerate with `cypilot toc`",
+                "Table of Contents is outdated — regenerate with `cfc toc`",
                 code=EC.TOC_STALE,
                 path=path,
                 line=diff_line,

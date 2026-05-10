@@ -20,7 +20,7 @@ decision-makers: project maintainer
   - [Claude Code Subagent Definition (Full Fidelity)](#claude-code-subagent-definition-full-fidelity)
   - [Semantic Model (`agents.toml`)](#semantic-model-agentstoml)
   - [Adaptation to Other Tools](#adaptation-to-other-tools)
-  - [Example: `cypilot-pr-review` Across All Tools](#example-cypilot-pr-review-across-all-tools)
+  - [Example: `cf-constructor-pr-review` Across All Tools](#example-cf-constructor-pr-review-across-all-tools)
   - [Read-Only Enforcement Strategies](#read-only-enforcement-strategies)
   - [Graceful Degradation](#graceful-degradation)
 - [Pros and Cons of the Options](#pros-and-cons-of-the-options)
@@ -70,8 +70,8 @@ The `cypilot agents` command generates two purpose-built subagent definitions fo
 
 | Subagent | Mode | Isolation | Purpose |
 |----------|------|-----------|---------|
-| `cypilot-codegen` | read-write | worktree (Claude Code) | Fully-specified code generation tasks: the parent agent formulates a complete specification and delegates implementation to a subagent that works in an isolated copy of the repo |
-| `cypilot-pr-review` | read-only | none | Structured checklist-based PR review: the subagent reads the diff and produces a structured review without write access |
+| `cf-constructor-codegen` | read-write | worktree (Claude Code) | Fully-specified code generation tasks: the parent agent formulates a complete specification and delegates implementation to a subagent that works in an isolated copy of the repo |
+| `cf-constructor-pr-review` | read-only | none | Structured checklist-based PR review: the subagent reads the diff and produces a structured review without write access |
 
 Each subagent definition is rendered in the tool's native format (Markdown + YAML frontmatter for Claude Code/Cursor/Copilot, TOML sections for Codex). Tools that do not support subagents (Windsurf) are gracefully skipped with a reason in the JSON output.
 
@@ -81,7 +81,7 @@ Subagent definitions are config-driven: built-in defaults via `_default_subagent
 
 * Good, because subagents isolate subtask context — a code generation task does not pollute the parent's review context, and vice versa
 * Good, because orchestration becomes possible — the parent can dispatch multiple subagents concurrently for independent workstreams
-* Good, because least privilege is enforced per-subagent — `cypilot-pr-review` cannot write files; `cypilot-codegen` works in an isolated worktree
+* Good, because least privilege is enforced per-subagent — `cf-constructor-pr-review` cannot write files; `cf-constructor-codegen` works in an isolated worktree
 * Good, because config-driven subagent definitions enable teams to extend with domain-specific agents
 * Good, because existing single-agent integration is unchanged — subagents are additive
 * Neutral, because Windsurf users get no subagent support (tool limitation, not a Cypilot limitation)
@@ -91,7 +91,7 @@ Subagent definitions are config-driven: built-in defaults via `_default_subagent
 
 Confirmed when:
 
-- `cypilot agents --agent claude` generates `cypilot-codegen.md` and `cypilot-pr-review.md` in `.claude/agents/` with correct YAML frontmatter (isolation, disallowed tools)
+- `cypilot agents --agent claude` generates `cf-constructor-codegen.md` and `cf-constructor-pr-review.md` in `.claude/agents/` with correct YAML frontmatter (isolation, disallowed tools)
 - `cypilot agents --agent cursor` generates equivalent subagent files in `.cursor/agents/` with `readonly: true` for pr-review
 - `cypilot agents --agent copilot` generates `.agent.md` files in `.github/agents/`
 - `cypilot agents --agent openai` generates a single TOML with two agent sections in `.codex/agents/`
@@ -108,7 +108,7 @@ A Claude Code subagent definition is a Markdown file in `.claude/agents/` with Y
 
 ```yaml
 ---
-name: cypilot-codegen
+name: cf-constructor-codegen
 description: Cypilot code generator. Use when requirements are fully specified...
 tools: Bash, Read, Write, Edit, Glob, Grep
 model: inherit
@@ -123,7 +123,7 @@ ALWAYS open and follow `{cypilot_path}/.core/skills/cypilot/SKILL.md`
 
 | Property | Purpose | Example |
 |----------|---------|---------|
-| `name` | Agent identifier | `cypilot-codegen` |
+| `name` | Agent identifier | `cf-constructor-codegen` |
 | `description` | When the host tool should delegate to this agent | Free text |
 | `tools` | Allowed tool list (comma-separated) | `Bash, Read, Write, Edit, Glob, Grep` |
 | `disallowedTools` | Denied tool list (for readonly agents) | `Write, Edit` |
@@ -138,16 +138,16 @@ This is the full set of capabilities. Every other tool supports a subset.
 Kit developers define agents once using abstract properties that map cleanly to Claude Code's format:
 
 ```toml
-[agents.cypilot-codegen]
+[agents.cf-constructor-codegen]
 description = "Code generation with full write access"
-prompt_file = "agents/cypilot-codegen.md"
+prompt_file = "agents/cf-constructor-codegen.md"
 mode = "readwrite"        # → full tool list (Claude: tools), no disallowedTools
 isolation = true          # → isolation: worktree (Claude only)
 model = "inherit"         # → model: inherit
 
-[agents.cypilot-pr-review]
+[agents.cf-constructor-pr-review]
 description = "Read-only PR review"
-prompt_file = "agents/cypilot-pr-review.md"
+prompt_file = "agents/cf-constructor-pr-review.md"
 mode = "readonly"         # → disallowedTools: Write, Edit (Claude) / readonly: true (Cursor) / filtered tool list (Copilot)
 isolation = false
 model = "fast"            # → model: sonnet (Claude) / model: fast (Cursor) / ignored (Copilot, Codex)
@@ -179,48 +179,48 @@ Each tool's output is a lossy projection of the Claude Code canonical format. Th
 
 - **Windsurf** — does not support subagents at all. Subagent generation is skipped with a reason in the JSON output. Skills and workflows are still generated.
 
-### Example: `cypilot-pr-review` Across All Tools
+### Example: `cf-constructor-pr-review` Across All Tools
 
 The same semantic definition (`mode: readonly`, `model: fast`, `isolation: false`) produces four different outputs:
 
-**Claude Code** (`.claude/agents/cypilot-pr-review.md`):
+**Claude Code** (`.claude/agents/cf-constructor-pr-review.md`):
 
 ```yaml
 ---
-name: cypilot-pr-review
+name: cf-constructor-pr-review
 description: Cypilot PR reviewer...
 tools: Bash, Read, Glob, Grep
 disallowedTools: Write, Edit
 model: sonnet
 ---
 
-ALWAYS open and follow `{cypilot_path}/.core/skills/cypilot/agents/cypilot-pr-review.md`
+ALWAYS open and follow `{cypilot_path}/.core/skills/cypilot/agents/cf-constructor-pr-review.md`
 ```
 
-**Cursor** (`.cursor/agents/cypilot-pr-review.md`):
+**Cursor** (`.cursor/agents/cf-constructor-pr-review.md`):
 
 ```yaml
 ---
-name: cypilot-pr-review
+name: cf-constructor-pr-review
 description: Cypilot PR reviewer...
 tools: grep, view, bash
 readonly: true
 model: fast
 ---
 
-ALWAYS open and follow `{cypilot_path}/.core/skills/cypilot/agents/cypilot-pr-review.md`
+ALWAYS open and follow `{cypilot_path}/.core/skills/cypilot/agents/cf-constructor-pr-review.md`
 ```
 
-**GitHub Copilot** (`.github/agents/cypilot-pr-review.agent.md`):
+**GitHub Copilot** (`.github/agents/cf-constructor-pr-review.agent.md`):
 
 ```yaml
 ---
-name: cypilot-pr-review
+name: cf-constructor-pr-review
 description: Cypilot PR reviewer...
 tools: ["read", "search"]
 ---
 
-ALWAYS open and follow `{cypilot_path}/.core/skills/cypilot/agents/cypilot-pr-review.md`
+ALWAYS open and follow `{cypilot_path}/.core/skills/cypilot/agents/cf-constructor-pr-review.md`
 ```
 
 **OpenAI Codex** (`.codex/agents/cypilot-agents.toml`, shared with all agents):
@@ -229,7 +229,7 @@ ALWAYS open and follow `{cypilot_path}/.core/skills/cypilot/agents/cypilot-pr-re
 [agents.cypilot_pr_review]
 description = "Cypilot PR reviewer..."
 developer_instructions = """
-ALWAYS open and follow `{cypilot_path}/.core/skills/cypilot/agents/cypilot-pr-review.md`
+ALWAYS open and follow `{cypilot_path}/.core/skills/cypilot/agents/cf-constructor-pr-review.md`
 """
 ```
 
@@ -313,7 +313,7 @@ Subagents are the host tool's native mechanism for **context management** and **
 
 * **Context saturation** — a long generation session fills the context window with implementation detail that is irrelevant to a subsequent review. The parent agent's quality degrades as unrelated context accumulates. Subagents run in their own context window and return only the result, keeping the parent's context clean.
 * **Serialized workflows** — a single-agent model forces sequential execution. Subagents can run concurrently — the parent can dispatch a codegen task and a review task in parallel without one blocking the other.
-* **Overprivilege** — a monolithic agent has full tool access for every task. Subagents scope tool permissions per role: `cypilot-pr-review` is read-only (cannot write files); `cypilot-codegen` uses worktree isolation (cannot modify the working tree directly). This enforces least privilege at the tool level, reducing the blast radius of agent errors.
+* **Overprivilege** — a monolithic agent has full tool access for every task. Subagents scope tool permissions per role: `cf-constructor-pr-review` is read-only (cannot write files); `cf-constructor-codegen` uses worktree isolation (cannot modify the working tree directly). This enforces least privilege at the tool level, reducing the blast radius of agent errors.
 
 These are not hypothetical benefits — they are the reason the host tools built subagent support in the first place. Cypilot should use the primitives its host tools provide.
 

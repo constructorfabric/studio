@@ -50,7 +50,7 @@ def _make_kit_with_manifest(td: Path, slug: str = "testkit") -> Path:
     _write_manifest(kit, """\
         [manifest]
         version = "1.0"
-        root = "{cypilot_path}/config/kits/{slug}"
+        root = "{cf-constructor-path}/config/kits/{slug}"
         user_modifiable = false
 
         [[resources]]
@@ -98,7 +98,7 @@ def _bootstrap_project(root: Path, adapter_rel: str = "cypilot") -> Path:
     root.mkdir(parents=True, exist_ok=True)
     (root / ".git").mkdir(exist_ok=True)
     (root / "AGENTS.md").write_text(
-        f'<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "{adapter_rel}"\n```\n<!-- /@cpt:root-agents -->\n',
+        f'<!-- @cf:root-agents -->\n```toml\n"cf-constructor-path" = "{adapter_rel}"\n```\n<!-- /@cf:root-agents -->\n',
         encoding="utf-8",
     )
     adapter = root / adapter_rel
@@ -350,7 +350,7 @@ class TestInstallKitWithManifest(unittest.TestCase):
             # manifest references a non-existent source
             manifest = Manifest(
                 version="1.0",
-                root="{cypilot_path}/config/kits/{slug}",
+                root="{cf-constructor-path}/config/kits/{slug}",
                 user_modifiable=False,
                 resources=[
                     ManifestResource(

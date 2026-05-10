@@ -48,13 +48,6 @@ Deterministic agent tool for structured workflows, artifact validation, traceabi
 |---------|-------------|
 | `toc` | Generate or update Table of Contents in Markdown files |
 
-### Migration
-
-| Command | Description |
-|---------|-------------|
-| `migrate` | Migrate Cypilot v2 projects to v3 (adapter → blueprint, JSON → TOML) |
-| `migrate-config` | Convert legacy JSON config files to TOML format |
-
 ### Legacy Aliases
 
 | Alias | Maps to |
@@ -68,26 +61,26 @@ Deterministic agent tool for structured workflows, artifact validation, traceabi
 
 ```bash
 # run init without --json
-cpt init
-cpt validate
-cpt validate --artifact architecture/PRD.md
-cpt spec-coverage
-cpt kit migrate
-cpt generate-agents --agent windsurf
+cfc init
+cfc validate
+cfc validate --artifact architecture/PRD.md
+cfc spec-coverage
+cfc kit migrate
+cfc generate-agents --agent windsurf
 # run update without --json
-cpt update
+cfc update
 ```
 
 ### Via direct script invocation
 
 ```bash
-python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py validate
-python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py validate --artifact architecture/PRD.md
-python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py spec-coverage --min-coverage 80
-python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py list-ids --pattern "-actor-"
-python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py where-defined --id cpt-myapp-fr-auth
-python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py kit migrate --dry-run
-python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py toc architecture/DESIGN.md
+python3 {cf-constructor-path}/.core/skills/cypilot/scripts/cypilot.py validate
+python3 {cf-constructor-path}/.core/skills/cypilot/scripts/cypilot.py validate --artifact architecture/PRD.md
+python3 {cf-constructor-path}/.core/skills/cypilot/scripts/cypilot.py spec-coverage --min-coverage 80
+python3 {cf-constructor-path}/.core/skills/cypilot/scripts/cypilot.py list-ids --pattern "-actor-"
+python3 {cf-constructor-path}/.core/skills/cypilot/scripts/cypilot.py where-defined --id cpt-myapp-fr-auth
+python3 {cf-constructor-path}/.core/skills/cypilot/scripts/cypilot.py kit migrate --dry-run
+python3 {cf-constructor-path}/.core/skills/cypilot/scripts/cypilot.py toc architecture/DESIGN.md
 ```
 
 All commands output JSON to stdout.

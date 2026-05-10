@@ -1374,7 +1374,7 @@ The following design domains do not require dedicated architecture sections. Eac
   - `cpt-cypilot-adr-structured-id-format` — structured cpt-* ID format with @cpt-* code tags
   - `cpt-cypilot-adr-git-style-conflict-markers` — git-style conflict markers for interactive merge
   - `cpt-cypilot-adr-prefer-cpt-cli-for-agents` — prefer `cpt` CLI over direct script invocation in agent prompts; graceful fallback to raw Python path
-  - `cpt-cypilot-adr-ralphex-delegation-skill` — dedicated `cypilot-ralphex` skill with bounded delegation contract for autonomous plan execution via ralphex
+  - `cpt-cypilot-adr-ralphex-delegation-skill` — dedicated `cf-constructor-ralphex` skill with bounded delegation contract for autonomous plan execution via ralphex
 - **Features**: [features/](./features/) — `core-infra.md`, `kit-management.md`, `traceability-validation.md`, `agent-integration.md`, `version-config.md`, `developer-experience.md`, `spec-coverage.md`, `v2-v3-migration.md`, `workspace.md`, `ralphex-delegation.md`, `subagent-registration.md`
 
 ### Specifications

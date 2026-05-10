@@ -1,14 +1,10 @@
-# <p align="center"><img src="images/cypilot-kit.png" alt="Cypilot Banner" width="100%" /></p>
+# <p align="center"><img src="images/constructor.png" alt="Cyber Constructor Banner" width="100%" /></p>
  
  [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-  ![Version](https://img.shields.io/badge/version-3.9.0-green.svg)
+  ![Version](https://img.shields.io/badge/version-4.0.0-green.svg)
   ![Python](https://img.shields.io/badge/python-3.11+-blue.svg)
- [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=cyberfabric_cyber-pilot&metric=coverage)](https://sonarcloud.io/summary/new_code?id=cyberfabric_cyber-pilot)
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=cyberfabric_cyber-pilot&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=cyberfabric_cyber-pilot)
-[![Duplicated Lines (%)](https://sonarcloud.io/api/project_badges/measure?project=cyberfabric_cyber-pilot&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=cyberfabric_cyber-pilot)
-[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=cyberfabric_cyber-pilot&metric=bugs)](https://sonarcloud.io/summary/new_code?id=cyberfabric_cyber-pilot)
- 
-**Version**: 3.9.0
+
+**Version**: 4.0.0
 
 **Status**: Active
 
@@ -18,17 +14,17 @@
 
 ## Overview
 
-Cyber Pilot is a traceable delivery system for requirements, design, plans, and code.
+Cyber Constructor is a traceable delivery system for requirements, design, plans, and code.
 
 Stable identifiers and references connect requirements, design, plans, and implementation so drift is surfaced early instead of being reconstructed ad hoc during review and delivery.
 
-For teams already using an AI coding tool, Cyber Pilot provides the operating controls needed to keep requirements, design, plans, and code traceable, reviewable, and enforceable as artifacts and implementation change:
+For teams already using an AI coding tool, Cyber Constructor provides the operating controls needed to keep requirements, design, plans, and code traceable, reviewable, and enforceable as artifacts and implementation change:
 
 - **stable identifiers and cross-link validation** to prove alignment across requirements, design, plans, and code
-- **deterministic `cpt` validation** to check structure, references, consistency, and traceability locally and in CI
+- **deterministic `cfc` validation** to check structure, references, consistency, and traceability locally and in CI
 - **templates, checklists, and staged workflows** to gate generation, review, and validation through explicit stages with defined inputs, outputs, and checks
 
-**Jump to:** [Product shape](#product-shape) | [Fit and non-fit](#fit-and-non-fit) | [Operating model](#operating-model) | [Traceability and validation model](#traceability-and-validation-model) | [Workflow model](#workflow-model) | [Typical delivery sequence](#typical-delivery-sequence) | [Supported hosts](#supported-hosts) | [Evaluate Cyber Pilot](#evaluate-cyber-pilot) | [Installation and setup reference](#installation-and-setup-reference)
+**Jump to:** [Product shape](#product-shape) | [Fit and non-fit](#fit-and-non-fit) | [Operating model](#operating-model) | [Traceability and validation model](#traceability-and-validation-model) | [Workflow model](#workflow-model) | [Typical delivery sequence](#typical-delivery-sequence) | [Supported hosts](#supported-hosts) | [Evaluate Cyber Constructor](#evaluate-cyber-constructor) | [Installation and setup reference](#installation-and-setup-reference)
 
 ## Product shape
 
@@ -39,50 +35,50 @@ For teams already using an AI coding tool, Cyber Pilot provides the operating co
 - **Checklists** make review and validation expectations visible instead of leaving them implicit in chat or memory.
 - **Implementation changes** are reviewed against those approved artifacts rather than as isolated code diffs.
 
-### What Cyber Pilot adds to a repo
+### What Cyber Constructor adds to a repo
 
-After `cpt init` and `cpt generate-agents`, Cyber Pilot typically adds a setup directory named `cypilot/`, generated AI coding tool integration files, and user-editable configuration under `config/` inside that setup directory.
+After `cfc init` and `cfc generate-agents`, Cyber Constructor typically adds a setup directory named `.cf-constructor/`, generated AI coding tool integration files, and user-editable configuration under `config/` inside that setup directory.
 
-`cypilot/` is the normal default for user projects. Self-hosted development in this repository uses `.bootstrap/` as a repo-specific exception described in **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+`.cf-constructor/` is the normal default for user projects. Self-hosted development in this repository uses `.bootstrap/` as a repo-specific exception described in **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 
-This repo-installed control surface is how Cyber Pilot becomes operationally real inside a repository rather than staying a chat convention. It is also the first concrete proof surface most teams can inspect directly: what is generated, what remains user-editable, what is optional, and what deterministic validation can see.
+This repo-installed control surface is how Cyber Constructor becomes operationally real inside a repository rather than staying a chat convention. It is also the first concrete proof surface most teams can inspect directly: what is generated, what remains user-editable, what is optional, and what deterministic validation can see.
 
 - **Generated** — AI coding tool integration files and repository wiring
 - **User-editable** — project configuration, rules, and any installed kit content meant for local use
 - **Optional** — installed kit content extends the base platform only when you want a more opinionated delivery model
-- **Validator-visible** — artifacts, plans, and configuration participate in deterministic `cpt` checks when those configured surfaces are in use
+- **Validator-visible** — artifacts, plans, and configuration participate in deterministic `cfc` checks when those configured surfaces are in use
 
 | Surface | Typical location | Ownership |
 |---|---|---|
-| Setup directory | `cypilot/` | Created by setup; contains both generated and user-editable material |
-| Host integration files | `.windsurf/`, `.cursor/`, `.claude/`, `.github/`, `.codex/`, `.agents/` | Generated by `cpt generate-agents`; regenerate when host integration changes |
-| Project config | `cypilot/config/` | User-editable and reviewable in the repo |
-| Installed kit content | `cypilot/config/kits/{slug}/` | User-editable local delivery surface for that kit |
+| Setup directory | `.cf-constructor/` | Created by setup; contains both generated and user-editable material |
+| Host integration files | `.windsurf/`, `.cursor/`, `.claude/`, `.github/`, `.codex/`, `.agents/` | Generated by `cfc generate-agents`; regenerate when host integration changes |
+| Project config | `.cf-constructor/config/` | User-editable and reviewable in the repo |
+| Installed kit content | `.cf-constructor/config/kits/{slug}/` | User-editable local delivery surface for that kit |
 | Self-hosted bootstrap copy in this repo only | `.bootstrap/` | Contributor-only special case; not the normal user-project layout |
 
 ### Core platform and optional kits
 
-Cyber Pilot has two main parts:
+Cyber Constructor has two main parts:
 
 - **Core platform** — the repository wiring, workflow routing, configuration surfaces, deterministic validation, and chat-facing skill that make the delivery model operational and repeatable
 - **Kits** — optional add-ons that specialize that same delivery model with domain-specific templates, rules, workflows, and validation material
 
 Most teams should start with the core platform and add a kit later only if they want a ready-made delivery model for a specific domain or way of working. Kits extend the same underlying system rather than introducing a separate product shape.
 
-### How teams encounter Cyber Pilot
+### How teams encounter Cyber Constructor
 
-In practice, teams usually encounter and touch Cyber Pilot through four main surfaces in the repository and toolchain:
+In practice, teams usually encounter and touch Cyber Constructor through four main surfaces in the repository and toolchain:
 
 | Surface | Form | Role |
 |---|---|---|
-| Primary AI surface | `cypilot <workflow>: <request>` | Main chat entry point for `plan`, `generate`, and `analyze` requests |
-| Deterministic CLI | `cpt <command>` | Setup, validation, updates, and repeatable local or CI checks |
+| Primary AI surface | `cf-constructor <workflow>: <request>` | Main chat entry point for `plan`, `generate`, and `analyze` requests |
+| Deterministic CLI | `cfc <command>` | Setup, validation, updates, and repeatable local or CI checks |
 | Generated AI coding tool integration files | generated files in the repository | Connect the repository or workspace to supported tools without manual setup in each host |
 | Optional kit content | installed kit content | Add domain-specific templates, rules, workflows, and validation material |
 
 ## Fit and non-fit
 
-Use Cyber Pilot if you already work with an AI coding tool and the cost of ambiguity, rework, or review failure is high enough to justify more structure and control.
+Use Cyber Constructor if you already work with an AI coding tool and the cost of ambiguity, rework, or review failure is high enough to justify more structure and control.
 
 ### Helps most when you are responsible for
 
@@ -116,11 +112,11 @@ Use Cyber Pilot if you already work with an AI coding tool and the cost of ambig
 
 ### System boundary and control model
 
-Cyber Pilot is best understood as the **workflow, context, and validation layer around your AI coding tool**.
+Cyber Constructor is best understood as the **workflow, context, and validation layer around your AI coding tool**.
 
-Four actors shape the operating model: the **AI coding tool** provides the environment, chat interface, and model access, the **agent** performs the reasoning and writing inside that environment, **Cyber Pilot** governs the repo-attached workflow, configuration, and validation surface around the work, and the **human** decides approval, adequacy, risk acceptance, and whether the result is acceptable to merge or ship.
+Four actors shape the operating model: the **AI coding tool** provides the environment, chat interface, and model access, the **agent** performs the reasoning and writing inside that environment, **Cyber Constructor** governs the repo-attached workflow, configuration, and validation surface around the work, and the **human** decides approval, adequacy, risk acceptance, and whether the result is acceptable to merge or ship.
 
-Cyber Pilot makes that repo-attached surface more explicit by controlling what context and rules are loaded, what structured artifacts or checkpoints the task is expected to use, and what deterministic checks can later be run with `cpt`. It does not supply the underlying intelligence of the model, and it does not decide whether the final implementation is correct, well-designed, or acceptable to merge.
+Cyber Constructor makes that repo-attached surface more explicit by controlling what context and rules are loaded, what structured artifacts or checkpoints the task is expected to use, and what deterministic checks can later be run with `cfc`. It does not supply the underlying intelligence of the model, and it does not decide whether the final implementation is correct, well-designed, or acceptable to merge.
 
  - **Use the agent for**
    - reasoning
@@ -128,7 +124,7 @@ Cyber Pilot makes that repo-attached surface more explicit by controlling what c
    - transformation
    - implementation judgment
 
- - **Use Cyber Pilot for**
+ - **Use Cyber Constructor for**
    - workflow selection and task framing
    - task-matched context and rule loading
    - templates, rules, and checklists
@@ -137,7 +133,7 @@ Cyber Pilot makes that repo-attached surface more explicit by controlling what c
 
  ### Deterministic vs non-deterministic boundary
  
- For the same configured project surface and the same command or request shape, Cyber Pilot should make the same routing, context-loading, and check-execution decisions.
+ For the same configured project surface and the same command or request shape, Cyber Constructor should make the same routing, context-loading, and check-execution decisions.
 
  - **Deterministic**
    - config and resource resolution
@@ -152,18 +148,18 @@ Cyber Pilot makes that repo-attached surface more explicit by controlling what c
 
  This does not imply the same reasoning trace, implementation approach, code, or solution quality from run to run.
 
- Cyber Pilot can constrain process, route work, and surface evidence repeatably, but it cannot guarantee implementation quality or replace human review.
+ Cyber Constructor can constrain process, route work, and surface evidence repeatably, but it cannot guarantee implementation quality or replace human review.
 
- - **What tradeoff does Cyber Pilot make?**
+ - **What tradeoff does Cyber Constructor make?**
    - more maintained artifacts, explicit checkpoints, and review surface in exchange for more control, auditability, and repeatability
 
  For the full fit / non-fit guidance, practical anti-patterns, planning heuristics, and workflow-choice rules, use **[guides/USAGE-GUIDE.md](guides/USAGE-GUIDE.md)**.
 
  ## Traceability and validation model
 
- Cyber Pilot is strongest when the delivery surface is explicit and checkable.
+ Cyber Constructor is strongest when the delivery surface is explicit and checkable.
 
- The inspectable surface is the file-backed repository material a human can open, diff, review, and compare over time. The configured enforcement surface is the validator-visible subset of that material that the repository has explicitly chosen to subject to deterministic `cpt` checks.
+ The inspectable surface is the file-backed repository material a human can open, diff, review, and compare over time. The configured enforcement surface is the validator-visible subset of that material that the repository has explicitly chosen to subject to deterministic `cfc` checks.
 
  ### Inspectable delivery surface
 
@@ -175,7 +171,7 @@ Cyber Pilot makes that repo-attached surface more explicit by controlling what c
 
  ### Configured enforcement surface
 
- - **Not every inspectable artifact is automatically enforced**; deterministic enforcement applies only to file-backed, validator-visible material the repository has configured `cpt` to check.
+ - **Not every inspectable artifact is automatically enforced**; deterministic enforcement applies only to file-backed, validator-visible material the repository has configured `cfc` to check.
  - **Enforceable means configured + validator-visible + deterministic** rather than inferred from everything a human can see in the repository.
  - **IDs, required links, document structure, plans, and stage completeness** become enforceable when they are part of that configured validation surface.
  - **The same configured surface can be checked locally and in CI** so enforcement is repeatable instead of chat-dependent.
@@ -190,7 +186,7 @@ Cyber Pilot makes that repo-attached surface more explicit by controlling what c
 
  The chain exists through explicit linked artifacts, stable identifiers or references, file-backed plans or checkpoints, and validation outputs tied to the configured surface. It helps surface drift and broken alignment operationally; it does not prove semantic equivalence between the requirement and the implementation.
 
- ### What `cpt` enforces
+ ### What `cfc` enforces
 
  These are the main deterministic conformance classes applied to that configured surface.
 
@@ -200,40 +196,40 @@ Cyber Pilot makes that repo-attached surface more explicit by controlling what c
  - **TOC and document consistency** where those checks are part of the configured validation surface
  - **Plan, checklist, and stage completeness** when those surfaces are file-backed and explicitly configured for checking
 
- ### What Cyber Pilot cannot prove
+ ### What Cyber Constructor cannot prove
 
  - **Behavioral correctness, absence of defects, and implementation quality** remain non-deterministic and still require review.
  - **Soundness of design decisions and adequacy of tests** remain judgment-based even when the artifacts, structure, and links are checkable.
  - **Business or product adequacy** remains outside deterministic proof.
  - **Human approval, merge, and ship decisions** remain judgment-based even when the evidence surface is strong.
 
- Cyber Pilot can surface missing, broken, stale, or inconsistent evidence without proving that the implementation is correct or adequate.
+ Cyber Constructor can surface missing, broken, stale, or inconsistent evidence without proving that the implementation is correct or adequate.
 
  ## Workflow model
 
-Cyber Pilot has three core workflows. Each has a portable chat form and, in some hosts, a matching slash-command alias.
+Cyber Constructor has three core workflows. Each has a portable chat form and, in some hosts, a matching slash-command alias.
 
 | Workflow | Portable chat form | Matching alias in some hosts | Use it when |
 |---|---|---|---|
-| Plan | `cypilot plan: ...` | `/cypilot-plan` | the task is too large, risky, or context-heavy for one conversation |
-| Generate | `cypilot generate: ...` | `/cypilot-generate` | you want to create, update, implement, or configure something |
-| Analyze | `cypilot analyze: ...` | `/cypilot-analyze` | you want to validate, review, inspect, compare, or audit |
+| Plan | `cf-constructor plan: ...` | `/cf-constructor-plan` | the task is too large, risky, or context-heavy for one conversation |
+| Generate | `cf-constructor generate: ...` | `/cf-constructor-generate` | you want to create, update, implement, or configure something |
+| Analyze | `cf-constructor analyze: ...` | `/cf-constructor-analyze` | you want to validate, review, inspect, compare, or audit |
 
-The portable `cypilot <workflow>: ...` form is the best default. Slash commands are host-specific aliases, not separate capabilities.
+The portable `cf-constructor <workflow>: ...` form is the best default. Slash commands are host-specific aliases, not separate capabilities.
 
 `plan`, `generate`, and `analyze` are reusable workflow modes, not a fixed mandatory sequence. They define how work is framed; the next section shows one common delivery order in which teams often combine them.
 
 ### Language complexity (global UX setting)
 
-All Cypilot user-facing output (chat + artifacts/documentation) respects a configurable `language_complexity` level: **`low`** (short sentences, common words only — for non-native A2-B1 readers), **`middle`** (everyday vocabulary, ≤25-word sentences, technical terms with brief gloss — default; for non-native B2 / mixed audiences), **`high`** (full register, idioms / academic vocabulary fine — for native or specialist audiences). Set in `{cypilot_path}/config/core.toml` under `[language] complexity = "middle"`. Mid-session override: `change language complexity to {low|middle|high}`; `remember new language complexity` persists. Source quotes from input artifacts are exempt (verbatim). See [`requirements/language-complexity.md`](requirements/language-complexity.md) for the full spec.
+All Cyber Constructor user-facing output (chat + artifacts/documentation) respects a configurable `language_complexity` level: **`low`** (short sentences, common words only — for non-native A2-B1 readers), **`middle`** (everyday vocabulary, ≤25-word sentences, technical terms with brief gloss — default; for non-native B2 / mixed audiences), **`high`** (full register, idioms / academic vocabulary fine — for native or specialist audiences). Set in `{cf-constructor-path}/config/core.toml` under `[language] complexity = "middle"`. Mid-session override: `change language complexity to {low|middle|high}`; `remember new language complexity` persists. Source quotes from input artifacts are exempt (verbatim). See [`requirements/language-complexity.md`](requirements/language-complexity.md) for the full spec.
 
 ### Explain mode (storytelling companion)
 
-`analyze` has an interactive **storytelling** companion for pedagogically-paced engagement with an artifact / PR / codebase region. Canonical invocation: **`cypilot analyze: explain <target>`** (any explain-style verb works — `walk me through`, `teach me`, `present`, `onboard me to`, `quiz me on`, `explain --resume {session-id}`). The methodology activates `EXPLAIN_MODE`, asks the user to pick one of six modes — `presentation` (default; explain & teach), `review` (panel critiques the artifact with line-anchored comments), `onboarding`, `decision` (alternatives + recommendation), `socratic` (agent quizzes you), `change-impact` — then delivers the input in small no-scroll portions with 6-slot navigation (Next / Deeper / Lateral / Recap / Ask / Wrap), audience-adapted diagrams, clickable source refs, and immediate-effect artifact handling (chat-only / save-to-file / post-to-resource).
+`analyze` has an interactive **storytelling** companion for pedagogically-paced engagement with an artifact / PR / codebase region. Canonical invocation: **`cf-constructor analyze: explain <target>`** (any explain-style verb works — `walk me through`, `teach me`, `present`, `onboard me to`, `quiz me on`, `explain --resume {session-id}`). The methodology activates `EXPLAIN_MODE`, asks the user to pick one of six modes — `presentation` (default; explain & teach), `review` (panel critiques the artifact with line-anchored comments), `onboarding`, `decision` (alternatives + recommendation), `socratic` (agent quizzes you), `change-impact` — then delivers the input in small no-scroll portions with 6-slot navigation (Next / Deeper / Lateral / Recap / Ask / Wrap), audience-adapted diagrams, clickable source refs, and immediate-effect artifact handling (chat-only / save-to-file / post-to-resource).
 
-To produce a hand-off-able **package** (READMEs, training material, guides) instead of a chat session: **`cypilot generate: explain package for <target>`** / `cypilot generate: make a README from <target>` / `cypilot generate: build onboarding doc set for <target>`. Writes a navigable folder of Markdown files under `{cypilot_path}/.cache/explain/packages/`.
+To produce a hand-off-able **package** (READMEs, training material, guides) instead of a chat session: **`cf-constructor generate: explain package for <target>`** / `cf-constructor generate: make a README from <target>` / `cf-constructor generate: build onboarding doc set for <target>`. Writes a navigable folder of Markdown files under `{cf-constructor-path}/.cache/explain/packages/`.
 
-Plain `cypilot analyze: review my changes` keeps the standard analyze contract (defect-finding with `Fix Prompt` / `Plan Prompt`); explain mode requires explicit explain-family verbs.
+Plain `cf-constructor analyze: review my changes` keeps the standard analyze contract (defect-finding with `Fix Prompt` / `Plan Prompt`); explain mode requires explicit explain-family verbs.
 
 Full methodology spec: [`requirements/storytelling.md`](requirements/storytelling.md) (router) + four modules (`storytelling-phases.md`, `storytelling-modes.md`, `storytelling-export.md`, `storytelling-preferences.md`).
 
@@ -254,35 +250,35 @@ In practice, this creates clearer boundaries, earlier drift detection, and more 
 
  ## Supported hosts
  
- Cyber Pilot works across multiple AI coding tools through the same portable `cypilot` workflow model, but some hosts preserve its workflow boundaries more fully than others. The differences are mainly in orchestration control, workflow separation, subagent support, manual discipline burden, and first-run clarity.
+ Cyber Constructor works across multiple AI coding tools through the same portable `cf-constructor` workflow model, but some hosts preserve its workflow boundaries more fully than others. The differences are mainly in orchestration control, workflow separation, subagent support, manual discipline burden, and first-run clarity.
  
  | Host | Workflow support profile | Operational tradeoff |
  |---|---|---|
- | Claude Code | Strongest starting point for the full Cyber Pilot workflow | Preserves workflow separation, subagent-assisted isolation, and separate generation/review passes with the least manual reconstruction |
- | Cursor | Good editor-first support for everyday Cyber Pilot use | Portable workflows still work well, but orchestration boundaries and isolation are less explicit than in stronger workflow-oriented hosts |
- | GitHub Copilot | Usable for structured GitHub-centered Cyber Pilot work | The same portable workflow model applies, but phase separation and task orchestration need more manual steering than in Claude Code |
- | OpenAI Codex | Best for bounded, tightly scoped Cyber Pilot work | Works best when workflow boundaries are narrow and explicit; less natural for broader multi-stage delivery flow |
+ | Claude Code | Strongest starting point for the full Cyber Constructor workflow | Preserves workflow separation, subagent-assisted isolation, and separate generation/review passes with the least manual reconstruction |
+ | Cursor | Good editor-first support for everyday Cyber Constructor use | Portable workflows still work well, but orchestration boundaries and isolation are less explicit than in stronger workflow-oriented hosts |
+ | GitHub Copilot | Usable for structured GitHub-centered Cyber Constructor work | The same portable workflow model applies, but phase separation and task orchestration need more manual steering than in Claude Code |
+ | OpenAI Codex | Best for bounded, tightly scoped Cyber Constructor work | Works best when workflow boundaries are narrow and explicit; less natural for broader multi-stage delivery flow |
  | Windsurf | Usable when you enforce workflow discipline manually | Portable workflows still apply, but weaker isolation means generation and review should stay in separate chats by convention |
  
- If you are unsure where to start, **Claude Code** currently gives the clearest first experience for the full Cyber Pilot workflow because it best preserves workflow separation, orchestration control, and subagent-assisted isolation.
+ If you are unsure where to start, **Claude Code** currently gives the clearest first experience for the full Cyber Constructor workflow because it best preserves workflow separation, orchestration control, and subagent-assisted isolation.
  
  For host-specific setup guidance, deeper tradeoffs, and the full support matrix, use **[guides/AGENT-TOOLS.md](guides/AGENT-TOOLS.md)**.
  
- ## Evaluate Cyber Pilot
+ ## Evaluate Cyber Constructor
   
-  Use this path if you are evaluating Cyber Pilot in a real repository and want one concrete result quickly.
+  Use this path if you are evaluating Cyber Constructor in a real repository and want one concrete result quickly.
  
   ### Minimal evaluation path
  
   1. **Pick one real repository and one narrow real input** such as a requirement, design note, or change request that should produce a bounded, reviewable output.
-  2. **Complete the one-time setup for that repository** using the installation and setup reference below so the repo is initialized and ready for Cyber Pilot.
-  3. **Activate Cyber Pilot in chat** with 💬 `cypilot on` in the AI coding tool attached to that repository.
-  4. **Run one focused request** with 💬 `cypilot analyze: ...` when you want an inspectable assessment of the input, or 💬 `cypilot plan: ...` when you want bounded execution steps before implementation.
+  2. **Complete the one-time setup for that repository** using the installation and setup reference below so the repo is initialized and ready for Cyber Constructor.
+  3. **Activate Cyber Constructor in chat** with 💬 `cf-constructor on` in the AI coding tool attached to that repository.
+  4. **Run one focused request** with 💬 `cf-constructor analyze: ...` when you want an inspectable assessment of the input, or 💬 `cf-constructor plan: ...` when you want bounded execution steps before implementation.
  
   ### Validation checkpoint
  
-  - **Run one deterministic check** with 🖥️ `cpt validate --local-only` when you want to verify only the current repository, or 🖥️ `cpt validate` when cross-repo or workspace resolution is part of the trial.
-  - **Use that validation step as the proof surface of the trial**; this is where Cyber Pilot shows that it produced deterministic, validator-visible signals instead of only conversational output.
+  - **Run one deterministic check** with 🖥️ `cfc validate --local-only` when you want to verify only the current repository, or 🖥️ `cfc validate` when cross-repo or workspace resolution is part of the trial.
+  - **Use that validation step as the proof surface of the trial**; this is where Cyber Constructor shows that it produced deterministic, validator-visible signals instead of only conversational output.
   - **Treat either a clean pass or an actionable failure as useful evidence**; the most useful failures are localized, inspectable, and actionable rather than vague.
  
   ### What success looks like
@@ -307,24 +303,24 @@ In practice, this creates clearer boundaries, earlier drift detection, and more 
  ### Prerequisites
  For a first trial, you need Python 3.11+, Git, and one supported AI coding tool such as Claude Code, Cursor, Windsurf, GitHub Copilot, or OpenAI Codex.
 
- Python 3.11+ is the runtime for Cyber Pilot's repository-local scripts and CI, even when you do not install `cpt` globally yourself.
+ Python 3.11+ is the runtime for Cyber Constructor's repository-local scripts and CI, even when you do not install `cfc` globally yourself.
  
- `pipx` is recommended when you want to install the `cpt` CLI globally and run it yourself. `gh` is optional for PR review and PR status workflows.
+ `pipx` is recommended when you want to install the `cfc` CLI globally and run it yourself. `gh` is optional for PR review and PR status workflows.
  
  ### Setup paths and commands
  
  Choose the path that matches the repository state.
 
- - **If the repository already includes Cyber Pilot**
+ - **If the repository already includes Cyber Constructor**
    - ensure Python 3.11+ is available for the repository-local scripts and CI
    - clone or open the repository in your supported AI coding tool
-   - activate Cyber Pilot in chat with 💬 `cypilot on`
-   - send one focused request with 💬 `cypilot analyze: ...` or 💬 `cypilot plan: ...`
+   - activate Cyber Constructor in chat with 💬 `cf-constructor on`
+   - send one focused request with 💬 `cf-constructor analyze: ...` or 💬 `cf-constructor plan: ...`
 
- - **If the repository does not yet include Cyber Pilot**
-   - install `cpt` globally if you want to bootstrap the repository yourself
+ - **If the repository does not yet include Cyber Constructor**
+   - install `cfc` globally if you want to bootstrap the repository yourself
    - run the one-time repository setup steps below
-   - then activate Cyber Pilot in chat and send the first focused request
+   - then activate Cyber Constructor in chat and send the first focused request
  
  If you need to bootstrap the repository yourself, use this one-time path:
  
@@ -332,42 +328,44 @@ In practice, this creates clearer boundaries, earlier drift detection, and more 
 
     🖥️ **Terminal**:
     ```bash
-    pipx install git+https://github.com/cyberfabric/cyber-pilot.git
-    cpt --version
+    pipx install git+https://github.com/cyberfabric/cyber-constructor.git
+    cfc --version
     ```
+
+    After install, you have two binaries: `cfc` (short) and `cf-constructor` (long). Examples below use `cfc`.
 
  2. **Initialize the repository**
 
     🖥️ **Terminal**:
     ```bash
-    cpt init
-    cpt generate-agents
+    cfc init
+    cfc generate-agents
     ```
 
-   `cpt init` and `cpt generate-agents` are one-time repository bootstrap steps, not steps every downstream user must repeat.
+   `cfc init` and `cfc generate-agents` are one-time repository bootstrap steps, not steps every downstream user must repeat.
 
-    This creates a default setup directory `cypilot/`, generated AI coding tool integration files, and user-editable configuration under `config/` inside that setup directory.
+    This creates a default setup directory `.cf-constructor/`, generated AI coding tool integration files, and user-editable configuration under `config/` inside that setup directory.
 
-3. **Activate Cyber Pilot** in the AI coding tool chat:
+3. **Activate Cyber Constructor** in the AI coding tool chat:
     ```text
-    cypilot on
+    cf-constructor on
     ```
 
-4. **Run one focused request** with 💬 `cypilot analyze: ...` or 💬 `cypilot plan: ...`
+4. **Run one focused request** with 💬 `cf-constructor analyze: ...` or 💬 `cf-constructor plan: ...`
 
 For detailed host-specific setup, troubleshooting, and operational walkthroughs, use **[guides/AGENT-TOOLS.md](guides/AGENT-TOOLS.md)** and **[guides/USAGE-GUIDE.md](guides/USAGE-GUIDE.md)**.
 
  ## Configuration files
  
- The main top-level user-editable configuration lives under `config/` inside your Cyber Pilot setup directory. Other parts of the setup directory may contain generated or supporting material, and installed kits can add their own editable surfaces.
+ The main top-level user-editable configuration lives under `config/` inside your Cyber Constructor setup directory. Other parts of the setup directory may contain generated or supporting material, and installed kits can add their own editable surfaces.
  
  A quick ownership rule:
 
 | Surface | Ownership |
 |---|---|
-| `cypilot/config/` | User-editable control surface |
-| `cypilot/config/kits/{slug}/` | Editable installed-kit content |
-| Host integration files such as `.windsurf/`, `.cursor/`, `.claude/`, `.github/`, `.codex/`, `.agents/` | Generated by `cpt generate-agents` |
+| `.cf-constructor/config/` | User-editable control surface |
+| `.cf-constructor/config/kits/{slug}/` | Editable installed-kit content |
+| Host integration files such as `.windsurf/`, `.cursor/`, `.claude/`, `.github/`, `.codex/`, `.agents/` | Generated by `cfc generate-agents` |
 | `.bootstrap/` | Self-hosted contributor-only context |
 
  You do not need full configuration mastery immediately. Treat these as the main top-level control files you can inspect, review, edit, and version in the repository.
@@ -388,7 +386,7 @@ For detailed host-specific setup, troubleshooting, and operational walkthroughs,
 
 ### Multi-repo workspaces
 
-Cyber Pilot supports **multi-repo workspaces** so related docs, code, and shared kit assets can live in separate repositories and still stay aligned.
+Cyber Constructor supports **multi-repo workspaces** so related docs, code, and shared kit assets can live in separate repositories and still stay aligned.
 
 Use this when docs, code, or shared kit assets live in separate repos and still need to stay aligned.
 
@@ -400,7 +398,7 @@ For practical guidance, see **[guides/USAGE-GUIDE.md](guides/USAGE-GUIDE.md)**. 
 
 RalphEx support is optional.
 
-When available, Cyber Pilot can hand off selected execution work to RalphEx under human supervision.
+When available, Cyber Constructor can hand off selected execution work to RalphEx under human supervision.
 
 Use this when you want supervised execution handoff for bounded tasks instead of keeping all work interactive inside the current AI coding tool.
 
@@ -408,9 +406,9 @@ For when to delegate and how human review fits, see **[guides/USAGE-GUIDE.md](gu
 
 ## Project extensibility
 
-Cyber Pilot supports **project-level extensibility**, not just installable kits.
+Cyber Constructor supports **project-level extensibility**, not just installable kits.
 
-Cyber Pilot can also load project-defined skills, subagents, workflows, and rules, so teams can extend behavior without packaging everything as a kit.
+Cyber Constructor can also load project-defined skills, subagents, workflows, and rules, so teams can extend behavior without packaging everything as a kit.
 
 Project extensibility changes the behavior available inside one repository. Workspaces connect multiple repositories. Teams can use both together: keep cross-repo traceability through workspaces while extending the local project behavior through project-defined skills, workflows, and rules.
 
@@ -438,8 +436,8 @@ Recommended reading path: **README -> [Usage guide](guides/USAGE-GUIDE.md) -> [A
 
 If you think a workflow is unclear, instructions behave incorrectly, a script behaves incorrectly, or important corner cases are missing, please open a GitHub issue.
 
-- **Issues list:** [github.com/cyberfabric/cyber-pilot/issues](https://github.com/cyberfabric/cyber-pilot/issues)
-- **Create a new issue:** [github.com/cyberfabric/cyber-pilot/issues/new/choose](https://github.com/cyberfabric/cyber-pilot/issues/new/choose)
+- **Issues list:** [github.com/cyberfabric/cyber-constructor/issues](https://github.com/cyberfabric/cyber-constructor/issues)
+- **Create a new issue:** [github.com/cyberfabric/cyber-constructor/issues/new/choose](https://github.com/cyberfabric/cyber-constructor/issues/new/choose)
 
 The most useful issue reports usually include:
 
@@ -448,7 +446,7 @@ The most useful issue reports usually include:
 - **Minimal reproduction steps**
 - **Expected vs actual behavior**
 - **Evidence** such as exact command output, logs, validator output, screenshots, or a minimal prompt or plan slice
-- **Environment details** such as OS, AI coding tool, model, and Cyber Pilot version if known
+- **Environment details** such as OS, AI coding tool, model, and Cyber Constructor version if known
 
 ---
 
@@ -460,4 +458,4 @@ If you want to contribute, start with **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 
 ## License
 
-Cyber Pilot is licensed under the **Apache License 2.0**. See **[LICENSE](LICENSE)** for details.
+Cyber Constructor is licensed under the **Apache License 2.0**. See **[LICENSE](LICENSE)** for details.

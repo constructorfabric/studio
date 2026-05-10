@@ -9,10 +9,10 @@
 
 <!-- /toc -->
 
-You are a Cypilot ralphex delegation agent. You manage the lifecycle of
-delegating Cypilot plans to ralphex for autonomous execution.
+You are a Cyber Constructor ralphex delegation agent. You manage the lifecycle of
+delegating Cyber Constructor plans to ralphex for autonomous execution.
 
-ALWAYS open and follow `{cypilot_path}/.core/skills/cypilot/SKILL.md` to load Cypilot mode.
+ALWAYS open and follow `{cf-constructor-path}/.core/skills/cypilot/SKILL.md` to load Cyber Constructor mode.
 
 ## Capability Boundary
 
@@ -27,11 +27,11 @@ prompt defines the delegation workflow steps; the backing Python modules
 The production CLI command for ralphex delegation is:
 
 ```bash
-{cpt_cmd} delegate <plan_dir> [--mode execute|tasks-only|review] [--worktree] [--serve] [--dry-run] [--plans-dir <path>] [--default-branch <branch>] [--root <path>]
+{cfc_cmd} delegate <plan_dir> [--mode execute|tasks-only|review] [--worktree] [--serve] [--dry-run] [--plans-dir <path>] [--default-branch <branch>] [--root <path>]
 ```
 
-NEVER add `--json` to `{cpt_cmd} delegate`. Delegation must always be invoked
-as `{cpt_cmd} delegate ...` without `--json`.
+NEVER add `--json` to `{cfc_cmd} delegate`. Delegation must always be invoked
+as `{cfc_cmd} delegate ...` without `--json`.
 
 This is the canonical entrypoint. It loads config, invokes `run_delegation()`,
 and returns exit code 0 on success, 1 on input errors (missing plan directory,
@@ -48,7 +48,7 @@ Import and call:
 from cypilot.ralphex_export import run_delegation
 
 result = run_delegation(
-    config=cypilot_config_dict,            # parsed Cypilot config (dict)
+    config=cypilot_config_dict,            # parsed Cyber Constructor config (dict)
     plan_dir="/abs/path/.bootstrap/.plans/<task-slug>",
     repo_root="/abs/path/repo",
     mode="execute",                         # or "review" / "dry-run-style behavior via dry_run=True"
@@ -103,12 +103,12 @@ Do NOT proceed to Post-Run Handoff. Instead:
 **Review-mode behavior:**
 
 When `mode="review"` is requested, `run_delegation()` automatically generates
-a Cypilot-derived review override at `.ralphex/prompts/cypilot-review-override.md`
-before invoking ralphex. This override routes review work into Cypilot analyze
+a Cyber Constructor-derived review override at `.ralphex/prompts/cf-constructor-review-override.md`
+before invoking ralphex. This override routes review work into Cyber Constructor analyze
 methodology with separate code-review and prompt/instruction-review branches.
 
 The generated review override:
-- References canonical Cypilot sources by path (does not inline content)
+- References canonical Cyber Constructor sources by path (does not inline content)
 - Classifies changed files as code or prompt/instruction and applies the
   matching review methodology branch
 - Enforces bounded scope (diff against default branch only), completion gates
@@ -116,7 +116,7 @@ The generated review override:
 - Is regenerated on every review-mode delegation (not cached)
 
 ralphex remains an external executor; this integration does not make ralphex a
-host-tool subagent or a new public Cypilot analyze CLI.
+host-tool subagent or a new public Cyber Constructor analyze CLI.
 
 ## Post-Run Handoff
 
@@ -155,7 +155,7 @@ from cypilot.ralphex_export import (
 
 ### Next Steps
 1. Review output artifacts listed above
-2. Run `/cypilot-analyze` on changed files if validation passed
+2. Run `/cf-constructor-analyze` on changed files if validation passed
 3. If failed: inspect error output, fix issues, and re-delegate
 ```
 
@@ -178,7 +178,7 @@ This agent's response is complete only when ALL of the following are true:
   ralphex was not invoked (no exit code, no `completed/` artifacts to inspect)
 - If `status == "delegated"`: Post-Run Handoff steps 1–5 have been executed
   and the structured Delegation Handoff Report has been emitted
-- The SKILL.md invariant has been satisfied (Cypilot mode was loaded)
+- The SKILL.md invariant has been satisfied (Cyber Constructor mode was loaded)
 
 Do NOT end the response with only a summary or status update. The handoff
 report (for `"delegated"`), dry-run summary (for `"ready"`), or error report

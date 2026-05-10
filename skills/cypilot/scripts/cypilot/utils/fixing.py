@@ -233,7 +233,7 @@ _REASONS: Dict[str, List[str]] = {
     ],
     EC.TOC_STALE: [
         "Headings were added, removed, reordered, or renamed since the TOC was last generated",
-        "TOC was manually edited instead of being regenerated with `cypilot toc`",
+        "TOC was manually edited instead of being regenerated with `cfc toc`",
     ],
 
     # File errors
@@ -673,7 +673,7 @@ def _build_fixing_prompt(issue: Dict[str, object], project_root: Optional[Path] 
         path_s = loc.rsplit(':', 1)[0] if ':' in loc else loc
         return (
             f"Add a Table of Contents to `{path_s}`. "
-            f"Run `cypilot toc {path_s}` to generate one automatically."
+            f"Run `cfc toc {path_s}` to generate one automatically."
         )
 
     if code == EC.TOC_ANCHOR_BROKEN:
@@ -681,7 +681,7 @@ def _build_fixing_prompt(issue: Dict[str, object], project_root: Optional[Path] 
         anchor = str(issue.get("toc_anchor") or "")
         return (
             f"Open `{loc}`: TOC entry `[{display}](#{anchor})` has a broken anchor. "
-            f"Regenerate with `cypilot toc` or fix the anchor manually."
+            f"Regenerate with `cfc toc` or fix the anchor manually."
         )
 
     if code == EC.TOC_HEADING_NOT_IN_TOC:
@@ -689,14 +689,14 @@ def _build_fixing_prompt(issue: Dict[str, object], project_root: Optional[Path] 
         path_s = loc.rsplit(':', 1)[0] if ':' in loc else loc
         return (
             f"Open `{loc}`: heading `{heading}` is missing from the Table of Contents. "
-            f"Run `cypilot toc {path_s}` to regenerate."
+            f"Run `cfc toc {path_s}` to regenerate."
         )
 
     if code == EC.TOC_STALE:
         path_s = loc.rsplit(':', 1)[0] if ':' in loc else loc
         return (
             f"Table of Contents in `{path_s}` is outdated. "
-            f"Run `cypilot toc {path_s}` to regenerate."
+            f"Run `cfc toc {path_s}` to regenerate."
         )
 
     # ------------------------------------------------------------------

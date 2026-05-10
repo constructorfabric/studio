@@ -13,13 +13,12 @@ from ..utils._tomllib_compat import tomllib
 logger = logging.getLogger(__name__)
 
 # @cpt-begin:cpt-cypilot-algo-ralphex-delegation-discover:p1:inst-read-config
-_ADAPTER_DIRS = (".bootstrap", "cypilot", ".cypilot", ".cpt")
+_ADAPTER_DIRS = (".cf-constructor",)
 
 
 def load_core_config(project_root: Path) -> dict:
-    """Load core.toml from the project's adapter config directory.
+    """Load core.toml from the project's Cyber Constructor install directory.
 
-    Searches ``.bootstrap`` first, then ``cypilot``.
     Returns the parsed config dict, or empty dict if not found.
     """
     path = find_core_toml(project_root)

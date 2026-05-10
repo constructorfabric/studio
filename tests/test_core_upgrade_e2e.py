@@ -1,4 +1,10 @@
 """
+DISABLED for Cyber Constructor 4.0.0 — breaking changes in default paths,
+template variable, skill names, and agent names mean v3.x → 4.0.0 upgrade
+paths cannot be exercised. The 4.0.0 release is intentionally a fresh start
+with no migration; this test will be re-enabled (or rewritten for 4.x → 4.y
+upgrades) in a future release.
+
 End-to-end tests for cypilot core upgrade from every historical version to HEAD.
 
 For each v3.x git tag:
@@ -199,6 +205,13 @@ def _init_project(root: Path, cache_dir: Path) -> Path:
 # E2E upgrade tests
 # ---------------------------------------------------------------------------
 
+@unittest.skip(
+    "Disabled for Cyber Constructor 4.0.0: breaking changes in default paths, "
+    "template variable name, skill names, and agent names mean v3.x -> 4.0.0 "
+    "upgrade paths cannot be exercised. 4.0.0 is intentionally a fresh start "
+    "with no migration. Re-enable (or rewrite for 4.x -> 4.y upgrades) in a "
+    "future release."
+)
 @unittest.skipUnless(_HAS_TAGS, "Full git history with tags required (use fetch-depth: 0)")
 class TestCoreUpgradeE2E(unittest.TestCase):
     """Upgrade from every historical cypilot release to HEAD."""

@@ -1,8 +1,8 @@
 """Content language checker for Cypilot artifacts.
 
 Scans Markdown documents for characters outside the allowed Unicode script
-ranges.  Used by `cpt validate` (when `allowed_content_languages` is set in
-workspace config) and the standalone `cpt check-language` command.
+ranges.  Used by `cfc validate` (when `allowed_content_languages` is set in
+workspace config) and the standalone `cfc check-language` command.
 
 Language policy is configured via a list of language codes such as ["en"] or
 ["en", "ru"].  Each code maps to one or more Unicode block ranges; characters

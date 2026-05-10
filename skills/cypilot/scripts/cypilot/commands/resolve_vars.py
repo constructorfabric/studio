@@ -2,7 +2,7 @@
 Resolve Variables Command — resolve template variables to absolute paths.
 
 Reads kit resource bindings from ``core.toml`` and resolves all template
-variables (``{adr_template}``, ``{scripts}``, ``{cypilot_path}``, etc.)
+variables (``{adr_template}``, ``{scripts}``, ``{cf-constructor-path}``, etc.)
 to absolute file paths.  Output is a flat dict suitable for
 ``str.format_map()`` substitution in Markdown files.
 
@@ -94,7 +94,7 @@ def _collect_all_variables(
     """Collect all template variables from system config and kit resources.
 
     Returns a dict with:
-    - ``system``: system-level variables (cypilot_path, project_root, etc.)
+    - ``system``: system-level variables (cf-constructor-path, project_root, etc.)
     - ``kits``: per-kit resource variables {slug: {var: path}}
     - ``variables``: flat merged dict of all variables for format_map()
     """
@@ -102,7 +102,7 @@ def _collect_all_variables(
     # @cpt-begin:cpt-cypilot-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-system
     # -- System variables --
     system_vars: Dict[str, str] = {
-        "cypilot_path": adapter_dir.resolve().as_posix(),
+        "cf-constructor-path": adapter_dir.resolve().as_posix(),
         "project_root": project_root.resolve().as_posix(),
     }
     # @cpt-end:cpt-cypilot-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-system
@@ -319,7 +319,7 @@ def cmd_resolve_vars(argv: list[str]) -> int:
     if adapter_dir is None:
         ui.result({
             "status": "ERROR",
-            "message": "Cypilot not initialized in project",
+            "message": "Cyber Constructor not initialized in project",
             "project_root": project_root.as_posix(),
         })
         return 1

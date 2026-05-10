@@ -316,75 +316,6 @@ class TestFilesUnicodeDecodeError(unittest.TestCase):
 
 
 # =========================================================================
-# migrate.py — _caf_target_refs_adapter_dir / _caf_is_adapter_workflow_proxy
-# =========================================================================
-
-class TestMigrateResolveErrors(unittest.TestCase):
-    """Cover RuntimeError/OSError except clauses in migrate.py."""
-
-    def test_caf_target_refs_adapter_dir_runtime_error(self):
-        """migrate.py:1017 — RuntimeError on resolve → returns False."""
-        from cypilot.commands.migrate import _caf_target_refs_adapter_dir
-        with TemporaryDirectory() as td:
-            root = Path(td)
-            fpath = root / "test.md"
-            fpath.write_text("test", encoding="utf-8")
-            call_count = [0]
-            _orig_resolve = Path.resolve
-
-            def _selective_resolve(self, *a, **kw):
-                call_count[0] += 1
-                if call_count[0] >= 2:
-                    raise RuntimeError("symlink loop")
-                return _orig_resolve(self, *a, **kw)
-
-            with patch.object(Path, "resolve", _selective_resolve):
-                result = _caf_target_refs_adapter_dir(fpath, "../target", root, "adapter")
-            self.assertFalse(result)
-
-    def test_caf_is_adapter_workflow_proxy_oserror(self):
-        """migrate.py:1076 — OSError on read_text → returns False."""
-        from cypilot.commands.migrate import _caf_is_adapter_workflow_proxy
-        with TemporaryDirectory() as td:
-            root = Path(td)
-            proxy = root / "cypilot-adapter.md"
-            proxy.write_text("placeholder", encoding="utf-8")
-            with patch.object(Path, "read_text", side_effect=OSError("perm denied")):
-                result = _caf_is_adapter_workflow_proxy(proxy, root, ".bootstrap")
-            self.assertFalse(result)
-
-    def test_caf_is_adapter_workflow_proxy_resolve_error(self):
-        """migrate.py:1085 — RuntimeError on resolve → returns False."""
-        from cypilot.commands.migrate import _caf_is_adapter_workflow_proxy
-        with TemporaryDirectory() as td:
-            root = Path(td)
-            proxy = root / "adapter.md"
-            proxy.write_text(
-                "ALWAYS open and follow `../adapter/workflows/adapter.md`\n",
-                encoding="utf-8",
-            )
-            # First resolve() in this function is on line 1084 (inside try/except).
-            # Raising on the very first call triggers the except block.
-            with patch.object(Path, "resolve", side_effect=RuntimeError("symlink loop")):
-                result = _caf_is_adapter_workflow_proxy(proxy, root, ".bootstrap")
-            self.assertFalse(result)
-
-
-class TestRunMigrateConfigCorruptArtifacts(unittest.TestCase):
-    """Cover migrate.py:2206 — corrupt artifacts.toml in run_migrate_config."""
-
-    def test_corrupt_artifacts_toml_swallowed(self):
-        from cypilot.commands.migrate import run_migrate_config
-        with TemporaryDirectory() as td:
-            root = Path(td)
-            cfg = root / "config"
-            cfg.mkdir()
-            (cfg / "artifacts.toml").write_bytes(b"\x80\x81")
-            result = run_migrate_config(root)
-            self.assertIsInstance(result, dict)
-
-
-# =========================================================================
 # context.py — adapter load raises OSError
 # =========================================================================
 
@@ -493,7 +424,7 @@ class TestCliAgentsInjectionError(unittest.TestCase):
             root = Path(td)
             (root / ".git").mkdir()
             (root / "AGENTS.md").write_text(
-                '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "cpt"\n```\n<!-- /@cpt:root-agents -->\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "cpt"\n```\n<!-- /@cf:root-agents -->\n',
                 encoding="utf-8",
             )
             cpt = root / "cpt"
@@ -570,7 +501,7 @@ class TestUpdateValidateKitsFailure(unittest.TestCase):
                 cpt.mkdir()
                 (cpt / "config").mkdir(parents=True)
                 (root / "AGENTS.md").write_text(
-                    '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "cpt"\n```\n<!-- /@cpt:root-agents -->\n',
+                    '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "cpt"\n```\n<!-- /@cf:root-agents -->\n',
                     encoding="utf-8",
                 )
                 _write_toml(cpt / "config" / "core.toml", {"version": "1.0"})

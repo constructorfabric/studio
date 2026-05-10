@@ -1,13 +1,13 @@
 ---
-cypilot: true
+cf-constructor: true
 type: workflow
-name: cypilot-workspace
+name: cf-constructor-workspace
 description: Multi-repo workspace setup — discover repos, configure sources, generate workspace config, validate
 version: 1.0
 purpose: Guide workspace federation setup for cross-repo traceability
 ---
 
-# Cypilot Workspace Workflow
+# Cyber Constructor Workspace Workflow
 
 <!-- toc -->
 
@@ -22,11 +22,11 @@ purpose: Guide workspace federation setup for cross-repo traceability
 
 <!-- /toc -->
 
-ALWAYS open and follow `{cypilot_path}/config/AGENTS.md` FIRST.
-ALWAYS open and follow `{cypilot_path}/.gen/AGENTS.md` after config/AGENTS.md.
+ALWAYS open and follow `{cf-constructor-path}/config/AGENTS.md` FIRST.
+ALWAYS open and follow `{cf-constructor-path}/.gen/AGENTS.md` after config/AGENTS.md.
 **Type**: Operation
 **Role**: Any
-**Output**: `.cypilot-workspace.toml` or inline `[workspace]` in `config/core.toml`
+**Output**: `.cf-constructor-workspace.toml` or inline `[workspace]` in `config/core.toml`
 
 ## Overview
 Use this workflow to discover workspace sources, confirm roles/settings, write workspace config, and validate cross-repo traceability.
@@ -42,8 +42,8 @@ Direct workspace quick commands skip Protocol Guard.
 
 | Step | Action |
 |---|---|
-| Identify root | `python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py --json info` |
-| Scan nested repos | `python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py --json workspace-init --dry-run` |
+| Identify root | `python3 {cf-constructor-path}/.core/skills/cypilot/scripts/cypilot.py --json info` |
+| Scan nested repos | `python3 {cf-constructor-path}/.core/skills/cypilot/scripts/cypilot.py --json workspace-init --dry-run` |
 | Present results | show repo name/path, adapter found or not, and inferred role |
 **Decision point**: after presenting discovered repos, ask one explicit question that covers both inclusion and workspace location.
 
@@ -51,7 +51,7 @@ Direct workspace quick commands skip Protocol Guard.
 Why this input is needed: choose which repositories become workspace sources and where the workspace config should live.
 Reply with the selected repo numbers or names, then `standalone` or `inline`.
 Suggested default: include reachable repos that have the expected adapter, and use `standalone` unless the user specifically wants workspace config inside `config/core.toml`.
-- `standalone` → write `.cypilot-workspace.toml` and keep workspace config separate from `config/core.toml`.
+- `standalone` → write `.cf-constructor-workspace.toml` and keep workspace config separate from `config/core.toml`.
 - `inline` → write `[workspace]` inside `config/core.toml`.
 ```
 
@@ -60,7 +60,7 @@ Suggested default: include reachable repos that have the expected adapter, and u
 For each selected source, confirm `name`, relative `path` or `url`, `role`, and `adapter` (auto-discovered or explicit). Also confirm:
 - `cross_repo` (default yes)
 - `resolve_remote_ids` (default yes; both settings must be true to include remote IDs)
-- workspace location: standalone `.cypilot-workspace.toml` or inline `[workspace]` in `config/core.toml`
+- workspace location: standalone `.cf-constructor-workspace.toml` or inline `[workspace]` in `config/core.toml`
 Primary source is always determined by the current working directory; no `primary` field exists.
 
 Use one batched confirmation prompt per source:
@@ -78,8 +78,8 @@ Suggested defaults: keep the detected `adapter`, keep `cross_repo = yes`, and ke
 
 | Action | Command |
 |---|---|
-| Initialize workspace | `python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py --json workspace-init [--root <super-root>] [--output <path>] [--inline] [--force] [--dry-run]` |
-| Add one source | `python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py --json workspace-add --name <name> (--path <path> \| --url <url>) [--branch <branch>] [--role <role>] [--adapter <path>] [--inline]` |
+| Initialize workspace | `python3 {cf-constructor-path}/.core/skills/cypilot/scripts/cypilot.py --json workspace-init [--root <super-root>] [--output <path>] [--inline] [--force] [--dry-run]` |
+| Add one source | `python3 {cf-constructor-path}/.core/skills/cypilot/scripts/cypilot.py --json workspace-add --name <name> (--path <path> \| --url <url>) [--branch <branch>] [--role <role>] [--adapter <path>] [--inline]` |
 `workspace-init` writes standalone config by default; `--inline` writes `[workspace]` into `config/core.toml`. `workspace-add` auto-detects workspace type unless `--inline` forces inline mode. Git URL sources are not supported inline.
 
 ## Phase 4: Validate
@@ -87,10 +87,10 @@ Suggested defaults: keep the detected `adapter`, keep `cross_repo = yes`, and ke
 
 | Check | Command / Expectation |
 |---|---|
-| Workspace status | `python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py --json workspace-info` |
+| Workspace status | `python3 {cf-constructor-path}/.core/skills/cypilot/scripts/cypilot.py --json workspace-info` |
 | Source health | path exists; adapter found if expected; `artifacts.toml` valid when adapter exists; at least one system if adapter exists |
-| Cross-repo IDs | `python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py --json list-ids` |
-| Cross-repo validation | `python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py --json validate` |
+| Cross-repo IDs | `python3 {cf-constructor-path}/.core/skills/cypilot/scripts/cypilot.py --json list-ids` |
+| Cross-repo validation | `python3 {cf-constructor-path}/.core/skills/cypilot/scripts/cypilot.py --json validate` |
 Report total sources, reachable sources, sources with adapters, and available cross-repo IDs.
 **Graceful degradation**:
 - missing repos emit warnings, not errors

@@ -1,5 +1,5 @@
 """
-Update command — refresh an existing Cypilot installation in-place.
+Update command — refresh an existing Cyber Constructor installation in-place.
 
 Safety rules for config/:
 - .core/  → full replace from cache (read-only reference)
@@ -46,7 +46,7 @@ from ..utils.whatsnew import read_whatsnew, show_core_whatsnew, show_kit_whatsne
 # @cpt-end:cpt-cypilot-flow-version-config-update:p1:inst-update-imports
 
 def cmd_update(argv: List[str]) -> int:
-    """Update an existing Cypilot installation.
+    """Update an existing Cyber Constructor installation.
 
     Refreshes .core/ from cache, updates kit files, regenerates .gen/ aggregates.
     Never overwrites user config files.
@@ -54,7 +54,7 @@ def cmd_update(argv: List[str]) -> int:
     # @cpt-begin:cpt-cypilot-flow-version-config-update:p1:inst-user-update
     p = argparse.ArgumentParser(
         prog="update",
-        description="Update Cypilot installation (refresh .core, regenerate .gen)",
+        description="Update Cyber Constructor installation (refresh .core, regenerate .gen)",
     )
     p.add_argument("--project-root", default=None, help="Project root directory")
     p.add_argument("--dry-run", action="store_true", help="Show what would be done")
@@ -73,10 +73,10 @@ def cmd_update(argv: List[str]) -> int:
 
     if project_root is None:
         ui.result(
-            {"status": "ERROR", "message": "No project root found. Run 'cpt init' first."},
+            {"status": "ERROR", "message": "No project root found. Run 'cfc init' first."},
             human_fn=lambda d: (
                 ui.error("No project root found."),
-                ui.hint("Initialize Cypilot first:  cpt init"),
+                ui.hint("Initialize Cyber Constructor first:  cfc init"),
                 ui.blank(),
             ),
         )
@@ -85,11 +85,11 @@ def cmd_update(argv: List[str]) -> int:
     install_rel = _read_cypilot_var(project_root)
     if not install_rel:
         ui.result(
-            {"status": "ERROR", "message": "Cypilot not initialized in this project. Run 'cpt init' first.", "project_root": project_root.as_posix()},
+            {"status": "ERROR", "message": "Cyber Constructor not initialized in this project. Run 'cfc init' first.", "project_root": project_root.as_posix()},
             human_fn=lambda d: (
-                ui.error("Cypilot is not initialized in this project."),
+                ui.error("Cyber Constructor is not initialized in this project."),
                 ui.detail("Project root", project_root.as_posix()),
-                ui.hint("Initialize first:  cpt init"),
+                ui.hint("Initialize first:  cfc init"),
                 ui.blank(),
             ),
         )
@@ -98,10 +98,10 @@ def cmd_update(argv: List[str]) -> int:
     cypilot_dir = (project_root / install_rel).resolve()
     if not cypilot_dir.is_dir():
         ui.result(
-            {"status": "ERROR", "message": f"Cypilot directory not found: {cypilot_dir}", "project_root": project_root.as_posix()},
+            {"status": "ERROR", "message": f"Cyber Constructor directory not found: {cypilot_dir}", "project_root": project_root.as_posix()},
             human_fn=lambda d: (
-                ui.error(f"Cypilot directory not found: {cypilot_dir}"),
-                ui.hint("Reinitialize:  cpt init --force"),
+                ui.error(f"Cyber Constructor directory not found: {cypilot_dir}"),
+                ui.hint("Reinitialize:  cfc init --force"),
                 ui.blank(),
             ),
         )
@@ -109,9 +109,9 @@ def cmd_update(argv: List[str]) -> int:
 
     if not CACHE_DIR.is_dir():
         ui.result(
-            {"status": "ERROR", "message": f"Cache not found at {CACHE_DIR}. Run 'cpt update' (proxy downloads first)."},
+            {"status": "ERROR", "message": f"Cache not found at {CACHE_DIR}. Run 'cfc update' (proxy downloads first)."},
             human_fn=lambda d: (
-                ui.error("Cypilot cache not found."),
+                ui.error("Cyber Constructor cache not found."),
                 ui.detail("Expected at", str(CACHE_DIR)),
                 ui.hint("The proxy layer downloads the cache before forwarding to this command."),
                 ui.hint("If running directly, ensure cache exists at the path above."),
@@ -380,14 +380,14 @@ def cmd_update(argv: List[str]) -> int:
             config_dir / "AGENTS.md",
             "# Custom Agent Navigation Rules\n\n"
             "Add your project-specific WHEN rules here.\n"
-            "These rules are loaded alongside the generated rules in `{cypilot_path}/.gen/AGENTS.md`.\n",
+            "These rules are loaded alongside the generated rules in `{cf-constructor-path}/.gen/AGENTS.md`.\n",
             actions, "config_agents",
         )
         _ensure_file(
             config_dir / "SKILL.md",
             "# Custom Skill Extensions\n\n"
             "Add your project-specific skill instructions here.\n"
-            "These are loaded alongside the generated skills in `{cypilot_path}/.gen/SKILL.md`.\n",
+            "These are loaded alongside the generated skills in `{cf-constructor-path}/.gen/SKILL.md`.\n",
             actions, "config_skill",
         )
 
@@ -441,7 +441,7 @@ def cmd_update(argv: List[str]) -> int:
                 n_err = int(vk_report.get("error_count", 0))
                 if n_err > 5:
                     ui.substep(f"  ... and {n_err - 5} more error(s)")
-                ui.hint("Run 'cpt validate-kits --verbose' for full details.")
+                ui.hint("Run 'cfc validate-kits --verbose' for full details.")
             else:
                 ui.step("Validate kits: PASS")
         except (OSError, ValueError, KeyError) as exc:
@@ -500,7 +500,7 @@ def _config_readme_content() -> str:
         "- `kits/{slug}/` — kit files (artifacts/, codebase/, workflows/, scripts/, SKILL.md)\n"
         "- `rules/` — project rules (auto-configured or user-defined)\n"
         "\n"
-        "**These files are never overwritten by `cpt update`.**\n"
+        "**These files are never overwritten by `cfc update`.**\n"
     )
 
 
@@ -653,7 +653,7 @@ def _remove_system_from_core_toml(config_dir: Path) -> bool:
 
     try:
         from ..utils import toml_utils
-        toml_utils.dump(data, core_toml, header_comment="Cypilot project configuration")
+        toml_utils.dump(data, core_toml, header_comment="Cyber Constructor project configuration")
     except (OSError, ValueError) as exc:
         sys.stderr.write(f"update: warning: cannot write {core_toml}: {exc}\n")
         return False
@@ -719,7 +719,7 @@ def _deduplicate_legacy_kits(config_dir: Path) -> Dict[str, str]:
         # Write core.toml
         try:
             from ..utils import toml_utils
-            toml_utils.dump(data, core_toml, header_comment="Cypilot project configuration")
+            toml_utils.dump(data, core_toml, header_comment="Cyber Constructor project configuration")
         except (OSError, ValueError):
             pass
 
@@ -744,7 +744,7 @@ def _deduplicate_legacy_kits(config_dir: Path) -> Dict[str, str]:
 
             if changed:
                 from ..utils import toml_utils
-                toml_utils.dump(reg, artifacts_toml, header_comment="Cypilot artifacts registry")
+                toml_utils.dump(reg, artifacts_toml, header_comment="Cyber Constructor artifacts registry")
         except (OSError, ValueError):
             pass
 
@@ -753,8 +753,7 @@ def _deduplicate_legacy_kits(config_dir: Path) -> Dict[str, str]:
 
 # Known bundled kits and their GitHub sources
 _KNOWN_KIT_SOURCES: Dict[str, str] = {
-    "sdlc": "github:cyberfabric/cyber-pilot-kit-sdlc",
-    "cypilot-sdlc": "github:cyberfabric/cyber-pilot-kit-sdlc",
+    "sdlc": "github:cyberfabric/cyber-constructor-kit-sdlc",
 }
 
 def _migrate_kit_sources(config_dir: Path) -> Dict[str, str]:
@@ -796,7 +795,7 @@ def _migrate_kit_sources(config_dir: Path) -> Dict[str, str]:
 
     try:
         from ..utils import toml_utils
-        toml_utils.dump(data, core_toml, header_comment="Cypilot project configuration")
+        toml_utils.dump(data, core_toml, header_comment="Cyber Constructor project configuration")
     except (OSError, ValueError):
         pass
 
@@ -818,9 +817,9 @@ def _human_update_ok(data: Dict[str, Any]) -> None:
     warnings = data.get("warnings", [])
     prefix = "[dry-run] " if dry else ""
 
-    ui.header(f"{prefix}Cypilot Update")
+    ui.header(f"{prefix}Cyber Constructor Update")
     ui.detail("Project root", str(data.get("project_root", "?")))
-    ui.detail("Cypilot dir", str(data.get("cypilot_dir", "?")))
+    ui.detail("Cyber Constructor dir", str(data.get("cypilot_dir", "?")))
 
     actions = data.get("actions", {})
     if actions:

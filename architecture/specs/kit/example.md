@@ -39,7 +39,7 @@ drivers:
 
 ## Location
 
-**Per-artifact**: `{cypilot_path}/config/kits/<slug>/artifacts/<KIND>/examples/example.md`
+**Per-artifact**: `{cf-constructor-path}/config/kits/<slug>/artifacts/<KIND>/examples/example.md`
 
 ---
 

@@ -1,6 +1,6 @@
-# Cypilot SDLC Kit — Subagent Definitions
+# Cyber Constructor SDLC Kit — Subagent Definitions
 #
-# Declares agents that the `cypilot agents` command generates as
+# Declares agents that the `cf-constructor agents` command generates as
 # tool-specific proxy files (Claude Code, Cursor, Copilot, OpenAI Codex).
 #
 # Semantic fields (mode, isolation, model) are mapped to per-tool
@@ -21,52 +21,52 @@
 #     Prefer "inherit" unless the agent explicitly needs a cheaper/faster tier.
 #     Use "fast" only for high-volume, low-complexity tasks (e.g. PR review).
 
-[agents.cypilot-codegen]
+[agents.cf-constructor-codegen]
 description = """\
-Cypilot code generator. Use when requirements are fully specified and \
+Cyber Constructor code generator. Use when requirements are fully specified and \
 no clarification is needed. Takes a complete task description and \
-implements it in an isolated context \u2014 no back-and-forth, just code."""
-prompt_file = "agents/cypilot-codegen.md"
+implements it in an isolated context — no back-and-forth, just code."""
+prompt_file = "agents/cf-constructor-codegen.md"
 mode = "readwrite"
 isolation = true
 model = "inherit"
 
-[agents.cypilot-pr-review]
+[agents.cf-constructor-pr-review]
 description = """\
-Cypilot PR reviewer. Use to review pull requests with structured \
+Cyber Constructor PR reviewer. Use to review pull requests with structured \
 checklist-based analysis. Runs in a separate context so detailed \
 review output stays isolated from the main conversation."""
-prompt_file = "agents/cypilot-pr-review.md"
+prompt_file = "agents/cf-constructor-pr-review.md"
 mode = "readonly"
 isolation = false
 model = "fast"
 
-[agents.cypilot-ralphex]
+[agents.cf-constructor-ralphex]
 description = """\
-Cypilot ralphex delegation agent. Use when delegating a Cypilot plan \
+Cyber Constructor ralphex delegation agent. Use when delegating a Cyber Constructor plan \
 to ralphex for autonomous execution. Manages discovery, export, \
 delegation, and handoff lifecycle."""
-prompt_file = "agents/cypilot-ralphex.md"
+prompt_file = "agents/cf-constructor-ralphex.md"
 mode = "readwrite"
 isolation = false
 model = "inherit"
 
-[agents.cypilot-phase-runner]
+[agents.cf-constructor-phase-runner]
 description = """\
-Cypilot execution-plan phase runner. Use when executing the next or a \
-specific phase from a generated Cypilot plan inside a dedicated agent \
+Cyber Constructor execution-plan phase runner. Use when executing the next or a \
+specific phase from a generated Cyber Constructor plan inside a dedicated agent \
 context, without delegating to ralphex."""
-prompt_file = "agents/cypilot-phase-runner.md"
+prompt_file = "agents/cf-constructor-phase-runner.md"
 mode = "readwrite"
 isolation = true
 model = "inherit"
 
-[agents.cypilot-phase-compiler]
+[agents.cf-constructor-phase-compiler]
 description = """\
-Cypilot execution-plan phase compiler. Use when compiling exactly one \
+Cyber Constructor execution-plan phase compiler. Use when compiling exactly one \
 plan phase from its brief in an isolated agent context, without \
 delegating to ralphex or executing the phase."""
-prompt_file = "agents/cypilot-phase-compiler.md"
+prompt_file = "agents/cf-constructor-phase-compiler.md"
 mode = "readwrite"
 isolation = true
 model = "inherit"

@@ -152,17 +152,11 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install cpt proxy
-        run: |
-          make install-proxy
-          pipx ensurepath
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
       - name: Validate core methodology
-        run: make validate
+        run: make CPT="python3 .bootstrap/.core/skills/cypilot/scripts/cypilot.py" validate
 
       - name: Self-check SDLC examples
-        run: make self-check
+        run: make CPT="python3 .bootstrap/.core/skills/cypilot/scripts/cypilot.py" self-check
 
   validate-kits:
     name: Validate Kits (Python ${{ matrix.python-version }})
@@ -178,11 +172,5 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install cpt proxy
-        run: |
-          make install-proxy
-          pipx ensurepath
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
       - name: Validate all registered kits
-        run: make validate-kits
+        run: make CPT="python3 .bootstrap/.core/skills/cypilot/scripts/cypilot.py" validate-kits

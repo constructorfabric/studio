@@ -30,7 +30,7 @@ def _write_json(path: Path, data: dict) -> None:
 def _bootstrap_project_root(root: Path, adapter_rel: str = "adapter") -> Path:
     (root / ".git").mkdir()
     (root / "AGENTS.md").write_text(
-        f'<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "{adapter_rel}"\n```\n',
+        f'<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "{adapter_rel}"\n```\n',
         encoding="utf-8",
     )
     adapter = root / adapter_rel
@@ -1724,7 +1724,7 @@ class TestInitReadExistingInstall(unittest.TestCase):
         with TemporaryDirectory() as td:
             root = Path(td)
             (root / "AGENTS.md").write_text(
-                '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "nonexistent"\n```\n<!-- /@cpt:root-agents -->\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "nonexistent"\n```\n<!-- /@cf:root-agents -->\n',
                 encoding="utf-8",
             )
             self.assertIsNone(_read_existing_install(root))
@@ -1735,7 +1735,7 @@ class TestInitReadExistingInstall(unittest.TestCase):
             root = Path(td)
             (root / "cpt").mkdir()
             (root / "AGENTS.md").write_text(
-                '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "cpt"\n```\n<!-- /@cpt:root-agents -->\n',
+                '<!-- @cf:root-agents -->\n```toml\n"cf-constructor-path" = "cpt"\n```\n<!-- /@cf:root-agents -->\n',
                 encoding="utf-8",
             )
             self.assertEqual(_read_existing_install(root), "cpt")
@@ -1764,7 +1764,7 @@ class TestInjectRootAgents(unittest.TestCase):
             action = _inject_root_agents(root, "cypilot")
             self.assertEqual(action, "updated")
             content = (root / "AGENTS.md").read_text(encoding="utf-8")
-            self.assertIn("cypilot_path", content)
+            self.assertIn("cf-constructor-path", content)
             self.assertIn("User stuff", content)
 
     def test_unchanged_when_current(self):
@@ -1957,7 +1957,7 @@ class TestCLIPyCoverageTopLevelHelp(unittest.TestCase):
             exit_code = main(["--help"])
         self.assertEqual(exit_code, 0)
         out = json.loads(stdout.getvalue())
-        self.assertIn("cypilot", out["usage"])
+        self.assertIn("cfc", out["usage"])
         self.assertIn("validate", out["commands"])
         self.assertIn("Validation", out["sections"])
 
@@ -1970,7 +1970,7 @@ class TestCLIPyCoverageTopLevelHelp(unittest.TestCase):
             exit_code = main(["-h"])
         self.assertEqual(exit_code, 0)
         out = json.loads(stdout.getvalue())
-        self.assertIn("cypilot", out["usage"])
+        self.assertIn("cfc", out["usage"])
 
 
 class TestCLIPyCoverageSlugValidation(unittest.TestCase):
@@ -2199,14 +2199,6 @@ class TestCLIDispatchUncoveredCommands(unittest.TestCase):
         """'spec-coverage' dispatches to cmd_spec_coverage; may fail outside a project."""
         _run_cli_dispatch(self, ["spec-coverage"])
 
-    def test_dispatch_migrate(self):
-        """'migrate' dispatches to cmd_migrate; may fail outside a project."""
-        _run_cli_dispatch(self, ["migrate"])
-
-    def test_dispatch_migrate_config(self):
-        """'migrate-config' dispatches to cmd_migrate_config; may fail outside a project."""
-        _run_cli_dispatch(self, ["migrate-config"])
-
     def test_dispatch_workspace_init(self):
         """'workspace-init' dispatches to cmd_workspace_init."""
         _run_cli_dispatch(self, ["workspace-init"])
@@ -2245,7 +2237,7 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
             (adapter / "config").mkdir(parents=True)
             (adapter / "config" / "AGENTS.md").write_text("# Test\n", encoding="utf-8")
             (git_root / "AGENTS.md").write_text(
-                '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "adapter"\n```\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "adapter"\n```\n',
                 encoding="utf-8",
             )
 

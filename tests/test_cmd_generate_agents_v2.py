@@ -43,7 +43,7 @@ from cypilot.utils.manifest import AgentEntry
 # Helpers
 # ---------------------------------------------------------------------------
 
-_AGENTS_MD = "<!-- @cpt:root-agents -->\n## Cypilot\n"
+_AGENTS_MD = "<!-- @cf:root-agents -->\n## Cypilot\n"
 _MANIFEST_V2_AGENT = """\
 [manifest]
 version = "2.0"
@@ -139,7 +139,7 @@ class TestCmdGenerateAgentsV2ManifestPipeline(unittest.TestCase):
 
         argv = [
             "--root", str(project_root),
-            "--cypilot-root", str(cypilot_root),
+            "--cf-constructor-root", str(cypilot_root),
             "--agent", "claude",
             "--dry-run",
         ]
@@ -165,7 +165,7 @@ class TestCmdGenerateAgentsV2ManifestPipeline(unittest.TestCase):
 
             cmd_generate_agents([
                 "--root", str(project_root),
-                "--cypilot-root", str(cypilot_root),
+                "--cf-constructor-root", str(cypilot_root),
                 "--agent", "claude",
                 "--dry-run",
             ])
@@ -185,7 +185,7 @@ class TestCmdGenerateAgentsV2ManifestPipeline(unittest.TestCase):
 
             ret = cmd_generate_agents([
                 "--root", str(project_root),
-                "--cypilot-root", str(cypilot_root),
+                "--cf-constructor-root", str(cypilot_root),
                 "--agent", "claude",
                 "-y",  # skip confirmation
             ])
@@ -210,7 +210,7 @@ class TestCmdGenerateAgentsShowLayers(unittest.TestCase):
 
             ret = cmd_generate_agents([
                 "--root", str(project_root),
-                "--cypilot-root", str(cypilot_root),
+                "--cf-constructor-root", str(cypilot_root),
                 "--agent", "claude",
                 "--show-layers",
             ])
@@ -224,7 +224,7 @@ class TestCmdGenerateAgentsShowLayers(unittest.TestCase):
 
             ret = cmd_generate_agents([
                 "--root", str(project_root),
-                "--cypilot-root", str(cypilot_root),
+                "--cf-constructor-root", str(cypilot_root),
                 "--agent", "claude",
                 "--show-layers",
                 "--dry-run",
@@ -250,7 +250,7 @@ class TestCmdGenerateAgentsShowLayers(unittest.TestCase):
                 ):
                     cmd_generate_agents([
                         "--root", str(project_root),
-                        "--cypilot-root", str(cypilot_root),
+                        "--cf-constructor-root", str(cypilot_root),
                         "--agent", "claude",
                         "--show-layers",
                     ])
@@ -274,7 +274,7 @@ class TestCmdGenerateAgentsDiscover(unittest.TestCase):
 
             ret = cmd_generate_agents([
                 "--root", str(project_root),
-                "--cypilot-root", str(cypilot_root),
+                "--cf-constructor-root", str(cypilot_root),
                 "--agent", "claude",
                 "--discover",
                 "--dry-run",
@@ -295,7 +295,7 @@ class TestCmdGenerateAgentsDiscover(unittest.TestCase):
             # --discover with v2 manifest
             ret = cmd_generate_agents([
                 "--root", str(project_root),
-                "--cypilot-root", str(cypilot_root),
+                "--cf-constructor-root", str(cypilot_root),
                 "--agent", "claude",
                 "--discover",
                 "--dry-run",
@@ -314,7 +314,7 @@ class TestCmdGenerateAgentsLegacyPath(unittest.TestCase):
 
             ret = cmd_generate_agents([
                 "--root", str(project_root),
-                "--cypilot-root", str(cypilot_root),
+                "--cf-constructor-root", str(cypilot_root),
                 "--agent", "claude",
                 "--dry-run",
             ])
@@ -671,7 +671,7 @@ class TestV2PreviewCountsLegacyWorkflows(unittest.TestCase):
 
                 ret = cmd_generate_agents([
                     "--root", str(project_root),
-                    "--cypilot-root", str(cypilot_root),
+                    "--cf-constructor-root", str(cypilot_root),
                     "--agent", "cursor",
                     "--dry-run",
                 ])
@@ -720,7 +720,7 @@ class TestV2PreviewCountsLegacyWorkflows(unittest.TestCase):
 
                     cmd_generate_agents([
                         "--root", str(project_root),
-                        "--cypilot-root", str(cypilot_root),
+                        "--cf-constructor-root", str(cypilot_root),
                         "--agent", "cursor",
                         "-y",
                     ])

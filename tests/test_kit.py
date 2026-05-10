@@ -40,7 +40,7 @@ def _make_kit_source(td: Path, slug: str = "testkit") -> Path:
     )
     # conf.toml
     from cypilot.utils import toml_utils
-    toml_utils.dump({"version": 1}, kit_src / "conf.toml")
+    toml_utils.dump({"version": 1, "slug": slug}, kit_src / "conf.toml")
     return kit_src
 
 
@@ -53,7 +53,7 @@ def _make_manifest_kit_source(td: Path, slug: str = "testkit") -> Path:
         "\n".join([
             "[manifest]",
             'version = "1"',
-            'root = "{cypilot_path}/config/kits/{slug}"',
+            'root = "{cf-constructor-path}/config/kits/{slug}"',
             "user_modifiable = false",
             "",
             "[[resources]]",
@@ -127,12 +127,19 @@ class TestCmdKitUpdate(unittest.TestCase):
     def test_update_source_not_found(self):
         from cypilot.commands.kit import cmd_kit_update
         with TemporaryDirectory() as td:
-            buf = io.StringIO()
-            with redirect_stdout(buf):
-                rc = cmd_kit_update(["--path", str(Path(td) / "nonexistent")])
-            self.assertEqual(rc, 2)
-            out = json.loads(buf.getvalue())
-            self.assertIn("not found", out["message"])
+            root = Path(td) / "proj"
+            _bootstrap_project(root)
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = cmd_kit_update(["--path", str(Path(td) / "nonexistent")])
+                self.assertEqual(rc, 2)
+                out = json.loads(buf.getvalue())
+                self.assertIn("not found", out["message"])
+            finally:
+                os.chdir(cwd)
 
     def test_update_no_project_root(self):
         from cypilot.commands.kit import cmd_kit_update
@@ -1150,10 +1157,18 @@ class TestCmdKitDispatcherRoutes(unittest.TestCase):
 
     def test_route_update(self):
         from cypilot.commands.kit import cmd_kit
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            rc = cmd_kit(["update", "--path", "/nonexistent"])
-        self.assertEqual(rc, 2)
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            _bootstrap_project(root)
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = cmd_kit(["update", "--path", "/nonexistent"])
+                self.assertEqual(rc, 2)
+            finally:
+                os.chdir(cwd)
 
     def test_route_migrate(self):
         from cypilot.commands.kit import cmd_kit
@@ -1909,7 +1924,7 @@ class TestCollectKitMetadataOsError(unittest.TestCase):
             meta = _collect_kit_metadata(kit_dir, "sdlc", "custom-kits/sdlc")
             self.assertEqual(
                 meta["skill_nav"],
-                "ALWAYS invoke `{cypilot_path}/custom-kits/sdlc/SKILL.md` FIRST",
+                "ALWAYS invoke `{cf-constructor-path}/custom-kits/sdlc/SKILL.md` FIRST",
             )
 
     def test_skill_nav_uses_absolute_registered_custom_path(self):
@@ -2160,7 +2175,7 @@ class TestRegenerateGenAggregates(unittest.TestCase):
             gen_skill = (adapter / ".gen" / "SKILL.md").read_text(encoding="utf-8")
             gen_agents = (adapter / ".gen" / "AGENTS.md").read_text(encoding="utf-8")
             self.assertIn(
-                "ALWAYS invoke `{cypilot_path}/config/kits/sdlc/SKILL.md` FIRST",
+                "ALWAYS invoke `{cf-constructor-path}/config/kits/sdlc/SKILL.md` FIRST",
                 gen_skill,
             )
             self.assertIn("# Default Agents", gen_agents)
@@ -2195,7 +2210,7 @@ class TestRegenerateGenAggregates(unittest.TestCase):
             gen_skill = (adapter / ".gen" / "SKILL.md").read_text(encoding="utf-8")
             gen_agents = (adapter / ".gen" / "AGENTS.md").read_text(encoding="utf-8")
             self.assertIn(
-                "ALWAYS invoke `{cypilot_path}/custom-kits/sdlc/SKILL.md` FIRST",
+                "ALWAYS invoke `{cf-constructor-path}/custom-kits/sdlc/SKILL.md` FIRST",
                 gen_skill,
             )
             self.assertIn("# Custom Agents", gen_agents)
@@ -2345,7 +2360,7 @@ class TestCmdKitInstallGithubPath(unittest.TestCase):
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
-            kit_src = _make_kit_source(Path(td) / "dl", "sdlc")
+            kit_src = _make_manifest_kit_source(Path(td) / "dl", "sdlc")
 
             cwd = os.getcwd()
             try:
@@ -2356,7 +2371,7 @@ class TestCmdKitInstallGithubPath(unittest.TestCase):
                 ):
                     buf = io.StringIO()
                     with redirect_stdout(buf):
-                        rc = cmd_kit_install(["cyberfabric/cyber-pilot-kit-sdlc"])
+                        rc = cmd_kit_install(["cyberfabric/cyber-constructor-kit-sdlc"])
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
                 self.assertIn(out["status"], ["PASS", "OK"])

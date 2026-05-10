@@ -152,7 +152,7 @@ def _make_ws_cfg(tmpdir, sources_dict=None):
         sources_dict = {"docs": SourceEntry(name="docs", path=str(tmpdir / "repo"), role="artifacts")}
     return WorkspaceConfig(
         sources=sources_dict,
-        workspace_file=Path(tmpdir) / ".cypilot-workspace.toml",
+        workspace_file=Path(tmpdir) / ".cf-constructor-workspace.toml",
     )
 
 
@@ -160,7 +160,7 @@ def _make_standalone_ws_mock(tmpdir):
     """Create a MagicMock representing a standalone workspace config."""
     ws = MagicMock()
     ws.is_inline = False
-    ws.workspace_file = Path(tmpdir) / ".cypilot-workspace.toml"
+    ws.workspace_file = Path(tmpdir) / ".cf-constructor-workspace.toml"
     ws.save.return_value = None
     return ws
 
@@ -193,7 +193,7 @@ def _make_docs_ws_cfg(tmpdir, src_dir):
     """Create a WorkspaceConfig with a single 'docs' source."""
     return WorkspaceConfig(
         sources={"docs": SourceEntry(name="docs", path=str(src_dir), role="artifacts")},
-        workspace_file=Path(tmpdir) / ".cypilot-workspace.toml",
+        workspace_file=Path(tmpdir) / ".cf-constructor-workspace.toml",
     )
 
 
@@ -430,7 +430,7 @@ class TestWorkspaceConfig:
 
     def test_load_valid_file(self):
         with TemporaryDirectory() as tmpdir:
-            ws_path = Path(tmpdir) / ".cypilot-workspace.toml"
+            ws_path = Path(tmpdir) / ".cf-constructor-workspace.toml"
             toml_utils.dump({
                 "version": "1.0",
                 "sources": {"test": {"path": "."}},
@@ -443,13 +443,13 @@ class TestWorkspaceConfig:
             assert "test" in cfg.sources
 
     def test_load_missing_file(self):
-        cfg, err = WorkspaceConfig.load(Path("/nonexistent/.cypilot-workspace.toml"))
+        cfg, err = WorkspaceConfig.load(Path("/nonexistent/.cf-constructor-workspace.toml"))
         assert cfg is None
         assert "not found" in err.lower()
 
     def test_load_invalid_toml(self):
         with TemporaryDirectory() as tmpdir:
-            ws_path = Path(tmpdir) / ".cypilot-workspace.toml"
+            ws_path = Path(tmpdir) / ".cf-constructor-workspace.toml"
             ws_path.write_text("[invalid\nbroken toml =", encoding="utf-8")
             cfg, err = WorkspaceConfig.load(ws_path)
             assert cfg is None
@@ -458,7 +458,7 @@ class TestWorkspaceConfig:
     def test_load_invalid_role_returns_error(self):
         """load() catches ValueError from invalid role in source."""
         with TemporaryDirectory() as tmpdir:
-            ws_path = Path(tmpdir) / ".cypilot-workspace.toml"
+            ws_path = Path(tmpdir) / ".cf-constructor-workspace.toml"
             toml_utils.dump({
                 "version": "1.0",
                 "sources": {"bad": {"path": "../bad", "role": "bogus"}},
@@ -485,7 +485,7 @@ class TestWorkspaceConfig:
 
     def test_save_and_reload(self):
         with TemporaryDirectory() as tmpdir:
-            ws_path = Path(tmpdir) / ".cypilot-workspace.toml"
+            ws_path = Path(tmpdir) / ".cf-constructor-workspace.toml"
             cfg = WorkspaceConfig(
                 sources={"docs": SourceEntry(name="docs", path="../docs", role="artifacts")},
                 workspace_file=ws_path,
@@ -530,7 +530,7 @@ class TestWorkspaceConfig:
 
     def test_resolve_source_path(self):
         with TemporaryDirectory() as tmpdir:
-            ws_file = Path(tmpdir) / ".cypilot-workspace.toml"
+            ws_file = Path(tmpdir) / ".cf-constructor-workspace.toml"
             cfg = WorkspaceConfig(
                 sources={"repo": SourceEntry(name="repo", path="sub/repo")},
                 workspace_file=ws_file,
@@ -587,12 +587,12 @@ class TestFindWorkspaceConfig:
         # Create AGENTS.md with root-agents marker and cypilot_path
         agents_md = project_root / "AGENTS.md"
         agents_md.write_text(
-            "<!-- @cpt:root-agents -->\n"
+            "<!-- @cf:root-agents -->\n"
             "# Project\n\n"
             "```toml\n"
-            'cypilot_path = ".cypilot"\n'
+            'cf-constructor-path = ".cypilot"\n'
             "```\n"
-            "<!-- @cpt:root-agents -->\n",
+            "<!-- @cf:root-agents -->\n",
             encoding="utf-8",
         )
 
@@ -691,11 +691,11 @@ class TestFindWorkspaceConfig:
             tmp = Path(tmpdir)
             agents_md = tmp / "AGENTS.md"
             agents_md.write_text(
-                "<!-- @cpt:root-agents -->\n"
+                "<!-- @cf:root-agents -->\n"
                 "```toml\n"
-                'cypilot_path = ".cypilot"\n'
+                'cf-constructor-path = ".cypilot"\n'
                 "```\n"
-                "<!-- @cpt:root-agents -->\n",
+                "<!-- @cf:root-agents -->\n",
                 encoding="utf-8",
             )
             config_dir = tmp / ".cypilot" / "config"
@@ -708,10 +708,10 @@ class TestFindWorkspaceConfig:
             assert "Failed to parse" in err
 
     def test_standalone_file_discovered_at_project_root(self):
-        """Standalone .cypilot-workspace.toml at project root is discovered without core.toml reference."""
+        """Standalone .cf-constructor-workspace.toml at project root is discovered without core.toml reference."""
         with TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
-            ws_path = tmp / ".cypilot-workspace.toml"
+            ws_path = tmp / ".cf-constructor-workspace.toml"
             toml_utils.dump({
                 "version": "1.0",
                 "sources": {"lib": {"path": "../lib"}},
@@ -724,10 +724,10 @@ class TestFindWorkspaceConfig:
             assert "lib" in cfg.sources
 
     def test_standalone_file_not_discovered_at_parent(self):
-        """Standalone .cypilot-workspace.toml one level above project root is NOT discovered (no parent walk-up)."""
+        """Standalone .cf-constructor-workspace.toml one level above project root is NOT discovered (no parent walk-up)."""
         with TemporaryDirectory() as tmpdir:
             parent = Path(tmpdir)
-            ws_path = parent / ".cypilot-workspace.toml"
+            ws_path = parent / ".cf-constructor-workspace.toml"
             toml_utils.dump({
                 "version": "1.0",
                 "sources": {"docs": {"path": "./docs"}},
@@ -749,7 +749,7 @@ class TestFindWorkspaceConfig:
             toml_utils.dump({
                 "version": "1.0",
                 "sources": {"stale": {"path": "../stale"}},
-            }, tmp / ".cypilot-workspace.toml")
+            }, tmp / ".cf-constructor-workspace.toml")
 
             # Create core.toml with inline workspace
             self._setup_v3_project(tmp, {
@@ -825,7 +825,7 @@ class TestWorkspaceContext:
 
             ws_cfg = WorkspaceConfig(
                 sources={"other": SourceEntry(name="other", path="other-repo")},
-                workspace_file=tmp / ".cypilot-workspace.toml",
+                workspace_file=tmp / ".cf-constructor-workspace.toml",
             )
             mock_find.return_value = (ws_cfg, None)
 
@@ -841,7 +841,7 @@ class TestWorkspaceContext:
             tmp = Path(tmpdir)
             ws_cfg = WorkspaceConfig(
                 sources={"missing": SourceEntry(name="missing", path="does-not-exist")},
-                workspace_file=tmp / ".cypilot-workspace.toml",
+                workspace_file=tmp / ".cf-constructor-workspace.toml",
             )
             mock_find.return_value = (ws_cfg, None)
 
@@ -1071,7 +1071,7 @@ class TestWorkspaceContext:
 
             ws_cfg = WorkspaceConfig(
                 sources={"other": SourceEntry(name="other", path="other-repo", adapter=".custom-adapter")},
-                workspace_file=tmp / ".cypilot-workspace.toml",
+                workspace_file=tmp / ".cf-constructor-workspace.toml",
             )
             mock_find.return_value = (ws_cfg, None)
 
@@ -1805,7 +1805,7 @@ class TestIsProjectDir:
 
         with TemporaryDirectory() as tmpdir:
             d = Path(tmpdir)
-            (d / "AGENTS.md").write_text("<!-- @cpt:root-agents -->\nsome content")
+            (d / "AGENTS.md").write_text("<!-- @cf:root-agents -->\nsome content")
             assert _is_project_dir(d) is True
 
     def test_agents_md_without_marker(self):
@@ -2012,7 +2012,7 @@ class TestWriteInline:
             with patch("cypilot.utils.files._read_cypilot_var", return_value=None):
                 exit_code, data = _write_inline(Path(tmpdir), {"sources": {}})
                 assert exit_code == 1
-                assert "cypilot_path" in data.get("message", "")
+                assert "cf-constructor-path" in data.get("message", "")
 
     def test_success(self):
         with TemporaryDirectory() as tmpdir:
@@ -2131,7 +2131,7 @@ class TestCmdWorkspaceInitConflictGuard:
         with TemporaryDirectory() as tmpdir:
             mock_ws = MagicMock()
             mock_ws.is_inline = is_inline
-            mock_ws.workspace_file = Path(tmpdir) / ".cypilot-workspace.toml"
+            mock_ws.workspace_file = Path(tmpdir) / ".cf-constructor-workspace.toml"
             root = Path(tmpdir)
             with patch("cypilot.utils.files.find_project_root", return_value=root):
                 with patch("cypilot.utils.workspace.find_workspace_config", return_value=(mock_ws, None)):
@@ -2190,7 +2190,7 @@ class TestScanEdgeCases:
         with TemporaryDirectory() as tmpdir:
             entry = Path(tmpdir)
             agents = entry / "AGENTS.md"
-            agents.write_text("<!-- @cpt:root-agents -->")
+            agents.write_text("<!-- @cf:root-agents -->")
             with patch.object(Path, "read_text", side_effect=OSError("permission denied")):
                 assert _is_project_dir(entry) is False
 
@@ -2267,7 +2267,7 @@ class TestBuildSourceInfo:
 
         ws_cfg = WorkspaceConfig(
             sources={"x": SourceEntry(name="x", path="/nonexistent/repo", role="full")},
-            workspace_file=Path("/fake/.cypilot-workspace.toml"),
+            workspace_file=Path("/fake/.cf-constructor-workspace.toml"),
         )
         info = _build_source_info(ws_cfg, "x")
         assert info["reachable"] is False
@@ -2277,7 +2277,7 @@ class TestBuildSourceInfo:
 
         ws_cfg = WorkspaceConfig(
             sources={"r": SourceEntry(name="r", path="/nonexistent", url="https://x.com/a/b.git", branch="main", role="codebase")},
-            workspace_file=Path("/fake/.cypilot-workspace.toml"),
+            workspace_file=Path("/fake/.cf-constructor-workspace.toml"),
         )
         info = _build_source_info(ws_cfg, "r")
         assert info["url"] == "https://x.com/a/b.git"
@@ -2512,7 +2512,7 @@ class TestAddToInline:
                 rc = _add_to_inline(args, Path(tmpdir))
                 assert rc == 1
                 out = capsys.readouterr().out
-                assert "cypilot_path" in out
+                assert "cf-constructor-path" in out
 
     def test_workspace_as_string_reference(self, capsys):
         args = _make_inline_args()
@@ -2849,7 +2849,7 @@ class TestCmdWorkspaceInfoEdgeCases:
         with TemporaryDirectory() as tmpdir:
             ws_cfg = WorkspaceConfig(
                 sources={"bad": SourceEntry(name="bad", path="", role="full")},
-                workspace_file=Path(tmpdir) / ".cypilot-workspace.toml",
+                workspace_file=Path(tmpdir) / ".cf-constructor-workspace.toml",
             )
             rc, data = _run_workspace_info(capsys, ws_cfg, tmpdir)
             assert rc == 0
@@ -3112,7 +3112,7 @@ def _make_git_ws_cfg(tmpdir, sources=None):
         sources = {
             "remote-repo": SourceEntry(name="remote-repo", path="", url="https://gitlab.com/team/lib.git", branch="main"),
         }
-    ws_file = Path(tmpdir) / ".cypilot-workspace.toml"
+    ws_file = Path(tmpdir) / ".cf-constructor-workspace.toml"
     ws_file.touch()
     return WorkspaceConfig(sources=sources, workspace_file=ws_file)
 

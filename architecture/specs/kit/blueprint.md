@@ -70,19 +70,19 @@ Blueprints with an `artifact` key in `@cpt:blueprint` define artifact kinds (e.g
 
 **File location**:
 - Source: `kits/<kit-slug>/blueprints/<KIND>.md`
-- Installed (user-editable): `{cypilot_path}/config/kits/<slug>/blueprints/<KIND>.md`
+- Installed (user-editable): `{cf-constructor-path}/config/kits/<slug>/blueprints/<KIND>.md`
 
 **Generated outputs** (see individual specs for format details):
 
 | Output | Location | Spec |
 |--------|----------|------|
-| `rules.md` | `{cypilot_path}/.gen/kits/<slug>/artifacts/<KIND>/` | [rules.md](rules.md) |
-| `checklist.md` | `{cypilot_path}/.gen/kits/<slug>/artifacts/<KIND>/` | [checklist.md](checklist.md) |
-| `template.md` | `{cypilot_path}/.gen/kits/<slug>/artifacts/<KIND>/` | [template.md](template.md) |
-| `example.md` | `{cypilot_path}/.gen/kits/<slug>/artifacts/<KIND>/` | [example.md](example.md) |
-| `constraints.toml` | `{cypilot_path}/.gen/kits/<slug>/` (kit-wide) | [constraints.md](constraints.md) |
-| codebase `rules.md` | `{cypilot_path}/.gen/kits/<slug>/codebase/` | [rules.md](rules.md) |
-| codebase `checklist.md` | `{cypilot_path}/.gen/kits/<slug>/codebase/` | [checklist.md](checklist.md) |
+| `rules.md` | `{cf-constructor-path}/.gen/kits/<slug>/artifacts/<KIND>/` | [rules.md](rules.md) |
+| `checklist.md` | `{cf-constructor-path}/.gen/kits/<slug>/artifacts/<KIND>/` | [checklist.md](checklist.md) |
+| `template.md` | `{cf-constructor-path}/.gen/kits/<slug>/artifacts/<KIND>/` | [template.md](template.md) |
+| `example.md` | `{cf-constructor-path}/.gen/kits/<slug>/artifacts/<KIND>/` | [example.md](example.md) |
+| `constraints.toml` | `{cf-constructor-path}/.gen/kits/<slug>/` (kit-wide) | [constraints.md](constraints.md) |
+| codebase `rules.md` | `{cf-constructor-path}/.gen/kits/<slug>/codebase/` | [rules.md](rules.md) |
+| codebase `checklist.md` | `{cf-constructor-path}/.gen/kits/<slug>/codebase/` | [checklist.md](checklist.md) |
 
 ---
 
@@ -141,8 +141,8 @@ Each marker may contain two types of fenced code blocks:
 | Marker | Content Blocks | Owner | Description | Generates |
 |--------|---------------|-------|-------------|-----------|
 | `@cpt:blueprint` | toml | core | Blueprint identity and metadata | — |
-| `@cpt:skill` | markdown | core | SKILL.md extension content | → `{cypilot_path}/config/SKILL.md` (aggregated) |
-| `@cpt:system-prompt` | markdown | core | Agent directives (ALWAYS/WHEN) | → `{cypilot_path}/config/AGENTS.md` (appended) |
+| `@cpt:skill` | markdown | core | SKILL.md extension content | → `{cf-constructor-path}/config/SKILL.md` (aggregated) |
+| `@cpt:system-prompt` | markdown | core | Agent directives (ALWAYS/WHEN) | → `{cf-constructor-path}/config/AGENTS.md` (appended) |
 | `@cpt:workflow` | toml + markdown | core | Workflow definition | → `workflows/{name}.md` + agent entry points |
 | `@cpt:rules` | toml | core | rules.md structure skeleton | → rules.md |
 | `@cpt:rule` | toml + markdown | core | Individual rule entry | → rules.md |
@@ -207,7 +207,7 @@ Contains a single ` ```markdown ` block with SKILL.md extension content.
 `@/cpt:skill`
 ````
 
-Content from all blueprints in the kit is aggregated and written to `{cypilot_path}/config/SKILL.md` during `cpt init` / `cypilot kit install`. The main SKILL.md has a navigation rule (`ALWAYS open and follow {cypilot_path}/config/SKILL.md WHEN it exists`) that ensures AI agents discover kit capabilities automatically.
+Content from all blueprints in the kit is aggregated and written to `{cf-constructor-path}/config/SKILL.md` during `cpt init` / `cypilot kit install`. The main SKILL.md has a navigation rule (`ALWAYS open and follow {cf-constructor-path}/config/SKILL.md WHEN it exists`) that ensures AI agents discover kit capabilities automatically.
 
 ---
 
@@ -220,14 +220,14 @@ Contains a single ` ```markdown ` block with concise agent directives. Should co
 ````markdown
 `@cpt:system-prompt`
 ```markdown
-ALWAYS load `{cypilot_path}/.core/requirements/traceability.md` BEFORE generating or validating a PRD
+ALWAYS load `{cf-constructor-path}/.core/requirements/traceability.md` BEFORE generating or validating a PRD
 ALWAYS describe WHAT the system does, NEVER HOW — implementation details belong in DESIGN
 ALWAYS use observable behavior language (MUST/MUST NOT/SHOULD) WHEN writing functional requirements
 ```
 `@/cpt:system-prompt`
 ````
 
-Content from all blueprints in the kit is appended to `{cypilot_path}/config/AGENTS.md` during `cpt init` / `cypilot kit install`. Since `{cypilot_path}/config/AGENTS.md` is loaded via the Protocol Guard, these directives are automatically active when the agent processes the corresponding artifact kind.
+Content from all blueprints in the kit is appended to `{cf-constructor-path}/config/AGENTS.md` during `cpt init` / `cypilot kit install`. Since `{cf-constructor-path}/config/AGENTS.md` is loaded via the Protocol Guard, these directives are automatically active when the agent processes the corresponding artifact kind.
 
 ---
 
@@ -291,14 +291,14 @@ description: Review a GitHub PR against configurable checklists and prompts
 ...
 ```
 
-**Generated agent entry point** (`.windsurf/workflows/cypilot-pr-review.md`):
+**Generated agent entry point** (`.windsurf/workflows/cf-constructor-pr-review.md`):
 ```markdown
 ---
 name: Cypilot PR Review
 description: Review a GitHub PR against configurable checklists and prompts
 ---
 
-Follow the workflow defined in `{cypilot_path}/config/kits/sdlc/workflows/pr-review.md`
+Follow the workflow defined in `{cf-constructor-path}/config/kits/sdlc/workflows/pr-review.md`
 ```
 
 Agent entry points are fully overwritten on every `cpt generate-agents` run. Kit workflow files are regenerated from blueprints on `cpt init`.
@@ -796,17 +796,17 @@ The Blueprint Processor parses all markers and invokes output generators. All ou
 
 ### Reference Principle
 
-The **installed kit** in `{cypilot_path}/kits/{slug}/` serves as the reference for all update operations. When a kit is installed, its source is saved to `{cypilot_path}/kits/{slug}/` — this is the reference copy. User-editable blueprints live in `{cypilot_path}/config/kits/{slug}/blueprints/`.
+The **installed kit** in `{cf-constructor-path}/kits/{slug}/` serves as the reference for all update operations. When a kit is installed, its source is saved to `{cf-constructor-path}/kits/{slug}/` — this is the reference copy. User-editable blueprints live in `{cf-constructor-path}/config/kits/{slug}/blueprints/`.
 
 ### Initial Installation
 
 When a kit is installed (`cpt init` or `cypilot kit install`):
 
-1. The tool saves the kit source to `{cypilot_path}/kits/{slug}/` (reference copy).
-2. Blueprints are copied from `{cypilot_path}/kits/{slug}/blueprints/` to `{cypilot_path}/config/kits/{slug}/blueprints/` (user-editable).
-3. SHA-256 hashes are computed for all blueprint files and stored in `{cypilot_path}/kits/{slug}/conf.toml` as the known-default baseline.
+1. The tool saves the kit source to `{cf-constructor-path}/kits/{slug}/` (reference copy).
+2. Blueprints are copied from `{cf-constructor-path}/kits/{slug}/blueprints/` to `{cf-constructor-path}/config/kits/{slug}/blueprints/` (user-editable).
+3. SHA-256 hashes are computed for all blueprint files and stored in `{cf-constructor-path}/kits/{slug}/conf.toml` as the known-default baseline.
 4. All output files are generated from the user blueprints.
-5. The kit is registered in `{cypilot_path}/config/core.toml` with slug and config output path.
+5. The kit is registered in `{cf-constructor-path}/config/core.toml` with slug and config output path.
 
 ### Update Modes
 
@@ -816,10 +816,10 @@ When a kit is installed (`cpt init` or `cypilot kit install`):
 
 Overwrites all user blueprints from the reference and regenerates all outputs. User edits are discarded.
 
-1. Update `{cypilot_path}/kits/{slug}/` with new kit version.
-2. Copy all blueprints from `{cypilot_path}/kits/{slug}/blueprints/` → `{cypilot_path}/config/kits/{slug}/blueprints/` (overwrite).
+1. Update `{cf-constructor-path}/kits/{slug}/` with new kit version.
+2. Copy all blueprints from `{cf-constructor-path}/kits/{slug}/blueprints/` → `{cf-constructor-path}/config/kits/{slug}/blueprints/` (overwrite).
 3. Regenerate all outputs.
-4. Update kit version in `{cypilot_path}/config/core.toml`.
+4. Update kit version in `{cf-constructor-path}/config/core.toml`.
 
 Use when: starting fresh, after breaking edits, or when you want to fully sync with the upstream kit.
 
@@ -830,7 +830,7 @@ Use when: starting fresh, after breaking edits, or when you want to fully sync w
 Smart update uses **hash-based customization detection** as a pre-step before three-way merge:
 
 1. Compute SHA-256 of each user blueprint in `config/kits/{slug}/blueprints/`.
-2. Compare against known default hashes stored in `{cypilot_path}/kits/{slug}/conf.toml`.
+2. Compare against known default hashes stored in `{cf-constructor-path}/kits/{slug}/conf.toml`.
 3. **If hash matches** known default → blueprint is unmodified, auto-update silently (overwrite from new reference).
 4. **If hash differs** → blueprint has been customized by user, apply three-way merge at marker level.
 5. After all blueprints are processed, update hash registry in `conf.toml` with new defaults.
@@ -840,13 +840,13 @@ Smart update uses **hash-based customization detection** as a pre-step before th
 The three-way merge (step 4) uses stable **identity keys** for marker matching across versions:
 
 ```
-{cypilot_path}/kits/{slug}/.prev/  ── old reference (saved before update)
+{cf-constructor-path}/kits/{slug}/.prev/  ── old reference (saved before update)
     ↕ identity-key match
 config/kits/{slug}/blueprints/     ── user's version
 
-{cypilot_path}/kits/{slug}/        ── new reference (current kit version)
+{cf-constructor-path}/kits/{slug}/        ── new reference (current kit version)
     ↕ identity-key match
-{cypilot_path}/kits/{slug}/.prev/  ── old reference
+{cf-constructor-path}/kits/{slug}/.prev/  ── old reference
 ```
 
 All three versions are parsed into segment lists with stable identity keys (see [Parsing Algorithm](#parsing-algorithm)). Markers are matched across versions by their identity key — named markers (`@cpt:TYPE:ID`) match by `TYPE:ID`; TOML-keyed markers match by derived key; legacy unnamed markers match by positional index fallback. After a successful merge, `.prev/` is cleaned up and the reference is replaced with the new version.
@@ -890,7 +890,7 @@ When conflicts are detected during smart update (three-way merge path):
 
 | Error | Cause | Resolution |
 |-------|-------|------------|
-| `BLUEPRINT_NOT_FOUND` | No `<KIND>.md` in `{cypilot_path}/config/kits/<slug>/blueprints/` | Create blueprint or check kit installation |
+| `BLUEPRINT_NOT_FOUND` | No `<KIND>.md` in `{cf-constructor-path}/config/kits/<slug>/blueprints/` | Create blueprint or check kit installation |
 | `BLUEPRINT_NO_HEADER` | Missing `@cpt:blueprint` marker | Add `` `@cpt:blueprint` `` with TOML block as first marker |
 | `BLUEPRINT_UNKNOWN_MARKER` | Marker type not registered by core or any kit | Check marker spelling, ensure kit is installed |
 | `BLUEPRINT_UNCLOSED_BLOCK` | Block marker without matching close tag | Add `` `@/cpt:type` `` closing tag |

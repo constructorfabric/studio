@@ -12,22 +12,12 @@ import tomllib
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-MARKER_START = "<!-- @cpt:root-agents -->"
+MARKER_START = "<!-- @cf:root-agents -->"
 
 _TOML_FENCE_RE = re.compile(r"```toml\s*\n(.*?)```", re.DOTALL)
 
-# Legacy: extract {cypilot_path} or {cypilot} from markdown table (pre-TOML format)
-_CYPILOT_VAR_RE = re.compile(
-    r"\|\s*`\{cypilot(?:_path)?\}`\s*\|\s*`([^`]+)`\s*\|"
-)
-
-# Legacy: extract install dir from old-format navigation rule
-_OLD_NAV_RE = re.compile(
-    r"ALWAYS open and follow `@/([^`/]+)/config/AGENTS\.md`"
-)
-
 def find_project_root(start_dir: Optional[Path] = None) -> Optional[Path]:
-    """Find the project root by walking up looking for AGENTS.md with @cpt:root-agents marker."""
+    """Find the project root by walking up looking for AGENTS.md with @cf:root-agents marker."""
     current = (start_dir or Path.cwd()).resolve()
     for parent in [current, *current.parents]:
         agents_file = parent / "AGENTS.md"
@@ -51,12 +41,9 @@ def _parse_toml_from_markdown(text: str) -> Dict[str, Any]:
             continue
     return merged
 
-def read_cypilot_path(project_root: Path) -> Optional[str]:
+def read_cf_constructor_path(project_root: Path) -> Optional[str]:
     """
-    Read the ``cypilot_path`` (or legacy ``cypilot``) variable from root AGENTS.md.
-
-    Tries TOML fenced block first (new format), then falls back to legacy
-    markdown table extraction.
+    Read the ``cf-constructor-path`` variable from root AGENTS.md.
 
     Returns the install directory path (relative to project root) or None.
     """
@@ -70,46 +57,25 @@ def read_cypilot_path(project_root: Path) -> Optional[str]:
     if MARKER_START not in content:
         return None
 
-    # New format: ```toml block with cypilot_path = "..." (or legacy cypilot = "...")
     toml_data = _parse_toml_from_markdown(content)
-    value = toml_data.get("cypilot_path") or toml_data.get("cypilot")
+    value = toml_data.get("cf-constructor-path")
     if isinstance(value, str) and value.strip():
         return value.strip()
-
-    # Legacy: markdown table | `{cypilot_path}` or `{cypilot}` | `@/...` |
-    m = _CYPILOT_VAR_RE.search(content)
-    if m is not None:
-        legacy_value = m.group(1).strip()
-        if legacy_value.startswith("@/"):
-            legacy_value = legacy_value[2:]
-        return legacy_value
-
     return None
 
 def find_install_dir(project_root: Path) -> Optional[str]:
     """
-    Determine the Cypilot install directory relative to project root.
+    Determine the Cyber Constructor install directory relative to project root.
 
     Resolution order:
-    1. Read {cypilot_path} variable from AGENTS.md managed block (new format)
-    2. Parse old-format navigation rule from AGENTS.md
-    3. Scan for common install directory names
+    1. Read ``cf-constructor-path`` variable from AGENTS.md managed block
+    2. Scan for the default install directory name
     """
-    from_var = read_cypilot_path(project_root)
+    from_var = read_cf_constructor_path(project_root)
     if from_var is not None:
         return from_var
 
-    agents_file = project_root / "AGENTS.md"
-    if agents_file.is_file():
-        try:
-            content = agents_file.read_text(encoding="utf-8")
-        except OSError:
-            content = ""
-        m = _OLD_NAV_RE.search(content)
-        if m is not None:
-            return m.group(1)
-
-    for candidate in (".cypilot", "cypilot", ".cpt"):
+    for candidate in (".cf-constructor",):
         if (project_root / candidate / "skills").is_dir():
             return candidate
 
@@ -118,8 +84,8 @@ def find_install_dir(project_root: Path) -> Optional[str]:
 
 # @cpt-begin:cpt-cypilot-algo-core-infra-resolve-skill:p1:inst-resolve-helpers
 def get_cache_dir() -> Path:
-    """Return the global Cypilot cache directory: ~/.cypilot/cache/"""
-    return Path.home() / ".cypilot" / "cache"
+    """Return the global Cyber Constructor cache directory: ~/.cf-constructor/cache/"""
+    return Path.home() / ".cf-constructor" / "cache"
 
 def get_version_file() -> Path:
     """Return the version marker file path."""
@@ -128,10 +94,10 @@ def get_version_file() -> Path:
 
 def find_project_skill(start_dir: Optional[Path] = None) -> Optional[Path]:
     """
-    Find project-installed skill by reading {cypilot_path} variable from root AGENTS.md.
+    Find project-installed skill by reading ``cf-constructor-path`` variable from root AGENTS.md.
 
-    Walks up from start_dir to find AGENTS.md with @cpt:root-agents marker,
-    reads the {cypilot_path} variable to get the install directory, then looks
+    Walks up from start_dir to find AGENTS.md with @cf:root-agents marker,
+    reads the ``cf-constructor-path`` variable to get the install directory, then looks
     for the skill entry point there.
 
     Returns path to the skill entry point (cypilot.py) or None.
@@ -141,7 +107,7 @@ def find_project_skill(start_dir: Optional[Path] = None) -> Optional[Path]:
     if project_root is None:
         return None
 
-    install_dir = read_cypilot_path(project_root)
+    install_dir = read_cf_constructor_path(project_root)
     if install_dir is None:
         return None
     # @cpt-end:cpt-cypilot-algo-core-infra-resolve-skill:p1:inst-walk-parents
@@ -166,7 +132,7 @@ def find_project_skill(start_dir: Optional[Path] = None) -> Optional[Path]:
 
 def find_cached_skill() -> Optional[Path]:
     """
-    Check for cached skill at ~/.cypilot/cache/.
+    Check for cached skill at ~/.cf-constructor/cache/.
 
     Returns path to the skill entry point or None.
     """

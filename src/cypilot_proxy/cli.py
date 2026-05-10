@@ -1,5 +1,5 @@
 """
-Cypilot Global CLI Proxy — Main Entry Point
+Cyber Constructor Global CLI Proxy — Main Entry Point
 
 Thin proxy that resolves skill target (project or cache) and forwards commands.
 All actual logic lives in the skill engine — this proxy only routes.
@@ -57,7 +57,7 @@ def _extract_named_param(args: List[str], name: str) -> Optional[str]:
 
 def main(argv: Optional[List[str]] = None) -> int:
     """
-    Main entry point for the cpt command.
+    Main entry point for the cfc / cf-constructor command.
     """
     # @cpt-begin:cpt-cypilot-flow-core-infra-cli-invocation:p1:inst-user-invokes
     args = argv if argv is not None else sys.argv[1:]
@@ -72,7 +72,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     # Handle --version with no value: show version info
     if args and args[0] == "--version" and len(args) == 1:
         from cypilot_proxy import __version__
-        print(f"cypilot-proxy {__version__}")
+        print(f"cyber-constructor {__version__}")
         cached = get_cached_version()
         if cached:
             print(f"skill (cached): {cached}")
@@ -124,7 +124,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         # Step 2: Forward to skill engine for .core/ + kits + .gen/ update
         skill_path = find_cached_skill()
         if skill_path is None:
-            sys.stderr.write("Cache not found. Run 'cpt update' without --no-cache first.\n")
+            sys.stderr.write("Cache not found. Run 'cfc update' without --no-cache first.\n")
             # @cpt-begin:cpt-cypilot-state-core-infra-project-install:p1:inst-update-complete
             return 1
             # @cpt-end:cpt-cypilot-state-core-infra-project-install:p1:inst-update-complete
@@ -193,14 +193,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         from cypilot_proxy.cache import download_and_cache
 
         sys.stderr.write("\n")
-        sys.stderr.write("  Cypilot skill engine not found.\n")
+        sys.stderr.write("  Cyber Constructor skill engine not found.\n")
         sys.stderr.write("\n")
-        sys.stderr.write("  Cypilot is a two-part tool:\n")
+        sys.stderr.write("  Cyber Constructor is a two-part tool:\n")
         sys.stderr.write("    • This CLI proxy (already installed)\n")
         sys.stderr.write("    • The skill engine (templates, validators, generators)\n")
         sys.stderr.write("\n")
         sys.stderr.write("  The skill engine needs to be downloaded once from GitHub\n")
-        sys.stderr.write("  and cached at ~/.cypilot/cache/.\n")
+        sys.stderr.write("  and cached at ~/.cf-constructor/cache/.\n")
         sys.stderr.write("\n")
 
         if sys.stdin.isatty():
@@ -209,7 +209,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             except (EOFError, KeyboardInterrupt):
                 answer = "n"
             if answer and answer not in ("y", "yes"):
-                sys.stderr.write("\n  To download later, run: cpt update\n\n")
+                sys.stderr.write("\n  To download later, run: cfc update\n\n")
                 return 1
         else:
             sys.stderr.write("  Downloading automatically (non-interactive mode)...\n")
@@ -221,7 +221,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         if not success:
             # @cpt-begin:cpt-cypilot-flow-core-infra-cli-invocation:p1:inst-return-download-error
             sys.stderr.write(f"  Error: {message}\n")
-            sys.stderr.write("  Retry: cpt update\n\n")
+            sys.stderr.write("  Retry: cfc update\n\n")
             return 1
             # @cpt-end:cpt-cypilot-flow-core-infra-cli-invocation:p1:inst-return-download-error
         # @cpt-end:cpt-cypilot-flow-core-infra-cli-invocation:p1:inst-if-download-failed
@@ -300,8 +300,8 @@ def _background_version_check(project_skill_path: Path) -> None:
         if cached_version != project_version:
             # @cpt-begin:cpt-cypilot-flow-core-infra-cli-invocation:p1:inst-show-update-notice
             sys.stderr.write(
-                f"cypilot: update available ({project_version} → {cached_version}). "
-                f"Run: cypilot update\n"
+                f"cfc: update available ({project_version} → {cached_version}). "
+                f"Run: cfc update\n"
             )
             # @cpt-end:cpt-cypilot-flow-core-infra-cli-invocation:p1:inst-show-update-notice
         # @cpt-end:cpt-cypilot-state-core-infra-project-install:p1:inst-version-mismatch

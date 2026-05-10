@@ -1,5 +1,5 @@
 ---
-cypilot: true
+cf-constructor: true
 type: requirement
 name: Multi-Repo Workspace
 version: 1.0
@@ -34,7 +34,7 @@ Cypilot workspaces provide an opt-in federation layer for multi-repo projects. E
 | Graceful degradation | Missing sources MUST warn but MUST NOT block available sources. |
 ## Configuration
 Workspaces can be standalone or inline.
-**Standalone** (`.cypilot-workspace.toml`):
+**Standalone** (`.cf-constructor-workspace.toml`):
 ```toml
 version = "1.0"
 [sources.docs-repo]
@@ -47,7 +47,7 @@ resolve_remote_ids = true
 ```
 **Inline** (`config/core.toml`):
 ```toml
-workspace = "../.cypilot-workspace.toml"
+workspace = "../.cf-constructor-workspace.toml"
 [workspace.sources.docs]
 path = "../docs-repo"
 [workspace.sources.shared-kits]
@@ -67,9 +67,9 @@ Roles: `artifacts`, `codebase`, `kits`, `full`.
 ## Discovery and Path Resolution
 Discovery order:
 1. Check `workspace` in `config/core.toml`.
-   - string → external `.cypilot-workspace.toml`, resolved relative to project root
+   - string → external `.cf-constructor-workspace.toml`, resolved relative to project root
    - table → inline workspace definition, source paths resolved relative to project root
-2. If absent, check for `.cypilot-workspace.toml` at project root.
+2. If absent, check for `.cf-constructor-workspace.toml` at project root.
 3. If still absent, use single-repo mode.
 No implicit parent traversal is allowed.
 
@@ -139,7 +139,7 @@ When a source is missing, Cypilot warns in `workspace-info`, marks `reachable: f
 
 ## Git URL Sources
 
-Git URL sources are supported only in standalone `.cypilot-workspace.toml`.
+Git URL sources are supported only in standalone `.cf-constructor-workspace.toml`.
 
 ```toml
 version = "1.0"
@@ -176,16 +176,16 @@ workspace/
 └── shared-kits/    (kits/sdlc)
 ```
 
-Running `cypilot validate` from `code-repo/` loads `code-repo/.bootstrap`, discovers the workspace in `config/core.toml`, loads `docs-repo` artifacts, and accepts `@cpt-*` references to IDs defined there.
+Running `cf-constructor validate` from `code-repo/` loads `code-repo/.bootstrap`, discovers the workspace in `config/core.toml`, loads `docs-repo` artifacts, and accepts `@cpt-*` references to IDs defined there.
 
 ### Example: Parent workspace with nested repos
 
 ```text
 parent/
-├── .cypilot-workspace.toml
+├── .cf-constructor-workspace.toml
 ├── frontend/
 ├── backend/
 └── docs/
 ```
 
-Running `cypilot workspace-init` from `parent/` will discover `frontend`, `backend`, and `docs` as nested sub-directories and generate the workspace config.
+Running `cf-constructor workspace-init` from `parent/` will discover `frontend`, `backend`, and `docs` as nested sub-directories and generate the workspace config.

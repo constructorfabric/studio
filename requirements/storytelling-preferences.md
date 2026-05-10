@@ -1,5 +1,5 @@
 ---
-cypilot: true
+cf-constructor: true
 type: requirement
 name: Storytelling Preferences
 version: 1.0
@@ -25,7 +25,7 @@ purpose: Page size, artifact language, checkpoint, telemetry, failure modes for 
 
 <!-- /toc -->
 
-Loaded by `requirements/storytelling.md` (router) for preference resolution and runtime state behavior. Project preferences live in `{cypilot_path}/.cache/explain/preferences.json` with keys: `default_mode`, `artifact_language`, `artifact_disposition`, `page_size_soft`, `page_size_hard`. Methodology MUST preserve unrelated keys when writing this file.
+Loaded by `requirements/storytelling.md` (router) for preference resolution and runtime state behavior. Project preferences live in `{cf-constructor-path}/.cache/explain/preferences.json` with keys: `default_mode`, `artifact_language`, `artifact_disposition`, `page_size_soft`, `page_size_hard`. Methodology MUST preserve unrelated keys when writing this file.
 
 ## Host Capability Matrix
 
@@ -99,9 +99,9 @@ All three disposition options take effect **immediately on each artifact-create 
 1. **`chat-only` (draft)** — methodology surfaces the artifact **right now in chat** as a ready-to-copy fenced block, with a one-line note like `📋 drafted comment Q-3 (chat-only — copy this now or it's gone at session end)`. Artifact is held in working memory only; the wrap output re-shows all `chat-only` drafts as a final consolidated block for last-chance copy. The user copies, pastes, or discards manually.
 
 2. **`save-to-file`** — methodology **appends** the artifact to its file **immediately** on the create event (with mkdir -p on first append):
-   - `{cypilot_path}/.cache/explain/review-comments-{slug}-{date}.md` (review mode only)
-   - `{cypilot_path}/.cache/explain/open-questions-{slug}-{date}.md`
-   - `{cypilot_path}/.cache/explain/key-takeaways-{slug}-{date}.md`
+   - `{cf-constructor-path}/.cache/explain/review-comments-{slug}-{date}.md` (review mode only)
+   - `{cf-constructor-path}/.cache/explain/open-questions-{slug}-{date}.md`
+   - `{cf-constructor-path}/.cache/explain/key-takeaways-{slug}-{date}.md`
 
    On first append in a session, methodology writes a session header (`## Session {ISO-timestamp} — {role} for {audience}, mode={mode}`) so multiple intra-day sessions on the same target accumulate without overwriting. Each artifact entry is appended under that header. Methodology emits a one-line confirmation in chat per append: `📝 Q-3 appended to {path} (line 42)`. The session continues immediately — wrap does NOT re-prompt for save (already saved). Wrap output reports the cumulative path + entry count.
 
@@ -133,7 +133,7 @@ This {mode} session may produce accumulating artifacts:
 
 How should they be handled at session end?
   1. chat-only — draft in chat, you copy/paste manually
-  2. save-to-file — write to {cypilot_path}/.cache/explain/{...}-{slug}-{date}.md at wrap
+  2. save-to-file — write to {cf-constructor-path}/.cache/explain/{...}-{slug}-{date}.md at wrap
   3. post-to-resource — try to post directly to {target} ({availability-status}); fall back to save-to-file when post fails or unavailable; each post confirmed individually
   4. mixed — pick per artifact type (secondary prompt)
 
@@ -165,16 +165,16 @@ All explain-generated artifacts and references **inside** them MUST use **relati
 |---|---|
 | Per-portion files inside an export package | Internal links to other portion files: relative within the package (`portion-002-data-model.md`). External refs to source artifacts: relative from the package directory (e.g. `../../../requirements/auth-prd.md#anchor`) — NEVER absolute |
 | `index.md` in an export package | All file refs in plan list, navigation graph, and wrap-up: relative (same rules as above). Mermaid graph node hrefs: relative |
-| `review-comments-{slug}-{date}.md` (loose artifact under `{cypilot_path}/.cache/explain/`) | File:line references inside comments: relative path from project root (e.g. `requirements/auth.md:42`), NEVER absolute. When `target_is_pr`: PR-view URL form per Phase E3 (those URLs are already canonical/portable) |
+| `review-comments-{slug}-{date}.md` (loose artifact under `{cf-constructor-path}/.cache/explain/`) | File:line references inside comments: relative path from project root (e.g. `requirements/auth.md:42`), NEVER absolute. When `target_is_pr`: PR-view URL form per Phase E3 (those URLs are already canonical/portable) |
 | `open-questions-{slug}-{date}.md` | Same as comments file — source-path refs are relative-from-project-root or PR-view URLs |
 | `key-takeaways-{slug}-{date}.md` | Same |
 | `diagrams-{slug}-{date}.md` (Mermaid file) | Diagram body uses identifiers (no paths). Source-ref captions use relative paths |
 | `session-{slug}-{ISO-timestamp}.json` (checkpoint) | `input_path` field: relative from project root (so a resumed session works after `git clone` to a different directory). `path` fields in any buffer entry: relative |
 | Chat-displayed paths (artifact-create confirmations, wrap output Session block, save-to-file confirmations) | Display as relative from project root when emitting in chat (e.g. `📝 Q-3 appended to .bootstrap/.cache/explain/review-comments-...md`); the underlying filesystem call MAY use the absolute resolved form, but the user-visible string is relative |
 
-**Resolution rule**: convert `{cypilot_path}` and `{project_root}` template variables to relative-from-project-root form before writing to artifact content or displaying in chat. The resolved-absolute form is held in working memory only for filesystem syscalls; never persisted into artifact bytes.
+**Resolution rule**: convert `{cf-constructor-path}` and `{project_root}` template variables to relative-from-project-root form before writing to artifact content or displaying in chat. The resolved-absolute form is held in working memory only for filesystem syscalls; never persisted into artifact bytes.
 
-**`{project_root}` reference rule**: when a path goes outside the package or cache directory (e.g. an export package's portion file refs the source `requirements/auth-prd.md`), express it relative-from-project-root with explicit `../` prefixes so the package can be opened from any location and a Markdown renderer resolves the link correctly. Example: from `{cypilot_path}/.cache/explain/packages/{slug}/portion-002-data-model.md`, the relative ref to `requirements/auth-prd.md` is `../../../../requirements/auth-prd.md` (three `../` to escape `.cache/explain/packages/{slug}/` plus one to escape `{cypilot_path}` if cypilot_path is one level deep like `.bootstrap`). Compute the depth from the actual artifact location, not a hardcoded count.
+**`{project_root}` reference rule**: when a path goes outside the package or cache directory (e.g. an export package's portion file refs the source `requirements/auth-prd.md`), express it relative-from-project-root with explicit `../` prefixes so the package can be opened from any location and a Markdown renderer resolves the link correctly. Example: from `{cf-constructor-path}/.cache/explain/packages/{slug}/portion-002-data-model.md`, the relative ref to `requirements/auth-prd.md` is `../../../../requirements/auth-prd.md` (three `../` to escape `.cache/explain/packages/{slug}/` plus one to escape `{cf-constructor-path}` if cypilot_path is one level deep like `.bootstrap`). Compute the depth from the actual artifact location, not a hardcoded count.
 
 **Anti-pattern** (also see router Anti-Patterns): writing `/Users/...` or `/Volumes/...` or `/home/...` into any explain-generated artifact body. The methodology MUST detect such absolute paths in any string about to be written and convert them to relative form first.
 
@@ -185,16 +185,16 @@ Chat output (the live narrative) follows different rules from artifact language:
 - **Source quotes** remain in the **original artifact language** (never translated)
 - If audience and source language differ, methodology MAY add parenthesised translation when audience-helpful (e.g. RU artifact + EN audience: `"{quote ru}" (≈ "{translation en}")`)
 
-**Language complexity** (global Cypilot rule): both chat output and persisted artifacts also respect the project's resolved `language_complexity` level (`low` / `middle` / `high`, default `middle`) per `{cypilot_path}/.core/requirements/language-complexity.md`. The methodology MUST self-check every chat message and every artifact write against the resolved level — no rare/archaic words at `middle`, no long sentences at `low`, etc. Override commands (`change language complexity to {X}` / `remember new language complexity` / `show language complexity`) work mid-session. Source quotes are exempt (quoted verbatim).
+**Language complexity** (global Cypilot rule): both chat output and persisted artifacts also respect the project's resolved `language_complexity` level (`low` / `middle` / `high`, default `middle`) per `{cf-constructor-path}/.core/requirements/language-complexity.md`. The methodology MUST self-check every chat message and every artifact write against the resolved level — no rare/archaic words at `middle`, no long sentences at `low`, etc. Override commands (`change language complexity to {X}` / `remember new language complexity` / `show language complexity`) work mid-session. Source quotes are exempt (quoted verbatim).
 
 ## Checkpoint and Resume
 
-- **File**: `{cypilot_path}/.cache/explain/session-{slug}-{ISO-timestamp}.json` (resolves `{cypilot_path}` from project config; do NOT hardcode `.cypilot/`)
-- **Directory**: if `{cypilot_path}/.cache/explain/` does not exist, methodology MUST create it (mkdir -p) at the moment of the wrap-time write. Same applies to diagrams / open-questions / key-takeaways files.
+- **File**: `{cf-constructor-path}/.cache/explain/session-{slug}-{ISO-timestamp}.json` (resolves `{cf-constructor-path}` from project config; do NOT hardcode `.cypilot/`)
+- **Directory**: if `{cf-constructor-path}/.cache/explain/` does not exist, methodology MUST create it (mkdir -p) at the moment of the wrap-time write. Same applies to diagrams / open-questions / key-takeaways files.
 - **`{slug}` derivation**: basename without extension, lowercased, non-alphanumeric → hyphens. `requirements/my-prd.md` → `my-prd`. External resources: `gh-{owner}-{repo}-pr-{N}`, `jira-{key}`, `notion-{slugified-title}`, `url-{domain}-{path}`. Same `{slug}` flows through `session-`, `diagrams-`, `open-questions-`, `key-takeaways-`, package-directory.
 - **Trigger** (the ONLY trigger): user accepts the checkpoint prompt during a mid-session Wrap (Phase E5 trigger 2, plan-not-complete branch). Auto-checkpointing during the session is **forbidden** — no periodic writes, no Phase-transition writes, no pivot writes. State is held in working memory and persisted only at the natural stopping point if the user opts in.
 - **State persisted**: `mode, role, audience, plan, current_position, open_questions_buffer, takeaways_buffer, diagram_format, glossary_buffer, telemetry_log, input_hash, target_is_pr`
-- **Resume invocation**: write `explain --resume {session-id}` (or `resume explain session {session-id}`) in any chat where `{session-id}` is the ISO-timestamp suffix. The `analyze.md` WHEN-rule recognises the resume intent verb and routes here; the methodology then loads the checkpoint at Phase E0 invocation handling. There is no dedicated `cypilot explain` CLI subcommand — resume is a methodology-level intent-routed action, not a CLI entrypoint
+- **Resume invocation**: write `explain --resume {session-id}` (or `resume explain session {session-id}`) in any chat where `{session-id}` is the ISO-timestamp suffix. The `analyze.md` WHEN-rule recognises the resume intent verb and routes here; the methodology then loads the checkpoint at Phase E0 invocation handling. There is no dedicated `cf-constructor explain` CLI subcommand — resume is a methodology-level intent-routed action, not a CLI entrypoint
 - **On resume**:
   - Load state from JSON
   - If the input file at the stored path is missing or unreadable, abort with `Input '{path}' no longer exists or is unreadable; cannot resume session.` and do NOT proceed
@@ -208,7 +208,7 @@ Chat output (the live narrative) follows different rules from artifact language:
 
 On wrap, after open-questions save prompt:
 ```text
-Save bookmarks ({B} items) to {cypilot_path}/.cache/explain/key-takeaways-{slug}-{YYYY-MM-DD}.md? (yes / no / path)
+Save bookmarks ({B} items) to {cf-constructor-path}/.cache/explain/key-takeaways-{slug}-{YYYY-MM-DD}.md? (yes / no / path)
 ```
 File contains: header (input, role, audience, mode, date), numbered takeaways with clickable source refs, glossary section if non-empty. Written in resolved artifact language.
 
@@ -242,7 +242,7 @@ Inherits cypilot-skill execution logging style:
 | Input registered, parent ID broken in registry | Warn, continue without that lateral candidate |
 | User asks question requiring external knowledge | Polite refuse + push to open-questions: `this requires knowledge beyond `{path}`, added to open questions` |
 | Methodology output exceeds soft cap (default 200 words) | Auto-trim with ack `trimmed to keep within format`; exceeds hard cap (default 350) → split into two portions sharing the plan-item index with letter suffixes (`3a`, `3b`) |
-| All 6 nav slots vacuous | Mark End-of-thread; offer Wrap or `/cypilot-analyze` as next step |
+| All 6 nav slots vacuous | Mark End-of-thread; offer Wrap or `/cf-constructor-analyze` as next step |
 | Diagram opportunity check fires but content has ≤2 entities and no structural relationships | Decline diagram in the `🎨 visualization:` marker with reason; continue with prose |
 | Glossary term has no clear definition in input | **Skip the inline gloss silently**. Do NOT invent a definition; do NOT push to open-questions on methodology's own initiative — open-questions are user-driven only. The first-mention term is used as-is without a parenthetical |
 | Wrap-time checkpoint write fails (permission, disk full) | Warn with the exact filesystem error; emit wrap output normally but flag in the Session block that checkpoint was NOT persisted; do NOT include `Resume this session` in Suggested Next Steps |

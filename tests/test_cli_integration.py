@@ -23,7 +23,7 @@ from cypilot.cli import main
 def _bootstrap_registry(project_root: Path, *, entries: list) -> None:
     (project_root / ".git").mkdir(exist_ok=True)
     (project_root / "AGENTS.md").write_text(
-        '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "adapter"\n```\n',
+        '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "adapter"\n```\n',
         encoding="utf-8",
     )
     adapter_dir = project_root / "adapter"
@@ -352,7 +352,7 @@ class TestCLIInitCommand(unittest.TestCase):
                     "windsurf",
                     "--root",
                     str(project),
-                    "--cypilot-root",
+                    "--cf-constructor-root",
                     str(cypilot_core),
                     "--dry-run",
                 ])
@@ -367,7 +367,7 @@ class TestCLIInitCommand(unittest.TestCase):
                     "--openai",
                     "--root",
                     str(project),
-                    "--cypilot-root",
+                    "--cf-constructor-root",
                     str(cypilot_core),
                     "--dry-run",
                 ])
@@ -454,7 +454,7 @@ class TestCLIAgentsCommand(unittest.TestCase):
 
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                exit_code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cypilot-root", str(root)])
+                exit_code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cf-constructor-root", str(root)])
             self.assertEqual(exit_code, 0)
 
             out = json.loads(stdout.getvalue())
@@ -463,7 +463,7 @@ class TestCLIAgentsCommand(unittest.TestCase):
             self.assertGreater(agent_r.get("workflows", {}).get("counts", {}).get("created", 0), 0)
 
             # Ensure description is always double-quoted in generated skill frontmatter
-            skill_file = root / ".agents" / "skills" / "cypilot" / "SKILL.md"
+            skill_file = root / ".agents" / "skills" / "cf-constructor" / "SKILL.md"
             self.assertTrue(skill_file.exists())
             content = skill_file.read_text(encoding="utf-8")
             self.assertRegex(content, r"(?m)^description:\s+\".*\"\s*$", msg="description not quoted in .agents skill output")
@@ -477,32 +477,32 @@ class TestCLIAgentsCommand(unittest.TestCase):
             self._write_workflows_with_frontmatter(root)
             legacy_commands = root / ".claude" / "commands"
             legacy_commands.mkdir(parents=True)
-            (legacy_commands / "cypilot-plan.md").write_text(
-                "# /cypilot-plan\n\nALWAYS open and follow `{cypilot_path}/.core/workflows/plan.md`\n",
+            (legacy_commands / "cf-constructor-plan.md").write_text(
+                "# /cf-constructor-plan\n\nALWAYS open and follow `{cf-constructor-path}/.core/workflows/plan.md`\n",
                 encoding="utf-8",
             )
-            (legacy_commands / "cypilot-workspace.md").write_text(
-                "# /cypilot-workspace\n\nALWAYS open and follow `{cypilot_path}/.core/workflows/workspace.md`\n",
+            (legacy_commands / "cf-constructor-workspace.md").write_text(
+                "# /cf-constructor-workspace\n\nALWAYS open and follow `{cf-constructor-path}/.core/workflows/workspace.md`\n",
                 encoding="utf-8",
             )
-            (legacy_commands / "cypilot-generate.md").write_text(
-                "# /cypilot-generate\n\nALWAYS open and follow `{cypilot_path}/.core/workflows/generate.md`\n",
+            (legacy_commands / "cf-constructor-generate.md").write_text(
+                "# /cf-constructor-generate\n\nALWAYS open and follow `{cf-constructor-path}/.core/workflows/generate.md`\n",
                 encoding="utf-8",
             )
 
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                exit_code = main(["generate-agents", "--agent", "claude", "--root", str(root), "--cypilot-root", str(root)])
+                exit_code = main(["generate-agents", "--agent", "claude", "--root", str(root), "--cf-constructor-root", str(root)])
             self.assertEqual(exit_code, 0)
             out = json.loads(stdout.getvalue())
 
             # One of the generated skill files should contain quoted description
-            skill = root / ".claude" / "skills" / "cypilot-generate" / "SKILL.md"
+            skill = root / ".claude" / "skills" / "cf-constructor-generate" / "SKILL.md"
             self.assertTrue(skill.exists())
             txt = skill.read_text(encoding="utf-8")
             self.assertRegex(txt, r"(?m)^description:\s+\".*\"\s*$", msg="description not quoted in claude skill file")
 
-            plan_skill = root / ".claude" / "skills" / "cypilot-plan" / "SKILL.md"
+            plan_skill = root / ".claude" / "skills" / "cf-constructor-plan" / "SKILL.md"
             self.assertTrue(plan_skill.exists())
             self.assertRegex(
                 plan_skill.read_text(encoding="utf-8"),
@@ -510,7 +510,7 @@ class TestCLIAgentsCommand(unittest.TestCase):
                 msg="description not quoted in claude plan skill file",
             )
 
-            workspace_skill = root / ".claude" / "skills" / "cypilot-workspace" / "SKILL.md"
+            workspace_skill = root / ".claude" / "skills" / "cf-constructor-workspace" / "SKILL.md"
             self.assertTrue(workspace_skill.exists())
             self.assertRegex(
                 workspace_skill.read_text(encoding="utf-8"),
@@ -520,12 +520,12 @@ class TestCLIAgentsCommand(unittest.TestCase):
 
             agent_r = out.get("results", {}).get("claude", out)
             deleted = set(agent_r.get("skills", {}).get("deleted", []))
-            self.assertIn(".claude/commands/cypilot-plan.md", deleted)
-            self.assertIn(".claude/commands/cypilot-workspace.md", deleted)
-            self.assertIn(".claude/commands/cypilot-generate.md", deleted)
-            self.assertFalse((legacy_commands / "cypilot-plan.md").exists())
-            self.assertFalse((legacy_commands / "cypilot-workspace.md").exists())
-            self.assertFalse((legacy_commands / "cypilot-generate.md").exists())
+            self.assertIn(".claude/commands/cf-constructor-plan.md", deleted)
+            self.assertIn(".claude/commands/cf-constructor-workspace.md", deleted)
+            self.assertIn(".claude/commands/cf-constructor-generate.md", deleted)
+            self.assertFalse((legacy_commands / "cf-constructor-plan.md").exists())
+            self.assertFalse((legacy_commands / "cf-constructor-workspace.md").exists())
+            self.assertFalse((legacy_commands / "cf-constructor-generate.md").exists())
 
     def test_agents_dry_run_does_not_write_files(self):
         """Test agents command dry-run mode."""
@@ -537,7 +537,7 @@ class TestCLIAgentsCommand(unittest.TestCase):
 
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                exit_code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cypilot-root", str(root), "--dry-run"])
+                exit_code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cf-constructor-root", str(root), "--dry-run"])
             self.assertEqual(exit_code, 0)
 
             out = json.loads(stdout.getvalue())
@@ -556,7 +556,7 @@ class TestCLIAgentsCommand(unittest.TestCase):
 
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                exit_code = main(["generate-agents", "--agent", "mystery-agent", "--root", str(root), "--cypilot-root", str(root)])
+                exit_code = main(["generate-agents", "--agent", "mystery-agent", "--root", str(root), "--cf-constructor-root", str(root)])
             self.assertEqual(exit_code, 0)
 
             # No cypilot-agents.json should be created
@@ -606,7 +606,7 @@ class TestCLIAgentsCommand(unittest.TestCase):
             )
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                ret = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cypilot-root", str(root), "--config", str(cfg_path)])
+                ret = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cf-constructor-root", str(root), "--config", str(cfg_path)])
             # Should return partial status due to workflow error
             out = json.loads(stdout.getvalue())
             agent_result = out.get("results", {}).get("windsurf", {})
@@ -638,7 +638,7 @@ class TestCLIAgentsCommand(unittest.TestCase):
             )
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                ret = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cypilot-root", str(root), "--config", str(cfg_path)])
+                ret = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cf-constructor-root", str(root), "--config", str(cfg_path)])
             out = json.loads(stdout.getvalue())
             agent_result = out.get("results", {}).get("windsurf", {})
             self.assertIn("Missing or invalid template", str(agent_result.get("errors", [])))
@@ -666,7 +666,7 @@ class TestCLIAgentsCommand(unittest.TestCase):
             )
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                ret = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cypilot-root", str(root), "--config", str(cfg_path)])
+                ret = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cf-constructor-root", str(root), "--config", str(cfg_path)])
             out = json.loads(stdout.getvalue())
             agent_result = out.get("results", {}).get("windsurf", {})
             self.assertIn("outputs must be an array", str(agent_result.get("errors", [])))
@@ -695,7 +695,7 @@ class TestCLIAgentsCommand(unittest.TestCase):
             )
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                ret = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cypilot-root", str(root), "--config", str(cfg_path)])
+                ret = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cf-constructor-root", str(root), "--config", str(cfg_path)])
             out = json.loads(stdout.getvalue())
             agent_result = out.get("results", {}).get("windsurf", {})
             self.assertIn("missing path", str(agent_result.get("errors", [])))
@@ -724,7 +724,7 @@ class TestCLIAgentsCommand(unittest.TestCase):
             )
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                ret = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cypilot-root", str(root), "--config", str(cfg_path)])
+                ret = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cf-constructor-root", str(root), "--config", str(cfg_path)])
             out = json.loads(stdout.getvalue())
             agent_result = out.get("results", {}).get("windsurf", {})
             self.assertIn("invalid template", str(agent_result.get("errors", [])))
@@ -741,7 +741,7 @@ class TestCLIAgentsCommand(unittest.TestCase):
             # First run - create files
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cypilot-root", str(root)])
+                main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cf-constructor-root", str(root)])
 
             # Modify a file to trigger update
             wf_dir = root / ".windsurf" / "workflows"
@@ -753,7 +753,7 @@ class TestCLIAgentsCommand(unittest.TestCase):
             # Second run - should update
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                exit_code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cypilot-root", str(root)])
+                exit_code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cf-constructor-root", str(root)])
             self.assertEqual(exit_code, 0)
             out = json.loads(stdout.getvalue())
             # Should have some updated files
@@ -783,7 +783,7 @@ class TestCLIAgentsCommand(unittest.TestCase):
 
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cypilot-root", str(root), "--config", str(cfg_path)])
+                code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cf-constructor-root", str(root), "--config", str(cfg_path)])
             self.assertEqual(code, 0)
             out = json.loads(stdout.getvalue())
             # windsurf should use built-in defaults even when config has only cursor
@@ -825,7 +825,7 @@ class TestCLIAgentsCommand(unittest.TestCase):
 
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                exit_code = main(["generate-agents", "--agent", "test", "--root", str(root), "--cypilot-root", str(root), "--config", str(cfg_path)])
+                exit_code = main(["generate-agents", "--agent", "test", "--root", str(root), "--cf-constructor-root", str(root), "--config", str(cfg_path)])
             self.assertEqual(exit_code, 0)
 
             out = json.loads(stdout.getvalue())
@@ -844,7 +844,7 @@ class TestCLIAgentsCommand(unittest.TestCase):
 
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                exit_code = main(["generate-agents", "--agent", "test", "--root", str(root), "--cypilot-root", str(root), "--config", str(cfg_path)])
+                exit_code = main(["generate-agents", "--agent", "test", "--root", str(root), "--cf-constructor-root", str(root), "--config", str(cfg_path)])
             self.assertEqual(exit_code, 0)
 
             out = json.loads(stdout.getvalue())
@@ -864,11 +864,11 @@ class TestCLIAgentsCommand(unittest.TestCase):
             self.assertEqual(openai_result.get("status"), "PASS")
 
             expected_skills = [
-                root / ".agents" / "skills" / "cypilot" / "SKILL.md",
-                root / ".agents" / "skills" / "cypilot-generate" / "SKILL.md",
-                root / ".agents" / "skills" / "cypilot-analyze" / "SKILL.md",
-                root / ".agents" / "skills" / "cypilot-plan" / "SKILL.md",
-                root / ".agents" / "skills" / "cypilot-workspace" / "SKILL.md",
+                root / ".agents" / "skills" / "cf-constructor" / "SKILL.md",
+                root / ".agents" / "skills" / "cf-constructor-generate" / "SKILL.md",
+                root / ".agents" / "skills" / "cf-constructor-analyze" / "SKILL.md",
+                root / ".agents" / "skills" / "cf-constructor-plan" / "SKILL.md",
+                root / ".agents" / "skills" / "cf-constructor-workspace" / "SKILL.md",
             ]
             for skill_file in expected_skills:
                 self.assertTrue(
@@ -888,7 +888,7 @@ class TestCLIAgentsCommand(unittest.TestCase):
 
             from cypilot.commands.agents import _parse_frontmatter
 
-            for skill_name in ("cypilot", "cypilot-generate", "cypilot-analyze", "cypilot-plan", "cypilot-workspace"):
+            for skill_name in ("cf-constructor", "cf-constructor-generate", "cf-constructor-analyze", "cf-constructor-plan", "cf-constructor-workspace"):
                 skill_file = root / ".agents" / "skills" / skill_name / "SKILL.md"
                 fm = _parse_frontmatter(skill_file)
                 self.assertTrue(fm.get("name", "").strip(),
@@ -900,7 +900,7 @@ class TestCLIAgentsCommand(unittest.TestCase):
         stdout = io.StringIO()
         with redirect_stdout(stdout):
             exit_code = main(["generate-agents", "--agent", agent,
-                "--root", str(root), "--cypilot-root", str(root)])
+                "--root", str(root), "--cf-constructor-root", str(root)])
         self.assertEqual(exit_code, 0, f"generate-agents --agent {agent} failed")
         return json.loads(stdout.getvalue())
 
@@ -1011,7 +1011,7 @@ class TestCLIAgentsEdgeCases(unittest.TestCase):
 
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                exit_code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cypilot-root", str(root)])
+                exit_code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cf-constructor-root", str(root)])
             self.assertEqual(exit_code, 0)
 
             out = json.loads(stdout.getvalue())
@@ -1037,7 +1037,7 @@ class TestCLIAgentsEdgeCases(unittest.TestCase):
 
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                exit_code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cypilot-root", str(root)])
+                exit_code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cf-constructor-root", str(root)])
             self.assertEqual(exit_code, 0)
 
             out = json.loads(stdout.getvalue())
@@ -1070,7 +1070,7 @@ class TestCLIAgentsEdgeCases(unittest.TestCase):
             with unittest.mock.patch.object(Path, "read_text", _rt):
                 stdout = io.StringIO()
                 with redirect_stdout(stdout):
-                    code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cypilot-root", str(root)])
+                    code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cf-constructor-root", str(root)])
             self.assertEqual(code, 0)
 
     def test_agents_skills_read_error_on_output(self):
@@ -1113,7 +1113,7 @@ class TestCLIAgentsEdgeCases(unittest.TestCase):
             with unittest.mock.patch.object(Path, "read_text", _rt):
                 stdout = io.StringIO()
                 with redirect_stdout(stdout):
-                    code = main(["generate-agents", "--agent", "test", "--root", str(root), "--cypilot-root", str(root), "--config", str(cfg_path)])
+                    code = main(["generate-agents", "--agent", "test", "--root", str(root), "--cf-constructor-root", str(root), "--config", str(cfg_path)])
             self.assertEqual(code, 0)
 
     def test_agents_delete_stale_unlink_error(self):
@@ -1141,7 +1141,7 @@ class TestCLIAgentsEdgeCases(unittest.TestCase):
             with unittest.mock.patch.object(Path, "unlink", _unlink):
                 stdout = io.StringIO()
                 with redirect_stdout(stdout):
-                    code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cypilot-root", str(root)])
+                    code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cf-constructor-root", str(root)])
             # Should still succeed (error is silently ignored)
             self.assertEqual(code, 0)
 
@@ -1173,7 +1173,7 @@ class TestCLIAgentsEdgeCases(unittest.TestCase):
             with unittest.mock.patch.object(Path, "read_text", _rt):
                 stdout = io.StringIO()
                 with redirect_stdout(stdout):
-                    code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cypilot-root", str(root)])
+                    code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cf-constructor-root", str(root)])
             self.assertEqual(code, 0)
 
     def test_agents_rename_skip_non_proxy_files(self):
@@ -1201,7 +1201,7 @@ class TestCLIAgentsEdgeCases(unittest.TestCase):
 
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cypilot-root", str(root)])
+                code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cf-constructor-root", str(root)])
             self.assertEqual(code, 0)
 
     def test_agents_rename_conflict_skips(self):
@@ -1228,7 +1228,7 @@ class TestCLIAgentsEdgeCases(unittest.TestCase):
 
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cypilot-root", str(root)])
+                code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cf-constructor-root", str(root)])
             self.assertEqual(code, 0)
 
             # Both files should still exist (no rename due to conflict)
@@ -1252,7 +1252,7 @@ class TestCLIAgentsEdgeCases(unittest.TestCase):
 
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cypilot-root", str(root)])
+                code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cf-constructor-root", str(root)])
             self.assertEqual(code, 0)
 
             # File should not be deleted (not a workflow proxy)
@@ -1275,7 +1275,7 @@ class TestCLIAgentsEdgeCases(unittest.TestCase):
 
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cypilot-root", str(root)])
+                code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cf-constructor-root", str(root)])
             self.assertEqual(code, 0)
 
     def test_agents_delete_stale_read_error(self):
@@ -1307,7 +1307,7 @@ class TestCLIAgentsEdgeCases(unittest.TestCase):
             with unittest.mock.patch.object(Path, "read_text", _rt):
                 stdout = io.StringIO()
                 with redirect_stdout(stdout):
-                    code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cypilot-root", str(root)])
+                    code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cf-constructor-root", str(root)])
             self.assertEqual(code, 0)
 
     def test_agents_delete_stale_no_regex_match(self):
@@ -1327,7 +1327,7 @@ class TestCLIAgentsEdgeCases(unittest.TestCase):
 
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cypilot-root", str(root)])
+                code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cf-constructor-root", str(root)])
             self.assertEqual(code, 0)
 
     def test_agents_unrecognized_agent_added_to_existing_config(self):
@@ -1352,7 +1352,7 @@ class TestCLIAgentsEdgeCases(unittest.TestCase):
 
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                code = main(["generate-agents", "--agent", "new-mystery-agent", "--root", str(root), "--cypilot-root", str(root), "--config", str(cfg_path)])
+                code = main(["generate-agents", "--agent", "new-mystery-agent", "--root", str(root), "--cf-constructor-root", str(root), "--config", str(cfg_path)])
             self.assertEqual(code, 0)
             out = json.loads(stdout.getvalue())
             # Should succeed with stub config for unknown agent
@@ -1390,12 +1390,12 @@ class TestCLIAgentsEdgeCases(unittest.TestCase):
             with unittest.mock.patch.object(Path, "read_text", _rt):
                 stdout = io.StringIO()
                 with redirect_stdout(stdout):
-                    code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cypilot-root", str(root)])
+                    code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cf-constructor-root", str(root)])
             self.assertEqual(code, 0)
 
 
 class TestCLIAgentsAtPathFormat(unittest.TestCase):
-    """Verify that generated agent files use {cypilot_path}/ variable paths."""
+    """Verify that generated agent files use {cf-constructor-path}/ variable paths."""
 
     def _write_minimal_cypilot_skill(self, root: Path) -> None:
         (root / "skills" / "cypilot").mkdir(parents=True, exist_ok=True)
@@ -1414,11 +1414,11 @@ class TestCLIAgentsAtPathFormat(unittest.TestCase):
     def _run_agents(self, agent: str, root: Path, cypilot_root: Path) -> None:
         stdout = io.StringIO()
         with redirect_stdout(stdout):
-            exit_code = main(["generate-agents", "--agent", agent, "--root", str(root), "--cypilot-root", str(cypilot_root)])
+            exit_code = main(["generate-agents", "--agent", agent, "--root", str(root), "--cf-constructor-root", str(cypilot_root)])
         self.assertEqual(exit_code, 0, f"agents --agent {agent} failed: {stdout.getvalue()}")
 
     def test_workflow_proxy_uses_at_path(self):
-        """Workflow proxies must reference the target via {cypilot_path}/ not relative traversal."""
+        """Workflow proxies must reference the target via {cf-constructor-path}/ not relative traversal."""
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             (root / ".git").mkdir()
@@ -1427,14 +1427,14 @@ class TestCLIAgentsAtPathFormat(unittest.TestCase):
 
             self._run_agents("windsurf", root, root)
 
-            proxy = root / ".windsurf" / "workflows" / "cypilot-generate.md"
+            proxy = root / ".windsurf" / "workflows" / "cf-constructor-generate.md"
             self.assertTrue(proxy.exists())
             content = proxy.read_text(encoding="utf-8")
-            self.assertIn("{cypilot_path}/", content, "Workflow proxy must use {cypilot_path}/ path prefix")
+            self.assertIn("{cf-constructor-path}/", content, "Workflow proxy must use {cf-constructor-path}/ path prefix")
             self.assertNotIn("../", content, "Workflow proxy must not use relative traversal paths")
 
     def test_skill_output_uses_at_path(self):
-        """Skill outputs must reference the target via {cypilot_path}/ not relative traversal."""
+        """Skill outputs must reference the target via {cf-constructor-path}/ not relative traversal."""
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             (root / ".git").mkdir()
@@ -1443,37 +1443,37 @@ class TestCLIAgentsAtPathFormat(unittest.TestCase):
 
             self._run_agents("windsurf", root, root)
 
-            skill = root / ".agents" / "skills" / "cypilot" / "SKILL.md"
+            skill = root / ".agents" / "skills" / "cf-constructor" / "SKILL.md"
             self.assertTrue(skill.exists())
             content = skill.read_text(encoding="utf-8")
-            self.assertIn("{cypilot_path}/", content, "Skill output must use {cypilot_path}/ path prefix")
+            self.assertIn("{cf-constructor-path}/", content, "Skill output must use {cf-constructor-path}/ path prefix")
             self.assertNotIn("../", content, "Skill output must not use relative traversal paths")
 
     def test_all_agents_use_at_path(self):
-        """All supported agents must generate files with {cypilot_path}/ paths, not relative traversal."""
+        """All supported agents must generate files with {cf-constructor-path}/ paths, not relative traversal."""
         agents_and_files = {
             "windsurf": [
-                ".windsurf/workflows/cypilot-generate.md",
-                ".agents/skills/cypilot/SKILL.md",
-                ".windsurf/workflows/cypilot.md",
+                ".windsurf/workflows/cf-constructor-generate.md",
+                ".agents/skills/cf-constructor/SKILL.md",
+                ".windsurf/workflows/cf-constructor.md",
             ],
             "claude": [
-                ".claude/skills/cypilot/SKILL.md",
-                ".claude/skills/cypilot-generate/SKILL.md",
+                ".claude/skills/cf-constructor/SKILL.md",
+                ".claude/skills/cf-constructor-generate/SKILL.md",
             ],
             "copilot": [
-                ".agents/skills/cypilot/SKILL.md",
+                ".agents/skills/cf-constructor/SKILL.md",
                 ".github/copilot-instructions.md",
-                ".github/prompts/cypilot.prompt.md",
-                ".github/prompts/cypilot-generate.prompt.md",
+                ".github/prompts/cf-constructor.prompt.md",
+                ".github/prompts/cf-constructor-generate.prompt.md",
             ],
             "cursor": [
-                ".cursor/commands/cypilot-generate.md",
-                ".agents/skills/cypilot/SKILL.md",
-                ".cursor/commands/cypilot.md",
+                ".cursor/commands/cf-constructor-generate.md",
+                ".agents/skills/cf-constructor/SKILL.md",
+                ".cursor/commands/cf-constructor.md",
             ],
             "openai": [
-                ".agents/skills/cypilot/SKILL.md",
+                ".agents/skills/cf-constructor/SKILL.md",
             ],
         }
 
@@ -1491,12 +1491,12 @@ class TestCLIAgentsAtPathFormat(unittest.TestCase):
                     fpath = root / rel_path
                     self.assertTrue(fpath.exists(), f"{agent}: {rel_path} not created")
                     content = fpath.read_text(encoding="utf-8")
-                    # Every generated file that has an ALWAYS open instruction must use {cypilot_path}/
+                    # Every generated file that has an ALWAYS open instruction must use {cf-constructor-path}/
                     if "ALWAYS open and follow" in content:
                         self.assertIn(
-                            "{cypilot_path}/",
+                            "{cf-constructor-path}/",
                             content,
-                            f"{agent}: {rel_path} must use {{cypilot_path}}/ prefix — got:\n{content}",
+                            f"{agent}: {rel_path} must use {{cf-constructor-path}}/ prefix — got:\n{content}",
                         )
                         self.assertNotIn(
                             "../",
@@ -1519,7 +1519,7 @@ class TestCLIAgentsAtPathFormat(unittest.TestCase):
         (cypilot_root / "AGENTS.md").write_text("# AGENTS\n", encoding="utf-8")
 
     def test_cypilot_outside_project_root_no_escape(self):
-        """When cypilot root is outside the project, files are copied into cypilot/ and proxies use {cypilot_path}/ paths."""
+        """When cypilot root is outside the project, files are copied into cypilot/ and proxies use {cf-constructor-path}/ paths."""
         with TemporaryDirectory() as project_tmpdir, TemporaryDirectory() as cypilot_tmpdir:
             root = Path(project_tmpdir)
             cypilot_root = Path(cypilot_tmpdir)
@@ -1528,7 +1528,7 @@ class TestCLIAgentsAtPathFormat(unittest.TestCase):
 
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                exit_code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cypilot-root", str(cypilot_root)])
+                exit_code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cf-constructor-root", str(cypilot_root)])
             self.assertEqual(exit_code, 0)
 
             # cypilot/ must have been created inside the project (default name)
@@ -1540,11 +1540,11 @@ class TestCLIAgentsAtPathFormat(unittest.TestCase):
             out = json.loads(stdout.getvalue())
             self.assertEqual(out.get("cypilot_copy", {}).get("action"), "copied")
 
-            # Proxy must use {cypilot_path}/... paths, not absolute paths
-            proxy = root / ".windsurf" / "workflows" / "cypilot-generate.md"
+            # Proxy must use {cf-constructor-path}/... paths, not absolute paths
+            proxy = root / ".windsurf" / "workflows" / "cf-constructor-generate.md"
             self.assertTrue(proxy.exists())
             content = proxy.read_text(encoding="utf-8")
-            self.assertIn("{cypilot_path}/", content, "Proxy must use {cypilot_path}/ path")
+            self.assertIn("{cf-constructor-path}/", content, "Proxy must use {cf-constructor-path}/ path")
             self.assertNotRegex(content, r"\.\./.\.\.", "Must not use ../../ style path escape")
             # No absolute paths anywhere
             self.assertNotRegex(content, r"`/[a-zA-Z/]", "Must not contain absolute paths in backticks")
@@ -1575,7 +1575,7 @@ class TestCLIAgentsAtPathFormat(unittest.TestCase):
 
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                exit_code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cypilot-root", str(cypilot_root)])
+                exit_code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cf-constructor-root", str(cypilot_root)])
             self.assertEqual(exit_code, 0)
 
             out = json.loads(stdout.getvalue())
@@ -1600,7 +1600,7 @@ class TestCLIAgentsAtPathFormat(unittest.TestCase):
 
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                exit_code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cypilot-root", str(cypilot_root), "--dry-run"])
+                exit_code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cf-constructor-root", str(cypilot_root), "--dry-run"])
             self.assertEqual(exit_code, 0)
 
             out = json.loads(stdout.getvalue())
@@ -1635,7 +1635,7 @@ class TestCLIAgentsAtPathFormat(unittest.TestCase):
 
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                exit_code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cypilot-root", str(cypilot_root)])
+                exit_code = main(["generate-agents", "--agent", "windsurf", "--root", str(root), "--cf-constructor-root", str(cypilot_root)])
             self.assertEqual(exit_code, 0)
 
             out = json.loads(stdout.getvalue())
@@ -1667,7 +1667,7 @@ class TestCLIAgentsAtPathFormat(unittest.TestCase):
                         exit_code = main([
                             "generate-agents", "--agent", "windsurf",
                             "--root", str(root),
-                            "--cypilot-root", str(cypilot_inside),
+                            "--cf-constructor-root", str(cypilot_inside),
                         ])
                     self.assertEqual(exit_code, 0, f"Failed for {rel}: {stdout.getvalue()}")
 
@@ -1677,14 +1677,14 @@ class TestCLIAgentsAtPathFormat(unittest.TestCase):
                         out["cypilot_copy"]["action"], "none",
                         f"No copy should happen when cypilot is at {rel} inside project",
                     )
-                    # Proxies must use {cypilot_path}/... paths, not absolute
-                    proxy = root / ".windsurf" / "workflows" / "cypilot-generate.md"
+                    # Proxies must use {cf-constructor-path}/... paths, not absolute
+                    proxy = root / ".windsurf" / "workflows" / "cf-constructor-generate.md"
                     self.assertTrue(proxy.exists(), f"Proxy not created for {rel}")
                     content = proxy.read_text(encoding="utf-8")
                     self.assertIn(
-                        "{cypilot_path}/",
+                        "{cf-constructor-path}/",
                         content,
-                        f"Proxy must use {{cypilot_path}}/ path — got:\n{content}",
+                        f"Proxy must use {{cf-constructor-path}}/ path — got:\n{content}",
                     )
                     self.assertNotRegex(
                         content,
@@ -1906,7 +1906,7 @@ class TestCLIErrorHandling(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         out = json.loads(stdout.getvalue())
-        self.assertIn("cypilot", out["usage"])
+        self.assertIn("cfc", out["usage"])
         self.assertIn("validate", out["commands"])
 
 
@@ -1958,7 +1958,7 @@ class TestCLIAdapterInfo(unittest.TestCase):
             root = Path(tmpdir)
             (root / ".git").mkdir()
             (root / "AGENTS.md").write_text(
-                '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "missing-adapter"\n```\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "missing-adapter"\n```\n',
                 encoding="utf-8",
             )
 
@@ -2036,7 +2036,7 @@ class TestCLIAdapterInfo(unittest.TestCase):
 
             # Point AGENTS.md TOML block outside the project.
             (root / "AGENTS.md").write_text(
-                '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "../outside-adapter"\n```\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "../outside-adapter"\n```\n',
                 encoding="utf-8",
             )
 
@@ -2054,7 +2054,7 @@ def _bootstrap_registry_new_format(project_root: Path, *, systems: list, kits: d
     """Bootstrap registry with new format (systems instead of artifacts)."""
     (project_root / ".git").mkdir(exist_ok=True)
     (project_root / "AGENTS.md").write_text(
-        '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "adapter"\n```\n',
+        '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "adapter"\n```\n',
         encoding="utf-8",
     )
     adapter_dir = project_root / "adapter"
@@ -5473,7 +5473,7 @@ class TestCLIAgentsBugFixes(unittest.TestCase):
 
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                code = main(["agents", "--agent", "windsurf", "--root", str(root), "--cypilot-root", str(cypilot_ext)])
+                code = main(["agents", "--agent", "windsurf", "--root", str(root), "--cf-constructor-root", str(cypilot_ext)])
 
             # Command must succeed
             self.assertEqual(code, 0)
@@ -5481,7 +5481,7 @@ class TestCLIAgentsBugFixes(unittest.TestCase):
             local_cypilot = root / "cypilot"
             self.assertFalse(
                 local_cypilot.exists(),
-                "agents list command must not create a local cypilot copy even with external --cypilot-root",
+                "agents list command must not create a local cypilot copy even with external --cf-constructor-root",
             )
             # The external cypilot dir itself must still exist and be unmodified
             self.assertTrue(cypilot_ext.exists())
@@ -5500,7 +5500,7 @@ class TestCLIAgentsBugFixes(unittest.TestCase):
             with redirect_stdout(stdout):
                 code = main([
                     "generate-agents", "--agent", "windsurf",
-                    "--root", str(root), "--cypilot-root", str(root),
+                    "--root", str(root), "--cf-constructor-root", str(root),
                     "--config", str(bad_cfg),
                 ])
 
@@ -5521,7 +5521,7 @@ class TestCLIAgentsBugFixes(unittest.TestCase):
             with redirect_stdout(stdout):
                 code = main([
                     "generate-agents", "--agent", "windsurf",
-                    "--root", str(root), "--cypilot-root", str(root),
+                    "--root", str(root), "--cf-constructor-root", str(root),
                     "--config", str(root / "nonexistent-config.json"),
                 ])
 
@@ -5553,7 +5553,7 @@ class TestCLIAgentsBugFixes(unittest.TestCase):
             with redirect_stdout(stdout):
                 rc = main([
                     "generate-agents", "--agent", "claude",
-                    "--root", str(root), "--cypilot-root", str(root),
+                    "--root", str(root), "--cf-constructor-root", str(root),
                 ])
 
             self.assertEqual(rc, 0, "generate-agents should succeed when skipping missing prompt_file")
@@ -5598,7 +5598,7 @@ class TestCLIAgentsBugFixes(unittest.TestCase):
                 # Must not raise TypeError
                 code = main([
                     "generate-agents", "--agent", "claude",
-                    "--root", str(root), "--cypilot-root", str(root),
+                    "--root", str(root), "--cf-constructor-root", str(root),
                 ])
 
             # Command completes (may return 0 — no agents to generate is not an error)

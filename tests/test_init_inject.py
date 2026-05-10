@@ -95,7 +95,7 @@ class TestInjectRootWrappers(unittest.TestCase):
             self.assertEqual(result, "created")
             agents = root / "AGENTS.md"
             self.assertTrue(agents.is_file())
-            self.assertIn('cypilot_path = "cypilot"', agents.read_text())
+            self.assertIn('cf-constructor-path = "cypilot"', agents.read_text())
 
     def test_inject_root_agents_updates(self):
         from cypilot.commands.init import _inject_root_agents, MARKER_START, MARKER_END
@@ -104,12 +104,12 @@ class TestInjectRootWrappers(unittest.TestCase):
             root.mkdir()
             agents = root / "AGENTS.md"
             agents.write_text(
-                f"{MARKER_START}\n```toml\ncypilot_path = \"old\"\n```\n{MARKER_END}\n",
+                f"{MARKER_START}\n```toml\ncf-constructor-path = \"old\"\n```\n{MARKER_END}\n",
                 encoding="utf-8",
             )
             result = _inject_root_agents(root, "newdir")
             self.assertEqual(result, "updated")
-            self.assertIn('cypilot_path = "newdir"', agents.read_text())
+            self.assertIn('cf-constructor-path = "newdir"', agents.read_text())
 
     def test_inject_root_agents_unchanged(self):
         from cypilot.commands.init import _inject_root_agents, _compute_managed_block
@@ -130,7 +130,7 @@ class TestInjectRootWrappers(unittest.TestCase):
             self.assertEqual(result, "created")
             claude = root / "CLAUDE.md"
             self.assertTrue(claude.is_file())
-            self.assertIn('cypilot_path = "cypilot"', claude.read_text())
+            self.assertIn('cf-constructor-path = "cypilot"', claude.read_text())
 
     def test_inject_root_claude_updates(self):
         from cypilot.commands.init import _inject_root_claude, MARKER_START, MARKER_END
@@ -139,12 +139,12 @@ class TestInjectRootWrappers(unittest.TestCase):
             root.mkdir()
             claude = root / "CLAUDE.md"
             claude.write_text(
-                f"{MARKER_START}\n```toml\ncypilot_path = \"old\"\n```\n{MARKER_END}\n",
+                f"{MARKER_START}\n```toml\ncf-constructor-path = \"old\"\n```\n{MARKER_END}\n",
                 encoding="utf-8",
             )
             result = _inject_root_claude(root, "newdir")
             self.assertEqual(result, "updated")
-            self.assertIn('cypilot_path = "newdir"', claude.read_text())
+            self.assertIn('cf-constructor-path = "newdir"', claude.read_text())
 
     def test_inject_root_agents_dry_run(self):
         from cypilot.commands.init import _inject_root_agents
@@ -182,7 +182,7 @@ class TestPromptKitInstallFlag(unittest.TestCase):
         out = buf.getvalue()
         # Header + the four added help lines + the [a]ccept / [d]ecline cursor.
         self.assertIn("Install SDLC kit", out)
-        self.assertIn("This adds the default Cypilot SDLC templates", out)
+        self.assertIn("This adds the default Cyber Constructor SDLC templates", out)
         self.assertIn("Reply with `a` to install it now or `d` to skip it", out)
         self.assertIn("Suggested: `a` for first-time setup", out)
         self.assertIn("`a` = download and install the default kit now", out)

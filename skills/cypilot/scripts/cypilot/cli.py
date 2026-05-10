@@ -79,7 +79,7 @@ def _cmd_kit(argv: List[str]) -> int:
 def _cmd_generate_resources(_argv: List[str]) -> int:
     sys.stderr.write(
         "WARNING: 'generate-resources' is deprecated.\n"
-        "         Kits are direct file packages — use 'cpt kit update <path>' instead.\n"
+        "         Kits are direct file packages — use 'cfc kit update <path>' instead.\n"
     )
     return 1
 
@@ -114,14 +114,6 @@ def _cmd_cypilot_info(argv: List[str]) -> int:
 def _cmd_resolve_vars(argv: List[str]) -> int:
     from .commands.resolve_vars import cmd_resolve_vars
     return cmd_resolve_vars(argv)
-
-def _cmd_migrate(argv: List[str]) -> int:
-    from .commands.migrate import cmd_migrate
-    return cmd_migrate(argv)
-
-def _cmd_migrate_config(argv: List[str]) -> int:
-    from .commands.migrate import cmd_migrate_config
-    return cmd_migrate_config(argv)
 
 # =============================================================================
 # WORKSPACE COMMANDS
@@ -181,14 +173,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     from .utils.context import CypilotContext, set_context
     ctx = CypilotContext.load()
     set_context(ctx)
-    # Context may be None if Cypilot not initialized - that's OK for some commands like init
+    # Context may be None if Cyber Constructor not initialized - that's OK for some commands like init
 
     # Define all available commands
     analysis_commands = ["validate", "validate-kits", "validate-toc", "spec-coverage", "check-language"]
     legacy_aliases = ["validate-code", "validate-rules"]
     kit_commands = ["kit"]
     utility_commands = ["toc", "chunk-input"]
-    migration_commands = ["migrate", "migrate-config"]
     search_commands = [
         "init", "update",
         "list-ids", "list-id-kinds",
@@ -203,7 +194,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     ]
     delegation_commands = ["delegate"]
     diagnostics_commands = ["doctor"]
-    all_commands = analysis_commands + kit_commands + migration_commands + search_commands + workspace_commands + utility_commands + delegation_commands + diagnostics_commands + legacy_aliases
+    all_commands = analysis_commands + kit_commands + search_commands + workspace_commands + utility_commands + delegation_commands + diagnostics_commands + legacy_aliases
 
     # Handle --help / -h at top level (or no subcommand)
     if not argv_list or argv_list[0] in ("-h", "--help"):
@@ -215,26 +206,24 @@ def main(argv: Optional[List[str]] = None) -> int:
             "spec-coverage": "Measure CDSL marker coverage in code",
             "check-language": "Check artifacts for disallowed Unicode scripts (LANG001)",
             "kit": "Kit management (install, update)",
-            "init": "Initialize Cypilot in a project",
-            "update": "Update Cypilot to the latest version",
+            "init": "Initialize Cyber Constructor in a project",
+            "update": "Update Cyber Constructor to the latest version",
             "agents": "Show generated agent integration status",
             "generate-agents": "Generate/update IDE agent integration files",
-            "list-ids": "List all Cypilot IDs from artifacts",
+            "list-ids": "List all artifact IDs",
             "list-id-kinds": "List ID kinds with counts",
-            "get-content": "Get content block for a Cypilot ID",
+            "get-content": "Get content block for an ID",
             "where-defined": "Find where an ID is defined",
             "where-used": "Find all references to an ID",
-            "info": "Show project Cypilot configuration",
+            "info": "Show project configuration",
             "resolve-vars": "Resolve template variables to absolute paths",
             "toc": "Generate/update Table of Contents",
             "chunk-input": "Chunk oversized workflow input into line-bounded Markdown files",
-            "migrate": "Migrate v2 project to v3",
-            "migrate-config": "Convert JSON configs to TOML",
             "workspace-init": "Initialize multi-repo workspace",
             "workspace-add": "Add a source to workspace config",
             "workspace-info": "Show workspace config and source status",
             "workspace-sync": "Fetch and update Git URL source worktrees",
-            "delegate": "Compile and delegate a Cypilot plan to ralphex",
+            "delegate": "Compile and delegate a plan to ralphex",
             "doctor": "Run environment health checks",
         }
         _sections = [
@@ -244,19 +233,18 @@ def main(argv: Optional[List[str]] = None) -> int:
             ("Kit Management", ["kit"]),
             ("Utility", ["toc", "chunk-input"]),
             ("Workspace", ["workspace-init", "workspace-add", "workspace-info", "workspace-sync"]),
-            ("Migration", ["migrate", "migrate-config"]),
             ("Delegation", ["delegate"]),
             ("Diagnostics", ["doctor"]),
         ]
         if is_json_mode():
             import json  # pylint: disable=import-outside-toplevel  # lazy: only needed in JSON output mode
             print(json.dumps({
-                "usage": "cypilot <command> [options]",
+                "usage": "cfc <command> [options]",
                 "commands": _cmd_descriptions,
                 "sections": {name: cmds for name, cmds in _sections},
             }, indent=2, ensure_ascii=False))
         else:
-            ui.header("Cypilot CLI")
+            ui.header("Cyber Constructor CLI")
             ui.info("Artifact validation, traceability, and kit management tool.")
             ui.blank()
             for section_name, cmds in _sections:
@@ -268,7 +256,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             ui.info("Global flags:")
             sys.stderr.write(f"      {'--json':<22} Machine-readable JSON output (for AI agents)\n")
             ui.blank()
-            ui.hint("Run 'cpt <command> --help' for command-specific options.")
+            ui.hint("Run 'cfc <command> --help' for command-specific options.")
             ui.hint("Legacy aliases: validate-code → validate, validate-rules/self-check → validate-kits")
             ui.blank()
         return 0
@@ -348,10 +336,6 @@ def main(argv: Optional[List[str]] = None) -> int:
         return _cmd_spec_coverage(rest)
     elif cmd == "chunk-input":
         return _cmd_chunk_input(rest)
-    elif cmd == "migrate":
-        return _cmd_migrate(rest)
-    elif cmd == "migrate-config":
-        return _cmd_migrate_config(rest)
     elif cmd == "workspace-init":
         return _cmd_workspace_init(rest)
     elif cmd == "workspace-add":
@@ -375,7 +359,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             human_fn=lambda d: (
                 ui.error(f"Unknown command: {cmd}"),
                 ui.hint(f"Available commands: {', '.join(all_commands)}"),
-                ui.hint("Run 'cpt --help' for usage."),
+                ui.hint("Run 'cfc --help' for usage."),
             ),
         )
         return 1

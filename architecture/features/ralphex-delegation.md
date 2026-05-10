@@ -58,7 +58,7 @@ Without this feature, users must manually copy Cypilot plans and rules into ralp
 |-------|-----------------|
 | `cpt-cypilot-actor-user` | Requests delegation to ralphex, reviews handoff results |
 | `cpt-cypilot-actor-ai-agent` | Discovers ralphex, compiles export plan, invokes delegation, reports handoff |
-| `cpt-cypilot-actor-cypilot-cli` | Routes delegation commands for the `cypilot-ralphex` skill |
+| `cpt-cypilot-actor-cypilot-cli` | Routes delegation commands for the `cf-constructor-ralphex` skill |
 
 ### 1.4 References
 
@@ -339,12 +339,12 @@ The skill MUST report delegation results after ralphex completes: exit status, o
 
 | Module | Path | Responsibility |
 |--------|------|----------------|
-| ralphex Delegation Skill | `skills/.../agents/cypilot-ralphex.md` (skill entry point) | Discovery, export, delegation, handoff orchestration |
+| ralphex Delegation Skill | `skills/.../agents/cf-constructor-ralphex.md` (skill entry point) | Discovery, export, delegation, handoff orchestration |
 | Plan Export Compiler | `skills/.../scripts/cypilot/ralphex_export.py` | Cypilot plan → ralphex Markdown plan compilation |
 
 ## 7. Acceptance Criteria
 
-- [ ] `cypilot-ralphex` skill discovers `ralphex` on PATH and persists resolved path in `core.toml`
+- [ ] `cf-constructor-ralphex` skill discovers `ralphex` on PATH and persists resolved path in `core.toml`
 - [ ] Previously persisted path is reused on subsequent invocations without re-discovery
 - [ ] Missing `ralphex` produces diagnostic output with installation guidance, not a hard error
 - [ ] `ralphex --init` can be invoked for project-local `.ralphex/` bootstrap on user request

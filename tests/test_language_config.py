@@ -54,7 +54,7 @@ class TestLanguageConfigLoading(unittest.TestCase):
     def _write_project_config(self, root: Path, core_toml_content: str) -> None:
         """Helper to set up AGENTS.md TOML block + config/core.toml."""
         (root / "AGENTS.md").write_text(
-            '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "adapter"\n```\n',
+            '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "adapter"\n```\n',
             encoding="utf-8",
         )
         config_dir = root / "adapter" / "config"

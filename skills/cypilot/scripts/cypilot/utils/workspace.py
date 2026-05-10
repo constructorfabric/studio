@@ -1,7 +1,7 @@
 """
-Cypilot Workspace - Multi-repo federation support.
+Cyber Constructor Workspace - Multi-repo federation support.
 
-Loads and validates .cypilot-workspace.toml (standalone or inline in core.toml).
+Loads and validates .cf-constructor-workspace.toml (standalone or inline in core.toml).
 Each source maps a named repo to a local path, optional adapter location, and a role.
 """
 # @cpt-algo:cpt-cypilot-feature-workspace:p1
@@ -159,7 +159,7 @@ class ResolveConfig:
 class ValidationConfig:
     """Workspace-level artifact content validation settings.
 
-    Parsed from the ``[validation]`` section of ``.cypilot-workspace.toml``.
+    Parsed from the ``[validation]`` section of ``.cf-constructor-workspace.toml``.
 
     Example config::
 
@@ -270,7 +270,7 @@ class WorkspaceConfig:
         """Load workspace config from a TOML file.
 
         Args:
-            workspace_path: Absolute path to .cypilot-workspace.toml
+            workspace_path: Absolute path to .cf-constructor-workspace.toml
 
         Returns:
             (WorkspaceConfig, None) on success or (None, error_message) on failure.
@@ -467,7 +467,7 @@ def find_workspace_config(project_root: Path) -> Tuple[Optional[WorkspaceConfig]
     1. 'workspace' key in project config (core.toml via AGENTS.md):
        - If string: treat as path to external workspace file
        - If dict: treat as inline workspace definition
-    2. Standalone .cypilot-workspace.toml at project_root
+    2. Standalone .cf-constructor-workspace.toml at project_root
 
     Args:
         project_root: The project root directory.
@@ -524,7 +524,7 @@ def find_workspace_config(project_root: Path) -> Tuple[Optional[WorkspaceConfig]
 def _find_standalone_workspace(
     project_root: Path,
 ) -> Tuple[Optional[WorkspaceConfig], Optional[str]]:
-    """Fallback: discover standalone .cypilot-workspace.toml at project root."""
+    """Fallback: discover standalone .cf-constructor-workspace.toml at project root."""
     candidate = (project_root / WORKSPACE_CONFIG_FILENAME).resolve()
     if candidate.is_file():
         return WorkspaceConfig.load(candidate)
@@ -544,7 +544,7 @@ def load_inline_config(project_root: Path) -> Tuple[Optional[Path], dict, Option
 
     cypilot_rel = _read_cypilot_var(project_root)
     if not cypilot_rel:
-        return None, {}, "No cypilot_path found in AGENTS.md. Run 'cypilot init' first."
+        return None, {}, "No cf-constructor-path found in AGENTS.md. Run 'cfc init' first."
 
     config_path = _resolve_config_path(project_root, cypilot_rel)
 

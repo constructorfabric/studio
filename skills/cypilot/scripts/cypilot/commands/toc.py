@@ -22,7 +22,7 @@ def cmd_toc(argv: List[str]) -> int:
     """Generate/update Table of Contents in markdown files."""
     # @cpt-begin:cpt-cypilot-flow-developer-experience-toc:p1:inst-toc-gen-parse-args
     p = argparse.ArgumentParser(
-        prog="cypilot toc",
+        prog="cfc toc",
         description="Generate or update Table of Contents in Markdown files",
     )
     p.add_argument(

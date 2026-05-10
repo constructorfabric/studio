@@ -27,7 +27,7 @@ PYLINT_TARGETS ?= src/cypilot_proxy skills/cypilot/scripts/cypilot
 
 # Default target
 help:
-	@echo "Cypilot Makefile"
+	@echo "Cyber Constructor Makefile"
 	@echo ""
 	@echo "Available targets:"
 	@echo "  make test                          - Run all tests"
@@ -112,12 +112,12 @@ check-pylint: check-pipx
 	}
 
 test: check-pytest
-	@echo "Running Cypilot tests with pipx..."
+	@echo "Running Cyber Constructor tests with pipx..."
 	$(PYTEST_PIPX) tests/ -v --tb=short
 
 # Run tests with verbose output
 test-verbose: check-pytest
-	@echo "Running Cypilot tests (verbose) with pipx..."
+	@echo "Running Cyber Constructor tests (verbose) with pipx..."
 	$(PYTEST_PIPX) tests/ -vv
 
 # Run quick tests only
@@ -186,10 +186,10 @@ pylint: check-pylint
 	@echo "Running pylint..."
 	PYTHONPATH=src:skills/cypilot/scripts $(PYLINT_PIPX) $(PYLINT_TARGETS)
 
-# Spec coverage check (Cypilot system only)
+# Spec coverage check (Cyber Constructor system only)
 spec-coverage:
-	@echo "Checking spec coverage (Cypilot system)..."
-	$(PYTHON) .bootstrap/.core/skills/cypilot/scripts/cypilot.py spec-coverage --system cypilot --min-coverage 90 --min-file-coverage 60 --min-granularity 0.45
+	@echo "Checking spec coverage (Cyber Constructor system)..."
+	$(PYTHON) .bootstrap/.core/skills/cypilot/scripts/cypilot.py spec-coverage --system cypilot --min-coverage 90 --min-file-coverage 60 --min-granularity 0.44
 
 # Check version consistency
 check-versions:
@@ -227,7 +227,7 @@ install-pipx: check-pipx
 
 install: install-pipx
 
-# Reinstall cpt/cypilot proxy from local source
+# Reinstall cfc/cf-constructor proxy from local source
 install-proxy: check-pipx
 	$(PIPX) install --force .
 

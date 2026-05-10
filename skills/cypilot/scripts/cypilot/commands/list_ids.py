@@ -17,7 +17,7 @@ def cmd_list_ids(argv: List[str]) -> int:
     """
     # @cpt-begin:cpt-cypilot-flow-traceability-validation-query:p1:inst-user-query
     p = argparse.ArgumentParser(prog="list-ids")
-    p.add_argument("--artifact", default=None, help="Path to Cypilot artifact file (if omitted, scans all registered Cypilot artifacts)")
+    p.add_argument("--artifact", default=None, help="Path to a registered artifact file (if omitted, scans all registered artifacts)")
     p.add_argument("--pattern", default=None, help="Filter IDs by substring or regex pattern")
     p.add_argument("--regex", action="store_true", help="Treat pattern as regular expression")
     p.add_argument("--kind", default=None, help="Filter by inferred ID kind")
@@ -43,7 +43,7 @@ def cmd_list_ids(argv: List[str]) -> int:
 
         ctx = CypilotContext.load(artifact_path.parent)
         if not ctx:
-            ui.result({"status": "ERROR", "message": "Cypilot not initialized. Run 'cypilot init' first or specify --artifact."})
+            ui.result({"status": "ERROR", "message": "Cyber Constructor not initialized. Run 'cfc init' first or specify --artifact."})
             return 1
 
         project_root = ctx.project_root
@@ -62,7 +62,7 @@ def cmd_list_ids(argv: List[str]) -> int:
                 artifacts_to_scan.append((artifact_path, str(artifact_meta.kind)))
 
         if not artifacts_to_scan:
-            ui.result({"status": "ERROR", "message": "Artifact not registered in Cypilot registry."})
+            ui.result({"status": "ERROR", "message": "Artifact not registered in Cyber Constructor registry."})
             return 1
     else:
         # No artifact specified - use global context from cwd
@@ -70,7 +70,7 @@ def cmd_list_ids(argv: List[str]) -> int:
 
         ctx = get_context()
         if not ctx:
-            ui.result({"status": "ERROR", "message": "Cypilot not initialized. Run 'cypilot init' first or specify --artifact."})
+            ui.result({"status": "ERROR", "message": "Cyber Constructor not initialized. Run 'cfc init' first or specify --artifact."})
             return 1
 
         meta = ctx.meta

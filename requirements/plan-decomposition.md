@@ -1,5 +1,5 @@
 ---
-cypilot: true
+cf-constructor: true
 type: requirement
 name: Plan Decomposition Strategies
 version: 1.0
@@ -192,8 +192,8 @@ Phases MUST declare dependencies in TOML frontmatter.
 
 If total compiled content would fit within `500` lines, the plan workflow MAY redirect to the direct workflow only when no approved or reusable raw-input package is already in effect.
 
-1. First determine whether `{cypilot_path}/.plans/{task-slug}/input/manifest.json` already exists with an `input_signature` that exactly matches the current direct prompt text plus provided file contents.
-2. If it does, continue plan generation and do NOT redirect back to `/cypilot-generate` or `/cypilot-analyze`, even when later compiled content would fit within `500` lines.
+1. First determine whether `{cf-constructor-path}/.plans/{task-slug}/input/manifest.json` already exists with an `input_signature` that exactly matches the current direct prompt text plus provided file contents.
+2. If it does, continue plan generation and do NOT redirect back to `/cf-constructor-generate` or `/cf-constructor-analyze`, even when later compiled content would fit within `500` lines.
 3. Otherwise estimate total compiled size.
-4. If estimate `≤ 500`, redirect to `/cypilot-generate` or `/cypilot-analyze`.
+4. If estimate `≤ 500`, redirect to `/cf-constructor-generate` or `/cf-constructor-analyze`.
 5. If estimate `> 500`, continue plan generation.

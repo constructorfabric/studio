@@ -11,7 +11,7 @@ Usage in commands::
     from ..utils.ui import ui
 
     # Progress messages (always go to stderr, suppressed in --json mode)
-    ui.header("Cypilot Init")
+    ui.header("Cyber Constructor Init")
     ui.step("Copying core files...")
     ui.success("Initialized!")
     ui.error("Cache not found")

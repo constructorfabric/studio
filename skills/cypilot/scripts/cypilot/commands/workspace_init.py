@@ -21,7 +21,7 @@ def _is_project_dir(entry: Path) -> bool:
         return False
     try:
         head = agents_file.read_text(encoding="utf-8")[:512]
-        return "<!-- @cpt:root-agents -->" in head
+        return "<!-- @cf:root-agents -->" in head
     except OSError:
         return False
 
@@ -220,7 +220,7 @@ def _write_standalone(
     output_path: Path,
     workspace_data: dict,
 ) -> Tuple[int, dict]:
-    """Write standalone .cypilot-workspace.toml. Returns (exit_code, result_dict)."""
+    """Write standalone .cf-constructor-workspace.toml. Returns (exit_code, result_dict)."""
     # @cpt-end:cpt-cypilot-state-workspace-config-lifecycle:p1:inst-config-create-standalone
     # @cpt-begin:cpt-cypilot-flow-workspace-init:p1:inst-write-standalone-impl
     from ..constants import WORKSPACE_CONFIG_FILENAME
@@ -327,7 +327,7 @@ def cmd_workspace_init(argv: List[str]) -> int:
     # @cpt-begin:cpt-cypilot-flow-workspace-init:p1:inst-user-workspace-init
     p = argparse.ArgumentParser(
         prog="workspace-init",
-        description="Initialize a new workspace: scan nested sub-dirs for repos with adapters, generate .cypilot-workspace.toml",
+        description="Initialize a new workspace: scan nested sub-dirs for repos with adapters, generate .cf-constructor-workspace.toml",
     )
     p.add_argument(
         "--root", default=None,
@@ -335,7 +335,7 @@ def cmd_workspace_init(argv: List[str]) -> int:
     )
     p.add_argument(
         "--output", default=None,
-        help="Where to write .cypilot-workspace.toml (default: scan root)",
+        help="Where to write .cf-constructor-workspace.toml (default: scan root)",
     )
     p.add_argument(
         "--inline", action="store_true",

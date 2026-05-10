@@ -1,5 +1,5 @@
 ---
-cypilot: true
+cf-constructor: true
 type: requirement
 name: Agent Compliance Protocol
 version: 1.0
@@ -23,7 +23,7 @@ purpose: Enforcement protocol for AI agents executing Cypilot workflows (STRICT 
 <!-- /toc -->
 
 **Type**: Requirement
-**Applies**: Only when Rules Mode = STRICT (see `{cypilot_path}/.core/requirements/execution-protocol.md`)
+**Applies**: Only when Rules Mode = STRICT (see `{cf-constructor-path}/.core/requirements/execution-protocol.md`)
 
 ## Overview
 This protocol defines mandatory behaviors for AI agents executing Cypilot workflows when Cypilot rules are enabled. It prevents common agent failure modes through structural enforcement.

@@ -1,7 +1,7 @@
 """
 Skill Bundle Cache Management
 
-Downloads skill bundle from GitHub releases into ~/.cypilot/cache/.
+Downloads skill bundle from GitHub releases into ~/.cf-constructor/cache/.
 Uses only Python stdlib (urllib.request) — no third-party dependencies.
 
 @cpt-algo:cpt-cypilot-algo-core-infra-cache-skill:p1
@@ -25,9 +25,9 @@ from cypilot_proxy.resolve import get_cache_dir, get_version_file
 
 # GitHub repository for skill bundle releases
 GITHUB_OWNER = "cyberfabric"
-GITHUB_REPO = "cyber-pilot"
+GITHUB_REPO = "cyber-constructor"
 GITHUB_API_BASE = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}"
-USER_AGENT = "cypilot-proxy/3.0"
+USER_AGENT = "cyber-constructor/4.0"
 
 
 def _patch_cached_version(cache_dir: Path, version: str) -> None:
@@ -127,10 +127,10 @@ def resolve_latest_version(
     if not tag:
         return None, None
 
-    # Look for a .tar.gz or .zip asset named cypilot-skill-*
+    # Look for a .tar.gz or .zip asset named cf-constructor-skill-*
     for asset in data.get("assets", []):
         name = asset.get("name", "")
-        if name.startswith("cypilot-skill") and (
+        if name.startswith("cf-constructor-skill") and (
             name.endswith(".tar.gz") or name.endswith(".zip")
         ):
             return tag, asset.get("browser_download_url")

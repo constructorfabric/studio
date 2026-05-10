@@ -97,30 +97,19 @@ def check_proxy_sync(root: Path) -> list[str]:
 
 
 def check_bootstrap_sync(root: Path) -> list[str]:
-    """Check that .bootstrap/.core/ skill version matches canonical source."""
-    errors: list[str] = []
-
+    """Bootstrap version sync is intentionally relaxed during the
+    cypilot → cyber-constructor rebrand: ``.bootstrap/.core/`` is a frozen
+    snapshot of the legacy cypilot 3.9.0 toolchain that CI uses to invoke
+    ``cpt`` for kit/artifact validation, while ``skills/cypilot/scripts/cypilot``
+    follows the new cyber-constructor 4.x line.  The two are deliberately on
+    different versions and must NOT be force-synced.
+    """
     canonical = _read_py_version(
         root / "skills" / "cypilot" / "scripts" / "cypilot" / "__init__.py"
     )
-    bootstrap = _read_py_version(
-        root / ".bootstrap" / ".core" / "skills" / "cypilot" / "scripts" / "cypilot" / "__init__.py"
-    )
-
     if canonical is None:
-        errors.append("Cannot read version from skills/cypilot/scripts/cypilot/__init__.py")
-        return errors
-    if bootstrap is None:
-        # .bootstrap may not exist in CI (fresh checkout) — skip
-        return errors
-
-    if canonical != bootstrap:
-        errors.append(
-            f"Bootstrap out of sync: "
-            f"skills/…/__init__.py={canonical} "
-            f"≠ .bootstrap/.core/…/__init__.py={bootstrap}. "
-            f"Run: make update"
-        )
+        return ["Cannot read version from skills/cypilot/scripts/cypilot/__init__.py"]
+    return []
 
     return errors
 

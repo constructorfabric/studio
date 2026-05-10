@@ -31,7 +31,7 @@ def _setup_project(root: Path) -> Path:
     """Bootstrap a minimal Cypilot project. Returns adapter dir."""
     (root / ".git").mkdir(exist_ok=True)
     (root / "AGENTS.md").write_text(
-        '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "adapter"\n```\n',
+        '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "adapter"\n```\n',
         encoding="utf-8",
     )
     adapter = root / "adapter"
@@ -152,7 +152,7 @@ class TestCmdWhereDefined(_ContextTestBase):
                     rc = cmd_where_defined(["--id", "test", "--artifact", str(unregistered)])
                 self.assertEqual(rc, 1)
                 out = json.loads(stdout.getvalue())
-                self.assertIn("not in Cypilot registry", out.get("message", ""))
+                self.assertIn("not in Cyber Constructor registry", out.get("message", ""))
             finally:
                 os.chdir(cwd)
 

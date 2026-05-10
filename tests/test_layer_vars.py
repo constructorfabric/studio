@@ -149,13 +149,13 @@ class TestLayerVarsDoNotOverrideSystem:
     def test_other_system_vars_preserved(self):
         """Unrelated system variables (cypilot_path, project_root) are untouched."""
         existing_vars = {
-            "cypilot_path": "/project/.bootstrap",
+            "cf-constructor-path": "/project/.bootstrap",
             "project_root": "/project",
         }
         layers = [_make_repo_layer("/project/.bootstrap")]
         repo_root = Path("/project")
         result = add_layer_variables(existing_vars, layers, repo_root)
-        assert result["cypilot_path"] == "/project/.bootstrap"
+        assert result["cf-constructor-path"] == "/project/.bootstrap"
         assert result["project_root"] == "/project"
 
 

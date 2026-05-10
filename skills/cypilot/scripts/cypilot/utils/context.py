@@ -935,7 +935,7 @@ def _resolve_single_artifact(
 
     ctx = CypilotContext.load(artifact_path.parent)
     if not ctx:
-        return None, [], "Cypilot not initialized. Run 'cypilot init' first."
+        return None, [], "Cyber Constructor not initialized. Run 'cfc init' first."
 
     try:
         rel_path = artifact_path.relative_to(ctx.project_root).as_posix()
@@ -949,7 +949,7 @@ def _resolve_single_artifact(
             artifact_meta, _system_node = result
             artifacts.append((artifact_path, str(artifact_meta.kind)))
     if not artifacts:
-        return None, [], f"Artifact not in Cypilot registry: {artifact_arg}"
+        return None, [], f"Artifact not in Cyber Constructor registry: {artifact_arg}"
     return ctx, artifacts, None
 
 
@@ -975,7 +975,7 @@ def resolve_artifacts_for_command(
 
     ctx = get_context()
     if not ctx:
-        return None, [], {}, "Cypilot not initialized. Run 'cypilot init' first."
+        return None, [], {}, "Cyber Constructor not initialized. Run 'cypilot init' first."
 
     artifacts_to_scan, path_to_source = collect_artifacts_to_scan(ctx)
     return ctx, artifacts_to_scan, path_to_source, None

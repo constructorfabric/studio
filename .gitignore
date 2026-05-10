@@ -71,3 +71,6 @@ coverage.xml
 # is also ignored here so older runs do not pollute git status.
 .cypilot/
 **/.cache/explain/
+
+# Superpowers brainstorming/planning specs (local-only)
+docs/superpowers/

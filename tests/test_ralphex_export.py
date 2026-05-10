@@ -611,11 +611,11 @@ class TestGenerateReviewArtifacts:
             (repo_root / "AGENTS.md").write_text(
                 textwrap.dedent(
                     """\
-                    <!-- @cpt:root-agents -->
+                    <!-- @cf:root-agents -->
                     ```toml
-                    cypilot_path = "cypilot"
+                    cf-constructor-path = "cypilot"
                     ```
-                    <!-- /@cpt:root-agents -->
+                    <!-- /@cf:root-agents -->
                     """
                 ),
                 encoding="utf-8",

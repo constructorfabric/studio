@@ -502,11 +502,11 @@ def _collect_kit_metadata(
         or (config_kit_dir is None and _is_registered_kit_path_absolute(kit_rel_path))
     ):
         if not kit_rel_path:
-            skill_target = f"{{cypilot_path}}/{_KIT_SKILL_FILE}"
+            skill_target = f"{{cf-constructor-path}}/{_KIT_SKILL_FILE}"
         elif _is_registered_kit_path_absolute(kit_rel_path):
             skill_target = f"{kit_rel_path}/{_KIT_SKILL_FILE}"
         else:
-            skill_target = f"{{cypilot_path}}/{kit_rel_path}/{_KIT_SKILL_FILE}"
+            skill_target = f"{{cf-constructor-path}}/{kit_rel_path}/{_KIT_SKILL_FILE}"
         result["skill_nav"] = f"ALWAYS invoke `{skill_target}` FIRST"
 
     agents_path = config_kit_dir / _KIT_AGENTS_FILE if config_kit_dir is not None else None
@@ -579,30 +579,25 @@ def regenerate_gen_aggregates(cypilot_dir: Path) -> Dict[str, Any]:
     project_name = _read_project_name_from_registry(config_dir) or "Cypilot"
     # @cpt-end:cpt-cypilot-algo-kit-regen-gen:p1:inst-read-project-name
 
-    # @cpt-algo:cpt-cypilot-algo-v2-v3-migration-write-gen-agents:p1
     # @cpt-begin:cpt-cypilot-algo-kit-regen-gen:p1:inst-write-gen-agents
     # Write .gen/AGENTS.md
-    # @cpt-begin:cpt-cypilot-algo-v2-v3-migration-write-gen-agents:p1:inst-compose-agents
     gen_agents_content = "\n".join([
         f"# Cypilot: {project_name}",
         "",
         "## Navigation Rules",
         "",
-        "ALWAYS open and follow `{cypilot_path}/config/artifacts.toml` WHEN working with artifacts or codebase",
+        "ALWAYS open and follow `{cf-constructor-path}/config/artifacts.toml` WHEN working with artifacts or codebase",
         "",
-        "ALWAYS open and follow `{cypilot_path}/.core/schemas/artifacts.schema.json` WHEN working with artifacts.toml",
+        "ALWAYS open and follow `{cf-constructor-path}/.core/schemas/artifacts.schema.json` WHEN working with artifacts.toml",
         "",
-        "ALWAYS open and follow `{cypilot_path}/.core/architecture/specs/artifacts-registry.md` WHEN working with artifacts.toml",
+        "ALWAYS open and follow `{cf-constructor-path}/.core/architecture/specs/artifacts-registry.md` WHEN working with artifacts.toml",
         "",
     ])
     if gen_agents_parts:
         gen_agents_content = gen_agents_content.rstrip() + "\n\n" + "\n\n".join(gen_agents_parts) + "\n"
-    # @cpt-end:cpt-cypilot-algo-v2-v3-migration-write-gen-agents:p1:inst-compose-agents
-    # @cpt-begin:cpt-cypilot-algo-v2-v3-migration-write-gen-agents:p1:inst-write-agents
     gen_dir.mkdir(parents=True, exist_ok=True)
     (gen_dir / _KIT_AGENTS_FILE).write_text(gen_agents_content, encoding="utf-8")
     result["gen_agents"] = "updated"
-    # @cpt-end:cpt-cypilot-algo-v2-v3-migration-write-gen-agents:p1:inst-write-agents
     # @cpt-end:cpt-cypilot-algo-kit-regen-gen:p1:inst-write-gen-agents
 
     # @cpt-begin:cpt-cypilot-algo-kit-regen-gen:p1:inst-write-gen-skill
@@ -844,7 +839,7 @@ def install_kit_with_manifest(
     else:
         kit_root_template = manifest.root
         kit_root_rel = kit_root_template.replace(
-            "{cypilot_path}", "."
+            "{cf-constructor-path}", "."
         ).replace(
             "{slug}", kit_slug
         )
@@ -1026,7 +1021,7 @@ def migrate_legacy_kit_to_manifest(
 ) -> Dict[str, Any]:
     """Migrate a legacy kit install to manifest-driven resource bindings.
 
-    When ``cpt update`` runs and the kit source now contains ``manifest.toml``
+    When ``cfc update`` runs and the kit source now contains ``manifest.toml``
     but ``core.toml`` has no ``[kits.{slug}.resources]``, this function
     auto-populates resource bindings from existing files on disk.
 
@@ -1180,7 +1175,10 @@ def _resolve_install_source_github(
         return (Path("."), "", "", "", None, 1)
 
     conf_file = kit_source / _KIT_CONF_FILE
-    kit_slug = _read_kit_slug(kit_source) or repo.removeprefix("cyber-pilot-kit-")
+    kit_slug = _read_kit_slug(kit_source)
+    if not kit_slug:
+        ui.result({"status": "FAIL", "message": f"Kit at {kit_source} is missing manifest.toml; cannot resolve slug."})
+        return (Path("."), "", "", "", None, 1)
     kit_version = (
         resolved_version or _read_kit_version(conf_file)
         if conf_file.is_file() else resolved_version
@@ -1199,8 +1197,8 @@ def cmd_kit_install(argv: List[str]) -> int:
     .gen/ aggregates.
 
     Usage:
-        cypilot kit install owner/repo[@version]   (GitHub, default)
-        cypilot kit install --path /local/dir       (local directory)
+        cfc kit install owner/repo[@version]   (GitHub, default)
+        cfc kit install --path /local/dir       (local directory)
     """
     # @cpt-begin:cpt-cypilot-flow-kit-install-cli:p1:inst-parse-args
     p = argparse.ArgumentParser(
@@ -1209,7 +1207,7 @@ def cmd_kit_install(argv: List[str]) -> int:
     )
     p.add_argument(
         "source", nargs="?", default=None,
-        help="GitHub source: owner/repo[@version] (e.g. cyberfabric/cyber-pilot-kit-sdlc@v1.0.0)",
+        help="GitHub source: owner/repo[@version] (e.g. cyberfabric/cyber-constructor-kit-sdlc@v2.0.0)",
     )
     p.add_argument(
         "--path", dest="local_path", default=None,
@@ -1285,7 +1283,7 @@ def cmd_kit_install(argv: List[str]) -> int:
                     "status": "FAIL",
                     "kit": kit_slug,
                     "message": f"Kit '{kit_slug}' is already installed at {config_kit_dir}",
-                    "hint": f"Use 'cpt kit update' to update, or 'cpt kit install {args.source or args.local_path} --force' to reinstall",
+                    "hint": f"Use 'cfc kit update' to update, or 'cfc kit install {args.source or args.local_path} --force' to reinstall",
                 },
                 human_fn=lambda d: _human_kit_install(d),
             )
@@ -1476,9 +1474,9 @@ def cmd_kit_update(argv: List[str]) -> int:
     With --path, updates from a local directory.
 
     Usage:
-        cypilot kit update                          (all kits from sources)
-        cypilot kit update sdlc                     (specific kit from source)
-        cypilot kit update --path /local/dir        (from local directory)
+        cfc kit update                          (all kits from sources)
+        cfc kit update sdlc                     (specific kit from source)
+        cfc kit update --path /local/dir        (from local directory)
     """
     # @cpt-begin:cpt-cypilot-flow-kit-update-cli:p1:inst-parse-args
     p = argparse.ArgumentParser(
@@ -1537,7 +1535,7 @@ def cmd_kit_update(argv: List[str]) -> int:
             ui.result({
                 "status": "FAIL",
                 "message": "No kits registered in core.toml",
-                "hint": "Install a kit first: cpt kit install owner/repo",
+                "hint": "Install a kit first: cfc kit install owner/repo",
             })
             return 2
 
@@ -1859,7 +1857,7 @@ def _update_core_toml_kit_paths(config_dir: Path) -> None:
             updated = True
     if updated:
         from ..utils import toml_utils
-        toml_utils.dump(data, core_toml, header_comment="Cypilot project configuration")
+        toml_utils.dump(data, core_toml, header_comment="Cyber Constructor project configuration")
 # @cpt-end:cpt-cypilot-algo-version-config-layout-restructure:p1:inst-update-core-paths
 
 
@@ -2035,7 +2033,7 @@ def _resolve_manifest_root_from_binding(
 def _resolve_declared_manifest_root(manifest: Any, kit_slug: str) -> str:
     manifest_root = getattr(manifest, "root", "")
     if isinstance(manifest_root, str) and manifest_root.strip():
-        resolved_root = manifest_root.replace("{cypilot_path}", ".").replace("{slug}", kit_slug).strip()
+        resolved_root = manifest_root.replace("{cf-constructor-path}", ".").replace("{slug}", kit_slug).strip()
         if resolved_root and resolved_root != ".":
             return PurePosixPath(resolved_root).as_posix()
     return f"config/kits/{kit_slug}"
@@ -2309,27 +2307,27 @@ def update_kit(
 
 # @cpt-begin:cpt-cypilot-flow-kit-dispatch:p1:inst-migrate-deprecated
 def cmd_kit_migrate(_argv: List[str]) -> int:
-    """Deprecated — use 'cypilot kit update <path>' instead.
+    """Deprecated — use 'cfc kit update <path>' instead.
 
     The migrate command was part of the blueprint-based three-way merge system
     which has been removed.  File-level updates are now handled by 'kit update'.
     """
     sys.stderr.write(
-        "WARNING: 'cypilot kit migrate' is deprecated.\n"
-        "         Use 'cypilot kit update <path>' instead.\n"
+        "WARNING: 'cfc kit migrate' is deprecated.\n"
+        "         Use 'cfc kit update <path>' instead.\n"
     )
     return 1
 # @cpt-end:cpt-cypilot-flow-kit-dispatch:p1:inst-migrate-deprecated
 
 # ---------------------------------------------------------------------------
-# Kit CLI dispatcher (handles `cypilot kit <subcommand>`)
+# Kit CLI dispatcher (handles `cfc kit <subcommand>`)
 # ---------------------------------------------------------------------------
 
 # @cpt-flow:cpt-cypilot-flow-kit-dispatch:p1
 def cmd_kit(argv: List[str]) -> int:
     """Kit management command dispatcher.
 
-    Usage: cypilot kit <install|update|validate|migrate> [options]
+    Usage: cfc kit <install|update|validate|migrate> [options]
     """
     # @cpt-begin:cpt-cypilot-flow-kit-dispatch:p1:inst-parse-subcmd
     if not argv:
@@ -2487,7 +2485,7 @@ def _register_kit_in_core_toml(
     # Write back using our TOML serializer
     try:
         from ..utils import toml_utils
-        toml_utils.dump(data, core_toml, header_comment="Cypilot project configuration")
+        toml_utils.dump(data, core_toml, header_comment="Cyber Constructor project configuration")
     except (OSError, ValueError) as exc:
         sys.stderr.write(f"kit: warning: failed to register {kit_slug} in {core_toml}: {exc}\n")
     # @cpt-end:cpt-cypilot-algo-kit-config-helpers:p1:inst-register-core

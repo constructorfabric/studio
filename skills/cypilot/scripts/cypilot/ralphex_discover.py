@@ -180,6 +180,6 @@ def persist_path(config_path: Path, ralphex_path: str) -> None:
     if ralphex_section.get("executable_path") == ralphex_path:
         return
     ralphex_section["executable_path"] = ralphex_path
-    toml_utils.dump(data, config_path, header_comment="Cypilot project configuration")
+    toml_utils.dump(data, config_path, header_comment="Cyber Constructor project configuration")
     logger.info("Persisted ralphex path to %s", config_path)
 # @cpt-end:cpt-cypilot-flow-ralphex-delegation-discover:p1:inst-persist-path
