@@ -2,7 +2,7 @@
 
 > **Historical walkthrough**
 >
-> This document is a real transcript from an earlier Cyber Pilot setup and command model.
+> This document is a real transcript from an earlier Cyber Constructor setup and command model.
 > Keep it as a historical example, not as the canonical guide to the current product surface.
 > For the current model, start with **[README.md](../README.md)**, then continue with **[USAGE-GUIDE.md](USAGE-GUIDE.md)** and **[AGENT-TOOLS.md](AGENT-TOOLS.md)**.
 

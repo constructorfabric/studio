@@ -79,7 +79,7 @@ This guide is for the practical questions that come up after onboarding:
 - **What should I do in this situation?**
 - **What should I avoid?**
 - **When should I use `plan`, `generate`, or `analyze`?**
-- **When is Cyber Pilot useful, and when is it just overhead?**
+- **When is Cyber Constructor useful, and when is it just overhead?**
 - **How do I get the benefits without using the product badly?**
 
 Use this guide when you already know what Cyber Constructor is and now need help choosing the right workflow in common real-world situations.
@@ -671,7 +671,7 @@ Use narrower checks while iterating and broader checks before merge. Let humans 
 
 **Do**:
 
-- ask whether Cyber Pilot is actually needed
+- ask whether Cyber Constructor is actually needed
 - use the smallest flow that preserves enough control
 
 **Do not**:
@@ -932,7 +932,7 @@ Be cautious if most answers are **yes** here instead:
 - **Would a lightweight direct prompt be enough?**
 - **Would the workflow overhead exceed the task value?**
 
-If the left-hand answers are mostly yes, Cyber Pilot is probably a good fit. If the right-hand answers dominate, use a lighter workflow or your AI coding tool directly.
+If the left-hand answers are mostly yes, Cyber Constructor is probably a good fit. If the right-hand answers dominate, use a lighter workflow or your AI coding tool directly.
 
 ---
 

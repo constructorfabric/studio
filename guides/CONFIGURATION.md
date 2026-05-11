@@ -346,7 +346,7 @@ It has three layers:
 
 ### Autodetect patterns
 
-Autodetect tells Cyber Pilot where to find artifacts and codebases automatically using glob patterns. This is the preferred way to register artifacts — when you add a new FEATURE spec file matching the pattern, Cyber Pilot picks it up without config changes.
+Autodetect tells Cyber Constructor where to find artifacts and codebases automatically using glob patterns. This is the preferred way to register artifacts — when you add a new FEATURE spec file matching the pattern, Cyber Constructor picks it up without config changes.
 
 Each artifact pattern has:
 

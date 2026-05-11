@@ -2,15 +2,16 @@
  
  [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
   ![Version](https://img.shields.io/badge/version-4.0.0-green.svg)
-  ![Python](https://img.shields.io/badge/python-3.11+-blue.svg)
-
+  
 **Version**: 4.0.0
 
 **Status**: Active
 
-**Audience**: Developers using AI coding tools, technical leads, engineering teams
+**Audience**: Developers, product pmanagers, architects, technical leads, and teams adopting the current CLI and AI coding tool workflow
 
 > **Convention**: 💬 = paste into AI coding tool chat. 🖥️ = run in terminal.
+
+> **Scope**: This README describes the current repository-oriented distribution: the `cfc` CLI, repository-local setup, generated host integrations, and agent-facing workflows and skills. Cyber Constructor is also planned for macOS, Windows, and web application experiences; those app surfaces are not documented here yet.
 
 ## Overview
 
@@ -67,7 +68,7 @@ Most teams should start with the core platform and add a kit later only if they 
 
 ### How teams encounter Cyber Constructor
 
-In practice, teams usually encounter and touch Cyber Constructor through four main surfaces in the repository and toolchain:
+In the current repository-oriented distribution, teams usually encounter and touch Cyber Constructor through four main surfaces in the repository and toolchain:
 
 | Surface | Form | Role |
 |---|---|---|

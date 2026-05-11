@@ -1,4 +1,4 @@
-# Using AI Agent Tools with Cyber Pilot
+# Using AI Agent Tools with Cyber Constructor
 
 
 <!-- toc -->
@@ -131,7 +131,7 @@ That is one of the most important practical differences when using Cyber Constru
 | Model selection in generated subagents | Yes | Yes | No equivalent | Tool-dependent / less central | N/A |
 | Subagent-scoped hooks | Yes | No | Tool-specific / narrower current surface | No | No |
 | Multi-model host advantage | No | Yes | Yes | No | Yes |
-| Best use mode with Cyber Pilot | Full orchestration | Strong daily-driver | Structured assistance | Bounded execution | Manual separation |
+| Best use mode with Cyber Constructor | Full orchestration | Strong daily-driver | Structured assistance | Bounded execution | Manual separation |
 
 **Important distinction**:
 
@@ -349,8 +349,8 @@ The result is still useful, but some control that Claude can express more direct
 ### Typical problems
 
 - **You expect Copilot subagents to enforce as much as Claude Code does**
-- **You rely too much on the host tool and not enough on Cyber Pilot validation**
-- **You have existing GitHub-side instruction files and assume Cyber Pilot will overwrite everything**
+- **You rely too much on the host tool and not enough on Cyber Constructor validation**
+- **You have existing GitHub-side instruction files and assume Cyber Constructor will overwrite everything**
 
 ### How to mitigate
 
@@ -419,7 +419,7 @@ It is particularly strong for:
 
 Windsurf does **not** support subagents.
 
-This is the most important thing to understand before using Cyber Pilot there.
+This is the most important thing to understand before using Cyber Constructor there.
 
 Cyber Constructor still works through:
 
