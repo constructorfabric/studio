@@ -82,47 +82,6 @@ class TestValidateAgentEntryNewFields(unittest.TestCase):
             self.assertEqual(entry["context_window"], "max")
 
 
-class TestResolveSupportedProvider(unittest.TestCase):
-    def test_supported_pair_returns_unchanged(self):
-        from cypilot.commands.agents import _resolve_supported_provider
-        self.assertEqual(
-            _resolve_supported_provider("claude", "anthropic", explicit=True),
-            ("anthropic", False),
-        )
-
-    def test_claude_with_openai_falls_back_to_anthropic_with_warn(self):
-        from cypilot.commands.agents import _resolve_supported_provider
-        provider, warn = _resolve_supported_provider("claude", "openai", explicit=True)
-        self.assertEqual(provider, "anthropic")
-        self.assertTrue(warn)
-
-    def test_codex_with_default_anthropic_silent_fallback(self):
-        from cypilot.commands.agents import _resolve_supported_provider
-        provider, warn = _resolve_supported_provider("codex", "anthropic", explicit=False)
-        self.assertEqual(provider, "openai")
-        self.assertFalse(warn)
-
-    def test_codex_with_explicit_anthropic_warns(self):
-        from cypilot.commands.agents import _resolve_supported_provider
-        provider, warn = _resolve_supported_provider("codex", "anthropic", explicit=True)
-        self.assertEqual(provider, "openai")
-        self.assertTrue(warn)
-
-    def test_cursor_supports_both(self):
-        from cypilot.commands.agents import _resolve_supported_provider
-        self.assertEqual(_resolve_supported_provider("cursor", "anthropic", explicit=True),
-                         ("anthropic", False))
-        self.assertEqual(_resolve_supported_provider("cursor", "openai", explicit=True),
-                         ("openai", False))
-
-    def test_copilot_supports_both(self):
-        from cypilot.commands.agents import _resolve_supported_provider
-        self.assertEqual(_resolve_supported_provider("copilot", "anthropic", explicit=True),
-                         ("anthropic", False))
-        self.assertEqual(_resolve_supported_provider("copilot", "openai", explicit=True),
-                         ("openai", False))
-
-
 class TestResolveModelId(unittest.TestCase):
     def test_inherit_returns_none(self):
         from cypilot.commands.agents import _resolve_model_id

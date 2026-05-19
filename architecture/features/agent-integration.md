@@ -140,6 +140,20 @@ Without this feature, users would need to manually create and maintain agent-spe
 - [x] - `p1` - Imports, constants, and `_validate_agent_entry` for agent datamodel - `inst-agents-datamodel`
 - [x] - `p1` - Per-tool template functions (Claude, Cursor, Copilot) and `_TOOL_AGENT_CONFIG` registry - `inst-create-proxy-templates`
 - [x] - `p1` - File I/O helpers: `_load_json_file` and `_write_or_skip` for agent output management - `inst-write-helpers`
+- [x] - `p1` - Valid value sets for agent fields (mode, role, target, provider, model tier, effort, context) - `inst-agent-field-validators`
+- [x] - `p1` - Bare-name → canonical `cf:tier:*` aliases for backward-compatible model values - `inst-agent-model-aliases`
+- [x] - `p1` - Per-tool supported-provider set and native-provider default tables - `inst-tool-provider-tables`
+- [x] - `p1` - Model matrix cell for (claude, anthropic): tier-to-model base + role/target overrides - `inst-matrix-claude-anthropic`
+- [x] - `p1` - Model matrix cell for (codex, openai): tier-to-model base + role/target overrides - `inst-matrix-codex-openai`
+- [x] - `p1` - Model matrix cell for (cursor, anthropic): tier-to-model base + role/target overrides - `inst-matrix-cursor-anthropic`
+- [x] - `p1` - Model matrix cell for (cursor, openai): tier-to-model base + role/target overrides - `inst-matrix-cursor-openai`
+- [x] - `p1` - Model matrix cell for (copilot, anthropic): tier-to-model base + role/target overrides - `inst-matrix-copilot-anthropic`
+- [x] - `p1` - Model matrix cell for (copilot, openai): tier-to-model base + role/target overrides - `inst-matrix-copilot-openai`
+- [x] - `p1` - Per-tool `cf:auto` literal mapping (degrade to inherit where tool has no `auto`) - `inst-auto-value-map`
+- [x] - `p1` - `_resolve_model_id` translating (tool, provider, tier, role, target) to concrete model id - `inst-resolve-model-id`
+- [x] - `p1` - Codex `context_window` → token-count map for `model_context_window` lines - `inst-codex-context-tokens`
+- [x] - `p1` - Codex `reasoning_effort` → `model_reasoning_effort` value map (max → xhigh) - `inst-codex-effort-map`
+- [x] - `p1` - HTML comment helper for `reasoning_effort`/`context_window` on tools that ignore these fields - `inst-unsupported-field-comment`
 
 ### Compose SKILL.md
 

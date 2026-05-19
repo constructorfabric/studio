@@ -139,6 +139,7 @@ def _file_has_cypilot_follow_link(path: Path) -> bool:
         return False
 
 
+# @cpt-begin:cpt-cypilot-algo-agent-integration-generate-shims:p1:inst-agent-field-validators
 _VALID_AGENT_MODES = {"readwrite", "readonly"}
 _VALID_AGENT_ROLES = {"generate", "analyze", "planning", "any"}
 _VALID_AGENT_TARGETS = {"codebase", "artifacts", "any"}
@@ -149,6 +150,9 @@ _VALID_AGENT_MODEL_TIERS = {
 }
 _VALID_AGENT_EFFORTS = {"low", "medium", "high", "max"}
 _VALID_AGENT_CONTEXTS = {"low", "medium", "high", "max"}
+# @cpt-end:cpt-cypilot-algo-agent-integration-generate-shims:p1:inst-agent-field-validators
+
+# @cpt-begin:cpt-cypilot-algo-agent-integration-generate-shims:p1:inst-agent-model-aliases
 # Bare names are accepted as aliases for the prefixed canonical forms so
 # existing agents.toml files keep working.
 _AGENT_MODEL_ALIASES = {
@@ -159,7 +163,9 @@ _AGENT_MODEL_ALIASES = {
     "inherit":   "cf:inherit",
     "auto":      "cf:auto",
 }
+# @cpt-end:cpt-cypilot-algo-agent-integration-generate-shims:p1:inst-agent-model-aliases
 
+# @cpt-begin:cpt-cypilot-algo-agent-integration-generate-shims:p1:inst-tool-provider-tables
 _TOOL_PROVIDER_SUPPORT: Dict[str, Set[str]] = {
     "claude": {"anthropic"},
     "codex": {"openai"},
@@ -173,29 +179,14 @@ _TOOL_PROVIDER_DEFAULT: Dict[str, str] = {
     "cursor": "anthropic",
     "copilot": "anthropic",
 }
-
-
-def _resolve_supported_provider(
-    tool: str, provider: str, *, explicit: bool,
-) -> Tuple[str, bool]:
-    """Return (resolved_provider, should_warn).
-
-    If the requested provider is supported by the tool, return it unchanged.
-    Otherwise return the tool's native default. Emit a warning flag only when
-    the agent author made an *explicit* choice; the global default
-    `anthropic` falling back on Codex is silent.
-    """
-    supported = _TOOL_PROVIDER_SUPPORT.get(tool, set())
-    if provider in supported:
-        return provider, False
-    fallback = _TOOL_PROVIDER_DEFAULT.get(tool, provider)
-    return fallback, explicit
+# @cpt-end:cpt-cypilot-algo-agent-integration-generate-shims:p1:inst-tool-provider-tables
 
 
 # (tool, provider) → {"base": {tier: model_id}, "overrides": {(tier, role, target): model_id}}
 # Tier keys use the `cf:tier:*` namespace to distinguish abstract tiers from
 # raw model identifiers a kit author might write as passthrough.
 _MODEL_MATRIX: Dict[Tuple[str, str], Dict[str, Any]] = {
+    # @cpt-begin:cpt-cypilot-algo-agent-integration-generate-shims:p1:inst-matrix-claude-anthropic
     ("claude", "anthropic"): {
         "base": {
             "cf:tier:cheap":     "haiku",
@@ -208,6 +199,8 @@ _MODEL_MATRIX: Dict[Tuple[str, str], Dict[str, Any]] = {
             ("cf:tier:cheap", "planning", "artifacts"): "sonnet",
         },
     },
+    # @cpt-end:cpt-cypilot-algo-agent-integration-generate-shims:p1:inst-matrix-claude-anthropic
+    # @cpt-begin:cpt-cypilot-algo-agent-integration-generate-shims:p1:inst-matrix-codex-openai
     ("codex", "openai"): {
         "base": {
             "cf:tier:cheap":     "gpt-5.4-mini",
@@ -221,6 +214,8 @@ _MODEL_MATRIX: Dict[Tuple[str, str], Dict[str, Any]] = {
             ("cf:tier:cheap", "planning", "artifacts"): "gpt-5.4",
         },
     },
+    # @cpt-end:cpt-cypilot-algo-agent-integration-generate-shims:p1:inst-matrix-codex-openai
+    # @cpt-begin:cpt-cypilot-algo-agent-integration-generate-shims:p1:inst-matrix-cursor-anthropic
     ("cursor", "anthropic"): {
         "base": {
             "cf:tier:cheap":     "claude-haiku-4-5",
@@ -233,6 +228,8 @@ _MODEL_MATRIX: Dict[Tuple[str, str], Dict[str, Any]] = {
             ("cf:tier:cheap", "planning", "artifacts"): "claude-sonnet-4-6",
         },
     },
+    # @cpt-end:cpt-cypilot-algo-agent-integration-generate-shims:p1:inst-matrix-cursor-anthropic
+    # @cpt-begin:cpt-cypilot-algo-agent-integration-generate-shims:p1:inst-matrix-cursor-openai
     ("cursor", "openai"): {
         "base": {
             "cf:tier:cheap":     "gpt-5.4-mini",
@@ -246,6 +243,8 @@ _MODEL_MATRIX: Dict[Tuple[str, str], Dict[str, Any]] = {
             ("cf:tier:cheap", "planning", "artifacts"): "gpt-5.4",
         },
     },
+    # @cpt-end:cpt-cypilot-algo-agent-integration-generate-shims:p1:inst-matrix-cursor-openai
+    # @cpt-begin:cpt-cypilot-algo-agent-integration-generate-shims:p1:inst-matrix-copilot-anthropic
     ("copilot", "anthropic"): {
         "base": {
             "cf:tier:cheap":     "Claude Haiku 4.5",
@@ -258,6 +257,8 @@ _MODEL_MATRIX: Dict[Tuple[str, str], Dict[str, Any]] = {
             ("cf:tier:cheap", "planning", "artifacts"): "Claude Sonnet 4.6",
         },
     },
+    # @cpt-end:cpt-cypilot-algo-agent-integration-generate-shims:p1:inst-matrix-copilot-anthropic
+    # @cpt-begin:cpt-cypilot-algo-agent-integration-generate-shims:p1:inst-matrix-copilot-openai
     ("copilot", "openai"): {
         "base": {
             "cf:tier:cheap":     "GPT-4.1",
@@ -270,16 +271,20 @@ _MODEL_MATRIX: Dict[Tuple[str, str], Dict[str, Any]] = {
             ("cf:tier:cheap", "planning", "artifacts"): "GPT-5.4",
         },
     },
+    # @cpt-end:cpt-cypilot-algo-agent-integration-generate-shims:p1:inst-matrix-copilot-openai
 }
 
+# @cpt-begin:cpt-cypilot-algo-agent-integration-generate-shims:p1:inst-auto-value-map
 _AUTO_VALUE: Dict[str, Optional[str]] = {
     "claude": None,   # Claude Code has no literal "auto"; degrade to inherit
     "codex": None,    # ditto for Codex CLI
     "cursor": "auto",
     "copilot": "auto",
 }
+# @cpt-end:cpt-cypilot-algo-agent-integration-generate-shims:p1:inst-auto-value-map
 
 
+# @cpt-begin:cpt-cypilot-algo-agent-integration-generate-shims:p1:inst-resolve-model-id
 def _resolve_model_id(
     tool: str, provider: str, tier: str, role: str, target: str,
 ) -> Optional[str]:
@@ -296,8 +301,6 @@ def _resolve_model_id(
     if tier == "cf:auto":
         return _AUTO_VALUE.get(tool)
 
-    # Provider fallback happens silently here; the caller already emitted a
-    # warning in _resolve_supported_provider if the choice was explicit.
     if provider not in _TOOL_PROVIDER_SUPPORT.get(tool, set()):
         provider = _TOOL_PROVIDER_DEFAULT.get(tool, provider)
 
@@ -305,15 +308,19 @@ def _resolve_model_id(
     if cell is None or tier not in cell["base"]:
         return tier  # passthrough raw id
     return cell["overrides"].get((tier, role, target), cell["base"][tier])
+# @cpt-end:cpt-cypilot-algo-agent-integration-generate-shims:p1:inst-resolve-model-id
 
 
+# @cpt-begin:cpt-cypilot-algo-agent-integration-generate-shims:p1:inst-codex-context-tokens
 _CODEX_CONTEXT_TOKENS: Dict[str, int] = {
     "low":    200_000,
     "medium": 400_000,
     "high":   600_000,
     "max":  1_050_000,
 }
+# @cpt-end:cpt-cypilot-algo-agent-integration-generate-shims:p1:inst-codex-context-tokens
 
+# @cpt-begin:cpt-cypilot-algo-agent-integration-generate-shims:p1:inst-codex-effort-map
 # Codex CLI's documented `model_reasoning_effort` values are low|medium|high|xhigh.
 # Our `max` maps to Codex's `xhigh` (the documented top of its ladder).
 _CODEX_EFFORT_MAP: Dict[str, str] = {
@@ -322,6 +329,7 @@ _CODEX_EFFORT_MAP: Dict[str, str] = {
     "high":   "high",
     "max":    "xhigh",
 }
+# @cpt-end:cpt-cypilot-algo-agent-integration-generate-shims:p1:inst-codex-effort-map
 
 
 def _validate_agent_entry(
@@ -711,6 +719,7 @@ def _agent_template_claude(agent: Dict[str, Any]) -> List[str]:
 
 
 
+# @cpt-begin:cpt-cypilot-algo-agent-integration-generate-shims:p1:inst-unsupported-field-comment
 def _format_unsupported_field_comment(agent: Dict[str, Any]) -> Optional[str]:
     """Build HTML comment marker for reasoning_effort / context_window on
     tools that ignore these fields in agent files (Cursor, Copilot)."""
@@ -726,6 +735,7 @@ def _format_unsupported_field_comment(agent: Dict[str, Any]) -> Optional[str]:
         f"<!-- {body}: configure via the tool's model picker; "
         "not supported in this agent file. -->"
     )
+# @cpt-end:cpt-cypilot-algo-agent-integration-generate-shims:p1:inst-unsupported-field-comment
 
 
 def _agent_template_cursor(agent: Dict[str, Any]) -> List[str]:
