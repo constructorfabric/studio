@@ -85,6 +85,11 @@ class AgentEntry(ComponentEntry):
     skills: List[str] = field(default_factory=list)
     color: str = ""
     memory_dir: str = ""
+    role: str = "any"
+    target: str = "any"
+    provider: str = "anthropic"
+    reasoning_effort: Optional[str] = None
+    context_window: Optional[str] = None
 # @cpt-end:cpt-cypilot-dod-project-extensibility-manifest-v2-schema:p1:inst-agent-entry
 
 

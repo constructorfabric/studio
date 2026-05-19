@@ -29,7 +29,11 @@ implements it in an isolated context — no back-and-forth, just code."""
 prompt_file = "agents/cf-constructor-codegen.md"
 mode = "readwrite"
 isolation = true
-model = "inherit"
+model = "cf:inherit"
+role = "generate"
+target = "codebase"
+reasoning_effort = "medium"
+context_window = "high"
 
 [agents.cf-constructor-pr-review]
 description = """\
@@ -39,7 +43,11 @@ review output stays isolated from the main conversation."""
 prompt_file = "agents/cf-constructor-pr-review.md"
 mode = "readonly"
 isolation = false
-model = "fast"
+model = "cf:tier:balanced"
+role = "analyze"
+target = "any"
+reasoning_effort = "high"
+context_window = "high"
 
 [agents.cf-constructor-ralphex]
 description = """\
@@ -49,7 +57,11 @@ delegation, and handoff lifecycle."""
 prompt_file = "agents/cf-constructor-ralphex.md"
 mode = "readwrite"
 isolation = false
-model = "inherit"
+model = "cf:inherit"
+role = "any"
+target = "any"
+reasoning_effort = "medium"
+context_window = "medium"
 
 [agents.cf-constructor-phase-runner]
 description = """\
@@ -59,7 +71,11 @@ context, without delegating to ralphex."""
 prompt_file = "agents/cf-constructor-phase-runner.md"
 mode = "readwrite"
 isolation = true
-model = "inherit"
+model = "cf:inherit"
+role = "generate"
+target = "any"
+reasoning_effort = "high"
+context_window = "high"
 
 [agents.cf-constructor-phase-compiler]
 description = """\
@@ -69,7 +85,11 @@ delegating to ralphex or executing the phase."""
 prompt_file = "agents/cf-constructor-phase-compiler.md"
 mode = "readwrite"
 isolation = true
-model = "inherit"
+model = "cf:inherit"
+role = "planning"
+target = "artifacts"
+reasoning_effort = "high"
+context_window = "medium"
 
 # ---------------------------------------------------------------------------
 # Migrate-from-Cypilot sub-agent set
@@ -95,7 +115,11 @@ structured findings list for the planner to categorize. Dispatched by the \
 prompt_file = "agents/cf-constructor-migrate-scanner.md"
 mode = "readonly"
 isolation = false
-model = "fast"
+model = "cf:tier:cheap"
+role = "analyze"
+target = "any"
+reasoning_effort = "low"
+context_window = "high"
 
 [agents.cf-constructor-migrate-planner]
 description = """\
@@ -108,7 +132,11 @@ BEFORE dispatching the migrator."""
 prompt_file = "agents/cf-constructor-migrate-planner.md"
 mode = "readonly"
 isolation = false
-model = "fast"
+model = "cf:tier:balanced"
+role = "planning"
+target = "any"
+reasoning_effort = "high"
+context_window = "medium"
 
 [agents.cf-constructor-migrate-migrator]
 description = """\
@@ -121,7 +149,11 @@ without requiring a commit."""
 prompt_file = "agents/cf-constructor-migrate-migrator.md"
 mode = "readwrite"
 isolation = false
-model = "fast"
+model = "cf:tier:cheap"
+role = "generate"
+target = "any"
+reasoning_effort = "low"
+context_window = "medium"
 
 [agents.cf-constructor-migrate-verifier]
 description = """\
@@ -134,4 +166,8 @@ by the orchestrator's 3-iteration cap."""
 prompt_file = "agents/cf-constructor-migrate-verifier.md"
 mode = "readonly"
 isolation = false
-model = "fast"
+model = "cf:tier:cheap"
+role = "analyze"
+target = "any"
+reasoning_effort = "low"
+context_window = "high"

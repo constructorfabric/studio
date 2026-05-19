@@ -260,11 +260,11 @@ class TestTranslateCopilotSchema(unittest.TestCase):
         frontmatter = "\n".join(result["frontmatter"])
         self.assertIn("tools:", frontmatter)
 
-    def test_copilot_no_model_support(self):
+    def test_copilot_model_passthrough(self):
         agent = _make_agent(model="claude-opus-4-5")
         result = _translate_copilot_schema(agent)
         frontmatter = "\n".join(result["frontmatter"])
-        self.assertNotIn("model:", frontmatter)
+        self.assertIn("model: claude-opus-4-5", frontmatter)
 
 
 # ---------------------------------------------------------------------------
@@ -290,24 +290,23 @@ class TestTranslateCodexSchema(unittest.TestCase):
         result = _translate_codex_schema(agent)
         self.assertEqual(result["model"], "gpt-4o")
 
-    def test_codex_model_fast_maps_to_codex_fast_tier(self):
-        """`fast` semantic tier maps to the codex-fast model identifier.
-
-        Codex CLI's documented "fast, efficient mini" model is gpt-5.4-mini
-        (see https://developers.openai.com/codex/models). Writing the literal
-        string "fast" into a codex agent .toml would be unrecognized by the
-        Codex CLI; the translation must happen at schema-translation time.
+    def test_codex_model_fast_maps_to_balanced_gpt54(self):
+        """`fast` is an alias for `cf:tier:balanced`; under the new matrix that
+        resolves to gpt-5.4 (not gpt-5.4-mini). This is a deliberate change
+        captured in spec §7: `fast` agents upgrade from mini to the standard
+        balanced tier on Codex. Agents that prefer the mini tier should use
+        `model = "cheap"` explicitly.
         """
         agent = _make_agent(model="fast")
         result = _translate_codex_schema(agent)
-        self.assertEqual(result["model"], "gpt-5.4-mini")
+        self.assertEqual(result["model"], "gpt-5.4")
 
-    def test_codex_model_inherit_preserved(self):
-        """`inherit` stays as the literal `inherit` and is later dropped from
-        the rendered TOML (no `model = ...` line)."""
+    def test_codex_model_inherit_omits_model_key(self):
+        """`inherit` causes the selector to return None; no `model` key is
+        emitted in the result dict (the renderer will skip the `model =` line)."""
         agent = _make_agent(model="inherit")
         result = _translate_codex_schema(agent)
-        self.assertEqual(result["model"], "inherit")
+        self.assertNotIn("model", result)
 
     def test_codex_developer_instructions_field(self):
         agent = _make_agent(description="My codex agent")

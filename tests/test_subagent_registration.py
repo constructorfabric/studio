@@ -124,7 +124,8 @@ class TestDiscoverKitAgents(unittest.TestCase):
             codegen = next(a for a in agents if a["name"] == "cypilot-codegen")
             self.assertEqual(codegen["mode"], "readwrite")
             self.assertTrue(codegen["isolation"])
-            self.assertEqual(codegen["model"], "inherit")
+            # bare "inherit" alias is normalised to canonical "cf:inherit" by _validate_agent_entry
+            self.assertEqual(codegen["model"], "cf:inherit")
             self.assertIsNotNone(codegen["prompt_file_abs"])
             self.assertTrue(str(codegen["prompt_file_abs"]).endswith("cypilot-codegen.md"))
 
@@ -136,7 +137,8 @@ class TestDiscoverKitAgents(unittest.TestCase):
             pr = next(a for a in agents if a["name"] == "cypilot-pr-review")
             self.assertEqual(pr["mode"], "readonly")
             self.assertFalse(pr["isolation"])
-            self.assertEqual(pr["model"], "fast")
+            # bare "fast" alias is normalised to canonical "cf:tier:balanced" by _validate_agent_entry
+            self.assertEqual(pr["model"], "cf:tier:balanced")
 
     def test_no_agents_returns_empty(self):
         with TemporaryDirectory() as tmpdir:
@@ -284,13 +286,16 @@ class TestToolTemplates(unittest.TestCase):
     """Tests for per-tool template rendering functions."""
 
     def test_claude_readwrite_with_isolation(self):
-        agent = _make_semantic_agent(mode="readwrite", isolation=True, model="inherit")
+        # Use canonical cf:inherit — bare "inherit" is also accepted but the
+        # alias normalises to cf:inherit in _agent_template_claude, so no model:
+        # line is emitted for inherit agents (they take the session's model).
+        agent = _make_semantic_agent(mode="readwrite", isolation=True, model="cf:inherit")
         lines = _agent_template_claude(agent)
         text = "\n".join(lines)
         self.assertIn("tools: Bash, Read, Write, Edit, Glob, Grep", text)
         self.assertNotIn("disallowedTools", text)
         self.assertIn("isolation: worktree", text)
-        self.assertIn("model: inherit", text)
+        self.assertNotIn("model:", text)  # inherit → no model line emitted
 
     def test_claude_readonly_no_isolation(self):
         agent = _make_semantic_agent(mode="readonly", isolation=False, model="fast")

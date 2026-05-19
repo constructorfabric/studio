@@ -140,7 +140,188 @@ def _file_has_cypilot_follow_link(path: Path) -> bool:
 
 
 _VALID_AGENT_MODES = {"readwrite", "readonly"}
-_KNOWN_AGENT_MODELS = {"inherit", "fast"}
+_VALID_AGENT_ROLES = {"generate", "analyze", "planning", "any"}
+_VALID_AGENT_TARGETS = {"codebase", "artifacts", "any"}
+_VALID_AGENT_PROVIDERS = {"anthropic", "openai"}
+_VALID_AGENT_MODEL_TIERS = {
+    "cf:tier:cheap", "cf:tier:balanced", "cf:tier:expensive",
+    "cf:inherit", "cf:auto",
+}
+_VALID_AGENT_EFFORTS = {"low", "medium", "high", "max"}
+_VALID_AGENT_CONTEXTS = {"low", "medium", "high", "max"}
+# Bare names are accepted as aliases for the prefixed canonical forms so
+# existing agents.toml files keep working.
+_AGENT_MODEL_ALIASES = {
+    "fast":      "cf:tier:balanced",
+    "cheap":     "cf:tier:cheap",
+    "balanced":  "cf:tier:balanced",
+    "expensive": "cf:tier:expensive",
+    "inherit":   "cf:inherit",
+    "auto":      "cf:auto",
+}
+
+_TOOL_PROVIDER_SUPPORT: Dict[str, Set[str]] = {
+    "claude": {"anthropic"},
+    "codex": {"openai"},
+    "cursor": {"anthropic", "openai"},
+    "copilot": {"anthropic", "openai"},
+}
+
+_TOOL_PROVIDER_DEFAULT: Dict[str, str] = {
+    "claude": "anthropic",
+    "codex": "openai",
+    "cursor": "anthropic",
+    "copilot": "anthropic",
+}
+
+
+def _resolve_supported_provider(
+    tool: str, provider: str, *, explicit: bool,
+) -> Tuple[str, bool]:
+    """Return (resolved_provider, should_warn).
+
+    If the requested provider is supported by the tool, return it unchanged.
+    Otherwise return the tool's native default. Emit a warning flag only when
+    the agent author made an *explicit* choice; the global default
+    `anthropic` falling back on Codex is silent.
+    """
+    supported = _TOOL_PROVIDER_SUPPORT.get(tool, set())
+    if provider in supported:
+        return provider, False
+    fallback = _TOOL_PROVIDER_DEFAULT.get(tool, provider)
+    return fallback, explicit
+
+
+# (tool, provider) → {"base": {tier: model_id}, "overrides": {(tier, role, target): model_id}}
+# Tier keys use the `cf:tier:*` namespace to distinguish abstract tiers from
+# raw model identifiers a kit author might write as passthrough.
+_MODEL_MATRIX: Dict[Tuple[str, str], Dict[str, Any]] = {
+    ("claude", "anthropic"): {
+        "base": {
+            "cf:tier:cheap":     "haiku",
+            "cf:tier:balanced":  "sonnet",
+            "cf:tier:expensive": "opus",
+        },
+        "overrides": {
+            ("cf:tier:cheap", "analyze",  "codebase"): "sonnet",
+            ("cf:tier:cheap", "planning", "codebase"): "sonnet",
+            ("cf:tier:cheap", "planning", "artifacts"): "sonnet",
+        },
+    },
+    ("codex", "openai"): {
+        "base": {
+            "cf:tier:cheap":     "gpt-5.4-mini",
+            "cf:tier:balanced":  "gpt-5.4",
+            "cf:tier:expensive": "gpt-5.5",
+        },
+        "overrides": {
+            ("cf:tier:balanced", "generate", "codebase"): "gpt-5.3-codex",
+            ("cf:tier:cheap", "analyze",  "codebase"):  "gpt-5.4",
+            ("cf:tier:cheap", "planning", "codebase"):  "gpt-5.4",
+            ("cf:tier:cheap", "planning", "artifacts"): "gpt-5.4",
+        },
+    },
+    ("cursor", "anthropic"): {
+        "base": {
+            "cf:tier:cheap":     "claude-haiku-4-5",
+            "cf:tier:balanced":  "claude-sonnet-4-6",
+            "cf:tier:expensive": "claude-opus-4-7",
+        },
+        "overrides": {
+            ("cf:tier:cheap", "analyze",  "codebase"): "claude-sonnet-4-6",
+            ("cf:tier:cheap", "planning", "codebase"): "claude-sonnet-4-6",
+            ("cf:tier:cheap", "planning", "artifacts"): "claude-sonnet-4-6",
+        },
+    },
+    ("cursor", "openai"): {
+        "base": {
+            "cf:tier:cheap":     "gpt-5.4-mini",
+            "cf:tier:balanced":  "gpt-5.4",
+            "cf:tier:expensive": "gpt-5.5",
+        },
+        "overrides": {
+            ("cf:tier:balanced", "generate", "codebase"): "gpt-5.3-codex",
+            ("cf:tier:cheap", "analyze",  "codebase"):  "gpt-5.4",
+            ("cf:tier:cheap", "planning", "codebase"):  "gpt-5.4",
+            ("cf:tier:cheap", "planning", "artifacts"): "gpt-5.4",
+        },
+    },
+    ("copilot", "anthropic"): {
+        "base": {
+            "cf:tier:cheap":     "Claude Haiku 4.5",
+            "cf:tier:balanced":  "Claude Sonnet 4.6",
+            "cf:tier:expensive": "Claude Opus 4.7",
+        },
+        "overrides": {
+            ("cf:tier:cheap", "analyze",  "codebase"): "Claude Sonnet 4.6",
+            ("cf:tier:cheap", "planning", "codebase"): "Claude Sonnet 4.6",
+            ("cf:tier:cheap", "planning", "artifacts"): "Claude Sonnet 4.6",
+        },
+    },
+    ("copilot", "openai"): {
+        "base": {
+            "cf:tier:cheap":     "GPT-4.1",
+            "cf:tier:balanced":  "GPT-5.4",
+            "cf:tier:expensive": "GPT-5.5",
+        },
+        "overrides": {
+            ("cf:tier:cheap", "analyze",  "codebase"): "GPT-5.4",
+            ("cf:tier:cheap", "planning", "codebase"): "GPT-5.4",
+            ("cf:tier:cheap", "planning", "artifacts"): "GPT-5.4",
+        },
+    },
+}
+
+_AUTO_VALUE: Dict[str, Optional[str]] = {
+    "claude": None,   # Claude Code has no literal "auto"; degrade to inherit
+    "codex": None,    # ditto for Codex CLI
+    "cursor": "auto",
+    "copilot": "auto",
+}
+
+
+def _resolve_model_id(
+    tool: str, provider: str, tier: str, role: str, target: str,
+) -> Optional[str]:
+    """Resolve abstract (tool, provider, tier, role, target) → concrete model id.
+
+    Returns None when no `model:` line should be emitted (`cf:inherit`, or
+    `cf:auto` on a tool that doesn't accept a literal `auto`).
+    """
+    # Accept bare aliases too so callers don't have to normalise.
+    tier = _AGENT_MODEL_ALIASES.get(tier, tier)
+
+    if tier == "cf:inherit":
+        return None
+    if tier == "cf:auto":
+        return _AUTO_VALUE.get(tool)
+
+    # Provider fallback happens silently here; the caller already emitted a
+    # warning in _resolve_supported_provider if the choice was explicit.
+    if provider not in _TOOL_PROVIDER_SUPPORT.get(tool, set()):
+        provider = _TOOL_PROVIDER_DEFAULT.get(tool, provider)
+
+    cell = _MODEL_MATRIX.get((tool, provider))
+    if cell is None or tier not in cell["base"]:
+        return tier  # passthrough raw id
+    return cell["overrides"].get((tier, role, target), cell["base"][tier])
+
+
+_CODEX_CONTEXT_TOKENS: Dict[str, int] = {
+    "low":    200_000,
+    "medium": 400_000,
+    "high":   600_000,
+    "max":  1_050_000,
+}
+
+# Codex CLI's documented `model_reasoning_effort` values are low|medium|high|xhigh.
+# Our `max` maps to Codex's `xhigh` (the documented top of its ladder).
+_CODEX_EFFORT_MAP: Dict[str, str] = {
+    "low":    "low",
+    "medium": "medium",
+    "high":   "high",
+    "max":    "xhigh",
+}
 
 
 def _validate_agent_entry(
@@ -162,7 +343,8 @@ def _validate_agent_entry(
     if prompt_rel:
         if not isinstance(prompt_rel, str):
             sys.stderr.write(
-                f"WARNING: agent {name!r} prompt_file must be a string, got {type(prompt_rel).__name__!r}, skipping\n"
+                f"WARNING: agent {name!r} prompt_file must be a string, "
+                f"got {type(prompt_rel).__name__!r}, skipping\n"
             )
             return None
         candidate = (source_dir / prompt_rel).resolve()
@@ -179,13 +361,51 @@ def _validate_agent_entry(
             )
             return None
         prompt_abs = candidate
+
     mode = info.get("mode", "readwrite")
-    model = info.get("model", "inherit")
     if mode not in _VALID_AGENT_MODES:
         sys.stderr.write(f"WARNING: agent {name!r} has invalid mode {mode!r}, skipping\n")
         return None
-    if model not in _KNOWN_AGENT_MODELS:
-        sys.stderr.write(f"WARNING: agent {name!r} has unknown model {model!r}, using as passthrough\n")
+
+    role = info.get("role", "any")
+    if role not in _VALID_AGENT_ROLES:
+        sys.stderr.write(f"WARNING: agent {name!r} has invalid role {role!r}, using 'any'\n")
+        role = "any"
+
+    target = info.get("target", "any")
+    if target not in _VALID_AGENT_TARGETS:
+        sys.stderr.write(f"WARNING: agent {name!r} has invalid target {target!r}, using 'any'\n")
+        target = "any"
+
+    provider = info.get("provider", "anthropic")
+    if provider not in _VALID_AGENT_PROVIDERS:
+        sys.stderr.write(
+            f"WARNING: agent {name!r} has invalid provider {provider!r}, using 'anthropic'\n"
+        )
+        provider = "anthropic"
+
+    raw_model = info.get("model", "cf:inherit")
+    model = _AGENT_MODEL_ALIASES.get(raw_model, raw_model)
+    if model not in _VALID_AGENT_MODEL_TIERS:
+        sys.stderr.write(
+            f"WARNING: agent {name!r} has unknown model {raw_model!r}, "
+            "using as passthrough\n"
+        )
+
+    effort = info.get("reasoning_effort")
+    if effort is not None and effort not in _VALID_AGENT_EFFORTS:
+        sys.stderr.write(
+            f"WARNING: agent {name!r} has invalid reasoning_effort {effort!r}, omitting\n"
+        )
+        effort = None
+
+    context = info.get("context_window")
+    if context is not None and context not in _VALID_AGENT_CONTEXTS:
+        sys.stderr.write(
+            f"WARNING: agent {name!r} has invalid context_window {context!r}, omitting\n"
+        )
+        context = None
+
     return {
         "name": name,
         "description": info.get("description", f"Cyber Constructor {name} subagent"),
@@ -193,6 +413,11 @@ def _validate_agent_entry(
         "mode": mode,
         "isolation": bool(info.get("isolation", False)),
         "model": model,
+        "role": role,
+        "target": target,
+        "provider": provider,
+        "reasoning_effort": effort,
+        "context_window": context,
         "source_dir": source_dir,
     }
 # @cpt-end:cpt-cypilot-algo-agent-integration-generate-shims:p1:inst-agents-datamodel
@@ -463,28 +688,44 @@ def _agent_template_claude(agent: Dict[str, Any]) -> List[str]:
         lines.append("disallowedTools: Write, Edit")
     else:
         lines.append("tools: Bash, Read, Write, Edit, Glob, Grep")
-    model = agent["model"]
-    lines.append(f"model: {'sonnet' if model == 'fast' else model}")
+
+    tier = agent.get("model", "cf:inherit")
+    model_id = _resolve_model_id(
+        "claude", agent.get("provider", "anthropic"), tier,
+        agent.get("role", "any"), agent.get("target", "any"),
+    )
+    if model_id is not None:
+        # context_window=max → append [1m] suffix to the model id
+        if agent.get("context_window") == "max":
+            model_id = f"{model_id}[1m]"
+        lines.append(f"model: {model_id}")
+
+    effort = agent.get("reasoning_effort")
+    if effort:
+        lines.append(f"effort: {effort}")
+
     if agent["isolation"]:
         lines.append("isolation: worktree")
     lines += ["---", _GENERATED_MARKER, "", "ALWAYS open and follow `{target_agent_path}`"]
     return lines
 
 
-_CURSOR_MODEL_MAP: Dict[str, str] = {
-    "fast": "claude-sonnet-4-6",
-}
 
-# Codex CLI: map the semantic "fast" tier to the codex-specific fast model.
-# Codex's docs (https://developers.openai.com/codex/models) document
-# `gpt-5.4-mini` as the "fast, efficient mini model for responsive coding
-# tasks" — the right peer to Anthropic's Sonnet tier for high-volume
-# mechanical agent work (scanner, planner, migrator, verifier, pr-review).
-# Used by _translate_codex_schema; the existing "inherit" → no-model-line
-# behavior in _render_toml_agent is preserved.
-_CODEX_MODEL_MAP: Dict[str, str] = {
-    "fast": "gpt-5.4-mini",
-}
+def _format_unsupported_field_comment(agent: Dict[str, Any]) -> Optional[str]:
+    """Build HTML comment marker for reasoning_effort / context_window on
+    tools that ignore these fields in agent files (Cursor, Copilot)."""
+    parts = []
+    if agent.get("reasoning_effort"):
+        parts.append(f"reasoning_effort={agent['reasoning_effort']}")
+    if agent.get("context_window"):
+        parts.append(f"context_window={agent['context_window']}")
+    if not parts:
+        return None
+    body = ", ".join(parts)
+    return (
+        f"<!-- {body}: configure via the tool's model picker; "
+        "not supported in this agent file. -->"
+    )
 
 
 def _agent_template_cursor(agent: Dict[str, Any]) -> List[str]:
@@ -495,9 +736,25 @@ def _agent_template_cursor(agent: Dict[str, Any]) -> List[str]:
         lines.append("readonly: true")
     else:
         lines.append("tools: grep, view, edit, bash")
-    model = agent["model"]
-    lines.append(f"model: {_CURSOR_MODEL_MAP.get(model, model)}")
-    lines += ["---", _GENERATED_MARKER, "", "ALWAYS open and follow `{target_agent_path}`"]
+
+    tier = agent.get("model", "cf:inherit")
+    model_id = _resolve_model_id(
+        "cursor", agent.get("provider", "anthropic"), tier,
+        agent.get("role", "any"), agent.get("target", "any"),
+    )
+    if model_id is not None:
+        lines.append(f"model: {model_id}")
+
+    lines.append("---")
+    lines.append(_GENERATED_MARKER)
+    lines.append("")
+
+    comment = _format_unsupported_field_comment(agent)
+    if comment:
+        lines.append(comment)
+        lines.append("")
+
+    lines.append("ALWAYS open and follow `{target_agent_path}`")
     return lines
 
 
@@ -508,7 +765,25 @@ def _agent_template_copilot(agent: Dict[str, Any]) -> List[str]:
         lines.append('tools: ["read", "search"]')
     else:
         lines.append('tools: ["*"]')
-    lines += ["---", _GENERATED_MARKER, "", "ALWAYS open and follow `{target_agent_path}`"]
+
+    tier = agent.get("model", "cf:inherit")
+    model_id = _resolve_model_id(
+        "copilot", agent.get("provider", "anthropic"), tier,
+        agent.get("role", "any"), agent.get("target", "any"),
+    )
+    if model_id is not None:
+        lines.append(f"model: {model_id}")
+
+    lines.append("---")
+    lines.append(_GENERATED_MARKER)
+    lines.append("")
+
+    comment = _format_unsupported_field_comment(agent)
+    if comment:
+        lines.append(comment)
+        lines.append("")
+
+    lines.append("ALWAYS open and follow `{target_agent_path}`")
     return lines
 
 
@@ -541,7 +816,8 @@ def _render_toml_agent(agent: Dict[str, Any], target_agent_path: str) -> str:
 
     Each agent becomes its own ``.toml`` file with top-level ``name``,
     ``description``, and ``developer_instructions`` — the fields required
-    by the Codex CLI agent-role schema.
+    by the Codex CLI agent-role schema. Optionally emits ``model``,
+    ``model_reasoning_effort``, and ``model_context_window`` when set.
     """
     name = agent["name"]
     raw_desc = agent.get("description", "")
@@ -551,10 +827,33 @@ def _render_toml_agent(agent: Dict[str, Any], target_agent_path: str) -> str:
     desc_escaped = _escape_toml_basic_string(desc)
     safe_path = _escape_toml_multiline_string(target_agent_path)
     prompt = f"ALWAYS open and follow `{safe_path}`"
+
     lines: List[str] = [
         _GENERATED_MARKER_TOML,
         f'name = "{_escape_toml_basic_string(name)}"',
         f'description = "{desc_escaped}"',
+    ]
+
+    tier = agent.get("model", "cf:inherit")
+    model_id = _resolve_model_id(
+        "codex", agent.get("provider", "anthropic"), tier,
+        agent.get("role", "any"), agent.get("target", "any"),
+    )
+    if model_id is not None:
+        lines.append(f'model = "{_escape_toml_basic_string(model_id)}"')
+
+    effort = agent.get("reasoning_effort")
+    if effort:
+        codex_effort = _CODEX_EFFORT_MAP.get(effort, effort)
+        lines.append(f'model_reasoning_effort = "{codex_effort}"')
+
+    context = agent.get("context_window")
+    if context:
+        tokens = _CODEX_CONTEXT_TOKENS.get(context)
+        if tokens is not None:
+            lines.append(f"model_context_window = {tokens}")
+
+    lines += [
         'developer_instructions = """',
         prompt,
         '"""',
@@ -2921,8 +3220,19 @@ def _translate_claude_schema(agent: "_AgentEntry") -> Dict[str, Any]:
     else:
         frontmatter.append("tools: Bash, Read, Write, Edit, Glob, Grep")
 
-    if agent.model:
-        frontmatter.append(f"model: {agent.model}")
+    tier = agent.model
+    model_id = _resolve_model_id(
+        "claude", getattr(agent, "provider", "anthropic"), tier,
+        getattr(agent, "role", "any"), getattr(agent, "target", "any"),
+    )
+    if model_id is not None:
+        if getattr(agent, "context_window", None) == "max":
+            model_id = f"{model_id}[1m]"
+        frontmatter.append(f"model: {model_id}")
+
+    effort = getattr(agent, "reasoning_effort", None)
+    if effort:
+        frontmatter.append(f"effort: {effort}")
 
     if agent.isolation:
         frontmatter.append("isolation: worktree")
@@ -2962,13 +3272,26 @@ def _translate_cursor_schema(agent: "_AgentEntry") -> Dict[str, Any]:
     else:
         frontmatter.append("tools: grep, view, edit, bash")
 
-    if agent.model:
-        frontmatter.append(f"model: {agent.model}")
+    tier = agent.model
+    model_id = _resolve_model_id(
+        "cursor", getattr(agent, "provider", "anthropic"), tier,
+        getattr(agent, "role", "any"), getattr(agent, "target", "any"),
+    )
+    if model_id is not None:
+        frontmatter.append(f"model: {model_id}")
+
+    body_prefix = ""
+    comment = _format_unsupported_field_comment({
+        "reasoning_effort": getattr(agent, "reasoning_effort", None),
+        "context_window": getattr(agent, "context_window", None),
+    })
+    if comment:
+        body_prefix = comment + "\n\n"
 
     # @cpt-end:cpt-cypilot-algo-project-extensibility-translate-agent-schema:p1:inst-step-cursor
     return {
         "frontmatter": frontmatter,
-        "body_prefix": "",
+        "body_prefix": body_prefix,
         "skip": False,
         "skip_reason": "",
     }
@@ -2977,7 +3300,7 @@ def _translate_cursor_schema(agent: "_AgentEntry") -> Dict[str, Any]:
 def _translate_copilot_schema(agent: "_AgentEntry") -> Dict[str, Any]:
     """Translate AgentEntry to GitHub Copilot native frontmatter.
 
-    Produces tools JSON array. No model/isolation/color support.
+    Produces tools JSON array and model line when tier is set.
     """
     # @cpt-begin:cpt-cypilot-algo-project-extensibility-translate-agent-schema:p1:inst-step-copilot
     frontmatter: List[str] = []
@@ -2990,10 +3313,26 @@ def _translate_copilot_schema(agent: "_AgentEntry") -> Dict[str, Any]:
     else:
         frontmatter.append('tools: ["*"]')
 
+    tier = agent.model
+    model_id = _resolve_model_id(
+        "copilot", getattr(agent, "provider", "anthropic"), tier,
+        getattr(agent, "role", "any"), getattr(agent, "target", "any"),
+    )
+    if model_id is not None:
+        frontmatter.append(f"model: {model_id}")
+
+    body_prefix = ""
+    comment = _format_unsupported_field_comment({
+        "reasoning_effort": getattr(agent, "reasoning_effort", None),
+        "context_window": getattr(agent, "context_window", None),
+    })
+    if comment:
+        body_prefix = comment + "\n\n"
+
     # @cpt-end:cpt-cypilot-algo-project-extensibility-translate-agent-schema:p1:inst-step-copilot
     return {
         "frontmatter": frontmatter,
-        "body_prefix": "",
+        "body_prefix": body_prefix,
         "skip": False,
         "skip_reason": "",
     }
@@ -3016,8 +3355,23 @@ def _translate_codex_schema(agent: "_AgentEntry") -> Dict[str, Any]:
         "body_prefix": "",
     }
 
-    if agent.model:
-        result["model"] = _CODEX_MODEL_MAP.get(agent.model, agent.model)
+    tier = agent.model or "cf:inherit"
+    provider = getattr(agent, "provider", "anthropic")
+    role = getattr(agent, "role", "any")
+    target = getattr(agent, "target", "any")
+    model_id = _resolve_model_id("codex", provider, tier, role, target)
+    if model_id is not None:
+        result["model"] = model_id
+
+    effort = getattr(agent, "reasoning_effort", None)
+    if effort:
+        result["model_reasoning_effort"] = _CODEX_EFFORT_MAP.get(effort, effort)
+
+    context = getattr(agent, "context_window", None)
+    if context:
+        tokens = _CODEX_CONTEXT_TOKENS.get(context)
+        if tokens is not None:
+            result["model_context_window"] = tokens
 
     # @cpt-end:cpt-cypilot-algo-project-extensibility-translate-agent-schema:p1:inst-step-codex
     return result
