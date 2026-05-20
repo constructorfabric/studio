@@ -3,6 +3,6 @@ type: spec
 ---
 # Architecture
 
-- **ID**: `cpt-basic-flow-arch:p1`
+`p1` - **ID**: `cpt-basic-flow-arch`
 
 See [CLI](cli.md) for entry point.
