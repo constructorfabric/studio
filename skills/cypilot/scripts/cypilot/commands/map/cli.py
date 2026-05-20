@@ -63,7 +63,10 @@ def cmd_map(argv: List[str]) -> int:
         source_roots=project_root_by_source,
     ))
 
-    file_edges = extract_file_links(all_nodes, project_root=primary_root)
+    template_vars = _load_template_vars(primary_root)
+    file_edges = extract_file_links(
+        all_nodes, project_root=primary_root, template_vars=template_vars,
+    )
     cpt_edges, phantoms = build_cpt_edges(all_nodes)
     edges = list(file_edges) + list(cpt_edges)
     nodes_all = list(all_nodes) + list(phantoms)
@@ -168,6 +171,82 @@ def _load_override(primary_root: Path, explicit: Optional[str]) -> Optional[Over
             background=style.get("background"),
         ))
     return OverrideConfig(categories=cats)
+
+
+def _load_template_vars(primary_root: Path) -> Dict[str, str]:
+    """Flatten ``resolve-vars`` output into a {name: project-root-relative-path} map.
+
+    Calls the cypilot CLI in JSON mode. Returns an empty dict on any failure —
+    template-variable expansion is best-effort enrichment, never a hard dep.
+
+    Output shape: ``{"system": {...}, "kits": {<slug>: {...}}}`` with absolute
+    paths. We surface three lookup keys per kit resource:
+    ``adr_template``, ``sdlc.adr_template`` and ``kits.sdlc.adr_template``.
+    System variables (``cf-constructor-path``, ``project_root``, ``cypilot_path``)
+    are exposed at the top level.
+    """
+    import json
+    import subprocess
+    import sys
+
+    candidates = [
+        ["cfc", "--json", "resolve-vars"],
+        [sys.executable, "-m", "cypilot.cli", "--json", "resolve-vars"],
+    ]
+    data = None
+    for cmd in candidates:
+        try:
+            out = subprocess.run(
+                cmd, cwd=primary_root, capture_output=True, text=True, check=False, timeout=15,
+            )
+        except Exception:  # pylint: disable=broad-exception-caught
+            continue
+        if out.returncode != 0 or not out.stdout.strip():
+            continue
+        try:
+            data = json.loads(out.stdout)
+            break
+        except Exception:  # pylint: disable=broad-exception-caught
+            continue
+    if data is None:
+        return {}
+    return _flatten_vars(data, primary_root)
+
+
+def _flatten_vars(data, primary_root: Path) -> Dict[str, str]:
+    flat: Dict[str, str] = {}
+
+    def store(key: str, val: str) -> None:
+        if not isinstance(val, str) or not val:
+            return
+        rel = _relativize(val, primary_root)
+        flat[key] = rel
+
+    system = (data or {}).get("system") or {}
+    if isinstance(system, dict):
+        for k, v in system.items():
+            store(str(k), v)
+
+    kits = (data or {}).get("kits") or {}
+    if isinstance(kits, dict):
+        for kit_slug, resources in kits.items():
+            if not isinstance(resources, dict):
+                continue
+            for name, val in resources.items():
+                if not isinstance(val, str):
+                    continue
+                store(str(name), val)                    # bare:  adr_template
+                store(f"{kit_slug}.{name}", val)         # qualified: sdlc.adr_template
+                store(f"kits.{kit_slug}.{name}", val)    # fully qualified
+    return flat
+
+
+def _relativize(abs_path: str, project_root: Path) -> str:
+    try:
+        rel = Path(abs_path).resolve().relative_to(project_root.resolve())
+        return str(rel)
+    except (ValueError, OSError):
+        return abs_path
 
 
 def skip_dirs_for_meta(primary_root: Path):

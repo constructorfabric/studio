@@ -15,20 +15,36 @@ from .model import Edge, Node, Ref
 # Matches markdown links: [label](target) — captures the bare target before any '#' fragment.
 _LINK_RE = re.compile(r"\[(?P<label>[^\]]*?)\]\((?P<target>[^)\s#]+)(?:#[^)]*)?\)")
 
+# Matches prose path references of the form `{var}/path/to/file.md`. Required
+# trailing `.md` keeps us from matching bare `{var}` placeholders.
+_VAR_PATH_RE = re.compile(
+    r"\{(?P<var>[a-zA-Z_][a-zA-Z0-9_.\-]*)\}"
+    r"(?P<rest>/[^\s`)\]\"]*?\.md)\b"
+)
 
-def extract_file_links(nodes: Sequence[Node], project_root: Optional[Union[Path, str]] = None) -> List[Edge]:
+
+def extract_file_links(nodes: Sequence[Node],
+                       project_root: Optional[Union[Path, str]] = None,
+                       template_vars: Optional[Dict[str, str]] = None) -> List[Edge]:
     """Return markdown→markdown file-link edges. Source nodes are ignored.
 
     Args:
-        nodes: Sequence of Node objects from scan_repo
-        project_root: Optional project root path. If not provided, returns empty list.
+        nodes: Sequence of Node objects from scan_repo.
+        project_root: Project root path. If not provided, returns empty list.
+        template_vars: Optional map of template variable names to project-root-relative
+            paths (e.g. {"cf-constructor-path": ".bootstrap/config",
+            "adr_template": ".bootstrap/config/config/kits/sdlc/artifacts/ADR/template.md"}).
+            When set, `{var}` references in link targets AND in prose path patterns
+            are expanded before resolution.
     """
     if project_root is None:
         return []
 
     project_root = Path(project_root)
+    template_vars = template_vars or {}
     md_nodes = [n for n in nodes if n.kind == "markdown"]
     by_rel: Dict[str, Node] = {n.rel_path: n for n in md_nodes if n.rel_path}
+    known = set(by_rel.keys())
 
     edges: List[Edge] = []
     edge_id = 0
@@ -36,38 +52,67 @@ def extract_file_links(nodes: Sequence[Node], project_root: Optional[Union[Path,
         if not src.rel_path:
             continue
 
-        # Load markdown content from disk since scan layer sets content=None
         content = _load_markdown_content(project_root, src.rel_path)
         if not content:
             continue
 
         targets_seen: set[str] = set()
-        for m in _LINK_RE.finditer(content):
-            target = m.group("target").strip()
-            resolved = _resolve(src.rel_path, target, set(by_rel.keys()))
-            if resolved is None:
-                continue
-            if resolved == src.rel_path:
-                continue  # no self-links
-            if resolved in targets_seen:
-                continue  # dedupe per (src, target)
-            targets_seen.add(resolved)
+
+        def emit(resolved: str, match_start: int, raw_target: str) -> None:
+            nonlocal edge_id
+            if resolved is None or resolved == src.rel_path or resolved in targets_seen:
+                return
             tgt = by_rel.get(resolved)
             if tgt is None:
-                continue
-            line_no = content[: m.start()].count("\n") + 1
-            snippet = _line_at(content, m.start())
+                return
+            targets_seen.add(resolved)
+            line_no = content[:match_start].count("\n") + 1
+            snippet = _line_at(content, match_start)
             edges.append(Edge(
                 id=f"fl-{edge_id}",
                 from_id=src.id,
                 to_id=tgt.id,
                 type="file-link",
-                refs=[Ref(cpt_id=None, line=line_no, snippet=snippet, def_line=None, def_snippet=None)],
+                refs=[Ref(cpt_id=None, line=line_no, snippet=snippet,
+                          def_line=None, def_snippet=None)],
                 cross_repo=(src.source != tgt.source),
                 dangling=False,
             ))
             edge_id += 1
+
+        # Pass 1: standard markdown [label](target) links — also handles
+        # targets that contain template variables.
+        for m in _LINK_RE.finditer(content):
+            target = m.group("target").strip()
+            expanded = _expand_vars(target, template_vars)
+            resolved = _resolve(src.rel_path, expanded, known)
+            emit(resolved, m.start(), target)
+
+        # Pass 2: prose references like `{cypilot_path}/.core/skills/foo.md`.
+        for m in _VAR_PATH_RE.finditer(content):
+            full = m.group(0)
+            expanded = _expand_vars(full, template_vars)
+            # Treat as absolute project-root-relative.
+            resolved = _resolve(src.rel_path, "/" + expanded.lstrip("/"), known)
+            emit(resolved, m.start(), full)
+
     return edges
+
+
+def _expand_vars(target: str, template_vars: Dict[str, str]) -> str:
+    """Substitute every `{var}` occurrence in ``target`` with its mapped value.
+
+    Variables that are not in ``template_vars`` are left alone (so `_resolve`
+    can later decide they don't match any known node).
+    """
+    if "{" not in target or not template_vars:
+        return target
+
+    def repl(m):
+        key = m.group(1)
+        return template_vars.get(key, m.group(0))
+
+    return re.sub(r"\{([a-zA-Z_][a-zA-Z0-9_.\-]*)\}", repl, target)
 
 
 def _load_markdown_content(project_root: Path, rel_path: str) -> Optional[str]:
