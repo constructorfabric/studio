@@ -676,8 +676,12 @@
 
     /* For source nodes we keep snippets as plain code, not Markdown. */
     const renderSnippet = node.kind === "source"
-      ? function (text) { return el("pre", { className: "snippet code" }, text || ""); }
-      : function (text) { return mdElement(text || "", { className: "snippet" }); };
+      ? function (text) {
+          return collapsible(el("pre", { className: "snippet code" }, text || ""), text || "");
+        }
+      : function (text) {
+          return collapsible(mdElement(text || "", { className: "snippet" }), text || "");
+        };
 
     /* cpt definitions — clickable chip opens picker of consumer nodes */
     if (node.cpt_defs && node.cpt_defs.length > 0) {
@@ -720,11 +724,10 @@
     if (node.content) {
       const truncated = node.content.length > 8000;
       const text = node.content.slice(0, 8000);
-      if (node.kind === "source") {
-        body.appendChild(el("pre", { className: "content-block code" }, text));
-      } else {
-        body.appendChild(mdElement(text, { className: "content-block" }));
-      }
+      const inner = node.kind === "source"
+        ? el("pre", { className: "content-block code" }, text)
+        : mdElement(text, { className: "content-block" });
+      body.appendChild(collapsible(inner, text));
       if (truncated) {
         body.appendChild(el("p", { className: "muted" }, "(truncated to 8000 chars)"));
       }
@@ -762,8 +765,11 @@
       const useNode = (window._cfcAllNodesData || []).filter(function (n) { return n.id === edge.from; })[0];
       const useIsSource = useNode && useNode.kind === "source";
       const useRender = useIsSource
-        ? function (t) { return el("pre", { className: "snippet code" }, t || ""); }
-        : function (t) { return mdElement(t || "", { className: "snippet" }); };
+        ? function (t) { return collapsible(el("pre", { className: "snippet code" }, t || ""), t || ""); }
+        : function (t) { return collapsible(mdElement(t || "", { className: "snippet" }), t || ""); };
+      const defRender = function (t) {
+        return collapsible(mdElement(t || "", { className: "snippet" }), t || "");
+      };
       edge.refs.forEach(function (r) {
         const card = el("div", { className: "ref-card" });
         if (r.cpt_id) card.appendChild(cptChip(r.cpt_id, "definer"));
@@ -772,7 +778,7 @@
         if (r.def_line != null) {
           card.appendChild(el("div", {}, "definition — line " + r.def_line));
         }
-        if (r.def_snippet) card.appendChild(mdElement(r.def_snippet, { className: "snippet" }));
+        if (r.def_snippet) card.appendChild(defRender(r.def_snippet));
         body.appendChild(card);
       });
     }
@@ -993,6 +999,32 @@
     }
     anchor.parentNode.insertBefore(picker, anchor.nextSibling);
     anchor._cptPicker = picker;
+  }
+
+  /* Wrap a snippet element with a collapse / expand control. By default the
+   * snippet is clamped to ~4 lines via CSS; clicking "show more" removes the
+   * clamp. If the raw text is already short (≤ 4 lines and ≤ 200 chars) the
+   * toggle button is hidden — nothing to collapse. */
+  function collapsible(innerEl, rawText) {
+    const lineCount = (rawText || "").split("\n").length;
+    const isShort = lineCount <= 4 && (rawText || "").length <= 200;
+    const wrap = el("div", { className: "snippet-wrap collapsed" });
+    wrap.appendChild(innerEl);
+    if (!isShort) {
+      const fade = el("div", { className: "snippet-fade" });
+      wrap.appendChild(fade);
+      const btn = el("button", { className: "snippet-toggle" }, "show more");
+      btn.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        const expanded = wrap.classList.toggle("expanded");
+        wrap.classList.toggle("collapsed", !expanded);
+        btn.textContent = expanded ? "show less" : "show more";
+      });
+      wrap.appendChild(btn);
+    } else {
+      wrap.classList.add("short");
+    }
+    return wrap;
   }
 
   /* Render Markdown safely. Uses vendored marked.js → DOMPurify chain.

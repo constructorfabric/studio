@@ -35,29 +35,30 @@ DEFAULT_SKIP_DIRS: Tuple[str, ...] = (
     ".ruff_cache",
 )
 
-_MAX_SNIPPET_LINES = 18
-_MAX_SNIPPET_CHARS = 1200
+# Snippet caps. The viewer shows the first ~4 lines by default and lets the
+# user expand to the full snippet, so the backend can afford to bake a
+# generous slice of context for each cpt-use site.
+_MAX_SNIPPET_LINES = 80
+_MAX_SNIPPET_CHARS = 6000
 
 
 def _paragraph_around(lines_raw, line_no: int) -> str:
     """Return the contiguous block of non-blank lines around a 1-based line index.
 
-    Walks up and down from the target until a blank line, capped by line/char
-    budget. The target line is always included even if blank (edge case).
+    Walks up and down from the target until a blank line, capped by the
+    line/char budget. The target line is always included even if blank.
     """
     n = len(lines_raw)
     if not (1 <= line_no <= n):
         return ""
     target_idx = line_no - 1
 
-    # Walk up while previous line is non-blank.
     up = target_idx
     while up - 1 >= 0 and lines_raw[up - 1].strip():
         up -= 1
         if target_idx - up >= _MAX_SNIPPET_LINES // 2:
             break
 
-    # Walk down while next line is non-blank.
     down = target_idx
     while down + 1 < n and lines_raw[down + 1].strip():
         down += 1
