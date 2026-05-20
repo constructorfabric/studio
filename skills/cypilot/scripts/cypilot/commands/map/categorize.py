@@ -133,7 +133,7 @@ def _build_registry_index(project_root: Path) -> List[_RegistryEntry]:
             data = tomllib.load(f)
         from cypilot.utils.artifacts_meta import ArtifactsMeta
         meta = ArtifactsMeta.from_dict(data)
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught  # registry is optional; categorize must not raise
         return []
 
     entries: List[_RegistryEntry] = []

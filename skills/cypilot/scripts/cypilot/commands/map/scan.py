@@ -203,7 +203,7 @@ def _scan_sources(root: Path, source_name: str, skip_dirs: Set[str]) -> List[Nod
 
     try:
         meta = _load_registry(registry_path)
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught  # registry is best-effort; never fail scan
         return []
 
     if meta is None:
@@ -212,7 +212,7 @@ def _scan_sources(root: Path, source_name: str, skip_dirs: Set[str]) -> List[Nod
     nodes: List[Node] = []
     seen: Set[Path] = set()
 
-    for cb, system in meta.iter_all_codebase():
+    for cb, _system in meta.iter_all_codebase():
         # Check traceability_mode on the raw system node
         cb_path = cb.path.lstrip("./")
         cb_dir = root / cb_path

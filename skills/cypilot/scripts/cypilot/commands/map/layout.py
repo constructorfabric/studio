@@ -423,7 +423,7 @@ def compute_layout(
         return [], {}, {}
 
     # Optimize stacked arrangement
-    best_choices, _chosen_indexes, snapshots = rectpack.optimize_stacked_categories(
+    best_choices, _chosen_indexes, _snapshots = rectpack.optimize_stacked_categories(
         [(entry["cat_id"], entry["candidates"]) for entry in category_inputs],
         category_gap=CATEGORY_GAP,
         target_aspect=TARGET_ASPECT,

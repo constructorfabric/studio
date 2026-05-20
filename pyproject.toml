@@ -29,6 +29,9 @@ ignore-paths = [
     "^examples/",
     "^tests/",
 ]
+ignore-patterns = [
+    "^rectpack\\.py$",
+]
 
 [tool.pylint.format]
 max-line-length = 120

@@ -131,7 +131,7 @@ def _discover_sources(primary_root: Path, local_only: bool) -> List[dict]:
                 "reachable": reachable,
                 "role": src_entry.role,
             })
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught  # federation discovery is best-effort
         pass
     return sources
 
@@ -147,7 +147,7 @@ def _load_override(primary_root: Path, explicit: Optional[str]) -> Optional[Over
     try:
         with path.open("rb") as f:
             data = tomllib.load(f)
-    except Exception as exc:
+    except Exception as exc:  # pylint: disable=broad-exception-caught  # override config validation
         print(f"map: invalid {path}: {exc}", file=sys.stderr)
         sys.exit(2)
     cats = []
@@ -177,7 +177,7 @@ def _count_systems(primary_root: Path, docs_only: bool = False) -> int:
                 if getattr(s, "traceability_mode", "FULL") == "DOCS-ONLY"
             )
         return len(meta.systems)
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught  # system counting fallback
         return 0
 
 
