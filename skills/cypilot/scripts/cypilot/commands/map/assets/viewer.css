@@ -477,13 +477,102 @@ html, body {
 }
 .snippet-toggle:hover { background: #dde2f5; }
 
-/* Clickable cpt-ID chips */
+/* Clickable cpt-ID chip rows: text navigates, ⌖ toggles as filter */
+.cpt-id-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
 .cpt-id.link, .cpt-link {
   cursor: pointer;
   border-bottom: 1px dotted #3050a0;
 }
 .cpt-id.link:hover, .cpt-link:hover { background: rgba(48, 80, 160, 0.10); }
 .cpt-id.link::after { content: " ↗"; font-weight: 400; opacity: 0.6; }
+
+.cpt-filter-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px; height: 18px;
+  padding: 0;
+  font-size: 11px;
+  line-height: 1;
+  background: transparent;
+  border: 1px solid #c0c8e0;
+  border-radius: 3px;
+  color: #888;
+  cursor: pointer;
+}
+.cpt-filter-toggle:hover { background: #eef0fa; color: #3050a0; }
+.cpt-filter-toggle.active {
+  background: #3050a0;
+  color: #fff;
+  border-color: #3050a0;
+}
+
+/* Active cpt filter panel in sidebar */
+#cpt-filter-section.empty { display: none; }
+#cpt-filter-section h2 { color: #3050a0; }
+.filter-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin: 4px 0;
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  background: #3050a0;
+  color: #fff;
+  border-radius: 10px;
+  padding: 2px 4px 2px 8px;
+  gap: 2px;
+}
+.filter-chip-remove {
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,0.8);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.filter-chip-remove:hover { color: #fff; }
+.filter-clear {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 1px 8px;
+  font-size: 10px;
+  background: transparent;
+  border: 1px solid #c0c8e0;
+  border-radius: 3px;
+  color: #555;
+  cursor: pointer;
+}
+.filter-clear:hover { background: #eef0fa; color: #3050a0; }
+
+/* Flash-highlight when scrolling to a card from cpt navigation */
+.ref-card.flash-highlight {
+  animation: flash-bg 1.5s ease-out;
+  outline: 2px solid #ffc940;
+}
+@keyframes flash-bg {
+  0%   { background: #fff5d2; }
+  100% { background: #f7f7fa; }
+}
+
+/* Internal markdown link (resolves to a known node) */
+.internal-md-link {
+  color: #3050a0;
+  cursor: pointer;
+  border-bottom: 1px dotted #3050a0;
+  text-decoration: none;
+}
+.internal-md-link:hover {
+  background: rgba(48, 80, 160, 0.10);
+}
 
 /* Popup picker for "defined" cpt-id → list of users */
 .cpt-picker {

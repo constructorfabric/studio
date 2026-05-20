@@ -58,6 +58,10 @@
     "phantom-cpt": true,
   };
 
+  // cpt-ID filter set (multi-select from inspector chips). When non-empty,
+  // edges visible only if at least one of their refs.cpt_id is in this set.
+  const cptFilter = new Set();
+
   /* ── Bootstrap ──────────────────────────────────────────────── */
   document.addEventListener("DOMContentLoaded", function () {
     const data = window.MAP_DATA;
@@ -78,6 +82,10 @@
     /* Logo / title */
     const logo = el("div", { className: "logo" }, "cfc map");
     sidebar.appendChild(logo);
+
+    /* Active cpt-ID filters (populated dynamically as user toggles chips) */
+    const cptFilterSect = el("div", { id: "cpt-filter-section", className: "stat-group empty" });
+    sidebar.appendChild(cptFilterSect);
 
     /* Depth control */
     const depthWrap = el("div", { className: "depth-control" });
@@ -657,13 +665,20 @@
       reachableEdges = result.edges;
     }
 
+    const cptActive = cptFilter.size > 0;
     edgesDS.update(allEdgesData.map(function (e) {
       const byType = !!enabledEdgeTypes[e.type];
       const byFocus = reachableEdges ? reachableEdges.has(e.id) : false;
       const endpointsVisible =
         enabledNodeKinds[kindById[e.from]] !== false &&
         enabledNodeKinds[kindById[e.to]]   !== false;
-      return { id: e.id, hidden: !((byType || byFocus) && endpointsVisible) };
+      let matchesCpt = true;
+      if (cptActive) {
+        matchesCpt = (e.refs || []).some(function (r) {
+          return r.cpt_id && cptFilter.has(r.cpt_id);
+        });
+      }
+      return { id: e.id, hidden: !((byType || byFocus) && endpointsVisible && matchesCpt) };
     }));
 
     if (reachableNodes) {
@@ -678,7 +693,8 @@
   }
 
   /* ── Inspector ───────────────────────────────────────────────── */
-  function showNodeInspector(node, data, primary) {
+  function showNodeInspector(node, data, primary, opts) {
+    opts = opts || {};
     const insp = document.getElementById("inspector");
     // Ensure inspector is visible before populating
     insp.classList.add("open");
@@ -712,12 +728,13 @@
     });
 
     /* For source nodes we keep snippets as plain code, not Markdown. */
+    const mdOpts = { className: "snippet", sourceRelPath: node.rel_path, sourceName: node.source };
     const renderSnippet = node.kind === "source"
       ? function (text) {
           return collapsible(el("pre", { className: "snippet code" }, text || ""), text || "");
         }
       : function (text) {
-          return collapsible(mdElement(text || "", { className: "snippet" }), text || "");
+          return collapsible(mdElement(text || "", mdOpts), text || "");
         };
 
     /* cpt definitions — clickable chip opens picker of consumer nodes */
@@ -778,7 +795,7 @@
       const text = node.content.slice(0, 8000);
       const inner = node.kind === "source"
         ? el("pre", { className: "content-block code" }, text)
-        : mdElement(text, { className: "content-block" });
+        : mdElement(text, { className: "content-block", sourceRelPath: node.rel_path, sourceName: node.source });
       body.appendChild(collapsible(inner, text));
       if (truncated) {
         body.appendChild(el("p", { className: "muted" }, "(truncated to 8000 chars)"));
@@ -788,6 +805,24 @@
     }
 
     insp.appendChild(body);
+
+    // Scroll/flash a matching cpt-id card if requested.
+    if (opts.highlightCptId) {
+      // Defer to next frame so the layout is committed.
+      requestAnimationFrame(function () {
+        const cards = body.querySelectorAll(".ref-card");
+        let match = null;
+        for (let i = 0; i < cards.length; i++) {
+          const idEl = cards[i].querySelector(".cpt-id");
+          if (idEl && idEl.textContent === opts.highlightCptId) { match = cards[i]; break; }
+        }
+        if (match) {
+          match.classList.add("flash-highlight");
+          match.scrollIntoView({ block: "start", behavior: "smooth" });
+          setTimeout(function () { match.classList.remove("flash-highlight"); }, 1500);
+        }
+      });
+    }
   }
 
   function showEdgeInspector(edge, data) {
@@ -815,12 +850,19 @@
       body.appendChild(fieldHeading("References (" + edge.refs.length + ")"));
       // Use side may be source code → keep as plain. Def side is always markdown.
       const useNode = (window._cfcAllNodesData || []).filter(function (n) { return n.id === edge.from; })[0];
+      const defNode = (window._cfcAllNodesData || []).filter(function (n) { return n.id === edge.to; })[0];
       const useIsSource = useNode && useNode.kind === "source";
+      const useMdOpts = { className: "snippet",
+                          sourceRelPath: useNode && useNode.rel_path,
+                          sourceName: useNode && useNode.source };
+      const defMdOpts = { className: "snippet",
+                          sourceRelPath: defNode && defNode.rel_path,
+                          sourceName: defNode && defNode.source };
       const useRender = useIsSource
         ? function (t) { return collapsible(el("pre", { className: "snippet code" }, t || ""), t || ""); }
-        : function (t) { return collapsible(mdElement(t || "", { className: "snippet" }), t || ""); };
+        : function (t) { return collapsible(mdElement(t || "", useMdOpts), t || ""); };
       const defRender = function (t) {
-        return collapsible(mdElement(t || "", { className: "snippet" }), t || "");
+        return collapsible(mdElement(t || "", defMdOpts), t || "");
       };
       edge.refs.forEach(function (r) {
         const card = el("div", { className: "ref-card" });
@@ -962,6 +1004,48 @@
     return el("code", {}, text);
   }
 
+  /* cpt-id filter set ───────────────────────────────────────────── */
+  function toggleCptFilter(cptId) {
+    if (cptFilter.has(cptId)) cptFilter.delete(cptId);
+    else cptFilter.add(cptId);
+    refreshCptFilterUI();
+    recomputeEdgeVisibility();
+  }
+  function clearCptFilter() {
+    cptFilter.clear();
+    refreshCptFilterUI();
+    recomputeEdgeVisibility();
+  }
+  function refreshCptFilterUI() {
+    const wrap = document.getElementById("cpt-filter-section");
+    if (!wrap) return;
+    wrap.innerHTML = "";
+    if (cptFilter.size === 0) {
+      wrap.classList.add("empty");
+    } else {
+      wrap.classList.remove("empty");
+      wrap.appendChild(el("h2", {}, "Active cpt filters  (" + cptFilter.size + ")"));
+      const list = el("div", { className: "filter-chip-list" });
+      Array.from(cptFilter).sort().forEach(function (id) {
+        const chip = el("span", { className: "filter-chip" });
+        chip.appendChild(document.createTextNode(id.replace(/^cpt-/, "").replace(/:p\d+$/, "")));
+        const x = el("button", { className: "filter-chip-remove", title: "Remove from filter" }, "×");
+        x.addEventListener("click", function () { toggleCptFilter(id); });
+        chip.appendChild(x);
+        list.appendChild(chip);
+      });
+      wrap.appendChild(list);
+      const clearBtn = el("button", { className: "filter-clear" }, "clear all");
+      clearBtn.addEventListener("click", clearCptFilter);
+      wrap.appendChild(clearBtn);
+    }
+    // Sync toggle states inside any open inspector cards.
+    document.querySelectorAll(".cpt-filter-toggle").forEach(function (b) {
+      const id = b.dataset.cptId;
+      b.classList.toggle("active", !!(id && cptFilter.has(id)));
+    });
+  }
+
   /* Navigation history (back / forward).
    *   navBack  = stack of node IDs visited before the current one
    *   navFwd   = stack of node IDs that were "back-ed out of"
@@ -992,7 +1076,7 @@
     setFocus(new Set([nodeId]));
     network.fit({ nodes: [nodeId], animation: { duration: 350 } });
     const node = (data.nodes || []).filter(function (n) { return n.id === nodeId; })[0];
-    if (node) showNodeInspector(node, data, primary);
+    if (node) showNodeInspector(node, data, primary, { highlightCptId: opts.highlightCptId });
   }
 
   function navGoBack() {
@@ -1042,9 +1126,12 @@
     refreshToolbarState();
   }
 
-  /* Build a clickable chip for a cpt-id that jumps to its definer (or shows
-   * a picker if there are multiple, or if direction === "users"). */
+  /* Build a clickable chip-row for a cpt-id with two actions:
+   *   text  → navigate to definer (or picker for "users" direction)
+   *   ⌖ btn → toggle membership in the cpt filter set (multi-select) */
   function cptChip(cptId, direction) {
+    const row = el("span", { className: "cpt-id-row" });
+
     const span = el("span", { className: "cpt-id link cpt-link" }, cptId);
     span.title = direction === "users"
       ? "Click to see nodes that use this cpt-id"
@@ -1057,25 +1144,36 @@
         const definers = window._cfcCptDefiners || {};
         const set = definers[cptId];
         if (!set || set.size === 0) {
-          // Try basename fallback (definers store base; uses may be phase-qualified or vice versa).
           const base = cptId.split(":")[0];
           const baseSet = definers[base];
-          if (baseSet && baseSet.size > 0) return navigateOne(span, baseSet);
+          if (baseSet && baseSet.size > 0) return navigateOne(span, baseSet, cptId);
           flashNotFound(span);
           return;
         }
-        navigateOne(span, set);
+        navigateOne(span, set, cptId);
       }
     });
-    return span;
+    row.appendChild(span);
+
+    const filterBtn = el("button", { className: "cpt-filter-toggle" }, "⌖");
+    filterBtn.dataset.cptId = cptId;
+    if (cptFilter.has(cptId)) filterBtn.classList.add("active");
+    filterBtn.title = "Toggle as edge filter (multi-select)";
+    filterBtn.addEventListener("click", function (ev) {
+      ev.stopPropagation();
+      toggleCptFilter(cptId);
+    });
+    row.appendChild(filterBtn);
+
+    return row;
   }
 
-  function navigateOne(anchor, idSet) {
+  function navigateOne(anchor, idSet, highlightCptId) {
     const ids = Array.from(idSet);
     if (ids.length === 1) {
-      jumpToNode(ids[0]);
+      jumpToNode(ids[0], { highlightCptId: highlightCptId });
     } else {
-      showCptPickerForList(anchor, ids);
+      showCptPickerForList(anchor, ids, highlightCptId);
     }
   }
 
@@ -1091,7 +1189,7 @@
     showCptPickerForList(anchor, Array.from(set));
   }
 
-  function showCptPickerForList(anchor, nodeIds) {
+  function showCptPickerForList(anchor, nodeIds, highlightCptId) {
     // Remove any existing picker right after this anchor.
     if (anchor._cptPicker && anchor._cptPicker.parentNode) {
       anchor._cptPicker.parentNode.removeChild(anchor._cptPicker);
@@ -1112,7 +1210,7 @@
         item.appendChild(document.createTextNode(n ? (n.rel_path || nid) : nid));
         item.addEventListener("click", function (ev) {
           ev.stopPropagation();
-          jumpToNode(nid);
+          jumpToNode(nid, { highlightCptId: highlightCptId });
         });
         picker.appendChild(item);
       });
@@ -1174,10 +1272,71 @@
         ALLOWED_ATTR: ["href","title","alt","src","class","type","checked","disabled","colspan","rowspan"],
         ALLOW_DATA_ATTR: false,
       });
+      wireInternalLinks(wrap, opts.sourceRelPath, opts.sourceName);
     } catch (err) {
       wrap.appendChild(el("pre", {}, text));
     }
     return wrap;
+  }
+
+  /* Intercept clicks on <a> elements inside rendered Markdown.
+   * If the href resolves to a known node (via rel_path lookup), navigate
+   * to that node instead of letting the browser follow the link. */
+  function wireInternalLinks(rootEl, sourceRelPath, sourceName) {
+    const nodesByRel = {};
+    (window._cfcAllNodesData || []).forEach(function (n) {
+      if (!n.rel_path) return;
+      const src = n.source || "local";
+      if (!nodesByRel[src]) nodesByRel[src] = {};
+      nodesByRel[src][n.rel_path] = n.id;
+    });
+    const primary = ((window.MAP_DATA || {}).workspace || {}).primary || "local";
+    const fromSource = sourceName || primary;
+    const fromDir = sourceRelPath
+      ? sourceRelPath.split("/").slice(0, -1).join("/")
+      : "";
+
+    rootEl.querySelectorAll("a[href]").forEach(function (a) {
+      const href = a.getAttribute("href") || "";
+      if (!href || /^(https?:|mailto:|tel:|#)/i.test(href)) return;
+      const resolved = resolveMdHref(href, fromDir, nodesByRel[fromSource] || {});
+      if (!resolved) return;
+      a.classList.add("internal-md-link");
+      a.title = "Open node: " + resolved.replace(/^[^:]+:/, "");
+      a.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        jumpToNode(resolved);
+      });
+    });
+  }
+
+  function resolveMdHref(href, fromDir, sameSourceByRel) {
+    let target = href.split("?")[0].split("#")[0];
+    if (!target) return null;
+    if (target.startsWith("/")) target = target.replace(/^\/+/, "");
+    const candidates = [];
+    if (target.startsWith("/")) {
+      candidates.push(target);
+    } else {
+      const joined = posixNorm(fromDir ? fromDir + "/" + target : target);
+      candidates.push(joined);
+      if (!joined.endsWith(".md")) candidates.push(joined + ".md");
+    }
+    for (const c of candidates) {
+      if (sameSourceByRel[c]) return sameSourceByRel[c];
+    }
+    return null;
+  }
+
+  function posixNorm(p) {
+    const out = [];
+    p.split("/").forEach(function (seg) {
+      if (!seg || seg === ".") return;
+      if (seg === "..") { if (out.length) out.pop(); return; }
+      out.push(seg);
+    });
+    return out.join("/");
   }
 
   function fieldHeading(text) {
