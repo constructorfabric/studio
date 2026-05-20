@@ -80,33 +80,6 @@ def _section_around(lines_raw, line_no: int) -> str:
     return text
 
 
-def _paragraph_around(lines_raw, line_no: int) -> str:
-    """Return the contiguous block of non-blank lines around a 1-based line index.
-
-    Walks up and down from the target until a blank line, capped by the
-    line/char budget. The target line is always included even if blank.
-    """
-    n = len(lines_raw)
-    if not (1 <= line_no <= n):
-        return ""
-    target_idx = line_no - 1
-
-    up = target_idx
-    while up - 1 >= 0 and lines_raw[up - 1].strip():
-        up -= 1
-        if target_idx - up >= _MAX_SNIPPET_LINES // 2:
-            break
-
-    down = target_idx
-    while down + 1 < n and lines_raw[down + 1].strip():
-        down += 1
-        if down - target_idx >= _MAX_SNIPPET_LINES - (target_idx - up):
-            break
-
-    text = "\n".join(line.rstrip() for line in lines_raw[up:down + 1])
-    if len(text) > _MAX_SNIPPET_CHARS:
-        text = text[:_MAX_SNIPPET_CHARS].rstrip() + "\n…"
-    return text
 
 
 _EXT_TO_LANG = {
@@ -235,16 +208,11 @@ def _split_md_cpt(path: Path) -> Tuple[List[str], List[CptUse]]:
 
         line_no = int(h.get("line", 0))
         hit_type = h.get("type", "reference")
-        if line_no > 0:
-            # Definitions: include the whole section (heading + bullets + prose).
-            # References: just the local paragraph.
-            snippet = (
-                _section_around(lines_raw, line_no)
-                if hit_type == "definition"
-                else _paragraph_around(lines_raw, line_no)
-            )
-        else:
-            snippet = ""
+        # Both definitions and references use the whole containing section
+        # (nearest heading → next heading). For lone reference bullets between
+        # blank lines, this is the only way to surface useful context — the
+        # paragraph-only algorithm collapses to a single bullet line.
+        snippet = _section_around(lines_raw, line_no) if line_no > 0 else ""
 
         if hit_type == "definition":
             if cpt_id not in seen_defs:
