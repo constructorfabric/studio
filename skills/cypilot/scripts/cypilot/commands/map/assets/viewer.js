@@ -648,26 +648,46 @@
     body.appendChild(field("Category", node.category + " (" + node.category_origin + ")"));
     body.appendChild(field("LOC", String(node.loc || 0)));
 
-    /* cpt definitions */
+    /* Index def-sites from cpt_uses (md-def entries carry the definition
+     * line + paragraph snippet — surface them under cpt_defs). */
+    const defSiteById = {};
+    (node.cpt_uses || []).forEach(function (u) {
+      if (u.marker_kind === "md-def") defSiteById[u.cpt_id] = u;
+    });
+
+    /* cpt definitions — render with snippet from the matching md-def entry */
     if (node.cpt_defs && node.cpt_defs.length > 0) {
       body.appendChild(fieldHeading("cpt-IDs defined (" + node.cpt_defs.length + ")"));
       node.cpt_defs.forEach(function (d) {
-        body.appendChild(el("p", {}, code(d)));
+        const card = el("div", { className: "ref-card" });
+        card.appendChild(el("div", { className: "cpt-id" }, d));
+        const site = defSiteById[d];
+        if (site) {
+          card.appendChild(el("div", {}, el("span", {}, "line " + site.line)));
+          card.appendChild(el("div", { className: "snippet" }, site.snippet || ""));
+        } else {
+          card.appendChild(el("div", { className: "snippet" }, "(definition site not located)"));
+        }
+        body.appendChild(card);
       });
     }
 
-    /* cpt uses */
-    if (node.cpt_uses && node.cpt_uses.length > 0) {
-      body.appendChild(fieldHeading("cpt-IDs used (" + node.cpt_uses.length + ")"));
-      node.cpt_uses.slice(0, 20).forEach(function (u) {
+    /* cpt uses — skip md-def entries (those are shown under definitions above) */
+    const useEntries = (node.cpt_uses || []).filter(function (u) {
+      return u.marker_kind !== "md-def";
+    });
+    if (useEntries.length > 0) {
+      body.appendChild(fieldHeading("cpt-IDs used (" + useEntries.length + ")"));
+      useEntries.slice(0, 20).forEach(function (u) {
         const card = el("div", { className: "ref-card" });
         card.appendChild(el("div", { className: "cpt-id" }, u.cpt_id));
-        card.appendChild(el("div", {}, el("span", {}, "line " + u.line + " — ")));
+        const meta = "line " + u.line + (u.marker_kind ? " · " + u.marker_kind : "");
+        card.appendChild(el("div", {}, el("span", {}, meta)));
         card.appendChild(el("div", { className: "snippet" }, u.snippet || ""));
         body.appendChild(card);
       });
-      if (node.cpt_uses.length > 20) {
-        body.appendChild(el("p", {}, "… and " + (node.cpt_uses.length - 20) + " more."));
+      if (useEntries.length > 20) {
+        body.appendChild(el("p", {}, "… and " + (useEntries.length - 20) + " more."));
       }
     }
 
