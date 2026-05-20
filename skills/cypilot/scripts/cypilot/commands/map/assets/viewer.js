@@ -40,6 +40,16 @@
   // allEdgesData: flat array of all edge objects from data.edges — set in buildGraph
   let allEdgesData = [];
 
+  // Edge-type filters. When true → all edges of that type are visible everywhere
+  // (independent of focus). When false → that type is hidden unless caught by
+  // an active focus's depth-N BFS. Defaults: all off, matching the
+  // "no edges visible until something is selected" behaviour.
+  const enabledEdgeTypes = {
+    "cpt-doc": false,
+    "cpt-impl": false,
+    "file-link": false,
+  };
+
   /* ── Bootstrap ──────────────────────────────────────────────── */
   document.addEventListener("DOMContentLoaded", function () {
     const data = window.MAP_DATA;
@@ -115,9 +125,21 @@
       if (e.dangling) danglingCount++;
     });
     const edgeSect = section("Edges  (" + (data.edges || []).length + ")");
-    edgeSect.appendChild(statRow("cpt-doc",   edgeTypes["cpt-doc"]));
-    edgeSect.appendChild(statRow("cpt-impl",  edgeTypes["cpt-impl"]));
-    edgeSect.appendChild(statRow("file-link", edgeTypes["file-link"]));
+    const edgeHint = el("div", { className: "stat-hint" }, "click to toggle visibility");
+    edgeSect.appendChild(edgeHint);
+    ["cpt-doc", "cpt-impl", "file-link"].forEach(function (type) {
+      const row = statRow(type, edgeTypes[type]);
+      row.classList.add("clickable", "edge-toggle", "edge-toggle-" + type);
+      // initial visual state (off)
+      if (enabledEdgeTypes[type]) row.classList.add("active");
+      row.title = "Show/hide all " + type + " edges";
+      row.addEventListener("click", function () {
+        enabledEdgeTypes[type] = !enabledEdgeTypes[type];
+        row.classList.toggle("active", enabledEdgeTypes[type]);
+        recomputeEdgeVisibility();
+      });
+      edgeSect.appendChild(row);
+    });
     sidebar.appendChild(edgeSect);
 
     /* Dangling row — clickable */
@@ -513,46 +535,53 @@
 
   function clearFocus() {
     currentFocusIds = null;
-    const edgesDS = window._cfcEdgesDS;
-    const nodesDS = window._cfcNodesDS;
-    const allNodeIds = window._cfcAllNodeIds || [];
-    if (edgesDS) {
-      edgesDS.update(allEdgesData.map(function (e) {
-        return { id: e.id, hidden: true };
-      }));
-    }
-    if (nodesDS) {
-      nodesDS.update(allNodeIds.map(function (id) {
-        return { id: id, opacity: 1.0 };
-      }));
-    }
+    recomputeEdgeVisibility();
     const network = window._cfcNetwork;
     if (network) network.selectNodes([]);
   }
 
   function applyFocus(nodeIdSet) {
+    recomputeEdgeVisibility();
+    const network = window._cfcNetwork;
+    if (network) network.selectNodes(Array.from(nodeIdSet));
+  }
+
+  /* Single source of truth for edge & node visibility:
+   *   edge visible ⇔  enabledEdgeTypes[type]  OR  edge in focus BFS reach
+   *   node opaque  ⇔  in focus reachable set  OR  (no focus AND any enabled
+   *                   edge type touches it)  OR  no focus AND no enabled types
+   *                   (i.e. neutral baseline — full opacity everywhere).
+   */
+  function recomputeEdgeVisibility() {
     const edgesDS = window._cfcEdgesDS;
     const nodesDS = window._cfcNodesDS;
     const allNodeIds = window._cfcAllNodeIds || [];
     if (!edgesDS || !nodesDS) return;
 
-    const result = nodesWithinDepth(Array.from(nodeIdSet), activeDepth, allEdgesData);
-    const reachableNodes = result.nodes;
-    const reachableEdges = result.edges;
+    let reachableNodes = null;
+    let reachableEdges = null;
+    if (currentFocusIds && currentFocusIds.size > 0) {
+      const result = nodesWithinDepth(Array.from(currentFocusIds), activeDepth, allEdgesData);
+      reachableNodes = result.nodes;
+      reachableEdges = result.edges;
+    }
 
-    // Show/hide edges
     edgesDS.update(allEdgesData.map(function (e) {
-      return { id: e.id, hidden: !reachableEdges.has(e.id) };
+      const byType = !!enabledEdgeTypes[e.type];
+      const byFocus = reachableEdges ? reachableEdges.has(e.id) : false;
+      return { id: e.id, hidden: !(byType || byFocus) };
     }));
 
-    // Dim nodes not in the reachable set (and not the focus)
-    nodesDS.update(allNodeIds.map(function (id) {
-      return { id: id, opacity: reachableNodes.has(id) ? 1.0 : 0.18 };
-    }));
-
-    // Select focus nodes in vis
-    const network = window._cfcNetwork;
-    if (network) network.selectNodes(Array.from(nodeIdSet));
+    if (reachableNodes) {
+      nodesDS.update(allNodeIds.map(function (id) {
+        return { id: id, opacity: reachableNodes.has(id) ? 1.0 : 0.18 };
+      }));
+    } else {
+      // No focus → uniform opacity.
+      nodesDS.update(allNodeIds.map(function (id) {
+        return { id: id, opacity: 1.0 };
+      }));
+    }
   }
 
   /* ── Inspector ───────────────────────────────────────────────── */
