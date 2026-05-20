@@ -31,11 +31,23 @@ class OverrideConfig:
 class CategorizeOptions:
     project_root: Path
     override: Optional[OverrideConfig]
+    # Per-source project roots for federation: source_name → absolute root Path.
+    # When a node's source is found here, its source-specific artifacts.toml is
+    # used for registry lookup instead of the primary project_root.
+    source_roots: Optional[dict] = None  # Dict[str, Path]
 
 
 def categorize_nodes(nodes: Sequence[Node], opts: CategorizeOptions) -> None:
     """Mutate nodes in place, filling .category and .category_origin."""
-    registry_index = _build_registry_index(opts.project_root)
+    # Build per-source registry indices (primary + any federated sources).
+    source_roots: dict = dict(opts.source_roots or {})
+    # Always include primary root under "local" (and as default).
+    primary_index = _build_registry_index(opts.project_root)
+    per_source_index: dict = {"local": primary_index}
+    for src_name, src_root in source_roots.items():
+        if src_name != "local":
+            per_source_index[src_name] = _build_registry_index(src_root)
+
     for n in nodes:
         if n.kind == "phantom-cpt":
             n.category = "_undefined"
@@ -48,8 +60,9 @@ def categorize_nodes(nodes: Sequence[Node], opts: CategorizeOptions) -> None:
                 n.category = cat
                 n.category_origin = "override"
                 continue
-        # (2) Registry
+        # (2) Registry — use per-source index when available, else primary.
         if n.rel_path:
+            registry_index = per_source_index.get(n.source or "local", primary_index)
             cat = _match_registry(n.rel_path, registry_index)
             if cat is not None:
                 n.category = cat

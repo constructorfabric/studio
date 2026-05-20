@@ -56,7 +56,11 @@ def cmd_map(argv: List[str]) -> int:
         all_nodes.extend(scan_repo(opts))
         project_root_by_source[src["name"]] = src_root
 
-    categorize_nodes(all_nodes, CategorizeOptions(project_root=primary_root, override=override))
+    categorize_nodes(all_nodes, CategorizeOptions(
+        project_root=primary_root,
+        override=override,
+        source_roots=project_root_by_source,
+    ))
 
     file_edges = extract_file_links(all_nodes, project_root=primary_root)
     cpt_edges, phantoms = build_cpt_edges(all_nodes)

@@ -1,5 +1,5 @@
 # Shared
 
-- **ID**: `cpt-fed-flow-shared:p1`
+`p1` - **ID**: `cpt-fed-flow-shared`
 
 Shared contract used by main.

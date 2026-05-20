@@ -521,13 +521,24 @@ def find_workspace_config(project_root: Path) -> Tuple[Optional[WorkspaceConfig]
 
 
 # @cpt-begin:cpt-cypilot-algo-workspace-find-config:p1:inst-find-standalone-impl
+_LEGACY_WORKSPACE_FILENAME = ".cypilot-workspace.toml"
+
+
 def _find_standalone_workspace(
     project_root: Path,
 ) -> Tuple[Optional[WorkspaceConfig], Optional[str]]:
-    """Fallback: discover standalone .cf-constructor-workspace.toml at project root."""
+    """Fallback: discover standalone workspace TOML at project root.
+
+    Checks in order:
+    1. .cf-constructor-workspace.toml  (canonical name)
+    2. .cypilot-workspace.toml         (legacy / test-fixture name)
+    """
     candidate = (project_root / WORKSPACE_CONFIG_FILENAME).resolve()
     if candidate.is_file():
         return WorkspaceConfig.load(candidate)
+    legacy = (project_root / _LEGACY_WORKSPACE_FILENAME).resolve()
+    if legacy.is_file():
+        return WorkspaceConfig.load(legacy)
     return None, None
 # @cpt-end:cpt-cypilot-algo-workspace-find-config:p1:inst-find-standalone-impl
 
