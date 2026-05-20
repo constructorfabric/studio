@@ -1,0 +1,16 @@
+version = "1.2"
+project_root = "."
+
+[[systems]]
+slug = "basic"
+traceability_mode = "FULL"
+
+[[systems.artifacts]]
+path = "docs/architecture.md"
+
+[[systems.artifacts]]
+path = "docs/cli.md"
+
+[[systems.codebase]]
+path = "src"
+extensions = [".py", ".rs"]

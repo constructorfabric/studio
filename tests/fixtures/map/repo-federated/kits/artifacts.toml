@@ -1,0 +1,9 @@
+version = "1.2"
+project_root = "."
+
+[[systems]]
+slug = "kits"
+traceability_mode = "FULL"
+
+[[systems.artifacts]]
+path = "docs/shared.md"

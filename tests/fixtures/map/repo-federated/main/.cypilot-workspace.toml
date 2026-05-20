@@ -1,0 +1,9 @@
+version = "1.0"
+
+[sources.kits]
+path = "../kits"
+role = "artifacts"
+
+[traceability]
+cross_repo = true
+resolve_remote_ids = true

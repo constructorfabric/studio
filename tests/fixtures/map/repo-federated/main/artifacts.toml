@@ -1,0 +1,10 @@
+version = "1.2"
+project_root = "."
+
+[[systems]]
+slug = "main"
+traceability_mode = "FULL"
+
+[[systems.codebase]]
+path = "src"
+extensions = [".py"]

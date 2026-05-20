@@ -1,0 +1,13 @@
+version = "1.2"
+project_root = "."
+
+[[systems]]
+slug = "dangling"
+traceability_mode = "FULL"
+
+[[systems.artifacts]]
+path = "docs/only.md"
+
+[[systems.codebase]]
+path = "src"
+extensions = [".py"]
