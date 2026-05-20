@@ -284,40 +284,34 @@
      * We use afterDrawing because it fires after the canvas is cleared each frame,
      * letting us paint rectangles at absolute canvas coordinates. */
     if (hasPositions && Object.keys(categoryBands).length > 0) {
-      network.on("afterDrawing", function (ctx) {
+      /* beforeDrawing fires with the network transform already applied to ctx,
+       * so we draw bands directly in graph coordinates — vis-network handles
+       * pan/zoom for us. afterDrawing would paint on top of nodes; we want
+       * bands behind. */
+      network.on("beforeDrawing", function (ctx) {
         Object.keys(categoryBands).forEach(function (cat) {
           const band = categoryBands[cat];
-          // Convert graph coordinates to canvas coordinates
-          const topLeft = network.canvasToDOM({ x: band.x, y: band.y });
-          const bottomRight = network.canvasToDOM({ x: band.x + band.w, y: band.y + band.h });
-          const cx = topLeft.x;
-          const cy = topLeft.y;
-          const cw = bottomRight.x - topLeft.x;
-          const ch = bottomRight.y - topLeft.y;
+          const stroke = band.title_color || "#4060c0";
 
-          /* Background fill */
           ctx.save();
           ctx.globalAlpha = 0.08;
-          // Use stroke color as fill (band.fill uses color-mix which canvas can't parse)
-          ctx.fillStyle = band.title_color || "#4060c0";
-          ctx.fillRect(cx, cy, cw, ch);
+          ctx.fillStyle = stroke;
+          ctx.fillRect(band.x, band.y, band.w, band.h);
           ctx.restore();
 
-          /* Border */
           ctx.save();
           ctx.globalAlpha = 0.30;
-          ctx.strokeStyle = band.title_color || "#4060c0";
+          ctx.strokeStyle = stroke;
           ctx.lineWidth = 1.5;
           ctx.setLineDash([4, 4]);
-          ctx.strokeRect(cx, cy, cw, ch);
+          ctx.strokeRect(band.x, band.y, band.w, band.h);
           ctx.restore();
 
-          /* Label at top of band */
           ctx.save();
-          ctx.globalAlpha = 0.80;
-          ctx.fillStyle = band.title_color || "#4060c0";
-          ctx.font = "bold 11px sans-serif";
-          ctx.fillText(band.label || cat, cx + 6, cy + 14);
+          ctx.globalAlpha = 0.85;
+          ctx.fillStyle = stroke;
+          ctx.font = "bold 14px sans-serif";
+          ctx.fillText(band.label || cat, band.x + 8, band.y + 18);
           ctx.restore();
         });
       });
@@ -395,7 +389,8 @@
   }
 
   /* Hard cap on node visual width so labels do not blow up the grid layout. */
-  const NODE_WIDTH = 80;
+  const NODE_WIDTH = 60;
+  const NODE_HEIGHT_MAX = 40;
 
   function makeVisNode(n, primary, categories) {
     const label = shortLabel(n);
@@ -408,6 +403,8 @@
         title: tooltipFor(n),
         group: "phantom-cpt",
         widthConstraint: { maximum: NODE_WIDTH },
+        heightConstraint: { maximum: NODE_HEIGHT_MAX },
+        margin: 4,
         font: { color: "#c41212", size: 11 },
       });
     }
@@ -419,6 +416,8 @@
         title: tooltipFor(n),
         group: "source",
         widthConstraint: { maximum: NODE_WIDTH },
+        heightConstraint: { maximum: NODE_HEIGHT_MAX },
+        margin: 4,
         font: { face: "monospace", size: 11 },
       });
     }
