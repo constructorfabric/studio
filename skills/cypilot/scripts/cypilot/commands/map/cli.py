@@ -33,11 +33,6 @@ def cmd_map(argv: List[str]) -> int:
     p.add_argument("--no-source", action="store_true")
     p.add_argument("--local-only", action="store_true")
     p.add_argument("--inline-data", action="store_true")
-    p.add_argument(
-        "--include-hidden",
-        action="store_true",
-        help="Walk into dot-prefixed directories (.github, .windsurf, .bootstrap subdirs, etc).",
-    )
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
 
@@ -58,7 +53,6 @@ def cmd_map(argv: List[str]) -> int:
             project_root=src_root,
             source_name=src["name"],
             no_source=args.no_source,
-            include_hidden=args.include_hidden,
         )
         all_nodes.extend(scan_repo(opts))
         project_root_by_source[src["name"]] = src_root
@@ -90,7 +84,7 @@ def cmd_map(argv: List[str]) -> int:
         "artifacts_toml": "artifacts.toml" if art_toml.exists() else None,
         "systems_scanned": _count_systems(primary_root),
         "systems_docs_only": _count_systems(primary_root, docs_only=True),
-        "skip_dirs": ["target", "node_modules", ".git", ".bootstrap"],
+        "skip_dirs": sorted(skip_dirs_for_meta(primary_root)),
     }
 
     json_payload = render_json(RenderJsonInput(
@@ -174,6 +168,16 @@ def _load_override(primary_root: Path, explicit: Optional[str]) -> Optional[Over
             background=style.get("background"),
         ))
     return OverrideConfig(categories=cats)
+
+
+def skip_dirs_for_meta(primary_root: Path):
+    """Surface the effective skip-dir set for the stdout summary."""
+    from .scan import DEFAULT_SKIP_DIRS, _detect_adapter_dir
+    skips = set(DEFAULT_SKIP_DIRS)
+    adapter = _detect_adapter_dir(primary_root)
+    if adapter:
+        skips.add(adapter)
+    return skips
 
 
 def _count_systems(primary_root: Path, docs_only: bool = False) -> int:
