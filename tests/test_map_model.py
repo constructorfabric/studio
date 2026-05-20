@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+
 from cypilot.commands.map.model import Node, Edge, Ref, CptUse, node_id, phantom_id
 
 
@@ -79,3 +81,19 @@ def test_edge_to_dict_json_roundtrip():
         cross_repo=False, dangling=False,
     )
     json.dumps(e.to_dict())  # must not raise
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SCHEMA_PATH = REPO_ROOT / "schemas" / "map.schema.json"
+
+
+def test_schema_parses_and_has_expected_keys():
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert schema["title"] == "cfc map output"
+    required = set(schema["required"])
+    assert required == {"version", "generated_at", "workspace", "scan", "nodes", "edges",
+                        "dangling_cpt_uses", "categories"}
+    node_props = schema["properties"]["nodes"]["items"]["properties"]
+    assert set(node_props["kind"]["enum"]) == {"markdown", "source", "phantom-cpt"}
+    edge_props = schema["properties"]["edges"]["items"]["properties"]
+    assert set(edge_props["type"]["enum"]) == {"file-link", "cpt-doc", "cpt-impl"}
