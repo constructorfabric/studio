@@ -150,6 +150,14 @@ def _cmd_delegate(argv: List[str]) -> int:
 def _cmd_check_language(argv: List[str]) -> int:
     from .commands.check_language import cmd_check_language
     return cmd_check_language(argv)
+
+# =============================================================================
+# VISUALIZATION COMMANDS
+# =============================================================================
+
+def _cmd_map(argv: List[str]) -> int:
+    from .commands.map.cli import cmd_map
+    return cmd_map(argv)
 # @cpt-end:cpt-cypilot-algo-core-infra-route-command:p1:inst-route-helpers
 
 # =============================================================================
@@ -194,10 +202,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     ]
     delegation_commands = ["delegate"]
     diagnostics_commands = ["doctor"]
+    visualization_commands = ["map"]
     all_commands = (
         analysis_commands + kit_commands + search_commands
         + workspace_commands + utility_commands + delegation_commands
-        + diagnostics_commands + legacy_aliases
+        + diagnostics_commands + visualization_commands + legacy_aliases
     )
 
     # Handle --help / -h at top level (or no subcommand)
@@ -229,6 +238,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             "workspace-sync": "Fetch and update Git URL source worktrees",
             "delegate": "Compile and delegate a plan to ralphex",
             "doctor": "Run environment health checks",
+            "map": "Build interactive markdown↔source dependency map via cpt identifiers",
         }
         _sections = [
             ("Setup & Configuration", ["init", "update", "info", "resolve-vars", "generate-agents", "agents"]),
@@ -239,6 +249,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             ("Workspace", ["workspace-init", "workspace-add", "workspace-info", "workspace-sync"]),
             ("Delegation", ["delegate"]),
             ("Diagnostics", ["doctor"]),
+            ("Visualization", ["map"]),
         ]
         if is_json_mode():
             import json  # pylint: disable=import-outside-toplevel  # lazy: only needed in JSON output mode
@@ -354,6 +365,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return _cmd_doctor(rest)
     elif cmd == "check-language":
         return _cmd_check_language(rest)
+    elif cmd == "map":
+        return _cmd_map(rest)
     else:
         # @cpt-begin:cpt-cypilot-algo-core-infra-route-command:p1:inst-if-no-handler
         # @cpt-begin:cpt-cypilot-algo-core-infra-route-command:p1:inst-return-unknown
