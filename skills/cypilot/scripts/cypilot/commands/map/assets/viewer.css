@@ -141,6 +141,30 @@ html, body {
   border: 1px solid currentColor;
 }
 
+/* Per-kind active colors for node-toggle rows */
+.stat-row.node-toggle .label::before {
+  content: "■";
+  display: inline-block;
+  width: 12px;
+  margin-right: 6px;
+  color: currentColor;
+  opacity: 0.55;
+  vertical-align: middle;
+}
+.stat-row.node-toggle-markdown .label    { color: #7744cc; }
+.stat-row.node-toggle-source .label      { color: #c07000; }
+.stat-row.node-toggle-phantom-cpt .label { color: #c41212; }
+
+.stat-row.node-toggle.active .label::before { opacity: 1; }
+.stat-row.node-toggle-markdown.active    { background: rgba(119, 68, 204, 0.18); outline-color: #7744cc; }
+.stat-row.node-toggle-source.active      { background: rgba(192, 112, 0, 0.20); outline-color: #c07000; }
+.stat-row.node-toggle-phantom-cpt.active { background: rgba(196, 18, 18, 0.18); outline-color: #c41212; }
+.stat-row.node-toggle.active .label      { color: #fff; }
+.stat-row.node-toggle.active .count      {
+  background: transparent; color: inherit;
+  border: 1px solid currentColor;
+}
+
 .stat-hint {
   font-size: 10px;
   color: #888;

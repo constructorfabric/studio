@@ -50,6 +50,14 @@
     "file-link": false,
   };
 
+  // Node-kind filters. When true → that kind is shown; when false → hidden,
+  // and edges with a hidden endpoint are also hidden. Defaults: all on.
+  const enabledNodeKinds = {
+    "markdown": true,
+    "source": true,
+    "phantom-cpt": true,
+  };
+
   /* ── Bootstrap ──────────────────────────────────────────────── */
   document.addEventListener("DOMContentLoaded", function () {
     const data = window.MAP_DATA;
@@ -112,9 +120,21 @@
       if (n.kind in nodeKinds) nodeKinds[n.kind]++;
     });
     const nodeSect = section("Nodes  (" + (data.nodes || []).length + ")");
-    nodeSect.appendChild(statRow("markdown",    nodeKinds.markdown));
-    nodeSect.appendChild(statRow("source",      nodeKinds.source));
-    nodeSect.appendChild(statRow("phantom-cpt", nodeKinds["phantom-cpt"]));
+    const nodeHint = el("div", { className: "stat-hint" }, "click to toggle visibility");
+    nodeSect.appendChild(nodeHint);
+    ["markdown", "source", "phantom-cpt"].forEach(function (kind) {
+      const row = statRow(kind, nodeKinds[kind]);
+      row.classList.add("clickable", "node-toggle", "node-toggle-" + kind);
+      if (enabledNodeKinds[kind]) row.classList.add("active");
+      row.title = "Show/hide all " + kind + " nodes";
+      row.addEventListener("click", function () {
+        enabledNodeKinds[kind] = !enabledNodeKinds[kind];
+        row.classList.toggle("active", enabledNodeKinds[kind]);
+        recomputeNodeVisibility();
+        recomputeEdgeVisibility();
+      });
+      nodeSect.appendChild(row);
+    });
     sidebar.appendChild(nodeSect);
 
     /* Edge counters */
@@ -384,6 +404,7 @@
     window._cfcEdgesDS = edgesDS;
     window._cfcNodesDS = nodesDS;
     window._cfcAllNodeIds = visNodes.map(function (vn) { return vn.id; });
+    window._cfcAllNodesData = data.nodes || [];
 
     /* Store reference for search and sidebar */
     window._cfcNetwork = network;
@@ -546,17 +567,31 @@
     if (network) network.selectNodes(Array.from(nodeIdSet));
   }
 
-  /* Single source of truth for edge & node visibility:
-   *   edge visible ⇔  enabledEdgeTypes[type]  OR  edge in focus BFS reach
-   *   node opaque  ⇔  in focus reachable set  OR  (no focus AND any enabled
-   *                   edge type touches it)  OR  no focus AND no enabled types
-   *                   (i.e. neutral baseline — full opacity everywhere).
+  /* Node visibility — driven by enabledNodeKinds. Hidden nodes are removed
+   * from the canvas (vis-network auto-hides edges whose endpoint is hidden,
+   * but we also enforce it in recomputeEdgeVisibility for consistency). */
+  function recomputeNodeVisibility() {
+    const nodesDS = window._cfcNodesDS;
+    const allNodesData = window._cfcAllNodesData || [];
+    if (!nodesDS) return;
+    nodesDS.update(allNodesData.map(function (n) {
+      return { id: n.id, hidden: !enabledNodeKinds[n.kind] };
+    }));
+  }
+
+  /* Single source of truth for edge visibility:
+   *   edge visible ⇔ (enabledEdgeTypes[type]  OR  edge in focus BFS reach)
+   *                  AND both endpoints belong to an enabled node kind.
    */
   function recomputeEdgeVisibility() {
     const edgesDS = window._cfcEdgesDS;
     const nodesDS = window._cfcNodesDS;
     const allNodeIds = window._cfcAllNodeIds || [];
+    const allNodesData = window._cfcAllNodesData || [];
     if (!edgesDS || !nodesDS) return;
+
+    const kindById = {};
+    allNodesData.forEach(function (n) { kindById[n.id] = n.kind; });
 
     let reachableNodes = null;
     let reachableEdges = null;
@@ -569,7 +604,10 @@
     edgesDS.update(allEdgesData.map(function (e) {
       const byType = !!enabledEdgeTypes[e.type];
       const byFocus = reachableEdges ? reachableEdges.has(e.id) : false;
-      return { id: e.id, hidden: !(byType || byFocus) };
+      const endpointsVisible =
+        enabledNodeKinds[kindById[e.from]] !== false &&
+        enabledNodeKinds[kindById[e.to]]   !== false;
+      return { id: e.id, hidden: !((byType || byFocus) && endpointsVisible) };
     }));
 
     if (reachableNodes) {
@@ -577,7 +615,6 @@
         return { id: id, opacity: reachableNodes.has(id) ? 1.0 : 0.18 };
       }));
     } else {
-      // No focus → uniform opacity.
       nodesDS.update(allNodeIds.map(function (id) {
         return { id: id, opacity: 1.0 };
       }));
