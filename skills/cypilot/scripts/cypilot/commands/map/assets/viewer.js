@@ -68,6 +68,7 @@
     buildSidebar(data);
     const network = buildGraph(data);
     buildSearch(data, network);
+    wireToolbar();
   });
 
   /* ── Sidebar ─────────────────────────────────────────────────── */
@@ -365,6 +366,15 @@
         const nodeId = params.nodes[0];
         const node = findById(data.nodes, nodeId);
         if (node) showNodeInspector(node, data, primary);
+
+        // Push canvas click into nav history too — but only if landing on a
+        // different node than the current one.
+        if (navCurrent && navCurrent !== nodeId) {
+          navBack.push(navCurrent);
+          navFwd.length = 0;
+        }
+        navCurrent = nodeId;
+        refreshToolbarState();
 
         // Toggle focus: clicking the same focused single-node clears it
         if (currentFocusIds && currentFocusIds.size === 1 && currentFocusIds.has(nodeId)) {
@@ -925,16 +935,84 @@
     return el("code", {}, text);
   }
 
-  /* Open a node by id: focus, zoom, open inspector. */
-  function jumpToNode(nodeId) {
+  /* Navigation history (back / forward).
+   *   navBack  = stack of node IDs visited before the current one
+   *   navFwd   = stack of node IDs that were "back-ed out of"
+   *   navCurrent = the node currently shown in the inspector (top of history)
+   * Any normal jumpToNode() pushes current → navBack and clears navFwd.
+   * Back/forward navigation must NOT mutate those stacks beyond their own
+   * intent, so jumpToNode() accepts a `fromHistory` opt to skip the push. */
+  const navBack = [];
+  const navFwd = [];
+  let navCurrent = null;
+
+  function jumpToNode(nodeId, opts) {
+    opts = opts || {};
     const network = window._cfcNetwork;
     const data = window.MAP_DATA || {};
     const primary = (data.workspace || {}).primary || "local";
     if (!network) return;
+
+    if (!opts.fromHistory) {
+      if (navCurrent && navCurrent !== nodeId) {
+        navBack.push(navCurrent);
+        navFwd.length = 0;  // new navigation invalidates redo stack
+      }
+    }
+    navCurrent = nodeId;
+    refreshToolbarState();
+
     setFocus(new Set([nodeId]));
     network.fit({ nodes: [nodeId], animation: { duration: 350 } });
     const node = (data.nodes || []).filter(function (n) { return n.id === nodeId; })[0];
     if (node) showNodeInspector(node, data, primary);
+  }
+
+  function navGoBack() {
+    if (!navBack.length) return;
+    const prev = navBack.pop();
+    if (navCurrent) navFwd.push(navCurrent);
+    jumpToNode(prev, { fromHistory: true });
+  }
+
+  function navGoForward() {
+    if (!navFwd.length) return;
+    const next = navFwd.pop();
+    if (navCurrent) navBack.push(navCurrent);
+    jumpToNode(next, { fromHistory: true });
+  }
+
+  function refreshToolbarState() {
+    const back = document.getElementById("tb-back");
+    const fwd  = document.getElementById("tb-fwd");
+    if (back) back.disabled = navBack.length === 0;
+    if (fwd)  fwd.disabled  = navFwd.length === 0;
+  }
+
+  function zoomBy(factor) {
+    const network = window._cfcNetwork;
+    if (!network) return;
+    const cur = network.getScale();
+    network.moveTo({ scale: cur * factor, animation: { duration: 150 } });
+  }
+
+  function fitAll() {
+    const network = window._cfcNetwork;
+    if (network) network.fit({ animation: { duration: 350 } });
+  }
+
+  function wireToolbar() {
+    const back = document.getElementById("tb-back");
+    const fwd  = document.getElementById("tb-fwd");
+    const zi   = document.getElementById("tb-zoom-in");
+    const zo   = document.getElementById("tb-zoom-out");
+    const fit  = document.getElementById("tb-fit");
+    if (back) back.addEventListener("click", navGoBack);
+    if (fwd)  fwd.addEventListener("click",  navGoForward);
+    if (zi)   zi.addEventListener("click",   function () { zoomBy(1.25); });
+    if (zo)   zo.addEventListener("click",   function () { zoomBy(1 / 1.25); });
+    if (fit)  fit.addEventListener("click",  fitAll);
+    refreshToolbarState();
   }
 
   /* Build a clickable chip for a cpt-id that jumps to its definer (or shows

@@ -208,6 +208,43 @@ html, body {
   overflow: hidden;
 }
 
+/* ── Toolbar (top-right of graph) ── */
+#toolbar {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+  display: flex;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #d0d0e0;
+  border-radius: 6px;
+  padding: 3px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+#toolbar button {
+  width: 28px; height: 28px;
+  font-size: 14px;
+  line-height: 1;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #334;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+#toolbar button:hover:not(:disabled) {
+  background: #eef0fa;
+  border-color: #c0c8e0;
+  color: #3050a0;
+}
+#toolbar button:disabled {
+  color: #bbb;
+  cursor: not-allowed;
+}
+
 /* ── Inspector (right, 320px, hidden by default) ── */
 #inspector {
   width: 320px;
