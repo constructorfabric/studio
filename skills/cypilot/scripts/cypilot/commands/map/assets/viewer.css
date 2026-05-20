@@ -1,0 +1,305 @@
+/* cfc map viewer — 3-column layout */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  background: #f4f4f6;
+  color: #1a1a2e;
+}
+
+#app {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── Sidebar (left, 240px) ── */
+#sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  background: #1a1a2e;
+  color: #e0e0f0;
+  padding: 12px 10px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#sidebar h2 {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #9090bb;
+  margin: 0 0 4px 0;
+}
+
+#sidebar .logo {
+  font-size: 14px;
+  font-weight: 800;
+  color: #a0c4ff;
+  letter-spacing: 0.04em;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #2d2d50;
+}
+
+.stat-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 6px;
+  border-radius: 4px;
+  cursor: default;
+}
+
+.stat-row:hover {
+  background: #2d2d50;
+}
+
+.stat-row .label {
+  color: #c0c0e0;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stat-row .count {
+  font-size: 11px;
+  font-weight: 700;
+  background: #2d2d50;
+  color: #a0c4ff;
+  border-radius: 9px;
+  padding: 1px 7px;
+  min-width: 24px;
+  text-align: center;
+}
+
+.stat-row.danger .count {
+  background: #4a1010;
+  color: #ff8080;
+}
+
+.stat-row.clickable {
+  cursor: pointer;
+}
+
+.stat-row.clickable:hover .count {
+  background: #c41212;
+  color: #fff;
+}
+
+/* Search box */
+#search-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+#search-input {
+  width: 100%;
+  padding: 5px 8px;
+  background: #2d2d50;
+  border: 1px solid #4040aa;
+  border-radius: 5px;
+  color: #e0e0f0;
+  font-size: 12px;
+  outline: none;
+}
+
+#search-input:focus {
+  border-color: #80a0ff;
+}
+
+#search-results {
+  font-size: 11px;
+  color: #9090bb;
+  min-height: 14px;
+}
+
+/* ── Graph (center, fills) ── */
+#graph {
+  flex: 1;
+  background: #f9f9fb;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── Inspector (right, 320px, hidden by default) ── */
+#inspector {
+  width: 320px;
+  flex-shrink: 0;
+  background: #fff;
+  border-left: 1px solid #dde;
+  padding: 0;
+  overflow-y: auto;
+  transform: translateX(320px);
+  transition: transform 0.2s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+#inspector.open {
+  transform: translateX(0);
+}
+
+#inspector-header {
+  padding: 10px 14px;
+  background: #f0f0fa;
+  border-bottom: 1px solid #dde;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+#inspector-header .kind-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  padding: 2px 8px;
+  border-radius: 10px;
+  color: #fff;
+}
+
+.kind-badge.markdown  { background: #4060c0; }
+.kind-badge.source    { background: #c07000; }
+.kind-badge.phantom-cpt { background: #c41212; }
+.kind-badge.edge      { background: #606060; }
+
+#inspector-close {
+  background: none;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  color: #888;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+#inspector-close:hover {
+  color: #333;
+}
+
+#inspector-body {
+  padding: 12px 14px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+#inspector-body h3 {
+  font-size: 12px;
+  font-weight: 700;
+  margin: 12px 0 4px 0;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+#inspector-body h3:first-child {
+  margin-top: 0;
+}
+
+#inspector-body p {
+  margin: 3px 0;
+  word-break: break-all;
+  line-height: 1.45;
+}
+
+#inspector-body .field-label {
+  color: #888;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+#inspector-body code {
+  font-family: "JetBrains Mono", "Fira Code", "Menlo", monospace;
+  font-size: 11px;
+  background: #f0f0f8;
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+
+.content-block {
+  background: #f7f7fa;
+  border-left: 3px solid #c0c8f0;
+  border-radius: 0 4px 4px 0;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-family: "JetBrains Mono", "Fira Code", "Menlo", monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 240px;
+  overflow-y: auto;
+  line-height: 1.5;
+  color: #334;
+  margin-top: 4px;
+}
+
+.ref-card {
+  background: #f7f7fa;
+  border: 1px solid #e0e0ee;
+  border-radius: 5px;
+  padding: 6px 10px;
+  margin: 4px 0;
+  font-size: 11px;
+}
+
+.ref-card .cpt-id {
+  font-weight: 700;
+  color: #3050a0;
+}
+
+.ref-card .snippet {
+  font-family: "JetBrains Mono", "Fira Code", "Menlo", monospace;
+  color: #555;
+}
+
+/* ── Edge color tokens ── */
+.edge-token {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.edge-cpt-doc  { background: #4060c0; }
+.edge-cpt-impl { background: #20a060; }
+.edge-file-link { background: #888888; }
+.edge-dangling  { background: #c41212; }
+
+/* ── Scrollbar tweaks ── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #bbb;
+  border-radius: 3px;
+}
+
+#sidebar::-webkit-scrollbar-thumb {
+  background: #444;
+}
