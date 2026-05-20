@@ -284,6 +284,10 @@
       return vn;
     });
 
+    /* Expose node data before building edges so edgeLabel() can look up
+     * file-link target rel_paths during makeVisEdge(). */
+    window._cfcAllNodesData = data.nodes || [];
+
     /* Edges — hidden by default until a focus is set */
     allEdgesData = data.edges || [];
     const visEdges = allEdgesData.map(function (e) {
@@ -524,8 +528,31 @@
       width: isD ? 2 : (e.type === "file-link" ? 1 : 1.5),
       dashes: isD,
       title: e.type + (isD ? " (dangling)" : "") + (e.cross_repo ? " [cross-repo]" : ""),
-      label: e.type === "file-link" ? "" : e.type,
+      label: edgeLabel(e),
+      font: { size: 9, color: palette.color || "#666", align: "middle", background: "rgba(255,255,255,0.85)" },
     };
+  }
+
+  /* Edge label:
+   *   file-link → basename of the target rel_path (target is markdown).
+   *   cpt-doc / cpt-impl → the cpt-id (from refs[0]); on multiple refs append "+N more".
+   */
+  function edgeLabel(e) {
+    if (e.type === "file-link") {
+      const target = (window._cfcAllNodesData || []).find(function (n) { return n.id === e.to; });
+      if (target && target.rel_path) {
+        const base = target.rel_path.split("/").pop();
+        return base.replace(/\.md$/, "");
+      }
+      return "";
+    }
+    // cpt-doc / cpt-impl
+    const refs = e.refs || [];
+    if (!refs.length) return "";
+    const first = refs[0].cpt_id || "";
+    const short = first.replace(/^cpt-/, "").replace(/:p\d+$/, "");
+    if (refs.length > 1) return short + " +" + (refs.length - 1);
+    return short;
   }
 
   /* ── BFS edge/node reachability ─────────────────────────────── */
