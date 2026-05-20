@@ -111,6 +111,49 @@ class ScanOptions:
     source_name: str
     no_source: bool = False
     extra_skip_dirs: Sequence[str] = field(default_factory=list)
+    # When True, walk into dot-prefixed directories (.github, .windsurf, etc).
+    # DEFAULT_SKIP_DIRS still wins — entries listed there are skipped regardless.
+    include_hidden: bool = False
+
+
+# ---------------------------------------------------------------------------
+# File walker
+# ---------------------------------------------------------------------------
+
+def _walk_files(root: Path, extensions: Sequence[str], skip_dirs: Set[str],
+                include_hidden: bool, max_bytes: int = 1_000_000) -> List[Path]:
+    """Iterate text files under ``root`` matching ``extensions``.
+
+    Walker logic:
+      * Directories whose basename matches ``skip_dirs`` are never traversed.
+      * Directories whose basename starts with ``.`` are skipped unless
+        ``include_hidden=True``.
+      * Files larger than ``max_bytes`` are skipped (safety against binaries).
+
+    Returns a sorted, deduplicated list of absolute paths.
+    """
+    import os
+
+    ext_set = {e.lower() for e in extensions}
+    out: List[Path] = []
+    root = root.resolve()
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = sorted(
+            d for d in dirnames
+            if d not in skip_dirs and (include_hidden or not d.startswith("."))
+        )
+        for fn in sorted(filenames):
+            suffix = os.path.splitext(fn)[1].lower()
+            if suffix not in ext_set:
+                continue
+            fp = Path(dirpath) / fn
+            try:
+                if fp.stat().st_size > max_bytes:
+                    continue
+            except OSError:
+                continue
+            out.append(fp)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -126,10 +169,10 @@ def scan_repo(opts: ScanOptions) -> List[Node]:
     skip_dirs: Set[str] = set(DEFAULT_SKIP_DIRS) | set(opts.extra_skip_dirs)
 
     nodes: List[Node] = []
-    nodes.extend(_scan_markdown(root, opts.source_name, skip_dirs))
+    nodes.extend(_scan_markdown(root, opts.source_name, skip_dirs, opts.include_hidden))
 
     if not opts.no_source:
-        nodes.extend(_scan_sources(root, opts.source_name, skip_dirs))
+        nodes.extend(_scan_sources(root, opts.source_name, skip_dirs, opts.include_hidden))
 
     return nodes
 
@@ -138,20 +181,16 @@ def scan_repo(opts: ScanOptions) -> List[Node]:
 # Markdown scanning
 # ---------------------------------------------------------------------------
 
-def _scan_markdown(root: Path, source_name: str, skip_dirs: Set[str]) -> List[Node]:
+def _scan_markdown(root: Path, source_name: str, skip_dirs: Set[str],
+                   include_hidden: bool) -> List[Node]:
     """Walk .md files under root and return markdown Nodes.
 
     @cpt-algo:cpt-cypilot-algo-map-scan-walker:p1
     """
-    from cypilot.utils.document import iter_text_files, to_relative_posix
+    from cypilot.utils.document import to_relative_posix
 
     nodes: List[Node] = []
-    # Use both patterns: "*.md" for root-level files and "**/*.md" for subdirs.
-    # fnmatch "**/*.md" does not match files at the root level (no directory separator).
-    md_files_set: Set[Path] = set()
-    md_files_set.update(iter_text_files(root, includes=["*.md"]))
-    md_files_set.update(iter_text_files(root, includes=["**/*.md"]))
-    md_files = sorted(md_files_set)
+    md_files = _walk_files(root, [".md"], skip_dirs, include_hidden)
 
     for path in md_files:
         # Skip dirs — iter_text_files already filters most; add our extras.
@@ -240,7 +279,8 @@ def _split_md_cpt(path: Path) -> Tuple[List[str], List[CptUse]]:
 # Source scanning
 # ---------------------------------------------------------------------------
 
-def _scan_sources(root: Path, source_name: str, skip_dirs: Set[str]) -> List[Node]:
+def _scan_sources(root: Path, source_name: str, skip_dirs: Set[str],
+                  include_hidden: bool) -> List[Node]:
     """Scan source files driven by [[systems.codebase]] entries in artifacts.toml.
 
     @cpt-algo:cpt-cypilot-algo-map-scan-walker:p1
@@ -274,7 +314,7 @@ def _scan_sources(root: Path, source_name: str, skip_dirs: Set[str]) -> List[Nod
         if not ext_set:
             continue
 
-        for path in _walk_source_dir(cb_dir, ext_set, skip_dirs):
+        for path in _walk_source_dir(cb_dir, ext_set, skip_dirs, include_hidden):
             if path in seen:
                 continue
             seen.add(path)
@@ -297,11 +337,15 @@ def _load_registry(registry_path: Path):
     return ArtifactsMeta.from_dict(data)
 
 
-def _walk_source_dir(cb_dir: Path, ext_set: Set[str], skip_dirs: Set[str]) -> List[Path]:
+def _walk_source_dir(cb_dir: Path, ext_set: Set[str], skip_dirs: Set[str],
+                     include_hidden: bool) -> List[Path]:
     """Walk a codebase directory, yielding files matching the given extensions."""
     result: List[Path] = []
     for dirpath, dirnames, filenames in os.walk(cb_dir):
-        dirnames[:] = [d for d in dirnames if d not in skip_dirs and not d.startswith(".")]
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in skip_dirs and (include_hidden or not d.startswith("."))
+        ]
         for fn in filenames:
             suffix = Path(fn).suffix
             if suffix in ext_set:

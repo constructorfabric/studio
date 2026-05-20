@@ -33,6 +33,11 @@ def cmd_map(argv: List[str]) -> int:
     p.add_argument("--no-source", action="store_true")
     p.add_argument("--local-only", action="store_true")
     p.add_argument("--inline-data", action="store_true")
+    p.add_argument(
+        "--include-hidden",
+        action="store_true",
+        help="Walk into dot-prefixed directories (.github, .windsurf, .bootstrap subdirs, etc).",
+    )
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
 
@@ -53,6 +58,7 @@ def cmd_map(argv: List[str]) -> int:
             project_root=src_root,
             source_name=src["name"],
             no_source=args.no_source,
+            include_hidden=args.include_hidden,
         )
         all_nodes.extend(scan_repo(opts))
         project_root_by_source[src["name"]] = src_root
