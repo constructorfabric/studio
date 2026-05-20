@@ -35,6 +35,41 @@ DEFAULT_SKIP_DIRS: Tuple[str, ...] = (
     ".ruff_cache",
 )
 
+_MAX_SNIPPET_LINES = 18
+_MAX_SNIPPET_CHARS = 1200
+
+
+def _paragraph_around(lines_raw, line_no: int) -> str:
+    """Return the contiguous block of non-blank lines around a 1-based line index.
+
+    Walks up and down from the target until a blank line, capped by line/char
+    budget. The target line is always included even if blank (edge case).
+    """
+    n = len(lines_raw)
+    if not (1 <= line_no <= n):
+        return ""
+    target_idx = line_no - 1
+
+    # Walk up while previous line is non-blank.
+    up = target_idx
+    while up - 1 >= 0 and lines_raw[up - 1].strip():
+        up -= 1
+        if target_idx - up >= _MAX_SNIPPET_LINES // 2:
+            break
+
+    # Walk down while next line is non-blank.
+    down = target_idx
+    while down + 1 < n and lines_raw[down + 1].strip():
+        down += 1
+        if down - target_idx >= _MAX_SNIPPET_LINES - (target_idx - up):
+            break
+
+    text = "\n".join(line.rstrip() for line in lines_raw[up:down + 1])
+    if len(text) > _MAX_SNIPPET_CHARS:
+        text = text[:_MAX_SNIPPET_CHARS].rstrip() + "\n…"
+    return text
+
+
 _EXT_TO_LANG = {
     ".py": "python",
     ".rs": "rust",
@@ -160,7 +195,7 @@ def _split_md_cpt(path: Path) -> Tuple[List[str], List[CptUse]]:
         cpt_id = f"{base_id}:{priority}" if priority else base_id
 
         line_no = int(h.get("line", 0))
-        snippet = lines_raw[line_no - 1].rstrip() if (0 < line_no <= len(lines_raw)) else ""
+        snippet = _paragraph_around(lines_raw, line_no) if line_no > 0 else ""
         hit_type = h.get("type", "reference")
 
         if hit_type == "definition":
@@ -270,34 +305,49 @@ def _make_source_node(path: Path, root: Path, source_name: str) -> Optional[Node
     cf, _errors = CodeFile.from_path(path)
 
     cpt_uses: List[CptUse] = []
+    # Read raw lines once for snippet extraction.
+    try:
+        src_lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        src_lines = []
+
+    def _code_snippet(lo: int, hi: int) -> str:
+        if not src_lines:
+            return ""
+        lo = max(1, lo)
+        hi = min(len(src_lines), hi)
+        if lo > hi:
+            return ""
+        return "\n".join(src_lines[lo - 1:hi])
 
     if cf is not None:
-        # Scope markers → marker_kind="scope"
-        # Build phase-qualified cpt_id: "{id}:p{phase}"
+        # Scope markers → marker_kind="scope"; embed 3 lines after the marker
+        # so the surrounding code is visible.
         for sm in cf.scope_markers:
             cpt_id = f"{sm.id}:p{sm.phase}"
             cpt_uses.append(CptUse(
                 cpt_id=cpt_id,
                 line=sm.line,
-                snippet=sm.raw.rstrip(),
+                snippet=_code_snippet(sm.line, sm.line + 4) or sm.raw.rstrip(),
                 marker_kind="scope",
             ))
-        # Block markers → one block-begin + one block-end per pair
-        # Build phase-qualified cpt_id: "{id}:p{phase}"
+        # Block markers → begin + end with the inner body included for begin.
         for bm in cf.block_markers:
             cpt_id = f"{bm.id}:p{bm.phase}"
-            # begin entry
+            inner_hi = min(bm.start_line + _MAX_SNIPPET_LINES, bm.end_line)
             cpt_uses.append(CptUse(
                 cpt_id=cpt_id,
                 line=bm.start_line,
-                snippet=f"@cpt-begin:{bm.id}:p{bm.phase}:inst-{bm.inst}",
+                snippet=_code_snippet(bm.start_line, inner_hi)
+                        or f"@cpt-begin:{bm.id}:p{bm.phase}:inst-{bm.inst}",
                 marker_kind="block-begin",
             ))
-            # end entry
+            # end entry — show last few lines of the block leading up to the @cpt-end
             cpt_uses.append(CptUse(
                 cpt_id=cpt_id,
                 line=bm.end_line,
-                snippet=f"@cpt-end:{bm.id}:p{bm.phase}:inst-{bm.inst}",
+                snippet=_code_snippet(max(bm.start_line, bm.end_line - 4), bm.end_line)
+                        or f"@cpt-end:{bm.id}:p{bm.phase}:inst-{bm.inst}",
                 marker_kind="block-end",
             ))
 
