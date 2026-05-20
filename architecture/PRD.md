@@ -405,6 +405,24 @@ The system MUST define a plain English behavioral specification language (CDSL) 
 **Actors**:
 `cpt-cypilot-actor-user`, `cpt-cypilot-actor-ai-agent`
 
+#### Dependency Mapping
+
+- [x] `p1` - **ID**: `cpt-cypilot-fr-core-dependency-mapping`
+
+The system MUST provide an interactive dependency map command (`cfc map`) that visualizes the full project graph of markdown files, source files, and the traceability edges between them. The command MUST:
+
+1. Scan all markdown files under the project root and extract cpt-ID definitions and cross-references.
+2. Scan registered source files (from `artifacts.toml` `[[systems.codebase]]` entries) for `@cpt-*` scope and block markers.
+3. Produce three edge types: `cpt-impl` (source → markdown definition), `cpt-doc` (markdown → markdown reference), `file-link` (markdown hyperlink → markdown).
+4. Detect phantom cpt-IDs — IDs referenced in code but defined nowhere — and surface them as distinct phantom nodes in the graph.
+5. Categorize every node via a three-step chain: explicit override → artifacts.toml registry prefix → parent directory name.
+6. Lay out the graph using a rectpack-based category layout targeting a 16:9 aspect ratio.
+7. Output a self-contained HTML viewer (default) or a canonical JSON payload (`--format json`).
+8. Support workspace federation (`--local-only` to disable) and source-only scan exclusion (`--no-source`).
+
+**Actors**:
+`cpt-cypilot-actor-user`, `cpt-cypilot-actor-ai-agent`, `cpt-cypilot-actor-ci-pipeline`
+
 #### Version Detection and Updates
 
 - [ ] `p2` - **ID**: `cpt-cypilot-fr-core-version`

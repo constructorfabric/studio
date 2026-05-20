@@ -21,6 +21,7 @@
   - [2.13 Subagent Registration ⏳ HIGH](#213-subagent-registration--high)
   - [2.14 ralphex Delegation ⏳ HIGH](#214-ralphex-delegation--high)
   - [2.15 Project-Level Extensibility ⏳ HIGH](#215-project-level-extensibility--high)
+  - [2.16 Dependency Mapping ✅ HIGH](#216-dependency-mapping--high)
 - [3. Feature Dependencies](#3-feature-dependencies)
 
 <!-- /toc -->
@@ -769,6 +770,77 @@ Cypilot DESIGN is decomposed into features organized around architectural layers
   - Layer path variables in resolved variable dict
 
 
+### 2.16 [Dependency Mapping](features/dependency-mapping.md) ✅ HIGH
+
+- [x] `p1` - **ID**: `cpt-cypilot-feature-dependency-mapping`
+
+- **Purpose**: Visualize the full project architecture graph — markdown specs, source files, cpt traceability edges, and markdown hyperlinks — as an interactive HTML viewer or canonical JSON, enabling reverse-engineering workflows and phantom-ID detection.
+
+- **Depends On**: `cpt-cypilot-feature-traceability-validation`, `cpt-cypilot-feature-workspace`
+
+- **Scope**:
+  - Markdown and source file scanning with cpt-ID extraction
+  - `cpt-impl` edge construction (source marker → markdown definition)
+  - `cpt-doc` edge construction (markdown reference → markdown definition)
+  - `file-link` edge construction (markdown hyperlink → markdown)
+  - Phantom cpt-ID detection: IDs used but never defined become `phantom-cpt` nodes
+  - Three-step category resolution: override (`md-map.toml`) → artifacts.toml registry prefix → parent directory
+  - Per-edge content enrichment via `get_content_scoped` for tooltip display
+  - Rectpack-based category layout (16:9 target aspect, affinity-ordered placement)
+  - JSON canonical output (nodes, edges, dangling_cpt_uses, categories, layout)
+  - Self-contained HTML viewer with vis-network, viewer JS/CSS, inline or sidecar data
+  - Workspace federation support (multi-source scanning)
+
+- **Out of scope**:
+  - Artifact structural validation (Feature 3)
+  - Modifying source files or artifacts (read-only)
+  - Persistent storage of map data
+
+- **Requirements Covered**:
+
+  - [x] `p1` - `cpt-cypilot-fr-core-dependency-mapping`
+  - [x] `p1` - `cpt-cypilot-fr-core-traceability`
+
+- **Design Principles Covered**:
+
+  - [x] `p1` - `cpt-cypilot-principle-determinism-first`
+  - [x] `p1` - `cpt-cypilot-principle-traceability-by-design`
+  - [x] `p1` - `cpt-cypilot-principle-zero-harm`
+
+- **Design Constraints Covered**:
+
+  - [x] `p1` - `cpt-cypilot-constraint-python-stdlib`
+
+- **Domain Model Entities**:
+  - Node (markdown, source, phantom-cpt)
+  - Edge (cpt-impl, cpt-doc, file-link)
+  - Ref
+  - CptUse
+  - ScanOptions
+  - CategorizeOptions
+  - OverrideConfig
+  - RenderJsonInput
+  - RenderHtmlInput
+
+- **Design Components**:
+
+  - [x] `p1` - `cpt-cypilot-component-map-renderer`
+  - [x] `p1` - `cpt-cypilot-component-traceability-engine`
+
+- **API**:
+  - `cfc map [--out PATH] [--format html|json] [--config FILE] [--no-source] [--local-only] [--inline-data] [--verbose]`
+
+- **Sequences**:
+
+  None (single-command flow)
+
+- **Data**:
+  - `md-map.html` (default output) — self-contained HTML viewer
+  - `md-map.html.js` (optional sidecar) — JSON data payload
+  - `md-map.toml` (optional override config) — category path overrides and styles
+  - `artifacts.toml` — read-only: codebase entries and artifact paths for registry categorization
+
+
 ---
 
 ## 3. Feature Dependencies
@@ -795,7 +867,10 @@ cpt-cypilot-feature-core-infra
     │    │
     │    └─→ cpt-cypilot-feature-spec-coverage
     │
-    └─→ cpt-cypilot-feature-workspace ←── cpt-cypilot-feature-traceability-validation
+    ├─→ cpt-cypilot-feature-workspace ←── cpt-cypilot-feature-traceability-validation
+    │
+    └─→ cpt-cypilot-feature-dependency-mapping ←── cpt-cypilot-feature-traceability-validation
+                                                ←── cpt-cypilot-feature-workspace
 
     (EXTRACTED to cyberfabric/cyber-pilot-kit-sdlc:)
     cpt-cypilot-feature-sdlc-kit

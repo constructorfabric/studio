@@ -739,6 +739,37 @@ Does NOT maintain agent-specific state. Does NOT define SKILL extension content 
 - `cpt-cypilot-component-kit-manager` — provides kit SKILL.md extensions for composition
 - `cpt-cypilot-component-config-manager` — reads config for project context
 
+#### Map Renderer
+
+- [x] `p1` - **ID**: `cpt-cypilot-component-map-renderer`
+
+##### Why this component exists
+
+Provides the interactive dependency visualization layer of Cypilot. It consumes the graph of nodes and edges produced by the Traceability Engine and renders it into either a self-contained HTML viewer or a canonical JSON payload. Without this component, phantom cpt-ID detection and architecture graph navigation would require manual inspection.
+
+##### Responsibility scope
+
+- Walk project markdown files and registered source codebase entries to produce `Node` objects (`markdown`, `source`, `phantom-cpt` kinds)
+- Extract cpt-ID definitions and cross-references from markdown (via `scan_cpt_ids`); extract scope and block markers from source code (via `CodeFile.from_path`)
+- Build `cpt-impl` edges (source → markdown definition), `cpt-doc` edges (markdown → markdown reference), and `file-link` edges (markdown hyperlink → markdown)
+- Detect phantom cpt-IDs (used but undefined) and emit `phantom-cpt` nodes with dangling edges
+- Categorize nodes via three-step chain: explicit override (`md-map.toml`) → artifacts.toml registry prefix match → parent directory name
+- Enrich edges with definition context using `get_content_scoped` for tooltip display
+- Compute rectpack-based category layout targeting 16:9 aspect ratio with affinity-ordered placement
+- Serialize to canonical JSON (version, nodes, edges, dangling_cpt_uses, categories, layout)
+- Render self-contained HTML viewer with bundled vis-network, viewer JS/CSS, and JSON payload (inline or sidecar)
+- Support workspace federation (multi-source scanning) and `--no-source` / `--local-only` flags
+
+##### Responsibility boundaries
+
+Does NOT perform artifact structural validation (delegated to Validator). Does NOT modify any source files or artifacts (read-only analysis). Does NOT store map data persistently — output is written to user-specified path only.
+
+##### Related components (by ID)
+
+- `cpt-cypilot-component-skill-engine` — receives `map` command
+- `cpt-cypilot-component-traceability-engine` — provides `scan_cpt_ids`, `get_content_scoped`, `CodeFile` scanning infrastructure
+- `cpt-cypilot-component-config-manager` — reads `artifacts.toml` for codebase definitions and category registry
+
 #### External Kits
 
 The following kits are external packages that can be installed and managed by the Kit Manager:
