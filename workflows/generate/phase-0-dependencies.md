@@ -45,3 +45,12 @@ When a file is found:
 Discovery runs unconditionally — independent of `GIT_COMMIT_MODE`. The guide informs non-commit concerns (style, branch naming, PR templates) as well as commit constraints when `GIT_COMMIT_MODE=commit`.
 
 Raw-input overflow rule: open, load, and follow `{cf-constructor-path}/.core/requirements/raw-input-overflow.md`. If the direct user prompt plus all provided files exceeds `500` total lines, the agent MUST stop direct generation long enough to offer `/cf-constructor-plan` versus continuing here with reduced guarantees, exactly as specified in that file.
+
+### Panel Mode Flags (session-scoped, defaults fan-out)
+
+Two independent session-scoped flags control brainstorm orchestration strategy:
+
+- **PANEL_MODE_TOPIC**: orchestration mode for exploratory rounds (`topic` kind). Defaults to `'fan-out'`; switch to `'single-agent'` to use a single brainstorm expert per round instead of parallel panel dispatch (cf-constructor-brainstorm-panel.md instead of cf-constructor-brainstorm-expert.md). Single-agent mode is inherently sequential; INLINE_FALLBACK degradation becomes a no-op.
+- **PANEL_MODE_CHALLENGE**: orchestration mode for challenge rounds (`challenge` kind). Defaults to `'fan-out'`; independently switchable to `'single-agent'` with same semantics.
+
+To override defaults for a single run: `{cfc_cmd} --reconfigure generate` accepts an interactive environment-state override menu where you may set `state.run_config.PANEL_MODE_TOPIC` and `state.run_config.PANEL_MODE_CHALLENGE` before Phase 0.7 brainstorm begins. Flags persist for the lifetime of the session.

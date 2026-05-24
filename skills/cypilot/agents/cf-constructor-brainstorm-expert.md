@@ -1,5 +1,5 @@
 ---
-description: Invoke when contributing one expert's persona-scoped turn to a brainstorm round — parameterized by persona and mode (`topic` | `challenge`) passed in the dispatch prompt. Given {persona, topic, state, mode, challenged_decisions?}, returns either `{ relevant: false, reason }` (sit out) or `{ relevant: true, questions: [1..3], critique, next_topic_proposal }`. In `challenge` mode the expert pushes back on the supplied `challenged_decisions` from its persona's POV and emits counter-proposals as the questions' `proposed_default`. Dispatched in parallel for the full panel per round.
+description: Invoke when contributing one expert's persona-scoped turn to a brainstorm round — parameterized by persona and mode (`topic` | `challenge`) passed in the dispatch prompt. Given {persona, topic, state, mode, challenged_decisions?}, returns either `{ relevant: false, reason }` (sit out) or `{ relevant: true, questions: [1..3], critique, next_topic_proposal }`. In `challenge` mode the expert pushes back on the supplied `challenged_decisions` from its persona's POV and emits counter-proposals as the questions' `proposed_default`. Dispatched in parallel for the full panel per round. Fan-out path owned by PANEL_MODE_*=fan-out; for single-agent mode use cf-constructor-brainstorm-panel.md.
 ---
 
 <!-- toc -->
