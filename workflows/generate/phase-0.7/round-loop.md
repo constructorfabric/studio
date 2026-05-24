@@ -13,8 +13,8 @@ Requires: `workflows/shared/inline-fallback-probe.md` before any `cf-constructor
 Precondition: INLINE_FALLBACK must be set before the first round (already probed by `workflows/generate/phase-0-dependencies.md` at workflow start). If `INLINE_FALLBACK` is unset at any round-level dispatch site (e.g., after a context-loss / compaction event), follow the universal fail-stop rule in `skills/cypilot/sub-agent-dispatch.md` § Pre-dispatch discipline and re-run the shared probe before continuing. Do NOT re-probe per-round when `INLINE_FALLBACK` is already set.
 
 **Orchestration modes:** This loop supports two exclusive orchestration strategies per round, controlled by environment variables:
-- **Fan-out (default):** `PANEL_MODE_TOPIC` and `PANEL_MODE_CHALLENGE` both default to `"fan-out"`. When set to `"fan-out"`, the orchestrator dispatches all relevant panel members in parallel using the legacy `cf-constructor-brainstorm-expert` contract. Each expert independently produces questions/contributions; the orchestrator collects all responses before aggregation.
-- **Single-agent:** When `PANEL_MODE_TOPIC` or `PANEL_MODE_CHALLENGE` is set to `"single-agent"`, the orchestrator dispatches the new `cf-constructor-brainstorm-panel` agent instead. That agent runs the full round logic with one expert as primary; subsequent experts provide optional critique via the `protocol` field. Single-agent is opt-in per round kind; fan-out is the legacy default and remains unchanged in that branch.
+- **Single-agent (default):** `PANEL_MODE_TOPIC` and `PANEL_MODE_CHALLENGE` both default to `"single-agent"`. When set to `"single-agent"`, the orchestrator dispatches the `cf-constructor-brainstorm-panel` agent once per round (not per expert). That agent runs the full round logic with one expert as primary; subsequent experts provide optional critique via the `protocol` field. This is the default because it yields one cohesive deliberation per round, works identically on all hosts, and makes INLINE_FALLBACK a no-op.
+- **Fan-out:** When `PANEL_MODE_TOPIC` or `PANEL_MODE_CHALLENGE` is set to `"fan-out"`, the orchestrator dispatches all relevant panel members in parallel using the `cf-constructor-brainstorm-expert` contract. Each expert independently produces questions/contributions; the orchestrator collects all responses before aggregation. Fan-out is opt-in and requires a host with native sub-agent parallelism (otherwise it degrades to sequential via INLINE_FALLBACK).
 
 **Inline-fallback note:** When `INLINE_FALLBACK=true`, parallel_dispatch degrades to sequential; experts-are-independent guarantee is best-effort in that mode (per `skills/cypilot/sub-agent-dispatch.md` Mode B). In single-agent mode, INLINE_FALLBACK is a no-op: single-agent orchestration is inherently sequential.
 
@@ -27,8 +27,8 @@ The loop drives two kinds of rounds, chosen by the user after every round finish
 pending_round_kind = "topic"        # first iteration is always a topic-round
 while state.topic_current is not None:
   # Read orchestration mode flags independently for each round kind
-  panel_mode_topic = env("PANEL_MODE_TOPIC", "fan-out")
-  panel_mode_challenge = env("PANEL_MODE_CHALLENGE", "fan-out")
+  panel_mode_topic = env("PANEL_MODE_TOPIC", "single-agent")
+  panel_mode_challenge = env("PANEL_MODE_CHALLENGE", "single-agent")
   
   if pending_round_kind == "topic":
     panel_mode = panel_mode_topic

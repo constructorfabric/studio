@@ -38,8 +38,8 @@ version: 1.1
     {
       "n": 1,
       "kind": "topic",
-      "panel_mode": "fan-out",
-      "protocol": null,
+      "panel_mode": "single-agent",
+      "protocol": "independent-then-critique",
       "status": "ok",
       "health": {
         "degraded": false,
@@ -163,12 +163,12 @@ is **overwritten** in place — prior values are not versioned at the
 
 **Field:** `rounds[].panel_mode` (required, non-null)  
 **Type:** enum `{fan-out, single-agent}`  
-**Default:** `"fan-out"`
+**Default:** `"single-agent"`
 
 Controls how the orchestrator coordinates expert agents during a round:
 
-- **`fan-out`** (default): Dispatch all relevant panel members in parallel. Each expert independently produces questions/contributions; the orchestrator collects all responses before aggregation. No inter-expert live communication during this mode.
-- **`single-agent`**: Designate one expert as primary for this round. That expert runs the full round logic; subsequent experts see the primary's output and (optionally) provide critique via the `protocol` field. Smaller panel, lower latency, expert specialization.
+- **`single-agent`** (default): Dispatch the `cf-constructor-brainstorm-panel` agent once per round (not per expert). One expert is designated primary; secondary experts deliberate inside the same agent and provide critique via the `protocol` field. One cohesive sub-agent context per round; host-independent (no native fan-out required); INLINE_FALLBACK is a no-op.
+- **`fan-out`**: Dispatch all relevant panel members in parallel using `cf-constructor-brainstorm-expert`. Each expert independently produces questions/contributions; the orchestrator collects all responses before aggregation. No inter-expert live communication. Requires a host with native sub-agent parallelism (otherwise degrades to sequential via INLINE_FALLBACK).
 
 The **single field** constraint means each round has exactly one orchestration strategy; mixed strategies within a single round are not supported. When `panel_mode` is `"fan-out"`, the `protocol` field must be `null`. When `panel_mode` is `"single-agent"`, the `protocol` field must be non-null (see § protocol below).
 
