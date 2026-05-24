@@ -242,15 +242,15 @@ Recognition is intent-based; user may type these in any language (methodology MU
 | `send comments now` / `<verb> now` | Trigger batch flush with one structured Y/n confirmation (skip preview-only step). Subject to Tier-3 inline pauses per `only intent` / `only tier` filter rules. |
 | bare `send comments` / `preview comments` / `preview queue` | **Preview only** — render the queued-items report grouped by intent (risk-descending: generate → fix → brainstorm). NO dispatch. |
 | `send comments [only Q-N,...] [except Q-N,...] [only intent <generate\|fix\|brainstorm>] [only tier <1\|2\|1-2>] [only fresh]` | Apply filters before flush. `only` / `except` mutually exclusive. Filters AND-combine. `only` + `except` together → parse error: `Cannot combine 'only' and 'except' in the same command — use one or the other.` Unknown tokens → parse error with quoted offending token. |
-| `change to {generate\|fix\|brainstorm}` (when issued at a per-comment cfc-routing sub-prompt before pressing 1/2) | Override the comment's `intent_final` BEFORE the action is applied. Same effect as inline shorthand `1 fix` / `2 brainstorm`. |
+| `change to {generate\|fix\|brainstorm}` (when issued at a per-comment generate-routing sub-prompt before pressing 1/2) | Override the comment's `intent_final` BEFORE the action is applied. Same effect as inline shorthand `1 fix` / `2 brainstorm`. |
 | `retry Q-N` | Retry the dispatch identified by Q-N. Subject to per-`dispatch_key` cap of 2 attempts, drift check (file etag + line-range hash, ±5 line buffer), and class-specific policy (see Dispatch-failure UX § below). |
 | `inspect Q-N` | Open the auto-saved draft path (or the latest NDJSON record for Q-N) in the user's chat as a reference; no state change. |
 | `drop Q-N` | Set comment buffer entry `dispatch_state = "dropped"`. Removes Q-N from any further retry / flush consideration. |
 | `handoff Q-N` | Force Mode C paste-handoff for Q-N regardless of size gate. Emits the canonical Mode C paste block in chat. |
 
-### Dispatch-failure notices (cfc routing)
+### Dispatch-failure notices (generate routing)
 
-When a cfc-routing dispatch fails, methodology emits ONE single-line notice per failure in the existing artifact-marker family (alongside `📋` / `📝` / `📤`):
+When a generate-routing dispatch fails, methodology emits ONE single-line notice per failure in the existing artifact-marker family (alongside `📋` / `📝` / `📤`):
 
 ```
 ⚠️ Q-N <class> ({subclass-hint?}) — <one-line message head>; <suggested-actions>
@@ -261,7 +261,7 @@ Placement rules:
 - One notice line per failure.
 - Multiple concurrent failures collapse into N consecutive lines sorted ascending by Q-N.
 - NEVER appear inside Opening / Body / Mode-lens / Diagram / Source-refs / viz-marker / progress-marker / Nav. The 8-element portion shape is preserved.
-- NO `---` separator. NO fenced `[cfc-route]` block. NO new portion-structure element.
+- NO `---` separator. NO fenced `[generate-route]` block. NO new portion-structure element.
 
 Per-class notice templates (one-line each; truncate first sentence with `…` if exceeds 80 cols; append ` (+N-1 more in dispatch-failures.jsonl)` overflow indicator when multiple validator issues):
 - write_conflict: `⚠️ Q-3 write_conflict — target moved (etag mismatch); 'retry Q-3' / 'inspect Q-3' / 'drop Q-3'`

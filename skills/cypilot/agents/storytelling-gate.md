@@ -1,5 +1,5 @@
 ---
-description: Invoke at any storytelling gate checkpoint. Parametrized by gate_id across all 7 gates (mode | artifact-disposition | cfc-routing | audience | plan | context-pack-strategy | export-format). Two-phase: Phase 1 (user_reply=null) renders the numbered menu and returns parse_table + suggested default; Phase 2 (user_reply=<string>) parses the reply and returns the selected canonical tag. The plan gate is the only gate that emits a 4-option approval menu and handles Edit/Pivot/Cancel navigation. The cfc-routing gate is a per-comment sub-prompt that fires after Post/Save disposition when handle.local_editable AND handle.cfc_route_available.
+description: Invoke at any storytelling gate checkpoint. Parametrized by gate_id across all 7 gates (mode | artifact-disposition | generate-routing | audience | plan | context-pack-strategy | export-format). Two-phase: Phase 1 (user_reply=null) renders the numbered menu and returns parse_table + suggested default; Phase 2 (user_reply=<string>) parses the reply and returns the selected canonical tag. The plan gate is the only gate that emits a 4-option approval menu and handles Edit/Pivot/Cancel navigation. The generate-routing gate is a per-comment sub-prompt that fires after Post/Save disposition when handle.local_editable AND handle.generate_route_available.
 ---
 
 <!-- toc -->
@@ -10,7 +10,7 @@ description: Invoke at any storytelling gate checkpoint. Parametrized by gate_id
 - [Gate catalogue](#gate-catalogue)
   - [Gate: mode](#gate-mode)
   - [Gate: artifact-disposition](#gate-artifact-disposition)
-  - [Gate: cfc-routing](#gate-cfc-routing)
+  - [Gate: generate-routing](#gate-generate-routing)
   - [Gate: audience](#gate-audience)
   - [Gate: plan](#gate-plan)
   - [Gate: context-pack-strategy](#gate-context-pack-strategy)
@@ -41,7 +41,7 @@ the dispatch payload.
 
 ```json
 {
-  "gate_id": "mode | artifact-disposition | cfc-routing | audience | plan | context-pack-strategy | export-format",
+  "gate_id": "mode | artifact-disposition | generate-routing | audience | plan | context-pack-strategy | export-format",
   "user_reply": "string | null — null on first dispatch (render menu); set on second dispatch (parse reply)",
   "handle": {
     "canonical_path": "string",
@@ -57,21 +57,23 @@ the dispatch payload.
     "size_guard_verdict": "ok | warn_large | block_too_large",
     "size_guard_reason": "string | null",
     "file_count": "number",
-    "local_editable": "boolean — true when the target file is locally writable; used by cfc-routing gate suppression",
-    "cfc_route_available": "boolean — true when a cf-constructor-generate dispatch channel is available; used by cfc-routing gate suppression"
+    "local_editable": "boolean — true when the target file is locally writable; used by generate-routing gate suppression",
+    "generate_route_available": "boolean — true when a cf-constructor-generate dispatch channel is available; used by generate-routing gate suppression"
   },
   "user_prompt": "string",
   "state": {
     "mode": "string | null",
     "audience": "string | null",
     "plan": "object | null",
+    "artifact_disposition": "chat-only | save-to-file | post-to-resource | mixed | null — resolved value from the artifact-disposition gate; consumed by generate-routing default heuristic",
+    "post_to_resource_branch": "pr | mcp_resource | local_file | unavailable | null — resolved branch from the artifact-disposition gate's post-to-resource resolver; non-null only when artifact_disposition is post-to-resource or mixed includes it",
     "preferences_loaded": "object",
     "comment": {
-      "intent_final": "generate | fix | brainstorm | null — bound from comment buffer entry; required for cfc-routing gate",
+      "intent_final": "generate | fix | brainstorm | null — bound from comment buffer entry; required for generate-routing gate",
       "target_type": "string | null"
     },
     "session_state": {
-      "cfc_route_never_ask": "boolean — when true the orchestrator auto-takes the no branch for cfc-routing without rendering the menu"
+      "generate_route_never_ask": "boolean — when true the orchestrator auto-takes the no branch for generate-routing without rendering the menu"
     }
   },
   "revision_notes": "string | null — when re-dispatching plan-gate Phase 1 after an Edit reply, carries the user's revision text so the agent can rewrite the plan in place; null on all other gates and on fresh plan-gate dispatches"
@@ -148,20 +150,47 @@ Selects how story output artifacts are handled.
 |---|---|---|
 | 1 | `chat-only` | Chat only — output stays in the conversation |
 | 2 | `save-to-file` | Save to file — write to a local file |
-| 3 | `post-to-resource` | Post to resource — push via MCP resource tool |
+| 3 | `post-to-resource` | Post to resource — *label resolved by the post-to-resource resolver below* |
 | 4 | `mixed` | Mixed — chat summary + save full output to file |
+
+**`post-to-resource` label resolver** (option 3 label is dynamic; pick the
+first matching branch):
+
+| When | Rendered label for option 3 |
+|---|---|
+| `handle.target_type == "pr"` | `Post to resource — post review comments + summary to the PR via {handler} ({gh CLI \| MCP github tool})` |
+| `handle.input_access_method` matches a Notion / Jira / GitLab MCP / CLI handler | `Post to resource — post via {handler} (e.g. Notion comment / Jira add-comment / glab note)` |
+| `handle.local_editable == true` AND `handle.generate_route_available == true` AND none of the above | `Post to resource — invoke the cf-constructor-generate skill (mode auto-classified per comment: fix / brainstorm / generate) on this file` |
+| Otherwise (no PR, no MCP/CLI resource, AND either `local_editable=false` OR `generate_route_available=false`) | `Post to resource — unavailable for this target ({reason}); selecting will fall back to save-to-file` |
+
+`{reason}` for the unavailable branch is the human-readable form of
+`handle.local_editable_reason` (e.g. `directory target`, `remote access tier`,
+`size-blocked`) joined with `generate-route handler unavailable` when
+`generate_route_available == false`.
+
+The orchestrator MUST suppress option 3 entirely from the rendered menu only
+when ALL three of the following hold (true "no path forward"):
+
+- `handle.target_type` ∉ {`pr`} AND no MCP/CLI resource handler,
+- `handle.local_editable == false` (e.g. directory target, remote access tier),
+- `handle.generate_route_available == false`.
+
+When option 3 is suppressed, renumber `mixed` to 3 and adjust `parse_table`
+accordingly; otherwise keep the four-option layout.
 
 **Suggested default heuristic**:
 
 1. If `state.preferences_loaded.artifact_disposition` is set and matches a
-   valid tag, use it as the default.
+   valid tag still present in the rendered menu, use it as the default.
 2. Otherwise default: `chat-only` (n=1).
 
-**parse_table**: `{"1":"chat-only","2":"save-to-file","3":"post-to-resource","4":"mixed"}`
+**parse_table** (standard four-option layout): `{"1":"chat-only","2":"save-to-file","3":"post-to-resource","4":"mixed"}`. When option 3 is suppressed (above), the table collapses to `{"1":"chat-only","2":"save-to-file","3":"mixed"}`.
+
+**Phase 2 output extension for this gate**: when `selected_tag == "post-to-resource"`, the Phase 2 output MUST also include `post_to_resource_branch` resolved from the rendered label-resolver branch — one of `"pr"`, `"mcp_resource"`, `"local_file"`, `"unavailable"`. The orchestrator writes this into `state.post_to_resource_branch` so downstream gates (notably generate-routing) can consume it. For `selected_tag ∈ {"chat-only", "save-to-file", "mixed"}`, `post_to_resource_branch` is `null`. Under `mixed`, the secondary per-artifact-type prompt re-runs the same resolver per artifact type and may produce branch-per-type; the gate output still carries a single top-level `post_to_resource_branch` derived from the resolver's evaluation at session-start (the per-type prompts inherit branches from this resolution and only differ in which artifact type uses which disposition).
 
 ---
 
-### Gate: cfc-routing
+### Gate: generate-routing
 
 Routes a single comment artifact to cf-constructor-generate after its
 per-item disposition (Post or Save) has been resolved.
@@ -174,14 +203,14 @@ true at the moment of dispatch:
   resolution for this comment must be `post-to-resource` or `save-to-file` —
   if it resolved to `chat-only` for this artifact type, this gate does not fire.)
 - `handle.local_editable == true`.
-- `handle.cfc_route_available == true`.
+- `handle.generate_route_available == true`.
 
-If either `local_editable` or `cfc_route_available` is `false`, the
+If either `local_editable` or `generate_route_available` is `false`, the
 orchestrator MUST suppress this gate entirely — no menu is rendered, no
 "unavailable" message is emitted to chat, and the comment buffer entry
 receives `route_choice: "no"` automatically.
 
-If `state.session_state.cfc_route_never_ask == true`, the orchestrator
+If `state.session_state.generate_route_never_ask == true`, the orchestrator
 also suppresses this gate and auto-applies `route_choice: "no"` without
 rendering any menu.
 
@@ -195,13 +224,13 @@ Render the following menu verbatim, substituting `{classified_mode}` with
 the value of `state.comment.intent_final`:
 
 ```
-Also route this comment to cfc for direct fix?
+Also route this comment to the generate skill for direct fix?
 
 | Option | Action |
 |---|---|
 | 1 | Route now — dispatch cf-constructor-generate ({classified_mode}) immediately |
 | 2 | Queue — defer dispatch until you run `send comments` / `flush queue` |
-| 3 | No — record only (current disposition stands; no cfc invocation) |
+| 3 | No — record only (current disposition stands; no generate-skill invocation) |
 | 4 | Never ask again this session — auto-pick option 3 for remaining comments |
 
 {suggested_line}
@@ -211,9 +240,10 @@ Reply 1 / 2 / 3 / 4. Override the classified intent in the same reply with `1 fi
 
 **Suggested default heuristic** (apply in order, first match wins):
 
-1. `state.comment.intent_final == "fix"` AND `state.comment.target_type == "code"` → suggest `1` (Route now).
-2. `state.comment.intent_final == "brainstorm"` → suggest `2` (Queue).
-3. Otherwise → suggest `3` (No).
+1. `state.artifact_disposition == "post-to-resource"` AND `state.post_to_resource_branch == "local_file"` → suggest `1` (Route now). Under this disposition, generate-routing IS the chosen post path; defaulting to "No" would silently downgrade the user's explicit choice to chat-only / save-to-file.
+2. `state.comment.intent_final == "fix"` AND `state.comment.target_type == "code"` → suggest `1` (Route now).
+3. `state.comment.intent_final == "brainstorm"` → suggest `2` (Queue).
+4. Otherwise → suggest `3` (No).
 
 **Rendering `{suggested_line}`**: after applying the heuristic above, render
 `{suggested_line}` as `Suggested: <N> — <label>.` where `<N>` is the heuristic
@@ -244,7 +274,7 @@ Examples:
    `"Invalid reply — please enter a number between 1 and 4."`.
    Return `selected_tag = null`, `next_action = "render"`.
 5. On `selected_tag = "never_ask"`: the orchestrator sets
-   `session_state.cfc_route_never_ask = true`; all subsequent comments
+   `session_state.generate_route_never_ask = true`; all subsequent comments
    auto-take the `no` branch without rendering this gate.
 
 **State recorded on the comment buffer entry** (independent of the
@@ -259,7 +289,7 @@ entry's `route_choice` and `intent_final` are being updated.
 **Anti-patterns**:
 
 - Offering this gate when `local_editable = false` or
-  `cfc_route_available = false` (suppression rule above).
+  `generate_route_available = false` (suppression rule above).
 - Auto-dispatching `cf-constructor-generate` on the suggested default
   without waiting for an explicit user reply.
 
@@ -446,8 +476,8 @@ Selects the export format for story output. This gate fires only when
      option's label.
    - For the `audience` gate, derive candidates dynamically per the heuristic
      above before rendering.
-   - For the `cfc-routing` gate, apply the cfc-routing suppression check as
-     defined in § Gate: cfc-routing above; if suppressed, return
+   - For the `generate-routing` gate, apply the generate-routing suppression check as
+     defined in § Gate: generate-routing above; if suppressed, return
      `rendered_menu: null, suppressed: true` and skip the rest of Phase 1.
      Otherwise, substitute `{classified_mode}` with `state.comment.intent_final`
      and render `{suggested_line}` per the heuristic before emitting the fixed
@@ -464,7 +494,7 @@ Selects the export format for story output. This gate fires only when
    - On match: set `selected_n` and `selected_tag` from `parse_table`.
    - On no match or non-digit: treat as free text (`free_text_override = raw_input`).
      - For gates that do not accept free text (`mode`, `artifact-disposition`,
-       `cfc-routing`, `context-pack-strategy`, `export-format`): re-emit the
+       `generate-routing`, `context-pack-strategy`, `export-format`): re-emit the
        menu with an error note:
        `"Invalid reply — please enter a number between 1 and N."`.
        Return `selected_tag = null` and `next_action = "render"` to signal a
@@ -485,8 +515,8 @@ Selects the export format for story output. This gate fires only when
 {
   "phase": "render",
   "gate_id": "string",
-  "rendered_menu": "string | null — markdown text orchestrator emits verbatim; null only for cfc-routing when suppressed",
-  "suppressed": "boolean | null — true only for cfc-routing when suppression conditions are met; null for all other gates",
+  "rendered_menu": "string | null — markdown text orchestrator emits verbatim; null only for generate-routing when suppressed",
+  "suppressed": "boolean | null — true only for generate-routing when suppression conditions are met; null for all other gates",
   "parse_table": {"<digit>": "<canonical_tag>"},
   "suggested_default_n": "number — 1-based menu index",
   "context_summary": "string | null"
@@ -505,7 +535,8 @@ Selects the export format for story output. This gate fires only when
   "free_text_override": "string | null — when user supplied custom text instead of digit",
   "next_action": "go | edit | pivot | cancel | accept | render | re-render",
   "revision_notes": "string | null — for plan gate Edit path only",
-  "intent_override": "generate | fix | brainstorm | null — for cfc-routing gate only; non-null when inline intent token was present in user_reply; null for all other gates"
+  "intent_override": "generate | fix | brainstorm | null — for generate-routing gate only; non-null when inline intent token was present in user_reply; null for all other gates",
+  "post_to_resource_branch": "pr | mcp_resource | local_file | unavailable | null — for artifact-disposition gate only; non-null when selected_tag is post-to-resource; null for all other gates and other selected_tags"
 }
 ```
 
@@ -545,8 +576,11 @@ The response is complete only when:
 - Phase 2, plan gate `pivot` path: `next_action = "pivot"`
 - Phase 2, plan gate `cancel` path: `next_action = "cancel"`
 - `revision_notes` is `null` for all non-plan gates
-- `intent_override` is `null` for all non-cfc-routing gates
-- Phase 1, `cfc-routing` gate, suppressed: `rendered_menu = null` and `suppressed = true`; no menu is emitted and `parse_table` / `suggested_default_n` may be omitted
-- Phase 1, `cfc-routing` gate, not suppressed: `rendered_menu` is non-empty; `{classified_mode}` has been substituted with `state.comment.intent_final`; `{suggested_line}` has been substituted with the heuristic result (no literal `{suggested_line}` allowed in `rendered_menu`); `suppressed = null`
-- Phase 2, `cfc-routing` gate: `intent_override` is one of `"generate"`, `"fix"`, `"brainstorm"`, or `null`; `selected_tag` is one of `"route_now"`, `"queue"`, `"no"`, `"never_ask"` on successful parse
+- `intent_override` is `null` for all non-generate-routing gates
+- Phase 1, `generate-routing` gate, suppressed: `rendered_menu = null` and `suppressed = true`; no menu is emitted and `parse_table` / `suggested_default_n` may be omitted
+- Phase 1, `generate-routing` gate, not suppressed: `rendered_menu` is non-empty; `{classified_mode}` has been substituted with `state.comment.intent_final`; `{suggested_line}` has been substituted with the heuristic result (no literal `{suggested_line}` allowed in `rendered_menu`); `suppressed = null`
+- Phase 2, `generate-routing` gate: `intent_override` is one of `"generate"`, `"fix"`, `"brainstorm"`, or `null`; `selected_tag` is one of `"route_now"`, `"queue"`, `"no"`, `"never_ask"` on successful parse
+- `post_to_resource_branch` is `null` for all gates other than `artifact-disposition`, and `null` on the `artifact-disposition` gate when `selected_tag != "post-to-resource"`
+- Phase 1, `artifact-disposition` gate: option 3 in `rendered_menu` carries one of the four resolver-branch labels (PR posting / MCP-resource posting / local-file generate-routing / unavailable) per the post-to-resource resolver in § Gate: artifact-disposition; the literal `Post to resource — push via MCP resource tool` placeholder MUST NOT appear; when ALL three suppression conditions in the resolver hold, option 3 is absent and `parse_table` collapses to three entries
+- Phase 2, `artifact-disposition` gate, `selected_tag == "post-to-resource"`: `post_to_resource_branch` is one of `"pr"`, `"mcp_resource"`, `"local_file"`, `"unavailable"`, derived from the resolver branch shown in Phase 1's `rendered_menu`
 - the SKILL.md invariant has been satisfied

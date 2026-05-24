@@ -12,7 +12,7 @@ purpose: Page size, artifact language, checkpoint, telemetry, failure modes for 
 <!-- toc -->
 
 - [Host Capability Matrix](#host-capability-matrix)
-  - [Context-pack reuse for cfc routing](#context-pack-reuse-for-cfc-routing)
+  - [Context-pack reuse for generate routing](#context-pack-reuse-for-generate-routing)
 - [Page Size](#page-size)
 - [Artifact Language](#artifact-language)
 - [Artifact Disposition](#artifact-disposition)
@@ -43,15 +43,15 @@ The methodology assumes some host-runtime tools that may not be present in every
 | Skills (`Notion:find`, `Notion:search`, `coderabbit:autofix`, etc.) | Phase E0 input access skill tier | Available-skills list at session start | CLI tier; user-fallback |
 | `TaskCreate` / `TaskUpdate` (host task API) | Plan progress tracking when `N > 5` portions | Tool presence check | Emit progress as inline telemetry log lines instead (`- [storytelling]: Portion 3/5 emitted`) — same information, no persistent task list |
 | `mkdir -p` (filesystem) | Cache directory creation at wrap-time, package directory creation in export mode | (basic shell — almost always present) | If directory create fails (permission, disk full): warn user with the exact filesystem error; emit wrap output normally; flag in Session block that persistence failed; omit `Resume this session` / file-save next-steps from Suggested Next Steps |
-| `cfc_generate_dispatch` | Phase E0 input access — derives `handle.cfc_route_available` for the cfc-routing sub-prompt gate | tool list at session start includes `cf-constructor-generate` skill OR `Skill` tool can invoke `cf-constructor-generate` | `cfc_route_available=false`; sub-prompt suppressed entirely (no "unavailable" message) |
+| `generate_dispatch` | Phase E0 input access — derives `handle.generate_route_available` for the generate-routing sub-prompt gate | tool list at session start includes `cf-constructor-generate` skill OR `Skill` tool can invoke `cf-constructor-generate` | `generate_route_available=false`; sub-prompt suppressed entirely (no "unavailable" message) |
 
 Cross-reference: the preflight Step 5b sub-rule (see `skills/cypilot/agents/storytelling-preflight.md` § Step 5b).
 
 At Phase E0 entry, methodology probes each capability (cheap probes only — `command -v X`, tool-list scan, no network calls during the probe). The result is held in working memory as `{capability_map}` and consulted whenever an input access tier is selected (Phase E0), an artifact disposition is offered (Artifact Disposition section above — the `post-to-resource` availability-status is computed from this map), or a progress-tracking decision is made (TaskCreate Progress Tracking below). The capability matrix is NOT user-visible by default; it surfaces in chat only when (a) the user-fallback prompt fires (showing what was tried and what's missing), or (b) the disposition prompt's `post-to-resource` availability-status is shown.
 
-### Context-pack reuse for cfc routing
+### Context-pack reuse for generate routing
 
-When dispatching cfc-routing (Mode A / B / C), the orchestrator passes a `pack_handle` instead of inlining the full pack body:
+When dispatching generate-routing (Mode A / B / C), the orchestrator passes a `pack_handle` instead of inlining the full pack body:
 ```
 pack_handle = {
   session_id: <string>,
@@ -127,12 +127,13 @@ All three disposition options take effect **immediately on each artifact-create 
 
    On first append in a session, methodology writes a session header (`## Session {ISO-timestamp} — {role} for {audience}, mode={mode}`) so multiple intra-day sessions on the same target accumulate without overwriting. Each artifact entry is appended under that header. Methodology emits a one-line confirmation in chat per append: `📝 Q-3 appended to {path} (line 42)`. The session continues immediately — wrap does NOT re-prompt for save (already saved). Wrap output reports the cumulative path + entry count.
 
-3. **`post-to-resource`** — methodology **posts** the artifact directly to the target **right now** via the same access tier that fetched the input (MCP / skill / CLI). Availability check at session start:
+3. **`post-to-resource`** — methodology **posts** the artifact directly to the target **right now** via the same access tier that fetched the input (MCP / skill / CLI). Availability check at session start, in priority order (first matching branch defines the handler):
    - GitHub PR (target_is_pr=true) — review comments via `gh pr review {N} --comment-file ...` or `mcp__github__create_review_comment`; open-questions / takeaways as a single summary comment via `gh pr comment` or equivalent
    - GitLab MR — `glab mr note` or MCP equivalent
    - Notion page — MCP `mcp__plugin_Notion_notion__*` comment-create
    - Jira ticket — MCP Jira add-comment
-   - Other — post unavailable; methodology MUST tell the user during the disposition prompt and fall back to `save-to-file`
+   - **Local file** (`handle.local_editable == true` AND `handle.generate_route_available == true` AND none of the above) — there is no external resource to post to; instead, each artifact-create event is routed through the **generate-routing** handler (see `skills/cypilot/agents/storytelling-gate.md` § Gate: generate-routing), which dispatches the `cf-constructor-generate` skill against the local file in the mode classified for that artifact (`fix` / `brainstorm` / `generate` — see `requirements/storytelling-modes.md` § classified_mode label). The per-comment generate-routing 4-option consent menu (Route now / Queue / No / Never-ask-again-this-session, default = Route now under this disposition) is the post-confirmation prompt; selecting Queue defers to the batch `send comments` verb. The save-to-file path is still used as the auto-save fallback when a generate dispatch fails — see § Dispatch-Failure Audit Log.
+   - Otherwise (no PR, no MCP/CLI resource handler, AND `local_editable == false` OR `generate_route_available == false`) — post unavailable; methodology MUST tell the user during the disposition prompt with the concrete reason (e.g. `directory target`, `remote access tier`, `generate-route handler unavailable`) and fall back to `save-to-file`. Picking option 3 under this branch produces a one-line ack `⚠️ post-to-resource unavailable — switched to save-to-file` and proceeds.
 
    Each post is **confirmed immediately on the artifact-create event**, not at wrap. Methodology shows the post payload (file:line + comment body for review comments; question text + author tag for open-questions) and asks:
    ```text
@@ -156,7 +157,7 @@ This {mode} session may produce accumulating artifacts:
 How should they be handled at session end?
   1. chat-only — draft in chat, you copy/paste manually
   2. save-to-file — write to {cf-constructor-path}/.cache/explain/{...}-{slug}-{date}.md at wrap
-  3. post-to-resource — try to post directly to {target} ({availability-status}); fall back to save-to-file when post fails or unavailable; each post confirmed individually
+  3. post-to-resource — {dynamic-label per the post-to-resource resolver above; one of: PR posting via {handler} / Notion-Jira-GitLab posting via {handler} / **invoke the cf-constructor-generate skill (fix / brainstorm / generate, classified per comment) on the local file via generate-routing** / unavailable for this target ({reason}) — falls back to save-to-file}; each post / dispatch confirmed individually
   4. mixed — pick per artifact type (secondary prompt)
 
 → suggested: {S} ({why-suggested})
@@ -164,7 +165,7 @@ How should they be handled at session end?
 Remember this choice for all future explain sessions in this project? (yes / no)
 ```
 
-`{S}` is computed in priority order: project preference (`artifact_disposition` from `preferences.json`) → `save-to-file` (default; preserves history; reliable). `{availability-status}` shows what's posting-available for the resolved target (e.g. `posting available via MCP github tool` / `posting available via gh CLI` / `posting NOT available — falls back to save-to-file`).
+`{S}` is computed in priority order: project preference (`artifact_disposition` from `preferences.json`) → `save-to-file` (default; preserves history; reliable). The dynamic line for option 3 MUST match the rendered branch from the post-to-resource resolver in `skills/cypilot/agents/storytelling-gate.md` § Gate: artifact-disposition: external-resource handlers (PR / Notion / Jira / GitLab) show the concrete handler; the local-file branch explicitly names `cf-constructor-generate` and the classified mode label; the unavailable branch names the reason and the fallback. The legacy line `posting NOT available — falls back to save-to-file` is reserved for the unavailable branch only — it MUST NOT appear when the local-file branch applies.
 
 On `remember=yes`, write `{"artifact_disposition": "{value}"}` to `preferences.json`. The disposition prompt always emits at session start (like the mode prompt) — preferences.json informs the suggested default but does NOT bypass the prompt. Methodology MUST NOT proceed past the prompt without an explicit user response.
 
@@ -179,7 +180,7 @@ Silent drafting (artifact created but nothing emitted in chat) is forbidden — 
 
 ## Dispatch-Failure Audit Log
 
-When a cfc-routing dispatch fails (any of the five locked failure classes `{write_conflict, transient_io, cfc_invocation_error, validation_rejected, unknown}`), methodology appends one NDJSON record to:
+When a generate-routing dispatch fails (any of the five locked failure classes `{write_conflict, transient_io, cfc_invocation_error, validation_rejected, unknown}`), methodology appends one NDJSON record to:
 
 ```
 {cf-constructor-path}/.cache/explain/dispatch-failures-{slug}-{ISO-date}.jsonl
@@ -253,8 +254,8 @@ Chat output (the live narrative) follows different rules from artifact language:
 - **State persisted**: `mode, role, audience, plan, current_position, open_questions_buffer, takeaways_buffer, diagram_format, glossary_buffer, telemetry_log, input_hash, target_is_pr`; additionally:
   - `handle.local_editable: boolean`
   - `handle.local_editable_reason: string` (closed enum, see preflight § Step 5b)
-  - `handle.cfc_route_available: boolean`
-  - `session_state.cfc_route_never_ask: boolean` (set when user picked option 4 in the cfc-routing sub-prompt)
+  - `handle.generate_route_available: boolean`
+  - `session_state.generate_route_never_ask: boolean` (set when user picked option 4 in the generate-routing sub-prompt)
   - `session_state.dispatched_keys: Map<canonical_path, Set<dispatch_key>>` (partitioned by canonical_path; survives session for idempotence within a target scope; cleared on target-pivot for the NEW target only)
     > Keys in `dispatched_keys` use `failure_class = ""` (empty string sentinel) for the initial dispatch; retry keys use the actual `failure_class` recorded in the dispatch-failures NDJSON. Resume reconstruction MUST apply the same sentinel convention to match keys against the NDJSON records. See `storytelling-phases.md` § Open-question buffer entry shape for the canonical dispatch_key formula and initial-dispatch sentinel definition.
   - `session_state.pending_retries: Map<dispatch_key, {attempts, first_failed_at, last_class, drift_status?}>` (reconstructed from dispatch-failures NDJSON on resume; see Dispatch-Failure Audit Log)
