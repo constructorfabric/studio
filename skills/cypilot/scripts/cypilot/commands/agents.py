@@ -1747,7 +1747,7 @@ _KIT_WORKFLOW_SKILL_TEMPLATES: Dict[str, List[str]] = {
         _TMPL_DESCRIPTION,
         "disable-model-invocation: false",
         "user-invocable: true",
-        "allowed-tools: Bash, Read, Write, Edit, Glob, Grep, WebFetch",
+        "allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, WebFetch",
         "---",
         _GENERATED_MARKER,
         "",
