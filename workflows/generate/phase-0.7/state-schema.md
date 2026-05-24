@@ -194,7 +194,7 @@ The orchestrator pre-canonicalizes block order before flattening multi-expert ou
 Indicates the outcome and health of the completed round:
 
 - **`ok`**: All experts completed their tasks within SLA (no timeouts, no errors). Primary output is canonical; no fallback or advisory needed.
-- **`degraded`**: One or more experts exceeded SLA (timeout, retry exhausted) but the round completed with partial or fallback output. See `health.reason` for details. Round contributions may be incomplete; decisions should be reviewed before accepting.
+- **`degraded`**: One or more experts exceeded SLA (timeout, retry exhausted) but the round completed with partial or fallback output. Check the `health.reason` field for details. Round contributions may be incomplete; decisions should be reviewed before accepting.
 - **`skipped`**: Round was not executed (user skipped, max rounds reached before dispatch, or configuration prevented dispatch). No expert output; `contributions` array is empty or omitted.
 
 #### health (round resilience tracking)

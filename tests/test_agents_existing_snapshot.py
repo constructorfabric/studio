@@ -911,6 +911,11 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
             "cf-constructor-generate-coder-smart":        ("generate", "codebase", "high",   "high"),
             "cf-constructor-generate-prompt-engineer-casual": ("generate", "any",  "medium", "medium"),
             "cf-constructor-generate-prompt-engineer-smart":  ("generate", "any",  "high",   "high"),
+            "storytelling-preflight":                         ("planning", "any",  "low",    "medium"),
+            "storytelling-gate":                              ("planning", "any",  "medium", "medium"),
+            "storytelling-context-pack":                      ("planning", "any",  "medium", "high"),
+            "storytelling-wrap":                              ("analyze",  "any",  "medium", "medium"),
+            "storytelling-export":                            ("generate", "any",  "low",    "medium"),
         }
         for name, (role, target, effort, context) in expected.items():
             entry = agents[name]

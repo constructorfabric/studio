@@ -16,7 +16,7 @@ Precondition: INLINE_FALLBACK must be set before the first round (already probed
 - **Fan-out (default):** `PANEL_MODE_TOPIC` and `PANEL_MODE_CHALLENGE` both default to `"fan-out"`. When set to `"fan-out"`, the orchestrator dispatches all relevant panel members in parallel using the legacy `cf-constructor-brainstorm-expert` contract. Each expert independently produces questions/contributions; the orchestrator collects all responses before aggregation.
 - **Single-agent:** When `PANEL_MODE_TOPIC` or `PANEL_MODE_CHALLENGE` is set to `"single-agent"`, the orchestrator dispatches the new `cf-constructor-brainstorm-panel` agent instead. That agent runs the full round logic with one expert as primary; subsequent experts provide optional critique via the `protocol` field. Single-agent is opt-in per round kind; fan-out is the legacy default and remains unchanged in that branch.
 
-**Inline-fallback note:** When `INLINE_FALLBACK=true`, parallel_dispatch degrades to sequential; experts-are-independent guarantee is best-effort in that mode (see `skills/cypilot/sub-agent-dispatch.md` Mode B). In single-agent mode, INLINE_FALLBACK is a no-op: single-agent orchestration is inherently sequential.
+**Inline-fallback note:** When `INLINE_FALLBACK=true`, parallel_dispatch degrades to sequential; experts-are-independent guarantee is best-effort in that mode (per `skills/cypilot/sub-agent-dispatch.md` Mode B). In single-agent mode, INLINE_FALLBACK is a no-op: single-agent orchestration is inherently sequential.
 
 The loop drives two kinds of rounds, chosen by the user after every round finishes:
 
@@ -329,9 +329,9 @@ while state.topic_current is not None:
       After answers, what next?
         1. {next_topic_proposals[0].text}  — proposed by {experts}
         2. {next_topic_proposals[1].text}  — proposed by {experts}
-        then: custom: <text> — custom topic
         C. Challenge the decisions just made (same topic, panel pushes back)
         W. Wrap up brainstorm (no more topics)
+      then: custom: <text> — custom topic
       Reply with `<answers> + then: <1|2|C|W>` or `then: custom: <text>`.
       Shortcuts: `accept all; then: <1|2|C|W>`, `skip rest`, and `then:` may be sent as a follow-up when the user answered only the questions first.
       You can also type `stop` / `enough` / `done` at any point to end now.
@@ -423,7 +423,7 @@ When `cf-constructor-brainstorm-panel` returns an `envelope` object (in single-a
    - Merge the critique into the corresponding primary contribution's `critique` field (append to existing critique or create it).
 4. Return flattened `contributions` array.
 
-See `workflows/generate/phase-0.7/state-schema.md` § envelope for the full envelope schema.
+Open, load, and follow `workflows/generate/phase-0.7/state-schema.md` § envelope for the full envelope schema.
 
 ### Expert dispatch contracts
 
@@ -438,7 +438,7 @@ Each expert dispatch follows the JSON contract in `{cf-constructor-path}/.core/s
 - `state` = the orchestrator's brainstorm state with these sub-fields always present: `kind`, `rules_loaded`, `kit_rules_path`, `template_path`, `panel`, `decisions`, `topic_history`. Sub-fields not in this list (`example_path`, `rounds`, `open_questions`, `session_id`, `next_topic_proposals`) are optional — pass them when available, omit otherwise.
 
 **Single-agent mode (panel_mode="single-agent"):**
-The orchestrator dispatches `cf-constructor-brainstorm-panel` once per round (not per expert). See `workflows/generate/phase-0.7/cf-constructor-brainstorm-panel.md` for the full contract.
+The orchestrator dispatches `cf-constructor-brainstorm-panel` once per round (not per expert). Open, load, and follow `workflows/generate/phase-0.7/cf-constructor-brainstorm-panel.md` for the full contract.
 
 - `panel` = the full `state.panel` array (all experts, to allow the agent to designate a primary)
 - `topic` = the full `state.topic_current` object
