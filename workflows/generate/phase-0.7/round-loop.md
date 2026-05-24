@@ -26,9 +26,19 @@ The loop drives two kinds of rounds, chosen by the user after every round finish
 ```text
 pending_round_kind = "topic"        # first iteration is always a topic-round
 while state.topic_current is not None:
-  # Read orchestration mode flags independently for each round kind
-  panel_mode_topic = env("PANEL_MODE_TOPIC", "single-agent")
-  panel_mode_challenge = env("PANEL_MODE_CHALLENGE", "single-agent")
+  # Read orchestration mode flags independently for each round kind.
+  # Precedence: state.run_config (set from the user's offer reply, e.g.
+  # `yes mode=fan-out`) → env var → workflow default "single-agent".
+  panel_mode_topic = (
+      state.run_config.PANEL_MODE_TOPIC
+      or env("PANEL_MODE_TOPIC")
+      or "single-agent"
+  )
+  panel_mode_challenge = (
+      state.run_config.PANEL_MODE_CHALLENGE
+      or env("PANEL_MODE_CHALLENGE")
+      or "single-agent"
+  )
   
   if pending_round_kind == "topic":
     panel_mode = panel_mode_topic

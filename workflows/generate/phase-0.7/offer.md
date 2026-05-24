@@ -44,9 +44,20 @@ not-their-domain. You answer the questions and pick the next topic.
   `{cf-constructor-path}/.cache/brainstorm/{slug}-{ISO}/`; saved sessions
   follow manual cache retention).
 
-  To set a custom round limit, reply `yes:N` (e.g. `yes:15`). Bare `yes`
-  uses the default of 10 rounds (`BRAINSTORM_MAX_ROUNDS=10`). `save:N` is
-  also accepted to combine custom limit with save mode.
+  Optional modifiers (append to `yes` / `save`, whitespace-separated, any
+  order):
+  • `:N` — custom round cap, e.g. `yes:15` (default 10,
+    `BRAINSTORM_MAX_ROUNDS=10`). `save:N` is also accepted.
+  • `mode=fan-out` — dispatch each expert as a separate parallel sub-agent
+    (`cf-constructor-brainstorm-expert`, one per panel member). Requires a
+    host with native sub-agent parallelism (otherwise degrades to
+    sequential). Use this when you want strict cross-expert independence.
+  • `mode=single-agent` — explicit form of the default; dispatch one
+    `cf-constructor-brainstorm-panel` agent per round with all experts
+    deliberating inside it (one cohesive sub-agent context, host-
+    independent, INLINE_FALLBACK is a no-op).
+
+  Examples: `yes`, `yes:15`, `yes mode=fan-out`, `save:20 mode=fan-out`.
 ```
 
 When Phase 0.5 resolved a chat-only or otherwise no-write destination, the
@@ -64,8 +75,17 @@ not-their-domain. You answer the questions and pick the next topic.
 → Reply `yes` (suggested when the design space is open or you want
   cross-discipline pushback) or `no` (skip — go straight to inputs).
 
-  To set a custom round limit, reply `yes:N` (e.g. `yes:15`). Bare `yes`
-  uses the default of 10 rounds (`BRAINSTORM_MAX_ROUNDS=10`).
+  Optional modifiers (append to `yes`, whitespace-separated, any order):
+  • `:N` — custom round cap, e.g. `yes:15` (default 10,
+    `BRAINSTORM_MAX_ROUNDS=10`).
+  • `mode=fan-out` — dispatch each expert as a separate parallel sub-agent
+    (`cf-constructor-brainstorm-expert`). Requires native sub-agent
+    parallelism on the host.
+  • `mode=single-agent` — explicit form of the default; one
+    `cf-constructor-brainstorm-panel` dispatch per round with all experts
+    deliberating inside it.
+
+  Examples: `yes`, `yes:15`, `yes mode=fan-out`, `yes:20 mode=fan-out`.
 ```
 
 When `INLINE_FALLBACK=true` (set per `workflows/shared/inline-fallback-probe.md` — user replied `2` or host has no native sub-agent support), prepend this warning to the offer block above before showing it to the user:
@@ -78,3 +98,23 @@ Auto-skip the offer (treat as `no`) when any of:
 
 - the user passed `--no-brainstorm` in the invocation (`--no-brainstorm` is a recognized CLI flag for the generate workflow; the orchestrator skips the brainstorm offer entirely when this flag is present);
 - the KIND's `rules.md` has `brainstorm = "disabled"` (escape hatch for kits where exploration is pointless — e.g. mechanically derived artifacts) (future kit-schema extension; not yet defined in the sdlc kit — treated as 'not present' = enabled in current kits).
+
+### Reply parsing
+
+Tokenize the user reply on whitespace. The first token is the **base verb** (`yes` / `yes:N` / `save` / `save:N` / `no`); zero or more subsequent tokens are **modifiers** of the form `key=value` (case-insensitive on key and value).
+
+Base verb resolution:
+
+- `yes` → run brainstorm, do not save artifacts.
+- `yes:N` (N positive integer) → run brainstorm with `state.BRAINSTORM_MAX_ROUNDS = N`.
+- `save` / `save:N` → like `yes` / `yes:N`, plus persist transcript + final design under `{cf-constructor-path}/.cache/brainstorm/{slug}-{ISO}/`. Rejected when the offer was emitted without `save` (no-write destination).
+- `no` → skip brainstorm.
+
+Recognized modifiers:
+
+- `mode=fan-out` → set `state.run_config.PANEL_MODE_TOPIC = "fan-out"` AND `state.run_config.PANEL_MODE_CHALLENGE = "fan-out"` before entering the round loop.
+- `mode=single-agent` → set both to `"single-agent"` (explicit form of the default).
+
+Unknown modifiers MUST cause rejection with a one-line error naming the unknown token and re-emitting the offer. Duplicate `mode=` modifiers in one reply MUST cause rejection. To set `PANEL_MODE_TOPIC` and `PANEL_MODE_CHALLENGE` to different values, use the env-var override mechanism (`workflows/generate/phase-0-dependencies.md` § Panel Mode Flags) instead of the offer reply.
+
+When no `mode=` modifier is supplied, the round loop falls back to env vars (`PANEL_MODE_TOPIC` / `PANEL_MODE_CHALLENGE`), then to the workflow default `"single-agent"`. Open, load, and follow `workflows/generate/phase-0.7/round-loop.md` § Round loop for the full precedence chain.

@@ -292,9 +292,13 @@ The orchestrator run configuration is split into a **sibling** `run_config.json`
   "session_metadata": {
     "created_at": "2025-05-23T14:30:00Z",
     "user_email": "user@example.com"
-  }
+  },
+  "PANEL_MODE_TOPIC": "single-agent",
+  "PANEL_MODE_CHALLENGE": "single-agent"
 }
 ```
+
+**Panel mode fields** (`PANEL_MODE_TOPIC`, `PANEL_MODE_CHALLENGE`): enum `{"single-agent", "fan-out"}` or `null`. Set by the orchestrator from the offer reply (`yes mode=fan-out` / `yes mode=single-agent`); the parsing contract is owned by `workflows/generate/phase-0.7/offer.md` § Reply parsing (open, load, and follow it for the canonical rules). `null` (or field absent) means "no offer-time override"; the round loop then falls back to the env var of the same name, then to the workflow default `"single-agent"`. The `mode=` offer modifier always sets both fields to the same value; to set them independently, use env vars.
 
 **Config drift detection:**
 
