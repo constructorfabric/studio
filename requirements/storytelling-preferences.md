@@ -12,9 +12,11 @@ purpose: Page size, artifact language, checkpoint, telemetry, failure modes for 
 <!-- toc -->
 
 - [Host Capability Matrix](#host-capability-matrix)
+  - [Context-pack reuse for cfc routing](#context-pack-reuse-for-cfc-routing)
 - [Page Size](#page-size)
 - [Artifact Language](#artifact-language)
 - [Artifact Disposition](#artifact-disposition)
+- [Dispatch-Failure Audit Log](#dispatch-failure-audit-log)
 - [Path Conventions (Portability)](#path-conventions-portability)
 - [Output Language (chat)](#output-language-chat)
 - [Checkpoint and Resume](#checkpoint-and-resume)
@@ -41,8 +43,26 @@ The methodology assumes some host-runtime tools that may not be present in every
 | Skills (`Notion:find`, `Notion:search`, `coderabbit:autofix`, etc.) | Phase E0 input access skill tier | Available-skills list at session start | CLI tier; user-fallback |
 | `TaskCreate` / `TaskUpdate` (host task API) | Plan progress tracking when `N > 5` portions | Tool presence check | Emit progress as inline telemetry log lines instead (`- [storytelling]: Portion 3/5 emitted`) — same information, no persistent task list |
 | `mkdir -p` (filesystem) | Cache directory creation at wrap-time, package directory creation in export mode | (basic shell — almost always present) | If directory create fails (permission, disk full): warn user with the exact filesystem error; emit wrap output normally; flag in Session block that persistence failed; omit `Resume this session` / file-save next-steps from Suggested Next Steps |
+| `cfc_generate_dispatch` | Phase E0 input access — derives `handle.cfc_route_available` for the cfc-routing sub-prompt gate | tool list at session start includes `cf-constructor-generate` skill OR `Skill` tool can invoke `cf-constructor-generate` | `cfc_route_available=false`; sub-prompt suppressed entirely (no "unavailable" message) |
+
+Cross-reference: the preflight Step 5b sub-rule (see `skills/cypilot/agents/storytelling-preflight.md` § Step 5b).
 
 At Phase E0 entry, methodology probes each capability (cheap probes only — `command -v X`, tool-list scan, no network calls during the probe). The result is held in working memory as `{capability_map}` and consulted whenever an input access tier is selected (Phase E0), an artifact disposition is offered (Artifact Disposition section above — the `post-to-resource` availability-status is computed from this map), or a progress-tracking decision is made (TaskCreate Progress Tracking below). The capability matrix is NOT user-visible by default; it surfaces in chat only when (a) the user-fallback prompt fires (showing what was tried and what's missing), or (b) the disposition prompt's `post-to-resource` availability-status is shown.
+
+### Context-pack reuse for cfc routing
+
+When dispatching cfc-routing (Mode A / B / C), the orchestrator passes a `pack_handle` instead of inlining the full pack body:
+```
+pack_handle = {
+  session_id: <string>,
+  kit_path: <string>,         // path to the persisted content_pack.json
+  anchor_ids: [<string>, ...] // ordered by line_range.start; primary = largest overlap
+}
+```
+
+On the receiving side, the consumer loads the persisted `content_pack` from `kit_path` and verifies the `etag` field (added per `skills/cypilot/agents/storytelling-context-pack.md`). On etag mismatch, unreadable `kit_path`, or `kit_path == null`, the consumer MUST re-dispatch `storytelling-context-pack` rather than fail silently.
+
+Consumers MUST NOT branch their reasoning on `content_pack.strategy`. When the target anchor has `resolved_section_text != null`, the consumer uses it verbatim; otherwise it issues a narrow Read against `canonical_path` for the anchor's `line_range`.
 
 ## Page Size
 
@@ -155,6 +175,42 @@ On `remember=yes`, write `{"artifact_disposition": "{value}"}` to `preferences.j
 
 Silent drafting (artifact created but nothing emitted in chat) is forbidden — see Anti-Patterns.
 
+## Dispatch-Failure Audit Log
+
+When a cfc-routing dispatch fails (any of the five locked failure classes `{write_conflict, transient_io, cfc_invocation_error, validation_rejected, unknown}`), methodology appends one NDJSON record to:
+
+```
+{cf-constructor-path}/.cache/explain/dispatch-failures-{slug}-{ISO-date}.jsonl
+```
+
+Append-only; never truncated; never deleted in-session. One record per failure, one record per resolved retry. No hidden subdirectories.
+
+Per-failure record schema:
+```json
+{
+  "dispatch_key": "<sha1 — see storytelling-phases.md § Open-question buffer>",
+  "class": "write_conflict | transient_io | cfc_invocation_error | validation_rejected | unknown",
+  "subclass": "kit_missing | cli_broken | subagent_crashed | permission_denied | null",
+  "attempt": <int, 1 or 2>,
+  "ts": "<ISO timestamp>",
+  "etag_at_dispatch": "<sha or null>",
+  "line_range_hash_at_dispatch": "<sha or null>",
+  "payload_excerpt": "<first 280 chars of the comment text + breadcrumb>",
+  "draft_path": "<relative path of preserved draft when auto-save fired, else null>"
+}
+```
+
+Per-retry-success record schema (appended when a retry of `dispatch_key` completes successfully):
+```json
+{
+  "dispatch_key": "<same sha1>",
+  "status": "resolved",
+  "ts": "<ISO timestamp>"
+}
+```
+
+Resume semantics: on session resume, methodology reads this file and reconstructs `session_state.pending_retries: Map<dispatch_key, {attempts, first_failed_at, last_class, drift_status?}>` from the records (skipping any `dispatch_key` whose latest record is `status=resolved`). This makes the 2-attempts-per-key cap survive session restarts.
+
 ## Path Conventions (Portability)
 
 All explain-generated artifacts and references **inside** them MUST use **relative paths**, never absolute paths. This makes the artifacts portable across machines, repo clones, container mounts, and CI workspaces. Hardcoding `/Users/viator/...` or `/Volumes/...` into a comments file or a checkpoint breaks immediately when the file is shared or the project is cloned to a different location.
@@ -193,7 +249,16 @@ Chat output (the live narrative) follows different rules from artifact language:
 - **Directory**: if `{cf-constructor-path}/.cache/explain/` does not exist, methodology MUST create it (mkdir -p) at the moment of the wrap-time write. Same applies to diagrams / open-questions / key-takeaways files.
 - **`{slug}` derivation**: basename without extension, lowercased, non-alphanumeric → hyphens. `requirements/my-prd.md` → `my-prd`. External resources: `gh-{owner}-{repo}-pr-{N}`, `jira-{key}`, `notion-{slugified-title}`, `url-{domain}-{path}`. Same `{slug}` flows through `session-`, `diagrams-`, `open-questions-`, `key-takeaways-`, package-directory.
 - **Trigger** (the ONLY trigger): user accepts the checkpoint prompt during a mid-session Wrap (Phase E5 trigger 2, plan-not-complete branch). Auto-checkpointing during the session is **forbidden** — no periodic writes, no Phase-transition writes, no pivot writes. State is held in working memory and persisted only at the natural stopping point if the user opts in.
-- **State persisted**: `mode, role, audience, plan, current_position, open_questions_buffer, takeaways_buffer, diagram_format, glossary_buffer, telemetry_log, input_hash, target_is_pr`
+- **State persisted**: `mode, role, audience, plan, current_position, open_questions_buffer, takeaways_buffer, diagram_format, glossary_buffer, telemetry_log, input_hash, target_is_pr`; additionally:
+  - `handle.local_editable: boolean`
+  - `handle.local_editable_reason: string` (closed enum, see preflight § Step 5b)
+  - `handle.cfc_route_available: boolean`
+  - `session_state.cfc_route_never_ask: boolean` (set when user picked option 4 in the cfc-routing sub-prompt)
+  - `session_state.dispatched_keys: Map<canonical_path, Set<dispatch_key>>` (partitioned by canonical_path; survives session for idempotence within a target scope; cleared on target-pivot for the NEW target only)
+  - `session_state.pending_retries: Map<dispatch_key, {attempts, first_failed_at, last_class, drift_status?}>` (reconstructed from dispatch-failures NDJSON on resume; see Dispatch-Failure Audit Log)
+  - For each open-questions buffer entry, the new fields listed in `storytelling-phases.md` § Phase E3 Open-question buffer entry shape: `dispatch_state, intent_initial, intent_initial_tier, intent_final, intent_override_reason, dispatch_key, dispatched_at, result_received_at, cfc_session_id, result_summary, paused_at, context_fingerprint, last_failure`
+
+  Persistence happens at session wrap per the existing wrap-time checkpoint rule (Anti-Pattern #29 forbids auto-checkpoint). The NDJSON is the ONLY surface that writes on every failure event (it is an append-only audit log, not a checkpoint).
 - **Resume invocation**: write `explain --resume {session-id}` (or `resume explain session {session-id}`) in any chat where `{session-id}` is the ISO-timestamp suffix. The `analyze.md` WHEN-rule recognises the resume intent verb and routes here; the methodology then loads the checkpoint at Phase E0 invocation handling. There is no dedicated `cf-constructor explain` CLI subcommand — resume is a methodology-level intent-routed action, not a CLI entrypoint
 - **On resume**:
   - Load state from JSON

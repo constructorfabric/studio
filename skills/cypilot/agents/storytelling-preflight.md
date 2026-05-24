@@ -13,6 +13,7 @@ description: Invoke at storytelling workflow phase E0 to resolve input access ti
   - [Step 3a — Path safety guard](#step-3a--path-safety-guard)
   - [Step 4 — Size guards](#step-4--size-guards)
   - [Step 5 — Detect target_type and primary_language](#step-5--detect-target_type-and-primary_language)
+  - [Step 5b — Local-editable detection](#step-5b--local-editable-detection)
   - [Step 6 — Load preferences](#step-6--load-preferences)
 - [Output (return-value contract)](#output-return-value-contract)
 - [Response Completion Gate](#response-completion-gate)
@@ -209,6 +210,58 @@ to set `primary_language`, or `null` if inconclusive.
 
 Store the file extension (or `"directory"`) as `file_type`.
 
+### Step 5b — Local-editable detection
+
+Compute `handle.local_editable` using the following boolean expression:
+
+```
+handle.local_editable = (handle.access_tier == "local")
+                     AND (handle.canonical_path strictly descends project_root)
+                     AND (handle.target_type ∈ {code, artifact})
+                     AND (handle.size_guard_verdict != "block_too_large")
+```
+
+**Special-case carve-outs (evaluated before the general expression):**
+
+- If `handle.target_type == "directory"`: set `local_editable = false` with
+  `local_editable_reason = "target_type_directory"`. (v1 carve-out — directory
+  targets require explicit file selection before editing is permitted.)
+- If `handle.target_type == "pr"`: set `local_editable = false` with
+  `local_editable_reason = "target_type_pr"`.
+
+**`handle.cfc_route_available` (orthogonal flag):**
+
+```
+handle.cfc_route_available := capability_map.cfc_generate_dispatch == true
+```
+
+This flag is orthogonal to `local_editable`. Both flags AND-gate the cfc-routing
+offer downstream — neither alone is sufficient to present the offer.
+
+**`handle.local_editable_reason`** MUST be set to exactly one value from the
+following closed enum:
+
+| Value | When to use |
+|---|---|
+| `ok` | `local_editable` resolved to `true` |
+| `outside_project_root` | `canonical_path` is not a strict descendant of `project_root` |
+| `target_type_pr` | `target_type == "pr"` (see carve-out above) |
+| `target_type_directory` | `target_type == "directory"` (see carve-out above) |
+| `size_block` | `size_guard_verdict == "block_too_large"` |
+| `access_tier_remote` | `access_tier` is one of `{mcp, cli, user_fallback}` |
+| `cfc_route_unavailable` | `local_editable` would otherwise be `true` but `cfc_route_available == false`; still emit for telemetry — the downstream gate decides offer visibility from both flags independently |
+
+Evaluate reasons in the priority order listed above (first matching condition
+wins). When `local_editable = true`, the reason MUST be `"ok"`.
+
+**Step 5b sub-rule — Target-pivot invalidation:**
+
+Any mid-session target-pivot command (e.g. `"change focus to {path}"`) MUST
+re-run Step 5b in full and rewrite `handle.local_editable`,
+`handle.local_editable_reason`, and `handle.cfc_route_available` BEFORE the
+next response portion is emitted. Stale values from a prior Step 5b execution
+MUST NOT persist across a target pivot.
+
 ### Step 6 — Load preferences
 
 Attempt to read `{cypilot_path}/config/preferences.json`.
@@ -235,7 +288,10 @@ Attempt to read `{cypilot_path}/config/preferences.json`.
     "line_count": "number",
     "size_guard_verdict": "ok | warn_large | block_too_large",
     "size_guard_reason": "string | null",
-    "file_count": "number — 1 for single file, N for directory"
+    "file_count": "number — 1 for single file, N for directory",
+    "local_editable": "boolean",
+    "local_editable_reason": "ok | outside_project_root | target_type_pr | target_type_directory | size_block | access_tier_remote | cfc_route_unavailable",
+    "cfc_route_available": "boolean"
   },
   "preferences_loaded": "object — contents of preferences.json or {}",
   "abort": "boolean",
@@ -269,4 +325,10 @@ The response is complete only when:
 - when `access_tier = "user_fallback"`, the canonical fallback prompt has been
   emitted (before the JSON, as a user-facing message) and `byte_size = 0`
 - `preferences_loaded` is an object (never `null`)
+- `handle.local_editable` is present and is a boolean
+- `handle.local_editable_reason` is present and is one of the seven enumerated
+  values in the closed enum (`ok`, `outside_project_root`, `target_type_pr`,
+  `target_type_directory`, `size_block`, `access_tier_remote`,
+  `cfc_route_unavailable`)
+- `handle.cfc_route_available` is present and is a boolean
 - the SKILL.md invariant has been satisfied

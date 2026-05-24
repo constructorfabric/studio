@@ -248,6 +248,12 @@ When both are available: use Bash to create the directory
 (`mkdir -p <cache-dir>`) and write the `content_pack` JSON to the file using
 the Write tool. Set `kit_path` to the absolute path of the written file.
 
+Include an `etag` field in the persisted JSON alongside `kit_path`:
+```
+"etag": "sha256(canonical_path + ":" + byte_size + ":" + line_count)"
+```
+etag captures source-file identity; consumers MUST re-dispatch this agent on etag mismatch (file moved or changed since pack was written).
+
 Persistence is informational: a failure here MUST NOT abort the agent run.
 Add a warning and continue to Step 7.
 
@@ -267,11 +273,16 @@ trailing commentary — the JSON block is the entire response.
 The orchestrator selects the strategy before dispatch. This agent MUST echo
 the input `strategy` in `content_pack.strategy` verbatim.
 
+**Consumer contract.** Downstream agents that load a persisted `content_pack` MUST NOT branch their reasoning on `content_pack.strategy`. The strategy field is an implementation detail of how the pack was built; consumers use the `anchors[]` array and the `resolved_section_text` field (when present) uniformly regardless of strategy. Agents that reference `content_pack.strategy` in their output prose violate this contract. Response Completion Gate of any consuming agent SHOULD reject reasoning that explicitly cites the strategy value.
+
 ## Output (return-value contract)
+
+Schema version of the content_pack JSON; consumers MAY refuse a mismatched major.
 
 ```json
 {
   "content_pack": {
+    "version": "1.0",
     "strategy": "snippets | anchors | hybrid",
     "anchors": [
       {

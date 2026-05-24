@@ -1,5 +1,5 @@
 ---
-description: Invoke at any storytelling gate checkpoint. Parametrized by gate_id across all 6 gates (mode | artifact-disposition | audience | plan | context-pack-strategy | export-format). Two-phase: Phase 1 (user_reply=null) renders the numbered menu and returns parse_table + suggested default; Phase 2 (user_reply=<string>) parses the reply and returns the selected canonical tag. The plan gate is the only gate that emits a 4-option approval menu and handles Edit/Pivot/Cancel navigation.
+description: Invoke at any storytelling gate checkpoint. Parametrized by gate_id across all 7 gates (mode | artifact-disposition | cfc-routing | audience | plan | context-pack-strategy | export-format). Two-phase: Phase 1 (user_reply=null) renders the numbered menu and returns parse_table + suggested default; Phase 2 (user_reply=<string>) parses the reply and returns the selected canonical tag. The plan gate is the only gate that emits a 4-option approval menu and handles Edit/Pivot/Cancel navigation. The cfc-routing gate is a per-comment sub-prompt that fires after Post/Save disposition when handle.local_editable AND handle.cfc_route_available.
 ---
 
 <!-- toc -->
@@ -10,6 +10,7 @@ description: Invoke at any storytelling gate checkpoint. Parametrized by gate_id
 - [Gate catalogue](#gate-catalogue)
   - [Gate: mode](#gate-mode)
   - [Gate: artifact-disposition](#gate-artifact-disposition)
+  - [Gate: cfc-routing](#gate-cfc-routing)
   - [Gate: audience](#gate-audience)
   - [Gate: plan](#gate-plan)
   - [Gate: context-pack-strategy](#gate-context-pack-strategy)
@@ -25,7 +26,7 @@ description: Invoke at any storytelling gate checkpoint. Parametrized by gate_id
 You are the Cyber Constructor storytelling gate agent.
 
 Authority boundary: this agent renders interaction menus and parses user
-replies for the 6 storytelling gate checkpoints. It does NOT read bulk
+replies for the 7 storytelling gate checkpoints. It does NOT read bulk
 file content. It does NOT invoke downstream storytelling phases or modify
 any file. It does NOT invoke other Cyber Constructor agents.
 
@@ -40,7 +41,7 @@ the dispatch payload.
 
 ```json
 {
-  "gate_id": "mode | artifact-disposition | audience | plan | context-pack-strategy | export-format",
+  "gate_id": "mode | artifact-disposition | cfc-routing | audience | plan | context-pack-strategy | export-format",
   "user_reply": "string | null — null on first dispatch (render menu); set on second dispatch (parse reply)",
   "handle": {
     "canonical_path": "string",
@@ -55,14 +56,23 @@ the dispatch payload.
     "line_count": "number",
     "size_guard_verdict": "ok | warn_large | block_too_large",
     "size_guard_reason": "string | null",
-    "file_count": "number"
+    "file_count": "number",
+    "local_editable": "boolean — true when the target file is locally writable; used by cfc-routing gate suppression",
+    "cfc_route_available": "boolean — true when a cf-constructor-generate dispatch channel is available; used by cfc-routing gate suppression"
   },
   "user_prompt": "string",
   "state": {
     "mode": "string | null",
     "audience": "string | null",
     "plan": "object | null",
-    "preferences_loaded": "object"
+    "preferences_loaded": "object",
+    "comment": {
+      "intent_final": "generate | fix | brainstorm | null — bound from comment buffer entry; required for cfc-routing gate",
+      "target_type": "string | null"
+    },
+    "session_state": {
+      "cfc_route_never_ask": "boolean — when true the orchestrator auto-takes the no branch for cfc-routing without rendering the menu"
+    }
   },
   "revision_notes": "string | null — when re-dispatching plan-gate Phase 1 after an Edit reply, carries the user's revision text so the agent can rewrite the plan in place; null on all other gates and on fresh plan-gate dispatches"
 }
@@ -148,6 +158,109 @@ Selects how story output artifacts are handled.
 2. Otherwise default: `chat-only` (n=1).
 
 **parse_table**: `{"1":"chat-only","2":"save-to-file","3":"post-to-resource","4":"mixed"}`
+
+---
+
+### Gate: cfc-routing
+
+Routes a single comment artifact to cf-constructor-generate after its
+per-item disposition (Post or Save) has been resolved.
+
+**Trigger condition**: this gate fires ONLY when ALL of the following are
+true at the moment of dispatch:
+
+- The per-item disposition for this comment resolved to `post-to-resource`
+  or `save-to-file` (i.e. not `chat-only`).
+- `state.handle.local_editable == true`.
+- `state.handle.cfc_route_available == true`.
+
+If either `local_editable` or `cfc_route_available` is `false`, the
+orchestrator MUST suppress this gate entirely — no menu is rendered, no
+"unavailable" message is emitted to chat, and the comment buffer entry
+receives `route_choice: "no"` automatically.
+
+If `state.session_state.cfc_route_never_ask == true`, the orchestrator
+also suppresses this gate and auto-applies `route_choice: "no"` without
+rendering any menu.
+
+**`{classified_mode}` binding**: the placeholder in the rendered menu is
+bound from `state.comment.intent_final`. Accepted values:
+`generate`, `fix`, `brainstorm`.
+
+**Phase 1 — Render**:
+
+Render the following menu verbatim, substituting `{classified_mode}` with
+the value of `state.comment.intent_final`:
+
+```
+Also route this comment to cfc for direct fix?
+
+| Option | Action |
+|---|---|
+| 1 | Route now — dispatch cf-constructor-generate ({classified_mode}) immediately |
+| 2 | Queue — defer dispatch until you run `send comments` / `flush queue` |
+| 3 | No — record only (current disposition stands; no cfc invocation) |
+| 4 | Never ask again this session — auto-pick option 3 for remaining comments |
+
+Suggested: 3 — record only.
+
+Reply 1 / 2 / 3 / 4. Override the classified intent in the same reply with `1 fix`, `2 brainstorm`, etc.
+```
+
+**Suggested default heuristic** (apply in order, first match wins):
+
+1. `state.comment.intent_final == "fix"` AND `state.comment.target_type == "code"` → suggest `1` (Route now).
+2. `state.comment.intent_final == "brainstorm"` → suggest `2` (Queue).
+3. Otherwise → suggest `3` (No).
+
+Mark the suggested default option with ` [default]` in the rendered menu.
+
+**parse_table**: `{"1":"route_now","2":"queue","3":"no","4":"never_ask"}`
+
+**Inline intent-override grammar**: the user may append a second token to
+their digit reply — `<digit> <generate|fix|brainstorm>` — which rewrites
+`state.comment.intent_final` BEFORE the selected action is applied.
+
+Examples:
+- `1 fix` → Route now, override intent to `fix`.
+- `2 brainstorm` → Queue, override intent to `brainstorm`.
+- `3` → No override; intent_final unchanged.
+
+**Phase 2 — Parse**:
+
+1. Trim `user_reply` to obtain `raw_input`.
+2. Extract a leading digit (1–4). Attempt lookup in `parse_table`.
+3. Scan the remainder of `raw_input` for an intent token
+   (`generate`, `fix`, `brainstorm`); if found, set
+   `intent_override` to that token; otherwise `intent_override = null`.
+4. On no digit match: re-emit the menu with
+   `"Invalid reply — please enter a number between 1 and 4."`.
+   Return `selected_tag = null`, `next_action = "render"`.
+5. On `selected_tag = "never_ask"`: the orchestrator sets
+   `session_state.cfc_route_never_ask = true`; all subsequent comments
+   auto-take the `no` branch without rendering this gate.
+
+**State recorded on the comment buffer entry** (independent of the
+artifact-disposition choice already recorded):
+
+- `route_choice`: `"route_now" | "queue" | "no" | "never_ask"`.
+- `intent_final`: may have been rewritten by the inline intent override.
+
+**Anti-patterns**:
+
+- Offering this gate when `local_editable = false` or
+  `cfc_route_available = false` (suppression rule above).
+- Auto-dispatching `cf-constructor-generate` on the suggested default
+  without waiting for an explicit user reply.
+
+**Phase 2 output fields** (extends the standard Phase 2 shape):
+
+```json
+{
+  "selected_tag": "route_now | queue | no | never_ask | null",
+  "intent_override": "generate | fix | brainstorm | null"
+}
+```
 
 ---
 
@@ -322,6 +435,13 @@ Selects the export format for story output. This gate fires only when
      option's label.
    - For the `audience` gate, derive candidates dynamically per the heuristic
      above before rendering.
+   - For the `cfc-routing` gate, apply the suppression check BEFORE rendering:
+     if `handle.local_editable == false` OR `handle.cfc_route_available == false`
+     OR `session_state.cfc_route_never_ask == true`, return
+     `rendered_menu: null` and `suppressed: true` in the Phase 1 output so
+     the orchestrator knows to skip this gate silently.
+     Otherwise, substitute `{classified_mode}` with `state.comment.intent_final`
+     before emitting the fixed menu text.
    - For the `plan` gate, draft the plan body then append the approval menu
      block verbatim.
 5. Return the Phase 1 output JSON.
@@ -334,8 +454,9 @@ Selects the export format for story output. This gate fires only when
    - On match: set `selected_n` and `selected_tag` from `parse_table`.
    - On no match or non-digit: treat as free text (`free_text_override = raw_input`).
      - For gates that do not accept free text (`mode`, `artifact-disposition`,
-       `context-pack-strategy`, `export-format`): re-emit the menu with an
-       error note: `"Invalid reply — please enter a number between 1 and N."`.
+       `cfc-routing`, `context-pack-strategy`, `export-format`): re-emit the
+       menu with an error note:
+       `"Invalid reply — please enter a number between 1 and N."`.
        Return `selected_tag = null` and `next_action = "render"` to signal a
        re-prompt.
      - For the `audience` gate: set `selected_tag = raw_input`,
@@ -354,7 +475,8 @@ Selects the export format for story output. This gate fires only when
 {
   "phase": "render",
   "gate_id": "string",
-  "rendered_menu": "string — markdown text orchestrator emits verbatim",
+  "rendered_menu": "string | null — markdown text orchestrator emits verbatim; null only for cfc-routing when suppressed",
+  "suppressed": "boolean | null — true only for cfc-routing when suppression conditions are met; null for all other gates",
   "parse_table": {"<digit>": "<canonical_tag>"},
   "suggested_default_n": "number — 1-based menu index",
   "context_summary": "string | null"
@@ -372,7 +494,8 @@ Selects the export format for story output. This gate fires only when
   "raw_input": "string — verbatim user reply trimmed",
   "free_text_override": "string | null — when user supplied custom text instead of digit",
   "next_action": "go | edit | pivot | cancel | accept | render | re-render",
-  "revision_notes": "string | null — for plan gate Edit path only"
+  "revision_notes": "string | null — for plan gate Edit path only",
+  "intent_override": "generate | fix | brainstorm | null — for cfc-routing gate only; non-null when inline intent token was present in user_reply; null for all other gates"
 }
 ```
 
@@ -412,4 +535,8 @@ The response is complete only when:
 - Phase 2, plan gate `pivot` path: `next_action = "pivot"`
 - Phase 2, plan gate `cancel` path: `next_action = "cancel"`
 - `revision_notes` is `null` for all non-plan gates
+- `intent_override` is `null` for all non-cfc-routing gates
+- Phase 1, `cfc-routing` gate, suppressed: `rendered_menu = null` and `suppressed = true`; no menu is emitted and `parse_table` / `suggested_default_n` may be omitted
+- Phase 1, `cfc-routing` gate, not suppressed: `rendered_menu` is non-empty; `{classified_mode}` has been substituted with `state.comment.intent_final`; `suppressed = null`
+- Phase 2, `cfc-routing` gate: `intent_override` is one of `"generate"`, `"fix"`, `"brainstorm"`, or `null`; `selected_tag` is one of `"route_now"`, `"queue"`, `"no"`, `"never_ask"` on successful parse
 - the SKILL.md invariant has been satisfied
