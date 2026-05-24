@@ -308,6 +308,8 @@ Hard rules, enforced inside every portion:
 
 4. **Analogies allowed with explicit disclaimer**: `(analogy — not from artifact): works similarly to {analogy}`. MUST NOT introduce facts; only illustrates an already-stated fact. MUST NOT be from another Cypilot artifact unless it's in scope. ≤ 1 analogy per 3 portions.
 
+### Open-question buffer entry shape
+
 5. **Open-question buffer entry shape** (in-memory, serialized at wrap):
    ```text
    {
@@ -334,7 +336,7 @@ Hard rules, enforced inside every portion:
        "ts": ISO-timestamp,
        "etag_at_dispatch": "<sha or null>",
        "line_range_hash_at_dispatch": "<sha or null>",
-       "auto_save_path": "<relative path or null>"
+       "draft_path": "<relative path of preserved draft when auto-save fired, else null>"
      } | null
    }
    ```

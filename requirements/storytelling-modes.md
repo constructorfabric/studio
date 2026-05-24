@@ -56,7 +56,7 @@ Which storytelling mode for this session?
 
 ## Per-portion rhythm by mode
 
-Every portion preserves the core structure (Opening → Body → Diagram → Source refs → `🎨 visualization:` marker → Progress marker → Navigation). The mode determines whether the lens content is **inline** (mid-section between Body and Source refs) or **a separate follow-up portion** for the same plan item.
+Every portion preserves the core structure (Opening → Body → Mode-lens → Diagram → Source refs → `🎨 visualization:` marker → Progress marker → Navigation). The mode determines whether the lens content is **inline** (mid-section between Body and Source refs) or **a separate follow-up portion** for the same plan item.
 
 | Mode | Rhythm | Lens content placement |
 |---|---|---|

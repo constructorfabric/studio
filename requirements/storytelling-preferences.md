@@ -64,6 +64,8 @@ On the receiving side, the consumer loads the persisted `content_pack` from `kit
 
 Consumers MUST NOT branch their reasoning on `content_pack.strategy`. When the target anchor has `resolved_section_text != null`, the consumer uses it verbatim; otherwise it issues a narrow Read against `canonical_path` for the anchor's `line_range`.
 
+**Mode B threshold.** Mode B inline dispatch is selected when the target file is `< 50 KB`; above that, Mode C paste-handoff fires. (The 50 KB boundary mirrors the snippets-strategy threshold in `storytelling-context-pack.md` § Strategy Reference.)
+
 ## Page Size
 
 Resolution at every portion-emission decision (priority order):
@@ -190,7 +192,6 @@ Per-failure record schema:
 {
   "dispatch_key": "<sha1 — see storytelling-phases.md § Open-question buffer entry shape>",
   "class": "write_conflict | transient_io | cfc_invocation_error | validation_rejected | unknown",
-  "subclass": "kit_missing | cli_broken | subagent_crashed | permission_denied | null",
   "attempt": <int, 1 or 2>,
   "ts": "<ISO timestamp>",
   "etag_at_dispatch": "<sha or null>",
