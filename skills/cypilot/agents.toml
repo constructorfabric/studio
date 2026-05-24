@@ -581,3 +581,87 @@ role = "generate"
 target = "any"
 reasoning_effort = "high"
 context_window = "high"
+
+[agents.storytelling-preflight]
+description = """\
+Invoke when the orchestrator enters storytelling phase E0 — canonicalize \
+the input_ref, derive session_id, scan for prior session on disk under \
+{cypilot_path}/.cache/explain/sessions/, run cheap size guards, pick the \
+input-access tier (local → MCP → skill → CLI → user-fallback), load \
+preferences.json, and return the structured handle (target_type / \
+file_count / primary_language / preferences_loaded / input_access_*)."""
+prompt_file = "agents/storytelling-preflight.md"
+mode = "readonly"
+isolation = false
+model = "cf:tier:cheap"
+role = "planning"
+target = "any"
+reasoning_effort = "low"
+context_window = "medium"
+
+[agents.storytelling-gate]
+description = """\
+Invoke when the orchestrator enters any storytelling E1 or E5 gate \
+(mode / artifact-disposition / audience / plan / context-pack-strategy / \
+export-format) — generic two-phase agent: phase=render returns rendered_menu \
++ parse_table + suggested_default_n; phase=parse returns selected_tag + \
+next_action. Plan-gate is the only gate authorized to emit chat (4-option \
+Go/Edit/Pivot/Cancel approval menu); other gates return parsing artefacts \
+the orchestrator emits."""
+prompt_file = "agents/storytelling-gate.md"
+mode = "readonly"
+isolation = false
+model = "cf:tier:balanced"
+role = "planning"
+target = "any"
+reasoning_effort = "medium"
+context_window = "medium"
+
+[agents.storytelling-context-pack]
+description = """\
+Invoke when the orchestrator enters storytelling phase E1.5.pack-build — \
+read the whole input once and emit a content_pack JSON parameterized by \
+strategy (snippets/anchors/hybrid). Returns anchors, plan_anchor_map, \
+depth_mode_flags, overview, and total_extracted_bytes; portions in the \
+inline E2 loop read from this pack instead of re-reading source."""
+prompt_file = "agents/storytelling-context-pack.md"
+mode = "readonly"
+isolation = false
+model = "cf:tier:balanced"
+role = "planning"
+target = "any"
+reasoning_effort = "medium"
+context_window = "high"
+
+[agents.storytelling-wrap]
+description = """\
+Invoke when the orchestrator enters storytelling phase E5.wrap — synthesise \
+the final summary (Key Takeaways with source refs as clickable markdown \
+links, Open Questions, Glossary, Bookmarked Takeaways, Suggested Next \
+Steps) from accumulated session state. Does NOT auto-fill open_questions \
+or glossary — only user-driven entries are carried forward."""
+prompt_file = "agents/storytelling-wrap.md"
+mode = "readonly"
+isolation = false
+model = "cf:tier:balanced"
+role = "analyze"
+target = "any"
+reasoning_effort = "medium"
+context_window = "medium"
+
+[agents.storytelling-export]
+description = """\
+Invoke when the orchestrator enters storytelling phase E5.export-emit — \
+emit the package on disk under {cypilot_path}/.cache/explain/packages/\
+<slug>-<timestamp>/ with index.md, per-portion files, Mermaid navigation \
+graph, and mode-specific extras (review→comments.md, onboarding→\
+next-steps-checklist.md, decision→decision-record.md). All artifact bodies \
+use relative paths; refuses export for mode=socratic per AP-#34."""
+prompt_file = "agents/storytelling-export.md"
+mode = "readwrite"
+isolation = false
+model = "cf:tier:cheap"
+role = "generate"
+target = "any"
+reasoning_effort = "low"
+context_window = "medium"
