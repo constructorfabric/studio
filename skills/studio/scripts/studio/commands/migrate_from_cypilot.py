@@ -35,6 +35,13 @@ LEGACY_KIT_PATH = "config/kits/cypilot-sdlc"
 CONSTRUCTOR_KIT_PATH = "config/kits/sdlc"
 LEGACY_BASELINE_VERSION = "3.9.0"
 SUPPORTED_LEGACY_MIGRATION_VERSIONS = {"3.9.0", "3.10.0"}
+# Sentinel kit version written into core.toml during migration. Any
+# pre-rebrand kit version is rewritten to "0", which guarantees the
+# follow-up ``cfs kit update`` invocation treats the local install as
+# outdated and pulls the latest release tag from the renamed
+# ``constructorfabric/studio-kit-sdlc`` repo through the normal
+# diff-engine update flow (same UX as a user-initiated kit update).
+CONSTRUCTOR_KIT_VERSION = "0"
 # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-migration-module
 
 
@@ -251,6 +258,25 @@ def migrate_from_cypilot(
     else:
         actions["update"] = "dry_run"
     # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-followup-update
+
+    # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-followup-kit-update
+    # Kits previously flavoured as cypilot got their `version` reset to "0"
+    # in `_migrate_core_toml`. Running `cfs kit update` here triggers the
+    # standard diff-engine update path against each kit's (now renamed)
+    # source, pulling the latest release tag from
+    # `constructorfabric/studio-kit-sdlc` (or the user's mirror) and
+    # presenting any file-level conflicts through the same UX the user
+    # sees on a manual `cfs kit update`.
+    if not skip_update and not dry_run:
+        kit_update_rc = _run_followup_kit_update(yes=yes)
+        actions["kit_update"] = "PASS" if kit_update_rc == 0 else "FAIL"
+        if kit_update_rc != 0:
+            warnings.append("follow-up kit update failed")
+    elif skip_update:
+        actions["kit_update"] = "skipped"
+    else:
+        actions["kit_update"] = "dry_run"
+    # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-followup-kit-update
 
     # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-return-result
     result: Dict[str, Any] = {
@@ -614,6 +640,28 @@ def _prompt_migrate_from_cypilot(
     # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-prompt-migration-ui
 
 
+def _run_followup_kit_update(*, yes: bool) -> int:
+    """Invoke ``cfs kit update`` to pull the latest kit release.
+
+    The migrator has just reset every cypilot-flavoured kit's ``version``
+    to ``"0"`` so the local install is guaranteed outdated. Running the
+    standard kit-update command here applies the normal diff-engine flow:
+    it queries each kit's (now renamed) source for the latest tag,
+    downloads, and walks the user through any file-level conflicts.
+
+    Returns the exit code from :func:`cmd_kit_update`. A non-zero return
+    is surfaced as a migration warning rather than a hard failure — the
+    rest of the migration has already landed and the user can re-run
+    ``cfs kit update`` manually.
+    """
+    from .kit import cmd_kit_update
+
+    args: List[str] = []
+    if yes:
+        args.append("--yes")
+    return cmd_kit_update(args)
+
+
 def _run_followup_update(project_root: Path, *, yes: bool) -> tuple[int, Optional[Any]]:
     # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-run-followup-update
     from .update import cmd_update
@@ -705,7 +753,7 @@ def _run_post_copy_rewrites(
         ("config_markdown", lambda: _migrate_config_markdown(target_dir / "config")),
         ("root_agents", lambda: _replace_root_block_with_warnings(project_root / "AGENTS.md", target_rel, warnings)),
         ("root_claude", lambda: _replace_root_block_with_warnings(project_root / "CLAUDE.md", target_rel, warnings)),
-        ("host_integrations", lambda: _cleanup_legacy_host_integrations(project_root, warnings)),
+        ("host_integrations", lambda: _cleanup_legacy_host_integrations(project_root, warnings, studio_dir=target_dir)),
     ]
 
     for rewrite_step, rewrite in rewrites:
@@ -973,6 +1021,11 @@ def _migrate_core_toml(core_toml: Path, warnings: Optional[List[str]] = None) ->
         for kit_data in kits.values():
             if not isinstance(kit_data, dict):
                 continue
+            had_legacy_kit_signal = (
+                kit_data.get("path") == LEGACY_KIT_PATH
+                or kit_data.get("source") == LEGACY_KIT_SOURCE
+                or kit_data.get("format") == "Cypilot"
+            )
             if kit_data.get("path") == LEGACY_KIT_PATH:
                 kit_data["path"] = CONSTRUCTOR_KIT_PATH
                 changed = True
@@ -982,6 +1035,15 @@ def _migrate_core_toml(core_toml: Path, warnings: Optional[List[str]] = None) ->
             # Kit-bundle format identifier rename: Cypilot -> CFS
             if kit_data.get("format") == "Cypilot":
                 kit_data["format"] = "CFS"
+                changed = True
+            # Reset pre-rebrand kit version to the sentinel "0". Any kit
+            # that was previously cypilot-flavoured (legacy path / source /
+            # format) gets `version = "0"` so the follow-up `cfs kit update`
+            # invocation sees the install as outdated and pulls the latest
+            # release of the renamed kit repo through the normal diff-engine
+            # update flow.
+            if had_legacy_kit_signal and kit_data.get("version") != CONSTRUCTOR_KIT_VERSION:
+                kit_data["version"] = CONSTRUCTOR_KIT_VERSION
                 changed = True
     # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-migrate-core-toml
 
@@ -1079,21 +1141,25 @@ def _migrate_config_markdown(config_dir: Path) -> List[str]:
 def _cleanup_legacy_host_integrations(
     project_root: Path,
     warnings: List[str],
-) -> Dict[str, List[str]]:
-    """Delete pre-rebrand host-integration artifacts left over from cypilot.
+    studio_dir: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """Delete pre-rebrand host-integration artifacts AND regenerate fresh ones.
 
     Sweeps every supported host (``claude``, ``windsurf``, ``cursor``,
-    ``copilot``, ``openai``) and removes:
-      * legacy ``cypilot-*`` / ``cf-constructor-*`` agent / command / workflow
-        files (e.g. ``.claude/agents/cypilot-codegen.md``);
-      * legacy per-workflow skill directories (e.g. ``.claude/skills/cypilot``,
-        ``.claude/skills/cypilot-analyze``);
-      * legacy install markers (``.codex/.cypilot-installed`` etc.).
+    ``copilot``, ``openai``) and:
+      1. removes legacy ``cypilot-*`` / ``cf-constructor-*`` agent /
+         command / workflow files;
+      2. removes legacy per-workflow skill directories (e.g.
+         ``.claude/skills/cypilot``, ``.claude/skills/cypilot-analyze``);
+      3. removes legacy install markers (``.codex/.cypilot-installed`` etc.);
+      4. regenerates fresh ``cf-*`` host-integration files for every host
+         that had at least one legacy artifact (so a user that previously
+         had Claude/Windsurf/Cursor/Codex set up gets the new integration
+         layout produced for them automatically).
 
-    Only files whose body is a pure generator stub (per
-    ``_is_legacy_generator_stub``) are removed; anything with user-added
-    content is preserved. Returns ``{agent: [relpath, ...]}`` of deleted
-    paths.
+    Only files whose body is a pure generator stub are removed; user-edited
+    files are preserved. Returns ``{"removed": {agent: [relpath, ...]},
+    "regenerated": [agent, ...]}``.
     """
     # Defer the import: agents.py owns the cleanup constants and helpers; the
     # migrator borrows them so there is exactly one source of truth for
@@ -1105,12 +1171,14 @@ def _cleanup_legacy_host_integrations(
             _cleanup_legacy_skill_dirs,
             _is_legacy_generator_stub,
             _LEGACY_TOOL_SKILL_PATHS,
+            _process_single_agent,
+            _default_agents_config,
         )
     except ImportError as exc:
         warnings.append(f"host-integration cleanup skipped (import failed: {exc})")
-        return {}
+        return {"removed": {}, "regenerated": []}
 
-    result: Dict[str, List[str]] = {}
+    removed_by_agent: Dict[str, List[str]] = {}
     for agent in ("claude", "windsurf", "cursor", "copilot", "openai"):
         removed: List[str] = []
         removed.extend(_cleanup_studio_legacy_subagents(agent, project_root, dry_run=False))
@@ -1135,8 +1203,26 @@ def _cleanup_legacy_host_integrations(
             except OSError:
                 pass
         if removed:
-            result[agent] = removed
-    return result
+            removed_by_agent[agent] = removed
+
+    # Regenerate every host that had at least one legacy artifact. The
+    # presence of any cleaned-up file proves the host was set up
+    # previously; the user expects an equivalent install in the new
+    # layout, so we run the generator inline rather than waiting for the
+    # next manual `cfs generate-agents` invocation.
+    regenerated: List[str] = []
+    if studio_dir is not None and removed_by_agent:
+        cfg = _default_agents_config()
+        for agent in removed_by_agent:
+            try:
+                _process_single_agent(
+                    agent, project_root, studio_dir, cfg, None, dry_run=False,
+                )
+                regenerated.append(agent)
+            except Exception as exc:  # noqa: BLE001 — surface failure as warning
+                warnings.append(f"failed to regenerate {agent} integration: {exc}")
+
+    return {"removed": removed_by_agent, "regenerated": regenerated}
 
 
 def _human_migrate_ok(data: Dict[str, Any]) -> None:  # pyright: ignore
