@@ -9,7 +9,7 @@ These files are copied from the Constructor Studio cache (`~/.cf-studio/cache/`)
 - `workflows/` — workflow definitions
 - `requirements/` — validation requirements
 - `schemas/` — JSON schemas for configuration files
-- `architecture/specs/` — traceability, CDSL, CLI, and kit specifications
+- `architecture/specs/` — traceability, CDSL, PDSL, CLI, and kit specifications
 
 To update these files, run `cfs init --force` or `cfs kit update`.
 Any manual changes **will be overwritten** on the next update.

@@ -19,6 +19,7 @@ COPY_DIRS = ["requirements", "schemas", "workflows", "skills"]
 COPY_ARCHITECTURE_ITEMS = [
     "specs/traceability.md",   # ID formats, code traceability — used by kit rules
     "specs/CDSL.md",           # Behavioral spec language — referenced by traceability.md
+    "specs/PDSL.md", # PDSL prompt contract spec — used by cf-pdsl
     "specs/cli.md",            # CLI commands — referenced by traceability.md, kit/rules.md
     "specs/CLISPEC.md",        # CLI spec (detailed command definitions)
     "specs/artifacts-registry.md",  # Artifacts config — used by .gen/AGENTS.md
@@ -129,7 +130,7 @@ def _core_readme() -> str:
         "- `workflows/` — workflow definitions\n"
         "- `requirements/` — validation requirements\n"
         "- `schemas/` — JSON schemas for configuration files\n"
-        "- `architecture/specs/` — traceability, CDSL, CLI, and kit specifications\n"
+        "- `architecture/specs/` — traceability, CDSL, PDSL, CLI, and kit specifications\n"
         "\n"
         "To update these files, run `cfs init --force` or `cfs kit update`.\n"
         "Any manual changes **will be overwritten** on the next update.\n"

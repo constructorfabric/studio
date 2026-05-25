@@ -48,14 +48,12 @@ drivers:
   - [get-content](#get-content)
   - [list-id-kinds](#list-id-kinds)
   - [info](#info)
+  - [resolve-vars](#resolve-vars)
   - [agents](#agents)
   - [generate-agents](#generate-agents)
   - [generate-resources](#generate-resources)
   - [doctor](#doctor)
-  - [self-check](#self-check)
-  - [config](#config)
-  - [hook](#hook)
-  - [completions](#completions)
+  - [validate-kits](#validate-kits)
   - [map](#map)
   - [spec-coverage](#spec-coverage)
   - [delegate](#delegate)
@@ -170,13 +168,20 @@ cfs <command> [subcommand] [options] [arguments]
 Initialize Constructor Studio in a project.
 
 ```
-cfs init [--dir DIR] [--agents AGENTS]
+cfs init [--project-root ROOT] [--install-dir DIR] [--from-dir DIR] [--yes] [--dry-run] [--force]
 ```
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--dir` | `.cf-studio` | Installation directory |
-| `--agents` | all | Comma-separated agent list: `windsurf,cursor,claude,copilot,openai` |
+| `--project-root` | current project | Project root directory |
+| `--install-dir` | `.cf-studio` | Constructor Studio directory relative to project root |
+| `--from-dir` | unset | Existing Constructor Studio directory relative to project root when migrating |
+| `--project-name` | project root folder | Project name used for generated config |
+| `--yes` | false | Do not prompt; accept defaults |
+| `--dry-run` | false | Compute changes without writing files |
+| `--force` | false | Overwrite existing files |
+| `--migrate-from-cypilot` | `ask` | Migrate an existing Cyber Pilot project (`ask`, `yes`, `no`) |
+| `--update-legacy-studio` | `ask` | Update unsupported Constructor Studio installs to the migration baseline first (`ask`, `yes`, `no`) |
 
 **Behavior**:
 1. Check if Constructor Studio is already installed. If yes → abort with message, suggest `cfs update`.
@@ -235,7 +240,7 @@ cfs update [--project-root P] [--dry-run] [--no-interactive] [-y/--yes]
 5. Ensure `config/` scaffold files exist (create only if missing).
 6. Re-inject root `AGENTS.md` and `CLAUDE.md` managed blocks.
 7. Auto-regenerate agent integration files if real changes happened.
-8. Run self-check to verify kit integrity; include result in report (WARN if failed).
+8. Run `validate-kits` to verify kit integrity; include result in report (WARN if failed).
 9. Return update report.
 
 **Output** (JSON):
@@ -488,6 +493,24 @@ cfs info
 
 ---
 
+### resolve-vars
+
+Resolve template variables to absolute paths.
+
+```
+cfs resolve-vars [--root ROOT] [--kit KIT] [--flat]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--root ROOT` | Project root to search from (default: current directory) |
+| `--kit KIT` | Filter to a specific kit slug |
+| `--flat` | Output only the flat variables dict instead of the structured payload |
+
+**Exit**: 0.
+
+---
+
 ### agents
 
 Show generated agent integration files without writing anything.
@@ -614,16 +637,17 @@ cfs doctor
 
 ---
 
-### self-check
+### validate-kits
 
-Validate all example artifacts against their templates.
+Validate kit structure, templates, and examples. `self-check` and `validate-rules` are legacy aliases routed to this command.
 
 ```
-cfs self-check [--kit KIT] [--verbose]
+cfs validate-kits [path] [--kit KIT] [--verbose]
 ```
 
 | Option | Description |
 |--------|-------------|
+| `path` | Optional path to a kit directory; when omitted, validates registered kits |
 | `--kit KIT` | Validate only a specific kit (e.g., `studio-sdlc`) |
 | `--verbose` | Include full per-template error/warning lists |
 
@@ -634,108 +658,9 @@ cfs self-check [--kit KIT] [--verbose]
 4. Validate each example artifact against its template structure and constraints.
 5. Report per-kit, per-kind PASS/FAIL with error details.
 
-> **Note**: `self-check` is also invoked automatically at the end of `cfs update`. If it fails, the update status becomes WARN and the self-check report is included in the update output.
+> **Note**: `validate-kits` is also invoked automatically at the end of `cfs update`. If it fails, the update status becomes WARN and the validation report is included in the update output.
 
 **Exit**: 0=PASS, 2=FAIL, 1=ERROR.
-
----
-
-### config
-
-Manage project configuration.
-
-```
-cfs config <subcommand> [options]
-```
-
-#### config show
-
-```
-cfs config show [--section SECTION]
-```
-
-Display current core configuration. Optional `--section` to show only a part (systems, kits, ignore).
-
-#### config system add
-
-```
-cfs config system add --name NAME --slug SLUG --kit KIT
-```
-
-Add a system definition to `{cf-studio-path}/config/core.toml`.
-
-#### config system remove
-
-```
-cfs config system remove --slug SLUG
-```
-
-Remove a system definition.
-
-#### config system rename
-
-```
-cfs config system rename --slug SLUG --new-name NAME [--new-slug SLUG]
-```
-
-#### config ignore add
-
-```
-cfs config ignore add --pattern PATTERN [--reason REASON]
-```
-
-Add a path pattern to the ignore list.
-
-#### config ignore remove
-
-```
-cfs config ignore remove --pattern PATTERN
-```
-
-#### config kit install
-
-```
-cfs config kit install --slug SLUG --path PATH
-```
-
-Register and install a kit.
-
-All config subcommands support `--dry-run` to preview changes without writing.
-
-**Exit**: 0 on success, 1 on error.
-
----
-
-### hook
-
-Manage git pre-commit hooks.
-
-```
-cfs hook install
-cfs hook uninstall
-```
-
-**`install`**: creates a git pre-commit hook that runs `cfs lint` on changed artifact files. The hook MUST complete in ≤ 5 seconds for typical changes.
-
-**`uninstall`**: removes the Studio pre-commit hook.
-
-**Exit**: 0 on success, 1 on error.
-
----
-
-### completions
-
-Manage shell completions.
-
-```
-cfs completions install [--shell SHELL]
-```
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--shell` | auto-detect | `bash`, `zsh`, or `fish` |
-
-**Exit**: 0 on success, 1 on error.
 
 ---
 

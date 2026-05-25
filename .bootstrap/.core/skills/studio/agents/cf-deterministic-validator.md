@@ -40,8 +40,9 @@ For each `(path, kind)` — `kind` is the orchestrator-supplied `target_kinds[pa
 value; trust it rather than re-deriving registration state from `artifacts.toml`:
 
 - Resolve the validator command from the active bootstrap before building
-  commands. Use the legacy `cpt` for a frozen Cypilot `.bootstrap`; use
-  Constructor Studio's `cfs` for a Constructor Studio adapter.
+  commands. Use the active bootstrap's resolved legacy validator command for
+  frozen legacy bootstraps; use Constructor Studio's `cfs` for a Constructor
+  Studio adapter.
 - `kind == "artifact"` → run `{validator_cmd} --json validate --artifact <path>`. When the
   artifact is a TOC-bearing Markdown document (workflow / instruction doc /
   any kit kind whose template includes a `<!-- toc -->` marker — the

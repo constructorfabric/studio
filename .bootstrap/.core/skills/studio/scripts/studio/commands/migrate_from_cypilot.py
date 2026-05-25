@@ -269,7 +269,7 @@ def migrate_from_cypilot(
     # presenting any file-level conflicts through the same UX the user
     # sees on a manual `cfs kit update`.
     if not skip_update and not dry_run:
-        kit_update_rc = _run_followup_kit_update(yes=yes)
+        kit_update_rc = _run_followup_kit_update(project_root=project_root, yes=yes)
         actions["kit_update"] = "PASS" if kit_update_rc == 0 else "FAIL"
         if kit_update_rc != 0:
             warnings.append("follow-up kit update failed")
@@ -641,7 +641,7 @@ def _prompt_migrate_from_cypilot(
     # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-prompt-migration-ui
 
 
-def _run_followup_kit_update(*, yes: bool) -> int:
+def _run_followup_kit_update(*, project_root: Path, yes: bool) -> int:
     """Invoke ``cfs kit update`` to pull the latest kit release.
 
     The migrator has just reset every cypilot-flavoured kit's ``version``
@@ -662,7 +662,7 @@ def _run_followup_kit_update(*, yes: bool) -> int:
     """
     from .kit import cmd_kit_update
 
-    args: List[str] = []
+    args: List[str] = ["--project-root", project_root.as_posix()]
     if yes:
         args.append("--yes")
     if not is_json_mode():

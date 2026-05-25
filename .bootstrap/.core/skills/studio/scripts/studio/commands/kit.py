@@ -263,14 +263,14 @@ def _seed_kit_config_files(
 # ---------------------------------------------------------------------------
 
 # @cpt-begin:cpt-studio-algo-kit-config-helpers:p1:inst-resolve-studio-dir
-def _resolve_studio_dir() -> Optional[tuple]:
+def _resolve_studio_dir(project_root_arg: Optional[Path] = None) -> Optional[tuple]:
     """Resolve project root and studio directory from CWD.
 
     Returns (project_root, studio_dir) or None (after printing JSON error).
     """
     from ..utils.files import find_project_root, _read_studio_var
 
-    project_root = find_project_root(Path.cwd())
+    project_root = project_root_arg.resolve() if project_root_arg is not None else find_project_root(Path.cwd())
     if project_root is None:
         ui.result({"status": "ERROR", "message": "No project root found"})
         return None
@@ -1493,6 +1493,7 @@ def cmd_kit_update(argv: List[str]) -> int:
         "--path", dest="local_path", default=None,
         help="Update from a local directory instead of registered source",
     )
+    p.add_argument("--project-root", default=None, help="Project root directory")
     p.add_argument("--force", action="store_true",
                    help="Skip version check and force update")
     p.add_argument("--dry-run", action="store_true", help="Show what would be done")
@@ -1504,7 +1505,8 @@ def cmd_kit_update(argv: List[str]) -> int:
     # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-parse-args
 
     # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-resolve-project
-    resolved = _resolve_studio_dir()
+    project_root_arg = Path(args.project_root) if args.project_root else None
+    resolved = _resolve_studio_dir(project_root_arg)
     if resolved is None:
         return 1
     _, studio_dir = resolved

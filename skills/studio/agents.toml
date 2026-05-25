@@ -343,6 +343,48 @@ target = "any"
 reasoning_effort = "high"
 context_window = "high"
 
+[agents.cf-pdsl-author]
+description = """\
+Invoke when cf-pdsl new mode must create a new prompt, workflow, skill, or \
+agent instruction file as a compact PDSL contract with explicit state, menus, \
+UX prompts, stop points, authority boundaries, and completion gates."""
+prompt_file = "agents/cf-pdsl-author.md"
+mode = "readwrite"
+isolation = false
+model = "cf:tier:balanced"
+role = "generate"
+target = "any"
+reasoning_effort = "high"
+context_window = "high"
+
+[agents.cf-pdsl-transformer]
+description = """\
+Invoke when cf-pdsl transform mode must convert existing prose prompt, \
+workflow, skill, requirement, or agent instruction files into PDSL while \
+preserving behavior, constraints, state transitions, menus, and handoffs."""
+prompt_file = "agents/cf-pdsl-transformer.md"
+mode = "readwrite"
+isolation = false
+model = "cf:tier:balanced"
+role = "generate"
+target = "any"
+reasoning_effort = "high"
+context_window = "high"
+
+[agents.cf-pdsl-reviewer]
+description = """\
+Invoke when cf-pdsl review mode must inspect prompt, workflow, skill, \
+requirement, or agent instruction files for PDSL correctness, compactness, \
+state/menu/UX safety, hidden prose rules, missing STOP_TURN, and handoff bugs."""
+prompt_file = "agents/cf-pdsl-reviewer.md"
+mode = "readonly"
+isolation = false
+model = "cf:tier:balanced"
+role = "analyze"
+target = "any"
+reasoning_effort = "high"
+context_window = "high"
+
 [agents.cf-semantic-reviewer-consistency]
 description = """\
 Invoke when cross-checking terminology, references, normative claims, and \
