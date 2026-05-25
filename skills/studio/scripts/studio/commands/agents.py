@@ -95,6 +95,7 @@ _GENERATED_MARKER_RE = re.compile(
 )
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-agent-integration:p1:inst-extract-studio-follow-target
 def _extract_studio_follow_target(content: str) -> Optional[str]:
     """Return the follow-link target if *content* is a Constructor Studio-generated routing file.
 
@@ -122,8 +123,10 @@ def _extract_studio_follow_target(content: str) -> Optional[str]:
         if target.startswith(prefix):
             return target
     return None
+# @cpt-end:cpt-studio-flow-core-infra-agent-integration:p1:inst-extract-studio-follow-target
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-agent-integration:p1:inst-is-pure-studio-generated
 def _is_pure_studio_generated(
     content: str,
     *,
@@ -176,8 +179,10 @@ def _is_pure_studio_generated(
     ]
     # If only whitespace remains, the file is purely generated
     return not any(line.strip() for line in lines)
+# @cpt-end:cpt-studio-flow-core-infra-agent-integration:p1:inst-is-pure-studio-generated
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-agent-integration:p1:inst-is-legacy-generator-stub
 def _is_legacy_generator_stub(content: str) -> bool:
     """Return True if *content* is a pre-rebrand generator stub safe to delete.
 
@@ -229,8 +234,10 @@ def _is_legacy_generator_stub(content: str) -> bool:
             continue
         return False
     return True
+# @cpt-end:cpt-studio-flow-core-infra-agent-integration:p1:inst-is-legacy-generator-stub
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-agent-integration:p1:inst-is-legacy-generator-toml-stub
 def _is_legacy_generator_toml_stub(content: str) -> bool:
     """Return True if *content* is a pre-rebrand TOML generator stub.
 
@@ -266,8 +273,10 @@ def _is_legacy_generator_toml_stub(content: str) -> bool:
         return False
     allowed_keys = {"name", "description", "developer_instructions"}
     return set(data.keys()).issubset(allowed_keys)
+# @cpt-end:cpt-studio-flow-core-infra-agent-integration:p1:inst-is-legacy-generator-toml-stub
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-agent-integration:p1:inst-is-pure-studio-generated-toml
 def _is_pure_studio_generated_toml(content: str, expected_content: Optional[str] = None) -> bool:
     """Return True when *content* is a pure generated Codex TOML subagent proxy.
 
@@ -313,8 +322,10 @@ def _is_pure_studio_generated_toml(content: str, expected_content: Optional[str]
     if not _extract_studio_follow_target(instructions.strip()):
         return False
     return data == expected_data
+# @cpt-end:cpt-studio-flow-core-infra-agent-integration:p1:inst-is-pure-studio-generated-toml
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-agent-integration:p1:inst-expected-stale-studio-generated-toml
 def _expected_stale_studio_generated_toml(
     toml_file: Path,
     content: str,
@@ -393,14 +404,17 @@ def _expected_stale_studio_generated_toml(
         if extras_block_lines:
             rendered = rendered.rstrip("\n") + "\n" + "\n".join(extras_block_lines) + "\n"
     return rendered
+# @cpt-end:cpt-studio-flow-core-infra-agent-integration:p1:inst-expected-stale-studio-generated-toml
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-agent-integration:p1:inst-file-has-studio-follow-link
 def _file_has_studio_follow_link(path: Path) -> bool:
     """Return True when *path* exists and contains a Constructor Studio follow-link."""
     try:
         return bool(_extract_studio_follow_target(path.read_text(encoding="utf-8")))
     except (OSError, UnicodeDecodeError):
         return False
+# @cpt-end:cpt-studio-flow-core-infra-agent-integration:p1:inst-file-has-studio-follow-link
 
 
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-agent-field-validators
@@ -891,6 +905,7 @@ def _write_or_skip(
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-write-helpers
 
 
+# @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-delete-generated-file-if-owned
 def _delete_generated_file_if_owned(
     out_path: Path,
     result: Dict[str, Any],
@@ -933,8 +948,10 @@ def _delete_generated_file_if_owned(
     result.setdefault("deleted", []).append(canonical.as_posix())
     result["outputs"].append({"path": rel, "action": "deleted", "reason": reason})
     return True
+# @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-delete-generated-file-if-owned
 
 
+# @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-preserve-unverifiable-generated-file
 def _preserve_unverifiable_generated_file(
     out_path: Path,
     result: Dict[str, Any],
@@ -971,8 +988,10 @@ def _preserve_unverifiable_generated_file(
         "the expected generated payload could not be rebuilt\n"
     )
     return True
+# @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-preserve-unverifiable-generated-file
 
 
+# @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-delete-generated-legacy-file
 def _delete_generated_legacy_file(
     out_path: Path,
     agent_id: str,
@@ -1037,6 +1056,7 @@ def _delete_generated_legacy_file(
     result.setdefault("deleted", []).append(canonical.as_posix())
     result["outputs"].append({"path": rel, "action": "deleted", "reason": reason})
     return True
+# @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-delete-generated-legacy-file
 
 # @cpt-begin:cpt-studio-algo-agent-integration-discover-agents:p1:inst-resolve-kits
 def _discover_kit_agents(
@@ -2387,6 +2407,7 @@ def _cleanup_studio_legacy_markers(
     return deleted
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-cleanup-legacy-markers
 
+# @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-cleanup-legacy-skill-dirs
 def _cleanup_legacy_skill_dirs(
     agent: str,
     project_root: Path,
@@ -2452,7 +2473,6 @@ def _cleanup_legacy_skill_dirs(
                 deleted.append(rel)
             else:
                 try:
-                    import shutil
                     shutil.rmtree(entry)
                     deleted.append(rel)
                 except OSError as exc:
@@ -2460,6 +2480,7 @@ def _cleanup_legacy_skill_dirs(
                         f"warning: failed to remove legacy skill dir {entry}: {exc}\n"
                     )
     return deleted
+# @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-cleanup-legacy-skill-dirs
 
 
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-install-markers-table
@@ -2482,6 +2503,7 @@ _INSTALL_MARKERS: Dict[str, Tuple[str, str]] = {
 # tool-specific skill files, studio-* sub-agent files, then markers).
 # ---------------------------------------------------------------------------
 
+# @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-compute-skill-output-paths
 def _compute_skill_output_paths(skills_cfg: Any, project_root: Path) -> Set[str]:
     """Resolve absolute output paths declared in a skills config block."""
     skill_output_paths: Set[str] = set()
@@ -2495,6 +2517,7 @@ def _compute_skill_output_paths(skills_cfg: Any, project_root: Path) -> Set[str]
                 if isinstance(rel_path, str) and rel_path.strip():
                     skill_output_paths.add((project_root / rel_path).resolve().as_posix())
     return skill_output_paths
+# @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-compute-skill-output-paths
 
 
 def _process_workflows(
