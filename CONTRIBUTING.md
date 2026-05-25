@@ -236,6 +236,9 @@ All CI is driven through `make`. No virtual environment required — tools run v
 | `make vulture-ci` | Dead code scan (fails on findings) | Yes |
 | `make install` | Install pytest + pytest-cov via pipx | — |
 | `make install-proxy` | Reinstall `cfs`/`constructor-studio` CLI from local source | — |
+| `make install-prompt-tests` | Pre-cache `promptfoo` for cf-skill UX tests (see [Prompt Tests](#prompt-tests-cf-skill-ux)) | — |
+| `make test-prompts` | Run cf-skill UX pilot through real `claude` + `codex` CLIs | — |
+| `make test-prompts-view` | Open promptfoo HTML report for the last `test-prompts` run | — |
 | `make update` | Sync `.bootstrap/` from local source | — |
 | `make clean` | Remove `__pycache__`, `.pyc`, `.pytest_cache` | — |
 
@@ -254,6 +257,90 @@ CI runs on every push to `main` and every PR targeting `main`. Nine parallel job
 9. **Validate Kits** — `make validate-kits` on Python 3.11–3.14
 
 All jobs must pass before merge.
+
+---
+
+## Prompt Tests (cf-skill UX)
+
+`tests/prompts/cf-ux/` is a [promptfoo](https://www.promptfoo.dev/)-driven
+pilot that exercises the `cf` skill end-to-end through the **real**
+`claude` and `codex` CLIs to catch UX regressions (routing, skill
+selection, anti-improvisation, gate behavior) that unit tests can't see.
+
+Each test runs in a fresh `tempfile.mkdtemp()` sandbox that is bootstrapped
+via the in-tree studio engine (no network calls — `CACHE_DIR` is patched
+to the repo root) plus `cfs generate-agents` for both `claude` and `openai`
+integrations. Sandboxes are tracked and cleaned via `atexit`,
+SIGTERM/SIGINT/SIGHUP handlers, and pid-aliveness sweep, so a killed
+promptfoo worker never leaks a tmpdir.
+
+### Prerequisites
+
+| Tool | Purpose | Install |
+|------|---------|---------|
+| `node` / `npx` | Runs `promptfoo` via npx | https://github.com/nvm-sh/nvm |
+| `claude` | Claude Code CLI (provider + grader) | https://docs.claude.com/en/docs/claude-code |
+| `codex`  | OpenAI Codex CLI (provider) | https://developers.openai.com/codex/cli |
+| `cfs`    | Studio CLI for sandbox init | `make install-proxy` |
+
+Both CLIs must be authenticated (subscription or API key) — the tests
+consume real API tokens.
+
+### Running
+
+```bash
+make install-prompt-tests   # pre-flight + warm the npx cache
+make test-prompts           # full pilot (~3 min on cheap models)
+make test-prompts-view      # open the HTML report
+```
+
+### Tuning
+
+| Env / Make var | Default | Notes |
+|---|---|---|
+| `PROMPTFOO_VERSION` | `latest` | Pin to a specific promptfoo release. |
+| `PROMPT_TESTS_TIMEOUT_MS` | `900000` | Worker timeout — needs headroom for cold sandbox. |
+| `CF_UX_CLAUDE_MODEL` | `claude-haiku-4-5` | Override per-test claude model. |
+| `CF_UX_CLAUDE_EFFORT` | `low` | Claude reasoning effort. |
+| `CF_UX_CODEX_MODEL` | `gpt-5.4-mini` | Override per-test codex model. |
+| `CF_UX_CODEX_EFFORT` | `low` | Codex reasoning effort (`minimal` is incompatible with tools). |
+| `CF_UX_CODEX_CONTEXT` | `128000` | Codex context window (default 400k is wasteful for these). |
+| `CF_UX_GRADER_MODEL` | `claude-haiku-4-5` | Override LLM-rubric judge model. |
+| `CF_UX_SHARED_SANDBOX` | unset | Path to a pre-initialized sandbox to reuse across tests. |
+| `CF_UX_KEEP_SANDBOX` | `0` | Set to `1` to keep the sandbox after a run for inspection. |
+| `CF_UX_CODEX_DISABLE_PLUGINS` | unset | Comma-separated `name@marketplace` plugins to pass `enabled=false` to codex (only for isolation debugging — the skill should win in any aggressive environment by default). |
+
+### Adding scenarios
+
+Edit `tests/prompts/cf-ux/promptfooconfig.yaml`. Each scenario is a
+`{vars: {user_message: ...}, assert: [...]}` block. Use the shared
+`*skill_state_rubric` YAML anchor for the LLM-rubric assertion that
+checks for any legitimate cf-skill structural state (gate / inputs /
+workflow framing / refusal). Scenario-specific guards (e.g. "must not
+fabricate findings") go in an additional `llm-rubric` block.
+
+### What to do when a scenario fails
+
+The pilot is designed to surface **real** UX bugs, not just rubric
+miscalibrations. When a scenario fails:
+
+1. Run `CF_UX_KEEP_SANDBOX=1 make test-prompts` to keep the sandbox for
+   inspection.
+2. Reproduce the call manually with `--json` to see the model's tool-
+   call trace (`codex exec ... --json` or `claude -p ... --output-format
+   stream-json`).
+3. If cf-skill lost skill selection to a competing skill (e.g.
+   `superpowers:brainstorming`), strengthen the relevant
+   `description` field in `workflows/*.md` or `skills/studio/SKILL.md`
+   so cf wins by description authority — do **not** disable the
+   competing plugin as a fix; cf must hold in aggressive environments.
+4. If cf-skill was selected but didn't follow its protocol, strengthen
+   the umbrella `skills/studio/SKILL.md` (Anti-Improvisation Hard Rule
+   or Proxy-Workflow Mode Handshake) rather than duplicating logic into
+   proxy workflow bodies — proxies must stay thin.
+
+See `tests/prompts/cf-ux/README.md` for the full layout and next-steps
+list.
 
 ---
 
