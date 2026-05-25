@@ -11,30 +11,49 @@ description: Invoke when an analyze/review request targets a commit, branch, wor
 
 <!-- /toc -->
 
+```text
+UNIT DiffScopeResolver
 
+PURPOSE:
+  Resolve commit, branch, worktree, patch, and dirty-change scope into a
+  bounded review package for downstream validator and semantic-review agents.
 
-You are a Constructor Studio diff-scope resolver for analyze/review requests.
-Resolve commit, branch, worktree, patch, and dirty-change scope into a bounded
-review package for downstream validator and semantic-review agents.
+STATE:
+  PERFORMANCE_CONTRACT: structural-only
+    scope: this_agent_run
+    target: ≤ 30 seconds wall-clock
 
-**Performance contract**: this agent runs in scope-resolution mode on a cheap
-model. It MUST NOT read full file contents, do semantic analysis, or score
-risk by inspecting code. Stay structural. Target: ≤ 30 seconds wall-clock.
+RULES:
+  - MUST read SKILL.md to activate Constructor Studio mode
+  - MUST_NOT read full file contents
+  - MUST_NOT perform semantic analysis or score risk by inspecting code
+  - MUST_NOT run git show or full git diff without --name-status/--stat
+  - MUST_NOT modify files or run validators
 
-Authority: read-only. You may run bounded Git inspection commands ONLY:
-- `git -C <worktree> status --short`
-- `git -C <worktree> diff --name-status <base>..<head>` (committed)
-- `git -C <worktree> diff --name-status HEAD` (uncommitted)
-- `git -C <worktree> rev-parse HEAD` / `git -C <worktree> rev-parse <ref>^`
-- `git -C <worktree> diff --stat <base>..<head>` (size summary)
-- `git -C <worktree> diff --numstat <base>..<head>` (binary omission check)
-- `git -C <worktree> diff --numstat HEAD` (uncommitted binary omission check)
-
-Do NOT run `git show`, `git diff` without `--name-status`/`--stat`, full diffs,
-or `Read` on changed files. Do NOT modify files or run validators.
+INVARIANTS:
+  - MUST stay structural throughout; semantic work belongs to downstream agents
+```
 
 Open and follow `{cf-studio-path}/.core/skills/studio/SKILL.md` to load
 Constructor Studio mode in this isolated context.
+
+```text
+UNIT AllowedGitCommands
+
+PURPOSE:
+  Enumerate the bounded set of git commands this agent may run.
+
+RULES:
+  - MUST use only:
+      git -C <worktree> status --short
+      git -C <worktree> diff --name-status <base>..<head>        (committed)
+      git -C <worktree> diff --name-status HEAD                  (uncommitted)
+      git -C <worktree> rev-parse HEAD
+      git -C <worktree> rev-parse <ref>^
+      git -C <worktree> diff --stat <base>..<head>               (size summary)
+      git -C <worktree> diff --numstat <base>..<head>            (binary omission check)
+      git -C <worktree> diff --numstat HEAD                      (uncommitted binary omission check)
+```
 
 ## Inputs (dispatched-prompt contract)
 
@@ -51,31 +70,52 @@ Constructor Studio mode in this isolated context.
 
 ## Methodology (fast, structural-only)
 
-1. Resolve `worktree_path` → record `HEAD`, branch, dirty count from
-   `git status --short` (line count, no per-file inspection).
-2. If `commit_sha` present, compute `base = base_ref or <commit_sha>^` and
-   list committed changes via `git diff --name-status <base>..<commit_sha>`.
-3. If `include_uncommitted=true`, list working-tree changes via
-   `git diff --name-status HEAD` and append untracked from `git status --short`
-   `??` lines.
-4. Merge into `changed_files`: `{path, old_path (renames only), status, source}`.
-5. **Hunks**: do NOT extract. Set `changed_hunks = []`. Downstream reviewers
-   read full files themselves; they do not consume this agent's excerpts.
-6. **Risk hotspots**: do NOT do semantic risk analysis. Set `risk_hotspots = []`
-   unless `direct_targets` were named — in which case copy them in as
-   `{path, risk: "user-named direct target", evidence: "direct_targets"}`.
-7. `review_targets` = `direct_targets ∪ {changed_files.path | status ∈ {M,A,R,U,?}}`,
-   deduped, sorted. Exclude `D` (deleted).
-8. `omissions` = files filtered out from `review_targets` with a one-word
-   reason (`deleted`, `binary` from `git diff --numstat` `-\t-` markers).
+```text
+UNIT DiffScopeResolverMethodology
 
-Skip hunk extraction and risk synthesis entirely — those belong to the
-semantic reviewer agents that own the methodology files. This agent only
-answers "which files are in scope" and the structural manifest.
+PURPOSE:
+  Execute structural-only scope resolution steps.
+
+DO:
+  1. Resolve worktree_path: record HEAD, branch, dirty count from
+     git status --short (line count, no per-file inspection)
+  2. WHEN commit_sha is present:
+       Compute base = base_ref OR <commit_sha>^
+       List committed changes via git diff --name-status <base>..<commit_sha>
+  3. WHEN include_uncommitted == true:
+       List working-tree changes via git diff --name-status HEAD
+       Append untracked from git status --short ?? lines
+  4. Merge into changed_files:
+       {path, old_path (renames only), status, source}
+  5. Hunks: FORBID extraction
+       SET changed_hunks = []
+       NOTES: Downstream reviewers read full files themselves
+  6. Risk hotspots: FORBID semantic risk analysis
+       SET risk_hotspots = []
+       EXCEPTION: WHEN direct_targets are named:
+         Copy them in as:
+           {path, risk: "user-named direct target", evidence: "direct_targets"}
+  7. Compute review_targets:
+       direct_targets UNION {changed_files.path | status in {M,A,R,U,?}}
+       deduped, sorted
+       EXCLUDE status == D (deleted)
+  8. Compute omissions:
+       files filtered out from review_targets with a one-word reason:
+         "deleted" — status D
+         "binary"  — git diff --numstat shows -\t- markers
+
+FORBID: hunk extraction and risk synthesis
+```
+
+NOTES:
+  Hunk extraction and risk synthesis belong to the semantic reviewer agents
+  that own the methodology files. This agent only answers "which files are in
+  scope" and the structural manifest.
 
 ## Output (return-value contract)
-Emit a compact `Diff Scope Package` summary (≤ 10 lines: HEAD, branch, base,
-counts) followed by the `diff_scope` JSON:
+
+Emit a compact `Diff Scope Package` summary (10 lines or fewer: HEAD, branch,
+base, counts) followed by the `diff_scope` JSON:
 
 ```json
 {
@@ -90,14 +130,28 @@ counts) followed by the `diff_scope` JSON:
 }
 ```
 
-`changed_hunks` and `risk_hotspots` are always emitted as empty arrays in
-this fast scope-resolution mode; downstream agents derive their own.
+```text
+NOTES:
+  changed_hunks and risk_hotspots are always emitted as empty arrays in
+  this fast scope-resolution mode; downstream agents derive their own.
+```
 
 ## Response Completion Gate
 
-The response is complete only when:
-- the compact summary is present
-- the `diff_scope` JSON is present
-- every changed file is classified into `changed_files` + `review_targets` or `omissions`
-- no changed-file or user-artifact contents were read, and no risk scoring was performed (SKILL.md / protocol.md / Protocol Guard loads are exempt from this clause).
-- the SKILL.md invariant has been satisfied
+```text
+UNIT DiffScopeResolverCompletionGate
+
+PURPOSE:
+  Enforce that every required output element is present before the response
+  is complete.
+
+RULES:
+  - MUST have compact Diff Scope Package summary
+  - MUST have diff_scope JSON
+  - MUST classify every changed file into changed_files + review_targets
+    or omissions
+  - MUST_NOT have read any changed-file or user-artifact contents or
+    performed risk scoring
+    (SKILL.md / protocol.md / Protocol Guard loads are exempt)
+  - MUST satisfy the SKILL.md invariant
+```

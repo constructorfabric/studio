@@ -7,7 +7,11 @@ delegating Constructor Studio plans to ralphex for autonomous execution.
 
 Open and follow `{cf-studio-path}/.core/skills/studio/SKILL.md` to load Constructor Studio mode in this isolated context.
 
-Capability Note: this prompt intentionally bundles CLI Entrypoint, Library Implementation Reference (debugging / advanced use only), and Post-Run Handoff into a single agent. The runtime orchestration logic lives in code modules (`studio.ralphex_export`), so prompt-level decomposition would not reduce agent context — only obscure where to look when debugging.
+NOTES:
+  This prompt intentionally bundles CLI Entrypoint, Library Implementation Reference
+  (debugging / advanced use only), and Post-Run Handoff into a single agent. The runtime
+  orchestration logic lives in code modules (`studio.ralphex_export`), so prompt-level
+  decomposition would not reduce agent context — only obscure where to look when debugging.
 
 <!-- toc -->
 
@@ -29,22 +33,35 @@ prompt defines the delegation workflow steps; the backing Python modules
 
 ## CLI Entrypoint
 
-The production CLI command for ralphex delegation is:
+```text
+UNIT CliEntrypoint
 
-```bash
-{cfs_cmd} delegate <plan_dir> [--mode execute|tasks-only|review] [--worktree] [--serve] [--dry-run] [--plans-dir <path>] [--default-branch <branch>] [--root <path>]
+PURPOSE:
+  Invoke ralphex delegation via the canonical CLI command.
+
+DO:
+  Run: {cfs_cmd} delegate <plan_dir> [--mode execute|tasks-only|review]
+       [--worktree] [--serve] [--dry-run] [--plans-dir <path>]
+       [--default-branch <branch>] [--root <path>]
+
+RULES:
+  - NEVER add `--json` to `{cfs_cmd} delegate`
+  - MUST always invoke as `{cfs_cmd} delegate ...` without `--json`
+
+ON_ERROR:
+  exit_code 1 -> report input error (missing plan directory or invalid root)
+  exit_code 2 -> report delegation error (ralphex not found or validation failed)
 ```
 
-NEVER add `--json` to `{cfs_cmd} delegate`. Delegation must always be invoked
-as `{cfs_cmd} delegate ...` without `--json`.
-
-This is the canonical entrypoint. It loads config, invokes `run_delegation()`,
-and returns exit code 0 on success, 1 on input errors (missing plan directory,
-invalid root), or 2 on delegation errors (ralphex not found, validation failed).
+NOTES:
+  The CLI loads config, invokes `run_delegation()`, and returns exit code 0 on
+  success, 1 on input errors, or 2 on delegation errors.
 
 ## Library Implementation Reference (debugging / advanced use only)
 
-Note: agents invoke the CLI entrypoint above. This section documents the backing implementation for debugging; it is not an instruction to execute Python imports.
+NOTES:
+  Agents invoke the CLI entrypoint above. This section documents the backing
+  implementation for debugging; it is not an instruction to execute Python imports.
 
 `run_delegation()` is the backing library function composed by the CLI:
 It performs discover → validate → bootstrap gate → persist → review precondition (if needed) → compile/export plan → build command → track lifecycle. The result dict includes `status`, `ralphex_path`, `validation`, `bootstrap`, `plan_file`, `command`, `mode`, `lifecycle_state`, and `error`.
@@ -82,20 +99,36 @@ else:
 
 Required parameters: `config`, `plan_dir`, `repo_root`. Common optional parameters: `mode`, `default_branch`, `config_path`, `dry_run` (additional knobs — `worktree`, `serve`, `plans_dir_override`, `stream_output` — exist for advanced cases).
 
-**Status values:**
-- `"ready"` — dry_run mode, command assembled but not invoked
-- `"delegated"` — ralphex was invoked and exited with returncode `0`; lifecycle transitioned to `completed`. `result["returncode"]`, `result["stdout"]`, and `result["stderr"]` are populated. Proceed to Post-Run Handoff.
-- `"error"` — a precondition failed or ralphex exited non-zero; check the `error` field
+```text
+UNIT DelegationStatusRouting
 
-**Error handling:** When `result["status"] == "error"`, inspect `result["error"]`
-for the failure reason and `result["lifecycle_state"]` for the lifecycle position.
-Do NOT proceed to Post-Run Handoff. Instead:
-- If `result["bootstrap"]["needed"]` is `True`: inform the user that `ralphex --init`
-  is required and request explicit approval before running it.
-- If `result["error"]` references review precondition failure: report the
-  precondition (e.g. no commits ahead of default branch) and suggest resolution.
-- For all other errors: report the error message, the lifecycle state at failure,
-  and offer retry or abort options.
+PURPOSE:
+  Route behavior based on run_delegation() result status.
+
+STATE:
+  DELEGATION_STATUS: ready | delegated | error
+
+WHEN:
+  run_delegation() result is available
+
+DO:
+  SET DELEGATION_STATUS = result["status"]
+
+MENU DelegationOutcomeMenu:
+  OPTIONS:
+    "ready" ->
+      EMIT assembled command, plan file, mode, and lifecycle_state as dry-run summary
+      STOP_TURN
+    "delegated" ->
+      CONTINUE PostRunHandoff
+    "error" ->
+      CONTINUE DelegationErrorHandling
+
+ON_ERROR:
+  invalid_status ->
+    EMIT "Unknown status in result dict."
+    STOP_TURN
+```
 
 **Mode selection:**
 
@@ -107,86 +140,149 @@ Do NOT proceed to Post-Run Handoff. Instead:
 | Worktree | `--worktree` flag | Valid only for full and tasks-only modes |
 | Dashboard | `--serve` flag | Web dashboard monitoring |
 
-**Review-mode behavior:**
+```text
+UNIT ReviewModeGeneration
 
-When `mode="review"` is requested, `run_delegation()` automatically generates
-a Constructor Studio-derived review override at `.ralphex/prompts/cf-review-override.md`
-before invoking ralphex. This override routes review work into Constructor Studio analyze
-methodology with separate code-review and prompt/instruction-review branches.
+PURPOSE:
+  Generate the Constructor Studio review override before invoking ralphex in review mode.
 
-The generated review override:
-- References canonical Constructor Studio sources by path (does not inline content)
-- Classifies changed files as code or prompt/instruction and applies the
-  matching review methodology branch
-- Enforces bounded scope (diff against default branch only), completion gates
-  (PASS/PARTIAL/FAIL), residual-risk reporting, and remediation-prompt obligations
-- Is regenerated on every review-mode delegation (not cached)
+WHEN:
+  mode == "review"
 
-ralphex remains an external executor; this integration does not make ralphex a
-host-tool subagent or a new public Constructor Studio analyze CLI.
+DO:
+  Generate review override at `.ralphex/prompts/cf-review-override.md`
+    (references canonical Constructor Studio sources by path; does not inline content)
+    (classifies changed files as code or prompt/instruction; applies matching branch)
+    (enforces bounded scope: diff against default branch only)
+    (enforces completion gates: PASS/PARTIAL/FAIL)
+    (enforces residual-risk reporting and remediation-prompt obligations)
+    (regenerated on every review-mode delegation — not cached)
+
+RULES:
+  - MUST_NOT treat ralphex as a host-tool subagent or new public Constructor Studio analyze CLI
+```
+
+```text
+UNIT DelegationErrorHandling
+
+PURPOSE:
+  Report errors from run_delegation() with context and recovery options.
+
+WHEN:
+  DELEGATION_STATUS == error
+
+DO:
+  EMIT result["error"] and result["lifecycle_state"]
+  IF result["bootstrap"]["needed"] == true:
+    EMIT "ralphex --init is required"
+    EMIT_MENU BootstrapApprovalMenu
+    WAIT user.reply
+    STOP_TURN
+  IF result["error"] references review precondition failure:
+    EMIT the precondition (e.g. no commits ahead of default branch)
+    EMIT suggested resolution
+    STOP_TURN
+  EMIT error message, lifecycle state at failure
+  EMIT_MENU RetryOrAbortMenu
+  WAIT user.reply
+  STOP_TURN
+
+RULES:
+  - MUST_NOT proceed to Post-Run Handoff when status == "error"
+
+MENU BootstrapApprovalMenu:
+  TITLE: ralphex --init is needed. Run it?
+  OPTIONS:
+    1 -> run `ralphex --init` with explicit user approval
+    2 -> abort delegation
+  INVALID:
+    EMIT "Reply with 1 or 2."
+    WAIT user.reply
+    STOP_TURN
+
+MENU RetryOrAbortMenu:
+  TITLE: Delegation failed. Choose an action.
+  OPTIONS:
+    1 -> retry delegation
+    2 -> abort
+  INVALID:
+    EMIT "Reply with 1 or 2."
+    WAIT user.reply
+    STOP_TURN
+```
 
 ## Post-Run Handoff
 
-After ralphex completes, run the post-delegation handoff flow using the
-individual helper functions:
+```text
+UNIT PostRunHandoff
 
-```python
-from studio.ralphex_export import (
-    read_handoff_status,
-    check_completed_plans,
-    run_validation_commands,
-    report_handoff,
-)
+PURPOSE:
+  Execute post-delegation steps and emit the structured handoff report.
+
+WHEN:
+  DELEGATION_STATUS == delegated
+
+DO:
+  1. Call read_handoff_status(exit_code, output_refs, partial)
+     to classify delegation outcome (success / partial / failed)
+  2. Call check_completed_plans(plans_dir, task_slug)
+     to inspect the ralphex-managed `completed/` subdirectory for lifecycle artifacts
+  3. Call run_validation_commands(commands, cwd=repo_root)
+     with validation commands extracted from `## Validation Commands` section of result["plan_file"]
+     (each non-empty, non-heading line in that section is one command)
+  4. Call report_handoff(...) to assemble the delegation summary
+  5. EMIT the structured Delegation Handoff Report:
+
+     ## Delegation Handoff Report
+     - **Status**: {report["status"]} (success | partial | failed)
+     - **Plan file**: `{report["plan_file"]}`
+     - **Mode**: {report["mode"]}
+     - **Validation passed**: {report["validation_passed"]}
+     - **Completed plan**: `{report["completed_plan_path"]}` or none
+     - **Output refs**: {report["output_refs"] as bulleted list, or "none"}
+
+     ### Next Steps
+     1. Review output artifacts listed above
+     2. Run `/cf-analyze` on changed files if validation passed
+     3. If failed: inspect error output, fix issues, and re-delegate
+
+  STOP_TURN
 ```
 
-**Steps:**
+NOTES:
+  Helper functions are imported from `studio.ralphex_export`:
+    `read_handoff_status`, `check_completed_plans`, `run_validation_commands`, `report_handoff`.
 
-1. Call `read_handoff_status(exit_code, output_refs, partial)` to classify the delegation outcome (success/partial/failed).
-2. Call `check_completed_plans(plans_dir, task_slug)` to inspect the ralphex-managed `completed/` subdirectory for lifecycle artifacts.
-3. Call `run_validation_commands(commands, cwd=repo_root)` with validation commands
-   extracted from the `## Validation Commands` section of the compiled plan file
-   (`result["plan_file"]`). Each non-empty, non-heading line in that section is one
-   command. Pass the delegated repository root as `cwd` so repo-relative commands
-   resolve correctly.
-4. Call `report_handoff(...)` to assemble the delegation summary.
-5. Return the handoff report to the main conversation using this structured format:
+```text
+UNIT BootstrapGate
 
-```markdown
-## Delegation Handoff Report
-- **Status**: {report["status"]} (success | partial | failed)
-- **Plan file**: `{report["plan_file"]}`
-- **Mode**: {report["mode"]}
-- **Validation passed**: {report["validation_passed"]}
-- **Completed plan**: `{report["completed_plan_path"]}` or none
-- **Output refs**: {report["output_refs"] as bulleted list, or "none"}
+PURPOSE:
+  Block delegation when ralphex is not initialized.
 
-### Next Steps
-1. Review output artifacts listed above
-2. Run `/cf-analyze` on changed files if validation passed
-3. If failed: inspect error output, fix issues, and re-delegate
+WHEN:
+  result["bootstrap"]["needed"] == true
+
+RULES:
+  - MUST report that `.ralphex/config` is missing and `ralphex --init` is required
+  - MUST request explicit user approval before running `ralphex --init`
+  - NEVER run `ralphex --init` automatically — it is always an opt-in action
 ```
-
-**Bootstrap gate:**
-
-Missing `.ralphex/config` is blocking — `run_delegation` returns an error result
-with `bootstrap.needed = True` and a message directing the user to run
-`ralphex --init`. If the user wants to proceed, request explicit approval before
-running `ralphex --init`. NEVER run `ralphex --init` automatically — it is
-always an opt-in action.
 
 ## Response Completion Gate
 
-This agent's response is complete only when ALL of the following are true:
-- `run_delegation()` has been called and the result dict is available
-- If `status == "error"`: the error has been reported with lifecycle state,
-  failure reason, and recovery options (retry/abort/bootstrap)
-- If `status == "ready"` (dry-run): the assembled command, plan file, mode,
-  and lifecycle state have been reported; Post-Run Handoff is SKIPPED because
-  ralphex was not invoked (no exit code, no `completed/` artifacts to inspect)
-- If `status == "delegated"`: Post-Run Handoff steps 1–5 have been executed
-  and the structured Delegation Handoff Report has been emitted
-- The SKILL.md invariant has been satisfied (Constructor Studio mode was loaded)
+```text
+UNIT RalphexCompletionGate
 
-Do NOT end the response with only a summary or status update. The handoff
-report (for `"delegated"`), dry-run summary (for `"ready"`), or error report
-with recovery options (for `"error"`) is the mandatory terminal block.
+RULES:
+  - MUST have called run_delegation() and have the result dict available
+  - WHEN status == "error":
+      MUST report error with lifecycle state, failure reason, and recovery options (retry/abort/bootstrap)
+  - WHEN status == "ready" (dry-run):
+      MUST report assembled command, plan file, mode, and lifecycle state
+      MUST skip Post-Run Handoff (ralphex was not invoked)
+  - WHEN status == "delegated":
+      MUST have executed Post-Run Handoff steps 1–5
+      MUST emit the structured Delegation Handoff Report
+  - MUST_NOT end response with only a summary or status update
+  - MUST satisfy the SKILL.md invariant (Constructor Studio mode was loaded)
+```

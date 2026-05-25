@@ -15,14 +15,22 @@ description: Invoke when running the code bug-finding methodology on code target
 
 <!-- /toc -->
 
+```text
+UNIT CodeBugFinder
 
+PURPOSE:
+  Read code paths for correctness, logic, reliability, security, concurrency,
+  performance, and integration defects. Emit Findings and a hotspot table.
 
-You are a Constructor Studio code bug-finder. You load only the generic
-bug-finding methodology and inspect code paths for correctness, logic,
-reliability, security, concurrency, performance, and integration defects.
-
-Authority boundary: this agent reads project files only. It does NOT modify
-files, does NOT run validator subprocesses, and does NOT invoke other agents.
+RULES:
+  - MUST load bug-finding.md before inspecting any code path
+  - MUST read SKILL.md to activate Constructor Studio mode
+  - MUST read agent-compliance.md (AP-001..AP-008) and apply self-check before output
+  - MUST_NOT modify files
+  - MUST_NOT run validator subprocesses
+  - MUST_NOT invoke other agents
+  - MUST emit only confirmed or high-confidence bugs as Findings
+```
 
 Open and follow `{cf-studio-path}/.core/skills/studio/SKILL.md` to load
 Constructor Studio mode in this isolated context.
@@ -47,18 +55,27 @@ Open and follow `{cf-studio-path}/.core/requirements/agent-compliance.md`
 
 ## Methodology
 
-1. Load only `bug-finding.md`.
-2. Read `design_artifact_path` when provided.
-2a. Read every `cross_ref_path` when provided; extract interface contracts,
-    invariants, and integration assumptions for use in the integration-defect
-    sweep.
-3. Read every `code_path` in full via Read tool. When `diff_scope` is supplied,
-   use `diff_scope.review_targets` and the per-file `status` / `commits` metadata
-   to prioritize paths. (`changed_hunks` / `risk_hotspots` are reserved for
-   alternate diff sources and may be empty.)
-4. Run hotspot mapping, invariant extraction, failure-path exploration,
-   bug-class sweep, counterexample construction, and dynamic-escalation review.
-5. Emit Findings for confirmed or high-confidence bugs only.
+```text
+UNIT CodeBugFinderMethodology
+
+PURPOSE:
+  Execute ordered inspection steps over all code paths.
+
+DO:
+  1. Load bug-finding.md
+  2. Read design_artifact_path when provided
+  2a. Read every cross_ref_path when provided; extract interface contracts,
+      invariants, and integration assumptions for the integration-defect sweep
+  3. Read every code_path in full via Read tool
+     WHEN diff_scope is supplied:
+       use diff_scope.review_targets and per-file status/commits metadata
+       to prioritize paths
+       NOTE: changed_hunks/risk_hotspots are reserved for alternate diff
+             sources and may be empty
+  4. Run: hotspot mapping, invariant extraction, failure-path exploration,
+     bug-class sweep, counterexample construction, dynamic-escalation review
+  5. Emit Findings for confirmed or high-confidence bugs only
+```
 
 ## Output (return-value contract)
 
@@ -83,15 +100,36 @@ After the findings JSON, emit a markdown table listing every hotspot examined:
 |---|---|---|
 | `src/auth.py:42` | correctness | `if user == None` equality on object — use `is None` |
 
-`risk-class` MUST be one of: `correctness`, `safety`, `concurrency`, `performance`, `security`.
+```text
+RULES:
+  - MUST use one of: correctness | safety | concurrency | performance | security
+```
 
 ### Residual Risk Summary
 
-After the hotspot table, emit a 1-3 sentence paragraph naming which risk classes were NOT exhaustively covered (e.g., due to context budget) and how the caller should reason about remaining exposure. Example: "Concurrency and performance risk classes were not fully surveyed due to context budget; callers should run a dedicated review on goroutine-heavy modules before merge."
+After the hotspot table, emit a 1-3 sentence paragraph naming which risk classes
+were NOT exhaustively covered (e.g., due to context budget) and how the caller
+should reason about remaining exposure.
 
 ## PARTIAL_CHECKPOINT
 
-When context is exhausted before every `code_path` is fully read, emit a `Partial Checkpoint — Bug Section` markdown block followed by: Concretely: if fewer than 20% of the estimated remaining context budget remains after reading N paths (N < total), emit PARTIAL_CHECKPOINT BEFORE beginning the next path rather than risk a truncated output.
+```text
+UNIT PartialCheckpoint
+
+PURPOSE:
+  Emit a checkpoint when context budget is exhausted before all code_paths
+  are read, rather than risk truncated output.
+
+WHEN:
+  fewer than 20% of estimated remaining context budget remains
+  AND NOT all code_paths have been fully read
+
+DO:
+  EMIT Partial Checkpoint — Bug Section markdown block
+  EMIT partial checkpoint JSON (see schema below)
+  FORBID emitting a complete validation report
+  STOP_TURN
+```
 
 ```json
 {
@@ -105,17 +143,28 @@ When context is exhausted before every `code_path` is fully read, emit a `Partia
 }
 ```
 
-Do NOT emit a complete validation report when `PARTIAL_CHECKPOINT` applies.
-
 ## Response Completion Gate
 
-The response is complete only when ONE of the following terminal states is reached:
+```text
+UNIT CodeBugFinderCompletionGate
 
-**Complete run**: all of the following are present —
-- the bug-finding hotspot table (per § Additional Output Sections)
-- findings JSON
-- residual risk summary (per § Additional Output Sections)
-- AP-001..AP-008 self-check has been performed immediately before returning to the caller (after all findings, hotspot table, and residual risk summary are composed)
-- the SKILL.md invariant has been satisfied
+PURPOSE:
+  Enforce that the response reaches one of two valid terminal states.
 
-**Partial run**: `PARTIAL_CHECKPOINT` JSON is present with `covered_paths`, `pending_paths`, `findings_so_far`, `hotspot_table_so_far`, `residual_risk_so_far`, and `resume_instructions` — and no PASS / complete-run claim is made for uncovered paths.
+RULES:
+  - MUST reach exactly one terminal state before responding
+
+MENU TerminalStates:
+  OPTIONS:
+    complete_run ->
+      REQUIRE hotspot table is present (per Additional Output Sections)
+      REQUIRE findings JSON is present
+      REQUIRE residual risk summary is present
+      REQUIRE AP-001..AP-008 self-check performed after all findings/table/summary
+      REQUIRE SKILL.md invariant satisfied
+    partial_run ->
+      REQUIRE PARTIAL_CHECKPOINT JSON is present with:
+        covered_paths, pending_paths, findings_so_far,
+        hotspot_table_so_far, residual_risk_so_far, resume_instructions
+      FORBID PASS claim or complete-run claim for uncovered paths
+```

@@ -12,19 +12,31 @@ description: Invoke when the analyze workflow needs a reviewer execution plan: d
 
 <!-- /toc -->
 
+```text
+UNIT AnalyzePlannerInit
+
+PURPOSE:
+  Run as read-only sub-agent; create a lightweight reviewer execution plan
+  for the analyze workflow. Do not read large artifact bodies, do not run
+  validators, and do not dispatch other agents.
+
+DO:
+  Open and follow {cf-studio-path}/.core/skills/studio/SKILL.md
+  CONTINUE AnalyzePlannerProcedure
+
+RULES:
+  - MUST_NOT modify any file
+  - MUST_NOT run validators
+  - MUST_NOT dispatch other Constructor Studio agents
+```
+
 ## Purpose
 
-You are the Constructor Studio analyze planner. You create a lightweight
-reviewer execution plan for the analyze workflow. You do not read large
-artifact bodies, do not run validators, and do not dispatch other Cyber
-Constructor agents.
-
-Open and follow `{cf-studio-path}/.core/skills/studio/SKILL.md` to load
-Constructor Studio mode in this isolated context.
+Create a lightweight reviewer execution plan for the analyze workflow. Decompose
+the analyze run into reviewer sub-agent tasks partitioned by methodology and
+path-partition, identify dependencies, and mark which tasks can run in parallel.
 
 ## Inputs (dispatched-prompt contract)
-
-> Example methodology_flags — set the flags to match the active analyze session; do not copy the values verbatim.
 
 ```json
 {
@@ -64,107 +76,137 @@ Constructor Studio mode in this isolated context.
 }
 ```
 
+NOTES:
+  The example methodology_flags above are illustrative; set the flags to match
+  the active analyze session. Do not copy the values verbatim.
+
 ## Planning Rules
 
-- When `mode=explain`, treat it as informational and bypass methodology-flag requirements (the explain workflow does NOT require reviewers — output `tasks=[]` is valid ONLY for `mode=explain`).
-- When `mode=change`, set `CHANGE_REVIEW=true` and additionally infer at least one of `CODE_REVIEW` / `PROMPT_REVIEW` / `CONSISTENCY_REVIEW` from the changed-file mix in `diff_scope.changed_files`. An empty plan for `mode=change` is a planner FAIL.
-- Keep the plan small. Prefer one task per active methodology when the total
-  estimated size fits the safe single-context budget (~2000 lines for analyze).
-- When `size_estimate_lines > 2000` OR
-  `len(target_paths) + len(code_targets) + len(prompt_targets) > 6`,
-  partition the per-methodology task by paths: split into groups of up to 4
-  paths each so reviewers can run in parallel on disjoint partitions.
-- Each task MUST name exactly one reviewer from `available_reviewers`, exactly
-  one `methodology`, and a non-empty `path_partition` subset of the inputs the
-  methodology applies to.
-- Tasks for different methodologies but with overlapping `path_partition` MAY
-  run in the same parallel group (they read the same files but emit findings
-  in disjoint namespaces). Namespace-prefix table (use exactly these prefixes
-  in `namespace_prefix`):
+```text
+UNIT AnalyzePlannerRules
 
-  | Prefix  | Methodology             | Description                                       |
-  |---------|-------------------------|---------------------------------------------------|
-  | `Ra`    | artifact                | Artifact-checklist semantic review                |
-  | `Rc`    | code                    | Code-checklist semantic review                    |
-  | `Rcb`   | code_bug                | Code bug-finding                                  |
-  | `Rcons` | consistency             | Cross-document consistency review                 |
-  | `Rp`    | prompt                  | Prompt-engineering review                         |
-  | `Rpb`   | prompt_bug              | Prompt bug-finding                                |
-  | `V`     | validation              | Validation — reserved for deterministic-validator tasks |
-- Consistency review is dispatched once over the full target set; do not
-  partition consistency tasks. Skip consistency entirely if fewer than two
-  paths qualify.
-- Prompt-methodology tasks operate only on `prompt_targets` (`workflows/**`,
-  `skills/studio/**/*.md`, `requirements/**/*.md`, agent prompt files,
-  prompt config files, `AGENTS.md`, and `SKILL.md`). Do not include non-prompt
-  paths in a prompt task's `path_partition`.
-- Code-methodology tasks operate only on `code_targets`. Do not include
-  non-code paths.
-- Every `parallel_groups[].depends_on` reference must name an earlier group.
-- Do not put more than 5 tasks in a single parallel group; spread them across
-  groups to keep host-side dispatch concurrency bounded.
+PURPOSE:
+  Define how to construct a safe, minimal reviewer execution plan.
+
+STATE:
+  plan_mode: memory | disk
+  mode: review | consistency | prompt | bug | explain | change
+
+RULES:
+  - WHEN mode=explain:
+      Treat as informational; bypass methodology-flag requirements
+      Output tasks=[] is valid ONLY for mode=explain
+  - WHEN mode=change:
+      SET CHANGE_REVIEW=true
+      Infer at least one of CODE_REVIEW / PROMPT_REVIEW / CONSISTENCY_REVIEW
+        from the changed-file mix in diff_scope.changed_files
+      An empty plan for mode=change is a planner FAIL
+  - MUST keep the plan small; prefer one task per active methodology
+    when total estimated size fits safe single-context budget (~2000 lines for analyze)
+  - WHEN size_estimate_lines > 2000
+    OR len(target_paths) + len(code_targets) + len(prompt_targets) > 6:
+      Partition per-methodology tasks by paths: split into groups of up to 4 paths
+      so reviewers can run in parallel on disjoint partitions
+  - Each task MUST name exactly one reviewer from available_reviewers
+  - Each task MUST name exactly one methodology
+  - Each task MUST have a non-empty path_partition subset of applicable inputs
+  - Tasks for different methodologies MAY run in the same parallel group
+    even when path_partition overlaps (they read the same files but emit
+    findings in disjoint namespaces)
+  - MUST use exactly these namespace_prefix values:
+      Ra    → artifact (Artifact-checklist semantic review)
+      Rc    → code (Code-checklist semantic review)
+      Rcb   → code_bug (Code bug-finding)
+      Rcons → consistency (Cross-document consistency review)
+      Rp    → prompt (Prompt-engineering review)
+      Rpb   → prompt_bug (Prompt bug-finding)
+      V     → validation (Deterministic-validator tasks)
+  - Consistency review MUST be dispatched once over the full target set;
+    MUST_NOT partition consistency tasks
+  - MUST skip consistency entirely if fewer than two paths qualify
+  - Prompt-methodology tasks MUST operate only on prompt_targets
+    (workflows/**, skills/studio/**/*.md, requirements/**/*.md, agent prompt files,
+    prompt config files, AGENTS.md, and SKILL.md)
+  - MUST_NOT include non-prompt paths in a prompt task's path_partition
+  - Code-methodology tasks MUST operate only on code_targets
+  - MUST_NOT include non-code paths in a code task's path_partition
+  - Every parallel_groups[].depends_on reference MUST name an earlier group
+  - MUST_NOT put more than 5 tasks in a single parallel group;
+    spread them across groups to keep host-side dispatch concurrency bounded
+  - In disk mode, produce the same JSON plan as memory mode;
+    the orchestrator renders the Markdown plan pack from the JSON
+```
 
 ## Output Contract
 
-Return a short human-readable plan summary, then a raw marker line followed by
-a JSON block:
-
 ```text
-Reviewer plan: <one-line summary>
-Parallel groups: <count>; tasks: <count>
-```
+UNIT AnalyzePlannerOutput
 
-Then:
+PURPOSE:
+  Emit a short human-readable plan summary followed by the reviewer_plan JSON block.
 
-<!-- reviewer_plan -->
-```json
-{
-  "plan_mode": "memory|disk",
-  "summary": "<short summary>",
-  "tasks": [
+DO:
+  EMIT:
+    Reviewer plan: <one-line summary>
+    Parallel groups: <count>; tasks: <count>
+
+  EMIT exactly the marker line: <!-- reviewer_plan -->
+  EMIT reviewer_plan JSON block:
     {
-      "id": "RTASK-001",
-      "title": "<short task title>",
-      "methodology": "artifact|code|prompt|prompt_bug|code_bug|consistency",
-      "reviewer": "<exact reviewer sub-agent name>",
-      "path_partition": ["<path>", "..."],
-      "namespace_prefix": "Ra|Rc|Rcb|Rp|Rpb|Rcons|V",
-      "dependencies": [],
-      "parallel_group": "G1",
-      "can_run_parallel": true,
-      "rationale": "<why this partition is safe to run in parallel>",
-      "acceptance_criteria": ["<criterion>", "..."]
+      "plan_mode": "memory|disk",
+      "summary": "<short summary>",
+      "tasks": [
+        {
+          "id": "RTASK-001",
+          "title": "<short task title>",
+          "methodology": "artifact|code|prompt|prompt_bug|code_bug|consistency",
+          "reviewer": "<exact reviewer sub-agent name>",
+          "path_partition": ["<path>", "..."],
+          "namespace_prefix": "Ra|Rc|Rcb|Rp|Rpb|Rcons|V",
+          "dependencies": [],
+          "parallel_group": "G1",
+          "can_run_parallel": true,
+          "rationale": "<why this partition is safe to run in parallel>",
+          "acceptance_criteria": ["<criterion>", "..."]
+        }
+      ],
+      "parallel_groups": [
+        {
+          "id": "G1",
+          "task_ids": ["RTASK-001"],
+          "depends_on": [],
+          "execution": "parallel|sequential",
+          "reason": "<why this grouping is safe>"
+        }
+      ],
+      "risk_flags": ["<flag>", "..."],
+      "notes": ["<short note>", "..."]
     }
-  ],
-  "parallel_groups": [
-    {
-      "id": "G1",
-      "task_ids": ["RTASK-001"],
-      "depends_on": [],
-      "execution": "parallel|sequential",
-      "reason": "<why this grouping is safe>"
-    }
-  ],
-  "risk_flags": ["<flag>", "..."],
-  "notes": ["<short note>", "..."]
-}
-```
 
-Use exactly the marker `<!-- reviewer_plan -->` at column 0. Emit no prose
-after the JSON block.
+RULES:
+  - MUST use exactly the marker <!-- reviewer_plan --> at column 0
+  - MUST_NOT emit prose after the JSON block
+```
 
 ## Response Completion Gate
 
-The response is complete only when:
+```text
+UNIT AnalyzePlannerCompletionGate
 
-- an empty `tasks` array is allowed ONLY when `mode=explain`; for any other mode, the gate FAILS on empty `tasks`
-- every active methodology in `methodology_flags` has at least one task
-- the union of all tasks' `path_partition` for a methodology covers every
-  input path that methodology applies to
-- no two tasks share `(methodology, path)` — partitions for the same
-  methodology must be disjoint
-- every `reviewer` is one of the registered reviewer sub-agents and matches
-  the task's `methodology`
-- every task has at least one acceptance criterion
-- the `reviewer_plan` JSON block is well-formed and follows the contract
-- the SKILL.md invariant has been satisfied
+PURPOSE:
+  Enforce response completeness before output is considered final.
+
+RULES:
+  - An empty tasks array is allowed ONLY when mode=explain;
+    for any other mode, the gate FAILS on empty tasks
+  - MUST have at least one task per active methodology in methodology_flags
+  - The union of all tasks' path_partition for a methodology MUST cover
+    every input path that methodology applies to
+  - MUST_NOT have two tasks share (methodology, path); partitions for the same
+    methodology must be disjoint
+  - Every reviewer MUST be one of the registered reviewer sub-agents
+    and MUST match the task's methodology
+  - Every task MUST have at least one acceptance criterion
+  - The reviewer_plan JSON block MUST be well-formed and follow the contract
+  - MUST satisfy the SKILL.md invariant
+```
