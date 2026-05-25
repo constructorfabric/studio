@@ -174,6 +174,7 @@ Enables users to install Studio globally, initialize it in any project with sens
 - Legacy install is missing, outside project root, or not directly migratable → command returns structured error and avoids partial writes
 - Target Constructor Studio directory exists without `--force` → command returns structured error and preserves both directories
 - Root managed block rewrite fails after backups → command restores root files from backups and reports the failed step
+- Host-integration cleanup MUST NOT touch `.github/workflows/` or any path outside the host-integration directories (`.claude/`, `.windsurf/`, `.cursor/`, `.github/copilot-instructions.md`, `.codex/`) — these paths are user-owned and preserved unconditionally
 
 **Steps**:
 1. [x] - `p1` - Define migration constants and imports used by implicit init/update migration flows - `inst-migration-module`
@@ -213,10 +214,11 @@ Enables users to install Studio globally, initialize it in any project with sens
 35. [x] - `p1` - Remove well-formed legacy managed blocks while preserving malformed content for manual cleanup - `inst-remove-legacy-block`
 36. [x] - `p1` - Migrate core TOML kit keys, kit paths, kit sources, and obsolete system section - `inst-migrate-core-toml`
 37. [x] - `p1` - Migrate artifacts TOML systems from legacy kit slug to canonical SDLC kit slug - `inst-migrate-artifacts-toml`
-38. [x] - `p1` - Rewrite config markdown terminology and command references from Studio/cfs to Constructor Studio/cfs - `inst-migrate-config-markdown`
+38. [x] - `p1` - Recursively walk `config/**/*.md` (via `rglob("*.md")`) and apply four conservative substitutions: `{cypilot_path}` → `{cf-studio-path}`, backtick-`cpt` → backtick-`cfs`, space-surrounded `cpt` → `cfs`, `Cypilot` → `Constructor Studio`; returns changed paths as POSIX strings relative to the config dir - `inst-migrate-config-markdown`
 39. [x] - `p1` - Rewrite the `{cypilot_path}` template placeholder to `{cf-studio-path}` across config TOML files (e.g. `pr-review.toml`) under the migrated config dir - `inst-migrate-config-toml-template-vars`
-40. [x] - `p1` - Run `cfs kit update` after migration so renamed kit sources pull their latest release from the canonical `constructorfabric/studio-kit-sdlc` (or the user's mirror); honor `--dry-run` by recording the planned action only - `inst-followup-kit-update`
+40. [x] - `p1` - Run `cfs kit update` after migration so renamed kit sources pull their latest release from the canonical `constructorfabric/studio-kit-sdlc` (or the user's mirror); honor `--dry-run` by recording the planned action only; **in JSON mode** suppress `cfs kit update` sub-command stdout via `contextlib.redirect_stdout` so the outer migration JSON remains the sole document on the wire - `inst-followup-kit-update`
 41. [x] - `p1` - Render human migration summary with actions and warnings - `inst-human-output`
+42. [x] - `p1` - Delete pre-rebrand host-integration artifacts (`cypilot-*` / `cf-constructor-*` agent files, skill directories, and install markers) for each supported host (`claude`, `windsurf`, `cursor`, `copilot`, `openai`), then regenerate fresh `cf-*` integrations for every host that had at least one removed artifact; only files whose body is a pure generator stub are removed — user-edited files are preserved; returns `{"removed": {agent: [relpath, ...]}, "regenerated": [agent, ...]}` - `inst-cleanup-legacy-host-integrations`
 
 ## 3. Processes / Business Logic (CDSL)
 
