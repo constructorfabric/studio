@@ -24,7 +24,7 @@ version: 1.0
 
 <!-- /toc -->
 
-System design, module boundaries, and key abstractions of the self-hosted Cypilot project.
+System design, module boundaries, and key abstractions of the self-hosted Constructor Studio project.
 
 ## Source Layout
 
@@ -55,7 +55,7 @@ The repository is also self-hosted: `.bootstrap/` is a live adapter/config tree 
 
 ## Runtime Context
 
-`CypilotContext.load()` runs at CLI startup in the skill engine, reads `artifacts.toml`, resolves kits and constraints, and stores the loaded context for command handlers. Workspace upgrades are deferred until first access, so lightweight commands do not pay unnecessary startup cost.
+`Constructor StudioContext.load()` runs at CLI startup in the skill engine, reads `artifacts.toml`, resolves kits and constraints, and stores the loaded context for command handlers. Workspace upgrades are deferred until first access, so lightweight commands do not pay unnecessary startup cost.
 
 ## Path Resolution
 

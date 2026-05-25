@@ -21,7 +21,7 @@ version: 1.0
 
 <!-- /toc -->
 
-Project-specific things NOT to do, based on patterns observed in the Cypilot codebase.
+Project-specific things NOT to do, based on patterns observed in the Constructor Studio codebase.
 
 ## Import Across Packages
 

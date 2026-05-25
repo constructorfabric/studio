@@ -19,7 +19,7 @@ version: 1.0
 
 <!-- /toc -->
 
-Repo layout rules for the self-hosted Cypilot project.
+Repo layout rules for the self-hosted Constructor Studio project.
 
 ## Adapter Layout
 

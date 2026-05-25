@@ -21,7 +21,7 @@ version: 1.0
 
 <!-- /toc -->
 
-Build automation, CI/CD pipeline, and dependency management for the Cypilot project.
+Build automation, CI/CD pipeline, and dependency management for the Constructor Studio project.
 
 ## Build System
 
@@ -72,7 +72,7 @@ Evidence: `.github/workflows/ci.yml`.
 | `make test-verbose` | Run tests with verbose output | — |
 | `make test-quick` | Fast tests only (skip `@pytest.mark.slow`) | — |
 | `make test-coverage` | Tests + coverage report (≥90% required) | Yes |
-| `make validate` | Validate core methodology via `cpt validate` | Yes |
+| `make validate` | Validate core methodology via `cfs validate` | Yes |
 | `make self-check` | Validate SDLC examples against templates | Yes |
 | `make validate-kits` | Validate kit structure and example/template integrity | Yes |
 | `make check-versions` | Check version consistency across components | Yes |

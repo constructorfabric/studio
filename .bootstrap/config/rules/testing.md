@@ -20,7 +20,7 @@ version: 1.0
 
 <!-- /toc -->
 
-Testing rules extracted from the current Cypilot repo.
+Testing rules extracted from the current Constructor Studio repo.
 
 ## Test Stack
 

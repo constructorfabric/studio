@@ -22,7 +22,7 @@ version: 1.0
 
 <!-- /toc -->
 
-Naming, code style, imports, and file organization rules extracted from the Cypilot codebase.
+Naming, code style, imports, and file organization rules extracted from the Constructor Studio codebase.
 
 ## File & Module Organization
 
@@ -48,7 +48,7 @@ Evidence: `resolve.py:13`, `cache.py:17`, `tests/conftest.py:1`.
 
 ### Dataclasses for Domain Objects
 
-Use `@dataclass` for value objects and domain types. Key examples: `CypilotContext`, `LoadedKit`, `ArtifactsMeta`, `SystemNode`, `CodeFile`, `ScopeMarker`.
+Use `@dataclass` for value objects and domain types. Key examples: `Constructor StudioContext`, `LoadedKit`, `ArtifactsMeta`, `SystemNode`, `CodeFile`, `ScopeMarker`.
 
 Evidence: `utils/context.py:21-38`, `utils/artifacts_meta.py`, `utils/codebase.py`.
 

@@ -25,7 +25,7 @@ version: 1.0
 
 <!-- /toc -->
 
-Recurring implementation patterns and idioms observed in the Cypilot codebase.
+Recurring implementation patterns and idioms observed in the Constructor Studio codebase.
 
 ## Error Handling
 
