@@ -15,7 +15,7 @@ from tempfile import TemporaryDirectory
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.utils import (
+from studio.utils import (
     load_language_config,
     build_cypilot_begin_regex,
     build_cypilot_end_regex,
@@ -25,7 +25,7 @@ from cypilot.utils import (
     DEFAULT_FILE_EXTENSIONS,
 )
 
-from cypilot.utils.language_config import (
+from studio.utils.language_config import (
     DEFAULT_SINGLE_LINE_COMMENTS,
     DEFAULT_MULTI_LINE_COMMENTS,
     DEFAULT_BLOCK_COMMENT_PREFIXES,
@@ -321,7 +321,7 @@ class TestCodebaseEntryCommentFields(unittest.TestCase):
     """Test CodebaseEntry parsing of singleLineComments / multiLineComments."""
 
     def test_from_dict_with_comment_fields(self):
-        from cypilot.utils.artifacts_meta import CodebaseEntry
+        from studio.utils.artifacts_meta import CodebaseEntry
 
         entry = CodebaseEntry.from_dict({
             "path": "src",
@@ -333,7 +333,7 @@ class TestCodebaseEntryCommentFields(unittest.TestCase):
         self.assertEqual(entry.multi_line_comments, [{"start": '"""', "end": '"""'}])
 
     def test_from_dict_without_comment_fields(self):
-        from cypilot.utils.artifacts_meta import CodebaseEntry
+        from studio.utils.artifacts_meta import CodebaseEntry
 
         entry = CodebaseEntry.from_dict({
             "path": "src",
@@ -343,7 +343,7 @@ class TestCodebaseEntryCommentFields(unittest.TestCase):
         self.assertIsNone(entry.multi_line_comments)
 
     def test_from_dict_empty_comment_lists(self):
-        from cypilot.utils.artifacts_meta import CodebaseEntry
+        from studio.utils.artifacts_meta import CodebaseEntry
 
         entry = CodebaseEntry.from_dict({
             "path": "src",
@@ -356,7 +356,7 @@ class TestCodebaseEntryCommentFields(unittest.TestCase):
         self.assertIsNone(entry.multi_line_comments)  # empty after filtering invalid items
 
     def test_from_dict_malformed_multiline_ignored(self):
-        from cypilot.utils.artifacts_meta import CodebaseEntry
+        from studio.utils.artifacts_meta import CodebaseEntry
 
         entry = CodebaseEntry.from_dict({
             "path": "src",
@@ -370,28 +370,28 @@ class TestCommentDefaultsForExtensions(unittest.TestCase):
     """Test comment_defaults_for_extensions() utility."""
 
     def test_python_defaults(self):
-        from cypilot.utils.language_config import comment_defaults_for_extensions
+        from studio.utils.language_config import comment_defaults_for_extensions
 
         slc, mlc = comment_defaults_for_extensions([".py"])
         self.assertEqual(slc, ["#"])
         self.assertEqual(mlc, [{"start": '"""', "end": '"""'}])
 
     def test_js_defaults(self):
-        from cypilot.utils.language_config import comment_defaults_for_extensions
+        from studio.utils.language_config import comment_defaults_for_extensions
 
         slc, mlc = comment_defaults_for_extensions([".js"])
         self.assertEqual(slc, ["//"])
         self.assertEqual(mlc, [{"start": "/*", "end": "*/"}])
 
     def test_mixed_extensions_deduplicates(self):
-        from cypilot.utils.language_config import comment_defaults_for_extensions
+        from studio.utils.language_config import comment_defaults_for_extensions
 
         slc, mlc = comment_defaults_for_extensions([".ts", ".tsx"])
         self.assertEqual(slc, ["//"])  # deduplicated
         self.assertEqual(len(mlc), 1)  # deduplicated
 
     def test_unknown_extension_returns_empty(self):
-        from cypilot.utils.language_config import comment_defaults_for_extensions
+        from studio.utils.language_config import comment_defaults_for_extensions
 
         slc, mlc = comment_defaults_for_extensions([".xyz"])
         self.assertEqual(slc, [])

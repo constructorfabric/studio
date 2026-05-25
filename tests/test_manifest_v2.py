@@ -10,7 +10,7 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
-from cypilot.utils.manifest import (
+from studio.utils.manifest import (
     AgentEntry,
     ComponentEntry,
     ManifestLayer,

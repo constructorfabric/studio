@@ -22,7 +22,7 @@ from typing import Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.commands.agents import (
+from studio.commands.agents import (
     _build_legacy_openai_agent_file,
     _build_openai_agent_file,
     _escape_toml_basic_string,

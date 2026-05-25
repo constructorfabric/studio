@@ -11,8 +11,8 @@ from tempfile import TemporaryDirectory
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.utils.files import load_text, find_cypilot_directory as find_adapter_directory
-from cypilot.utils.files import (
+from studio.utils.files import load_text, find_cypilot_directory as find_adapter_directory
+from studio.utils.files import (
     cfg_get_str,
     cypilot_root_from_project_config,
     iter_registry_entries,

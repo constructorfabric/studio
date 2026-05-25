@@ -3,13 +3,13 @@ import json
 import re
 from pathlib import Path
 
-from cypilot.commands.map.categorize import CategorizeOptions, categorize_nodes
-from cypilot.commands.map.cpt_edges import build_cpt_edges
-from cypilot.commands.map.enrich import enrich_edges
-from cypilot.commands.map.layout import compute_layout
-from cypilot.commands.map.links import extract_file_links
-from cypilot.commands.map.render_json import RenderJsonInput, render_json
-from cypilot.commands.map.scan import ScanOptions, scan_repo
+from studio.commands.map.categorize import CategorizeOptions, categorize_nodes
+from studio.commands.map.cpt_edges import build_cpt_edges
+from studio.commands.map.enrich import enrich_edges
+from studio.commands.map.layout import compute_layout
+from studio.commands.map.links import extract_file_links
+from studio.commands.map.render_json import RenderJsonInput, render_json
+from studio.commands.map.scan import ScanOptions, scan_repo
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "map"
 

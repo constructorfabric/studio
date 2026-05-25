@@ -12,7 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 def _run_map(*args, cwd: Path):
     env = os.environ.copy()
     env["PYTHONPATH"] = str(REPO_ROOT / "skills" / "cypilot" / "scripts") + ":" + env.get("PYTHONPATH", "")
-    cmd = [sys.executable, "-m", "cypilot.cli", "map", *args]
+    cmd = [sys.executable, "-m", "studio.cli", "map", *args]
     return subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True, check=False)
 
 

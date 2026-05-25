@@ -15,8 +15,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.commands.agents import generate_manifest_agents
-from cypilot.utils.manifest import AgentEntry
+from studio.commands.agents import generate_manifest_agents
+from studio.utils.manifest import AgentEntry
 from _test_helpers import _make_agent
 
 
@@ -654,7 +654,7 @@ class TestGenerateManifestAgentsPathTraversal(unittest.TestCase):
 
     def test_workflow_rename_outside_absolute_follow_link_warns_without_abort(self):
         """Malformed absolute workflow follow-links are reported without aborting."""
-        from cypilot.commands.agents import _default_agents_config, _process_single_agent
+        from studio.commands.agents import _default_agents_config, _process_single_agent
 
         with tempfile.TemporaryDirectory() as tmpdir, tempfile.TemporaryDirectory() as outside:
             project_root = Path(tmpdir)

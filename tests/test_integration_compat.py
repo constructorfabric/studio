@@ -19,7 +19,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.commands.agents import (
+from studio.commands.agents import (
     _discover_kit_agents,
     _layers_have_v2_manifests,
     build_provenance_report,
@@ -28,7 +28,7 @@ from cypilot.commands.agents import (
     translate_agent_schema,
     write_discovered_manifest,
 )
-from cypilot.utils.manifest import (
+from studio.utils.manifest import (
     AgentEntry,
     ManifestLayer,
     ManifestLayerState,
@@ -356,7 +356,7 @@ class TestShowLayersFlag(unittest.TestCase):
 
     def test_format_provenance_human_output(self):
         """format_provenance_human produces readable output."""
-        from cypilot.commands.agents import format_provenance_human
+        from studio.commands.agents import format_provenance_human
 
         report = {
             "components": [

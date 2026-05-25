@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from cypilot.utils.manifest import Manifest, ManifestResource, load_manifest, resolve_resource_bindings_with_errors, validate_manifest
+from studio.utils.manifest import Manifest, ManifestResource, load_manifest, resolve_resource_bindings_with_errors, validate_manifest
 
 
 # ---------------------------------------------------------------------------
@@ -413,7 +413,7 @@ class TestResolveResourceBindings:
 # _validate_against_schema — edge cases for per-file coverage
 # ---------------------------------------------------------------------------
 
-from cypilot.utils.manifest import _validate_against_schema
+from studio.utils.manifest import _validate_against_schema
 
 
 class TestValidateAgainstSchema:
@@ -498,7 +498,7 @@ class TestBuildSourceToResourceMapping:
 
     def test_no_manifest_returns_empty(self, tmp_path: Path) -> None:
         """Kit without manifest.toml returns empty dicts."""
-        from cypilot.utils.manifest import build_source_to_resource_mapping
+        from studio.utils.manifest import build_source_to_resource_mapping
 
         kit = tmp_path / "kit"
         kit.mkdir()
@@ -510,7 +510,7 @@ class TestBuildSourceToResourceMapping:
 
     def test_file_resource_mapping(self, tmp_path: Path) -> None:
         """File resources are mapped directly."""
-        from cypilot.utils.manifest import build_source_to_resource_mapping, ResourceInfo
+        from studio.utils.manifest import build_source_to_resource_mapping, ResourceInfo
 
         kit = tmp_path / "kit"
         kit.mkdir()
@@ -536,7 +536,7 @@ class TestBuildSourceToResourceMapping:
 
     def test_directory_resource_expands_files(self, tmp_path: Path) -> None:
         """Directory resources expand to all files within."""
-        from cypilot.utils.manifest import build_source_to_resource_mapping, ResourceInfo
+        from studio.utils.manifest import build_source_to_resource_mapping, ResourceInfo
 
         kit = tmp_path / "kit"
         kit.mkdir()
@@ -570,7 +570,7 @@ class TestBuildSourceToResourceMapping:
 
     def test_mixed_file_and_directory_resources(self, tmp_path: Path) -> None:
         """Both file and directory resources are handled correctly."""
-        from cypilot.utils.manifest import build_source_to_resource_mapping
+        from studio.utils.manifest import build_source_to_resource_mapping
 
         kit = tmp_path / "kit"
         kit.mkdir()
@@ -612,8 +612,8 @@ class TestFileLevelKitUpdateIntegration:
 
     def test_file_and_directory_resources_written_to_bound_paths(self, tmp_path: Path) -> None:
         """Both file and directory resources are written to their registered bound paths."""
-        from cypilot.utils.diff_engine import file_level_kit_update
-        from cypilot.utils.manifest import build_source_to_resource_mapping
+        from studio.utils.diff_engine import file_level_kit_update
+        from studio.utils.manifest import build_source_to_resource_mapping
 
         kit = tmp_path / "kit"
         kit.mkdir()

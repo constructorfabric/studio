@@ -89,7 +89,7 @@ def _make_legacy_project(root: Path, legacy_dir: str = "cypilot", version: str =
 
 
 def _patch_minimal_constructor_cache(monkeypatch, tmp_path: Path) -> None:
-    import cypilot.commands.init as init_cmd
+    import studio.commands.init as init_cmd
 
     cache_dir = tmp_path / "constructor-cache"
     for name in init_cmd.COPY_DIRS:
@@ -136,7 +136,7 @@ def _snapshot_tree(root: Path) -> dict[str, bytes]:
 
 @pytest.fixture
 def followup_update_ok(monkeypatch):
-    import cypilot.commands.migrate_from_cypilot as migration
+    import studio.commands.migrate_from_cypilot as migration
 
     monkeypatch.setattr(
         migration,
@@ -146,7 +146,7 @@ def followup_update_ok(monkeypatch):
 
 
 def test_internal_migration_copies_config_and_rewrites_markers(tmp_path):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     _make_legacy_project(tmp_path)
 
@@ -173,7 +173,7 @@ def test_internal_migration_copies_config_and_rewrites_markers(tmp_path):
 
 
 def test_internal_migration_force_replace_backs_up_existing_constructor_dir(tmp_path):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     _make_legacy_project(tmp_path)
     sentinel = tmp_path / ".cf-constructor" / "config" / "user-notes.md"
@@ -201,7 +201,7 @@ def test_internal_migration_force_replace_backs_up_existing_constructor_dir(tmp_
 
 
 def test_internal_migration_dry_run_force_replace_does_not_backup_or_delete_target(tmp_path):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     _make_legacy_project(tmp_path)
     sentinel = tmp_path / ".cf-constructor" / "config" / "user-notes.md"
@@ -226,8 +226,8 @@ def test_internal_migration_dry_run_force_replace_does_not_backup_or_delete_targ
 
 
 def test_internal_migration_force_replace_backup_failure_keeps_existing_constructor_dir(tmp_path, monkeypatch):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
-    import cypilot.commands.migrate_from_cypilot as migration
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
+    import studio.commands.migrate_from_cypilot as migration
 
     _make_legacy_project(tmp_path)
     sentinel = tmp_path / ".cf-constructor" / "config" / "user-notes.md"
@@ -251,8 +251,8 @@ def test_internal_migration_force_replace_backup_failure_keeps_existing_construc
 
 
 def test_internal_migration_force_replace_copy_failure_returns_error_and_preserves_root_markers(tmp_path, monkeypatch):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
-    import cypilot.commands.migrate_from_cypilot as migration
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
+    import studio.commands.migrate_from_cypilot as migration
 
     _make_legacy_project(tmp_path)
     sentinel = tmp_path / ".cf-constructor" / "config" / "user-notes.md"
@@ -297,8 +297,8 @@ def test_internal_migration_force_replace_copy_failure_returns_error_and_preserv
 
 
 def test_internal_migration_force_replace_copy_failure_reports_failed_restore(tmp_path, monkeypatch):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
-    import cypilot.commands.migrate_from_cypilot as migration
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
+    import studio.commands.migrate_from_cypilot as migration
 
     _make_legacy_project(tmp_path)
     sentinel = tmp_path / ".cf-constructor" / "config" / "user-notes.md"
@@ -348,8 +348,8 @@ def test_internal_migration_force_replace_copy_failure_reports_failed_restore(tm
 
 
 def test_internal_migration_create_copy_failure_returns_error_and_cleans_partial_target(tmp_path, monkeypatch):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
-    import cypilot.commands.migrate_from_cypilot as migration
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
+    import studio.commands.migrate_from_cypilot as migration
 
     _make_legacy_project(tmp_path)
     agents_before = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
@@ -390,7 +390,7 @@ def test_internal_migration_create_copy_failure_returns_error_and_cleans_partial
 
 
 def test_config_markdown_rewrite_contract_covers_all_supported_files(tmp_path):
-    from cypilot.commands.migrate_from_cypilot import _migrate_config_markdown
+    from studio.commands.migrate_from_cypilot import _migrate_config_markdown
 
     config_dir = tmp_path / "config"
     config_dir.mkdir()
@@ -423,7 +423,7 @@ def test_config_markdown_rewrite_contract_covers_all_supported_files(tmp_path):
 
 
 def test_config_markdown_recursive_rules_subdir(tmp_path):
-    from cypilot.commands.migrate_from_cypilot import _migrate_config_markdown
+    from studio.commands.migrate_from_cypilot import _migrate_config_markdown
 
     config_dir = tmp_path / "config"
     rules_dir = config_dir / "rules"
@@ -450,7 +450,7 @@ def test_config_markdown_recursive_rules_subdir(tmp_path):
 
 
 def test_config_toml_template_vars_rewrites_cypilot_path_placeholder(tmp_path):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     _make_legacy_project(tmp_path)
     pr_review_toml = tmp_path / "cypilot" / "config" / "pr-review.toml"
@@ -461,7 +461,12 @@ def test_config_toml_template_vars_rewrites_cypilot_path_placeholder(tmp_path):
         encoding="utf-8",
     )
 
-    rc, out = migrate_from_cypilot(project_root=tmp_path, from_dir="cypilot", skip_update=True)
+    rc, out = migrate_from_cypilot(
+        project_root=tmp_path,
+        from_dir="cypilot",
+        to_dir=".cf-constructor",
+        skip_update=True,
+    )
 
     assert rc == 0
     assert out["status"] == "PASS"
@@ -473,7 +478,7 @@ def test_config_toml_template_vars_rewrites_cypilot_path_placeholder(tmp_path):
 
 
 def test_internal_migration_removes_duplicate_legacy_root_blocks(tmp_path):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     _make_legacy_project(tmp_path)
     duplicate_blocks = (
@@ -510,7 +515,7 @@ def test_internal_migration_removes_duplicate_legacy_root_blocks(tmp_path):
 
 
 def test_internal_migration_preserves_malformed_legacy_root_block_tail(tmp_path):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     _make_legacy_project(tmp_path)
     malformed_content = (
@@ -542,7 +547,7 @@ def test_internal_migration_preserves_malformed_legacy_root_block_tail(tmp_path)
 
 
 def test_internal_migration_reports_missing_toml_actions_without_failing(tmp_path):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     _make_legacy_project(tmp_path)
     (tmp_path / "cypilot" / "config" / "core.toml").unlink()
@@ -559,7 +564,7 @@ def test_internal_migration_reports_missing_toml_actions_without_failing(tmp_pat
 
 
 def test_internal_migration_reports_invalid_toml_actions_without_failing(tmp_path):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     _make_legacy_project(tmp_path)
     (tmp_path / "cypilot" / "config" / "core.toml").write_text("version = [\n", encoding="utf-8")
@@ -578,8 +583,8 @@ def test_internal_migration_reports_invalid_toml_actions_without_failing(tmp_pat
 def test_init_migration_root_marker_write_failure_returns_json_without_update(
     tmp_path, capsys, monkeypatch
 ):
-    from cypilot.cli import main
-    import cypilot.commands.migrate_from_cypilot as migration
+    from studio.cli import main
+    import studio.commands.migrate_from_cypilot as migration
 
     _make_legacy_project(tmp_path)
     real_replace_root_block = migration._replace_root_block
@@ -622,8 +627,8 @@ def test_init_migration_root_marker_write_failure_returns_json_without_update(
 
 
 def test_internal_migration_preserves_partial_success_when_followup_update_fails(tmp_path, monkeypatch):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
-    import cypilot.commands.migrate_from_cypilot as migration
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
+    import studio.commands.migrate_from_cypilot as migration
 
     _make_legacy_project(tmp_path)
     update_result = {"status": "ERROR", "message": "boom"}
@@ -642,7 +647,7 @@ def test_internal_migration_preserves_partial_success_when_followup_update_fails
 
 
 def test_internal_migration_removes_legacy_kit_key_when_canonical_exists(tmp_path):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     _make_legacy_project(tmp_path)
     core_toml = tmp_path / "cypilot" / "config" / "core.toml"
@@ -677,7 +682,7 @@ def test_internal_migration_removes_legacy_kit_key_when_canonical_exists(tmp_pat
 
 
 def test_internal_migration_promotes_legacy_only_kit_and_normalizes_default_metadata(tmp_path):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     _make_legacy_project(tmp_path)
     core_toml = tmp_path / "cypilot" / "config" / "core.toml"
@@ -722,7 +727,7 @@ def test_internal_migration_promotes_legacy_only_kit_and_normalizes_default_meta
 
 
 def test_internal_migration_recursively_migrates_child_system_kit_refs(tmp_path):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     _make_legacy_project(tmp_path)
     artifacts_toml = tmp_path / "cypilot" / "config" / "artifacts.toml"
@@ -756,7 +761,7 @@ def test_internal_migration_recursively_migrates_child_system_kit_refs(tmp_path)
 
 
 def test_internal_migration_dry_run_reports_plan_without_writes(tmp_path):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     _make_legacy_project(tmp_path)
     agents_before = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
@@ -780,7 +785,7 @@ def test_internal_migration_dry_run_reports_plan_without_writes(tmp_path):
 
 
 def test_internal_migration_refuses_existing_target_without_force(tmp_path):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     _make_legacy_project(tmp_path)
     (tmp_path / ".cf-constructor").mkdir()
@@ -793,7 +798,7 @@ def test_internal_migration_refuses_existing_target_without_force(tmp_path):
 
 
 def test_internal_migration_rejects_absolute_target_with_force(tmp_path):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     _make_legacy_project(tmp_path)
     absolute_target = tmp_path / "absolute-target"
@@ -816,7 +821,7 @@ def test_internal_migration_rejects_absolute_target_with_force(tmp_path):
 
 
 def test_internal_migration_rejects_traversal_target_with_force(tmp_path):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     _make_legacy_project(tmp_path)
     outside_target = tmp_path.parent / f"{tmp_path.name}-outside-target"
@@ -839,7 +844,7 @@ def test_internal_migration_rejects_traversal_target_with_force(tmp_path):
 
 
 def test_internal_migration_rejects_absolute_from_dir(tmp_path):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     _make_legacy_project(tmp_path)
     absolute_source = tmp_path / "absolute-source"
@@ -858,7 +863,7 @@ def test_internal_migration_rejects_absolute_from_dir(tmp_path):
 
 
 def test_internal_migration_rejects_traversal_from_dir(tmp_path):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     _make_legacy_project(tmp_path)
     outside_source = tmp_path.parent / f"{tmp_path.name}-outside-source"
@@ -881,7 +886,7 @@ def test_internal_migration_rejects_traversal_from_dir(tmp_path):
 
 @pytest.mark.parametrize("legacy_dir", ["cypilot", ".cypilot", ".cpt", ".bootstrap"])
 def test_internal_migration_accepts_common_relative_from_dirs(tmp_path, legacy_dir):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     _make_legacy_project(tmp_path, legacy_dir=legacy_dir)
 
@@ -894,7 +899,7 @@ def test_internal_migration_accepts_common_relative_from_dirs(tmp_path, legacy_d
 
 
 def test_init_migrate_yes_migrates_without_prompt(tmp_path, capsys, monkeypatch, followup_update_ok):
-    from cypilot.cli import main
+    from studio.cli import main
 
     _make_legacy_project(tmp_path)
     monkeypatch.setattr("sys.stdin", _FailingInput())
@@ -917,8 +922,8 @@ def test_init_migrate_yes_migrates_without_prompt(tmp_path, capsys, monkeypatch,
 
 @pytest.mark.parametrize("version", ["3.9.0", "3.10.0"])
 def test_supported_legacy_versions_migrate_directly(tmp_path, capsys, monkeypatch, followup_update_ok, version):
-    from cypilot.cli import main
-    import cypilot.commands.migrate_from_cypilot as migration
+    from studio.cli import main
+    import studio.commands.migrate_from_cypilot as migration
 
     _make_legacy_project(tmp_path, version=version)
     monkeypatch.setattr("sys.stdin", _FailingInput())
@@ -943,8 +948,8 @@ def test_supported_legacy_versions_migrate_directly(tmp_path, capsys, monkeypatc
 
 
 def test_unsupported_legacy_version_prompts_to_update_then_migrates(tmp_path, capsys, monkeypatch, followup_update_ok):
-    from cypilot.cli import main
-    import cypilot.commands.migrate_from_cypilot as migration
+    from studio.cli import main
+    import studio.commands.migrate_from_cypilot as migration
 
     _make_legacy_project(tmp_path, version="3.8.4")
     monkeypatch.setattr("sys.stdin", _TTYInput("y"))
@@ -974,8 +979,8 @@ def test_unsupported_legacy_version_prompts_to_update_then_migrates(tmp_path, ca
 def test_unsupported_legacy_version_update_to_supported_newer_version_migrates(
     tmp_path, capsys, monkeypatch, followup_update_ok
 ):
-    from cypilot.cli import main
-    import cypilot.commands.migrate_from_cypilot as migration
+    from studio.cli import main
+    import studio.commands.migrate_from_cypilot as migration
 
     _make_legacy_project(tmp_path, version="3.8.4")
 
@@ -1002,7 +1007,7 @@ def test_unsupported_legacy_version_update_to_supported_newer_version_migrates(
 
 
 def test_declining_unsupported_legacy_update_returns_stable_result(tmp_path, capsys, monkeypatch, followup_update_ok):
-    from cypilot.cli import main
+    from studio.cli import main
 
     _make_legacy_project(tmp_path, version="3.8.4")
     monkeypatch.setattr("sys.stdin", _TTYInput("n"))
@@ -1025,8 +1030,8 @@ def test_declining_unsupported_legacy_update_returns_stable_result(tmp_path, cap
 
 
 def test_init_declined_migration_creates_side_by_side_constructor(tmp_path, capsys, monkeypatch, followup_update_ok):
-    from cypilot.cli import main
-    import cypilot.commands.migrate_from_cypilot as migration
+    from studio.cli import main
+    import studio.commands.migrate_from_cypilot as migration
 
     _make_legacy_project(tmp_path, version="3.8.4")
     _patch_minimal_constructor_cache(monkeypatch, tmp_path)
@@ -1065,7 +1070,7 @@ def test_init_declined_migration_creates_side_by_side_constructor(tmp_path, caps
 def test_init_declined_migration_rejects_legacy_install_dir_without_modifying_it(
     tmp_path, capsys, monkeypatch, followup_update_ok
 ):
-    from cypilot.cli import main
+    from studio.cli import main
 
     _make_legacy_project(tmp_path)
     _patch_minimal_constructor_cache(monkeypatch, tmp_path)
@@ -1098,8 +1103,8 @@ def test_init_declined_migration_rejects_legacy_install_dir_without_modifying_it
 
 
 def test_interactive_init_declined_migration_creates_side_by_side_constructor(tmp_path, capsys, monkeypatch, followup_update_ok):
-    from cypilot.cli import main
-    import cypilot.commands.migrate_from_cypilot as migration
+    from studio.cli import main
+    import studio.commands.migrate_from_cypilot as migration
 
     _make_legacy_project(tmp_path, version="3.8.4")
     _patch_minimal_constructor_cache(monkeypatch, tmp_path)
@@ -1133,8 +1138,8 @@ def test_interactive_init_declined_migration_creates_side_by_side_constructor(tm
 
 
 def test_non_interactive_unsupported_legacy_does_not_update_without_approval(tmp_path, capsys, monkeypatch, followup_update_ok):
-    from cypilot.cli import main
-    import cypilot.commands.migrate_from_cypilot as migration
+    from studio.cli import main
+    import studio.commands.migrate_from_cypilot as migration
 
     _make_legacy_project(tmp_path, version="3.8.4")
 
@@ -1160,8 +1165,8 @@ def test_non_interactive_unsupported_legacy_does_not_update_without_approval(tmp
 
 
 def test_non_interactive_unsupported_legacy_updates_with_explicit_approval(tmp_path, capsys, monkeypatch, followup_update_ok):
-    from cypilot.cli import main
-    import cypilot.commands.migrate_from_cypilot as migration
+    from studio.cli import main
+    import studio.commands.migrate_from_cypilot as migration
 
     _make_legacy_project(tmp_path, version="3.8.4")
 
@@ -1188,8 +1193,8 @@ def test_non_interactive_unsupported_legacy_updates_with_explicit_approval(tmp_p
 
 
 def test_init_dry_run_unsupported_legacy_reports_planned_update_without_running_it(tmp_path, capsys, monkeypatch, followup_update_ok):
-    from cypilot.cli import main
-    import cypilot.commands.migrate_from_cypilot as migration
+    from studio.cli import main
+    import studio.commands.migrate_from_cypilot as migration
 
     _make_legacy_project(tmp_path, version="3.8.4")
     version_file = _legacy_version_file(tmp_path)
@@ -1225,8 +1230,8 @@ def test_init_dry_run_unsupported_legacy_reports_planned_update_without_running_
 
 
 def test_failed_update_to_baseline_stops_migration(tmp_path, capsys, monkeypatch, followup_update_ok):
-    from cypilot.cli import main
-    import cypilot.commands.migrate_from_cypilot as migration
+    from studio.cli import main
+    import studio.commands.migrate_from_cypilot as migration
 
     _make_legacy_project(tmp_path, version="3.8.4")
     monkeypatch.setattr(
@@ -1253,7 +1258,7 @@ def test_failed_update_to_baseline_stops_migration(tmp_path, capsys, monkeypatch
 
 
 def test_interactive_init_prompts_and_accepting_migrates(tmp_path, capsys, monkeypatch, followup_update_ok):
-    from cypilot.cli import main
+    from studio.cli import main
 
     _make_legacy_project(tmp_path)
     monkeypatch.setattr("sys.stdin", _TTYInput("y"))
@@ -1274,7 +1279,7 @@ def test_interactive_init_prompts_and_accepting_migrates(tmp_path, capsys, monke
 
 
 def test_interactive_init_decline_returns_clear_result(tmp_path, capsys, monkeypatch, followup_update_ok):
-    from cypilot.cli import main
+    from studio.cli import main
 
     _make_legacy_project(tmp_path)
     _patch_minimal_constructor_cache(monkeypatch, tmp_path)
@@ -1299,8 +1304,8 @@ def test_interactive_init_decline_returns_clear_result(tmp_path, capsys, monkeyp
 
 
 def test_init_yes_does_not_imply_migration(tmp_path, capsys, monkeypatch, followup_update_ok):
-    from cypilot.cli import main
-    import cypilot.commands.migrate_from_cypilot as migration
+    from studio.cli import main
+    import studio.commands.migrate_from_cypilot as migration
 
     _make_legacy_project(tmp_path)
     _patch_minimal_constructor_cache(monkeypatch, tmp_path)
@@ -1325,7 +1330,7 @@ def test_init_yes_does_not_imply_migration(tmp_path, capsys, monkeypatch, follow
 
 
 def test_existing_constructor_wins_over_legacy_migration(tmp_path, capsys, followup_update_ok):
-    from cypilot.cli import main
+    from studio.cli import main
 
     _make_legacy_project(tmp_path)
     constructor_dir = tmp_path / ".cf-constructor"
@@ -1359,7 +1364,7 @@ def test_existing_constructor_wins_over_legacy_migration(tmp_path, capsys, follo
 
 
 def test_implicit_migration_uses_install_dir_as_target(tmp_path, capsys, followup_update_ok):
-    from cypilot.cli import main
+    from studio.cli import main
 
     _make_legacy_project(tmp_path)
 
@@ -1382,7 +1387,7 @@ def test_implicit_migration_uses_install_dir_as_target(tmp_path, capsys, followu
 
 
 def test_implicit_migration_allows_install_dir_matching_legacy_dir(tmp_path, capsys, followup_update_ok):
-    from cypilot.cli import main
+    from studio.cli import main
 
     _make_legacy_project(tmp_path, legacy_dir=".bootstrap")
 
@@ -1412,7 +1417,7 @@ def test_implicit_migration_allows_install_dir_matching_legacy_dir(tmp_path, cap
 
 
 def test_implicit_migration_does_not_use_generic_force_to_replace_target(tmp_path, capsys, followup_update_ok):
-    from cypilot.cli import main
+    from studio.cli import main
 
     _make_legacy_project(tmp_path)
     target = tmp_path / ".cf-constructor"
@@ -1437,7 +1442,7 @@ def test_implicit_migration_does_not_use_generic_force_to_replace_target(tmp_pat
 
 
 def test_update_migrate_yes_on_legacy_project_migrates_without_prompt(tmp_path, capsys, monkeypatch, followup_update_ok):
-    from cypilot.cli import main
+    from studio.cli import main
 
     _make_legacy_project(tmp_path)
     monkeypatch.setattr("sys.stdin", _FailingInput())
@@ -1458,8 +1463,8 @@ def test_update_migrate_yes_on_legacy_project_migrates_without_prompt(tmp_path, 
 
 
 def test_update_unsupported_legacy_version_can_update_baseline_then_migrate(tmp_path, capsys, monkeypatch, followup_update_ok):
-    from cypilot.cli import main
-    import cypilot.commands.migrate_from_cypilot as migration
+    from studio.cli import main
+    import studio.commands.migrate_from_cypilot as migration
 
     _make_legacy_project(tmp_path, version="3.8.4")
 
@@ -1528,9 +1533,9 @@ def test_e2e_cpt_update_hands_off_to_cfc_init_for_cypilot_migration(tmp_path):
 
 
 def test_update_declining_coexisting_legacy_continues_normal_update(tmp_path, capsys, monkeypatch):
-    from cypilot.cli import main
-    import cypilot.commands.migrate_from_cypilot as migration
-    import cypilot.commands.update as update_cmd
+    from studio.cli import main
+    import studio.commands.migrate_from_cypilot as migration
+    import studio.commands.update as update_cmd
 
     _make_side_by_side_project(tmp_path)
     cache_dir = tmp_path / "constructor-cache"
@@ -1561,8 +1566,8 @@ def test_update_declining_coexisting_legacy_continues_normal_update(tmp_path, ca
 
 
 def test_update_accepting_coexisting_legacy_migrates_into_existing_constructor_dir(tmp_path, capsys, monkeypatch):
-    from cypilot.cli import main
-    import cypilot.commands.migrate_from_cypilot as migration
+    from studio.cli import main
+    import studio.commands.migrate_from_cypilot as migration
 
     _make_side_by_side_project(tmp_path)
     call: dict[str, object] = {}
@@ -1600,10 +1605,10 @@ def test_update_accepting_coexisting_legacy_migrates_into_existing_constructor_d
 def test_update_after_completed_migration_ignores_leftover_legacy_directory(
     tmp_path, capsys, monkeypatch
 ):
-    from cypilot.cli import main
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
-    import cypilot.commands.migrate_from_cypilot as migration
-    import cypilot.commands.update as update_cmd
+    from studio.cli import main
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
+    import studio.commands.migrate_from_cypilot as migration
+    import studio.commands.update as update_cmd
 
     _make_legacy_project(tmp_path)
     rc, out = migrate_from_cypilot(project_root=tmp_path, skip_update=True)
@@ -1638,8 +1643,8 @@ def test_update_after_completed_migration_ignores_leftover_legacy_directory(
 
 
 def test_update_declined_migration_does_not_update_legacy_skill(tmp_path, capsys, monkeypatch, followup_update_ok):
-    from cypilot.cli import main
-    import cypilot.commands.migrate_from_cypilot as migration
+    from studio.cli import main
+    import studio.commands.migrate_from_cypilot as migration
 
     _make_legacy_project(tmp_path, version="3.8.4")
     version_file = _legacy_version_file(tmp_path)
@@ -1669,8 +1674,8 @@ def test_update_declined_migration_does_not_update_legacy_skill(tmp_path, capsys
 
 
 def test_interactive_update_declined_migration_does_not_update_legacy_skill(tmp_path, capsys, monkeypatch, followup_update_ok):
-    from cypilot.cli import main
-    import cypilot.commands.migrate_from_cypilot as migration
+    from studio.cli import main
+    import studio.commands.migrate_from_cypilot as migration
 
     _make_legacy_project(tmp_path, version="3.8.4")
     version_file = _legacy_version_file(tmp_path)
@@ -1698,7 +1703,7 @@ def test_interactive_update_declined_migration_does_not_update_legacy_skill(tmp_
 
 
 def test_interactive_update_prompts_and_declining_returns_clear_result(tmp_path, capsys, monkeypatch, followup_update_ok):
-    from cypilot.cli import main
+    from studio.cli import main
 
     _make_legacy_project(tmp_path)
     monkeypatch.setattr("sys.stdin", _TTYInput("n"))
@@ -1718,7 +1723,7 @@ def test_interactive_update_prompts_and_declining_returns_clear_result(tmp_path,
 def test_update_dry_run_on_legacy_project_reports_planned_migration(tmp_path, capsys, monkeypatch):
     # CR-T6-026: dry_run + ask no longer auto-approves migration; user must answer.
     # Supply _TTYInput("y") so the migration prompt is answered affirmatively.
-    from cypilot.cli import main
+    from studio.cli import main
 
     _make_legacy_project(tmp_path)
     monkeypatch.setattr("sys.stdin", _TTYInput("y"))
@@ -1737,7 +1742,7 @@ def test_update_dry_run_on_legacy_project_reports_planned_migration(tmp_path, ca
 
 def test_update_dry_run_on_legacy_project_ask_uses_interactive_prompt(tmp_path, capsys, monkeypatch):
     """--dry-run keeps ask-mode interactive on TTY legacy-only projects."""
-    from cypilot.cli import main
+    from studio.cli import main
 
     _make_legacy_project(tmp_path)
     monkeypatch.setattr("sys.stdin", _TTYInput("n"))
@@ -1756,8 +1761,8 @@ def test_update_dry_run_on_legacy_project_ask_uses_interactive_prompt(tmp_path, 
 
 
 def test_update_dry_run_unsupported_legacy_reports_planned_update_without_running_it(tmp_path, capsys, monkeypatch):
-    from cypilot.cli import main
-    import cypilot.commands.migrate_from_cypilot as migration
+    from studio.cli import main
+    import studio.commands.migrate_from_cypilot as migration
 
     _make_legacy_project(tmp_path, version="3.8.4")
     version_file = _legacy_version_file(tmp_path)
@@ -1793,7 +1798,7 @@ def test_update_dry_run_unsupported_legacy_reports_planned_update_without_runnin
 
 
 def test_help_does_not_list_public_migration_command(capsys):
-    from cypilot.cli import main
+    from studio.cli import main
 
     rc = main(["--json", "--help"])
 
@@ -1803,7 +1808,7 @@ def test_help_does_not_list_public_migration_command(capsys):
 
 
 def test_public_migration_route_is_unknown(capsys):
-    from cypilot.cli import main
+    from studio.cli import main
 
     rc = main(["--json", "migrate-from-cypilot"])
 
@@ -1815,8 +1820,8 @@ def test_public_migration_route_is_unknown(capsys):
 
 @pytest.mark.parametrize("command", ["init", "update"])
 def test_init_and_update_help_document_migration_option(command, capsys):
-    from cypilot.cli import main
-    from cypilot.utils.ui import set_json_mode
+    from studio.cli import main
+    from studio.utils.ui import set_json_mode
 
     set_json_mode(False)
     with pytest.raises(SystemExit) as exc:
@@ -1830,7 +1835,7 @@ def test_init_and_update_help_document_migration_option(command, capsys):
 def test_migrate_creates_root_backups_on_success(tmp_path):
     import re
 
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     _make_legacy_project(tmp_path)
     agents_sentinel = "sentinel-agents-pre-migration"
@@ -1867,8 +1872,8 @@ def test_migrate_creates_root_backups_on_success(tmp_path):
 
 
 def test_migrate_restores_root_files_when_root_agents_rewrite_raises(tmp_path, monkeypatch):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
-    import cypilot.commands.migrate_from_cypilot as migration
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
+    import studio.commands.migrate_from_cypilot as migration
 
     _make_legacy_project(tmp_path)
     agents_sentinel = "sentinel-agents-pre-migration"
@@ -1902,8 +1907,8 @@ def test_migrate_restores_root_files_when_root_agents_rewrite_raises(tmp_path, m
 
 
 def test_migrate_restores_root_files_when_root_claude_rewrite_raises(tmp_path, monkeypatch):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
-    import cypilot.commands.migrate_from_cypilot as migration
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
+    import studio.commands.migrate_from_cypilot as migration
 
     _make_legacy_project(tmp_path)
     agents_sentinel = "sentinel-agents-pre-migration"
@@ -1969,7 +1974,7 @@ def _git_init_and_commit(project_root: Path) -> None:
 
 
 def test_migrate_proceeds_when_not_in_git_repo(tmp_path):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     _make_legacy_project(tmp_path)
     (tmp_path / "AGENTS.md").write_text("sentinel-agents-pre\n", encoding="utf-8")
@@ -1990,7 +1995,7 @@ def test_migrate_proceeds_when_not_in_git_repo(tmp_path):
 
 @pytest.mark.skipif(not _GIT_AVAILABLE, reason="git binary not available")
 def test_migrate_proceeds_when_clean_git_state(tmp_path):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     _make_legacy_project(tmp_path)
     (tmp_path / "AGENTS.md").write_text("sentinel-agents-pre\n", encoding="utf-8")
@@ -2012,7 +2017,7 @@ def test_migrate_proceeds_when_clean_git_state(tmp_path):
 
 @pytest.mark.skipif(not _GIT_AVAILABLE, reason="git binary not available")
 def test_migrate_bails_when_root_file_is_dirty(tmp_path):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     _make_legacy_project(tmp_path)
     (tmp_path / "AGENTS.md").write_text("sentinel-agents-pre\n", encoding="utf-8")
@@ -2045,7 +2050,7 @@ def test_migrate_bails_when_root_file_is_dirty(tmp_path):
 
 @pytest.mark.skipif(not _GIT_AVAILABLE, reason="git binary not available")
 def test_migrate_force_overwrite_root_proceeds_with_dirty_state(tmp_path):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     _make_legacy_project(tmp_path)
     (tmp_path / "AGENTS.md").write_text("sentinel-agents-pre\n", encoding="utf-8")
@@ -2071,7 +2076,7 @@ def test_migrate_force_overwrite_root_proceeds_with_dirty_state(tmp_path):
 
 
 def test_replace_rmtree_raise_triggers_restore_to_restored(tmp_path, monkeypatch):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     _make_legacy_project(tmp_path)
     project_root = tmp_path
@@ -2111,7 +2116,7 @@ def test_replace_rmtree_raise_triggers_restore_to_restored(tmp_path, monkeypatch
 
 
 def test_replace_copytree_raise_triggers_restore_to_restored(tmp_path, monkeypatch):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     _make_legacy_project(tmp_path)
     project_root = tmp_path
@@ -2148,7 +2153,7 @@ def test_replace_copytree_raise_triggers_restore_to_restored(tmp_path, monkeypat
 
 
 def test_replace_failure_with_restore_failure_returns_restore_failed(tmp_path, monkeypatch):
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     _make_legacy_project(tmp_path)
     project_root = tmp_path
@@ -2181,8 +2186,8 @@ def test_replace_failure_with_restore_failure_returns_restore_failed(tmp_path, m
 
 def test_run_legacy_update_to_baseline_emits_ctrl_c_hint(tmp_path, monkeypatch, capsys):
     import sys as _sys
-    import cypilot.commands.migrate_from_cypilot as migration
-    from cypilot.commands.migrate_from_cypilot import _run_legacy_update_to_baseline
+    import studio.commands.migrate_from_cypilot as migration
+    from studio.commands.migrate_from_cypilot import _run_legacy_update_to_baseline
 
     class _FakeCompleted:
         def __init__(self) -> None:
@@ -2215,8 +2220,8 @@ def test_run_legacy_update_to_baseline_emits_ctrl_c_hint(tmp_path, monkeypatch, 
 
 
 def test_run_legacy_update_to_baseline_handles_keyboard_interrupt(tmp_path, monkeypatch, capsys):
-    import cypilot.commands.migrate_from_cypilot as migration
-    from cypilot.commands.migrate_from_cypilot import _run_legacy_update_to_baseline
+    import studio.commands.migrate_from_cypilot as migration
+    from studio.commands.migrate_from_cypilot import _run_legacy_update_to_baseline
 
     def fake_run(_cmd, **_kwargs):
         raise KeyboardInterrupt
@@ -2245,8 +2250,8 @@ def test_run_legacy_update_to_baseline_sets_bridge_bypass_env_var(
     RECV-side is tested in cyber-pilot's tests/test_cpt_to_cfc_bridge.py.
     """
     import os
-    import cypilot.commands.migrate_from_cypilot as migration
-    from cypilot.commands.migrate_from_cypilot import (
+    import studio.commands.migrate_from_cypilot as migration
+    from studio.commands.migrate_from_cypilot import (
         _run_legacy_update_to_baseline,
     )
 
@@ -2293,8 +2298,8 @@ def test_ensure_supported_legacy_version_returns_error_when_update_subprocess_ra
     """RC-8: when _run_legacy_update_to_baseline returns the OSError-shape ERROR
     dict (subprocess raised, no returncode), ensure_supported_legacy_version
     surfaces it in the failed-update branch."""
-    import cypilot.commands.migrate_from_cypilot as migration
-    from cypilot.commands.migrate_from_cypilot import ensure_supported_legacy_version
+    import studio.commands.migrate_from_cypilot as migration
+    from studio.commands.migrate_from_cypilot import ensure_supported_legacy_version
 
     _make_legacy_project(tmp_path, version="3.8.0")
 
@@ -2331,8 +2336,8 @@ def test_ensure_supported_legacy_version_returns_error_when_update_returncode_no
     """RC-8: when _run_legacy_update_to_baseline returns the returncode-nonzero
     ERROR shape (subprocess ran but failed), ensure_supported_legacy_version
     surfaces it in the failed-update branch."""
-    import cypilot.commands.migrate_from_cypilot as migration
-    from cypilot.commands.migrate_from_cypilot import ensure_supported_legacy_version
+    import studio.commands.migrate_from_cypilot as migration
+    from studio.commands.migrate_from_cypilot import ensure_supported_legacy_version
 
     _make_legacy_project(tmp_path, version="3.8.0")
 
@@ -2370,8 +2375,8 @@ def test_ensure_supported_legacy_version_returns_error_when_post_bump_version_mi
     """RC-8: when _run_legacy_update_to_baseline reports PASS but the on-disk
     version file was not actually updated to a supported baseline, the
     post-bump re-read trips the version_mismatch branch."""
-    import cypilot.commands.migrate_from_cypilot as migration
-    from cypilot.commands.migrate_from_cypilot import ensure_supported_legacy_version
+    import studio.commands.migrate_from_cypilot as migration
+    from studio.commands.migrate_from_cypilot import ensure_supported_legacy_version
 
     _make_legacy_project(tmp_path, version="3.8.0")
 
@@ -2412,7 +2417,7 @@ def test_ensure_supported_legacy_version_returns_error_when_post_bump_version_mi
 
 def test_migrate_returns_error_when_legacy_install_cannot_be_detected(tmp_path):
     """Hits line 60: detect returns None and from_dir is falsy."""
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     # bare tmp_path has no AGENTS.md and no candidate dirs -> detect returns None
     rc, out = migrate_from_cypilot(project_root=tmp_path, skip_update=True)
@@ -2425,7 +2430,7 @@ def test_migrate_returns_error_when_legacy_install_cannot_be_detected(tmp_path):
 
 def test_migrate_returns_error_when_legacy_dir_missing_on_disk(tmp_path):
     """Hits line 90: legacy_dir resolves but is not a directory."""
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     rc, out = migrate_from_cypilot(
         project_root=tmp_path,
@@ -2442,8 +2447,8 @@ def test_migrate_create_target_copytree_failure_with_cleanup_failure_records_cle
     tmp_path, monkeypatch
 ):
     """Hits lines 168-170 and 184: copytree raises, cleanup rmtree also raises."""
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
-    import cypilot.commands.migrate_from_cypilot as migration
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
+    import studio.commands.migrate_from_cypilot as migration
 
     _make_legacy_project(tmp_path)
     # Use a target dir that does not currently exist so we go through the
@@ -2479,7 +2484,7 @@ def test_migrate_create_target_copytree_failure_with_cleanup_failure_records_cle
 
 def test_resolve_cypilot_project_root_delegates_to_resolver(tmp_path):
     """Hits line 259: the public wrapper just forwards to _resolve_project_root."""
-    from cypilot.commands.migrate_from_cypilot import resolve_cypilot_project_root
+    from studio.commands.migrate_from_cypilot import resolve_cypilot_project_root
 
     resolved = resolve_cypilot_project_root(tmp_path.as_posix())
 
@@ -2488,7 +2493,7 @@ def test_resolve_cypilot_project_root_delegates_to_resolver(tmp_path):
 
 def test_read_legacy_cypilot_version_falls_back_to_second_candidate_path(tmp_path):
     """Hits the second-iteration return in read_legacy_cypilot_version's loop."""
-    from cypilot.commands.migrate_from_cypilot import read_legacy_cypilot_version
+    from studio.commands.migrate_from_cypilot import read_legacy_cypilot_version
 
     legacy_dir = tmp_path / "cypilot"
     second = legacy_dir / "skills" / "cypilot" / "scripts" / "cypilot" / "__init__.py"
@@ -2500,7 +2505,7 @@ def test_read_legacy_cypilot_version_falls_back_to_second_candidate_path(tmp_pat
 
 def test_read_legacy_cypilot_version_falls_back_to_third_candidate_path(tmp_path):
     """Hits the third-iteration return in read_legacy_cypilot_version's loop."""
-    from cypilot.commands.migrate_from_cypilot import read_legacy_cypilot_version
+    from studio.commands.migrate_from_cypilot import read_legacy_cypilot_version
 
     legacy_dir = tmp_path / "cypilot"
     third = legacy_dir / "scripts" / "cypilot" / "__init__.py"
@@ -2512,7 +2517,7 @@ def test_read_legacy_cypilot_version_falls_back_to_third_candidate_path(tmp_path
 
 def test_read_legacy_cypilot_version_returns_none_when_no_candidate_path_exists(tmp_path):
     """Hits line 417: loop exhausts all candidates without finding a version."""
-    from cypilot.commands.migrate_from_cypilot import read_legacy_cypilot_version
+    from studio.commands.migrate_from_cypilot import read_legacy_cypilot_version
 
     legacy_dir = tmp_path / "cypilot"
     legacy_dir.mkdir()
@@ -2522,7 +2527,7 @@ def test_read_legacy_cypilot_version_returns_none_when_no_candidate_path_exists(
 
 def test_should_update_legacy_cypilot_returns_false_for_explicit_no(tmp_path):
     """Hits line 434: explicit 'no' short-circuit."""
-    from cypilot.commands.migrate_from_cypilot import should_update_legacy_cypilot
+    from studio.commands.migrate_from_cypilot import should_update_legacy_cypilot
 
     decision = should_update_legacy_cypilot(
         "no",
@@ -2537,7 +2542,7 @@ def test_should_update_legacy_cypilot_returns_false_for_explicit_no(tmp_path):
 
 def test_should_update_legacy_cypilot_returns_true_for_explicit_yes(tmp_path):
     """Companion: explicit 'yes' branch (line 432)."""
-    from cypilot.commands.migrate_from_cypilot import should_update_legacy_cypilot
+    from studio.commands.migrate_from_cypilot import should_update_legacy_cypilot
 
     decision = should_update_legacy_cypilot(
         "yes",
@@ -2552,7 +2557,7 @@ def test_should_update_legacy_cypilot_returns_true_for_explicit_yes(tmp_path):
 
 def test_should_update_legacy_cypilot_returns_false_when_non_interactive_ask(tmp_path):
     """Hits line 437: ask + non-interactive falls through to False."""
-    from cypilot.commands.migrate_from_cypilot import should_update_legacy_cypilot
+    from studio.commands.migrate_from_cypilot import should_update_legacy_cypilot
 
     decision = should_update_legacy_cypilot(
         "ask",
@@ -2567,14 +2572,14 @@ def test_should_update_legacy_cypilot_returns_false_when_non_interactive_ask(tmp
 
 def test_read_version_from_init_returns_none_when_file_missing(tmp_path):
     """Hits line 470: not is_file() short-circuit."""
-    from cypilot.commands.migrate_from_cypilot import _read_version_from_init
+    from studio.commands.migrate_from_cypilot import _read_version_from_init
 
     assert _read_version_from_init(tmp_path / "nope.py") is None
 
 
 def test_read_version_from_init_returns_none_on_os_error(tmp_path, monkeypatch):
     """Hits lines 473-474: OSError on read_text -> None."""
-    from cypilot.commands.migrate_from_cypilot import _read_version_from_init
+    from studio.commands.migrate_from_cypilot import _read_version_from_init
 
     init_file = tmp_path / "__init__.py"
     init_file.write_text("ignored\n", encoding="utf-8")
@@ -2593,7 +2598,7 @@ def test_read_version_from_init_returns_none_on_os_error(tmp_path, monkeypatch):
 
 def test_read_version_from_init_returns_none_when_no_version_line(tmp_path):
     """Hits line 479: file present but contains no __version__ assignment."""
-    from cypilot.commands.migrate_from_cypilot import _read_version_from_init
+    from studio.commands.migrate_from_cypilot import _read_version_from_init
 
     init_file = tmp_path / "__init__.py"
     init_file.write_text("# nothing useful here\nfoo = 1\n", encoding="utf-8")
@@ -2603,7 +2608,7 @@ def test_read_version_from_init_returns_none_when_no_version_line(tmp_path):
 
 def test_normalize_legacy_version_returns_none_for_falsy_input():
     """Hits line 486: None / empty short-circuit."""
-    from cypilot.commands.migrate_from_cypilot import _normalize_legacy_version
+    from studio.commands.migrate_from_cypilot import _normalize_legacy_version
 
     assert _normalize_legacy_version(None) is None
     assert _normalize_legacy_version("") is None
@@ -2611,7 +2616,7 @@ def test_normalize_legacy_version_returns_none_for_falsy_input():
 
 def test_normalize_legacy_version_strips_v_prefix():
     """Hits lines 488-489: strip leading 'v'."""
-    from cypilot.commands.migrate_from_cypilot import _normalize_legacy_version
+    from studio.commands.migrate_from_cypilot import _normalize_legacy_version
 
     assert _normalize_legacy_version("v3.9.0") == "3.9.0"
     assert _normalize_legacy_version("  v3.10.0  ") == "3.10.0"
@@ -2620,7 +2625,7 @@ def test_normalize_legacy_version_strips_v_prefix():
 
 def test_prompt_update_legacy_cypilot_returns_false_on_eof(tmp_path, monkeypatch, capsys):
     """Hits lines 506-507: EOFError in input() -> declined."""
-    import cypilot.commands.migrate_from_cypilot as migration
+    import studio.commands.migrate_from_cypilot as migration
 
     def fake_input(*_args, **_kwargs):
         raise EOFError
@@ -2636,7 +2641,7 @@ def test_prompt_update_legacy_cypilot_returns_false_on_eof(tmp_path, monkeypatch
 
 def test_prompt_update_legacy_cypilot_returns_false_on_keyboard_interrupt(tmp_path, monkeypatch):
     """Hits lines 506-507: KeyboardInterrupt in input() -> declined."""
-    import cypilot.commands.migrate_from_cypilot as migration
+    import studio.commands.migrate_from_cypilot as migration
 
     def fake_input(*_args, **_kwargs):
         raise KeyboardInterrupt
@@ -2648,7 +2653,7 @@ def test_prompt_update_legacy_cypilot_returns_false_on_keyboard_interrupt(tmp_pa
 
 def test_run_legacy_update_to_baseline_returns_error_on_os_error(tmp_path, monkeypatch):
     """Hits line 533: subprocess raises OSError -> ERROR result."""
-    import cypilot.commands.migrate_from_cypilot as migration
+    import studio.commands.migrate_from_cypilot as migration
 
     def fake_run(_cmd, **_kwargs):
         raise OSError("cpt not on PATH")
@@ -2664,7 +2669,7 @@ def test_run_legacy_update_to_baseline_returns_error_on_os_error(tmp_path, monke
 
 def test_prompt_migrate_from_cypilot_returns_false_on_eof(tmp_path, monkeypatch, capsys):
     """Hits lines 574-575: EOFError in input() -> declined."""
-    import cypilot.commands.migrate_from_cypilot as migration
+    import studio.commands.migrate_from_cypilot as migration
 
     def fake_input(*_args, **_kwargs):
         raise EOFError
@@ -2681,7 +2686,7 @@ def test_prompt_migrate_from_cypilot_returns_false_on_eof(tmp_path, monkeypatch,
 
 def test_prompt_migrate_from_cypilot_returns_false_on_keyboard_interrupt(tmp_path, monkeypatch):
     """Hits lines 574-575: KeyboardInterrupt in input() -> declined."""
-    import cypilot.commands.migrate_from_cypilot as migration
+    import studio.commands.migrate_from_cypilot as migration
 
     def fake_input(*_args, **_kwargs):
         raise KeyboardInterrupt
@@ -2693,8 +2698,8 @@ def test_prompt_migrate_from_cypilot_returns_false_on_keyboard_interrupt(tmp_pat
 
 def test_run_followup_update_in_json_mode_returns_parsed_payload(tmp_path, monkeypatch):
     """Hits lines 582-598: json mode branch parses cmd_update stdout."""
-    import cypilot.commands.migrate_from_cypilot as migration
-    import cypilot.commands.update as update_mod
+    import studio.commands.migrate_from_cypilot as migration
+    import studio.commands.update as update_mod
 
     captured = {}
 
@@ -2718,8 +2723,8 @@ def test_run_followup_update_in_json_mode_returns_parsed_payload(tmp_path, monke
 
 def test_run_followup_update_in_json_mode_with_invalid_json_returns_raw_text(tmp_path, monkeypatch):
     """Hits lines 599-600: json.JSONDecodeError path returns raw string."""
-    import cypilot.commands.migrate_from_cypilot as migration
-    import cypilot.commands.update as update_mod
+    import studio.commands.migrate_from_cypilot as migration
+    import studio.commands.update as update_mod
 
     def fake_cmd_update(_argv):
         print("not-json-output")
@@ -2736,8 +2741,8 @@ def test_run_followup_update_in_json_mode_with_invalid_json_returns_raw_text(tmp
 
 def test_run_followup_update_in_json_mode_with_empty_stdout_returns_none(tmp_path, monkeypatch):
     """Hits lines 594-596: empty stdout in json mode returns (rc, None)."""
-    import cypilot.commands.migrate_from_cypilot as migration
-    import cypilot.commands.update as update_mod
+    import studio.commands.migrate_from_cypilot as migration
+    import studio.commands.update as update_mod
 
     def fake_cmd_update(_argv):
         return 0
@@ -2755,8 +2760,8 @@ def test_post_copy_rewrite_failure_with_no_backup_records_no_backup_action(
     tmp_path, monkeypatch
 ):
     """Hits lines 701-702: rewrite raises but no root backup exists -> no_backup."""
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
-    import cypilot.commands.migrate_from_cypilot as migration
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
+    import studio.commands.migrate_from_cypilot as migration
 
     _make_legacy_project(tmp_path)
     # Delete CLAUDE.md so there is no claude backup, forcing the no_backup branch
@@ -2788,8 +2793,8 @@ def test_post_copy_rewrite_failure_records_restore_failed_when_copy2_raises(
     tmp_path, monkeypatch
 ):
     """Hits lines 706-707: backup copy2 raises during restore -> restore_failed."""
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
-    import cypilot.commands.migrate_from_cypilot as migration
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
+    import studio.commands.migrate_from_cypilot as migration
 
     _make_legacy_project(tmp_path)
 
@@ -2829,7 +2834,7 @@ def test_post_copy_rewrite_failure_records_restore_failed_when_copy2_raises(
 
 def test_resolve_project_root_returns_arg_path_when_provided(tmp_path):
     """Hits line 717-718: explicit project_root_arg short-circuit."""
-    import cypilot.commands.migrate_from_cypilot as migration
+    import studio.commands.migrate_from_cypilot as migration
 
     sub = tmp_path / "explicit-root"
     sub.mkdir()
@@ -2839,7 +2844,7 @@ def test_resolve_project_root_returns_arg_path_when_provided(tmp_path):
 
 def test_resolve_project_root_locates_agents_with_legacy_marker(tmp_path, monkeypatch):
     """Hits lines 720-730: walk parents, find AGENTS.md with legacy marker."""
-    import cypilot.commands.migrate_from_cypilot as migration
+    import studio.commands.migrate_from_cypilot as migration
 
     nested = tmp_path / "a" / "b" / "c"
     nested.mkdir(parents=True)
@@ -2858,7 +2863,7 @@ def test_resolve_project_root_returns_none_when_no_markers_and_no_git(
     tmp_path, monkeypatch
 ):
     """Hits line 731: fall-through returns None when not a git repo."""
-    import cypilot.commands.migrate_from_cypilot as migration
+    import studio.commands.migrate_from_cypilot as migration
 
     sub = tmp_path / "lonely"
     sub.mkdir()
@@ -2871,7 +2876,7 @@ def test_resolve_project_root_skips_agents_when_read_text_raises(
     tmp_path, monkeypatch
 ):
     """Hits lines 725-728: OSError on agents.read_text -> continue."""
-    import cypilot.commands.migrate_from_cypilot as migration
+    import studio.commands.migrate_from_cypilot as migration
 
     (tmp_path / "AGENTS.md").write_text("anything", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
@@ -2891,7 +2896,7 @@ def test_resolve_project_root_skips_agents_when_read_text_raises(
 
 def test_read_legacy_install_dir_handles_agents_read_text_error(tmp_path, monkeypatch):
     """Hits lines 757-758: OSError on agents.read_text -> content stays empty."""
-    import cypilot.commands.migrate_from_cypilot as migration
+    import studio.commands.migrate_from_cypilot as migration
 
     (tmp_path / "AGENTS.md").write_text("anything", encoding="utf-8")
     # Lay down a fallback candidate dir so the function can still return a value
@@ -2914,7 +2919,7 @@ def test_read_legacy_install_dir_handles_agents_read_text_error(tmp_path, monkey
 
 
 def test_read_legacy_install_dir_ignores_claude_only_cypilot_path(tmp_path):
-    import cypilot.commands.migrate_from_cypilot as migration
+    import studio.commands.migrate_from_cypilot as migration
 
     (tmp_path / "CLAUDE.md").write_text(
         '```toml\n'
@@ -2930,7 +2935,7 @@ def test_read_legacy_install_dir_ignores_claude_only_cypilot_path(tmp_path):
 
 
 def test_read_legacy_install_dir_uses_agents_cypilot_path_when_claude_disagrees(tmp_path):
-    import cypilot.commands.migrate_from_cypilot as migration
+    import studio.commands.migrate_from_cypilot as migration
 
     (tmp_path / "AGENTS.md").write_text(
         '<!-- @cpt:root-agents -->\n'
@@ -2952,7 +2957,7 @@ def test_read_legacy_install_dir_uses_agents_cypilot_path_when_claude_disagrees(
 
 def test_read_legacy_install_dir_falls_back_to_candidate_dot_bootstrap(tmp_path):
     """Hits lines 770-776: no AGENTS.md/marker -> candidate-dir scan picks .bootstrap."""
-    import cypilot.commands.migrate_from_cypilot as migration
+    import studio.commands.migrate_from_cypilot as migration
 
     candidate = tmp_path / ".bootstrap"
     (candidate / "config").mkdir(parents=True)
@@ -2963,7 +2968,7 @@ def test_read_legacy_install_dir_falls_back_to_candidate_dot_bootstrap(tmp_path)
 
 def test_read_legacy_install_dir_falls_back_to_candidate_with_top_level_core_toml(tmp_path):
     """Hits the '(candidate_dir / "core.toml").is_file()' alternate condition."""
-    import cypilot.commands.migrate_from_cypilot as migration
+    import studio.commands.migrate_from_cypilot as migration
 
     candidate = tmp_path / ".cpt"
     candidate.mkdir()
@@ -2974,7 +2979,7 @@ def test_read_legacy_install_dir_falls_back_to_candidate_with_top_level_core_tom
 
 def test_read_legacy_install_dir_returns_none_when_no_candidate_matches(tmp_path):
     """Hits line 777: candidate loop exhausts -> None."""
-    import cypilot.commands.migrate_from_cypilot as migration
+    import studio.commands.migrate_from_cypilot as migration
 
     # No AGENTS.md, no candidate dirs at all.
     assert migration._read_legacy_install_dir(tmp_path) is None
@@ -2982,7 +2987,7 @@ def test_read_legacy_install_dir_returns_none_when_no_candidate_matches(tmp_path
 
 def test_probe_root_files_dirty_returns_empty_when_no_paths_are_files(tmp_path):
     """Hits line 791: names == [] short-circuit."""
-    import cypilot.commands.migrate_from_cypilot as migration
+    import studio.commands.migrate_from_cypilot as migration
 
     # Neither path exists, so names list is empty.
     result = migration._probe_root_files_dirty(
@@ -2993,7 +2998,7 @@ def test_probe_root_files_dirty_returns_empty_when_no_paths_are_files(tmp_path):
 
 def test_probe_root_files_dirty_returns_empty_when_git_not_found(tmp_path, monkeypatch):
     """Hits lines 801-802: FileNotFoundError -> [] (git missing)."""
-    import cypilot.commands.migrate_from_cypilot as migration
+    import studio.commands.migrate_from_cypilot as migration
 
     (tmp_path / "AGENTS.md").write_text("body\n", encoding="utf-8")
 
@@ -3007,7 +3012,7 @@ def test_probe_root_files_dirty_returns_empty_when_git_not_found(tmp_path, monke
 
 def test_probe_root_files_dirty_returns_empty_on_timeout(tmp_path, monkeypatch):
     """Hits lines 801-802: TimeoutExpired -> []."""
-    import cypilot.commands.migrate_from_cypilot as migration
+    import studio.commands.migrate_from_cypilot as migration
 
     (tmp_path / "AGENTS.md").write_text("body\n", encoding="utf-8")
 
@@ -3021,7 +3026,7 @@ def test_probe_root_files_dirty_returns_empty_on_timeout(tmp_path, monkeypatch):
 
 def test_migrate_core_toml_skips_non_dict_kit_data(tmp_path):
     """Hits line 890: kit_data not dict -> continue."""
-    import cypilot.commands.migrate_from_cypilot as migration
+    import studio.commands.migrate_from_cypilot as migration
 
     core_toml = tmp_path / "core.toml"
     # Mix a valid kit table with a scalar masquerading inside [kits]. Real
@@ -3055,7 +3060,7 @@ def test_migrate_core_toml_skips_non_dict_kit_data(tmp_path):
 
 def test_migrate_core_toml_drops_top_level_system_section(tmp_path):
     """Hits lines 900-902: top-level [system] gets deleted."""
-    import cypilot.commands.migrate_from_cypilot as migration
+    import studio.commands.migrate_from_cypilot as migration
 
     core_toml = tmp_path / "core.toml"
     core_toml.write_text(
@@ -3073,7 +3078,7 @@ def test_migrate_core_toml_drops_top_level_system_section(tmp_path):
 
 def test_migrate_core_toml_returns_unchanged_when_no_legacy_keys(tmp_path):
     """Hits line 907: nothing to rewrite -> 'unchanged'."""
-    import cypilot.commands.migrate_from_cypilot as migration
+    import studio.commands.migrate_from_cypilot as migration
 
     core_toml = tmp_path / "core.toml"
     core_toml.write_text(
@@ -3096,8 +3101,8 @@ def test_migrate_core_toml_returns_unchanged_when_no_legacy_keys(tmp_path):
 
 def test_human_migrate_ok_emits_header_details_actions_and_warnings(capsys):
     """Hits lines 958-967: _human_migrate_ok formats a successful result."""
-    import cypilot.commands.migrate_from_cypilot as migration
-    import cypilot.utils.ui as ui_mod
+    import studio.commands.migrate_from_cypilot as migration
+    import studio.utils.ui as ui_mod
 
     # The ui module's _json_mode flag is a process-wide global; force it off
     # so the human-mode branch actually emits content this test can observe.
@@ -3126,8 +3131,8 @@ def test_human_migrate_ok_emits_header_details_actions_and_warnings(capsys):
 
 def test_human_migrate_ok_omits_warnings_when_none(capsys):
     """Companion: covers the falsy-warnings branch of _human_migrate_ok."""
-    import cypilot.commands.migrate_from_cypilot as migration
-    import cypilot.utils.ui as ui_mod
+    import studio.commands.migrate_from_cypilot as migration
+    import studio.utils.ui as ui_mod
 
     ui_mod.set_json_mode(False)
 
@@ -3150,7 +3155,7 @@ def test_human_migrate_ok_omits_warnings_when_none(capsys):
 
 def test_migrate_core_toml_appends_warning_when_system_section_removed(tmp_path):
     """RC-10: deleting [system] surfaces a warning so users notice."""
-    import cypilot.commands.migrate_from_cypilot as migration
+    import studio.commands.migrate_from_cypilot as migration
 
     core_toml = tmp_path / "core.toml"
     core_toml.write_text(
@@ -3177,7 +3182,7 @@ def test_migrate_core_toml_appends_warning_when_system_section_removed(tmp_path)
 
 def test_migrate_core_toml_does_not_warn_when_no_system_section(tmp_path):
     """RC-10: kit-rename-only path must not append a [system] warning."""
-    import cypilot.commands.migrate_from_cypilot as migration
+    import studio.commands.migrate_from_cypilot as migration
 
     core_toml = tmp_path / "core.toml"
     core_toml.write_text(
@@ -3202,7 +3207,7 @@ def test_migrate_creates_config_md_backups_on_success(tmp_path):
     """RC-11: backup target/config/{AGENTS,SKILL,README}.md before rewrite."""
     import re
 
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     _make_legacy_project(tmp_path, version="3.9.0")
 
@@ -3270,8 +3275,8 @@ def test_migrate_restores_config_md_files_when_config_markdown_rewrite_raises(
     tmp_path, monkeypatch
 ):
     """RC-11: when _migrate_config_markdown raises, restore from backups."""
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
-    import cypilot.commands.migrate_from_cypilot as migration
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
+    import studio.commands.migrate_from_cypilot as migration
 
     _make_legacy_project(tmp_path, version="3.9.0")
 
@@ -3317,7 +3322,7 @@ def test_migrate_no_config_md_backup_when_files_absent(tmp_path):
     """RC-11: absent config md files leave no entry in config_md_backup."""
     import re
 
-    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
 
     _make_legacy_project(tmp_path, version="3.9.0")
 
@@ -3358,51 +3363,53 @@ def test_migrate_no_config_md_backup_when_files_absent(tmp_path):
     assert readme_cfg_backups == []
 
 
-def test_migrate_config_markdown_only_touches_three_supported_filenames(tmp_path):
-    """Pin the fixed (AGENTS.md, SKILL.md, README.md) contract.
+def test_migrate_config_markdown_touches_all_markdown_files_recursively(tmp_path):
+    """Pin the recursive `config/**/*.md` walk contract.
 
-    A future refactor widening to a `*.md` glob would also rewrite
-    CONTRIBUTING.md / ARCHITECTURE.md — this test fails if that happens
-    silently, forcing the change to be deliberate. A future refactor
-    REMOVING a supported filename also fails this test on the result-list
-    comparison.
-
-    If a NEW supported filename is added (e.g. CHANGELOG.md), the
-    `unsupported` list below doesn't yet cover it — extend this test
-    to add the new name to `supported` and keep the unsupported list
-    aligned with what the function still ignores.
+    The rewriter now walks every markdown file under config_dir (including
+    subdirectories like rules/). The 4 conservative substitutions apply
+    uniformly. Non-markdown files are still ignored.
     """
-    from cypilot.commands.migrate_from_cypilot import _migrate_config_markdown
+    from studio.commands.migrate_from_cypilot import _migrate_config_markdown
 
     config_dir = tmp_path / "config"
-    config_dir.mkdir()
+    rules_dir = config_dir / "rules"
+    rules_dir.mkdir(parents=True)
     payload = "Cypilot uses {cypilot_path} via `cpt ` calls.\n"
-    supported = ["AGENTS.md", "SKILL.md", "README.md"]
-    unsupported = ["CONTRIBUTING.md", "ARCHITECTURE.md"]
-    for name in supported + unsupported:
-        (config_dir / name).write_text(payload, encoding="utf-8")
+    md_files = [
+        config_dir / "AGENTS.md",
+        config_dir / "SKILL.md",
+        config_dir / "README.md",
+        config_dir / "CONTRIBUTING.md",
+        rules_dir / "foo.md",
+    ]
+    for path in md_files:
+        path.write_text(payload, encoding="utf-8")
+    # A non-markdown file must NOT be rewritten.
+    (config_dir / "ignored.txt").write_text(payload, encoding="utf-8")
 
     result = _migrate_config_markdown(config_dir)
 
-    # Return list contains exactly the 3 supported names (order-independent).
-    assert sorted(result) == sorted(supported)
+    # Result contains relative-to-config_dir posix paths for every rewritten file.
+    expected = sorted([
+        "AGENTS.md", "SKILL.md", "README.md", "CONTRIBUTING.md", "rules/foo.md",
+    ])
+    assert sorted(result) == expected
 
-    # Each supported file was rewritten in all three places:
-    # the proper-noun, the template variable, the command form.
-    for name in supported:
-        text = (config_dir / name).read_text(encoding="utf-8")
-        assert "Cyber Constructor" in text
-        assert "{cf-constructor-path}" in text
+    # Each markdown file received all four substitutions.
+    for path in md_files:
+        text = path.read_text(encoding="utf-8")
+        assert "Constructor Studio" in text
+        assert "{cf-studio-path}" in text
         assert "Cypilot" not in text
+        assert "{cypilot_path}" not in text
 
-    # Each unsupported file is byte-identical to the original payload.
-    for name in unsupported:
-        text = (config_dir / name).read_text(encoding="utf-8")
-        assert text == payload
+    # Non-markdown file untouched.
+    assert (config_dir / "ignored.txt").read_text(encoding="utf-8") == payload
 
 
 def test_migrate_core_toml_appends_warning_when_file_is_invalid(tmp_path):
-    from cypilot.commands.migrate_from_cypilot import _migrate_core_toml
+    from studio.commands.migrate_from_cypilot import _migrate_core_toml
 
     path = tmp_path / "core.toml"
     path.write_text("[broken section\n", encoding="utf-8")  # malformed TOML
@@ -3419,7 +3426,7 @@ def test_migrate_core_toml_appends_warning_when_file_is_invalid(tmp_path):
 
 
 def test_migrate_artifacts_toml_appends_warning_when_file_is_invalid(tmp_path):
-    from cypilot.commands.migrate_from_cypilot import _migrate_artifacts_toml
+    from studio.commands.migrate_from_cypilot import _migrate_artifacts_toml
 
     path = tmp_path / "artifacts.toml"
     path.write_text("[broken section\n", encoding="utf-8")
@@ -3434,7 +3441,7 @@ def test_migrate_artifacts_toml_appends_warning_when_file_is_invalid(tmp_path):
 
 
 def test_migrate_artifacts_toml_does_not_warn_when_valid(tmp_path):
-    from cypilot.commands.migrate_from_cypilot import _migrate_artifacts_toml
+    from studio.commands.migrate_from_cypilot import _migrate_artifacts_toml
 
     path = tmp_path / "artifacts.toml"
     path.write_text(
@@ -3456,7 +3463,7 @@ def test_migrate_artifacts_toml_does_not_warn_when_valid(tmp_path):
 
 
 def test_migrate_core_toml_appends_warning_when_file_is_missing(tmp_path):
-    from cypilot.commands.migrate_from_cypilot import _migrate_core_toml
+    from studio.commands.migrate_from_cypilot import _migrate_core_toml
 
     path = tmp_path / "core.toml"   # deliberately not created
     warnings = []
@@ -3472,7 +3479,7 @@ def test_migrate_core_toml_appends_warning_when_file_is_missing(tmp_path):
 
 
 def test_migrate_artifacts_toml_appends_warning_when_file_is_missing(tmp_path):
-    from cypilot.commands.migrate_from_cypilot import _migrate_artifacts_toml
+    from studio.commands.migrate_from_cypilot import _migrate_artifacts_toml
 
     path = tmp_path / "artifacts.toml"   # deliberately not created
     warnings = []
@@ -3489,7 +3496,7 @@ def test_migrate_artifacts_toml_appends_warning_when_file_is_missing(tmp_path):
 
 def test_migrate_config_markdown_returns_empty_when_all_files_missing(tmp_path):
     """No supported markdown files in config_dir → silent skip, empty list."""
-    from cypilot.commands.migrate_from_cypilot import _migrate_config_markdown
+    from studio.commands.migrate_from_cypilot import _migrate_config_markdown
 
     config_dir = tmp_path / "config"
     config_dir.mkdir()
@@ -3505,7 +3512,7 @@ def test_migrate_config_markdown_returns_empty_when_all_files_missing(tmp_path):
 
 def test_migrate_config_markdown_skips_missing_processes_present_silently(tmp_path):
     """Mix of present/absent supported files: only present-with-changes appears in result."""
-    from cypilot.commands.migrate_from_cypilot import _migrate_config_markdown
+    from studio.commands.migrate_from_cypilot import _migrate_config_markdown
 
     config_dir = tmp_path / "config"
     config_dir.mkdir()
@@ -3528,7 +3535,7 @@ def test_migrate_config_markdown_skips_missing_processes_present_silently(tmp_pa
 
 def test_migrate_config_markdown_returns_empty_when_config_dir_missing(tmp_path):
     """Non-existent config_dir → returns [] silently, no auto-create."""
-    from cypilot.commands.migrate_from_cypilot import _migrate_config_markdown
+    from studio.commands.migrate_from_cypilot import _migrate_config_markdown
 
     config_dir = tmp_path / "does_not_exist"
     # Deliberately do NOT create config_dir.
@@ -3542,8 +3549,8 @@ def test_migrate_config_markdown_returns_empty_when_config_dir_missing(tmp_path)
 
 def test_human_migrate_ok_surfaces_backup_paths_when_present(capsys):
     """The human output prints data['backups'] as a labeled list."""
-    import cypilot.commands.migrate_from_cypilot as migration
-    import cypilot.utils.ui as ui_mod
+    import studio.commands.migrate_from_cypilot as migration
+    import studio.utils.ui as ui_mod
 
     # The ui module's _json_mode is True by default per the autouse fixture;
     # force it off so human-mode output is what we observe.
@@ -3581,8 +3588,8 @@ def test_ensure_supported_legacy_version_dry_run_bypass_does_not_trigger_bump(tm
     PASS without invoking _run_legacy_update_to_baseline. This test
     enforces that contract via a monkeypatched bump that raises if called.
     """
-    import cypilot.commands.migrate_from_cypilot as migration
-    from cypilot.commands.migrate_from_cypilot import (
+    import studio.commands.migrate_from_cypilot as migration
+    from studio.commands.migrate_from_cypilot import (
         ensure_supported_legacy_version,
     )
 
@@ -3622,8 +3629,8 @@ def test_cmd_init_migration_prompts_for_target_dir_when_no_install_dir_flag(tmp_
     """When the user accepts migration via the interactive prompt and does
     NOT pass --install-dir, cmd_init MUST prompt for the target install
     dir, defaulting to in-place migration (target = legacy dir name)."""
-    import cypilot.commands.init as init_module
-    import cypilot.commands.migrate_from_cypilot as migration
+    import studio.commands.init as init_module
+    import studio.commands.migrate_from_cypilot as migration
 
     _make_legacy_project(tmp_path, legacy_dir=".bootstrap", version="3.9.0")
 
@@ -3691,8 +3698,8 @@ def test_cmd_init_migration_uses_install_dir_flag_when_provided(tmp_path, monkey
     """When --install-dir is given, cmd_init MUST NOT prompt for the
     target install dir and must pass the flag value through to
     migrate_from_cypilot as to_dir."""
-    import cypilot.commands.init as init_module
-    import cypilot.commands.migrate_from_cypilot as migration
+    import studio.commands.init as init_module
+    import studio.commands.migrate_from_cypilot as migration
 
     _make_legacy_project(tmp_path, legacy_dir=".bootstrap", version="3.9.0")
 

@@ -9,7 +9,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from cypilot.utils.ui import (
+from studio.utils.ui import (
     set_json_mode,
     is_json_mode,
     header,
@@ -303,7 +303,7 @@ class TestHumanValidate(_HumanModeBase):
     """Test _human_validate formatter."""
 
     def test_validate_pass(self):
-        from cypilot.commands.validate import _human_validate
+        from studio.commands.validate import _human_validate
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_validate({
@@ -320,7 +320,7 @@ class TestHumanValidate(_HumanModeBase):
         self.assertIn("passed", out)
 
     def test_validate_fail_with_errors(self):
-        from cypilot.commands.validate import _human_validate
+        from studio.commands.validate import _human_validate
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_validate({
@@ -341,14 +341,14 @@ class TestHumanValidate(_HumanModeBase):
         self.assertIn("more warning", out)
 
     def test_validate_other_status(self):
-        from cypilot.commands.validate import _human_validate
+        from studio.commands.validate import _human_validate
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_validate({"status": "PARTIAL", "artifact_count": 1, "error_count": 0, "warning_count": 0})
         self.assertIn("PARTIAL", buf.getvalue())
 
     def test_validate_string_errors(self):
-        from cypilot.commands.validate import _human_validate
+        from studio.commands.validate import _human_validate
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_validate({
@@ -362,7 +362,7 @@ class TestHumanValidate(_HumanModeBase):
 
     def test_validate_rich_issue_fields(self):
         """Cover _format_issue with code, reasons, fixing_prompt, extra keys."""
-        from cypilot.commands.validate import _human_validate
+        from studio.commands.validate import _human_validate
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_validate({
@@ -391,7 +391,7 @@ class TestHumanValidate(_HumanModeBase):
 
     def test_validate_issue_location_without_line(self):
         """Cover _issue_location with path but no line."""
-        from cypilot.commands.validate import _human_validate
+        from studio.commands.validate import _human_validate
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_validate({
@@ -406,7 +406,7 @@ class TestHumanValidateKits(_HumanModeBase):
     """Test _human_validate_kits formatter."""
 
     def test_pass(self):
-        from cypilot.commands.validate_kits import _human_validate_kits
+        from studio.commands.validate_kits import _human_validate_kits
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_validate_kits({
@@ -419,7 +419,7 @@ class TestHumanValidateKits(_HumanModeBase):
         self.assertIn("sdlc", out)
 
     def test_fail_with_errors(self):
-        from cypilot.commands.validate_kits import _human_validate_kits
+        from studio.commands.validate_kits import _human_validate_kits
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_validate_kits({
@@ -437,7 +437,7 @@ class TestHumanValidateToc(_HumanModeBase):
     """Test _human_validate_toc formatter."""
 
     def test_pass(self):
-        from cypilot.commands.validate_toc import _human_validate_toc
+        from studio.commands.validate_toc import _human_validate_toc
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_validate_toc({
@@ -449,7 +449,7 @@ class TestHumanValidateToc(_HumanModeBase):
         self.assertIn("all TOCs correct", out)
 
     def test_fail_with_errors_and_warnings(self):
-        from cypilot.commands.validate_toc import _human_validate_toc
+        from studio.commands.validate_toc import _human_validate_toc
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_validate_toc({
@@ -470,7 +470,7 @@ class TestHumanToc(_HumanModeBase):
     """Test _human_toc formatter."""
 
     def test_pass(self):
-        from cypilot.commands.toc import _human_toc
+        from studio.commands.toc import _human_toc
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_toc({
@@ -493,7 +493,7 @@ class TestHumanToc(_HumanModeBase):
         self.assertIn("stale entry", out)
 
     def test_validation_fail_status(self):
-        from cypilot.commands.toc import _human_toc
+        from studio.commands.toc import _human_toc
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_toc({
@@ -503,7 +503,7 @@ class TestHumanToc(_HumanModeBase):
         self.assertIn("validation errors", buf.getvalue())
 
     def test_other_status(self):
-        from cypilot.commands.toc import _human_toc
+        from studio.commands.toc import _human_toc
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_toc({
@@ -517,7 +517,7 @@ class TestHumanSpecCoverage(_HumanModeBase):
     """Test _human_spec_coverage formatter."""
 
     def test_pass(self):
-        from cypilot.commands.spec_coverage import _human_spec_coverage
+        from studio.commands.spec_coverage import _human_spec_coverage
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_spec_coverage({
@@ -534,7 +534,7 @@ class TestHumanSpecCoverage(_HumanModeBase):
         self.assertIn("thresholds met", out)
 
     def test_fail(self):
-        from cypilot.commands.spec_coverage import _human_spec_coverage
+        from studio.commands.spec_coverage import _human_spec_coverage
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_spec_coverage({
@@ -552,7 +552,7 @@ class TestHumanSpecCoverage(_HumanModeBase):
         self.assertIn("coverage below 80%", out)
 
     def test_other_status(self):
-        from cypilot.commands.spec_coverage import _human_spec_coverage
+        from studio.commands.spec_coverage import _human_spec_coverage
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_spec_coverage({"status": "PARTIAL", "summary": {}})
@@ -563,7 +563,7 @@ class TestHumanInfo(_HumanModeBase):
     """Test _human_info formatter."""
 
     def test_full_info(self):
-        from cypilot.commands.adapter_info import _human_info
+        from studio.commands.adapter_info import _human_info
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_info({
@@ -630,7 +630,7 @@ class TestHumanInfo(_HumanModeBase):
         self.assertIn("windsurf", out)
 
     def test_minimal_info(self):
-        from cypilot.commands.adapter_info import _human_info
+        from studio.commands.adapter_info import _human_info
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_info({
@@ -648,7 +648,7 @@ class TestHumanInfo(_HumanModeBase):
         self.assertNotIn("Missing", out)
 
     def test_info_with_registry_error(self):
-        from cypilot.commands.adapter_info import _human_info
+        from studio.commands.adapter_info import _human_info
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_info({
@@ -664,7 +664,7 @@ class TestHumanInfo(_HumanModeBase):
         self.assertIn("MISSING", buf.getvalue())
 
     def test_info_kit_no_drift(self):
-        from cypilot.commands.adapter_info import _human_info
+        from studio.commands.adapter_info import _human_info
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_info({
@@ -684,7 +684,7 @@ class TestHumanInfo(_HumanModeBase):
 
     def test_info_autodetect_systems_fallback(self):
         """When artifacts_registry has no systems, falls back to autodetect_registry."""
-        from cypilot.commands.adapter_info import _human_info
+        from studio.commands.adapter_info import _human_info
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_info({
@@ -707,7 +707,7 @@ class TestReadKitConf(unittest.TestCase):
     """Test _read_kit_conf helper."""
 
     def test_reads_valid_conf(self):
-        from cypilot.commands.adapter_info import _read_kit_conf
+        from studio.commands.adapter_info import _read_kit_conf
         with TemporaryDirectory() as td:
             conf = Path(td) / "conf.toml"
             conf.write_text('version = 4\nslug = "sdlc"\nname = "SDLC Kit"\n')
@@ -717,12 +717,12 @@ class TestReadKitConf(unittest.TestCase):
             self.assertEqual(result["name"], "SDLC Kit")
 
     def test_missing_file(self):
-        from cypilot.commands.adapter_info import _read_kit_conf
+        from studio.commands.adapter_info import _read_kit_conf
         result = _read_kit_conf(Path("/nonexistent/conf.toml"))
         self.assertEqual(result, {})
 
     def test_invalid_toml(self):
-        from cypilot.commands.adapter_info import _read_kit_conf
+        from studio.commands.adapter_info import _read_kit_conf
         with TemporaryDirectory() as td:
             conf = Path(td) / "conf.toml"
             conf.write_text("not valid toml {{{")
@@ -738,7 +738,7 @@ class TestCLIHelpHumanMode(_HumanModeBase):
     """Test CLI help in human mode."""
 
     def test_help_human_mode(self):
-        from cypilot.cli import main
+        from studio.cli import main
         buf = io.StringIO()
         with redirect_stderr(buf):
             rc = main(["--help"])
@@ -749,7 +749,7 @@ class TestCLIHelpHumanMode(_HumanModeBase):
         self.assertIn("--json", out)
 
     def test_empty_command_human_mode(self):
-        from cypilot.cli import main
+        from studio.cli import main
         buf = io.StringIO()
         with redirect_stderr(buf):
             rc = main([])
@@ -765,7 +765,7 @@ class TestHumanInitOk(_HumanModeBase):
     """Test _human_init_ok formatter."""
 
     def test_normal_init(self):
-        from cypilot.commands.init import _human_init_ok
+        from studio.commands.init import _human_init_ok
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_init_ok(
@@ -785,7 +785,7 @@ class TestHumanInitOk(_HumanModeBase):
         self.assertIn("Next steps", out)
 
     def test_dry_run_init(self):
-        from cypilot.commands.init import _human_init_ok
+        from studio.commands.init import _human_init_ok
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_init_ok(
@@ -801,7 +801,7 @@ class TestHumanInitOk(_HumanModeBase):
         self.assertIn("Dry run complete", out)
 
     def test_no_kits(self):
-        from cypilot.commands.init import _human_init_ok
+        from studio.commands.init import _human_init_ok
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_init_ok(
@@ -820,7 +820,7 @@ class TestHumanInitError(_HumanModeBase):
     """Test _human_init_error formatter."""
 
     def test_dict_errors(self):
-        from cypilot.commands.init import _human_init_error
+        from studio.commands.init import _human_init_error
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_init_error({
@@ -836,7 +836,7 @@ class TestHumanInitError(_HumanModeBase):
         self.assertIn("simple error string", out)
 
     def test_empty_errors(self):
-        from cypilot.commands.init import _human_init_error
+        from studio.commands.init import _human_init_error
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_init_error({"status": "ERROR", "errors": []})
@@ -847,7 +847,7 @@ class TestInjectRootClaude(unittest.TestCase):
     """Test _inject_root_claude update/insert paths."""
 
     def test_update_existing_block(self):
-        from cypilot.commands.init import _inject_root_claude, MARKER_START, MARKER_END
+        from studio.commands.init import _inject_root_claude, MARKER_START, MARKER_END
         with TemporaryDirectory() as td:
             root = Path(td)
             claude = root / "CLAUDE.md"
@@ -860,7 +860,7 @@ class TestInjectRootClaude(unittest.TestCase):
             self.assertIn("After", content)
 
     def test_insert_into_existing_no_markers(self):
-        from cypilot.commands.init import _inject_root_claude
+        from studio.commands.init import _inject_root_claude
         with TemporaryDirectory() as td:
             root = Path(td)
             claude = root / "CLAUDE.md"
@@ -871,7 +871,7 @@ class TestInjectRootClaude(unittest.TestCase):
             self.assertIn("Existing content", content)
 
     def test_unchanged_block(self):
-        from cypilot.commands.init import _inject_root_claude, _compute_managed_block
+        from studio.commands.init import _inject_root_claude, _compute_managed_block
         with TemporaryDirectory() as td:
             root = Path(td)
             claude = root / "CLAUDE.md"
@@ -880,7 +880,7 @@ class TestInjectRootClaude(unittest.TestCase):
             self.assertEqual(action, "unchanged")
 
     def test_create_new(self):
-        from cypilot.commands.init import _inject_root_claude
+        from studio.commands.init import _inject_root_claude
         with TemporaryDirectory() as td:
             root = Path(td)
             action = _inject_root_claude(root, "cypilot")
@@ -892,7 +892,7 @@ class TestReadExistingInstall(unittest.TestCase):
     """Test _read_existing_install edge cases."""
 
     def test_returns_none_when_dir_missing(self):
-        from cypilot.commands.init import _read_existing_install, MARKER_START
+        from studio.commands.init import _read_existing_install, MARKER_START
         with TemporaryDirectory() as td:
             root = Path(td)
             agents = root / "AGENTS.md"
@@ -901,7 +901,7 @@ class TestReadExistingInstall(unittest.TestCase):
             self.assertIsNone(result)
 
     def test_returns_none_for_invalid_toml(self):
-        from cypilot.commands.init import _read_existing_install, MARKER_START
+        from studio.commands.init import _read_existing_install, MARKER_START
         with TemporaryDirectory() as td:
             root = Path(td)
             agents = root / "AGENTS.md"
@@ -918,7 +918,7 @@ class TestHumanAgentsOk(_HumanModeBase):
     """Test _human_generate_agents_ok formatter."""
 
     def test_pass_with_workflows_and_skills(self):
-        from cypilot.commands.agents import _human_generate_agents_ok
+        from studio.commands.agents import _human_generate_agents_ok
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_generate_agents_ok(
@@ -959,7 +959,7 @@ class TestHumanAgentsOk(_HumanModeBase):
         self.assertIn("Agent integration complete", out)
 
     def test_dry_run(self):
-        from cypilot.commands.agents import _human_generate_agents_ok
+        from studio.commands.agents import _human_generate_agents_ok
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_generate_agents_ok(
@@ -975,7 +975,7 @@ class TestHumanAgentsOk(_HumanModeBase):
         self.assertIn("Dry run complete", buf.getvalue())
 
     def test_errors_status(self):
-        from cypilot.commands.agents import _human_generate_agents_ok
+        from studio.commands.agents import _human_generate_agents_ok
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_generate_agents_ok(
@@ -995,7 +995,7 @@ class TestEnsureCypilotLocal(unittest.TestCase):
     """Test _ensure_cypilot_local copy paths."""
 
     def test_already_local(self):
-        from cypilot.commands.agents import _ensure_cypilot_local
+        from studio.commands.agents import _ensure_cypilot_local
         with TemporaryDirectory() as td:
             root = Path(td)
             cypilot = root / "cypilot"
@@ -1005,7 +1005,7 @@ class TestEnsureCypilotLocal(unittest.TestCase):
             self.assertEqual(report["action"], "none")
 
     def test_copy_into_project(self):
-        from cypilot.commands.agents import _ensure_cypilot_local
+        from studio.commands.agents import _ensure_cypilot_local
         with TemporaryDirectory() as td:
             root = Path(td) / "project"
             root.mkdir()
@@ -1026,7 +1026,7 @@ class TestHumanUpdateOk(_HumanModeBase):
     """Test _human_update_ok formatter."""
 
     def test_pass_no_errors(self):
-        from cypilot.commands.update import _human_update_ok
+        from studio.commands.update import _human_update_ok
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_update_ok(
@@ -1036,7 +1036,7 @@ class TestHumanUpdateOk(_HumanModeBase):
         self.assertIn("Update complete", out)
 
     def test_dry_run(self):
-        from cypilot.commands.update import _human_update_ok
+        from studio.commands.update import _human_update_ok
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_update_ok(
@@ -1045,7 +1045,7 @@ class TestHumanUpdateOk(_HumanModeBase):
         self.assertIn("Dry run complete", buf.getvalue())
 
     def test_with_errors(self):
-        from cypilot.commands.update import _human_update_ok
+        from studio.commands.update import _human_update_ok
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_update_ok({
@@ -1064,7 +1064,7 @@ class TestHumanUpdateOk(_HumanModeBase):
         self.assertIn("warnings", out)
 
     def test_warn_status(self):
-        from cypilot.commands.update import _human_update_ok
+        from studio.commands.update import _human_update_ok
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_update_ok(
@@ -1074,7 +1074,7 @@ class TestHumanUpdateOk(_HumanModeBase):
 
     def test_brand_wording_pinned(self):
         """Lock down public brand wording in update human output (no Cypilot leftover)."""
-        from cypilot.commands.update import _human_update_ok
+        from studio.commands.update import _human_update_ok
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_update_ok({
@@ -1094,12 +1094,12 @@ class TestBrandContractPinned(unittest.TestCase):
     """Lock down user-facing brand wording so silent rebrand regressions fail CI."""
 
     def test_workspace_filename_canonical(self):
-        from cypilot.constants import WORKSPACE_CONFIG_FILENAME
+        from studio.constants import WORKSPACE_CONFIG_FILENAME
         self.assertEqual(WORKSPACE_CONFIG_FILENAME, ".cf-constructor-workspace.toml")
 
     def test_init_inject_writes_new_marker_and_key(self):
         """Fresh _inject_root_agents writes @cf:root-agents + cf-constructor-path (no legacy)."""
-        from cypilot.commands.init import _inject_root_agents
+        from studio.commands.init import _inject_root_agents
         from tempfile import TemporaryDirectory
         from pathlib import Path
         with TemporaryDirectory() as td:
@@ -1114,8 +1114,8 @@ class TestBrandContractPinned(unittest.TestCase):
 
     def test_init_command_human_strings(self):
         """_human_init_ok renders the new brand in stderr (no Cypilot leftover)."""
-        from cypilot.commands.init import _human_init_ok
-        from cypilot.utils.ui import set_json_mode
+        from studio.commands.init import _human_init_ok
+        from studio.utils.ui import set_json_mode
         from pathlib import Path
         from tempfile import TemporaryDirectory
         set_json_mode(False)
@@ -1140,7 +1140,7 @@ class TestHumanWhereDefined(_HumanModeBase):
     """Test _human_where_defined formatter."""
 
     def test_found(self):
-        from cypilot.commands.where_defined import _human_where_defined
+        from studio.commands.where_defined import _human_where_defined
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_where_defined({
@@ -1158,7 +1158,7 @@ class TestHumanWhereDefined(_HumanModeBase):
         self.assertIn("42", out)
 
     def test_not_found(self):
-        from cypilot.commands.where_defined import _human_where_defined
+        from studio.commands.where_defined import _human_where_defined
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_where_defined({
@@ -1172,7 +1172,7 @@ class TestHumanWhereDefined(_HumanModeBase):
         self.assertIn("not found", out.lower())
 
     def test_ambiguous(self):
-        from cypilot.commands.where_defined import _human_where_defined
+        from studio.commands.where_defined import _human_where_defined
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_where_defined({
@@ -1193,7 +1193,7 @@ class TestHumanWhereUsed(_HumanModeBase):
     """Test _human_where_used formatter."""
 
     def test_found(self):
-        from cypilot.commands.where_used import _human_where_used
+        from studio.commands.where_used import _human_where_used
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_where_used({
@@ -1211,7 +1211,7 @@ class TestHumanWhereUsed(_HumanModeBase):
         self.assertIn("reference", out)
 
     def test_no_refs(self):
-        from cypilot.commands.where_used import _human_where_used
+        from studio.commands.where_used import _human_where_used
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_where_used({
@@ -1228,7 +1228,7 @@ class TestHumanSpecCoverageFiles(_HumanModeBase):
     """Test _human_spec_coverage with per-file details."""
 
     def test_with_files(self):
-        from cypilot.commands.spec_coverage import _human_spec_coverage
+        from studio.commands.spec_coverage import _human_spec_coverage
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_spec_coverage({
@@ -1256,7 +1256,7 @@ class TestHumanGetContent(_HumanModeBase):
     """Test _human_get_content formatter."""
 
     def test_found_with_text(self):
-        from cypilot.commands.get_content import _human_get_content
+        from studio.commands.get_content import _human_get_content
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_get_content({
@@ -1279,7 +1279,7 @@ class TestHumanGetContent(_HumanModeBase):
         self.assertIn("Hello world", out)
 
     def test_not_found(self):
-        from cypilot.commands.get_content import _human_get_content
+        from studio.commands.get_content import _human_get_content
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_get_content({
@@ -1292,7 +1292,7 @@ class TestHumanGetContent(_HumanModeBase):
         self.assertIn("some-inst", out)
 
     def test_error(self):
-        from cypilot.commands.get_content import _human_get_content
+        from studio.commands.get_content import _human_get_content
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_get_content({
@@ -1304,7 +1304,7 @@ class TestHumanGetContent(_HumanModeBase):
         self.assertIn("Something broke", out)
 
     def test_found_minimal(self):
-        from cypilot.commands.get_content import _human_get_content
+        from studio.commands.get_content import _human_get_content
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_get_content({
@@ -1319,7 +1319,7 @@ class TestHumanListIds(_HumanModeBase):
     """Test _human_list_ids formatter."""
 
     def test_with_ids(self):
-        from cypilot.commands.list_ids import _human_list_ids
+        from studio.commands.list_ids import _human_list_ids
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_list_ids({
@@ -1337,7 +1337,7 @@ class TestHumanListIds(_HumanModeBase):
         self.assertIn("dod", out)
 
     def test_no_ids(self):
-        from cypilot.commands.list_ids import _human_list_ids
+        from studio.commands.list_ids import _human_list_ids
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_list_ids({
@@ -1353,7 +1353,7 @@ class TestHumanListIdKinds(_HumanModeBase):
     """Test _human_list_id_kinds formatter."""
 
     def test_with_kinds(self):
-        from cypilot.commands.list_id_kinds import _human_list_id_kinds
+        from studio.commands.list_id_kinds import _human_list_id_kinds
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_list_id_kinds({
@@ -1369,7 +1369,7 @@ class TestHumanListIdKinds(_HumanModeBase):
         self.assertIn("DESIGN", out)
 
     def test_no_kinds(self):
-        from cypilot.commands.list_id_kinds import _human_list_id_kinds
+        from studio.commands.list_id_kinds import _human_list_id_kinds
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_list_id_kinds({
@@ -1381,7 +1381,7 @@ class TestHumanListIdKinds(_HumanModeBase):
         self.assertIn("No ID kinds", out)
 
     def test_with_artifact(self):
-        from cypilot.commands.list_id_kinds import _human_list_id_kinds
+        from studio.commands.list_id_kinds import _human_list_id_kinds
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_list_id_kinds({
@@ -1399,7 +1399,7 @@ class TestHumanValidateKitsDetailed(_HumanModeBase):
     """Test _human_validate_kits with error branches."""
 
     def test_verbose_with_errors(self):
-        from cypilot.commands.validate_kits import _human_validate_kits
+        from studio.commands.validate_kits import _human_validate_kits
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_validate_kits({
@@ -1420,7 +1420,7 @@ class TestHumanValidateKitsDetailed(_HumanModeBase):
         self.assertIn("missing field", out)
 
     def test_non_verbose_failed_kits(self):
-        from cypilot.commands.validate_kits import _human_validate_kits
+        from studio.commands.validate_kits import _human_validate_kits
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_validate_kits({
@@ -1446,7 +1446,7 @@ class TestHumanKitInstall(_HumanModeBase):
     """Test _human_kit_install formatter."""
 
     def test_pass(self):
-        from cypilot.commands.kit import _human_kit_install
+        from studio.commands.kit import _human_kit_install
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_kit_install({
@@ -1464,7 +1464,7 @@ class TestHumanKitInstall(_HumanModeBase):
         self.assertIn("DESIGN", out)
 
     def test_dry_run(self):
-        from cypilot.commands.kit import _human_kit_install
+        from studio.commands.kit import _human_kit_install
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_kit_install({
@@ -1481,7 +1481,7 @@ class TestHumanKitInstall(_HumanModeBase):
         self.assertIn("/tmp/src", out)
 
     def test_fail(self):
-        from cypilot.commands.kit import _human_kit_install
+        from studio.commands.kit import _human_kit_install
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_kit_install({
@@ -1500,7 +1500,7 @@ class TestHumanKitInstall(_HumanModeBase):
         self.assertIn("parse error", out)
 
     def test_other_status(self):
-        from cypilot.commands.kit import _human_kit_install
+        from studio.commands.kit import _human_kit_install
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_kit_install({
@@ -1516,7 +1516,7 @@ class TestHumanKitUpdate(_HumanModeBase):
     """Test _human_kit_update formatter."""
 
     def test_pass(self):
-        from cypilot.commands.kit import _human_kit_update
+        from studio.commands.kit import _human_kit_update
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_kit_update({
@@ -1531,7 +1531,7 @@ class TestHumanKitUpdate(_HumanModeBase):
         self.assertIn("current", out)
 
     def test_warn_with_errors(self):
-        from cypilot.commands.kit import _human_kit_update
+        from studio.commands.kit import _human_kit_update
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_kit_update({
@@ -1545,7 +1545,7 @@ class TestHumanKitUpdate(_HumanModeBase):
         self.assertIn("warnings", out.lower())
 
     def test_other_status(self):
-        from cypilot.commands.kit import _human_kit_update
+        from studio.commands.kit import _human_kit_update
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_kit_update({"status": "PARTIAL", "kits_updated": 0, "results": []})
@@ -1556,7 +1556,7 @@ class TestHumanUpdateDetailed(_HumanModeBase):
     """Test _human_update_ok with detailed actions."""
 
     def test_actions_with_kits_and_core(self):
-        from cypilot.commands.update import _human_update_ok
+        from studio.commands.update import _human_update_ok
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_update_ok({
@@ -1593,7 +1593,7 @@ class TestHumanUpdateDetailed(_HumanModeBase):
         self.assertIn("windsurf", out)
 
     def test_dry_run(self):
-        from cypilot.commands.update import _human_update_ok
+        from studio.commands.update import _human_update_ok
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_update_ok({
@@ -1608,7 +1608,7 @@ class TestHumanUpdateDetailed(_HumanModeBase):
         self.assertIn("Dry run complete", out)
 
     def test_with_errors_and_warnings(self):
-        from cypilot.commands.update import _human_update_ok
+        from studio.commands.update import _human_update_ok
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_update_ok({
@@ -1630,14 +1630,14 @@ class TestShowError(_HumanModeBase):
     """Test _show_error helper for context fields and nested details."""
 
     def test_string_error(self):
-        from cypilot.commands.validate_kits import _show_error
+        from studio.commands.validate_kits import _show_error
         buf = io.StringIO()
         with redirect_stderr(buf):
             _show_error("plain string")
         self.assertIn("plain string", buf.getvalue())
 
     def test_dict_error_with_path_and_line(self):
-        from cypilot.commands.validate_kits import _show_error
+        from studio.commands.validate_kits import _show_error
         buf = io.StringIO()
         with redirect_stderr(buf):
             _show_error({"message": "bad heading", "path": "/tmp/x.md", "line": 5})
@@ -1646,7 +1646,7 @@ class TestShowError(_HumanModeBase):
         self.assertIn("5", out)
 
     def test_dict_error_with_context_fields(self):
-        from cypilot.commands.validate_kits import _show_error
+        from studio.commands.validate_kits import _show_error
         buf = io.StringIO()
         with redirect_stderr(buf):
             _show_error({
@@ -1663,7 +1663,7 @@ class TestShowError(_HumanModeBase):
         self.assertIn("tpl=cpt-{system}-db-{slug}", out)
 
     def test_dict_error_with_nested_errors(self):
-        from cypilot.commands.validate_kits import _show_error
+        from studio.commands.validate_kits import _show_error
         buf = io.StringIO()
         with redirect_stderr(buf):
             _show_error({
@@ -1677,14 +1677,14 @@ class TestShowError(_HumanModeBase):
         self.assertIn("pattern is missing", out)
 
     def test_dict_error_no_path(self):
-        from cypilot.commands.validate_kits import _show_error
+        from studio.commands.validate_kits import _show_error
         buf = io.StringIO()
         with redirect_stderr(buf):
             _show_error({"message": "generic error"})
         self.assertIn("generic error", buf.getvalue())
 
     def test_warning_prefix(self):
-        from cypilot.commands.validate_kits import _show_error
+        from studio.commands.validate_kits import _show_error
         buf = io.StringIO()
         with redirect_stderr(buf):
             _show_error({"message": "optional ref"}, prefix="⚠")
@@ -1697,7 +1697,7 @@ class TestHumanValidateKitsScResults(_HumanModeBase):
     """Test _human_validate_kits with self_check_results branches."""
 
     def test_sc_results_pass_with_warnings_non_verbose(self):
-        from cypilot.commands.validate_kits import _human_validate_kits
+        from studio.commands.validate_kits import _human_validate_kits
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_validate_kits({
@@ -1718,7 +1718,7 @@ class TestHumanValidateKitsScResults(_HumanModeBase):
         self.assertIn("sdlc/FEATURE: PASS", out)
 
     def test_sc_results_fail_with_errors_and_warnings(self):
-        from cypilot.commands.validate_kits import _human_validate_kits
+        from studio.commands.validate_kits import _human_validate_kits
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_validate_kits({
@@ -1744,7 +1744,7 @@ class TestHumanValidateKitsScResults(_HumanModeBase):
         self.assertIn("optional ref missing", out)
 
     def test_sc_results_kind_none_displays_question_mark(self):
-        from cypilot.commands.validate_kits import _human_validate_kits
+        from studio.commands.validate_kits import _human_validate_kits
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_validate_kits({
@@ -1761,7 +1761,7 @@ class TestHumanValidateKitsScResults(_HumanModeBase):
         self.assertNotIn("sdlc/None", out)
 
     def test_verbose_kit_with_kinds(self):
-        from cypilot.commands.validate_kits import _human_validate_kits
+        from studio.commands.validate_kits import _human_validate_kits
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_validate_kits({
@@ -1780,7 +1780,7 @@ class TestHumanValidateKitsScResults(_HumanModeBase):
 
     def test_sc_results_suppress_top_level_errors(self):
         """When sc_results present, top-level errors should NOT be shown separately."""
-        from cypilot.commands.validate_kits import _human_validate_kits
+        from studio.commands.validate_kits import _human_validate_kits
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_validate_kits({
@@ -1802,14 +1802,14 @@ class TestValidateKitByPath(_HumanModeBase):
     """Test _validate_kit_by_path standalone kit validation."""
 
     def test_nonexistent_dir(self):
-        from cypilot.commands.validate_kits import _validate_kit_by_path
+        from studio.commands.validate_kits import _validate_kit_by_path
         rc, result = _validate_kit_by_path(Path("/tmp/nonexistent_kit_xyz_999"))
         self.assertEqual(rc, 1)
         self.assertEqual(result["status"], "ERROR")
         self.assertIn("not found", result["message"])
 
     def test_valid_kit_dir(self):
-        from cypilot.commands.validate_kits import _validate_kit_by_path
+        from studio.commands.validate_kits import _validate_kit_by_path
         from _test_helpers import write_constraints_toml
         with TemporaryDirectory() as td:
             kit_dir = Path(td) / "mykit"
@@ -1834,7 +1834,7 @@ class TestValidateKitByPath(_HumanModeBase):
             self.assertGreaterEqual(result.get("templates_checked", 0), 1)
 
     def test_invalid_constraints(self):
-        from cypilot.commands.validate_kits import _validate_kit_by_path
+        from studio.commands.validate_kits import _validate_kit_by_path
         with TemporaryDirectory() as td:
             kit_dir = Path(td) / "badkit"
             (kit_dir / "artifacts" / "REQ").mkdir(parents=True)
@@ -1849,7 +1849,7 @@ class TestValidateKitByPath(_HumanModeBase):
             self.assertGreaterEqual(result["error_count"], 1)
 
     def test_verbose_includes_kits_and_errors(self):
-        from cypilot.commands.validate_kits import _validate_kit_by_path
+        from studio.commands.validate_kits import _validate_kit_by_path
         with TemporaryDirectory() as td:
             kit_dir = Path(td) / "vkit"
             (kit_dir / "artifacts" / "REQ").mkdir(parents=True)
@@ -1863,7 +1863,7 @@ class TestValidateKitByPath(_HumanModeBase):
             self.assertIn("errors", result)
 
     def test_kit_without_examples(self):
-        from cypilot.commands.validate_kits import _validate_kit_by_path
+        from studio.commands.validate_kits import _validate_kit_by_path
         from _test_helpers import write_constraints_toml
         with TemporaryDirectory() as td:
             kit_dir = Path(td) / "noex"
@@ -1882,7 +1882,7 @@ class TestValidateKitByPath(_HumanModeBase):
             self.assertGreaterEqual(result.get("templates_checked", 0), 1)
 
     def test_no_artifacts_dir(self):
-        from cypilot.commands.validate_kits import _validate_kit_by_path
+        from studio.commands.validate_kits import _validate_kit_by_path
         with TemporaryDirectory() as td:
             kit_dir = Path(td) / "empty"
             kit_dir.mkdir()

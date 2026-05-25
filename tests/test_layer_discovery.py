@@ -11,7 +11,7 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
-from cypilot.utils.layer_discovery import (
+from studio.utils.layer_discovery import (
     discover_layers,
     _load_kit_layers,
     _load_master_layer,
@@ -19,7 +19,7 @@ from cypilot.utils.layer_discovery import (
     _detect_master_repo,
     _is_master_repo_boundary,
 )
-from cypilot.utils.manifest import ManifestLayer, ManifestLayerState
+from studio.utils.manifest import ManifestLayer, ManifestLayerState
 
 
 # ---------------------------------------------------------------------------

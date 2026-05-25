@@ -17,7 +17,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.cli import main
+from studio.cli import main
 
 
 def _bootstrap_registry(project_root: Path, *, entries: list) -> None:
@@ -322,9 +322,9 @@ class TestCLIInitCommand(unittest.TestCase):
 
             stdout = io.StringIO()
             with (
-                patch("cypilot.commands.init.CACHE_DIR", fake_cache),
+                patch("studio.commands.init.CACHE_DIR", fake_cache),
                 patch(
-                    "cypilot.commands.kit._download_kit_from_github",
+                    "studio.commands.kit._download_kit_from_github",
                     return_value=(fake_kit, "1.0.0"),
                 ),
             ):
@@ -392,7 +392,7 @@ class TestCLIInitCommand(unittest.TestCase):
             orig_cwd = os.getcwd()
             try:
                 os.chdir(project.as_posix())
-                with patch("cypilot.commands.init.CACHE_DIR", fake_cache), \
+                with patch("studio.commands.init.CACHE_DIR", fake_cache), \
                      unittest.mock.patch("builtins.input", side_effect=["", ""]):
                     stdout = io.StringIO()
                     with redirect_stdout(stdout), redirect_stderr(io.StringIO()):
@@ -886,7 +886,7 @@ class TestCLIAgentsCommand(unittest.TestCase):
 
             self._generate_agent(root, "openai")
 
-            from cypilot.commands.agents import _parse_frontmatter
+            from studio.commands.agents import _parse_frontmatter
 
             for skill_name in ("cf-constructor", "cf-constructor-generate", "cf-constructor-analyze", "cf-constructor-plan", "cf-constructor-workspace"):
                 skill_file = root / ".agents" / "skills" / skill_name / "SKILL.md"
@@ -910,7 +910,7 @@ class TestCLIParseFrontmatter(unittest.TestCase):
 
     def test_parse_frontmatter_valid(self):
         """Test parsing valid frontmatter."""
-        from cypilot.commands.agents import _parse_frontmatter
+        from studio.commands.agents import _parse_frontmatter
 
         with TemporaryDirectory() as tmpdir:
             f = Path(tmpdir) / "test.md"
@@ -922,7 +922,7 @@ class TestCLIParseFrontmatter(unittest.TestCase):
 
     def test_parse_frontmatter_strips_quotes(self):
         """Test parsing frontmatter unquotes quoted scalars."""
-        from cypilot.commands.agents import _parse_frontmatter
+        from studio.commands.agents import _parse_frontmatter
 
         with TemporaryDirectory() as tmpdir:
             f = Path(tmpdir) / "test.md"
@@ -934,7 +934,7 @@ class TestCLIParseFrontmatter(unittest.TestCase):
 
     def test_parse_frontmatter_no_frontmatter(self):
         """Test parsing file without frontmatter."""
-        from cypilot.commands.agents import _parse_frontmatter
+        from studio.commands.agents import _parse_frontmatter
 
         with TemporaryDirectory() as tmpdir:
             f = Path(tmpdir) / "test.md"
@@ -945,7 +945,7 @@ class TestCLIParseFrontmatter(unittest.TestCase):
 
     def test_parse_frontmatter_unclosed(self):
         """Test parsing file with unclosed frontmatter."""
-        from cypilot.commands.agents import _parse_frontmatter
+        from studio.commands.agents import _parse_frontmatter
 
         with TemporaryDirectory() as tmpdir:
             f = Path(tmpdir) / "test.md"
@@ -956,14 +956,14 @@ class TestCLIParseFrontmatter(unittest.TestCase):
 
     def test_parse_frontmatter_file_not_found(self):
         """Test parsing non-existent file."""
-        from cypilot.commands.agents import _parse_frontmatter
+        from studio.commands.agents import _parse_frontmatter
 
         result = _parse_frontmatter(Path("/tmp/does-not-exist-abc123.md"))
         self.assertEqual(result, {})
 
     def test_parse_frontmatter_empty_values_skipped(self):
         """Test that empty values are skipped."""
-        from cypilot.commands.agents import _parse_frontmatter
+        from studio.commands.agents import _parse_frontmatter
 
         with TemporaryDirectory() as tmpdir:
             f = Path(tmpdir) / "test.md"
@@ -993,7 +993,7 @@ class TestCLIAgentsEdgeCases(unittest.TestCase):
 
     def test_agents_renames_misnamed_proxy(self):
         """Test agents command renames misnamed proxy files."""
-        from cypilot.commands.agents import _safe_relpath
+        from studio.commands.agents import _safe_relpath
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -1206,7 +1206,7 @@ class TestCLIAgentsEdgeCases(unittest.TestCase):
 
     def test_agents_rename_conflict_skips(self):
         """Test agents command skips rename when destination already exists."""
-        from cypilot.commands.agents import _safe_relpath
+        from studio.commands.agents import _safe_relpath
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -1360,7 +1360,7 @@ class TestCLIAgentsEdgeCases(unittest.TestCase):
 
     def test_agents_rename_scan_second_read_error(self):
         """Test agents command handles second read error during rename scan."""
-        from cypilot.commands.agents import _safe_relpath
+        from studio.commands.agents import _safe_relpath
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -1800,20 +1800,20 @@ class TestCLITraceabilityCommands(unittest.TestCase):
 
 class TestCLICoreHelpers(unittest.TestCase):
     def test_render_template_missing_variable_raises_system_exit(self):
-        from cypilot.commands.agents import _render_template
+        from studio.commands.agents import _render_template
 
         with self.assertRaises(SystemExit):
             _render_template(["{missing}"], {})
 
     def test_list_workflow_files_missing_dir_returns_empty(self):
-        from cypilot.commands.agents import _list_workflow_files
+        from studio.commands.agents import _list_workflow_files
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             self.assertEqual(_list_workflow_files(root), [])
 
     def test_list_workflow_files_filters_and_handles_read_error(self):
-        from cypilot.commands.agents import _list_workflow_files
+        from studio.commands.agents import _list_workflow_files
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -1843,7 +1843,7 @@ class TestCLICoreHelpers(unittest.TestCase):
             self.assertEqual(names, ["ok.md"])
 
     def test_list_workflow_files_iterdir_error_returns_empty(self):
-        from cypilot.commands.agents import _list_workflow_files
+        from studio.commands.agents import _list_workflow_files
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -1861,7 +1861,7 @@ class TestCLICoreHelpers(unittest.TestCase):
                 self.assertEqual(_list_workflow_files(root), [])
 
     def test_resolve_user_path_relative_uses_base(self):
-        from cypilot.commands.init import _resolve_user_path
+        from studio.commands.init import _resolve_user_path
 
         with TemporaryDirectory() as tmpdir:
             base = Path(tmpdir)
@@ -1869,14 +1869,14 @@ class TestCLICoreHelpers(unittest.TestCase):
             self.assertEqual(out, (base / "foo").resolve())
 
     def test_prompt_path_returns_user_input_over_default(self):
-        from cypilot.commands.init import _prompt_path
+        from studio.commands.init import _prompt_path
 
         with unittest.mock.patch("builtins.input", return_value="abc"):
             out = _prompt_path("Q?", "def")
         self.assertEqual(out, "abc")
 
     def test_load_json_file_invalid_json_returns_none(self):
-        from cypilot.commands.agents import _load_json_file
+        from studio.commands.agents import _load_json_file
 
         with TemporaryDirectory() as tmpdir:
             p = Path(tmpdir) / "x.json"
@@ -2070,7 +2070,7 @@ def _bootstrap_registry_new_format(project_root: Path, *, systems: list, kits: d
         "kits": kits if kits is not None else {"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
         "systems": systems,
     }
-    from cypilot.utils import toml_utils
+    from studio.utils import toml_utils
     toml_utils.dump(registry, adapter_dir / "config" / "artifacts.toml")
 
 
@@ -2915,7 +2915,7 @@ text
             try:
                 os.chdir(str(root))
                 stdout = io.StringIO()
-                with unittest.mock.patch("cypilot.commands.self_check.run_self_check_from_meta", return_value=_sc_pass):
+                with unittest.mock.patch("studio.commands.self_check.run_self_check_from_meta", return_value=_sc_pass):
                     with redirect_stdout(stdout):
                         exit_code = main(["validate", "--artifact", str(prd_path), "--skip-code", "--verbose"])
             finally:
@@ -2965,7 +2965,7 @@ text
             try:
                 os.chdir(str(root))
                 stdout = io.StringIO()
-                with unittest.mock.patch("cypilot.commands.self_check.run_self_check_from_meta", return_value=_sc_pass):
+                with unittest.mock.patch("studio.commands.self_check.run_self_check_from_meta", return_value=_sc_pass):
                     with redirect_stdout(stdout):
                         exit_code = main(["validate", "--artifact", str(prd_path), "--skip-code", "--verbose"])
             finally:
@@ -3021,7 +3021,7 @@ text
             try:
                 os.chdir(str(root))
                 stdout = io.StringIO()
-                with unittest.mock.patch("cypilot.commands.self_check.run_self_check_from_meta", return_value=_sc_pass):
+                with unittest.mock.patch("studio.commands.self_check.run_self_check_from_meta", return_value=_sc_pass):
                     with redirect_stdout(stdout):
                         exit_code = main(["validate", "--artifact", str(prd_path), "--skip-code", "--verbose"])
             finally:
@@ -3083,7 +3083,7 @@ text
             try:
                 os.chdir(str(root))
                 stdout = io.StringIO()
-                with unittest.mock.patch("cypilot.commands.self_check.run_self_check_from_meta", return_value=_sc_pass):
+                with unittest.mock.patch("studio.commands.self_check.run_self_check_from_meta", return_value=_sc_pass):
                     with redirect_stdout(stdout):
                         exit_code = main(["validate", "--artifact", str(prd_path), "--verbose"])
             finally:
@@ -4541,7 +4541,7 @@ class TestCLIListIdsFilters(unittest.TestCase):
                 os.chdir(str(root))
                 stdout = io.StringIO()
                 with redirect_stdout(stdout):
-                    exit_code = main(["list-ids", "--pattern", "cypilot.*1", "--regex"])
+                    exit_code = main(["list-ids", "--pattern", "studio.*1", "--regex"])
                 self.assertEqual(exit_code, 0)
                 out = json.loads(stdout.getvalue())
                 self.assertIn("ids", out)

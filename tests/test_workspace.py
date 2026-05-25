@@ -22,9 +22,9 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.utils import toml_utils
+from studio.utils import toml_utils
 
-from cypilot.utils.workspace import (
+from studio.utils.workspace import (
     SourceEntry,
     TraceabilityConfig,
     NamespaceRule,
@@ -35,7 +35,7 @@ from cypilot.utils.workspace import (
     validate_source_name,
     VALID_ROLES,
 )
-from cypilot.utils.context import (
+from studio.utils.context import (
     CypilotContext,
     WorkspaceContext,
     SourceContext,
@@ -48,9 +48,9 @@ from cypilot.utils.context import (
     get_primary_context,
     _load_reachable_source,
 )
-from cypilot.utils.artifacts_meta import ArtifactsMeta, Kit
+from studio.utils.artifacts_meta import ArtifactsMeta, Kit
 
-from cypilot.utils.git_utils import (
+from studio.utils.git_utils import (
     is_worktree_dirty,
     _parse_git_url,
     _apply_template,
@@ -60,7 +60,7 @@ from cypilot.utils.git_utils import (
     resolve_git_source,
     sync_git_source,
 )
-from cypilot.commands.workspace_init import (
+from studio.commands.workspace_init import (
     _is_project_dir,
     _find_adapter_path,
     _compute_source_path,
@@ -73,20 +73,20 @@ from cypilot.commands.workspace_init import (
     _human_workspace_init,
     cmd_workspace_init,
 )
-from cypilot.commands.workspace_info import (
+from studio.commands.workspace_info import (
     _probe_source_adapter,
     _build_source_info,
     _enrich_with_artifact_counts,
     _human_workspace_info,
     cmd_workspace_info,
 )
-from cypilot.commands.workspace_add import (
+from studio.commands.workspace_add import (
     _add_to_standalone,
     _add_to_inline,
     _human_workspace_add,
     cmd_workspace_add,
 )
-from cypilot.commands.workspace_sync import (
+from studio.commands.workspace_sync import (
     _human_workspace_sync,
     cmd_workspace_sync,
 )
@@ -180,10 +180,10 @@ def _make_gitlab_resolve_cfg(workdir=".ws"):
 
 def _run_workspace_info(capsys, ws_cfg, tmpdir, *, ctx_return=None):
     """Run cmd_workspace_info with mocked project root, config, adapter, and context."""
-    with patch("cypilot.utils.files.find_project_root", return_value=Path(tmpdir)):
-        with patch("cypilot.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
-            with patch("cypilot.commands.workspace_info._probe_source_adapter", return_value=None):
-                with patch("cypilot.utils.context.get_context", return_value=ctx_return):
+    with patch("studio.utils.files.find_project_root", return_value=Path(tmpdir)):
+        with patch("studio.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
+            with patch("studio.commands.workspace_info._probe_source_adapter", return_value=None):
+                with patch("studio.utils.context.get_context", return_value=ctx_return):
                     rc = cmd_workspace_info([])
                     data = json.loads(capsys.readouterr().out)
                     return rc, data
@@ -808,7 +808,7 @@ class TestWorkspaceContext:
             registered_systems={"myapp"},
         )
 
-    @patch("cypilot.utils.workspace.find_workspace_config")
+    @patch("studio.utils.workspace.find_workspace_config")
     def test_load_returns_none_no_workspace(self, mock_find):
         mock_find.return_value = (None, None)
         with TemporaryDirectory() as tmpdir:
@@ -816,7 +816,7 @@ class TestWorkspaceContext:
             ws = WorkspaceContext.load(ctx)
             assert ws is None
 
-    @patch("cypilot.utils.workspace.find_workspace_config")
+    @patch("studio.utils.workspace.find_workspace_config")
     def test_load_with_workspace(self, mock_find):
         with TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
@@ -835,7 +835,7 @@ class TestWorkspaceContext:
             assert "other" in ws.sources
             assert ws.sources["other"].reachable is True
 
-    @patch("cypilot.utils.workspace.find_workspace_config")
+    @patch("studio.utils.workspace.find_workspace_config")
     def test_unreachable_source(self, mock_find):
         with TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
@@ -1041,7 +1041,7 @@ class TestWorkspaceContext:
             )
             ws = WorkspaceContext(primary=primary_ctx)
 
-            from cypilot.utils.document import scan_cpt_ids as real_scan
+            from studio.utils.document import scan_cpt_ids as real_scan
 
             def _mock_scan(path):
                 if path.name == "BAD.md":
@@ -1049,14 +1049,14 @@ class TestWorkspaceContext:
                 return real_scan(path)
 
             # _scan_definition_ids imports scan_cpt_ids from .document each call
-            with patch("cypilot.utils.document.scan_cpt_ids", side_effect=_mock_scan):
+            with patch("studio.utils.document.scan_cpt_ids", side_effect=_mock_scan):
                 ids = ws.get_all_artifact_ids()
 
             assert "cpt-good-id" in ids
             assert "cpt-bad-id" not in ids
 
 
-    @patch("cypilot.utils.workspace.find_workspace_config")
+    @patch("studio.utils.workspace.find_workspace_config")
     def test_load_uses_resolve_source_adapter(self, mock_find):
         """WorkspaceContext.load resolves adapter dir via WorkspaceConfig.resolve_source_adapter."""
         with TemporaryDirectory() as tmpdir:
@@ -1316,7 +1316,7 @@ class TestResolveGitSource:
             tmp = Path(tmpdir)
             src = _make_git_source()
             resolve_cfg = _make_gitlab_resolve_cfg()
-            with patch("cypilot.utils.git_utils._run_git", side_effect=_clone_side_effect):
+            with patch("studio.utils.git_utils._run_git", side_effect=_clone_side_effect):
                 result = resolve_git_source(src, resolve_cfg, tmp)
                 assert result is not None
                 assert result == (tmp / ".ws" / "team" / "lib").resolve()
@@ -1332,7 +1332,7 @@ class TestResolveGitSource:
 
             src = _make_git_source()
             resolve_cfg = _make_gitlab_resolve_cfg()
-            with patch("cypilot.utils.git_utils._run_git") as mock_git:
+            with patch("studio.utils.git_utils._run_git") as mock_git:
                 mock_git.return_value = (0, "", "")
                 result = resolve_git_source(src, resolve_cfg, tmp)
                 assert result is not None
@@ -1345,7 +1345,7 @@ class TestResolveGitSource:
             tmp = Path(tmpdir)
             src = _make_git_source(branch=None)
             resolve_cfg = _make_gitlab_resolve_cfg()
-            with patch("cypilot.utils.git_utils._run_git") as mock_git:
+            with patch("studio.utils.git_utils._run_git") as mock_git:
                 mock_git.return_value = (1, "", "fatal: repo not found")
                 result = resolve_git_source(src, resolve_cfg, tmp)
                 assert result is None
@@ -1356,7 +1356,7 @@ class TestResolveGitSource:
             tmp = Path(tmpdir)
             src = _make_git_source()
             resolve_cfg = ResolveConfig(namespace=[])  # No rules — uses default {org}/{repo}
-            with patch("cypilot.utils.git_utils._run_git", side_effect=_clone_side_effect):
+            with patch("studio.utils.git_utils._run_git", side_effect=_clone_side_effect):
                 result = resolve_git_source(src, resolve_cfg, tmp)
                 assert result is not None
                 assert result == (tmp / ".workspace-sources" / "team" / "lib").resolve()
@@ -1371,7 +1371,7 @@ class TestResolveGitSource:
                 workdir=".ws",
                 namespace=[NamespaceRule(host="github.com", template="gh/{repo}")],  # No match for myprivate.gitlab.com
             )
-            with patch("cypilot.utils.git_utils._run_git", side_effect=_clone_side_effect):
+            with patch("studio.utils.git_utils._run_git", side_effect=_clone_side_effect):
                 result = resolve_git_source(src, resolve_cfg, tmp)
                 assert result is not None
                 # Default fallback: {org}/{repo} → org/sub/repo
@@ -1383,7 +1383,7 @@ class TestResolveGitSource:
             tmp = Path(tmpdir)
             src = SourceEntry(name="r", path="", url="https://mygitlab.example.com/a/b/c/d/e.git", branch="main")
             resolve_cfg = ResolveConfig(namespace=[])  # No rules
-            with patch("cypilot.utils.git_utils._run_git", side_effect=_clone_side_effect):
+            with patch("studio.utils.git_utils._run_git", side_effect=_clone_side_effect):
                 result = resolve_git_source(src, resolve_cfg, tmp)
                 assert result is not None
                 # a/b/c/d = org, e = repo → a/b/c/d/e
@@ -1562,7 +1562,7 @@ class TestLoadReachableSourceMetaError:
 
             src = SourceEntry(name="broken", path=str(source_dir))
             with patch(
-                "cypilot.utils.context.load_artifacts_meta",
+                "studio.utils.context.load_artifacts_meta",
                 return_value=(None, "parse error in artifacts.toml"),
             ):
                 sc = _load_reachable_source("broken", src, source_dir, adapter_dir)
@@ -1584,7 +1584,7 @@ class TestLoadReachableSourceMetaError:
             mock_meta.get_all_system_prefixes.return_value = {"sys"}
             src = SourceEntry(name="ok", path=str(source_dir))
             with patch(
-                "cypilot.utils.context.load_artifacts_meta",
+                "studio.utils.context.load_artifacts_meta",
                 return_value=(mock_meta, None),
             ):
                 sc = _load_reachable_source("ok", src, source_dir, adapter_dir)
@@ -1628,7 +1628,7 @@ class TestLoadReachableSourceMetaError:
 
             src = SourceEntry(name="broken", path=str(source_dir))
             with patch(
-                "cypilot.utils.context.load_artifacts_meta",
+                "studio.utils.context.load_artifacts_meta",
                 return_value=(None, "bad toml"),
             ):
                 sc = _load_reachable_source("broken", src, source_dir, adapter_dir)
@@ -1696,7 +1696,7 @@ class TestRunGit:
 
     def test_file_not_found(self):
 
-        with patch("cypilot.utils.git_utils.subprocess.run", side_effect=FileNotFoundError):
+        with patch("studio.utils.git_utils.subprocess.run", side_effect=FileNotFoundError):
             rc, _, err = _run_git(["status"])
             assert rc == 1
             assert "not found" in err
@@ -1704,7 +1704,7 @@ class TestRunGit:
     def test_timeout(self):
         import subprocess as _sp
 
-        with patch("cypilot.utils.git_utils.subprocess.run", side_effect=_sp.TimeoutExpired("git", 300)):
+        with patch("studio.utils.git_utils.subprocess.run", side_effect=_sp.TimeoutExpired("git", 300)):
             rc, _, err = _run_git(["clone", "x"])
             assert rc == 1
             assert "timed out" in err
@@ -1736,7 +1736,7 @@ class TestResolveGitSourceEdgeCases:
 
             src = _make_git_source()
             resolve_cfg = ResolveConfig()
-            with patch("cypilot.utils.git_utils._run_git") as mock_git:
+            with patch("studio.utils.git_utils._run_git") as mock_git:
                 result = resolve_git_source(src, resolve_cfg, tmp)
                 assert result is not None
                 assert result == repo_dir.resolve()
@@ -1753,7 +1753,7 @@ class TestResolveGitSourceEdgeCases:
 
             src = _make_git_source(branch="develop")
             resolve_cfg = ResolveConfig()
-            with patch("cypilot.utils.git_utils._run_git") as mock_git:
+            with patch("studio.utils.git_utils._run_git") as mock_git:
                 result = resolve_git_source(src, resolve_cfg, tmp)
                 assert result is not None
                 mock_git.assert_not_called()
@@ -1765,7 +1765,7 @@ class TestResolveGitSourceEdgeCases:
             tmp = Path(tmpdir)
             src = _make_git_source(branch=None)
             resolve_cfg = ResolveConfig()
-            with patch("cypilot.utils.git_utils._run_git", side_effect=_clone_side_effect) as mock_git:
+            with patch("studio.utils.git_utils._run_git", side_effect=_clone_side_effect) as mock_git:
                 result = resolve_git_source(src, resolve_cfg, tmp)
                 assert result is not None
                 # With branch == HEAD, clone should not have --branch flag
@@ -1780,7 +1780,7 @@ class TestResolveGitSourceEdgeCases:
             # Single-segment URL → org="" repo="myrepo"
             src = _make_git_source(url="https://gitlab.com/myrepo.git")
             resolve_cfg = ResolveConfig()
-            with patch("cypilot.utils.git_utils._run_git", side_effect=_clone_side_effect):
+            with patch("studio.utils.git_utils._run_git", side_effect=_clone_side_effect):
                 result = resolve_git_source(src, resolve_cfg, tmp)
                 assert result is not None
                 # Path must be inside workspace_parent, not an absolute /myrepo
@@ -1839,7 +1839,7 @@ class TestFindAdapterPath:
             adapter = d / "cypilot"
             adapter.mkdir()
             (adapter / "config").mkdir()
-            with patch("cypilot.utils.files._read_cypilot_var", return_value="cypilot"):
+            with patch("studio.utils.files._read_cypilot_var", return_value="cypilot"):
                 result = _find_adapter_path(d)
                 assert result == "cypilot"
 
@@ -1849,8 +1849,8 @@ class TestFindAdapterPath:
             d = Path(tmpdir)
             bootstrap = d / ".bootstrap"
             bootstrap.mkdir()
-            with patch("cypilot.utils.files._read_cypilot_var", return_value=None):
-                with patch("cypilot.utils.files.find_cypilot_directory", return_value=bootstrap):
+            with patch("studio.utils.files._read_cypilot_var", return_value=None):
+                with patch("studio.utils.files.find_cypilot_directory", return_value=bootstrap):
                     result = _find_adapter_path(d)
                     assert result == ".bootstrap"
 
@@ -1858,8 +1858,8 @@ class TestFindAdapterPath:
 
         with TemporaryDirectory() as tmpdir:
             d = Path(tmpdir)
-            with patch("cypilot.utils.files._read_cypilot_var", return_value=None):
-                with patch("cypilot.utils.files.find_cypilot_directory", return_value=None):
+            with patch("studio.utils.files._read_cypilot_var", return_value=None):
+                with patch("studio.utils.files.find_cypilot_directory", return_value=None):
                     result = _find_adapter_path(d)
                     assert result is None
 
@@ -1943,7 +1943,7 @@ class TestScanNestedRepos:
             adapter = repo / "cypilot"
             adapter.mkdir()
             (adapter / "config").mkdir()
-            with patch("cypilot.utils.files._read_cypilot_var", return_value="cypilot"):
+            with patch("studio.utils.files._read_cypilot_var", return_value="cypilot"):
                 result = _scan_nested_repos(root, root)
                 assert "my-repo" in result
                 assert result["my-repo"]["adapter"] == "cypilot"
@@ -1965,8 +1965,8 @@ class TestScanNestedRepos:
             repo = root / "bare-repo"
             repo.mkdir()
             (repo / ".git").mkdir()
-            with patch("cypilot.utils.files._read_cypilot_var", return_value=None):
-                with patch("cypilot.utils.files.find_cypilot_directory", return_value=None):
+            with patch("studio.utils.files._read_cypilot_var", return_value=None):
+                with patch("studio.utils.files.find_cypilot_directory", return_value=None):
                     result = _scan_nested_repos(root, root)
                     assert "bare-repo" not in result
 
@@ -2009,7 +2009,7 @@ class TestWriteInline:
     def test_no_cypilot_var(self):
 
         with TemporaryDirectory() as tmpdir:
-            with patch("cypilot.utils.files._read_cypilot_var", return_value=None):
+            with patch("studio.utils.files._read_cypilot_var", return_value=None):
                 exit_code, data = _write_inline(Path(tmpdir), {"sources": {}})
                 assert exit_code == 1
                 assert "cf-constructor-path" in data.get("message", "")
@@ -2018,7 +2018,7 @@ class TestWriteInline:
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             _setup_config_dir(root, "[project]\nname = \"test\"\n")
-            with patch("cypilot.utils.files._read_cypilot_var", return_value="cypilot"):
+            with patch("studio.utils.files._read_cypilot_var", return_value="cypilot"):
                 exit_code, data = _write_inline(root, {"sources": {"a": {"path": "a"}}})
                 assert exit_code == 0
                 assert data["status"] == "CREATED"
@@ -2030,7 +2030,7 @@ class TestCmdWorkspaceInit:
 
     def test_no_project_root(self, capsys):
 
-        with patch("cypilot.utils.files.find_project_root", return_value=None):
+        with patch("studio.utils.files.find_project_root", return_value=None):
             rc = cmd_workspace_init([])
             assert rc == 1
             out = capsys.readouterr().out
@@ -2039,7 +2039,7 @@ class TestCmdWorkspaceInit:
     def test_scan_root_not_found(self, capsys):
 
         with TemporaryDirectory() as tmpdir:
-            with patch("cypilot.utils.files.find_project_root", return_value=Path(tmpdir)):
+            with patch("studio.utils.files.find_project_root", return_value=Path(tmpdir)):
                 rc = cmd_workspace_init(["--root", "/nonexistent/path/xyz"])
                 assert rc == 1
                 out = capsys.readouterr().out
@@ -2048,7 +2048,7 @@ class TestCmdWorkspaceInit:
     def test_no_sources_creates_empty_workspace(self, capsys):
 
         with TemporaryDirectory() as tmpdir:
-            with patch("cypilot.utils.files.find_project_root", return_value=Path(tmpdir)):
+            with patch("studio.utils.files.find_project_root", return_value=Path(tmpdir)):
                 rc = cmd_workspace_init(["--root", tmpdir])
                 assert rc == 0
                 out = capsys.readouterr().out
@@ -2060,8 +2060,8 @@ class TestCmdWorkspaceInit:
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             _setup_repo_with_adapter(root)
-            with patch("cypilot.utils.files.find_project_root", return_value=root):
-                with patch("cypilot.utils.files._read_cypilot_var", return_value="cypilot"):
+            with patch("studio.utils.files.find_project_root", return_value=root):
+                with patch("studio.utils.files._read_cypilot_var", return_value="cypilot"):
                     rc = cmd_workspace_init(["--root", str(root), "--dry-run"])
                     assert rc == 0
                     out = capsys.readouterr().out
@@ -2071,8 +2071,8 @@ class TestCmdWorkspaceInit:
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             _setup_repo_with_adapter(root)
-            with patch("cypilot.utils.files.find_project_root", return_value=root):
-                with patch("cypilot.utils.files._read_cypilot_var", return_value="cypilot"):
+            with patch("studio.utils.files.find_project_root", return_value=root):
+                with patch("studio.utils.files._read_cypilot_var", return_value="cypilot"):
                     rc = cmd_workspace_init(["--root", str(root)])
                     assert rc == 0
                     out = capsys.readouterr().out
@@ -2082,16 +2082,16 @@ class TestCmdWorkspaceInit:
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             _setup_repo_with_adapter(root)
-            with patch("cypilot.utils.files.find_project_root", return_value=root):
-                with patch("cypilot.utils.files._read_cypilot_var", return_value="cypilot"):
-                    with patch("cypilot.commands.workspace_init._write_inline", return_value=(0, {"status": "CREATED"})):
+            with patch("studio.utils.files.find_project_root", return_value=root):
+                with patch("studio.utils.files._read_cypilot_var", return_value="cypilot"):
+                    with patch("studio.commands.workspace_init._write_inline", return_value=(0, {"status": "CREATED"})):
                         rc = cmd_workspace_init(["--root", str(root), "--inline"])
                         assert rc == 0
 
     def test_inline_and_output_mutually_exclusive(self, capsys):
 
         with TemporaryDirectory() as tmpdir:
-            with patch("cypilot.utils.files.find_project_root", return_value=Path(tmpdir)):
+            with patch("studio.utils.files.find_project_root", return_value=Path(tmpdir)):
                 rc = cmd_workspace_init(["--inline", "--output", str(Path(tmpdir) / "ws.toml")])
                 assert rc == 1
                 out = capsys.readouterr().out
@@ -2101,8 +2101,8 @@ class TestCmdWorkspaceInit:
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             _setup_config_dir(root)
-            with patch("cypilot.utils.files._read_cypilot_var", return_value="cypilot"):
-                with patch("cypilot.utils.toml_utils.dump", side_effect=OSError("disk full")):
+            with patch("studio.utils.files._read_cypilot_var", return_value="cypilot"):
+                with patch("studio.utils.toml_utils.dump", side_effect=OSError("disk full")):
                     code, data = _write_inline(root, {"version": "1.0", "sources": {}})
                     assert code == 1
                     assert data["status"] == "ERROR"
@@ -2114,7 +2114,7 @@ class TestCmdWorkspaceInit:
             root = Path(tmpdir)
             out_file = root / "subdir" / "ws.toml"
             out_file.parent.mkdir(parents=True)
-            with patch("cypilot.utils.files.find_project_root", return_value=root):
+            with patch("studio.utils.files.find_project_root", return_value=root):
                 rc = cmd_workspace_init(["--root", str(root), "--output", str(out_file)])
                 assert rc == 0
                 out = capsys.readouterr().out
@@ -2133,8 +2133,8 @@ class TestCmdWorkspaceInitConflictGuard:
             mock_ws.is_inline = is_inline
             mock_ws.workspace_file = Path(tmpdir) / ".cf-constructor-workspace.toml"
             root = Path(tmpdir)
-            with patch("cypilot.utils.files.find_project_root", return_value=root):
-                with patch("cypilot.utils.workspace.find_workspace_config", return_value=(mock_ws, None)):
+            with patch("studio.utils.files.find_project_root", return_value=root):
+                with patch("studio.utils.workspace.find_workspace_config", return_value=(mock_ws, None)):
                     rc = cmd_workspace_init(["--root", str(root)] + argv)
                     out = capsys.readouterr().out
                     return rc, out
@@ -2175,7 +2175,7 @@ class TestCmdWorkspaceInitConflictGuard:
         """--dry-run MUST skip the conflict guard (returns before guard runs)."""
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            with patch("cypilot.utils.files.find_project_root", return_value=root):
+            with patch("studio.utils.files.find_project_root", return_value=root):
                 rc = cmd_workspace_init(["--root", str(root), "--dry-run"])
                 assert rc == 0
                 out = capsys.readouterr().out
@@ -2197,8 +2197,8 @@ class TestScanEdgeCases:
     def test_find_adapter_path_relative_to_valueerror(self):
 
         found = Path("/completely/different/path")
-        with patch("cypilot.utils.files._read_cypilot_var", return_value=None):
-            with patch("cypilot.utils.files.find_cypilot_directory", return_value=found):
+        with patch("studio.utils.files._read_cypilot_var", return_value=None):
+            with patch("studio.utils.files.find_cypilot_directory", return_value=found):
                 result = _find_adapter_path(Path("/some/entry"))
                 assert result == str(found)
 
@@ -2228,7 +2228,7 @@ class TestProbeSourceAdapter:
     def test_found_by_auto_discovery(self):
 
         mock_dir = Path("/fake/adapter")
-        with patch("cypilot.utils.files.find_cypilot_directory", return_value=mock_dir):
+        with patch("studio.utils.files.find_cypilot_directory", return_value=mock_dir):
             result = _probe_source_adapter(Path("/fake"), None)
             assert result == mock_dir
 
@@ -2238,13 +2238,13 @@ class TestProbeSourceAdapter:
             adapter = Path(tmpdir) / ".bootstrap"
             adapter.mkdir()
             (adapter / "config").mkdir()
-            with patch("cypilot.utils.files.find_cypilot_directory", return_value=None):
+            with patch("studio.utils.files.find_cypilot_directory", return_value=None):
                 result = _probe_source_adapter(Path(tmpdir), adapter)
                 assert result == adapter
 
     def test_none_found(self):
 
-        with patch("cypilot.utils.files.find_cypilot_directory", return_value=None):
+        with patch("studio.utils.files.find_cypilot_directory", return_value=None):
             result = _probe_source_adapter(Path("/fake"), None)
             assert result is None
 
@@ -2258,7 +2258,7 @@ class TestBuildSourceInfo:
             src_dir = Path(tmpdir) / "repo"
             src_dir.mkdir()
             ws_cfg = _make_docs_ws_cfg(tmpdir, src_dir)
-            with patch("cypilot.commands.workspace_info._probe_source_adapter", return_value=None):
+            with patch("studio.commands.workspace_info._probe_source_adapter", return_value=None):
                 info = _build_source_info(ws_cfg, "docs")
                 assert info["reachable"] is True
                 assert info["adapter_found"] is False
@@ -2292,7 +2292,7 @@ class TestEnrichWithArtifactCounts:
         mock_meta = MagicMock()
         mock_meta.iter_all_artifacts.return_value = [1, 2, 3]
         mock_meta.systems = ["sys1"]
-        with patch("cypilot.utils.artifacts_meta.load_artifacts_meta", return_value=(mock_meta, None)):
+        with patch("studio.utils.artifacts_meta.load_artifacts_meta", return_value=(mock_meta, None)):
             info: dict = {}
             _enrich_with_artifact_counts(info, Path("/fake"))
             assert info["artifact_count"] == 3
@@ -2300,7 +2300,7 @@ class TestEnrichWithArtifactCounts:
 
     def test_exception_ignored(self):
 
-        with patch("cypilot.utils.artifacts_meta.load_artifacts_meta", side_effect=RuntimeError("boom")):
+        with patch("studio.utils.artifacts_meta.load_artifacts_meta", side_effect=RuntimeError("boom")):
             info: dict = {}
             _enrich_with_artifact_counts(info, Path("/fake"))
             assert "artifact_count" not in info
@@ -2313,7 +2313,7 @@ class TestCmdWorkspaceInfo:
 
     def test_no_project_root(self, capsys):
 
-        with patch("cypilot.utils.files.find_project_root", return_value=None):
+        with patch("studio.utils.files.find_project_root", return_value=None):
             rc = cmd_workspace_info([])
             assert rc == 1
             out = capsys.readouterr().out
@@ -2322,8 +2322,8 @@ class TestCmdWorkspaceInfo:
     def test_workspace_error(self, capsys):
 
         with TemporaryDirectory() as tmpdir:
-            with patch("cypilot.utils.files.find_project_root", return_value=Path(tmpdir)):
-                with patch("cypilot.utils.workspace.find_workspace_config", return_value=(None, "parse error")):
+            with patch("studio.utils.files.find_project_root", return_value=Path(tmpdir)):
+                with patch("studio.utils.workspace.find_workspace_config", return_value=(None, "parse error")):
                     rc = cmd_workspace_info([])
                     assert rc == 1
                     out = capsys.readouterr().out
@@ -2332,8 +2332,8 @@ class TestCmdWorkspaceInfo:
     def test_no_workspace(self, capsys):
 
         with TemporaryDirectory() as tmpdir:
-            with patch("cypilot.utils.files.find_project_root", return_value=Path(tmpdir)):
-                with patch("cypilot.utils.workspace.find_workspace_config", return_value=(None, None)):
+            with patch("studio.utils.files.find_project_root", return_value=Path(tmpdir)):
+                with patch("studio.utils.workspace.find_workspace_config", return_value=(None, None)):
                     rc = cmd_workspace_info([])
                     assert rc == 1
                     out = capsys.readouterr().out
@@ -2375,7 +2375,7 @@ class TestCmdWorkspaceAddValidation:
 
     def test_no_project_root(self, capsys):
 
-        with patch("cypilot.utils.files.find_project_root", return_value=None):
+        with patch("studio.utils.files.find_project_root", return_value=None):
             rc = cmd_workspace_add(["--name", "test", "--path", "../repo"])
             assert rc == 1
             out = capsys.readouterr().out
@@ -2400,8 +2400,8 @@ class TestCmdWorkspaceAddStandalone:
     def test_add_to_standalone_success(self, capsys):
         with TemporaryDirectory() as tmpdir:
             ws_cfg = _make_standalone_ws_mock(tmpdir)
-            with patch("cypilot.utils.files.find_project_root", return_value=Path(tmpdir)):
-                with patch("cypilot.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
+            with patch("studio.utils.files.find_project_root", return_value=Path(tmpdir)):
+                with patch("studio.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
                     rc = cmd_workspace_add(["--name", "docs", "--path", "../docs", "--role", "artifacts"])
                     assert rc == 0
                     data = _parse_json(capsys)
@@ -2412,8 +2412,8 @@ class TestCmdWorkspaceAddStandalone:
         with TemporaryDirectory() as tmpdir:
             ws_cfg = _make_standalone_ws_mock(tmpdir)
             ws_cfg.save.return_value = "write failed"
-            with patch("cypilot.utils.files.find_project_root", return_value=Path(tmpdir)):
-                with patch("cypilot.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
+            with patch("studio.utils.files.find_project_root", return_value=Path(tmpdir)):
+                with patch("studio.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
                     rc = cmd_workspace_add(["--name", "x", "--path", "../x"])
                     assert rc == 1
                     out = capsys.readouterr().out
@@ -2422,8 +2422,8 @@ class TestCmdWorkspaceAddStandalone:
     def test_add_with_url_and_branch(self, capsys):
         with TemporaryDirectory() as tmpdir:
             ws_cfg = _make_standalone_ws_mock(tmpdir)
-            with patch("cypilot.utils.files.find_project_root", return_value=Path(tmpdir)):
-                with patch("cypilot.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
+            with patch("studio.utils.files.find_project_root", return_value=Path(tmpdir)):
+                with patch("studio.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
                     rc = cmd_workspace_add(["--name", "lib", "--url", "https://x.com/a/b.git", "--branch", "main"])
                     assert rc == 0
                     data = _parse_json(capsys)
@@ -2433,8 +2433,8 @@ class TestCmdWorkspaceAddStandalone:
     def test_no_workspace_found(self, capsys):
 
         with TemporaryDirectory() as tmpdir:
-            with patch("cypilot.utils.files.find_project_root", return_value=Path(tmpdir)):
-                with patch("cypilot.utils.workspace.find_workspace_config", return_value=(None, None)):
+            with patch("studio.utils.files.find_project_root", return_value=Path(tmpdir)):
+                with patch("studio.utils.workspace.find_workspace_config", return_value=(None, None)):
                     rc = cmd_workspace_add(["--name", "x", "--path", "../x"])
                     assert rc == 1
                     out = capsys.readouterr().out
@@ -2448,8 +2448,8 @@ class TestCmdWorkspaceAddInline:
     def test_inline_flag_with_existing_standalone_rejected(self, capsys):
         with TemporaryDirectory() as tmpdir:
             ws_cfg = _make_standalone_ws_mock(tmpdir)
-            with patch("cypilot.utils.files.find_project_root", return_value=Path(tmpdir)):
-                with patch("cypilot.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
+            with patch("studio.utils.files.find_project_root", return_value=Path(tmpdir)):
+                with patch("studio.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
                     rc = cmd_workspace_add(["--name", "x", "--path", "../x", "--inline"])
                     assert rc == 1
                     out = capsys.readouterr().out
@@ -2459,9 +2459,9 @@ class TestCmdWorkspaceAddInline:
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             _setup_config_dir(root)
-            with patch("cypilot.utils.files.find_project_root", return_value=root):
-                with patch("cypilot.utils.workspace.find_workspace_config", return_value=(None, None)):
-                    with patch("cypilot.utils.files._read_cypilot_var", return_value="cypilot"):
+            with patch("studio.utils.files.find_project_root", return_value=root):
+                with patch("studio.utils.workspace.find_workspace_config", return_value=(None, None)):
+                    with patch("studio.utils.files._read_cypilot_var", return_value="cypilot"):
                         rc = cmd_workspace_add(["--name", "docs", "--path", "../docs", "--inline"])
                         assert rc == 0
                         data = _parse_json(capsys)
@@ -2473,9 +2473,9 @@ class TestCmdWorkspaceAddInline:
             _setup_config_dir(root)
             ws_cfg = MagicMock()
             ws_cfg.is_inline = True
-            with patch("cypilot.utils.files.find_project_root", return_value=root):
-                with patch("cypilot.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
-                    with patch("cypilot.utils.files._read_cypilot_var", return_value="cypilot"):
+            with patch("studio.utils.files.find_project_root", return_value=root):
+                with patch("studio.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
+                    with patch("studio.utils.files._read_cypilot_var", return_value="cypilot"):
                         rc = cmd_workspace_add(["--name", "docs", "--path", "../docs"])
                         assert rc == 0
 
@@ -2484,8 +2484,8 @@ class TestCmdWorkspaceAddInline:
         with TemporaryDirectory() as tmpdir:
             ws_cfg = MagicMock()
             ws_cfg.is_inline = True
-            with patch("cypilot.utils.files.find_project_root", return_value=Path(tmpdir)):
-                with patch("cypilot.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
+            with patch("studio.utils.files.find_project_root", return_value=Path(tmpdir)):
+                with patch("studio.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
                     rc = cmd_workspace_add(["--name", "x", "--url", "https://x.com/a/b.git"])
                     assert rc == 1
                     out = capsys.readouterr().out
@@ -2508,7 +2508,7 @@ class TestAddToInline:
     def test_no_cypilot_var(self, capsys):
         args = _make_inline_args()
         with TemporaryDirectory() as tmpdir:
-            with patch("cypilot.utils.files._read_cypilot_var", return_value=None):
+            with patch("studio.utils.files._read_cypilot_var", return_value=None):
                 rc = _add_to_inline(args, Path(tmpdir))
                 assert rc == 1
                 out = capsys.readouterr().out
@@ -2520,7 +2520,7 @@ class TestAddToInline:
             root = Path(tmpdir)
             cd = _setup_config_dir(root)
             toml_utils.dump({"workspace": "../ws.toml"}, cd / "core.toml")
-            with patch("cypilot.utils.files._read_cypilot_var", return_value="cypilot"):
+            with patch("studio.utils.files._read_cypilot_var", return_value="cypilot"):
                 rc = _add_to_inline(args, root)
                 assert rc == 1
                 out = capsys.readouterr().out
@@ -2531,7 +2531,7 @@ class TestAddToInline:
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             _setup_config_dir(root)
-            with patch("cypilot.utils.files._read_cypilot_var", return_value="cypilot"):
+            with patch("studio.utils.files._read_cypilot_var", return_value="cypilot"):
                 rc = _add_to_inline(args, root)
                 assert rc == 0
                 data = _parse_json(capsys)
@@ -2543,7 +2543,7 @@ class TestAddToInline:
             root = Path(tmpdir)
             cd = _setup_config_dir(root)
             toml_utils.dump({"workspace": {"version": "1.0", "sources": {"docs": {"path": "../old"}}}}, cd / "core.toml")
-            with patch("cypilot.utils.files._read_cypilot_var", return_value="cypilot"):
+            with patch("studio.utils.files._read_cypilot_var", return_value="cypilot"):
                 rc = _add_to_inline(args, root)
                 assert rc == 1
                 data = _parse_json(capsys)
@@ -2557,7 +2557,7 @@ class TestAddToInline:
             root = Path(tmpdir)
             cd = _setup_config_dir(root)
             toml_utils.dump({"workspace": {"version": "1.0", "sources": {"docs": {"path": "../old"}}}}, cd / "core.toml")
-            with patch("cypilot.utils.files._read_cypilot_var", return_value="cypilot"):
+            with patch("studio.utils.files._read_cypilot_var", return_value="cypilot"):
                 rc = _add_to_inline(args, root)
                 assert rc == 0
                 data = _parse_json(capsys)
@@ -2571,7 +2571,7 @@ class TestAddToInline:
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             (root / "cypilot").mkdir()
-            with patch("cypilot.utils.files._read_cypilot_var", return_value="cypilot"):
+            with patch("studio.utils.files._read_cypilot_var", return_value="cypilot"):
                 rc = _add_to_inline(args, root)
                 assert rc == 0
 
@@ -2582,7 +2582,7 @@ class TestAddToInline:
             root = Path(tmpdir)
             cd = _setup_config_dir(root)
             toml_utils.dump({"workspace": {"version": "1.0", "sources": 42}}, cd / "core.toml")
-            with patch("cypilot.utils.files._read_cypilot_var", return_value="cypilot"):
+            with patch("studio.utils.files._read_cypilot_var", return_value="cypilot"):
                 rc = _add_to_inline(args, root)
                 assert rc == 1
                 out = capsys.readouterr().out
@@ -2596,7 +2596,7 @@ class TestAddToInline:
             root = Path(tmpdir)
             cd = _setup_config_dir(root)
             toml_utils.dump({"workspace": 42}, cd / "core.toml")
-            with patch("cypilot.utils.files._read_cypilot_var", return_value="cypilot"):
+            with patch("studio.utils.files._read_cypilot_var", return_value="cypilot"):
                 rc = _add_to_inline(args, root)
                 assert rc == 1
                 out = capsys.readouterr().out
@@ -2610,8 +2610,8 @@ class TestAddToInline:
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             _setup_config_dir(root)
-            with patch("cypilot.utils.files._read_cypilot_var", return_value="cypilot"):
-                with patch("cypilot.utils.toml_utils.dump", side_effect=OSError("disk full")):
+            with patch("studio.utils.files._read_cypilot_var", return_value="cypilot"):
+                with patch("studio.utils.toml_utils.dump", side_effect=OSError("disk full")):
                     rc = _add_to_inline(args, root)
                     assert rc == 1
                     out = capsys.readouterr().out
@@ -2882,8 +2882,8 @@ class TestCmdWorkspaceInfoEdgeCases:
             mock_meta = MagicMock()
             mock_meta.iter_all_artifacts.return_value = [1, 2]
             mock_meta.systems = ["s1"]
-            with patch("cypilot.commands.workspace_info._probe_source_adapter", return_value=adapter):
-                with patch("cypilot.utils.artifacts_meta.load_artifacts_meta", return_value=(mock_meta, None)):
+            with patch("studio.commands.workspace_info._probe_source_adapter", return_value=adapter):
+                with patch("studio.utils.artifacts_meta.load_artifacts_meta", return_value=(mock_meta, None)):
                     info = _build_source_info(ws_cfg, "docs")
                     assert info["adapter_found"] is True
                     assert info["artifact_count"] == 2
@@ -2891,7 +2891,7 @@ class TestCmdWorkspaceInfoEdgeCases:
     def test_enrich_with_artifact_counts_meta_error(self):
         """_enrich_with_artifact_counts handles meta error (err set)."""
 
-        with patch("cypilot.utils.artifacts_meta.load_artifacts_meta", return_value=(None, "parse error")):
+        with patch("studio.utils.artifacts_meta.load_artifacts_meta", return_value=(None, "parse error")):
             info: dict = {}
             _enrich_with_artifact_counts(info, Path("/fake"))
             assert "artifact_count" not in info
@@ -2923,7 +2923,7 @@ class TestSyncGitSource:
                     (Path(args[-1]) / ".git").mkdir(exist_ok=True)
                 return (0, "", "")
 
-            with patch("cypilot.utils.git_utils._run_git", side_effect=side_effect) as mock_git:
+            with patch("studio.utils.git_utils._run_git", side_effect=side_effect) as mock_git:
                 result = sync_git_source(src, resolve_cfg, tmp)
                 assert result["status"] == "synced"
                 # Verify fetch was called with origin and branch
@@ -2944,7 +2944,7 @@ class TestSyncGitSource:
             src = _make_git_source(branch=None)
             resolve_cfg = ResolveConfig()
 
-            with patch("cypilot.utils.git_utils._run_git") as mock_git:
+            with patch("studio.utils.git_utils._run_git") as mock_git:
                 mock_git.return_value = (0, "", "")
                 result = sync_git_source(src, resolve_cfg, tmp)
                 assert result["status"] == "synced"
@@ -2968,7 +2968,7 @@ class TestSyncGitSource:
                     return (0, "", "")
                 return (1, "", "network error")
 
-            with patch("cypilot.utils.git_utils._run_git", side_effect=side_effect):
+            with patch("studio.utils.git_utils._run_git", side_effect=side_effect):
                 result = sync_git_source(src, resolve_cfg, tmp)
                 assert result["status"] == "failed"
                 assert "fetch failed" in result["error"]
@@ -2992,7 +2992,7 @@ class TestSyncGitSource:
                     return (0, "", "")
                 return (1, "", "checkout error")
 
-            with patch("cypilot.utils.git_utils._run_git", side_effect=side_effect):
+            with patch("studio.utils.git_utils._run_git", side_effect=side_effect):
                 result = sync_git_source(src, resolve_cfg, tmp)
                 assert result["status"] == "failed"
                 assert "update failed" in result["error"]
@@ -3032,7 +3032,7 @@ class TestSyncGitSource:
                     (Path(args[-1]) / ".git").mkdir(exist_ok=True)
                 return (0, "", "")
 
-            with patch("cypilot.utils.git_utils._run_git", side_effect=side_effect):
+            with patch("studio.utils.git_utils._run_git", side_effect=side_effect):
                 result = sync_git_source(src, resolve_cfg, tmp)
                 assert result["status"] == "failed"
                 assert "dirty worktree" in result["error"]
@@ -3057,7 +3057,7 @@ class TestSyncGitSource:
                     (Path(args[-1]) / ".git").mkdir(exist_ok=True)
                 return (0, "", "")
 
-            with patch("cypilot.utils.git_utils._run_git", side_effect=side_effect):
+            with patch("studio.utils.git_utils._run_git", side_effect=side_effect):
                 result = sync_git_source(src, resolve_cfg, tmp, force=True)
                 assert result["status"] == "synced"
 
@@ -3081,7 +3081,7 @@ class TestSyncGitSource:
                     (Path(args[-1]) / ".git").mkdir(exist_ok=True)
                 return (0, "", "")
 
-            with patch("cypilot.utils.git_utils._run_git", side_effect=side_effect):
+            with patch("studio.utils.git_utils._run_git", side_effect=side_effect):
                 result = sync_git_source(src, resolve_cfg, tmp)
                 assert result["status"] == "synced"
 
@@ -3090,15 +3090,15 @@ class TestIsWorktreeDirty:
     """Tests for is_worktree_dirty helper."""
 
     def test_clean_worktree(self):
-        with patch("cypilot.utils.git_utils._run_git", return_value=(0, "", "")):
+        with patch("studio.utils.git_utils._run_git", return_value=(0, "", "")):
             assert not is_worktree_dirty(Path("/fake"))
 
     def test_dirty_worktree(self):
-        with patch("cypilot.utils.git_utils._run_git", return_value=(0, " M file.txt\n", "")):
+        with patch("studio.utils.git_utils._run_git", return_value=(0, " M file.txt\n", "")):
             assert is_worktree_dirty(Path("/fake"))
 
     def test_git_error_assumes_dirty(self):
-        with patch("cypilot.utils.git_utils._run_git", return_value=(1, "", "error")):
+        with patch("studio.utils.git_utils._run_git", return_value=(1, "", "error")):
             assert is_worktree_dirty(Path("/fake"))
 
 
@@ -3121,7 +3121,7 @@ class TestCmdWorkspaceSync:
     """Tests for cmd_workspace_sync command."""
 
     def test_no_project_root(self, capsys):
-        with patch("cypilot.utils.files.find_project_root", return_value=None):
+        with patch("studio.utils.files.find_project_root", return_value=None):
             rc = cmd_workspace_sync([])
         assert rc == 1
         data = _parse_json(capsys)
@@ -3129,8 +3129,8 @@ class TestCmdWorkspaceSync:
 
     def test_no_workspace(self, capsys):
         with TemporaryDirectory() as tmpdir:
-            with patch("cypilot.utils.files.find_project_root", return_value=Path(tmpdir)):
-                with patch("cypilot.utils.workspace.find_workspace_config", return_value=(None, None)):
+            with patch("studio.utils.files.find_project_root", return_value=Path(tmpdir)):
+                with patch("studio.utils.workspace.find_workspace_config", return_value=(None, None)):
                     rc = cmd_workspace_sync([])
         assert rc == 1
         data = _parse_json(capsys)
@@ -3139,8 +3139,8 @@ class TestCmdWorkspaceSync:
     def test_source_not_found(self, capsys):
         with TemporaryDirectory() as tmpdir:
             ws_cfg = _make_git_ws_cfg(tmpdir)
-            with patch("cypilot.utils.files.find_project_root", return_value=Path(tmpdir)):
-                with patch("cypilot.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
+            with patch("studio.utils.files.find_project_root", return_value=Path(tmpdir)):
+                with patch("studio.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
                     rc = cmd_workspace_sync(["--source", "nonexistent"])
         assert rc == 1
         data = _parse_json(capsys)
@@ -3151,8 +3151,8 @@ class TestCmdWorkspaceSync:
         with TemporaryDirectory() as tmpdir:
             sources = {"local": SourceEntry(name="local", path="../local", role="full")}
             ws_cfg = _make_git_ws_cfg(tmpdir, sources=sources)
-            with patch("cypilot.utils.files.find_project_root", return_value=Path(tmpdir)):
-                with patch("cypilot.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
+            with patch("studio.utils.files.find_project_root", return_value=Path(tmpdir)):
+                with patch("studio.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
                     rc = cmd_workspace_sync(["--source", "local"])
         assert rc == 1
         data = _parse_json(capsys)
@@ -3162,8 +3162,8 @@ class TestCmdWorkspaceSync:
         with TemporaryDirectory() as tmpdir:
             sources = {"local": SourceEntry(name="local", path="../local", role="full")}
             ws_cfg = _make_git_ws_cfg(tmpdir, sources=sources)
-            with patch("cypilot.utils.files.find_project_root", return_value=Path(tmpdir)):
-                with patch("cypilot.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
+            with patch("studio.utils.files.find_project_root", return_value=Path(tmpdir)):
+                with patch("studio.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
                     rc = cmd_workspace_sync([])
         assert rc == 0
         data = _parse_json(capsys)
@@ -3172,8 +3172,8 @@ class TestCmdWorkspaceSync:
     def test_dry_run(self, capsys):
         with TemporaryDirectory() as tmpdir:
             ws_cfg = _make_git_ws_cfg(tmpdir)
-            with patch("cypilot.utils.files.find_project_root", return_value=Path(tmpdir)):
-                with patch("cypilot.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
+            with patch("studio.utils.files.find_project_root", return_value=Path(tmpdir)):
+                with patch("studio.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
                     rc = cmd_workspace_sync(["--dry-run"])
         assert rc == 0
         data = _parse_json(capsys)
@@ -3183,9 +3183,9 @@ class TestCmdWorkspaceSync:
     def test_sync_success(self, capsys):
         with TemporaryDirectory() as tmpdir:
             ws_cfg = _make_git_ws_cfg(tmpdir)
-            with patch("cypilot.utils.files.find_project_root", return_value=Path(tmpdir)):
-                with patch("cypilot.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
-                    with patch("cypilot.utils.git_utils.sync_git_source", return_value={"status": "synced"}):
+            with patch("studio.utils.files.find_project_root", return_value=Path(tmpdir)):
+                with patch("studio.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
+                    with patch("studio.utils.git_utils.sync_git_source", return_value={"status": "synced"}):
                         rc = cmd_workspace_sync([])
         assert rc == 0
         data = _parse_json(capsys)
@@ -3196,9 +3196,9 @@ class TestCmdWorkspaceSync:
     def test_sync_failure(self, capsys):
         with TemporaryDirectory() as tmpdir:
             ws_cfg = _make_git_ws_cfg(tmpdir)
-            with patch("cypilot.utils.files.find_project_root", return_value=Path(tmpdir)):
-                with patch("cypilot.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
-                    with patch("cypilot.utils.git_utils.sync_git_source", return_value={"status": "failed", "error": "network error"}):
+            with patch("studio.utils.files.find_project_root", return_value=Path(tmpdir)):
+                with patch("studio.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
+                    with patch("studio.utils.git_utils.sync_git_source", return_value={"status": "failed", "error": "network error"}):
                         rc = cmd_workspace_sync([])
         assert rc == 2
         data = _parse_json(capsys)
@@ -3212,9 +3212,9 @@ class TestCmdWorkspaceSync:
                 "repo2": SourceEntry(name="repo2", path="", url="https://gitlab.com/t/b.git", branch="dev"),
             }
             ws_cfg = _make_git_ws_cfg(tmpdir, sources=sources)
-            with patch("cypilot.utils.files.find_project_root", return_value=Path(tmpdir)):
-                with patch("cypilot.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
-                    with patch("cypilot.utils.git_utils.sync_git_source", return_value={"status": "synced"}) as mock_sync:
+            with patch("studio.utils.files.find_project_root", return_value=Path(tmpdir)):
+                with patch("studio.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
+                    with patch("studio.utils.git_utils.sync_git_source", return_value={"status": "synced"}) as mock_sync:
                         rc = cmd_workspace_sync(["--source", "repo1"])
         assert rc == 0
         # Only one call to sync
@@ -3222,8 +3222,8 @@ class TestCmdWorkspaceSync:
 
     def test_workspace_error_message(self, capsys):
         with TemporaryDirectory() as tmpdir:
-            with patch("cypilot.utils.files.find_project_root", return_value=Path(tmpdir)):
-                with patch("cypilot.utils.workspace.find_workspace_config", return_value=(None, "parse error")):
+            with patch("studio.utils.files.find_project_root", return_value=Path(tmpdir)):
+                with patch("studio.utils.workspace.find_workspace_config", return_value=(None, "parse error")):
                     rc = cmd_workspace_sync([])
         assert rc == 1
         data = _parse_json(capsys)
@@ -3243,9 +3243,9 @@ class TestCmdWorkspaceSync:
                     return {"status": "synced"}
                 return {"status": "failed", "error": "network error"}
 
-            with patch("cypilot.utils.files.find_project_root", return_value=Path(tmpdir)):
-                with patch("cypilot.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
-                    with patch("cypilot.utils.git_utils.sync_git_source", side_effect=sync_side_effect):
+            with patch("studio.utils.files.find_project_root", return_value=Path(tmpdir)):
+                with patch("studio.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
+                    with patch("studio.utils.git_utils.sync_git_source", side_effect=sync_side_effect):
                         rc = cmd_workspace_sync([])
         assert rc == 0
         data = _parse_json(capsys)
@@ -3257,9 +3257,9 @@ class TestCmdWorkspaceSync:
         """The --force flag is forwarded to sync_git_source."""
         with TemporaryDirectory() as tmpdir:
             ws_cfg = _make_git_ws_cfg(tmpdir)
-            with patch("cypilot.utils.files.find_project_root", return_value=Path(tmpdir)):
-                with patch("cypilot.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
-                    with patch("cypilot.utils.git_utils.sync_git_source", return_value={"status": "synced"}) as mock_sync:
+            with patch("studio.utils.files.find_project_root", return_value=Path(tmpdir)):
+                with patch("studio.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
+                    with patch("studio.utils.git_utils.sync_git_source", return_value={"status": "synced"}) as mock_sync:
                         rc = cmd_workspace_sync(["--force"])
         assert rc == 0
         # Verify force=True was passed
@@ -3269,9 +3269,9 @@ class TestCmdWorkspaceSync:
         """Without --force, force=False is passed to sync_git_source."""
         with TemporaryDirectory() as tmpdir:
             ws_cfg = _make_git_ws_cfg(tmpdir)
-            with patch("cypilot.utils.files.find_project_root", return_value=Path(tmpdir)):
-                with patch("cypilot.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
-                    with patch("cypilot.utils.git_utils.sync_git_source", return_value={"status": "synced"}) as mock_sync:
+            with patch("studio.utils.files.find_project_root", return_value=Path(tmpdir)):
+                with patch("studio.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
+                    with patch("studio.utils.git_utils.sync_git_source", return_value={"status": "synced"}) as mock_sync:
                         rc = cmd_workspace_sync([])
         assert rc == 0
         assert mock_sync.call_args[1]["force"] is False
@@ -3346,7 +3346,7 @@ class TestHumanWorkspaceSync:
 # Tests for peek_git_source_path
 # ---------------------------------------------------------------------------
 
-from cypilot.utils.git_utils import peek_git_source_path
+from studio.utils.git_utils import peek_git_source_path
 
 
 class TestPeekGitSourcePath:
@@ -3397,7 +3397,7 @@ class TestPeekGitSourcePath:
 # Tests for _clone_if_missing edge cases
 # ---------------------------------------------------------------------------
 
-from cypilot.utils.git_utils import _clone_if_missing
+from studio.utils.git_utils import _clone_if_missing
 
 
 class TestCloneOrFetchEdgeCases:
@@ -3411,7 +3411,7 @@ class TestCloneOrFetchEdgeCases:
     def test_clone_failure_returns_none(self):
         with TemporaryDirectory() as tmpdir:
             target = Path(tmpdir) / "repo"
-            with patch("cypilot.utils.git_utils._run_git", return_value=(1, "", "clone error")):
+            with patch("studio.utils.git_utils._run_git", return_value=(1, "", "clone error")):
                 result = _clone_if_missing("https://gitlab.com/org/repo.git", target, "main")
                 assert result is None
 
@@ -3429,7 +3429,7 @@ class TestRunGitSuccess:
         mock_result.returncode = 0
         mock_result.stdout = "ok"
         mock_result.stderr = ""
-        with patch("cypilot.utils.git_utils.subprocess.run", return_value=mock_result):
+        with patch("studio.utils.git_utils.subprocess.run", return_value=mock_result):
             rc, out, err = _run_git(["status"])
             assert rc == 0
             assert out == "ok"
@@ -3453,7 +3453,7 @@ class TestSyncGitSourceNotRepo:
 
             src = _make_git_source()
             resolve_cfg = ResolveConfig()
-            with patch("cypilot.utils.git_utils.resolve_git_source", return_value=no_git_dir):
+            with patch("studio.utils.git_utils.resolve_git_source", return_value=no_git_dir):
                 result = sync_git_source(src, resolve_cfg, tmp)
                 assert result["status"] == "failed"
                 assert "not a git repo" in result["error"]

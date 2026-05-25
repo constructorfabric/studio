@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "sc
 
 
 def _write_toml(path: Path, data: dict) -> None:
-    from cypilot.utils import toml_utils
+    from studio.utils import toml_utils
     path.parent.mkdir(parents=True, exist_ok=True)
     toml_utils.dump(data, path)
 
@@ -57,7 +57,7 @@ def _init_project(root: Path, cache_dir: Path) -> Path:
     cleanup of the download dir doesn't destroy the cache).
     Strips GitHub source from core.toml so cmd_update uses cache fallback.
     """
-    from cypilot.cli import main
+    from studio.cli import main
     import tempfile
     (root / ".git").mkdir(exist_ok=True)
     # Copy kit source to a temp dir — init will delete kit_src.parent after install
@@ -68,9 +68,9 @@ def _init_project(root: Path, cache_dir: Path) -> Path:
     try:
         os.chdir(str(root))
         with (
-            patch("cypilot.commands.init.CACHE_DIR", cache_dir),
+            patch("studio.commands.init.CACHE_DIR", cache_dir),
             patch(
-                "cypilot.commands.kit._download_kit_from_github",
+                "studio.commands.kit._download_kit_from_github",
                 return_value=(kit_copy, "1.0.0"),
             ),
         ):
@@ -85,7 +85,7 @@ def _init_project(root: Path, cache_dir: Path) -> Path:
     core_toml = adapter / "config" / "core.toml"
     if core_toml.is_file():
         import tomllib
-        from cypilot.utils import toml_utils
+        from studio.utils import toml_utils
         with open(core_toml, "rb") as f:
             data = tomllib.load(f)
         for kit_data in data.get("kits", {}).values():
@@ -102,7 +102,7 @@ class TestUpdateHelpers(unittest.TestCase):
     """Unit tests for update.py helper functions."""
 
     def test_ensure_file_creates_when_missing(self):
-        from cypilot.commands.update import _ensure_file
+        from studio.commands.update import _ensure_file
         with TemporaryDirectory() as td:
             p = Path(td) / "new.md"
             actions = {}
@@ -111,7 +111,7 @@ class TestUpdateHelpers(unittest.TestCase):
             self.assertEqual(p.read_text(encoding="utf-8"), "content")
 
     def test_ensure_file_preserves_existing(self):
-        from cypilot.commands.update import _ensure_file
+        from studio.commands.update import _ensure_file
         with TemporaryDirectory() as td:
             p = Path(td) / "existing.md"
             p.write_text("old", encoding="utf-8")
@@ -121,24 +121,24 @@ class TestUpdateHelpers(unittest.TestCase):
             self.assertEqual(p.read_text(encoding="utf-8"), "old")
 
     def test_config_readme_content(self):
-        from cypilot.commands.update import _config_readme_content
+        from studio.commands.update import _config_readme_content
         content = _config_readme_content()
         self.assertIn("config", content.lower())
         self.assertIn("core.toml", content)
 
     def test_read_conf_version(self):
-        from cypilot.commands.update import _read_conf_version
+        from studio.commands.update import _read_conf_version
         with TemporaryDirectory() as td:
             p = Path(td) / "conf.toml"
             _write_toml(p, {"version": 3})
             self.assertEqual(_read_conf_version(p), 3)
 
     def test_read_conf_version_missing(self):
-        from cypilot.commands.update import _read_conf_version
+        from studio.commands.update import _read_conf_version
         self.assertEqual(_read_conf_version(Path("/nonexistent")), 0)
 
     def test_read_conf_version_no_key(self):
-        from cypilot.commands.update import _read_conf_version
+        from studio.commands.update import _read_conf_version
         with TemporaryDirectory() as td:
             p = Path(td) / "conf.toml"
             _write_toml(p, {"other": "data"})
@@ -146,8 +146,8 @@ class TestUpdateHelpers(unittest.TestCase):
 
     def test_remove_system_locks_full_read_modify_write_cycle(self):
         """Concurrent core.toml changes made before lock acquisition are preserved."""
-        from cypilot.commands.update import _remove_system_from_core_toml
-        from cypilot.utils import toml_utils
+        from studio.commands.update import _remove_system_from_core_toml
+        from studio.utils import toml_utils
 
         with TemporaryDirectory() as td:
             config_dir = Path(td)
@@ -184,7 +184,7 @@ class TestCmdUpdateErrors(unittest.TestCase):
     """Error handling in cmd_update."""
 
     def test_no_project_root(self):
-        from cypilot.commands.update import cmd_update
+        from studio.commands.update import cmd_update
         with TemporaryDirectory() as td:
             cwd = os.getcwd()
             try:
@@ -200,7 +200,7 @@ class TestCmdUpdateErrors(unittest.TestCase):
                 os.chdir(cwd)
 
     def test_no_cypilot_var(self):
-        from cypilot.commands.update import cmd_update
+        from studio.commands.update import cmd_update
         with TemporaryDirectory() as td:
             root = Path(td)
             (root / ".git").mkdir()
@@ -217,7 +217,7 @@ class TestCmdUpdateErrors(unittest.TestCase):
                 os.chdir(cwd)
 
     def test_cypilot_dir_missing(self):
-        from cypilot.commands.update import cmd_update
+        from studio.commands.update import cmd_update
         with TemporaryDirectory() as td:
             root = Path(td)
             (root / ".git").mkdir()
@@ -237,7 +237,7 @@ class TestCmdUpdateErrors(unittest.TestCase):
                 os.chdir(cwd)
 
     def test_no_cache(self):
-        from cypilot.commands.update import cmd_update
+        from studio.commands.update import cmd_update
         with TemporaryDirectory() as td:
             root = Path(td)
             (root / ".git").mkdir()
@@ -251,7 +251,7 @@ class TestCmdUpdateErrors(unittest.TestCase):
             try:
                 os.chdir(str(root))
                 fake_cache = Path(td) / "nonexistent"
-                with patch("cypilot.commands.update.CACHE_DIR", fake_cache):
+                with patch("studio.commands.update.CACHE_DIR", fake_cache):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
@@ -272,7 +272,7 @@ class TestCmdUpdateErrors(unittest.TestCase):
         download attempt that fails before update_kit is called).  The cache
         fallback path is used instead so update_kit is actually invoked.
         """
-        from cypilot.commands.update import cmd_update
+        from studio.commands.update import cmd_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -286,15 +286,15 @@ class TestCmdUpdateErrors(unittest.TestCase):
             try:
                 os.chdir(str(root))
                 with (
-                    patch("cypilot.commands.update.CACHE_DIR", cache),
+                    patch("studio.commands.update.CACHE_DIR", cache),
                     # Prevent source-migration step from adding github: source —
                     # otherwise the download fails before update_kit is reached.
                     patch(
-                        "cypilot.commands.update._migrate_kit_sources",
+                        "studio.commands.update._migrate_kit_sources",
                         return_value={},
                     ),
                     patch(
-                        "cypilot.commands.kit.update_kit",
+                        "studio.commands.kit.update_kit",
                         side_effect=TypeError("simulated unexpected error"),
                     ),
                 ):
@@ -347,7 +347,7 @@ class TestCmdUpdatePipeline(unittest.TestCase):
 
     def test_update_after_init(self):
         """Update on a freshly initialized project succeeds."""
-        from cypilot.commands.update import cmd_update
+        from studio.commands.update import cmd_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -359,10 +359,10 @@ class TestCmdUpdatePipeline(unittest.TestCase):
             try:
                 os.chdir(str(root))
                 with (
-                    patch("cypilot.commands.update.CACHE_DIR", cache),
+                    patch("studio.commands.update.CACHE_DIR", cache),
                     # _migrate_kit_sources performs a network fetch on init.py-stripped
                     # GitHub sources; isolate by patching to a no-op.
-                    patch("cypilot.commands.update._migrate_kit_sources", return_value={}),
+                    patch("studio.commands.update._migrate_kit_sources", return_value={}),
                 ):
                     buf = io.StringIO()
                     err = io.StringIO()
@@ -379,7 +379,7 @@ class TestCmdUpdatePipeline(unittest.TestCase):
 
     def test_update_dry_run(self):
         """--dry-run reports what would change without writing."""
-        from cypilot.commands.update import cmd_update
+        from studio.commands.update import cmd_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -390,7 +390,7 @@ class TestCmdUpdatePipeline(unittest.TestCase):
             cwd = os.getcwd()
             try:
                 os.chdir(str(root))
-                with patch("cypilot.commands.update.CACHE_DIR", cache):
+                with patch("studio.commands.update.CACHE_DIR", cache):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
@@ -403,7 +403,7 @@ class TestCmdUpdatePipeline(unittest.TestCase):
 
     def test_update_with_explicit_project_root(self):
         """--project-root flag works correctly."""
-        from cypilot.commands.update import cmd_update
+        from studio.commands.update import cmd_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -412,10 +412,10 @@ class TestCmdUpdatePipeline(unittest.TestCase):
             _init_project(root, cache)
 
             with (
-                patch("cypilot.commands.update.CACHE_DIR", cache),
+                patch("studio.commands.update.CACHE_DIR", cache),
                 # _migrate_kit_sources performs a network fetch on init.py-stripped
                 # GitHub sources; isolate by patching to a no-op.
-                patch("cypilot.commands.update._migrate_kit_sources", return_value={}),
+                patch("studio.commands.update._migrate_kit_sources", return_value={}),
             ):
                 buf = io.StringIO()
                 err = io.StringIO()
@@ -428,7 +428,7 @@ class TestCmdUpdatePipeline(unittest.TestCase):
 
     def test_update_version_drift(self):
         """When cache has newer kit version, update applies file-level diff."""
-        from cypilot.commands.update import cmd_update
+        from studio.commands.update import cmd_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -445,9 +445,9 @@ class TestCmdUpdatePipeline(unittest.TestCase):
             try:
                 os.chdir(str(root))
                 with (
-                    patch("cypilot.commands.update.CACHE_DIR", cache_v2),
+                    patch("studio.commands.update.CACHE_DIR", cache_v2),
                     patch(
-                        "cypilot.commands.kit._download_kit_from_github",
+                        "studio.commands.kit._download_kit_from_github",
                         return_value=(kit_src_v2, "2"),
                     ),
                 ):
@@ -467,7 +467,7 @@ class TestCmdUpdatePipeline(unittest.TestCase):
 
     def test_update_creates_missing_config_scaffold(self):
         """Update creates config/ scaffold files if missing."""
-        from cypilot.commands.update import cmd_update
+        from studio.commands.update import cmd_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -485,10 +485,10 @@ class TestCmdUpdatePipeline(unittest.TestCase):
             try:
                 os.chdir(str(root))
                 with (
-                    patch("cypilot.commands.update.CACHE_DIR", cache),
+                    patch("studio.commands.update.CACHE_DIR", cache),
                     # _migrate_kit_sources performs a network fetch on init.py-stripped
                     # GitHub sources; isolate by patching to a no-op.
-                    patch("cypilot.commands.update._migrate_kit_sources", return_value={}),
+                    patch("studio.commands.update._migrate_kit_sources", return_value={}),
                 ):
                     buf = io.StringIO()
                     err = io.StringIO()
@@ -505,7 +505,7 @@ class TestCmdUpdatePipeline(unittest.TestCase):
 
     def test_update_first_install_kit_content(self):
         """Update copies kit content on first install (no user kit yet)."""
-        from cypilot.commands.update import cmd_update
+        from studio.commands.update import cmd_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -523,9 +523,9 @@ class TestCmdUpdatePipeline(unittest.TestCase):
             try:
                 os.chdir(str(root))
                 with (
-                    patch("cypilot.commands.update.CACHE_DIR", cache),
+                    patch("studio.commands.update.CACHE_DIR", cache),
                     patch(
-                        "cypilot.commands.kit._download_kit_from_github",
+                        "studio.commands.kit._download_kit_from_github",
                         return_value=(kit_src, "1"),
                     ),
                 ):
@@ -550,7 +550,7 @@ class TestUpdateHelperExceptions(unittest.TestCase):
     """Cover exception paths in _read_conf_version."""
 
     def test_read_conf_version_corrupt_toml(self):
-        from cypilot.commands.update import _read_conf_version
+        from studio.commands.update import _read_conf_version
         with TemporaryDirectory() as td:
             p = Path(td) / "conf.toml"
             p.write_text("{{corrupt", encoding="utf-8")
@@ -559,7 +559,7 @@ class TestUpdateHelperExceptions(unittest.TestCase):
 
     def test_update_non_dir_in_kits_cache_skipped(self):
         """Files (non-dirs) in kits cache dir are skipped."""
-        from cypilot.commands.update import cmd_update
+        from studio.commands.update import cmd_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -573,10 +573,10 @@ class TestUpdateHelperExceptions(unittest.TestCase):
             try:
                 os.chdir(str(root))
                 with (
-                    patch("cypilot.commands.update.CACHE_DIR", cache),
+                    patch("studio.commands.update.CACHE_DIR", cache),
                     # _migrate_kit_sources performs a network fetch on init.py-stripped
                     # GitHub sources; isolate by patching to a no-op.
-                    patch("cypilot.commands.update._migrate_kit_sources", return_value={}),
+                    patch("studio.commands.update._migrate_kit_sources", return_value={}),
                 ):
                     buf = io.StringIO()
                     err = io.StringIO()
@@ -595,7 +595,7 @@ class TestReadCoreWhatsnew(unittest.TestCase):
     """Tests for reading standalone whatsnew.toml."""
 
     def test_read_valid(self):
-        from cypilot.utils.whatsnew import read_whatsnew as _read_core_whatsnew
+        from studio.utils.whatsnew import read_whatsnew as _read_core_whatsnew
         with TemporaryDirectory() as td:
             p = Path(td) / "whatsnew.toml"
             p.write_text(
@@ -610,18 +610,18 @@ class TestReadCoreWhatsnew(unittest.TestCase):
             self.assertEqual(result["v3.0.5-beta"]["details"], "D2")
 
     def test_read_missing_file(self):
-        from cypilot.utils.whatsnew import read_whatsnew as _read_core_whatsnew
+        from studio.utils.whatsnew import read_whatsnew as _read_core_whatsnew
         self.assertEqual(_read_core_whatsnew(Path("/nonexistent/whatsnew.toml")), {})
 
     def test_read_corrupt_file(self):
-        from cypilot.utils.whatsnew import read_whatsnew as _read_core_whatsnew
+        from studio.utils.whatsnew import read_whatsnew as _read_core_whatsnew
         with TemporaryDirectory() as td:
             p = Path(td) / "whatsnew.toml"
             p.write_text("{{invalid", encoding="utf-8")
             self.assertEqual(_read_core_whatsnew(p), {})
 
     def test_read_skips_non_dict_entries(self):
-        from cypilot.utils.whatsnew import read_whatsnew as _read_core_whatsnew
+        from studio.utils.whatsnew import read_whatsnew as _read_core_whatsnew
         with TemporaryDirectory() as td:
             p = Path(td) / "whatsnew.toml"
             p.write_text(
@@ -635,7 +635,7 @@ class TestReadCoreWhatsnew(unittest.TestCase):
 
     def test_read_whatsnew_section_format(self):
         """Test reading whatsnew.toml with [whatsnew."X.Y.Z"] format."""
-        from cypilot.utils.whatsnew import read_whatsnew
+        from studio.utils.whatsnew import read_whatsnew
         with TemporaryDirectory() as td:
             p = Path(td) / "whatsnew.toml"
             p.write_text(
@@ -655,54 +655,54 @@ class TestWhatsnewVersionParsing(unittest.TestCase):
     """Tests for semver parsing and comparison in whatsnew module."""
 
     def test_parse_semver_basic(self):
-        from cypilot.utils.whatsnew import parse_semver
+        from studio.utils.whatsnew import parse_semver
         self.assertEqual(parse_semver("1.2.3"), (1, 2, 3, 1))
         self.assertEqual(parse_semver("0.0.1"), (0, 0, 1, 1))
         self.assertEqual(parse_semver("10.20.30"), (10, 20, 30, 1))
 
     def test_parse_semver_with_v_prefix(self):
-        from cypilot.utils.whatsnew import parse_semver
+        from studio.utils.whatsnew import parse_semver
         self.assertEqual(parse_semver("v1.2.3"), (1, 2, 3, 1))
         self.assertEqual(parse_semver("v0.1.0"), (0, 1, 0, 1))
 
     def test_parse_semver_with_whatsnew_prefix(self):
-        from cypilot.utils.whatsnew import parse_semver
+        from studio.utils.whatsnew import parse_semver
         self.assertEqual(parse_semver("whatsnew.1.2.3"), (1, 2, 3, 1))
 
     def test_parse_semver_partial(self):
-        from cypilot.utils.whatsnew import parse_semver
+        from studio.utils.whatsnew import parse_semver
         self.assertEqual(parse_semver("1.2"), (1, 2, 0, 1))
         self.assertEqual(parse_semver("1"), (1, 0, 0, 1))
 
     def test_parse_semver_prerelease_does_not_collapse_to_zero(self):
-        from cypilot.utils.whatsnew import parse_semver
+        from studio.utils.whatsnew import parse_semver
         self.assertNotEqual(parse_semver("v3.0.4-beta"), (0, 0, 0))
 
     def test_parse_semver_invalid(self):
-        from cypilot.utils.whatsnew import parse_semver
+        from studio.utils.whatsnew import parse_semver
         self.assertEqual(parse_semver("invalid"), (0, 0, 0))
         self.assertEqual(parse_semver("a.b.c"), (0, 0, 0))
         self.assertEqual(parse_semver(""), (0, 0, 0))
 
     def test_compare_versions_less_than(self):
-        from cypilot.utils.whatsnew import compare_versions
+        from studio.utils.whatsnew import compare_versions
         self.assertEqual(compare_versions("1.0.0", "2.0.0"), -1)
         self.assertEqual(compare_versions("1.0.0", "1.1.0"), -1)
         self.assertEqual(compare_versions("1.0.0", "1.0.1"), -1)
 
     def test_compare_versions_greater_than(self):
-        from cypilot.utils.whatsnew import compare_versions
+        from studio.utils.whatsnew import compare_versions
         self.assertEqual(compare_versions("2.0.0", "1.0.0"), 1)
         self.assertEqual(compare_versions("1.1.0", "1.0.0"), 1)
         self.assertEqual(compare_versions("1.0.1", "1.0.0"), 1)
 
     def test_compare_versions_equal(self):
-        from cypilot.utils.whatsnew import compare_versions
+        from studio.utils.whatsnew import compare_versions
         self.assertEqual(compare_versions("1.0.0", "1.0.0"), 0)
         self.assertEqual(compare_versions("v1.0.0", "1.0.0"), 0)
 
     def test_compare_versions_prerelease_sorts_before_release(self):
-        from cypilot.utils.whatsnew import compare_versions
+        from studio.utils.whatsnew import compare_versions
         self.assertEqual(compare_versions("v3.0.4-beta", "v3.0.4"), -1)
 
 
@@ -710,14 +710,14 @@ class TestShowKitWhatsnew(unittest.TestCase):
     """Tests for kit-specific whatsnew display."""
 
     def test_no_whatsnew_file_returns_true(self):
-        from cypilot.utils.whatsnew import show_kit_whatsnew
+        from studio.utils.whatsnew import show_kit_whatsnew
         with TemporaryDirectory() as td:
             kit_dir = Path(td)
             result = show_kit_whatsnew(kit_dir, "1.0.0", "test-kit", interactive=False)
             self.assertTrue(result)
 
     def test_no_new_entries_returns_true(self):
-        from cypilot.utils.whatsnew import show_kit_whatsnew
+        from studio.utils.whatsnew import show_kit_whatsnew
         with TemporaryDirectory() as td:
             kit_dir = Path(td)
             (kit_dir / "whatsnew.toml").write_text(
@@ -729,7 +729,7 @@ class TestShowKitWhatsnew(unittest.TestCase):
             self.assertTrue(result)
 
     def test_shows_new_entries(self):
-        from cypilot.utils.whatsnew import show_kit_whatsnew
+        from studio.utils.whatsnew import show_kit_whatsnew
         with TemporaryDirectory() as td:
             kit_dir = Path(td)
             (kit_dir / "whatsnew.toml").write_text(
@@ -748,7 +748,7 @@ class TestShowKitWhatsnew(unittest.TestCase):
 
     def test_tty_ansi_formatting_plain_summary(self):
         """Test ANSI formatting when summary has no markdown."""
-        from cypilot.utils.whatsnew import show_kit_whatsnew
+        from studio.utils.whatsnew import show_kit_whatsnew
         with TemporaryDirectory() as td:
             kit_dir = Path(td)
             (kit_dir / "whatsnew.toml").write_text(
@@ -756,7 +756,7 @@ class TestShowKitWhatsnew(unittest.TestCase):
                 encoding="utf-8",
             )
             err = io.StringIO()
-            with patch("cypilot.utils.whatsnew.stderr_supports_ansi", return_value=True):
+            with patch("studio.utils.whatsnew.stderr_supports_ansi", return_value=True):
                 with redirect_stderr(err):
                     show_kit_whatsnew(kit_dir, "1.0.0", "test-kit", interactive=False)
             output = err.getvalue()
@@ -764,7 +764,7 @@ class TestShowKitWhatsnew(unittest.TestCase):
             self.assertIn("\033[1m1.1.0: Plain summary\033[0m", output)
 
     def test_filters_old_versions(self):
-        from cypilot.utils.whatsnew import show_kit_whatsnew
+        from studio.utils.whatsnew import show_kit_whatsnew
         with TemporaryDirectory() as td:
             kit_dir = Path(td)
             (kit_dir / "whatsnew.toml").write_text(
@@ -780,7 +780,7 @@ class TestShowKitWhatsnew(unittest.TestCase):
             self.assertIn("New", output)
 
     def test_missing_version_treated_as_zero(self):
-        from cypilot.utils.whatsnew import show_kit_whatsnew
+        from studio.utils.whatsnew import show_kit_whatsnew
         with TemporaryDirectory() as td:
             kit_dir = Path(td)
             (kit_dir / "whatsnew.toml").write_text(
@@ -795,7 +795,7 @@ class TestShowKitWhatsnew(unittest.TestCase):
             self.assertIn("Initial", output)
 
     def test_interactive_q_aborts(self):
-        from cypilot.utils.whatsnew import show_kit_whatsnew
+        from studio.utils.whatsnew import show_kit_whatsnew
         with TemporaryDirectory() as td:
             kit_dir = Path(td)
             (kit_dir / "whatsnew.toml").write_text(
@@ -808,7 +808,7 @@ class TestShowKitWhatsnew(unittest.TestCase):
             self.assertFalse(result)
 
     def test_interactive_enter_continues(self):
-        from cypilot.utils.whatsnew import show_kit_whatsnew
+        from studio.utils.whatsnew import show_kit_whatsnew
         with TemporaryDirectory() as td:
             kit_dir = Path(td)
             (kit_dir / "whatsnew.toml").write_text(
@@ -825,7 +825,7 @@ class TestShowCoreWhatsnew(unittest.TestCase):
     """Tests for core whatsnew display and prompting."""
 
     def test_non_interactive_shows_missing(self):
-        from cypilot.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
+        from studio.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
         ref = {
             "v3.0.4": {"summary": "A", "details": "- d1"},
             "v3.0.5": {"summary": "B", "details": "- d2"},
@@ -840,7 +840,7 @@ class TestShowCoreWhatsnew(unittest.TestCase):
         self.assertIn("B", output)
 
     def test_non_interactive_renders_bold_markdown_in_summary(self):
-        from cypilot.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
+        from studio.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
         ref = {
             "v3.2.0-beta": {
                 "summary": "Prompt **compactification** release",
@@ -857,7 +857,7 @@ class TestShowCoreWhatsnew(unittest.TestCase):
         self.assertNotIn("\033[1mcompactification\033[0m", output)
 
     def test_non_interactive_renders_bold_markdown_in_details(self):
-        from cypilot.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
+        from studio.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
         ref = {
             "v3.2.0-beta": {
                 "summary": "Prompt compactification",
@@ -874,7 +874,7 @@ class TestShowCoreWhatsnew(unittest.TestCase):
         self.assertNotIn("\033[1mAggressive\033[0m", output)
 
     def test_non_interactive_renders_inline_code_in_summary(self):
-        from cypilot.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
+        from studio.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
         ref = {
             "v3.2.0-beta": {
                 "summary": "Use `workflows/analyze.md` for compact analysis",
@@ -891,7 +891,7 @@ class TestShowCoreWhatsnew(unittest.TestCase):
         self.assertNotIn("\033[36mworkflows/analyze.md\033[0m", output)
 
     def test_non_interactive_renders_inline_code_in_details(self):
-        from cypilot.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
+        from studio.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
         ref = {
             "v3.2.0-beta": {
                 "summary": "Prompt compactification",
@@ -908,7 +908,7 @@ class TestShowCoreWhatsnew(unittest.TestCase):
         self.assertNotIn("\033[36mskills/cypilot/SKILL.md\033[0m", output)
 
     def test_non_interactive_tty_renders_ansi_markup(self):
-        from cypilot.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
+        from studio.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
         ref = {
             "v3.2.0-beta": {
                 "summary": "Prompt **compactification** release in `workflows/analyze.md`",
@@ -916,7 +916,7 @@ class TestShowCoreWhatsnew(unittest.TestCase):
             },
         }
         err = io.StringIO()
-        with patch("cypilot.utils.whatsnew.stderr_supports_ansi", return_value=True):
+        with patch("studio.utils.whatsnew.stderr_supports_ansi", return_value=True):
             with redirect_stderr(err):
                 result = _show_core_whatsnew(ref, {}, interactive=False)
         self.assertTrue(result)
@@ -925,7 +925,7 @@ class TestShowCoreWhatsnew(unittest.TestCase):
         self.assertIn("\033[36mworkflows/analyze.md\033[0m", output)
 
     def test_non_interactive_strips_control_chars_from_summary_and_details(self):
-        from cypilot.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
+        from studio.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
         ref = {
             "v3.2.0\x1b[2J": {
                 "summary": "Safe\x1b[31m summary",
@@ -945,7 +945,7 @@ class TestShowCoreWhatsnew(unittest.TestCase):
 
     def test_filters_by_core_keys(self):
         """Only entries missing from .core/ whatsnew are shown."""
-        from cypilot.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
+        from studio.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
         ref = {
             "v3.0.4": {"summary": "Old", "details": ""},
             "v3.0.5": {"summary": "New", "details": ""},
@@ -959,7 +959,7 @@ class TestShowCoreWhatsnew(unittest.TestCase):
         self.assertIn("New", output)
 
     def test_missing_entries_are_sorted_semantically(self):
-        from cypilot.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
+        from studio.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
 
         ref = {
             "1.10.0": {"summary": "Tenth minor", "details": ""},
@@ -972,30 +972,30 @@ class TestShowCoreWhatsnew(unittest.TestCase):
         self.assertLess(output.index("1.9.0"), output.index("1.10.0"))
 
     def test_all_seen_returns_true(self):
-        from cypilot.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
+        from studio.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
         same = {"v1": {"summary": "X", "details": ""}}
         self.assertTrue(_show_core_whatsnew(same, same, interactive=True))
 
     def test_empty_ref_returns_true(self):
-        from cypilot.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
+        from studio.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
         self.assertTrue(_show_core_whatsnew({}, {}, interactive=True))
 
     def test_enter_continues(self):
-        from cypilot.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
+        from studio.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
         ref = {"v1": {"summary": "X", "details": ""}}
         err = io.StringIO()
         with patch("builtins.input", return_value=""), redirect_stderr(err):
             self.assertTrue(_show_core_whatsnew(ref, {}, interactive=True))
 
     def test_q_aborts(self):
-        from cypilot.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
+        from studio.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
         ref = {"v1": {"summary": "X", "details": ""}}
         err = io.StringIO()
         with patch("builtins.input", return_value="q"), redirect_stderr(err):
             self.assertFalse(_show_core_whatsnew(ref, {}, interactive=True))
 
     def test_eof_aborts(self):
-        from cypilot.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
+        from studio.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
         ref = {"v1": {"summary": "X", "details": ""}}
         err = io.StringIO()
         with patch("builtins.input", side_effect=EOFError), redirect_stderr(err):
@@ -1003,7 +1003,7 @@ class TestShowCoreWhatsnew(unittest.TestCase):
 
     def test_non_interactive_auto_continues(self):
         """Non-interactive mode (CI/non-TTY) must auto-continue without blocking."""
-        from cypilot.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
+        from studio.utils.whatsnew import show_core_whatsnew as _show_core_whatsnew
         ref = {"v1": {"summary": "X", "details": ""}}
         err = io.StringIO()
         with redirect_stderr(err):
@@ -1015,7 +1015,7 @@ class TestCmdUpdateWhatsnew(unittest.TestCase):
 
     def test_update_shows_whatsnew_and_copies_to_core(self):
         """Update with new whatsnew entries shows them and copies to .core/."""
-        from cypilot.commands.update import cmd_update
+        from studio.commands.update import cmd_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -1032,10 +1032,10 @@ class TestCmdUpdateWhatsnew(unittest.TestCase):
             try:
                 os.chdir(str(root))
                 with (
-                    patch("cypilot.commands.update.CACHE_DIR", cache),
+                    patch("studio.commands.update.CACHE_DIR", cache),
                     # _migrate_kit_sources performs a network fetch on init.py-stripped
                     # GitHub sources; isolate by patching to a no-op.
-                    patch("cypilot.commands.update._migrate_kit_sources", return_value={}),
+                    patch("studio.commands.update._migrate_kit_sources", return_value={}),
                 ):
                     buf = io.StringIO()
                     err = io.StringIO()
@@ -1052,7 +1052,7 @@ class TestCmdUpdateWhatsnew(unittest.TestCase):
 
     def test_update_second_run_no_whatsnew(self):
         """Second update with same cache → no whatsnew shown (already in .core/)."""
-        from cypilot.commands.update import cmd_update
+        from studio.commands.update import cmd_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -1071,8 +1071,8 @@ class TestCmdUpdateWhatsnew(unittest.TestCase):
                 # _migrate_kit_sources performs a network fetch on init.py-stripped
                 # GitHub sources; isolate by patching to a no-op.
                 with (
-                    patch("cypilot.commands.update.CACHE_DIR", cache),
-                    patch("cypilot.commands.update._migrate_kit_sources", return_value={}),
+                    patch("studio.commands.update.CACHE_DIR", cache),
+                    patch("studio.commands.update._migrate_kit_sources", return_value={}),
                 ):
                     buf = io.StringIO()
                     err = io.StringIO()
@@ -1082,8 +1082,8 @@ class TestCmdUpdateWhatsnew(unittest.TestCase):
 
                 # Second update — whatsnew already in .core/, nothing to show
                 with (
-                    patch("cypilot.commands.update.CACHE_DIR", cache),
-                    patch("cypilot.commands.update._migrate_kit_sources", return_value={}),
+                    patch("studio.commands.update.CACHE_DIR", cache),
+                    patch("studio.commands.update._migrate_kit_sources", return_value={}),
                 ):
                     buf2 = io.StringIO()
                     err2 = io.StringIO()
@@ -1096,7 +1096,7 @@ class TestCmdUpdateWhatsnew(unittest.TestCase):
 
     def test_update_whatsnew_abort(self):
         """User types 'q' at whatsnew prompt → update aborted."""
-        from cypilot.commands.update import cmd_update
+        from studio.commands.update import cmd_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -1111,7 +1111,7 @@ class TestCmdUpdateWhatsnew(unittest.TestCase):
             cwd = os.getcwd()
             try:
                 os.chdir(str(root))
-                with patch("cypilot.commands.update.CACHE_DIR", cache), \
+                with patch("studio.commands.update.CACHE_DIR", cache), \
                      patch("builtins.input", return_value="q"), \
                      patch("sys.stdin") as mock_stdin:
                     mock_stdin.isatty.return_value = True
@@ -1130,7 +1130,7 @@ class TestCmdUpdateWhatsnew(unittest.TestCase):
 
     def test_update_dry_run_skips_whatsnew(self):
         """--dry-run skips whatsnew display entirely."""
-        from cypilot.commands.update import cmd_update
+        from studio.commands.update import cmd_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -1145,7 +1145,7 @@ class TestCmdUpdateWhatsnew(unittest.TestCase):
             cwd = os.getcwd()
             try:
                 os.chdir(str(root))
-                with patch("cypilot.commands.update.CACHE_DIR", cache):
+                with patch("studio.commands.update.CACHE_DIR", cache):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
@@ -1157,7 +1157,7 @@ class TestCmdUpdateWhatsnew(unittest.TestCase):
 
     def test_update_shows_kit_whatsnew(self):
         """Main cmd_update flow shows kit whatsnew before updating the kit."""
-        from cypilot.commands.update import cmd_update
+        from studio.commands.update import cmd_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -1175,17 +1175,17 @@ class TestCmdUpdateWhatsnew(unittest.TestCase):
             cwd = os.getcwd()
             try:
                 os.chdir(str(root))
-                with patch("cypilot.commands.update.CACHE_DIR", cache_v2), \
+                with patch("studio.commands.update.CACHE_DIR", cache_v2), \
                      patch(
-                         "cypilot.commands.kit._read_kits_from_core_toml",
+                         "studio.commands.kit._read_kits_from_core_toml",
                          return_value={"sdlc": {"path": "config/kits/sdlc"}},
                      ), \
-                     patch("cypilot.commands.kit._read_kit_version_from_core", return_value="1"), \
+                     patch("studio.commands.kit._read_kit_version_from_core", return_value="1"), \
                      patch(
-                         "cypilot.commands.kit.update_kit",
+                         "studio.commands.kit.update_kit",
                          return_value={"version": {"status": "current"}, "gen": {"files_written": 0}},
                      ) as mock_update, \
-                     patch("cypilot.commands.update.show_kit_whatsnew", return_value=True) as mock_show:
+                     patch("studio.commands.update.show_kit_whatsnew", return_value=True) as mock_show:
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
@@ -1198,7 +1198,7 @@ class TestCmdUpdateWhatsnew(unittest.TestCase):
 
     def test_update_kit_whatsnew_abort_skips_kit_update(self):
         """Aborting kit whatsnew in cmd_update skips that kit update."""
-        from cypilot.commands.update import cmd_update
+        from studio.commands.update import cmd_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -1221,14 +1221,14 @@ class TestCmdUpdateWhatsnew(unittest.TestCase):
             cwd = os.getcwd()
             try:
                 os.chdir(str(root))
-                with patch("cypilot.commands.update.CACHE_DIR", cache_v2), \
+                with patch("studio.commands.update.CACHE_DIR", cache_v2), \
                      patch(
-                         "cypilot.commands.kit._read_kits_from_core_toml",
+                         "studio.commands.kit._read_kits_from_core_toml",
                          return_value={"sdlc": {"path": "config/kits/sdlc"}},
                      ), \
-                     patch("cypilot.commands.kit._read_kit_version_from_core", return_value="1"), \
-                     patch("cypilot.commands.kit.update_kit") as mock_update, \
-                     patch("cypilot.commands.update.show_kit_whatsnew", return_value=False), \
+                     patch("studio.commands.kit._read_kit_version_from_core", return_value="1"), \
+                     patch("studio.commands.kit.update_kit") as mock_update, \
+                     patch("studio.commands.update.show_kit_whatsnew", return_value=False), \
                      patch("sys.stdin") as mock_stdin:
                     mock_stdin.isatty.return_value = True
                     buf = io.StringIO()
@@ -1266,7 +1266,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
 
     def test_no_changes_returns_empty(self):
         """When copy_results are all 'skipped', no agents are regenerated."""
-        from cypilot.commands.update import _maybe_regenerate_agents
+        from studio.commands.update import _maybe_regenerate_agents
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -1279,7 +1279,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
 
     def test_core_updated_regenerates_existing_agents(self):
         """When core is updated, agents with existing Cypilot-specific files are regenerated."""
-        from cypilot.commands.update import _maybe_regenerate_agents
+        from studio.commands.update import _maybe_regenerate_agents
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -1304,7 +1304,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
 
     def test_kit_migrated_triggers_regen(self):
         """When a kit is migrated, agents are regenerated."""
-        from cypilot.commands.update import _maybe_regenerate_agents
+        from studio.commands.update import _maybe_regenerate_agents
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -1326,7 +1326,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
 
     def test_no_existing_agent_files_skips(self):
         """When no agent output files exist on disk, none are regenerated."""
-        from cypilot.commands.update import _maybe_regenerate_agents
+        from studio.commands.update import _maybe_regenerate_agents
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -1344,7 +1344,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
 
     def test_cmd_update_pipeline_regenerates_agents(self):
         """Full cmd_update pipeline: agents are regenerated when core updates."""
-        from cypilot.commands.update import cmd_update
+        from studio.commands.update import cmd_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -1370,10 +1370,10 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
             try:
                 os.chdir(str(root))
                 with (
-                    patch("cypilot.commands.update.CACHE_DIR", cache),
+                    patch("studio.commands.update.CACHE_DIR", cache),
                     # _migrate_kit_sources performs a network fetch on init.py-stripped
                     # GitHub sources; isolate by patching to a no-op.
-                    patch("cypilot.commands.update._migrate_kit_sources", return_value={}),
+                    patch("studio.commands.update._migrate_kit_sources", return_value={}),
                 ):
                     buf = io.StringIO()
                     err = io.StringIO()
@@ -1388,7 +1388,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
 
     def test_only_installed_agents_regenerated(self):
         """Only agents with Cypilot-specific files are regenerated, others skipped."""
-        from cypilot.commands.update import _maybe_regenerate_agents
+        from studio.commands.update import _maybe_regenerate_agents
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -1417,7 +1417,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
 
     def test_shared_agents_skills_does_not_trigger_all(self):
         """Shared .agents/skills/cypilot/SKILL.md triggers only OpenAI (legacy compat), not others."""
-        from cypilot.commands.update import _maybe_regenerate_agents
+        from studio.commands.update import _maybe_regenerate_agents
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -1444,7 +1444,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
 
     def test_unrelated_cursor_commands_does_not_trigger(self):
         """Unrelated .cursor/commands/other.md must NOT trigger Cursor regeneration."""
-        from cypilot.commands.update import _maybe_regenerate_agents
+        from studio.commands.update import _maybe_regenerate_agents
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -1464,7 +1464,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
 
     def test_unrelated_github_prompts_does_not_trigger(self):
         """Unrelated .github/prompts/unrelated.md must NOT trigger Copilot regeneration."""
-        from cypilot.commands.update import _maybe_regenerate_agents
+        from studio.commands.update import _maybe_regenerate_agents
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -1483,7 +1483,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
 
     def test_unrelated_windsurf_workflows_does_not_trigger(self):
         """Unrelated .windsurf/workflows/other.md must NOT trigger Windsurf regeneration."""
-        from cypilot.commands.update import _maybe_regenerate_agents
+        from studio.commands.update import _maybe_regenerate_agents
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -1502,7 +1502,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
 
     def test_legacy_openai_with_shared_skill_only(self):
         """Legacy OpenAI install with only .agents/skills/cypilot/SKILL.md is detected."""
-        from cypilot.commands.update import _maybe_regenerate_agents
+        from studio.commands.update import _maybe_regenerate_agents
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -1522,7 +1522,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
 
     def test_shared_skill_with_cursor_does_not_trigger_openai(self):
         """When cursor marker exists alongside shared skill, OpenAI must NOT be detected."""
-        from cypilot.commands.update import _maybe_regenerate_agents
+        from studio.commands.update import _maybe_regenerate_agents
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -1546,7 +1546,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
 
     def test_copilot_detected_via_cypilot_installed_marker(self):
         """Copilot is detected via .github/.cf-constructor-installed marker."""
-        from cypilot.commands.update import _maybe_regenerate_agents
+        from studio.commands.update import _maybe_regenerate_agents
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -1565,7 +1565,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
 
     def test_legacy_copilot_detected_via_managed_instructions(self):
         """Legacy Copilot install detected via Cypilot-managed copilot-instructions.md."""
-        from cypilot.commands.update import _maybe_regenerate_agents
+        from studio.commands.update import _maybe_regenerate_agents
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -1585,7 +1585,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
 
     def test_user_copilot_instructions_does_not_trigger_detection(self):
         """User-authored .github/copilot-instructions.md must NOT trigger Copilot detection."""
-        from cypilot.commands.update import _maybe_regenerate_agents
+        from studio.commands.update import _maybe_regenerate_agents
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -1605,7 +1605,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
 
     def test_mixed_openai_with_cypilot_codex_agents_detected(self):
         """Legacy OpenAI with Cypilot-generated .codex/agents/ content is detected."""
-        from cypilot.commands.update import _maybe_regenerate_agents
+        from studio.commands.update import _maybe_regenerate_agents
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -1637,7 +1637,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
 
     def test_non_cypilot_codex_agents_does_not_trigger_openai(self):
         """Arbitrary .codex/agents/ content (not Cypilot-generated) must NOT trigger OpenAI."""
-        from cypilot.commands.update import _maybe_regenerate_agents
+        from studio.commands.update import _maybe_regenerate_agents
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -1657,7 +1657,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
 
     def test_bare_codex_dir_does_not_trigger_openai(self):
         """An empty .codex/ directory must NOT trigger OpenAI detection."""
-        from cypilot.commands.update import _maybe_regenerate_agents
+        from studio.commands.update import _maybe_regenerate_agents
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -1676,7 +1676,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
 
     def test_legacy_windsurf_skill_triggers_regeneration(self):
         """Legacy .windsurf/skills/cypilot/SKILL.md with Cypilot content triggers regeneration."""
-        from cypilot.commands.update import _maybe_regenerate_agents
+        from studio.commands.update import _maybe_regenerate_agents
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -1695,7 +1695,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
 
     def test_legacy_cursor_rules_triggers_regeneration(self):
         """Legacy .cursor/rules/cypilot.mdc with Cypilot content triggers regeneration."""
-        from cypilot.commands.update import _maybe_regenerate_agents
+        from studio.commands.update import _maybe_regenerate_agents
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -1703,7 +1703,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
             cache = Path(td) / "cache"
             cypilot_dir = self._make_project_with_agents(root, cache)
 
-            legacy = root / ".cursor" / "rules" / "cypilot.mdc"
+            legacy = root / ".cursor" / "rules" / "studio.mdc"
             legacy.parent.mkdir(parents=True, exist_ok=True)
             legacy.write_text("ALWAYS open and follow `{cf-constructor-path}/.core/skills/cypilot/SKILL.md`\n")
 
@@ -1714,7 +1714,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
 
     def test_copilot_detected_via_prompt_file_in_update(self):
         """Copilot with user-authored instructions but existing prompt file is detectable."""
-        from cypilot.commands.update import _maybe_regenerate_agents
+        from studio.commands.update import _maybe_regenerate_agents
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -1727,7 +1727,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
             instructions.parent.mkdir(parents=True, exist_ok=True)
             instructions.write_text("# My project\nUse TypeScript.\n", encoding="utf-8")
             # But Cypilot prompt file exists
-            prompt = root / ".github" / "prompts" / "cypilot.prompt.md"
+            prompt = root / ".github" / "prompts" / "studio.prompt.md"
             prompt.parent.mkdir(parents=True, exist_ok=True)
             prompt.write_text("---\nname: cypilot\n---\nALWAYS open and follow ...\n")
 
@@ -1738,7 +1738,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
 
     def test_shared_skill_with_legacy_copilot_prompt_does_not_trigger_openai(self):
         """Legacy Copilot prompt fallback must suppress OpenAI shared-skill detection."""
-        from cypilot.commands.update import _maybe_regenerate_agents
+        from studio.commands.update import _maybe_regenerate_agents
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -1749,7 +1749,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
             agents_skill = root / ".agents" / "skills" / "cypilot" / "SKILL.md"
             agents_skill.parent.mkdir(parents=True, exist_ok=True)
             agents_skill.write_text("old", encoding="utf-8")
-            prompt = root / ".github" / "prompts" / "cypilot.prompt.md"
+            prompt = root / ".github" / "prompts" / "studio.prompt.md"
             prompt.parent.mkdir(parents=True, exist_ok=True)
             prompt.write_text("---\nname: cypilot\n---\nALWAYS open and follow ...\n", encoding="utf-8")
 
@@ -1764,11 +1764,11 @@ class TestHumanUpdateOk(unittest.TestCase):
     """Cover _human_update_ok display branches."""
 
     def setUp(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(False)
 
     def test_basic_pass(self):
-        from cypilot.commands.update import _human_update_ok
+        from studio.commands.update import _human_update_ok
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_update_ok({
@@ -1782,7 +1782,7 @@ class TestHumanUpdateOk(unittest.TestCase):
         self.assertIn("Update complete", out)
 
     def test_dry_run(self):
-        from cypilot.commands.update import _human_update_ok
+        from studio.commands.update import _human_update_ok
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_update_ok({
@@ -1796,7 +1796,7 @@ class TestHumanUpdateOk(unittest.TestCase):
         self.assertIn("dry-run", out.lower())
 
     def test_with_errors_and_warnings(self):
-        from cypilot.commands.update import _human_update_ok
+        from studio.commands.update import _human_update_ok
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_update_ok({
@@ -1814,7 +1814,7 @@ class TestHumanUpdateOk(unittest.TestCase):
         self.assertIn("warnings", out.lower())
 
     def test_with_kits_data(self):
-        from cypilot.commands.update import _human_update_ok
+        from studio.commands.update import _human_update_ok
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_update_ok({
@@ -1838,7 +1838,7 @@ class TestHumanUpdateOk(unittest.TestCase):
         self.assertIn("Kits", out)
 
     def test_with_core_update(self):
-        from cypilot.commands.update import _human_update_ok
+        from studio.commands.update import _human_update_ok
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_update_ok({
@@ -1859,7 +1859,7 @@ class TestHumanUpdateOk(unittest.TestCase):
         self.assertIn("Updated", out)
 
     def test_with_agents_regenerated(self):
-        from cypilot.commands.update import _human_update_ok
+        from studio.commands.update import _human_update_ok
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_update_ok({
@@ -1875,7 +1875,7 @@ class TestHumanUpdateOk(unittest.TestCase):
         self.assertIn("cursor", out)
 
     def test_with_dict_and_list_actions(self):
-        from cypilot.commands.update import _human_update_ok
+        from studio.commands.update import _human_update_ok
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_update_ok({
@@ -1901,12 +1901,12 @@ class TestHumanUpdateOk(unittest.TestCase):
 
 class TestDeduplicateLegacyKits(unittest.TestCase):
     def test_no_core_toml(self):
-        from cypilot.commands.update import _deduplicate_legacy_kits
+        from studio.commands.update import _deduplicate_legacy_kits
         self.assertEqual(_deduplicate_legacy_kits(Path("/nonexistent")), {})
 
     def test_no_legacy_slugs(self):
-        from cypilot.commands.update import _deduplicate_legacy_kits
-        from cypilot.utils import toml_utils
+        from studio.commands.update import _deduplicate_legacy_kits
+        from studio.utils import toml_utils
         with TemporaryDirectory() as td:
             config = Path(td)
             toml_utils.dump({"kits": {"sdlc": {"path": "config/kits/sdlc"}}}, config / "core.toml")
@@ -1914,8 +1914,8 @@ class TestDeduplicateLegacyKits(unittest.TestCase):
 
     def test_dedup_same_path(self):
         """When cypilot-sdlc and sdlc both exist with same path, legacy is removed."""
-        from cypilot.commands.update import _deduplicate_legacy_kits
-        from cypilot.utils import toml_utils
+        from studio.commands.update import _deduplicate_legacy_kits
+        from studio.utils import toml_utils
         import tomllib
         with TemporaryDirectory() as td:
             config = Path(td)
@@ -1933,8 +1933,8 @@ class TestDeduplicateLegacyKits(unittest.TestCase):
             self.assertIn("sdlc", data["kits"])
 
     def test_dedup_different_paths_skipped(self):
-        from cypilot.commands.update import _deduplicate_legacy_kits
-        from cypilot.utils import toml_utils
+        from studio.commands.update import _deduplicate_legacy_kits
+        from studio.utils import toml_utils
         with TemporaryDirectory() as td:
             config = Path(td)
             toml_utils.dump({
@@ -1947,8 +1947,8 @@ class TestDeduplicateLegacyKits(unittest.TestCase):
             self.assertEqual(result, {})
 
     def test_dedup_updates_artifacts_toml(self):
-        from cypilot.commands.update import _deduplicate_legacy_kits
-        from cypilot.utils import toml_utils
+        from studio.commands.update import _deduplicate_legacy_kits
+        from studio.utils import toml_utils
         import tomllib
         with TemporaryDirectory() as td:
             config = Path(td)
@@ -1968,8 +1968,8 @@ class TestDeduplicateLegacyKits(unittest.TestCase):
 
     def test_artifacts_toml_fixed_even_without_core_dedup(self):
         """artifacts.toml legacy slug is fixed even when core.toml has only canonical slug."""
-        from cypilot.commands.update import _deduplicate_legacy_kits
-        from cypilot.utils import toml_utils
+        from studio.commands.update import _deduplicate_legacy_kits
+        from studio.utils import toml_utils
         import tomllib
         with TemporaryDirectory() as td:
             config = Path(td)
@@ -1996,12 +1996,12 @@ class TestDeduplicateLegacyKits(unittest.TestCase):
 
 class TestMigrateKitSources(unittest.TestCase):
     def test_no_core_toml(self):
-        from cypilot.commands.update import _migrate_kit_sources
+        from studio.commands.update import _migrate_kit_sources
         self.assertEqual(_migrate_kit_sources(Path("/nonexistent")), {})
 
     def test_already_has_source(self):
-        from cypilot.commands.update import _migrate_kit_sources
-        from cypilot.utils import toml_utils
+        from studio.commands.update import _migrate_kit_sources
+        from studio.utils import toml_utils
         with TemporaryDirectory() as td:
             config = Path(td)
             toml_utils.dump({
@@ -2010,8 +2010,8 @@ class TestMigrateKitSources(unittest.TestCase):
             self.assertEqual(_migrate_kit_sources(config), {})
 
     def test_adds_known_source(self):
-        from cypilot.commands.update import _migrate_kit_sources
-        from cypilot.utils import toml_utils
+        from studio.commands.update import _migrate_kit_sources
+        from studio.utils import toml_utils
         import tomllib
         with TemporaryDirectory() as td:
             config = Path(td)
@@ -2025,8 +2025,8 @@ class TestMigrateKitSources(unittest.TestCase):
             self.assertEqual(data["kits"]["sdlc"]["source"], "github:cyberfabric/cyber-constructor-kit-sdlc")
 
     def test_unknown_kit_skipped(self):
-        from cypilot.commands.update import _migrate_kit_sources
-        from cypilot.utils import toml_utils
+        from studio.commands.update import _migrate_kit_sources
+        from studio.utils import toml_utils
         with TemporaryDirectory() as td:
             config = Path(td)
             toml_utils.dump({
@@ -2035,7 +2035,7 @@ class TestMigrateKitSources(unittest.TestCase):
             self.assertEqual(_migrate_kit_sources(config), {})
 
     def test_corrupt_core_toml(self):
-        from cypilot.commands.update import _migrate_kit_sources
+        from studio.commands.update import _migrate_kit_sources
         with TemporaryDirectory() as td:
             (Path(td) / "core.toml").write_text("{{bad", encoding="utf-8")
             self.assertEqual(_migrate_kit_sources(Path(td)), {})
@@ -2047,11 +2047,11 @@ class TestMigrateKitSources(unittest.TestCase):
 
 class TestHumanUpdateOkEdgeCases(unittest.TestCase):
     def setUp(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(False)
 
     def test_kit_updated_status(self):
-        from cypilot.commands.update import _human_update_ok
+        from studio.commands.update import _human_update_ok
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_update_ok({
@@ -2075,7 +2075,7 @@ class TestHumanUpdateOkEdgeCases(unittest.TestCase):
         self.assertIn("c.md", out)
 
     def test_kit_partial_status(self):
-        from cypilot.commands.update import _human_update_ok
+        from studio.commands.update import _human_update_ok
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_update_ok({
@@ -2099,7 +2099,7 @@ class TestHumanUpdateOkEdgeCases(unittest.TestCase):
         self.assertIn("declined", out)
 
     def test_dry_run_output(self):
-        from cypilot.commands.update import _human_update_ok
+        from studio.commands.update import _human_update_ok
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_update_ok({
@@ -2113,7 +2113,7 @@ class TestHumanUpdateOkEdgeCases(unittest.TestCase):
         self.assertIn("Dry run", out)
 
     def test_nested_dict_action(self):
-        from cypilot.commands.update import _human_update_ok
+        from studio.commands.update import _human_update_ok
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_update_ok({
@@ -2132,7 +2132,7 @@ class TestHumanUpdateOkEdgeCases(unittest.TestCase):
         self.assertIn("some_list", out)
 
     def test_errors_in_output(self):
-        from cypilot.commands.update import _human_update_ok
+        from studio.commands.update import _human_update_ok
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_update_ok({
@@ -2159,7 +2159,7 @@ class TestHumanUpdateOkEdgeCases(unittest.TestCase):
 class TestCmdUpdateLayoutMigration(unittest.TestCase):
     def test_update_triggers_layout_migration(self):
         """cmd_update migrates old kits/ layout to config/kits/."""
-        from cypilot.commands.update import cmd_update
+        from studio.commands.update import cmd_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -2179,9 +2179,9 @@ class TestCmdUpdateLayoutMigration(unittest.TestCase):
             try:
                 os.chdir(str(root))
                 with (
-                    patch("cypilot.commands.update.CACHE_DIR", cache),
+                    patch("studio.commands.update.CACHE_DIR", cache),
                     patch(
-                        "cypilot.commands.kit._download_kit_from_github",
+                        "studio.commands.kit._download_kit_from_github",
                         return_value=(kit_src, "1"),
                     ),
                 ):
@@ -2197,7 +2197,7 @@ class TestCmdUpdateLayoutMigration(unittest.TestCase):
 
     def test_update_download_failure(self):
         """When GitHub download fails, update continues with errors."""
-        from cypilot.commands.update import cmd_update
+        from studio.commands.update import cmd_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -2209,9 +2209,9 @@ class TestCmdUpdateLayoutMigration(unittest.TestCase):
             try:
                 os.chdir(str(root))
                 with (
-                    patch("cypilot.commands.update.CACHE_DIR", cache),
+                    patch("studio.commands.update.CACHE_DIR", cache),
                     patch(
-                        "cypilot.commands.kit._download_kit_from_github",
+                        "studio.commands.kit._download_kit_from_github",
                         side_effect=RuntimeError("rate limit"),
                     ),
                 ):
@@ -2233,7 +2233,7 @@ class TestCleanupLegacyBlueprintDirs(unittest.TestCase):
     """Tests for removing leftover blueprints/ from config/kits/*/."""
 
     def test_removes_blueprints_dir(self):
-        from cypilot.commands.update import _cleanup_legacy_blueprint_dirs
+        from studio.commands.update import _cleanup_legacy_blueprint_dirs
         with TemporaryDirectory() as td:
             config = Path(td)
             bp = config / "kits" / "sdlc" / "blueprints"
@@ -2245,7 +2245,7 @@ class TestCleanupLegacyBlueprintDirs(unittest.TestCase):
             self.assertTrue((config / "kits" / "sdlc").is_dir())
 
     def test_noop_when_no_blueprints(self):
-        from cypilot.commands.update import _cleanup_legacy_blueprint_dirs
+        from studio.commands.update import _cleanup_legacy_blueprint_dirs
         with TemporaryDirectory() as td:
             config = Path(td)
             kit = config / "kits" / "sdlc"
@@ -2255,7 +2255,7 @@ class TestCleanupLegacyBlueprintDirs(unittest.TestCase):
             self.assertTrue((kit / "SKILL.md").is_file())
 
     def test_noop_when_no_kits_dir(self):
-        from cypilot.commands.update import _cleanup_legacy_blueprint_dirs
+        from studio.commands.update import _cleanup_legacy_blueprint_dirs
         with TemporaryDirectory() as td:
             config = Path(td)
             _cleanup_legacy_blueprint_dirs(config)  # should not raise
@@ -2269,7 +2269,7 @@ class TestRemoveSystemFromCoreToml(unittest.TestCase):
     """Tests for the [system] removal migration step."""
 
     def test_removes_system_section(self):
-        from cypilot.commands.update import _remove_system_from_core_toml
+        from studio.commands.update import _remove_system_from_core_toml
         with TemporaryDirectory() as td:
             config_dir = Path(td)
             _write_toml(config_dir / "core.toml", {
@@ -2281,14 +2281,14 @@ class TestRemoveSystemFromCoreToml(unittest.TestCase):
             result = _remove_system_from_core_toml(config_dir)
             self.assertTrue(result)
 
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             core = toml_utils.load(config_dir / "core.toml")
             self.assertNotIn("system", core)
             self.assertEqual(core["version"], "1.0")
             self.assertIn("sdlc", core["kits"])
 
     def test_no_system_section_is_noop(self):
-        from cypilot.commands.update import _remove_system_from_core_toml
+        from studio.commands.update import _remove_system_from_core_toml
         with TemporaryDirectory() as td:
             config_dir = Path(td)
             _write_toml(config_dir / "core.toml", {
@@ -2300,12 +2300,12 @@ class TestRemoveSystemFromCoreToml(unittest.TestCase):
             self.assertFalse(result)
 
     def test_missing_core_toml(self):
-        from cypilot.commands.update import _remove_system_from_core_toml
+        from studio.commands.update import _remove_system_from_core_toml
         result = _remove_system_from_core_toml(Path("/nonexistent"))
         self.assertFalse(result)
 
     def test_corrupt_core_toml(self):
-        from cypilot.commands.update import _remove_system_from_core_toml
+        from studio.commands.update import _remove_system_from_core_toml
         with TemporaryDirectory() as td:
             config_dir = Path(td)
             (config_dir / "core.toml").write_text("{{invalid", encoding="utf-8")
@@ -2321,7 +2321,7 @@ class TestDefaultCoreToml(unittest.TestCase):
     """Verify _default_core_toml no longer includes [system]."""
 
     def test_no_system_section(self):
-        from cypilot.commands.init import _default_core_toml
+        from studio.commands.init import _default_core_toml
         core = _default_core_toml()
         self.assertNotIn("system", core)
         self.assertEqual(core["version"], "1.0")
@@ -2413,7 +2413,7 @@ class TestMaybeMigrateLegacyToManifest(unittest.TestCase):
 
     def test_no_manifest_returns_none(self):
         """Kit source without manifest.toml → returns None (no migration)."""
-        from cypilot.commands.update import _maybe_migrate_legacy_to_manifest
+        from studio.commands.update import _maybe_migrate_legacy_to_manifest
         with TemporaryDirectory() as td:
             td_path = Path(td)
             kit_src = td_path / "nokit"
@@ -2428,7 +2428,7 @@ class TestMaybeMigrateLegacyToManifest(unittest.TestCase):
 
     def test_already_has_resources_returns_none(self):
         """Kit with existing resources in core.toml → returns None (skip)."""
-        from cypilot.commands.update import _maybe_migrate_legacy_to_manifest
+        from studio.commands.update import _maybe_migrate_legacy_to_manifest
         import tomllib
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -2451,7 +2451,7 @@ class TestMaybeMigrateLegacyToManifest(unittest.TestCase):
 
     def test_triggers_migration_when_needed(self):
         """Source has manifest + no resources → triggers migration, returns result."""
-        from cypilot.commands.update import _maybe_migrate_legacy_to_manifest
+        from studio.commands.update import _maybe_migrate_legacy_to_manifest
         import tomllib
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -2475,7 +2475,7 @@ class TestMaybeMigrateLegacyToManifest(unittest.TestCase):
 
     def test_invalid_manifest_returns_none(self):
         """Invalid manifest.toml in kit source → returns None (error handled)."""
-        from cypilot.commands.update import _maybe_migrate_legacy_to_manifest
+        from studio.commands.update import _maybe_migrate_legacy_to_manifest
         with TemporaryDirectory() as td:
             td_path = Path(td)
             kit_src = td_path / "badkit"
@@ -2493,7 +2493,7 @@ class TestMaybeMigrateLegacyToManifest(unittest.TestCase):
 
     def test_corrupt_manifest_returns_none(self):
         """Corrupt manifest.toml → returns None (exception caught)."""
-        from cypilot.commands.update import _maybe_migrate_legacy_to_manifest
+        from studio.commands.update import _maybe_migrate_legacy_to_manifest
         with TemporaryDirectory() as td:
             td_path = Path(td)
             kit_src = td_path / "corrupt"
@@ -2519,7 +2519,7 @@ class TestCmdUpdateManifestMigration(unittest.TestCase):
         - Installed kit has same version in core.toml but NO resources
         - update_kit returns early ("current") but WP7 catch-all triggers migration
         """
-        from cypilot.commands.update import cmd_update
+        from studio.commands.update import cmd_update
         import tomllib, textwrap
 
         with TemporaryDirectory() as td:
@@ -2592,9 +2592,9 @@ class TestCmdUpdateManifestMigration(unittest.TestCase):
             try:
                 os.chdir(str(root))
                 with (
-                    patch("cypilot.commands.update.CACHE_DIR", cache),
+                    patch("studio.commands.update.CACHE_DIR", cache),
                     patch(
-                        "cypilot.commands.kit._download_kit_from_github",
+                        "studio.commands.kit._download_kit_from_github",
                         return_value=(kit_src, "2.0"),
                     ),
                 ):
@@ -2625,7 +2625,7 @@ class TestCmdUpdateManifestMigration(unittest.TestCase):
 
     def test_update_manifest_migration_exception_is_reported_as_error(self):
         """Unexpected manifest-migration exceptions must fail update."""
-        from cypilot.commands.update import cmd_update
+        from studio.commands.update import cmd_update
 
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
@@ -2638,13 +2638,13 @@ class TestCmdUpdateManifestMigration(unittest.TestCase):
             try:
                 os.chdir(str(root))
                 with (
-                    patch("cypilot.commands.update.CACHE_DIR", cache),
+                    patch("studio.commands.update.CACHE_DIR", cache),
                     patch(
-                        "cypilot.commands.kit._download_kit_from_github",
+                        "studio.commands.kit._download_kit_from_github",
                         return_value=(cache / "kits" / "sdlc", "1.0"),
                     ),
                     patch(
-                        "cypilot.commands.update._maybe_migrate_legacy_to_manifest",
+                        "studio.commands.update._maybe_migrate_legacy_to_manifest",
                         side_effect=RuntimeError("simulated migration crash"),
                     ),
                 ):
@@ -2669,7 +2669,7 @@ class TestCmdUpdateManifestMigration(unittest.TestCase):
 
     def test_update_skips_migration_when_resources_exist(self):
         """When kit already has resources in core.toml, migration is skipped."""
-        from cypilot.commands.update import cmd_update
+        from studio.commands.update import cmd_update
         import textwrap
 
         with TemporaryDirectory() as td:
@@ -2730,9 +2730,9 @@ class TestCmdUpdateManifestMigration(unittest.TestCase):
             try:
                 os.chdir(str(root))
                 with (
-                    patch("cypilot.commands.update.CACHE_DIR", cache),
+                    patch("studio.commands.update.CACHE_DIR", cache),
                     patch(
-                        "cypilot.commands.kit._download_kit_from_github",
+                        "studio.commands.kit._download_kit_from_github",
                         return_value=(kit_src, "2.0"),
                     ),
                 ):
@@ -2752,7 +2752,7 @@ class TestCmdUpdateManifestMigration(unittest.TestCase):
 
     def test_dry_run_skips_migration(self):
         """--dry-run does not trigger manifest migration."""
-        from cypilot.commands.update import cmd_update
+        from studio.commands.update import cmd_update
         import tomllib, textwrap
 
         with TemporaryDirectory() as td:
@@ -2810,9 +2810,9 @@ class TestCmdUpdateManifestMigration(unittest.TestCase):
             try:
                 os.chdir(str(root))
                 with (
-                    patch("cypilot.commands.update.CACHE_DIR", cache),
+                    patch("studio.commands.update.CACHE_DIR", cache),
                     patch(
-                        "cypilot.commands.kit._download_kit_from_github",
+                        "studio.commands.kit._download_kit_from_github",
                         return_value=(kit_src, "2.0"),
                     ),
                 ):

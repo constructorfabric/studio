@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from cypilot.commands.map.model import Node, Edge, Ref, CptUse, node_id, phantom_id
+from studio.commands.map.model import Node, Edge, Ref, CptUse, node_id, phantom_id
 
 
 def test_node_id_format():

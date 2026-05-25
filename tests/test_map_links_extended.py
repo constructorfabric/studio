@@ -10,7 +10,7 @@ from typing import Dict, List, Optional
 
 import pytest
 
-from cypilot.commands.map.links import (
+from studio.commands.map.links import (
     _expand_vars,
     _load_markdown_content,
     _posix_normpath,
@@ -18,7 +18,7 @@ from cypilot.commands.map.links import (
     _slug_candidates,
     extract_file_links,
 )
-from cypilot.commands.map.model import Node
+from studio.commands.map.model import Node
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "map"
 REPO_BASIC = FIXTURES / "repo-basic"

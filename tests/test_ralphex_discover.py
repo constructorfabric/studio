@@ -15,7 +15,7 @@ from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.ralphex_discover import discover, validate, persist_path, INSTALL_GUIDANCE
+from studio.ralphex_discover import discover, validate, persist_path, INSTALL_GUIDANCE
 
 
 class TestDiscover:
@@ -24,7 +24,7 @@ class TestDiscover:
     def test_found_on_path(self):
         """discover() returns absolute path when ralphex is on PATH."""
         config = {"integrations": {"ralphex": {"executable_path": ""}}}
-        with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/local/bin/ralphex"):
+        with patch("studio.ralphex_discover.shutil.which", return_value="/usr/local/bin/ralphex"):
             result = discover(config)
         assert result == "/usr/local/bin/ralphex"
 
@@ -36,35 +36,35 @@ class TestDiscover:
             fake_bin.chmod(0o755)
 
             config = {"integrations": {"ralphex": {"executable_path": str(fake_bin)}}}
-            with patch("cypilot.ralphex_discover.shutil.which", return_value=None):
+            with patch("studio.ralphex_discover.shutil.which", return_value=None):
                 result = discover(config)
             assert result == str(fake_bin)
 
     def test_persisted_path_stale(self):
         """discover() returns None when persisted path points to missing file."""
         config = {"integrations": {"ralphex": {"executable_path": "/no/such/ralphex"}}}
-        with patch("cypilot.ralphex_discover.shutil.which", return_value=None):
+        with patch("studio.ralphex_discover.shutil.which", return_value=None):
             result = discover(config)
         assert result is None
 
     def test_not_found_anywhere(self):
         """discover() returns None when ralphex is not on PATH and no persisted path."""
         config = {"integrations": {"ralphex": {"executable_path": ""}}}
-        with patch("cypilot.ralphex_discover.shutil.which", return_value=None):
+        with patch("studio.ralphex_discover.shutil.which", return_value=None):
             result = discover(config)
         assert result is None
 
     def test_empty_config_no_integrations(self):
         """discover() handles config with no integrations section."""
         config = {}
-        with patch("cypilot.ralphex_discover.shutil.which", return_value=None):
+        with patch("studio.ralphex_discover.shutil.which", return_value=None):
             result = discover(config)
         assert result is None
 
     def test_path_preferred_over_persisted(self):
         """discover() prefers PATH result over persisted config."""
         config = {"integrations": {"ralphex": {"executable_path": "/old/ralphex"}}}
-        with patch("cypilot.ralphex_discover.shutil.which", return_value="/new/ralphex"):
+        with patch("studio.ralphex_discover.shutil.which", return_value="/new/ralphex"):
             result = discover(config)
         assert result == "/new/ralphex"
 
@@ -82,7 +82,7 @@ class TestValidate:
     def test_available_when_version_succeeds(self):
         """validate() returns available with version when ralphex --version works."""
         proc = MagicMock(returncode=0, stdout="ralphex version 0.3.1\n", stderr="")
-        with patch("cypilot.ralphex_discover.subprocess.run", return_value=proc):
+        with patch("studio.ralphex_discover.subprocess.run", return_value=proc):
             result = validate("/usr/local/bin/ralphex")
         assert result["status"] == "available"
         assert result["version"] == "0.3.1"
@@ -90,28 +90,28 @@ class TestValidate:
     def test_incompatible_when_version_fails(self):
         """validate() returns incompatible when ralphex --version exits non-zero."""
         proc = MagicMock(returncode=1, stdout="", stderr="unknown flag")
-        with patch("cypilot.ralphex_discover.subprocess.run", return_value=proc):
+        with patch("studio.ralphex_discover.subprocess.run", return_value=proc):
             result = validate("/usr/local/bin/ralphex")
         assert result["status"] == "incompatible"
         assert "upgrade" in result["message"].lower() or "update" in result["message"].lower()
 
     def test_incompatible_when_subprocess_raises(self):
         """validate() returns incompatible when subprocess times out or errors."""
-        with patch("cypilot.ralphex_discover.subprocess.run", side_effect=OSError("not found")):
+        with patch("studio.ralphex_discover.subprocess.run", side_effect=OSError("not found")):
             result = validate("/bad/ralphex")
         assert result["status"] == "incompatible"
 
     def test_version_parsing_various_formats(self):
         """validate() parses version from different output formats."""
         proc = MagicMock(returncode=0, stdout="v1.2.0", stderr="")
-        with patch("cypilot.ralphex_discover.subprocess.run", return_value=proc):
+        with patch("studio.ralphex_discover.subprocess.run", return_value=proc):
             result = validate("/usr/local/bin/ralphex")
         assert result["version"] == "1.2.0"
 
     def test_available_with_build_metadata_version(self):
         """validate() parses version with build metadata suffix (e.g. ralphex v0.26.2-7a637fa-20260331T171815)."""
         proc = MagicMock(returncode=0, stdout="ralphex v0.26.2-7a637fa-20260331T171815\n", stderr="")
-        with patch("cypilot.ralphex_discover.subprocess.run", return_value=proc):
+        with patch("studio.ralphex_discover.subprocess.run", return_value=proc):
             result = validate("/usr/local/bin/ralphex")
         assert result["status"] == "available"
         assert result["version"] == "0.26.2-7a637fa-20260331T171815"

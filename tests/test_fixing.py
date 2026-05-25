@@ -15,8 +15,8 @@ from typing import Dict, List
 
 import pytest
 
-from cypilot.utils import error_codes as EC
-from cypilot.utils.fixing import enrich_issues, _build_fixing_prompt
+from studio.utils import error_codes as EC
+from studio.utils.fixing import enrich_issues, _build_fixing_prompt
 
 
 # ---------------------------------------------------------------------------

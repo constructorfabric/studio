@@ -1,7 +1,7 @@
 """HTML rendering smoke tests."""
 from pathlib import Path
 
-from cypilot.commands.map.render_html import RenderHtmlInput, render_html
+from studio.commands.map.render_html import RenderHtmlInput, render_html
 
 
 def test_inline_html_embeds_data():

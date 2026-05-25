@@ -3,8 +3,8 @@ import pytest
 from pathlib import Path
 from textwrap import dedent
 
-from cypilot.utils import error_codes as EC
-from cypilot.utils.codebase import (
+from studio.utils import error_codes as EC
+from studio.utils.codebase import (
     CodeFile,
     ScopeMarker,
     BlockMarker,
@@ -595,7 +595,7 @@ class TestErrorFunction:
     """Test the error helper function."""
 
     def test_error_with_extra_fields(self, tmp_path: Path):
-        from cypilot.utils.codebase import error
+        from studio.utils.codebase import error
 
         err = error("test", "Test message", path=tmp_path / "test.py", line=10, custom="value")
 
@@ -605,7 +605,7 @@ class TestErrorFunction:
         assert err["custom"] == "value"
 
     def test_error_none_extra_fields_ignored(self, tmp_path: Path):
-        from cypilot.utils.codebase import error
+        from studio.utils.codebase import error
 
         err = error("test", "Message", path=tmp_path, line=1, skip_none=None)
 

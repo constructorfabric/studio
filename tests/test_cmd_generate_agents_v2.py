@@ -31,12 +31,12 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.commands.agents import (
+from studio.commands.agents import (
     _discover_kit_agents,
     cmd_generate_agents,
     generate_manifest_agents,
 )
-from cypilot.utils.manifest import AgentEntry
+from studio.utils.manifest import AgentEntry
 
 
 # ---------------------------------------------------------------------------
@@ -245,7 +245,7 @@ class TestCmdGenerateAgentsShowLayers(unittest.TestCase):
             with mock.patch("sys.stdout", captured):
                 # Force non-JSON mode so human text is written to stdout
                 with mock.patch(
-                    "cypilot.utils.ui.is_json_mode",
+                    "studio.utils.ui.is_json_mode",
                     return_value=False,
                 ):
                     cmd_generate_agents([
@@ -573,8 +573,8 @@ class TestBuildProvenanceReportAbsoluteSource(unittest.TestCase):
 
     def test_source_path_outside_project_root_is_posix(self):
         """Source path outside project root falls back to absolute posix string."""
-        from cypilot.commands.agents import build_provenance_report
-        from cypilot.utils.manifest import (
+        from studio.commands.agents import build_provenance_report
+        from studio.utils.manifest import (
             AgentEntry,
             ManifestLayer,
             ManifestLayerState,
@@ -657,7 +657,7 @@ class TestV2PreviewCountsLegacyWorkflows(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root, cypilot_root = self._make_v2_project_with_workflows(tmpdir, agent="cursor")
 
-            with mock.patch("cypilot.commands.agents.ui") as mock_ui:
+            with mock.patch("studio.commands.agents.ui") as mock_ui:
                 mock_ui.result = _capture_result
                 mock_ui.info = lambda *a, **kw: None
                 mock_ui.warn = lambda *a, **kw: None
@@ -705,8 +705,8 @@ class TestV2PreviewCountsLegacyWorkflows(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root, cypilot_root = self._make_v2_project_with_workflows(tmpdir, agent="cursor")
 
-            with mock.patch("cypilot.commands.agents._confirm_v2_generation", side_effect=_spy_confirm):
-                with mock.patch("cypilot.commands.agents.ui") as mock_ui:
+            with mock.patch("studio.commands.agents._confirm_v2_generation", side_effect=_spy_confirm):
+                with mock.patch("studio.commands.agents.ui") as mock_ui:
                     mock_ui.result = lambda *a, **kw: None
                     mock_ui.info = lambda *a, **kw: None
                     mock_ui.warn = lambda *a, **kw: None

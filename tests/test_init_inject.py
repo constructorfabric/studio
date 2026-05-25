@@ -22,7 +22,7 @@ class TestInjectManagedBlockContainment(unittest.TestCase):
     """Path containment checks in _inject_managed_block."""
 
     def _fn(self):
-        from cypilot.commands.init import _inject_managed_block
+        from studio.commands.init import _inject_managed_block
         return _inject_managed_block
 
     def test_valid_in_root_write_succeeds(self):
@@ -87,7 +87,7 @@ class TestInjectRootWrappers(unittest.TestCase):
     """D: _inject_root_agents and _inject_root_claude still work correctly."""
 
     def test_inject_root_agents_creates(self):
-        from cypilot.commands.init import _inject_root_agents
+        from studio.commands.init import _inject_root_agents
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -98,7 +98,7 @@ class TestInjectRootWrappers(unittest.TestCase):
             self.assertIn('cf-constructor-path = "cypilot"', agents.read_text())
 
     def test_inject_root_agents_updates(self):
-        from cypilot.commands.init import _inject_root_agents, MARKER_START, MARKER_END
+        from studio.commands.init import _inject_root_agents, MARKER_START, MARKER_END
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -112,7 +112,7 @@ class TestInjectRootWrappers(unittest.TestCase):
             self.assertIn('cf-constructor-path = "newdir"', agents.read_text())
 
     def test_inject_root_agents_unchanged(self):
-        from cypilot.commands.init import _inject_root_agents, _compute_managed_block
+        from studio.commands.init import _inject_root_agents, _compute_managed_block
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -122,7 +122,7 @@ class TestInjectRootWrappers(unittest.TestCase):
             self.assertEqual(result, "unchanged")
 
     def test_inject_root_claude_creates(self):
-        from cypilot.commands.init import _inject_root_claude
+        from studio.commands.init import _inject_root_claude
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -133,7 +133,7 @@ class TestInjectRootWrappers(unittest.TestCase):
             self.assertIn('cf-constructor-path = "cypilot"', claude.read_text())
 
     def test_inject_root_claude_updates(self):
-        from cypilot.commands.init import _inject_root_claude, MARKER_START, MARKER_END
+        from studio.commands.init import _inject_root_claude, MARKER_START, MARKER_END
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -147,7 +147,7 @@ class TestInjectRootWrappers(unittest.TestCase):
             self.assertIn('cf-constructor-path = "newdir"', claude.read_text())
 
     def test_inject_root_agents_dry_run(self):
-        from cypilot.commands.init import _inject_root_agents
+        from studio.commands.init import _inject_root_agents
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -162,7 +162,7 @@ class TestInjectRootWrappers(unittest.TestCase):
         a second call on an already-injected file should return 'unchanged'.
         (P5-F011: ensures no-op .strip() removal regression)
         """
-        from cypilot.commands.init import _inject_managed_block
+        from studio.commands.init import _inject_managed_block
         with TemporaryDirectory() as td:
             project_root = Path(td)
             target = project_root / "AGENTS.md"
@@ -181,7 +181,7 @@ class TestPromptKitInstallFlag(unittest.TestCase):
     """Coverage for _prompt_kit_install_flag interactive/non-interactive paths."""
 
     def _fn(self):
-        from cypilot.commands.init import _prompt_kit_install_flag
+        from studio.commands.init import _prompt_kit_install_flag
         return _prompt_kit_install_flag
 
     def test_non_interactive_returns_true(self):

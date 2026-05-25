@@ -20,14 +20,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.commands.agents import (
+from studio.commands.agents import (
     _format_toml_entry,
     build_provenance_report,
     discover_components,
     format_provenance_human,
     write_discovered_manifest,
 )
-from cypilot.utils.manifest import (
+from studio.utils.manifest import (
     AgentEntry,
     ManifestLayer,
     ManifestLayerState,

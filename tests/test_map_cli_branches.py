@@ -7,7 +7,7 @@ from unittest import mock
 
 import pytest
 
-from cypilot.commands.map import cli as map_cli
+from studio.commands.map import cli as map_cli
 
 
 def test_discover_sources_skips_unreachable_path(monkeypatch, tmp_path):
@@ -22,7 +22,7 @@ def test_discover_sources_skips_unreachable_path(monkeypatch, tmp_path):
         map_cli, "_discover_sources", wraps=map_cli._discover_sources
     ):
         with mock.patch(
-            "cypilot.utils.workspace.find_workspace_config",
+            "studio.utils.workspace.find_workspace_config",
             return_value=(fake_ws, None),
         ):
             sources = map_cli._discover_sources(primary, local_only=False)
@@ -41,7 +41,7 @@ def test_discover_sources_includes_reachable_remote(tmp_path):
         resolve_source_path=lambda name: remote,
     )
     with mock.patch(
-        "cypilot.utils.workspace.find_workspace_config",
+        "studio.utils.workspace.find_workspace_config",
         return_value=(fake_ws, None),
     ):
         sources = map_cli._discover_sources(tmp_path, local_only=False)

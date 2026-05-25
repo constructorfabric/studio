@@ -1,5 +1,5 @@
 """
-Unit tests for cypilot_proxy.telemetry module.
+Unit tests for studio_proxy.telemetry module.
 """
 
 import json
@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from cypilot_proxy.telemetry import (
+from studio_proxy.telemetry import (
     _append_log,
     _build_otlp_logs,
     _collect_git_info,
@@ -32,7 +32,7 @@ class TestTrackInvocation(unittest.TestCase):
     def test_disabled_by_env(self):
         """When CFC_TELEMETRY=0, no thread is spawned."""
         with patch.dict(os.environ, {"CFC_TELEMETRY": "0"}):
-            with patch("cypilot_proxy.telemetry.threading") as mock_threading:
+            with patch("studio_proxy.telemetry.threading") as mock_threading:
                 track_invocation(["validate"])
                 mock_threading.Thread.assert_not_called()
 
@@ -41,7 +41,7 @@ class TestTrackInvocation(unittest.TestCase):
         env = os.environ.copy()
         env.pop("CFC_TELEMETRY", None)
         with patch.dict(os.environ, env, clear=True):
-            with patch("cypilot_proxy.telemetry.threading") as mock_threading:
+            with patch("studio_proxy.telemetry.threading") as mock_threading:
                 mock_thread = MagicMock()
                 mock_threading.Thread.return_value = mock_thread
                 track_invocation(["validate"])
@@ -56,7 +56,7 @@ class TestTrackInvocation(unittest.TestCase):
         env = os.environ.copy()
         env.pop("CFC_TELEMETRY", None)
         with patch.dict(os.environ, env, clear=True):
-            with patch("cypilot_proxy.telemetry.threading") as mock_threading:
+            with patch("studio_proxy.telemetry.threading") as mock_threading:
                 mock_thread = MagicMock()
                 mock_threading.Thread.return_value = mock_thread
                 track_invocation([])
@@ -68,7 +68,7 @@ class TestTrackInvocation(unittest.TestCase):
         env = os.environ.copy()
         env.pop("CFC_TELEMETRY", None)
         with patch.dict(os.environ, env, clear=True):
-            with patch("cypilot_proxy.telemetry.threading") as mock_threading:
+            with patch("studio_proxy.telemetry.threading") as mock_threading:
                 track_invocation(["--version"])
                 mock_threading.Thread.assert_not_called()
 
@@ -77,7 +77,7 @@ class TestTrackInvocation(unittest.TestCase):
         env = os.environ.copy()
         env.pop("CFC_TELEMETRY", None)
         with patch.dict(os.environ, env, clear=True):
-            with patch("cypilot_proxy.telemetry.threading") as mock_threading:
+            with patch("studio_proxy.telemetry.threading") as mock_threading:
                 track_invocation(["--help"])
                 mock_threading.Thread.assert_not_called()
 
@@ -86,7 +86,7 @@ class TestTrackInvocation(unittest.TestCase):
         env = os.environ.copy()
         env.pop("CFC_TELEMETRY", None)
         with patch.dict(os.environ, env, clear=True):
-            with patch("cypilot_proxy.telemetry.threading") as mock_threading:
+            with patch("studio_proxy.telemetry.threading") as mock_threading:
                 track_invocation(["-h"])
                 mock_threading.Thread.assert_not_called()
 
@@ -98,7 +98,7 @@ class TestCollectGitInfo(unittest.TestCase):
         """Should return a dict with git config values."""
         mock_result = MagicMock()
         mock_result.stdout = "user.name Test\nuser.email test@test.com"
-        with patch("cypilot_proxy.telemetry.subprocess.run", return_value=mock_result):
+        with patch("studio_proxy.telemetry.subprocess.run", return_value=mock_result):
             info = _collect_git_info()
             self.assertIsInstance(info, dict)
             self.assertEqual(info["user.name"], "Test")
@@ -107,7 +107,7 @@ class TestCollectGitInfo(unittest.TestCase):
         """Should parse git config --get-regexp output correctly."""
         mock_result = MagicMock()
         mock_result.stdout = "user.name Test User\nuser.email test@example.com\nremote.origin.url https://example.com/repo.git"
-        with patch("cypilot_proxy.telemetry.subprocess.run", return_value=mock_result):
+        with patch("studio_proxy.telemetry.subprocess.run", return_value=mock_result):
             info = _collect_git_info()
             self.assertEqual(info["user.name"], "Test User")
             self.assertEqual(info["user.email"], "test@example.com")
@@ -115,14 +115,14 @@ class TestCollectGitInfo(unittest.TestCase):
 
     def test_handles_subprocess_failure(self):
         """Should return empty dict on subprocess error."""
-        with patch("cypilot_proxy.telemetry.subprocess.run", side_effect=OSError("git not found")):
+        with patch("studio_proxy.telemetry.subprocess.run", side_effect=OSError("git not found")):
             info = _collect_git_info()
             self.assertEqual(info, {})
 
     def test_handles_timeout(self):
         """Should return empty dict on timeout."""
         import subprocess
-        with patch("cypilot_proxy.telemetry.subprocess.run", side_effect=subprocess.TimeoutExpired("git", 3)):
+        with patch("studio_proxy.telemetry.subprocess.run", side_effect=subprocess.TimeoutExpired("git", 3)):
             info = _collect_git_info()
             self.assertEqual(info, {})
 
@@ -130,7 +130,7 @@ class TestCollectGitInfo(unittest.TestCase):
         """Should return empty dict when git returns nothing."""
         mock_result = MagicMock()
         mock_result.stdout = ""
-        with patch("cypilot_proxy.telemetry.subprocess.run", return_value=mock_result):
+        with patch("studio_proxy.telemetry.subprocess.run", return_value=mock_result):
             info = _collect_git_info()
             self.assertEqual(info, {})
 
@@ -138,7 +138,7 @@ class TestCollectGitInfo(unittest.TestCase):
         """Should skip lines without a space separator."""
         mock_result = MagicMock()
         mock_result.stdout = "user.name Test User\nbadline\nremote.origin.url https://example.com"
-        with patch("cypilot_proxy.telemetry.subprocess.run", return_value=mock_result):
+        with patch("studio_proxy.telemetry.subprocess.run", return_value=mock_result):
             info = _collect_git_info()
             self.assertEqual(len(info), 2)
             self.assertNotIn("badline", info)
@@ -151,7 +151,7 @@ class TestAppendLog(unittest.TestCase):
         """Should create a new log file and return True."""
         with TemporaryDirectory() as tmpdir:
             log_dir = Path(tmpdir) / "logs"
-            with patch("cypilot_proxy.telemetry.LOG_DIR", log_dir):
+            with patch("studio_proxy.telemetry.LOG_DIR", log_dir):
                 record = {"timestamp": "2026-04-02T12:00:00Z", "command": "validate"}
                 is_new = _append_log(record)
                 self.assertTrue(is_new)
@@ -169,7 +169,7 @@ class TestAppendLog(unittest.TestCase):
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             log_file = log_dir / f"{today}.log"
             log_file.write_text('{"existing": true}\n')
-            with patch("cypilot_proxy.telemetry.LOG_DIR", log_dir):
+            with patch("studio_proxy.telemetry.LOG_DIR", log_dir):
                 record = {"timestamp": "2026-04-02T12:00:00Z", "command": "init"}
                 is_new = _append_log(record)
                 self.assertFalse(is_new)
@@ -190,7 +190,7 @@ class TestRotateLogs(unittest.TestCase):
             os.utime(old_file, (0, 0))
             new_file = log_dir / "2026-04-02.log"
             new_file.write_text("new")
-            with patch("cypilot_proxy.telemetry.LOG_DIR", log_dir):
+            with patch("studio_proxy.telemetry.LOG_DIR", log_dir):
                 with patch.dict(os.environ, {"CFC_TELEMETRY_RETENTION_DAYS": "5"}):
                     _rotate_logs()
             self.assertFalse(old_file.exists())
@@ -203,7 +203,7 @@ class TestRotateLogs(unittest.TestCase):
             log_dir.mkdir()
             recent_file = log_dir / "2026-04-01.log"
             recent_file.write_text("recent")
-            with patch("cypilot_proxy.telemetry.LOG_DIR", log_dir):
+            with patch("studio_proxy.telemetry.LOG_DIR", log_dir):
                 with patch.dict(os.environ, {"CFC_TELEMETRY_RETENTION_DAYS": "5"}):
                     _rotate_logs()
             self.assertTrue(recent_file.exists())
@@ -216,7 +216,7 @@ class TestRotateLogs(unittest.TestCase):
             old_file = log_dir / "2020-01-01.log"
             old_file.write_text("old")
             os.utime(old_file, (0, 0))
-            with patch("cypilot_proxy.telemetry.LOG_DIR", log_dir):
+            with patch("studio_proxy.telemetry.LOG_DIR", log_dir):
                 with patch.dict(os.environ, {"CFC_TELEMETRY_RETENTION_DAYS": "not_a_number"}):
                     _rotate_logs()
             self.assertFalse(old_file.exists())
@@ -228,7 +228,7 @@ class TestRotateLogs(unittest.TestCase):
             log_dir.mkdir()
             today_file = log_dir / datetime.now(timezone.utc).strftime("%Y-%m-%d.log")
             today_file.write_text("today")
-            with patch("cypilot_proxy.telemetry.LOG_DIR", log_dir):
+            with patch("studio_proxy.telemetry.LOG_DIR", log_dir):
                 with patch.dict(os.environ, {"CFC_TELEMETRY_RETENTION_DAYS": "0"}):
                     _rotate_logs()
             self.assertTrue(today_file.exists())
@@ -266,7 +266,7 @@ class TestBuildOtlpLogs(unittest.TestCase):
         self.assertEqual(log_attrs["enduser.name"], "Test User")
         self.assertEqual(log_attrs["enduser.email"], "test@example.com")
         self.assertEqual(log_attrs["vcs.repository.url.full"], "https://example.com/repo.git")
-        self.assertEqual(log_attrs["cypilot.command"], "validate")
+        self.assertEqual(log_attrs["studio.command"], "validate")
 
     def test_missing_fields_default_to_empty(self):
         """Should handle missing fields gracefully."""
@@ -275,7 +275,7 @@ class TestBuildOtlpLogs(unittest.TestCase):
         log_record = payload["resourceLogs"][0]["scopeLogs"][0]["logRecords"][0]
         log_attrs = {a["key"]: a["value"]["stringValue"] for a in log_record["attributes"]}
         self.assertEqual(log_attrs["enduser.name"], "")
-        self.assertEqual(log_attrs["cypilot.command"], "")
+        self.assertEqual(log_attrs["studio.command"], "")
 
 
 class TestStrAttr(unittest.TestCase):
@@ -294,7 +294,7 @@ class TestSendHttp(unittest.TestCase):
         mock_resp = MagicMock()
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
         mock_resp.__exit__ = MagicMock(return_value=False)
-        with patch("cypilot_proxy.telemetry.urlopen", return_value=mock_resp) as mock_urlopen:
+        with patch("studio_proxy.telemetry.urlopen", return_value=mock_resp) as mock_urlopen:
             _send_http("http://localhost:4318/v1/logs", {"test": True})
             mock_urlopen.assert_called_once()
             req = mock_urlopen.call_args[0][0]
@@ -304,8 +304,8 @@ class TestSendHttp(unittest.TestCase):
     def test_http_error_logs_to_file(self):
         """Should call _log_error on HTTP failure."""
         from urllib.error import URLError
-        with patch("cypilot_proxy.telemetry.urlopen", side_effect=URLError("connection refused")):
-            with patch("cypilot_proxy.telemetry._log_error") as mock_log_error:
+        with patch("studio_proxy.telemetry.urlopen", side_effect=URLError("connection refused")):
+            with patch("studio_proxy.telemetry._log_error") as mock_log_error:
                 _send_http("http://localhost:4318/v1/logs", {"test": True})
                 mock_log_error.assert_called_once()
                 self.assertIn("connection refused", mock_log_error.call_args[0][0])
@@ -318,7 +318,7 @@ class TestLogError(unittest.TestCase):
         """Should append ERROR-level JSONL record."""
         with TemporaryDirectory() as tmpdir:
             log_dir = Path(tmpdir) / "logs"
-            with patch("cypilot_proxy.telemetry.LOG_DIR", log_dir):
+            with patch("studio_proxy.telemetry.LOG_DIR", log_dir):
                 _log_error("test error message")
                 log_files = list(log_dir.glob("*.log"))
                 self.assertEqual(len(log_files), 1)
@@ -336,17 +336,17 @@ class TestTelemetryWorkerIntegration(unittest.TestCase):
             log_dir = Path(tmpdir) / "logs"
             mock_git = MagicMock()
             mock_git.stdout = "user.name Test\nuser.email test@test.com\nremote.origin.url https://example.com"
-            with patch("cypilot_proxy.telemetry.LOG_DIR", log_dir), \
-                 patch("cypilot_proxy.telemetry.subprocess.run", return_value=mock_git), \
+            with patch("studio_proxy.telemetry.LOG_DIR", log_dir), \
+                 patch("studio_proxy.telemetry.subprocess.run", return_value=mock_git), \
                  patch.dict(os.environ, {"CFC_TELEMETRY_URL": "http://localhost:4318/v1/logs"}), \
-                 patch("cypilot_proxy.telemetry.urlopen") as mock_urlopen, \
-                 patch("cypilot_proxy.__version__", "3.5.1-test"):
+                 patch("studio_proxy.telemetry.urlopen") as mock_urlopen, \
+                 patch("studio_proxy.__version__", "3.5.1-test"):
                 mock_resp = MagicMock()
                 mock_resp.__enter__ = MagicMock(return_value=mock_resp)
                 mock_resp.__exit__ = MagicMock(return_value=False)
                 mock_urlopen.return_value = mock_resp
 
-                from cypilot_proxy.telemetry import _telemetry_worker
+                from studio_proxy.telemetry import _telemetry_worker
                 _telemetry_worker("validate")
 
                 log_files = list(log_dir.glob("*.log"))
@@ -367,13 +367,13 @@ class TestTelemetryWorkerIntegration(unittest.TestCase):
             mock_git.stdout = "user.name Test\nuser.email test@test.com"
             env = os.environ.copy()
             env.pop("CFC_TELEMETRY_URL", None)
-            with patch("cypilot_proxy.telemetry.LOG_DIR", log_dir), \
-                 patch("cypilot_proxy.telemetry.subprocess.run", return_value=mock_git), \
+            with patch("studio_proxy.telemetry.LOG_DIR", log_dir), \
+                 patch("studio_proxy.telemetry.subprocess.run", return_value=mock_git), \
                  patch.dict(os.environ, env, clear=True), \
-                 patch("cypilot_proxy.telemetry.urlopen") as mock_urlopen, \
-                 patch("cypilot_proxy.__version__", "3.5.1-test"):
+                 patch("studio_proxy.telemetry.urlopen") as mock_urlopen, \
+                 patch("studio_proxy.__version__", "3.5.1-test"):
 
-                from cypilot_proxy.telemetry import _telemetry_worker
+                from studio_proxy.telemetry import _telemetry_worker
                 _telemetry_worker("info")
 
                 log_files = list(log_dir.glob("*.log"))
@@ -386,13 +386,13 @@ class TestTelemetryWorkerIntegration(unittest.TestCase):
             log_dir = Path(tmpdir) / "logs"
             mock_git = MagicMock()
             mock_git.stdout = "user.name Test\nuser.email test@test.com"
-            with patch("cypilot_proxy.telemetry.LOG_DIR", log_dir), \
-                 patch("cypilot_proxy.telemetry.subprocess.run", return_value=mock_git), \
+            with patch("studio_proxy.telemetry.LOG_DIR", log_dir), \
+                 patch("studio_proxy.telemetry.subprocess.run", return_value=mock_git), \
                  patch.dict(os.environ, {"CFC_TELEMETRY_URL": "file:///etc/passwd"}), \
-                 patch("cypilot_proxy.telemetry.urlopen") as mock_urlopen, \
-                 patch("cypilot_proxy.__version__", "3.5.1-test"):
+                 patch("studio_proxy.telemetry.urlopen") as mock_urlopen, \
+                 patch("studio_proxy.__version__", "3.5.1-test"):
 
-                from cypilot_proxy.telemetry import _telemetry_worker
+                from studio_proxy.telemetry import _telemetry_worker
                 _telemetry_worker("validate")
 
                 mock_urlopen.assert_not_called()
@@ -407,10 +407,10 @@ class TestTelemetryWorkerIntegration(unittest.TestCase):
         """Worker exceptions should be logged, not swallowed silently."""
         with TemporaryDirectory() as tmpdir:
             log_dir = Path(tmpdir) / "logs"
-            with patch("cypilot_proxy.telemetry.LOG_DIR", log_dir), \
-                 patch("cypilot_proxy.telemetry._collect_git_info", side_effect=RuntimeError("boom")):
+            with patch("studio_proxy.telemetry.LOG_DIR", log_dir), \
+                 patch("studio_proxy.telemetry._collect_git_info", side_effect=RuntimeError("boom")):
 
-                from cypilot_proxy.telemetry import _telemetry_worker
+                from studio_proxy.telemetry import _telemetry_worker
                 _telemetry_worker("validate")
 
                 log_files = list(log_dir.glob("*.log"))

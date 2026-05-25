@@ -1,7 +1,7 @@
 """
 Unit tests for CLI helper functions.
 
-Tests utility functions from cypilot.utils.document that perform parsing, filtering, and formatting.
+Tests utility functions from studio.utils.document that perform parsing, filtering, and formatting.
 """
 
 import unittest
@@ -15,7 +15,7 @@ from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.utils.document import (
+from studio.utils.document import (
     get_content_scoped,
     iter_text_files,
     read_text_safe,
@@ -24,7 +24,7 @@ from cypilot.utils.document import (
     to_relative_posix,
 )
 
-from cypilot.utils import document as doc
+from studio.utils import document as doc
 
 from cypilot import cli as cypilot_cli
 
@@ -128,27 +128,27 @@ class TestReadTextSafe(unittest.TestCase):
 
 class TestCliInternalHelpers(unittest.TestCase):
     def test_load_json_file_invalid_json_returns_none(self):
-        from cypilot.commands.agents import _load_json_file
+        from studio.commands.agents import _load_json_file
         with TemporaryDirectory() as tmpdir:
             p = Path(tmpdir) / "bad.json"
             p.write_text("{bad}", encoding="utf-8")
             self.assertIsNone(_load_json_file(p))
 
     def test_load_json_file_non_dict_returns_none(self):
-        from cypilot.commands.agents import _load_json_file
+        from studio.commands.agents import _load_json_file
         with TemporaryDirectory() as tmpdir:
             p = Path(tmpdir) / "list.json"
             p.write_text(json.dumps([1, 2, 3]), encoding="utf-8")
             self.assertIsNone(_load_json_file(p))
 
     def test_prompt_path_eof_returns_default(self):
-        from cypilot.commands.init import _prompt_path
+        from studio.commands.init import _prompt_path
         with patch("builtins.input", side_effect=EOFError()):
             out = _prompt_path("Q?", "default")
         self.assertEqual(out, "default")
 
     def test_safe_relpath_outside_base_returns_absolute(self):
-        from cypilot.commands.agents import _safe_relpath
+        from studio.commands.agents import _safe_relpath
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir) / "root"
             other = Path(tmpdir) / "other" / "x.txt"
@@ -156,7 +156,7 @@ class TestCliInternalHelpers(unittest.TestCase):
             self.assertEqual(out, other.as_posix())
 
     def test_safe_relpath_returns_posix_for_child(self):
-        from cypilot.commands.agents import _safe_relpath
+        from studio.commands.agents import _safe_relpath
         with TemporaryDirectory() as tmpdir:
             base = Path(tmpdir)
             target = base / "x" / "y"
@@ -171,7 +171,7 @@ class TestCliCommandCoverage(unittest.TestCase):
             fake_cache = Path(td) / "cache"
             fake_cache.mkdir()
             buf = io.StringIO()
-            with patch("cypilot.commands.init.CACHE_DIR", fake_cache):
+            with patch("studio.commands.init.CACHE_DIR", fake_cache):
                 with contextlib.redirect_stdout(buf):
                     rc = cypilot_cli.main(["init", "--project-root", str(root), "--yes", "--dry-run"])
         self.assertEqual(rc, 0)

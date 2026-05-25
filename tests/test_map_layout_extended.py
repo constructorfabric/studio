@@ -10,8 +10,8 @@ from typing import List, Optional
 
 import pytest
 
-from cypilot.commands.map.categorize import CategorizeOptions, categorize_nodes
-from cypilot.commands.map.layout import (
+from studio.commands.map.categorize import CategorizeOptions, categorize_nodes
+from studio.commands.map.layout import (
     _category_band_style,
     _deterministic_style,
     _dims,
@@ -21,7 +21,7 @@ from cypilot.commands.map.layout import (
     _node_colors,
     compute_layout,
 )
-from cypilot.commands.map.model import Edge, Node, Ref
+from studio.commands.map.model import Edge, Node, Ref
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "map"
 REPO_BASIC = FIXTURES / "repo-basic"
@@ -299,9 +299,9 @@ def test_deterministic_style_different_names_different_hue():
 
 def test_compute_layout_repo_basic():
     """compute_layout works end-to-end on repo-basic fixture."""
-    from cypilot.commands.map.scan import ScanOptions, scan_repo
-    from cypilot.commands.map.cpt_edges import build_cpt_edges
-    from cypilot.commands.map.links import extract_file_links
+    from studio.commands.map.scan import ScanOptions, scan_repo
+    from studio.commands.map.cpt_edges import build_cpt_edges
+    from studio.commands.map.links import extract_file_links
 
     nodes = scan_repo(ScanOptions(project_root=REPO_BASIC, source_name="local"))
     categorize_nodes(nodes, CategorizeOptions(project_root=REPO_BASIC, override=None))
@@ -317,8 +317,8 @@ def test_compute_layout_repo_basic():
 
 def test_compute_layout_repo_dangling():
     """compute_layout works on repo-dangling fixture with phantom nodes."""
-    from cypilot.commands.map.scan import ScanOptions, scan_repo
-    from cypilot.commands.map.cpt_edges import build_cpt_edges
+    from studio.commands.map.scan import ScanOptions, scan_repo
+    from studio.commands.map.cpt_edges import build_cpt_edges
 
     nodes = scan_repo(ScanOptions(project_root=REPO_DANGLING, source_name="local"))
     categorize_nodes(nodes, CategorizeOptions(project_root=REPO_DANGLING, override=None))

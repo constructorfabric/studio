@@ -20,7 +20,7 @@ def _make_agent(**kwargs) -> "Any":
     skills, color, memory_dir, role, target, provider, reasoning_effort,
     context_window).  Pass keyword arguments to override any default.
     """
-    from cypilot.utils.manifest import AgentEntry
+    from studio.utils.manifest import AgentEntry
 
     defaults: Dict[str, Any] = {
         "id": "test-agent",
@@ -54,7 +54,7 @@ def write_constraints_toml(path: Path, data: Dict[str, Any]) -> None:
     *data* maps artifact kinds to their constraint dicts, e.g.
     ``{"PRD": {"identifiers": {"fr": {"required": True}}}}``.
     """
-    from cypilot.utils.toml_utils import dumps
+    from studio.utils.toml_utils import dumps
     (path / "constraints.toml").write_text(
         dumps({"artifacts": data}), encoding="utf-8",
     )
@@ -74,7 +74,7 @@ def make_test_cache(cache_dir: Path) -> None:
         "<!-- @cpt:heading -->\n# Product Requirements\n<!-- /@cpt:heading -->\n",
         encoding="utf-8",
     )
-    from cypilot.utils import toml_utils
+    from studio.utils import toml_utils
     toml_utils.dump({"version": 1, "blueprints": {"prd": 1}}, cache_dir / "kits" / "sdlc" / "conf.toml")
 
 
@@ -84,7 +84,7 @@ def bootstrap_test_project(
     *,
     systems: List[Dict[str, str]] | None = None,
 ) -> Path:
-    from cypilot.utils import toml_utils
+    from studio.utils import toml_utils
 
     root.mkdir(parents=True, exist_ok=True)
     (root / ".git").mkdir(exist_ok=True)
@@ -116,7 +116,7 @@ def write_registered_sdlc_config(
     artifacts_kit_path: str = "config/kits/sdlc",
     version: str = "2.0",
 ) -> None:
-    from cypilot.utils import toml_utils
+    from studio.utils import toml_utils
 
     config_dir.mkdir(parents=True, exist_ok=True)
     core_kit: Dict[str, Any] = {
@@ -144,8 +144,8 @@ def write_registered_sdlc_config(
 
 def run_cli_in_project(root: Path, args: List[str]) -> Tuple[int, dict]:
     """Run CLI main() in *root*, return (exit_code, parsed_json_output)."""
-    from cypilot.cli import main
-    from cypilot.utils.ui import is_json_mode, set_json_mode
+    from studio.cli import main
+    from studio.utils.ui import is_json_mode, set_json_mode
 
     cwd = os.getcwd()
     saved_json_mode = is_json_mode()

@@ -10,13 +10,13 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from cypilot.commands.map.enrich import (
+from studio.commands.map.enrich import (
     _find_def_line,
     _lines_around,
     _resolve_def,
     enrich_edges,
 )
-from cypilot.commands.map.model import Edge, Node, Ref
+from studio.commands.map.model import Edge, Node, Ref
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "map"
 REPO_BASIC = FIXTURES / "repo-basic"
@@ -195,7 +195,7 @@ def test_resolve_def_get_content_scoped_returns_tuple(tmp_path):
         encoding="utf-8",
     )
     # Patch get_content_scoped to return a tuple
-    with patch("cypilot.commands.map.enrich.get_content_scoped",
+    with patch("studio.commands.map.enrich.get_content_scoped",
                return_value=("section content here", 3, 5)):
         line, snippet = _resolve_def(test_file, "cpt-test-id")
     if line is not None:
@@ -212,7 +212,7 @@ def test_resolve_def_content_scoped_returns_tuple_empty_text(tmp_path):
         encoding="utf-8",
     )
     # Return empty text in the tuple
-    with patch("cypilot.commands.map.enrich.get_content_scoped",
+    with patch("studio.commands.map.enrich.get_content_scoped",
                return_value=("", 3, 3)):
         line, snippet = _resolve_def(test_file, "cpt-test-id")
     if line is not None:
@@ -228,10 +228,10 @@ def test_resolve_def_content_scoped_returns_tuple_lines_short(tmp_path):
         encoding="utf-8",
     )
     # Return a tuple with start/end that forces def_line > len(lines)
-    with patch("cypilot.commands.map.enrich.get_content_scoped",
+    with patch("studio.commands.map.enrich.get_content_scoped",
                return_value=("content", 1, 1)):
         # Patch _find_def_line to return a line beyond file length
-        with patch("cypilot.commands.map.enrich._find_def_line", return_value=100):
+        with patch("studio.commands.map.enrich._find_def_line", return_value=100):
             line, snippet = _resolve_def(test_file, "cpt-test-id")
     # def_line=100 > file length → snippet = text = "content"
     if line is not None:
@@ -246,7 +246,7 @@ def test_resolve_def_get_content_scoped_returns_none(tmp_path):
         encoding="utf-8",
     )
     # Patch get_content_scoped to return None to test the fallback branch
-    with patch("cypilot.commands.map.enrich.get_content_scoped", return_value=None):
+    with patch("studio.commands.map.enrich.get_content_scoped", return_value=None):
         line, snippet = _resolve_def(test_file, "cpt-test-id")
     # def_line should still be found via _find_def_line
     if line is not None:
@@ -261,8 +261,8 @@ def test_resolve_def_empty_result_snippet(tmp_path):
         encoding="utf-8",
     )
     # Patch _lines_around to return empty so we hit the "not snippet" branch
-    with patch("cypilot.commands.map.enrich._lines_around", return_value=None):
-        with patch("cypilot.commands.map.enrich.get_content_scoped", return_value=None):
+    with patch("studio.commands.map.enrich._lines_around", return_value=None):
+        with patch("studio.commands.map.enrich.get_content_scoped", return_value=None):
             line, snippet = _resolve_def(test_file, "cpt-empty-id")
     if line is not None:
         assert snippet is None
@@ -337,8 +337,8 @@ def test_lines_around_returns_none_for_missing_file(tmp_path):
 
 def test_real_cpt_doc_edge_enriched():
     """Integration: cpt-doc edge from repo-basic gets def_line and def_snippet baked in."""
-    from cypilot.commands.map.cpt_edges import build_cpt_edges
-    from cypilot.commands.map.scan import ScanOptions, scan_repo
+    from studio.commands.map.cpt_edges import build_cpt_edges
+    from studio.commands.map.scan import ScanOptions, scan_repo
 
     project = REPO_BASIC
     nodes = scan_repo(ScanOptions(project_root=project, source_name="local"))

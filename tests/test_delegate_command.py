@@ -20,9 +20,9 @@ from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.commands.delegate import cmd_delegate
-from cypilot.ralphex_export import run_delegation
-from cypilot.utils.ui import is_json_mode, set_json_mode
+from studio.commands.delegate import cmd_delegate
+from studio.ralphex_export import run_delegation
+from studio.utils.ui import is_json_mode, set_json_mode
 
 # -- Fixtures ----------------------------------------------------------------
 
@@ -119,8 +119,8 @@ class TestCLIDelegateCommand:
             repo = _make_repo_with_ralphex_config(tmp)
             plan_dir = _make_plan_dir(tmp)
             mock_proc = MagicMock(returncode=0, stdout="ralphex v1.0.0\n", stderr="")
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=mock_proc):
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=mock_proc):
                 rc = cmd_delegate([plan_dir, "--dry-run", "--root", repo])
         assert rc == 0
 
@@ -129,7 +129,7 @@ class TestCLIDelegateCommand:
         with TemporaryDirectory() as tmp:
             repo = _make_repo_with_ralphex_config(tmp)
             plan_dir = _make_plan_dir(tmp)
-            with patch("cypilot.ralphex_discover.shutil.which", return_value=None):
+            with patch("studio.ralphex_discover.shutil.which", return_value=None):
                 rc = cmd_delegate([plan_dir, "--dry-run", "--root", repo])
         assert rc == 2
 
@@ -194,8 +194,8 @@ class TestCLIDelegateCommand:
             repo = _make_repo_with_ralphex_config(tmp)
             plan_dir = _make_plan_dir(tmp)
             mock_proc = MagicMock(returncode=0, stdout="ralphex v1.0.0\n", stderr="")
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=mock_proc):
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=mock_proc):
                 rc = cmd_delegate([plan_dir, "--mode", "tasks-only", "--dry-run", "--root", repo])
         assert rc == 0
 
@@ -211,7 +211,7 @@ class TestCLIDelegateCommand:
                 "plan_file": "/tmp/plan.md",
                 "lifecycle_state": "exported",
             }
-            with patch("cypilot.ralphex_export.run_delegation", return_value=result) as mock_run:
+            with patch("studio.ralphex_export.run_delegation", return_value=result) as mock_run:
                 rc = cmd_delegate([plan_dir, "--dry-run", "--root", repo])
             assert rc == 0
             assert mock_run.call_args.kwargs["serve"] is True
@@ -228,7 +228,7 @@ class TestCLIDelegateCommand:
                 "plan_file": "/tmp/plan.md",
                 "lifecycle_state": "exported",
             }
-            with patch("cypilot.ralphex_export.run_delegation", return_value=result) as mock_run:
+            with patch("studio.ralphex_export.run_delegation", return_value=result) as mock_run:
                 rc = cmd_delegate([plan_dir, "--dry-run", "--no-serve", "--root", repo])
             assert rc == 0
             assert mock_run.call_args.kwargs["serve"] is False
@@ -248,7 +248,7 @@ class TestCLIDelegateCommand:
             saved_json_mode = is_json_mode()
             set_json_mode(False)
             try:
-                with patch("cypilot.ralphex_export.run_delegation", return_value=result) as mock_run:
+                with patch("studio.ralphex_export.run_delegation", return_value=result) as mock_run:
                     rc = cmd_delegate([plan_dir, "--dry-run", "--root", repo])
             finally:
                 set_json_mode(saved_json_mode)
@@ -275,7 +275,7 @@ class TestCLIDelegateCommand:
             stderr = io.StringIO()
             try:
                 with redirect_stdout(stdout), redirect_stderr(stderr), \
-                     patch("cypilot.ralphex_export.run_delegation", return_value=result) as mock_run:
+                     patch("studio.ralphex_export.run_delegation", return_value=result) as mock_run:
                     rc = cmd_delegate([plan_dir, "--dry-run", "--root", repo])
             finally:
                 set_json_mode(saved_json_mode)
@@ -306,7 +306,7 @@ class TestCLIDelegateCommand:
             stdout = io.StringIO()
             try:
                 with redirect_stdout(stdout), \
-                     patch("cypilot.ralphex_export.run_delegation", return_value=result) as mock_run:
+                     patch("studio.ralphex_export.run_delegation", return_value=result) as mock_run:
                     rc = cmd_delegate([plan_dir, "--root", repo])
             finally:
                 set_json_mode(saved_json_mode)
@@ -335,7 +335,7 @@ class TestCLIDelegateCommand:
             stderr = io.StringIO()
             try:
                 with redirect_stderr(stderr), \
-                     patch("cypilot.ralphex_export.run_delegation", return_value=result):
+                     patch("studio.ralphex_export.run_delegation", return_value=result):
                     rc = cmd_delegate([plan_dir, "--dry-run", "--root", repo])
             finally:
                 set_json_mode(saved_json_mode)
@@ -358,7 +358,7 @@ class TestCLIWiring:
         """cli.main routes 'delegate' to _cmd_delegate."""
         from cypilot import cli as cli_mod
         with patch.object(cli_mod, "_cmd_delegate", return_value=0) as mock_handler, \
-             patch("cypilot.utils.context.CypilotContext.load", return_value=None):
+             patch("studio.utils.context.CypilotContext.load", return_value=None):
             rc = cli_mod.main(["delegate", "/some/plan"])
         mock_handler.assert_called_once_with(["/some/plan"])
 
@@ -377,8 +377,8 @@ class TestBootstrapGate:
             plan_dir = _make_plan_dir(tmp)
             config = {}
             mock_proc = MagicMock(returncode=0, stdout="ralphex v1.0.0\n", stderr="")
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=mock_proc):
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=mock_proc):
                 result = run_delegation(
                     config=config,
                     plan_dir=plan_dir,
@@ -398,8 +398,8 @@ class TestBootstrapGate:
             plan_dir = _make_plan_dir(tmp)
             config = {}
             mock_proc = MagicMock(returncode=0, stdout="ralphex v1.0.0\n", stderr="")
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=mock_proc):
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=mock_proc):
                 result = run_delegation(
                     config=config,
                     plan_dir=plan_dir,
@@ -419,8 +419,8 @@ class TestBootstrapGate:
             plan_dir = _make_plan_dir(tmp)
             config = {}
             mock_proc = MagicMock(returncode=0, stdout="ralphex v1.0.0\n", stderr="")
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=mock_proc), \
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=mock_proc), \
                  patch.dict("os.environ", {"XDG_CONFIG_HOME": str(Path(tmp) / "no_xdg")}):
                 result = run_delegation(
                     config=config,
@@ -438,8 +438,8 @@ class TestBootstrapGate:
             plan_dir = _make_plan_dir(tmp)
             config = {}
             mock_proc = MagicMock(returncode=0, stdout="ralphex v1.0.0\n", stderr="")
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=mock_proc):
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=mock_proc):
                 result = run_delegation(
                     config=config,
                     plan_dir=plan_dir,
@@ -456,8 +456,8 @@ class TestBootstrapGate:
             plan_dir = _make_plan_dir(tmp)
             config = {}
             mock_proc = MagicMock(returncode=0, stdout="ralphex v1.0.0\n", stderr="")
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=mock_proc), \
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=mock_proc), \
                  patch.dict("os.environ", {"RALPHEX_PORT": "9090"}, clear=False):
                 result = run_delegation(
                     config=config,
@@ -476,8 +476,8 @@ class TestBootstrapGate:
             repo.mkdir()
             plan_dir = _make_plan_dir(tmp)
             mock_proc = MagicMock(returncode=0, stdout="ralphex v1.0.0\n", stderr="")
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=mock_proc):
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=mock_proc):
                 rc = cmd_delegate([plan_dir, "--dry-run", "--root", str(repo)])
         assert rc == 2
 
@@ -493,8 +493,8 @@ class TestEndToEndDelegation:
             repo = _make_repo_with_ralphex_config(tmp)
             plan_dir = _make_plan_dir(tmp)
             mock_proc = MagicMock(returncode=0, stdout="ralphex v1.0.0\n", stderr="")
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=mock_proc):
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=mock_proc):
                 result = run_delegation(
                     config={},
                     plan_dir=plan_dir,
@@ -516,9 +516,9 @@ class TestEndToEndDelegation:
             invoke_proc = MagicMock(returncode=0)
             invoke_proc.communicate.return_value = ("Done\n", "")
 
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=discover_proc) as mock_validate, \
-                 patch("cypilot.ralphex_export.subprocess.Popen", return_value=invoke_proc) as mock_popen:
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=discover_proc) as mock_validate, \
+                 patch("studio.ralphex_export.subprocess.Popen", return_value=invoke_proc) as mock_popen:
                 result = run_delegation(
                     config={},
                     plan_dir=plan_dir,
@@ -540,9 +540,9 @@ class TestEndToEndDelegation:
             invoke_proc = MagicMock(returncode=1)
             invoke_proc.communicate.return_value = ("", "task failed")
 
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=discover_proc), \
-                 patch("cypilot.ralphex_export.subprocess.Popen", return_value=invoke_proc):
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=discover_proc), \
+                 patch("studio.ralphex_export.subprocess.Popen", return_value=invoke_proc):
                 result = run_delegation(
                     config={},
                     plan_dir=plan_dir,

@@ -133,7 +133,7 @@ def _extract_kit_at_version(version: int, dest: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def _write_toml(path: Path, data: dict) -> None:
-    from cypilot.utils import toml_utils
+    from studio.utils import toml_utils
     path.parent.mkdir(parents=True, exist_ok=True)
     toml_utils.dump(data, path)
 
@@ -155,12 +155,12 @@ def _make_cache_from_kit(cache_dir: Path, kit_dir: Path) -> None:
 
 def _init_project(root: Path, cache_dir: Path) -> Path:
     """Run ``cpt init --yes`` inside *root* using *cache_dir*."""
-    from cypilot.cli import main
+    from studio.cli import main
     (root / ".git").mkdir(exist_ok=True)
     cwd = os.getcwd()
     try:
         os.chdir(str(root))
-        with patch("cypilot.commands.init.CACHE_DIR", cache_dir):
+        with patch("studio.commands.init.CACHE_DIR", cache_dir):
             buf = io.StringIO()
             with redirect_stdout(buf):
                 rc = main(["init", "--yes"])
@@ -178,11 +178,11 @@ class TestKitUpgradeE2E(unittest.TestCase):
     """Upgrade from every historical kit version to the latest."""
 
     def setUp(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(True)
 
     def tearDown(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(False)
 
     @classmethod
@@ -203,7 +203,7 @@ class TestKitUpgradeE2E(unittest.TestCase):
 
         Returns the parsed JSON output from ``cmd_update``.
         """
-        from cypilot.commands.update import cmd_update
+        from studio.commands.update import cmd_update
 
         with TemporaryDirectory() as td:
             td_p = Path(td)
@@ -234,7 +234,7 @@ class TestKitUpgradeE2E(unittest.TestCase):
             cwd = os.getcwd()
             try:
                 os.chdir(str(root))
-                with patch("cypilot.commands.update.CACHE_DIR", cache_latest):
+                with patch("studio.commands.update.CACHE_DIR", cache_latest):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):

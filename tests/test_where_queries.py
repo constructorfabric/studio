@@ -16,11 +16,11 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.commands.where_defined import cmd_where_defined, _human_where_defined
-from cypilot.commands.where_used import cmd_where_used, _human_where_used
-from cypilot.utils.context import CypilotContext, set_context
-from cypilot.utils.ui import set_json_mode
-from cypilot.cli import main
+from studio.commands.where_defined import cmd_where_defined, _human_where_defined
+from studio.commands.where_used import cmd_where_used, _human_where_used
+from studio.utils.context import CypilotContext, set_context
+from studio.utils.ui import set_json_mode
+from studio.cli import main
 
 
 # ---------------------------------------------------------------------------
@@ -39,7 +39,7 @@ def _setup_project(root: Path) -> Path:
     (adapter / "config").mkdir(exist_ok=True)
     (adapter / "config" / "AGENTS.md").write_text("# Adapter\n", encoding="utf-8")
 
-    from cypilot.utils import toml_utils
+    from studio.utils import toml_utils
     toml_utils.dump({
         "version": "1.0",
         "project_root": "..",
@@ -218,7 +218,7 @@ class TestCmdWhereDefined(_ContextTestBase):
         with TemporaryDirectory() as td:
             root = Path(td)
             adapter = _setup_project(root)
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",

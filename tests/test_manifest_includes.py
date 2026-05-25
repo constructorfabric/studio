@@ -17,7 +17,7 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
-from cypilot.utils.manifest import (
+from studio.utils.manifest import (
     ManifestV2,
     parse_manifest_v2,
     resolve_includes,

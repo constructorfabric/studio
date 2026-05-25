@@ -141,7 +141,7 @@ def _build_head_cache(dest: Path) -> None:
             "# Product Requirements\n", encoding="utf-8",
         )
         import tomllib
-        from cypilot.utils import toml_utils
+        from studio.utils import toml_utils
         toml_utils.dump({"version": 99}, kit_dir / "conf.toml")
 
 
@@ -157,7 +157,7 @@ def _init_project(root: Path, cache_dir: Path) -> Path:
     Returns the adapter directory (root / "cypilot").
     """
     import tempfile
-    from cypilot.commands.init import cmd_init
+    from studio.commands.init import cmd_init
     (root / ".git").mkdir(exist_ok=True)
     # Copy kit source to a temp dir — init deletes kit_src.parent after install
     kit_cache = cache_dir / "kits" / "sdlc"
@@ -172,9 +172,9 @@ def _init_project(root: Path, cache_dir: Path) -> Path:
     try:
         os.chdir(str(root))
         with (
-            patch("cypilot.commands.init.CACHE_DIR", cache_dir),
+            patch("studio.commands.init.CACHE_DIR", cache_dir),
             patch(
-                "cypilot.commands.kit._download_kit_from_github",
+                "studio.commands.kit._download_kit_from_github",
                 return_value=(kit_copy, "1.0.0"),
             ),
         ):
@@ -192,7 +192,7 @@ def _init_project(root: Path, cache_dir: Path) -> Path:
     core_toml = adapter / "config" / "core.toml"
     if core_toml.is_file():
         import tomllib
-        from cypilot.utils import toml_utils
+        from studio.utils import toml_utils
         with open(core_toml, "rb") as f:
             data = tomllib.load(f)
         for kit_data in data.get("kits", {}).values():
@@ -231,7 +231,7 @@ class TestCoreUpgradeE2E(unittest.TestCase):
 
     def _run_upgrade(self, tag: str) -> Dict[str, Any]:
         """Init project at *tag*, update to HEAD.  Returns parsed JSON output."""
-        from cypilot.commands.update import cmd_update
+        from studio.commands.update import cmd_update
 
         with TemporaryDirectory() as td:
             td_p = Path(td)
@@ -253,9 +253,9 @@ class TestCoreUpgradeE2E(unittest.TestCase):
             try:
                 os.chdir(str(root))
                 with (
-                    patch("cypilot.commands.update.CACHE_DIR", self.head_cache),
+                    patch("studio.commands.update.CACHE_DIR", self.head_cache),
                     patch(
-                        "cypilot.commands.kit._download_kit_from_github",
+                        "studio.commands.kit._download_kit_from_github",
                         return_value=(head_kit, "99"),
                     ),
                 ):

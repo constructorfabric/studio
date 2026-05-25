@@ -1,10 +1,10 @@
 """Tests for per-edge content baking via get_content_scoped (or manual fallback)."""
 from pathlib import Path
 
-from cypilot.commands.map.cpt_edges import build_cpt_edges
-from cypilot.commands.map.enrich import enrich_edges
-from cypilot.commands.map.links import extract_file_links
-from cypilot.commands.map.scan import ScanOptions, scan_repo
+from studio.commands.map.cpt_edges import build_cpt_edges
+from studio.commands.map.enrich import enrich_edges
+from studio.commands.map.links import extract_file_links
+from studio.commands.map.scan import ScanOptions, scan_repo
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "map"
 

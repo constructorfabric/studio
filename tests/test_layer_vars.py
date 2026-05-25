@@ -11,8 +11,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.commands.resolve_vars import add_layer_variables, assemble_component
-from cypilot.utils.manifest import (
+from studio.commands.resolve_vars import add_layer_variables, assemble_component
+from studio.utils.manifest import (
     AgentEntry,
     ManifestLayer,
     ManifestLayerState,

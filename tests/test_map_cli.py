@@ -19,7 +19,7 @@ def _run_map(*args, cwd: Path) -> tuple:
         + ":"
         + env.get("PYTHONPATH", "")
     )
-    cmd = [sys.executable, "-m", "cypilot.cli", "map", *args]
+    cmd = [sys.executable, "-m", "studio.cli", "map", *args]
     proc = subprocess.run(
         cmd, cwd=cwd, env=env, capture_output=True, text=True, check=False
     )

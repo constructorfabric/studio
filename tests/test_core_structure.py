@@ -62,7 +62,7 @@ class TestBaseStructure:
         wf_files = [
             f
             for f in (PROJECT_ROOT / "workflows").glob("*.md")
-            if f.name not in ("README.md", "AGENTS.md", "analyze.md", "generate.md", "plan.md", "cypilot.md", "rules.md", "adapter.md")
+            if f.name not in ("README.md", "AGENTS.md", "analyze.md", "generate.md", "plan.md", "studio.md", "rules.md", "adapter.md")
         ]
         return req_files + wf_files
 
@@ -263,7 +263,7 @@ class TestWorkflowStructure:
         """Workflow steps should be numbered or have phase/step structure."""
         wf_dir = PROJECT_ROOT / "workflows"
         # Exclude meta-workflows that embed protocols rather than having direct steps
-        exclude = {"README.md", "AGENTS.md", "analyze.md", "generate.md", "cypilot.md", "rules.md"}
+        exclude = {"README.md", "AGENTS.md", "analyze.md", "generate.md", "studio.md", "rules.md"}
         wf_files = [f for f in wf_dir.glob("*.md") if f.name not in exclude]
         for f in wf_files:
             text = f.read_text(encoding="utf-8")
@@ -321,9 +321,9 @@ class TestAgentsStructure:
         """Test that WHEN clauses can be extracted from AGENTS.md."""
         root_agents = PROJECT_ROOT / "AGENTS.md"
         text = root_agents.read_text(encoding="utf-8")
-        assert "<!-- @cpt:root-agents -->" in text, "Missing root AGENTS managed block start"
-        assert 'cypilot_path = ".bootstrap"' in text, "Missing cypilot_path in root AGENTS.md"
-        assert "<!-- /@cpt:root-agents -->" in text, "Missing root AGENTS managed block end"
+        assert "<!-- @cf:root-agents -->" in text, "Missing root AGENTS managed block start"
+        assert 'cf-studio-path = ".bootstrap"' in text, "Missing cf-studio-path in root AGENTS.md"
+        assert "<!-- /@cf:root-agents -->" in text, "Missing root AGENTS managed block end"
 
     def test_agents_refs_exist(self):
         """AGENTS.md file references should point to existing files (excluding adapter-specific paths)."""
@@ -358,7 +358,7 @@ class TestAgentsStructure:
         for f in agents_files:
             text = f.read_text(encoding="utf-8")
             if f == PROJECT_ROOT / "AGENTS.md":
-                assert 'cypilot_path = ".bootstrap"' in text, f"{f} missing managed cypilot_path"
+                assert 'cf-studio-path = ".bootstrap"' in text, f"{f} missing managed cypilot_path"
             else:
                 assert len(text) > 100, f"{f} too short"
 

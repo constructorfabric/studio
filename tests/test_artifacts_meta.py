@@ -8,7 +8,7 @@ from tempfile import TemporaryDirectory
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.utils.artifacts_meta import (
+from studio.utils.artifacts_meta import (
     Artifact,
     ArtifactsMeta,
     AutodetectRule,
@@ -641,7 +641,7 @@ class TestExtractSystemSlugCandidates(unittest.TestCase):
     """Tests for extract_system_slug_candidates."""
 
     def setUp(self):
-        from cypilot.utils.artifacts_meta import extract_system_slug_candidates
+        from studio.utils.artifacts_meta import extract_system_slug_candidates
         self.extract = extract_system_slug_candidates
 
     def test_non_cpt_id_returns_empty(self):
@@ -787,7 +787,7 @@ class TestCheckChildSlugConsistency(unittest.TestCase):
         )
 
     def _call(self, child, all_def_ids, has_ids, kind_tokens, parent_prefix=""):
-        from cypilot.utils.artifacts_meta import _check_child_slug_consistency
+        from studio.utils.artifacts_meta import _check_child_slug_consistency
         errors: list = []
         _check_child_slug_consistency(child, all_def_ids, has_ids, kind_tokens, parent_prefix, errors)
         return errors

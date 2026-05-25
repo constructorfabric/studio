@@ -39,7 +39,7 @@ def _make_kit_source(td: Path, slug: str = "testkit") -> Path:
         "[naming]\npattern = '{slug}-*'\n", encoding="utf-8",
     )
     # conf.toml
-    from cypilot.utils import toml_utils
+    from studio.utils import toml_utils
     toml_utils.dump({"version": 1, "slug": slug}, kit_src / "conf.toml")
     return kit_src
 
@@ -86,15 +86,15 @@ class TestCmdKitDispatcher(unittest.TestCase):
     """Kit CLI dispatcher: handles subcommands and errors."""
 
     def setUp(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(True)
 
     def tearDown(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(False)
 
     def test_no_subcommand(self):
-        from cypilot.commands.kit import cmd_kit
+        from studio.commands.kit import cmd_kit
         buf = io.StringIO()
         with redirect_stdout(buf):
             rc = cmd_kit([])
@@ -104,7 +104,7 @@ class TestCmdKitDispatcher(unittest.TestCase):
         self.assertIn("subcommand", out["message"].lower())
 
     def test_unknown_subcommand(self):
-        from cypilot.commands.kit import cmd_kit
+        from studio.commands.kit import cmd_kit
         buf = io.StringIO()
         with redirect_stdout(buf):
             rc = cmd_kit(["frobnicate"])
@@ -117,15 +117,15 @@ class TestCmdKitUpdate(unittest.TestCase):
     """CLI kit update command scenarios."""
 
     def setUp(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(True)
 
     def tearDown(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(False)
 
     def test_update_source_not_found(self):
-        from cypilot.commands.kit import cmd_kit_update
+        from studio.commands.kit import cmd_kit_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             _bootstrap_project(root)
@@ -142,7 +142,7 @@ class TestCmdKitUpdate(unittest.TestCase):
                 os.chdir(cwd)
 
     def test_update_no_project_root(self):
-        from cypilot.commands.kit import cmd_kit_update
+        from studio.commands.kit import cmd_kit_update
         with TemporaryDirectory() as td:
             kit_src = _make_kit_source(Path(td), "mykit")
             cwd = os.getcwd()
@@ -160,7 +160,7 @@ class TestCmdKitUpdate(unittest.TestCase):
 
     def test_update_kit_not_installed_does_first_install(self):
         """update_kit handles first-install if kit is not yet installed."""
-        from cypilot.commands.kit import cmd_kit_update
+        from studio.commands.kit import cmd_kit_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             _bootstrap_project(root)
@@ -178,7 +178,7 @@ class TestCmdKitUpdate(unittest.TestCase):
                 os.chdir(cwd)
 
     def test_update_dry_run(self):
-        from cypilot.commands.kit import cmd_kit_update, install_kit
+        from studio.commands.kit import cmd_kit_update, install_kit
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
@@ -197,7 +197,7 @@ class TestCmdKitUpdate(unittest.TestCase):
                 os.chdir(cwd)
 
     def test_update_auto_approve(self):
-        from cypilot.commands.kit import cmd_kit_update, install_kit
+        from studio.commands.kit import cmd_kit_update, install_kit
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
@@ -217,7 +217,7 @@ class TestCmdKitUpdate(unittest.TestCase):
 
     def test_update_same_version_skips(self):
         """Same version in source and installed → skip update."""
-        from cypilot.commands.kit import cmd_kit_update, install_kit
+        from studio.commands.kit import cmd_kit_update, install_kit
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
@@ -237,7 +237,7 @@ class TestCmdKitUpdate(unittest.TestCase):
 
     def test_update_force_bypasses_version_check(self):
         """--force skips version check even if versions match."""
-        from cypilot.commands.kit import cmd_kit_update, install_kit
+        from studio.commands.kit import cmd_kit_update, install_kit
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
@@ -257,8 +257,8 @@ class TestCmdKitUpdate(unittest.TestCase):
                 os.chdir(cwd)
 
     def test_update_manifest_invalid_binding_fails(self):
-        from cypilot.commands.kit import cmd_kit_update
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import cmd_kit_update
+        from studio.utils import toml_utils
 
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
@@ -302,9 +302,9 @@ class TestCmdKitUpdate(unittest.TestCase):
                 os.chdir(cwd)
 
     def test_update_mixed_failed_run_returns_fail_and_skips_regen(self):
-        import cypilot.commands.kit as kit_module
-        from cypilot.commands.kit import cmd_kit_update
-        from cypilot.utils import toml_utils
+        import studio.commands.kit as kit_module
+        from studio.commands.kit import cmd_kit_update
+        from studio.utils import toml_utils
 
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
@@ -363,9 +363,9 @@ class TestCmdKitUpdate(unittest.TestCase):
                 os.chdir(cwd)
 
     def test_update_mixed_exception_run_returns_fail_and_skips_regen(self):
-        import cypilot.commands.kit as kit_module
-        from cypilot.commands.kit import cmd_kit_update
-        from cypilot.utils import toml_utils
+        import studio.commands.kit as kit_module
+        from studio.commands.kit import cmd_kit_update
+        from studio.utils import toml_utils
 
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
@@ -421,28 +421,28 @@ class TestCmdKitUpdate(unittest.TestCase):
 
 class TestKitHelpers(unittest.TestCase):
     def test_read_kit_version_valid(self):
-        from cypilot.commands.kit import _read_kit_version
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import _read_kit_version
+        from studio.utils import toml_utils
         with TemporaryDirectory() as td:
             p = Path(td) / "conf.toml"
             toml_utils.dump({"version": 2}, p)
             self.assertEqual(_read_kit_version(p), "2")
 
     def test_read_kit_version_missing(self):
-        from cypilot.commands.kit import _read_kit_version
+        from studio.commands.kit import _read_kit_version
         self.assertEqual(_read_kit_version(Path("/nonexistent/conf.toml")), "")
 
     def test_read_kit_version_no_key(self):
-        from cypilot.commands.kit import _read_kit_version
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import _read_kit_version
+        from studio.utils import toml_utils
         with TemporaryDirectory() as td:
             p = Path(td) / "conf.toml"
             toml_utils.dump({"other": "data"}, p)
             self.assertEqual(_read_kit_version(p), "")
 
     def test_register_kit_in_core_toml(self):
-        from cypilot.commands.kit import _register_kit_in_core_toml
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import _register_kit_in_core_toml
+        from studio.utils import toml_utils
         with TemporaryDirectory() as td:
             config_dir = Path(td) / "config"
             config_dir.mkdir()
@@ -456,13 +456,13 @@ class TestKitHelpers(unittest.TestCase):
 
     def test_register_kit_no_core_toml(self):
         """No core.toml → does nothing, no error."""
-        from cypilot.commands.kit import _register_kit_in_core_toml
+        from studio.commands.kit import _register_kit_in_core_toml
         with TemporaryDirectory() as td:
             _register_kit_in_core_toml(Path(td), "nokit", "1", Path(td))
 
     def test_register_kit_corrupt_core_toml(self):
         """Corrupt core.toml → does nothing, no error."""
-        from cypilot.commands.kit import _register_kit_in_core_toml
+        from studio.commands.kit import _register_kit_in_core_toml
         with TemporaryDirectory() as td:
             config_dir = Path(td)
             (config_dir / "core.toml").write_text("{{invalid", encoding="utf-8")
@@ -471,7 +471,7 @@ class TestKitHelpers(unittest.TestCase):
 
 class TestResolveRegisteredKitDir(unittest.TestCase):
     def test_relative_custom_path_resolves_under_adapter(self):
-        from cypilot.commands.kit import _resolve_registered_kit_dir
+        from studio.commands.kit import _resolve_registered_kit_dir
         with TemporaryDirectory() as td:
             adapter = Path(td) / "cypilot"
             adapter.mkdir()
@@ -479,7 +479,7 @@ class TestResolveRegisteredKitDir(unittest.TestCase):
             self.assertEqual(resolved, (adapter / "custom-kits" / "sdlc").resolve())
 
     def test_posix_absolute_path_resolves_without_rebasing(self):
-        from cypilot.commands.kit import _resolve_registered_kit_dir
+        from studio.commands.kit import _resolve_registered_kit_dir
         with TemporaryDirectory() as td:
             adapter = Path(td) / "cypilot"
             adapter.mkdir()
@@ -488,7 +488,7 @@ class TestResolveRegisteredKitDir(unittest.TestCase):
             self.assertEqual(resolved, external.resolve())
 
     def test_windows_drive_absolute_path_not_project_relative_on_non_windows(self):
-        from cypilot.commands.kit import _resolve_registered_kit_dir
+        from studio.commands.kit import _resolve_registered_kit_dir
         with TemporaryDirectory() as td:
             adapter = Path(td) / "cypilot"
             adapter.mkdir()
@@ -500,7 +500,7 @@ class TestResolveRegisteredKitDir(unittest.TestCase):
                 self.assertIsNone(resolved)
 
     def test_windows_backslash_absolute_path_not_project_relative_on_non_windows(self):
-        from cypilot.commands.kit import _resolve_registered_kit_dir
+        from studio.commands.kit import _resolve_registered_kit_dir
         with TemporaryDirectory() as td:
             adapter = Path(td) / "cypilot"
             adapter.mkdir()
@@ -514,8 +514,8 @@ class TestResolveRegisteredKitDir(unittest.TestCase):
 
 class TestSerializeManifestBindingPath(unittest.TestCase):
     def test_preserves_windows_drive_absolute_path_when_relpath_raises(self):
-        import cypilot.commands.kit as kit_module
-        from cypilot.commands.kit import _serialize_manifest_binding_path
+        import studio.commands.kit as kit_module
+        from studio.commands.kit import _serialize_manifest_binding_path
 
         with patch.object(
             kit_module.os.path,
@@ -534,15 +534,15 @@ class TestCmdKitInstall(unittest.TestCase):
     """Cover cmd_kit_install CLI command."""
 
     def setUp(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(True)
 
     def tearDown(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(False)
 
     def test_install_invalid_source(self):
-        from cypilot.commands.kit import cmd_kit_install
+        from studio.commands.kit import cmd_kit_install
         buf = io.StringIO()
         with redirect_stdout(buf):
             rc = cmd_kit_install(["--path", "/nonexistent/path/to/kit"])
@@ -551,7 +551,7 @@ class TestCmdKitInstall(unittest.TestCase):
         self.assertEqual(out["status"], "FAIL")
 
     def test_install_no_project_root(self):
-        from cypilot.commands.kit import cmd_kit_install
+        from studio.commands.kit import cmd_kit_install
         with TemporaryDirectory() as td:
             kit_src = _make_kit_source(Path(td), "testkit")
             cwd = os.getcwd()
@@ -566,7 +566,7 @@ class TestCmdKitInstall(unittest.TestCase):
                 os.chdir(cwd)
 
     def test_install_no_cypilot_dir(self):
-        from cypilot.commands.kit import cmd_kit_install
+        from studio.commands.kit import cmd_kit_install
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
@@ -584,7 +584,7 @@ class TestCmdKitInstall(unittest.TestCase):
                 os.chdir(cwd)
 
     def test_install_already_exists(self):
-        from cypilot.commands.kit import cmd_kit_install
+        from studio.commands.kit import cmd_kit_install
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
@@ -603,8 +603,8 @@ class TestCmdKitInstall(unittest.TestCase):
                 os.chdir(cwd)
 
     def test_install_already_exists_at_registered_custom_root(self):
-        from cypilot.commands.kit import cmd_kit_install
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import cmd_kit_install
+        from studio.utils import toml_utils
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
@@ -638,7 +638,7 @@ class TestCmdKitInstall(unittest.TestCase):
                 os.chdir(cwd)
 
     def test_install_dry_run(self):
-        from cypilot.commands.kit import cmd_kit_install
+        from studio.commands.kit import cmd_kit_install
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             _bootstrap_project(root)
@@ -656,7 +656,7 @@ class TestCmdKitInstall(unittest.TestCase):
                 os.chdir(cwd)
 
     def test_install_success(self):
-        from cypilot.commands.kit import cmd_kit_install
+        from studio.commands.kit import cmd_kit_install
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             _bootstrap_project(root)
@@ -675,7 +675,7 @@ class TestCmdKitInstall(unittest.TestCase):
                 os.chdir(cwd)
 
     def test_install_with_force(self):
-        from cypilot.commands.kit import cmd_kit_install
+        from studio.commands.kit import cmd_kit_install
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
@@ -694,8 +694,8 @@ class TestCmdKitInstall(unittest.TestCase):
                 os.chdir(cwd)
 
     def test_install_with_force_uses_registered_custom_root(self):
-        from cypilot.commands.kit import cmd_kit_install
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import cmd_kit_install
+        from studio.utils import toml_utils
         import tomllib
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
@@ -734,8 +734,8 @@ class TestCmdKitInstall(unittest.TestCase):
             self.assertEqual(data["kits"]["testkit"]["path"], "custom-kits/testkit")
 
     def test_install_with_force_uses_registered_custom_root_for_manifest_kit(self):
-        from cypilot.commands.kit import cmd_kit_install
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import cmd_kit_install
+        from studio.utils import toml_utils
         import tomllib
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
@@ -774,8 +774,8 @@ class TestCmdKitInstall(unittest.TestCase):
             self.assertEqual(data["kits"]["testkit"]["path"], "custom-kits/testkit")
 
     def test_install_manifest_custom_root_preserves_absolute_path_when_relpath_raises(self):
-        import cypilot.commands.kit as kit_module
-        from cypilot.commands.kit import install_kit
+        import studio.commands.kit as kit_module
+        from studio.commands.kit import install_kit
         import tomllib
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
@@ -817,9 +817,9 @@ class TestCmdKitInstall(unittest.TestCase):
             self.assertEqual(resources["constraints"]["path"], f"{external_kit_dir.as_posix()}/constraints.toml")
 
     def test_install_with_force_manifest_preserves_absolute_bindings_when_relpath_raises(self):
-        import cypilot.commands.kit as kit_module
-        from cypilot.commands.kit import cmd_kit_install
-        from cypilot.utils import toml_utils
+        import studio.commands.kit as kit_module
+        from studio.commands.kit import cmd_kit_install
+        from studio.utils import toml_utils
         import tomllib
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
@@ -880,8 +880,8 @@ class TestCmdKitInstall(unittest.TestCase):
 
     def test_install_slug_from_conf_toml(self):
         """Kit slug is read from conf.toml slug field."""
-        from cypilot.commands.kit import cmd_kit_install
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import cmd_kit_install
+        from studio.utils import toml_utils
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             _bootstrap_project(root)
@@ -904,7 +904,7 @@ class TestDetectAndMigrateLayoutLegacy(unittest.TestCase):
     """Cover _detect_and_migrate_layout — legacy layout migration."""
 
     def test_no_migration_needed(self):
-        from cypilot.commands.kit import _detect_and_migrate_layout
+        from studio.commands.kit import _detect_and_migrate_layout
         with TemporaryDirectory() as td:
             adapter = Path(td) / "cypilot"
             (adapter / "config" / "kits" / "sdlc").mkdir(parents=True)
@@ -912,7 +912,7 @@ class TestDetectAndMigrateLayoutLegacy(unittest.TestCase):
             self.assertEqual(result, {})
 
     def test_dry_run_kits_dir(self):
-        from cypilot.commands.kit import _detect_and_migrate_layout
+        from studio.commands.kit import _detect_and_migrate_layout
         with TemporaryDirectory() as td:
             adapter = Path(td) / "cypilot"
             kits_dir = adapter / "kits" / "sdlc"
@@ -925,7 +925,7 @@ class TestDetectAndMigrateLayoutLegacy(unittest.TestCase):
             self.assertTrue(kits_dir.is_dir())
 
     def test_migrate_kits_dir(self):
-        from cypilot.commands.kit import _detect_and_migrate_layout
+        from studio.commands.kit import _detect_and_migrate_layout
         with TemporaryDirectory() as td:
             adapter = Path(td) / "cypilot"
             kits_dir = adapter / "kits" / "sdlc"
@@ -948,7 +948,7 @@ class TestDetectAndMigrateLayoutLegacy(unittest.TestCase):
             self.assertFalse((adapter / "kits").is_dir())
 
     def test_migrate_gen_kits_dir(self):
-        from cypilot.commands.kit import _detect_and_migrate_layout
+        from studio.commands.kit import _detect_and_migrate_layout
         with TemporaryDirectory() as td:
             adapter = Path(td) / "cypilot"
             gen_kit = adapter / ".gen" / "kits" / "sdlc"
@@ -964,8 +964,8 @@ class TestDetectAndMigrateLayoutLegacy(unittest.TestCase):
             self.assertFalse((adapter / ".gen" / "kits").is_dir())
 
     def test_migrate_updates_core_toml_paths(self):
-        from cypilot.commands.kit import _detect_and_migrate_layout
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import _detect_and_migrate_layout
+        from studio.utils import toml_utils
         with TemporaryDirectory() as td:
             adapter = Path(td) / "cypilot"
             kits_dir = adapter / "kits" / "sdlc"
@@ -984,7 +984,7 @@ class TestDetectAndMigrateLayoutLegacy(unittest.TestCase):
 
     def test_migrate_with_subdir(self):
         """Migration copies subdirectories from kits/{slug}/."""
-        from cypilot.commands.kit import _detect_and_migrate_layout
+        from studio.commands.kit import _detect_and_migrate_layout
         with TemporaryDirectory() as td:
             adapter = Path(td) / "cypilot"
             kits_dir = adapter / "kits" / "sdlc"
@@ -996,7 +996,7 @@ class TestDetectAndMigrateLayoutLegacy(unittest.TestCase):
             self.assertTrue((config_kit / "artifacts" / "DESIGN" / "template.md").is_file())
 
     def test_dry_run_gen_kits(self):
-        from cypilot.commands.kit import _detect_and_migrate_layout
+        from studio.commands.kit import _detect_and_migrate_layout
         with TemporaryDirectory() as td:
             adapter = Path(td) / "cypilot"
             gen_kit = adapter / ".gen" / "kits" / "sdlc"
@@ -1012,7 +1012,7 @@ class TestDetectAndMigrateLayout(unittest.TestCase):
     """Cover _detect_and_migrate_layout — legacy layout migration."""
 
     def test_no_migration_needed(self):
-        from cypilot.commands.kit import _detect_and_migrate_layout
+        from studio.commands.kit import _detect_and_migrate_layout
         with TemporaryDirectory() as td:
             adapter = Path(td) / "cypilot"
             (adapter / "config" / "kits" / "sdlc").mkdir(parents=True)
@@ -1020,7 +1020,7 @@ class TestDetectAndMigrateLayout(unittest.TestCase):
             self.assertEqual(result, {})
 
     def test_dry_run_kits_dir(self):
-        from cypilot.commands.kit import _detect_and_migrate_layout
+        from studio.commands.kit import _detect_and_migrate_layout
         with TemporaryDirectory() as td:
             adapter = Path(td) / "cypilot"
             kits_dir = adapter / "kits" / "sdlc"
@@ -1033,7 +1033,7 @@ class TestDetectAndMigrateLayout(unittest.TestCase):
             self.assertTrue(kits_dir.is_dir())
 
     def test_migrate_kits_dir(self):
-        from cypilot.commands.kit import _detect_and_migrate_layout
+        from studio.commands.kit import _detect_and_migrate_layout
         with TemporaryDirectory() as td:
             adapter = Path(td) / "cypilot"
             kits_dir = adapter / "kits" / "sdlc"
@@ -1056,7 +1056,7 @@ class TestDetectAndMigrateLayout(unittest.TestCase):
             self.assertFalse((adapter / "kits").is_dir())
 
     def test_migrate_gen_kits_dir(self):
-        from cypilot.commands.kit import _detect_and_migrate_layout
+        from studio.commands.kit import _detect_and_migrate_layout
         with TemporaryDirectory() as td:
             adapter = Path(td) / "cypilot"
             gen_kit = adapter / ".gen" / "kits" / "sdlc"
@@ -1072,8 +1072,8 @@ class TestDetectAndMigrateLayout(unittest.TestCase):
             self.assertFalse((adapter / ".gen" / "kits").is_dir())
 
     def test_migrate_updates_core_toml_paths(self):
-        from cypilot.commands.kit import _detect_and_migrate_layout
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import _detect_and_migrate_layout
+        from studio.utils import toml_utils
         with TemporaryDirectory() as td:
             adapter = Path(td) / "cypilot"
             kits_dir = adapter / "kits" / "sdlc"
@@ -1092,7 +1092,7 @@ class TestDetectAndMigrateLayout(unittest.TestCase):
 
     def test_migrate_with_subdir(self):
         """Migration copies subdirectories from kits/{slug}/."""
-        from cypilot.commands.kit import _detect_and_migrate_layout
+        from studio.commands.kit import _detect_and_migrate_layout
         with TemporaryDirectory() as td:
             adapter = Path(td) / "cypilot"
             kits_dir = adapter / "kits" / "sdlc"
@@ -1104,7 +1104,7 @@ class TestDetectAndMigrateLayout(unittest.TestCase):
             self.assertTrue((config_kit / "artifacts" / "DESIGN" / "template.md").is_file())
 
     def test_dry_run_gen_kits(self):
-        from cypilot.commands.kit import _detect_and_migrate_layout
+        from studio.commands.kit import _detect_and_migrate_layout
         with TemporaryDirectory() as td:
             adapter = Path(td) / "cypilot"
             gen_kit = adapter / ".gen" / "kits" / "sdlc"
@@ -1120,15 +1120,15 @@ class TestCmdKitMigrateDeprecated(unittest.TestCase):
     """cmd_kit_migrate redirects to cmd_kit_update."""
 
     def setUp(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(True)
 
     def tearDown(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(False)
 
     def test_migrate_warns_and_returns_error(self):
-        from cypilot.commands.kit import cmd_kit_migrate
+        from studio.commands.kit import cmd_kit_migrate
         err = io.StringIO()
         with redirect_stderr(err):
             rc = cmd_kit_migrate([])
@@ -1141,22 +1141,22 @@ class TestCmdKitDispatcherRoutes(unittest.TestCase):
     """Cover cmd_kit routing to install, update, migrate subcommands."""
 
     def setUp(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(True)
 
     def tearDown(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(False)
 
     def test_route_install(self):
-        from cypilot.commands.kit import cmd_kit
+        from studio.commands.kit import cmd_kit
         buf = io.StringIO()
         with redirect_stdout(buf):
             rc = cmd_kit(["install", "--path", "/nonexistent"])
         self.assertEqual(rc, 2)
 
     def test_route_update(self):
-        from cypilot.commands.kit import cmd_kit
+        from studio.commands.kit import cmd_kit
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             _bootstrap_project(root)
@@ -1171,7 +1171,7 @@ class TestCmdKitDispatcherRoutes(unittest.TestCase):
                 os.chdir(cwd)
 
     def test_route_migrate(self):
-        from cypilot.commands.kit import cmd_kit
+        from studio.commands.kit import cmd_kit
         with TemporaryDirectory() as td:
             cwd = os.getcwd()
             try:
@@ -1189,15 +1189,15 @@ class TestUpdateKitExistingBranch(unittest.TestCase):
     """Cover update_kit when kit already exists (file-level diff path)."""
 
     def setUp(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(True)
 
     def tearDown(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(False)
 
     def test_update_existing_kit_auto_approve(self):
-        from cypilot.commands.kit import update_kit, install_kit
+        from studio.commands.kit import update_kit, install_kit
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
@@ -1210,7 +1210,7 @@ class TestUpdateKitExistingBranch(unittest.TestCase):
             self.assertIn(result["version"]["status"], ("updated", "current"))
 
     def test_update_existing_kit_non_interactive(self):
-        from cypilot.commands.kit import update_kit, install_kit
+        from studio.commands.kit import update_kit, install_kit
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
@@ -1222,7 +1222,7 @@ class TestUpdateKitExistingBranch(unittest.TestCase):
             self.assertIn(result["version"]["status"], ("partial", "current"))
 
     def test_update_kit_dry_run(self):
-        from cypilot.commands.kit import update_kit
+        from studio.commands.kit import update_kit
         with TemporaryDirectory() as td:
             adapter = Path(td) / "cypilot"
             adapter.mkdir()
@@ -1230,7 +1230,7 @@ class TestUpdateKitExistingBranch(unittest.TestCase):
             self.assertEqual(result["version"]["status"], "dry_run")
 
     def test_update_existing_with_declined(self):
-        from cypilot.commands.kit import update_kit, install_kit
+        from studio.commands.kit import update_kit, install_kit
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
@@ -1243,8 +1243,8 @@ class TestUpdateKitExistingBranch(unittest.TestCase):
                 self.assertIsInstance(result["gen_rejected"], list)
 
     def test_update_same_version_current_at_registered_custom_root(self):
-        from cypilot.commands.kit import install_kit, update_kit
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import install_kit, update_kit
+        from studio.utils import toml_utils
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
@@ -1273,8 +1273,8 @@ class TestUpdateKitExistingBranch(unittest.TestCase):
             self.assertFalse(default_kit_dir.exists())
 
     def test_update_uses_registered_custom_root_as_update_target(self):
-        from cypilot.commands.kit import install_kit, update_kit
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import install_kit, update_kit
+        from studio.utils import toml_utils
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
@@ -1309,9 +1309,9 @@ class TestUpdateKitExistingBranch(unittest.TestCase):
             self.assertEqual(data["kits"]["customupdate"]["path"], "custom-kits/customupdate")
 
     def test_update_manifest_migration_preserves_absolute_bindings_when_relpath_raises(self):
-        import cypilot.commands.kit as kit_module
-        from cypilot.commands.kit import update_kit
-        from cypilot.utils import toml_utils
+        import studio.commands.kit as kit_module
+        from studio.commands.kit import update_kit
+        from studio.utils import toml_utils
         import tomllib
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
@@ -1374,8 +1374,8 @@ class TestUpdateKitExistingBranch(unittest.TestCase):
 
     def test_update_kit_not_installed_coverage(self):
         """cmd_kit_update with valid source but kit not installed."""
-        from cypilot.commands.kit import cmd_kit_update
-        from cypilot.utils.ui import set_json_mode
+        from studio.commands.kit import cmd_kit_update
+        from studio.utils.ui import set_json_mode
         set_json_mode(True)
         try:
             with TemporaryDirectory() as td:
@@ -1401,32 +1401,32 @@ class TestHumanKitInstall(unittest.TestCase):
     """Cover _human_kit_install display function (runs with JSON mode OFF)."""
 
     def setUp(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(False)
 
     def test_pass(self):
-        from cypilot.commands.kit import _human_kit_install
+        from studio.commands.kit import _human_kit_install
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_kit_install({"status": "PASS", "kit": "sdlc", "version": "1", "action": "installed", "files_written": 5})
         self.assertIn("sdlc", buf.getvalue())
 
     def test_dry_run(self):
-        from cypilot.commands.kit import _human_kit_install
+        from studio.commands.kit import _human_kit_install
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_kit_install({"status": "DRY_RUN", "kit": "sdlc", "version": "1", "source": "/a", "target": "/b"})
         self.assertIn("Dry run", buf.getvalue())
 
     def test_fail(self):
-        from cypilot.commands.kit import _human_kit_install
+        from studio.commands.kit import _human_kit_install
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_kit_install({"status": "FAIL", "kit": "sdlc", "message": "not found", "hint": "check path"})
         self.assertIn("not found", buf.getvalue())
 
     def test_with_errors(self):
-        from cypilot.commands.kit import _human_kit_install
+        from studio.commands.kit import _human_kit_install
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_kit_install({"status": "WARN", "kit": "sdlc", "version": "1", "errors": ["err1"]})
@@ -1437,11 +1437,11 @@ class TestHumanKitUpdate(unittest.TestCase):
     """Cover _human_kit_update display function."""
 
     def setUp(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(False)
 
     def test_pass_with_results(self):
-        from cypilot.commands.kit import _human_kit_update
+        from studio.commands.kit import _human_kit_update
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_kit_update({
@@ -1459,7 +1459,7 @@ class TestHumanKitUpdate(unittest.TestCase):
         self.assertIn("complete", out)
 
     def test_warn_with_errors(self):
-        from cypilot.commands.kit import _human_kit_update
+        from studio.commands.kit import _human_kit_update
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_kit_update({
@@ -1474,14 +1474,14 @@ class TestHumanKitUpdate(unittest.TestCase):
         self.assertIn("warnings", out.lower())
 
     def test_unknown_status(self):
-        from cypilot.commands.kit import _human_kit_update
+        from studio.commands.kit import _human_kit_update
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_kit_update({"status": "CUSTOM", "results": []})
         self.assertIn("CUSTOM", buf.getvalue())
 
     def test_no_results(self):
-        from cypilot.commands.kit import _human_kit_update
+        from studio.commands.kit import _human_kit_update
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_kit_update({"status": "PASS", "kits_updated": 0, "results": []})
@@ -1492,7 +1492,7 @@ class TestSeedKitConfigFiles(unittest.TestCase):
     """Cover _seed_kit_config_files."""
 
     def test_seeds_missing_files(self):
-        from cypilot.commands.kit import _seed_kit_config_files
+        from studio.commands.kit import _seed_kit_config_files
         with TemporaryDirectory() as td:
             scripts_dir = Path(td) / "scripts"
             scripts_dir.mkdir()
@@ -1508,27 +1508,27 @@ class TestReadConfVersion(unittest.TestCase):
     """Cover _read_conf_version edge cases."""
 
     def test_valid(self):
-        from cypilot.commands.kit import _read_conf_version
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import _read_conf_version
+        from studio.utils import toml_utils
         with TemporaryDirectory() as td:
             p = Path(td) / "conf.toml"
             toml_utils.dump({"version": 3}, p)
             self.assertEqual(_read_conf_version(p), 3)
 
     def test_missing_file(self):
-        from cypilot.commands.kit import _read_conf_version
+        from studio.commands.kit import _read_conf_version
         self.assertEqual(_read_conf_version(Path("/nonexistent/conf.toml")), 0)
 
     def test_no_version_key(self):
-        from cypilot.commands.kit import _read_conf_version
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import _read_conf_version
+        from studio.utils import toml_utils
         with TemporaryDirectory() as td:
             p = Path(td) / "conf.toml"
             toml_utils.dump({"slug": "sdlc"}, p)
             self.assertEqual(_read_conf_version(p), 0)
 
     def test_corrupt(self):
-        from cypilot.commands.kit import _read_conf_version
+        from studio.commands.kit import _read_conf_version
         with TemporaryDirectory() as td:
             p = Path(td) / "conf.toml"
             p.write_text("{{invalid", encoding="utf-8")
@@ -1541,17 +1541,17 @@ class TestReadConfVersion(unittest.TestCase):
 
 class TestParseGithubSource(unittest.TestCase):
     def test_basic(self):
-        from cypilot.commands.kit import _parse_github_source
+        from studio.commands.kit import _parse_github_source
         o, r, v = _parse_github_source("owner/repo")
         self.assertEqual((o, r, v), ("owner", "repo", ""))
 
     def test_with_version(self):
-        from cypilot.commands.kit import _parse_github_source
+        from studio.commands.kit import _parse_github_source
         o, r, v = _parse_github_source("owner/repo@v1.2.3")
         self.assertEqual((o, r, v), ("owner", "repo", "v1.2.3"))
 
     def test_invalid(self):
-        from cypilot.commands.kit import _parse_github_source
+        from studio.commands.kit import _parse_github_source
         with self.assertRaises(ValueError):
             _parse_github_source("invalid-no-slash")
 
@@ -1588,7 +1588,7 @@ class TestDownloadKitFromGithub(unittest.TestCase):
 
     def test_success(self):
         """Mocked download: creates tarball, extracts to temp dir."""
-        from cypilot.commands.kit import _download_kit_from_github
+        from studio.commands.kit import _download_kit_from_github
 
         tar_bytes = self._make_tarball_bytes([
             {"name": "owner-repo-abc123/", "type": tarfile.DIRTYPE},
@@ -1596,7 +1596,7 @@ class TestDownloadKitFromGithub(unittest.TestCase):
         ])
 
         with patch(
-            "cypilot.commands.kit.urllib.request.urlopen",
+            "studio.commands.kit.urllib.request.urlopen",
             return_value=self._fake_response(tar_bytes),
         ):
             result_dir, ver = _download_kit_from_github("owner", "repo", "v1.0")
@@ -1610,7 +1610,7 @@ class TestDownloadKitFromGithub(unittest.TestCase):
             shutil.rmtree(result_dir.parent, ignore_errors=True)
 
     def test_unsafe_path_rejected(self):
-        from cypilot.commands.kit import _download_kit_from_github
+        from studio.commands.kit import _download_kit_from_github
 
         tar_bytes = self._make_tarball_bytes([
             {"name": "owner-repo-abc123/", "type": tarfile.DIRTYPE},
@@ -1618,15 +1618,15 @@ class TestDownloadKitFromGithub(unittest.TestCase):
         ])
 
         with patch(
-            "cypilot.commands.kit.urllib.request.urlopen",
+            "studio.commands.kit.urllib.request.urlopen",
             return_value=self._fake_response(tar_bytes),
         ):
             with self.assertRaisesRegex(RuntimeError, "Unsafe path in archive"):
                 _download_kit_from_github("owner", "repo", "v1.0")
 
     def test_too_many_members_rejected(self):
-        import cypilot.commands.kit as kit_module
-        from cypilot.commands.kit import _download_kit_from_github
+        import studio.commands.kit as kit_module
+        from studio.commands.kit import _download_kit_from_github
 
         tar_bytes = self._make_tarball_bytes([
             {"name": "owner-repo-abc123/", "type": tarfile.DIRTYPE},
@@ -1636,15 +1636,15 @@ class TestDownloadKitFromGithub(unittest.TestCase):
 
         with patch.object(kit_module, "_GITHUB_TARBALL_MAX_MEMBERS", 2):
             with patch(
-                "cypilot.commands.kit.urllib.request.urlopen",
+                "studio.commands.kit.urllib.request.urlopen",
                 return_value=self._fake_response(tar_bytes),
             ):
                 with self.assertRaisesRegex(RuntimeError, "too many archive entries"):
                     _download_kit_from_github("owner", "repo", "v1.0")
 
     def test_total_uncompressed_size_rejected(self):
-        import cypilot.commands.kit as kit_module
-        from cypilot.commands.kit import _download_kit_from_github
+        import studio.commands.kit as kit_module
+        from studio.commands.kit import _download_kit_from_github
 
         tar_bytes = self._make_tarball_bytes([
             {"name": "owner-repo-abc123/", "type": tarfile.DIRTYPE},
@@ -1653,15 +1653,15 @@ class TestDownloadKitFromGithub(unittest.TestCase):
 
         with patch.object(kit_module, "_GITHUB_TARBALL_MAX_TOTAL_SIZE", 5):
             with patch(
-                "cypilot.commands.kit.urllib.request.urlopen",
+                "studio.commands.kit.urllib.request.urlopen",
                 return_value=self._fake_response(tar_bytes),
             ):
                 with self.assertRaisesRegex(RuntimeError, "total extracted size exceeds"):
                     _download_kit_from_github("owner", "repo", "v1.0")
 
     def test_suspicious_compression_ratio_rejected(self):
-        import cypilot.commands.kit as kit_module
-        from cypilot.commands.kit import _download_kit_from_github
+        import studio.commands.kit as kit_module
+        from studio.commands.kit import _download_kit_from_github
 
         tar_bytes = self._make_tarball_bytes([
             {"name": "owner-repo-abc123/", "type": tarfile.DIRTYPE},
@@ -1670,21 +1670,21 @@ class TestDownloadKitFromGithub(unittest.TestCase):
 
         with patch.object(kit_module, "_GITHUB_TARBALL_MAX_EXPANSION_RATIO", 1):
             with patch(
-                "cypilot.commands.kit.urllib.request.urlopen",
+                "studio.commands.kit.urllib.request.urlopen",
                 return_value=self._fake_response(tar_bytes),
             ):
                 with self.assertRaisesRegex(RuntimeError, "suspicious compression expansion ratio"):
                     _download_kit_from_github("owner", "repo", "v1.0")
 
     def test_network_error(self):
-        from cypilot.commands.kit import _download_kit_from_github
-        with patch("cypilot.commands.kit.urllib.request.urlopen", side_effect=Exception("timeout")):
+        from studio.commands.kit import _download_kit_from_github
+        with patch("studio.commands.kit.urllib.request.urlopen", side_effect=Exception("timeout")):
             with self.assertRaises(RuntimeError):
                 _download_kit_from_github("owner", "repo", "v1")
 
     def test_bad_archive(self):
         """Download succeeds but tarball is corrupt."""
-        from cypilot.commands.kit import _download_kit_from_github
+        from studio.commands.kit import _download_kit_from_github
 
         class FakeResp:
             def __init__(self):
@@ -1696,21 +1696,21 @@ class TestDownloadKitFromGithub(unittest.TestCase):
             def __exit__(self, *a):
                 pass
 
-        with patch("cypilot.commands.kit.urllib.request.urlopen", return_value=FakeResp()):
+        with patch("studio.commands.kit.urllib.request.urlopen", return_value=FakeResp()):
             with self.assertRaises(RuntimeError):
                 _download_kit_from_github("owner", "repo", "v1")
 
 
 class TestGithubHeaders(unittest.TestCase):
     def test_no_token(self):
-        from cypilot.commands.kit import _github_headers
+        from studio.commands.kit import _github_headers
         with patch.dict("os.environ", {}, clear=True):
             h = _github_headers()
             self.assertEqual(h["User-Agent"], "cypilot-kit-installer")
             self.assertNotIn("Authorization", h)
 
     def test_with_token(self):
-        from cypilot.commands.kit import _github_headers
+        from studio.commands.kit import _github_headers
         with patch.dict("os.environ", {"GITHUB_TOKEN": "ghp_test123"}):
             h = _github_headers()
             self.assertEqual(h["Authorization"], "Bearer ghp_test123")
@@ -1718,7 +1718,7 @@ class TestGithubHeaders(unittest.TestCase):
 
 class TestResolveLatestRelease(unittest.TestCase):
     def test_success(self):
-        from cypilot.commands.kit import _resolve_latest_github_release
+        from studio.commands.kit import _resolve_latest_github_release
 
         class FakeResp:
             def read(self):
@@ -1728,31 +1728,31 @@ class TestResolveLatestRelease(unittest.TestCase):
             def __exit__(self, *a):
                 pass
 
-        with patch("cypilot.commands.kit.urllib.request.urlopen", return_value=FakeResp()):
+        with patch("studio.commands.kit.urllib.request.urlopen", return_value=FakeResp()):
             tag = _resolve_latest_github_release("o", "r")
             self.assertEqual(tag, "v2.0")
 
     def test_no_releases_404(self):
         import urllib.error
-        from cypilot.commands.kit import _resolve_latest_github_release
+        from studio.commands.kit import _resolve_latest_github_release
 
         exc = urllib.error.HTTPError("url", 404, "Not Found", {}, None)
-        with patch("cypilot.commands.kit.urllib.request.urlopen", side_effect=exc):
+        with patch("studio.commands.kit.urllib.request.urlopen", side_effect=exc):
             tag = _resolve_latest_github_release("o", "r")
             self.assertEqual(tag, "")
 
     def test_api_error_raises(self):
         import urllib.error
-        from cypilot.commands.kit import _resolve_latest_github_release
+        from studio.commands.kit import _resolve_latest_github_release
 
         exc = urllib.error.HTTPError("url", 403, "rate limit", {}, None)
-        with patch("cypilot.commands.kit.urllib.request.urlopen", side_effect=exc):
+        with patch("studio.commands.kit.urllib.request.urlopen", side_effect=exc):
             with self.assertRaises(RuntimeError):
                 _resolve_latest_github_release("o", "r")
 
     def test_network_error_raises(self):
-        from cypilot.commands.kit import _resolve_latest_github_release
-        with patch("cypilot.commands.kit.urllib.request.urlopen", side_effect=OSError("dns")):
+        from studio.commands.kit import _resolve_latest_github_release
+        with patch("studio.commands.kit.urllib.request.urlopen", side_effect=OSError("dns")):
             with self.assertRaises(RuntimeError):
                 _resolve_latest_github_release("o", "r")
 
@@ -1763,7 +1763,7 @@ class TestResolveLatestRelease(unittest.TestCase):
 
 class TestDetectAndMigrateLayout(unittest.TestCase):
     def test_no_legacy_dirs(self):
-        from cypilot.commands.kit import _detect_and_migrate_layout
+        from studio.commands.kit import _detect_and_migrate_layout
         with TemporaryDirectory() as td:
             cypilot = Path(td) / "cypilot"
             cypilot.mkdir()
@@ -1772,7 +1772,7 @@ class TestDetectAndMigrateLayout(unittest.TestCase):
 
     def test_migrate_kits_dir(self):
         """kits/{slug}/ content migrates to config/kits/{slug}/."""
-        from cypilot.commands.kit import _detect_and_migrate_layout
+        from studio.commands.kit import _detect_and_migrate_layout
         with TemporaryDirectory() as td:
             cypilot = Path(td) / "cypilot"
             # Create old layout: kits/sdlc/ with content
@@ -1798,7 +1798,7 @@ class TestDetectAndMigrateLayout(unittest.TestCase):
 
     def test_migrate_gen_kits(self):
         """.gen/kits/{slug}/ content migrates to config/kits/{slug}/."""
-        from cypilot.commands.kit import _detect_and_migrate_layout
+        from studio.commands.kit import _detect_and_migrate_layout
         with TemporaryDirectory() as td:
             cypilot = Path(td) / "cypilot"
             gen_kit = cypilot / ".gen" / "kits" / "sdlc"
@@ -1814,7 +1814,7 @@ class TestDetectAndMigrateLayout(unittest.TestCase):
             self.assertFalse((cypilot / ".gen" / "kits").is_dir())
 
     def test_dry_run(self):
-        from cypilot.commands.kit import _detect_and_migrate_layout
+        from studio.commands.kit import _detect_and_migrate_layout
         with TemporaryDirectory() as td:
             cypilot = Path(td) / "cypilot"
             kits_dir = cypilot / "kits" / "sdlc"
@@ -1827,8 +1827,8 @@ class TestDetectAndMigrateLayout(unittest.TestCase):
             self.assertTrue(kits_dir.exists())
 
     def test_updates_core_toml_paths(self):
-        from cypilot.commands.kit import _detect_and_migrate_layout
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import _detect_and_migrate_layout
+        from studio.utils import toml_utils
         with TemporaryDirectory() as td:
             cypilot = Path(td) / "cypilot"
             kits_dir = cypilot / "kits" / "sdlc"
@@ -1849,7 +1849,7 @@ class TestDetectAndMigrateLayout(unittest.TestCase):
 
     def test_overwrite_existing_dir(self):
         """When config/kits/{slug}/artifacts/ already exists, it gets overwritten."""
-        from cypilot.commands.kit import _detect_and_migrate_layout
+        from studio.commands.kit import _detect_and_migrate_layout
         with TemporaryDirectory() as td:
             cypilot = Path(td) / "cypilot"
             # Old layout
@@ -1872,7 +1872,7 @@ class TestDetectAndMigrateLayout(unittest.TestCase):
 
 class TestInstallKitValidation(unittest.TestCase):
     def test_nonexistent_source(self):
-        from cypilot.commands.kit import install_kit
+        from studio.commands.kit import install_kit
         result = install_kit(Path("/no/such/dir"), Path("/tmp"), "x")
         self.assertEqual(result["status"], "FAIL")
 
@@ -1883,7 +1883,7 @@ class TestInstallKitValidation(unittest.TestCase):
 
 class TestCopyKitContentOverwrite(unittest.TestCase):
     def test_existing_dir_overwritten(self):
-        from cypilot.commands.kit import _copy_kit_content
+        from studio.commands.kit import _copy_kit_content
         with TemporaryDirectory() as td:
             src = Path(td) / "src"
             dst = Path(td) / "dst"
@@ -1906,7 +1906,7 @@ class TestCopyKitContentOverwrite(unittest.TestCase):
 
 class TestCollectKitMetadataOsError(unittest.TestCase):
     def test_agents_read_oserror(self):
-        from cypilot.commands.kit import _collect_kit_metadata
+        from studio.commands.kit import _collect_kit_metadata
         with TemporaryDirectory() as td:
             kit_dir = Path(td) / "sdlc"
             kit_dir.mkdir()
@@ -1916,7 +1916,7 @@ class TestCollectKitMetadataOsError(unittest.TestCase):
             self.assertEqual(meta["agents_content"], "")
 
     def test_skill_nav_uses_registered_custom_path(self):
-        from cypilot.commands.kit import _collect_kit_metadata
+        from studio.commands.kit import _collect_kit_metadata
         with TemporaryDirectory() as td:
             kit_dir = Path(td) / "custom-kits" / "sdlc"
             kit_dir.mkdir(parents=True)
@@ -1928,7 +1928,7 @@ class TestCollectKitMetadataOsError(unittest.TestCase):
             )
 
     def test_skill_nav_uses_absolute_registered_custom_path(self):
-        from cypilot.commands.kit import _collect_kit_metadata
+        from studio.commands.kit import _collect_kit_metadata
         with TemporaryDirectory() as td:
             kit_dir = Path(td) / "custom-kits" / "sdlc"
             kit_dir.mkdir(parents=True)
@@ -1940,7 +1940,7 @@ class TestCollectKitMetadataOsError(unittest.TestCase):
             )
 
     def test_skill_nav_uses_windows_drive_registered_custom_path(self):
-        from cypilot.commands.kit import _collect_kit_metadata
+        from studio.commands.kit import _collect_kit_metadata
         with TemporaryDirectory() as td:
             kit_dir = Path(td) / "custom-kits" / "sdlc"
             kit_dir.mkdir(parents=True)
@@ -1952,7 +1952,7 @@ class TestCollectKitMetadataOsError(unittest.TestCase):
             )
 
     def test_skill_nav_uses_windows_backslash_registered_custom_path(self):
-        from cypilot.commands.kit import _collect_kit_metadata
+        from studio.commands.kit import _collect_kit_metadata
         with TemporaryDirectory() as td:
             kit_dir = Path(td) / "custom-kits" / "sdlc"
             kit_dir.mkdir(parents=True)
@@ -1970,7 +1970,7 @@ class TestCollectKitMetadataOsError(unittest.TestCase):
 
 class TestResolveRegisteredKitMetadataTarget(unittest.TestCase):
     def test_uses_existing_raw_windows_backslash_registered_path(self):
-        from cypilot.commands.kit import _resolve_registered_kit_metadata_target
+        from studio.commands.kit import _resolve_registered_kit_metadata_target
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
@@ -1989,26 +1989,26 @@ class TestResolveRegisteredKitMetadataTarget(unittest.TestCase):
 
 class TestReadProjectNameFromRegistry(unittest.TestCase):
     def test_missing_file(self):
-        from cypilot.commands.kit import _read_project_name_from_registry
+        from studio.commands.kit import _read_project_name_from_registry
         self.assertIsNone(_read_project_name_from_registry(Path("/nonexistent")))
 
     def test_corrupt_toml(self):
-        from cypilot.commands.kit import _read_project_name_from_registry
+        from studio.commands.kit import _read_project_name_from_registry
         with TemporaryDirectory() as td:
             p = Path(td) / "artifacts.toml"
             p.write_text("{{bad", encoding="utf-8")
             self.assertIsNone(_read_project_name_from_registry(Path(td)))
 
     def test_empty_name(self):
-        from cypilot.commands.kit import _read_project_name_from_registry
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import _read_project_name_from_registry
+        from studio.utils import toml_utils
         with TemporaryDirectory() as td:
             toml_utils.dump({"systems": [{"name": "  "}]}, Path(td) / "artifacts.toml")
             self.assertIsNone(_read_project_name_from_registry(Path(td)))
 
     def test_reads_first_system_name(self):
-        from cypilot.commands.kit import _read_project_name_from_registry
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import _read_project_name_from_registry
+        from studio.utils import toml_utils
         with TemporaryDirectory() as td:
             toml_utils.dump(
                 {"systems": [{"name": "MyProject", "slug": "myproject", "kit": "sdlc"}]},
@@ -2023,25 +2023,25 @@ class TestReadProjectNameFromRegistry(unittest.TestCase):
 
 class TestReadKitsFromCoreToml(unittest.TestCase):
     def test_missing_file(self):
-        from cypilot.commands.kit import _read_kits_from_core_toml
+        from studio.commands.kit import _read_kits_from_core_toml
         self.assertEqual(_read_kits_from_core_toml(Path("/nonexistent")), {})
 
     def test_corrupt(self):
-        from cypilot.commands.kit import _read_kits_from_core_toml
+        from studio.commands.kit import _read_kits_from_core_toml
         with TemporaryDirectory() as td:
             (Path(td) / "core.toml").write_text("{{bad", encoding="utf-8")
             self.assertEqual(_read_kits_from_core_toml(Path(td)), {})
 
     def test_non_dict_kits(self):
-        from cypilot.commands.kit import _read_kits_from_core_toml
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import _read_kits_from_core_toml
+        from studio.utils import toml_utils
         with TemporaryDirectory() as td:
             toml_utils.dump({"kits": "not_a_dict"}, Path(td) / "core.toml")
             self.assertEqual(_read_kits_from_core_toml(Path(td)), {})
 
     def test_filters_non_dict_entries(self):
-        from cypilot.commands.kit import _read_kits_from_core_toml
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import _read_kits_from_core_toml
+        from studio.utils import toml_utils
         with TemporaryDirectory() as td:
             toml_utils.dump({
                 "kits": {"good": {"path": "x"}, "bad": "string_val"},
@@ -2057,8 +2057,8 @@ class TestReadKitsFromCoreToml(unittest.TestCase):
 
 class TestRegisterKitInCoreToml(unittest.TestCase):
     def test_new_kit(self):
-        from cypilot.commands.kit import _register_kit_in_core_toml
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import _register_kit_in_core_toml
+        from studio.utils import toml_utils
         import tomllib
         with TemporaryDirectory() as td:
             config = Path(td)
@@ -2071,8 +2071,8 @@ class TestRegisterKitInCoreToml(unittest.TestCase):
             self.assertEqual(data["kits"]["mykit"]["path"], "config/kits/mykit")
 
     def test_with_source(self):
-        from cypilot.commands.kit import _register_kit_in_core_toml
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import _register_kit_in_core_toml
+        from studio.utils import toml_utils
         import tomllib
         with TemporaryDirectory() as td:
             config = Path(td)
@@ -2083,8 +2083,8 @@ class TestRegisterKitInCoreToml(unittest.TestCase):
             self.assertEqual(data["kits"]["mykit"]["source"], "github:o/r")
 
     def test_with_explicit_path(self):
-        from cypilot.commands.kit import _register_kit_in_core_toml
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import _register_kit_in_core_toml
+        from studio.utils import toml_utils
         import tomllib
         with TemporaryDirectory() as td:
             config = Path(td)
@@ -2097,8 +2097,8 @@ class TestRegisterKitInCoreToml(unittest.TestCase):
             self.assertEqual(data["kits"]["mykit"]["path"], "custom-kits/mykit")
 
     def test_preserves_existing_custom_path_when_no_explicit_path_given(self):
-        from cypilot.commands.kit import _register_kit_in_core_toml
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import _register_kit_in_core_toml
+        from studio.utils import toml_utils
         import tomllib
         with TemporaryDirectory() as td:
             config = Path(td)
@@ -2118,8 +2118,8 @@ class TestRegisterKitInCoreToml(unittest.TestCase):
             self.assertEqual(data["kits"]["mykit"]["version"], "2.0")
 
     def test_preserves_existing_windows_backslash_path_spelling(self):
-        from cypilot.commands.kit import _register_kit_in_core_toml
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import _register_kit_in_core_toml
+        from studio.utils import toml_utils
         import tomllib
         with TemporaryDirectory() as td:
             config = Path(td)
@@ -2140,15 +2140,15 @@ class TestRegisterKitInCoreToml(unittest.TestCase):
             self.assertEqual(data["kits"]["mykit"]["path"], r"C:\external-kits\mykit")
 
     def test_missing_core_toml(self):
-        from cypilot.commands.kit import _register_kit_in_core_toml
+        from studio.commands.kit import _register_kit_in_core_toml
         # Should not raise
         _register_kit_in_core_toml(Path("/nonexistent"), "k", "1", Path("/x"))
 
 
 class TestRegenerateGenAggregates(unittest.TestCase):
     def test_uses_default_installed_kit_path_when_path_not_explicitly_registered(self):
-        from cypilot.commands.kit import regenerate_gen_aggregates
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import regenerate_gen_aggregates
+        from studio.utils import toml_utils
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
@@ -2181,8 +2181,8 @@ class TestRegenerateGenAggregates(unittest.TestCase):
             self.assertIn("# Default Agents", gen_agents)
 
     def test_uses_registered_custom_kit_path(self):
-        from cypilot.commands.kit import regenerate_gen_aggregates
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import regenerate_gen_aggregates
+        from studio.utils import toml_utils
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
@@ -2216,8 +2216,8 @@ class TestRegenerateGenAggregates(unittest.TestCase):
             self.assertIn("# Custom Agents", gen_agents)
 
     def test_uses_registered_absolute_custom_kit_path(self):
-        from cypilot.commands.kit import regenerate_gen_aggregates
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import regenerate_gen_aggregates
+        from studio.utils import toml_utils
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
@@ -2251,8 +2251,8 @@ class TestRegenerateGenAggregates(unittest.TestCase):
             self.assertIn("# Custom Agents", gen_agents)
 
     def test_uses_registered_windows_drive_custom_kit_path(self):
-        from cypilot.commands.kit import regenerate_gen_aggregates
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import regenerate_gen_aggregates
+        from studio.utils import toml_utils
         with TemporaryDirectory() as td:
             if os.name == "nt":
                 self.skipTest("Cross-OS absolute-path regression is specific to non-Windows hosts")
@@ -2288,8 +2288,8 @@ class TestRegenerateGenAggregates(unittest.TestCase):
             self.assertNotIn("# Fake Project Relative Agents", gen_agents)
 
     def test_uses_registered_windows_backslash_custom_kit_path(self):
-        from cypilot.commands.kit import regenerate_gen_aggregates
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import regenerate_gen_aggregates
+        from studio.utils import toml_utils
         with TemporaryDirectory() as td:
             if os.name == "nt":
                 self.skipTest("Cross-OS absolute-path regression is specific to non-Windows hosts")
@@ -2331,12 +2331,12 @@ class TestRegenerateGenAggregates(unittest.TestCase):
 
 class TestReadKitVersionFromCore(unittest.TestCase):
     def test_missing(self):
-        from cypilot.commands.kit import _read_kit_version_from_core
+        from studio.commands.kit import _read_kit_version_from_core
         self.assertEqual(_read_kit_version_from_core(Path("/nonexistent"), "x"), "")
 
     def test_found(self):
-        from cypilot.commands.kit import _read_kit_version_from_core
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import _read_kit_version_from_core
+        from studio.utils import toml_utils
         with TemporaryDirectory() as td:
             toml_utils.dump({"kits": {"sdlc": {"version": "3"}}}, Path(td) / "core.toml")
             self.assertEqual(_read_kit_version_from_core(Path(td), "sdlc"), "3")
@@ -2348,15 +2348,15 @@ class TestReadKitVersionFromCore(unittest.TestCase):
 
 class TestCmdKitInstallGithubPath(unittest.TestCase):
     def setUp(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(True)
 
     def tearDown(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(False)
 
     def test_install_from_github_mocked(self):
-        from cypilot.commands.kit import cmd_kit_install
+        from studio.commands.kit import cmd_kit_install
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
@@ -2366,7 +2366,7 @@ class TestCmdKitInstallGithubPath(unittest.TestCase):
             try:
                 os.chdir(root)
                 with patch(
-                    "cypilot.commands.kit._download_kit_from_github",
+                    "studio.commands.kit._download_kit_from_github",
                     return_value=(kit_src, "1.0"),
                 ):
                     buf = io.StringIO()
@@ -2379,14 +2379,14 @@ class TestCmdKitInstallGithubPath(unittest.TestCase):
                 os.chdir(cwd)
 
     def test_invalid_source_format(self):
-        from cypilot.commands.kit import cmd_kit_install
+        from studio.commands.kit import cmd_kit_install
         buf = io.StringIO()
         with redirect_stdout(buf), redirect_stderr(io.StringIO()):
             rc = cmd_kit_install(["bad-no-slash"])
         self.assertEqual(rc, 2)
 
     def test_download_failure(self):
-        from cypilot.commands.kit import cmd_kit_install
+        from studio.commands.kit import cmd_kit_install
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             _bootstrap_project(root)
@@ -2394,7 +2394,7 @@ class TestCmdKitInstallGithubPath(unittest.TestCase):
             try:
                 os.chdir(root)
                 with patch(
-                    "cypilot.commands.kit._download_kit_from_github",
+                    "studio.commands.kit._download_kit_from_github",
                     side_effect=RuntimeError("rate limit"),
                 ):
                     buf = io.StringIO()
@@ -2411,21 +2411,21 @@ class TestCmdKitInstallGithubPath(unittest.TestCase):
 
 class TestCmdKitUpdateCli(unittest.TestCase):
     def setUp(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(True)
 
     def tearDown(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(False)
 
     def test_update_local_path(self):
-        from cypilot.commands.kit import cmd_kit_update
+        from studio.commands.kit import cmd_kit_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
             kit_src = _make_kit_source(Path(td) / "src", "testkit")
             # Register kit in core.toml so it's installed
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
@@ -2447,7 +2447,7 @@ class TestCmdKitUpdateCli(unittest.TestCase):
                 os.chdir(cwd)
 
     def test_update_local_path_not_found(self):
-        from cypilot.commands.kit import cmd_kit_update
+        from studio.commands.kit import cmd_kit_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             _bootstrap_project(root)
@@ -2462,12 +2462,12 @@ class TestCmdKitUpdateCli(unittest.TestCase):
                 os.chdir(cwd)
 
     def test_update_no_kits_registered(self):
-        from cypilot.commands.kit import cmd_kit_update
+        from studio.commands.kit import cmd_kit_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
             # core.toml with empty kits
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
@@ -2484,11 +2484,11 @@ class TestCmdKitUpdateCli(unittest.TestCase):
                 os.chdir(cwd)
 
     def test_update_slug_not_found(self):
-        from cypilot.commands.kit import cmd_kit_update
+        from studio.commands.kit import cmd_kit_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
@@ -2505,12 +2505,12 @@ class TestCmdKitUpdateCli(unittest.TestCase):
                 os.chdir(cwd)
 
     def test_update_from_github_source(self):
-        from cypilot.commands.kit import cmd_kit_update
+        from studio.commands.kit import cmd_kit_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
             kit_src = _make_kit_source(Path(td) / "dl", "sdlc")
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
@@ -2521,7 +2521,7 @@ class TestCmdKitUpdateCli(unittest.TestCase):
             try:
                 os.chdir(root)
                 with patch(
-                    "cypilot.commands.kit._download_kit_from_github",
+                    "studio.commands.kit._download_kit_from_github",
                     return_value=(kit_src, "1.0"),
                 ):
                     buf = io.StringIO()
@@ -2532,11 +2532,11 @@ class TestCmdKitUpdateCli(unittest.TestCase):
                 os.chdir(cwd)
 
     def test_update_github_download_failure(self):
-        from cypilot.commands.kit import cmd_kit_update
+        from studio.commands.kit import cmd_kit_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
@@ -2546,7 +2546,7 @@ class TestCmdKitUpdateCli(unittest.TestCase):
             try:
                 os.chdir(root)
                 with patch(
-                    "cypilot.commands.kit._download_kit_from_github",
+                    "studio.commands.kit._download_kit_from_github",
                     side_effect=RuntimeError("rate limit"),
                 ):
                     buf = io.StringIO()
@@ -2557,11 +2557,11 @@ class TestCmdKitUpdateCli(unittest.TestCase):
                 os.chdir(cwd)
 
     def test_update_unsupported_source(self):
-        from cypilot.commands.kit import cmd_kit_update
+        from studio.commands.kit import cmd_kit_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
@@ -2578,11 +2578,11 @@ class TestCmdKitUpdateCli(unittest.TestCase):
                 os.chdir(cwd)
 
     def test_update_no_source_skipped(self):
-        from cypilot.commands.kit import cmd_kit_update
+        from studio.commands.kit import cmd_kit_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
@@ -2600,7 +2600,7 @@ class TestCmdKitUpdateCli(unittest.TestCase):
 
     def test_update_all_fail_returns_nonzero(self):
         """cmd_kit_update returns 2 when all kit updates raise errors."""
-        from cypilot.commands.kit import cmd_kit_update
+        from studio.commands.kit import cmd_kit_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             _bootstrap_project(root)
@@ -2609,7 +2609,7 @@ class TestCmdKitUpdateCli(unittest.TestCase):
             try:
                 os.chdir(root)
                 with patch(
-                    "cypilot.commands.kit.update_kit",
+                    "studio.commands.kit.update_kit",
                     side_effect=RuntimeError("forced failure"),
                 ):
                     buf = io.StringIO()
@@ -2632,7 +2632,7 @@ class TestCmdKitUpdateCli(unittest.TestCase):
 
 class TestUpdateKitVersionPaths(unittest.TestCase):
     def test_dry_run(self):
-        from cypilot.commands.kit import update_kit
+        from studio.commands.kit import update_kit
         with TemporaryDirectory() as td:
             src = _make_kit_source(Path(td) / "src", "tk")
             cyp = Path(td) / "cyp"
@@ -2641,8 +2641,8 @@ class TestUpdateKitVersionPaths(unittest.TestCase):
             self.assertEqual(r["version"]["status"], "dry_run")
 
     def test_version_current_skips(self):
-        from cypilot.commands.kit import update_kit
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import update_kit
+        from studio.utils import toml_utils
         with TemporaryDirectory() as td:
             src = _make_kit_source(Path(td) / "src", "tk")
             cyp = Path(td) / "cyp"
@@ -2658,8 +2658,8 @@ class TestUpdateKitVersionPaths(unittest.TestCase):
             self.assertIn("skill_nav", r)
 
     def test_manifest_invalid_binding_returns_failed_without_writing(self):
-        from cypilot.commands.kit import update_kit
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import update_kit
+        from studio.utils import toml_utils
 
         with TemporaryDirectory() as td:
             src = _make_manifest_kit_source(Path(td) / "src", "tk")
@@ -2699,8 +2699,8 @@ class TestFirstInstallSourcePersistence(unittest.TestCase):
     """Regression A: update_kit first-install must persist source in core.toml."""
 
     def test_first_install_persists_source(self):
-        from cypilot.commands.kit import update_kit
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import update_kit
+        from studio.utils import toml_utils
         import tomllib
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
@@ -2727,7 +2727,7 @@ class TestDetectMigrateLayoutFailureSafe(unittest.TestCase):
         """Create a minimal adapter dir with config/core.toml."""
         adapter = Path(td) / "adapter"
         (adapter / "config" / "kits").mkdir(parents=True)
-        from cypilot.utils import toml_utils
+        from studio.utils import toml_utils
         toml_utils.dump({
             "version": "1.0",
             "kits": {"badkit": {"format": "CFS", "path": "kits/badkit"}},
@@ -2736,7 +2736,7 @@ class TestDetectMigrateLayoutFailureSafe(unittest.TestCase):
 
     def test_failed_migration_keeps_legacy_dirs_and_core_toml(self):
         """B: when kits/badkit migration fails, kits/ and .gen/kits/ must survive."""
-        from cypilot.commands.kit import _detect_and_migrate_layout
+        from studio.commands.kit import _detect_and_migrate_layout
         import tomllib
         with TemporaryDirectory() as td:
             adapter = self._setup_adapter(Path(td))
@@ -2772,12 +2772,12 @@ class TestDetectMigrateLayoutFailureSafe(unittest.TestCase):
 
     def test_gen_failure_overrides_earlier_success_for_same_slug(self):
         """C: .gen/kits/{slug} failure must override earlier kits/{slug} success."""
-        from cypilot.commands.kit import _detect_and_migrate_layout
+        from studio.commands.kit import _detect_and_migrate_layout
         import tomllib
         with TemporaryDirectory() as td:
             adapter = self._setup_adapter(Path(td))
             # Reset core.toml to reference samekit via kits/
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0",
                 "kits": {"samekit": {"format": "CFS", "path": "kits/samekit"}},
@@ -2822,21 +2822,21 @@ class TestPartialGithubSourceFailures(unittest.TestCase):
     downloads fail while others succeed."""
 
     def setUp(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(True)
 
     def tearDown(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(False)
 
     def test_one_good_one_bad_github_kit(self):
         """One kit downloads OK, one fails → partial failure in results."""
-        from cypilot.commands.kit import cmd_kit_update
+        from studio.commands.kit import cmd_kit_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
             good_src = _make_kit_source(Path(td) / "dl", "goodkit")
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
@@ -2854,7 +2854,7 @@ class TestPartialGithubSourceFailures(unittest.TestCase):
             cwd = os.getcwd()
             try:
                 os.chdir(root)
-                with patch("cypilot.commands.kit._download_kit_from_github", side_effect=_mock_download):
+                with patch("studio.commands.kit._download_kit_from_github", side_effect=_mock_download):
                     buf = io.StringIO()
                     with redirect_stdout(buf):
                         rc = cmd_kit_update(["--force", "-y"])
@@ -2874,11 +2874,11 @@ class TestPartialGithubSourceFailures(unittest.TestCase):
 
     def test_all_kits_fail_returns_structured_errors(self):
         """When ALL kits fail download, rc=2 but results contain per-kit errors."""
-        from cypilot.commands.kit import cmd_kit_update
+        from studio.commands.kit import cmd_kit_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
@@ -2892,7 +2892,7 @@ class TestPartialGithubSourceFailures(unittest.TestCase):
             try:
                 os.chdir(root)
                 with patch(
-                    "cypilot.commands.kit._download_kit_from_github",
+                    "studio.commands.kit._download_kit_from_github",
                     side_effect=RuntimeError("network error"),
                 ):
                     buf = io.StringIO()
@@ -2910,7 +2910,7 @@ class TestPartialGithubSourceFailures(unittest.TestCase):
 
     def test_resolve_github_update_targets_returns_failures(self):
         """_resolve_github_update_targets returns (targets, failures) tuple."""
-        from cypilot.commands.kit import _resolve_github_update_targets
+        from studio.commands.kit import _resolve_github_update_targets
         kits_map = {
             "nokit": {"format": "CFS"},
             "badproto": {"format": "CFS", "source": "local:/nonexistent"},
@@ -2934,16 +2934,16 @@ class TestUnchangedPreservedInUpdateResult(unittest.TestCase):
     through _build_kit_update_result into the emitted JSON."""
 
     def setUp(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(True)
 
     def tearDown(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(False)
 
     def test_build_kit_update_result_preserves_unchanged(self):
         """_build_kit_update_result extracts unchanged from gen dict."""
-        from cypilot.commands.kit import _build_kit_update_result
+        from studio.commands.kit import _build_kit_update_result
         kit_r = {
             "version": {"status": "current"},
             "gen": {"files_written": 0, "accepted_files": [], "unchanged": 7},
@@ -2954,7 +2954,7 @@ class TestUnchangedPreservedInUpdateResult(unittest.TestCase):
 
     def test_build_kit_update_result_unchanged_defaults_zero(self):
         """When gen has no unchanged key, defaults to 0."""
-        from cypilot.commands.kit import _build_kit_update_result
+        from studio.commands.kit import _build_kit_update_result
         kit_r = {
             "version": {"status": "updated"},
             "gen": {"files_written": 2, "accepted_files": ["a.md", "b.md"]},
@@ -2964,7 +2964,7 @@ class TestUnchangedPreservedInUpdateResult(unittest.TestCase):
 
     def test_cmd_kit_update_emits_unchanged(self):
         """Full cmd_kit_update path with identical files → unchanged in JSON results."""
-        from cypilot.commands.kit import cmd_kit_update, install_kit
+        from studio.commands.kit import cmd_kit_update, install_kit
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
@@ -2995,17 +2995,17 @@ class TestInitArtifactKindsMetadata(unittest.TestCase):
     kit_results so _human_init_ok can display them."""
 
     def test_install_default_kit_includes_artifact_kinds(self):
-        from cypilot.commands.init import _install_default_kit
+        from studio.commands.init import _install_default_kit
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
             kit_src = _make_kit_source(Path(td) / "dl", "sdlc")
 
             with patch(
-                "cypilot.commands.kit._parse_github_source",
+                "studio.commands.kit._parse_github_source",
                 return_value=("owner", "repo", "v1"),
             ), patch(
-                "cypilot.commands.kit._download_kit_from_github",
+                "studio.commands.kit._download_kit_from_github",
                 return_value=(kit_src, "1.0"),
             ):
                 actions: dict = {}
@@ -3030,8 +3030,8 @@ class TestInitKitStatusContract(unittest.TestCase):
 
     def test_pass_status_emits_substep_not_warn(self):
         """PASS from install_kit → substep (success), never warn."""
-        from cypilot.commands.init import _install_default_kit
-        from cypilot.utils.ui import ui as _ui_inst
+        from studio.commands.init import _install_default_kit
+        from studio.utils.ui import ui as _ui_inst
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
@@ -3042,10 +3042,10 @@ class TestInitKitStatusContract(unittest.TestCase):
             _ui_inst.warn = lambda msg, **kw: warns.append(msg)
             try:
                 with patch(
-                    "cypilot.commands.kit._parse_github_source",
+                    "studio.commands.kit._parse_github_source",
                     return_value=("owner", "repo", "v1"),
                 ), patch(
-                    "cypilot.commands.kit._download_kit_from_github",
+                    "studio.commands.kit._download_kit_from_github",
                     return_value=(kit_src, "1.0"),
                 ):
                     actions: dict = {}
@@ -3060,8 +3060,8 @@ class TestInitKitStatusContract(unittest.TestCase):
 
     def test_warn_status_emits_warning(self):
         """WARN from install_kit → ui.warn is called."""
-        from cypilot.commands.init import _install_default_kit
-        from cypilot.utils.ui import ui as _ui_inst
+        from studio.commands.init import _install_default_kit
+        from studio.utils.ui import ui as _ui_inst
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
@@ -3073,13 +3073,13 @@ class TestInitKitStatusContract(unittest.TestCase):
             mock_result = {"status": "WARN", "errors": ["minor issue"], "files_copied": 1, "actions": {}}
             try:
                 with patch(
-                    "cypilot.commands.kit._parse_github_source",
+                    "studio.commands.kit._parse_github_source",
                     return_value=("owner", "repo", "v1"),
                 ), patch(
-                    "cypilot.commands.kit._download_kit_from_github",
+                    "studio.commands.kit._download_kit_from_github",
                     return_value=(kit_src, "1.0"),
                 ), patch(
-                    "cypilot.commands.kit.install_kit",
+                    "studio.commands.kit.install_kit",
                     return_value=mock_result,
                 ):
                     actions: dict = {}
@@ -3093,8 +3093,8 @@ class TestInitKitStatusContract(unittest.TestCase):
 
     def test_warn_status_does_not_promote_errors_to_fatal(self):
         """WARN from install_kit → errors list stays empty (not fatal)."""
-        from cypilot.commands.init import _install_default_kit
-        from cypilot.utils.ui import ui as _ui_inst
+        from studio.commands.init import _install_default_kit
+        from studio.utils.ui import ui as _ui_inst
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
@@ -3105,13 +3105,13 @@ class TestInitKitStatusContract(unittest.TestCase):
             mock_result = {"status": "WARN", "errors": ["minor issue"], "files_copied": 1, "actions": {}}
             try:
                 with patch(
-                    "cypilot.commands.kit._parse_github_source",
+                    "studio.commands.kit._parse_github_source",
                     return_value=("owner", "repo", "v1"),
                 ), patch(
-                    "cypilot.commands.kit._download_kit_from_github",
+                    "studio.commands.kit._download_kit_from_github",
                     return_value=(kit_src, "1.0"),
                 ), patch(
-                    "cypilot.commands.kit.install_kit",
+                    "studio.commands.kit.install_kit",
                     return_value=mock_result,
                 ):
                     actions: dict = {}
@@ -3125,8 +3125,8 @@ class TestInitKitStatusContract(unittest.TestCase):
 
     def test_error_status_does_promote_errors_to_fatal(self):
         """Non-WARN/non-PASS status → errors ARE promoted to fatal list."""
-        from cypilot.commands.init import _install_default_kit
-        from cypilot.utils.ui import ui as _ui_inst
+        from studio.commands.init import _install_default_kit
+        from studio.utils.ui import ui as _ui_inst
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
@@ -3137,13 +3137,13 @@ class TestInitKitStatusContract(unittest.TestCase):
             mock_result = {"status": "ERROR", "errors": ["fatal issue"], "files_copied": 0, "actions": {}}
             try:
                 with patch(
-                    "cypilot.commands.kit._parse_github_source",
+                    "studio.commands.kit._parse_github_source",
                     return_value=("owner", "repo", "v1"),
                 ), patch(
-                    "cypilot.commands.kit._download_kit_from_github",
+                    "studio.commands.kit._download_kit_from_github",
                     return_value=(kit_src, "1.0"),
                 ), patch(
-                    "cypilot.commands.kit.install_kit",
+                    "studio.commands.kit.install_kit",
                     return_value=mock_result,
                 ):
                     actions: dict = {}

@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.utils.diff_engine import (
+from studio.utils.diff_engine import (
     DiffReport,
     show_file_diff,
 )
@@ -78,19 +78,19 @@ class TestOpenEditorForFile(unittest.TestCase):
     """Cover _open_editor_for_file helper."""
 
     def test_binary_content_returns_none(self):
-        from cypilot.utils.diff_engine import _open_editor_for_file
+        from studio.utils.diff_engine import _open_editor_for_file
         result = _open_editor_for_file("bin.dat", b"\x00\x01", b"\x02\x03")
         self.assertIsNone(result)
 
     def test_editor_not_found_returns_none(self):
-        from cypilot.utils.diff_engine import _open_editor_for_file
+        from studio.utils.diff_engine import _open_editor_for_file
         with patch.dict("os.environ", {"VISUAL": "nonexistent_editor_xyz", "EDITOR": "nonexistent_editor_xyz"}):
             result = _open_editor_for_file("test.md", b"old\n", b"new\n")
         self.assertIsNone(result)
 
     def test_successful_edit_resolved(self):
         """Editor resolves conflict markers → returns edited bytes."""
-        from cypilot.utils.diff_engine import _open_editor_for_file
+        from studio.utils.diff_engine import _open_editor_for_file
 
         def fake_editor(cmd):
             path = cmd[-1]
@@ -106,7 +106,7 @@ class TestOpenEditorForFile(unittest.TestCase):
 
     def test_empty_result_returns_none(self):
         """If user deletes all content → returns None (abort)."""
-        from cypilot.utils.diff_engine import _open_editor_for_file
+        from studio.utils.diff_engine import _open_editor_for_file
 
         def fake_editor(cmd):
             path = cmd[-1]
@@ -120,7 +120,7 @@ class TestOpenEditorForFile(unittest.TestCase):
 
     def test_unresolved_markers_accept(self):
         """Conflict markers remain after editing → prompt → accept upstream."""
-        from cypilot.utils.diff_engine import _open_editor_for_file
+        from studio.utils.diff_engine import _open_editor_for_file
 
         def fake_editor(cmd):
             # Leave conflict markers in place (don't resolve)
@@ -128,26 +128,26 @@ class TestOpenEditorForFile(unittest.TestCase):
 
         with patch("subprocess.check_call", side_effect=fake_editor):
             with patch.dict("os.environ", {"VISUAL": "cat"}):
-                with patch("cypilot.utils.diff_engine._prompt_unresolved", return_value="accept"):
+                with patch("studio.utils.diff_engine._prompt_unresolved", return_value="accept"):
                     result = _open_editor_for_file("test.md", b"old\n", b"new\n")
         self.assertEqual(result, b"new\n")
 
     def test_unresolved_markers_decline(self):
         """Conflict markers remain after editing → prompt → decline."""
-        from cypilot.utils.diff_engine import _open_editor_for_file
+        from studio.utils.diff_engine import _open_editor_for_file
 
         def fake_editor(cmd):
             pass  # Leave conflict markers
 
         with patch("subprocess.check_call", side_effect=fake_editor):
             with patch.dict("os.environ", {"VISUAL": "cat"}):
-                with patch("cypilot.utils.diff_engine._prompt_unresolved", return_value="decline"):
+                with patch("studio.utils.diff_engine._prompt_unresolved", return_value="decline"):
                     result = _open_editor_for_file("test.md", b"old\n", b"new\n")
         self.assertIsNone(result)
 
     def test_editor_exception_returns_none(self):
         """Editor raises exception → returns None."""
-        from cypilot.utils.diff_engine import _open_editor_for_file
+        from studio.utils.diff_engine import _open_editor_for_file
         with patch("subprocess.check_call", side_effect=OSError("editor crash")):
             with patch.dict("os.environ", {"VISUAL": "cat"}):
                 result = _open_editor_for_file("test.md", b"old\n", b"new\n")
@@ -155,7 +155,7 @@ class TestOpenEditorForFile(unittest.TestCase):
 
     def test_identical_content_no_conflict_markers(self):
         """When old == new, no conflict markers are produced."""
-        from cypilot.utils.diff_engine import _open_editor_for_file
+        from studio.utils.diff_engine import _open_editor_for_file
 
         def fake_editor(cmd):
             path = cmd[-1]
@@ -182,17 +182,17 @@ class TestGetEditor(unittest.TestCase):
     """Cover _get_editor helper."""
 
     def test_visual_preferred(self):
-        from cypilot.utils.diff_engine import _get_editor
+        from studio.utils.diff_engine import _get_editor
         with patch.dict("os.environ", {"VISUAL": "code", "EDITOR": "vim"}):
             self.assertEqual(_get_editor(), "code")
 
     def test_editor_fallback(self):
-        from cypilot.utils.diff_engine import _get_editor
+        from studio.utils.diff_engine import _get_editor
         with patch.dict("os.environ", {"EDITOR": "nano"}, clear=True):
             self.assertEqual(_get_editor(), "nano")
 
     def test_default_vi(self):
-        from cypilot.utils.diff_engine import _get_editor
+        from studio.utils.diff_engine import _get_editor
         with patch.dict("os.environ", {}, clear=True):
             self.assertEqual(_get_editor(), "vi")
 
@@ -205,7 +205,7 @@ class TestBuildConflictContent(unittest.TestCase):
     """Cover _build_conflict_content — delete/insert/replace opcodes."""
 
     def test_replace_opcode(self):
-        from cypilot.utils.diff_engine import _build_conflict_content
+        from studio.utils.diff_engine import _build_conflict_content
         result = _build_conflict_content("f.md", "old line\n", "new line\n")
         self.assertIn("<<<<<<<", result)
         self.assertIn("=======", result)
@@ -214,19 +214,19 @@ class TestBuildConflictContent(unittest.TestCase):
         self.assertIn("new line", result)
 
     def test_delete_opcode(self):
-        from cypilot.utils.diff_engine import _build_conflict_content
+        from studio.utils.diff_engine import _build_conflict_content
         result = _build_conflict_content("f.md", "line1\nline2\n", "line1\n")
         self.assertIn("<<<<<<<", result)
         self.assertIn("line2", result)
 
     def test_insert_opcode(self):
-        from cypilot.utils.diff_engine import _build_conflict_content
+        from studio.utils.diff_engine import _build_conflict_content
         result = _build_conflict_content("f.md", "line1\n", "line1\ninserted\n")
         self.assertIn("<<<<<<<", result)
         self.assertIn("inserted", result)
 
     def test_identical_no_markers(self):
-        from cypilot.utils.diff_engine import _build_conflict_content
+        from studio.utils.diff_engine import _build_conflict_content
         result = _build_conflict_content("f.md", "same\n", "same\n")
         self.assertNotIn("<<<<<<<", result)
         self.assertEqual(result, "same\n")
@@ -240,27 +240,27 @@ class TestPromptKitFile(unittest.TestCase):
     """Cover _prompt_kit_file — all response paths."""
 
     def test_accept_all_flag(self):
-        from cypilot.utils.diff_engine import _prompt_kit_file
+        from studio.utils.diff_engine import _prompt_kit_file
         state = {"accept_all": True}
         self.assertEqual(_prompt_kit_file("f.md", state), "accept")
 
     def test_decline_all_flag(self):
-        from cypilot.utils.diff_engine import _prompt_kit_file
+        from studio.utils.diff_engine import _prompt_kit_file
         state = {"decline_all": True}
         self.assertEqual(_prompt_kit_file("f.md", state), "decline")
 
     def test_accept_single(self):
-        from cypilot.utils.diff_engine import _prompt_kit_file
+        from studio.utils.diff_engine import _prompt_kit_file
         with patch("builtins.input", return_value="a"):
             self.assertEqual(_prompt_kit_file("f.md", {}), "accept")
 
     def test_decline_single(self):
-        from cypilot.utils.diff_engine import _prompt_kit_file
+        from studio.utils.diff_engine import _prompt_kit_file
         with patch("builtins.input", return_value="d"):
             self.assertEqual(_prompt_kit_file("f.md", {}), "decline")
 
     def test_accept_all_sets_flag(self):
-        from cypilot.utils.diff_engine import _prompt_kit_file
+        from studio.utils.diff_engine import _prompt_kit_file
         state = {}
         with patch("builtins.input", return_value="A"):
             result = _prompt_kit_file("f.md", state)
@@ -268,7 +268,7 @@ class TestPromptKitFile(unittest.TestCase):
         self.assertTrue(state["accept_all"])
 
     def test_decline_all_sets_flag(self):
-        from cypilot.utils.diff_engine import _prompt_kit_file
+        from studio.utils.diff_engine import _prompt_kit_file
         state = {}
         with patch("builtins.input", return_value="D"):
             result = _prompt_kit_file("f.md", state)
@@ -276,17 +276,17 @@ class TestPromptKitFile(unittest.TestCase):
         self.assertTrue(state["decline_all"])
 
     def test_modify(self):
-        from cypilot.utils.diff_engine import _prompt_kit_file
+        from studio.utils.diff_engine import _prompt_kit_file
         with patch("builtins.input", return_value="m"):
             self.assertEqual(_prompt_kit_file("f.md", {}), "modify")
 
     def test_eof_declines(self):
-        from cypilot.utils.diff_engine import _prompt_kit_file
+        from studio.utils.diff_engine import _prompt_kit_file
         with patch("builtins.input", side_effect=EOFError):
             self.assertEqual(_prompt_kit_file("f.md", {}), "decline")
 
     def test_unknown_input_declines(self):
-        from cypilot.utils.diff_engine import _prompt_kit_file
+        from studio.utils.diff_engine import _prompt_kit_file
         with patch("builtins.input", return_value="x"):
             self.assertEqual(_prompt_kit_file("f.md", {}), "decline")
 
@@ -299,7 +299,7 @@ class TestShowKitUpdateSummary(unittest.TestCase):
     """Cover _show_kit_update_summary display."""
 
     def test_summary_with_all_change_types(self):
-        from cypilot.utils.diff_engine import _show_kit_update_summary, DiffReport
+        from studio.utils.diff_engine import _show_kit_update_summary, DiffReport
         report = DiffReport(
             added=["new.md"],
             removed=["old.md"],
@@ -340,7 +340,7 @@ class TestEnumerateKitFiles(unittest.TestCase):
     """Cover _enumerate_kit_files — include and exclude modes."""
 
     def test_include_mode(self):
-        from cypilot.utils.diff_engine import _enumerate_kit_files
+        from studio.utils.diff_engine import _enumerate_kit_files
         with TemporaryDirectory() as td:
             kit = Path(td)
             (kit / "artifacts" / "DESIGN").mkdir(parents=True)
@@ -354,7 +354,7 @@ class TestEnumerateKitFiles(unittest.TestCase):
             self.assertNotIn("conf.toml", files)
 
     def test_exclude_mode(self):
-        from cypilot.utils.diff_engine import _enumerate_kit_files
+        from studio.utils.diff_engine import _enumerate_kit_files
         with TemporaryDirectory() as td:
             kit = Path(td)
             (kit / "SKILL.md").write_text("s\n", encoding="utf-8")
@@ -367,7 +367,7 @@ class TestEnumerateKitFiles(unittest.TestCase):
             self.assertFalse(any("__pycache__" in k for k in files))
 
     def test_nonexistent_dir(self):
-        from cypilot.utils.diff_engine import _enumerate_kit_files
+        from studio.utils.diff_engine import _enumerate_kit_files
         files = _enumerate_kit_files(Path("/nonexistent"))
         self.assertEqual(files, {})
 
@@ -380,7 +380,7 @@ class TestFileLevelKitUpdate(unittest.TestCase):
     """Cover file_level_kit_update — auto_approve, non-interactive, force."""
 
     def test_no_changes(self):
-        from cypilot.utils.diff_engine import file_level_kit_update
+        from studio.utils.diff_engine import file_level_kit_update
         with TemporaryDirectory() as td:
             src = Path(td) / "src"
             usr = Path(td) / "usr"
@@ -392,7 +392,7 @@ class TestFileLevelKitUpdate(unittest.TestCase):
             self.assertEqual(result["accepted"], [])
 
     def test_auto_approve(self):
-        from cypilot.utils.diff_engine import file_level_kit_update
+        from studio.utils.diff_engine import file_level_kit_update
         with TemporaryDirectory() as td:
             src = Path(td) / "src"
             usr = Path(td) / "usr"
@@ -406,7 +406,7 @@ class TestFileLevelKitUpdate(unittest.TestCase):
             self.assertEqual((usr / "SKILL.md").read_text(), "new\n")
 
     def test_non_interactive_declines(self):
-        from cypilot.utils.diff_engine import file_level_kit_update
+        from studio.utils.diff_engine import file_level_kit_update
         with TemporaryDirectory() as td:
             src = Path(td) / "src"
             usr = Path(td) / "usr"
@@ -420,7 +420,7 @@ class TestFileLevelKitUpdate(unittest.TestCase):
             self.assertEqual((usr / "SKILL.md").read_text(), "old\n")
 
     def test_force_overwrites(self):
-        from cypilot.utils.diff_engine import file_level_kit_update
+        from studio.utils.diff_engine import file_level_kit_update
         with TemporaryDirectory() as td:
             src = Path(td) / "src"
             usr = Path(td) / "usr"
@@ -432,7 +432,7 @@ class TestFileLevelKitUpdate(unittest.TestCase):
             self.assertIn("SKILL.md", result["accepted"])
 
     def test_added_file_auto_approve(self):
-        from cypilot.utils.diff_engine import file_level_kit_update
+        from studio.utils.diff_engine import file_level_kit_update
         with TemporaryDirectory() as td:
             src = Path(td) / "src"
             usr = Path(td) / "usr"
@@ -443,7 +443,7 @@ class TestFileLevelKitUpdate(unittest.TestCase):
             self.assertTrue((usr / "NEW.md").is_file())
 
     def test_removed_file_auto_approve(self):
-        from cypilot.utils.diff_engine import file_level_kit_update
+        from studio.utils.diff_engine import file_level_kit_update
         with TemporaryDirectory() as td:
             src = Path(td) / "src"
             usr = Path(td) / "usr"
@@ -454,70 +454,70 @@ class TestFileLevelKitUpdate(unittest.TestCase):
             self.assertFalse((usr / "OLD.md").is_file())
 
     def test_interactive_accept(self):
-        from cypilot.utils.diff_engine import file_level_kit_update
+        from studio.utils.diff_engine import file_level_kit_update
         with TemporaryDirectory() as td:
             src = Path(td) / "src"
             usr = Path(td) / "usr"
             src.mkdir(); usr.mkdir()
             (src / "SKILL.md").write_text("new\n", encoding="utf-8")
             (usr / "SKILL.md").write_text("old\n", encoding="utf-8")
-            with patch("cypilot.utils.diff_engine._prompt_kit_file", return_value="accept"):
+            with patch("studio.utils.diff_engine._prompt_kit_file", return_value="accept"):
                 result = file_level_kit_update(src, usr, interactive=True, content_files=("SKILL.md",))
             self.assertIn("SKILL.md", result["accepted"])
 
     def test_interactive_modify(self):
-        from cypilot.utils.diff_engine import file_level_kit_update
+        from studio.utils.diff_engine import file_level_kit_update
         with TemporaryDirectory() as td:
             src = Path(td) / "src"
             usr = Path(td) / "usr"
             src.mkdir(); usr.mkdir()
             (src / "SKILL.md").write_text("new\n", encoding="utf-8")
             (usr / "SKILL.md").write_text("old\n", encoding="utf-8")
-            with patch("cypilot.utils.diff_engine._prompt_kit_file", return_value="modify"):
-                with patch("cypilot.utils.diff_engine._open_editor_for_file", return_value=b"edited\n"):
+            with patch("studio.utils.diff_engine._prompt_kit_file", return_value="modify"):
+                with patch("studio.utils.diff_engine._open_editor_for_file", return_value=b"edited\n"):
                     result = file_level_kit_update(src, usr, interactive=True, content_files=("SKILL.md",))
             self.assertIn("SKILL.md", result["accepted"])
             self.assertEqual((usr / "SKILL.md").read_text(), "edited\n")
 
     def test_interactive_modify_abort(self):
-        from cypilot.utils.diff_engine import file_level_kit_update
+        from studio.utils.diff_engine import file_level_kit_update
         with TemporaryDirectory() as td:
             src = Path(td) / "src"
             usr = Path(td) / "usr"
             src.mkdir(); usr.mkdir()
             (src / "SKILL.md").write_text("new\n", encoding="utf-8")
             (usr / "SKILL.md").write_text("old\n", encoding="utf-8")
-            with patch("cypilot.utils.diff_engine._prompt_kit_file", return_value="modify"):
-                with patch("cypilot.utils.diff_engine._open_editor_for_file", return_value=None):
+            with patch("studio.utils.diff_engine._prompt_kit_file", return_value="modify"):
+                with patch("studio.utils.diff_engine._open_editor_for_file", return_value=None):
                     result = file_level_kit_update(src, usr, interactive=True, content_files=("SKILL.md",))
             self.assertIn("SKILL.md", result["declined"])
 
     def test_interactive_added_file(self):
         """Interactive prompt for newly added files."""
-        from cypilot.utils.diff_engine import file_level_kit_update
+        from studio.utils.diff_engine import file_level_kit_update
         with TemporaryDirectory() as td:
             src = Path(td) / "src"
             usr = Path(td) / "usr"
             src.mkdir(); usr.mkdir()
             (src / "NEW.md").write_text("new file\n", encoding="utf-8")
-            with patch("cypilot.utils.diff_engine._prompt_kit_file", return_value="accept"):
+            with patch("studio.utils.diff_engine._prompt_kit_file", return_value="accept"):
                 file_level_kit_update(src, usr, interactive=True, content_files=("NEW.md",))
             self.assertTrue((usr / "NEW.md").is_file())
 
     def test_interactive_removed_file(self):
         """Interactive prompt for removed files."""
-        from cypilot.utils.diff_engine import file_level_kit_update
+        from studio.utils.diff_engine import file_level_kit_update
         with TemporaryDirectory() as td:
             src = Path(td) / "src"
             usr = Path(td) / "usr"
             src.mkdir(); usr.mkdir()
             (usr / "OLD.md").write_text("old\n", encoding="utf-8")
-            with patch("cypilot.utils.diff_engine._prompt_kit_file", return_value="accept"):
+            with patch("studio.utils.diff_engine._prompt_kit_file", return_value="accept"):
                 file_level_kit_update(src, usr, interactive=True, content_files=("OLD.md",))
             self.assertFalse((usr / "OLD.md").is_file())
 
     def test_dry_run_does_not_write(self):
-        from cypilot.utils.diff_engine import file_level_kit_update
+        from studio.utils.diff_engine import file_level_kit_update
         with TemporaryDirectory() as td:
             src = Path(td) / "src"
             usr = Path(td) / "usr"
@@ -538,8 +538,8 @@ class TestFileLevelKitUpdateResourceBindings(unittest.TestCase):
 
     def test_file_resource_binding_redirect(self):
         """File resource is written to bound path, not user_dir."""
-        from cypilot.utils.diff_engine import file_level_kit_update
-        from cypilot.utils.manifest import ResourceInfo
+        from studio.utils.diff_engine import file_level_kit_update
+        from studio.utils.manifest import ResourceInfo
 
         with TemporaryDirectory() as td:
             src = Path(td) / "src"
@@ -582,8 +582,8 @@ class TestFileLevelKitUpdateResourceBindings(unittest.TestCase):
 
     def test_directory_resource_binding_redirect(self):
         """Directory resource files are written to bound directory with relative paths."""
-        from cypilot.utils.diff_engine import file_level_kit_update
-        from cypilot.utils.manifest import ResourceInfo
+        from studio.utils.diff_engine import file_level_kit_update
+        from studio.utils.manifest import ResourceInfo
 
         with TemporaryDirectory() as td:
             src = Path(td) / "src"
@@ -629,8 +629,8 @@ class TestFileLevelKitUpdateResourceBindings(unittest.TestCase):
 
     def test_mixed_bound_and_unbound_files(self):
         """Files without bindings go to user_dir, bound files go to binding path."""
-        from cypilot.utils.diff_engine import file_level_kit_update
-        from cypilot.utils.manifest import ResourceInfo
+        from studio.utils.diff_engine import file_level_kit_update
+        from studio.utils.manifest import ResourceInfo
 
         with TemporaryDirectory() as td:
             src = Path(td) / "src"
@@ -675,8 +675,8 @@ class TestFileLevelKitUpdateResourceBindings(unittest.TestCase):
 
     def test_update_existing_bound_file(self):
         """Existing file at bound path is correctly detected and updated."""
-        from cypilot.utils.diff_engine import file_level_kit_update
-        from cypilot.utils.manifest import ResourceInfo
+        from studio.utils.diff_engine import file_level_kit_update
+        from studio.utils.manifest import ResourceInfo
 
         with TemporaryDirectory() as td:
             src = Path(td) / "src"
@@ -719,7 +719,7 @@ class TestFileLevelKitUpdateResourceBindings(unittest.TestCase):
 
     def test_no_resource_bindings_uses_default_paths(self):
         """Without resource bindings, files go to user_dir (backward compatibility)."""
-        from cypilot.utils.diff_engine import file_level_kit_update
+        from studio.utils.diff_engine import file_level_kit_update
 
         with TemporaryDirectory() as td:
             src = Path(td) / "src"
@@ -742,8 +742,8 @@ class TestFileLevelKitUpdateResourceBindings(unittest.TestCase):
 
     def test_file_resource_binding_to_directory(self):
         """File resource with binding pointing to a directory appends filename."""
-        from cypilot.utils.diff_engine import file_level_kit_update
-        from cypilot.utils.manifest import ResourceInfo
+        from studio.utils.diff_engine import file_level_kit_update
+        from studio.utils.manifest import ResourceInfo
 
         with TemporaryDirectory() as td:
             src = Path(td) / "src"
@@ -786,8 +786,8 @@ class TestFileLevelKitUpdateResourceBindings(unittest.TestCase):
 
     def test_file_resource_binding_to_directory_detects_existing(self):
         """File resource with directory binding detects existing file (not shown as 'new')."""
-        from cypilot.utils.diff_engine import file_level_kit_update
-        from cypilot.utils.manifest import ResourceInfo
+        from studio.utils.diff_engine import file_level_kit_update
+        from studio.utils.manifest import ResourceInfo
 
         with TemporaryDirectory() as td:
             src = Path(td) / "src"
@@ -830,8 +830,8 @@ class TestFileLevelKitUpdateResourceBindings(unittest.TestCase):
 
     def test_existing_file_in_bound_directory_not_in_source(self):
         """Files existing in bound directory but not in source are detected as 'removed'."""
-        from cypilot.utils.diff_engine import file_level_kit_update
-        from cypilot.utils.manifest import ResourceInfo
+        from studio.utils.diff_engine import file_level_kit_update
+        from studio.utils.manifest import ResourceInfo
 
         with TemporaryDirectory() as td:
             src = Path(td) / "src"
@@ -883,11 +883,11 @@ class TestFileLevelKitUpdateResourceBindings(unittest.TestCase):
 
 class TestHasConflictMarkers(unittest.TestCase):
     def test_has_markers(self):
-        from cypilot.utils.diff_engine import _has_conflict_markers
+        from studio.utils.diff_engine import _has_conflict_markers
         self.assertTrue(_has_conflict_markers("<<<<<<< installed (yours)\nfoo\n=======\nbar\n>>>>>>> upstream (source)\n"))
 
     def test_no_markers(self):
-        from cypilot.utils.diff_engine import _has_conflict_markers
+        from studio.utils.diff_engine import _has_conflict_markers
         self.assertFalse(_has_conflict_markers("just normal text\n"))
 
 
@@ -899,14 +899,14 @@ class TestStripTocForDiff(unittest.TestCase):
     """Tests for _strip_toc_for_diff."""
 
     def test_no_toc(self):
-        from cypilot.utils.diff_engine import _strip_toc_for_diff
+        from studio.utils.diff_engine import _strip_toc_for_diff
         content = b"# Title\n\n## Section A\n\nSome text.\n"
         stripped, fmt = _strip_toc_for_diff(content)
         self.assertEqual(stripped, content)
         self.assertEqual(fmt, "")
 
     def test_marker_toc(self):
-        from cypilot.utils.diff_engine import _strip_toc_for_diff
+        from studio.utils.diff_engine import _strip_toc_for_diff
         content = (
             "# Title\n\n"
             "<!-- toc -->\n\n"
@@ -924,7 +924,7 @@ class TestStripTocForDiff(unittest.TestCase):
         self.assertIn("Text A.", text)
 
     def test_heading_toc(self):
-        from cypilot.utils.diff_engine import _strip_toc_for_diff
+        from studio.utils.diff_engine import _strip_toc_for_diff
         content = (
             "# Title\n\n"
             "## Table of Contents\n\n"
@@ -940,7 +940,7 @@ class TestStripTocForDiff(unittest.TestCase):
         self.assertIn("## Section A", text)
 
     def test_binary_content(self):
-        from cypilot.utils.diff_engine import _strip_toc_for_diff
+        from studio.utils.diff_engine import _strip_toc_for_diff
         content = b"\x80\x81\x82\xff\xfe"
         stripped, fmt = _strip_toc_for_diff(content)
         self.assertEqual(stripped, content)
@@ -948,7 +948,7 @@ class TestStripTocForDiff(unittest.TestCase):
 
     def test_heading_toc_at_end_of_file(self):
         """Heading TOC with no following heading — strips to end."""
-        from cypilot.utils.diff_engine import _strip_toc_for_diff
+        from studio.utils.diff_engine import _strip_toc_for_diff
         content = (
             "# Title\n\n"
             "## Table of Contents\n\n"
@@ -966,21 +966,21 @@ class TestPromptTocRegen(unittest.TestCase):
 
     @patch("builtins.input", return_value="y")
     def test_yes(self, _mock):
-        from cypilot.utils.diff_engine import _prompt_toc_regen
+        from studio.utils.diff_engine import _prompt_toc_regen
         self.assertEqual(_prompt_toc_regen("foo.md"), "yes")
 
     @patch("builtins.input", return_value="yes")
     def test_yes_long_form(self, _mock):
-        from cypilot.utils.diff_engine import _prompt_toc_regen
+        from studio.utils.diff_engine import _prompt_toc_regen
         self.assertEqual(_prompt_toc_regen("foo.md"), "yes")
 
     @patch("builtins.input", return_value="n")
     def test_no(self, _mock):
-        from cypilot.utils.diff_engine import _prompt_toc_regen
+        from studio.utils.diff_engine import _prompt_toc_regen
         self.assertEqual(_prompt_toc_regen("foo.md"), "no")
 
     def test_returns_no_for_empty_or_eof(self):
-        from cypilot.utils.diff_engine import _prompt_toc_regen
+        from studio.utils.diff_engine import _prompt_toc_regen
         cases = [
             ("empty input", patch("builtins.input", return_value="")),
             ("EOF", patch("builtins.input", side_effect=EOFError)),
@@ -996,21 +996,21 @@ class TestPromptTocErrorContinue(unittest.TestCase):
 
     @patch("builtins.input", return_value="c")
     def test_continue(self, _mock):
-        from cypilot.utils.diff_engine import _prompt_toc_error_continue
+        from studio.utils.diff_engine import _prompt_toc_error_continue
         self.assertTrue(_prompt_toc_error_continue("foo.md", RuntimeError("oops")))
 
     @patch("builtins.input", return_value="s")
     def test_stop(self, _mock):
-        from cypilot.utils.diff_engine import _prompt_toc_error_continue
+        from studio.utils.diff_engine import _prompt_toc_error_continue
         self.assertFalse(_prompt_toc_error_continue("foo.md", RuntimeError("oops")))
 
     def test_default_continue_for_empty(self):
-        from cypilot.utils.diff_engine import _prompt_toc_error_continue
+        from studio.utils.diff_engine import _prompt_toc_error_continue
         with patch("builtins.input", return_value=""):
             self.assertTrue(_prompt_toc_error_continue("foo.md", RuntimeError("oops")))
 
     def test_returns_false_for_empty_or_eof(self):
-        from cypilot.utils.diff_engine import _prompt_toc_error_continue
+        from studio.utils.diff_engine import _prompt_toc_error_continue
         cases = [
             ("empty input returns continue (not stop)", patch("builtins.input", return_value=""), True),
             ("EOF stops", patch("builtins.input", side_effect=EOFError), False),
@@ -1025,7 +1025,7 @@ class TestRegenerateToc(unittest.TestCase):
     """Tests for _regenerate_toc."""
 
     def test_heading_format(self):
-        from cypilot.utils.diff_engine import _regenerate_toc
+        from studio.utils.diff_engine import _regenerate_toc
         content = b"# Title\n\n## Section A\n\nText.\n\n## Section B\n\nMore.\n"
         result = _regenerate_toc(content, "heading")
         text = result.decode("utf-8")
@@ -1034,7 +1034,7 @@ class TestRegenerateToc(unittest.TestCase):
         self.assertIn("Section B", text)
 
     def test_markers_format(self):
-        from cypilot.utils.diff_engine import _regenerate_toc
+        from studio.utils.diff_engine import _regenerate_toc
         content = b"# Title\n\n## Section A\n\nText.\n\n## Section B\n\nMore.\n"
         result = _regenerate_toc(content, "markers")
         text = result.decode("utf-8")
@@ -1077,7 +1077,7 @@ class TestFileLevelKitUpdateTocIntegration(unittest.TestCase):
 
     def test_toc_stripped_from_diff_only_content_changes_shown(self):
         """Files differing only in TOC should be classified as unchanged."""
-        from cypilot.utils.diff_engine import file_level_kit_update
+        from studio.utils.diff_engine import file_level_kit_update
 
         with tempfile.TemporaryDirectory() as tmpdir:
             src = Path(tmpdir) / "source"
@@ -1104,7 +1104,7 @@ class TestFileLevelKitUpdateTocIntegration(unittest.TestCase):
 
     def test_content_change_detected_despite_toc(self):
         """Real content changes are still detected after TOC stripping."""
-        from cypilot.utils.diff_engine import file_level_kit_update
+        from studio.utils.diff_engine import file_level_kit_update
 
         with tempfile.TemporaryDirectory() as tmpdir:
             src = Path(tmpdir) / "source"
@@ -1131,7 +1131,7 @@ class TestFileLevelKitUpdateTocIntegration(unittest.TestCase):
 
     def test_auto_approve_regenerates_toc(self):
         """auto_approve writes content and auto-regenerates TOC."""
-        from cypilot.utils.diff_engine import file_level_kit_update
+        from studio.utils.diff_engine import file_level_kit_update
 
         with tempfile.TemporaryDirectory() as tmpdir:
             src = Path(tmpdir) / "source"
@@ -1164,7 +1164,7 @@ class TestFileLevelKitUpdateTocIntegration(unittest.TestCase):
 
     def test_interactive_toc_prompt_yes(self):
         """Interactive: user says 'y' to TOC regen after accept."""
-        from cypilot.utils.diff_engine import file_level_kit_update
+        from studio.utils.diff_engine import file_level_kit_update
 
         with tempfile.TemporaryDirectory() as tmpdir:
             src = Path(tmpdir) / "source"
@@ -1196,7 +1196,7 @@ class TestFileLevelKitUpdateTocIntegration(unittest.TestCase):
 
     def test_interactive_accepted_has_source_toc(self):
         """Interactive: accepted file writes raw source content (includes TOC)."""
-        from cypilot.utils.diff_engine import file_level_kit_update
+        from studio.utils.diff_engine import file_level_kit_update
 
         with tempfile.TemporaryDirectory() as tmpdir:
             src = Path(tmpdir) / "source"
@@ -1227,7 +1227,7 @@ class TestFileLevelKitUpdateTocIntegration(unittest.TestCase):
 
     def test_toc_regen_error_rollback_continue(self):
         """TOC regen failure restores previous content; user continues."""
-        from cypilot.utils.diff_engine import file_level_kit_update
+        from studio.utils.diff_engine import file_level_kit_update
 
         with tempfile.TemporaryDirectory() as tmpdir:
             src = Path(tmpdir) / "source"
@@ -1246,11 +1246,11 @@ class TestFileLevelKitUpdateTocIntegration(unittest.TestCase):
             with (
                 patch("builtins.input", side_effect=["m", "y", "c"]),
                 patch(
-                    "cypilot.utils.diff_engine._open_editor_for_file",
+                    "studio.utils.diff_engine._open_editor_for_file",
                     return_value=edited,
                 ),
                 patch(
-                    "cypilot.utils.diff_engine._regenerate_toc",
+                    "studio.utils.diff_engine._regenerate_toc",
                     side_effect=ValueError("toc broken"),
                 ),
             ):
@@ -1264,7 +1264,7 @@ class TestFileLevelKitUpdateTocIntegration(unittest.TestCase):
 
     def test_toc_regen_error_rollback_stop(self):
         """TOC regen failure — user stops; remaining files not processed."""
-        from cypilot.utils.diff_engine import file_level_kit_update
+        from studio.utils.diff_engine import file_level_kit_update
 
         with tempfile.TemporaryDirectory() as tmpdir:
             src = Path(tmpdir) / "source"
@@ -1292,11 +1292,11 @@ class TestFileLevelKitUpdateTocIntegration(unittest.TestCase):
             with (
                 patch("builtins.input", side_effect=["m", "y", "s"]),
                 patch(
-                    "cypilot.utils.diff_engine._open_editor_for_file",
+                    "studio.utils.diff_engine._open_editor_for_file",
                     return_value=edited_a,
                 ),
                 patch(
-                    "cypilot.utils.diff_engine._regenerate_toc",
+                    "studio.utils.diff_engine._regenerate_toc",
                     side_effect=ValueError("toc broken"),
                 ),
             ):
@@ -1310,7 +1310,7 @@ class TestFileLevelKitUpdateTocIntegration(unittest.TestCase):
 
     def test_no_toc_file_no_prompt(self):
         """Files without TOC should not trigger TOC regen prompt."""
-        from cypilot.utils.diff_engine import file_level_kit_update
+        from studio.utils.diff_engine import file_level_kit_update
 
         with tempfile.TemporaryDirectory() as tmpdir:
             src = Path(tmpdir) / "source"

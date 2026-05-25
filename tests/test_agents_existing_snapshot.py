@@ -96,7 +96,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
         import tomllib
         with open(AGENTS_TOML, "rb") as f:
             data = tomllib.load(f)
-        from cypilot.commands.agents import _validate_agent_entry
+        from studio.commands.agents import _validate_agent_entry
         out = {}
         for name, info in data.get("agents", {}).items():
             entry = _validate_agent_entry(name, info, AGENTS_TOML.parent, set())
@@ -110,7 +110,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
 
     def test_balanced_agents_resolve_to_gpt_5_4_on_codex(self):
         """spec §7 delta (b): balanced tier → gpt-5.4 on Codex."""
-        from cypilot.commands.agents import _resolve_model_id
+        from studio.commands.agents import _resolve_model_id
         agents = self._load_agents()
         for name in _BALANCED_AGENTS:
             entry = agents[name]
@@ -125,7 +125,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
 
     def test_balanced_codegen_agents_resolve_to_gpt_5_3_codex(self):
         """spec §11: balanced generate/codebase agents use Codex-specialized model."""
-        from cypilot.commands.agents import _resolve_model_id
+        from studio.commands.agents import _resolve_model_id
         agents = self._load_agents()
         for name in _BALANCED_CODEGEN_AGENTS:
             entry = agents[name]
@@ -143,7 +143,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
 
     def test_balanced_agents_emit_sonnet_on_claude(self):
         """spec §7: Claude proxy for balanced agents emits model: sonnet."""
-        from cypilot.commands.agents import _agent_template_claude
+        from studio.commands.agents import _agent_template_claude
         agents = self._load_agents()
         for name in _BALANCED_AGENTS:
             entry = agents[name]
@@ -152,7 +152,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
 
     def test_balanced_agents_emit_sonnet_on_cursor(self):
         """spec §7: Cursor proxy for balanced agents emits model: claude-sonnet-4-6."""
-        from cypilot.commands.agents import _agent_template_cursor
+        from studio.commands.agents import _agent_template_cursor
         agents = self._load_agents()
         for name in _BALANCED_AGENTS:
             entry = agents[name]
@@ -164,7 +164,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
 
     def test_balanced_agents_emit_sonnet_on_copilot(self):
         """spec §7: Copilot proxy for balanced agents emits model: Claude Sonnet 4.6."""
-        from cypilot.commands.agents import _agent_template_copilot
+        from studio.commands.agents import _agent_template_copilot
         agents = self._load_agents()
         for name in _BALANCED_AGENTS:
             entry = agents[name]
@@ -180,7 +180,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
 
     def test_cheap_agents_resolve_to_gpt_5_4_mini_on_codex(self):
         """spec §11: cheap tier → gpt-5.4-mini on Codex."""
-        from cypilot.commands.agents import _resolve_model_id
+        from studio.commands.agents import _resolve_model_id
         agents = self._load_agents()
         for name in _CHEAP_AGENTS:
             entry = agents[name]
@@ -195,7 +195,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
 
     def test_cheap_agents_emit_haiku_on_claude(self):
         """spec §11: Claude proxy for cheap agents emits model: haiku."""
-        from cypilot.commands.agents import _agent_template_claude
+        from studio.commands.agents import _agent_template_claude
         agents = self._load_agents()
         for name in _CHEAP_AGENTS:
             entry = agents[name]
@@ -204,7 +204,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
 
     def test_cheap_agents_emit_haiku_on_cursor(self):
         """spec §11: Cursor proxy for cheap agents emits model: claude-haiku-4-5."""
-        from cypilot.commands.agents import _agent_template_cursor
+        from studio.commands.agents import _agent_template_cursor
         agents = self._load_agents()
         for name in _CHEAP_AGENTS:
             entry = agents[name]
@@ -216,7 +216,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
 
     def test_cheap_agents_emit_haiku_on_copilot(self):
         """spec §11: Copilot proxy for cheap agents emits model: Claude Haiku 4.5."""
-        from cypilot.commands.agents import _agent_template_copilot
+        from studio.commands.agents import _agent_template_copilot
         agents = self._load_agents()
         for name in _CHEAP_AGENTS:
             entry = agents[name]
@@ -233,7 +233,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
     # ------------------------------------------------------------------
 
     def test_cheap_override_agents_emit_sonnet_on_claude(self):
-        from cypilot.commands.agents import _agent_template_claude
+        from studio.commands.agents import _agent_template_claude
         agents = self._load_agents()
         for name in _CHEAP_OVERRIDE_AGENTS:
             entry = agents[name]
@@ -244,7 +244,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
             )
 
     def test_cheap_override_agents_emit_sonnet_on_cursor(self):
-        from cypilot.commands.agents import _agent_template_cursor
+        from studio.commands.agents import _agent_template_cursor
         agents = self._load_agents()
         for name in _CHEAP_OVERRIDE_AGENTS:
             entry = agents[name]
@@ -255,7 +255,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
             )
 
     def test_cheap_override_agents_emit_sonnet_on_copilot(self):
-        from cypilot.commands.agents import _agent_template_copilot
+        from studio.commands.agents import _agent_template_copilot
         agents = self._load_agents()
         for name in _CHEAP_OVERRIDE_AGENTS:
             entry = agents[name]
@@ -266,7 +266,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
             )
 
     def test_cheap_override_agents_resolve_to_gpt_5_4_on_codex(self):
-        from cypilot.commands.agents import _resolve_model_id
+        from studio.commands.agents import _resolve_model_id
         agents = self._load_agents()
         for name in _CHEAP_OVERRIDE_AGENTS:
             entry = agents[name]
@@ -284,7 +284,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
 
     def test_inherit_agents_emit_no_codex_model_line(self):
         """spec §7: inherit agents must not emit a model = line in Codex TOML."""
-        from cypilot.commands.agents import _render_toml_agent
+        from studio.commands.agents import _render_toml_agent
         agents = self._load_agents()
         for name in _INHERIT_AGENTS:
             entry = agents[name]
@@ -298,7 +298,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
     def test_manifest_codex_agent_uses_top_level_schema(self):
         """Manifest-generated Codex agents must use top-level role-file fields."""
         import tomllib
-        from cypilot.commands.agents import _build_openai_agent_file
+        from studio.commands.agents import _build_openai_agent_file
 
         agent = SimpleNamespace(
             id="cf-constructor-brainstorm-expert",
@@ -335,7 +335,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
     def test_manifest_codex_agent_resolves_context_window_low(self):
         """Codex agents with cf:tier:cheap context window resolve to 200000."""
         import tomllib
-        from cypilot.commands.agents import _build_openai_agent_file, _CODEX_CONTEXT_TOKENS
+        from studio.commands.agents import _build_openai_agent_file, _CODEX_CONTEXT_TOKENS
 
         agent = SimpleNamespace(
             id="cf-constructor-test-agent",
@@ -364,7 +364,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
     def test_manifest_codex_agent_resolves_context_window_high(self):
         """Codex agents with cf:tier:balanced context window resolve to 600000."""
         import tomllib
-        from cypilot.commands.agents import _build_openai_agent_file, _CODEX_CONTEXT_TOKENS
+        from studio.commands.agents import _build_openai_agent_file, _CODEX_CONTEXT_TOKENS
 
         agent = SimpleNamespace(
             id="cf-constructor-test-agent",
@@ -392,7 +392,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
 
     def test_legacy_openai_cleanup_preserves_diverged_marker_file(self):
         """Marker-bearing legacy files are preserved when content has diverged."""
-        from cypilot.commands.agents import _delete_generated_legacy_file, _build_legacy_openai_agent_file
+        from studio.commands.agents import _delete_generated_legacy_file, _build_legacy_openai_agent_file
         from types import SimpleNamespace
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -440,8 +440,8 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
 
     def test_human_formatter_surfaces_all_v2_agent_outputs_and_warnings(self):
         """Human agent setup output includes preserved/deleted v2 outcomes."""
-        from cypilot.commands.agents import _human_generate_agents_ok
-        from cypilot.utils.ui import set_json_mode
+        from studio.commands.agents import _human_generate_agents_ok
+        from studio.utils.ui import set_json_mode
 
         buf = io.StringIO()
         set_json_mode(False)
@@ -496,7 +496,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
 
     def test_subagent_stale_toml_cleanup_preserves_non_owned_file(self):
         """Stale Codex TOML cleanup must not delete prefix-matching user files."""
-        from cypilot.commands.agents import _process_subagents
+        from studio.commands.agents import _process_subagents
 
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
@@ -518,7 +518,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
             )
 
             with patch(
-                "cypilot.commands.agents._discover_kit_agents",
+                "studio.commands.agents._discover_kit_agents",
                 return_value=[
                     {
                         "name": "worker",
@@ -548,7 +548,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
 
     def test_subagent_stale_toml_cleanup_deletes_owned_matching_file(self):
         """Stale Codex TOML cleanup deletes only canonical generator-owned files."""
-        from cypilot.commands.agents import _process_subagents, _render_toml_agent
+        from studio.commands.agents import _process_subagents, _render_toml_agent
 
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
@@ -584,7 +584,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
             )
 
             with patch(
-                "cypilot.commands.agents._discover_kit_agents",
+                "studio.commands.agents._discover_kit_agents",
                 return_value=[
                     {
                         "name": "worker",
@@ -615,7 +615,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
 
     def test_subagent_stale_toml_cleanup_deletes_owned_file_with_model_field(self):
         """Stale Codex TOML with permitted extra fields (model) is still deleted when owned."""
-        from cypilot.commands.agents import _process_subagents, _render_toml_agent
+        from studio.commands.agents import _process_subagents, _render_toml_agent
 
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
@@ -652,7 +652,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
             stale.write_text(stale_toml_content, encoding="utf-8")
 
             with patch(
-                "cypilot.commands.agents._discover_kit_agents",
+                "studio.commands.agents._discover_kit_agents",
                 return_value=[
                     {
                         "name": "worker",
@@ -683,7 +683,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
 
     def test_subagent_stale_toml_cleanup_preserves_unsupported_model_field_type(self):
         """Unsupported optional TOML field values are treated as local drift."""
-        from cypilot.commands.agents import _process_subagents, _render_toml_agent
+        from studio.commands.agents import _process_subagents, _render_toml_agent
 
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
@@ -720,7 +720,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
             )
 
             with patch(
-                "cypilot.commands.agents._discover_kit_agents",
+                "studio.commands.agents._discover_kit_agents",
                 return_value=[
                     {
                         "name": "worker",
@@ -744,7 +744,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
 
     def test_subagent_stale_toml_cleanup_preserves_marker_file_with_local_drift(self):
         """Marker-bearing stale Codex TOML with local drift must be preserved."""
-        from cypilot.commands.agents import _process_subagents
+        from studio.commands.agents import _process_subagents
 
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
@@ -768,7 +768,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
             )
 
             with patch(
-                "cypilot.commands.agents._discover_kit_agents",
+                "studio.commands.agents._discover_kit_agents",
                 return_value=[
                     {
                         "name": "worker",
@@ -798,7 +798,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
 
     def test_subagent_stale_toml_cleanup_preserves_marker_file_without_expected_payload(self):
         """Stale Codex TOML is preserved when canonical content is unavailable."""
-        from cypilot.commands.agents import _process_subagents
+        from studio.commands.agents import _process_subagents
 
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
@@ -821,7 +821,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
             )
 
             with patch(
-                "cypilot.commands.agents._discover_kit_agents",
+                "studio.commands.agents._discover_kit_agents",
                 return_value=[
                     {
                         "name": "worker",
@@ -941,7 +941,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
 
     def test_subagent_stale_toml_with_dotdot_in_follow_target_preserves_file(self):
         """A stale TOML whose follow_target contains `..` must not be auto-cleaned (defense-in-depth)."""
-        from cypilot.commands.agents import _process_subagents, _render_toml_agent
+        from studio.commands.agents import _process_subagents, _render_toml_agent
 
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
@@ -978,7 +978,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
             stale.write_text(base_toml, encoding="utf-8")
 
             with patch(
-                "cypilot.commands.agents._discover_kit_agents",
+                "studio.commands.agents._discover_kit_agents",
                 return_value=[
                     {
                         "name": "worker",

@@ -26,7 +26,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.utils.toml_utils import (
+from studio.utils.toml_utils import (
     _format_value,
     _with_core_toml_lock,
     dump,

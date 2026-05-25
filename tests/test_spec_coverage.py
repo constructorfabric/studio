@@ -10,13 +10,13 @@ from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.utils.artifacts_meta import (
+from studio.utils.artifacts_meta import (
     ArtifactsMeta,
     CodebaseEntry,
     Kit,
     SystemNode,
 )
-from cypilot.commands.spec_coverage import cmd_spec_coverage, _output
+from studio.commands.spec_coverage import cmd_spec_coverage, _output
 
 
 class TestOutput(unittest.TestCase):
@@ -54,7 +54,7 @@ class TestCmdSpecCoverage(unittest.TestCase):
         return ctx
 
     def test_no_context(self):
-        with patch("cypilot.utils.context.get_context", return_value=None):
+        with patch("studio.utils.context.get_context", return_value=None):
             with patch("sys.stdout", new_callable=StringIO) as mock_out:
                 ret = cmd_spec_coverage([])
         self.assertEqual(ret, 1)
@@ -68,7 +68,7 @@ class TestCmdSpecCoverage(unittest.TestCase):
                 SystemNode(name="sys1", slug="sys1", kit="test",
                            artifacts=[], codebase=[], children=[]),
             ])
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
+            with patch("studio.utils.context.get_context", return_value=ctx):
                 with patch("sys.stdout", new_callable=StringIO) as mock_out:
                     ret = cmd_spec_coverage([])
             self.assertEqual(ret, 0)
@@ -89,7 +89,7 @@ class TestCmdSpecCoverage(unittest.TestCase):
                            artifacts=[], children=[],
                            codebase=[CodebaseEntry(path="src", extensions=[".py"])]),
             ])
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
+            with patch("studio.utils.context.get_context", return_value=ctx):
                 with patch("sys.stdout", new_callable=StringIO) as mock_out:
                     ret = cmd_spec_coverage([])
             self.assertEqual(ret, 0)
@@ -110,7 +110,7 @@ class TestCmdSpecCoverage(unittest.TestCase):
                            artifacts=[], children=[],
                            codebase=[CodebaseEntry(path="src", extensions=[".py"])]),
             ])
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
+            with patch("studio.utils.context.get_context", return_value=ctx):
                 with patch("sys.stdout", new_callable=StringIO) as mock_out:
                     ret = cmd_spec_coverage(["--min-coverage", "0"])
             self.assertEqual(ret, 0)
@@ -126,7 +126,7 @@ class TestCmdSpecCoverage(unittest.TestCase):
                            artifacts=[], children=[],
                            codebase=[CodebaseEntry(path="src", extensions=[".py"])]),
             ])
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
+            with patch("studio.utils.context.get_context", return_value=ctx):
                 with patch("sys.stdout", new_callable=StringIO) as mock_out:
                     ret = cmd_spec_coverage(["--min-coverage", "90"])
             self.assertEqual(ret, 2)
@@ -147,7 +147,7 @@ class TestCmdSpecCoverage(unittest.TestCase):
                            artifacts=[], children=[],
                            codebase=[CodebaseEntry(path="src", extensions=[".py"])]),
             ])
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
+            with patch("studio.utils.context.get_context", return_value=ctx):
                 with patch("sys.stdout", new_callable=StringIO) as mock_out:
                     ret = cmd_spec_coverage(["--min-granularity", "0.9"])
             self.assertEqual(ret, 2)
@@ -168,7 +168,7 @@ class TestCmdSpecCoverage(unittest.TestCase):
                            artifacts=[], children=[],
                            codebase=[CodebaseEntry(path="src", extensions=[".py"])]),
             ])
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
+            with patch("studio.utils.context.get_context", return_value=ctx):
                 with patch("sys.stdout", new_callable=StringIO) as mock_out:
                     ret = cmd_spec_coverage(["--verbose"])
             self.assertEqual(ret, 0)
@@ -189,7 +189,7 @@ class TestCmdSpecCoverage(unittest.TestCase):
                            artifacts=[], children=[],
                            codebase=[CodebaseEntry(path="src", extensions=[".py"])]),
             ])
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
+            with patch("studio.utils.context.get_context", return_value=ctx):
                 ret = cmd_spec_coverage(["--output", out_file])
             self.assertEqual(ret, 0)
             data = json.loads(Path(out_file).read_text(encoding="utf-8"))
@@ -203,7 +203,7 @@ class TestCmdSpecCoverage(unittest.TestCase):
                            artifacts=[], children=[],
                            codebase=[CodebaseEntry(path="nonexistent/dir", extensions=[".py"])]),
             ])
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
+            with patch("studio.utils.context.get_context", return_value=ctx):
                 with patch("sys.stdout", new_callable=StringIO) as mock_out:
                     ret = cmd_spec_coverage([])
             self.assertEqual(ret, 0)
@@ -219,7 +219,7 @@ class TestCmdSpecCoverage(unittest.TestCase):
                            artifacts=[], children=[],
                            codebase=[CodebaseEntry(path="main.py", extensions=[".py"])]),
             ])
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
+            with patch("studio.utils.context.get_context", return_value=ctx):
                 with patch("sys.stdout", new_callable=StringIO) as mock_out:
                     ret = cmd_spec_coverage([])
             self.assertEqual(ret, 0)
@@ -241,7 +241,7 @@ class TestCmdSpecCoverage(unittest.TestCase):
                 SystemNode(name="sys1", slug="sys1", kit="test",
                            artifacts=[], codebase=[], children=[child]),
             ])
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
+            with patch("studio.utils.context.get_context", return_value=ctx):
                 with patch("sys.stdout", new_callable=StringIO) as mock_out:
                     ret = cmd_spec_coverage([])
             self.assertEqual(ret, 0)
@@ -254,7 +254,7 @@ class TestCmdSpecCoverage(unittest.TestCase):
             src = root / "src"
             src.mkdir()
             (src / "main.py").write_text("x = 1\n", encoding="utf-8")
-            from cypilot.utils.artifacts_meta import IgnoreBlock
+            from studio.utils.artifacts_meta import IgnoreBlock
             meta = ArtifactsMeta(
                 version=1,
                 project_root=".",
@@ -269,7 +269,7 @@ class TestCmdSpecCoverage(unittest.TestCase):
             ctx = MagicMock()
             ctx.meta = meta
             ctx.project_root = root
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
+            with patch("studio.utils.context.get_context", return_value=ctx):
                 with patch("sys.stdout", new_callable=StringIO) as mock_out:
                     ret = cmd_spec_coverage([])
             self.assertEqual(ret, 0)
@@ -294,7 +294,7 @@ class TestCmdSpecCoverage(unittest.TestCase):
                            artifacts=[], children=[],
                            codebase=[CodebaseEntry(path="src2", extensions=[".py"])]),
             ])
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
+            with patch("studio.utils.context.get_context", return_value=ctx):
                 with patch("sys.stdout", new_callable=StringIO) as mock_out:
                     ret = cmd_spec_coverage(["--system", "alpha"])
             self.assertEqual(ret, 0)
@@ -315,7 +315,7 @@ class TestCmdSpecCoverage(unittest.TestCase):
                            artifacts=[], children=[],
                            codebase=[CodebaseEntry(path="src", extensions=[".py"])]),
             ])
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
+            with patch("studio.utils.context.get_context", return_value=ctx):
                 with patch("sys.stdout", new_callable=StringIO) as mock_out:
                     ret = cmd_spec_coverage(["--system", "other"])
             self.assertEqual(ret, 0)
@@ -340,7 +340,7 @@ class TestCmdSpecCoverage(unittest.TestCase):
                            artifacts=[], children=[],
                            codebase=[CodebaseEntry(path="s3", extensions=[".py"])]),
             ])
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
+            with patch("studio.utils.context.get_context", return_value=ctx):
                 with patch("sys.stdout", new_callable=StringIO) as mock_out:
                     ret = cmd_spec_coverage(["--system", "s1", "--system", "s3"])
             self.assertEqual(ret, 0)
@@ -360,7 +360,7 @@ class TestCmdSpecCoverage(unittest.TestCase):
                            artifacts=[], children=[],
                            codebase=[CodebaseEntry(path="src", extensions=[".py"])]),
             ])
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
+            with patch("studio.utils.context.get_context", return_value=ctx):
                 with patch("sys.stdout", new_callable=StringIO) as mock_out:
                     ret = cmd_spec_coverage(["--min-file-coverage", "0"])
             self.assertEqual(ret, 0)
@@ -376,7 +376,7 @@ class TestCmdSpecCoverage(unittest.TestCase):
                            artifacts=[], children=[],
                            codebase=[CodebaseEntry(path="src", extensions=[".py"])]),
             ])
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
+            with patch("studio.utils.context.get_context", return_value=ctx):
                 with patch("sys.stdout", new_callable=StringIO) as mock_out:
                     ret = cmd_spec_coverage(["--min-file-coverage", "90"])
             self.assertEqual(ret, 2)
@@ -399,7 +399,7 @@ class TestCmdSpecCoverage(unittest.TestCase):
                            artifacts=[], children=[],
                            codebase=[CodebaseEntry(path="src", extensions=[".py"])]),
             ])
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
+            with patch("studio.utils.context.get_context", return_value=ctx):
                 with patch("sys.stdout", new_callable=StringIO) as mock_out:
                     ret = cmd_spec_coverage([])
             self.assertEqual(ret, 0)
@@ -413,15 +413,15 @@ class TestFormatRanges(unittest.TestCase):
     """Cover _format_ranges helper."""
 
     def test_single_line_range(self):
-        from cypilot.commands.spec_coverage import _format_ranges
+        from studio.commands.spec_coverage import _format_ranges
         self.assertEqual(_format_ranges([[5, 5]]), "5")
 
     def test_multi_line_range(self):
-        from cypilot.commands.spec_coverage import _format_ranges
+        from studio.commands.spec_coverage import _format_ranges
         self.assertEqual(_format_ranges([[1, 3], [7, 7]]), "1-3, 7")
 
     def test_empty(self):
-        from cypilot.commands.spec_coverage import _format_ranges
+        from studio.commands.spec_coverage import _format_ranges
         self.assertEqual(_format_ranges([]), "")
 
 
@@ -441,7 +441,7 @@ class TestMinFileGranularity(TestCmdSpecCoverage):
                            artifacts=[], children=[],
                            codebase=[CodebaseEntry(path="src", extensions=[".py"])]),
             ])
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
+            with patch("studio.utils.context.get_context", return_value=ctx):
                 with patch("sys.stdout", new_callable=StringIO) as mock_out:
                     ret = cmd_spec_coverage(["--min-file-granularity", "0.99"])
             parsed = json.loads(mock_out.getvalue())
@@ -460,7 +460,7 @@ class TestMinFileGranularity(TestCmdSpecCoverage):
                            artifacts=[], children=[],
                            codebase=[CodebaseEntry(path="src", extensions=[".py"])]),
             ])
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
+            with patch("studio.utils.context.get_context", return_value=ctx):
                 with patch("sys.stdout", new_callable=StringIO) as mock_out:
                     ret = cmd_spec_coverage(["--min-file-coverage", "50"])
             self.assertIn(ret, (0, 2))
@@ -470,7 +470,7 @@ class TestHumanSpecCoverage(unittest.TestCase):
     """Cover _human_spec_coverage with uncovered_ranges."""
 
     def test_human_output_with_uncovered_ranges(self):
-        from cypilot.commands.spec_coverage import _human_spec_coverage
+        from studio.commands.spec_coverage import _human_spec_coverage
         data = {
             "status": "PASS",
             "summary": {

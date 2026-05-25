@@ -22,7 +22,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.ralphex_export import (
+from studio.ralphex_export import (
     read_handoff_status,
     check_completed_plans,
     run_validation_commands,
@@ -132,7 +132,7 @@ class TestRunValidationCommands:
     def test_runs_pytest_command(self):
         """Executes pytest command and captures result."""
         proc = MagicMock(returncode=0, stdout="all passed\n", stderr="")
-        with patch("cypilot.ralphex_export.subprocess.run", return_value=proc) as mock_run:
+        with patch("studio.ralphex_export.subprocess.run", return_value=proc) as mock_run:
             result = run_validation_commands(
                 ["python -m pytest tests/test_widget.py"]
             )
@@ -143,7 +143,7 @@ class TestRunValidationCommands:
     def test_captures_failure(self):
         """Reports failure when validation command fails."""
         proc = MagicMock(returncode=1, stdout="FAILED\n", stderr="")
-        with patch("cypilot.ralphex_export.subprocess.run", return_value=proc):
+        with patch("studio.ralphex_export.subprocess.run", return_value=proc):
             result = run_validation_commands(
                 ["python -m pytest tests/test_widget.py"]
             )
@@ -155,7 +155,7 @@ class TestRunValidationCommands:
         proc_ok = MagicMock(returncode=0, stdout="ok\n", stderr="")
         proc_fail = MagicMock(returncode=1, stdout="fail\n", stderr="")
         with patch(
-            "cypilot.ralphex_export.subprocess.run",
+            "studio.ralphex_export.subprocess.run",
             side_effect=[proc_ok, proc_fail],
         ):
             result = run_validation_commands([
@@ -174,7 +174,7 @@ class TestRunValidationCommands:
     def test_timeout_handled_gracefully(self):
         """Timeout during validation is captured as failure."""
         with patch(
-            "cypilot.ralphex_export.subprocess.run",
+            "studio.ralphex_export.subprocess.run",
             side_effect=subprocess.TimeoutExpired("cmd", 30),
         ):
             result = run_validation_commands(["python -m pytest tests/"])
@@ -203,7 +203,7 @@ class TestRunValidationCommands:
     def test_mixed_valid_and_invalid_commands(self):
         """Valid commands still run when invalid commands are present."""
         proc = MagicMock(returncode=0, stdout="ok\n", stderr="")
-        with patch("cypilot.ralphex_export.subprocess.run", return_value=proc) as mock_run:
+        with patch("studio.ralphex_export.subprocess.run", return_value=proc) as mock_run:
             result = run_validation_commands(["", "echo ok"])
         assert result["passed"] is False  # empty command taints overall result
         assert len(result["results"]) == 2
@@ -382,7 +382,7 @@ class TestCheckBootstrapNeeded:
     def test_never_runs_init_automatically(self):
         """check_bootstrap_needed never executes ralphex --init itself."""
         with TemporaryDirectory() as tmp:
-            with patch("cypilot.ralphex_export.subprocess.run") as mock_run:
+            with patch("studio.ralphex_export.subprocess.run") as mock_run:
                 check_bootstrap_needed(tmp)
             mock_run.assert_not_called()
 
@@ -406,7 +406,7 @@ class TestValidationRoundTrip:
         assert len(commands) == 1
         # run_validation_commands accepts the same list — mock subprocess for hermeticity
         mock_result = MagicMock(returncode=0, stdout="ok\n", stderr="")
-        with patch("cypilot.ralphex_export.subprocess.run", return_value=mock_result):
+        with patch("studio.ralphex_export.subprocess.run", return_value=mock_result):
             result = run_validation_commands(commands)
         assert result["passed"] is True
         assert result["results"][0]["command"] == "echo ok"

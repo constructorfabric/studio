@@ -17,7 +17,7 @@ from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.ralphex_export import (
+from studio.ralphex_export import (
     resolve_plans_dir,
     build_delegation_command,
     check_review_precondition,
@@ -259,7 +259,7 @@ class TestCheckReviewPrecondition:
     def test_passes_when_branch_has_commits_ahead(self):
         """Precondition passes when feature branch has commits ahead of default."""
         proc = MagicMock(returncode=0, stdout="abc1234\ndef5678\n", stderr="")
-        with patch("cypilot.ralphex_export.subprocess.run", return_value=proc):
+        with patch("studio.ralphex_export.subprocess.run", return_value=proc):
             result = check_review_precondition(default_branch="main")
         assert result["ok"] is True
         assert result["commit_count"] == 2
@@ -267,7 +267,7 @@ class TestCheckReviewPrecondition:
     def test_fails_when_no_commits_ahead(self):
         """Precondition fails when feature branch has no commits ahead."""
         proc = MagicMock(returncode=0, stdout="", stderr="")
-        with patch("cypilot.ralphex_export.subprocess.run", return_value=proc):
+        with patch("studio.ralphex_export.subprocess.run", return_value=proc):
             result = check_review_precondition(default_branch="main")
         assert result["ok"] is False
         assert "no committed changes" in result["message"].lower()
@@ -276,14 +276,14 @@ class TestCheckReviewPrecondition:
         """Precondition fails when HEAD is on the default branch itself."""
         # git rev-list returns empty (no commits ahead of self)
         proc = MagicMock(returncode=0, stdout="", stderr="")
-        with patch("cypilot.ralphex_export.subprocess.run", return_value=proc):
+        with patch("studio.ralphex_export.subprocess.run", return_value=proc):
             result = check_review_precondition(default_branch="main")
         assert result["ok"] is False
 
     def test_fails_when_git_command_errors(self):
         """Precondition fails gracefully when git command errors."""
         proc = MagicMock(returncode=128, stdout="", stderr="fatal: bad revision")
-        with patch("cypilot.ralphex_export.subprocess.run", return_value=proc):
+        with patch("studio.ralphex_export.subprocess.run", return_value=proc):
             result = check_review_precondition(default_branch="main")
         assert result["ok"] is False
         assert "error" in result["message"].lower() or "failed" in result["message"].lower()
@@ -291,7 +291,7 @@ class TestCheckReviewPrecondition:
     def test_uses_default_branch_parameter(self):
         """Git command references the specified default branch."""
         proc = MagicMock(returncode=0, stdout="abc1234\n", stderr="")
-        with patch("cypilot.ralphex_export.subprocess.run", return_value=proc) as mock_run:
+        with patch("studio.ralphex_export.subprocess.run", return_value=proc) as mock_run:
             check_review_precondition(default_branch="master")
         call_args = mock_run.call_args[0][0]
         assert any("master" in str(arg) for arg in call_args)

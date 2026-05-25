@@ -21,9 +21,9 @@ class TestWhenClauseNavigation(unittest.TestCase):
         
         content = agents_file.read_text(encoding='utf-8')
 
-        self.assertIn("<!-- @cpt:root-agents -->", content)
-        self.assertIn('cypilot_path = ".bootstrap"', content)
-        self.assertIn("<!-- /@cpt:root-agents -->", content)
+        self.assertIn("<!-- @cf:root-agents -->", content)
+        self.assertIn('cf-studio-path = ".bootstrap"', content)
+        self.assertIn("<!-- /@cf:root-agents -->", content)
 
 
 if __name__ == "__main__":

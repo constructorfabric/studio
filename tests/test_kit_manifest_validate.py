@@ -35,7 +35,7 @@ def _bootstrap_project(root: Path, adapter_rel: str = "cypilot") -> Path:
 
 def _write_core_toml(config_dir: Path, data: dict) -> Path:
     """Write core.toml into *config_dir* and return the path."""
-    from cypilot.utils import toml_utils
+    from studio.utils import toml_utils
     config_dir.mkdir(parents=True, exist_ok=True)
     core_path = config_dir / "core.toml"
     toml_utils.dump(data, core_path)
@@ -50,7 +50,7 @@ def _write_minimal_constraints(target_dir: Path) -> None:
 
 def _write_manifest_toml(kit_dir: Path, resources: list[dict]) -> None:
     """Write a valid manifest.toml into *kit_dir*."""
-    from cypilot.utils.toml_utils import dumps
+    from studio.utils.toml_utils import dumps
     data = {
         "manifest": {
             "version": "1.0",
@@ -73,7 +73,7 @@ class TestContextConstraintsResourceBinding(unittest.TestCase):
     def test_constraints_loaded_from_binding_path(self):
         """When a 'constraints' resource binding exists and the file is present,
         context loads constraints from the binding path (not default kit root)."""
-        from cypilot.utils.context import CypilotContext
+        from studio.utils.context import CypilotContext
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -94,7 +94,7 @@ class TestContextConstraintsResourceBinding(unittest.TestCase):
             kit_dir = config / "kits" / "sdlc"
             kit_dir.mkdir(parents=True)
 
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
@@ -127,7 +127,7 @@ class TestContextConstraintsResourceBinding(unittest.TestCase):
 
     def test_constraints_fallback_to_kit_root(self):
         """When no 'constraints' resource binding exists, constraints loaded from kit root."""
-        from cypilot.utils.context import CypilotContext
+        from studio.utils.context import CypilotContext
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -142,7 +142,7 @@ class TestContextConstraintsResourceBinding(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
@@ -171,7 +171,7 @@ class TestContextConstraintsResourceBinding(unittest.TestCase):
 
     def test_binding_path_missing_file_surfaces_error(self):
         """When constraints binding path does not exist on disk, surface an error."""
-        from cypilot.utils.context import CypilotContext
+        from studio.utils.context import CypilotContext
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -184,7 +184,7 @@ class TestContextConstraintsResourceBinding(unittest.TestCase):
             # Kit root has constraints
             (kit_dir / "constraints.toml").write_text("[artifacts]\n", encoding="utf-8")
 
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
@@ -227,8 +227,8 @@ class TestValidateKitsResourcePaths(unittest.TestCase):
 
     def test_missing_resource_path_produces_error(self):
         """Registered kit with resource binding pointing to missing path → FAIL."""
-        from cypilot.utils.context import CypilotContext, set_context
-        from cypilot.commands.validate_kits import run_validate_kits
+        from studio.utils.context import CypilotContext, set_context
+        from studio.commands.validate_kits import run_validate_kits
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -272,8 +272,8 @@ class TestValidateKitsResourcePaths(unittest.TestCase):
                 set_context(None)
 
     def test_missing_resource_path_marks_failed_kit_in_report(self):
-        from cypilot.utils.context import CypilotContext, set_context
-        from cypilot.commands.validate_kits import run_validate_kits
+        from studio.utils.context import CypilotContext, set_context
+        from studio.commands.validate_kits import run_validate_kits
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -284,7 +284,7 @@ class TestValidateKitsResourcePaths(unittest.TestCase):
             kit_dir = config / "kits" / "sdlc"
             _write_minimal_constraints(kit_dir)
 
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
@@ -329,8 +329,8 @@ class TestValidateKitsResourcePaths(unittest.TestCase):
                 set_context(None)
 
     def test_invalid_binding_resolution_produces_resource_error(self):
-        from cypilot.utils.context import CypilotContext, set_context
-        from cypilot.commands.validate_kits import run_validate_kits
+        from studio.utils.context import CypilotContext, set_context
+        from studio.commands.validate_kits import run_validate_kits
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -343,7 +343,7 @@ class TestValidateKitsResourcePaths(unittest.TestCase):
 
             invalid_binding = "/opt/cypilot/constraints.toml" if sys.platform.startswith("win") else "C:/external-kits/sdlc/constraints.toml"
 
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
@@ -393,8 +393,8 @@ class TestValidateKitsResourcePaths(unittest.TestCase):
                 set_context(None)
 
     def test_inaccessible_absolute_kit_path_fails_and_reports_configured_path(self):
-        from cypilot.utils.context import CypilotContext, set_context
-        from cypilot.commands.validate_kits import run_validate_kits
+        from studio.utils.context import CypilotContext, set_context
+        from studio.commands.validate_kits import run_validate_kits
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -404,7 +404,7 @@ class TestValidateKitsResourcePaths(unittest.TestCase):
 
             inaccessible_kit_path = "C:/external-kits/sdlc" if not sys.platform.startswith("win") else "/external-kits/sdlc"
 
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
@@ -459,8 +459,8 @@ class TestValidateKitsResourcePaths(unittest.TestCase):
 
     def test_all_resource_paths_exist_passes(self):
         """Registered kit with all resource bindings pointing to existing paths → PASS."""
-        from cypilot.utils.context import CypilotContext, set_context
-        from cypilot.commands.validate_kits import run_validate_kits
+        from studio.utils.context import CypilotContext, set_context
+        from studio.commands.validate_kits import run_validate_kits
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -499,8 +499,8 @@ class TestValidateKitsResourcePaths(unittest.TestCase):
 
     def test_legacy_kit_no_resource_check(self):
         """Legacy kit without resource bindings skips resource path verification."""
-        from cypilot.utils.context import CypilotContext, set_context
-        from cypilot.commands.validate_kits import run_validate_kits
+        from studio.utils.context import CypilotContext, set_context
+        from studio.commands.validate_kits import run_validate_kits
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -511,7 +511,7 @@ class TestValidateKitsResourcePaths(unittest.TestCase):
             kit_dir = config / "kits" / "sdlc"
             _write_minimal_constraints(kit_dir)
 
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
@@ -548,8 +548,8 @@ class TestValidateKitsResourcePaths(unittest.TestCase):
                 set_context(None)
 
     def test_verbose_report_uses_authoritative_adapter_relative_custom_root(self):
-        from cypilot.utils.context import CypilotContext, set_context
-        from cypilot.commands.validate_kits import run_validate_kits
+        from studio.utils.context import CypilotContext, set_context
+        from studio.commands.validate_kits import run_validate_kits
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -560,7 +560,7 @@ class TestValidateKitsResourcePaths(unittest.TestCase):
             custom_kit_dir.mkdir(parents=True)
             (custom_kit_dir / "constraints.toml").write_text("[broken\ninvalid", encoding="utf-8")
 
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
@@ -612,7 +612,7 @@ class TestValidateKitByPathManifest(unittest.TestCase):
 
     def test_valid_manifest_passes(self):
         """Standalone kit with valid manifest.toml → no resource errors."""
-        from cypilot.commands.validate_kits import _validate_kit_by_path
+        from studio.commands.validate_kits import _validate_kit_by_path
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -644,7 +644,7 @@ class TestValidateKitByPathManifest(unittest.TestCase):
 
     def test_invalid_manifest_source_produces_error(self):
         """Standalone kit with manifest referencing missing source → error."""
-        from cypilot.commands.validate_kits import _validate_kit_by_path
+        from studio.commands.validate_kits import _validate_kit_by_path
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -673,7 +673,7 @@ class TestValidateKitByPathManifest(unittest.TestCase):
 
     def test_no_manifest_no_resource_check(self):
         """Standalone kit without manifest.toml → no resource errors."""
-        from cypilot.commands.validate_kits import _validate_kit_by_path
+        from studio.commands.validate_kits import _validate_kit_by_path
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -691,7 +691,7 @@ class TestValidateKitByPathManifest(unittest.TestCase):
 
     def test_malformed_manifest_produces_error(self):
         """Standalone kit with malformed manifest.toml → resource error reported."""
-        from cypilot.commands.validate_kits import _validate_kit_by_path
+        from studio.commands.validate_kits import _validate_kit_by_path
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -720,8 +720,8 @@ class TestValidateKitsFilterWithResources(unittest.TestCase):
 
     def test_filter_skips_other_kit_resources(self):
         """With kit_filter, only the filtered kit's resources are verified."""
-        from cypilot.utils.context import CypilotContext, set_context
-        from cypilot.commands.validate_kits import run_validate_kits
+        from studio.utils.context import CypilotContext, set_context
+        from studio.commands.validate_kits import run_validate_kits
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -738,7 +738,7 @@ class TestValidateKitsFilterWithResources(unittest.TestCase):
             other_kit_dir = config / "kits" / "other"
             _write_minimal_constraints(other_kit_dir)
 
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
@@ -791,18 +791,18 @@ class TestValidateKitsFilterWithResources(unittest.TestCase):
 
 class TestValidateCustomKitRootMetadata(unittest.TestCase):
     def setUp(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(True)
 
     def tearDown(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(False)
 
     def test_cmd_validate_uses_authoritative_constraints_path_for_custom_root(self):
         from _test_helpers import write_constraints_toml
-        from cypilot.commands.validate import cmd_validate
-        from cypilot.utils.context import CypilotContext, set_context
-        from cypilot.utils import toml_utils
+        from studio.commands.validate import cmd_validate
+        from studio.utils.context import CypilotContext, set_context
+        from studio.utils import toml_utils
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -863,7 +863,7 @@ class TestValidateCustomKitRootMetadata(unittest.TestCase):
 
             try:
                 buf = io.StringIO()
-                with patch("cypilot.commands.validate_kits.run_validate_kits", return_value=(0, {"status": "PASS"})):
+                with patch("studio.commands.validate_kits.run_validate_kits", return_value=(0, {"status": "PASS"})):
                     with redirect_stdout(buf):
                         rc = cmd_validate(["--skip-code"])
                 self.assertEqual(rc, 2)

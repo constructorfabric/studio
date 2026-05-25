@@ -13,12 +13,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "sc
 
 
 def setUpModule():
-    from cypilot.utils.ui import set_json_mode
+    from studio.utils.ui import set_json_mode
     set_json_mode(True)
 
 
 def tearDownModule():
-    from cypilot.utils.ui import set_json_mode
+    from studio.utils.ui import set_json_mode
     set_json_mode(False)
 
 
@@ -47,7 +47,7 @@ def _setup_list_ids_project(root, *, codebase=None, ignore=None, content=None,
     art = root / art_path
     art.parent.mkdir(parents=True, exist_ok=True)
     art.write_text(content or "- [x] `p1` - **ID**: `cpt-test-req-1`\n", encoding="utf-8")
-    from cypilot.utils import toml_utils
+    from studio.utils import toml_utils
     system = {
         "name": system_name, "slug": system_slug,
         "artifacts": [{"path": art_path, "kind": "req"}],
@@ -63,7 +63,7 @@ def _setup_list_ids_project(root, *, codebase=None, ignore=None, content=None,
 
 def _bootstrap_self_check_kits(root: Path, adapter: Path, *, with_example: bool = True, bad_example: bool = False) -> None:
     # Minimal artifacts registry that passes `load_artifacts_meta` and contains kits.
-    from cypilot.utils import toml_utils
+    from studio.utils import toml_utils
     toml_utils.dump(
         {
             "project_root": "..",
@@ -261,7 +261,7 @@ def _build_ws_validate_ctx(td):
 
     Returns (ws, art_resolved, WorkspaceContext_cls).
     """
-    from cypilot.utils.context import WorkspaceContext
+    from studio.utils.context import WorkspaceContext
     root, ar = _scaffold_validate_project(td)
     (root / "src").mkdir(parents=True, exist_ok=True)
     (root / "src" / "code.py").write_text("print('ok')\n", encoding="utf-8")
@@ -282,16 +282,16 @@ def _run_ws_validate(args):
 
     Returns (rc, mock_get_all_ids, buf).
     """
-    from cypilot.commands import validate as validate_cmd
+    from studio.commands import validate as validate_cmd
     with TemporaryDirectory() as td:
         ws, art_resolved, WC = _build_ws_validate_ctx(td)
         buf = io.StringIO()
-        with patch("cypilot.utils.context.get_context", return_value=ws):
+        with patch("studio.utils.context.get_context", return_value=ws):
             with patch.object(WC, "resolve_artifact_path", return_value=art_resolved):
                 with patch.object(WC, "get_all_artifact_ids", return_value={"cpt-remote-1"}) as mi:
-                    with patch("cypilot.commands.validate.validate_artifact_file", return_value={"errors": [], "warnings": []}):
-                        with patch("cypilot.commands.validate.cross_validate_artifacts", return_value={"errors": [], "warnings": []}):
-                            with patch("cypilot.commands.validate.scan_cpt_ids", return_value=[]):
+                    with patch("studio.commands.validate.validate_artifact_file", return_value={"errors": [], "warnings": []}):
+                        with patch("studio.commands.validate.cross_validate_artifacts", return_value={"errors": [], "warnings": []}):
+                            with patch("studio.commands.validate.scan_cpt_ids", return_value=[]):
                                 with redirect_stdout(buf):
                                     rc = validate_cmd.cmd_validate(args)
         return rc, mi, buf
@@ -310,7 +310,7 @@ def _make_cross_repo_dirs(td):
 
 def _patch_collect_artifacts(root, remote, remote_file="REMOTE.md"):
     """Return a patch for collect_artifacts_to_scan with standard cross-repo layout."""
-    return patch("cypilot.utils.context.collect_artifacts_to_scan", return_value=(
+    return patch("studio.utils.context.collect_artifacts_to_scan", return_value=(
         [
             ((root / "artifacts" / "REQ.md").resolve(), "REQ"),
             ((remote / "artifacts" / remote_file).resolve(), "REQ"),
@@ -321,8 +321,8 @@ def _patch_collect_artifacts(root, remote, remote_file="REMOTE.md"):
 
 def _run_cli_dispatch(test_case, args):
     """Run CLI main() in a temp dir, assert exit code in [0, 1, 2]."""
-    from cypilot.cli import main
-    from cypilot.utils.ui import is_json_mode, set_json_mode
+    from studio.cli import main
+    from studio.utils.ui import is_json_mode, set_json_mode
     with TemporaryDirectory() as td:
         cwd = os.getcwd()
         saved_json_mode = is_json_mode()
@@ -339,7 +339,7 @@ def _run_cli_dispatch(test_case, args):
 
 class TestCLIPyCoverageSelfCheck(unittest.TestCase):
     def test_self_check_pass(self):
-        from cypilot.cli import main
+        from studio.cli import main
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -371,8 +371,8 @@ class TestCLIPyCoverageSelfCheckMoreBranches(unittest.TestCase):
         with_constraints: bool = True,
         constraints_payload: dict | None = None,
         template_content: str | None = None,
-    ) -> "cypilot.utils.artifacts_meta.ArtifactsMeta":
-        from cypilot.utils.artifacts_meta import ArtifactsMeta
+    ) -> "studio.utils.artifacts_meta.ArtifactsMeta":
+        from studio.utils.artifacts_meta import ArtifactsMeta
 
         kit_root = root / "kits" / "k"
         (kit_root / "artifacts" / kind / "examples").mkdir(parents=True, exist_ok=True)
@@ -416,7 +416,7 @@ class TestCLIPyCoverageSelfCheckMoreBranches(unittest.TestCase):
         return ArtifactsMeta.from_dict(reg)
 
     def test_run_self_check_passes_when_constraints_missing(self):
-        from cypilot.commands.self_check import run_self_check_from_meta
+        from studio.commands.self_check import run_self_check_from_meta
 
         with TemporaryDirectory() as td:
             root = Path(td)
@@ -427,7 +427,7 @@ class TestCLIPyCoverageSelfCheckMoreBranches(unittest.TestCase):
             self.assertGreaterEqual(int(out.get("kits_checked", 0)), 1)
 
     def test_run_self_check_fails_on_invalid_constraints(self):
-        from cypilot.commands.self_check import run_self_check_from_meta
+        from studio.commands.self_check import run_self_check_from_meta
 
         with TemporaryDirectory() as td:
             root = Path(td)
@@ -438,7 +438,7 @@ class TestCLIPyCoverageSelfCheckMoreBranches(unittest.TestCase):
             self.assertGreaterEqual(int(out.get("kits_checked", 0)), 1)
 
     def test_run_self_check_passes_when_kind_not_in_constraints(self):
-        from cypilot.commands.self_check import run_self_check_from_meta
+        from studio.commands.self_check import run_self_check_from_meta
 
         with TemporaryDirectory() as td:
             root = Path(td)
@@ -448,14 +448,14 @@ class TestCLIPyCoverageSelfCheckMoreBranches(unittest.TestCase):
             self.assertEqual(out.get("status"), "PASS")
 
     def test_template_checks_phase_gate_on_heading_errors(self):
-        from cypilot.commands.self_check import run_self_check_from_meta
+        from studio.commands.self_check import run_self_check_from_meta
 
         with TemporaryDirectory() as td:
             root = Path(td)
             meta = self._bootstrap_kit(root, with_constraints=True)
 
             with patch(
-                "cypilot.commands.self_check.validate_headings_contract",
+                "studio.commands.self_check.validate_headings_contract",
                 return_value={"errors": [{"type": "x", "message": "boom", "path": "p", "line": 1}], "warnings": []},
             ):
                 rc, out = run_self_check_from_meta(project_root=root, adapter_dir=(root / "adapter"), artifacts_meta=meta, verbose=True)
@@ -463,19 +463,19 @@ class TestCLIPyCoverageSelfCheckMoreBranches(unittest.TestCase):
             self.assertEqual(out.get("status"), "FAIL")
 
     def test_template_checks_template_unreadable_branch(self):
-        from cypilot.commands.self_check import run_self_check_from_meta
+        from studio.commands.self_check import run_self_check_from_meta
 
         with TemporaryDirectory() as td:
             root = Path(td)
             meta = self._bootstrap_kit(root, with_constraints=True)
 
-            with patch("cypilot.commands.self_check.read_text_safe", return_value=None):
+            with patch("studio.commands.self_check.read_text_safe", return_value=None):
                 rc, out = run_self_check_from_meta(project_root=root, adapter_dir=(root / "adapter"), artifacts_meta=meta)
             self.assertEqual(rc, 2)
             self.assertEqual(out.get("status"), "FAIL")
 
     def test_template_checks_fails_on_identifier_without_template(self):
-        from cypilot.commands.self_check import run_self_check_from_meta
+        from studio.commands.self_check import run_self_check_from_meta
 
         with TemporaryDirectory() as td:
             root = Path(td)
@@ -497,7 +497,7 @@ class TestCLIPyCoverageSelfCheckMoreBranches(unittest.TestCase):
             self.assertIn("errors", out["results"][0])
 
     def test_template_checks_fail_when_required_id_placeholder_missing(self):
-        from cypilot.commands.self_check import run_self_check_from_meta
+        from studio.commands.self_check import run_self_check_from_meta
 
         with TemporaryDirectory() as td:
             root = Path(td)
@@ -517,7 +517,7 @@ class TestCLIPyCoverageSelfCheckMoreBranches(unittest.TestCase):
             self.assertEqual(out.get("status"), "FAIL")
 
     def test_template_checks_id_placeholder_wrong_heading(self):
-        from cypilot.commands.self_check import run_self_check_from_meta
+        from studio.commands.self_check import run_self_check_from_meta
 
         with TemporaryDirectory() as td:
             root = Path(td)
@@ -541,13 +541,13 @@ class TestCLIPyCoverageSelfCheckMoreBranches(unittest.TestCase):
 
             fake_headings_at = [[] for _ in range(10)]
             fake_headings_at[3] = ["not-allowed"]
-            with patch("cypilot.commands.self_check.heading_constraint_ids_by_line", return_value=fake_headings_at):
+            with patch("studio.commands.self_check.heading_constraint_ids_by_line", return_value=fake_headings_at):
                 rc, out = run_self_check_from_meta(project_root=root, adapter_dir=(root / "adapter"), artifacts_meta=meta)
             self.assertEqual(rc, 2)
             self.assertEqual(out.get("status"), "FAIL")
 
     def test_template_checks_required_reference_missing(self):
-        from cypilot.commands.self_check import run_self_check_from_meta
+        from studio.commands.self_check import run_self_check_from_meta
 
         with TemporaryDirectory() as td:
             root = Path(td)
@@ -572,7 +572,7 @@ class TestCLIPyCoverageSelfCheckMoreBranches(unittest.TestCase):
             self.assertEqual(out.get("status"), "FAIL")
 
     def test_template_checks_required_reference_wrong_heading(self):
-        from cypilot.commands.self_check import run_self_check_from_meta
+        from studio.commands.self_check import run_self_check_from_meta
 
         with TemporaryDirectory() as td:
             root = Path(td)
@@ -601,13 +601,13 @@ class TestCLIPyCoverageSelfCheckMoreBranches(unittest.TestCase):
 
             fake_headings_at = [[] for _ in range(10)]
             fake_headings_at[3] = ["not-allowed"]
-            with patch("cypilot.commands.self_check.heading_constraint_ids_by_line", return_value=fake_headings_at):
+            with patch("studio.commands.self_check.heading_constraint_ids_by_line", return_value=fake_headings_at):
                 rc, out = run_self_check_from_meta(project_root=root, adapter_dir=(root / "adapter"), artifacts_meta=meta)
             self.assertEqual(rc, 2)
             self.assertEqual(out.get("status"), "FAIL")
 
     def test_run_self_check_fallback_when_kit_paths_raise(self):
-        from cypilot.commands.self_check import run_self_check_from_meta
+        from studio.commands.self_check import run_self_check_from_meta
 
         with TemporaryDirectory() as td:
             root = Path(td)
@@ -631,7 +631,7 @@ class TestCLIPyCoverageSelfCheckReverseAndOptional(unittest.TestCase):
     """Tests for self-check reverse checks and optional missing warnings."""
 
     def _bootstrap_kit(self, root, *, kind="REQ", constraints_payload=None, template_content=None):
-        from cypilot.utils.artifacts_meta import ArtifactsMeta
+        from studio.utils.artifacts_meta import ArtifactsMeta
 
         kit_root = root / "kits" / "k"
         (kit_root / "artifacts" / kind / "examples").mkdir(parents=True, exist_ok=True)
@@ -656,7 +656,7 @@ class TestCLIPyCoverageSelfCheckReverseAndOptional(unittest.TestCase):
 
     def test_template_def_kind_not_in_constraints(self):
         """Template has definition pattern not in constraints → error."""
-        from cypilot.commands.self_check import run_self_check_from_meta
+        from studio.commands.self_check import run_self_check_from_meta
 
         with TemporaryDirectory() as td:
             root = Path(td)
@@ -675,7 +675,7 @@ class TestCLIPyCoverageSelfCheckReverseAndOptional(unittest.TestCase):
 
     def test_template_ref_kind_not_in_constraints(self):
         """Template has reference pattern not in constraints → error."""
-        from cypilot.commands.self_check import run_self_check_from_meta
+        from studio.commands.self_check import run_self_check_from_meta
 
         with TemporaryDirectory() as td:
             root = Path(td)
@@ -695,7 +695,7 @@ class TestCLIPyCoverageSelfCheckReverseAndOptional(unittest.TestCase):
 
     def test_optional_def_missing_from_template_warns(self):
         """Optional definition kind in constraints but missing from template → warning."""
-        from cypilot.commands.self_check import run_self_check_from_meta
+        from studio.commands.self_check import run_self_check_from_meta
 
         with TemporaryDirectory() as td:
             root = Path(td)
@@ -712,7 +712,7 @@ class TestCLIPyCoverageSelfCheckReverseAndOptional(unittest.TestCase):
 
     def test_optional_ref_missing_from_template_warns(self):
         """Optional reference in constraints but missing from template → warning."""
-        from cypilot.commands.self_check import run_self_check_from_meta
+        from studio.commands.self_check import run_self_check_from_meta
 
         with TemporaryDirectory() as td:
             root = Path(td)
@@ -733,7 +733,7 @@ class TestCLIPyCoverageSelfCheckReverseAndOptional(unittest.TestCase):
 
 class TestCLIPyCoverageValidateBranches(unittest.TestCase):
     def test_validate_artifact_outside_project_root_hits_relative_to_error(self):
-        from cypilot.commands import validate as validate_cmd
+        from studio.commands import validate as validate_cmd
 
 
         class _FakeMeta:
@@ -777,8 +777,8 @@ class TestCLIPyCoverageValidateBranches(unittest.TestCase):
             fake_ctx.project_root = tmp / "project"
 
             buf = io.StringIO()
-            with patch("cypilot.utils.context.CypilotContext.load", return_value=fake_ctx):
-                with patch("cypilot.utils.context.get_context", return_value=fake_ctx):
+            with patch("studio.utils.context.CypilotContext.load", return_value=fake_ctx):
+                with patch("studio.utils.context.get_context", return_value=fake_ctx):
                     with redirect_stdout(buf):
                         rc = validate_cmd.cmd_validate(["--artifact", str(art)])
 
@@ -787,7 +787,7 @@ class TestCLIPyCoverageValidateBranches(unittest.TestCase):
             self.assertEqual(out.get("status"), "ERROR")
 
     def test_validate_early_stop_writes_output_file(self):
-        from cypilot.commands import validate as validate_cmd
+        from studio.commands import validate as validate_cmd
 
 
 
@@ -835,16 +835,16 @@ class TestCLIPyCoverageValidateBranches(unittest.TestCase):
             ctx = _FakeCtx(root, art_rel)
             out_path = root / "out.json"
 
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
+            with patch("studio.utils.context.get_context", return_value=ctx):
                 # Force per-artifact validation to fail so cmd_validate returns early and writes output.
-                with patch("cypilot.commands.validate.validate_artifact_file", return_value={"errors": [{"type": "x", "message": "boom", "path": str(root / art_rel), "line": 1}], "warnings": []}):
+                with patch("studio.commands.validate.validate_artifact_file", return_value={"errors": [{"type": "x", "message": "boom", "path": str(root / art_rel), "line": 1}], "warnings": []}):
                     rc = validate_cmd.cmd_validate(["--output", str(out_path)])
 
             self.assertEqual(rc, 2)
             self.assertTrue(out_path.is_file())
 
     def test_validate_skips_non_cypilot_artifacts_in_registry(self):
-        from cypilot.commands import validate as validate_cmd
+        from studio.commands import validate as validate_cmd
 
         class _FakePkg:
             def is_cfs_format(self):
@@ -880,7 +880,7 @@ class TestCLIPyCoverageValidateBranches(unittest.TestCase):
             root = Path(td)
             ctx = _FakeCtx(root)
             buf = io.StringIO()
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
+            with patch("studio.utils.context.get_context", return_value=ctx):
                 with redirect_stdout(buf):
                     rc = validate_cmd.cmd_validate([])
             # Validate succeeds with empty/non-Cypilot artifacts
@@ -889,7 +889,7 @@ class TestCLIPyCoverageValidateBranches(unittest.TestCase):
             self.assertIn("status", out)
 
     def test_validate_ctx_errors_are_reported_and_trigger_early_fail(self):
-        from cypilot.commands import validate as validate_cmd
+        from studio.commands import validate as validate_cmd
 
 
 
@@ -931,8 +931,8 @@ class TestCLIPyCoverageValidateBranches(unittest.TestCase):
 
             ctx = _FakeCtx(root, art_rel)
             buf = io.StringIO()
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
-                with patch("cypilot.commands.validate.validate_artifact_file", return_value={"errors": [], "warnings": []}):
+            with patch("studio.utils.context.get_context", return_value=ctx):
+                with patch("studio.commands.validate.validate_artifact_file", return_value={"errors": [], "warnings": []}):
                     with redirect_stdout(buf):
                         rc = validate_cmd.cmd_validate([])
 
@@ -942,7 +942,7 @@ class TestCLIPyCoverageValidateBranches(unittest.TestCase):
             self.assertGreater(out.get("error_count", 0), 0)
 
     def test_validate_constraints_path_resolve_error_and_verbose_scan_exception(self):
-        from cypilot.commands import validate as validate_cmd
+        from studio.commands import validate as validate_cmd
 
 
         class _BadKit:
@@ -988,10 +988,10 @@ class TestCLIPyCoverageValidateBranches(unittest.TestCase):
 
             ctx = _FakeCtx(root, art_rel)
             buf = io.StringIO()
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
-                with patch("cypilot.commands.validate.scan_cpt_ids", side_effect=ValueError("scan boom")):
+            with patch("studio.utils.context.get_context", return_value=ctx):
+                with patch("studio.commands.validate.scan_cpt_ids", side_effect=ValueError("scan boom")):
                     with patch(
-                        "cypilot.commands.validate.validate_artifact_file",
+                        "studio.commands.validate.validate_artifact_file",
                         return_value={"errors": [{"type": "x", "message": "boom", "path": str(root / art_rel), "line": 1}], "warnings": []},
                     ):
                         with redirect_stdout(buf):
@@ -1002,7 +1002,7 @@ class TestCLIPyCoverageValidateBranches(unittest.TestCase):
             self.assertEqual(out.get("status"), "FAIL")
 
     def test_validate_cross_validation_filters_by_validated_paths(self):
-        from cypilot.commands import validate as validate_cmd
+        from studio.commands import validate as validate_cmd
 
         class _FakeKitPkg:
             def is_cfs_format(self):
@@ -1093,10 +1093,10 @@ class TestCLIPyCoverageValidateBranches(unittest.TestCase):
                 ],
             }
 
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
-                with patch("cypilot.commands.validate.validate_artifact_file", return_value={"errors": [], "warnings": []}):
-                    with patch("cypilot.commands.validate.cross_validate_artifacts", return_value=fake_cross):
-                        with patch("cypilot.commands.validate.scan_cpt_ids", return_value=[]):
+            with patch("studio.utils.context.get_context", return_value=ctx):
+                with patch("studio.commands.validate.validate_artifact_file", return_value={"errors": [], "warnings": []}):
+                    with patch("studio.commands.validate.cross_validate_artifacts", return_value=fake_cross):
+                        with patch("studio.commands.validate.scan_cpt_ids", return_value=[]):
                             with redirect_stdout(buf):
                                 rc = validate_cmd.cmd_validate(["--skip-code", "--verbose"])
 
@@ -1107,7 +1107,7 @@ class TestCLIPyCoverageValidateBranches(unittest.TestCase):
             self.assertIn("warnings", out)
 
     def test_validate_full_id_scan_exception_is_handled(self):
-        from cypilot.commands import validate as validate_cmd
+        from studio.commands import validate as validate_cmd
 
 
 
@@ -1160,17 +1160,17 @@ class TestCLIPyCoverageValidateBranches(unittest.TestCase):
                     raise ValueError("boom")
                 return []
 
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
-                with patch("cypilot.commands.validate.validate_artifact_file", return_value={"errors": [], "warnings": []}):
-                    with patch("cypilot.commands.validate.cross_validate_artifacts", return_value={"errors": [], "warnings": []}):
-                        with patch("cypilot.commands.validate.scan_cpt_ids", side_effect=_scan):
+            with patch("studio.utils.context.get_context", return_value=ctx):
+                with patch("studio.commands.validate.validate_artifact_file", return_value={"errors": [], "warnings": []}):
+                    with patch("studio.commands.validate.cross_validate_artifacts", return_value={"errors": [], "warnings": []}):
+                        with patch("studio.commands.validate.scan_cpt_ids", side_effect=_scan):
                             with redirect_stdout(buf):
                                 rc = validate_cmd.cmd_validate(["--skip-code"])
 
             self.assertEqual(rc, 0)
 
     def test_validate_code_scan_branches_and_failure_includes_warnings(self):
-        from cypilot.commands import validate as validate_cmd
+        from studio.commands import validate as validate_cmd
 
 
         class _FakeCodebaseEntry:
@@ -1232,15 +1232,15 @@ class TestCLIPyCoverageValidateBranches(unittest.TestCase):
                 ctx = _FakeCtx(root, art_rel, str(code_file))
                 buf = io.StringIO()
 
-                with patch("cypilot.utils.context.get_context", return_value=ctx):
-                    with patch("cypilot.commands.validate.cross_validate_artifacts", return_value={"errors": [], "warnings": []}):
-                        with patch("cypilot.commands.validate.scan_cpt_ids", return_value=[]):
+                with patch("studio.utils.context.get_context", return_value=ctx):
+                    with patch("studio.commands.validate.cross_validate_artifacts", return_value={"errors": [], "warnings": []}):
+                        with patch("studio.commands.validate.scan_cpt_ids", return_value=[]):
                             with patch(
-                                "cypilot.commands.validate.validate_artifact_file",
+                                "studio.commands.validate.validate_artifact_file",
                                 return_value={"errors": [], "warnings": [{"type": "w", "message": "warn", "path": str(root / art_rel), "line": 1}]},
                             ):
                                 with patch(
-                                    "cypilot.commands.validate.CodeFile.from_path",
+                                    "studio.commands.validate.CodeFile.from_path",
                                     return_value=(None, [{"type": "code", "message": "bad", "path": str(code_file), "line": 1}]),
                                 ):
                                     with redirect_stdout(buf):
@@ -1252,7 +1252,7 @@ class TestCLIPyCoverageValidateBranches(unittest.TestCase):
                 self.assertIn("warnings", out)
 
     def test_validate_pass_can_include_failed_artifacts_summary(self):
-        from cypilot.commands import validate as validate_cmd
+        from studio.commands import validate as validate_cmd
 
         class _TruthyEmpty:
             def __iter__(self):
@@ -1304,13 +1304,13 @@ class TestCLIPyCoverageValidateBranches(unittest.TestCase):
 
             ctx = _FakeCtx(root, art_rel)
             buf = io.StringIO()
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
+            with patch("studio.utils.context.get_context", return_value=ctx):
                 with patch(
-                    "cypilot.commands.validate.validate_artifact_file",
+                    "studio.commands.validate.validate_artifact_file",
                     return_value={"errors": _TruthyEmpty(), "warnings": []},
                 ):
-                    with patch("cypilot.commands.validate.cross_validate_artifacts", return_value={"errors": [], "warnings": []}):
-                        with patch("cypilot.commands.validate.scan_cpt_ids", return_value=[]):
+                    with patch("studio.commands.validate.cross_validate_artifacts", return_value={"errors": [], "warnings": []}):
+                        with patch("studio.commands.validate.scan_cpt_ids", return_value=[]):
                             with redirect_stdout(buf):
                                 rc = validate_cmd.cmd_validate(["--skip-code"])
 
@@ -1322,7 +1322,7 @@ class TestCLIPyCoverageValidateBranches(unittest.TestCase):
 
 class TestCLIPyCoverageListIdKindsBranches(unittest.TestCase):
     def test_list_id_kinds_artifact_not_found_branch(self):
-        from cypilot.commands.list_id_kinds import cmd_list_id_kinds
+        from studio.commands.list_id_kinds import cmd_list_id_kinds
 
         buf = io.StringIO()
         with redirect_stdout(buf):
@@ -1331,12 +1331,12 @@ class TestCLIPyCoverageListIdKindsBranches(unittest.TestCase):
 
     def test_list_id_kinds_artifact_not_in_registry(self):
         """Cover lines 51-52: artifact exists but not registered."""
-        from cypilot.cli import main
+        from studio.cli import main
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             adapter = _bootstrap_project_root(root)
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0", "project_root": "..", "systems": [], "kits": {},
             }, adapter / "config" / "artifacts.toml")
@@ -1353,7 +1353,7 @@ class TestCLIPyCoverageListIdKindsBranches(unittest.TestCase):
 
     def test_list_id_kinds_infer_kinds_branches(self):
         """Cover lines 85, 103, 106, 112, 119, 122, 125: kind inference branches."""
-        from cypilot.cli import main
+        from studio.cli import main
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -1374,7 +1374,7 @@ class TestCLIPyCoverageListIdKindsBranches(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.1", "project_root": "..",
                 "kits": {"sdlc": {"format": "CFS", "path": "kits/sdlc"}},
@@ -1398,7 +1398,7 @@ class TestCLIPyCoverageListIdKindsBranches(unittest.TestCase):
 
 class TestCLIPyCoverageSelfCheckSkipBranches(unittest.TestCase):
     def test_self_check_fail_on_validation_errors(self):
-        from cypilot.cli import main
+        from studio.cli import main
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -1420,7 +1420,7 @@ class TestCLIPyCoverageSelfCheckSkipBranches(unittest.TestCase):
                 os.chdir(cwd)
 
     def test_self_check_verbose_passes_when_example_missing(self):
-        from cypilot.cli import main
+        from studio.cli import main
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -1442,7 +1442,7 @@ class TestCLIPyCoverageSelfCheckSkipBranches(unittest.TestCase):
 class TestCLIPyCoverageValidateCode(unittest.TestCase):
     def test_validate_with_code_and_output_file(self):
         """Test validate command with code validation and output file."""
-        from cypilot.cli import main
+        from studio.cli import main
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -1532,14 +1532,14 @@ class TestCLIPyCoverageValidateCode(unittest.TestCase):
 
 class TestCLIPyCoverageHelpers(unittest.TestCase):
     def test_prompt_path_eof_returns_default(self):
-        from cypilot.commands.init import _prompt_path
+        from studio.commands.init import _prompt_path
 
         with patch("builtins.input", side_effect=EOFError):
             got = _prompt_path("Question?", "default")
         self.assertEqual(got, "default")
 
     def test_list_workflow_files_iterdir_exception(self):
-        from cypilot.commands.agents import _list_workflow_files
+        from studio.commands.agents import _list_workflow_files
 
         with TemporaryDirectory() as tmpdir:
             core = Path(tmpdir)
@@ -1555,7 +1555,7 @@ class TestCLIPyCoverageSelfCheckFiltering(unittest.TestCase):
 
     def test_self_check_filter_by_rule(self):
         """self-check --kit filters to specific kit."""
-        from cypilot.cli import main
+        from studio.cli import main
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -1577,7 +1577,7 @@ class TestCLIPyCoverageSelfCheckFiltering(unittest.TestCase):
 
     def test_self_check_filter_matches_kit(self):
         """self-check --kit matches existing kit."""
-        from cypilot.cli import main
+        from studio.cli import main
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -1602,7 +1602,7 @@ class TestCLIPyCoverageInitUnchanged(unittest.TestCase):
 
     def test_init_unchanged_files(self):
         """init reports unchanged when files match desired content."""
-        from cypilot.cli import main
+        from studio.cli import main
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -1617,9 +1617,9 @@ class TestCLIPyCoverageInitUnchanged(unittest.TestCase):
             try:
                 os.chdir(root)
                 with (
-                    patch("cypilot.commands.init.CACHE_DIR", fake_cache),
+                    patch("studio.commands.init.CACHE_DIR", fake_cache),
                     patch(
-                        "cypilot.commands.kit._download_kit_from_github",
+                        "studio.commands.kit._download_kit_from_github",
                         return_value=(fake_kit, "1.0.0"),
                     ),
                 ):
@@ -1645,7 +1645,7 @@ class TestInitCopyFromCache(unittest.TestCase):
 
     def test_copy_creates_and_skips(self):
         """First copy creates, second without force skips."""
-        from cypilot.commands.init import _copy_from_cache
+        from studio.commands.init import _copy_from_cache
         with TemporaryDirectory() as td:
             cache = Path(td) / "cache"
             target = Path(td) / "project" / "cypilot"
@@ -1665,7 +1665,7 @@ class TestInitCopyFromCache(unittest.TestCase):
 
     def test_missing_cache_dir_entries(self):
         """When cache dirs don't exist, reports missing_in_cache."""
-        from cypilot.commands.init import _copy_from_cache
+        from studio.commands.init import _copy_from_cache
         with TemporaryDirectory() as td:
             cache = Path(td) / "empty_cache"
             cache.mkdir()
@@ -1678,7 +1678,7 @@ class TestInitCopyFromCache(unittest.TestCase):
 
     def test_architecture_file_items_copied(self):
         """Architecture spec files are copied via _copy_file path."""
-        from cypilot.commands.init import _copy_from_cache, COPY_ARCHITECTURE_ITEMS
+        from studio.commands.init import _copy_from_cache, COPY_ARCHITECTURE_ITEMS
         with TemporaryDirectory() as td:
             cache = Path(td) / "cache"
             target = Path(td) / "project" / "cypilot"
@@ -1708,19 +1708,19 @@ class TestInitReadExistingInstall(unittest.TestCase):
     """Tests for _read_existing_install edge cases."""
 
     def test_returns_none_when_no_agents(self):
-        from cypilot.commands.init import _read_existing_install
+        from studio.commands.init import _read_existing_install
         with TemporaryDirectory() as td:
             self.assertIsNone(_read_existing_install(Path(td)))
 
     def test_returns_none_when_no_marker(self):
-        from cypilot.commands.init import _read_existing_install
+        from studio.commands.init import _read_existing_install
         with TemporaryDirectory() as td:
             (Path(td) / "AGENTS.md").write_text("# Just a file\n", encoding="utf-8")
             self.assertIsNone(_read_existing_install(Path(td)))
 
     def test_returns_none_when_dir_missing(self):
         """TOML has cypilot_path but directory doesn't exist → None."""
-        from cypilot.commands.init import _read_existing_install
+        from studio.commands.init import _read_existing_install
         with TemporaryDirectory() as td:
             root = Path(td)
             (root / "AGENTS.md").write_text(
@@ -1730,7 +1730,7 @@ class TestInitReadExistingInstall(unittest.TestCase):
             self.assertIsNone(_read_existing_install(root))
 
     def test_returns_rel_when_dir_exists(self):
-        from cypilot.commands.init import _read_existing_install
+        from studio.commands.init import _read_existing_install
         with TemporaryDirectory() as td:
             root = Path(td)
             (root / "cpt").mkdir()
@@ -1745,7 +1745,7 @@ class TestInjectRootAgents(unittest.TestCase):
     """Tests for _inject_root_agents: create, update, unchanged."""
 
     def test_creates_agents_file(self):
-        from cypilot.commands.init import _inject_root_agents
+        from studio.commands.init import _inject_root_agents
         with TemporaryDirectory() as td:
             root = Path(td)
             action = _inject_root_agents(root, "cypilot")
@@ -1753,7 +1753,7 @@ class TestInjectRootAgents(unittest.TestCase):
             self.assertTrue((root / "AGENTS.md").is_file())
 
     def test_replaces_stale_block(self):
-        from cypilot.commands.init import _inject_root_agents, MARKER_START, MARKER_END
+        from studio.commands.init import _inject_root_agents, MARKER_START, MARKER_END
         with TemporaryDirectory() as td:
             root = Path(td)
             # Write AGENTS.md with old block
@@ -1768,7 +1768,7 @@ class TestInjectRootAgents(unittest.TestCase):
             self.assertIn("User stuff", content)
 
     def test_unchanged_when_current(self):
-        from cypilot.commands.init import _inject_root_agents
+        from studio.commands.init import _inject_root_agents
         with TemporaryDirectory() as td:
             root = Path(td)
             # First inject creates
@@ -1778,7 +1778,7 @@ class TestInjectRootAgents(unittest.TestCase):
             self.assertEqual(action, "unchanged")
 
     def test_dry_run_does_not_write(self):
-        from cypilot.commands.init import _inject_root_agents
+        from studio.commands.init import _inject_root_agents
         with TemporaryDirectory() as td:
             root = Path(td)
             action = _inject_root_agents(root, "cypilot", dry_run=True)
@@ -1790,7 +1790,7 @@ class TestInitNoCacheError(unittest.TestCase):
     """init fails when ~/.cypilot/cache doesn't exist."""
 
     def test_init_no_cache_returns_error(self):
-        from cypilot.cli import main
+        from studio.cli import main
         with TemporaryDirectory() as td:
             root = Path(td)
             (root / ".git").mkdir()
@@ -1798,7 +1798,7 @@ class TestInitNoCacheError(unittest.TestCase):
             try:
                 os.chdir(root)
                 fake_cache = Path(td) / "nonexistent_cache"
-                with patch("cypilot.commands.init.CACHE_DIR", fake_cache):
+                with patch("studio.commands.init.CACHE_DIR", fake_cache):
                     buf = io.StringIO()
                     with redirect_stdout(buf):
                         rc = main(["init", "--yes"])
@@ -1813,7 +1813,7 @@ class TestInitForceReinit(unittest.TestCase):
     """init --force on existing project: creates backup, overwrites files."""
 
     def test_force_reinit_overwrites(self):
-        from cypilot.cli import main
+        from studio.cli import main
         with TemporaryDirectory() as td:
             root = Path(td)
             (root / ".git").mkdir()
@@ -1828,9 +1828,9 @@ class TestInitForceReinit(unittest.TestCase):
             try:
                 os.chdir(root)
                 with (
-                    patch("cypilot.commands.init.CACHE_DIR", cache),
+                    patch("studio.commands.init.CACHE_DIR", cache),
                     patch(
-                        "cypilot.commands.kit._download_kit_from_github",
+                        "studio.commands.kit._download_kit_from_github",
                         side_effect=_fake_download,
                     ),
                 ):
@@ -1950,7 +1950,7 @@ class TestCLIPyCoverageTopLevelHelp(unittest.TestCase):
 
     def test_top_level_help_flag(self):
         """cypilot --help shows usage and commands."""
-        from cypilot.cli import main
+        from studio.cli import main
 
         stdout = io.StringIO()
         with redirect_stdout(stdout):
@@ -1963,7 +1963,7 @@ class TestCLIPyCoverageTopLevelHelp(unittest.TestCase):
 
     def test_top_level_help_short_flag(self):
         """cypilot -h also shows usage."""
-        from cypilot.cli import main
+        from studio.cli import main
 
         stdout = io.StringIO()
         with redirect_stdout(stdout):
@@ -1982,7 +1982,7 @@ class TestCLIPyCoverageSlugValidation(unittest.TestCase):
         Slug validation is the ``validate`` command's responsibility, not
         ``validate-kits``.
         """
-        from cypilot.cli import main
+        from studio.cli import main
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -2030,7 +2030,7 @@ class TestCLIPyCoverageAgentsCommand(unittest.TestCase):
 
     def test_agents_dry_run_default_config(self):
         """agents command creates default config for recognized agent."""
-        from cypilot.cli import main
+        from studio.cli import main
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -2064,7 +2064,7 @@ class TestCLIPyCoverageListIdsWithCode(unittest.TestCase):
 
     def test_list_ids_include_code_with_refs(self):
         """list-ids --include-code shows ID references from artifacts."""
-        from cypilot.cli import main
+        from studio.cli import main
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -2137,7 +2137,7 @@ class TestCLIDispatchUncoveredCommands(unittest.TestCase):
 
     def test_dispatch_update_no_project(self):
         """'update' dispatches to cmd_update; fails gracefully outside a project."""
-        from cypilot.cli import main
+        from studio.cli import main
         with TemporaryDirectory() as td:
             cwd = os.getcwd()
             try:
@@ -2151,7 +2151,7 @@ class TestCLIDispatchUncoveredCommands(unittest.TestCase):
 
     def test_dispatch_kit_no_subcommand(self):
         """'kit' with no subcommand returns error."""
-        from cypilot.cli import main
+        from studio.cli import main
         buf = io.StringIO()
         with redirect_stdout(buf):
             rc = main(["kit"])
@@ -2161,7 +2161,7 @@ class TestCLIDispatchUncoveredCommands(unittest.TestCase):
 
     def test_dispatch_generate_resources_no_project(self):
         """'generate-resources' dispatches correctly; fails outside a project."""
-        from cypilot.cli import main
+        from studio.cli import main
         with TemporaryDirectory() as td:
             cwd = os.getcwd()
             try:
@@ -2175,7 +2175,7 @@ class TestCLIDispatchUncoveredCommands(unittest.TestCase):
 
     def test_dispatch_toc(self):
         """'toc' command dispatches to cmd_toc."""
-        from cypilot.cli import main
+        from studio.cli import main
         with TemporaryDirectory() as td:
             md = Path(td) / "doc.md"
             md.write_text("# Title\n", encoding="utf-8")
@@ -2186,7 +2186,7 @@ class TestCLIDispatchUncoveredCommands(unittest.TestCase):
 
     def test_dispatch_validate_toc(self):
         """'validate-toc' command dispatches to cmd_validate_toc."""
-        from cypilot.cli import main
+        from studio.cli import main
         with TemporaryDirectory() as td:
             md = Path(td) / "doc.md"
             md.write_text("# Title\n", encoding="utf-8")
@@ -2226,7 +2226,7 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
     # ---- Lines 55-56: ValueError in relative_to (artifact path outside project root) ----
     def test_artifact_outside_project_root(self):
         """--artifact pointing outside project root triggers ValueError in relative_to → error."""
-        from cypilot.cli import main
+        from studio.cli import main
 
         with TemporaryDirectory() as tmpdir:
             git_root = Path(tmpdir)
@@ -2245,7 +2245,7 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
             sub = git_root / "sub"
             sub.mkdir()
 
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0", "project_root": "../sub", "systems": [], "kits": {},
             }, adapter / "config" / "artifacts.toml")
@@ -2272,13 +2272,13 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
     # ---- Lines 65-66: artifact exists inside project but not registered in registry ----
     def test_artifact_not_registered(self):
         """--artifact for a file inside project root but not in registry → error."""
-        from cypilot.cli import main
+        from studio.cli import main
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             adapter = _bootstrap_project_root(root)
 
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0", "project_root": "..", "systems": [], "kits": {},
             }, adapter / "config" / "artifacts.toml")
@@ -2304,7 +2304,7 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
     # ---- Lines 81-82: --source error when not in workspace mode ----
     def test_source_flag_error_non_workspace(self):
         """--source on a non-workspace project returns error."""
-        from cypilot.cli import main
+        from studio.cli import main
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -2326,9 +2326,9 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
     # ---- Lines 89-98: --source filter in workspace mode ----
     def test_source_filter_workspace_mode(self):
         """--source filter in workspace mode scans only matching remote source artifacts."""
-        from cypilot.commands.list_ids import cmd_list_ids
-        from cypilot.utils.context import WorkspaceContext, SourceContext, CypilotContext
-        from cypilot.utils.artifacts_meta import ArtifactsMeta, Artifact, SystemNode
+        from studio.commands.list_ids import cmd_list_ids
+        from studio.utils.context import WorkspaceContext, SourceContext, CypilotContext
+        from studio.utils.artifacts_meta import ArtifactsMeta, Artifact, SystemNode
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -2345,7 +2345,7 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
                 system_slug="remote",
             )
 
-            from cypilot.utils.artifacts_meta import load_artifacts_meta
+            from studio.utils.artifacts_meta import load_artifacts_meta
             remote_meta, _ = load_artifacts_meta(remote_adapter)
 
             sc = SourceContext(
@@ -2370,7 +2370,7 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
                 )
 
                 buf = io.StringIO()
-                with patch("cypilot.utils.context.get_context", return_value=ws_ctx):
+                with patch("studio.utils.context.get_context", return_value=ws_ctx):
                     with redirect_stdout(buf):
                         rc = cmd_list_ids(["--source", "my-remote"])
                 self.assertEqual(rc, 0)
@@ -2385,8 +2385,8 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
     # ---- Lines 89-98: --source filter with unreachable/non-matching sources ----
     def test_source_filter_workspace_no_match(self):
         """--source filter with no matching source returns empty."""
-        from cypilot.commands.list_ids import cmd_list_ids
-        from cypilot.utils.context import WorkspaceContext, SourceContext, CypilotContext
+        from studio.commands.list_ids import cmd_list_ids
+        from studio.utils.context import WorkspaceContext, SourceContext, CypilotContext
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -2414,7 +2414,7 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
                 )
 
                 buf = io.StringIO()
-                with patch("cypilot.utils.context.get_context", return_value=ws_ctx):
+                with patch("studio.utils.context.get_context", return_value=ws_ctx):
                     with redirect_stdout(buf):
                         rc = cmd_list_ids(["--source", "dead-source"])
                 # Should return 0 with count=0 (no artifacts found)
@@ -2427,7 +2427,7 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
     # ---- Lines 127, 130: _infer_kind branches (no system prefix match, empty remainder) ----
     def test_infer_kind_no_system_match_and_empty_remainder(self):
         """IDs with no system prefix match or empty remainder after prefix → kind is None."""
-        from cypilot.cli import main
+        from studio.cli import main
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -2457,7 +2457,7 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
     # ---- Lines 144: empty cid from scan_cpt_ids → continue ----
     def test_empty_id_skipped(self):
         """An artifact whose scan_cpt_ids returns an entry with empty id is skipped."""
-        from cypilot.cli import main
+        from studio.cli import main
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -2473,7 +2473,7 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
                         {"id": "cpt-test-req-1", "type": "definition", "line": 2},
                     ]
                 buf = io.StringIO()
-                with patch("cypilot.commands.list_ids.scan_cpt_ids", side_effect=fake_scan):
+                with patch("studio.commands.list_ids.scan_cpt_ids", side_effect=fake_scan):
                     with redirect_stdout(buf):
                         rc = main(["list-ids"])
                 self.assertEqual(rc, 0)
@@ -2488,7 +2488,7 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
     # ---- Lines 168, 171: code path not exists, code path is a file ----
     def test_include_code_path_not_exists(self):
         """--include-code with codebase entry pointing to non-existent path → skipped."""
-        from cypilot.cli import main
+        from studio.cli import main
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -2509,7 +2509,7 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
 
     def test_include_code_path_is_file(self):
         """--include-code with codebase entry pointing to a single file → scans that file."""
-        from cypilot.cli import main
+        from studio.cli import main
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -2523,7 +2523,7 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
             code_file = root / "main.py"
             code_file.write_text("# @cpt-req:cpt-test-req-1:p1\nprint('hello')\n", encoding="utf-8")
 
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0", "project_root": "..",
                 "kits": {},
@@ -2551,7 +2551,7 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
     # ---- Lines 181-182: relative_to exception in code scanning ----
     def test_include_code_relative_to_exception(self):
         """relative_to raises ValueError → rel=None → file not ignored → processed."""
-        from cypilot.cli import main
+        from studio.cli import main
 
         with TemporaryDirectory() as tmpdir, TemporaryDirectory() as outsidedir:
             root = Path(tmpdir)
@@ -2586,7 +2586,7 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
     # ---- Lines 184: is_ignored skips code file ----
     def test_include_code_ignored_file(self):
         """Code file matching ignore pattern is skipped (line 183-184)."""
-        from cypilot.cli import main
+        from studio.cli import main
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -2621,7 +2621,7 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
     # ---- Lines 188: CodeFile.from_path returns errors → continue ----
     def test_include_code_file_parse_error(self):
         """Code file that fails to parse is skipped."""
-        from cypilot.commands.list_ids import cmd_list_ids
+        from studio.commands.list_ids import cmd_list_ids
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -2636,7 +2636,7 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
             code = src / "broken.py"
             code.write_text("# @cpt-req:cpt-test-req-1:p1\n", encoding="utf-8")
 
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0", "project_root": "..",
                 "kits": {},
@@ -2652,7 +2652,7 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
                 os.chdir(root)
                 buf = io.StringIO()
                 # Make CodeFile.from_path return errors
-                with patch("cypilot.commands.list_ids.CodeFile.from_path", return_value=(None, [{"error": "parse fail"}])):
+                with patch("studio.commands.list_ids.CodeFile.from_path", return_value=(None, [{"error": "parse fail"}])):
                     with redirect_stdout(buf):
                         rc = cmd_list_ids(["--include-code"])
                 self.assertEqual(rc, 0)
@@ -2666,7 +2666,7 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
     # ---- Line 206: ref.inst is set → h["inst"] is added ----
     def test_include_code_with_inst_marker(self):
         """Code reference with inst field gets it included in output."""
-        from cypilot.cli import main
+        from studio.cli import main
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -2704,7 +2704,7 @@ class TestValidateSourceFlag(unittest.TestCase):
 
     def test_source_without_workspace_context(self):
         """--source with non-workspace context returns error (lines 49-52)."""
-        from cypilot.commands import validate as validate_cmd
+        from studio.commands import validate as validate_cmd
 
         class _FakeMeta:
             systems = []
@@ -2724,7 +2724,7 @@ class TestValidateSourceFlag(unittest.TestCase):
 
         fake_ctx = _FakeCtx()
         buf = io.StringIO()
-        with patch("cypilot.utils.context.get_context", return_value=fake_ctx):
+        with patch("studio.utils.context.get_context", return_value=fake_ctx):
             with redirect_stdout(buf):
                 rc = validate_cmd.cmd_validate(["--source", "some-source"])
         self.assertEqual(rc, 1)
@@ -2734,8 +2734,8 @@ class TestValidateSourceFlag(unittest.TestCase):
 
     def test_source_not_found_in_workspace(self):
         """--source with unknown source name returns error (lines 53-56)."""
-        from cypilot.commands import validate as validate_cmd
-        from cypilot.utils.context import WorkspaceContext, SourceContext
+        from studio.commands import validate as validate_cmd
+        from studio.utils.context import WorkspaceContext, SourceContext
 
         ws_ctx = WorkspaceContext(
             primary=_EmptyFakePrimary(),
@@ -2743,7 +2743,7 @@ class TestValidateSourceFlag(unittest.TestCase):
         )
 
         buf = io.StringIO()
-        with patch("cypilot.utils.context.get_context", return_value=ws_ctx):
+        with patch("studio.utils.context.get_context", return_value=ws_ctx):
             with redirect_stdout(buf):
                 rc = validate_cmd.cmd_validate(["--source", "nonexistent"])
         self.assertEqual(rc, 1)
@@ -2753,8 +2753,8 @@ class TestValidateSourceFlag(unittest.TestCase):
 
     def test_source_unreachable(self):
         """--source with unreachable source returns error (lines 57-59)."""
-        from cypilot.commands import validate as validate_cmd
-        from cypilot.utils.context import WorkspaceContext, SourceContext
+        from studio.commands import validate as validate_cmd
+        from studio.utils.context import WorkspaceContext, SourceContext
 
         sc = SourceContext(name="my-source", path=Path("/fake/missing"), role="full", reachable=False)
         ws_ctx = WorkspaceContext(
@@ -2763,7 +2763,7 @@ class TestValidateSourceFlag(unittest.TestCase):
         )
 
         buf = io.StringIO()
-        with patch("cypilot.utils.context.get_context", return_value=ws_ctx):
+        with patch("studio.utils.context.get_context", return_value=ws_ctx):
             with redirect_stdout(buf):
                 rc = validate_cmd.cmd_validate(["--source", "my-source"])
         self.assertEqual(rc, 1)
@@ -2773,8 +2773,8 @@ class TestValidateSourceFlag(unittest.TestCase):
 
     def test_source_resolves_adapter_context(self):
         """--source with reachable source swaps context (lines 60-62)."""
-        from cypilot.commands import validate as validate_cmd
-        from cypilot.utils.context import WorkspaceContext, SourceContext
+        from studio.commands import validate as validate_cmd
+        from studio.utils.context import WorkspaceContext, SourceContext
 
         fake_adapter_ctx = _EmptyFakePrimary()
         fake_adapter_ctx.project_root = Path("/fake-source")
@@ -2784,8 +2784,8 @@ class TestValidateSourceFlag(unittest.TestCase):
         ws_ctx = WorkspaceContext(primary=_EmptyFakePrimary(), sources={"my-source": sc})
 
         buf = io.StringIO()
-        with patch("cypilot.utils.context.get_context", return_value=ws_ctx), \
-             patch("cypilot.utils.context.resolve_adapter_context", return_value=fake_adapter_ctx):
+        with patch("studio.utils.context.get_context", return_value=ws_ctx), \
+             patch("studio.utils.context.resolve_adapter_context", return_value=fake_adapter_ctx):
             with redirect_stdout(buf):
                 _ = validate_cmd.cmd_validate(["--source", "my-source", "--skip-code"])
         out = json.loads(buf.getvalue())
@@ -2797,7 +2797,7 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
 
     def test_validate_self_check_exception_branch(self):
         """Self-check raising exception returns ERROR (lines 93-100)."""
-        from cypilot.commands import validate as validate_cmd
+        from studio.commands import validate as validate_cmd
         class _FakeMeta:
             systems = []
             kits = {"x": types.SimpleNamespace(path="kits/x")}
@@ -2813,8 +2813,8 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
             _errors = []
             def get_known_id_kinds(self): return set()
         buf = io.StringIO()
-        with patch("cypilot.utils.context.get_context", return_value=_FakeCtx()):
-            with patch("cypilot.commands.validate_kits.run_validate_kits", side_effect=ValueError("boom")):
+        with patch("studio.utils.context.get_context", return_value=_FakeCtx()):
+            with patch("studio.commands.validate_kits.run_validate_kits", side_effect=ValueError("boom")):
                 with redirect_stdout(buf):
                     rc = validate_cmd.cmd_validate([])
         self.assertEqual(rc, 1)
@@ -2824,8 +2824,8 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
 
     def test_validate_single_artifact_workspace_resolution(self):
         """--artifact in WorkspaceContext calls determine_target_source (lines 128-130)."""
-        from cypilot.commands import validate as validate_cmd
-        from cypilot.utils.context import WorkspaceContext
+        from studio.commands import validate as validate_cmd
+        from studio.utils.context import WorkspaceContext
         class _FakeMeta:
             systems = []; kits = {}
             def get_artifact_by_path(self, _rel): return None
@@ -2849,8 +2849,8 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
             art.write_text("# A\n", encoding="utf-8")
             inner = _FakeInnerCtx(); inner.project_root = Path(td)
             buf = io.StringIO()
-            with patch("cypilot.utils.context.get_context", return_value=ws_ctx):
-                with patch("cypilot.utils.context.determine_target_source", return_value=(None, inner)):
+            with patch("studio.utils.context.get_context", return_value=ws_ctx):
+                with patch("studio.utils.context.determine_target_source", return_value=(None, inner)):
                     with redirect_stdout(buf):
                         rc = validate_cmd.cmd_validate(["--artifact", str(art)])
             self.assertEqual(rc, 1)
@@ -2858,8 +2858,8 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
 
     def test_validate_bulk_mode_workspace_resolve_artifact_path(self):
         """Bulk mode with WorkspaceContext uses resolve_artifact_path (line 179)."""
-        from cypilot.commands import validate as validate_cmd
-        from cypilot.utils.context import WorkspaceContext
+        from studio.commands import validate as validate_cmd
+        from studio.utils.context import WorkspaceContext
         with TemporaryDirectory() as td:
             root, ar = _scaffold_validate_project(td)
             art_path = root / ar
@@ -2868,11 +2868,11 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
                 registered_systems=set())
             ws = WorkspaceContext(primary=p, sources={})
             buf = io.StringIO()
-            with patch("cypilot.utils.context.get_context", return_value=ws):
+            with patch("studio.utils.context.get_context", return_value=ws):
                 with patch.object(WorkspaceContext, "resolve_artifact_path", return_value=art_path):
-                    with patch("cypilot.commands.validate.validate_artifact_file", return_value={"errors": [], "warnings": []}):
-                        with patch("cypilot.commands.validate.cross_validate_artifacts", return_value={"errors": [], "warnings": []}):
-                            with patch("cypilot.commands.validate.scan_cpt_ids", return_value=[]):
+                    with patch("studio.commands.validate.validate_artifact_file", return_value={"errors": [], "warnings": []}):
+                        with patch("studio.commands.validate.cross_validate_artifacts", return_value={"errors": [], "warnings": []}):
+                            with patch("studio.commands.validate.scan_cpt_ids", return_value=[]):
                                 with redirect_stdout(buf):
                                     rc = validate_cmd.cmd_validate(["--skip-code"])
             self.assertEqual(rc, 0)
@@ -2880,12 +2880,12 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
 
     def test_validate_ctx_errors_no_artifacts(self):
         """ctx_errors surfaced when no artifacts found (lines 189-199)."""
-        from cypilot.commands import validate as validate_cmd
+        from studio.commands import validate as validate_cmd
         ctx = _CompactCtx(Path("/fake"), [],
             errors=[{"type": "constraints", "message": "bad", "path": "x", "line": 1}],
             registered_systems=set())
         buf = io.StringIO()
-        with patch("cypilot.utils.context.get_context", return_value=ctx):
+        with patch("studio.utils.context.get_context", return_value=ctx):
             with redirect_stdout(buf):
                 rc = validate_cmd.cmd_validate([])
         self.assertEqual(rc, 2)
@@ -2896,7 +2896,7 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
 
     def test_validate_registry_errors_early_stop_with_output(self):
         """Registry-level errors stop early and write --output file (lines 217-230)."""
-        from cypilot.commands import validate as validate_cmd
+        from studio.commands import validate as validate_cmd
         with TemporaryDirectory() as td:
             root = Path(td)
             (root / "artifacts").mkdir(parents=True, exist_ok=True)
@@ -2906,7 +2906,7 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
                 errors=[{"type": "registry", "message": "bad", "path": "x", "line": 1}],
                 registered_systems=set())
             of = root / "report.json"
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
+            with patch("studio.utils.context.get_context", return_value=ctx):
                 rc = validate_cmd.cmd_validate(["--output", str(of)])
             self.assertEqual(rc, 2); self.assertTrue(of.is_file())
             out = json.loads(of.read_text(encoding="utf-8"))
@@ -2914,7 +2914,7 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
 
     def test_validate_registry_errors_early_stop_without_output(self):
         """Registry-level errors stop early to stdout (line 229)."""
-        from cypilot.commands import validate as validate_cmd
+        from studio.commands import validate as validate_cmd
         with TemporaryDirectory() as td:
             root = Path(td)
             (root / "artifacts").mkdir(parents=True, exist_ok=True)
@@ -2924,7 +2924,7 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
                 errors=[{"type": "registry", "message": "bad", "path": "x", "line": 1}],
                 registered_systems=set())
             buf = io.StringIO()
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
+            with patch("studio.utils.context.get_context", return_value=ctx):
                 with redirect_stdout(buf):
                     rc = validate_cmd.cmd_validate([])
             self.assertEqual(rc, 2)
@@ -2932,8 +2932,8 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
 
     def test_validate_cross_ref_workspace_path_resolution(self):
         """Cross-ref loading uses resolve_artifact_path in workspace mode (lines 343-344)."""
-        from cypilot.commands import validate as validate_cmd
-        from cypilot.utils.context import WorkspaceContext
+        from studio.commands import validate as validate_cmd
+        from studio.utils.context import WorkspaceContext
         with TemporaryDirectory() as td:
             root, ar = _scaffold_validate_project(td)
             lk = _CompactLoadedKit(
@@ -2941,18 +2941,18 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
             ws = WorkspaceContext(primary=_CompactPrim(root, [(ar, "REQ")], kits={"x": lk}), sources={})
             art_resolved = (root / ar).resolve()
             buf = io.StringIO()
-            with patch("cypilot.utils.context.get_context", return_value=ws):
+            with patch("studio.utils.context.get_context", return_value=ws):
                 with patch.object(WorkspaceContext, "resolve_artifact_path", return_value=art_resolved):
-                    with patch("cypilot.commands.validate.validate_artifact_file", return_value={"errors": [], "warnings": []}):
-                        with patch("cypilot.commands.validate.cross_validate_artifacts", return_value={"errors": [], "warnings": []}):
-                            with patch("cypilot.commands.validate.scan_cpt_ids", return_value=[]):
+                    with patch("studio.commands.validate.validate_artifact_file", return_value={"errors": [], "warnings": []}):
+                        with patch("studio.commands.validate.cross_validate_artifacts", return_value={"errors": [], "warnings": []}):
+                            with patch("studio.commands.validate.scan_cpt_ids", return_value=[]):
                                 with redirect_stdout(buf):
                                     rc = validate_cmd.cmd_validate(["--skip-code"])
             self.assertEqual(rc, 0)
 
     def test_validate_code_scan_to_code_task_branches(self):
         """Code scan with to_code covers task/checked branches (lines 420-432)."""
-        from cypilot.commands import validate as validate_cmd
+        from studio.commands import validate as validate_cmd
         with TemporaryDirectory() as td:
             root, ar = _scaffold_validate_project(td)
             lk = _CompactLoadedKit(
@@ -2966,10 +2966,10 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
                 {"type": "definition", "id": "cpt-sys-req-4"},
             ]
             buf = io.StringIO()
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
-                with patch("cypilot.commands.validate.validate_artifact_file", return_value={"errors": [], "warnings": []}):
-                    with patch("cypilot.commands.validate.cross_validate_artifacts", return_value={"errors": [], "warnings": []}):
-                        with patch("cypilot.commands.validate.scan_cpt_ids", return_value=scan):
+            with patch("studio.utils.context.get_context", return_value=ctx):
+                with patch("studio.commands.validate.validate_artifact_file", return_value={"errors": [], "warnings": []}):
+                    with patch("studio.commands.validate.cross_validate_artifacts", return_value={"errors": [], "warnings": []}):
+                        with patch("studio.commands.validate.scan_cpt_ids", return_value=scan):
                             with redirect_stdout(buf):
                                 rc = validate_cmd.cmd_validate(["--skip-code"])
             self.assertIn(rc, [0, 2])
@@ -2982,32 +2982,32 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
 
     def test_validate_reference_coverage_no_other_kinds(self):
         """Single-kind with no constraints generates warning (lines 589-600)."""
-        from cypilot.commands import validate as validate_cmd
+        from studio.commands import validate as validate_cmd
         with TemporaryDirectory() as td:
             root, ar = _scaffold_validate_project(td)
             (root / ar).write_text("- [x] `p1` - **ID**: `cpt-sys-req-1`\n", encoding="utf-8")
             ctx = _CompactCtx(root, ar,
                 kits={"x": types.SimpleNamespace(kit=types.SimpleNamespace(path="kits/x"), constraints=None)})
             buf = io.StringIO()
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
-                with patch("cypilot.commands.validate.validate_artifact_file", return_value={"errors": [], "warnings": []}):
+            with patch("studio.utils.context.get_context", return_value=ctx):
+                with patch("studio.commands.validate.validate_artifact_file", return_value={"errors": [], "warnings": []}):
                     with redirect_stdout(buf):
                         _ = validate_cmd.cmd_validate(["--skip-code", "--verbose"])
             self.assertIn("status", json.loads(buf.getvalue()))
 
     def test_validate_output_file_pass_verbose(self):
         """--output with --verbose PASS appends newline (line 676)."""
-        from cypilot.commands import validate as validate_cmd
+        from studio.commands import validate as validate_cmd
         with TemporaryDirectory() as td:
             root, ar = _scaffold_validate_project(td)
             lk = _CompactLoadedKit(
                 constraints=types.SimpleNamespace(by_kind={"REQ": types.SimpleNamespace(defined_id=[])}))
             ctx = _CompactCtx(root, ar, kits={"x": lk})
             of = root / "report.json"
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
-                with patch("cypilot.commands.validate.validate_artifact_file", return_value={"errors": [], "warnings": []}):
-                    with patch("cypilot.commands.validate.cross_validate_artifacts", return_value={"errors": [], "warnings": []}):
-                        with patch("cypilot.commands.validate.scan_cpt_ids", return_value=[]):
+            with patch("studio.utils.context.get_context", return_value=ctx):
+                with patch("studio.commands.validate.validate_artifact_file", return_value={"errors": [], "warnings": []}):
+                    with patch("studio.commands.validate.cross_validate_artifacts", return_value={"errors": [], "warnings": []}):
+                        with patch("studio.commands.validate.scan_cpt_ids", return_value=[]):
                             rc = validate_cmd.cmd_validate(["--skip-code", "--verbose", "--output", str(of)])
             self.assertEqual(rc, 0); self.assertTrue(of.is_file())
             self.assertTrue(of.read_text(encoding="utf-8").endswith("\n"))
@@ -3015,8 +3015,8 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
     def test_human_validate_formatter_pass(self):
         """_human_validate with PASS status (lines 847-850)."""
         from contextlib import redirect_stderr
-        from cypilot.commands.validate import _human_validate
-        from cypilot.utils.ui import set_json_mode
+        from studio.commands.validate import _human_validate
+        from studio.utils.ui import set_json_mode
         set_json_mode(False)
         data = {"status": "PASS", "artifacts_validated": 1, "error_count": 0, "warning_count": 0,
                 "code_files_scanned": 5, "coverage": "3/5", "next_step": "Do semantic review."}
@@ -3028,8 +3028,8 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
     def test_human_validate_formatter_fail_truncation(self):
         """_human_validate truncates long error/warning lists (lines 835-836, 843-844)."""
         from contextlib import redirect_stderr
-        from cypilot.commands.validate import _human_validate
-        from cypilot.utils.ui import set_json_mode
+        from studio.commands.validate import _human_validate
+        from studio.utils.ui import set_json_mode
         set_json_mode(False)
         data = {"status": "FAIL", "artifacts_validated": 1, "error_count": 35, "warning_count": 20,
                 "errors": [{"message": f"e{i}", "code": "E", "path": "/a.md", "line": i} for i in range(35)],
@@ -3043,8 +3043,8 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
     def test_human_validate_formatter_other_status(self):
         """_human_validate with non-PASS/FAIL status (lines 853-854)."""
         from contextlib import redirect_stderr
-        from cypilot.commands.validate import _human_validate
-        from cypilot.utils.ui import set_json_mode
+        from studio.commands.validate import _human_validate
+        from studio.utils.ui import set_json_mode
         set_json_mode(False)
         buf = io.StringIO()
         with redirect_stderr(buf):
@@ -3054,8 +3054,8 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
     def test_format_issue_non_dict(self):
         """_format_issue with non-dict issue (lines 882-887)."""
         from contextlib import redirect_stderr
-        from cypilot.commands.validate import _format_issue
-        from cypilot.utils.ui import set_json_mode
+        from studio.commands.validate import _format_issue
+        from studio.utils.ui import set_json_mode
         set_json_mode(False)
         buf = io.StringIO()
         with redirect_stderr(buf):
@@ -3069,8 +3069,8 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
     def test_format_issue_with_reasons_and_fixing(self):
         """_format_issue with reasons and fixing_prompt (lines 916-924)."""
         from contextlib import redirect_stderr
-        from cypilot.commands.validate import _format_issue
-        from cypilot.utils.ui import set_json_mode
+        from studio.commands.validate import _format_issue
+        from studio.utils.ui import set_json_mode
         set_json_mode(False)
         issue = {"message": "err", "code": "E1", "path": "/f.md", "line": 42,
                  "reasons": ["r1", "r2"], "fixing_prompt": "Fix X."}
@@ -3083,8 +3083,8 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
     def test_format_issue_with_extra_keys(self):
         """_format_issue auto-formats unknown keys (lines 934-938)."""
         from contextlib import redirect_stderr
-        from cypilot.commands.validate import _format_issue
-        from cypilot.utils.ui import set_json_mode
+        from studio.commands.validate import _format_issue
+        from studio.utils.ui import set_json_mode
         set_json_mode(False)
         buf = io.StringIO()
         with redirect_stderr(buf):
@@ -3095,8 +3095,8 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
     def test_format_issue_no_location_no_code(self):
         """_format_issue with no location or code (lines 907-911)."""
         from contextlib import redirect_stderr
-        from cypilot.commands.validate import _format_issue
-        from cypilot.utils.ui import set_json_mode
+        from studio.commands.validate import _format_issue
+        from studio.utils.ui import set_json_mode
         set_json_mode(False)
         buf = io.StringIO()
         with redirect_stderr(buf):
@@ -3110,8 +3110,8 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
     def test_format_issue_with_location_string(self):
         """_format_issue with location field (lines 860-872)."""
         from contextlib import redirect_stderr
-        from cypilot.commands.validate import _format_issue
-        from cypilot.utils.ui import set_json_mode
+        from studio.commands.validate import _format_issue
+        from studio.utils.ui import set_json_mode
         set_json_mode(False)
         buf = io.StringIO()
         with redirect_stderr(buf):
@@ -3121,8 +3121,8 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
     def test_format_issue_warning_with_header(self):
         """_format_issue warning with code (lines 903-906)."""
         from contextlib import redirect_stderr
-        from cypilot.commands.validate import _format_issue
-        from cypilot.utils.ui import set_json_mode
+        from studio.commands.validate import _format_issue
+        from studio.utils.ui import set_json_mode
         set_json_mode(False)
         buf = io.StringIO()
         with redirect_stderr(buf):
@@ -3131,14 +3131,14 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
 
     def test_enrich_target_artifact_paths_non_artifacts_meta(self):
         """_enrich_target_artifact_paths returns early for non-ArtifactsMeta (line 706)."""
-        from cypilot.commands.validate import _enrich_target_artifact_paths
+        from studio.commands.validate import _enrich_target_artifact_paths
         issues = [{"code": "ref-missing-from-kind", "target_kind": "DESIGN"}]
         _enrich_target_artifact_paths(issues, meta="not-a-meta", project_root=Path("/fake"))
         self.assertNotIn("target_artifact_path", issues[0])
 
     def test_issue_location_branches(self):
         """_issue_location various branches (lines 860-872)."""
-        from cypilot.commands.validate import _issue_location
+        from studio.commands.validate import _issue_location
         self.assertEqual(_issue_location({}), "")
         self.assertIn("42", _issue_location({"path": "/fake/f.md", "line": 42}))
         self.assertIn("f.md", _issue_location({"location": "/fake/f.md"}))
@@ -3146,8 +3146,8 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
     def test_human_validate_uses_artifact_count_fallback(self):
         """_human_validate uses artifact_count when artifacts_validated missing (line 816)."""
         from contextlib import redirect_stderr
-        from cypilot.commands.validate import _human_validate
-        from cypilot.utils.ui import set_json_mode
+        from studio.commands.validate import _human_validate
+        from studio.utils.ui import set_json_mode
         set_json_mode(False)
         buf = io.StringIO()
         with redirect_stderr(buf):
@@ -3157,7 +3157,7 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
 
     def test_validate_attach_issue_unknown_path_returns(self):
         """_attach_issue_to_artifact_report returns early for unknown path (line 296)."""
-        from cypilot.commands import validate as validate_cmd
+        from studio.commands import validate as validate_cmd
         with TemporaryDirectory() as td:
             root, ar = _scaffold_validate_project(td)
             lk = _CompactLoadedKit(
@@ -3168,17 +3168,17 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
                 "warnings": [{"type": "constraints", "message": "w1", "path": "/fake/unknown.md", "line": 1}],
             }
             buf = io.StringIO()
-            with patch("cypilot.utils.context.get_context", return_value=ctx):
-                with patch("cypilot.commands.validate.validate_artifact_file", return_value={"errors": [], "warnings": []}):
-                    with patch("cypilot.commands.validate.cross_validate_artifacts", return_value=fake_cross):
-                        with patch("cypilot.commands.validate.scan_cpt_ids", return_value=[]):
+            with patch("studio.utils.context.get_context", return_value=ctx):
+                with patch("studio.commands.validate.validate_artifact_file", return_value={"errors": [], "warnings": []}):
+                    with patch("studio.commands.validate.cross_validate_artifacts", return_value=fake_cross):
+                        with patch("studio.commands.validate.scan_cpt_ids", return_value=[]):
                             with redirect_stdout(buf):
                                 rc = validate_cmd.cmd_validate(["--skip-code"])
             self.assertEqual(rc, 0)
 
     def test_validate_cdsl_scan_docs_only_skipped(self):
         """DOCS-ONLY artifacts skip CDSL scan (line 517-518)."""
-        from cypilot.commands import validate as validate_cmd
+        from studio.commands import validate as validate_cmd
         class _KP:
             def is_cfs_format(self): return True
             def get_template_path(self, _k): return "kits/x/artifacts/REQ/template.md"
@@ -3211,11 +3211,11 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
                 registered_systems = {"sys"}; kits = {"x": _LK()}; _errors = []
                 def get_known_id_kinds(self): return set()
             buf = io.StringIO()
-            with patch("cypilot.utils.context.get_context", return_value=_Ctx()):
-                with patch("cypilot.commands.validate.validate_artifact_file", return_value={"errors": [], "warnings": []}):
-                    with patch("cypilot.commands.validate.cross_validate_artifacts", return_value={"errors": [], "warnings": []}):
-                        with patch("cypilot.commands.validate.scan_cpt_ids", return_value=[]):
-                            with patch("cypilot.commands.validate.scan_cdsl_instructions", return_value=[]):
+            with patch("studio.utils.context.get_context", return_value=_Ctx()):
+                with patch("studio.commands.validate.validate_artifact_file", return_value={"errors": [], "warnings": []}):
+                    with patch("studio.commands.validate.cross_validate_artifacts", return_value={"errors": [], "warnings": []}):
+                        with patch("studio.commands.validate.scan_cpt_ids", return_value=[]):
+                            with patch("studio.commands.validate.scan_cdsl_instructions", return_value=[]):
                                 with redirect_stdout(buf):
                                     rc = validate_cmd.cmd_validate([])
             self.assertIn(rc, [0, 2])
@@ -3226,7 +3226,7 @@ class TestWhereDefinedWorkspaceBranches(unittest.TestCase):
 
     def _make_workspace_ctx(self, root, remote_root, artifact_rel="artifacts/REQ.md"):
         """Build a WorkspaceContext with one remote source containing an artifact."""
-        from cypilot.utils.context import WorkspaceContext, SourceContext
+        from studio.utils.context import WorkspaceContext, SourceContext
 
         remote_meta = _CollectMeta("artifacts/REMOTE.md")
         p = _CollectPrim(root, artifact_rel)
@@ -3247,7 +3247,7 @@ class TestWhereDefinedWorkspaceBranches(unittest.TestCase):
 
     def test_where_defined_workspace_source_attribution(self):
         """where-defined includes 'source' field for definitions found in remote artifacts."""
-        from cypilot.commands.where_defined import cmd_where_defined
+        from studio.commands.where_defined import cmd_where_defined
 
         with TemporaryDirectory() as td:
             root, remote = _make_cross_repo_dirs(td)
@@ -3256,7 +3256,7 @@ class TestWhereDefinedWorkspaceBranches(unittest.TestCase):
 
             ws = self._make_workspace_ctx(root, remote)
             buf = io.StringIO()
-            with patch("cypilot.utils.context.get_context", return_value=ws), \
+            with patch("studio.utils.context.get_context", return_value=ws), \
                  _patch_collect_artifacts(root, remote):
                 with redirect_stdout(buf):
                     cmd_where_defined(["cpt-sys-req-1"])
@@ -3270,7 +3270,7 @@ class TestWhereDefinedWorkspaceBranches(unittest.TestCase):
 
     def test_where_defined_workspace_cross_repo_artifacts(self):
         """where-defined scans artifacts from remote sources via collect_artifacts_to_scan."""
-        from cypilot.commands.where_defined import cmd_where_defined
+        from studio.commands.where_defined import cmd_where_defined
 
         with TemporaryDirectory() as td:
             root, remote = _make_cross_repo_dirs(td)
@@ -3279,7 +3279,7 @@ class TestWhereDefinedWorkspaceBranches(unittest.TestCase):
 
             ws = self._make_workspace_ctx(root, remote)
             buf = io.StringIO()
-            with patch("cypilot.utils.context.get_context", return_value=ws), \
+            with patch("studio.utils.context.get_context", return_value=ws), \
                  _patch_collect_artifacts(root, remote):
                 with redirect_stdout(buf):
                     cmd_where_defined(["cpt-remote-only-1"])
@@ -3290,7 +3290,7 @@ class TestWhereDefinedWorkspaceBranches(unittest.TestCase):
 
     def test_where_defined_no_workspace_empty_path_to_source(self):
         """Non-workspace context: path_to_source is empty, no 'source' field in output."""
-        from cypilot.commands.where_defined import cmd_where_defined
+        from studio.commands.where_defined import cmd_where_defined
 
         with TemporaryDirectory() as td:
             root = Path(td)
@@ -3298,8 +3298,8 @@ class TestWhereDefinedWorkspaceBranches(unittest.TestCase):
             (root / "artifacts" / "REQ.md").write_text("- [x] `p1` - **ID**: `cpt-sys-req-1`\n", encoding="utf-8")
 
             buf = io.StringIO()
-            with patch("cypilot.utils.context.get_context", return_value=True), \
-                 patch("cypilot.utils.context.collect_artifacts_to_scan", return_value=(
+            with patch("studio.utils.context.get_context", return_value=True), \
+                 patch("studio.utils.context.collect_artifacts_to_scan", return_value=(
                      [((root / "artifacts" / "REQ.md").resolve(), "REQ")],
                      {},
                  )):
@@ -3316,7 +3316,7 @@ class TestWhereUsedWorkspaceBranches(unittest.TestCase):
 
     def test_where_used_workspace_source_attribution(self):
         """where-used includes 'source' field for references found in remote artifacts."""
-        from cypilot.commands.where_used import cmd_where_used
+        from studio.commands.where_used import cmd_where_used
 
         with TemporaryDirectory() as td:
             root, remote = _make_cross_repo_dirs(td)
@@ -3328,7 +3328,7 @@ class TestWhereUsedWorkspaceBranches(unittest.TestCase):
             (remote / "artifacts" / "REMOTE.md").write_text("`cpt-sys-req-1`\n", encoding="utf-8")
 
             buf = io.StringIO()
-            with patch("cypilot.utils.context.get_context", return_value=True), \
+            with patch("studio.utils.context.get_context", return_value=True), \
                  _patch_collect_artifacts(root, remote):
                 with redirect_stdout(buf):
                     cmd_where_used(["cpt-sys-req-1"])
@@ -3340,7 +3340,7 @@ class TestWhereUsedWorkspaceBranches(unittest.TestCase):
 
     def test_where_used_workspace_cross_repo_references(self):
         """where-used finds references in remote artifacts via workspace context."""
-        from cypilot.commands.where_used import cmd_where_used
+        from studio.commands.where_used import cmd_where_used
 
         with TemporaryDirectory() as td:
             root, remote = _make_cross_repo_dirs(td)
@@ -3348,7 +3348,7 @@ class TestWhereUsedWorkspaceBranches(unittest.TestCase):
             (remote / "artifacts" / "REMOTE.md").write_text("`cpt-remote-target-1`\n", encoding="utf-8")
 
             buf = io.StringIO()
-            with patch("cypilot.utils.context.get_context", return_value=True), \
+            with patch("studio.utils.context.get_context", return_value=True), \
                  _patch_collect_artifacts(root, remote):
                 with redirect_stdout(buf):
                     cmd_where_used(["cpt-remote-target-1"])
@@ -3360,7 +3360,7 @@ class TestWhereUsedWorkspaceBranches(unittest.TestCase):
 
     def test_where_used_include_definitions_with_source(self):
         """where-used --include-definitions shows definitions from remote sources with attribution."""
-        from cypilot.commands.where_used import cmd_where_used
+        from studio.commands.where_used import cmd_where_used
 
         with TemporaryDirectory() as td:
             remote = Path(td) / "remote"
@@ -3372,8 +3372,8 @@ class TestWhereUsedWorkspaceBranches(unittest.TestCase):
             )
 
             buf = io.StringIO()
-            with patch("cypilot.utils.context.get_context", return_value=True), \
-                 patch("cypilot.utils.context.collect_artifacts_to_scan", return_value=(
+            with patch("studio.utils.context.get_context", return_value=True), \
+                 patch("studio.utils.context.collect_artifacts_to_scan", return_value=(
                      [((remote / "artifacts" / "REMOTE.md").resolve(), "REQ")],
                      {str((remote / "artifacts" / "REMOTE.md").resolve()): "backend"},
                  )):
@@ -3388,7 +3388,7 @@ class TestWhereUsedWorkspaceBranches(unittest.TestCase):
 
     def test_where_used_no_workspace_no_source_field(self):
         """Non-workspace context: no 'source' field in references."""
-        from cypilot.commands.where_used import cmd_where_used
+        from studio.commands.where_used import cmd_where_used
 
         with TemporaryDirectory() as td:
             root = Path(td)
@@ -3399,8 +3399,8 @@ class TestWhereUsedWorkspaceBranches(unittest.TestCase):
             )
 
             buf = io.StringIO()
-            with patch("cypilot.utils.context.get_context", return_value=True), \
-                 patch("cypilot.utils.context.collect_artifacts_to_scan", return_value=(
+            with patch("studio.utils.context.get_context", return_value=True), \
+                 patch("studio.utils.context.collect_artifacts_to_scan", return_value=(
                      [((root / "artifacts" / "REQ.md").resolve(), "REQ")],
                      {},
                  )):
@@ -3428,7 +3428,7 @@ class TestCollectArtifactsToScanWorkspace(unittest.TestCase):
 
     def _setup_collect_ctx(self, td, cross_repo):
         """Shared setup for collect_artifacts_to_scan cross-repo tests."""
-        from cypilot.utils.context import WorkspaceContext, SourceContext, collect_artifacts_to_scan
+        from studio.utils.context import WorkspaceContext, SourceContext, collect_artifacts_to_scan
         root, remote = _make_cross_repo_dirs(td)
         local_art = root / "artifacts" / "REQ.md"
         local_art.write_text("# Local\n", encoding="utf-8")
@@ -3465,7 +3465,7 @@ class TestCollectArtifactsToScanWorkspace(unittest.TestCase):
 
     def test_collect_skips_unreachable_source(self):
         """Unreachable sources are excluded even with cross_repo=True."""
-        from cypilot.utils.context import WorkspaceContext, SourceContext, collect_artifacts_to_scan
+        from studio.utils.context import WorkspaceContext, SourceContext, collect_artifacts_to_scan
 
         with TemporaryDirectory() as td:
             root = Path(td) / "primary"

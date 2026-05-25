@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.commands.agents import (
+from studio.commands.agents import (
     _agent_template_claude,
     _agent_template_copilot,
     _agent_template_cursor,
@@ -273,7 +273,7 @@ class TestDiscoverKitAgents(unittest.TestCase):
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             cypilot = self._make_kit_tree(root)
-            with patch("cypilot.commands.agents._registered_kit_dirs", return_value=object()):
+            with patch("studio.commands.agents._registered_kit_dirs", return_value=object()):
                 agents = _discover_kit_agents(cypilot, root)
             self.assertEqual(len(agents), 2)
             names = {a["name"] for a in agents}

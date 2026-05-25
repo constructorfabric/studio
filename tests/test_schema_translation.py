@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.commands.agents import (
+from studio.commands.agents import (
     translate_agent_schema,
     generate_manifest_skills,
     _translate_claude_schema,
@@ -24,7 +24,7 @@ from cypilot.commands.agents import (
     _translate_codex_schema,
     _translate_windsurf_schema,
 )
-from cypilot.utils.manifest import AgentEntry, SkillEntry
+from studio.utils.manifest import AgentEntry, SkillEntry
 from _test_helpers import _make_agent
 
 

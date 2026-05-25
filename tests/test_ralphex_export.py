@@ -16,7 +16,7 @@ from tempfile import TemporaryDirectory
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.ralphex_export import (
+from studio.ralphex_export import (
     _resolve_paths,
     compile_delegation_plan,
     extract_validation_commands,

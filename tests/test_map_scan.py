@@ -1,7 +1,7 @@
 """Tests for cfc map scan layer."""
 from pathlib import Path
 
-from cypilot.commands.map.scan import ScanOptions, scan_repo
+from studio.commands.map.scan import ScanOptions, scan_repo
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "map"
 

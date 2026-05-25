@@ -18,7 +18,7 @@ from tempfile import TemporaryDirectory
 # Add skills/cypilot/scripts directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.utils.files import (
+from studio.utils.files import (
     find_cypilot_directory,
     find_project_root,
     load_artifacts_registry,
@@ -107,7 +107,7 @@ class TestParsingUtils(unittest.TestCase):
     """Tests for utils/parsing.py"""
 
     def test_parse_required_sections(self):
-        from cypilot.utils.parsing import parse_required_sections
+        from studio.utils.parsing import parse_required_sections
         with TemporaryDirectory() as td:
             req = Path(td) / "req.md"
             req.write_text("### Section A: Intro\n### Section B: Body\n", encoding="utf-8")
@@ -116,7 +116,7 @@ class TestParsingUtils(unittest.TestCase):
 
     def test_split_by_section_letter_with_offsets(self):
         import re
-        from cypilot.utils.parsing import split_by_section_letter_with_offsets
+        from studio.utils.parsing import split_by_section_letter_with_offsets
         section_re = re.compile(r"^##\s+([A-Z])\.\s+(.+)?$", re.IGNORECASE)
         text = "# Header\n\n## A. First\n\nContent A.\n\n## B. Second\n\nContent B.\n"
         order, sections, offsets = split_by_section_letter_with_offsets(text, section_re)
@@ -190,8 +190,8 @@ class TestFindArtifactInSystem(unittest.TestCase):
     """Tests for _find_artifact_in_system helper."""
 
     def test_finds_existing_artifact(self):
-        from cypilot.commands.validate import _find_artifact_in_system
-        from cypilot.utils.artifacts_meta import SystemNode, Artifact
+        from studio.commands.validate import _find_artifact_in_system
+        from studio.utils.artifacts_meta import SystemNode, Artifact
 
         with TemporaryDirectory() as td:
             root = Path(td)
@@ -208,8 +208,8 @@ class TestFindArtifactInSystem(unittest.TestCase):
             self.assertIn("DESIGN.md", result)
 
     def test_returns_none_for_missing_artifact(self):
-        from cypilot.commands.validate import _find_artifact_in_system
-        from cypilot.utils.artifacts_meta import SystemNode, Artifact
+        from studio.commands.validate import _find_artifact_in_system
+        from studio.utils.artifacts_meta import SystemNode, Artifact
 
         with TemporaryDirectory() as td:
             root = Path(td)
@@ -221,8 +221,8 @@ class TestFindArtifactInSystem(unittest.TestCase):
             self.assertIsNone(result)
 
     def test_returns_none_for_wrong_kind(self):
-        from cypilot.commands.validate import _find_artifact_in_system
-        from cypilot.utils.artifacts_meta import SystemNode, Artifact
+        from studio.commands.validate import _find_artifact_in_system
+        from studio.utils.artifacts_meta import SystemNode, Artifact
 
         with TemporaryDirectory() as td:
             root = Path(td)
@@ -238,8 +238,8 @@ class TestFindArtifactInSystem(unittest.TestCase):
             self.assertIsNone(result)
 
     def test_searches_children(self):
-        from cypilot.commands.validate import _find_artifact_in_system
-        from cypilot.utils.artifacts_meta import SystemNode, Artifact
+        from studio.commands.validate import _find_artifact_in_system
+        from studio.utils.artifacts_meta import SystemNode, Artifact
 
         with TemporaryDirectory() as td:
             root = Path(td)
@@ -256,7 +256,7 @@ class TestFindArtifactInSystem(unittest.TestCase):
             self.assertIsNotNone(result)
 
     def test_returns_none_for_non_system_node(self):
-        from cypilot.commands.validate import _find_artifact_in_system
+        from studio.commands.validate import _find_artifact_in_system
 
         with TemporaryDirectory() as td:
             result = _find_artifact_in_system("not-a-node", "DESIGN", Path(td))
@@ -267,8 +267,8 @@ class TestSuggestPathFromAutodetect(unittest.TestCase):
     """Tests for _suggest_path_from_autodetect helper."""
 
     def test_suggests_path_simple_pattern(self):
-        from cypilot.commands.validate import _suggest_path_from_autodetect
-        from cypilot.utils.artifacts_meta import SystemNode, AutodetectRule, AutodetectArtifactPattern
+        from studio.commands.validate import _suggest_path_from_autodetect
+        from studio.utils.artifacts_meta import SystemNode, AutodetectRule, AutodetectArtifactPattern
 
         rule = AutodetectRule(
             system_root="{project_root}",
@@ -280,8 +280,8 @@ class TestSuggestPathFromAutodetect(unittest.TestCase):
         self.assertEqual(result, "architecture/DESIGN.md")
 
     def test_suggests_path_glob_pattern(self):
-        from cypilot.commands.validate import _suggest_path_from_autodetect
-        from cypilot.utils.artifacts_meta import SystemNode, AutodetectRule, AutodetectArtifactPattern
+        from studio.commands.validate import _suggest_path_from_autodetect
+        from studio.utils.artifacts_meta import SystemNode, AutodetectRule, AutodetectArtifactPattern
 
         rule = AutodetectRule(
             system_root="{project_root}",
@@ -293,8 +293,8 @@ class TestSuggestPathFromAutodetect(unittest.TestCase):
         self.assertEqual(result, "architecture/ADR.md")
 
     def test_returns_none_for_unknown_kind(self):
-        from cypilot.commands.validate import _suggest_path_from_autodetect
-        from cypilot.utils.artifacts_meta import SystemNode, AutodetectRule, AutodetectArtifactPattern
+        from studio.commands.validate import _suggest_path_from_autodetect
+        from studio.utils.artifacts_meta import SystemNode, AutodetectRule, AutodetectArtifactPattern
 
         rule = AutodetectRule(
             artifacts={"PRD": AutodetectArtifactPattern(pattern="PRD.md", traceability="FULL")},
@@ -304,21 +304,21 @@ class TestSuggestPathFromAutodetect(unittest.TestCase):
         self.assertIsNone(result)
 
     def test_returns_none_for_non_system_node(self):
-        from cypilot.commands.validate import _suggest_path_from_autodetect
+        from studio.commands.validate import _suggest_path_from_autodetect
         result = _suggest_path_from_autodetect("not-a-node", "DESIGN")
         self.assertIsNone(result)
 
     def test_returns_none_for_empty_autodetect(self):
-        from cypilot.commands.validate import _suggest_path_from_autodetect
-        from cypilot.utils.artifacts_meta import SystemNode
+        from studio.commands.validate import _suggest_path_from_autodetect
+        from studio.utils.artifacts_meta import SystemNode
 
         node = SystemNode(name="test", slug="test", kit="sdlc", autodetect=[])
         result = _suggest_path_from_autodetect(node, "DESIGN")
         self.assertIsNone(result)
 
     def test_substitutes_system_slug(self):
-        from cypilot.commands.validate import _suggest_path_from_autodetect
-        from cypilot.utils.artifacts_meta import SystemNode, AutodetectRule, AutodetectArtifactPattern
+        from studio.commands.validate import _suggest_path_from_autodetect
+        from studio.utils.artifacts_meta import SystemNode, AutodetectRule, AutodetectArtifactPattern
 
         rule = AutodetectRule(
             system_root="{project_root}/{system}",
@@ -330,8 +330,8 @@ class TestSuggestPathFromAutodetect(unittest.TestCase):
         self.assertEqual(result, "myapp/docs/DESIGN.md")
 
     def test_returns_none_for_empty_pattern(self):
-        from cypilot.commands.validate import _suggest_path_from_autodetect
-        from cypilot.utils.artifacts_meta import SystemNode, AutodetectRule, AutodetectArtifactPattern
+        from studio.commands.validate import _suggest_path_from_autodetect
+        from studio.utils.artifacts_meta import SystemNode, AutodetectRule, AutodetectArtifactPattern
 
         rule = AutodetectRule(
             artifacts={"DESIGN": AutodetectArtifactPattern(pattern="", traceability="FULL")},
@@ -345,15 +345,15 @@ class TestEnrichTargetArtifactPaths(unittest.TestCase):
     """Tests for _enrich_target_artifact_paths helper."""
 
     def test_skips_non_artifacts_meta(self):
-        from cypilot.commands.validate import _enrich_target_artifact_paths
+        from studio.commands.validate import _enrich_target_artifact_paths
 
         issues = [{"code": "ref-missing-from-kind", "target_kind": "DESIGN", "path": "/tmp/PRD.md"}]
         _enrich_target_artifact_paths(issues, meta=None, project_root=Path("/tmp"))
         self.assertNotIn("target_artifact_path", issues[0])
 
     def test_skips_non_matching_code(self):
-        from cypilot.commands.validate import _enrich_target_artifact_paths
-        from cypilot.utils.artifacts_meta import ArtifactsMeta
+        from studio.commands.validate import _enrich_target_artifact_paths
+        from studio.utils.artifacts_meta import ArtifactsMeta
 
         meta = ArtifactsMeta.__new__(ArtifactsMeta)
         meta._systems = []
@@ -365,8 +365,8 @@ class TestEnrichTargetArtifactPaths(unittest.TestCase):
         self.assertNotIn("target_artifact_path", issues[0])
 
     def test_enriches_with_existing_artifact(self):
-        from cypilot.commands.validate import _enrich_target_artifact_paths
-        from cypilot.utils.artifacts_meta import ArtifactsMeta, SystemNode, Artifact
+        from studio.commands.validate import _enrich_target_artifact_paths
+        from studio.utils.artifacts_meta import ArtifactsMeta, SystemNode, Artifact
 
         with TemporaryDirectory() as td:
             root = Path(td)
@@ -398,8 +398,8 @@ class TestEnrichTargetArtifactPaths(unittest.TestCase):
             self.assertIn("target_artifact_path", issues[0])
 
     def test_enriches_with_suggested_path(self):
-        from cypilot.commands.validate import _enrich_target_artifact_paths
-        from cypilot.utils.artifacts_meta import (
+        from studio.commands.validate import _enrich_target_artifact_paths
+        from studio.utils.artifacts_meta import (
             ArtifactsMeta, SystemNode, Artifact,
             AutodetectRule, AutodetectArtifactPattern,
         )
@@ -441,12 +441,12 @@ class TestRunContentLanguageCheck(unittest.TestCase):
 
     def _call(self, ws_return, artifacts=None):
         from unittest.mock import patch
-        from cypilot.commands.validate import _run_content_language_check
+        from studio.commands.validate import _run_content_language_check
 
         if artifacts is None:
             artifacts = []
 
-        with patch("cypilot.utils.workspace.find_workspace_config", return_value=ws_return):
+        with patch("studio.utils.workspace.find_workspace_config", return_value=ws_return):
             return _run_content_language_check(artifacts, Path("/fake/root"))
 
     def test_broken_config_returns_error_not_empty_list(self):
@@ -479,7 +479,7 @@ class TestRunContentLanguageCheck(unittest.TestCase):
     def test_skips_non_md_artifacts(self):
         """Non-.md artifacts must be skipped (line 971-972 path)."""
         from unittest.mock import patch
-        from cypilot.commands.validate import _run_content_language_check
+        from studio.commands.validate import _run_content_language_check
 
         mock_cfg = MagicMock()
         mock_cfg.validation.allowed_content_languages = ["en"]
@@ -489,14 +489,14 @@ class TestRunContentLanguageCheck(unittest.TestCase):
             py_file = root / "code.py"
             py_file.write_text("print('hello')\n", encoding="utf-8")
             artifacts = [(py_file, Path("/t"), "CODE", "FULL", "kit")]
-            with patch("cypilot.utils.workspace.find_workspace_config", return_value=(mock_cfg, None)):
+            with patch("studio.utils.workspace.find_workspace_config", return_value=(mock_cfg, None)):
                 results = _run_content_language_check(artifacts, root)
             self.assertEqual(results, [])
 
     def test_md_with_disallowed_chars_returns_violation(self):
         """An .md file containing disallowed chars produces a CONTENT_LANGUAGE_VIOLATION error."""
         from unittest.mock import patch
-        from cypilot.commands.validate import _run_content_language_check
+        from studio.commands.validate import _run_content_language_check
 
         mock_cfg = MagicMock()
         mock_cfg.validation.allowed_content_languages = ["en"]
@@ -507,7 +507,7 @@ class TestRunContentLanguageCheck(unittest.TestCase):
             # Cyrillic content not allowed under "en"
             md.write_text("# Title\n\nПривет мир\n", encoding="utf-8")
             artifacts = [(md, Path("/t"), "PRD", "FULL", "kit")]
-            with patch("cypilot.utils.workspace.find_workspace_config", return_value=(mock_cfg, None)):
+            with patch("studio.utils.workspace.find_workspace_config", return_value=(mock_cfg, None)):
                 results = _run_content_language_check(artifacts, root)
             self.assertGreaterEqual(len(results), 1)
             self.assertIn("language", str(results[0].get("category", "")) + str(results[0]))
@@ -515,7 +515,7 @@ class TestRunContentLanguageCheck(unittest.TestCase):
     def test_md_within_allowed_returns_empty(self):
         """An .md file with only English chars and "en" allowed returns no violations."""
         from unittest.mock import patch
-        from cypilot.commands.validate import _run_content_language_check
+        from studio.commands.validate import _run_content_language_check
 
         mock_cfg = MagicMock()
         mock_cfg.validation.allowed_content_languages = ["en"]
@@ -525,15 +525,15 @@ class TestRunContentLanguageCheck(unittest.TestCase):
             md = root / "doc.md"
             md.write_text("# Title\n\nHello World\n", encoding="utf-8")
             artifacts = [(md, Path("/t"), "PRD", "FULL", "kit")]
-            with patch("cypilot.utils.workspace.find_workspace_config", return_value=(mock_cfg, None)):
+            with patch("studio.utils.workspace.find_workspace_config", return_value=(mock_cfg, None)):
                 results = _run_content_language_check(artifacts, root)
             self.assertEqual(results, [])
 
     def test_lang_scan_error_for_unreadable_file(self):
         """Triggers LangScanError branch (lines 983-990) when scan_file raises."""
         from unittest.mock import patch
-        from cypilot.commands.validate import _run_content_language_check
-        from cypilot.utils.content_language import LangScanError
+        from studio.commands.validate import _run_content_language_check
+        from studio.utils.content_language import LangScanError
 
         mock_cfg = MagicMock()
         mock_cfg.validation.allowed_content_languages = ["en"]
@@ -547,8 +547,8 @@ class TestRunContentLanguageCheck(unittest.TestCase):
             def _raise(p, _ranges):
                 raise LangScanError(p, OSError("simulated I/O failure"))
 
-            with patch("cypilot.utils.workspace.find_workspace_config", return_value=(mock_cfg, None)), \
-                 patch("cypilot.utils.content_language.scan_file", side_effect=_raise):
+            with patch("studio.utils.workspace.find_workspace_config", return_value=(mock_cfg, None)), \
+                 patch("studio.utils.content_language.scan_file", side_effect=_raise):
                 results = _run_content_language_check(artifacts, root)
             self.assertEqual(len(results), 1)
             self.assertIn("Cannot read file", str(results[0].get("message", "")))

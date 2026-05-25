@@ -13,9 +13,9 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.commands import chunk_input as chunk_input_module
-from cypilot.commands.chunk_input import cmd_chunk_input
-from cypilot.utils.ui import set_json_mode
+from studio.commands import chunk_input as chunk_input_module
+from studio.commands.chunk_input import cmd_chunk_input
+from studio.utils.ui import set_json_mode
 
 
 class TestChunkInputCommand(unittest.TestCase):
@@ -272,7 +272,7 @@ class TestChunkInputCommand(unittest.TestCase):
             src.write_text(self._make_text(5), encoding="utf-8")
 
             buf = io.StringIO()
-            with patch("cypilot.commands.chunk_input.Path.write_text", side_effect=OSError("boom")), redirect_stdout(buf):
+            with patch("studio.commands.chunk_input.Path.write_text", side_effect=OSError("boom")), redirect_stdout(buf):
                 rc = cmd_chunk_input([
                     str(src),
                     "--output-dir",
@@ -591,7 +591,7 @@ class TestChunkInputCommand(unittest.TestCase):
             # Second run with patched copy2 that fails during preservation
             src.write_text(self._make_text(5), encoding="utf-8")
             second_buf = io.StringIO()
-            with patch("cypilot.commands.chunk_input.shutil.copy2", side_effect=OSError("copy failed")), redirect_stdout(second_buf):
+            with patch("studio.commands.chunk_input.shutil.copy2", side_effect=OSError("copy failed")), redirect_stdout(second_buf):
                 second_rc = cmd_chunk_input([str(src), "--output-dir", str(out_dir)])
 
             self.assertEqual(second_rc, 0)
@@ -755,7 +755,7 @@ class TestChunkInputCLI(unittest.TestCase):
         set_json_mode(False)
 
     def test_cli_help_lists_chunk_input(self):
-        from cypilot.cli import main
+        from studio.cli import main
 
         buf = io.StringIO()
         with redirect_stdout(buf):
@@ -766,7 +766,7 @@ class TestChunkInputCLI(unittest.TestCase):
         self.assertIn("chunk-input", payload.get("commands", {}))
 
     def test_cli_missing_required_output_dir_returns_json_error(self):
-        from cypilot.cli import main
+        from studio.cli import main
 
         stdout_buf = io.StringIO()
         stderr_buf = io.StringIO()
@@ -780,7 +780,7 @@ class TestChunkInputCLI(unittest.TestCase):
         self.assertEqual(stderr_buf.getvalue(), "")
 
     def test_cli_dispatch_chunk_input(self):
-        from cypilot.cli import main
+        from studio.cli import main
 
         with TemporaryDirectory() as td:
             src = Path(td) / "request.md"

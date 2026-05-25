@@ -1,8 +1,8 @@
 """Tests for cpt-doc / cpt-impl edges + phantom nodes."""
 from pathlib import Path
 
-from cypilot.commands.map.cpt_edges import build_cpt_edges
-from cypilot.commands.map.scan import ScanOptions, scan_repo
+from studio.commands.map.cpt_edges import build_cpt_edges
+from studio.commands.map.scan import ScanOptions, scan_repo
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "map"
 

@@ -32,8 +32,8 @@ from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.ralphex_discover import discover, validate, persist_path, INSTALL_GUIDANCE
-from cypilot.ralphex_export import (
+from studio.ralphex_discover import discover, validate, persist_path, INSTALL_GUIDANCE
+from studio.ralphex_export import (
     compile_delegation_plan,
     generate_review_artifacts,
     map_phase_to_task,
@@ -226,7 +226,7 @@ class TestAC01DiscoveryAndPersistence:
     def test_discover_finds_and_persist_writes(self):
         """Full flow: discover on PATH, then persist to core.toml."""
         config = {"integrations": {"ralphex": {"executable_path": ""}}}
-        with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/local/bin/ralphex"):
+        with patch("studio.ralphex_discover.shutil.which", return_value="/usr/local/bin/ralphex"):
             path = discover(config)
         assert path == "/usr/local/bin/ralphex"
 
@@ -258,7 +258,7 @@ class TestAC02PersistedPathReuse:
             fake_bin.chmod(0o755)
 
             config = {"integrations": {"ralphex": {"executable_path": str(fake_bin)}}}
-            with patch("cypilot.ralphex_discover.shutil.which", return_value=None):
+            with patch("studio.ralphex_discover.shutil.which", return_value=None):
                 result = discover(config)
             assert result == str(fake_bin)
 
@@ -271,7 +271,7 @@ class TestAC03MissingRalphexDiagnostic:
     def test_missing_returns_none_not_exception(self):
         """discover() returns None, does not raise."""
         config = {}
-        with patch("cypilot.ralphex_discover.shutil.which", return_value=None):
+        with patch("studio.ralphex_discover.shutil.which", return_value=None):
             result = discover(config)
         assert result is None
 
@@ -284,17 +284,17 @@ class TestAC03MissingRalphexDiagnostic:
 
     def test_doctor_check_warns_not_fails(self):
         """Doctor inst-check-ralphex returns WARN, not FAIL, when missing."""
-        from cypilot.commands.doctor import _check_ralphex
+        from studio.commands.doctor import _check_ralphex
 
         with TemporaryDirectory() as tmp:
-            with patch("cypilot.ralphex_discover.shutil.which", return_value=None):
+            with patch("studio.ralphex_discover.shutil.which", return_value=None):
                 result = _check_ralphex(Path(tmp))
         assert result["level"] == "WARN"
         assert result["name"] == "inst-check-ralphex"
 
     def test_doctor_reads_install_config(self):
         """Doctor discovers ralphex via .cf-constructor/config/core.toml."""
-        from cypilot.commands._core_config import load_core_config as _load_core_config
+        from studio.commands._core_config import load_core_config as _load_core_config
 
         with TemporaryDirectory() as tmp:
             project_root = Path(tmp)
@@ -309,7 +309,7 @@ class TestAC03MissingRalphexDiagnostic:
 
     def test_doctor_check_finds_ralphex_from_install_config(self):
         """Doctor _check_ralphex finds ralphex when path is only in .cf-constructor/config/core.toml."""
-        from cypilot.commands.doctor import _check_ralphex
+        from studio.commands.doctor import _check_ralphex
 
         with TemporaryDirectory() as tmp:
             project_root = Path(tmp)
@@ -325,8 +325,8 @@ class TestAC03MissingRalphexDiagnostic:
             )
             # Patch shutil.which to return None (not on PATH) so discover
             # falls through to the persisted config path
-            with patch("cypilot.ralphex_discover.shutil.which", return_value=None):
-                with patch("cypilot.ralphex_discover.validate", return_value={"status": "available", "version": "0.1.0"}):
+            with patch("studio.ralphex_discover.shutil.which", return_value=None):
+                with patch("studio.ralphex_discover.validate", return_value={"status": "available", "version": "0.1.0"}):
                     result = _check_ralphex(project_root)
         assert result["level"] == "PASS"
 
@@ -354,7 +354,7 @@ class TestAC04BootstrapInit:
     def test_never_runs_init_automatically(self):
         """check_bootstrap_needed never executes ralphex --init itself."""
         with TemporaryDirectory() as tmp:
-            with patch("cypilot.ralphex_export.subprocess.run") as mock_run:
+            with patch("studio.ralphex_export.subprocess.run") as mock_run:
                 check_bootstrap_needed(tmp)
             mock_run.assert_not_called()
 
@@ -593,7 +593,7 @@ class TestAC11ReviewPrecondition:
     def test_passes_when_commits_ahead(self):
         """Precondition passes with commits ahead of default branch."""
         proc = MagicMock(returncode=0, stdout="abc123\ndef456\n", stderr="")
-        with patch("cypilot.ralphex_export.subprocess.run", return_value=proc):
+        with patch("studio.ralphex_export.subprocess.run", return_value=proc):
             result = check_review_precondition("main")
         assert result["ok"] is True
         assert result["commit_count"] == 2
@@ -601,7 +601,7 @@ class TestAC11ReviewPrecondition:
     def test_fails_when_no_commits_ahead(self):
         """Precondition fails when no commits ahead."""
         proc = MagicMock(returncode=0, stdout="", stderr="")
-        with patch("cypilot.ralphex_export.subprocess.run", return_value=proc):
+        with patch("studio.ralphex_export.subprocess.run", return_value=proc):
             result = check_review_precondition("main")
         assert result["ok"] is False
         assert "no committed changes" in result["message"].lower()
@@ -609,7 +609,7 @@ class TestAC11ReviewPrecondition:
     def test_fails_on_git_error(self):
         """Precondition fails gracefully on git error."""
         proc = MagicMock(returncode=128, stdout="", stderr="fatal: bad revision")
-        with patch("cypilot.ralphex_export.subprocess.run", return_value=proc):
+        with patch("studio.ralphex_export.subprocess.run", return_value=proc):
             result = check_review_precondition("main")
         assert result["ok"] is False
 
@@ -635,7 +635,7 @@ class TestAC12PostRunHandoff:
 
         # Step 3: Run validation commands
         proc = MagicMock(returncode=0, stdout="ok\n", stderr="")
-        with patch("cypilot.ralphex_export.subprocess.run", return_value=proc):
+        with patch("studio.ralphex_export.subprocess.run", return_value=proc):
             validation = run_validation_commands(["python -m pytest tests/"])
         assert validation["passed"] is True
 
@@ -685,7 +685,7 @@ class TestAC13OptionalIntegration:
     def test_discover_returns_none_no_side_effects(self):
         """When ralphex is absent, discover returns None without modifying anything."""
         config = {}
-        with patch("cypilot.ralphex_discover.shutil.which", return_value=None):
+        with patch("studio.ralphex_discover.shutil.which", return_value=None):
             result = discover(config)
         assert result is None
         # Config unchanged
@@ -699,18 +699,18 @@ class TestAC13OptionalIntegration:
 
     def test_doctor_check_does_not_block_on_missing(self):
         """Doctor returns WARN (not FAIL) when ralphex is missing."""
-        from cypilot.commands.doctor import _check_ralphex
+        from studio.commands.doctor import _check_ralphex
 
         with TemporaryDirectory() as tmp:
-            with patch("cypilot.ralphex_discover.shutil.which", return_value=None):
+            with patch("studio.ralphex_discover.shutil.which", return_value=None):
                 result = _check_ralphex(Path(tmp))
         assert result["level"] == "WARN"
 
     def test_doctor_exit_code_zero_when_only_warns(self):
         """Doctor returns exit 0 even with WARN-level checks."""
-        from cypilot.commands.doctor import cmd_doctor
+        from studio.commands.doctor import cmd_doctor
 
-        with patch("cypilot.ralphex_discover.shutil.which", return_value=None):
+        with patch("studio.ralphex_discover.shutil.which", return_value=None):
             exit_code = cmd_doctor(["--root", "/tmp"])
         assert exit_code == 0
 
@@ -817,8 +817,8 @@ class TestReviewArtifactGeneration:
             repo_root, plan_dir = self._make_project_with_sources(tmp)
             config = {}
             mock_proc = MagicMock(returncode=0, stdout="ralphex v1.0.0\n", stderr="")
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=mock_proc):
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=mock_proc):
                 result = run_delegation(
                     config=config,
                     plan_dir=plan_dir,
@@ -855,8 +855,8 @@ class TestRunDelegation:
             repo_root, plan_dir = self._make_delegatable_project(tmp)
             config = {}
             mock_proc = MagicMock(returncode=0, stdout="ralphex v1.0.0\n", stderr="")
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=mock_proc):
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=mock_proc):
                 result = run_delegation(
                     config=config,
                     plan_dir=plan_dir,
@@ -882,9 +882,9 @@ class TestRunDelegation:
             invoke_proc = MagicMock(returncode=0)
             invoke_proc.communicate.return_value = ("Done\n", "")
 
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=discover_proc), \
-                 patch("cypilot.ralphex_export.subprocess.Popen", return_value=invoke_proc):
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=discover_proc), \
+                 patch("studio.ralphex_export.subprocess.Popen", return_value=invoke_proc):
                 result = run_delegation(
                     config=config,
                     plan_dir=plan_dir,
@@ -911,9 +911,9 @@ class TestRunDelegation:
 
             invoke_proc.communicate.return_value = (None, None)
 
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=discover_proc), \
-                 patch("cypilot.ralphex_export.subprocess.Popen", side_effect=_capture_popen):
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=discover_proc), \
+                 patch("studio.ralphex_export.subprocess.Popen", side_effect=_capture_popen):
                 result = run_delegation(
                     config=config,
                     plan_dir=plan_dir,
@@ -939,9 +939,9 @@ class TestRunDelegation:
             invoke_proc = MagicMock(returncode=1)
             invoke_proc.communicate.return_value = ("", "task failed")
 
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=discover_proc), \
-                 patch("cypilot.ralphex_export.subprocess.Popen", return_value=invoke_proc):
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=discover_proc), \
+                 patch("studio.ralphex_export.subprocess.Popen", return_value=invoke_proc):
                 result = run_delegation(
                     config=config,
                     plan_dir=plan_dir,
@@ -982,9 +982,9 @@ class TestRunDelegation:
                 ("Done\n", ""),
             ]
 
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=discover_proc), \
-                 patch("cypilot.ralphex_export.subprocess.Popen", return_value=invoke_proc), \
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=discover_proc), \
+                 patch("studio.ralphex_export.subprocess.Popen", return_value=invoke_proc), \
                  patch("sys.stdin.isatty", return_value=True), \
                  self._mock_tty_open(""):
                 result = run_delegation(
@@ -1010,9 +1010,9 @@ class TestRunDelegation:
                 ("", ""),
             ]
 
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=discover_proc), \
-                 patch("cypilot.ralphex_export.subprocess.Popen", return_value=invoke_proc), \
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=discover_proc), \
+                 patch("studio.ralphex_export.subprocess.Popen", return_value=invoke_proc), \
                  patch("sys.stdin.isatty", return_value=True), \
                  self._mock_tty_open("n"):
                 result = run_delegation(
@@ -1032,7 +1032,7 @@ class TestRunDelegation:
         with TemporaryDirectory() as tmp:
             repo_root, plan_dir = self._make_delegatable_project(tmp)
             config = {}
-            with patch("cypilot.ralphex_discover.shutil.which", return_value=None):
+            with patch("studio.ralphex_discover.shutil.which", return_value=None):
                 result = run_delegation(
                     config=config,
                     plan_dir=plan_dir,
@@ -1052,8 +1052,8 @@ class TestRunDelegation:
             plan_dir = _make_plan_dir(tmp)
             config = {}
             mock_proc = MagicMock(returncode=0, stdout="ralphex v1.0.0\n", stderr="")
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=mock_proc):
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=mock_proc):
                 result = run_delegation(
                     config=config,
                     plan_dir=plan_dir,
@@ -1072,9 +1072,9 @@ class TestRunDelegation:
             config = {}
             mock_version = MagicMock(returncode=0, stdout="ralphex v1.0.0\n", stderr="")
             mock_revlist = MagicMock(returncode=0, stdout="", stderr="")
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=mock_version), \
-                 patch("cypilot.ralphex_export.check_review_precondition", return_value={
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=mock_version), \
+                 patch("studio.ralphex_export.check_review_precondition", return_value={
                      "ok": False, "commit_count": 0,
                      "message": "No committed changes ahead of main.",
                  }):
@@ -1094,8 +1094,8 @@ class TestRunDelegation:
             repo_root, plan_dir = self._make_delegatable_project(tmp)
             config = {}
             mock_proc = MagicMock(returncode=0, stdout="ralphex v1.0.0\n", stderr="")
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=mock_proc):
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=mock_proc):
                 result = run_delegation(
                     config=config,
                     plan_dir=plan_dir,
@@ -1112,8 +1112,8 @@ class TestRunDelegation:
             repo_root, plan_dir = self._make_delegatable_project(tmp)
             config = {}
             mock_proc = MagicMock(returncode=0, stdout="ralphex v1.0.0\n", stderr="")
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex") as mock_which, \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=mock_proc):
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex") as mock_which, \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=mock_proc):
                 result = run_delegation(
                     config=config,
                     plan_dir=plan_dir,
@@ -1136,8 +1136,8 @@ class TestRunDelegation:
             repo_root, plan_dir = self._make_delegatable_project(tmp)
             config = {}
             mock_proc = MagicMock(returncode=0, stdout="ralphex v1.0.0\n", stderr="")
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=mock_proc):
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=mock_proc):
                 result = run_delegation(
                     config=config,
                     plan_dir=plan_dir,
@@ -1197,9 +1197,9 @@ class TestReviewModeOrchestration:
             repo_root, plan_dir = self._make_review_project(tmp)
             config = {}
             mock_proc = MagicMock(returncode=0, stdout="ralphex v1.0.0\n", stderr="")
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=mock_proc), \
-                 patch("cypilot.ralphex_export.check_review_precondition", return_value={
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=mock_proc), \
+                 patch("studio.ralphex_export.check_review_precondition", return_value={
                      "ok": True, "commit_count": 3,
                      "message": "3 commit(s) ahead of main, ready for review.",
                  }):
@@ -1225,9 +1225,9 @@ class TestReviewModeOrchestration:
             repo_root, plan_dir = self._make_review_project(tmp)
             config = {}
             mock_proc = MagicMock(returncode=0, stdout="ralphex v1.0.0\n", stderr="")
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=mock_proc), \
-                 patch("cypilot.ralphex_export.check_review_precondition", return_value={
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=mock_proc), \
+                 patch("studio.ralphex_export.check_review_precondition", return_value={
                      "ok": True, "commit_count": 1,
                      "message": "1 commit(s) ahead of main, ready for review.",
                  }):
@@ -1252,8 +1252,8 @@ class TestReviewModeOrchestration:
             repo_root, plan_dir = self._make_review_project(tmp)
             config = {}
             mock_proc = MagicMock(returncode=0, stdout="ralphex v1.0.0\n", stderr="")
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=mock_proc):
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=mock_proc):
                 result = run_delegation(
                     config=config,
                     plan_dir=plan_dir,
@@ -1273,9 +1273,9 @@ class TestReviewModeOrchestration:
             repo_root, plan_dir = self._make_review_project(tmp)
             config = {}
             mock_proc = MagicMock(returncode=0, stdout="ralphex v1.0.0\n", stderr="")
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=mock_proc), \
-                 patch("cypilot.ralphex_export.check_review_precondition", return_value={
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=mock_proc), \
+                 patch("studio.ralphex_export.check_review_precondition", return_value={
                      "ok": True, "commit_count": 2,
                      "message": "2 commit(s) ahead of main, ready for review.",
                  }):
@@ -1294,8 +1294,8 @@ class TestReviewModeOrchestration:
             repo_root, plan_dir = self._make_review_project(tmp)
             config = {}
             mock_proc = MagicMock(returncode=0, stdout="ralphex v1.0.0\n", stderr="")
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=mock_proc):
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=mock_proc):
                 result = run_delegation(
                     config=config,
                     plan_dir=plan_dir,
@@ -1339,8 +1339,8 @@ class TestEndToEndCapabilitySurface:
             repo_root, plan_dir = self._make_delegatable_project(tmp)
             config = {}
             mock_proc = MagicMock(returncode=0, stdout="ralphex v1.0.0\n", stderr="")
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=mock_proc):
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=mock_proc):
                 result = run_delegation(
                     config=config,
                     plan_dir=plan_dir,
@@ -1377,9 +1377,9 @@ class TestEndToEndCapabilitySurface:
             invoke_proc = MagicMock(returncode=0)
             invoke_proc.communicate.return_value = ("Done\n", "")
 
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=discover_proc), \
-                 patch("cypilot.ralphex_export.subprocess.Popen", return_value=invoke_proc):
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=discover_proc), \
+                 patch("studio.ralphex_export.subprocess.Popen", return_value=invoke_proc):
                 result = run_delegation(
                     config=config,
                     plan_dir=plan_dir,
@@ -1417,7 +1417,7 @@ class TestEndToEndCapabilitySurface:
     def test_routing_to_orchestration_to_command(self):
         """Agent registration → discovery → run_delegation produces valid command
         with correct executable and mode flags."""
-        from cypilot.ralphex_discover import discover, validate
+        from studio.ralphex_discover import discover, validate
         import tomllib
 
         # Verify routing: agents.toml registers cypilot-ralphex
@@ -1431,8 +1431,8 @@ class TestEndToEndCapabilitySurface:
             repo_root, plan_dir = self._make_delegatable_project(tmp)
             config = {}
             mock_proc = MagicMock(returncode=0, stdout="ralphex v1.0.0\n", stderr="")
-            with patch("cypilot.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
-                 patch("cypilot.ralphex_discover.subprocess.run", return_value=mock_proc):
+            with patch("studio.ralphex_discover.shutil.which", return_value="/usr/bin/ralphex"), \
+                 patch("studio.ralphex_discover.subprocess.run", return_value=mock_proc):
                 # Discovery works
                 path = discover(config)
                 assert path == "/usr/bin/ralphex"
@@ -1456,7 +1456,7 @@ class TestEndToEndCapabilitySurface:
     def test_windsurf_delegation_reachable_via_skill_routing(self):
         """Windsurf accesses delegation through SKILL.md routing, not a subagent proxy.
         Verify the skill output references the canonical SKILL.md and subagents are skipped."""
-        from cypilot.commands.agents import _process_single_agent, _default_agents_config, _discover_kit_agents
+        from studio.commands.agents import _process_single_agent, _default_agents_config, _discover_kit_agents
         import shutil
 
         with TemporaryDirectory() as td:
@@ -1511,7 +1511,7 @@ class TestEndToEndCapabilitySurface:
     def test_all_integrations_produce_ralphex_proxy(self):
         """All supported integrations (claude, cursor, copilot, openai) produce
         a cypilot-ralphex proxy pointing to the same canonical prompt path."""
-        from cypilot.commands.agents import _process_single_agent, _default_agents_config
+        from studio.commands.agents import _process_single_agent, _default_agents_config
         import shutil
 
         with TemporaryDirectory() as td:

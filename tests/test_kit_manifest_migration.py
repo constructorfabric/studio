@@ -41,7 +41,7 @@ def _make_kit_source_with_manifest(td: Path, slug: str = "testkit") -> Path:
     (kit / "SKILL.md").write_text(f"# Kit {slug}\n", encoding="utf-8")
     (kit / "new_resource.md").write_text("# New\n", encoding="utf-8")
 
-    from cypilot.utils import toml_utils
+    from studio.utils import toml_utils
     toml_utils.dump({"version": "2.0", "slug": slug}, kit / "conf.toml")
 
     _write_manifest(kit, """\
@@ -95,7 +95,7 @@ def _setup_legacy_project(td: Path, slug: str = "testkit") -> Path:
     (config_kit / "SKILL.md").write_text(f"# Kit {slug}\n", encoding="utf-8")
 
     # core.toml WITHOUT resources section (legacy)
-    from cypilot.utils import toml_utils
+    from studio.utils import toml_utils
     toml_utils.dump({
         "version": "1.0",
         "project_root": "..",
@@ -120,7 +120,7 @@ class TestMigrateLegacyKitToManifest(unittest.TestCase):
 
     def test_existing_files_registered_silently(self):
         """Files at expected paths are registered without prompt or copy."""
-        from cypilot.commands.kit import migrate_legacy_kit_to_manifest
+        from studio.commands.kit import migrate_legacy_kit_to_manifest
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -142,7 +142,7 @@ class TestMigrateLegacyKitToManifest(unittest.TestCase):
 
     def test_bindings_written_to_core_toml(self):
         """Resource bindings are persisted in core.toml [kits.mykit.resources]."""
-        from cypilot.commands.kit import migrate_legacy_kit_to_manifest
+        from studio.commands.kit import migrate_legacy_kit_to_manifest
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -168,7 +168,7 @@ class TestMigrateLegacyKitToManifest(unittest.TestCase):
 
     def test_new_resource_copied_from_source(self):
         """A resource not on disk is copied from source and registered."""
-        from cypilot.commands.kit import migrate_legacy_kit_to_manifest
+        from studio.commands.kit import migrate_legacy_kit_to_manifest
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -231,7 +231,7 @@ class TestMigrateLegacyKitToManifest(unittest.TestCase):
 
     def test_no_manifest_returns_skip(self):
         """If kit source has no manifest.toml, return SKIP."""
-        from cypilot.commands.kit import migrate_legacy_kit_to_manifest
+        from studio.commands.kit import migrate_legacy_kit_to_manifest
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -248,7 +248,7 @@ class TestMigrateLegacyKitToManifest(unittest.TestCase):
 
     def test_invalid_manifest_returns_fail(self):
         """If manifest validation fails, return FAIL."""
-        from cypilot.commands.kit import migrate_legacy_kit_to_manifest
+        from studio.commands.kit import migrate_legacy_kit_to_manifest
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -277,7 +277,7 @@ class TestMigrateLegacyKitToManifest(unittest.TestCase):
 
     def test_reads_kit_root_from_core_toml(self):
         """Kit root is read from core.toml kits.{slug}.path."""
-        from cypilot.commands.kit import migrate_legacy_kit_to_manifest
+        from studio.commands.kit import migrate_legacy_kit_to_manifest
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -295,7 +295,7 @@ class TestMigrateLegacyKitToManifest(unittest.TestCase):
             (custom_kit_dir / "constraints.toml").write_text('[artifacts]\n', encoding="utf-8")
             (custom_kit_dir / "SKILL.md").write_text("# Kit\n", encoding="utf-8")
 
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
@@ -321,8 +321,8 @@ class TestMigrateLegacyKitToManifest(unittest.TestCase):
     def test_windows_absolute_registered_root_fails_on_non_windows(self):
         if os.name == "nt":
             self.skipTest("non-Windows-only absolute path regression")
-        from cypilot.commands.kit import migrate_legacy_kit_to_manifest
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import migrate_legacy_kit_to_manifest
+        from studio.utils import toml_utils
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -351,9 +351,9 @@ class TestMigrateLegacyKitToManifest(unittest.TestCase):
             self.assertIn("not accessible on this OS", result["errors"][0])
 
     def test_posix_absolute_registered_root_fails_on_windows(self):
-        import cypilot.commands.kit as kit_module
-        from cypilot.commands.kit import migrate_legacy_kit_to_manifest
-        from cypilot.utils import toml_utils
+        import studio.commands.kit as kit_module
+        from studio.commands.kit import migrate_legacy_kit_to_manifest
+        from studio.utils import toml_utils
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -384,7 +384,7 @@ class TestMigrateLegacyKitToManifest(unittest.TestCase):
 
     def test_interactive_prompt_custom_relative_path(self):
         """Interactive prompt allows user to override new resource with relative path."""
-        from cypilot.commands.kit import migrate_legacy_kit_to_manifest
+        from studio.commands.kit import migrate_legacy_kit_to_manifest
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -448,7 +448,7 @@ class TestMigrateLegacyKitToManifest(unittest.TestCase):
 
     def test_interactive_prompt_eof_uses_default(self):
         """EOFError during interactive prompt falls back to default path."""
-        from cypilot.commands.kit import migrate_legacy_kit_to_manifest
+        from studio.commands.kit import migrate_legacy_kit_to_manifest
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -508,7 +508,7 @@ class TestMigrateLegacyKitToManifest(unittest.TestCase):
 
     def test_preserves_existing_core_toml_fields(self):
         """Migration preserves existing fields in core.toml (version, source)."""
-        from cypilot.commands.kit import migrate_legacy_kit_to_manifest
+        from studio.commands.kit import migrate_legacy_kit_to_manifest
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -516,7 +516,7 @@ class TestMigrateLegacyKitToManifest(unittest.TestCase):
             adapter = _setup_legacy_project(td_path, "mykit")
 
             # Add source field to core.toml
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             config = adapter / "config"
             with open(config / "core.toml", "rb") as f:
                 data = tomllib.load(f)
@@ -545,7 +545,7 @@ class TestUpdateKitLegacyMigration(unittest.TestCase):
 
     def test_update_triggers_migration_for_legacy_kit(self):
         """update_kit with manifest source + no resources → auto-populate bindings."""
-        from cypilot.commands.kit import update_kit
+        from studio.commands.kit import update_kit
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -569,7 +569,7 @@ class TestUpdateKitLegacyMigration(unittest.TestCase):
 
     def test_update_skips_migration_when_resources_exist(self):
         """update_kit with existing resources → no migration triggered."""
-        from cypilot.commands.kit import update_kit
+        from studio.commands.kit import update_kit
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -577,7 +577,7 @@ class TestUpdateKitLegacyMigration(unittest.TestCase):
             adapter = _setup_legacy_project(td_path, "mykit")
 
             # Pre-populate resources in core.toml
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             config = adapter / "config"
             with open(config / "core.toml", "rb") as f:
                 data = tomllib.load(f)
@@ -603,7 +603,7 @@ class TestUpdateKitLegacyMigration(unittest.TestCase):
 
     def test_update_no_manifest_no_migration(self):
         """update_kit without manifest in source → no migration attempt."""
-        from cypilot.commands.kit import update_kit
+        from studio.commands.kit import update_kit
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -614,7 +614,7 @@ class TestUpdateKitLegacyMigration(unittest.TestCase):
             (kit_src / "artifacts" / "ADR" / "template.md").write_text("# ADR\n", encoding="utf-8")
             (kit_src / "SKILL.md").write_text("# Kit\n", encoding="utf-8")
             (kit_src / "constraints.toml").write_text('[artifacts]\n', encoding="utf-8")
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({"version": "2.0", "slug": "legkit"}, kit_src / "conf.toml")
 
             adapter = _setup_legacy_project(td_path, "legkit")
@@ -633,7 +633,7 @@ class TestUpdateKitLegacyMigration(unittest.TestCase):
 
     def test_update_adds_new_manifest_resource_to_core_toml(self):
         """update_kit with new resource in manifest → binding added to core.toml."""
-        from cypilot.commands.kit import update_kit
+        from studio.commands.kit import update_kit
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -641,7 +641,7 @@ class TestUpdateKitLegacyMigration(unittest.TestCase):
             adapter = _setup_legacy_project(td_path, "mykit")
 
             # Pre-populate resources in core.toml (simulating existing install)
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             config = adapter / "config"
             with open(config / "core.toml", "rb") as f:
                 data = tomllib.load(f)
@@ -711,9 +711,9 @@ class TestUpdateKitLegacyMigration(unittest.TestCase):
             self.assertIn("workflows/new_workflow.md", kit_entry["resources"]["new_workflow"]["path"])
 
     def test_update_manifest_migration_preserves_absolute_bindings_when_relpath_raises(self):
-        import cypilot.commands.kit as kit_module
-        from cypilot.commands.kit import update_kit
-        from cypilot.utils import toml_utils
+        import studio.commands.kit as kit_module
+        from studio.commands.kit import update_kit
+        from studio.utils import toml_utils
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -800,8 +800,8 @@ class TestUpdateKitLegacyMigration(unittest.TestCase):
 
     def test_manifest_update_preserves_registered_custom_kit_path(self):
         """Manifest-backed update keeps an existing custom kits.{slug}.path."""
-        from cypilot.commands.kit import update_kit
-        from cypilot.utils import toml_utils
+        from studio.commands.kit import update_kit
+        from studio.utils import toml_utils
 
         with TemporaryDirectory() as td:
             td_path = Path(td)

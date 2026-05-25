@@ -17,7 +17,7 @@ from tempfile import TemporaryDirectory
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.utils.manifest import Manifest, ManifestResource, load_manifest
+from studio.utils.manifest import Manifest, ManifestResource, load_manifest
 
 
 # ---------------------------------------------------------------------------
@@ -44,7 +44,7 @@ def _make_kit_with_manifest(td: Path, slug: str = "testkit") -> Path:
     (kit / "SKILL.md").write_text(f"# Kit {slug}\nKit skill.\n", encoding="utf-8")
 
     # conf.toml for version
-    from cypilot.utils import toml_utils
+    from studio.utils import toml_utils
     toml_utils.dump({"version": "2.0", "slug": slug}, kit / "conf.toml")
 
     _write_manifest(kit, """\
@@ -88,7 +88,7 @@ def _make_legacy_kit_source(td: Path, slug: str = "legacykit") -> Path:
     (kit / "artifacts" / "FEATURE" / "template.md").write_text("# Feature\n", encoding="utf-8")
     (kit / "SKILL.md").write_text(f"# Kit {slug}\n", encoding="utf-8")
     (kit / "constraints.toml").write_text('[artifacts]\n', encoding="utf-8")
-    from cypilot.utils import toml_utils
+    from studio.utils import toml_utils
     toml_utils.dump({"version": "1.0", "slug": slug}, kit / "conf.toml")
     return kit
 
@@ -107,7 +107,7 @@ def _bootstrap_project(root: Path, adapter_rel: str = "cypilot") -> Path:
     for d in [adapter, config, gen, adapter / ".core"]:
         d.mkdir(parents=True, exist_ok=True)
     (config / "AGENTS.md").write_text("# Test\n", encoding="utf-8")
-    from cypilot.utils import toml_utils
+    from studio.utils import toml_utils
     toml_utils.dump({
         "version": "1.0",
         "project_root": "..",
@@ -129,7 +129,7 @@ class TestInstallKitWithManifest(unittest.TestCase):
 
     def test_resources_copied_to_correct_paths(self):
         """Manifest install copies each resource to kit_root/default_path."""
-        from cypilot.commands.kit import install_kit_with_manifest
+        from studio.commands.kit import install_kit_with_manifest
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -138,7 +138,7 @@ class TestInstallKitWithManifest(unittest.TestCase):
             adapter = td_path / "adapter"
             config = adapter / "config"
             config.mkdir(parents=True)
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0", "project_root": "..", "kits": {},
             }, config / "core.toml")
@@ -165,7 +165,7 @@ class TestInstallKitWithManifest(unittest.TestCase):
 
     def test_resource_bindings_in_core_toml(self):
         """Resource bindings are written to core.toml [kits.mykit.resources]."""
-        from cypilot.commands.kit import install_kit_with_manifest
+        from studio.commands.kit import install_kit_with_manifest
         import tomllib
 
         with TemporaryDirectory() as td:
@@ -175,7 +175,7 @@ class TestInstallKitWithManifest(unittest.TestCase):
             adapter = td_path / "adapter"
             config = adapter / "config"
             config.mkdir(parents=True)
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0", "project_root": "..", "kits": {},
             }, config / "core.toml")
@@ -206,7 +206,7 @@ class TestInstallKitWithManifest(unittest.TestCase):
 
     def test_resource_bindings_in_result(self):
         """Result dict contains flattened resource_bindings."""
-        from cypilot.commands.kit import install_kit_with_manifest
+        from studio.commands.kit import install_kit_with_manifest
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -215,7 +215,7 @@ class TestInstallKitWithManifest(unittest.TestCase):
             adapter = td_path / "adapter"
             config = adapter / "config"
             config.mkdir(parents=True)
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0", "project_root": "..", "kits": {},
             }, config / "core.toml")
@@ -235,7 +235,7 @@ class TestInstallKitWithManifest(unittest.TestCase):
 
     def test_user_modifiable_false_no_prompt(self):
         """When user_modifiable=false, paths are taken from defaults — no prompt."""
-        from cypilot.commands.kit import install_kit_with_manifest
+        from studio.commands.kit import install_kit_with_manifest
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -244,7 +244,7 @@ class TestInstallKitWithManifest(unittest.TestCase):
             adapter = td_path / "adapter"
             config = adapter / "config"
             config.mkdir(parents=True)
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0", "project_root": "..", "kits": {},
             }, config / "core.toml")
@@ -261,7 +261,7 @@ class TestInstallKitWithManifest(unittest.TestCase):
 
     def test_interactive_prompt_custom_path(self):
         """When user_modifiable=true and user provides a path, resource goes there."""
-        from cypilot.commands.kit import install_kit_with_manifest
+        from studio.commands.kit import install_kit_with_manifest
         from unittest.mock import patch
 
         with TemporaryDirectory() as td:
@@ -286,7 +286,7 @@ class TestInstallKitWithManifest(unittest.TestCase):
             adapter = td_path / "adapter"
             config = adapter / "config"
             config.mkdir(parents=True)
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0", "project_root": "..", "kits": {},
             }, config / "core.toml")
@@ -317,7 +317,7 @@ class TestInstallKitWithManifest(unittest.TestCase):
 
     def test_version_read_from_conf_toml(self):
         """If kit_version is empty, version is read from source conf.toml."""
-        from cypilot.commands.kit import install_kit_with_manifest
+        from studio.commands.kit import install_kit_with_manifest
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -326,7 +326,7 @@ class TestInstallKitWithManifest(unittest.TestCase):
             adapter = td_path / "adapter"
             config = adapter / "config"
             config.mkdir(parents=True)
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0", "project_root": "..", "kits": {},
             }, config / "core.toml")
@@ -341,7 +341,7 @@ class TestInstallKitWithManifest(unittest.TestCase):
 
     def test_validation_errors_return_fail(self):
         """If manifest validation fails, return FAIL with errors."""
-        from cypilot.commands.kit import install_kit_with_manifest
+        from studio.commands.kit import install_kit_with_manifest
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -364,7 +364,7 @@ class TestInstallKitWithManifest(unittest.TestCase):
 
             adapter = td_path / "adapter"
             (adapter / "config").mkdir(parents=True)
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0", "project_root": "..", "kits": {},
             }, adapter / "config" / "core.toml")
@@ -379,7 +379,7 @@ class TestInstallKitWithManifest(unittest.TestCase):
 
     def test_metadata_collected_for_gen(self):
         """SKILL.md metadata is collected for .gen/ aggregation."""
-        from cypilot.commands.kit import install_kit_with_manifest
+        from studio.commands.kit import install_kit_with_manifest
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -388,7 +388,7 @@ class TestInstallKitWithManifest(unittest.TestCase):
             adapter = td_path / "adapter"
             config = adapter / "config"
             config.mkdir(parents=True)
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0", "project_root": "..", "kits": {},
             }, config / "core.toml")
@@ -412,7 +412,7 @@ class TestTemplateVariableResolution(unittest.TestCase):
 
     def test_template_variables_resolved(self):
         """Template variables {resource_id} are replaced in copied .md files."""
-        from cypilot.commands.kit import install_kit_with_manifest
+        from studio.commands.kit import install_kit_with_manifest
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -456,7 +456,7 @@ class TestTemplateVariableResolution(unittest.TestCase):
             adapter = td_path / "adapter"
             config = adapter / "config"
             config.mkdir(parents=True)
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0", "project_root": "..", "kits": {},
             }, config / "core.toml")
@@ -488,7 +488,7 @@ class TestInstallKitManifestDetection(unittest.TestCase):
 
     def test_manifest_kit_delegates_to_manifest_install(self):
         """install_kit() with manifest.toml → manifest-driven path."""
-        from cypilot.commands.kit import install_kit
+        from studio.commands.kit import install_kit
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -497,7 +497,7 @@ class TestInstallKitManifestDetection(unittest.TestCase):
             adapter = td_path / "adapter"
             config = adapter / "config"
             config.mkdir(parents=True)
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0", "project_root": "..", "kits": {},
             }, config / "core.toml")
@@ -515,7 +515,7 @@ class TestInstallKitManifestDetection(unittest.TestCase):
 
     def test_legacy_kit_uses_copy_path(self):
         """install_kit() without manifest.toml → legacy copy path."""
-        from cypilot.commands.kit import install_kit
+        from studio.commands.kit import install_kit
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -524,7 +524,7 @@ class TestInstallKitManifestDetection(unittest.TestCase):
             adapter = td_path / "adapter"
             config = adapter / "config"
             config.mkdir(parents=True)
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0", "project_root": "..", "kits": {},
             }, config / "core.toml")
@@ -550,16 +550,16 @@ class TestCmdKitInstallManifest(unittest.TestCase):
     """Integration tests for cmd_kit_install with manifest-driven kits."""
 
     def setUp(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(True)
 
     def tearDown(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(False)
 
     def test_install_manifest_kit_via_cli(self):
         """cpt kit install --path with manifest kit → resources installed."""
-        from cypilot.commands.kit import cmd_kit_install
+        from studio.commands.kit import cmd_kit_install
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -587,7 +587,7 @@ class TestCmdKitInstallManifest(unittest.TestCase):
 
     def test_install_legacy_kit_via_cli(self):
         """cpt kit install --path without manifest → legacy install."""
-        from cypilot.commands.kit import cmd_kit_install
+        from studio.commands.kit import cmd_kit_install
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -620,7 +620,7 @@ class TestCopyManifestResource(unittest.TestCase):
     """Tests for _copy_manifest_resource helper."""
 
     def test_copy_directory_resource(self):
-        from cypilot.commands.kit import _copy_manifest_resource
+        from studio.commands.kit import _copy_manifest_resource
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -639,7 +639,7 @@ class TestCopyManifestResource(unittest.TestCase):
             self.assertEqual((target / "sub" / "file.md").read_text(), "hi\n")
 
     def test_copy_file_resource(self):
-        from cypilot.commands.kit import _copy_manifest_resource
+        from studio.commands.kit import _copy_manifest_resource
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -657,7 +657,7 @@ class TestCopyManifestResource(unittest.TestCase):
             self.assertEqual(target.read_text(), "# Hello\n")
 
     def test_copy_directory_overwrites_existing(self):
-        from cypilot.commands.kit import _copy_manifest_resource
+        from studio.commands.kit import _copy_manifest_resource
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -687,7 +687,7 @@ class TestResolveTemplateVariables(unittest.TestCase):
     """Tests for _resolve_template_variables helper."""
 
     def test_replaces_variables_in_md_files(self):
-        from cypilot.commands.kit import _resolve_template_variables
+        from studio.commands.kit import _resolve_template_variables
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -709,7 +709,7 @@ class TestResolveTemplateVariables(unittest.TestCase):
             self.assertNotIn("{adr}", text)
 
     def test_ignores_non_text_files(self):
-        from cypilot.commands.kit import _resolve_template_variables
+        from studio.commands.kit import _resolve_template_variables
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -725,7 +725,7 @@ class TestResolveTemplateVariables(unittest.TestCase):
             self.assertEqual((root / "image.png").read_bytes(), b"\x89PNG{constraints}")
 
     def test_empty_bindings_noop(self):
-        from cypilot.commands.kit import _resolve_template_variables
+        from studio.commands.kit import _resolve_template_variables
 
         with TemporaryDirectory() as td:
             td_path = Path(td)

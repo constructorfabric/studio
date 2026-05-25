@@ -14,7 +14,7 @@ from typing import Set
 
 import pytest
 
-from cypilot.commands.map.scan import (
+from studio.commands.map.scan import (
     DEFAULT_SKIP_DIRS,
     ScanOptions,
     _detect_adapter_dir,
@@ -82,7 +82,7 @@ def test_section_around_section_with_subheading():
 
 def test_section_around_caps_at_max_lines():
     """_section_around caps output at _MAX_SNIPPET_LINES from heading."""
-    from cypilot.commands.map.scan import _MAX_SNIPPET_LINES
+    from studio.commands.map.scan import _MAX_SNIPPET_LINES
     # Create a section longer than _MAX_SNIPPET_LINES
     lines = ["# Heading"] + [f"line {i}" for i in range(_MAX_SNIPPET_LINES + 20)]
     result = _section_around(lines, 2)
@@ -99,7 +99,7 @@ def test_section_around_trims_trailing_blank_lines():
 
 def test_section_around_exceeds_max_chars():
     """_section_around appends ellipsis when content exceeds _MAX_SNIPPET_CHARS."""
-    from cypilot.commands.map.scan import _MAX_SNIPPET_CHARS
+    from studio.commands.map.scan import _MAX_SNIPPET_CHARS
     # Create content larger than the char cap
     lines = ["# Heading"] + ["x" * 100 for _ in range(100)]
     result = _section_around(lines, 2)

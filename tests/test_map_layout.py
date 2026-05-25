@@ -1,11 +1,11 @@
 """Layout determinism and shape."""
 from pathlib import Path
 
-from cypilot.commands.map.categorize import CategorizeOptions, categorize_nodes
-from cypilot.commands.map.cpt_edges import build_cpt_edges
-from cypilot.commands.map.layout import compute_layout
-from cypilot.commands.map.links import extract_file_links
-from cypilot.commands.map.scan import ScanOptions, scan_repo
+from studio.commands.map.categorize import CategorizeOptions, categorize_nodes
+from studio.commands.map.cpt_edges import build_cpt_edges
+from studio.commands.map.layout import compute_layout
+from studio.commands.map.links import extract_file_links
+from studio.commands.map.scan import ScanOptions, scan_repo
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "map"
 
@@ -53,7 +53,7 @@ def test_layout_phantom_has_red_style():
 
 
 def test_dims_targets_square_layout_for_small_categories():
-    from cypilot.commands.map.layout import _dims
+    from studio.commands.map.layout import _dims
     # n=20 must produce more than 2 rows (square-ish)
     w, h, cols = _dims(20, 20)
     rows = -(-20 // cols)  # ceil division

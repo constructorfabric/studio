@@ -16,7 +16,7 @@ from tempfile import TemporaryDirectory, NamedTemporaryFile
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.utils.content_language import (
+from studio.utils.content_language import (
     SCRIPT_RANGES,
     SUPPORTED_LANGUAGES,
     LangScanError,

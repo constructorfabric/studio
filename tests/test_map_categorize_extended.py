@@ -9,7 +9,7 @@ from typing import List, Optional
 
 import pytest
 
-from cypilot.commands.map.categorize import (
+from studio.commands.map.categorize import (
     CategorizeOptions,
     OverrideCategory,
     OverrideConfig,
@@ -20,7 +20,7 @@ from cypilot.commands.map.categorize import (
     _parent_dir_category,
     categorize_nodes,
 )
-from cypilot.commands.map.model import Node
+from studio.commands.map.model import Node
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "map"
 REPO_BASIC = FIXTURES / "repo-basic"
@@ -246,7 +246,7 @@ def test_build_registry_index_valid(tmp_path):
 
 def test_match_registry_exact_match():
     """_match_registry returns category for exact path match."""
-    from cypilot.commands.map.categorize import _RegistryEntry
+    from studio.commands.map.categorize import _RegistryEntry
     index = [_RegistryEntry(path_prefix="docs/spec.md", category="myapp")]
     result = _match_registry("docs/spec.md", index)
     assert result == "myapp"
@@ -254,7 +254,7 @@ def test_match_registry_exact_match():
 
 def test_match_registry_prefix_match():
     """_match_registry returns category when path starts with prefix/."""
-    from cypilot.commands.map.categorize import _RegistryEntry
+    from studio.commands.map.categorize import _RegistryEntry
     index = [_RegistryEntry(path_prefix="src", category="myapp")]
     result = _match_registry("src/module.py", index)
     assert result == "myapp"
@@ -262,7 +262,7 @@ def test_match_registry_prefix_match():
 
 def test_match_registry_no_match():
     """_match_registry returns None when no prefix matches."""
-    from cypilot.commands.map.categorize import _RegistryEntry
+    from studio.commands.map.categorize import _RegistryEntry
     index = [_RegistryEntry(path_prefix="docs", category="myapp")]
     result = _match_registry("src/module.py", index)
     assert result is None
@@ -296,7 +296,7 @@ def test_parent_dir_category_nested():
 
 def test_categorize_with_per_source_roots():
     """categorize_nodes uses per-source registry when source_roots is provided."""
-    from cypilot.commands.map.scan import ScanOptions, scan_repo
+    from studio.commands.map.scan import ScanOptions, scan_repo
 
     nodes = scan_repo(ScanOptions(project_root=REPO_BASIC, source_name="local"))
     opts = CategorizeOptions(
@@ -311,7 +311,7 @@ def test_categorize_with_per_source_roots():
 
 def test_categorize_with_unknown_source_falls_back_to_primary():
     """categorize_nodes uses primary registry when node source not in source_roots."""
-    from cypilot.commands.map.scan import ScanOptions, scan_repo
+    from studio.commands.map.scan import ScanOptions, scan_repo
 
     nodes = scan_repo(ScanOptions(project_root=REPO_BASIC, source_name="other"))
     opts = CategorizeOptions(
@@ -327,7 +327,7 @@ def test_categorize_with_unknown_source_falls_back_to_primary():
 
 def test_categorize_no_source_roots():
     """categorize_nodes without source_roots works correctly."""
-    from cypilot.commands.map.scan import ScanOptions, scan_repo
+    from studio.commands.map.scan import ScanOptions, scan_repo
 
     nodes = scan_repo(ScanOptions(project_root=REPO_BASIC, source_name="local"))
     opts = CategorizeOptions(

@@ -7,7 +7,7 @@ from tempfile import TemporaryDirectory
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.utils.coverage import (
+from studio.utils.coverage import (
     CoverageReport,
     FileCoverage,
     _build_ranges,

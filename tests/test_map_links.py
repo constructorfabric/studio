@@ -1,8 +1,8 @@
 """Tests for markdown file-link extraction."""
 from pathlib import Path
 
-from cypilot.commands.map.links import extract_file_links
-from cypilot.commands.map.scan import ScanOptions, scan_repo
+from studio.commands.map.links import extract_file_links
+from studio.commands.map.scan import ScanOptions, scan_repo
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "map"
 

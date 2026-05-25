@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.utils.parsing import (
+from studio.utils.parsing import (
     parse_required_sections,
     find_present_section_ids,
     split_by_section_letter,

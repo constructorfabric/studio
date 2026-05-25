@@ -5,7 +5,7 @@ import types
 import pytest
 
 
-MODULE_PATH = "cypilot.utils._tomllib_compat"
+MODULE_PATH = "studio.utils._tomllib_compat"
 
 
 def _reload_module():

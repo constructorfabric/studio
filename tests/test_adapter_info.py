@@ -15,8 +15,8 @@ from contextlib import redirect_stdout, redirect_stderr
 # Add cypilot.py to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
-from cypilot.cli import main
-from cypilot.utils.files import (
+from studio.cli import main
+from studio.utils.files import (
     find_project_root,
     load_project_config,
     find_cypilot_directory as find_adapter_directory,
@@ -465,25 +465,25 @@ class TestLoadJsonFile(unittest.TestCase):
     """Unit tests for adapter_info._load_json_file edge cases."""
 
     def test_returns_none_for_missing_file(self):
-        from cypilot.commands.adapter_info import _load_json_file
+        from studio.commands.adapter_info import _load_json_file
         self.assertIsNone(_load_json_file(Path(tempfile.gettempdir()) / "nonexistent_abc.json"))
 
     def test_returns_none_for_non_dict(self):
-        from cypilot.commands.adapter_info import _load_json_file
+        from studio.commands.adapter_info import _load_json_file
         with tempfile.TemporaryDirectory() as td:
             p = Path(td) / "arr.json"
             p.write_text("[1,2,3]", encoding="utf-8")
             self.assertIsNone(_load_json_file(p))
 
     def test_returns_none_for_bad_json(self):
-        from cypilot.commands.adapter_info import _load_json_file
+        from studio.commands.adapter_info import _load_json_file
         with tempfile.TemporaryDirectory() as td:
             p = Path(td) / "bad.json"
             p.write_text("{not json", encoding="utf-8")
             self.assertIsNone(_load_json_file(p))
 
     def test_returns_dict_for_valid(self):
-        from cypilot.commands.adapter_info import _load_json_file
+        from studio.commands.adapter_info import _load_json_file
         with tempfile.TemporaryDirectory() as td:
             p = Path(td) / "ok.json"
             p.write_text('{"key": 1}', encoding="utf-8")
@@ -578,7 +578,7 @@ class TestAdapterInfoWorkspaceSection(unittest.TestCase):
             self._bootstrap(root)
             buf = io.StringIO()
             with patch(
-                "cypilot.utils.workspace.find_workspace_config",
+                "studio.utils.workspace.find_workspace_config",
                 return_value=(None, "bad workspace config"),
             ):
                 with redirect_stdout(buf):
@@ -601,7 +601,7 @@ class TestAdapterInfoWorkspaceSection(unittest.TestCase):
             self._bootstrap(root)
             buf = io.StringIO()
             with patch(
-                "cypilot.utils.workspace.find_workspace_config",
+                "studio.utils.workspace.find_workspace_config",
                 side_effect=_side_effect,
             ):
                 with redirect_stdout(buf):
@@ -614,8 +614,8 @@ class TestAdapterInfoWorkspaceSection(unittest.TestCase):
 
     def test_workspace_active_in_human_output(self):
         """Human formatter renders active workspace info."""
-        from cypilot.commands.adapter_info import _human_info
-        from cypilot.utils.ui import is_json_mode, set_json_mode
+        from studio.commands.adapter_info import _human_info
+        from studio.utils.ui import is_json_mode, set_json_mode
         orig = is_json_mode()
         set_json_mode(False)
         try:
@@ -639,8 +639,8 @@ class TestAdapterInfoWorkspaceSection(unittest.TestCase):
 
     def test_workspace_error_in_human_output(self):
         """Human formatter renders workspace error as warning."""
-        from cypilot.commands.adapter_info import _human_info
-        from cypilot.utils.ui import is_json_mode, set_json_mode
+        from studio.commands.adapter_info import _human_info
+        from studio.utils.ui import is_json_mode, set_json_mode
         orig = is_json_mode()
         set_json_mode(False)
         try:
@@ -664,16 +664,16 @@ class TestHumanInfoFormatterBranches(unittest.TestCase):
     """Cover additional _human_info branches for per-file coverage."""
 
     def setUp(self):
-        from cypilot.utils.ui import is_json_mode, set_json_mode
+        from studio.utils.ui import is_json_mode, set_json_mode
         self._orig_json_mode = is_json_mode()
         set_json_mode(False)
 
     def tearDown(self):
-        from cypilot.utils.ui import set_json_mode
+        from studio.utils.ui import set_json_mode
         set_json_mode(self._orig_json_mode)
 
     def test_missing_directories_warning(self):
-        from cypilot.commands.adapter_info import _human_info
+        from studio.commands.adapter_info import _human_info
         data = {
             "project_root": tempfile.gettempdir(),
             "directories": {".core": True, ".gen": False, "config": True},
@@ -684,7 +684,7 @@ class TestHumanInfoFormatterBranches(unittest.TestCase):
         self.assertIn(".gen", buf.getvalue())
 
     def test_variables_display(self):
-        from cypilot.commands.adapter_info import _human_info
+        from studio.commands.adapter_info import _human_info
         data = {
             "project_root": tempfile.gettempdir(),
             "variables": {"cf-constructor-path": tempfile.gettempdir() + "/test", "project_root": tempfile.gettempdir()},
@@ -697,7 +697,7 @@ class TestHumanInfoFormatterBranches(unittest.TestCase):
         self.assertIn("cf-constructor-path", output)
 
     def test_variables_degraded_warning(self):
-        from cypilot.commands.adapter_info import _human_info
+        from studio.commands.adapter_info import _human_info
         data = {
             "project_root": tempfile.gettempdir(),
             "variables_degraded": True,
@@ -709,7 +709,7 @@ class TestHumanInfoFormatterBranches(unittest.TestCase):
         self.assertIn("core.toml not found", buf.getvalue())
 
     def test_kit_details_with_content_dirs_and_resources(self):
-        from cypilot.commands.adapter_info import _human_info
+        from studio.commands.adapter_info import _human_info
         data = {
             "project_root": tempfile.gettempdir(),
             "kit_details": {
@@ -755,7 +755,7 @@ class TestAdapterInfoResolveVarsFailure(unittest.TestCase):
             self._bootstrap(root)
             buf = io.StringIO()
             with patch(
-                "cypilot.commands.resolve_vars._collect_all_variables",
+                "studio.commands.resolve_vars._collect_all_variables",
                 side_effect=ValueError("bad vars"),
             ):
                 with redirect_stdout(buf):

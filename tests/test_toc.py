@@ -8,15 +8,15 @@ from pathlib import Path
 
 import pytest
 
-from cypilot.commands.toc import cmd_toc
-from cypilot.utils.toc import (
+from studio.commands.toc import cmd_toc
+from studio.utils.toc import (
     build_toc as _build_toc,
     parse_headings as _parse_headings,
     process_file as _process_file,
     github_anchor as _slugify,
 )
-from cypilot.commands.validate_toc import cmd_validate_toc
-from cypilot.utils.toc import (
+from studio.commands.validate_toc import cmd_validate_toc
+from studio.utils.toc import (
     build_toc,
     github_anchor,
     insert_toc_heading,
@@ -713,7 +713,7 @@ class TestCmdTocValidation:
 
         from unittest.mock import patch as _p
         fake = {"errors": ["bad toc entry"], "warnings": []}
-        with _p("cypilot.commands.toc._validate_toc", return_value=fake):
+        with _p("studio.commands.toc._validate_toc", return_value=fake):
             import io, json
             buf = io.StringIO()
             from contextlib import redirect_stdout
@@ -733,7 +733,7 @@ class TestCmdTocValidation:
 
         from unittest.mock import patch as _p
         fake = {"errors": [], "warnings": ["minor issue"]}
-        with _p("cypilot.commands.toc._validate_toc", return_value=fake):
+        with _p("studio.commands.toc._validate_toc", return_value=fake):
             import io, json
             buf = io.StringIO()
             from contextlib import redirect_stdout
@@ -860,12 +860,12 @@ class TestInsertTocMarkersFenceAware:
 
 class TestArtifactKindConstraintsToc:
     def test_toc_default_true(self):
-        from cypilot.utils.constraints import ArtifactKindConstraints
+        from studio.utils.constraints import ArtifactKindConstraints
         c = ArtifactKindConstraints(name=None, description=None, defined_id=[])
         assert c.toc is True
 
     def test_parse_toc_false(self):
-        from cypilot.utils.constraints import parse_kit_constraints
+        from studio.utils.constraints import parse_kit_constraints
         data = {
             "TEST": {
                 "toc": False,
@@ -878,7 +878,7 @@ class TestArtifactKindConstraintsToc:
         assert kc.by_kind["TEST"].toc is False
 
     def test_parse_toc_absent_defaults_true(self):
-        from cypilot.utils.constraints import parse_kit_constraints
+        from studio.utils.constraints import parse_kit_constraints
         data = {
             "TEST": {
                 "identifiers": {},

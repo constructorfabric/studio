@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from cypilot.utils.manifest import (
+from studio.utils.manifest import (
     AgentEntry,
     ManifestLayer,
     ManifestLayerState,

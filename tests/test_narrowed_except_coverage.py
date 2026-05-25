@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "sc
 
 
 def _write_toml(path: Path, data: dict) -> None:
-    from cypilot.utils import toml_utils
+    from studio.utils import toml_utils
     path.parent.mkdir(parents=True, exist_ok=True)
     toml_utils.dump(data, path)
 
@@ -32,7 +32,7 @@ class TestRemoveSystemFromCoreTomlErrors(unittest.TestCase):
 
     def test_corrupt_core_toml_returns_false(self):
         """OSError/ValueError on read → returns False."""
-        from cypilot.commands.update import _remove_system_from_core_toml
+        from studio.commands.update import _remove_system_from_core_toml
         with TemporaryDirectory() as td:
             config = Path(td)
             core = config / "core.toml"
@@ -44,13 +44,13 @@ class TestRemoveSystemFromCoreTomlErrors(unittest.TestCase):
 
     def test_write_failure_returns_false(self):
         """OSError on write → returns False."""
-        from cypilot.commands.update import _remove_system_from_core_toml
+        from studio.commands.update import _remove_system_from_core_toml
         with TemporaryDirectory() as td:
             config = Path(td)
             _write_toml(config / "core.toml", {"system": {"name": "test"}})
             err = io.StringIO()
             with redirect_stderr(err), \
-                 patch("cypilot.utils.toml_utils.dump", side_effect=OSError("disk full")):
+                 patch("studio.utils.toml_utils.dump", side_effect=OSError("disk full")):
                 result = _remove_system_from_core_toml(config)
             self.assertFalse(result)
 
@@ -59,7 +59,7 @@ class TestDeduplicateLegacyKitsErrors(unittest.TestCase):
     """Cover except clause in _deduplicate_legacy_kits."""
 
     def test_corrupt_core_toml_returns_empty(self):
-        from cypilot.commands.update import _deduplicate_legacy_kits
+        from studio.commands.update import _deduplicate_legacy_kits
         with TemporaryDirectory() as td:
             config = Path(td)
             (config / "core.toml").write_bytes(b"\x80\x81")
@@ -72,7 +72,7 @@ class TestDeduplicateLegacyKitsErrors(unittest.TestCase):
 
     def test_write_failure_still_returns_renamed(self):
         """toml_utils.dump raises → except swallows, still returns renamed."""
-        from cypilot.commands.update import _deduplicate_legacy_kits
+        from studio.commands.update import _deduplicate_legacy_kits
         with TemporaryDirectory() as td:
             config = Path(td)
             _write_toml(config / "core.toml", {
@@ -81,13 +81,13 @@ class TestDeduplicateLegacyKitsErrors(unittest.TestCase):
                     "sdlc": {"path": "config/kits/sdlc"},
                 },
             })
-            with patch("cypilot.utils.toml_utils.dump", side_effect=OSError("read-only")):
+            with patch("studio.utils.toml_utils.dump", side_effect=OSError("read-only")):
                 result = _deduplicate_legacy_kits(config)
             self.assertIn("cypilot-sdlc", result)
 
     def test_artifacts_toml_write_failure_swallowed(self):
         """OSError writing artifacts.toml is swallowed."""
-        from cypilot.commands.update import _deduplicate_legacy_kits
+        from studio.commands.update import _deduplicate_legacy_kits
         with TemporaryDirectory() as td:
             config = Path(td)
             _write_toml(config / "core.toml", {
@@ -109,9 +109,9 @@ class TestDeduplicateLegacyKitsErrors(unittest.TestCase):
                     return orig_dump(*a, **kw)
                 raise OSError("read-only fs")
 
-            from cypilot.utils import toml_utils
+            from studio.utils import toml_utils
             orig_dump = toml_utils.dump
-            with patch("cypilot.utils.toml_utils.dump", side_effect=_selective_fail):
+            with patch("studio.utils.toml_utils.dump", side_effect=_selective_fail):
                 result = _deduplicate_legacy_kits(config)
             self.assertIn("cypilot-sdlc", result)
 
@@ -120,7 +120,7 @@ class TestMigrateKitSourcesErrors(unittest.TestCase):
     """Cover except clauses in _migrate_kit_sources."""
 
     def test_corrupt_core_toml_returns_empty(self):
-        from cypilot.commands.update import _migrate_kit_sources
+        from studio.commands.update import _migrate_kit_sources
         with TemporaryDirectory() as td:
             config = Path(td)
             (config / "core.toml").write_bytes(b"\xff\xfe")
@@ -132,7 +132,7 @@ class TestMigrateKitSourcesErrors(unittest.TestCase):
             self.assertIn("skipping migration", err.getvalue())
 
     def test_write_failure_still_returns_migrated(self):
-        from cypilot.commands.update import _migrate_kit_sources
+        from studio.commands.update import _migrate_kit_sources
         with TemporaryDirectory() as td:
             config = Path(td)
             _write_toml(config / "core.toml", {
@@ -140,7 +140,7 @@ class TestMigrateKitSourcesErrors(unittest.TestCase):
             })
             err = io.StringIO()
             with redirect_stderr(err), \
-                 patch("cypilot.utils.toml_utils.dump", side_effect=OSError("no space")):
+                 patch("studio.utils.toml_utils.dump", side_effect=OSError("no space")):
                 result = _migrate_kit_sources(config)
             self.assertIn("sdlc", result)
             self.assertIn("kit source migration write failed", err.getvalue())
@@ -154,7 +154,7 @@ class TestKitHelperErrors(unittest.TestCase):
     """Cover except clauses in kit.py config helpers."""
 
     def test_read_kit_slug_corrupt_toml(self):
-        from cypilot.commands.kit import _read_kit_slug
+        from studio.commands.kit import _read_kit_slug
         with TemporaryDirectory() as td:
             src = Path(td)
             (src / "conf.toml").write_bytes(b"\x80\x81")
@@ -164,7 +164,7 @@ class TestKitHelperErrors(unittest.TestCase):
             self.assertEqual(result, "")
 
     def test_read_kit_version_from_core_corrupt(self):
-        from cypilot.commands.kit import _read_kit_version_from_core
+        from studio.commands.kit import _read_kit_version_from_core
         with TemporaryDirectory() as td:
             config = Path(td)
             (config / "core.toml").write_bytes(b"\xff\xfe")
@@ -174,13 +174,13 @@ class TestKitHelperErrors(unittest.TestCase):
             self.assertEqual(result, "")
 
     def test_register_kit_write_failure(self):
-        from cypilot.commands.kit import _register_kit_in_core_toml
+        from studio.commands.kit import _register_kit_in_core_toml
         with TemporaryDirectory() as td:
             config = Path(td)
             _write_toml(config / "core.toml", {"kits": {}})
             err = io.StringIO()
             with redirect_stderr(err), \
-                 patch("cypilot.utils.toml_utils.dump", side_effect=OSError("full")):
+                 patch("studio.utils.toml_utils.dump", side_effect=OSError("full")):
                 _register_kit_in_core_toml(config, Path(td), "test-kit", "1.0")
             self.assertIn("failed to register", err.getvalue())
 
@@ -193,7 +193,7 @@ class TestWorkspaceInitPositiveInt(unittest.TestCase):
     """Cover ValueError → ArgumentTypeError in _positive_int."""
 
     def test_non_integer_raises(self):
-        from cypilot.commands.workspace_init import cmd_workspace_init
+        from studio.commands.workspace_init import cmd_workspace_init
         buf = io.StringIO()
         err = io.StringIO()
         with self.assertRaises(SystemExit) as cm, \
@@ -231,7 +231,7 @@ class TestContextAdapterResolutionFailure(unittest.TestCase):
 
     def test_adapter_dir_none_returns_none(self):
         """adapter_dir is None → sets _adapter_resolved = True, returns None (line 591)."""
-        from cypilot.utils.context import SourceContext, resolve_adapter_context
+        from studio.utils.context import SourceContext, resolve_adapter_context
         sc = SourceContext.__new__(SourceContext)
         sc.name = "test"
         sc.adapter_dir = None
@@ -245,7 +245,7 @@ class TestContextAdapterResolutionFailure(unittest.TestCase):
 
     def test_adapter_dir_missing_returns_none(self):
         """adapter_dir doesn't exist → sets _adapter_resolved = True, returns None (line 601)."""
-        from cypilot.utils.context import SourceContext, resolve_adapter_context
+        from studio.utils.context import SourceContext, resolve_adapter_context
         sc = SourceContext.__new__(SourceContext)
         sc.name = "test"
         sc.adapter_dir = Path("/nonexistent/adapter")
@@ -266,7 +266,7 @@ class TestValidateScanError(unittest.TestCase):
     """Cover except (OSError, ValueError) in validate cross-validation."""
 
     def test_scan_cpt_ids_oserror_continues(self):
-        from cypilot.utils.document import scan_cpt_ids
+        from studio.utils.document import scan_cpt_ids
         with TemporaryDirectory() as td:
             bad = Path(td) / "nonexistent.md"
             try:
@@ -283,13 +283,13 @@ class TestArtifactsMetaScanError(unittest.TestCase):
     """Cover except (OSError, ValueError) in _collect_def_ids_from_artifacts."""
 
     def test_scan_ids_oserror_appends_error(self):
-        from cypilot.utils.artifacts_meta import _collect_def_ids_from_artifacts
+        from studio.utils.artifacts_meta import _collect_def_ids_from_artifacts
         errors = []
         art = MagicMock()
         art.path = "broken.md"
         with TemporaryDirectory() as td:
             resolve_fn = lambda p: Path(td) / p
-            with patch("cypilot.utils.document.scan_cpt_ids",
+            with patch("studio.utils.document.scan_cpt_ids",
                         side_effect=OSError("permission denied")):
                 ids, has = _collect_def_ids_from_artifacts([art], resolve_fn, errors=errors)
             self.assertEqual(ids, [])
@@ -306,7 +306,7 @@ class TestFilesUnicodeDecodeError(unittest.TestCase):
 
     def test_find_project_root_unicode_error(self):
         """files.py:72 — AGENTS.md with invalid UTF-8 → head = ''."""
-        from cypilot.utils.files import find_project_root
+        from studio.utils.files import find_project_root
         with TemporaryDirectory() as td:
             root = Path(td)
             agents = root / "AGENTS.md"
@@ -317,7 +317,7 @@ class TestFilesUnicodeDecodeError(unittest.TestCase):
 
     def test_read_cypilot_var_unicode_error(self):
         """files.py:101 — AGENTS.md with invalid UTF-8 → returns None."""
-        from cypilot.utils.files import _read_cypilot_var
+        from studio.utils.files import _read_cypilot_var
         with TemporaryDirectory() as td:
             root = Path(td)
             agents = root / "AGENTS.md"
@@ -334,7 +334,7 @@ class TestContextAdapterLoadFailure(unittest.TestCase):
     """Cover context.py:601 — CypilotContext.load_from_dir raises."""
 
     def test_adapter_load_raises_oserror(self):
-        from cypilot.utils.context import SourceContext, resolve_adapter_context, CypilotContext
+        from studio.utils.context import SourceContext, resolve_adapter_context, CypilotContext
         with TemporaryDirectory() as td:
             adapter = Path(td) / "adapter"
             adapter.mkdir()
@@ -362,7 +362,7 @@ class TestLoadArtifactsMetaNonDict(unittest.TestCase):
     def test_non_dict_root_returns_error(self):
         """Place artifacts.toml in config/ (primary path) and mock tomllib.load
         to return a list, triggering the isinstance(data, dict) guard."""
-        from cypilot.utils.artifacts_meta import load_artifacts_meta
+        from studio.utils.artifacts_meta import load_artifacts_meta
         with TemporaryDirectory() as td:
             adapter = Path(td)
             cfg = adapter / "config"
@@ -388,7 +388,7 @@ class TestArtifactsMetaSystemPrefixError(unittest.TestCase):
     """Cover artifacts_meta.py:1010 — ValueError/AttributeError in get_hierarchy_prefix."""
 
     def test_broken_system_node_swallowed(self):
-        from cypilot.utils.artifacts_meta import ArtifactsMeta, SystemNode
+        from studio.utils.artifacts_meta import ArtifactsMeta, SystemNode
         meta = ArtifactsMeta.from_dict({
             "version": "1.0",
             "project_root": "..",
@@ -410,12 +410,12 @@ class TestValidateKitsManifestOSError(unittest.TestCase):
     """Cover validate_kits.py:300 — except (OSError, KeyError) in manifest validation."""
 
     def test_manifest_load_oserror_swallowed(self):
-        from cypilot.commands.validate_kits import _validate_kit_by_path
+        from studio.commands.validate_kits import _validate_kit_by_path
         with TemporaryDirectory() as td:
             kit = Path(td) / "test-kit"
             kit.mkdir()
             (kit / "constraints.toml").write_text("", encoding="utf-8")
-            with patch("cypilot.utils.manifest.load_manifest", side_effect=OSError("perm")):
+            with patch("studio.utils.manifest.load_manifest", side_effect=OSError("perm")):
                 rc, report = _validate_kit_by_path(kit)
             self.assertIsInstance(report, dict)
 
@@ -428,8 +428,8 @@ class TestCliAgentsInjectionError(unittest.TestCase):
     """Cover cli.py:272 — except in agents integrity check."""
 
     def test_inject_agents_oserror_swallowed(self):
-        from cypilot.cli import main
-        from cypilot.utils.context import CypilotContext
+        from studio.cli import main
+        from studio.utils.context import CypilotContext
         dummy_ctx = CypilotContext.__new__(CypilotContext)
         with TemporaryDirectory() as td:
             root = Path(td)
@@ -446,8 +446,8 @@ class TestCliAgentsInjectionError(unittest.TestCase):
                 buf = io.StringIO()
                 err = io.StringIO()
                 with redirect_stdout(buf), redirect_stderr(err), \
-                     patch("cypilot.utils.context.CypilotContext.load", return_value=dummy_ctx), \
-                     patch("cypilot.commands.init._inject_root_agents", side_effect=OSError("broken")):
+                     patch("studio.utils.context.CypilotContext.load", return_value=dummy_ctx), \
+                     patch("studio.commands.init._inject_root_agents", side_effect=OSError("broken")):
                     rc = main(["info"])
                 # info may return non-zero if project isn't fully set up,
                 # but the agents-injection OSError must be silently swallowed
@@ -465,7 +465,7 @@ class TestAgentsIterdirOSError(unittest.TestCase):
     """Cover agents.py:295 — except OSError on config_kits.iterdir()."""
 
     def test_iterdir_oserror_returns_empty(self):
-        from cypilot.commands.agents import _discover_kit_agents
+        from studio.commands.agents import _discover_kit_agents
         with TemporaryDirectory() as td:
             root = Path(td)
             cypilot_root = root / "cpt"
@@ -495,8 +495,8 @@ class TestUpdateValidateKitsFailure(unittest.TestCase):
     def test_validate_kits_raises_appends_error(self):
         # CR-T6-008: run_validate_kits exception now appends to errors (was warnings).
         # CR-T6-007: cmd_update returns 1 when errors is non-empty.
-        from cypilot.commands.update import cmd_update
-        from cypilot.utils.ui import set_json_mode
+        from studio.commands.update import cmd_update
+        from studio.utils.ui import set_json_mode
         import json
 
         set_json_mode(True)
@@ -521,8 +521,8 @@ class TestUpdateValidateKitsFailure(unittest.TestCase):
                 cwd = os.getcwd()
                 try:
                     os.chdir(str(root))
-                    with patch("cypilot.commands.update.CACHE_DIR", cache), \
-                         patch("cypilot.commands.validate_kits.run_validate_kits",
+                    with patch("studio.commands.update.CACHE_DIR", cache), \
+                         patch("studio.commands.validate_kits.run_validate_kits",
                                side_effect=OSError("validate broke")):
                         buf = io.StringIO()
                         err = io.StringIO()
