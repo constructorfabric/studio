@@ -245,6 +245,36 @@ RULES:
     workflows/generate/phase-0-git-commit-mode.md
   - Orthogonal to CF_PHASE_GATE: GIT_COMMIT_MODE guards git;
     CF_PHASE_GATE guards write tools
+
+WHEN:
+  GIT_COMMIT_MODE == unset
+
+DO:
+  EMIT_MENU GitCommitModeProbe
+  WAIT user.reply
+  STOP_TURN
+
+MENU GitCommitModeProbe:
+  TITLE: Git commit mode for this session (reply 1, 2, or 3)
+  OPTIONS:
+    1 commit ->
+      SET GIT_COMMIT_MODE = commit
+      CONTINUE CurrentWorkflow
+    2 stage ->
+      SET GIT_COMMIT_MODE = stage
+      CONTINUE CurrentWorkflow
+    3 none ->
+      SET GIT_COMMIT_MODE = none
+      CONTINUE CurrentWorkflow
+  INVALID:
+    EMIT "Reply with 1, 2, or 3."
+    WAIT user.reply
+    STOP_TURN
+
+NOTES:
+  Verbatim user-facing prompt text and full mode semantics are the canonical
+  source of truth in workflows/generate/phase-0-git-commit-mode.md.
+  This MENU captures only the state-machine surface; do not duplicate prose here.
 ```
 
 ---
