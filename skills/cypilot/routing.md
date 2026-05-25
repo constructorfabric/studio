@@ -20,7 +20,9 @@ Workflow routing priority:
    open and follow `workflows/analyze.md`.
 7. workspace / multi-repo / add source / cross-reference ->
    open and follow `workflows/workspace.md`.
-8. migrate from cypilot -> open and follow `migrate-from-cypilot.md`.
+8. map / dependency map / cfc map / visualize dependencies / render graph ->
+   open and follow `workflows/cf-constructor-map.md`.
+9. migrate from cypilot -> open and follow `migrate-from-cypilot.md`.
 
 Compound find+fix intent: when a request matches keywords from BOTH entry 5 (`fix`/`update`/`refactor`) and entry 6 (`find bugs`/`bug hunt`/`audit`/`review`), prefer entry 6 (`analyze`) — the analyze run produces findings, then offers a Remediation Handoff that routes into `generate` if the user accepts. Routing both to `generate` skips the find phase entirely.
 
