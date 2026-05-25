@@ -21,7 +21,7 @@ version: 1.0
 allows file writes and the offer included the explicit `save` option. When the
 user picked `save` in that write-allowed offer, the orchestrator writes
 `state.json` to
-`{cf-constructor-path}/.cache/brainstorm/{session_id}/state.json` after every
+`{cf-studio-path}/.cache/brainstorm/{session_id}/state.json` after every
 round (durable across compaction) and, on loop exit, also emits `design.md`
 (human-readable consolidated decisions + open questions + panel transcript)
 in the same directory. Skipped/declined brainstorm leaves no artifacts.
@@ -48,13 +48,13 @@ recovery is needed in chat-only mode, emit an in-chat checkpoint instead.
 ### Standalone use
 
 The brainstorm session is invokable outside the `generate` flow via the
-`cf-constructor` skill router (no separate workflow file). Standalone mode
+`cf` skill router (no separate workflow file). Standalone mode
 runs the same facilitator → round-loop sequence, first asks for chat-only vs
 `save`, and writes the final design to the brainstorm cache directory only
 when the user explicitly selects `save`.
 
 ### Cache retention (TTL)
 
-Saved brainstorm caches under `{cf-constructor-path}/.cache/brainstorm/{session_id}/` MUST be retained only when (newer than 30 days) OR (one of the last 10 sessions).
+Saved brainstorm caches under `{cf-studio-path}/.cache/brainstorm/{session_id}/` MUST be retained only when (newer than 30 days) OR (one of the last 10 sessions).
 
 Retention is currently advisory; cleanup is manual (delete entries older than the retention window).

@@ -1,5 +1,5 @@
 ---
-cf-constructor: true
+cf: true
 type: workflow
 parent: workflows/workspace.md
 description: "Invoke when the workspace workflow enters Phase 3 to write standalone or inline workspace configuration via CLI."
@@ -22,7 +22,7 @@ MUST NOT infer confirmation from partially edited source proposals.
 Also require a valid final workspace location for the selected sources before
 invoking the CLI:
 
-- standalone mode → `{project_root}/.cf-constructor-workspace.toml` must be the
+- standalone mode → `{project_root}/.studio-workspace.toml` must be the
   final confirmed destination
 - inline mode → `{project_root}/config/core.toml` must be the final confirmed
   destination and no selected source may use a Git URL
@@ -37,7 +37,7 @@ Set CF_PHASE_GATE=released_for_orchestrator_write with scope =
 `workspace_config_path` is always a file path or path-prefix accepted by the
 gate:
 
-- standalone mode → `{project_root}/.cf-constructor-workspace.toml`
+- standalone mode → `{project_root}/.studio-workspace.toml`
 - inline mode → `{project_root}/config/core.toml`
 
 The logical `[workspace]` TOML section is part of the inline write target, but
@@ -45,8 +45,8 @@ it is **not** itself a valid gate scope.
 
 | Action | Command |
 |---|---|
-| Initialize workspace | `{cfc_cmd} --json workspace-init [--root <super-root>] [--output <path>] [--inline] [--force] [--dry-run]` |
-| Add one source | `{cfc_cmd} --json workspace-add --name <name> (--path <path> \| --url <url>) [--branch <branch>] [--role <role>] [--adapter <path>] [--inline]` |
+| Initialize workspace | `{cfs_cmd} --json workspace-init [--root <super-root>] [--output <path>] [--inline] [--force] [--dry-run]` |
+| Add one source | `{cfs_cmd} --json workspace-add --name <name> (--path <path> \| --url <url>) [--branch <branch>] [--role <role>] [--adapter <path>] [--inline]` |
 
 `workspace-init` writes standalone config by default; `--inline` writes
 `[workspace]` into `config/core.toml`. `workspace-add` auto-detects workspace

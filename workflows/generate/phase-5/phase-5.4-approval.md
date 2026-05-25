@@ -1,5 +1,5 @@
 ---
-cf-constructor: true
+cf: true
 type: workflow-fragment
 parent: workflows/generate.md
 description: Invoke when the iteration is mixed or judgmental-only (judgmental non-empty) and the user-approval gate must be presented before any author fix dispatch.
@@ -13,7 +13,7 @@ description: Invoke when the iteration is mixed or judgmental-only (judgmental n
 
 ### Phase 5.4: User-Approval Gate (judgmental findings)
 
-Requires: `workflows/shared/inline-fallback-probe.md` before any `cf-constructor-*` sub-agent dispatch. Pre-dispatch fail-stop and Mode B degradation rules are defined in `{cf-constructor-path}/.core/skills/cypilot/sub-agent-dispatch.md`.
+Requires: `workflows/shared/inline-fallback-probe.md` before any `cf-*` sub-agent dispatch. Pre-dispatch fail-stop and Mode B degradation rules are defined in `{cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md`.
 
 Enter this gate ONLY when `judgmental` is non-empty (mixed or judgmental-only iterations). The full findings list — both mechanical and judgmental, each with classification + `mechanical_rationale` — has already been rendered in `workflows/generate/phase-5/phase-5.3-findings.md` § Findings display and serves as the user's audit reference for this prompt. Do NOT re-render it here.
 

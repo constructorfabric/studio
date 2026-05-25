@@ -62,7 +62,7 @@ class TestResolveResourceBindings(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "mykit": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "config/kits/mykit",
                         "version": "2.0",
                         "resources": {
@@ -208,7 +208,7 @@ class TestResolveResourceBindings(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "legacykit": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "config/kits/legacykit",
                         "version": "1.0",
                     },
@@ -365,7 +365,7 @@ class TestLoadedKitResourceBindings(unittest.TestCase):
         from cypilot.utils.context import LoadedKit
         from cypilot.utils.artifacts_meta import Kit
 
-        kit = Kit(kit_id="mykit", format="Cypilot", path="config/kits/mykit")
+        kit = Kit(kit_id="mykit", format="CFS", path="config/kits/mykit")
         lk = LoadedKit(
             kit=kit,
             templates={},
@@ -379,7 +379,7 @@ class TestLoadedKitResourceBindings(unittest.TestCase):
         from cypilot.utils.context import LoadedKit
         from cypilot.utils.artifacts_meta import Kit
 
-        kit = Kit(kit_id="mykit", format="Cypilot", path="config/kits/mykit")
+        kit = Kit(kit_id="mykit", format="CFS", path="config/kits/mykit")
         lk = LoadedKit(kit=kit, templates={})
         self.assertIsNone(lk.resource_bindings)
 
@@ -400,7 +400,7 @@ class TestLoadedKitResourceBindings(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "sdlc": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "config/kits/sdlc",
                         "version": "2.0",
                         "resources": {
@@ -415,7 +415,7 @@ class TestLoadedKitResourceBindings(unittest.TestCase):
                 "version": "1.0",
                 "project_root": "..",
                 "kits": {
-                    "sdlc": {"format": "Cypilot", "path": "config/kits/sdlc"},
+                    "sdlc": {"format": "CFS", "path": "config/kits/sdlc"},
                 },
                 "systems": [{"name": "Test", "slug": "test", "kit": "sdlc"}],
             }, config / "artifacts.toml")
@@ -452,7 +452,7 @@ class TestLoadedKitResourceBindings(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "sdlc": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": str(absolute_kit_dir),
                         "version": "2.0",
                     },
@@ -463,7 +463,7 @@ class TestLoadedKitResourceBindings(unittest.TestCase):
                 "version": "1.0",
                 "project_root": "..",
                 "kits": {
-                    "sdlc": {"format": "Cypilot", "path": stale_registry_path},
+                    "sdlc": {"format": "CFS", "path": stale_registry_path},
                 },
                 "systems": [{"name": "Test", "slug": "test", "kit": "sdlc"}],
             }, config / "artifacts.toml")
@@ -495,7 +495,7 @@ class TestLoadedKitResourceBindings(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "sdlc": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "config/kits/sdlc",
                         "version": "2.0",
                         "resources": {
@@ -509,7 +509,7 @@ class TestLoadedKitResourceBindings(unittest.TestCase):
                 "version": "1.0",
                 "project_root": "..",
                 "kits": {
-                    "sdlc": {"format": "Cypilot", "path": "config/kits/sdlc"},
+                    "sdlc": {"format": "CFS", "path": "config/kits/sdlc"},
                 },
                 "systems": [{"name": "Test", "slug": "test", "kit": "sdlc"}],
             }, config / "artifacts.toml")
@@ -541,7 +541,7 @@ class TestLoadedKitResourceBindings(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "sdlc": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "config/kits/sdlc",
                         "version": "1.0",
                     },
@@ -552,7 +552,7 @@ class TestLoadedKitResourceBindings(unittest.TestCase):
                 "version": "1.0",
                 "project_root": "..",
                 "kits": {
-                    "sdlc": {"format": "Cypilot", "path": "config/kits/sdlc"},
+                    "sdlc": {"format": "CFS", "path": "config/kits/sdlc"},
                 },
                 "systems": [{"name": "Test", "slug": "test", "kit": "sdlc"}],
             }, config / "artifacts.toml")
@@ -582,7 +582,7 @@ class TestLoadedKitResourceBindings(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "sdlc": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "config/kits/sdlc",
                         "version": "2.0",
                         "resources": {
@@ -596,7 +596,7 @@ class TestLoadedKitResourceBindings(unittest.TestCase):
                 "version": "1.0",
                 "project_root": "..",
                 "kits": {
-                    "sdlc": {"format": "Cypilot", "path": "config/kits/sdlc"},
+                    "sdlc": {"format": "CFS", "path": "config/kits/sdlc"},
                 },
                 "systems": [{"name": "Test", "slug": "test", "kit": "sdlc"}],
             }, config / "artifacts.toml")
@@ -645,7 +645,7 @@ class TestAdapterInfoResources(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "sdlc": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "config/kits/sdlc",
                         "version": "2.0",
                         "resources": {
@@ -693,7 +693,7 @@ class TestAdapterInfoResources(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "legacykit": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "config/kits/legacykit",
                         "version": "1.0",
                     },

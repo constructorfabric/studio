@@ -1921,8 +1921,8 @@ class TestDeduplicateLegacyKits(unittest.TestCase):
             config = Path(td)
             toml_utils.dump({
                 "kits": {
-                    "cypilot-sdlc": {"path": "config/kits/sdlc", "format": "Cypilot"},
-                    "sdlc": {"path": "config/kits/sdlc", "format": "Cypilot"},
+                    "cypilot-sdlc": {"path": "config/kits/sdlc", "format": "CFS"},
+                    "sdlc": {"path": "config/kits/sdlc", "format": "CFS"},
                 },
             }, config / "core.toml")
             result = _deduplicate_legacy_kits(config)
@@ -2276,7 +2276,7 @@ class TestRemoveSystemFromCoreToml(unittest.TestCase):
                 "version": "1.0",
                 "project_root": "..",
                 "system": {"name": "Test", "slug": "test", "kit": "sdlc"},
-                "kits": {"sdlc": {"format": "Cypilot", "path": "config/kits/sdlc"}},
+                "kits": {"sdlc": {"format": "CFS", "path": "config/kits/sdlc"}},
             })
             result = _remove_system_from_core_toml(config_dir)
             self.assertTrue(result)
@@ -2399,7 +2399,7 @@ def _setup_legacy_adapter(td: Path, slug: str = "testkit") -> Path:
         "project_root": "..",
         "kits": {
             slug: {
-                "format": "Cypilot",
+                "format": "CFS",
                 "path": f"config/kits/{slug}",
                 "version": "2.0",
             }
@@ -2546,7 +2546,7 @@ class TestCmdUpdateManifestMigration(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "sdlc": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "config/kits/sdlc",
                         "version": "2.0",
                     },
@@ -2694,7 +2694,7 @@ class TestCmdUpdateManifestMigration(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "sdlc": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "config/kits/sdlc",
                         "version": "2.0",
                         "resources": {
@@ -2777,7 +2777,7 @@ class TestCmdUpdateManifestMigration(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "sdlc": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "config/kits/sdlc",
                         "version": "2.0",
                     },

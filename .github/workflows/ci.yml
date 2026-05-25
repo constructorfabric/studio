@@ -1,4 +1,4 @@
-# @cpt-algo:cpt-cypilot-spec-init-structure-change-infrastructure:p1
+# @cpt-algo:cpt-studio-spec-init-structure-change-infrastructure:p1
 name: CI
 
 on:
@@ -153,10 +153,10 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Validate core methodology
-        run: make CPT="python3 .bootstrap/.core/skills/cypilot/scripts/cypilot.py" validate
+        run: make CPT="python3 .bootstrap/.core/skills/studio/scripts/studio.py" validate
 
       - name: Self-check SDLC examples
-        run: make CPT="python3 .bootstrap/.core/skills/cypilot/scripts/cypilot.py" self-check
+        run: make CPT="python3 .bootstrap/.core/skills/studio/scripts/studio.py" self-check
 
   validate-kits:
     name: Validate Kits (Python ${{ matrix.python-version }})
@@ -173,4 +173,4 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Validate all registered kits
-        run: make CPT="python3 .bootstrap/.core/skills/cypilot/scripts/cypilot.py" validate-kits
+        run: make CPT="python3 .bootstrap/.core/skills/studio/scripts/studio.py" validate-kits

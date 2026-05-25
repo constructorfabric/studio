@@ -26,18 +26,18 @@ version: 1.0
   `PROMPT_REVIEW=true`.
 - Explain/storytelling context → `EXPLAIN_MODE=true`; storytelling handoff and
   routing invariants are owned by `workflows/analyze/preamble.md` and
-  `{cf-constructor-path}/.core/requirements/storytelling.md`.
+  `{cf-studio-path}/.core/requirements/storytelling.md`.
 - Review of a commit, branch, patch, diff, or worktree → `CHANGE_REVIEW=true`.
 - Artifact target review -> `ARTIFACT_REVIEW=true` when the resolved target is
   an artifact and no prompt/code-specific methodology has taken ownership.
 
 Do NOT open code methodology files in the orchestrator. Do NOT open prompt methodology files in the orchestrator. Phase 3 dispatches one sub-agent per selected methodology.
 
-Variable checkpoint: `{cfc_cmd}`, `{cf-constructor-path}`, and `{project_root}`
-come from `skills/cypilot/protocol.md`; re-run info after context loss.
+Variable checkpoint: `{cfs_cmd}`, `{cf-studio-path}`, and `{project_root}`
+come from `skills/studio/protocol.md`; re-run info after context loss.
 
 Requires: `workflows/shared/inline-fallback-probe.md` before any
-`cf-constructor-*` sub-agent dispatch.
+`cf-*` sub-agent dispatch.
 
 Open, load, and follow `workflows/shared/inline-fallback-probe.md` now.
 
@@ -51,10 +51,10 @@ turn the orchestrator MUST re-enter Phase 0 at the post-probe continuation point
 run.
 
 Open, load, and follow `workflows/analyze/phase-0-change-review-scope.md` WHEN
-`CHANGE_REVIEW=true`; this dispatches `cf-constructor-diff-scope-resolver`.
+`CHANGE_REVIEW=true`; this dispatches `cf-diff-scope-resolver`.
 The orchestrator MUST NOT run `git diff`.
 
-Open, load, and follow `{cf-constructor-path}/.core/requirements/raw-input-overflow.md`.
+Open, load, and follow `{cf-studio-path}/.core/requirements/raw-input-overflow.md`.
 
 Artifact review dependencies: if `ARTIFACT_REVIEW=true` and `rules.md` is
 loaded, dependencies are resolved. If artifact review dependencies are missing,

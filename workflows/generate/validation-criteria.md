@@ -1,5 +1,5 @@
 ---
-cf-constructor: true
+cf: true
 type: workflow-fragment
 parent: workflows/generate.md
 description: Invoke when the orchestrator needs the canonical generate-workflow validation checklist and Agent Self-Test (post-flight gate before ending the response).
@@ -14,7 +14,7 @@ description: Invoke when the orchestrator needs the canonical generate-workflow 
 
 ## Validation Criteria
 
-- [ ] `{cf-constructor-path}/.core/skills/cypilot/protocol.md` executed
+- [ ] `{cf-studio-path}/.core/skills/studio/protocol.md` executed
 - [ ] Phase-appropriate dependencies loaded (generation: template/example unless checklist explicitly required; validation/review: checklist when applicable)
 - [ ] System context clarified (if using rules)
 - [ ] Output destination clarified
@@ -31,7 +31,7 @@ description: Invoke when the orchestrator needs the canonical generate-workflow 
 - [ ] File written after confirmation (if file output)
 - [ ] Artifacts registry updated (if file output + rules)
 - [ ] Validation executed
-- [ ] Language content check executed (`{cfc_cmd} check-language`) when `allowed_content_languages` is configured
+- [ ] Language content check executed (`{cfs_cmd} check-language`) when `allowed_content_languages` is configured
 - [ ] Exact deterministic validator command(s), per-command validator results, and overall deterministic gate recorded
 - [ ] `Validator availability proof` recorded when deterministic gate is `SKIPPED`
 - [ ] `Semantic review basis` recorded
@@ -71,5 +71,5 @@ Sample:
 
 RELAXED mode disclaimer:
 ```text
-⚠️ Self-test skipped (RELAXED mode — no Cyber Constructor rules)
+⚠️ Self-test skipped (RELAXED mode — no Constructor Studio rules)
 ```

@@ -1,11 +1,11 @@
 ---
-cypilot: true
+studio: true
 type: spec
 name: Template Specification
 version: 1.0
 purpose: Define the format, structure, and usage of template.md kit files
 drivers:
-  - cpt-cypilot-fr-core-kits
+  - cpt-studio-fr-core-kits
 ---
 
 # Template Specification (template.md)
@@ -41,7 +41,7 @@ drivers:
 
 ## Location
 
-**Per-artifact**: `{cf-constructor-path}/config/kits/<slug>/artifacts/<KIND>/template.md`
+**Per-artifact**: `{cf-studio-path}/config/kits/<slug>/artifacts/<KIND>/template.md`
 
 ---
 
@@ -128,5 +128,5 @@ Example `template.md` for a PRD artifact kind:
 
 | Error | Cause | Resolution |
 |-------|-------|------------|
-| `TEMPLATE_NOT_FOUND` | `template.md` missing from kit | Run `cpt kit install` or `cpt kit update --force` to restore |
+| `TEMPLATE_NOT_FOUND` | `template.md` missing from kit | Run `cfs kit install` or `cfs kit update --force` to restore |
 | `TEMPLATE_NO_HEADINGS` | `template.md` has no heading lines | Add at least one Markdown heading to `template.md` |

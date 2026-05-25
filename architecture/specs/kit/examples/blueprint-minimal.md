@@ -1,4 +1,4 @@
-> **DEPRECATED per `cpt-cypilot-adr-remove-blueprint-system`**: Blueprint files are no longer used. Kits are now direct file packages. This example is preserved for legacy reference only.
+> **DEPRECATED per `cpt-studio-adr-remove-blueprint-system`**: Blueprint files are no longer used. Kits are now direct file packages. This example is preserved for legacy reference only.
 
 Minimal Blueprint Example — a blueprint with only core markers and one heading.
 This is the simplest valid blueprint that generates all output files.

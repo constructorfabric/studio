@@ -40,7 +40,7 @@ After emitting the checkpoint, ask:
 Context budget is low after semantic review. Continue to Phase 4 (Output + remediation prompts) in this chat, or start a fresh chat with the checkpoint above?
 
 1. Continue in this chat — proceed to Phase 4 with the checkpoint state already loaded
-2. Emit a fresh-chat resume prompt — produce a self-contained prompt that starts with `Invoke skill cf-constructor` and embeds the checkpoint
+2. Emit a fresh-chat resume prompt — produce a self-contained prompt that starts with `Invoke skill cf` and embeds the checkpoint
 
 Suggested: 1 when enough context remains for Phase 4; 2 when context pressure is high.
 

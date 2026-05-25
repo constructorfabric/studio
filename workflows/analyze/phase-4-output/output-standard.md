@@ -9,7 +9,7 @@ version: 1.0
 <!-- toc -->
 
 - [Standard Analysis Output (non-prompt review)](#standard-analysis-output-non-prompt-review)
-- [Semantic-Only Output (`/cf-constructor-analyze semantic`)](#semantic-only-output-cf-constructor-analyze-semantic)
+- [Semantic-Only Output (`/cf-analyze semantic`)](#semantic-only-output-cf-analyze-semantic)
 
 <!-- /toc -->
 
@@ -28,7 +28,7 @@ version: 1.0
 
 ### 2. Deterministic Gate
 
-Reproduce the canonical `Validation Results` block returned by `cf-constructor-deterministic-validator` (Phase 2 dispatch) verbatim — the block schema is owned by the validator agent file (`{cf-constructor-path}/.core/skills/cypilot/agents/cf-constructor-deterministic-validator.md` § Output) and is NOT redefined here. Embed every field the agent emitted, in the same order, without selecting or filtering.
+Reproduce the canonical `Validation Results` block returned by `cf-deterministic-validator` (Phase 2 dispatch) verbatim — the block schema is owned by the validator agent file (`{cf-studio-path}/.core/skills/studio/agents/cf-deterministic-validator.md` § Output) and is NOT redefined here. Embed every field the agent emitted, in the same order, without selecting or filtering.
 
 ### 3. Semantic Review
 - This section is mandatory in completed analysis output even when category outcomes include `PASS`, `FAIL`, `PARTIAL`, or `N/A`.
@@ -37,7 +37,7 @@ Reproduce the canonical `Validation Results` block returned by `cf-constructor-d
 |----------|--------|----------|
 | {category} | PASS/FAIL/PARTIAL/N/A | {line refs, quotes, or violation description} |
 
-- Categories Summary: Total {N}; PASS {N}; FAIL {N}; PARTIAL {N}; N/A {N}; Unsupported-N/A violations {N} (AP-003 violations — see `{cf-constructor-path}/.core/requirements/agent-compliance.md`)
+- Categories Summary: Total {N}; PASS {N}; FAIL {N}; PARTIAL {N}; N/A {N}; Unsupported-N/A violations {N} (AP-003 violations — see `{cf-studio-path}/.core/requirements/agent-compliance.md`)
 
 ### 4. Agent Self-Test
 - Open, load, and follow `workflows/analyze/agent-self-test.md` § Agent Self-Test (STRICT mode — AFTER completing work) and copy its canonical questions into this table; if RELAXED mode uses a justified subset, state that explicitly.
@@ -60,7 +60,7 @@ Use these same six section titles in both STRICT and RELAXED standard analysis o
 
 Do not emit `Fix Prompt` or `Plan Prompt` blocks from this schema. When actionable issues exist, append the terminal `Remediation Handoff` menu from `workflows/analyze/phase-4-output/remediation-handoff.md`; that file owns the on-demand prompt templates for the next-turn option `2` / `3` emissions.
 
-### Semantic-Only Output (`/cf-constructor-analyze semantic`)
+### Semantic-Only Output (`/cf-analyze semantic`)
 For non-prompt-review semantic-only analysis, reuse the `Standard Analysis Output (non-prompt review)` six-section schema.
 
 Set `### 2. Deterministic Gate` to `Status: SKIPPED`, `Invocation: not run`, and `Notes: semantic-only invocation`.

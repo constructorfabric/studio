@@ -1,16 +1,16 @@
-# Using Cyber Constructor — A Real Conversation (Story)
+# Using Constructor Studio — A Real Conversation (Story)
 
 > **Historical walkthrough**
 >
-> This document is a real transcript from an earlier Cyber Constructor setup and command model.
+> This document is a real transcript from an earlier Constructor Studio setup and command model.
 > Keep it as a historical example, not as the canonical guide to the current product surface.
 > For the current model, start with **[README.md](../README.md)**, then continue with **[USAGE-GUIDE.md](USAGE-GUIDE.md)** and **[AGENT-TOOLS.md](AGENT-TOOLS.md)**.
 
-This is a real IDE conversation with an agent running in **Cyber Constructor mode**.
+This is a real IDE conversation with an agent running in **Constructor Studio mode**.
 
-The goal of this story is to show what Cyber Constructor looks like in practice:
+The goal of this story is to show what Constructor Studio looks like in practice:
 
-- How Cyber Constructor routes requests to the correct workflow (analyze vs generate)
+- How Constructor Studio routes requests to the correct workflow (analyze vs generate)
 - How it loads the required context deterministically (adapter + required docs)
 - How it gates file writes behind explicit confirmation
 

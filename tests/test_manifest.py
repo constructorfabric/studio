@@ -377,7 +377,7 @@ class TestResolveResourceBindings:
             textwrap.dedent(
                 f"""
                 [kits.sdlc]
-                format = "Cypilot"
+                format = "CFS"
                 path = "config/kits/sdlc"
 
                 [kits.sdlc.resources]

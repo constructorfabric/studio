@@ -1,5 +1,5 @@
 ---
-cf-constructor: true
+cf: true
 type: requirement
 name: Reverse Engineering Methodology
 version: 1.0
@@ -36,7 +36,7 @@ purpose: Technology-agnostic methodology for systematic project analysis
 
 **ALWAYS open and follow** this file WHEN the user asks to analyze a codebase, search project code or docs, or generate artifacts/code from existing project structure.
 
-**ALWAYS open and follow** `{cf-constructor-path}/.core/requirements/execution-protocol.md` for workflow context.
+**ALWAYS open and follow** `{cf-studio-path}/.core/requirements/execution-protocol.md` for workflow context.
 
 **Prerequisites**: confirm the agent has read this methodology, has repository access, will execute layers `1 -> 9` in order, and will checkpoint after each layer.
 
@@ -194,9 +194,9 @@ Reverse engineering builds a progressive mental model of a system. The rule is: 
 
 **Required output artifacts**: `System Overview` (max `1` page: purpose, tech stack, architecture style, key components and relationships), `Domain Model`, `Entry Points Catalog`, `Integration Map`, `Conventions Guide`, and `Technical Debt List`.
 
-**Applicability**: greenfield validation before implementation; brownfield understanding before modification; acquisitions/transfers for due diligence and onboarding; legacy modernization to find strangler boundaries; documentation generation as input to Cypilot artifacts.
+**Applicability**: greenfield validation before implementation; brownfield understanding before modification; acquisitions/transfers for due diligence and onboarding; legacy modernization to find strangler boundaries; documentation generation as input to Studio artifacts.
 
-**Integration with Cypilot**: Adapter workflow uses L1-L3 for project scan; Generate workflow uses all layers for artifact creation; Validate workflow uses L4-L7 for traceability verification.
+**Integration with Studio**: Adapter workflow uses L1-L3 for project scan; Generate workflow uses all layers for artifact creation; Validate workflow uses L4-L7 for traceability verification.
 
 ## Error Handling
 
@@ -279,5 +279,5 @@ Reverse engineering builds a progressive mental model of a system. The rule is: 
 
 ## References
 
-- Generate workflow: `{cf-constructor-path}/.core/workflows/generate.md`
-- Execution protocol: `{cf-constructor-path}/.core/requirements/execution-protocol.md`
+- Generate workflow: `{cf-studio-path}/.core/workflows/generate.md`
+- Execution protocol: `{cf-studio-path}/.core/requirements/execution-protocol.md`

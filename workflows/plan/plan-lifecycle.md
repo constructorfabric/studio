@@ -1,7 +1,7 @@
 ---
-cf-constructor: true
+cf: true
 type: reference
-description: "Invoke when Phase 2.1 of /cf-constructor-plan requires the user to select a plan lifecycle strategy — presents the lifecycle menu, records the selection, and defines normative handling rules for each strategy."
+description: "Invoke when Phase 2.1 of /cf-plan requires the user to select a plan lifecycle strategy — presents the lifecycle menu, records the selection, and defines normative handling rules for each strategy."
 loaded_by: workflows/plan.md
 version: 1.0
 ---
@@ -20,11 +20,11 @@ version: 1.0
 
 Ask how completed plans should be handled:
 ```text
-Plan files are stored in {cf-constructor-path}/.plans/{task-slug}/.
+Plan files are stored in {cf-studio-path}/.plans/{task-slug}/.
 How should completed plans be handled?
   [1] .gitignore — keep plan files in place and ensure .plans/ is gitignored
   [2] Cleanup phase — add a final Cleanup phase that removes compiled plan artifacts after delivery phases pass
-  [3] Archive — move the plan directory to {cf-constructor-path}/.plans/.archive/
+  [3] Archive — move the plan directory to {cf-studio-path}/.plans/.archive/
   [4] Manual — stop after execution and ask me what to do with the plan files
 Reply with `1`, `2`, `3`, or `4`.
 [1] Suggested default for most projects — keep plan files available locally and ensure `.plans/` stays gitignored.
@@ -38,7 +38,7 @@ Reply with `1`, `2`, `3`, or `4`.
 Record `lifecycle = "gitignore" | "cleanup" | "archive" | "manual"`. Lifecycle handling is deterministic and single-path:
 - `gitignore`: planning-time repository hygiene. Ensure `.plans/` is gitignored before or immediately after the first plan file write. The deterministic step is: inspect the active repo ignore targets (`.gitignore` first, then `.git/info/exclude` when project policy prefers local-only ignores), verify whether an existing `.plans/` rule already covers the plan directory, and add the narrowest acceptable ignore rule if not. Set `plan.lifecycle_status = "done"` as soon as the ignore rule exists. No post-completion plan-file lifecycle decision prompt is allowed (this does NOT prohibit pre-execution modification menus like Phase 4.2 [5] Modify plan).
 - `cleanup`: reserve a final Cleanup phase now so `total_phases`, dependencies, briefs, and budget estimates are structurally correct before `plan.toml` is written. After all non-lifecycle phases are `done`, set `plan.lifecycle_status = "ready"`, execute the Cleanup phase, then set `plan.lifecycle_status = "done"` only if cleanup succeeds. If cleanup fails (file removal error, permission error, or unexpected state), set `plan.lifecycle_status = "failed"`, report the specific error and affected paths, and offer manual intervention: list the files that could not be removed and ask the user to remove them manually or retry. Partial success (some files removed, others not) sets `plan.lifecycle_status = 'partial'`, lists the files that were removed AND the files that could not be removed, and asks the user to manually remove the residual files or retry. The orchestrator MUST distinguish 'partial' from 'failed' (cleanup never attempted) when reporting status. The Cleanup phase removes `brief-*`, `phase-*`, and `out/`; `plan.toml` remains as the terminal receipt. Those removed plan artifacts are intentional terminal lifecycle cleanup, not delivery regressions: later recovery/audit MUST treat them as exempt when `lifecycle = "cleanup"` and `plan.lifecycle_status = "done"`, and MUST NOT reopen delivery phases or replay Cleanup solely because those files are absent. No post-completion plan-file lifecycle decision prompt is allowed (this does NOT prohibit pre-execution modification menus like Phase 4.2 [5] Modify plan).
-- `archive`: after all phases are `done`, set `plan.lifecycle_status = "ready"`, move the plan directory to `{cf-constructor-path}/.plans/.archive/{task-slug}/`, then update `plan.active_plan_dir` and set `plan.lifecycle_status = "done"` in the moved manifest. If the archive move target already exists, append a numeric suffix to the archive directory name (`-2`, `-3`, …) mirroring the active-plan collision rule, then complete the move. Set `plan.lifecycle_status = "done"` with the final archive path recorded. Only permission errors and disk errors set `plan.lifecycle_status = "failed"`. If the archive move fails with a permission error or disk error, report the specific error and source path, and offer manual intervention: ask the user to move the directory manually or choose a different lifecycle strategy. No post-completion plan-file lifecycle decision prompt is allowed (this does NOT prohibit pre-execution modification menus like Phase 4.2 [5] Modify plan).
+- `archive`: after all phases are `done`, set `plan.lifecycle_status = "ready"`, move the plan directory to `{cf-studio-path}/.plans/.archive/{task-slug}/`, then update `plan.active_plan_dir` and set `plan.lifecycle_status = "done"` in the moved manifest. If the archive move target already exists, append a numeric suffix to the archive directory name (`-2`, `-3`, …) mirroring the active-plan collision rule, then complete the move. Set `plan.lifecycle_status = "done"` with the final archive path recorded. Only permission errors and disk errors set `plan.lifecycle_status = "failed"`. If the archive move fails with a permission error or disk error, report the specific error and source path, and offer manual intervention: ask the user to move the directory manually or choose a different lifecycle strategy. No post-completion plan-file lifecycle decision prompt is allowed (this does NOT prohibit pre-execution modification menus like Phase 4.2 [5] Modify plan).
 - `manual`: do nothing automatically. After all phases are `done`, set `plan.lifecycle_status = "manual_action_required"` and present exactly one keep/archive/delete choice. This is the only strategy that allows a post-completion plan-file decision prompt.
 
 ### Interrupted Lifecycle Recovery

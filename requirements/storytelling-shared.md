@@ -1,5 +1,5 @@
 ---
-cf-constructor: true
+cf: true
 type: requirement
 name: Storytelling Shared Cross-Cutting Rules
 version: 1.0
@@ -60,7 +60,7 @@ Per Anti-Pattern #28e; see `storytelling-preferences.md` §Path Conventions for 
 
 - ALL written artifacts and internal cross-references: **relative paths** from project root
 - Forbidden absolute prefixes: `/Users/...`, `/Volumes/...`, `/home/...`, `C:\...`
-- Template variables (e.g. `cf-constructor-path`, `project_root`): convert to relative-from-project-root before write or chat-display
+- Template variables (e.g. `cf-path`, `project_root`): convert to relative-from-project-root before write or chat-display
 - Relative-within-package: `../` prefixes computed per artifact location; same for exports
 
 ## Language Complexity

@@ -82,7 +82,7 @@ class TestCollectAllVariables(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "sdlc": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "config/kits/sdlc",
                         "version": "2.0",
                         "resources": {
@@ -136,7 +136,7 @@ class TestCollectAllVariables(unittest.TestCase):
                 "version": "1.0",
                 "kits": {
                     "legacykit": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "config/kits/legacykit",
                     },
                 },
@@ -414,7 +414,7 @@ class TestInfoVariablesIntegration(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "sdlc": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "config/kits/sdlc",
                         "version": "2.0",
                         "resources": {
@@ -457,7 +457,7 @@ class TestInfoVariablesIntegration(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "sdlc": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "config/kits/sdlc",
                         "version": "2.0",
                         "resources": {

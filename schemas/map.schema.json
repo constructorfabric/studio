@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://cyber-constructor.dev/schemas/map.schema.json",
-  "title": "cfc map output",
+  "$id": "https://constructor-studio.dev/schemas/map.schema.json",
+  "title": "cfs map output",
   "type": "object",
   "required": ["version", "generated_at", "workspace", "scan", "nodes", "edges", "dangling_cpt_uses", "categories"],
   "properties": {

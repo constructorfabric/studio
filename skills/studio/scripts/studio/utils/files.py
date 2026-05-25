@@ -1,0 +1,397 @@
+"""
+Constructor Studio Validator - File System Operations
+
+File I/O, project root discovery, studio detection, path resolution.
+
+@cpt-algo:cpt-studio-algo-core-infra-project-root-detection:p1
+@cpt-algo:cpt-studio-algo-core-infra-config-management:p1
+@cpt-dod:cpt-studio-dod-core-infra-init-config:p1
+"""
+
+# @cpt-begin:cpt-studio-algo-core-infra-project-root-detection:p1:inst-root-datamodel
+import json
+import re
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+from ..constants import ARTIFACTS_REGISTRY_FILENAME
+from . import toml_utils
+
+_MARKER_START = "<!-- @cf:root-agents -->"
+_CORE_SUBDIR = ".core"
+_GEN_SUBDIR = ".gen"
+
+def core_subpath(studio_root: Path, *parts: str) -> Path:
+    """Resolve a subpath within a studio root, checking .core/ first.
+
+    New layout:  studio/.core/workflows/
+    Old layout:  studio/workflows/  (source repo or legacy install)
+
+    Returns the .core/ path if .core/ exists, otherwise the flat path.
+    """
+    core = studio_root / _CORE_SUBDIR
+    if core.is_dir():
+        return core.joinpath(*parts)
+    return studio_root.joinpath(*parts)
+
+def config_subpath(studio_root: Path, *parts: str) -> Path:
+    """Resolve a subpath within the config/ directory.
+
+    Layout: studio/config/kits/sdlc/SKILL.md
+
+    In v3 layout, generated kit outputs live in config/kits/{slug}/.
+    """
+    return (studio_root / "config").joinpath(*parts)
+
+def cfg_get_str(cfg: object, *keys: str) -> Optional[str]:
+    """Extract first non-empty string value from config dict for given keys."""
+    if not isinstance(cfg, dict):
+        return None
+    for k in keys:
+        v = cfg.get(k)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return None
+# @cpt-end:cpt-studio-algo-core-infra-project-root-detection:p1:inst-root-datamodel
+
+# @cpt-begin:cpt-studio-algo-core-infra-project-root-detection:p1:inst-root-walk-up
+def find_project_root(start: Path) -> Optional[Path]:
+    """
+    Find project root by looking for AGENTS.md with @cf:root-agents marker or .git directory.
+    Searches up to 25 levels in directory hierarchy.
+    """
+    # @cpt-begin:cpt-studio-algo-core-infra-project-root-detection:p1:inst-root-resolve-start
+    current = start.resolve()
+    # @cpt-end:cpt-studio-algo-core-infra-project-root-detection:p1:inst-root-resolve-start
+    for _ in range(25):
+        # @cpt-begin:cpt-studio-algo-core-infra-project-root-detection:p1:inst-root-found-agents
+        agents = current / "AGENTS.md"
+        if agents.is_file():
+            try:
+                head = agents.read_text(encoding="utf-8")[:512]
+            except (OSError, UnicodeDecodeError):
+                head = ""
+            if _MARKER_START in head:
+                return current
+        # @cpt-end:cpt-studio-algo-core-infra-project-root-detection:p1:inst-root-found-agents
+
+        # @cpt-begin:cpt-studio-algo-core-infra-project-root-detection:p1:inst-root-found-git
+        git_marker = current / ".git"
+        if git_marker.exists():
+            return current
+        # @cpt-end:cpt-studio-algo-core-infra-project-root-detection:p1:inst-root-found-git
+
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+    # @cpt-begin:cpt-studio-algo-core-infra-project-root-detection:p1:inst-root-not-found
+    return None
+    # @cpt-end:cpt-studio-algo-core-infra-project-root-detection:p1:inst-root-not-found
+# @cpt-end:cpt-studio-algo-core-infra-project-root-detection:p1:inst-root-walk-up
+
+# @cpt-begin:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-read-var
+def _read_studio_var(project_root: Path) -> Optional[str]:
+    """Read ``cf-path`` variable from root AGENTS.md TOML block."""
+    agents_file = project_root / "AGENTS.md"
+    if not agents_file.is_file():
+        return None
+    try:
+        content = agents_file.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    if _MARKER_START not in content:
+        return None
+    data = toml_utils.parse_toml_from_markdown(content)
+    # Canonical key is `cf-studio-path`; `cf-path` is a legacy alias from
+    # older `cfs init` runs — accept either.
+    val = data.get("cf-studio-path") or data.get("cf-path")
+    return val.strip() if isinstance(val, str) and val.strip() else None
+# @cpt-end:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-read-var
+
+# @cpt-begin:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-load-core
+def load_project_config(project_root: Path) -> Optional[dict]:
+    """Load project config from config/core.toml in studio dir (discovered via AGENTS.md)."""
+    studio_rel = _read_studio_var(project_root)
+    if studio_rel is None:
+        return None
+    core_toml = (project_root / studio_rel / "config" / "core.toml").resolve()
+    # Fallback: legacy layout without config/ subdir
+    if not core_toml.is_file():
+        core_toml = (project_root / studio_rel / "core.toml").resolve()
+    if not core_toml.is_file():
+        return None
+    try:
+        return toml_utils.load(core_toml)
+    except (OSError, ValueError, KeyError):
+        return None
+# @cpt-end:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-load-core
+
+# @cpt-begin:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-helpers
+def studio_root_from_project_config() -> Optional[Path]:
+    """Get Constructor Studio core path from config core.toml [paths] section."""
+    project_root = find_project_root(Path.cwd())
+    if project_root is None:
+        return None
+
+    cfg = load_project_config(project_root)
+    if cfg is None:
+        return None
+
+    paths = cfg.get("paths")
+    core_rel = cfg_get_str(paths, "core") if isinstance(paths, dict) else None
+    if core_rel is None:
+        return None
+
+    adapter_rel = _read_studio_var(project_root) or ""
+    core = (project_root / adapter_rel / core_rel).resolve()
+    if _is_studio_root(core):
+        return core
+    return None
+# @cpt-end:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-helpers
+
+# @cpt-begin:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-find-dir
+def find_studio_directory(start: Path, studio_root: Optional[Path] = None) -> Optional[Path]:
+    """
+    Find studio directory starting from project root.
+
+    Resolution order:
+    1. Read ``studio`` variable from root AGENTS.md TOML block
+    2. Recursively search for directories with AGENTS.md + rules/ (or legacy specs/)
+
+    Args:
+        start: Starting path for search
+        studio_root: Known Constructor Studio core location (from agent context)
+    """
+    project_root = find_project_root(start)
+    if project_root is None:
+        return None
+
+    # PRIORITY 1: Read studio variable from AGENTS.md TOML block
+    adapter_rel = _read_studio_var(project_root)
+    if adapter_rel is not None:
+        adapter_dir = (project_root / adapter_rel).resolve()
+        if adapter_dir.is_dir() and (adapter_dir / "config").is_dir():
+            return adapter_dir
+        return None
+
+    # PRIORITY 2: Recursive search (only if no TOML variable found)
+    skip_dirs = {
+        ".git", "node_modules", "venv", "__pycache__", ".pytest_cache",
+        "target", "build", "dist", ".idea", ".vscode", "vendor",
+        "coverage", ".tox", ".mypy_cache", ".eggs"
+    }
+    
+    def is_adapter_directory(path: Path) -> bool:
+        """Check if directory looks like a studio config directory."""
+        agents_file = path / "AGENTS.md"
+        if not agents_file.exists():
+            return False
+        
+        # Check AGENTS.md content
+        try:
+            content = agents_file.read_text(encoding="utf-8")
+            
+            # STRONGEST indicator: Extends Constructor Studio AGENTS.md
+            # Example: **Extends**: `../.cf/AGENTS.md`
+            if "**Extends**:" in content and "AGENTS.md" in content:
+                # If agent provided studio_root, validate the Extends path
+                if studio_root is not None:
+                    # Extract Extends path from content
+                    extends_match = re.search(r'\*\*Extends\*\*:\s*`([^`]+)`', content)
+                    if extends_match:
+                        extends_path = extends_match.group(1)
+                        # Resolve relative to studio directory
+                        resolved = (path / extends_path).resolve()
+                        # Check if it points to studio_root
+                        if resolved.parent == studio_root or (studio_root / "AGENTS.md") == resolved:
+                            return True
+                # Even without studio_root validation, Extends is strong signal
+                return True
+            
+            # Look for studio-specific markers in content
+            adapter_markers = [
+                "# Constructor Studio Adapter:",
+                ".cf-adapter",
+                "cf-adapter",
+                "## Constructor Studio Adapter",
+                "This is a Constructor Studio adapter",
+                "adapter for",
+            ]
+            content_lower = content.lower()
+            for marker in adapter_markers:
+                if marker.lower() in content_lower:
+                    # Double-check with rules/ or specs/ directory if possible
+                    if (path / "config" / "rules").is_dir() or (path / "rules").is_dir() or (path / "specs").is_dir():
+                        return True
+                    # Or check for rule/spec references in content
+                    if "rule" in content_lower or "spec" in content_lower:
+                        return True
+        except (OSError, UnicodeDecodeError):
+            pass  # Expected: search continues if file read fails
+
+        # Fallback: verify it has rules/ or specs/ directory (strong structural indicator)
+        if (path / "config" / "rules").is_dir() or (path / "rules").is_dir() or (path / "specs").is_dir():
+            return True
+        
+        return False
+    
+    def search_recursive(root: Path, max_depth: int = 5, current_depth: int = 0) -> Optional[Path]:
+        """Recursively search for studio directory."""
+        if current_depth > max_depth:
+            return None
+        
+        try:
+            entries = list(root.iterdir())
+        except (PermissionError, OSError):
+            return None
+        
+        # First pass: check current level directories
+        for entry in entries:
+            if not entry.is_dir() or entry.name in skip_dirs:
+                continue
+            if is_adapter_directory(entry):
+                return entry
+        
+        # Second pass: recurse into subdirectories (breadth-first preference)
+        for entry in entries:
+            if not entry.is_dir() or entry.name in skip_dirs:
+                continue
+            result = search_recursive(entry, max_depth, current_depth + 1)
+            if result is not None:
+                return result
+        
+        return None
+    
+    return search_recursive(project_root)
+# @cpt-end:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-find-dir
+
+# @cpt-begin:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-load-config
+def load_studio_config(adapter_dir: Path) -> Dict[str, object]:
+    """
+    Load Constructor Studio configuration from AGENTS.md and rules/
+    Returns dict with Constructor Studio metadata and available rules
+    """
+    config: Dict[str, object] = {
+        "studio_dir": adapter_dir.as_posix(),
+        "rules": [],
+    }
+    
+    agents_file = adapter_dir / "AGENTS.md"
+    if agents_file.exists():
+        try:
+            content = agents_file.read_text(encoding="utf-8")
+            # Extract project name from heading
+            for line in content.splitlines():
+                if line.startswith("# Constructor Studio Adapter:"):
+                    config["project_name"] = line.replace("# Constructor Studio Adapter:", "").strip()
+                    break
+        except (OSError, UnicodeDecodeError):
+            pass  # Expected: project_name is optional metadata
+
+    # List available rules (config/ layout, fallback to flat)
+    rules_dir = adapter_dir / "config" / "rules"
+    if not rules_dir.is_dir():
+        rules_dir = adapter_dir / "rules"
+    if rules_dir.is_dir():
+        rule_files = []
+        for rule_file in rules_dir.glob("*.md"):
+            rule_files.append(rule_file.stem)
+        config["rules"] = sorted(rule_files)
+    
+    return config
+# @cpt-end:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-load-config
+
+# @cpt-begin:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-load-registry
+def load_artifacts_registry(adapter_dir: Path) -> Tuple[Optional[dict], Optional[str]]:
+    path = adapter_dir / ARTIFACTS_REGISTRY_FILENAME
+    # Fallback chain: config/artifacts.toml -> artifacts.json (legacy)
+    if not path.is_file():
+        config_path = adapter_dir / "config" / ARTIFACTS_REGISTRY_FILENAME
+        if config_path.is_file():
+            path = config_path
+        else:
+            legacy = adapter_dir / "artifacts.json"
+            if legacy.is_file():
+                path = legacy
+            else:
+                return None, f"Missing artifacts registry: {path}"
+    try:
+        if path.suffix == ".toml":
+            cfg = toml_utils.load(path)
+        else:
+            raw = path.read_text(encoding="utf-8")
+            cfg = json.loads(raw)
+    except (OSError, ValueError, KeyError) as e:
+        return None, f"Failed to read artifacts registry {path}: {e}"
+    if not isinstance(cfg, dict):
+        return None, f"Invalid artifacts registry (expected dict): {path}"
+    if not isinstance(cfg.get("systems"), list) and not isinstance(cfg.get("artifacts"), list):
+        return None, f"Invalid artifacts registry (missing 'systems' or 'artifacts' list): {path}"
+    return cfg, None
+# @cpt-end:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-load-registry
+
+# @cpt-begin:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-helpers
+def iter_registry_entries(registry: dict) -> List[dict]:
+    items = registry.get("artifacts")
+    if not isinstance(items, list):
+        return []
+    out: List[dict] = []
+    for it in items:
+        if isinstance(it, dict):
+            out.append(it)
+    return out
+
+def _is_studio_root(path: Path) -> bool:
+    """Check if *path* looks like a cfs root (flat or .core/ layout)."""
+    # New layout: .core/ subdir with requirements + workflows
+    core = path / _CORE_SUBDIR
+    if core.is_dir() and (core / "requirements").is_dir() and (core / "workflows").is_dir():
+        return True
+    # Old / source-repo layout: flat requirements + workflows + AGENTS.md
+    if (
+        (path / "AGENTS.md").exists()
+        and (path / "requirements").is_dir()
+        and (path / "workflows").is_dir()
+    ):
+        return True
+    return False
+
+def studio_root_from_this_file() -> Path:
+    """
+    Find Constructor Studio root by walking up directory tree looking for Constructor Studio markers.
+    Constructor Studio can be located anywhere (as submodule, copied, etc.)
+    """
+    configured = studio_root_from_project_config()
+    if configured is not None:
+        return configured
+
+    current = Path(__file__).resolve().parent.parent.parent.parent
+
+    # Walk up directory tree looking for Constructor Studio root markers
+    for _ in range(10):  # Limit search depth to avoid infinite loop
+        if _is_studio_root(current):
+            return current
+        
+        parent = current.parent
+        if parent == current:  # Reached filesystem root
+            break
+        current = parent
+    
+    # Fallback to old behavior if markers not found
+    return Path(__file__).resolve().parents[6]
+
+def load_text(path: Path) -> Tuple[str, Optional[str]]:
+    """
+    Load text from file, returning (content, error_message).
+    Returns ("", error_message) on failure.
+    """
+    if not path.exists():
+        return "", f"File not found: {path}"
+    if not path.is_file():
+        return "", f"Not a file: {path}"
+    try:
+        return path.read_text(encoding="utf-8"), None
+    except (OSError, UnicodeDecodeError) as e:
+        return "", f"Failed to read {path}: {e}"
+# @cpt-end:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-helpers

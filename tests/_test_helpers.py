@@ -120,7 +120,7 @@ def write_registered_sdlc_config(
 
     config_dir.mkdir(parents=True, exist_ok=True)
     core_kit: Dict[str, Any] = {
-        "format": "Cypilot",
+        "format": "CFS",
         "path": core_kit_path,
         "version": version,
     }
@@ -135,7 +135,7 @@ def write_registered_sdlc_config(
         "version": "1.0",
         "project_root": "..",
         "kits": {
-            "sdlc": {"format": "Cypilot", "path": artifacts_kit_path},
+            "sdlc": {"format": "CFS", "path": artifacts_kit_path},
         },
         "systems": [{"name": "Test", "slug": "test", "kit": "sdlc"}],
     }, config_dir / "artifacts.toml")

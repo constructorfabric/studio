@@ -34,7 +34,7 @@ generate sub-flow and leave target files untouched.
 **Content preview**: {brief overview of what will be created/changed}
 **Author plan**: {memory/disk/declined/auto-skipped}; {task count + parallel group summary OR "single author flow"}
 **Files to write**: `{path}`: {description}; {additional files if any}
-**Artifacts registry**: `{cf-constructor-path}/config/artifacts.toml`: {entry additions/updates, if any}
+**Artifacts registry**: `{cf-studio-path}/config/artifacts.toml`: {entry additions/updates, if any}
 **STRICT self-check**: template loaded = {yes/no}; example referenced = {yes/no}; checklist status = {required-and-complete/deferred-to-phase-5}; placeholders absent = {yes/no}; explicit `yes` received = {yes/no}
 **Proceed?** [yes/no/modify]
 Reply with `yes`, `no`, or `modify`.
@@ -43,4 +43,4 @@ Reply with `yes`, `no`, or `modify`.
 `modify` → Revisit the inputs or proposal before any files are written.
 ```
 
-Responses: `yes` = create files and validate; `no` = cancel; `modify` = revisit a question and iterate (max 3 iterations, then require explicit `continue iterating` or stop the generate workflow (reply with a stop token — open and follow {cf-constructor-path}/.core/workflows/shared/stop-token-policy.md)).
+Responses: `yes` = create files and validate; `no` = cancel; `modify` = revisit a question and iterate (max 3 iterations, then require explicit `continue iterating` or stop the generate workflow (reply with a stop token — open and follow {cf-studio-path}/.core/workflows/shared/stop-token-policy.md)).

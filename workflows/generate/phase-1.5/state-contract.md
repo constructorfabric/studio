@@ -1,5 +1,5 @@
 ---
-cf-constructor: true
+cf: true
 type: workflow-fragment
 parent: workflows/generate/phase-1.5-author-plan.md
 description: Canonical state contract for Generate Phase 1.5 author-plan offer resolution, continuation states, and terminal cancellation states.

@@ -1,8 +1,8 @@
 ---
-cf-constructor: true
+cf: true
 type: workflow-phase
 name: plan-phase-2-decompose
-description: "Invoke when /cf-constructor-plan enters Phase 2 to decompose the assessed task into phases: lifecycle selection, data-flow analysis, review gate placement, and execution-context budget prediction."
+description: "Invoke when /cf-plan enters Phase 2 to decompose the assessed task into phases: lifecycle selection, data-flow analysis, review gate placement, and execution-context budget prediction."
 loaded_by: workflows/plan.md
 version: 1.0
 ---
@@ -19,7 +19,7 @@ version: 1.0
 
 <!-- /toc -->
 
-Open and follow `{cf-constructor-path}/.core/requirements/plan-decomposition.md`.
+Open and follow `{cf-studio-path}/.core/requirements/plan-decomposition.md`.
 
 Compilation is split to minimize context: write the manifest, write briefs, then compile one phase at a time.
 
@@ -40,7 +40,7 @@ When an `input/manifest.json` package exists and its `input_signature` matches `
 
 Identify data flow between phases: incremental artifact output, extracted data, analysis notes, generated IDs, and decision logs.
 
-Rules: if any later phase needs a phase result, save it to `{cf-constructor-path}/.plans/{task-slug}/out/{filename}`; if only the final artifact depends on it, write directly to the project path; if the final phase assembles prior outputs, list ALL required `inputs`; use names like `out/phase-{NN}-{what}.md`.
+Rules: if any later phase needs a phase result, save it to `{cf-studio-path}/.plans/{task-slug}/out/{filename}`; if only the final artifact depends on it, write directly to the project path; if the final phase assembles prior outputs, list ALL required `inputs`; use names like `out/phase-{NN}-{what}.md`.
 
 ## Review Phases
 
@@ -65,7 +65,7 @@ Decomposition ({strategy} strategy):
   Proceed with manifest + brief generation after any required raw-input materialization? [y/n]
 Reply with `y` or `n`.
 `y` → Suggested when the decomposition looks correct; write `plan.toml` and the compilation briefs.
-`n` → Stop before writing the manifest or briefs. No files are created. Report: "Decomposition declined — rework the phase boundaries and re-run `/cf-constructor-plan` when ready." This is a valid completion state for `/cf-constructor-plan`.
+`n` → Stop before writing the manifest or briefs. No files are created. Report: "Decomposition declined — rework the phase boundaries and re-run `/cf-plan` when ready." This is a valid completion state for `/cf-plan`.
 ```
 Wait for user confirmation before proceeding.
 

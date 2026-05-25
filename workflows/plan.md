@@ -1,7 +1,7 @@
 ---
-cf-constructor: true
+cf: true
 type: workflow
-name: cf-constructor-plan
+name: cf-plan
 description: Invoke when the user asks to plan, create a plan, decompose, break down, or organize a large or multi-step task into phases — produces self-contained phase files with brief + compiled forms.
 version: 1.0
 purpose: Universal workflow for generating execution plans with phased delivery
@@ -37,29 +37,29 @@ purpose: Universal workflow for generating execution plans with phased delivery
 
 Bootstrap order:
 
-1. Open and follow `{cf-constructor-path}/.core/skills/cypilot/SKILL.md`
-   first when `{cfc_mode}` is `off`.
-2. Then open and follow `{cf-constructor-path}/.core/skills/cypilot/protocol.md`
+1. Open and follow `{cf-studio-path}/.core/skills/studio/SKILL.md`
+   first when `{cfs_mode}` is `off`.
+2. Then open and follow `{cf-studio-path}/.core/skills/studio/protocol.md`
    before any workflow-local phase work.
 3. Then open and follow `workflows/shared/stop-token-policy.md` before any
    prompt that relies on stop-token behavior.
 
 **Type**: Operation
 
-ALWAYS open and follow `{cf-constructor-path}/.core/requirements/plan-template.md` WHEN compiling phase files
+ALWAYS open and follow `{cf-studio-path}/.core/requirements/plan-template.md` WHEN compiling phase files
 
-ALWAYS open and follow `{cf-constructor-path}/.core/requirements/plan-decomposition.md` WHEN decomposing tasks into phases
+ALWAYS open and follow `{cf-studio-path}/.core/requirements/plan-decomposition.md` WHEN decomposing tasks into phases
 
-OPEN and follow `{cf-constructor-path}/.core/requirements/prompt-engineering.md` WHEN compiling phase files (phase files ARE agent instructions)
+OPEN and follow `{cf-studio-path}/.core/requirements/prompt-engineering.md` WHEN compiling phase files (phase files ARE agent instructions)
 
-OPEN and follow `{cf-constructor-path}/.core/requirements/plan-checklist.md` WHEN validating plans (Phase 4.1 self-validation or /cf-constructor-analyze on plan)
+OPEN and follow `{cf-studio-path}/.core/requirements/plan-checklist.md` WHEN validating plans (Phase 4.1 self-validation or /cf-analyze on plan)
 
 For context compaction recovery during multi-phase workflows, follow
-`{cf-constructor-path}/.core/skills/cypilot/protocol.md` Section "Compaction Recovery".
+`{cf-studio-path}/.core/skills/studio/protocol.md` Section "Compaction Recovery".
 
 ## Overview
 
-This workflow generates execution plans, not direct results. Use it when work exceeds a single-context window, requires a long checklist, or involves multi-block implementation. Do **not** use it for small edits, direct execution, or work that fits in ~500 compiled lines. Output: `plan.toml` + `N` phase files in `{cf-constructor-path}/.plans/{task-slug}/`.
+This workflow generates execution plans, not direct results. Use it when work exceeds a single-context window, requires a long checklist, or involves multi-block implementation. Do **not** use it for small edits, direct execution, or work that fits in ~500 compiled lines. Output: `plan.toml` + `N` phase files in `{cf-studio-path}/.plans/{task-slug}/`.
 
 ## Context Budget & Overflow Prevention (CRITICAL)
 
@@ -68,7 +68,7 @@ This workflow generates execution plans, not direct results. Use it when work ex
 - Do NOT hold all phase files in context simultaneously; compile and write one at a time.
 - If a phase compilation would exceed current context budget, checkpoint and use Compaction Recovery.
 - The plan manifest (`plan.toml`) is the recovery checkpoint and MUST be written before compilation.
-- If the raw task input itself exceeds `500` lines, materialize it under `{cf-constructor-path}/.plans/{task-slug}/input/`, chunk it to `<= 300` lines per file, and treat the resulting chunk files as the authoritative raw-input package for the plan. When the source includes direct prompt text, preserve that raw prompt as `input/direct-prompt.md` before chunking. (Open, load, and follow `{cf-constructor-path}/.core/requirements/raw-input-overflow.md` for the shared overflow rule.)
+- If the raw task input itself exceeds `500` lines, materialize it under `{cf-studio-path}/.plans/{task-slug}/input/`, chunk it to `<= 300` lines per file, and treat the resulting chunk files as the authoritative raw-input package for the plan. When the source includes direct prompt text, preserve that raw prompt as `input/direct-prompt.md` before chunking. (Open, load, and follow `{cf-studio-path}/.core/requirements/raw-input-overflow.md` for the shared overflow rule.)
 
 Budget targets: Phase 0-1 `~200` lines, Phase 2 `~300`, Phase 3 `~500` per phase file, Phase 4 `~50`. The reference appendices below are runtime guidance only and do not consume plan-generation budget unless the user explicitly asks about execution behavior.
 
@@ -102,5 +102,5 @@ Open and follow `workflows/plan/plan-reference.md` WHEN the user asks about plan
 
 ## Completion Invariants
 
-Open and follow `{cf-constructor-path}/.core/skills/cypilot/SKILL.md` § Completion Invariants before ending any response.
-(A /cf-constructor-plan run that compiled phase files MUST end with the Phase 4 next-steps menu or the Phase 3 brief-checkpoint menu.)
+Open and follow `{cf-studio-path}/.core/skills/studio/SKILL.md` § Completion Invariants before ending any response.
+(A /cf-plan run that compiled phase files MUST end with the Phase 4 next-steps menu or the Phase 3 brief-checkpoint menu.)

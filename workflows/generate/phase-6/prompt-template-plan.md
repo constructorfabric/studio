@@ -1,5 +1,5 @@
 ---
-cf-constructor: true
+cf: true
 type: workflow-fragment
 parent: workflows/generate.md
 description: Invoke when the user picked `R3` (Plan Prompt) on the Remediation Handoff menu and the self-contained phased-remediation prompt must be emitted verbatim as the FINAL section.
@@ -12,9 +12,9 @@ Plan Prompt (copy-paste into new chat if needed):
 ```
 
 ```text
-Invoke skill `cf-constructor`.
+Invoke skill `cf`.
 
-I just completed `/cf-constructor-generate` with unresolved findings. I need a phased remediation plan via `/cf-constructor-plan` for these files.
+I just completed `/cf-generate` with unresolved findings. I need a phased remediation plan via `/cf-plan` for these files.
 
 Target: {TARGET_TYPE} / {KIND}
 Changed files (already written):

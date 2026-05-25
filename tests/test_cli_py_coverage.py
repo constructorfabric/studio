@@ -69,7 +69,7 @@ def _bootstrap_self_check_kits(root: Path, adapter: Path, *, with_example: bool 
             "project_root": "..",
             "systems": [],
             "kits": {
-                "cypilot-sdlc": {"format": "Cypilot", "path": "kits/cypilot-sdlc"},
+                "cypilot-sdlc": {"format": "CFS", "path": "kits/cypilot-sdlc"},
             },
         },
         adapter / "config" / "artifacts.toml",
@@ -105,7 +105,7 @@ def _bootstrap_self_check_kits(root: Path, adapter: Path, *, with_example: bool 
 
 
 class _FakeKitPkg:
-    def is_cypilot_format(self):
+    def is_cfs_format(self):
         return True
 
     def get_template_path(self, _kind: str) -> str:
@@ -136,7 +136,7 @@ class _FakeKit:
 
 class _CompactKitPkg:
     """Fake kit package (compact one-liner style used in coverage tests)."""
-    def is_cypilot_format(self): return True
+    def is_cfs_format(self): return True
     def get_template_path(self, _k): return "kits/x/artifacts/REQ/template.md"
 
 
@@ -402,7 +402,7 @@ class TestCLIPyCoverageSelfCheckMoreBranches(unittest.TestCase):
             "systems": [],
             "kits": {
                 "k": {
-                    "format": "Cypilot",
+                    "format": "CFS",
                     "path": "kits/k",
                     "artifacts": {
                         kind: {
@@ -645,7 +645,7 @@ class TestCLIPyCoverageSelfCheckReverseAndOptional(unittest.TestCase):
             write_constraints_toml(kit_root, constraints_payload)
         reg = {
             "version": "1.1", "project_root": "..", "systems": [],
-            "kits": {"k": {"format": "Cypilot", "path": "kits/k", "artifacts": {
+            "kits": {"k": {"format": "CFS", "path": "kits/k", "artifacts": {
                 kind: {
                     "template": "{project_root}/kits/k/artifacts/%s/template.md" % kind,
                     "examples": "{project_root}/kits/k/artifacts/%s/examples" % kind,
@@ -847,7 +847,7 @@ class TestCLIPyCoverageValidateBranches(unittest.TestCase):
         from cypilot.commands import validate as validate_cmd
 
         class _FakePkg:
-            def is_cypilot_format(self):
+            def is_cfs_format(self):
                 return False
 
 
@@ -1005,7 +1005,7 @@ class TestCLIPyCoverageValidateBranches(unittest.TestCase):
         from cypilot.commands import validate as validate_cmd
 
         class _FakeKitPkg:
-            def is_cypilot_format(self):
+            def is_cfs_format(self):
                 return True
 
             def get_template_path(self, kind: str) -> str:
@@ -1034,7 +1034,7 @@ class TestCLIPyCoverageValidateBranches(unittest.TestCase):
                     yield _FakeArtifactMeta(p, k), _FakeSystemNode(kit)
 
             def get_kit(self, _kit_id: str):
-                return _FakeKitPkg() if _kit_id != "skip" else types.SimpleNamespace(is_cypilot_format=lambda: False)
+                return _FakeKitPkg() if _kit_id != "skip" else types.SimpleNamespace(is_cfs_format=lambda: False)
 
             def is_ignored(self, _rel: str) -> bool:
                 return False
@@ -1377,7 +1377,7 @@ class TestCLIPyCoverageListIdKindsBranches(unittest.TestCase):
             from cypilot.utils import toml_utils
             toml_utils.dump({
                 "version": "1.1", "project_root": "..",
-                "kits": {"sdlc": {"format": "Cypilot", "path": "kits/sdlc"}},
+                "kits": {"sdlc": {"format": "CFS", "path": "kits/sdlc"}},
                 "systems": [{
                     "name": "Test", "slug": "test", "kits": "sdlc",
                     "artifacts": [{"path": "docs/PRD.md", "kind": "PRD"}],
@@ -1496,7 +1496,7 @@ class TestCLIPyCoverageValidateCode(unittest.TestCase):
                 adapter / "artifacts.json",
                 {
                     "project_root": "..",
-                    "kits": {"cypilot-sdlc": {"format": "Cypilot", "path": "kits/cypilot-sdlc"}},
+                    "kits": {"cypilot-sdlc": {"format": "CFS", "path": "kits/cypilot-sdlc"}},
                     "systems": [
                         {
                             "name": "S",
@@ -1872,7 +1872,7 @@ class TestCLIPyCoverageValidateRules(unittest.TestCase):
                 {
                     "project_root": "..",
                     "systems": [],
-                    "kits": {"cypilot-sdlc": {"format": "Cypilot", "path": "kits/cypilot-sdlc"}},
+                    "kits": {"cypilot-sdlc": {"format": "CFS", "path": "kits/cypilot-sdlc"}},
                 },
             )
             kit_root = root / "kits" / "cypilot-sdlc"
@@ -1898,7 +1898,7 @@ class TestCLIPyCoverageValidateRules(unittest.TestCase):
                 {
                     "project_root": "..",
                     "systems": [],
-                    "kits": {"cypilot-sdlc": {"format": "Cypilot", "path": "kits/cypilot-sdlc"}},
+                    "kits": {"cypilot-sdlc": {"format": "CFS", "path": "kits/cypilot-sdlc"}},
                 },
             )
             kit_root = root / "kits" / "cypilot-sdlc"
@@ -1925,7 +1925,7 @@ class TestCLIPyCoverageValidateRules(unittest.TestCase):
                 adapter / "artifacts.json",
                 {
                     "project_root": "..",
-                    "kits": {"cypilot-sdlc": {"format": "Cypilot", "path": "kits/cypilot-sdlc"}},
+                    "kits": {"cypilot-sdlc": {"format": "CFS", "path": "kits/cypilot-sdlc"}},
                     "systems": [
                         {
                             "name": "S",
@@ -2001,7 +2001,7 @@ class TestCLIPyCoverageSlugValidation(unittest.TestCase):
                 adapter / "artifacts.json",
                 {
                     "project_root": "..",
-                    "kits": {"cypilot-sdlc": {"format": "Cypilot", "path": "kits/cypilot-sdlc"}},
+                    "kits": {"cypilot-sdlc": {"format": "CFS", "path": "kits/cypilot-sdlc"}},
                     "systems": [
                         {
                             "name": "S",
@@ -2104,7 +2104,7 @@ class TestCLIPyCoverageListIdsWithCode(unittest.TestCase):
                 adapter / "artifacts.json",
                 {
                     "project_root": "..",
-                    "kits": {"cypilot-sdlc": {"format": "Cypilot", "path": "kits/cypilot-sdlc"}},
+                    "kits": {"cypilot-sdlc": {"format": "CFS", "path": "kits/cypilot-sdlc"}},
                     "systems": [
                         {
                             "name": "test",
@@ -2803,7 +2803,7 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
             kits = {"x": types.SimpleNamespace(path="kits/x")}
             def iter_all_artifacts(self): return iter([])
             def is_ignored(self, _rel): return False
-            def get_kit(self, _kid): return types.SimpleNamespace(is_cypilot_format=lambda: True, get_template_path=lambda _k: "t.md")
+            def get_kit(self, _kid): return types.SimpleNamespace(is_cfs_format=lambda: True, get_template_path=lambda _k: "t.md")
         class _FakeCtx:
             meta = _FakeMeta()
             project_root = Path("/fake")
@@ -3180,7 +3180,7 @@ class TestCLIPyCoverageValidateWorkspaceBranches(unittest.TestCase):
         """DOCS-ONLY artifacts skip CDSL scan (line 517-518)."""
         from cypilot.commands import validate as validate_cmd
         class _KP:
-            def is_cypilot_format(self): return True
+            def is_cfs_format(self): return True
             def get_template_path(self, _k): return "kits/x/artifacts/REQ/template.md"
         class _SN:
             kit = "x"

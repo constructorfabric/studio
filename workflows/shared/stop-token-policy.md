@@ -34,7 +34,7 @@ This block is the single source of truth for stop-token behavior. Other workflow
 For `workflows/plan.md` prompts — raw-input materialization `[y/n]`, decomposition `[y/n]`, Phase 3.2A brief-checkpoint `[1]`–`[4]`, and the gated Phase 4.2 next-steps menu (native-execution branch `[1]`–`[5]`, fallback branch `[1]`–`[4]`) — a stop token (`stop`, `enough`, or `done`) cancels the *current sub-flow only* (the prompt at hand) and routes back to the prior phase's choice point:
 
 - Raw-input materialization `[y/n]` prompt → treat as `n`; report `Raw-input materialization declined — continue with direct workflow if you prefer reduced guarantees` and stop (valid completion state, no further routing).
-- Decomposition `[y/n]` prompt → treat as `n`; report `Decomposition declined — rework the phase boundaries and re-run /cf-constructor-plan when ready` and stop (valid completion state, no further routing).
+- Decomposition `[y/n]` prompt → treat as `n`; report `Decomposition declined — rework the phase boundaries and re-run /cf-plan when ready` and stop (valid completion state, no further routing).
 - Phase 3.2A brief-checkpoint `[1]`–`[4]` prompt → treat as option `[4]`; set `plan.execution_status = "briefs_only"` and stop after the brief package.
 - Phase 4.2 next-steps `[1]`–`[5]` prompt → cancel the current next-step sub-flow; leave already-written files untouched and return control to the user without proceeding further.
 - `workflows/plan/plan-lifecycle.md` lifecycle selection prompt `[1]`–`[4]` → treat stop as option `[4]` (Manual); defer lifecycle decision to post-execution.

@@ -24,20 +24,20 @@ from cypilot.utils.artifacts_meta import (
 
 class TestKit(unittest.TestCase):
     def test_kit_from_dict(self):
-        data = {"format": "Cypilot", "path": "templates"}
+        data = {"format": "CFS", "path": "templates"}
         kit = Kit.from_dict("test-kit", data)
         self.assertEqual(kit.kit_id, "test-kit")
-        self.assertEqual(kit.format, "Cypilot")
+        self.assertEqual(kit.format, "CFS")
         self.assertEqual(kit.path, "templates")
 
-    def test_kit_is_cypilot_format(self):
-        kit = Kit("id", "Cypilot", "path")
-        self.assertTrue(kit.is_cypilot_format())
+    def test_kit_is_cfs_format(self):
+        kit = Kit("id", "CFS", "path")
+        self.assertTrue(kit.is_cfs_format())
         kit2 = Kit("id", "OTHER", "path")
-        self.assertFalse(kit2.is_cypilot_format())
+        self.assertFalse(kit2.is_cfs_format())
 
     def test_kit_get_template_path(self):
-        kit = Kit("id", "Cypilot", "kits/sdlc")
+        kit = Kit("id", "CFS", "kits/sdlc")
         self.assertEqual(kit.get_template_path("PRD"), "kits/sdlc/artifacts/PRD/template.md")
         self.assertEqual(kit.get_template_path("UNKNOWN"), "kits/sdlc/artifacts/UNKNOWN/template.md")
 
@@ -113,7 +113,7 @@ class TestArtifactsMeta(unittest.TestCase):
         data = {
             "version": "1.0",
             "project_root": "..",
-            "kits": {"cypilot": {"format": "Cypilot", "path": "templates"}},
+            "kits": {"cypilot": {"format": "CFS", "path": "templates"}},
             "systems": [{"name": "Test", "kit": "cypilot", "artifacts": [{"path": "PRD.md", "kind": "PRD"}]}],
         }
         meta = ArtifactsMeta.from_dict(data)
@@ -127,7 +127,7 @@ class TestArtifactsMeta(unittest.TestCase):
         data = {
             "version": "1.0",
             "project_root": "..",
-            "kits": {"cypilot": {"format": "Cypilot", "path": "templates"}},
+            "kits": {"cypilot": {"format": "CFS", "path": "templates"}},
             "systems": [{"name": "Test", "kit": "cypilot", "artifacts": [{"path": "architecture/PRD.md", "kind": "PRD"}]}],
         }
         meta = ArtifactsMeta.from_dict(data)
@@ -207,7 +207,7 @@ class TestArtifactsMeta(unittest.TestCase):
             data = {
                 "version": "1.1",
                 "project_root": "..",
-                "kits": {"k": {"format": "Cypilot", "path": "kits/sdlc"}},
+                "kits": {"k": {"format": "CFS", "path": "kits/sdlc"}},
                 "systems": [
                     {
                         "name": "App",
@@ -243,7 +243,7 @@ class TestArtifactsMeta(unittest.TestCase):
             data = {
                 "version": "1.1",
                 "project_root": "..",
-                "kits": {"k": {"format": "Cypilot", "path": "kits/sdlc"}},
+                "kits": {"k": {"format": "CFS", "path": "kits/sdlc"}},
                 "systems": [
                     {
                         "name": "App",
@@ -275,7 +275,7 @@ class TestArtifactsMeta(unittest.TestCase):
             data = {
                 "version": "1.1",
                 "project_root": "..",
-                "kits": {"k": {"format": "Cypilot", "path": "kits/sdlc"}},
+                "kits": {"k": {"format": "CFS", "path": "kits/sdlc"}},
                 "systems": [
                     {
                         "name": "Fabric",
@@ -752,7 +752,7 @@ class TestLoadArtifactsMetaMissing(unittest.TestCase):
 class TestKitFromDictEdgeCases(unittest.TestCase):
     def test_invalid_artifact_kind_skipped(self):
         data = {
-            "format": "Cypilot",
+            "format": "CFS",
             "path": "templates",
             "artifacts": {
                 "": {"template": "t.md", "examples": "e/"},
@@ -765,7 +765,7 @@ class TestKitFromDictEdgeCases(unittest.TestCase):
 
     def test_non_dict_artifact_spec_skipped(self):
         data = {
-            "format": "Cypilot",
+            "format": "CFS",
             "path": "templates",
             "artifacts": {
                 "PRD": "not-a-dict",

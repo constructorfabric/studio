@@ -88,7 +88,7 @@ class TestMain(unittest.TestCase):
             _bootstrap_registry(
                 root,
                 entries=[
-                    {"kind": "PRD", "system": "Test", "path": "architecture/PRD.md", "format": "Cypilot"},
+                    {"kind": "PRD", "system": "Test", "path": "architecture/PRD.md", "format": "CFS"},
                 ],
             )
 
@@ -564,7 +564,7 @@ class TestCmdValidateArtifactArg(unittest.TestCase):
             _bootstrap_registry(
                 root,
                 entries=[
-                    {"kind": "PRD", "system": "Test", "path": "architecture/PRD.md", "format": "Cypilot"},
+                    {"kind": "PRD", "system": "Test", "path": "architecture/PRD.md", "format": "CFS"},
                 ],
             )
             buf = io.StringIO()

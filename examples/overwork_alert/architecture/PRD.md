@@ -389,5 +389,5 @@ The system MUST provide a CLI interface that allows the user to:
 
 ### Example Scope Notes
 
-This PRD is intentionally scoped as a minimal “end-to-end Cypilot SDLC” example within the Cypilot repository.
+This PRD is intentionally scoped as a minimal “end-to-end Constructor Studio SDLC” example within the Constructor Studio repository.
 

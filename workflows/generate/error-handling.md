@@ -1,5 +1,5 @@
 ---
-cf-constructor: true
+cf: true
 type: workflow-fragment
 parent: workflows/generate.md
 description: Invoke when a tool/dispatch failure, user abandonment, or validation-failure loop (3+) occurs during any generate phase and the canonical error-handling guidance must be applied.
@@ -20,8 +20,8 @@ Tool failure:
 ```text
 ⚠️ Tool error: {error message}
 → Check Python environment and dependencies
-→ Verify Cyber Constructor is correctly configured
-→ Run `{cfc_cmd} update` to refresh the adapter if the local installation is stale
+→ Verify Constructor Studio is correctly configured
+→ Run `{cfs_cmd} update` to refresh the adapter if the local installation is stale
 ```
 
 STOP — do not continue with incomplete state.
@@ -29,7 +29,7 @@ STOP — do not continue with incomplete state.
 User abandonment: do not auto-proceed with assumptions; state is resumed by
 re-running the workflow command. Target artifact/code files are still untouched
 before Phase 4, but Generate Phase 1.5 disk mode may already have written
-author-plan cache files under `{cf-constructor-path}/.cache/generate-plans/`.
+author-plan cache files under `{cf-studio-path}/.cache/generate-plans/`.
 If `AUTHOR_PLAN_CACHE_DIR` exists or a partial cache write was reported, surface
 that cache state on resume or abandonment handling instead of claiming that no
 pre-Phase-4 files exist. No automatic cleanup is required, but partial cache

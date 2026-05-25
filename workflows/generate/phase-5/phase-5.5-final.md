@@ -1,5 +1,5 @@
 ---
-cf-constructor: true
+cf: true
 type: workflow-fragment
 parent: workflows/generate.md
 description: Invoke when the Phase 5 review loop exits and the final `Validation Results` body must be assembled for Phase 6 handoff emission.
@@ -7,7 +7,7 @@ description: Invoke when the Phase 5 review loop exits and the final `Validation
 
 ### Phase 5.5: Final `Validation Results` for Phase 6
 
-The Validation Results body emitted in `workflows/generate/phase-6/index.md` (used by both handoff menus and the on-demand emission templates) is the result of the FINAL iteration's `cf-constructor-deterministic-validator` dispatch — its canonical block with all placeholders filled in. The block schema is owned by the validator agent file (`{cf-constructor-path}/.core/skills/cypilot/agents/cf-constructor-deterministic-validator.md` § Output) and is NOT redefined here; reproduce it verbatim from the agent's final-iteration return value.
+The Validation Results body emitted in `workflows/generate/phase-6/index.md` (used by both handoff menus and the on-demand emission templates) is the result of the FINAL iteration's `cf-deterministic-validator` dispatch — its canonical block with all placeholders filled in. The block schema is owned by the validator agent file (`{cf-studio-path}/.core/skills/studio/agents/cf-deterministic-validator.md` § Output) and is NOT redefined here; reproduce it verbatim from the agent's final-iteration return value.
 
 After the validator block, append a short Semantic Review summary block listing counts:
 

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.com/cypilot/kit-manifest.schema.json",
-  "title": "Cypilot Kit Manifest (manifest.toml)",
+  "$id": "https://example.com/constructor-studio/kit-manifest.schema.json",
+  "title": "Constructor Studio Kit Manifest (manifest.toml)",
   "description": "Schema for the declarative kit installation manifest. When present in a kit package root, governs installation and update: only declared resources are installed, each at its declared (or user-overridden) path.",
   "type": "object",
   "additionalProperties": false,
@@ -34,8 +34,8 @@
         "root": {
           "type": "string",
           "minLength": 1,
-          "default": "{cypilot_path}/config/kits/{slug}",
-          "description": "Base directory for all resources. Supports template variables {cypilot_path} and {slug}. Default: '{cypilot_path}/config/kits/{slug}'."
+          "default": "{cf-studio-path}/config/kits/{slug}",
+          "description": "Base directory for all resources. Supports template variables {cf-studio-path} and {slug}. Default: '{cf-studio-path}/config/kits/{slug}'."
         },
         "user_modifiable": {
           "type": "boolean",

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.com/cypilot/artifacts.schema.json",
-  "title": "Cypilot Artifact Registry (artifacts.toml)",
+  "$id": "https://example.com/constructor-studio/artifacts.schema.json",
+  "title": "Constructor Studio Artifact Registry (artifacts.toml)",
   "type": "object",
   "additionalProperties": false,
   "required": ["systems"],
@@ -222,7 +222,7 @@
         "format": {
           "type": "string",
           "minLength": 1,
-          "description": "Template format identifier. Use 'Cypilot' for full Cypilot tooling support with validation. Other values are treated as custom formats with LLM-only semantic processing."
+          "description": "Template format identifier. Use 'CFS' for full Constructor Studio tooling support (validation, traceability, code generation). Other values are treated as custom formats with LLM-only semantic processing."
         },
         "path": {
           "type": "string",

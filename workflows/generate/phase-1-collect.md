@@ -14,9 +14,9 @@ version: 1.0
 
 ## Phase 1: Collect Information
 
-Requires: `workflows/shared/inline-fallback-probe.md` before any `cf-constructor-*` sub-agent dispatch.
+Requires: `workflows/shared/inline-fallback-probe.md` before any `cf-*` sub-agent dispatch.
 
-Dispatch sub-agent `cf-constructor-generate-collector` with the JSON contract documented in `{cf-constructor-path}/.core/skills/cypilot/agents/cf-constructor-generate-collector.md`. Inputs: see "Inputs (dispatched-prompt contract)" in that agent file (mandatory vs optional listed there). Orchestrator-supplied values for this dispatch:
+Dispatch sub-agent `cf-generate-collector` with the JSON contract documented in `{cf-studio-path}/.core/skills/studio/agents/cf-generate-collector.md`. Inputs: see "Inputs (dispatched-prompt contract)" in that agent file (mandatory vs optional listed there). Orchestrator-supplied values for this dispatch:
 
 - `kind` = `{KIND}`; `name` = `{name}`; `rules_mode` = `{STRICT|RELAXED}`; `system` from Phase 0.5
 - `template_path`, `example_path`, `kit_rules_path` resolved from `rules.md`
@@ -42,7 +42,7 @@ approved `stored_proposed_inputs`, not an earlier display copy. Iterate until
 `approve all` or `COLLECTOR_MAX_ITER` is reached. `COLLECTOR_MAX_ITER`
 defaults to `5` (mirrors Phase 5's `MAX_ITER` default). On exhaustion the
 orchestrator MUST STOP and surface a `BLOCKED` status with the partial Inputs
-block — identically to other Cyber Constructor iteration loops — rather than
+block — identically to other Constructor Studio iteration loops — rather than
 auto-proceeding to Phase 3.
 
 After approval:

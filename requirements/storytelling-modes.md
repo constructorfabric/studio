@@ -1,5 +1,5 @@
 ---
-cf-constructor: true
+cf: true
 type: requirement
 name: Storytelling Modes
 version: 1.0
@@ -50,7 +50,7 @@ Which storytelling mode for this session?
 → suggested: {S} ({why-suggested})
 ```
 
-`{S}` is computed in priority order: explicit intent verbs → KIND defaults → `default_mode` from `{cf-constructor-path}/.cache/explain/preferences.json` → fallback `presentation`. `{why-suggested}` is a one-line note (`you said "review this PR"` / `KIND=PRD typically presentation` / `project default per preferences.json` / `fallback default`). User confirms by number / name / Enter for the suggestion. Methodology MUST NOT proceed past this prompt without an explicit user response.
+`{S}` is computed in priority order: explicit intent verbs → KIND defaults → `default_mode` from `{cf-studio-path}/.cache/explain/preferences.json` → fallback `presentation`. `{why-suggested}` is a one-line note (`you said "review this PR"` / `KIND=PRD typically presentation` / `project default per preferences.json` / `fallback default`). User confirms by number / name / Enter for the suggestion. Methodology MUST NOT proceed past this prompt without an explicit user response.
 
 **Override mid-session**: `change mode to {X}` rebuilds audience and resumes the plan with the new slot semantics and body style; plan items unchanged. `remember new mode` persists `default_mode` (future sessions still always ask; the suggested default updates).
 
@@ -79,11 +79,11 @@ Review is **storytelling + Q&A interleaved as separate portions**, not "presenta
 
 **classified_mode label.** Every comment drafted in review mode is automatically classified by intent into one of `generate` / `fix` / `brainstorm`, using a tiered heuristic (Tier 1: prefix tokens like `fix:`, `add:`, `idea:`; Tier 2: signals like imperative on a code line ⇒ `fix`, question form on an artifact ⇒ `brainstorm`; Tier 3: defaults — code-mode ⇒ `fix`, artifact-mode ⇒ `brainstorm`). The classified mode appears as a label on the comment (e.g. `Q-3 [fix]`) and is stored as `intent_initial` plus `intent_initial_tier ∈ {1,2,3}` on the buffer entry (see `requirements/storytelling-phases.md` § Open-question buffer entry shape). The label is informational; the user may override it via `change to {mode}` or via the inline shorthand `1 fix` / `2 brainstorm` at the generate-routing sub-prompt.
 
-**generate-routing sub-prompt visibility.** When the session is local-editable (`handle.local_editable == true`) AND generate-skill dispatch is available (`handle.generate_route_available == true`), each drafted comment surfaces a secondary generate-routing sub-prompt AFTER the per-item disposition (Post / Save / Discard / Skip-rest) resolves. The sub-prompt offers four options: Route now / Queue / No / Never-ask-again-this-session (default: No). See `skills/cypilot/agents/storytelling-gate.md` § Gate: generate-routing for the full menu and parse rules. When either flag is false, the sub-prompt is suppressed entirely (no flicker, no "unavailable" message) and the comment is recorded per the chosen disposition only.
+**generate-routing sub-prompt visibility.** When the session is local-editable (`handle.local_editable == true`) AND generate-skill dispatch is available (`handle.generate_route_available == true`), each drafted comment surfaces a secondary generate-routing sub-prompt AFTER the per-item disposition (Post / Save / Discard / Skip-rest) resolves. The sub-prompt offers four options: Route now / Queue / No / Never-ask-again-this-session (default: No). See `skills/studio/agents/storytelling-gate.md` § Gate: generate-routing for the full menu and parse rules. When either flag is false, the sub-prompt is suppressed entirely (no flicker, no "unavailable" message) and the comment is recorded per the chosen disposition only.
 
 **See also:**
-- `skills/cypilot/agents/storytelling-preflight.md` § Step 5b — Local-editable detection (defines `local_editable` / `generate_route_available`)
-- `skills/cypilot/agents/storytelling-gate.md` § Gate: generate-routing (the sub-prompt mechanics)
+- `skills/studio/agents/storytelling-preflight.md` § Step 5b — Local-editable detection (defines `local_editable` / `generate_route_available`)
+- `skills/studio/agents/storytelling-gate.md` § Gate: generate-routing (the sub-prompt mechanics)
 - `requirements/storytelling-phases.md` § Open-question buffer entry shape (`classified_mode`, `intent_initial_tier`, etc.)
 - `requirements/storytelling-preferences.md` § Dispatch-Failure Audit Log (NDJSON record format)
 
@@ -106,11 +106,11 @@ Heuristics applied contextually per portion, not hard rules. Diagram detail leve
 
 ## Code-mode vs Artifact-mode
 
-| Aspect | Artifact-mode (registered Cypilot artifact or generic doc) | Code-mode (code directory or files; default role = Tech Lead) |
+| Aspect | Artifact-mode (registered Studio artifact or generic doc) | Code-mode (code directory or files; default role = Tech Lead) |
 |---|---|---|
 | Plan walk | document structure (top-level sections) | **entry points → core → data → integration**, NOT file order |
 | Source refs | IDs as anchors | file paths + line numbers |
-| Lateral slot | parents/children from registry | linked design artifact (via `@cpt-*` markers from `{cfc_cmd} --json validate`); adjacent module / sibling component |
+| Lateral slot | parents/children from registry | linked design artifact (via `@cpt-*` markers from `{cfs_cmd} --json validate`); adjacent module / sibling component |
 | Diagrams | document semantics (flow, hierarchy, state) | first portion **always** emits ASCII module map (no lazy-ask); subsequent diagrams use lazy-ask normally |
 | Glossary | as needed | heavily used (function names, type names, domain terms) |
 

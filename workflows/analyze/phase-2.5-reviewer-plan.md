@@ -70,7 +70,7 @@ and path) so they can run in parallel in Phase 3.
 
 Reply `enter` or `memory` for in-memory plan (default), or `disk` to also
 save a Markdown plan pack under
-`{cf-constructor-path}/.cache/analyze-plans/`.
+`{cf-studio-path}/.cache/analyze-plans/`.
 
 Choose disk to inspect the plan as Markdown files and resume the analysis in a new chat using the saved plan; memory keeps it in-context only (NOT resumable after context compaction).
 ```
@@ -92,13 +92,13 @@ artifact.
 ## Planner Dispatch
 
 Requires: `workflows/shared/inline-fallback-probe.md` before any
-`cf-constructor-*` sub-agent dispatch. Pre-dispatch fail-stop and Mode B
+`cf-*` sub-agent dispatch. Pre-dispatch fail-stop and Mode B
 degradation rules are defined in
-`{cf-constructor-path}/.core/skills/cypilot/sub-agent-dispatch.md`.
+`{cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md`.
 
-Dispatch read-only sub-agent `cf-constructor-analyze-planner` with the JSON
+Dispatch read-only sub-agent `cf-analyze-planner` with the JSON
 contract documented in
-`{cf-constructor-path}/.core/skills/cypilot/agents/cf-constructor-analyze-planner.md`.
+`{cf-studio-path}/.core/skills/studio/agents/cf-analyze-planner.md`.
 Orchestrator-supplied values:
 
 - `plan_mode` = `"memory"` or `"disk"` from the user's reply
@@ -122,7 +122,7 @@ Orchestrator-supplied values:
 
 Parse the marker `<!-- reviewer_plan -->` and the following JSON block.
 
-Field names per {cf-constructor-path}/.core/skills/cypilot/agents/cf-constructor-analyze-planner.md § Output schema.
+Field names per {cf-studio-path}/.core/skills/studio/agents/cf-analyze-planner.md § Output schema.
 
 Validate:
 
@@ -156,20 +156,20 @@ has already failed or returned partial coverage.
   Planner returned PARTIAL_CHECKPOINT twice in this run — manual intervention required. Stopping.
   ```
   Then route the user to Storage Choice to select `disk` for offline inspection,
-  or suggest switching to `/cf-constructor-plan` for manual decomposition.
+  or suggest switching to `/cf-plan` for manual decomposition.
 
 ## Disk Mode Rendering
 
 When `REVIEWER_PLAN_RESOLVED=disk`, render the validated
 `REVIEWER_EXECUTION_PLAN` to:
 
-Only when `REVIEWER_PLAN_RESOLVED=disk`: set `CF_PHASE_GATE=released_for_orchestrator_write` with scope `{cf-constructor-path}/.cache/analyze-plans/{slug}-{ISO}/**` immediately before writing these cache files.
+Only when `REVIEWER_PLAN_RESOLVED=disk`: set `CF_PHASE_GATE=released_for_orchestrator_write` with scope `{cf-studio-path}/.cache/analyze-plans/{slug}-{ISO}/**` immediately before writing these cache files.
 
 ```text
-{cf-constructor-path}/.cache/analyze-plans/{slug}-{ISO}/index.md
-{cf-constructor-path}/.cache/analyze-plans/{slug}-{ISO}/plan.json
-{cf-constructor-path}/.cache/analyze-plans/{slug}-{ISO}/reviewers/{reviewer}.md
-{cf-constructor-path}/.cache/analyze-plans/{slug}-{ISO}/tasks/{task_id}.md
+{cf-studio-path}/.cache/analyze-plans/{slug}-{ISO}/index.md
+{cf-studio-path}/.cache/analyze-plans/{slug}-{ISO}/plan.json
+{cf-studio-path}/.cache/analyze-plans/{slug}-{ISO}/reviewers/{reviewer}.md
+{cf-studio-path}/.cache/analyze-plans/{slug}-{ISO}/tasks/{task_id}.md
 ```
 
 `index.md` summarises the partitioning and lists the parallel groups in

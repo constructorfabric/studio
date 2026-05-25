@@ -1,5 +1,5 @@
 ---
-cf-constructor: true
+cf: true
 type: workflow
 parent: workflows/workspace.md
 description: "Invoke when the workspace workflow enters Phase 1 to discover candidate repositories and handle zero-result scans."
@@ -19,8 +19,8 @@ description: "Invoke when the workspace workflow enters Phase 1 to discover cand
 
 | Step | Action |
 |---|---|
-| Identify root | `{cfc_cmd} --json info` |
-| Scan nested repos | `{cfc_cmd} --json workspace-init --dry-run` |
+| Identify root | `{cfs_cmd} --json info` |
+| Scan nested repos | `{cfs_cmd} --json workspace-init --dry-run` |
 | Present results | show repo name/path, adapter found or not, and inferred role |
 
 ### Zero Results
@@ -74,7 +74,7 @@ Why this input is needed: the storage mode determines where the workspace config
 
 Use a standalone workspace file or an inline workspace config?
 
-- `standalone` → write `.cf-constructor-workspace.toml` and keep workspace config separate from `config/core.toml`.
+- `standalone` → write `.studio-workspace.toml` and keep workspace config separate from `config/core.toml`.
 - `inline` → write `[workspace]` inside `config/core.toml`. Not available when any selected source is a Git URL.
 
 Suggested: `standalone` unless you specifically want workspace config inside `config/core.toml`.

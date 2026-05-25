@@ -1,8 +1,8 @@
 ---
-cf-constructor: true
+cf: true
 type: workflow-phase
 name: plan-phase-4-finalize
-description: "Invoke when /cf-constructor-plan enters Phase 4 to validate the completed plan, report the result, offer next-steps, and emit the new-chat startup prompt when the user chooses execution handoff."
+description: "Invoke when /cf-plan enters Phase 4 to validate the completed plan, report the result, offer next-steps, and emit the new-chat startup prompt when the user chooses execution handoff."
 loaded_by: workflows/plan.md
 version: 1.0
 ---
@@ -37,7 +37,7 @@ Update rules:
 > **⛔ CRITICAL**: Offer plan validation as the FIRST next step.
 
 Before generating the startup prompt or offering execution handoff:
-1. Self-validate against `{cf-constructor-path}/.core/requirements/plan-checklist.md`.
+1. Self-validate against `{cf-studio-path}/.core/requirements/plan-checklist.md`.
 2. Report:
 ```text
 ═══════════════════════════════════════════════
@@ -61,7 +61,7 @@ If any category FAILs: list issues and offer to fix them.
 
 If all categories PASS, report:
 ```text
-Plan created: {cf-constructor-path}/.plans/{task-slug}/
+Plan created: {cf-studio-path}/.plans/{task-slug}/
   Phases: {N}
   Files: {file_count}
   Lifecycle: {lifecycle}
@@ -73,10 +73,10 @@ Then immediately report the delegation handoff:
 
 ```text
 Delegation prompt:
-  I have a Cyber Constructor execution plan ready at:
-    {cf-constructor-path}/.plans/{task-slug}
+  I have a Constructor Studio execution plan ready at:
+    {cf-studio-path}/.plans/{task-slug}
 
-  Please delegate this plan to ralphex using Cyber Constructor's native delegation flow.
+  Please delegate this plan to ralphex using Constructor Studio's native delegation flow.
 ```
 
 Only when `SUB_AGENT_SESSION_APPROVED=true` AND `INLINE_FALLBACK=false`, also
@@ -84,14 +84,14 @@ report:
 
 ```text
 Native execution options available:
-  This plan can be delegated to ralphex using Cyber Constructor's native delegation feature.
-  Command: {cfc_cmd} delegate "{cf-constructor-path}/.plans/{task-slug}"
+  This plan can be delegated to ralphex using Constructor Studio's native delegation feature.
+  Command: {cfs_cmd} delegate "{cf-studio-path}/.plans/{task-slug}"
 
 Native phase execution prompt:
-  I have a Cyber Constructor execution plan ready at:
-    {cf-constructor-path}/.plans/{task-slug}/plan.toml
+  I have a Constructor Studio execution plan ready at:
+    {cf-studio-path}/.plans/{task-slug}/plan.toml
 
-  Please execute the next phase using Cyber Constructor's native phase runner.
+  Please execute the next phase using Constructor Studio's native phase runner.
 ```
 
 When native execution is not currently available (`SUB_AGENT_SESSION_APPROVED`
@@ -115,13 +115,13 @@ What would you like to do next?
 
 The plan passed self-validation. Choose your next action:
 
-  [1] Validate plan thoroughly — run /cf-constructor-analyze on the plan
-  [2] Execute Phase 1 natively here — dispatch Cyber Constructor's dedicated phase-runner subagent in this chat
+  [1] Validate plan thoroughly — run /cf-analyze on the plan
+  [2] Execute Phase 1 natively here — dispatch Constructor Studio's dedicated phase-runner subagent in this chat
   [3] Prepare execution handoff — generate the Phase 1 startup prompt for a downstream execution chat
   [4] Review plan files — inspect phase files before execution
   [5] Modify plan — adjust phases, add/remove content
 Reply with `1`, `2`, `3`, `4`, or `5`.
-[1] Suggested default before execution — verify the plan thoroughly with `/cf-constructor-analyze`.
+[1] Suggested default before execution — verify the plan thoroughly with `/cf-analyze`.
 [2] Start executing the first phase now in this chat with the native phase runner.
 [3] Generate a handoff prompt for a separate execution chat.
 [4] Inspect the plan files manually before deciding what to do next.
@@ -134,12 +134,12 @@ What would you like to do next?
 
 The plan passed self-validation. Choose your next action:
 
-  [1] Validate plan thoroughly — run /cf-constructor-analyze on the plan
+  [1] Validate plan thoroughly — run /cf-analyze on the plan
   [2] Prepare execution handoff — generate the Phase 1 startup prompt for a downstream execution chat
   [3] Review plan files — inspect phase files before execution
   [4] Modify plan — adjust phases, add/remove content
 Reply with `1`, `2`, `3`, or `4`.
-[1] Suggested default before execution — verify the plan thoroughly with `/cf-constructor-analyze`.
+[1] Suggested default before execution — verify the plan thoroughly with `/cf-analyze`.
 [2] Generate a handoff prompt for a separate execution chat.
 [3] Inspect the plan files manually before deciding what to do next.
 [4] Rework the plan structure or contents before execution.
@@ -161,9 +161,9 @@ emit a startup prompt. Treat this reply as a fresh native dispatch site:
 3. If the re-probe resolves to `SUB_AGENT_SESSION_APPROVED=true` and
    `INLINE_FALLBACK=false`, set `CF_PHASE_GATE=released_for_dispatch`
    immediately before routing to
-   `{cf-constructor-path}/.core/skills/cypilot/agents/cf-constructor-phase-runner.md`.
+   `{cf-studio-path}/.core/skills/studio/agents/cf-phase-runner.md`.
 4. The dispatch payload MUST include:
-   - `plan_dir = "{cf-constructor-path}/.plans/{task-slug}/"`
+   - `plan_dir = "{cf-studio-path}/.plans/{task-slug}/"`
    - `target_phase = 1`
    - `git_commit_mode = GIT_COMMIT_MODE`
    - `contributing_guide = CONTRIBUTING_GUIDE`
@@ -178,8 +178,8 @@ When the user chooses the handoff option (`[3]` in the native-available menu,
 `[2]` in the native-unavailable menu), emit the entire startup prompt inside a
 **single fenced code block**:
 ```text
-I have a Cyber Constructor execution plan ready at:
-  {cf-constructor-path}/.plans/{task-slug}/plan.toml
+I have a Constructor Studio execution plan ready at:
+  {cf-studio-path}/.plans/{task-slug}/plan.toml
 
 Please read the plan manifest, then execute Phase 1.
 The phase file is self-contained — follow its instructions exactly.

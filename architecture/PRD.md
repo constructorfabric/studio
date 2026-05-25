@@ -1,4 +1,4 @@
-# PRD — Cyber Constructor
+# PRD — Constructor Studio
 
 
 <!-- toc -->
@@ -18,6 +18,7 @@
   - [4.2 Out of Scope](#42-out-of-scope)
 - [5. Functional Requirements](#5-functional-requirements)
   - [5.1 Core](#51-core)
+  - [Mirror Override](#mirror-override)
   - [5.2 SDLC Kit (EXTRACTED — External Package)](#52-sdlc-kit-extracted--external-package)
 - [6. Non-Functional Requirements](#6-non-functional-requirements)
   - [6.1 Module-Specific NFRs](#61-module-specific-nfrs)
@@ -26,9 +27,9 @@
   - [7.1 Public API Surface](#71-public-api-surface)
   - [7.2 External Integration Contracts](#72-external-integration-contracts)
 - [8. Use Cases](#8-use-cases)
-  - [UC-001 Install Cypilot Globally](#uc-001-install-cypilot-globally)
+  - [UC-001 Install Studio Globally](#uc-001-install-studio-globally)
   - [UC-002 Initialize Project](#uc-002-initialize-project)
-  - [UC-003 Enable Cypilot in Agent Session](#uc-003-enable-cypilot-in-agent-session)
+  - [UC-003 Enable Studio in Agent Session](#uc-003-enable-studio-in-agent-session)
   - [UC-004 Create Artifact](#uc-004-create-artifact)
   - [UC-005 Validate Artifacts](#uc-005-validate-artifacts)
   - [UC-006 Implement Feature from Design](#uc-006-implement-feature-from-design)
@@ -36,7 +37,7 @@
   - [UC-008 Check PR Status](#uc-008-check-pr-status)
   - [UC-009 Configure Project via CLI](#uc-009-configure-project-via-cli)
   - [UC-010 Register or Extend a Kit](#uc-010-register-or-extend-a-kit)
-  - [UC-011 Update Cypilot Version](#uc-011-update-cypilot-version)
+  - [UC-011 Update Studio Version](#uc-011-update-studio-version)
   - [UC-012 Migrate Existing Project](#uc-012-migrate-existing-project)
   - [UC-013 Generate Execution Plan](#uc-013-generate-execution-plan)
   - [UC-014 Initialize Multi-Repo Workspace](#uc-014-initialize-multi-repo-workspace)
@@ -56,13 +57,13 @@
 
 ### 1.1 Purpose
 
-Cypilot is a deterministic agent tool that embeds into AI coding assistants and CI pipelines to provide structured workflows, artifact validation, and design-to-code traceability. Cypilot maximizes determinism: everything that can be validated, checked, or enforced without an LLM is handled deterministically; the LLM is reserved only for tasks that require reasoning, creativity, or natural language understanding.
+Studio is a deterministic agent tool that embeds into AI coding assistants and CI pipelines to provide structured workflows, artifact validation, and design-to-code traceability. Studio maximizes determinism: everything that can be validated, checked, or enforced without an LLM is handled deterministically; the LLM is reserved only for tasks that require reasoning, creativity, or natural language understanding.
 
 The system is a single-layer generic engine:
 
-- **Core** — deterministic command engine, generic workflows (generate/analyze), multi-agent integrations, global CLI, project configuration management, extensible kit system with GitHub-based kit installation, ID/traceability infrastructure, and Cypilot DSL (CDSL) for behavioral specifications
+- **Core** — deterministic command engine, generic workflows (generate/analyze), multi-agent integrations, global CLI, project configuration management, extensible kit system with GitHub-based kit installation, ID/traceability infrastructure, and Studio DSL (CDSL) for behavioral specifications
 
-Domain-specific value is delivered by independently installable kits. The recommended SDLC kit (`cyberfabric/cyber-pilot-kit-sdlc`) provides an artifact-first development pipeline (PRD → DESIGN → ADR → DECOMPOSITION → FEATURE → CODE) with templates, checklists, examples, deterministic validation, cross-artifact consistency checks, and GitHub PR review/status workflows. Kits are external packages — Cypilot core contains no domain-specific content.
+Domain-specific value is delivered by independently installable kits. The recommended SDLC kit (`constructorfabric/studio-kit-sdlc`) provides an artifact-first development pipeline (PRD → DESIGN → ADR → DECOMPOSITION → FEATURE → CODE) with templates, checklists, examples, deterministic validation, cross-artifact consistency checks, and GitHub PR review/status workflows. Kits are external packages — Studio core contains no domain-specific content.
 
 ### 1.2 Background / Problem Statement
 
@@ -70,7 +71,7 @@ Domain-specific value is delivered by independently installable kits. The recomm
 - Developers using AI coding assistants (Windsurf, Cursor, Claude, Copilot) for daily work
 - Technical Leads setting up development methodology and project conventions
 - Teams adopting structured design-to-code workflows with AI assistance
-- DevOps engineers integrating Cypilot validation into CI/CD pipelines for artifact and code quality gates
+- DevOps engineers integrating Studio validation into CI/CD pipelines for artifact and code quality gates
 
 **Key Problems Solved**:
 - **AI Agent Non-Determinism**: AI agents produce inconsistent results without structured guardrails; deterministic validation catches structural and traceability issues that LLMs miss or hallucinate
@@ -82,7 +83,7 @@ Domain-specific value is delivered by independently installable kits. The recomm
 ### 1.3 Goals (Business Outcomes)
 
 **Success Criteria**:
-- A new user can install Cypilot globally and initialize a project in ≤ 5 minutes. (Baseline: not measured; Target: v2.0)
+- A new user can install Studio globally and initialize a project in ≤ 5 minutes. (Baseline: not measured; Target: v2.0)
 - Deterministic validation of any single artifact completes in ≤ 3 seconds on a typical developer laptop. (Baseline: ~1s current; Target: v2.0)
 - 100% of `cpt-*` IDs defined in artifacts are resolvable via deterministic search without ambiguity. (Baseline: 100% current; Target: v2.0)
 - Agent integration files for all supported agents are generated in ≤ 10 seconds. (Baseline: ~5s current; Target: v2.0)
@@ -100,11 +101,14 @@ Domain-specific value is delivered by independently installable kits. The recomm
 
 | Term | Definition |
 |------|------------|
-| Cypilot | Deterministic agent tool: global CLI + project-installed skill + kits + workflows |
+| Constructor Studio | Marketing name for this product (v1.0.0+). Previously known as Cyber Constructor and Cypilot. |
+| Studio | Deterministic agent tool: global CLI + project-installed skill + kits + workflows |
 | Skill | The core package installed in a project's install directory, containing all commands, validation logic, and utilities |
 | Kit | Independently installable package of templates, checklists, rules, examples, and constraints for a domain (e.g., SDLC); installed from GitHub repositories |
 | Config | Tool-managed configuration directory inside the install directory, containing project settings and per-kit configs |
-| CDSL | Cypilot DSL — plain English behavioral specification language for actor flows and algorithms |
+| CPT | Canonical Provenance Trace — identifier scheme `cpt-{system}-{kind}-{slug}-v{N}`; the `{system}` token is `studio` from v1.0.0. |
+| CDSL | Constructor DSL — plain English behavioral specification language for actor flows, algorithms, and state machines. Language-agnostic. |
+| CFS | Constructor Fabric Studio — the CLI binary (`cfs`). Use the short form `cfs` in code; spell out only in marketing prose. |
 | Traceability | Linking design elements to code via unique identifiers and code tags |
 | System Prompt | Project-specific context file (tech-stack, conventions, domain model) loaded by workflows conditionally |
 | Agent Entry Point | Agent-specific file (workflow proxy, skill shim, or rule file) generated in the agent's native format |
@@ -117,29 +121,29 @@ Domain-specific value is delivered by independently installable kits. The recomm
 
 #### User
 
-**ID**: `cpt-cypilot-actor-user`
+**ID**: `cpt-studio-actor-user`
 
-**Role**: Primary user of Cypilot. Uses the tool through AI agent chats and CLI to: create and validate artifacts, implement features with traceability, configure the project, review PRs against configurable checklists, and manage project conventions.
+**Role**: Primary user of Studio. Uses the tool through AI agent chats and CLI to: create and validate artifacts, implement features with traceability, configure the project, review PRs against configurable checklists, and manage project conventions.
 
 ### 2.2 System Actors
 
 #### AI Agent
 
-**ID**: `cpt-cypilot-actor-ai-agent`
+**ID**: `cpt-studio-actor-ai-agent`
 
-**Role**: Executes Cypilot workflows (generate, analyze, PR review) by following SKILL.md instructions, loading rules and templates, and producing structured output. Supported agents: Windsurf, Cursor, Claude, Copilot, OpenAI.
+**Role**: Executes Studio workflows (generate, analyze, PR review) by following SKILL.md instructions, loading rules and templates, and producing structured output. Supported agents: Windsurf, Cursor, Claude, Copilot, OpenAI.
 
 #### CI/CD Pipeline
 
-**ID**: `cpt-cypilot-actor-ci-pipeline`
+**ID**: `cpt-studio-actor-ci-pipeline`
 
 **Role**: Runs deterministic validation and PR review automatically on commits and pull requests. Reports results as status checks and blocks merges on failure.
 
-#### Cypilot CLI
+#### Studio CLI
 
-**ID**: `cpt-cypilot-actor-cypilot-cli`
+**ID**: `cpt-studio-actor-studio-cli`
 
-**Role**: Global command-line tool installable with a single command. Provides project initialization, version management, and access to all Cypilot commands. Detects version mismatches and proposes updates.
+**Role**: Global command-line tool installable with a single command. Provides project initialization, version management, and access to all Studio commands. Detects version mismatches and proposes updates.
 
 ---
 
@@ -179,7 +183,7 @@ Domain-specific value is delivered by independently installable kits. The recomm
 
 - Replacing project management tools (Jira, Linear, etc.)
 - Automatically generating production-quality code without human review
-- GUI or web interface for Cypilot management
+- GUI or web interface for Studio management
 - Non-GitHub VCS platform support for PR review (GitLab, Bitbucket) in initial release
 - Real-time collaboration or multi-user synchronization
 
@@ -191,22 +195,22 @@ Domain-specific value is delivered by independently installable kits. The recomm
 
 #### Global CLI Installer
 
-- [x] `p1` - **ID**: `cpt-cypilot-fr-core-installer`
+- [x] `p1` - **ID**: `cpt-studio-fr-core-installer`
 
-The system MUST provide a global CLI tool installable with a single command. The tool MUST be available as both `cypilot` and the short alias `cpt`. The tool MUST:
+The system MUST provide a global CLI tool installable with a single command. The tool MUST be available as `cfs` with `constructor-studio`, `studio`, and `cpt` as recognized aliases. The tool MUST:
 
 1. Work both inside and outside projects.
 2. Work offline after initial setup.
 3. Perform non-blocking version checks — never delay command execution. Propose updates when a newer version is available.
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-cypilot-cli`
+`cpt-studio-actor-user`, `cpt-studio-actor-studio-cli`
 
 #### Project Initialization
 
-- [x] `p1` - **ID**: `cpt-cypilot-fr-core-init`
+- [x] `p1` - **ID**: `cpt-studio-fr-core-init`
 
-The system MUST provide an interactive project initialization command that bootstraps Cypilot in a project. The command MUST:
+The system MUST provide an interactive project initialization command that bootstraps Studio in a project. The command MUST:
 
 1. Check for existing installation and refuse to overwrite — propose updating instead.
 2. Ask for: installation directory, which agents to support (default: all), and per-kit config output directory.
@@ -216,78 +220,78 @@ The system MUST provide an interactive project initialization command that boots
 6. Create project configuration with default artifact discovery rules for all registered kit artifact kinds.
 7. Install all available kits by copying kit files into their config directories.
 8. Generate agent entry points for all selected agents.
-9. Inject a managed navigation block into the project root `AGENTS.md` (creating the file if absent) so that AI agents are automatically routed to Cypilot. Every subsequent CLI invocation MUST verify this block exists and is correct.
+9. Inject a managed navigation block into the project root `AGENTS.md` (creating the file if absent) so that AI agents are automatically routed to Studio. Every subsequent CLI invocation MUST verify this block exists and is correct.
 10. Support non-interactive mode for CI/scripting. After completion, display a prompt suggestion.
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-cypilot-cli`
+`cpt-studio-actor-user`, `cpt-studio-actor-studio-cli`
 
 #### Config Directory
 
-- [x] `p1` - **ID**: `cpt-cypilot-fr-core-config`
+- [x] `p1` - **ID**: `cpt-studio-fr-core-config`
 
 The system MUST maintain a structured project configuration. The system MUST:
 
 1. Store all configuration in human-readable format. Config files MUST be edited exclusively by the tool — never by humans directly. Config changes MUST produce clean version-control diffs.
-2. Provide per-kit file directories (path configurable per kit) containing all kit files — all user-editable. On update, changed files MUST be presented via interactive diff (see `cpt-cypilot-fr-core-resource-diff`).
+2. Provide per-kit file directories (path configurable per kit) containing all kit files — all user-editable. On update, changed files MUST be presented via interactive diff (see `cpt-studio-fr-core-resource-diff`).
 3. Support automatic config migration between versions when the tool is updated.
 4. Support artifact discovery rules for hierarchical monorepos where systems can be nested.
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-cypilot-cli`
+`cpt-studio-actor-user`, `cpt-studio-actor-studio-cli`
 
 #### Deterministic Skill Engine
 
-- [x] `p1` - **ID**: `cpt-cypilot-fr-core-skill-engine`
+- [x] `p1` - **ID**: `cpt-studio-fr-core-skill-engine`
 
 The system MUST provide a deterministic command engine. All validation, scanning, and transformation logic MUST be deterministic (same input → same output). All commands MUST support both human-readable and machine-readable output for CI integration.
 
 **Actors**:
-`cpt-cypilot-actor-ai-agent`, `cpt-cypilot-actor-ci-pipeline`, `cpt-cypilot-actor-cypilot-cli`
+`cpt-studio-actor-ai-agent`, `cpt-studio-actor-ci-pipeline`, `cpt-studio-actor-studio-cli`
 
 #### Generic Workflows
 
-- [x] `p1` - **ID**: `cpt-cypilot-fr-core-workflows`
+- [x] `p1` - **ID**: `cpt-studio-fr-core-workflows`
 
 The system MUST provide structured workflows for write operations (create, edit, fix, update, implement) and read operations (validate, review, check, inspect, audit). Workflows MUST be portable across projects without hardcoded paths. Workflows MUST support transparent execution logging so users can observe agent reasoning.
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-ai-agent`
+`cpt-studio-actor-user`, `cpt-studio-actor-ai-agent`
 
 #### Execution Plans
 
-- [ ] `p1` - **ID**: `cpt-cypilot-fr-core-execution-plans`
+- [ ] `p1` - **ID**: `cpt-studio-fr-core-execution-plans`
 
-The system MUST provide a plan workflow that decomposes large agent tasks into self-contained phase files. Each phase file MUST be a compiled prompt containing all rules, constraints, conventions, and context inlined — no external file references requiring Cypilot knowledge. Phase files MUST be executable by any AI agent without Cypilot context. The system MUST:
+The system MUST provide a plan workflow that decomposes large agent tasks into self-contained phase files. Each phase file MUST be a compiled prompt containing all rules, constraints, conventions, and context inlined — no external file references requiring Studio knowledge. Phase files MUST be executable by any AI agent without Studio context. The system MUST:
 
 1. Support three decomposition strategies: by template sections (for artifact generation), by checklist categories (for analysis/validation), and by CDSL blocks (for code implementation).
 2. Enforce a line budget: ≤500 lines target, ≤1000 lines maximum per phase file. If a phase exceeds the maximum, it MUST be split into sub-phases.
-3. Store plans in a git-ignored directory (`{cypilot_path}/.plans/`) with a TOML manifest tracking phase status (pending/in_progress/done/failed).
+3. Store plans in a git-ignored directory (`{cf-studio-path}/.plans/`) with a TOML manifest tracking phase status (pending/in_progress/done/failed).
 4. Resolve all template variables before writing phase files — zero unresolved `{variable}` references in output.
 5. Include binary acceptance criteria in each phase file so agents can self-verify completion.
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-ai-agent`
+`cpt-studio-actor-user`, `cpt-studio-actor-ai-agent`
 
 #### Multi-Agent Integration
 
-- [x] `p1` - **ID**: `cpt-cypilot-fr-core-agents`
+- [x] `p1` - **ID**: `cpt-studio-fr-core-agents`
 
-The system MUST provide a command that generates integration files for all supported AI coding assistants so each agent can access Cypilot workflows. Supported agents MUST include Windsurf, Cursor, Claude, Copilot, and OpenAI. The command MUST support regenerating integration files for a specific agent or for all agents at once. The command always fully regenerates integration files on each invocation.
+The system MUST provide two commands for agent integration: `cfs generate-agents` generates integration files for all supported AI coding assistants so each agent can access Studio workflows — it always fully regenerates integration files on each invocation, and supports regenerating for a specific agent or all agents at once; `cfs agents` is a read-only listing command that shows the currently generated integration files without writing anything. Supported agents MUST include Windsurf, Cursor, Claude, Copilot, and OpenAI.
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-ai-agent`, `cpt-cypilot-actor-cypilot-cli`
+`cpt-studio-actor-user`, `cpt-studio-actor-ai-agent`, `cpt-studio-actor-studio-cli`
 
 #### Extensible Kit System
 
-- [x] `p1` - **ID**: `cpt-cypilot-fr-core-kits`
+- [x] `p1` - **ID**: `cpt-studio-fr-core-kits`
 
 The system MUST support extensible kit packages installable from GitHub repositories. Each kit is a file package containing:
 
 1. **Kit files** — per-artifact directories with rules, templates, checklists, and examples, plus kit-wide constraint definitions, version metadata, and optional directories for workflows, scripts, and codebase rules. All files are user-editable.
 2. **Installation from GitHub** — the tool MUST support installing kits from GitHub repositories. The tool MUST ask the user for the kit config output directory. The tool MUST copy all kit files from the downloaded source and register the kit in project configuration with the GitHub source and version.
 3. **GitHub-based versioning** — each kit MUST be versioned via GitHub tags/releases. The kit's source (`github:<owner>/<repo>`) and version (GitHub tag) MUST be stored in `core.toml` kit section.
-4. **Update with file-level diff** — the tool MUST support two update modes: **force** (overwrites all kit files) and **interactive** (default, uses file-level diff with resolution modes — see `cpt-cypilot-fr-core-resource-diff`). Kit updates download the new version from GitHub.
+4. **Update with file-level diff** — the tool MUST support two update modes: **force** (overwrites all kit files) and **interactive** (default, uses file-level diff with resolution modes — see `cpt-studio-fr-core-resource-diff`). Kit updates download the new version from GitHub.
 5. **SKILL extensions** — a kit MAY extend the core agent entry point with kit-specific commands and workflows.
 6. **System prompt extensions** — a kit MAY include agent configuration content that is automatically loaded when the kit's artifacts or workflows are used.
 7. **Workflow registrations** — a kit MAY include workflow files that generate agent entry points.
@@ -299,11 +303,11 @@ The system MUST support extensible kit packages installable from GitHub reposito
 The system MUST provide CLI commands to: install kits from GitHub, update kits, move kit config, create new custom kits, and validate kit structure. The tool MUST NOT bundle any domain-specific kits.
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-cypilot-cli`
+`cpt-studio-actor-user`, `cpt-studio-actor-studio-cli`
 
 #### Declarative Kit Installation Manifest
 
-- [ ] `p1` - **ID**: `cpt-cypilot-fr-core-kit-manifest`
+- [ ] `p1` - **ID**: `cpt-studio-fr-core-kit-manifest`
 
 A kit MAY include a declarative installation manifest at its root. When present, the manifest governs the entire installation and update process. The system MUST:
 
@@ -317,20 +321,20 @@ A kit MAY include a declarative installation manifest at its root. When present,
 8. **Graceful fallback** — when no manifest is present, the system MUST fall back to the current installation behavior.
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-cypilot-cli`
+`cpt-studio-actor-user`, `cpt-studio-actor-studio-cli`
 
 #### Generated Resource Editing & Interactive Diff
 
-- [x] `p1` - **ID**: `cpt-cypilot-fr-core-resource-diff`
+- [x] `p1` - **ID**: `cpt-studio-fr-core-resource-diff`
 
 All kit files in the kit's config directory MUST be user-editable. Users MAY freely modify any kit file at any time. On kit update, the system MUST compare the new version of each file against the user's installed copy. **IF** the content is identical → no action needed. **IF** the content differs → the system MUST present an interactive diff allowing the user to accept, reject, or manually merge each change. The system MUST support batch accept/reject for all remaining files. The system MUST NOT accept a file with unresolved conflicts.
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-cypilot-cli`
+`cpt-studio-actor-user`, `cpt-studio-actor-studio-cli`
 
 #### Directory Layout Migration
 
-- [ ] `p1` - **ID**: `cpt-cypilot-fr-core-layout-migration`
+- [ ] `p1` - **ID**: `cpt-studio-fr-core-layout-migration`
 
 The system MUST automatically restructure the directory layout during updates when an old layout is detected. The migration MUST:
 
@@ -341,11 +345,11 @@ The system MUST automatically restructure the directory layout during updates wh
 The migration MUST NOT lose any user modifications to kit files. The migration MUST create a backup before proceeding. If migration fails, the backup MUST be restored and the user notified with actionable guidance.
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-cypilot-cli`
+`cpt-studio-actor-user`, `cpt-studio-actor-studio-cli`
 
 #### ID and Traceability System
 
-- [x] `p1` - **ID**: `cpt-cypilot-fr-core-traceability`
+- [x] `p1` - **ID**: `cpt-studio-fr-core-traceability`
 
 The system MUST provide a unique identifier system for all design elements with search, validation, and cross-reference resolution. The system MUST:
 
@@ -356,16 +360,16 @@ The system MUST provide a unique identifier system for all design elements with 
 5. Validate cross-artifact consistency: all cross-references resolve, and checked references imply checked definitions.
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-ai-agent`, `cpt-cypilot-actor-ci-pipeline`
+`cpt-studio-actor-user`, `cpt-studio-actor-ai-agent`, `cpt-studio-actor-ci-pipeline`
 
 #### Multi-Repo Workspace Federation
 
-- [x] `p1` - **ID**: `cpt-cypilot-fr-core-workspace`
+- [x] `p1` - **ID**: `cpt-studio-fr-core-workspace`
 
 The system MUST support multi-repo workspace federation — discovering repositories in nested sub-directories, configuring sources, and enabling cross-repo artifact traceability without merging adapters. The system MUST:
 
-1. **Config modes** — support two workspace configuration modes: standalone `.cypilot-workspace.toml` file and inline `[workspace]` section in `config/core.toml`.
-2. **Config discovery** — discover workspace config by first checking the project's `core.toml` for a `workspace` key (string path or inline dict), then falling back to well-known standalone file `.cypilot-workspace.toml` at the project root — no implicit parent directory traversal.
+1. **Config modes** — support two workspace configuration modes: standalone `.studio-workspace.toml` file and inline `[workspace]` section in `config/core.toml`.
+2. **Config discovery** — discover workspace config by first checking the project's `core.toml` for a `workspace` key (string path or inline dict), then falling back to well-known standalone file `.studio-workspace.toml` at the project root — no implicit parent directory traversal.
 3. **Source mapping** — each named source MUST map to a local filesystem path with optional adapter location and role (`artifacts`, `codebase`, `kits`, `full`).
 4. **Path resolution** — source path resolution MUST be relative to the workspace file's parent directory (standalone) or project root (inline).
 5. **CLI commands** — provide `workspace-init` (scan nested sub-directories for repos with `.git` or `AGENTS.md` marker, infer roles, generate config; scanning depth MUST be limited by a `--max-depth` parameter defaulting to 3 to prevent unbounded filesystem traversal), `workspace-add` with `--inline` flag (add sources to standalone or inline config), `workspace-info` (display workspace status with per-source reachability).
@@ -375,41 +379,60 @@ The system MUST support multi-repo workspace federation — discovering reposito
 9. **Graceful degradation** — degrade gracefully when sources are unreachable — emit warnings to stderr and continue with available sources.
 10. **Backward compatibility** — projects without workspace config MUST operate in single-repo mode with zero behavioral changes.
 
-- [x] `p1` - **ID**: `cpt-cypilot-fr-core-workspace-git-sources`
+- [x] `p1` - **ID**: `cpt-studio-fr-core-workspace-git-sources`
 
-The system MUST support Git URL sources in standalone workspace configuration (`.cypilot-workspace.toml`). The system MUST:
+The system MUST support Git URL sources in standalone workspace configuration (`.studio-workspace.toml`). The system MUST:
 
 1. **Source specification** — each Git URL source MUST specify: a remote Git repository URL, an optional branch or ref, and namespace resolution rules that map the URL to a local working directory path (e.g., `gitlab.com/org/project.git` → `org/project`).
 2. **URL scheme validation** — Git URL sources MUST accept only HTTPS (`https://`) and SSH (`git@host:path`, `ssh://`) URL schemes; all other schemes (including `file://`, `ftp://`, plain `http://`) MUST be rejected with an error.
 3. **Credential redaction** — URL credential redaction MUST be applied before displaying URLs in output or error messages.
-4. **Auth delegation** — authentication for private repositories is delegated to the user's git configuration (SSH keys, credential helpers); the system MUST NOT store or prompt for credentials (see `cpt-cypilot-nfr-security-integrity`).
+4. **Auth delegation** — authentication for private repositories is delegated to the user's git configuration (SSH keys, credential helpers); the system MUST NOT store or prompt for credentials (see `cpt-studio-nfr-security-integrity`).
 5. **Working directory** — the workspace MUST support a configurable working directory (defaulting to `.workspace-sources`) under which cloned repos are resolved via namespace rules.
 6. **Inline exclusion** — Git URL sources MUST NOT be supported in inline workspace configuration (`config/core.toml`) — inline mode is designed for simple local multi-repo setups where all sources are co-located on the filesystem; Git URL sources introduce clone management, namespace resolution, and network operations that are better isolated in a dedicated standalone workspace file.
 7. **Clone on first resolution** — the system MUST clone missing sources on first resolution and cache them locally.
 8. **Explicit sync model** — updating existing Git URL sources MUST be performed explicitly via `workspace-sync`. Ordinary source resolution MUST NOT perform network operations for already-resolved repos.
 9. **Branch defaulting** — branch configuration MUST be per-source (via `branch` field), defaulting to the remote repository's default branch when not specified.
 
-- [x] `p1` - **ID**: `cpt-cypilot-fr-core-workspace-cross-repo-editing`
+- [x] `p1` - **ID**: `cpt-studio-fr-core-workspace-cross-repo-editing`
 
-The system MUST support cross-repo editing from a primary workspace repository. When a user works from a primary repo (e.g., a docs repo) and edits files in a remote source repo (e.g., backend or frontend), the system MUST apply the rules, templates, and Cypilot tooling from the remote source's own adapter — not from the primary repo's adapter. This ensures each repo's conventions are respected regardless of which repo the user is working from. The system MUST resolve the correct adapter context per-source for validation, generation, and traceability operations targeting that source. When a remote source has no adapter or its adapter cannot be loaded, the system MUST fall back to the primary repo's adapter for that source and emit a warning.
+The system MUST support cross-repo editing from a primary workspace repository. When a user works from a primary repo (e.g., a docs repo) and edits files in a remote source repo (e.g., backend or frontend), the system MUST apply the rules, templates, and Studio tooling from the remote source's own adapter — not from the primary repo's adapter. This ensures each repo's conventions are respected regardless of which repo the user is working from. The system MUST resolve the correct adapter context per-source for validation, generation, and traceability operations targeting that source. When a remote source has no adapter or its adapter cannot be loaded, the system MUST fall back to the primary repo's adapter for that source and emit a warning.
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-cypilot-cli`
+`cpt-studio-actor-user`, `cpt-studio-actor-studio-cli`
 
-#### Cypilot DSL (CDSL)
+#### Mirror Override
 
-- [x] `p1` - **ID**: `cpt-cypilot-fr-core-cdsl`
+- [ ] `p1` - **ID**: `cpt-studio-fr-core-mirror-override`
+
+The system MUST support a global mirror-override capability that allows users to redirect any default download URL (GitHub repo or asset URL) to an alternative host before any network operation is performed. The system MUST:
+
+1. **CLI verbs** — provide four subcommands under `cfs mirror`: `override <old-url> <new-url>` (register or update an override), `list` (print current effective overrides with their source config file), `remove <old-url>` (delete an override), and `clear` (delete all overrides).
+2. **Dual-location persistence** — read from two config files in merge order (later entries override earlier on duplicate `from`): (1) `${XDG_CONFIG_HOME:-~/.config}/constructor-studio/mirrors.toml` (XDG-style, primary) and (2) `~/.constructor-studio/mirrors.toml` (brand-home fallback). The `list` command MUST print each entry's source path.
+3. **Write-target resolution** — when writing (`override`, `remove`, `clear`): if `~/.constructor-studio/mirrors.toml` already exists write there; else if the XDG path exists write there; else create the XDG path (preferred for new installs).
+4. **TOML format** — overrides are stored as `[[mirror]]` entries with `from` and `to` fields representing canonicalized URLs (scheme stripped, trailing `.git` and `/` stripped).
+5. **Longest-prefix match** — apply the longest-prefix match on the canonicalized URL before any GitHub API call, git clone, or asset download in `cfs`.
+6. **Lookup integration** — overrides MUST be applied in `cache.py` `_resolve_api_base` and `download_and_cache`, `init`/`update` command URL forwarding, and kit `source = "github:..."` resolution in autodetect.
+7. **Implementation module** — mirror logic MUST live in `src/studio_proxy/mirrors.py` exporting `load_overrides()`, `apply_override(url) -> url`, `set_override(old, new)`, `remove_override(old)`, and `list_overrides()`.
+
+**Actors**:
+`cpt-studio-actor-user`, `cpt-studio-actor-studio-cli`
+
+**Decision record**: ADR-0020 (`cpt-studio-adr-rebrand-and-mirror-override`) — see `architecture/ADR/0020-cpt-studio-adr-rebrand-and-mirror-override-v1.md`.
+
+#### Studio DSL (CDSL)
+
+- [x] `p1` - **ID**: `cpt-studio-fr-core-cdsl`
 
 The system MUST define a plain English behavioral specification language (CDSL) for actor flows, algorithms, and state descriptions. CDSL MUST be readable by non-programmers for validation and review. CDSL MUST translate directly to code with traceability tags. CDSL MUST be actor-centric. CDSL MUST support implementation tracking so teams can monitor progress per specification.
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-ai-agent`
+`cpt-studio-actor-user`, `cpt-studio-actor-ai-agent`
 
 #### Dependency Mapping
 
-- [x] `p1` - **ID**: `cpt-cypilot-fr-core-dependency-mapping`
+- [x] `p1` - **ID**: `cpt-studio-fr-core-dependency-mapping`
 
-The system MUST provide an interactive dependency map command (`cfc map`) that visualizes the full project graph of markdown files, source files, and the traceability edges between them. The command MUST:
+The system MUST provide an interactive dependency map command (`cfs map`) that visualizes the full project graph of markdown files, source files, and the traceability edges between them. The command MUST:
 
 1. Scan all markdown files under the project root and extract cpt-ID definitions and cross-references.
 2. Scan registered source files (from `artifacts.toml` `[[systems.codebase]]` entries) for `@cpt-*` scope and block markers.
@@ -421,102 +444,102 @@ The system MUST provide an interactive dependency map command (`cfc map`) that v
 8. Support workspace federation (`--local-only` to disable) and source-only scan exclusion (`--no-source`).
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-ai-agent`, `cpt-cypilot-actor-ci-pipeline`
+`cpt-studio-actor-user`, `cpt-studio-actor-ai-agent`, `cpt-studio-actor-ci-pipeline`
 
 #### Version Detection and Updates
 
-- [ ] `p2` - **ID**: `cpt-cypilot-fr-core-version`
+- [ ] `p2` - **ID**: `cpt-studio-fr-core-version`
 
 The system MUST provide a project update command that updates the project tool (skill) to the latest available version. The update MUST:
 
 1. Automatically migrate project configuration between versions, preserving all user settings.
-2. Detect the directory layout version and trigger layout migration if needed (see `cpt-cypilot-fr-core-layout-migration`).
+2. Detect the directory layout version and trigger layout migration if needed (see `cpt-studio-fr-core-layout-migration`).
 3. Regenerate agent integration files for compatibility.
 4. Migrate bundled kit references to GitHub sources for projects upgrading from versions < 3.0.8.
 
 The update command MUST NOT update kit files — kit updates are a separate operation. Version information MUST be accessible via a version query. The system MUST support checking for available updates without applying them.
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-cypilot-cli`
+`cpt-studio-actor-user`, `cpt-studio-actor-studio-cli`
 
 #### CLI Configuration Interface
 
-- [ ] `p2` - **ID**: `cpt-cypilot-fr-core-cli-config`
+- [ ] `p2` - **ID**: `cpt-studio-fr-core-cli-config`
 
 The system MUST provide rich CLI commands for project configuration without manual file editing. Core CLI commands MUST support: managing system definitions (add/remove/rename systems, assign kits), managing the ignore list (add/remove patterns with reasons), and registering/installing kits. Kit-specific config changes MUST be delegated to the kit's plugin CLI commands. All config changes MUST go through the tool to maintain config integrity and versioning. The CLI MUST provide dry-run mode for config changes and support reading current config values.
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-cypilot-cli`
+`cpt-studio-actor-user`, `cpt-studio-actor-studio-cli`
 
 #### Template Quality Assurance
 
-- [ ] `p2` - **ID**: `cpt-cypilot-fr-core-template-qa`
+- [ ] `p2` - **ID**: `cpt-studio-fr-core-template-qa`
 
 The system MUST provide a template quality assurance capability that validates example artifacts against their templates. The validation MUST ensure that the example artifact passes all template validation rules. This ensures that templates and examples remain synchronized and that templates are valid.
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-cypilot-cli`
+`cpt-studio-actor-user`, `cpt-studio-actor-studio-cli`
 
 #### Table of Contents Management
 
-- [x] `p1` - **ID**: `cpt-cypilot-fr-core-toc`
+- [x] `p1` - **ID**: `cpt-studio-fr-core-toc`
 
 The system MUST provide table of contents generation and validation for Markdown files. TOC generation MUST create or update table of contents blocks with configurable heading level ranges. TOC validation MUST verify that TOC exists, anchors point to real headings, all headings are covered, and the TOC is not stale. Both operations MUST support batch processing of multiple files.
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-cypilot-cli`
+`cpt-studio-actor-user`, `cpt-studio-actor-studio-cli`
 
 #### Environment Diagnostics
 
-- [ ] `p2` - **ID**: `cpt-cypilot-fr-core-doctor`
+- [ ] `p2` - **ID**: `cpt-studio-fr-core-doctor`
 
 The system MUST provide an environment diagnostics command that checks environment health: runtime prerequisites, git availability, GitHub integration status, agent detection (which supported agents are present), config integrity validation, installed version status, and kit structural correctness. The command MUST output a clear pass/fail report with actionable remediation steps for each failed check.
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-cypilot-cli`
+`cpt-studio-actor-user`, `cpt-studio-actor-studio-cli`
 
 #### Usage Telemetry
 
-- [x] `p1` - **ID**: `cpt-cypilot-fr-core-telemetry`
+- [x] `p1` - **ID**: `cpt-studio-fr-core-telemetry`
 
 The system MUST provide non-blocking usage telemetry that tracks CLI invocations for organizational visibility into AI agent adoption. The system MUST:
 
-1. Record every `cpt` CLI invocation with: git user identity (`user.name`, `user.email`), git remote URL (`remote.origin.url`), command name, timestamp, and Cypilot version.
-2. Write telemetry records as JSONL to local log files in `~/.cypilot/logs/` organized by date (`YYYY-MM-DD.log`).
-3. Optionally send telemetry to a remote HTTP endpoint in OTLP Logs JSON format when `CYPILOT_TELEMETRY_URL` is set.
-4. Rotate local log files by deleting files older than a configurable retention period (default: 5 days, override via `CYPILOT_TELEMETRY_RETENTION_DAYS`). Rotation MUST run at most once per day (triggered only when a new day's log file is created).
+1. Record every `cfs` CLI invocation with: git user identity (`user.name`, `user.email`), git remote URL (`remote.origin.url`), command name, timestamp, and Studio version.
+2. Write telemetry records as JSONL to local log files in `~/.cf-studio/logs/` organized by date (`YYYY-MM-DD.log`).
+3. Optionally send telemetry to a remote HTTP endpoint in OTLP Logs JSON format when `STUDIO_TELEMETRY_URL` is set.
+4. Rotate local log files by deleting files older than a configurable retention period (default: 5 days, override via `STUDIO_TELEMETRY_RETENTION_DAYS`). Rotation MUST run at most once per day (triggered only when a new day's log file is created).
 5. Never block or slow down CLI command execution — all telemetry work MUST run in a background daemon thread.
 6. Never crash or affect CLI behavior on telemetry failure — HTTP errors MUST be logged to the local log file, not printed to stderr.
-7. Be fully disableable via `CYPILOT_TELEMETRY=0`.
+7. Be fully disableable via `STUDIO_TELEMETRY=0`.
 8. Use only Python stdlib (no third-party dependencies).
 9. Collect git identity via a single `git config --get-regexp` subprocess call — git handles all config resolution (local, global, includes, conditional includes).
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-cypilot-cli`
+`cpt-studio-actor-user`, `cpt-studio-actor-studio-cli`
 
 #### Pre-Commit Hook Integration
 
-- [ ] `p3` - **ID**: `cpt-cypilot-fr-core-hooks`
+- [ ] `p3` - **ID**: `cpt-studio-fr-core-hooks`
 
 The system MUST provide a pre-commit hook that runs lightweight validation on changed artifacts before commit. The hook MUST be fast (≤ 5 seconds for typical changes). The system MUST support installing and uninstalling the hook.
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-cypilot-cli`
+`cpt-studio-actor-user`, `cpt-studio-actor-studio-cli`
 
 #### Shell Completions
 
-- [ ] `p3` - **ID**: `cpt-cypilot-fr-core-completions`
+- [ ] `p3` - **ID**: `cpt-studio-fr-core-completions`
 
 The system MUST provide shell completion scripts for bash, zsh, and fish. Completions MUST cover all commands, subcommands, and common options. The system MUST support installing completions for the user's shell.
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-cypilot-cli`
+`cpt-studio-actor-user`, `cpt-studio-actor-studio-cli`
 
 #### VS Code Plugin
 
-- [ ] `p2` - **ID**: `cpt-cypilot-fr-core-vscode-plugin`
+- [ ] `p2` - **ID**: `cpt-studio-fr-core-vscode-plugin`
 
-The system MUST provide a VS Code extension (compatible with VS Code, Cursor, Windsurf) for IDE-native Cypilot support. The plugin MUST provide:
+The system MUST provide a VS Code extension (compatible with VS Code, Cursor, Windsurf) for IDE-native Studio support. The plugin MUST provide:
 
 1. **ID Syntax Highlighting** — `cpt-*` identifiers MUST be visually distinguished in Markdown files (definitions, references, and code tags `@cpt-*`) with configurable color scheme.
 2. **Go to Definition / Find References** — clicking a `cpt-*` reference MUST navigate to its definition; clicking a definition MUST show all references across the workspace (equivalent to `where-defined` / `where-used`).
@@ -527,18 +550,18 @@ The system MUST provide a VS Code extension (compatible with VS Code, Cursor, Wi
 7. **Traceability Tree View** — a sidebar panel MUST display the traceability tree: PRD → DESIGN → DECOMPOSITION → FEATURE → CODE, with checked/unchecked status per ID and click-to-navigate.
 8. **Validation Status Bar** — the status bar MUST show current artifact validation status (PASS/FAIL with error count) and click to run full validation.
 9. **Quick Fix Actions** — common validation issues (missing priority marker, placeholder detected, duplicate ID) MUST offer quick fix suggestions inline.
-10. **Config-Aware** — the plugin MUST read the Cypilot config from the project's install directory to resolve systems, kits, autodetect rules, and ignore lists. The plugin MUST NOT require separate configuration.
+10. **Config-Aware** — the plugin MUST read the Studio config from the project's install directory to resolve systems, kits, autodetect rules, and ignore lists. The plugin MUST NOT require separate configuration.
 
-The plugin MUST delegate all validation logic to the installed Cypilot CLI to ensure consistency between CLI and IDE results. The plugin MUST support workspaces with multiple systems.
+The plugin MUST delegate all validation logic to the installed Studio CLI to ensure consistency between CLI and IDE results. The plugin MUST support workspaces with multiple systems.
 
 **Actors**:
-`cpt-cypilot-actor-user`
+`cpt-studio-actor-user`
 
 ### 5.2 SDLC Kit (EXTRACTED — External Package)
 
-> **EXTRACTED**: The SDLC kit has been extracted to a separate GitHub repository (`cyberfabric/cyber-pilot-kit-sdlc`). See ADR-0013 for details. All SDLC-specific functional requirements are now owned by the kit's own repository. Cypilot core knows only that the SDLC kit exists and is offered for installation during project initialization.
+> **EXTRACTED**: The SDLC kit has been extracted to a separate GitHub repository (`constructorfabric/studio-kit-sdlc`). See ADR-0013 for details. All SDLC-specific functional requirements are now owned by the kit's own repository. Studio core knows only that the SDLC kit exists and is offered for installation during project initialization.
 >
-> All `cpt-cypilot-fr-sdlc-*` requirement IDs (pipeline, plugin, validation, cross-artifact, code-gen, brownfield, lifecycle, guides, pr-review, pr-status, pr-config) have been moved to the kit repository.
+> All `cpt-studio-fr-sdlc-*` requirement IDs (pipeline, plugin, validation, cross-artifact, code-gen, brownfield, lifecycle, guides, pr-review, pr-status, pr-config) have been moved to the kit repository.
 
 ---
 
@@ -548,7 +571,7 @@ The plugin MUST delegate all validation logic to the installed Cypilot CLI to en
 
 #### DRY Configuration
 
-- [x] `p1` - **ID**: `cpt-cypilot-nfr-dry`
+- [x] `p1` - **ID**: `cpt-studio-nfr-dry`
 
 - Every rule or pattern MUST be configured in exactly one place — never duplicated across files or sections.
 - Similar rules MUST be merged into more generic ones when they share the same intent.
@@ -556,7 +579,7 @@ The plugin MUST delegate all validation logic to the installed Cypilot CLI to en
 
 #### Simplicity (Occam's Razor)
 
-- [x] `p1` - **ID**: `cpt-cypilot-nfr-simplicity`
+- [x] `p1` - **ID**: `cpt-studio-nfr-simplicity`
 
 - The system MUST NOT introduce new rules or abstractions if the problem can be solved by an existing one.
 - Installation dependencies MUST be minimal.
@@ -564,7 +587,7 @@ The plugin MUST delegate all validation logic to the installed Cypilot CLI to en
 
 #### CI & Automation First
 
-- [x] `p1` - **ID**: `cpt-cypilot-nfr-ci-automation-first`
+- [x] `p1` - **ID**: `cpt-studio-nfr-ci-automation-first`
 
 - The system MUST be a CLI tool with a config file — usable in CI pipelines without human interaction.
 - All typical operations (validation, scanning, reporting) MUST be deterministic and automatable.
@@ -572,7 +595,7 @@ The plugin MUST delegate all validation logic to the installed Cypilot CLI to en
 
 #### Zero Harm
 
-- [x] `p1` - **ID**: `cpt-cypilot-nfr-zero-harm`
+- [x] `p1` - **ID**: `cpt-studio-nfr-zero-harm`
 
 - The tool MUST support custom SDLC pipelines and artifacts — not impose a single process.
 - The tool MUST allow people to continue maintaining their artifacts manually if they choose.
@@ -585,15 +608,15 @@ The plugin MUST delegate all validation logic to the installed Cypilot CLI to en
 
 #### No Manual Maintenance
 
-- [x] `p1` - **ID**: `cpt-cypilot-nfr-upgradability`
+- [x] `p1` - **ID**: `cpt-studio-nfr-upgradability`
 
 - The tool MUST be upgradeable with a single command.
 - Upgrades MUST be backward compatible — no user action required beyond running the update command.
-- User customizations to kit files MUST be preserved across upgrades (see `cpt-cypilot-fr-core-resource-diff`).
+- User customizations to kit files MUST be preserved across upgrades (see `cpt-studio-fr-core-resource-diff`).
 
 #### Validation Performance
 
-- [x] `p2` - **ID**: `cpt-cypilot-nfr-validation-performance`
+- [x] `p2` - **ID**: `cpt-studio-nfr-validation-performance`
 
 - Deterministic validation of a single artifact MUST complete in ≤ 3 seconds.
 - Full project validation (all artifacts + codebase) SHOULD complete in ≤ 10 seconds for typical repositories (≤ 50k LOC).
@@ -601,7 +624,7 @@ The plugin MUST delegate all validation logic to the installed Cypilot CLI to en
 
 #### Security and Integrity
 
-- [x] `p1` - **ID**: `cpt-cypilot-nfr-security-integrity`
+- [x] `p1` - **ID**: `cpt-studio-nfr-security-integrity`
 
 - Validation MUST NOT execute untrusted code from artifacts.
 - Validation MUST produce deterministic results given the same repository state.
@@ -612,7 +635,7 @@ The plugin MUST delegate all validation logic to the installed Cypilot CLI to en
 
 #### Reliability and Recoverability
 
-- [x] `p2` - **ID**: `cpt-cypilot-nfr-reliability-recoverability`
+- [x] `p2` - **ID**: `cpt-studio-nfr-reliability-recoverability`
 
 - Validation failures MUST include enough context to remediate without reverse-engineering the validator.
 - The system MUST provide actionable guidance for common failure modes.
@@ -620,21 +643,21 @@ The plugin MUST delegate all validation logic to the installed Cypilot CLI to en
 
 #### Adoption and Usability
 
-- [x] `p2` - **ID**: `cpt-cypilot-nfr-adoption-usability`
+- [x] `p2` - **ID**: `cpt-studio-nfr-adoption-usability`
 
 - Project initialization MUST complete interactive setup with ≤ 5 user decisions.
-- Workflow instructions MUST be executable by a new user without prior Cypilot context, with ≤ 3 clarifying questions per workflow on average.
+- Workflow instructions MUST be executable by a new user without prior Studio context, with ≤ 3 clarifying questions per workflow on average.
 - All CLI commands MUST provide built-in help with usage examples.
 
 ### 6.2 NFR Exclusions
 
-- **Authentication/Authorization** (SEC-PRD-001/002): Not applicable — Cypilot is a local CLI tool, not a multi-user system requiring access control.
-- **Availability/Recovery** (REL-PRD-001/002): Not applicable — Cypilot runs locally as a CLI, not as a service requiring uptime guarantees.
-- **Scalability** (ARCH-PRD-003): Not applicable — Cypilot processes single repositories locally; traditional scaling does not apply.
-- **Throughput/Capacity** (PERF-PRD-002/003): Not applicable — Cypilot is a local development tool, not a high-throughput system.
+- **Authentication/Authorization** (SEC-PRD-001/002): Not applicable — Studio is a local CLI tool, not a multi-user system requiring access control.
+- **Availability/Recovery** (REL-PRD-001/002): Not applicable — Studio runs locally as a CLI, not as a service requiring uptime guarantees.
+- **Scalability** (ARCH-PRD-003): Not applicable — Studio processes single repositories locally; traditional scaling does not apply.
+- **Throughput/Capacity** (PERF-PRD-002/003): Not applicable — Studio is a local development tool, not a high-throughput system.
 - **Accessibility/Internationalization** (UX-PRD-002/003): Not applicable — CLI tool for developers; English-only is acceptable.
-- **Regulatory/Legal** (COMPL-PRD-001/002/003): Not applicable — Cypilot is a methodology tool with no user data or regulated industry context.
-- **Data Ownership/Lifecycle** (DATA-PRD-001/003): Not applicable — Cypilot does not persist user data; artifacts are owned by the project.
+- **Regulatory/Legal** (COMPL-PRD-001/002/003): Not applicable — Studio is a methodology tool with no user data or regulated industry context.
+- **Data Ownership/Lifecycle** (DATA-PRD-001/003): Not applicable — Studio does not persist user data; artifacts are owned by the project.
 - **Support Requirements** (MAINT-PRD-002): Not applicable — open-source tool; support is community-driven.
 - **Deployment/Monitoring** (OPS-PRD-001/002): Not applicable — installed locally; no server deployment or monitoring required.
 - **Safety** (SAFE-PRD-001/002): Not applicable — pure information/development tool with no physical interaction or harm potential.
@@ -645,15 +668,15 @@ The plugin MUST delegate all validation logic to the installed Cypilot CLI to en
 
 ### 7.1 Public API Surface
 
-#### Cypilot CLI
+#### Studio CLI
 
-- [ ] `p1` - **ID**: `cpt-cypilot-interface-cli`
+- [ ] `p1` - **ID**: `cpt-studio-interface-cli`
 
 **Type**: CLI (command-line interface)
 
 **Stability**: stable
 
-**Description**: Global `cypilot` command with subcommands for all Cypilot operations. All commands support both human-readable and machine-readable output. The CLI is the primary interface for both humans and CI pipelines.
+**Description**: Global `cfs` command with subcommands for all Studio operations. All commands support both human-readable and machine-readable output. The CLI is the primary interface for both humans and CI pipelines.
 
 **Breaking Change Policy**: Backward-incompatible changes require a major version bump with a migration period.
 
@@ -661,7 +684,7 @@ The plugin MUST delegate all validation logic to the installed Cypilot CLI to en
 
 #### GitHub API Integration
 
-- [ ] `p2` - **ID**: `cpt-cypilot-contract-github`
+- [ ] `p2` - **ID**: `cpt-studio-contract-github`
 
 **Direction**: required from client
 
@@ -673,45 +696,45 @@ The plugin MUST delegate all validation logic to the installed Cypilot CLI to en
 
 ## 8. Use Cases
 
-### UC-001 Install Cypilot Globally
+### UC-001 Install Studio Globally
 
-**ID**: `cpt-cypilot-usecase-install`
+**ID**: `cpt-studio-usecase-install`
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-cypilot-cli`
+`cpt-studio-actor-user`, `cpt-studio-actor-studio-cli`
 
 **Preconditions**: Runtime prerequisites met
 
 **Flow**:
 
-1. User installs Cypilot globally with a single command
-2. Cypilot CLI is available as `cypilot` and `cpt` commands
+1. User installs Studio globally with a single command
+2. Studio CLI is available as `cfs` (with `constructor-studio` / `studio` / `cpt` as aliases)
 3. User verifies installation — tool sets up on first run, then displays version
 
 **Alternative Flows**:
 - **Download fails**: Tool displays error and retries. If all retries fail, displays actionable error message.
 - **Runtime incompatible**: Tool displays requirements and exits.
 
-**Postconditions**: `cypilot`/`cpt` commands are available globally; all Cypilot commands are functional
+**Postconditions**: `cfs` (and its aliases `constructor-studio` / `studio` / `cpt`) is available globally; all Studio commands are functional
 
 ---
 
 ### UC-002 Initialize Project
 
-**ID**: `cpt-cypilot-usecase-init`
+**ID**: `cpt-studio-usecase-init`
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-cypilot-cli`
+`cpt-studio-actor-user`, `cpt-studio-actor-studio-cli`
 
-**Preconditions**: Git repository exists; `cypilot` is installed globally
+**Preconditions**: Git repository exists; `cfs` is installed globally
 
 **Flow**:
 
 1. User runs project initialization in the project root
-2. Tool checks whether Cypilot is already installed in the project
+2. Tool checks whether Studio is already installed in the project
 3. Tool asks for install directory and which agents to support
 4. Tool sets up the project: creates configuration, generates agent integration files
-5. Tool injects navigation block into project root `AGENTS.md` so AI agents discover Cypilot automatically
+5. Tool injects navigation block into project root `AGENTS.md` so AI agents discover Studio automatically
 6. Tool prompts: `Install SDLC kit? [a]ccept [d]ecline` — if accepted, downloads and installs the kit inline
 7. Tool displays prompt suggestion for next steps
 
@@ -722,48 +745,48 @@ The plugin MUST delegate all validation logic to the installed Cypilot CLI to en
 
 ---
 
-### UC-003 Enable Cypilot in Agent Session
+### UC-003 Enable Studio in Agent Session
 
-**ID**: `cpt-cypilot-usecase-enable`
+**ID**: `cpt-studio-usecase-enable`
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-ai-agent`
+`cpt-studio-actor-user`, `cpt-studio-actor-ai-agent`
 
-**Preconditions**: Project has Cypilot initialized (`{cypilot_path}/` exists)
+**Preconditions**: Project has Studio initialized (`{cf-studio-path}/` exists)
 
 **Flow**:
 
-1. User types `cypilot on` in agent chat
-2. AI Agent activates Cypilot mode: loads project configuration and verifies installation health
-3. AI Agent announces: "Cypilot Mode Enabled. Config: FOUND at {path}"
+1. User types `cf on` in agent chat
+2. AI Agent activates Studio mode: loads project configuration and verifies installation health
+3. AI Agent announces: "Studio Mode Enabled. Config: FOUND at {path}"
 
 **Alternative Flows**:
-- **Cypilot not initialized**: AI Agent announces that Cypilot is not initialized and exits Cypilot mode.
+- **Studio not initialized**: AI Agent announces that Studio is not initialized and exits Studio mode.
 - **Installation incomplete or corrupt**: AI Agent announces that the installation is incomplete and suggests running diagnostics.
 
-**Postconditions**: AI Agent follows Cypilot workflows for subsequent requests; execution logging is active
+**Postconditions**: AI Agent follows Studio workflows for subsequent requests; execution logging is active
 
 ---
 
 ### UC-004 Create Artifact
 
-**ID**: `cpt-cypilot-usecase-create-artifact`
+**ID**: `cpt-studio-usecase-create-artifact`
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-ai-agent`
+`cpt-studio-actor-user`, `cpt-studio-actor-ai-agent`
 
-**Preconditions**: Cypilot mode enabled; kit with target artifact kind is registered
+**Preconditions**: Studio mode enabled; kit with target artifact kind is registered
 
 **Flow**:
 
 1. User requests artifact creation (e.g., "create PRD", "generate DESIGN")
-2. AI Agent loads the appropriate template, checklist, and examples for the requested artifact kind (uses capability `cpt-cypilot-fr-core-workflows`)
+2. AI Agent loads the appropriate template, checklist, and examples for the requested artifact kind (uses capability `cpt-studio-fr-core-workflows`)
 3. AI Agent collects information via batch questions with proposals
 4. User approves or modifies proposals
 5. AI Agent generates artifact content following template structure and checklist criteria
 6. AI Agent presents summary and asks for confirmation
-7. User confirms; AI Agent writes file and updates config (uses capability `cpt-cypilot-fr-core-config`)
-8. AI Agent runs deterministic validation automatically (uses capability `cpt-cypilot-fr-core-traceability`)
+7. User confirms; AI Agent writes file and updates config (uses capability `cpt-studio-fr-core-config`)
+8. AI Agent runs deterministic validation automatically (uses capability `cpt-studio-fr-core-traceability`)
 
 **Alternative Flows**:
 - **Kit not registered for requested kind**: AI Agent displays available artifact kinds from registered kits and asks user to choose.
@@ -775,18 +798,18 @@ The plugin MUST delegate all validation logic to the installed Cypilot CLI to en
 
 ### UC-005 Validate Artifacts
 
-**ID**: `cpt-cypilot-usecase-validate`
+**ID**: `cpt-studio-usecase-validate`
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-ai-agent`, `cpt-cypilot-actor-ci-pipeline`
+`cpt-studio-actor-user`, `cpt-studio-actor-ai-agent`, `cpt-studio-actor-ci-pipeline`
 
 **Preconditions**: Artifacts exist in the project
 
 **Flow**:
 
 1. User or CI runs validation (via agent chat or CLI)
-2. System runs deterministic structural validation: template compliance, ID formats, placeholders (uses capability `cpt-cypilot-fr-core-traceability`)
-3. System runs cross-artifact validation: cross-references, checked consistency (uses capability `cpt-cypilot-fr-core-traceability`)
+2. System runs deterministic structural validation: template compliance, ID formats, placeholders (uses capability `cpt-studio-fr-core-traceability`)
+3. System runs cross-artifact validation: cross-references, checked consistency (uses capability `cpt-studio-fr-core-traceability`)
 4. System reports PASS/FAIL with score breakdown and actionable issues
 
 **Postconditions**: Validation report with file paths, line numbers, and remediation guidance
@@ -798,19 +821,19 @@ The plugin MUST delegate all validation logic to the installed Cypilot CLI to en
 
 ### UC-006 Implement Feature from Design
 
-**ID**: `cpt-cypilot-usecase-implement`
+**ID**: `cpt-studio-usecase-implement`
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-ai-agent`
+`cpt-studio-actor-user`, `cpt-studio-actor-ai-agent`
 
 **Preconditions**: FEATURE artifact exists with CDSL behavioral specification
 
 **Flow**:
 
 1. User requests implementation of a feature
-2. AI Agent loads FEATURE artifact and extracts implementation scope (uses capability `cpt-cypilot-fr-core-cdsl`)
+2. AI Agent loads FEATURE artifact and extracts implementation scope (uses capability `cpt-studio-fr-core-cdsl`)
 3. AI Agent reads project config for language-specific patterns and conventions (SDLC kit capability)
-4. AI Agent generates code with traceability tags where enabled (uses capability `cpt-cypilot-fr-core-traceability`)
+4. AI Agent generates code with traceability tags where enabled (uses capability `cpt-studio-fr-core-traceability`)
 5. User reviews and iterates on generated code
 6. AI Agent validates traceability coverage
 
@@ -824,10 +847,10 @@ The plugin MUST delegate all validation logic to the installed Cypilot CLI to en
 
 ### UC-007 Review PR
 
-**ID**: `cpt-cypilot-usecase-pr-review`
+**ID**: `cpt-studio-usecase-pr-review`
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-ai-agent`
+`cpt-studio-actor-user`, `cpt-studio-actor-ai-agent`
 
 **Preconditions**: GitHub integration authenticated; PR exists on GitHub
 
@@ -851,10 +874,10 @@ The plugin MUST delegate all validation logic to the installed Cypilot CLI to en
 
 ### UC-008 Check PR Status
 
-**ID**: `cpt-cypilot-usecase-pr-status`
+**ID**: `cpt-studio-usecase-pr-status`
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-ai-agent`
+`cpt-studio-actor-user`, `cpt-studio-actor-ai-agent`
 
 **Preconditions**: GitHub integration authenticated; PR exists on GitHub
 
@@ -875,18 +898,18 @@ The plugin MUST delegate all validation logic to the installed Cypilot CLI to en
 
 ### UC-009 Configure Project via CLI
 
-**ID**: `cpt-cypilot-usecase-configure`
+**ID**: `cpt-studio-usecase-configure`
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-cypilot-cli`
+`cpt-studio-actor-user`, `cpt-studio-actor-studio-cli`
 
-**Preconditions**: Cypilot initialized in project
+**Preconditions**: Studio initialized in project
 
 **Flow**:
 
 1. User uses CLI to modify configuration. Core commands manage project settings (e.g., add/remove systems, assign kits). Kit-specific config commands (p2) will manage kit-specific settings (e.g., artifact discovery rules, traceability levels)
-2. Tool validates the change against the config schema (uses capability `cpt-cypilot-fr-core-cli-config`)
-3. Tool applies the change to the appropriate config file (uses capability `cpt-cypilot-fr-core-config`)
+2. Tool validates the change against the config schema (uses capability `cpt-studio-fr-core-cli-config`)
+3. Tool applies the change to the appropriate config file (uses capability `cpt-studio-fr-core-config`)
 4. Tool confirms the change with a summary of what was modified
 
 **Alternative Flows**:
@@ -899,20 +922,20 @@ The plugin MUST delegate all validation logic to the installed Cypilot CLI to en
 
 ### UC-010 Register or Extend a Kit
 
-**ID**: `cpt-cypilot-usecase-kit-manage`
+**ID**: `cpt-studio-usecase-kit-manage`
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-cypilot-cli`
+`cpt-studio-actor-user`, `cpt-studio-actor-studio-cli`
 
-**Preconditions**: Cypilot initialized in project
+**Preconditions**: Studio initialized in project
 
 **Flow**:
 
-1. User installs a kit from GitHub (e.g., cyberfabric/cyber-pilot-kit-sdlc)
+1. User installs a kit from GitHub (e.g., constructorfabric/studio-kit-sdlc)
 2. Tool downloads the kit from the GitHub repository at the specified or latest version
 3. Tool asks for kit config output directory
 4. Tool copies all kit files from the downloaded source into the kit's config directory
-5. Tool registers the kit in project configuration with GitHub source and version (uses capability `cpt-cypilot-fr-core-kits`)
+5. Tool registers the kit in project configuration with GitHub source and version (uses capability `cpt-studio-fr-core-kits`)
 6. Tool validates kit structural correctness
 
 **Alternative Flows**:
@@ -924,24 +947,24 @@ The plugin MUST delegate all validation logic to the installed Cypilot CLI to en
 
 ---
 
-### UC-011 Update Cypilot Version
+### UC-011 Update Studio Version
 
-**ID**: `cpt-cypilot-usecase-update`
+**ID**: `cpt-studio-usecase-update`
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-cypilot-cli`
+`cpt-studio-actor-user`, `cpt-studio-actor-studio-cli`
 
-**Preconditions**: Cypilot installed globally and in project
+**Preconditions**: Studio installed globally and in project
 
 **Flow**:
 
-1. Tool notifies user when a newer version is available (uses capability `cpt-cypilot-fr-core-installer`)
+1. Tool notifies user when a newer version is available (uses capability `cpt-studio-fr-core-installer`)
 2. User runs the update command
-3. Tool downloads and applies the latest tool version (uses capability `cpt-cypilot-fr-core-version`)
-4. Tool migrates directory layout if needed (uses capability `cpt-cypilot-fr-core-layout-migration`)
-5. Tool migrates project configuration preserving all user settings (uses capability `cpt-cypilot-fr-core-config`)
-6. Tool migrates bundled kit references to GitHub sources for projects upgrading from versions < 3.0.8 (uses capability `cpt-cypilot-fr-core-kits`)
-7. Tool regenerates agent integration files for compatibility (uses capability `cpt-cypilot-fr-core-agents`)
+3. Tool downloads and applies the latest tool version (uses capability `cpt-studio-fr-core-version`)
+4. Tool migrates directory layout if needed (uses capability `cpt-studio-fr-core-layout-migration`)
+5. Tool migrates project configuration preserving all user settings (uses capability `cpt-studio-fr-core-config`)
+6. Tool migrates bundled kit references to GitHub sources for projects upgrading from versions < 3.0.8 (uses capability `cpt-studio-fr-core-kits`)
+7. Tool regenerates agent integration files for compatibility (uses capability `cpt-studio-fr-core-agents`)
 8. Tool recommends updating each installed kit if newer versions are available
 
 **Alternative Flows**:
@@ -956,48 +979,48 @@ The plugin MUST delegate all validation logic to the installed Cypilot CLI to en
 
 ### UC-012 Migrate Existing Project
 
-**ID**: `cpt-cypilot-usecase-migrate`
+**ID**: `cpt-studio-usecase-migrate`
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-ai-agent`
+`cpt-studio-actor-user`, `cpt-studio-actor-ai-agent`
 
-**Preconditions**: Existing project with code but no Cypilot artifacts
+**Preconditions**: Existing project with code but no Studio artifacts
 
 **Flow**:
 
-1. User runs project initialization in existing project (uses capability `cpt-cypilot-fr-core-init`)
+1. User runs project initialization in existing project (uses capability `cpt-studio-fr-core-init`)
 2. Tool detects existing code (brownfield) and offers reverse-engineering scan (SDLC kit capability)
 3. AI Agent analyzes code structure, configs, and documentation
 4. AI Agent proposes project config (tech stack, conventions, domain model)
 5. User reviews and approves proposed specs
 6. AI Agent creates initial artifacts from discovered patterns
-7. User adds traceability tags incrementally (uses capability `cpt-cypilot-fr-core-traceability`)
+7. User adds traceability tags incrementally (uses capability `cpt-studio-fr-core-traceability`)
 
 **Alternative Flows**:
 - **No code detected (greenfield)**: Tool skips reverse-engineering scan and proceeds with standard init flow (UC-002).
 - **User rejects proposed specs**: AI Agent saves partial specs as drafts and allows the user to edit manually before committing.
 
-**Postconditions**: Existing project has Cypilot config and initial artifacts; team can use workflows for new development
+**Postconditions**: Existing project has Studio config and initial artifacts; team can use workflows for new development
 
 ---
 
 ### UC-013 Generate Execution Plan
 
-**ID**: `cpt-cypilot-usecase-execution-plan`
+**ID**: `cpt-studio-usecase-execution-plan`
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-ai-agent`
+`cpt-studio-actor-user`, `cpt-studio-actor-ai-agent`
 
-**Preconditions**: Cypilot mode enabled; kit with target artifact kind is registered; task is large enough to benefit from decomposition
+**Preconditions**: Studio mode enabled; kit with target artifact kind is registered; task is large enough to benefit from decomposition
 
 **Flow**:
 
 1. User requests plan-based execution (e.g., "plan generate PRD", "plan analyze DESIGN")
-2. AI Agent loads task context: artifact kind, kit dependencies (template, rules, checklist, constraints) (uses capability `cpt-cypilot-fr-core-workflows`)
-3. AI Agent decomposes task into phases using the appropriate strategy (by template sections, checklist categories, or CDSL blocks) (uses capability `cpt-cypilot-fr-core-execution-plans`)
+2. AI Agent loads task context: artifact kind, kit dependencies (template, rules, checklist, constraints) (uses capability `cpt-studio-fr-core-workflows`)
+3. AI Agent decomposes task into phases using the appropriate strategy (by template sections, checklist categories, or CDSL blocks) (uses capability `cpt-studio-fr-core-execution-plans`)
 4. AI Agent compiles each phase into a self-contained phase file with inlined rules, pre-resolved paths, and binary acceptance criteria
 5. AI Agent enforces line budget (≤500 target, ≤1000 max) — splits phases that exceed budget
-6. AI Agent writes plan manifest (`plan.toml`) and phase files to `{cypilot_path}/.plans/{task-slug}/`
+6. AI Agent writes plan manifest (`plan.toml`) and phase files to `{cf-studio-path}/.plans/{task-slug}/`
 7. AI Agent reports plan summary: total phases, estimated size, execution order
 8. User triggers phase execution one at a time; agent reads phase file and follows self-contained instructions
 9. After each phase, agent self-checks against acceptance criteria and updates manifest status
@@ -1013,20 +1036,20 @@ The plugin MUST delegate all validation logic to the installed Cypilot CLI to en
 
 ### UC-014 Initialize Multi-Repo Workspace
 
-**ID**: `cpt-cypilot-usecase-workspace-init`
+**ID**: `cpt-studio-usecase-workspace-init`
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-cypilot-cli`
+`cpt-studio-actor-user`, `cpt-studio-actor-studio-cli`
 
-**Preconditions**: Cypilot initialized in project; one or more sibling repositories exist in nested sub-directories
+**Preconditions**: Studio initialized in project; one or more sibling repositories exist in nested sub-directories
 
 **Flow**:
 
 1. User runs `workspace-init [--root DIR] [--output PATH] [--inline] [--force] [--max-depth N] [--dry-run]` from project root
-2. Tool scans nested sub-directories (up to `--max-depth` levels, default 3) for repos with `.git` or `AGENTS.md` with `@cpt:root-agents` marker (uses capability `cpt-cypilot-fr-core-workspace`)
+2. Tool scans nested sub-directories (up to `--max-depth` levels, default 3) for repos with `.git` or `AGENTS.md` with `@cpt:root-agents` marker (uses capability `cpt-studio-fr-core-workspace`)
 3. Tool infers source roles (`artifacts`, `codebase`, `kits`, `full`) based on adapter contents
 4. Tool checks for existing workspace config conflicts (cross-type or same-type without `--force`)
-5. Tool writes workspace config with discovered sources and default traceability settings: standalone `.cypilot-workspace.toml` by default, or inline `[workspace]` in `config/core.toml` when `--inline` is specified
+5. Tool writes workspace config with discovered sources and default traceability settings: standalone `.studio-workspace.toml` by default, or inline `[workspace]` in `config/core.toml` when `--inline` is specified
 
 **Alternative Flows**:
 - **No nested repos found**: Tool creates an empty workspace config; user can add sources incrementally via `workspace-add`.
@@ -1039,18 +1062,18 @@ The plugin MUST delegate all validation logic to the installed Cypilot CLI to en
 
 ### UC-015 Add Workspace Source
 
-**ID**: `cpt-cypilot-usecase-workspace-add`
+**ID**: `cpt-studio-usecase-workspace-add`
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-cypilot-cli`
+`cpt-studio-actor-user`, `cpt-studio-actor-studio-cli`
 
 **Preconditions**: Workspace config exists (standalone or inline)
 
 **Flow**:
 
-1. User runs `workspace-add` with source name and path or Git URL (uses capability `cpt-cypilot-fr-core-workspace`)
+1. User runs `workspace-add` with source name and path or Git URL (uses capability `cpt-studio-fr-core-workspace`)
 2. Tool auto-detects workspace type (standalone vs inline) when `--inline` not specified
-3. Tool validates source: path must be a directory (local) or valid Git URL (standalone only, per `cpt-cypilot-fr-core-workspace-git-sources`)
+3. Tool validates source: path must be a directory (local) or valid Git URL (standalone only, per `cpt-studio-fr-core-workspace-git-sources`)
 4. Tool adds source entry with name, path/URL, optional branch, role, and adapter path
 5. If source name already exists, tool returns error: "Source '{name}' already exists. Use --force to replace."
 6. If `--force` specified and source name already exists, tool replaces the existing entry
@@ -1067,16 +1090,16 @@ The plugin MUST delegate all validation logic to the installed Cypilot CLI to en
 
 ### UC-016 Check Workspace Status
 
-**ID**: `cpt-cypilot-usecase-workspace-info`
+**ID**: `cpt-studio-usecase-workspace-info`
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-cypilot-cli`
+`cpt-studio-actor-user`, `cpt-studio-actor-studio-cli`
 
 **Preconditions**: Workspace config exists
 
 **Flow**:
 
-1. User runs `workspace-info` (uses capability `cpt-cypilot-fr-core-workspace`)
+1. User runs `workspace-info` (uses capability `cpt-studio-fr-core-workspace`)
 2. Tool loads workspace config and resolves each source path
 3. For each source: checks reachability, probes for adapter directory, loads artifact metadata
 4. Tool reports: workspace version, config location, per-source status (reachable, adapter found, artifact/system counts), traceability settings (`cross_repo`, `resolve_remote_ids`), and any config warnings
@@ -1092,16 +1115,16 @@ The plugin MUST delegate all validation logic to the installed Cypilot CLI to en
 
 ### UC-017 Sync Git URL Workspace Sources
 
-**ID**: `cpt-cypilot-usecase-workspace-sync`
+**ID**: `cpt-studio-usecase-workspace-sync`
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-cypilot-cli`
+`cpt-studio-actor-user`, `cpt-studio-actor-studio-cli`
 
-**Preconditions**: Workspace config exists with at least one Git URL source (per `cpt-cypilot-fr-core-workspace-git-sources`)
+**Preconditions**: Workspace config exists with at least one Git URL source (per `cpt-studio-fr-core-workspace-git-sources`)
 
 **Flow**:
 
-1. User runs `workspace-sync` (optionally with `--source <name>` to target a single source, `--dry-run` to preview, or `--force` to skip safety checks) (uses capability `cpt-cypilot-fr-core-workspace-git-sources`)
+1. User runs `workspace-sync` (optionally with `--source <name>` to target a single source, `--dry-run` to preview, or `--force` to skip safety checks) (uses capability `cpt-studio-fr-core-workspace-git-sources`)
 2. Tool loads workspace config and collects Git URL sources (filtered by `--source` if provided)
 3. For each Git URL source: checks the local worktree for uncommitted changes; aborts that source with an error if dirty (unless `--force` is set)
 4. For each clean (or forced) source: fetches remote changes and updates the local worktree to the configured branch (or the remote default branch if not specified)
@@ -1123,16 +1146,16 @@ The plugin MUST delegate all validation logic to the installed Cypilot CLI to en
 
 ### UC-018 Validate or Generate in Remote Workspace Source
 
-**ID**: `cpt-cypilot-usecase-workspace-cross-repo-editing`
+**ID**: `cpt-studio-usecase-workspace-cross-repo-editing`
 
 **Actors**:
-`cpt-cypilot-actor-user`, `cpt-cypilot-actor-ai-agent`, `cpt-cypilot-actor-cypilot-cli`
+`cpt-studio-actor-user`, `cpt-studio-actor-ai-agent`, `cpt-studio-actor-studio-cli`
 
-**Preconditions**: Workspace config exists with at least one reachable source that has a Cypilot adapter
+**Preconditions**: Workspace config exists with at least one reachable source that has a Studio adapter
 
 **Flow**:
 
-1. User targets a file or artifact located in a remote workspace source (e.g., `validate --artifact ../backend/architecture/DESIGN.md` or `validate --source backend`) (uses capability `cpt-cypilot-fr-core-workspace-cross-repo-editing`)
+1. User targets a file or artifact located in a remote workspace source (e.g., `validate --artifact ../backend/architecture/DESIGN.md` or `validate --source backend`) (uses capability `cpt-studio-fr-core-workspace-cross-repo-editing`)
 2. Tool resolves which workspace source owns the target file by matching paths against resolved source paths (longest-prefix match)
 3. Tool loads the remote source's own adapter context (rules, templates, constraints, kits) instead of the primary repo's adapter
 4. Tool performs the requested operation (validation, generation, traceability) using the remote adapter context
@@ -1140,7 +1163,7 @@ The plugin MUST delegate all validation logic to the installed Cypilot CLI to en
 
 **Alternative Flows**:
 - **Remote source has no adapter**: Tool falls back to the primary repo's adapter for that source and emits a warning.
-- **Remote source is unreachable**: Tool emits warning and skips (graceful degradation per `cpt-cypilot-fr-core-workspace`).
+- **Remote source is unreachable**: Tool emits warning and skips (graceful degradation per `cpt-studio-fr-core-workspace`).
 - **File does not belong to any workspace source**: Tool uses the primary repo's adapter (file is local).
 
 **Postconditions**: Operation completed using the correct per-source adapter context

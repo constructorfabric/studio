@@ -45,7 +45,7 @@ class TestCmdSpecCoverage(unittest.TestCase):
         meta = ArtifactsMeta(
             version=1,
             project_root=".",
-            kits={"test": Kit("test", "Cypilot", "kits/test")},
+            kits={"test": Kit("test", "CFS", "kits/test")},
             systems=systems or [],
         )
         ctx = MagicMock()
@@ -258,7 +258,7 @@ class TestCmdSpecCoverage(unittest.TestCase):
             meta = ArtifactsMeta(
                 version=1,
                 project_root=".",
-                kits={"test": Kit("test", "Cypilot", "kits/test")},
+                kits={"test": Kit("test", "CFS", "kits/test")},
                 systems=[
                     SystemNode(name="sys1", slug="sys1", kit="test",
                                artifacts=[], children=[],

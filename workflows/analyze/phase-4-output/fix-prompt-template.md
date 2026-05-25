@@ -7,9 +7,9 @@ version: 1.0
 ---
 
 ```text
-Invoke skill `cf-constructor`.
+Invoke skill `cf`.
 
-I need a bounded fix via `/cf-constructor-generate` for `{PATH}` ({KIND}).
+I need a bounded fix via `/cf-generate` for `{PATH}` ({KIND}).
 
 Analysis status: {PASS|FAIL|PARTIAL}
 Deterministic gate: {exit code, errors, warnings — or "skipped"}

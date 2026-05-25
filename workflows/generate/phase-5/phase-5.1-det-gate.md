@@ -1,5 +1,5 @@
 ---
-cf-constructor: true
+cf: true
 type: workflow-fragment
 parent: workflows/generate.md
 description: Invoke when each Phase 5 iteration begins and the deterministic validator must run before any semantic reviewer dispatch.
@@ -7,20 +7,20 @@ description: Invoke when each Phase 5 iteration begins and the deterministic val
 
 ### Phase 5.1: Deterministic Gate
 
-<!-- The `Validation Results` block schema is owned by the deterministic-validator agent file (`{cf-constructor-path}/.core/skills/cypilot/agents/cf-constructor-deterministic-validator.md` § Output). Workflows reference it by name only; do NOT redefine the field set here — always reproduce the template from the agent file verbatim. -->
+<!-- The `Validation Results` block schema is owned by the deterministic-validator agent file (`{cf-studio-path}/.core/skills/studio/agents/cf-deterministic-validator.md` § Output). Workflows reference it by name only; do NOT redefine the field set here — always reproduce the template from the agent file verbatim. -->
 
-Requires: `workflows/shared/inline-fallback-probe.md` before any `cf-constructor-*` sub-agent dispatch.
+Requires: `workflows/shared/inline-fallback-probe.md` before any `cf-*` sub-agent dispatch.
 
-Dispatch sub-agent `cf-constructor-deterministic-validator` with the JSON contract documented in `{cf-constructor-path}/.core/skills/cypilot/agents/cf-constructor-deterministic-validator.md`. Inputs: see "Inputs (dispatched-prompt contract)" in that agent file (mandatory vs optional listed there). Orchestrator-supplied values for this dispatch:
+Dispatch sub-agent `cf-deterministic-validator` with the JSON contract documented in `{cf-studio-path}/.core/skills/studio/agents/cf-deterministic-validator.md`. Inputs: see "Inputs (dispatched-prompt contract)" in that agent file (mandatory vs optional listed there). Orchestrator-supplied values for this dispatch:
 
 - `target_paths` = the Phase 5 `target_paths` state on external analyze→generate entry; otherwise `manifest.paths_written` from `workflows/generate/phase-4-write.md` (or the last accepted manifest from a prior iteration)
 - `target_kinds` = `{ "<path>": "{TARGET_TYPE}" }` per path
 - `rules_mode` = `{STRICT|RELAXED}`
-- `language_check_configured` = `true|false` from `.cf-constructor-workspace.toml`
+- `language_check_configured` = `true|false` from `.studio-workspace.toml`
 
 Capture the returned `Validation Results` block and the `det_findings` JSON array.
 Append a `phase5_dispatch_evidence` record for this validator dispatch with
-`phase = "5.1"`, `agent_id = "cf-constructor-deterministic-validator"`,
+`phase = "5.1"`, `agent_id = "cf-deterministic-validator"`,
 `target_paths`, and the returned `Validation Results` marker.
 
 - If the overall gate is `PASS` (or `SKIPPED` with `Validator availability proof`), proceed to `workflows/generate/phase-5/phase-5.2-semantic.md`.

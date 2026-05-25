@@ -6,11 +6,11 @@ loaded_by: workflows/analyze.md
 version: 1.0
 ---
 
-ALWAYS open and follow `{cf-constructor-path}/.core/skills/cypilot/SKILL.md` WHEN {cfc_mode} is `off`
+ALWAYS open and follow `{cf-studio-path}/.core/skills/studio/SKILL.md` WHEN {cfs_mode} is `off`
 
 **Type**: Analysis
 
-ALWAYS open and follow `skills/cypilot/protocol.md` FIRST
+ALWAYS open and follow `skills/studio/protocol.md` FIRST
 
 Initialize per-run analyze flags before matching: `SEMANTIC_ONLY=false`, `CHANGE_REVIEW=false`, `CODE_REVIEW=false`, `CODE_BUG_REVIEW=false`, `CONSISTENCY_REVIEW=false`, `PROMPT_REVIEW=false`, `PROMPT_BUG_REVIEW=false`, `EXPLAIN_MODE=false`, `ARTIFACT_REVIEW=false`, `CF_PHASE_GATE=armed`. Phase 0 (`phase-0-dependencies.md`) only MATCHES conditions and SETS flags to true; it MUST NOT re-initialize them to false. CHANGE_REVIEW is set true by phase-0-dependencies.md; ARTIFACT_REVIEW is set true by phase-0-dependencies.md when the resolved target is an artifact and no prompt/code methodology has taken ownership.
 
@@ -32,11 +32,11 @@ WHEN the prompt/instruction request is defect-oriented (`prompt bug review`, `pr
 
 If multiple methodology flags are true, Phase 3 dispatches multiple sub-agents. Each methodology is loaded by exactly one matched sub-agent; the orchestrator only routes and merges outputs.
 
-ALWAYS open and follow `{cf-constructor-path}/.core/requirements/storytelling.md` WHEN user signals explicit pedagogical/storytelling intent (intent-based; canonical trigger list and mode disambiguation live in storytelling.md).
+ALWAYS open and follow `{cf-studio-path}/.core/requirements/storytelling.md` WHEN user signals explicit pedagogical/storytelling intent (intent-based; canonical trigger list and mode disambiguation live in storytelling.md).
 
 **Plain analyze intent stays in standard analyze**: ordinary review / audit / inspection requests (`review my changes`, `review this PR`, `review this diff`, `audit this design`, `inspect this code`, `check what changed`, `find bugs in X`) MUST NOT auto-enter `EXPLAIN_MODE` — they continue through the standard analyze contract (deterministic gate + semantic checklist + Remediation Handoff menu on actionable issues). Storytelling mode-coupled review requires explicit storytelling intent: `explain this PR review-style`, `walk me through this PR with panel feedback`, `storytelling review of X`, or any `explain`-family verb followed by a review-mode pick at the always-ask prompt.
 
-WHEN this rule triggers, set `EXPLAIN_MODE=true`, skip Phase 2 deterministic gate, skip Phase 3 standard semantic checklist, use the Storytelling Output schema in Phase 4, skip Phase 5 (Storytelling Output already emits Suggested Next Steps), and override `enforceRemediationPrompts` (do NOT emit `Fix Prompt` / `Plan Prompt` — open questions are author-routed by user, not Cyber Constructor-routed). If both `EXPLAIN_MODE` and `PROMPT_REVIEW` intents are detected on the same request, ask the user to disambiguate before loading either methodology.
+WHEN this rule triggers, set `EXPLAIN_MODE=true`, skip Phase 2 deterministic gate, skip Phase 3 standard semantic checklist, use the Storytelling Output schema in Phase 4, skip Phase 5 (Storytelling Output already emits Suggested Next Steps), and override `enforceRemediationPrompts` (do NOT emit `Fix Prompt` / `Plan Prompt` — open questions are author-routed by user, not Constructor Studio-routed). If both `EXPLAIN_MODE` and `PROMPT_REVIEW` intents are detected on the same request, ask the user to disambiguate before loading either methodology.
 
 ```text
 Your request combines storytelling and prompt-review intent. Which should I run?

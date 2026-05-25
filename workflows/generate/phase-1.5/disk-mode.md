@@ -1,5 +1,5 @@
 ---
-cf-constructor: true
+cf: true
 type: workflow-fragment
 parent: workflows/generate/phase-1.5-author-plan.md
 description: "Invoke when AUTHOR_PLAN_OFFER_RESOLVED=disk to render the author-plan cache files and handle partial-write recovery for Generate Phase 1.5."
@@ -17,14 +17,14 @@ When `AUTHOR_PLAN_OFFER_RESOLVED=disk`, render the validated
 `AUTHOR_EXECUTION_PLAN` to:
 
 Set `CF_PHASE_GATE=released_for_orchestrator_write` with scope =
-`{cf-constructor-path}/.cache/generate-plans/{slug}-{ISO}/` immediately before
+`{cf-studio-path}/.cache/generate-plans/{slug}-{ISO}/` immediately before
 writing these cache files:
 
 ```text
-{cf-constructor-path}/.cache/generate-plans/{slug}-{ISO}/index.md
-{cf-constructor-path}/.cache/generate-plans/{slug}-{ISO}/plan.json
-{cf-constructor-path}/.cache/generate-plans/{slug}-{ISO}/agents/{author_agent}.md
-{cf-constructor-path}/.cache/generate-plans/{slug}-{ISO}/tasks/{task_id}.md
+{cf-studio-path}/.cache/generate-plans/{slug}-{ISO}/index.md
+{cf-studio-path}/.cache/generate-plans/{slug}-{ISO}/plan.json
+{cf-studio-path}/.cache/generate-plans/{slug}-{ISO}/agents/{author_agent}.md
+{cf-studio-path}/.cache/generate-plans/{slug}-{ISO}/tasks/{task_id}.md
 ```
 
 `index.md` contains the summary, risk flags, ordered parallel groups, and a

@@ -1,5 +1,5 @@
 ---
-cf-constructor: true
+cf: true
 type: workflow-fragment
 parent: workflows/generate.md
 description: Invoke when `remaining_findings` from Phase 5 is non-empty and the conditional Remediation Handoff menu must be emitted as the terminal actionable menu.
@@ -18,9 +18,9 @@ When `workflows/generate/phase-5/index.md` exits with non-empty `remaining_findi
 ```text
 Remaining findings: High {h} / Medium {m} / Low {l}. How do you want to address them?
 
-R1. Continue here in fix mode — invoke `/cf-constructor-generate(mode=fix)` in this session on the remaining findings
-R2. Generate a Fix Prompt — emit a self-contained prompt for direct fix via `/cf-constructor-generate` in a new chat
-R3. Generate a Plan Prompt — emit a self-contained prompt for phased remediation via `/cf-constructor-plan` in a new chat
+R1. Continue here in fix mode — invoke `/cf-generate(mode=fix)` in this session on the remaining findings
+R2. Generate a Fix Prompt — emit a self-contained prompt for direct fix via `/cf-generate` in a new chat
+R3. Generate a Plan Prompt — emit a self-contained prompt for phased remediation via `/cf-plan` in a new chat
 
 Suggested: {R1|R2|R3} because {scope/risk reason}.
 
@@ -29,7 +29,7 @@ Reply `R1`, `R2`, or `R3`. The Post-Write Review Handoff menu unlocks only after
 
 On the user's next-turn reply:
 
-- `R1` → enter `workflows/generate/phase-5/index.md` § Dispatcher in fix mode (iteration 1 begins at `workflows/generate/phase-5/phase-5.1-det-gate.md`). The orchestrator MUST: (a) emit the canonical `MAX_ITER` resolution prompt from `workflows/generate/phase-5/index.md` § Pre-Phase-Setup and wait for the reply; (b) initialize Phase 5 state with `all_findings = remaining_findings`, `manifest.paths_written` unchanged from the written/analyzed paths, `target_paths = manifest.paths_written`, but prefer `external_target_paths` when `manifest.paths_written` is empty, `carry_forward = []`; (c) execute the full Phase 5 review-fix loop — each iteration MUST dispatch `cf-constructor-deterministic-validator` (Phase 5.1) and the matched semantic reviewer sub-agent set (Phase 5.2) on `target_paths` BEFORE the author dispatch (subject to `INLINE_FALLBACK` per `workflows/shared/inline-fallback-probe.md`). MUST NOT shortcut the loop with an inline review, inline fix, or single-pass summary. Loop iterates until clean or `MAX_ITER` is hit. No prompt block is emitted by this step.
+- `R1` → enter `workflows/generate/phase-5/index.md` § Dispatcher in fix mode (iteration 1 begins at `workflows/generate/phase-5/phase-5.1-det-gate.md`). The orchestrator MUST: (a) emit the canonical `MAX_ITER` resolution prompt from `workflows/generate/phase-5/index.md` § Pre-Phase-Setup and wait for the reply; (b) initialize Phase 5 state with `all_findings = remaining_findings`, `manifest.paths_written` unchanged from the written/analyzed paths, `target_paths = manifest.paths_written`, but prefer `external_target_paths` when `manifest.paths_written` is empty, `carry_forward = []`; (c) execute the full Phase 5 review-fix loop — each iteration MUST dispatch `cf-deterministic-validator` (Phase 5.1) and the matched semantic reviewer sub-agent set (Phase 5.2) on `target_paths` BEFORE the author dispatch (subject to `INLINE_FALLBACK` per `workflows/shared/inline-fallback-probe.md`). MUST NOT shortcut the loop with an inline review, inline fix, or single-pass summary. Loop iterates until clean or `MAX_ITER` is hit. No prompt block is emitted by this step.
 - `R2` → emit the `Fix Prompt` template (defined in `workflows/generate/phase-6/prompt-template-fix.md`) as a final section, filled with the analyzed paths, kind, validation results, and the full inline list of `remaining_findings`.
 - `R3` → emit the `Plan Prompt` template (defined in `workflows/generate/phase-6/prompt-template-plan.md`) as a final section, filled the same way.
 

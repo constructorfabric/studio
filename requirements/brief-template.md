@@ -1,5 +1,5 @@
 ---
-cf-constructor: true
+cf: true
 type: requirement
 name: Compilation Brief Template
 version: 2.0

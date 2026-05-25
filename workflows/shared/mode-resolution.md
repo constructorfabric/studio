@@ -24,7 +24,7 @@ STRICT: generation must load the required generation-phase dependencies (typical
 
 Rules-unavailable case (no template/example/kit loaded):
 ```text
-⚠️ Generated without Cyber Constructor rules (reduced quality assurance)
+⚠️ Generated without Constructor Studio rules (reduced quality assurance)
 ```
 
 Validation FAIL despite rules applied:

@@ -64,7 +64,7 @@ def _make_legacy_project(root: Path, legacy_dir: str = "cypilot", version: str =
         "\n"
         "[kits]\n"
         "[kits.sdlc]\n"
-        'format = "Cypilot"\n'
+        'format = "CFS"\n'
         'path = "config/kits/sdlc"\n'
         'version = "1.0.0"\n'
         'source = "github:cyberfabric/cyber-pilot-kit-sdlc"\n',
@@ -603,7 +603,7 @@ def test_internal_migration_removes_legacy_kit_key_when_canonical_exists(tmp_pat
         "\n"
         "[kits]\n"
         "[kits.cypilot-sdlc]\n"
-        'format = "Cypilot"\n'
+        'format = "CFS"\n'
         'path = "config/kits/cypilot-sdlc"\n'
         'version = "1.0.0"\n'
         'source = "custom-legacy-source"\n'
@@ -638,7 +638,7 @@ def test_internal_migration_promotes_legacy_only_kit_and_normalizes_default_meta
         "\n"
         "[kits]\n"
         "[kits.cypilot-sdlc]\n"
-        'format = "Cypilot"\n'
+        'format = "CFS"\n'
         'path = "config/kits/cypilot-sdlc"\n'
         'version = "1.0.0"\n'
         'source = "github:cyberfabric/cyber-pilot-kit-sdlc"\n',
@@ -2984,7 +2984,7 @@ def test_migrate_core_toml_skips_non_dict_kit_data(tmp_path):
     core_toml.write_text(
         "[kits]\n"
         "[kits.sdlc]\n"
-        'format = "Cypilot"\n'
+        'format = "CFS"\n'
         'path = "config/kits/sdlc"\n'
         'version = "1.0.0"\n'
         'source = "github:cyberfabric/cyber-pilot-kit-sdlc"\n'
@@ -3029,7 +3029,7 @@ def test_migrate_core_toml_returns_unchanged_when_no_legacy_keys(tmp_path):
     core_toml.write_text(
         "[kits]\n"
         "[kits.sdlc]\n"
-        'format = "Cypilot"\n'
+        'format = "CFS"\n'
         'path = "config/kits/sdlc"\n'
         'version = "1.0.0"\n'
         'source = "github:cyberfabric/cyber-constructor-kit-sdlc"\n',
@@ -3108,7 +3108,7 @@ def test_migrate_core_toml_appends_warning_when_system_section_removed(tmp_path)
         'name = "test"\n'
         "\n"
         "[kits.sdlc]\n"
-        'format = "Cypilot"\n'
+        'format = "CFS"\n'
         'path = "config/kits/sdlc"\n'
         'version = "1.0.0"\n'
         'source = "github:cyberfabric/cyber-constructor-kit-sdlc"\n',
@@ -3132,7 +3132,7 @@ def test_migrate_core_toml_does_not_warn_when_no_system_section(tmp_path):
     core_toml = tmp_path / "core.toml"
     core_toml.write_text(
         "[kits.cypilot-sdlc]\n"
-        'format = "Cypilot"\n'
+        'format = "CFS"\n'
         'path = "config/kits/cypilot-sdlc"\n'
         'version = "1.0.0"\n'
         'source = "github:cyberfabric/cyber-pilot-kit-sdlc"\n',

@@ -7,7 +7,7 @@ version: 1.0
 ---
 
 ### Prompt Review Output (PROMPT_REVIEW / PROMPT_BUG_REVIEW)
-`PROMPT_REVIEW=true` or `PROMPT_BUG_REVIEW=true` does **not** use the standard analysis template defined in `workflows/analyze/phase-4-output/output-standard.md`. When `PROMPT_REVIEW=true`, render the `cf-constructor-semantic-reviewer-prompt` report in the prompt-engineering section order:
+`PROMPT_REVIEW=true` or `PROMPT_BUG_REVIEW=true` does **not** use the standard analysis template defined in `workflows/analyze/phase-4-output/output-standard.md`. When `PROMPT_REVIEW=true`, render the `cf-semantic-reviewer-prompt` report in the prompt-engineering section order:
 
 1. `Summary`
 2. `Context Budget & Evidence`
@@ -17,7 +17,7 @@ version: 1.0
 6. `Recommended Fixes`
 7. `Verification Checklist`
 
-When `PROMPT_BUG_REVIEW=true`, append the separate `cf-constructor-prompt-bug-finder` report after the prompt-engineering report. If `PROMPT_REVIEW=false`, render only the prompt-bug-finder report under this schema. Its `Summary` MUST begin with the prompt-bug-finding status block: `Review status`, `Deterministic gate`, `Scope reviewed`, `Review basis`, `Environment snapshot`, and `Coverage summary`. If the deterministic gate is `SKIPPED`, state why and explicitly state `no validator-backed evidence for this review path`.
+When `PROMPT_BUG_REVIEW=true`, append the separate `cf-prompt-bug-finder` report after the prompt-engineering report. If `PROMPT_REVIEW=false`, render only the prompt-bug-finder report under this schema. Its `Summary` MUST begin with the prompt-bug-finding status block: `Review status`, `Deterministic gate`, `Scope reviewed`, `Review basis`, `Environment snapshot`, and `Coverage summary`. If the deterministic gate is `SKIPPED`, state why and explicitly state `no validator-backed evidence for this review path`.
 
 Do **not** mark prompt-review checks `N/A` unless the reviewed document explicitly makes them inapplicable. If applicability or hotspot-relevant normative effect remains unresolved, report `FAIL` or `PARTIAL` as required by the active prompt sub-agent methodology.
 

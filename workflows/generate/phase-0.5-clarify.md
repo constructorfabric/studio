@@ -45,4 +45,4 @@ Suggested: File for durable artifacts/code changes; Chat only for previews.
 Reply with `File`, `Chat only`, `MCP: <tool>`, or `External: <system>`.
 ```
 
-Then: store the selected system; if file output + using rules, determine the path, plan the `artifacts.toml` entry, and check `UPDATE` vs `CREATE`; for artifacts identify parent references; for code identify design artifacts + requirement IDs + traceability markers; for new IDs use `cpt-{system}-{kind}-{slug}` and verify uniqueness with `{cfc_cmd} --json list-ids`.
+Then: store the selected system; if file output + using rules, determine the path, plan the `artifacts.toml` entry, and check `UPDATE` vs `CREATE`; for artifacts identify parent references; for code identify design artifacts + requirement IDs + traceability markers; for new IDs use `cpt-{system}-{kind}-{slug}` and verify uniqueness with `{cfs_cmd} --json list-ids`.

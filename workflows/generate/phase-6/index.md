@@ -1,5 +1,5 @@
 ---
-cf-constructor: true
+cf: true
 type: workflow-fragment
 parent: workflows/generate.md
 description: "Invoke when Phase 5 exits and the orchestrator must assemble the Phase 6 next-steps + handoff menus — Remediation Handoff is mandatory when remaining_findings is non-empty and locks the Post-Write Review Handoff until remediation clears."
@@ -12,7 +12,7 @@ Prerequisite guard: before constructing the terminal handoff menu
 `remaining_findings` is non-empty, otherwise
 `workflows/generate/phase-6/post-write-handoff.md` when files were written),
 verify that `workflows/generate/phase-5/index.md` produced (1) the complete
-`Validation Results` body from `cf-constructor-deterministic-validator`
+`Validation Results` body from `cf-deterministic-validator`
 (canonical schema lives in the validator agent file's Output section;
 assembled by `workflows/generate/phase-5/phase-5.5-final.md`) AND (2) at
 least one `Validation Report — <Section>` block from a
@@ -57,7 +57,7 @@ WHEN `rules.md` is unavailable or has no `## Next Steps` section, present this d
 
 ```text
 What would you like to do next?
-1. Run /cf-constructor-analyze on the written files — Suggested when files were created; validates the output and surfaces any remaining issues.
+1. Run /cf-analyze on the written files — Suggested when files were created; validates the output and surfaces any remaining issues.
 2. Other — Describe next action.
 Reply with the option number or a short custom instruction.
 ```

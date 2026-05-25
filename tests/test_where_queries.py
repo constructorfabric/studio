@@ -43,7 +43,7 @@ def _setup_project(root: Path) -> Path:
     toml_utils.dump({
         "version": "1.0",
         "project_root": "..",
-        "kits": {"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+        "kits": {"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
         "systems": [{
             "name": "Test",
             "kits": "cypilot",
@@ -222,7 +222,7 @@ class TestCmdWhereDefined(_ContextTestBase):
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
-                "kits": {"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+                "kits": {"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
                 "systems": [{
                     "name": "Test",
                     "kits": "cypilot",

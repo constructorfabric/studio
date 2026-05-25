@@ -1,5 +1,5 @@
 ---
-cf-constructor: true
+cf: true
 type: workflow-fragment
 parent: workflows/generate.md
 description: Invoke when files were written by Phase 4 (or any review iteration) and no remaining findings block post-write review.
@@ -31,9 +31,9 @@ Immediately after the informational next-step menu, emit this verbatim:
 ```text
 Changes written: {N} file(s). How do you want to review them?
 
-W1. Review here — load skill `cf-constructor` and route to `/cf-constructor-analyze` in this session on the written files
-W2. Generate a Direct Review Prompt — emit a self-contained prompt that starts with `Invoke skill cf-constructor` and routes to `/cf-constructor-analyze` in a new chat
-W3. Generate a Plan Review Prompt — emit a self-contained prompt that starts with `Invoke skill cf-constructor` and routes to `/cf-constructor-plan` in a new chat (for phased review on broad / multi-file / strict-coverage scope)
+W1. Review here — load skill `cf` and route to `/cf-analyze` in this session on the written files
+W2. Generate a Direct Review Prompt — emit a self-contained prompt that starts with `Invoke skill cf` and routes to `/cf-analyze` in a new chat
+W3. Generate a Plan Review Prompt — emit a self-contained prompt that starts with `Invoke skill cf` and routes to `/cf-plan` in a new chat (for phased review on broad / multi-file / strict-coverage scope)
 
 Suggested: {W1|W2|W3} because {scope/risk reason}.
 
@@ -42,6 +42,6 @@ Reply `W1`, `W2`, or `W3`.
 
 On the user's next-turn reply:
 
-- `W1` → load skill `cf-constructor` and route to `/cf-constructor-analyze` in this session with `target_paths = manifest.paths_written`, `target_kinds`, `rules_mode`, and the carried `Validation Results` + `remaining_findings`. No prompt block is emitted.
+- `W1` → load skill `cf` and route to `/cf-analyze` in this session with `target_paths = manifest.paths_written`, `target_kinds`, `rules_mode`, and the carried `Validation Results` + `remaining_findings`. No prompt block is emitted.
 - `W2` → emit the `Direct Review Prompt` template (defined in `workflows/generate/phase-6/prompt-template-direct-review.md`) as the FINAL section, filled with changed paths, kind/target, the verbatim `Validation Results` body, and `remaining_findings` (when present).
 - `W3` → emit the `Plan Review Prompt` template (defined in `workflows/generate/phase-6/prompt-template-plan-review.md`) as the FINAL section, filled the same way.

@@ -16,7 +16,7 @@ version: 1.0
 
 ## Validation Criteria
 
-- [ ] `skills/cypilot/protocol.md` executed
+- [ ] `skills/studio/protocol.md` executed
 - [ ] Dependencies loaded when required for the active methodology (checklist, template, example for artifact review; methodology-specific files for code/prompt review)
 - [ ] Analysis scope clarified
 - [ ] Traceability mode determined when applicable
@@ -45,7 +45,7 @@ version: 1.0
 - [ ] When the user picks option 2 or 3 in their next turn, the corresponding `Fix Prompt` / `Plan Prompt` is emitted as the FINAL section of that next response; option 1 is dispatched in-session without emitting any prompt block
 - [ ] Output to chat only
 - [ ] Next steps suggested
-- [ ] No completed `/cf-constructor-analyze` path bypassed Phase 3 except the deterministic-FAIL blocking branch defined in `phase-2-det-gate.md` and except `EXPLAIN_MODE=true` runs which legitimately bypass Phase 3 per `preamble.md`; incomplete semantic review is reported as `PARTIAL` with resume guidance
+- [ ] No completed `/cf-analyze` path bypassed Phase 3 except the deterministic-FAIL blocking branch defined in `phase-2-det-gate.md` and except `EXPLAIN_MODE=true` runs which legitimately bypass Phase 3 per `preamble.md`; incomplete semantic review is reported as `PARTIAL` with resume guidance
 - [ ] When `EXPLAIN_MODE=true`: Storytelling Protocol phases E0-E5 from `storytelling.md` were followed in order
 - [ ] When `EXPLAIN_MODE=true`: storytelling `{mode}` (presentation / review / onboarding / decision / socratic / change-impact) was resolved at session start via the **always-ask** prompt (methodology emitted the 6-mode prompt with a suggested default, waited for explicit user confirmation; mode was NEVER auto-selected from intent verbs / KIND defaults / project preference) and applied consistently throughout (audience composition, slot semantics, body style, wrap-output schema match the resolved mode)
 - [ ] When `EXPLAIN_MODE=true`: Phase 4 used the Storytelling Output schema (Wrap section) and did NOT emit the `Remediation Handoff` menu, `Fix Prompt`, or `Plan Prompt`

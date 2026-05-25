@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Version consistency checker for Cypilot CI.
+"""Version consistency checker for Constructor Studio CI.
 
 Checks:
-1. Proxy version sync: src/cypilot_proxy/__init__.py ↔ pyproject.toml
+1. Proxy version sync: src/studio_proxy/__init__.py ↔ pyproject.toml
 2. Bootstrap sync: .bootstrap/.core/ skill version ↔ canonical skill version
 3. Kit version bump: if kits/{slug}/ files changed vs base branch, conf.toml
    version must be higher than on the base branch.
@@ -98,20 +98,18 @@ def check_proxy_sync(root: Path) -> list[str]:
 
 def check_bootstrap_sync(root: Path) -> list[str]:
     """Bootstrap version sync is intentionally relaxed during the
-    cypilot → cyber-constructor rebrand: ``.bootstrap/.core/`` is a frozen
-    snapshot of the legacy cypilot 3.9.0 toolchain that CI uses to invoke
-    ``cpt`` for kit/artifact validation, while ``skills/cypilot/scripts/cypilot``
-    follows the new cyber-constructor 4.x line.  The two are deliberately on
+    studio → constructor-studio rebrand: ``.bootstrap/.core/`` is a frozen
+    snapshot of the legacy studio 3.9.0 toolchain that CI uses to invoke
+    ``cfs`` for kit/artifact validation, while ``skills/studio/scripts/studio``
+    follows the new constructor-studio 1.x line.  The two are deliberately on
     different versions and must NOT be force-synced.
     """
     canonical = _read_py_version(
-        root / "skills" / "cypilot" / "scripts" / "cypilot" / "__init__.py"
+        root / "skills" / "studio" / "scripts" / "studio" / "__init__.py"
     )
     if canonical is None:
-        return ["Cannot read version from skills/cypilot/scripts/cypilot/__init__.py"]
+        return ["Cannot read version from skills/studio/scripts/studio/__init__.py"]
     return []
-
-    return errors
 
 
 def check_kit_version_bump(root: Path, base: str) -> list[str]:
@@ -180,7 +178,7 @@ def check_kit_version_bump(root: Path, base: str) -> list[str]:
 
 def main() -> int:
     p = argparse.ArgumentParser(
-        description="Check version consistency across Cypilot components",
+        description="Check version consistency across Constructor Studio components",
     )
     p.add_argument(
         "--base", default="origin/main",

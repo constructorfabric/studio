@@ -27,57 +27,57 @@
 
 <!-- /toc -->
 
-- [x] `p1` - **ID**: `cpt-cypilot-featstatus-agent-integration`
+- [x] `p1` - **ID**: `cpt-studio-featstatus-agent-integration`
 
 ## 1. Feature Context
 
-- [x] `p1` - `cpt-cypilot-feature-agent-integration`
+- [x] `p1` - `cpt-studio-feature-agent-integration`
 
 ### 1. Overview
 
-Bridges Cypilot's unified skill system to diverse AI coding assistants by generating agent-native entry points, composing SKILL.md from kit `@cpt:skill` sections, and providing generic generate/analyze workflows. Each agent has its own file format and directory convention — this feature handles all the translation.
+Bridges Studio's unified skill system to diverse AI coding assistants by generating agent-native entry points, composing SKILL.md from kit `@cpt:skill` sections, and providing generic generate/analyze workflows. Each agent has its own file format and directory convention — this feature handles all the translation.
 
-**Boundary clarification**: This feature covers **chat-facing agent entry points** — skill shims, workflow proxies, and rules files that AI assistants consume directly in their native IDE/chat context. **External executor delegation** (e.g., handing a compiled plan to ralphex for autonomous execution) is a separate concern owned by `cpt-cypilot-feature-ralphex-delegation`. The two surfaces are complementary: agent entry points enable interactive Cypilot usage within a chat session, while executor delegation enables offline autonomous execution of exported plans (see `cpt-cypilot-adr-ralphex-delegation-skill`).
+**Boundary clarification**: This feature covers **chat-facing agent entry points** — skill shims, workflow proxies, and rules files that AI assistants consume directly in their native IDE/chat context. **External executor delegation** (e.g., handing a compiled plan to ralphex for autonomous execution) is a separate concern owned by `cpt-studio-feature-ralphex-delegation`. The two surfaces are complementary: agent entry points enable interactive Studio usage within a chat session, while executor delegation enables offline autonomous execution of exported plans (see `cpt-studio-adr-ralphex-delegation-skill`).
 
 ### 2. Purpose
 
-Without this feature, users would need to manually create and maintain agent-specific files for each AI assistant. Addresses PRD requirements for multi-agent support (`cpt-cypilot-fr-core-agents`) and generic workflows (`cpt-cypilot-fr-core-workflows`).
+Without this feature, users would need to manually create and maintain agent-specific files for each AI assistant. Addresses PRD requirements for multi-agent support (`cpt-studio-fr-core-agents`) and generic workflows (`cpt-studio-fr-core-workflows`).
 
 ### 3. Actors
 
 | Actor | Role in Feature |
 |-------|-----------------|
-| `cpt-cypilot-actor-user` | Runs `cfc generate-agents` to generate/regenerate entry points and `cfc agents` to inspect generated outputs |
-| `cpt-cypilot-actor-ai-agent` | Consumes generated entry points, follows workflows |
-| `cpt-cypilot-actor-cypilot-cli` | Executes agent generation command |
+| `cpt-studio-actor-user` | Runs `cfs generate-agents` to generate/regenerate entry points and `cfs agents` to inspect generated outputs |
+| `cpt-studio-actor-ai-agent` | Consumes generated entry points, follows workflows |
+| `cpt-studio-actor-studio-cli` | Executes agent generation command |
 
 ### 4. References
 
-- **PRD**: [PRD.md](../PRD.md) — `cpt-cypilot-fr-core-agents`, `cpt-cypilot-fr-core-workflows`
-- **Design**: [DESIGN.md](../DESIGN.md) — `cpt-cypilot-component-agent-generator`
-- **Dependencies**: `cpt-cypilot-feature-blueprint-system`
+- **PRD**: [PRD.md](../PRD.md) — `cpt-studio-fr-core-agents`, `cpt-studio-fr-core-workflows`
+- **Design**: [DESIGN.md](../DESIGN.md) — `cpt-studio-component-agent-generator`
+- **Dependencies**: `cpt-studio-feature-blueprint-system`
 
 ## 2. Actor Flows (CDSL)
 
 ### Generate Agent Entry Points
 
-- [x] `p1` - **ID**: `cpt-cypilot-flow-agent-integration-generate`
+- [x] `p1` - **ID**: `cpt-studio-flow-agent-integration-generate`
 
-**Actor**: `cpt-cypilot-actor-user`
+**Actor**: `cpt-studio-actor-user`
 
 **Success Scenarios**:
-- User runs `cfc generate-agents` → entry points generated for all supported agents (Windsurf, Cursor, Claude, Copilot, OpenAI)
-- User runs `cfc generate-agents --agent windsurf` → entry points generated for single agent only
-- User runs `cfc generate-agents --dry-run` → shows what would be generated without writing files
+- User runs `cfs generate-agents` → entry points generated for all supported agents (Windsurf, Cursor, Claude, Copilot, OpenAI)
+- User runs `cfs generate-agents --agent windsurf` → entry points generated for single agent only
+- User runs `cfs generate-agents --dry-run` → shows what would be generated without writing files
 
 **Error Scenarios**:
-- Cypilot not initialized → error with hint to run `cfc init`
+- Studio not initialized → error with hint to run `cfs init`
 - Kit has no `@cpt:workflow` markers → generates entry points without kit-specific workflows
 
 **Steps**:
-1. [x] - `p1` - User invokes `cfc generate-agents [--agent A] [--dry-run]` - `inst-user-agents`
-2. [x] - `p1` - Resolve project root and cypilot directory - `inst-resolve-project`
-3. [x] - `p1` - Ensure cypilot files are local to project (copy if external) - `inst-ensure-local`
+1. [x] - `p1` - User invokes `cfs generate-agents [--agent A] [--dry-run]` - `inst-user-agents`
+2. [x] - `p1` - Resolve project root and studio directory - `inst-resolve-project`
+3. [x] - `p1` - Ensure studio files are local to project (copy if external) - `inst-ensure-local`
 4. - `p1` - Discover all workflow files from `.core/workflows/` and `.gen/kits/*/workflows/` - `inst-discover-workflows`
 5. - `p1` - Collect `@cpt:skill` content from `.gen/kits/*/SKILL.md` - `inst-collect-skill`
 6. - `p1` - Collect `@cpt:system-prompt` content from `.gen/AGENTS.md` - `inst-collect-sysprompt`
@@ -85,7 +85,7 @@ Without this feature, users would need to manually create and maintain agent-spe
    1. - `p1` - Generate agent-native entry points (skill shims, workflow proxies, rules) - `inst-generate-entry-points`
    2. - `p1` - Write files to agent directory (e.g., `.windsurf/workflows/`, `.cursor/commands/`) - `inst-write-files`
 8. - `p1` - Compose and write main SKILL.md from collected skill sections - `inst-compose-skill`
-9. - `p1` - Inject the same managed `cypilot_path` block into root AGENTS.md and CLAUDE.md - `inst-inject-agents`
+9. - `p1` - Inject the same managed `studio_path` block into root AGENTS.md and CLAUDE.md - `inst-inject-agents`
 10. [x] - `p1` - **RETURN** generation report (agents, files written, workflows discovered) - `inst-return-report`
 
 **Supporting**:
@@ -94,9 +94,9 @@ Without this feature, users would need to manually create and maintain agent-spe
 
 ### Execute Generic Workflow
 
-- [x] `p1` - **ID**: `cpt-cypilot-flow-agent-integration-workflow`
+- [x] `p1` - **ID**: `cpt-studio-flow-agent-integration-workflow`
 
-**Actor**: `cpt-cypilot-actor-ai-agent`
+**Actor**: `cpt-studio-actor-ai-agent`
 
 **Success Scenarios**:
 - Agent triggers generate workflow → loads SKILL.md, resolves kit, loads rules/template/checklist/example
@@ -111,44 +111,44 @@ Without this feature, users would need to manually create and maintain agent-spe
 
 ### Discover Supported Agents
 
-- [x] `p1` - **ID**: `cpt-cypilot-algo-agent-integration-discover-agents`
+- [x] `p1` - **ID**: `cpt-studio-algo-agent-integration-discover-agents`
 
-1. [x] - `p1` - Define agent registry: windsurf, cursor, claude, copilot, openai. Detection uses Cypilot-specific generated files per agent (e.g. `.claude/skills/cypilot/SKILL.md`, `.windsurf/workflows/cypilot.md`, `.cursor/commands/cypilot.md`, `.github/.cypilot-installed` or legacy Cypilot-managed `copilot-instructions.md` for Copilot, `.codex/.cypilot-installed` or `.codex/agents/` with content or legacy `.agents/skills/cypilot/SKILL.md` for OpenAI) — not generic tool directories. The shared OpenAI fallback is valid only when no other agent's primary or legacy Cypilot marker is present. User-authored files are never overwritten, and legacy manifest skill files are removed only when they are provably generated copies or pure generated stubs. - `inst-define-registry`
+1. [x] - `p1` - Define agent registry: windsurf, cursor, claude, copilot, openai. Detection uses Studio-specific generated files per agent (e.g. `.claude/skills/studio/SKILL.md`, `.windsurf/workflows/studio.md`, `.cursor/commands/studio.md`, `.github/.studio-installed` or legacy Studio-managed `copilot-instructions.md` for Copilot, `.codex/.studio-installed` or `.codex/agents/` with content or legacy `.agents/skills/studio/SKILL.md` for OpenAI) — not generic tool directories. The shared OpenAI fallback is valid only when no other agent's primary or legacy Studio marker is present. User-authored files are never overwritten, and legacy manifest skill files are removed only when they are provably generated copies or pure generated stubs. - `inst-define-registry`
 2. - `p1` - **IF** `--agent` flag provided, filter to single agent - `inst-if-filter`
 3. - `p1` - **RETURN** list of agents to generate for - `inst-return-agents`
 4. [x] - `p1` - Resolve config/kits/ directory and registered kit dirs from core.toml for workflow/skill discovery - `inst-resolve-kits`
-5. [x] - `p1` - Parse CLI arguments, resolve project root, cypilot root, load agent config (shared context for agents commands) - `inst-resolve-context`
+5. [x] - `p1` - Parse CLI arguments, resolve project root, studio root, load agent config (shared context for agents commands) - `inst-resolve-context`
 
 **Supporting**:
 - [x] - `p1` - Module-level constant for all recognized agent names - `inst-define-registry-const`
-- [x] - `p1` - Per-tool Cyber Constructor-specific install marker file paths (primary + pre-rebrand legacy paths) and derived non-OpenAI marker list for disambiguation - `inst-agent-install-markers`
-- [x] - `p1` - Helper to detect any non-OpenAI Cyber Constructor install signal (primary markers, legacy follow-link skill files, Copilot instructions header, prompts file) - `inst-non-openai-install-signal`
-- [x] - `p1` - Helper to check whether a specific agent has a Cyber Constructor install under the project root (primary markers first, then per-agent legacy fallbacks) - `inst-is-agent-installed`
+- [x] - `p1` - Per-tool Constructor Studio-specific install marker file paths (primary + pre-rebrand legacy paths) and derived non-OpenAI marker list for disambiguation - `inst-agent-install-markers`
+- [x] - `p1` - Helper to detect any non-OpenAI Constructor Studio install signal (primary markers, legacy follow-link skill files, Copilot instructions header, prompts file) - `inst-non-openai-install-signal`
+- [x] - `p1` - Helper to check whether a specific agent has a Constructor Studio install under the project root (primary markers first, then per-agent legacy fallbacks) - `inst-is-agent-installed`
 - [x] - `p1` - Load or build the agents config from a JSON file or defaults; returns `(cfg_path, cfg)` or None on error - `inst-load-agents-cfg`
-- [x] - `p1` - Helper to resolve cypilot root from `__file__` ancestry - `inst-resolve-context-helper`
+- [x] - `p1` - Helper to resolve studio root from `__file__` ancestry - `inst-resolve-context-helper`
 
 ### Generate Agent Shims
 
-- [x] `p1` - **ID**: `cpt-cypilot-algo-agent-integration-generate-shims`
+- [x] `p1` - **ID**: `cpt-studio-algo-agent-integration-generate-shims`
 
 1. [x] - `p1` - For each workflow, create agent-native proxy file referencing the workflow path - `inst-create-proxy`
 2. - `p1` - For each agent, create skill shim referencing composed SKILL.md - `inst-create-skill-shim`
 3. - `p1` - Use `@/` project-root-relative paths in all references - `inst-use-relative-paths`
-4. [x] - `p1` - Path helpers: compute `{cypilot_path}/`-prefixed relative paths and safe relpath for agent instructions - `inst-path-helpers`
-5. [x] - `p1` - Ensure cypilot files are local: copy relevant subset into project when cypilot root is external - `inst-ensure-local-copy`
+4. [x] - `p1` - Path helpers: compute `{cf-studio-path}/`-prefixed relative paths and safe relpath for agent instructions - `inst-path-helpers`
+5. [x] - `p1` - Ensure studio files are local: copy relevant subset into project when studio root is external - `inst-ensure-local-copy`
 6. [x] - `p1` - Parse YAML frontmatter, strip/quote values, render agent-native templates with variable substitution - `inst-parse-frontmatter`
 7. [x] - `p1` - Read-only `cmd_agents` command: list generated agent integration files per agent - `inst-cmd-agents-list`
 8. [x] - `p1` - Build result dict and human-friendly formatters for generate-agents and agents commands - `inst-format-output`
 
 **Supporting**:
-- [x] - `p1` - Legacy tool-specific skill paths and pre-rebrand `cypilot-*` sub-agent glob patterns per agent, used for cleanup during regeneration - `inst-legacy-skill-paths`
-- [x] - `p1` - Delete pre-rebrand `cypilot-*.<ext>` sub-agent files for an agent, skipping any file with user-added content - `inst-cleanup-legacy-subagents`
-- [x] - `p1` - Per-tool legacy `.cypilot-installed` marker file paths (copilot and openai only) - `inst-legacy-marker-paths`
-- [x] - `p1` - Delete pre-rebrand `.cypilot-installed` integration markers for an agent when file starts with `# Cypilot` - `inst-cleanup-legacy-markers`
+- [x] - `p1` - Legacy tool-specific skill paths and pre-rebrand `studio-*` sub-agent glob patterns per agent, used for cleanup during regeneration - `inst-legacy-skill-paths`
+- [x] - `p1` - Delete pre-rebrand `studio-*.<ext>` sub-agent files for an agent, skipping any file with user-added content - `inst-cleanup-legacy-subagents`
+- [x] - `p1` - Per-tool legacy `.studio-installed` marker file paths (copilot and openai only) - `inst-legacy-marker-paths`
+- [x] - `p1` - Delete pre-rebrand `.studio-installed` integration markers for an agent when file starts with `# Studio` - `inst-cleanup-legacy-markers`
 - [x] - `p1` - Installation marker paths and stub content for agents that share generic directories (openai and copilot) - `inst-install-markers-table`
 - [x] - `p1` - Extract per-agent config, skill output paths set, and initialize workflow/skills result dicts from the agent config - `inst-agent-cfg-extract`
 - [x] - `p1` - Invoke `_generate_kit_workflow_skills` for the current agent to emit `.agents/skills/` entries for all discovered kit workflows - `inst-kit-workflow-skills`
-- [x] - `p1` - Write the Cyber Constructor-specific install marker file for agents that share generic directories (openai, copilot) - `inst-write-install-marker`
+- [x] - `p1` - Write the Constructor Studio-specific install marker file for agents that share generic directories (openai, copilot) - `inst-write-install-marker`
 - [x] - `p1` - Generate sub-agent proxy files for all discovered kit agents: TOML per-agent for OpenAI/Codex, Markdown+YAML frontmatter for Claude/Cursor/Copilot; clean up stale legacy files - `inst-subagent-generation`
 - [x] - `p1` - Assemble and return the per-agent result dict with workflow, skills, and subagents counts and error status - `inst-agent-result`
 - [x] - `p1` - Imports, constants, and `_validate_agent_entry` for agent datamodel - `inst-agents-datamodel`
@@ -171,7 +171,7 @@ Without this feature, users would need to manually create and maintain agent-spe
 
 ### Compose SKILL.md
 
-- [x] `p1` - **ID**: `cpt-cypilot-algo-agent-integration-compose-skill`
+- [x] `p1` - **ID**: `cpt-studio-algo-agent-integration-compose-skill`
 
 1. - `p1` - Read all `.gen/kits/*/SKILL.md` files - `inst-read-kit-skills`
 2. - `p1` - Assemble core commands section + per-kit skill sections - `inst-assemble-sections`
@@ -179,7 +179,7 @@ Without this feature, users would need to manually create and maintain agent-spe
 
 ### List Workflow Files
 
-- [x] `p1` - **ID**: `cpt-cypilot-algo-agent-integration-list-workflows`
+- [x] `p1` - **ID**: `cpt-studio-algo-agent-integration-list-workflows`
 
 1. [x] - `p1` - Scan `.core/workflows/` for core workflows (analyze.md, generate.md) - `inst-scan-core-workflows`
 2. - `p1` - Scan `.gen/kits/*/workflows/` for kit-generated workflows - `inst-scan-kit-workflows`
@@ -193,7 +193,7 @@ Without this feature, users would need to manually create and maintain agent-spe
 
 ### Agent Entry Point State
 
-- [x] `p1` - **ID**: `cpt-cypilot-state-agent-integration-entry-points`
+- [x] `p1` - **ID**: `cpt-studio-state-agent-integration-entry-points`
 
 ```
 [NOT_GENERATED] --generate-agents--> [GENERATED] --generate-agents--> [REGENERATED]
@@ -204,18 +204,18 @@ Without this feature, users would need to manually create and maintain agent-spe
 
 ### Agent Entry Point Generation
 
-- [x] `p1` - **ID**: `cpt-cypilot-dod-agent-integration-entry-points`
+- [x] `p1` - **ID**: `cpt-studio-dod-agent-integration-entry-points`
 
-- [x] - `p1` - `cfc generate-agents` generates entry points for all 5 supported agents
-- [x] - `p1` - `cfc generate-agents --agent windsurf` generates only Windsurf entry points
-- [x] - `p1` - `cfc agents` lists generated files without writing or updating anything
+- [x] - `p1` - `cfs generate-agents` generates entry points for all 5 supported agents
+- [x] - `p1` - `cfs generate-agents --agent windsurf` generates only Windsurf entry points
+- [x] - `p1` - `cfs agents` lists generated files without writing or updating anything
 - [x] - `p1` - Generated files use `@/` project-root-relative paths
 - [x] - `p1` - Full overwrite on each invocation (no merge)
 - [x] - `p1` - `--dry-run` flag shows what would be generated without writing
 
 ### SKILL.md Composition
 
-- [x] `p1` - **ID**: `cpt-cypilot-dod-agent-integration-skill-composition`
+- [x] `p1` - **ID**: `cpt-studio-dod-agent-integration-skill-composition`
 
 - [x] - `p1` - Composed SKILL.md includes core commands section
 - [x] - `p1` - Composed SKILL.md includes all `@cpt:skill` sections from installed kits
@@ -223,7 +223,7 @@ Without this feature, users would need to manually create and maintain agent-spe
 
 ### Workflow Discovery
 
-- [x] `p1` - **ID**: `cpt-cypilot-dod-agent-integration-workflow-discovery`
+- [x] `p1` - **ID**: `cpt-studio-dod-agent-integration-workflow-discovery`
 
 - [x] - `p1` - Core workflows discovered from `.core/workflows/`
 - [x] - `p1` - Kit workflows discovered from `.gen/kits/*/workflows/`
@@ -237,9 +237,9 @@ Without this feature, users would need to manually create and maintain agent-spe
 
 ## 7. Acceptance Criteria
 
-- [x] `cfc generate-agents` produces valid entry points for Windsurf, Cursor, Claude, Copilot, and OpenAI
-- [x] `cfc agents` reports generated integration files in read-only mode
+- [x] `cfs generate-agents` produces valid entry points for Windsurf, Cursor, Claude, Copilot, and OpenAI
+- [x] `cfs agents` reports generated integration files in read-only mode
 - [x] Agent entry points correctly reference SKILL.md and workflow files
 - [x] SKILL.md composition includes all installed kit skill sections
 - [x] `--dry-run` mode shows planned output without writing files
-- [x] Re-running `cfc generate-agents` after kit install produces updated entry points
+- [x] Re-running `cfs generate-agents` after kit install produces updated entry points

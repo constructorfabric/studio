@@ -1,11 +1,11 @@
 ---
-cf-constructor: true
+cf: true
 type: requirement
-name: cfc map
+name: cfs map
 version: 1.0
-purpose: Specify cfc map CLI, output formats, and behavior
+purpose: Specify cfs map CLI, output formats, and behavior
 ---
-# cfc map Specification
+# cfs map Specification
 
 <!-- toc -->
 
@@ -22,7 +22,7 @@ purpose: Specify cfc map CLI, output formats, and behavior
 <!-- /toc -->
 
 ## Overview
-`cfc map` builds an interactive dependency map of all markdown files plus
+`cfs map` builds an interactive dependency map of all markdown files plus
 source files registered in `artifacts.toml`, connected by file links and cpt
 identifiers.
 
@@ -59,7 +59,7 @@ Priority chain (first match wins): (1) override config `md-map.toml`,
 the winning branch.
 
 ## Workspace Federation
-When `.cypilot-workspace.toml` or `.cf-constructor-workspace.toml` is present,
+When `.studio-workspace.toml` or `.studio-workspace.toml` is present,
 sources beyond "local" are scanned. Node IDs use the form `<source>:<rel-path>`.
 Edges between source A and source B are marked `cross_repo = true`.
 `--local-only` skips federation entirely.

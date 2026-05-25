@@ -1,13 +1,13 @@
 ---
 name: analyze-phase-0-change-review-scope
-description: "Invoke when CHANGE_REVIEW=true to resolve the change-review diff scope via cf-constructor-diff-scope-resolver before Phase 1 file checks."
+description: "Invoke when CHANGE_REVIEW=true to resolve the change-review diff scope via cf-diff-scope-resolver before Phase 1 file checks."
 purpose: Resolve change-review diff scope before file checks
 loaded_by: workflows/analyze/phase-0-dependencies.md
 version: 1.0
 ---
 
 When `CHANGE_REVIEW=true`, dispatch sub-agent
-`cf-constructor-diff-scope-resolver` immediately after the inline-fallback-probe
+`cf-diff-scope-resolver` immediately after the inline-fallback-probe
 (`workflows/shared/inline-fallback-probe.md`) and before Phase 1 file checks.
 
 Supply:
@@ -31,7 +31,7 @@ change-review bookkeeping. If empty, stop and report no reviewable targets.
 After `diff_scope` is stored, from `diff_scope.changed_files`, derive prompt_targets, code_targets, and artifact_targets based on each file's classification (described below):
 
 - `prompt_targets` from `diff_scope.changed_files[].path` matching
-  `workflows/**`, `skills/cypilot/**/*.md`, `requirements/**/*.md`,
+  `workflows/**`, `skills/studio/**/*.md`, `requirements/**/*.md`,
   `skills/**/SKILL.md`, `skills/**/agents/*.md`, `AGENTS.md`, `SKILL.md`,
   `.github/prompts/**`, `.cursor/agents/**`, `.codex/agents/**`, or prompt
   config files.

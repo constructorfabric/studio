@@ -1,7 +1,7 @@
 ---
-cf-constructor: true
+cf: true
 type: workflow
-name: cf-constructor-generate
+name: cf-generate
 description: Invoke when the user asks to create, update, edit, fix, implement, refactor, add, set up, configure, or build any artifact or code — universal create-or-modify workflow.
 version: 1.0
 purpose: Universal workflow for creating or updating any artifact or code
@@ -41,7 +41,7 @@ Open, load, and follow `workflows/generate/reverse-engineering.md` WHEN the proj
 
 ## Overview
 
-Artifact generation mode = template + example by default; load checklist up front only when the current rules explicitly require it before writing. Code generation mode = design/spec context first; load checklist during validation/review unless the current rules explicitly require it during implementation. Config mode = create/update config files. After `skills/cypilot/protocol.md`, you have `TARGET_TYPE`, `RULES`, `KIND`, `PATH`, `MODE`, and resolved phase-appropriate dependencies. Key variables: `{cf-constructor-path}/config/`, `{ARTIFACTS_REGISTRY}`, `{KITS_PATH}`, `{PATH}`. Use `{KITS_PATH}/artifacts/{KIND}/examples/` for style and quality guidance.
+Artifact generation mode = template + example by default; load checklist up front only when the current rules explicitly require it before writing. Code generation mode = design/spec context first; load checklist during validation/review unless the current rules explicitly require it during implementation. Config mode = create/update config files. After `skills/studio/protocol.md`, you have `TARGET_TYPE`, `RULES`, `KIND`, `PATH`, `MODE`, and resolved phase-appropriate dependencies. Key variables: `{cf-studio-path}/config/`, `{ARTIFACTS_REGISTRY}`, `{KITS_PATH}`, `{PATH}`. Use `{KITS_PATH}/artifacts/{KIND}/examples/` for style and quality guidance.
 
 ## Context Budget & Overflow Prevention (CRITICAL)
 
@@ -49,11 +49,11 @@ Artifact generation mode = template + example by default; load checklist up fron
 - Load only what you need: prefer only the generation-phase sections required for the current `KIND`; defer checklist loading to validation/review unless the current rules explicitly require it earlier.
 - Chunk reads and summarize-and-drop: use `read_file` ranges, summarize each chunk, and keep only extracted criteria.
 - Fail-safe: if required steps cannot fit in context, stop and output a checkpoint in chat only; do not proceed to writing files.
-- Plan escalation: [Phase 0.1](#phase-01-plan-escalation-gate) is mandatory after dependencies load. When `SUB_AGENT_SESSION_APPROVED=true` AND `INLINE_FALLBACK=false`, the gate logs the estimate and proceeds without proposing `/cf-constructor-plan`; decomposition is handled in-workflow by Phase 1.5 (author plan, mandatory in that branch). Otherwise the legacy size-based escalation menu fires when budget is exceeded.
+- Plan escalation: [Phase 0.1](#phase-01-plan-escalation-gate) is mandatory after dependencies load. When `SUB_AGENT_SESSION_APPROVED=true` AND `INLINE_FALLBACK=false`, the gate logs the estimate and proceeds without proposing `/cf-plan`; decomposition is handled in-workflow by Phase 1.5 (author plan, mandatory in that branch). Otherwise the legacy size-based escalation menu fires when budget is exceeded.
 
 ## Agent Anti-Patterns (STRICT mode)
 
-**Reference**: `{cf-constructor-path}/.core/requirements/agent-compliance.md` for the full list.
+**Reference**: `{cf-studio-path}/.core/requirements/agent-compliance.md` for the full list.
 
 Critical failures: `SKIP_TEMPLATE`, `SKIP_EXAMPLE`, `SKIP_CHECKLIST`, `PLACEHOLDER_SHIP`, `NO_CONFIRMATION`, `SIMULATED_VALIDATION`.
 
@@ -65,7 +65,7 @@ Open, load, and follow `workflows/shared/mode-resolution.md` for the canonical b
 
 ## Phase 0: Ensure Dependencies
 
-Open, load, and follow `workflows/generate/phase-0-dependencies.md` WHEN the workflow enters dependency resolution after `skills/cypilot/protocol.md`. (That file delegates the `INLINE_FALLBACK` probe to `workflows/shared/inline-fallback-probe.md`, the canonical block reused by `analyze.md`.)
+Open, load, and follow `workflows/generate/phase-0-dependencies.md` WHEN the workflow enters dependency resolution after `skills/studio/protocol.md`. (That file delegates the `INLINE_FALLBACK` probe to `workflows/shared/inline-fallback-probe.md`, the canonical block reused by `analyze.md`.)
 
 ## Phase 0.1: Plan Escalation Gate
 

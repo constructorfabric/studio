@@ -1,10 +1,10 @@
 ---
-cf-constructor: true
+cf: true
 type: workflow
-name: cf-constructor-analyze
+name: cf-analyze
 description: Invoke when the user asks to analyze, validate, review, inspect, audit, check, or compare any artifact, code, or instruction document — read-only, tool invocations are validate-only.
 version: 1.0
-purpose: Universal workflow for analysing any Cyber Constructor artifact or code
+purpose: Universal workflow for analysing any Constructor Studio artifact or code
 ---
 
 # Analyze

@@ -1,5 +1,5 @@
 ---
-cf-constructor: true
+cf: true
 type: requirement
 name: Documentation Consistency Expert Checklist (Code-Excluded)
 version: 1.0

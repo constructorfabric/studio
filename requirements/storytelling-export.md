@@ -1,5 +1,5 @@
 ---
-cf-constructor: true
+cf: true
 type: requirement
 name: Storytelling Export Mode
 version: 1.0
@@ -32,7 +32,7 @@ Loaded by `requirements/storytelling.md` (router) when `EXPLAIN_EXPORT=true`. Ph
 
 ## Output structure
 
-Package directory: `{cf-constructor-path}/.cache/explain/packages/{slug}-{ISO-timestamp}/`
+Package directory: `{cf-studio-path}/.cache/explain/packages/{slug}-{ISO-timestamp}/`
 - `index.md` — entry point: title block, plan with file links, Mermaid navigation graph, wrap-up sections (Key Takeaways / Open Questions / Glossary / mode-specific extras)
 - `portion-{NNN}-{kebab-slug}.md` — one file per portion. Sub-portions from proactive decomposition get suffixed numbers (`portion-003a-...`, `portion-003b-...`). Review-mode pairs use phase suffixes (`portion-003-presentation-...`, `portion-003-challenge-...`)
 - `recap-{NNN}.md` — only if a Recap portion was emitted at this point in the plan

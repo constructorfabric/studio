@@ -1,5 +1,5 @@
 ---
-cf-constructor: true
+cf: true
 type: requirement
 name: Plan Checklist
 version: 1.0
@@ -26,7 +26,7 @@ purpose: Checklist for validating execution plans — used by analyze workflow a
 <!-- /toc -->
 
 ## Procedure
-- [ ] Use this checklist after plan generation, during `/cf-constructor-analyze` on a plan, or when debugging failing phases.
+- [ ] Use this checklist after plan generation, during `/cf-analyze` on a plan, or when debugging failing phases.
 - [ ] Verify interactive questions, rules coverage, lifecycle handoff, and validation next-step behavior explicitly.
 
 ## 1. Structural Validation
@@ -90,7 +90,7 @@ purpose: Checklist for validating execution plans — used by analyze workflow a
 - [ ] The target workflow is opened and scanned for navigation directives.
 - [ ] All `ALWAYS open`, `OPEN and follow`, and `ALWAYS open and follow` directives are processed.
 - [ ] The loaded-file manifest is recorded and reported.
-- [ ] `{cfc_cmd} info` or `{cfc_cmd} resolve-vars` is executed.
+- [ ] `{cfs_cmd} info` or `{cfs_cmd} resolve-vars` is executed.
 - [ ] All `{variable}` references resolve to absolute paths.
 - [ ] No unresolved `{...}` patterns remain outside code fences.
 - [ ] Rules inline MUST and MUST NOT content from `rules.md`.
@@ -102,7 +102,7 @@ purpose: Checklist for validating execution plans — used by analyze workflow a
 - [ ] Task includes explicit read instructions for every `input_files` and `inputs` entry.
 
 ## 5. Phase Independence
-- [ ] Each phase is executable without prior Cypilot knowledge.
+- [ ] Each phase is executable without prior Studio knowledge.
 - [ ] Each phase is executable without reading other phase files.
 - [ ] Prior Context summarizes earlier outputs instead of referencing them.
 - [ ] Tool commands include full arguments.
@@ -128,7 +128,7 @@ purpose: Checklist for validating execution plans — used by analyze workflow a
 - [ ] The lifecycle action is implemented.
 - [ ] The last phase Output Format includes `ALL PHASES COMPLETE`, the lifecycle strategy reference, and `Continue in this chat? [y/n]`.
 - [ ] Every non-final phase includes a single fenced, copy-pasteable next-phase prompt with both the `plan.toml` path and the next phase file path.
-- [ ] The user is told to validate before execution, given `/cf-constructor-analyze` on the plan directory, and offered validation as an explicit next step.
+- [ ] The user is told to validate before execution, given `/cf-analyze` on the plan directory, and offered validation as an explicit next step.
 
 ## Validation Procedure
 - [ ] Self-validation runs all categories, reports every FAIL with issue and location, computes `passed_items / total_items`, and requires correction before execution if pass rate is below 100%.
@@ -138,7 +138,7 @@ purpose: Checklist for validating execution plans — used by analyze workflow a
 ## Output Format
 ```text
 Plan Validation: {task-slug}
-Plan: {cf-constructor-path}/.plans/{task-slug}/plan.toml
+Plan: {cf-studio-path}/.plans/{task-slug}/plan.toml
 Phases: {N}
 Target: {artifact kind}
 Status: PASS | FAIL

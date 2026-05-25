@@ -1,11 +1,11 @@
 ---
-cypilot: true
+studio: true
 type: spec
 name: Example Specification
 version: 1.0
 purpose: Define the format, structure, and usage of example.md kit files
 drivers:
-  - cpt-cypilot-fr-core-kits
+  - cpt-studio-fr-core-kits
 ---
 
 # Example Specification (example.md)
@@ -39,7 +39,7 @@ drivers:
 
 ## Location
 
-**Per-artifact**: `{cf-constructor-path}/config/kits/<slug>/artifacts/<KIND>/examples/example.md`
+**Per-artifact**: `{cf-studio-path}/config/kits/<slug>/artifacts/<KIND>/examples/example.md`
 
 ---
 
@@ -113,5 +113,5 @@ Overwork Alert is a system that monitors employee work hours...
 
 | Error | Cause | Resolution |
 |-------|-------|------------|
-| `EXAMPLE_NOT_FOUND` | `example.md` missing from kit | Run `cpt kit install` or `cpt kit update --force` to restore |
+| `EXAMPLE_NOT_FOUND` | `example.md` missing from kit | Run `cfs kit install` or `cfs kit update --force` to restore |
 | `EXAMPLE_NO_CONTENT` | `example.md` has no meaningful content | Add realistic example content to the file |

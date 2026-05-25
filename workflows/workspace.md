@@ -1,13 +1,13 @@
 ---
-cf-constructor: true
+cf: true
 type: workflow
-name: cf-constructor-workspace
+name: cf-workspace
 description: Invoke when the user asks to set up, configure, or modify a multi-repo workspace — discover repos, configure sources, generate workspace config, validate, and add/sync cross-repo references.
 version: 1.0
 purpose: Guide workspace federation setup for cross-repo traceability
 ---
 
-# Cyber Constructor Workspace Workflow
+# Constructor Studio Workspace Workflow
 
 <!-- toc -->
 
@@ -17,14 +17,14 @@ purpose: Guide workspace federation setup for cross-repo traceability
 
 <!-- /toc -->
 
-ALWAYS open and follow `{cf-constructor-path}/config/AGENTS.md` FIRST.
-ALWAYS open and follow `{cf-constructor-path}/.gen/AGENTS.md` after
+ALWAYS open and follow `{cf-studio-path}/config/AGENTS.md` FIRST.
+ALWAYS open and follow `{cf-studio-path}/.gen/AGENTS.md` after
 config/AGENTS.md.
-ALWAYS open and follow `{cf-constructor-path}/.core/skills/cypilot/SKILL.md` FIRST WHEN cfc_mode is off.
+ALWAYS open and follow `{cf-studio-path}/.core/skills/studio/SKILL.md` FIRST WHEN cfs_mode is off.
 ALWAYS open and follow `workflows/shared/stop-token-policy.md` WHEN any workspace decision prompt is emitted.
 **Type**: Operation
 **Role**: Any
-**Output**: `.cf-constructor-workspace.toml` or inline `[workspace]` in
+**Output**: `.studio-workspace.toml` or inline `[workspace]` in
 `config/core.toml`
 
 ## Overview
@@ -37,7 +37,7 @@ workspace config, and validate cross-repo traceability.
 | Create/configure workspace | `generate.md` → `workspace.md` |
 | Check workspace status | `analyze.md` with workspace target |
 
-Direct workspace quick commands — `workspace-info`, `workspace-add`, `workspace-sync` invoked directly via {cfc_cmd} for read-only or single-source-add use — skip the full Protocol Guard chain (do not require {cf-constructor-path}/.gen/AGENTS.md load); they still require write-confirmation when write-capable. The full workspace setup workflow (Phase 0–4) is unaffected and uses the standard Protocol Guard.
+Direct workspace quick commands — `workspace-info`, `workspace-add`, `workspace-sync` invoked directly via {cfs_cmd} for read-only or single-source-add use — skip the full Protocol Guard chain (do not require {cf-studio-path}/.gen/AGENTS.md load); they still require write-confirmation when write-capable. The full workspace setup workflow (Phase 0–4) is unaffected and uses the standard Protocol Guard.
 
 ## Phase 0: Router
 

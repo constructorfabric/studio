@@ -10,7 +10,7 @@
 - [2. Actor Flows (CDSL)](#2-actor-flows-cdsl)
   - [Global CLI Invocation](#global-cli-invocation)
   - [Project Initialization](#project-initialization)
-  - [Cyber Pilot Migration](#cyber-pilot-migration)
+  - [Studio Migration](#studio-migration)
 - [3. Processes / Business Logic (CDSL)](#3-processes--business-logic-cdsl)
   - [Resolve Skill Target](#resolve-skill-target)
   - [Route Command](#route-command)
@@ -39,26 +39,26 @@
 
 <!-- /toc -->
 
-- [ ] `p1` - **ID**: `cpt-cypilot-featstatus-core-infra`
+- [ ] `p1` - **ID**: `cpt-studio-featstatus-core-infra`
 
 ## 1. Feature Context
 
-- [ ] `p1` - `cpt-cypilot-feature-core-infra`
+- [ ] `p1` - `cpt-studio-feature-core-infra`
 
 ### 1. Overview
 
-Foundation layer providing the global CLI proxy, skill engine command dispatch, config directory management, and project initialization. This feature is the base upon which all other Cypilot features are built — no other feature can function without it.
+Foundation layer providing the global CLI proxy, skill engine command dispatch, config directory management, and project initialization. This feature is the base upon which all other Studio features are built — no other feature can function without it.
 
 ### 2. Purpose
 
-Enables users to install Cypilot globally, initialize it in any project with sensible defaults, and execute deterministic commands with consistent JSON output. Addresses PRD requirements for a ≤5-minute install-to-init experience (`cpt-cypilot-fr-core-installer`, `cpt-cypilot-fr-core-init`) and a structured config directory (`cpt-cypilot-fr-core-config`).
+Enables users to install Studio globally, initialize it in any project with sensible defaults, and execute deterministic commands with consistent JSON output. Addresses PRD requirements for a ≤5-minute install-to-init experience (`cpt-studio-fr-core-installer`, `cpt-studio-fr-core-init`) and a structured config directory (`cpt-studio-fr-core-config`).
 
 ### 3. Actors
 
 | Actor | Role in Feature |
 |-------|-----------------|
-| `cpt-cypilot-actor-user` | Runs `cpt init`, `cpt config show`, `cpt migrate-config` |
-| `cpt-cypilot-actor-cypilot-cli` | Global proxy that resolves skill target and forwards commands |
+| `cpt-studio-actor-user` | Runs `cfs init`, `cfs config show`, `cfs migrate-config` |
+| `cpt-studio-actor-studio-cli` | Global proxy that resolves skill target and forwards commands |
 
 ### 4. References
 
@@ -71,16 +71,16 @@ Enables users to install Cypilot globally, initialize it in any project with sen
 
 ### Global CLI Invocation
 
-- [x] `p1` - **ID**: `cpt-cypilot-flow-core-infra-cli-invocation`
+- [x] `p1` - **ID**: `cpt-studio-flow-core-infra-cli-invocation`
 
 **Actors**:
 
-- `cpt-cypilot-actor-user`
-- `cpt-cypilot-actor-cypilot-cli`
+- `cpt-studio-actor-user`
+- `cpt-studio-actor-studio-cli`
 
 **Success Scenarios**:
-- User runs any `cypilot` command from inside a project → routed to project-installed skill
-- User runs `cypilot` command outside a project → routed to cached skill
+- User runs any `cfs` command from inside a project → routed to project-installed skill
+- User runs `cfs` command outside a project → routed to cached skill
 - First run after `pipx install` with empty cache → skill bundle downloaded from GitHub automatically
 
 **Error Scenarios**:
@@ -88,26 +88,26 @@ Enables users to install Cypilot globally, initialize it in any project with sen
 - Python version < 3.11 → error with version requirement
 
 **Steps**:
-1. [x] - `p1` - User invokes `cypilot <command> [args]` from terminal - `inst-user-invokes`
+1. [x] - `p1` - User invokes `cfs <command> [args]` from terminal - `inst-user-invokes`
 2. [x] - `p1` - Fire non-blocking telemetry for the invocation (daemon thread: git identity + remote URL, local log, optional OTLP HTTP) - `inst-telemetry`
-3. [x] - `p1` - CLI proxy checks for project-installed skill at `{cypilot_path}/` in current or parent directories - `inst-check-project-skill`
+3. [x] - `p1` - CLI proxy checks for project-installed skill at `{cf-studio-path}/` in current or parent directories - `inst-check-project-skill`
 4. [x] - `p1` - **IF** project skill found - `inst-if-project-skill`
    1. [x] - `p1` - Forward command and args to project skill engine - `inst-forward-project`
 5. [x] - `p1` - **ELSE** - `inst-else-no-project`
-   1. [x] - `p1` - Check cached skill at `~/.cypilot/cache/` - `inst-check-cache`
+   1. [x] - `p1` - Check cached skill at `~/.cf-studio/cache/` - `inst-check-cache`
    2. [x] - `p1` - **IF** cached skill exists - `inst-if-cache`
       1. [x] - `p1` - Forward command and args to cached skill engine - `inst-forward-cache`
    3. [x] - `p1` - **ELSE** no cached skill — first run after install - `inst-else-no-cache`
-      1. [x] - `p1` - Algorithm: download and cache skill using `cpt-cypilot-algo-core-infra-cache-skill` - `inst-auto-download`
+      1. [x] - `p1` - Algorithm: download and cache skill using `cpt-studio-algo-core-infra-cache-skill` - `inst-auto-download`
       2. [x] - `p1` - **IF** download failed - `inst-if-download-failed`
-         1. [x] - `p1` - **RETURN** error: "Failed to download Cypilot skill. Check network and retry." (exit 1) - `inst-return-download-error`
+         1. [x] - `p1` - **RETURN** error: "Failed to download Studio skill. Check network and retry." (exit 1) - `inst-return-download-error`
       3. [x] - `p1` - Forward command and args to freshly cached skill engine - `inst-forward-fresh-cache`
 6. [x] - `p1` - Skill engine executes command, produces JSON to stdout - `inst-engine-execute`
 7. [x] - `p1` - CLI proxy performs non-blocking background version check - `inst-bg-version-check`
 8. [x] - `p1` - **IF** cached version newer than project version - `inst-if-version-mismatch`
    1. [x] - `p1` - Display update notice to stderr - `inst-show-update-notice`
 9. [x] - `p1` - **IF** first arg is `update` - `inst-if-update-cache`
-   1. [x] - `p1` - Algorithm: download and cache skill using `cpt-cypilot-algo-core-infra-cache-skill` with optional version/branch/SHA argument - `inst-explicit-cache-update`
+   1. [x] - `p1` - Algorithm: download and cache skill using `cpt-studio-algo-core-infra-cache-skill` with optional version/branch/SHA argument - `inst-explicit-cache-update`
    2. [x] - `p1` - **RETURN** JSON: `{status, message, version}` (exit 0 on success, 1 on failure) - `inst-return-cache-update`
 10. [x] - `p1` - **RETURN** exit code from skill engine (0=PASS, 1=error, 2=FAIL) - `inst-return-exit`
 
@@ -116,66 +116,66 @@ Enables users to install Cypilot globally, initialize it in any project with sen
 
 ### Project Initialization
 
-- [x] `p1` - **ID**: `cpt-cypilot-flow-core-infra-project-init`
+- [x] `p1` - **ID**: `cpt-studio-flow-core-infra-project-init`
 
 **Actors**:
 
-- `cpt-cypilot-actor-user`
-- `cpt-cypilot-actor-cypilot-cli`
+- `cpt-studio-actor-user`
+- `cpt-studio-actor-studio-cli`
 
 **Success Scenarios**:
 - User initializes a fresh project → full config created, root system defined, AGENTS.md injected
 - User initializes with custom directory and agent selection → respects choices
 
 **Error Scenarios**:
-- Cypilot already initialized → abort with suggestion to use `cpt update`
+- Studio already initialized → abort with suggestion to use `cfs update`
 - No cached skill bundle → error with install instructions
 
 **Steps**:
-1. [x] - `p1` - User invokes `cpt init [--dir DIR] [--agents AGENTS]` - `inst-user-init`
-2. [x] - `p1` - Check if `{cypilot_path}/` (or specified dir) already exists - `inst-check-existing`
+1. [x] - `p1` - User invokes `cfs init [--dir DIR] [--agents AGENTS]` - `inst-user-init`
+2. [x] - `p1` - Check if `{cf-studio-path}/` (or specified dir) already exists - `inst-check-existing`
 3. [x] - `p1` - **IF** already initialized - `inst-if-exists`
-   1. [x] - `p1` - **RETURN** error: "Cypilot already initialized. Use 'cpt update' to upgrade." (exit 2) - `inst-return-exists`
+   1. [x] - `p1` - **RETURN** error: "Studio already initialized. Use 'cfs update' to upgrade." (exit 2) - `inst-return-exists`
 4. [x] - `p1` - **IF** interactive terminal AND no --dir flag - `inst-if-interactive`
-   1. [x] - `p1` - Prompt user for installation directory (default: `cypilot`) - `inst-prompt-dir`
+   1. [x] - `p1` - Prompt user for installation directory (default: `studio`) - `inst-prompt-dir`
    2. [x] - `p2` - Prompt user for agent selection (default: all) - `inst-prompt-agents`
-5. [x] - `p2` - Copy skill bundle from `~/.cypilot/cache/` into install directory - `inst-copy-skill`
-6. [x] - `p1` - Algorithm: define root system using `cpt-cypilot-algo-core-infra-define-root-system` - `inst-define-root`
-7. [x] - `p1` - Algorithm: create config directory using `cpt-cypilot-algo-core-infra-create-config` - `inst-create-config`
+5. [x] - `p2` - Copy skill bundle from `~/.cf-studio/cache/` into install directory - `inst-copy-skill`
+6. [x] - `p1` - Algorithm: define root system using `cpt-studio-algo-core-infra-define-root-system` - `inst-define-root`
+7. [x] - `p1` - Algorithm: create config directory using `cpt-studio-algo-core-infra-create-config` - `inst-create-config`
 8. [x] - `p2` - Delegate agent entry point generation to Agent Generator (Feature 5 boundary) - `inst-delegate-agents`
 9. [x] - `p1` - Prompt user: `Install SDLC kit? [a]ccept [d]ecline` - `inst-prompt-kit`
 10. [x] - `p1` - **IF** user accepts: delegate kit installation from GitHub to Kit Manager (Feature 2 boundary) - `inst-install-kit-accepted`
 11. [x] - `p1` - **ELSE**: skip kit installation, display install command for later use - `inst-skip-kit-declined`
-11. [x] - `p1` - Algorithm: inject root AGENTS.md using `cpt-cypilot-algo-core-infra-inject-root-agents` - `inst-inject-agents`
-12. [x] - `p1` - Algorithm: create config/AGENTS.md using `cpt-cypilot-algo-core-infra-create-config-agents` - `inst-create-config-agents`
+11. [x] - `p1` - Algorithm: inject root AGENTS.md using `cpt-studio-algo-core-infra-inject-root-agents` - `inst-inject-agents`
+12. [x] - `p1` - Algorithm: create config/AGENTS.md using `cpt-studio-algo-core-infra-create-config-agents` - `inst-create-config-agents`
 13. [x] - `p1` - **RETURN** JSON: `{status, install_dir, kits_installed, agents_configured, systems}` (exit 0) - `inst-return-init-ok`
 14. [x] - `p1` - Helper functions: copy from cache, generate READMEs for .core/.gen/config dirs, default core.toml, path prompting, slug-to-PascalCase - `inst-init-helpers`
-15. [x] - `p1` - Detect existing Cypilot installation by reading AGENTS.md TOML block with `cypilot_path` variable - `inst-init-detect-existing`
+15. [x] - `p1` - Detect existing Studio installation by reading AGENTS.md TOML block with `studio_path` variable - `inst-init-detect-existing`
 16. [x] - `p1` - Inject/update CLAUDE.md managed block for Claude agent integration - `inst-init-inject-claude`
 17. [x] - `p1` - Human-friendly formatters for init success and error output - `inst-init-format-output`
 
-### Cyber Pilot Migration
+### Studio Migration
 
-- [x] `p1` - **ID**: `cpt-cypilot-flow-core-infra-migrate-from-cypilot`
+- [x] `p1` - **ID**: `cpt-studio-flow-core-infra-migrate-from-studio`
 
 **Actors**:
 
-- `cpt-cypilot-actor-user`
-- `cpt-cypilot-actor-cypilot-cli`
+- `cpt-studio-actor-user`
+- `cpt-studio-actor-studio-cli`
 
 **Success Scenarios**:
-- User runs `cfc init` in a project with a legacy Cyber Pilot install and approves migration → legacy config is copied or reused as Cyber Constructor config, root managed blocks are rewritten, and follow-up update refreshes the installation
+- User runs `cfs init` in a project with a legacy Studio install and approves migration → legacy config is copied or reused as Constructor Studio config, root managed blocks are rewritten, and follow-up update refreshes the installation
 - User runs with `--dry-run` → planned copy, rewrite, and update actions are reported without mutating files
-- User declines migration during implicit init/update flow → Cyber Constructor either initializes side-by-side or aborts with a clear result, depending on the command path
+- User declines migration during implicit init/update flow → Constructor Studio either initializes side-by-side or aborts with a clear result, depending on the command path
 
 **Error Scenarios**:
 - Legacy install is missing, outside project root, or not directly migratable → command returns structured error and avoids partial writes
-- Target Cyber Constructor directory exists without `--force` → command returns structured error and preserves both directories
+- Target Constructor Studio directory exists without `--force` → command returns structured error and preserves both directories
 - Root managed block rewrite fails after backups → command restores root files from backups and reports the failed step
 
 **Steps**:
 1. [x] - `p1` - Define migration constants and imports used by implicit init/update migration flows - `inst-migration-module`
-2. [x] - `p1` - Resolve legacy source and Cyber Constructor target as child directories of the project root - `inst-resolve-dirs`
+2. [x] - `p1` - Resolve legacy source and Constructor Studio target as child directories of the project root - `inst-resolve-dirs`
 3. [x] - `p1` - Reject missing legacy installs and unsafe absolute or parent-directory paths - `inst-validate-dirs`
 4. [x] - `p1` - **IF** target exists without force, return error without copying or deleting files - `inst-target-exists`
 5. [x] - `p1` - **IF** replacing target, create a backup, replace from legacy source, and restore backup on replace failure - `inst-replace-target`
@@ -191,7 +191,7 @@ Enables users to install Cypilot globally, initialize it in any project with sen
 15. [x] - `p1` - Read legacy version and accept only supported migration baseline versions - `inst-check-legacy-version`
 16. [x] - `p1` - For dry-run unsupported legacy installs, report the planned baseline update without running it - `inst-preflight-dry-run`
 17. [x] - `p1` - Prompt for unsupported legacy update and abort when user declines - `inst-prompt-legacy-update`
-18. [x] - `p1` - Run legacy `cpt update --version` with bridge bypass environment and report subprocess result - `inst-run-legacy-update`
+18. [x] - `p1` - Run legacy `cfs update --version` with bridge bypass environment and report subprocess result - `inst-run-legacy-update`
 19. [x] - `p1` - Re-read legacy version after update and reject version mismatch - `inst-check-updated-version`
 20. [x] - `p1` - Merge legacy preflight metadata into the final migration result without overwriting migration actions - `inst-merge-preflight`
 21. [x] - `p1` - Read legacy version from known legacy skill package locations - `inst-read-version`
@@ -211,34 +211,34 @@ Enables users to install Cypilot globally, initialize it in any project with sen
 35. [x] - `p1` - Remove well-formed legacy managed blocks while preserving malformed content for manual cleanup - `inst-remove-legacy-block`
 36. [x] - `p1` - Migrate core TOML kit keys, kit paths, kit sources, and obsolete system section - `inst-migrate-core-toml`
 37. [x] - `p1` - Migrate artifacts TOML systems from legacy kit slug to canonical SDLC kit slug - `inst-migrate-artifacts-toml`
-38. [x] - `p1` - Rewrite config markdown terminology and command references from Cypilot/cpt to Cyber Constructor/cfc - `inst-migrate-config-markdown`
+38. [x] - `p1` - Rewrite config markdown terminology and command references from Studio/cfs to Constructor Studio/cfs - `inst-migrate-config-markdown`
 39. [x] - `p1` - Render human migration summary with actions and warnings - `inst-human-output`
 
 ## 3. Processes / Business Logic (CDSL)
 
 ### Resolve Skill Target
 
-- [x] `p1` - **ID**: `cpt-cypilot-algo-core-infra-resolve-skill`
+- [x] `p1` - **ID**: `cpt-studio-algo-core-infra-resolve-skill`
 
 **Input**: Current working directory, command arguments
 
 **Output**: Path to skill engine entry point, or error
 
 **Steps**:
-1. [x] - `p1` - Walk from current directory upward looking for `AGENTS.md` with `<!-- @cpt:root-agents -->` marker, read `{cypilot_path}` variable to get install dir - `inst-walk-parents`
-2. [x] - `p1` - **IF** install dir found and skill entry point exists at `{cypilot_path}/.core/skills/cypilot/scripts/cypilot.py` - `inst-if-marker`
+1. [x] - `p1` - Walk from current directory upward looking for `AGENTS.md` with `<!-- @cpt:root-agents -->` marker, read `{cf-studio-path}` variable to get install dir - `inst-walk-parents`
+2. [x] - `p1` - **IF** install dir found and skill entry point exists at `{cf-studio-path}/.core/skills/studio/scripts/studio.py` - `inst-if-marker`
    1. [x] - `p1` - **RETURN** path to project skill engine - `inst-return-project-path`
-3. [x] - `p1` - **ELSE** check `~/.cypilot/cache/` for cached skill bundle - `inst-check-global-cache`
+3. [x] - `p1` - **ELSE** check `~/.cf-studio/cache/` for cached skill bundle - `inst-check-global-cache`
 4. [x] - `p1` - **IF** cache exists - `inst-if-cache-exists`
    1. [x] - `p1` - **RETURN** path to cached skill engine - `inst-return-cache-path`
 5. [x] - `p1` - **ELSE** **RETURN** error: no skill found - `inst-return-not-found`
 
 **Supporting**:
-- [x] - `p1` - Imports, constants (marker, regex patterns), project root finder, TOML markdown parser, cypilot path reader, install dir finder, cache dir/version file getters, cached/project version readers - `inst-resolve-helpers`
+- [x] - `p1` - Imports, constants (marker, regex patterns), project root finder, TOML markdown parser, studio path reader, install dir finder, cache dir/version file getters, cached/project version readers - `inst-resolve-helpers`
 
 ### Route Command
 
-- [x] `p1` - **ID**: `cpt-cypilot-algo-core-infra-route-command`
+- [x] `p1` - **ID**: `cpt-studio-algo-core-infra-route-command`
 
 **Input**: Command name, arguments, resolved skill path
 
@@ -260,7 +260,7 @@ Enables users to install Cypilot globally, initialize it in any project with sen
 
 ### Define Root System
 
-- [x] `p1` - **ID**: `cpt-cypilot-algo-core-infra-define-root-system`
+- [x] `p1` - **ID**: `cpt-studio-algo-core-infra-define-root-system`
 
 **Input**: Project directory path
 
@@ -274,23 +274,23 @@ Enables users to install Cypilot globally, initialize it in any project with sen
 
 ### Create Config Directory
 
-- [x] `p1` - **ID**: `cpt-cypilot-algo-core-infra-create-config`
+- [x] `p1` - **ID**: `cpt-studio-algo-core-infra-create-config`
 
-**Input**: Cypilot directory path, root system definition
+**Input**: Studio directory path, root system definition
 
-**Output**: Created `core.toml` and `artifacts.toml` in cypilot directory
+**Output**: Created `core.toml` and `artifacts.toml` in studio directory
 
 **Steps**:
-1. [x] - `p1` - Create cypilot directory if absent - `inst-mkdir-config`
-2. [x] - `p1` - Create `{cypilot_path}/kits/` directory - `inst-mkdir-kits`
-3. [x] - `p1` - Write `core.toml` with: kits registration (including per-kit config output paths), project root (system identity is written to `artifacts.toml` per `cpt-cypilot-adr-remove-system-from-core-toml`) - `inst-write-core-toml`
+1. [x] - `p1` - Create studio directory if absent - `inst-mkdir-config`
+2. [x] - `p1` - Create `{cf-studio-path}/kits/` directory - `inst-mkdir-kits`
+3. [x] - `p1` - Write `core.toml` with: kits registration (including per-kit config output paths), project root (system identity is written to `artifacts.toml` per `cpt-studio-adr-remove-system-from-core-toml`) - `inst-write-core-toml`
 4. [x] - `p1` - Write `artifacts.toml` with default registry (systems, autodetect rules, codebase, ignore patterns) - `inst-write-artifacts-toml`
 5. [x] - `p2` - Validate files against schemas before final write - `inst-validate-schemas`
 6. [x] - `p1` - **RETURN** paths to created files - `inst-return-config-paths`
 
 ### Inject Root AGENTS.md
 
-- [x] `p1` - **ID**: `cpt-cypilot-algo-core-infra-inject-root-agents`
+- [x] `p1` - **ID**: `cpt-studio-algo-core-infra-inject-root-agents`
 
 **Input**: Project root path, install directory path
 
@@ -298,7 +298,7 @@ Enables users to install Cypilot globally, initialize it in any project with sen
 
 **Steps**:
 1. [x] - `p1` - Validate target file path is within project root; raise error if it would escape - `inst-validate-path`
-2. [x] - `p1` - Compute managed block content: TOML fenced block with `cypilot_path = "{install_dir}"`, navigation rule `ALWAYS open and follow {cypilot_path}/config/AGENTS.md FIRST` - `inst-compute-block`
+2. [x] - `p1` - Compute managed block content: TOML fenced block with `studio_path = "{install_dir}"`, navigation rule `ALWAYS open and follow {cf-studio-path}/config/AGENTS.md FIRST` - `inst-compute-block`
 3. [x] - `p1` - **IF** `{project_root}/AGENTS.md` does not exist - `inst-if-no-agents`
    1. [x] - `p1` - Create file with managed block wrapped in `<!-- @cpt:root-agents -->` markers - `inst-create-agents-file`
 3. [x] - `p1` - **ELSE** read existing file content - `inst-read-existing`
@@ -310,22 +310,22 @@ Enables users to install Cypilot globally, initialize it in any project with sen
 
 ### Cache Skill from GitHub
 
-- [x] `p1` - **ID**: `cpt-cypilot-algo-core-infra-cache-skill`
+- [x] `p1` - **ID**: `cpt-studio-algo-core-infra-cache-skill`
 
 **Input**: Target ref (optional, defaults to "latest") — accepts version tag (v3.0.0), branch name (main), or commit SHA
 
-**Output**: Path to cached skill bundle at `~/.cypilot/cache/`, or error
+**Output**: Path to cached skill bundle at `~/.cf-studio/cache/`, or error
 
 **Steps**:
-1. [x] - `p1` - Create `~/.cypilot/cache/` directory if absent - `inst-mkdir-cache`
+1. [x] - `p1` - Create `~/.cf-studio/cache/` directory if absent - `inst-mkdir-cache`
 2. [x] - `p1` - Resolve target version: if "latest", query GitHub API for latest release tag - `inst-resolve-version`
 3. [x] - `p1` - **IF** cached version matches target version - `inst-if-cache-fresh`
    1. [x] - `p1` - **RETURN** existing cache path (no download needed) - `inst-return-cache-hit`
 4. [x] - `p1` - Download skill bundle archive from GitHub release asset - `inst-download-archive`
 5. [x] - `p1` - **IF** download fails (network error, 404, rate limit) - `inst-if-download-error`
    1. [x] - `p1` - **RETURN** error with HTTP status and retry suggestion - `inst-return-download-fail`
-6. [x] - `p1` - Extract archive into `~/.cypilot/cache/` (overwrite previous) - `inst-extract-archive`
-7. [x] - `p1` - Write version marker file `~/.cypilot/cache/.version` with downloaded version - `inst-write-version`
+6. [x] - `p1` - Extract archive into `~/.cf-studio/cache/` (overwrite previous) - `inst-extract-archive`
+7. [x] - `p1` - Write version marker file `~/.cf-studio/cache/.version` with downloaded version - `inst-write-version`
 8. [x] - `p1` - **RETURN** path to cached skill bundle - `inst-return-cache-path-new`
 
 **Supporting**:
@@ -333,34 +333,34 @@ Enables users to install Cypilot globally, initialize it in any project with sen
 
 ### Create Config AGENTS.md
 
-- [x] `p1` - **ID**: `cpt-cypilot-algo-core-infra-create-config-agents`
+- [x] `p1` - **ID**: `cpt-studio-algo-core-infra-create-config-agents`
 
-**Input**: Cypilot directory path, installed kits list
+**Input**: Studio directory path, installed kits list
 
-**Output**: Created `{cypilot_path}/config/AGENTS.md`
+**Output**: Created `{cf-studio-path}/config/AGENTS.md`
 
 **Steps**:
 1. [x] - `p1` - Generate default WHEN rules for artifacts.toml, schemas, requirements - `inst-gen-when-rules`
-2. [x] - `p1` - Write `{cypilot_path}/config/AGENTS.md` with navigation header and WHEN rules - `inst-write-config-agents`
+2. [x] - `p1` - Write `{cf-studio-path}/config/AGENTS.md` with navigation header and WHEN rules - `inst-write-config-agents`
 3. [x] - `p1` - **RETURN** path to created file - `inst-return-config-agents-path`
 
 ### Display Project Info
 
-- [ ] `p1` - **ID**: `cpt-cypilot-algo-core-infra-display-info`
+- [ ] `p1` - **ID**: `cpt-studio-algo-core-infra-display-info`
 
-**Input**: Start path (default: current directory), optional cypilot-root override
+**Input**: Start path (default: current directory), optional studio-root override
 
-**Output**: JSON with project root, cypilot directory, config, and registry details
+**Output**: JSON with project root, studio directory, config, and registry details
 
 **Steps**:
-1. [x] - `p1` - Parse arguments: `--root`, `--cypilot-root` - `inst-info-parse-args`
+1. [x] - `p1` - Parse arguments: `--root`, `--studio-root` - `inst-info-parse-args`
 2. [x] - `p1` - Find project root from start path - `inst-info-find-root`
 3. [x] - `p1` - **IF** project root not found - `inst-info-if-no-root`
    1. [x] - `p1` - **RETURN** JSON: `{status: NOT_FOUND, hint}` (exit 1) - `inst-info-return-no-root`
-4. [x] - `p1` - Find cypilot directory - `inst-info-find-cypilot`
-5. [x] - `p1` - **IF** cypilot directory not found - `inst-info-if-no-cypilot`
-   1. [x] - `p1` - **RETURN** JSON: `{status: NOT_FOUND, hint}` (exit 1) - `inst-info-return-no-cypilot`
-6. [x] - `p1` - Load cypilot config from directory - `inst-info-load-config`
+4. [x] - `p1` - Find studio directory - `inst-info-find-studio`
+5. [x] - `p1` - **IF** studio directory not found - `inst-info-if-no-studio`
+   1. [x] - `p1` - **RETURN** JSON: `{status: NOT_FOUND, hint}` (exit 1) - `inst-info-return-no-studio`
+6. [x] - `p1` - Load studio config from directory - `inst-info-load-config`
 7. [x] - `p1` - Locate artifacts registry (config/artifacts.toml, fallback to legacy paths) - `inst-info-locate-registry`
 8. [x] - `p1` - **IF** registry found — load and expand with autodetect data - `inst-info-expand-registry`
 9. [x] - `p1` - **ELSE** — set registry to null with error code - `inst-info-registry-missing`
@@ -374,7 +374,7 @@ Enables users to install Cypilot globally, initialize it in any project with sen
 
 ### Project Root Detection
 
-- [x] `p1` - **ID**: `cpt-cypilot-algo-core-infra-project-root-detection`
+- [x] `p1` - **ID**: `cpt-studio-algo-core-infra-project-root-detection`
 
 **Input**: Start path (directory to begin searching from)
 
@@ -389,23 +389,23 @@ Enables users to install Cypilot globally, initialize it in any project with sen
 
 ### Config Management
 
-- [ ] `p1` - **ID**: `cpt-cypilot-algo-core-infra-config-management`
+- [ ] `p1` - **ID**: `cpt-studio-algo-core-infra-config-management`
 
 **Input**: Adapter directory path, project root
 
-1. [x] - `p1` - Read `cypilot_path` variable from root AGENTS.md TOML block - `inst-cfg-read-var`
+1. [x] - `p1` - Read `studio_path` variable from root AGENTS.md TOML block - `inst-cfg-read-var`
 2. [x] - `p1` - Load project config from `config/core.toml` (with fallback to flat layout) - `inst-cfg-load-core`
-3. [x] - `p1` - Find cypilot directory: priority 1 = TOML variable, priority 2 = recursive search - `inst-cfg-find-dir`
-4. [x] - `p1` - Load cypilot config from AGENTS.md and rules directory - `inst-cfg-load-config`
+3. [x] - `p1` - Find studio directory: priority 1 = TOML variable, priority 2 = recursive search - `inst-cfg-find-dir`
+4. [x] - `p1` - Load studio config from AGENTS.md and rules directory - `inst-cfg-load-config`
 5. [x] - `p1` - Load artifacts registry from `artifacts.toml` (with fallback chain) - `inst-cfg-load-registry`
 6. [ ] - `p1` - Read/write resource bindings: manage `[kits.{slug}.resources]` section in `core.toml` for manifest-driven kits. Provide lookup API so other components can resolve `{identifier}` template variables to filesystem paths - `inst-cfg-resource-bindings`
 
 **Supporting**:
-- [x] - `p1` - Helper functions: cypilot root detection from config, registry entry iteration, directory type detection, text file loader - `inst-cfg-helpers`
+- [x] - `p1` - Helper functions: studio root detection from config, registry entry iteration, directory type detection, text file loader - `inst-cfg-helpers`
 
 ### TOML Utilities
 
-- [x] `p1` - **ID**: `cpt-cypilot-algo-core-infra-toml-utils`
+- [x] `p1` - **ID**: `cpt-studio-algo-core-infra-toml-utils`
 
 **Input**: TOML text or file path, or markdown text with embedded TOML blocks
 
@@ -418,7 +418,7 @@ Enables users to install Cypilot globally, initialize it in any project with sen
 
 ### Registry Parsing
 
-- [x] `p1` - **ID**: `cpt-cypilot-algo-core-infra-registry-parsing`
+- [x] `p1` - **ID**: `cpt-studio-algo-core-infra-registry-parsing`
 
 **Input**: Path to adapter directory containing artifacts.toml and core.toml
 
@@ -429,170 +429,209 @@ Enables users to install Cypilot globally, initialize it in any project with sen
 5. [x] - `p1` - **RETURN** ArtifactsMeta with indexed artifacts and system tree - `inst-reg-return`
 6. [x] - `p1` - Define registry data model: Kit, Artifact, CodebaseEntry, IgnoreBlock, AutodetectRule, SystemNode dataclasses with from_dict parsing and slug validation - `inst-reg-dataclasses`
 7. [x] - `p1` - Query and iteration methods: get artifact by path, iterate all artifacts/codebase/systems, collect system prefixes, validate slugs - `inst-reg-query-methods`
-8. [x] - `p1` - Utility functions: create backup, extract system slug from cpt ID, generate slug from name, generate default registry for new projects - `inst-reg-utilities`
+8. [x] - `p1` - Utility functions: create backup, extract system slug from cfs ID, generate slug from name, generate default registry for new projects - `inst-reg-utilities`
 
 ### Context Loading
 
-- [x] `p1` - **ID**: `cpt-cypilot-algo-core-infra-context-loading`
+- [x] `p1` - **ID**: `cpt-studio-algo-core-infra-context-loading`
 
 **Input**: Optional start path
 
-1. [x] - `p1` - Find cypilot directory and load artifacts registry - `inst-ctx-find-and-load`
+1. [x] - `p1` - Find studio directory and load artifacts registry - `inst-ctx-find-and-load`
 2. [x] - `p1` - **FOR EACH** registered kit, load constraints and templates - `inst-ctx-load-kits`
 3. [x] - `p1` - **FOR EACH** manifest-driven kit, load resource bindings from `core.toml` and resolve resource paths (constraints, templates, examples may be at non-default locations) - `inst-ctx-load-resource-bindings`
    - [x] - `p1` - If `constraints` binding exists and file is present, use binding path for `load_constraints_toml` instead of default kit root - `inst-constraints-from-binding`
 4. [x] - `p1` - Expand autodetect rules into concrete artifact/codebase entries - `inst-ctx-expand-autodetect`
 5. [x] - `p1` - Collect registered system prefixes - `inst-ctx-collect-systems`
-6. [x] - `p1` - Build CypilotContext with all loaded metadata - `inst-ctx-build-primary`
-7. [x] - `p1` - Attempt workspace upgrade: call `WorkspaceContext.load(primary_ctx)` to discover workspace config via core.toml `workspace` key (string path or inline dict), falling back to standalone `.cypilot-workspace.toml` at project root - `inst-ctx-workspace-upgrade`
+6. [x] - `p1` - Build StudioContext with all loaded metadata - `inst-ctx-build-primary`
+7. [x] - `p1` - Attempt workspace upgrade: call `WorkspaceContext.load(primary_ctx)` to discover workspace config via core.toml `workspace` key (string path or inline dict), falling back to standalone `.studio-workspace.toml` at project root - `inst-ctx-workspace-upgrade`
 8. [x] - `p1` - **IF** workspace found — load source contexts, resolve reachability, **RETURN** WorkspaceContext - `inst-ctx-return-workspace`
-9. [x] - `p1` - **ELSE RETURN** CypilotContext (single-repo mode) - `inst-ctx-return`
+9. [x] - `p1` - **ELSE RETURN** StudioContext (single-repo mode) - `inst-ctx-return`
 
 **Supporting**:
-- [x] - `p1` - Define context data model: LoadedKit, CypilotContext dataclasses, imports - `inst-ctx-datamodel`
+- [x] - `p1` - Define context data model: LoadedKit, StudioContext dataclasses, imports - `inst-ctx-datamodel`
 - [x] - `p1` - Global context management: get/set/ensure context singleton, get_known_id_kinds query - `inst-ctx-globals`
 
 ## 4. States (CDSL)
 
 ### Project Installation State
 
-- [x] `p1` - **ID**: `cpt-cypilot-state-core-infra-project-install`
+- [x] `p1` - **ID**: `cpt-studio-state-core-infra-project-install`
 
 **States**: UNINITIALIZED, INITIALIZED, STALE
 
 **Initial State**: UNINITIALIZED
 
 **Transitions**:
-1. [x] - `p1` - **FROM** UNINITIALIZED **TO** INITIALIZED **WHEN** `cpt init` completes successfully - `inst-init-complete`
+1. [x] - `p1` - **FROM** UNINITIALIZED **TO** INITIALIZED **WHEN** `cfs init` completes successfully - `inst-init-complete`
 2. [x] - `p1` - **FROM** INITIALIZED **TO** STALE **WHEN** cached skill version is newer than project skill version - `inst-version-mismatch`
-3. [x] - `p1` - **FROM** STALE **TO** INITIALIZED **WHEN** `cpt update` completes successfully - `inst-update-complete`
+3. [x] - `p1` - **FROM** STALE **TO** INITIALIZED **WHEN** `cfs update` completes successfully - `inst-update-complete`
 
 ## 5. Definitions of Done
 
 ### CLI Proxy Routes Commands
 
-- [x] `p1` - **ID**: `cpt-cypilot-dod-core-infra-cli-routes`
+- [x] `p1` - **ID**: `cpt-studio-dod-core-infra-cli-routes`
 
-The system **MUST** provide a global `cypilot` (and `cpt` alias) CLI entry point that resolves the skill target (project-installed or cached) and forwards all commands with their arguments, returning JSON output and appropriate exit codes.
+The system **MUST** provide a global `studio` (and `cpt` alias) CLI entry point that resolves the skill target (project-installed or cached) and forwards all commands with their arguments, returning JSON output and appropriate exit codes.
 
 **Implements**:
-- `cpt-cypilot-flow-core-infra-cli-invocation`
-- `cpt-cypilot-algo-core-infra-resolve-skill`
-- `cpt-cypilot-algo-core-infra-route-command`
+- `cpt-studio-flow-core-infra-cli-invocation`
+- `cpt-studio-algo-core-infra-resolve-skill`
+- `cpt-studio-algo-core-infra-route-command`
 
 **Covers (PRD)**:
-- `cpt-cypilot-fr-core-installer`
-- `cpt-cypilot-fr-core-skill-engine`
-- `cpt-cypilot-nfr-adoption-usability`
+- `cpt-studio-fr-core-installer`
+- `cpt-studio-fr-core-skill-engine`
+- `cpt-studio-nfr-adoption-usability`
 
 **Covers (DESIGN)**:
-- `cpt-cypilot-principle-determinism-first`
-- `cpt-cypilot-principle-zero-harm`
-- `cpt-cypilot-constraint-python-stdlib`
-- `cpt-cypilot-constraint-cross-platform`
-- `cpt-cypilot-component-cli-proxy`
-- `cpt-cypilot-component-skill-engine`
+- `cpt-studio-principle-determinism-first`
+- `cpt-studio-principle-zero-harm`
+- `cpt-studio-constraint-python-stdlib`
+- `cpt-studio-constraint-cross-platform`
+- `cpt-studio-component-cli-proxy`
+- `cpt-studio-component-skill-engine`
 
 ### Global CLI Package
 
-- [x] `p1` - **ID**: `cpt-cypilot-dod-core-infra-global-package`
+- [x] `p1` - **ID**: `cpt-studio-dod-core-infra-global-package`
 
-The project **MUST** provide a Python package `cypilot` that acts as the global CLI proxy. The package **MUST** be installable via `pipx install git+https://github.com/{org}/cypilot.git` (or from PyPI when published). The package **MUST** contain only the thin proxy logic — skill resolution, cache management, command forwarding — with zero third-party dependencies (Python stdlib only). The package **MUST** register `cypilot` and `cpt` as console entry points. The package **MUST** work natively on Linux, Windows, and macOS.
+The project **MUST** provide a Python package `studio` that acts as the global CLI proxy. The package **MUST** be installable via `pipx install git+https://github.com/{org}/studio.git` (or from PyPI when published). The package **MUST** contain only the thin proxy logic — skill resolution, cache management, command forwarding — with zero third-party dependencies (Python stdlib only). The package **MUST** register `studio` and `cpt` as console entry points. The package **MUST** work natively on Linux, Windows, and macOS.
 
 **Implements**:
-- `cpt-cypilot-flow-core-infra-cli-invocation`
-- `cpt-cypilot-algo-core-infra-resolve-skill`
+- `cpt-studio-flow-core-infra-cli-invocation`
+- `cpt-studio-algo-core-infra-resolve-skill`
 
 **Covers (PRD)**:
-- `cpt-cypilot-fr-core-installer`
-- `cpt-cypilot-nfr-adoption-usability`
+- `cpt-studio-fr-core-installer`
+- `cpt-studio-nfr-adoption-usability`
 
 **Covers (DESIGN)**:
-- `cpt-cypilot-constraint-python-stdlib`
-- `cpt-cypilot-constraint-cross-platform`
-- `cpt-cypilot-component-cli-proxy`
+- `cpt-studio-constraint-python-stdlib`
+- `cpt-studio-constraint-cross-platform`
+- `cpt-studio-component-cli-proxy`
 
 ### Skill Cache Downloads from GitHub
 
-- [x] `p1` - **ID**: `cpt-cypilot-dod-core-infra-skill-cache`
+- [x] `p1` - **ID**: `cpt-studio-dod-core-infra-skill-cache`
 
-The system **MUST** provide a cache mechanism in the CLI proxy that downloads the skill bundle from a GitHub release into `~/.cypilot/cache/` on first invocation (or when cache is empty/stale). The download **MUST** be automatic and transparent — no separate manual step beyond `pipx install cypilot`. The proxy **MUST** report actionable errors on download failure.
+The system **MUST** provide a cache mechanism in the CLI proxy that downloads the skill bundle from a GitHub release into `~/.cf-studio/cache/` on first invocation (or when cache is empty/stale). The download **MUST** be automatic and transparent — no separate manual step beyond `pipx install studio`. The proxy **MUST** report actionable errors on download failure.
 
 **Implements**:
-- `cpt-cypilot-algo-core-infra-cache-skill`
+- `cpt-studio-algo-core-infra-cache-skill`
 
 **Covers (PRD)**:
-- `cpt-cypilot-fr-core-installer`
-- `cpt-cypilot-nfr-adoption-usability`
+- `cpt-studio-fr-core-installer`
+- `cpt-studio-nfr-adoption-usability`
 
 **Covers (DESIGN)**:
-- `cpt-cypilot-component-cli-proxy`
+- `cpt-studio-component-cli-proxy`
 
 ### Init Creates Full Config
 
-- [x] `p1` - **ID**: `cpt-cypilot-dod-core-infra-init-config`
+- [x] `p1` - **ID**: `cpt-studio-dod-core-infra-init-config`
 
-The system **MUST** provide a `cpt init` command that copies skill bundle from cache, defines the root system from the project directory name, creates `{cypilot_path}/kits/` directory, creates `{cypilot_path}/config/core.toml` with kit registrations and project root, creates `{cypilot_path}/config/artifacts.toml` with root system definition and default autodetect rules, injects the root `AGENTS.md` managed block, creates `{cypilot_path}/config/AGENTS.md` with default WHEN rules, and prompts the user to install the SDLC kit with `[a]ccept / [d]ecline`. If accepted, the kit is downloaded from GitHub and installed inline.
+The system **MUST** provide a `cfs init` command that copies skill bundle from cache, defines the root system from the project directory name, creates `{cf-studio-path}/kits/` directory, creates `{cf-studio-path}/config/core.toml` with kit registrations and project root, creates `{cf-studio-path}/config/artifacts.toml` with root system definition and default autodetect rules, injects the root `AGENTS.md` managed block, creates `{cf-studio-path}/config/AGENTS.md` with default WHEN rules, and prompts the user to install the SDLC kit with `[a]ccept / [d]ecline`. If accepted, the kit is downloaded from GitHub and installed inline.
 
 **Implements**:
-- `cpt-cypilot-flow-core-infra-project-init`
-- `cpt-cypilot-algo-core-infra-define-root-system`
-- `cpt-cypilot-algo-core-infra-create-config`
-- `cpt-cypilot-algo-core-infra-inject-root-agents`
-- `cpt-cypilot-algo-core-infra-create-config-agents`
+- `cpt-studio-flow-core-infra-project-init`
+- `cpt-studio-algo-core-infra-define-root-system`
+- `cpt-studio-algo-core-infra-create-config`
+- `cpt-studio-algo-core-infra-inject-root-agents`
+- `cpt-studio-algo-core-infra-create-config-agents`
 
 **Covers (PRD)**:
-- `cpt-cypilot-fr-core-init`
-- `cpt-cypilot-fr-core-config`
-- `cpt-cypilot-nfr-adoption-usability`
+- `cpt-studio-fr-core-init`
+- `cpt-studio-fr-core-config`
+- `cpt-studio-nfr-adoption-usability`
 
 **Covers (DESIGN)**:
-- `cpt-cypilot-principle-tool-managed-config`
-- `cpt-cypilot-principle-occams-razor`
-- `cpt-cypilot-constraint-git-project-heuristics`
-- `cpt-cypilot-component-config-manager`
-- `cpt-cypilot-seq-init`
+- `cpt-studio-principle-tool-managed-config`
+- `cpt-studio-principle-occams-razor`
+- `cpt-studio-constraint-git-project-heuristics`
+- `cpt-studio-component-config-manager`
+- `cpt-studio-seq-init`
 
 ### Root AGENTS.md Integrity
 
-- [x] `p1` - **ID**: `cpt-cypilot-dod-core-infra-agents-integrity`
+- [x] `p1` - **ID**: `cpt-studio-dod-core-infra-agents-integrity`
 
-The system **MUST** verify the root `AGENTS.md` managed block on every CLI invocation (not just init). If the `<!-- @cpt:root-agents -->` block is missing, stale, or the file does not exist, the system silently re-injects it with the correct block pointing to the `{cypilot_path}/` directory.
+The system **MUST** verify the root `AGENTS.md` managed block on every CLI invocation (not just init). If the `<!-- @cpt:root-agents -->` block is missing, stale, or the file does not exist, the system silently re-injects it with the correct block pointing to the `{cf-studio-path}/` directory.
 
 **Implements**:
-- `cpt-cypilot-algo-core-infra-inject-root-agents`
+- `cpt-studio-algo-core-infra-inject-root-agents`
 
 **Covers (PRD)**:
-- `cpt-cypilot-fr-core-init`
+- `cpt-studio-fr-core-init`
 
 **Covers (DESIGN)**:
-- `cpt-cypilot-principle-zero-harm`
-- `cpt-cypilot-component-skill-engine`
+- `cpt-studio-principle-zero-harm`
+- `cpt-studio-component-skill-engine`
 
 ### Usage Telemetry
 
-- [x] `p1` - **ID**: `cpt-cypilot-dod-core-infra-telemetry`
+- [x] `p1` - **ID**: `cpt-studio-dod-core-infra-telemetry`
 
-The system **MUST** provide non-blocking usage telemetry in the CLI proxy that records every invocation. The telemetry module **MUST**: collect git user identity (`user.name`, `user.email`) and remote URL via a single `git config --get-regexp` subprocess call; append JSONL records to `~/.cypilot/logs/YYYY-MM-DD.log`; optionally POST OTLP Logs JSON to `CYPILOT_TELEMETRY_URL`; rotate old log files when a new day's file is created; log HTTP errors to the local log file (never to stderr); be fully disableable via `CYPILOT_TELEMETRY=0`; use only Python stdlib.
+The system **MUST** provide non-blocking usage telemetry in the CLI proxy that records every invocation. The telemetry module **MUST**: collect git user identity (`user.name`, `user.email`) and remote URL via a single `git config --get-regexp` subprocess call; append JSONL records to `~/.cf-studio/logs/YYYY-MM-DD.log`; optionally POST OTLP Logs JSON to `STUDIO_TELEMETRY_URL`; rotate old log files when a new day's file is created; log HTTP errors to the local log file (never to stderr); be fully disableable via `STUDIO_TELEMETRY=0`; use only Python stdlib.
 
 **Implements**:
-- `cpt-cypilot-flow-core-infra-cli-invocation`
+- `cpt-studio-flow-core-infra-cli-invocation`
 
 **Covers (PRD)**:
-- `cpt-cypilot-fr-core-telemetry`
+- `cpt-studio-fr-core-telemetry`
 
 **Covers (DESIGN)**:
-- `cpt-cypilot-component-cli-proxy`
-- `cpt-cypilot-constraint-python-stdlib`
+- `cpt-studio-component-cli-proxy`
+- `cpt-studio-constraint-python-stdlib`
+
+## 5.x Mirror Override
+
+- [ ] `p1` - **ID**: `cpt-studio-dod-core-infra-mirror-override`
+
+The system **MUST** provide a global mirror-override capability (`cfs mirror`) that intercepts and rewrites any default download or API URL before network operations are performed. This enables users who mirror GitHub repositories (e.g., on air-gapped networks, corporate proxies, or private GitHub Enterprise instances) to redirect Constructor Studio's default URLs without modifying source code or config files.
+
+### Design
+
+- **Module**: `src/studio_proxy/mirrors.py` exports `load_overrides()`, `apply_override(url) -> url`, `set_override(old, new)`, `remove_override(old)`, `list_overrides()`.
+- **Dual-location config**: overrides are stored in TOML files at two locations, read in merge order: (1) `${XDG_CONFIG_HOME:-~/.config}/constructor-studio/mirrors.toml` and (2) `~/.constructor-studio/mirrors.toml`. On duplicate `from` key the second location wins (brand-home overrides XDG).
+- **Write-target resolution**: new override writes go to `~/.constructor-studio/mirrors.toml` if it already exists; else to the XDG path if it exists; else create the XDG path (preferred for new installs).
+- **TOML format**:
+  ```toml
+  [[mirror]]
+  from = "github.com/constructorfabric/studio"
+  to   = "github.com/myorg/studio"
+  ```
+- **URL canonicalization**: strip scheme (`https://`, `http://`), strip trailing `.git`, strip trailing `/` before matching and storing.
+- **Match semantics**: longest-prefix match on the canonicalized URL. Applied before any GitHub API call, git clone, or asset download.
+- **Integration points**: `cache.py` `_resolve_api_base` and `download_and_cache`; `init`/`update` URL forwarding; kit `source = "github:..."` autodetect resolution.
+
+### CLI Verbs
+
+```
+cfs mirror override <old-url> <new-url>   # register or update an override
+cfs mirror list                           # print effective merged set with source path
+cfs mirror remove <old-url>              # delete an override
+cfs mirror clear                          # delete all overrides
+```
+
+### Reference
+
+See ADR-0020 (`architecture/ADR/0020-cpt-studio-adr-rebrand-and-mirror-override-v1.md`) for the full decision record including rationale, write-target resolution algorithm, and backwards-compatibility notes.
+
+**Covers (PRD)**:
+- `cpt-studio-fr-core-mirror-override`
+
+---
 
 ## 6. Implementation Modules
 
 | Module | Path | Responsibility |
 |--------|------|----------------|
-| CLI Proxy | `src/cypilot_proxy/cli.py` | Global CLI entry point, command routing, version check |
-| Skill Resolver | `src/cypilot_proxy/resolve.py` | Project root detection, skill target resolution |
-| Cache Manager | `src/cypilot_proxy/cache.py` | GitHub download, local copy, archive extraction |
-| Telemetry | `src/cypilot_proxy/telemetry.py` | Non-blocking usage telemetry: local JSONL logs, OTLP HTTP, log rotation |
+| CLI Proxy | `src/studio_proxy/cli.py` | Global CLI entry point, command routing, version check |
+| Skill Resolver | `src/studio_proxy/resolve.py` | Project root detection, skill target resolution |
+| Cache Manager | `src/studio_proxy/cache.py` | GitHub download, local copy, archive extraction |
+| Telemetry | `src/studio_proxy/telemetry.py` | Non-blocking usage telemetry: local JSONL logs, OTLP HTTP, log rotation |
 | Skill Engine CLI | `skills/.../cli.py` | Skill engine command dispatch |
 | Init Command | `skills/.../commands/init.py` | Project initialization, directory creation |
 | Adapter Info | `skills/.../commands/adapter_info.py` | `info` command — display project config |
@@ -601,16 +640,17 @@ The system **MUST** provide non-blocking usage telemetry in the CLI proxy that r
 | Constants | `skills/.../constants.py` | Regex patterns, config filenames |
 | TOML Utilities | `skills/.../utils/toml_utils.py` | TOML reading/writing, markdown TOML extraction |
 | Artifacts Meta | `skills/.../utils/artifacts_meta.py` | Artifacts registry parsing, autodetect expansion |
+| Mirror Override | `src/studio_proxy/mirrors.py` | URL override load/apply/set/remove/list; dual-location config; canonicalization |
 
 ## 7. Acceptance Criteria
 
-- [x] `cpt init` creates `{cypilot_path}/config/core.toml` (kit registrations) and `{cypilot_path}/config/artifacts.toml` with correct root system definition
-- [x] `cpt init` in an already-initialized project returns exit code 2 with helpful message
-- [x] `cypilot <command>` from inside a project routes to project skill; from outside routes to cache
-- [x] First `cypilot` invocation after `pipx install` with empty cache automatically downloads skill from GitHub
-- [x] `cpt update [VERSION|BRANCH]` downloads specified version/branch/SHA into cache
+- [x] `cfs init` creates `{cf-studio-path}/config/core.toml` (kit registrations) and `{cf-studio-path}/config/artifacts.toml` with correct root system definition
+- [x] `cfs init` in an already-initialized project returns exit code 2 with helpful message
+- [x] `cfs <command>` from inside a project routes to project skill; from outside routes to cache
+- [x] First `studio` invocation after `pipx install` with empty cache automatically downloads skill from GitHub
+- [x] `cfs update [VERSION|BRANCH]` downloads specified version/branch/SHA into cache
 - [x] Download failure produces actionable error message with HTTP status
 - [x] All commands output JSON to stdout and use exit codes 0/1/2
 - [x] Root `AGENTS.md` managed block is verified and re-injected on every CLI invocation
 - [x] Background version check does not block command execution
-- [x] `{cypilot_path}/config/AGENTS.md` is created with default WHEN rules for artifacts registry
+- [x] `{cf-studio-path}/config/AGENTS.md` is created with default WHEN rules for artifacts registry

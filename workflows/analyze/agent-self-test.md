@@ -21,7 +21,7 @@ Answer these AFTER doing the work and include evidence in the output.
 
 | Question | Evidence required |
 |----------|-------------------|
-| Did I read skills/cypilot/protocol.md before starting? | Show loaded rules and dependencies. |
+| Did I read skills/studio/protocol.md before starting? | Show loaded rules and dependencies. |
 | Did I use Read tool to read the ENTIRE artifact THIS turn? | `Read {path}: {N} lines` |
 | Did I check EVERY checklist category individually? | Category breakdown table with per-category status. |
 | Did I provide evidence (quotes, line numbers) for each PASS/FAIL/N/A? | Evidence column in category table. |
@@ -35,7 +35,7 @@ Sample:
 ### Agent Self-Test Results
 | Question | Answer | Evidence |
 |----------|--------|----------|
-| Read execution-protocol? | YES | Loaded cf-constructor-sdlc rules, checklist.md |
+| Read execution-protocol? | YES | Loaded cf-sdlc rules, checklist.md |
 | Read artifact via Read tool? | YES | Read DESIGN.md: 742 lines |
 | Checked every category? | YES | 12 categories in table above |
 | Evidence for each status? | YES | Quotes included per category |
@@ -48,5 +48,5 @@ Sample:
 
 RELAXED mode disclaimer:
 ```text
-⚠️ Self-test skipped (RELAXED mode — no Cyber Constructor rules)
+⚠️ Self-test skipped (RELAXED mode — no Constructor Studio rules)
 ```

@@ -1,5 +1,5 @@
 ---
-cf-constructor: true
+cf: true
 type: workflow-fragment
 parent: workflows/generate.md
 description: Invoke when the orchestrator enters the Phase 5 review loop after Phase 4 writes files (or on external entry from analyze.md Remediation Handoff option 1).
@@ -16,7 +16,7 @@ description: Invoke when the orchestrator enters the Phase 5 review loop after P
 
 <!-- /toc -->
 
-Requires: `workflows/shared/inline-fallback-probe.md` before any `cf-constructor-*` sub-agent dispatch in this phase or its sub-files. Pre-dispatch fail-stop and Mode B degradation rules are defined in `{cf-constructor-path}/.core/skills/cypilot/sub-agent-dispatch.md`.
+Requires: `workflows/shared/inline-fallback-probe.md` before any `cf-*` sub-agent dispatch in this phase or its sub-files. Pre-dispatch fail-stop and Mode B degradation rules are defined in `{cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md`.
 
 ## Pre-Phase-Setup (MAX_ITER resolution)
 
@@ -83,7 +83,7 @@ branch and does not require validator/reviewer/author dispatch evidence.
 
 Iteration cap: the check `N > MAX_ITER` fires AFTER an iteration completes, so `MAX_ITER=5` allows iterations `1..5` to run and then prompts the user. The cap is enforced uniformly via the `Review-Loop Iteration Cap Prompt` defined above; same wording used by every iteration-end branch including the `workflows/generate/phase-5/phase-5.3-findings.md` fast-path and every `workflows/generate/phase-5/phase-5.4-approval.md` option. (The cap check applies when `MAX_ITER ≥ 1`; the `MAX_ITER=0` branches above bypass the cap check and route directly to Phase 5.3.)
 
-After `workflows/generate/phase-4-write.md` writes files, run a bounded review loop. Each iteration dispatches `cf-constructor-deterministic-validator` then (on det PASS) the matched semantic reviewer(s); the orchestrator auto-fixes mechanical findings through `workflows/generate/phase-4-write.md` § Author Selection and Dispatch with a `mode=fix` payload, and asks the user to approve any non-mechanical findings before fixing them. The loop terminates when no findings remain, the user stops it, or `MAX_ITER` (set above in Pre-Phase-Setup) is reached.
+After `workflows/generate/phase-4-write.md` writes files, run a bounded review loop. Each iteration dispatches `cf-deterministic-validator` then (on det PASS) the matched semantic reviewer(s); the orchestrator auto-fixes mechanical findings through `workflows/generate/phase-4-write.md` § Author Selection and Dispatch with a `mode=fix` payload, and asks the user to approve any non-mechanical findings before fixing them. The loop terminates when no findings remain, the user stops it, or `MAX_ITER` (set above in Pre-Phase-Setup) is reached.
 
 If `MAX_ITER=0` AND this is an **external-entry** dispatch (analyze→generate via `workflows/analyze/phase-4-output/remediation-handoff.md` option 1), skip fresh Phase 5 validation/review and proceed directly through the external-entry handling in `workflows/generate/phase-5/phase-5.3-findings.md`; that path renders the carried findings, sets `remaining_findings = all_findings`, and routes to `workflows/generate/phase-6/index.md` with the mandatory `workflows/generate/phase-6/remediation-handoff.md` menu.
 
@@ -97,7 +97,7 @@ surface the validator findings directly. Then hand the resulting findings to
 branch (which renders findings and routes to phase-6 without entering the
 partition/auto-fix logic).
 
-> **⛔ CRITICAL**: The agent's own checklist walkthrough is **NOT** a substitute for the deterministic validator. See anti-pattern `SIMULATED_VALIDATION`. The dispatched sub-agents execute the actual resolved validator command from the target bootstrap (for example `cpt` in a Cypilot `.bootstrap`, or `cfc` in a Cyber Constructor adapter) and the methodology checklists.
+> **⛔ CRITICAL**: The agent's own checklist walkthrough is **NOT** a substitute for the deterministic validator. See anti-pattern `SIMULATED_VALIDATION`. The dispatched sub-agents execute the actual resolved validator command from the target bootstrap (for example `cpt` in a Studio `.bootstrap`, or `cfs` in a Constructor Studio adapter) and the methodology checklists.
 
 | Sub-file | Load WHEN |
 |---|---|

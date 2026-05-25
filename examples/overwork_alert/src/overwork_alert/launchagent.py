@@ -11,7 +11,7 @@ from .config import DEFAULT_CONFIG_PATH
 
 
 # @cpt-begin:cpt-ex-ovwa-algo-launchagent-autostart-build-plist:p1:inst-choose-label
-DEFAULT_LABEL = "com.cypilot.overwork-alert"
+DEFAULT_LABEL = "com.constructor-studio.overwork-alert"
 # @cpt-end:cpt-ex-ovwa-algo-launchagent-autostart-build-plist:p1:inst-choose-label
 
 

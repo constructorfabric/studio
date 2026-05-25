@@ -54,7 +54,7 @@ The offer/dispatch module owns:
 The disk-mode module owns:
 
 - cache-file rendering under
-  `{cf-constructor-path}/.cache/generate-plans/{slug}-{ISO}/`
+  `{cf-studio-path}/.cache/generate-plans/{slug}-{ISO}/`
 - cache-write retry / memory fallback / cancellation handling
 - cleanup expectations for partially written plan-cache files
 

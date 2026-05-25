@@ -1,4 +1,4 @@
-# Cyber Constructor Usage Guide
+# Constructor Studio Usage Guide
 
 
 <!-- toc -->
@@ -7,16 +7,16 @@
 - [2. Installation and first-time setup](#2-installation-and-first-time-setup)
   - [One easy operating rule](#one-easy-operating-rule)
   - [Prerequisites](#prerequisites)
-  - [If the repository already includes Cyber Constructor](#if-the-repository-already-includes-cyber-constructor)
+  - [If the repository already includes Constructor Studio](#if-the-repository-already-includes-constructor-studio)
   - [1. Install the CLI](#1-install-the-cli)
   - [2. Initialize the repository](#2-initialize-the-repository)
-  - [3. Turn Cyber Constructor on in chat](#3-turn-cyber-constructor-on-in-chat)
+  - [3. Turn Constructor Studio on in chat](#3-turn-constructor-studio-on-in-chat)
   - [Common install/setup failures](#common-installsetup-failures)
   - [4. Pick the right first move](#4-pick-the-right-first-move)
   - [What success looks like after the first few minutes](#what-success-looks-like-after-the-first-few-minutes)
 - [3. The shortest mental model](#3-the-shortest-mental-model)
-- [4. When Cyber Constructor is a good fit](#4-when-cyber-constructor-is-a-good-fit)
-- [5. When Cyber Constructor is not the best first move](#5-when-cyber-constructor-is-not-the-best-first-move)
+- [4. When Constructor Studio is a good fit](#4-when-constructor-studio-is-a-good-fit)
+- [5. When Constructor Studio is not the best first move](#5-when-constructor-studio-is-not-the-best-first-move)
 - [6. Choosing the right workflow](#6-choosing-the-right-workflow)
   - [Use `plan` when](#use-plan-when)
   - [What counts as a large task](#what-counts-as-a-large-task)
@@ -28,7 +28,7 @@
   - [Default routing rule](#default-routing-rule)
   - [Recommended execution loop for artifacts and code](#recommended-execution-loop-for-artifacts-and-code)
 - [7. Practical usage habits](#7-practical-usage-habits)
-  - [CI with `cpt` tools](#ci-with-cpt-tools)
+  - [CI with `cfs` tools](#ci-with-cfs-tools)
 - [8. Common mistakes and anti-patterns](#8-common-mistakes-and-anti-patterns)
 - [9. Situation-by-situation guidance](#9-situation-by-situation-guidance)
   - [Situation: new project setup](#situation-new-project-setup)
@@ -47,7 +47,7 @@
   - [Brownfield understanding](#brownfield-understanding)
   - [Marker recovery](#marker-recovery)
 - [11. Prompt patterns that usually go wrong](#11-prompt-patterns-that-usually-go-wrong)
-- [12. Using Cyber Constructor across multiple repositories](#12-using-cyber-constructor-across-multiple-repositories)
+- [12. Using Constructor Studio across multiple repositories](#12-using-constructor-studio-across-multiple-repositories)
   - [Good pattern](#good-pattern)
   - [Bad pattern](#bad-pattern)
   - [Typical commands](#typical-commands)
@@ -65,7 +65,7 @@
 
 <!-- /toc -->
 
-How to use **Cyber Constructor** well in common real-world situations: when to use it, when to skip it, and how to choose the right workflow without unnecessary overhead.
+How to use **Constructor Studio** well in common real-world situations: when to use it, when to skip it, and how to choose the right workflow without unnecessary overhead.
 
 > **Convention**: 💬 = paste into AI coding tool chat. 🖥️ = run in terminal.
 
@@ -79,14 +79,14 @@ This guide is for the practical questions that come up after onboarding:
 - **What should I do in this situation?**
 - **What should I avoid?**
 - **When should I use `plan`, `generate`, or `analyze`?**
-- **When is Cyber Constructor useful, and when is it just overhead?**
+- **When is Constructor Studio useful, and when is it just overhead?**
 - **How do I get the benefits without using the product badly?**
 
-Use this guide when you already know what Cyber Constructor is and now need help choosing the right workflow in common real-world situations.
+Use this guide when you already know what Constructor Studio is and now need help choosing the right workflow in common real-world situations.
 
 The focus is not abstract theory.
 
-The focus is operational behavior: how to use Cyber Constructor well in real projects.
+The focus is operational behavior: how to use Constructor Studio well in real projects.
 
 ## 2. Installation and first-time setup
 
@@ -96,10 +96,10 @@ For the short version, use the setup section in **[README](../README.md)** first
 
 ### One easy operating rule
 
-- use `cfc` in your terminal for setup, validation, updates, and workspace commands
-- use `cf-constructor ...` in your AI coding tool chat for `plan`, `generate`, and `analyze`
-- do **not** run `cf-constructor ...` in the terminal
-- the portable `cf-constructor <workflow>: ...` form is the best default; host-specific slash commands are aliases when a host exposes them
+- use `cfs` in your terminal for setup, validation, updates, and workspace commands
+- use `cf ...` in your AI coding tool chat for `plan`, `generate`, and `analyze`
+- do **not** run `cf ...` in the terminal
+- the portable `cf <workflow>: ...` form is the best default; host-specific slash commands are aliases when a host exposes them
 
 ### Prerequisites
 
@@ -109,16 +109,16 @@ For the short version, use the setup section in **[README](../README.md)** first
 - `pipx` for a global CLI install
 - `gh` if you want PR review or PR status workflows
 
-### If the repository already includes Cyber Constructor
+### If the repository already includes Constructor Studio
 
-If the repository already has a Cyber Constructor setup directory and generated AI coding tool integration files, you usually do **not** need to install `cfc` globally just to try the project.
+If the repository already has a Constructor Studio setup directory and generated AI coding tool integration files, you usually do **not** need to install `cfs` globally just to try the project.
 
 In that case:
 
 - ensure Python 3.11+ is available for the repository-local scripts and CI
 - open the repository in your supported AI coding tool
-- activate Cyber Constructor in chat with 💬 `cf-constructor on`
-- start with one focused request such as 💬 `cf-constructor analyze: ...` or 💬 `cf-constructor plan: ...`
+- activate Constructor Studio in chat with 💬 `cf on`
+- start with one focused request such as 💬 `cf analyze: ...` or 💬 `cf plan: ...`
 
 Use the CLI install path below when you need to bootstrap the repository yourself, run terminal commands directly, or manage setup across multiple repositories.
 
@@ -126,13 +126,13 @@ Use the CLI install path below when you need to bootstrap the repository yoursel
 
 🖥️ **Terminal**:
 ```bash
-pipx install git+https://github.com/cyberfabric/cyber-constructor.git
-cfc --version
+pipx install git+https://github.com/constructorfabric/studio.git
+cfs --version
 ```
 
-If `cfc --version` prints a version, the CLI install worked.
+If `cfs --version` prints a version, the CLI install worked.
 
-If `cfc` is not found, open a new terminal and try again before doing anything else.
+If `cfs` is not found, open a new terminal and try again before doing anything else.
 
 **Only if needed on macOS**
 
@@ -171,21 +171,21 @@ From your repository root, run:
 
 🖥️ **Terminal**:
 ```bash
-cfc init
-cfc generate-agents
+cfs init
+cfs generate-agents
 ```
 
-`cfc init` is interactive.
+`cfs init` is interactive.
 
-For a first trial, it is usually safe to accept the default project root, keep the default setup directory `.cf-constructor/` unless you want a custom one, and accept the default SDLC kit if prompted.
+For a first trial, it is usually safe to accept the default project root, keep the default setup directory `.cf-studio/` unless you want a custom one, and accept the default SDLC kit if prompted.
 
-`cfc init` sets up Cyber Constructor in the repository.
+`cfs init` sets up Constructor Studio in the repository.
 
-`cfc generate-agents` adds the AI coding tool integration files for that repository.
+`cfs generate-agents` adds the AI coding tool integration files for that repository.
 
-`cfc generate-agents` may preview the files it will create and ask you to confirm before writing them.
+`cfs generate-agents` may preview the files it will create and ask you to confirm before writing them.
 
-In a normal project, this creates a setup directory `.cf-constructor/`, generated host integration files, and user-editable configuration under `config/` inside that setup directory.
+In a normal project, this creates a setup directory `.cf-studio/`, generated host integration files, and user-editable configuration under `config/` inside that setup directory.
 
 You may also see host-specific folders such as `.windsurf/`, `.cursor/`, `.claude/`, `.github/`, `.codex/`, or `.agents/`.
 
@@ -193,18 +193,18 @@ For a first trial, you do not need to open or edit those generated files manuall
 
 If your AI coding tool is already open on the repository, reload or reopen the repository after this step so the generated integration files are picked up.
 
-### 3. Turn Cyber Constructor on in chat
+### 3. Turn Constructor Studio on in chat
 
 In the AI coding tool chat attached to the same repository or workspace you just initialized, run:
 
 💬 **AI coding tool chat**:
 ```text
-cf-constructor on
+cf on
 ```
 
 If setup worked, you should see a clear activation confirmation in chat. If the chat behaves like a normal assistant and does not confirm activation, reopen the repository in the AI coding tool and try again.
 
-Some hosts may also show the resolved Cyber Constructor path or loaded context.
+Some hosts may also show the resolved Constructor Studio path or loaded context.
 
 ### Common install/setup failures
 
@@ -213,46 +213,46 @@ Some hosts may also show the resolved Cyber Constructor path or loaded context.
   - macOS: `brew install pipx && pipx ensurepath`
   - Windows: `scoop install pipx && pipx ensurepath`
 
-- **`cfc: command not found` after install**
+- **`cfs: command not found` after install**
   - Open a new terminal first.
   - On macOS `zsh`, run `source ~/.zshrc`.
 
 - **Setup ran in the wrong directory**
-  - Run `cfc init` from the repository root.
+  - Run `cfs init` from the repository root.
 
-- **You are not sure what to choose during `cfc init`**
+- **You are not sure what to choose during `cfs init`**
   - For a first trial, the default project root, default setup directory, and default SDLC kit are usually fine.
 
-- **`cfc generate-agents` looked like it stalled**
+- **`cfs generate-agents` looked like it stalled**
   - It may be previewing generated files or waiting for confirmation before writing them.
 
 - **Generated files exist, but the AI coding tool still does not pick them up**
   - Reload or reopen the repository in the AI coding tool.
 
-- **`cf-constructor on` behaves like a normal assistant reply**
+- **`cf on` behaves like a normal assistant reply**
   - Make sure you opened the same repository you initialized.
-  - Make sure `cfc generate-agents` already ran.
-  - Then retry `cf-constructor on`.
+  - Make sure `cfs generate-agents` already ran.
+  - Then retry `cf on`.
 
-- **You expected slash commands, but only `cf-constructor ...` works**
-  - That is normal. `cf-constructor <workflow>: ...` is the portable default. Slash commands are host-specific aliases.
+- **You expected slash commands, but only `cf ...` works**
+  - That is normal. `cf <workflow>: ...` is the portable default. Slash commands are host-specific aliases.
 
 - **Workspace-aware validation feels noisy on a first trial**
-  - Start with `cpt validate --local-only`.
+  - Start with `cfs validate --local-only`.
 
 ### 4. Pick the right first move
 
-- **First 5-minute trial**: start with `cf-constructor analyze: ...` or `cf-constructor plan: ...`, not `generate`
-- **New project or already-structured work**: start with `cf-constructor generate: ...` or `cf-constructor plan: ...`
-- **Existing codebase with weak or missing conventions**: run 💬 `cf-constructor auto-config`, inspect what it inferred, and then refine the generated rules before large changes
-- **After changing workflows, kits, or host integrations**: rerun `cfc generate-agents` or `cfc generate-agents --agent <tool>`
+- **First 5-minute trial**: start with `cf analyze: ...` or `cf plan: ...`, not `generate`
+- **New project or already-structured work**: start with `cf generate: ...` or `cf plan: ...`
+- **Existing codebase with weak or missing conventions**: run 💬 `cf auto-config`, inspect what it inferred, and then refine the generated rules before large changes
+- **After changing workflows, kits, or host integrations**: rerun `cfs generate-agents` or `cfs generate-agents --agent <tool>`
 
 For the first trial, use one small real input only: one short requirement, one design note, or one focused change request. Do not start with a repo-wide review or a broad implementation request.
 
 Good first requests:
 
-- 💬 `cf-constructor analyze: review this requirement and list the top 5 unclear or missing points before implementation`
-- 💬 `cf-constructor plan: break this change request into 3-7 safe reviewable phases with the main risk in each phase`
+- 💬 `cf analyze: review this requirement and list the top 5 unclear or missing points before implementation`
+- 💬 `cf plan: break this change request into 3-7 safe reviewable phases with the main risk in each phase`
 
 ### What success looks like after the first few minutes
 
@@ -266,7 +266,7 @@ For host-specific setup details and troubleshooting, use **[AGENT-TOOLS.md](AGEN
 
 ## 3. The shortest mental model
 
-Cyber Constructor is most useful when a task needs more than raw prompting.
+Constructor Studio is most useful when a task needs more than raw prompting.
 
 Use your AI coding tool and agent for:
 
@@ -275,7 +275,7 @@ Use your AI coding tool and agent for:
 - **transformation**
 - **implementation judgment**
 
-Use Cyber Constructor for:
+Use Constructor Studio for:
 
 - **choosing the right workflow**
 - **loading the right context**
@@ -286,14 +286,14 @@ Use Cyber Constructor for:
 
 If the task is tiny or exploratory, direct prompting may be enough.
 
-If the task needs structure, validation, or safe multi-step execution, Cyber Constructor is usually the better fit.
+If the task needs structure, validation, or safe multi-step execution, Constructor Studio is usually the better fit.
 
 
 ---
 
-## 4. When Cyber Constructor is a good fit
+## 4. When Constructor Studio is a good fit
 
-Cyber Constructor is a strong fit when one or more of these are true:
+Constructor Studio is a strong fit when one or more of these are true:
 
 - **You are transforming one structured artifact into another**
   
@@ -330,9 +330,9 @@ Cyber Constructor is a strong fit when one or more of these are true:
 
 ---
 
-## 5. When Cyber Constructor is not the best first move
+## 5. When Constructor Studio is not the best first move
 
-Cyber Constructor is often not the best first move when:
+Constructor Studio is often not the best first move when:
 
 - **The task is tiny**
   
@@ -422,17 +422,17 @@ Why this matters:
 
 Use the portable workflow form by default:
 
-- 💬 `cf-constructor plan: ...`
-- 💬 `cf-constructor generate: ...`
-- 💬 `cf-constructor analyze: ...`
+- 💬 `cf plan: ...`
+- 💬 `cf generate: ...`
+- 💬 `cf analyze: ...`
 
-Some hosts also expose slash-command aliases such as `/cf-constructor-plan`, `/cf-constructor-generate`, or `/cf-constructor-analyze`.
+Some hosts also expose slash-command aliases such as `/cf-plan`, `/cf-generate`, or `/cf-analyze`.
 
 Treat those as host-specific aliases, not separate capabilities.
 
 **Good prompt shape**:
 
-- 💬 `cf-constructor plan: break this auth migration into safe implementation phases`
+- 💬 `cf plan: break this auth migration into safe implementation phases`
 
 ### Use `generate` when
 
@@ -445,7 +445,7 @@ Treat those as host-specific aliases, not separate capabilities.
 
 When a prompt below references `PRD`, `DESIGN`, `DECOMPOSITION`, or `FEATURE`, it assumes the built-in SDLC kit is installed.
 
-- 💬 `cf-constructor generate: implement the approved FEATURE for login rate limiting` *(requires SDLC kit)*
+- 💬 `cf generate: implement the approved FEATURE for login rate limiting` *(requires SDLC kit)*
 
 ### Use `analyze` when
 
@@ -457,7 +457,7 @@ When a prompt below references `PRD`, `DESIGN`, `DECOMPOSITION`, or `FEATURE`, i
 
 **Good prompt shape**:
 
-- 💬 `cf-constructor analyze: validate architecture/DESIGN.md against the current FEATURE docs` *(requires SDLC kit)*
+- 💬 `cf analyze: validate architecture/DESIGN.md against the current FEATURE docs` *(requires SDLC kit)*
 
 ### What `analyze` is for in practice
 
@@ -529,8 +529,8 @@ A final **human review is still required** before treating the result as done.
 4. **Validate early and keep validation in the loop**
    - Generate or implement, validate, review, fix, and validate again before drift accumulates.
 
-5. **Use Cyber Constructor for structure; use the agent for judgment**
-   - Let Cyber Constructor enforce structure, validation, routing, and templates. Use the agent for interpretation, tradeoffs, and writing.
+5. **Use Constructor Studio for structure; use the agent for judgment**
+   - Let Constructor Studio enforce structure, validation, routing, and templates. Use the agent for interpretation, tradeoffs, and writing.
 
 6. **Be explicit about what must not change**
    - Say what is in scope and what is out of scope.
@@ -544,9 +544,9 @@ A final **human review is still required** before treating the result as done.
 9. **Use a fresh chat for new generation or review work**
    - For substantial `generate` or `analyze` tasks, prefer a new chat. If you stay in the same session, clear context before the next task.
 
-### CI with `cfc` tools
+### CI with `cfs` tools
 
-Use the relevant deterministic `cfc` checks locally before opening a PR, and keep the same checks in CI so review is not the first place they run.
+Use the relevant deterministic `cfs` checks locally before opening a PR, and keep the same checks in CI so review is not the first place they run.
 
 For specialized work such as template/example synchronization or kit changes, include the matching focused checks as well.
 
@@ -557,7 +557,7 @@ Use narrower checks while iterating and broader checks before merge. Let humans 
 
 ## 8. Common mistakes and anti-patterns
 
-1. **Using Cyber Constructor like a generic chat tool**
+1. **Using Constructor Studio like a generic chat tool**
    - That bypasses the workflows, structure, and validation that make it useful.
 
 2. **Starting with `generate` on a huge ambiguous task**
@@ -590,9 +590,9 @@ Use narrower checks while iterating and broader checks before merge. Let humans 
 
 **Do**:
 
-- 🖥️ `cfc init`
-- 🖥️ `cfc generate-agents`
-- 💬 `cf-constructor on`
+- 🖥️ `cfs init`
+- 🖥️ `cfs generate-agents`
+- 💬 `cf on`
 
 **Do not**:
 
@@ -603,7 +603,7 @@ Use narrower checks while iterating and broader checks before merge. Let humans 
 
 **Do**:
 
-- 💬 `cf-constructor auto-config`
+- 💬 `cf auto-config`
 - inspect generated rules and config
 - refine what auto-config inferred
 
@@ -671,7 +671,7 @@ Use narrower checks while iterating and broader checks before merge. Let humans 
 
 **Do**:
 
-- ask whether Cyber Constructor is actually needed
+- ask whether Constructor Studio is actually needed
 - use the smallest flow that preserves enough control
 
 **Do not**:
@@ -692,50 +692,50 @@ Examples that reference `PRD`, `DESIGN`, `DECOMPOSITION`, or `FEATURE` assume th
 
 ### Structured generation
 
-- 💬 `cf-constructor generate: create a DESIGN from architecture/PRD.md for the billing service`
-- 💬 `cf-constructor generate: implement the approved FEATURE for rate limiting in the auth service and preserve required @cpt-* code markers`
+- 💬 `cf generate: create a DESIGN from architecture/PRD.md for the billing service`
+- 💬 `cf generate: implement the approved FEATURE for rate limiting in the auth service and preserve required @cpt-* code markers`
 
 ### Structured analysis
 
-- 💬 `cf-constructor analyze: validate architecture/FEATURE-login.md`
-- 💬 `cf-constructor analyze: review the current code against the approved FEATURE and report missing traceability markers, validation issues, and likely implementation gaps`
+- 💬 `cf analyze: validate architecture/FEATURE-login.md`
+- 💬 `cf analyze: review the current code against the approved FEATURE and report missing traceability markers, validation issues, and likely implementation gaps`
 
 ### Planning
 
-- 💬 `cf-constructor plan: break this monolith-to-service extraction into safe phases with validation points`
-- 💬 `cf-constructor plan: break this FEATURE implementation into artifact-aware coding phases with validation and review checkpoints`
+- 💬 `cf plan: break this monolith-to-service extraction into safe phases with validation points`
+- 💬 `cf plan: break this FEATURE implementation into artifact-aware coding phases with validation and review checkpoints`
 
 ### Context-bounded execution
 
-- 💬 `cf-constructor generate: implement only phase 2 of the approved migration plan`
-- 💬 `cf-constructor generate: implement only phase 2 of the approved plan, then validate and summarize any remaining errors before continuing`
+- 💬 `cf generate: implement only phase 2 of the approved migration plan`
+- 💬 `cf generate: implement only phase 2 of the approved plan, then validate and summarize any remaining errors before continuing`
 
 ### Brownfield understanding
 
-- 💬 `cf-constructor auto-config`
-- 💬 `cf-constructor analyze: explain the current project conventions and likely architecture boundaries`
+- 💬 `cf auto-config`
+- 💬 `cf analyze: explain the current project conventions and likely architecture boundaries`
 
 ### Storytelling / explain mode (interactive pedagogical engagement)
 
-`cf-constructor analyze: explain ...` is the **canonical invocation** for the storytelling companion. The methodology activates EXPLAIN_MODE, asks you to pick one of six modes at session start (presentation / review / onboarding / decision / socratic / change-impact), and delivers the target in small no-scroll portions with 6-slot navigation (Next / Deeper / Lateral / Recap / Ask / Wrap). Mode resolution is **always interactive** — the agent will NEVER auto-pick a mode; intent verbs / artifact KIND only feed the suggested default in the prompt.
+`cf analyze: explain ...` is the **canonical invocation** for the storytelling companion. The methodology activates EXPLAIN_MODE, asks you to pick one of six modes at session start (presentation / review / onboarding / decision / socratic / change-impact), and delivers the target in small no-scroll portions with 6-slot navigation (Next / Deeper / Lateral / Recap / Ask / Wrap). Mode resolution is **always interactive** — the agent will NEVER auto-pick a mode; intent verbs / artifact KIND only feed the suggested default in the prompt.
 
 Canonical prompts:
 
-- 💬 `cf-constructor analyze: explain DESIGN.md` — pedagogical walkthrough of a local artifact (default mode = presentation; pick another at the prompt)
-- 💬 `cf-constructor analyze: explain REQ-001` — explain a registered Cyber Constructor artifact by ID
-- 💬 `cf-constructor analyze: explain https://github.com/cyberfabric/DNA/pull/25` — fetch a GitHub PR via the Phase E0 access chain (MCP → skill → CLI → user fallback) and walk through it; for review-mode pick `2.review` at the prompt
-- 💬 `cf-constructor analyze: walk me through the auth flow as architect for new joiners` — explicit role + audience hint feeds the suggested default
-- 💬 `cf-constructor analyze: onboard me to this repo` — onboarding mode (suggested at prompt)
-- 💬 `cf-constructor analyze: quiz me on the data-model section of DESIGN.md` — socratic mode
-- 💬 `cf-constructor analyze: what changed in this PR — walk me through it` — change-impact mode (note plain `review my changes` stays in standard analyze, NOT explain — explain requires explicit explain-family verbs)
-- 💬 `cf-constructor analyze: explain --resume 20260506T164904Z` — resume a previously-saved session by ISO-timestamp
+- 💬 `cf analyze: explain DESIGN.md` — pedagogical walkthrough of a local artifact (default mode = presentation; pick another at the prompt)
+- 💬 `cf analyze: explain REQ-001` — explain a registered Constructor Studio artifact by ID
+- 💬 `cf analyze: explain https://github.com/constructorfabric/studio/pull/25` — fetch a GitHub PR via the Phase E0 access chain (MCP → skill → CLI → user fallback) and walk through it; for review-mode pick `2.review` at the prompt
+- 💬 `cf analyze: walk me through the auth flow as architect for new joiners` — explicit role + audience hint feeds the suggested default
+- 💬 `cf analyze: onboard me to this repo` — onboarding mode (suggested at prompt)
+- 💬 `cf analyze: quiz me on the data-model section of DESIGN.md` — socratic mode
+- 💬 `cf analyze: what changed in this PR — walk me through it` — change-impact mode (note plain `review my changes` stays in standard analyze, NOT explain — explain requires explicit explain-family verbs)
+- 💬 `cf analyze: explain --resume 20260506T164904Z` — resume a previously-saved session by ISO-timestamp
 
 To produce a **hand-off-able package** (READMEs, training material, guides) instead of a chat session, route through `generate`:
 
-- 💬 `cf-constructor generate: explain package for DESIGN.md` — full multi-file Markdown package under `{cf-constructor-path}/.cache/explain/packages/`
-- 💬 `cf-constructor generate: make a README from public-interface/PLID.md`
-- 💬 `cf-constructor generate: build onboarding doc set for the auth subsystem`
-- 💬 `cf-constructor generate: training material for new joiners covering the deployment story`
+- 💬 `cf generate: explain package for DESIGN.md` — full multi-file Markdown package under `{cf-studio-path}/.cache/explain/packages/`
+- 💬 `cf generate: make a README from public-interface/PLID.md`
+- 💬 `cf generate: build onboarding doc set for the auth subsystem`
+- 💬 `cf generate: training material for new joiners covering the deployment story`
 
 The package contains an `index.md` with a Mermaid navigation graph + per-portion Markdown files + mode-specific extras (reading roadmap for onboarding; recommendation + dissenting opinions for decision; impact map for change-impact; review-comments file for review).
 
@@ -751,20 +751,20 @@ The package contains an `index.md` with a Mermaid navigation graph + per-portion
 
 ### Marker recovery
 
-- 💬 `cf-constructor generate: add the missing @cpt-* markers to the code changed for this FEATURE and keep the implementation behavior unchanged`
+- 💬 `cf generate: add the missing @cpt-* markers to the code changed for this FEATURE and keep the implementation behavior unchanged`
 
 
 ---
 
 ## 11. Prompt patterns that usually go wrong
 
-- 💬 `cf-constructor generate: build the whole system`
-- 💬 `cf-constructor generate: make this project enterprise grade`
-- 💬 `cf-constructor generate: improve everything`
-- 💬 `cf-constructor analyze: tell me if this code is good`
-- 💬 `cf-constructor generate: rewrite the app based on best practices`
-- 💬 `cf-constructor generate: implement this spec in code and treat the first pass as done without validation`
-- 💬 `cf-constructor generate: add the feature, markers are not important`
+- 💬 `cf generate: build the whole system`
+- 💬 `cf generate: make this project enterprise grade`
+- 💬 `cf generate: improve everything`
+- 💬 `cf analyze: tell me if this code is good`
+- 💬 `cf generate: rewrite the app based on best practices`
+- 💬 `cf generate: implement this spec in code and treat the first pass as done without validation`
+- 💬 `cf generate: add the feature, markers are not important`
 
 Why these go wrong:
 
@@ -776,17 +776,17 @@ Why these go wrong:
 
 Better versions:
 
-- Instead of `cf-constructor generate: build the whole system`: 💬 `cf-constructor plan: break the auth rewrite into phases constrained to backend API first`
-- Instead of `cf-constructor analyze: tell me if this code is good`: 💬 `cf-constructor analyze: review this module for correctness, regression risk, and missing tests`
-- Instead of `cf-constructor generate: rewrite the app based on best practices`: 💬 `cf-constructor analyze: find the three highest-risk design and implementation issues in this module`
-- Instead of `cf-constructor generate: implement this spec in code and treat the first pass as done without validation`: 💬 `cf-constructor generate: update only the login FEATURE spec using the approved auth DESIGN, then validate the result`
+- Instead of `cf generate: build the whole system`: 💬 `cf plan: break the auth rewrite into phases constrained to backend API first`
+- Instead of `cf analyze: tell me if this code is good`: 💬 `cf analyze: review this module for correctness, regression risk, and missing tests`
+- Instead of `cf generate: rewrite the app based on best practices`: 💬 `cf analyze: find the three highest-risk design and implementation issues in this module`
+- Instead of `cf generate: implement this spec in code and treat the first pass as done without validation`: 💬 `cf generate: update only the login FEATURE spec using the approved auth DESIGN, then validate the result`
 
 
 ---
 
-## 12. Using Cyber Constructor across multiple repositories
+## 12. Using Constructor Studio across multiple repositories
 
-If you work across several small repositories, avoid copying the full Cyber Constructor setup into each one.
+If you work across several small repositories, avoid copying the full Constructor Studio setup into each one.
 
 A better pattern is to keep one main orchestration repository and connect related repositories through a workspace.
 
@@ -794,7 +794,7 @@ Workspace federation and project extensibility solve different problems. Workspa
 
 ### Good pattern
 
-Keep one dedicated **orchestration repository** with the full Cyber Constructor setup, then connect multiple smaller repos through a workspace.
+Keep one dedicated **orchestration repository** with the full Constructor Studio setup, then connect multiple smaller repos through a workspace.
 
 That gives you:
 
@@ -811,18 +811,18 @@ Clone the full heavy setup into every tiny service repo even when those repos mo
 
 🖥️ **Terminal**:
 ```bash
-cfc workspace-init
-cfc workspace-add --name docs --path ../docs-repo --role artifacts
-cfc workspace-add --name services --path ../services-repo --role codebase
-cfc workspace-info
+cfs workspace-init
+cfs workspace-add --name docs --path ../docs-repo --role artifacts
+cfs workspace-add --name services --path ../services-repo --role codebase
+cfs workspace-info
 ```
 
 Useful follow-up commands:
 
-- 🖥️ `cfc validate --local-only` — validate only the current repository when you want to skip cross-repo resolution
-- 🖥️ `cfc where-defined --id <id>` — find where an ID is defined across reachable workspace sources
-- 🖥️ `cfc list-ids --source <name>` — inspect IDs from one specific workspace source
-- 🖥️ `cfc workspace-sync` — refresh Git URL workspace sources when your workspace uses remote sources
+- 🖥️ `cfs validate --local-only` — validate only the current repository when you want to skip cross-repo resolution
+- 🖥️ `cfs where-defined --id <id>` — find where an ID is defined across reachable workspace sources
+- 🖥️ `cfs list-ids --source <name>` — inspect IDs from one specific workspace source
+- 🖥️ `cfs workspace-sync` — refresh Git URL workspace sources when your workspace uses remote sources
 
 
 ---
@@ -831,11 +831,11 @@ Useful follow-up commands:
 
 Here, "brownfield" means an existing system with partial docs, unclear conventions, or mixed quality.
 
-Brownfield projects are often a strong Cyber Constructor use case, but only if you are disciplined.
+Brownfield projects are often a strong Constructor Studio use case, but only if you are disciplined.
 
 ### Good approach
 
-- start with 💬 `cf-constructor auto-config`
+- start with 💬 `cf auto-config`
 - inspect inferred rules
 - identify the real source-of-truth artifacts
 - use analysis before generation when the current system is still unclear
@@ -848,12 +848,12 @@ Brownfield projects are often a strong Cyber Constructor use case, but only if y
 
 ### Good sequence
 
-1. 🖥️ `cfc init`
-2. 🖥️ `cfc generate-agents`
-3. 💬 `cf-constructor on`
-4. 💬 `cf-constructor auto-config`
-5. 💬 `cf-constructor analyze: summarize current conventions and likely architecture boundaries`
-6. 💬 `cf-constructor plan: break the requested change into safe brownfield phases`
+1. 🖥️ `cfs init`
+2. 🖥️ `cfs generate-agents`
+3. 💬 `cf on`
+4. 💬 `cf auto-config`
+5. 💬 `cf analyze: summarize current conventions and likely architecture boundaries`
+6. 💬 `cf plan: break the requested change into safe brownfield phases`
 
 
 ---
@@ -902,7 +902,7 @@ If validation produces a false positive, an autonomous loop can optimize for the
 
 If your setup uses RalphEx-backed delegation, run a quick environment check before you rely on it:
 
-- 🖥️ `cfc doctor`
+- 🖥️ `cfs doctor`
 
 Treat warnings or failures in that preflight as a reason to stay interactive until the delegation path is healthy.
 
@@ -915,7 +915,7 @@ A final **human review remains mandatory**.
 
 ## 15. Quick decision checklist
 
-Use Cyber Constructor if most answers are **yes**:
+Use Constructor Studio if most answers are **yes**:
 
 - **Is there a clear target artifact, code area, or review object?**
 - **Is structure important?**
@@ -932,9 +932,25 @@ Be cautious if most answers are **yes** here instead:
 - **Would a lightweight direct prompt be enough?**
 - **Would the workflow overhead exceed the task value?**
 
-If the left-hand answers are mostly yes, Cyber Constructor is probably a good fit. If the right-hand answers dominate, use a lighter workflow or your AI coding tool directly.
+If the left-hand answers are mostly yes, Constructor Studio is probably a good fit. If the right-hand answers dominate, use a lighter workflow or your AI coding tool directly.
 
 ---
+
+
+---
+
+## 16. Mirror overrides
+
+Use `cfs mirror override` when you want all URL lookups in Constructor Studio (init, update, asset download) to resolve against a fork instead of the default registry.
+
+```bash
+cfs mirror override github.com/constructorfabric/studio github.com/ainetx/studio
+cfs mirror list       # show current overrides with source file
+cfs mirror remove github.com/constructorfabric/studio
+cfs mirror clear      # delete all overrides
+```
+
+Overrides are stored in `${XDG_CONFIG_HOME:-~/.config}/constructor-studio/mirrors.toml` (XDG primary) with brand-home fallback at `~/.constructor-studio/mirrors.toml`. Both locations are read on startup and merged; the last entry for a duplicate `from` wins. See [ADR-0020](../architecture/ADR/0020-cpt-studio-adr-rebrand-and-mirror-override-v1.md) for the full match and write-target semantics.
 
 ## Further reading
 
@@ -942,5 +958,5 @@ If the left-hand answers are mostly yes, Cyber Constructor is probably a good fi
 - **[AGENT-TOOLS.md](AGENT-TOOLS.md)** — host-specific setup details and operational differences
 - **[Configuration guide](CONFIGURATION.md)** — tune rules, kits, and behavior
 - **[Project extensibility guide](PROJECT-EXTENSIBILITY.md)** — extend local behavior inside one repository
-- **[Workspace specification](../requirements/workspace.md)** — use this if you are running Cyber Constructor across multiple repositories
+- **[Workspace specification](../requirements/workspace.md)** — use this if you are running Constructor Studio across multiple repositories
 - **[Historical story-driven walkthrough](STORY.md)** — older transcript, useful as archive rather than canonical guidance

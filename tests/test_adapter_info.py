@@ -122,7 +122,7 @@ class TestAdapterInfoCommand(unittest.TestCase):
             (adapter_dir / "config" / "artifacts.toml").write_text(
                 'version = "1.1"\n'
                 'project_root = ".."\n\n'
-                '[kits.k]\nformat = "Cypilot"\npath = ".cypilot-adapter/kits/k"\n\n'
+                '[kits.k]\nformat = "CFS"\npath = ".cypilot-adapter/kits/k"\n\n'
                 '[[systems]]\nname = "TestProject"\nslug = "testproject"\nkit = "k"\n\n'
                 '[[systems.autodetect]]\nsystem_root = "{project_root}/modules/$system"\n'
                 'artifacts_root = "{system_root}/docs"\n\n'

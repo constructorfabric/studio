@@ -1,12 +1,12 @@
 ---
-cypilot: true
+studio: true
 type: spec
 name: Identifiers & Traceability Specification
 version: 2.0
 purpose: Define artifact ID formats, naming conventions, task marker semantics, code traceability markers, and validation rules
 drivers:
-  - cpt-cypilot-fr-core-traceability
-  - cpt-cypilot-component-traceability-engine
+  - cpt-studio-fr-core-traceability
+  - cpt-studio-component-traceability-engine
 ---
 
 # Identifiers & Traceability Specification
@@ -33,6 +33,7 @@ drivers:
     - [Code Validation Rules](#code-validation-rules)
     - [Versioning](#versioning)
     - [Common Errors](#common-errors)
+  - [Acronym Glossary](#acronym-glossary)
   - [References](#references)
 
 ---
@@ -67,8 +68,8 @@ drivers:
 
 **Validate**:
 ```bash
-cpt validate --artifact <path>    # artifact IDs
-cpt validate-code                 # code markers
+cfs validate --artifact <path>    # artifact IDs
+cfs validate-code                 # code markers
 ```
 
 ---
@@ -77,7 +78,7 @@ cpt validate-code                 # code markers
 
 ### ID Format
 
-All Cypilot identifiers follow the pattern:
+All Studio identifiers follow the pattern:
 
 ```
 cpt-{hierarchy-prefix}-{kind}-{slug}
@@ -93,7 +94,7 @@ Where:
 
 ### ID Naming Convention
 
-IDs are built by concatenating **slugs** through the hierarchy chain (from `{cf-constructor-path}/config/artifacts.toml`), followed by the element kind and a descriptive slug.
+IDs are built by concatenating **slugs** through the hierarchy chain (from `{cf-studio-path}/config/artifacts.toml`), followed by the element kind and a descriptive slug.
 
 **Slug rules**: lowercase letters, numbers, hyphens only. No spaces, no leading/trailing hyphens. Pattern: `^[a-z0-9]+(-[a-z0-9]+)*$`
 
@@ -193,7 +194,7 @@ Code traceability links IDs defined in artifacts to implementation code through 
 
 This specification is **kit-agnostic**:
 - Defines the **generic marker format** and validation expectations
-- The active kit (registered in `{cf-constructor-path}/config/core.toml`) defines which `{kind}` values are meaningful and which IDs require code traceability
+- The active kit (registered in `{cf-studio-path}/config/core.toml`) defines which `{kind}` values are meaningful and which IDs require code traceability
 
 ### Scope Markers
 
@@ -204,7 +205,7 @@ Single-line markers for scope entry points (functions, classes, modules):
 ```
 
 - `{kind}` — kit-defined classification string (e.g., `flow`, `algo`, `comp`)
-- `{cpt-id}` — full Cypilot ID from artifacts (e.g., `cpt-my-system-flow-login`)
+- `{cpt-id}` — full Studio ID from artifacts (e.g., `cpt-my-system-flow-login`)
 - `p{N}` — phase number (required)
 
 **Example**:
@@ -270,7 +271,7 @@ def validate_credentials(username, password):
 
 ### Traceability Mode
 
-Traceability mode is configured per artifact/codebase entry in `{cf-constructor-path}/config/artifacts.toml`:
+Traceability mode is configured per artifact/codebase entry in `{cf-studio-path}/config/artifacts.toml`:
 
 - **`FULL`**: markers are allowed and validated
   - Structural checks: pairing, no empty blocks, proper nesting
@@ -303,7 +304,7 @@ Traceability mode is configured per artifact/codebase entry in `{cf-constructor-
 
 **Validation command**:
 ```bash
-cpt validate-code
+cfs validate-code
 ```
 
 Validation performs:
@@ -372,9 +373,19 @@ def validate_credentials(user, password):
 
 ---
 
+## Acronym Glossary
+
+| Acronym | Expansion | Notes |
+|---------|-----------|-------|
+| CPT | Canonical Provenance Trace | Identifier scheme `cpt-{system}-{kind}-{slug}-v{N}`; tag scheme `cpt-{role}-{...}-v{N}`. The `{system}` token is `studio` from v1.0.0. |
+| CDSL | Constructor DSL | Domain-specific plain English behavioral specification language used in kit/blueprint authoring; defined in `architecture/specs/CDSL.md`. |
+| CFS | Constructor Fabric Studio | The CLI binary (`cfs`). Use the short form `cfs` in code; spell out only in marketing prose. |
+
+---
+
 ## References
 
 - **Kit specification**: `specs/kit/` — kit structure, constraint definitions, validation semantics
-- **CDSL**: `{cf-constructor-path}/.core/architecture/specs/CDSL.md` — behavioral specification language
-- **Artifacts registry**: `{cf-constructor-path}/config/artifacts.toml` — system, artifact, codebase definitions
-- **CLI**: `{cf-constructor-path}/.core/architecture/specs/cli.md` — `validate`, `validate-code`, `list-ids`, `where-defined`, `where-used` commands
+- **CDSL**: `{cf-studio-path}/.core/architecture/specs/CDSL.md` — behavioral specification language
+- **Artifacts registry**: `{cf-studio-path}/config/artifacts.toml` — system, artifact, codebase definitions
+- **CLI**: `{cf-studio-path}/.core/architecture/specs/cli.md` — `validate`, `validate-code`, `list-ids`, `where-defined`, `where-used` commands

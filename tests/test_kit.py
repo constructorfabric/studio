@@ -274,7 +274,7 @@ class TestCmdKitUpdate(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "manifestfail": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "config/kits/manifestfail",
                         "version": "0",
                         "resources": {
@@ -315,8 +315,8 @@ class TestCmdKitUpdate(unittest.TestCase):
                 "version": "1.0",
                 "project_root": "..",
                 "kits": {
-                    "akit": {"format": "Cypilot", "path": "config/kits/akit", "version": "1", "source": "github:owner/akit"},
-                    "bkit": {"format": "Cypilot", "path": "config/kits/bkit", "version": "1", "source": "github:owner/bkit"},
+                    "akit": {"format": "CFS", "path": "config/kits/akit", "version": "1", "source": "github:owner/akit"},
+                    "bkit": {"format": "CFS", "path": "config/kits/bkit", "version": "1", "source": "github:owner/bkit"},
                 },
             }, adapter / "config" / "core.toml")
 
@@ -376,8 +376,8 @@ class TestCmdKitUpdate(unittest.TestCase):
                 "version": "1.0",
                 "project_root": "..",
                 "kits": {
-                    "akit": {"format": "Cypilot", "path": "config/kits/akit", "version": "1", "source": "github:owner/akit"},
-                    "bkit": {"format": "Cypilot", "path": "config/kits/bkit", "version": "1", "source": "github:owner/bkit"},
+                    "akit": {"format": "CFS", "path": "config/kits/akit", "version": "1", "source": "github:owner/akit"},
+                    "bkit": {"format": "CFS", "path": "config/kits/bkit", "version": "1", "source": "github:owner/bkit"},
                 },
             }, adapter / "config" / "core.toml")
 
@@ -616,7 +616,7 @@ class TestCmdKitInstall(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "testkit": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "custom-kits/testkit",
                         "version": "1",
                     }
@@ -709,7 +709,7 @@ class TestCmdKitInstall(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "testkit": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "custom-kits/testkit",
                         "version": "1",
                     }
@@ -748,7 +748,7 @@ class TestCmdKitInstall(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "testkit": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "custom-kits/testkit",
                         "version": "1",
                     }
@@ -832,7 +832,7 @@ class TestCmdKitInstall(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "testkit": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": registered_path,
                         "version": "1",
                     }
@@ -974,7 +974,7 @@ class TestDetectAndMigrateLayoutLegacy(unittest.TestCase):
             config_dir = adapter / "config"
             config_dir.mkdir(parents=True)
             toml_utils.dump({
-                "kits": {"sdlc": {"path": "kits/sdlc", "format": "Cypilot"}},
+                "kits": {"sdlc": {"path": "kits/sdlc", "format": "CFS"}},
             }, config_dir / "core.toml")
             _detect_and_migrate_layout(adapter)
             import tomllib
@@ -1082,7 +1082,7 @@ class TestDetectAndMigrateLayout(unittest.TestCase):
             config_dir = adapter / "config"
             config_dir.mkdir(parents=True)
             toml_utils.dump({
-                "kits": {"sdlc": {"path": "kits/sdlc", "format": "Cypilot"}},
+                "kits": {"sdlc": {"path": "kits/sdlc", "format": "CFS"}},
             }, config_dir / "core.toml")
             _detect_and_migrate_layout(adapter)
             import tomllib
@@ -1259,7 +1259,7 @@ class TestUpdateKitExistingBranch(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "customcurrent": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "custom-kits/customcurrent",
                         "version": "1",
                     }
@@ -1289,7 +1289,7 @@ class TestUpdateKitExistingBranch(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "customupdate": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "custom-kits/customupdate",
                         "version": "1",
                     }
@@ -1345,7 +1345,7 @@ class TestUpdateKitExistingBranch(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "manifestupdate": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": external_kit_dir.as_posix(),
                         "version": "0",
                     }
@@ -1837,7 +1837,7 @@ class TestDetectAndMigrateLayout(unittest.TestCase):
             config_dir = cypilot / "config"
             config_dir.mkdir(parents=True, exist_ok=True)
             toml_utils.dump({
-                "kits": {"sdlc": {"path": "kits/sdlc", "format": "Cypilot"}},
+                "kits": {"sdlc": {"path": "kits/sdlc", "format": "CFS"}},
             }, config_dir / "core.toml")
 
             _detect_and_migrate_layout(cypilot)
@@ -2067,7 +2067,7 @@ class TestRegisterKitInCoreToml(unittest.TestCase):
             with open(config / "core.toml", "rb") as f:
                 data = tomllib.load(f)
             self.assertEqual(data["kits"]["mykit"]["version"], "1.0")
-            self.assertEqual(data["kits"]["mykit"]["format"], "Cypilot")
+            self.assertEqual(data["kits"]["mykit"]["format"], "CFS")
             self.assertEqual(data["kits"]["mykit"]["path"], "config/kits/mykit")
 
     def test_with_source(self):
@@ -2105,7 +2105,7 @@ class TestRegisterKitInCoreToml(unittest.TestCase):
             toml_utils.dump({
                 "kits": {
                     "mykit": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "custom-kits/mykit",
                         "version": "1.0",
                     }
@@ -2126,7 +2126,7 @@ class TestRegisterKitInCoreToml(unittest.TestCase):
             toml_utils.dump({
                 "kits": {
                     "mykit": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": r"C:\external-kits\mykit",
                         "version": "1.0",
                     }
@@ -2162,7 +2162,7 @@ class TestRegenerateGenAggregates(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "sdlc": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                     },
                 },
             }, config / "core.toml")
@@ -2196,7 +2196,7 @@ class TestRegenerateGenAggregates(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "sdlc": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "custom-kits/sdlc",
                     },
                 },
@@ -2231,7 +2231,7 @@ class TestRegenerateGenAggregates(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "sdlc": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": custom_kit.as_posix(),
                     },
                 },
@@ -2268,7 +2268,7 @@ class TestRegenerateGenAggregates(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "sdlc": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "C:/external-kits/sdlc",
                     },
                 },
@@ -2305,7 +2305,7 @@ class TestRegenerateGenAggregates(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "sdlc": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": r"C:\external-kits\sdlc",
                     },
                 },
@@ -2429,7 +2429,7 @@ class TestCmdKitUpdateCli(unittest.TestCase):
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
-                "kits": {"testkit": {"format": "Cypilot", "path": "config/kits/testkit"}},
+                "kits": {"testkit": {"format": "CFS", "path": "config/kits/testkit"}},
             }, adapter / "config" / "core.toml")
             # Create installed kit dir
             config_kit = adapter / "config" / "kits" / "testkit"
@@ -2492,7 +2492,7 @@ class TestCmdKitUpdateCli(unittest.TestCase):
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
-                "kits": {"sdlc": {"format": "Cypilot", "path": "config/kits/sdlc", "source": "github:o/r"}},
+                "kits": {"sdlc": {"format": "CFS", "path": "config/kits/sdlc", "source": "github:o/r"}},
             }, adapter / "config" / "core.toml")
             cwd = os.getcwd()
             try:
@@ -2514,7 +2514,7 @@ class TestCmdKitUpdateCli(unittest.TestCase):
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
-                "kits": {"sdlc": {"format": "Cypilot", "path": "config/kits/sdlc", "source": "github:cyberfabric/cyber-pilot-kit-sdlc"}},
+                "kits": {"sdlc": {"format": "CFS", "path": "config/kits/sdlc", "source": "github:cyberfabric/cyber-pilot-kit-sdlc"}},
             }, adapter / "config" / "core.toml")
 
             cwd = os.getcwd()
@@ -2540,7 +2540,7 @@ class TestCmdKitUpdateCli(unittest.TestCase):
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
-                "kits": {"sdlc": {"format": "Cypilot", "path": "config/kits/sdlc", "source": "github:o/r"}},
+                "kits": {"sdlc": {"format": "CFS", "path": "config/kits/sdlc", "source": "github:o/r"}},
             }, adapter / "config" / "core.toml")
             cwd = os.getcwd()
             try:
@@ -2565,7 +2565,7 @@ class TestCmdKitUpdateCli(unittest.TestCase):
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
-                "kits": {"mykit": {"format": "Cypilot", "path": "config/kits/mykit", "source": "ftp://bad"}},
+                "kits": {"mykit": {"format": "CFS", "path": "config/kits/mykit", "source": "ftp://bad"}},
             }, adapter / "config" / "core.toml")
             cwd = os.getcwd()
             try:
@@ -2586,7 +2586,7 @@ class TestCmdKitUpdateCli(unittest.TestCase):
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
-                "kits": {"mykit": {"format": "Cypilot", "path": "config/kits/mykit"}},
+                "kits": {"mykit": {"format": "CFS", "path": "config/kits/mykit"}},
             }, adapter / "config" / "core.toml")
             cwd = os.getcwd()
             try:
@@ -2730,7 +2730,7 @@ class TestDetectMigrateLayoutFailureSafe(unittest.TestCase):
         from cypilot.utils import toml_utils
         toml_utils.dump({
             "version": "1.0",
-            "kits": {"badkit": {"format": "Cypilot", "path": "kits/badkit"}},
+            "kits": {"badkit": {"format": "CFS", "path": "kits/badkit"}},
         }, adapter / "config" / "core.toml")
         return adapter
 
@@ -2780,7 +2780,7 @@ class TestDetectMigrateLayoutFailureSafe(unittest.TestCase):
             from cypilot.utils import toml_utils
             toml_utils.dump({
                 "version": "1.0",
-                "kits": {"samekit": {"format": "Cypilot", "path": "kits/samekit"}},
+                "kits": {"samekit": {"format": "CFS", "path": "kits/samekit"}},
             }, adapter / "config" / "core.toml")
 
             # Create legacy kits/samekit (will succeed) and .gen/kits/samekit (will fail)
@@ -2841,8 +2841,8 @@ class TestPartialGithubSourceFailures(unittest.TestCase):
                 "version": "1.0",
                 "project_root": "..",
                 "kits": {
-                    "goodkit": {"format": "Cypilot", "path": "config/kits/goodkit", "source": "github:owner/goodkit"},
-                    "badkit": {"format": "Cypilot", "path": "config/kits/badkit", "source": "github:owner/badkit"},
+                    "goodkit": {"format": "CFS", "path": "config/kits/goodkit", "source": "github:owner/goodkit"},
+                    "badkit": {"format": "CFS", "path": "config/kits/badkit", "source": "github:owner/badkit"},
                 },
             }, adapter / "config" / "core.toml")
 
@@ -2883,8 +2883,8 @@ class TestPartialGithubSourceFailures(unittest.TestCase):
                 "version": "1.0",
                 "project_root": "..",
                 "kits": {
-                    "k1": {"format": "Cypilot", "path": "config/kits/k1", "source": "github:o/r1"},
-                    "k2": {"format": "Cypilot", "path": "config/kits/k2", "source": "github:o/r2"},
+                    "k1": {"format": "CFS", "path": "config/kits/k1", "source": "github:o/r1"},
+                    "k2": {"format": "CFS", "path": "config/kits/k2", "source": "github:o/r2"},
                 },
             }, adapter / "config" / "core.toml")
 
@@ -2912,8 +2912,8 @@ class TestPartialGithubSourceFailures(unittest.TestCase):
         """_resolve_github_update_targets returns (targets, failures) tuple."""
         from cypilot.commands.kit import _resolve_github_update_targets
         kits_map = {
-            "nokit": {"format": "Cypilot"},
-            "badproto": {"format": "Cypilot", "source": "local:/nonexistent"},
+            "nokit": {"format": "CFS"},
+            "badproto": {"format": "CFS", "source": "local:/nonexistent"},
         }
         targets, failures = _resolve_github_update_targets(kits_map)
         self.assertEqual(targets, [])

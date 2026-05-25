@@ -167,8 +167,8 @@ is **overwritten** in place — prior values are not versioned at the
 
 Controls how the orchestrator coordinates expert agents during a round:
 
-- **`single-agent`** (default): Dispatch the `cf-constructor-brainstorm-panel` agent once per round (not per expert). One expert is designated primary; secondary experts deliberate inside the same agent and provide critique via the `protocol` field. One cohesive sub-agent context per round; host-independent (no native fan-out required); INLINE_FALLBACK is a no-op.
-- **`fan-out`**: Dispatch all relevant panel members in parallel using `cf-constructor-brainstorm-expert`. Each expert independently produces questions/contributions; the orchestrator collects all responses before aggregation. No inter-expert live communication. Requires a host with native sub-agent parallelism (otherwise degrades to sequential via INLINE_FALLBACK).
+- **`single-agent`** (default): Dispatch the `cf-brainstorm-panel` agent once per round (not per expert). One expert is designated primary; secondary experts deliberate inside the same agent and provide critique via the `protocol` field. One cohesive sub-agent context per round; host-independent (no native fan-out required); INLINE_FALLBACK is a no-op.
+- **`fan-out`**: Dispatch all relevant panel members in parallel using `cf-brainstorm-expert`. Each expert independently produces questions/contributions; the orchestrator collects all responses before aggregation. No inter-expert live communication. Requires a host with native sub-agent parallelism (otherwise degrades to sequential via INLINE_FALLBACK).
 
 The **single field** constraint means each round has exactly one orchestration strategy; mixed strategies within a single round are not supported. When `panel_mode` is `"fan-out"`, the `protocol` field must be `null`. When `panel_mode` is `"single-agent"`, the `protocol` field must be non-null (see § protocol below).
 
@@ -274,7 +274,7 @@ The orchestrator run configuration is split into a **sibling** `run_config.json`
 
 **File layout:**
 ```
-{cf-constructor-path}/.cache/brainstorm/{session_id}/
+{cf-studio-path}/.cache/brainstorm/{session_id}/
 ├── state.json           # Persisted round-by-round state (this schema)
 └── run_config.json      # Environment + execution config (separate schema)
 ```
@@ -283,7 +283,7 @@ The orchestrator run configuration is split into a **sibling** `run_config.json`
 ```json
 {
   "environment": {
-    "cpt_path": "/path/to/.cf-constructor",
+    "cpt_path": "/path/to/.cf",
     "python_version": "3.11",
     "agent_timeout_seconds": 120,
     "model": "claude-opus-4.1",
@@ -321,7 +321,7 @@ This pattern enables resumable, auditable brainstorm sessions with reproducible 
 ### Default Location
 
 Kept in-memory by the orchestrator across rounds. Persist to
-`{cf-constructor-path}/.cache/brainstorm/{session_id}/state.json` only when
+`{cf-studio-path}/.cache/brainstorm/{session_id}/state.json` only when
 the user picked explicit `save` mode and the current output destination allows
 file writes. Chat-only/no-write sessions must use an in-chat checkpoint for
 compaction recovery and must not write cache artifacts.

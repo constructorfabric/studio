@@ -140,8 +140,8 @@ class TestCLIValidateCommand(unittest.TestCase):
             _bootstrap_registry(
                 root,
                 entries=[
-                    {"kind": "FEATURE", "system": "Test", "path": "architecture/features/feature-a.md", "format": "Cypilot"},
-                    {"kind": "FEATURE", "system": "Test", "path": "architecture/features/feature-b.md", "format": "Cypilot"},
+                    {"kind": "FEATURE", "system": "Test", "path": "architecture/features/feature-a.md", "format": "CFS"},
+                    {"kind": "FEATURE", "system": "Test", "path": "architecture/features/feature-b.md", "format": "CFS"},
                     {"kind": "SRC", "system": "Test", "path": "src", "format": "CONTEXT", "traceability_enabled": True, "extensions": [".py"]},
                 ],
             )
@@ -167,7 +167,7 @@ class TestCLIValidateCommand(unittest.TestCase):
             _bootstrap_registry(
                 root,
                 entries=[
-                    {"kind": "FEATURE", "system": "Test", "path": "architecture/features/feature-x.md", "format": "Cypilot"},
+                    {"kind": "FEATURE", "system": "Test", "path": "architecture/features/feature-x.md", "format": "CFS"},
                 ],
             )
 
@@ -205,7 +205,7 @@ class TestCLIValidateCommand(unittest.TestCase):
 
             _bootstrap_registry_new_format(
                 root,
-                kits={"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+                kits={"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
                 systems=[{
                     "name": "Test",
                     "kits": "cypilot",
@@ -251,7 +251,7 @@ class TestCLICommandsRulesOnlyKit(unittest.TestCase):
 
             _bootstrap_registry_new_format(
                 root,
-                kits={"cypilot-sdlc": {"format": "Cypilot", "path": "kits/cypilot-sdlc"}},
+                kits={"cypilot-sdlc": {"format": "CFS", "path": "kits/cypilot-sdlc"}},
                 systems=[
                     {
                         "name": "root",
@@ -1753,7 +1753,7 @@ class TestCLITraceabilityCommands(unittest.TestCase):
             _bootstrap_registry(
                 root,
                 entries=[
-                    {"kind": "DESIGN", "system": "Test", "path": "architecture/DESIGN.md", "format": "Cypilot", "traceability_enabled": True},
+                    {"kind": "DESIGN", "system": "Test", "path": "architecture/DESIGN.md", "format": "CFS", "traceability_enabled": True},
                 ],
             )
 
@@ -1788,7 +1788,7 @@ class TestCLITraceabilityCommands(unittest.TestCase):
             _bootstrap_registry(
                 root,
                 entries=[
-                    {"kind": "DESIGN", "system": "Test", "path": "architecture/DESIGN.md", "format": "Cypilot", "traceability_enabled": True},
+                    {"kind": "DESIGN", "system": "Test", "path": "architecture/DESIGN.md", "format": "CFS", "traceability_enabled": True},
                 ],
             )
 
@@ -2067,7 +2067,7 @@ def _bootstrap_registry_new_format(project_root: Path, *, systems: list, kits: d
     registry = {
         "version": "1.0",
         "project_root": "..",
-        "kits": kits if kits is not None else {"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+        "kits": kits if kits is not None else {"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
         "systems": systems,
     }
     from cypilot.utils import toml_utils
@@ -2123,7 +2123,7 @@ cypilot-template:
 
             _bootstrap_registry_new_format(
                 root,
-                kits={"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+                kits={"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
                 systems=[{
                     "name": "Test",
                     "kits": "cypilot",
@@ -2208,7 +2208,7 @@ class TestCLIValidateKitsCommand(unittest.TestCase):
 
             _bootstrap_registry_new_format(
                 root,
-                kits={"cypilot-sdlc": {"format": "Cypilot", "path": "kits/sdlc"}},
+                kits={"cypilot-sdlc": {"format": "CFS", "path": "kits/sdlc"}},
                 systems=[],
             )
 
@@ -2236,7 +2236,7 @@ class TestCLIValidateKitsCommand(unittest.TestCase):
 
             _bootstrap_registry_new_format(
                 root,
-                kits={"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+                kits={"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
                 systems=[],
             )
 
@@ -2264,7 +2264,7 @@ class TestCLIValidateKitsCommand(unittest.TestCase):
 
             _bootstrap_registry_new_format(
                 root,
-                kits={"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+                kits={"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
                 systems=[],
             )
 
@@ -2293,7 +2293,7 @@ class TestCLIValidateKitsCommand(unittest.TestCase):
 
             _bootstrap_registry_new_format(
                 root,
-                kits={"cypilot-sdlc": {"format": "Cypilot", "path": "kits/sdlc"}},
+                kits={"cypilot-sdlc": {"format": "CFS", "path": "kits/sdlc"}},
                 systems=[],
             )
 
@@ -2321,7 +2321,7 @@ class TestCLIValidateKitsCommand(unittest.TestCase):
             write_constraints_toml(root / "kits" / "sdlc", {"PRD": {"identifiers": {"flow": {"to_code": True}}}})
             _bootstrap_registry_new_format(
                 root,
-                kits={"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+                kits={"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
                 systems=[],
             )
 
@@ -2367,7 +2367,7 @@ class TestCLIValidateKitsCommand(unittest.TestCase):
 
             _bootstrap_registry_new_format(
                 root,
-                kits={"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+                kits={"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
                 systems=[],
             )
 
@@ -2450,7 +2450,7 @@ Login feature requirement
 
             _bootstrap_registry_new_format(
                 root,
-                kits={"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+                kits={"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
                 systems=[{
                     "name": "Test",
                     "kits": "cypilot",
@@ -2500,7 +2500,7 @@ gamma
 
             _bootstrap_registry_new_format(
                 root,
-                kits={"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+                kits={"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
                 systems=[{
                     "name": "Test",
                     "kits": "cypilot",
@@ -2550,7 +2550,7 @@ outro
 
             _bootstrap_registry_new_format(
                 root,
-                kits={"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+                kits={"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
                 systems=[{
                     "name": "Test",
                     "kits": "cypilot",
@@ -2601,7 +2601,7 @@ ccc
 
             _bootstrap_registry_new_format(
                 root,
-                kits={"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+                kits={"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
                 systems=[{
                     "name": "Test",
                     "kits": "cypilot",
@@ -2653,7 +2653,7 @@ text
 
             _bootstrap_registry_new_format(
                 root,
-                kits={"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+                kits={"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
                 systems=[{
                     "name": "Test",
                     "kits": "cypilot",
@@ -2707,7 +2707,7 @@ ccc
 
             _bootstrap_registry_new_format(
                 root,
-                kits={"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+                kits={"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
                 systems=[{
                     "name": "Test",
                     "kits": "cypilot",
@@ -2762,7 +2762,7 @@ See also `cpt-test-ref-1` in text.
 
             _bootstrap_registry_new_format(
                 root,
-                kits={"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+                kits={"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
                 systems=[{
                     "name": "Test",
                     "kits": "cypilot",
@@ -2806,7 +2806,7 @@ text
 
             _bootstrap_registry_new_format(
                 root,
-                kits={"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+                kits={"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
                 systems=[{
                     "name": "Test",
                     "kits": "cypilot",
@@ -2848,7 +2848,7 @@ text
 
             _bootstrap_registry_new_format(
                 root,
-                kits={"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+                kits={"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
                 systems=[{
                     "name": "Test",
                     "kits": "cypilot",
@@ -2899,7 +2899,7 @@ text
 
             _bootstrap_registry_new_format(
                 root,
-                kits={"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+                kits={"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
                 systems=[{
                     "name": "Test",
                     "kits": "cypilot",
@@ -2952,7 +2952,7 @@ text
 
             _bootstrap_registry_new_format(
                 root,
-                kits={"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+                kits={"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
                 systems=[{
                     "name": "Test",
                     "kits": "cypilot",
@@ -3005,7 +3005,7 @@ text
 
             _bootstrap_registry_new_format(
                 root,
-                kits={"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+                kits={"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
                 systems=[{
                     "name": "Test",
                     "kits": "cypilot",
@@ -3066,7 +3066,7 @@ text
 
             _bootstrap_registry_new_format(
                 root,
-                kits={"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+                kits={"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
                 systems=[{
                     "name": "Test",
                     "kits": "cypilot",
@@ -3173,7 +3173,7 @@ cypilot-template:
 
     _bootstrap_registry_new_format(
         root,
-        kits={"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+        kits={"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
         systems=[{
             "name": "Test",
             "kits": "cypilot",
@@ -3976,7 +3976,7 @@ class TestCLIValidateTemplatesVerbose(unittest.TestCase):
 
             _bootstrap_registry_new_format(
                 root,
-                kits={"cypilot": {"format": "Cypilot", "path": "templates"}},
+                kits={"cypilot": {"format": "CFS", "path": "templates"}},
                 systems=[{
                     "name": "Test",
                     "kits": "cypilot",
@@ -4448,7 +4448,7 @@ class TestCLIValidateCommandBranches(unittest.TestCase):
 
             _bootstrap_registry_new_format(
                 root,
-                kits={"cypilot": {"format": "Cypilot", "path": "templates"}},
+                kits={"cypilot": {"format": "CFS", "path": "templates"}},
                 systems=[{
                     "name": "Test",
                     "kits": "cypilot",
@@ -4596,7 +4596,7 @@ cypilot-template:
 
             _bootstrap_registry_new_format(
                 root,
-                kits={"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+                kits={"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
                 systems=[{
                     "name": "Test",
                     "kits": "cypilot",
@@ -4732,7 +4732,7 @@ cypilot-template:
     # Bootstrap registry with codebase entry
     _bootstrap_registry_new_format(
         root,
-        kits={"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+        kits={"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
         systems=[{
             "name": "Test",
             "kit": "cypilot",
@@ -4759,7 +4759,7 @@ def _setup_cypilot_project_with_markerless_cdsl_missing_block(root: Path) -> Non
 
     _bootstrap_registry_new_format(
         root,
-        kits={"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+        kits={"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
         systems=[{
             "name": "Test",
             "kit": "cypilot",
@@ -4786,7 +4786,7 @@ def _setup_cypilot_project_with_cdsl_to_code_missing_block(root: Path) -> None:
 
     _bootstrap_registry_new_format(
         root,
-        kits={"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+        kits={"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
         systems=[{
             "name": "Test",
             "kit": "cypilot",
@@ -5013,7 +5013,7 @@ cypilot-template:
             # Bootstrap registry with nested systems
             _bootstrap_registry_new_format(
                 root,
-                kits={"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+                kits={"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
                 systems=[{
                     "name": "Parent",
                     "kits": "cypilot",
@@ -5060,7 +5060,7 @@ cypilot-template:
             # Bootstrap with codebase pointing to nonexistent directory
             _bootstrap_registry_new_format(
                 root,
-                kits={"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+                kits={"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
                 systems=[{
                     "name": "Test",
                     "kits": "cypilot",
@@ -5212,7 +5212,7 @@ cypilot-template:
             # Bootstrap registry with codebase entry
             _bootstrap_registry_new_format(
                 root,
-                kits={"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+                kits={"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
                 systems=[{
                     "name": "Test",
                     "kits": "cypilot",
@@ -5416,7 +5416,7 @@ class TestCLIValidateCrossRef(unittest.TestCase):
 
             _bootstrap_registry_new_format(
                 root,
-                kits={"cypilot": {"format": "Cypilot", "path": "kits/sdlc"}},
+                kits={"cypilot": {"format": "CFS", "path": "kits/sdlc"}},
                 systems=[{
                     "name": "Test",
                     "kits": "cypilot",

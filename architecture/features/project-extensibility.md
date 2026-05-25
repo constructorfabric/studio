@@ -44,15 +44,15 @@
 
 <!-- /toc -->
 
-- [ ] `p1` - **ID**: `cpt-cypilot-featstatus-project-extensibility`
+- [ ] `p1` - **ID**: `cpt-studio-featstatus-project-extensibility`
 
 ## 1. Feature Context
 
-- [ ] `p1` - `cpt-cypilot-feature-project-extensibility`
+- [ ] `p1` - `cpt-studio-feature-project-extensibility`
 
 ### 1.1 Overview
 
-Extends `cfc generate-agents` with a four-layer manifest hierarchy (Core, Kit, Master Repo, Repo), enabling projects and orchestrator repos to declare skills, agents, workflows, and rules via `manifest.toml`. Adds an `includes` directive for subdirectory manifests (enabling component packages within a repo), `[[skills]]` generation, and an extended agent schema with fields for tool allowlists, model passthrough, color, and memory. Extends the existing `manifest.toml` schema to v2.0 with component sections (`[[agents]]`, `[[skills]]`, `[[workflows]]`, `[[rules]]`). Hook support (`[[hooks]]`) and permissions (`[[permissions]]`) are reserved in the schema but deferred to follow-up features.
+Extends `cfs generate-agents` with a four-layer manifest hierarchy (Core, Kit, Master Repo, Repo), enabling projects and orchestrator repos to declare skills, agents, workflows, and rules via `manifest.toml`. Adds an `includes` directive for subdirectory manifests (enabling component packages within a repo), `[[skills]]` generation, and an extended agent schema with fields for tool allowlists, model passthrough, color, and memory. Extends the existing `manifest.toml` schema to v2.0 with component sections (`[[agents]]`, `[[skills]]`, `[[workflows]]`, `[[rules]]`). Hook support (`[[hooks]]`) and permissions (`[[permissions]]`) are reserved in the schema but deferred to follow-up features.
 
 The template composition model for MVP is section appending — inner layers can append content to generated templates. Full block-based template composition (replace, prepend, delete, insert operations) is deferred to a follow-up feature.
 
@@ -60,14 +60,14 @@ The entire pipeline is deterministic — same filesystem inputs always produce b
 
 ### 1.2 Purpose
 
-Enable project-level and multi-repo extensibility for `cfc generate-agents` without breaking existing behavior. Currently only Core and Kit layers contribute components; this adds Master Repo and Repo layers. Projects under an orchestrator repo (the "master repo" pattern) gain monorepo-like discoverability of shared skills, agents, and rules while retaining multi-repo isolation.
+Enable project-level and multi-repo extensibility for `cfs generate-agents` without breaking existing behavior. Currently only Core and Kit layers contribute components; this adds Master Repo and Repo layers. Projects under an orchestrator repo (the "master repo" pattern) gain monorepo-like discoverability of shared skills, agents, and rules while retaining multi-repo isolation.
 
 The first concrete consumer is the standctl integration into cyber-repo, which distributes 3 agents, 1 skill, and 17 MCP tool permissions through an orchestrator repo pattern. This integration exposed five gaps in the original design (see improvement proposal), of which G1 (includes), G2 (skills generation), and G3 (extended agent schema) are addressed in this feature.
 
-- **Requirements**: `cpt-cypilot-fr-core-agents`, `cpt-cypilot-fr-core-kits`, `cpt-cypilot-fr-core-kit-manifest`
-- **Principles**: `cpt-cypilot-principle-plugin-extensibility`, `cpt-cypilot-principle-kit-centric`, `cpt-cypilot-principle-dry`, `cpt-cypilot-principle-determinism-first`
-- **Constraints**: `cpt-cypilot-constraint-python-stdlib`, `cpt-cypilot-constraint-cross-platform`
-- **Depends on**: `cpt-cypilot-feature-agent-integration`, `cpt-cypilot-feature-blueprint-system`, `cpt-cypilot-feature-subagent-registration`
+- **Requirements**: `cpt-studio-fr-core-agents`, `cpt-studio-fr-core-kits`, `cpt-studio-fr-core-kit-manifest`
+- **Principles**: `cpt-studio-principle-plugin-extensibility`, `cpt-studio-principle-kit-centric`, `cpt-studio-principle-dry`, `cpt-studio-principle-determinism-first`
+- **Constraints**: `cpt-studio-constraint-python-stdlib`, `cpt-studio-constraint-cross-platform`
+- **Depends on**: `cpt-studio-feature-agent-integration`, `cpt-studio-feature-blueprint-system`, `cpt-studio-feature-subagent-registration`
 
 ### 1.3 MVP Scope and Follow-ups
 
@@ -102,7 +102,7 @@ The first concrete consumer is the standctl integration into cyber-repo, which d
 
 **Follow-up: Workspace-Aware Layer Discovery**:
 - Extend `discover_layers()` to optionally run within each workspace source
-- Would enable `cfc generate-agents` to merge components across workspace boundaries
+- Would enable `cfs generate-agents` to merge components across workspace boundaries
 - Requires precedence rules for cross-source component conflicts
 - See [workspace feature spec](./workspace.md) and [PROJECT-EXTENSIBILITY guide](../../guides/PROJECT-EXTENSIBILITY.md#relationship-with-workspace-federation) for the relationship between the two features
 
@@ -110,28 +110,28 @@ The first concrete consumer is the standctl integration into cyber-repo, which d
 
 | Actor | Role in Feature |
 |-------|-----------------|
-| Developer | Runs `cfc generate-agents` to generate agent-native entry points from multi-layer manifest hierarchy |
+| Developer | Runs `cfs generate-agents` to generate agent-native entry points from multi-layer manifest hierarchy |
 | AI Assistant | Consumes generated entry points (skills, agents, workflows, rules) |
 
 ### 1.5 References
 
-- **PRD**: [PRD.md](../PRD.md) — `cpt-cypilot-fr-core-agents`, `cpt-cypilot-fr-core-kits`, `cpt-cypilot-fr-core-kit-manifest`
-- **Design**: [DESIGN.md](../DESIGN.md) — `cpt-cypilot-component-agent-generator`
-- **ADR**: `cpt-cypilot-adr-unified-manifest-hierarchy`
-- **Dependencies**: `cpt-cypilot-feature-agent-integration`, `cpt-cypilot-feature-blueprint-system`, `cpt-cypilot-feature-subagent-registration` (predecessors for kit-level agent declarations)
+- **PRD**: [PRD.md](../PRD.md) — `cpt-studio-fr-core-agents`, `cpt-studio-fr-core-kits`, `cpt-studio-fr-core-kit-manifest`
+- **Design**: [DESIGN.md](../DESIGN.md) — `cpt-studio-component-agent-generator`
+- **ADR**: `cpt-studio-adr-unified-manifest-hierarchy`
+- **Dependencies**: `cpt-studio-feature-agent-integration`, `cpt-studio-feature-blueprint-system`, `cpt-studio-feature-subagent-registration` (predecessors for kit-level agent declarations)
 - **Improvement Proposal**: `PR-108-IMPROVEMENT-PROPOSAL.md` — standctl integration case study
 
 ## 2. Actor Flows (CDSL)
 
 ### Generate with Multi-Layer Discovery
 
-- [ ] `p1` - **ID**: `cpt-cypilot-flow-project-extensibility-generate-with-multi-layer`
+- [ ] `p1` - **ID**: `cpt-studio-flow-project-extensibility-generate-with-multi-layer`
 
 **Actor**: Developer
 
 **Success Scenarios**:
-- Developer runs `cfc generate-agents --agent claude` inside a repo under a master repo hierarchy and all layers are discovered, included manifests resolved, merged, and translated into agent-native entry points
-- Developer runs `cfc generate-agents --agent claude` in a standalone repo (no master repo) and only Core, Kit, and Repo layers apply — identical to current behavior
+- Developer runs `cfs generate-agents --agent claude` inside a repo under a master repo hierarchy and all layers are discovered, included manifests resolved, merged, and translated into agent-native entry points
+- Developer runs `cfs generate-agents --agent claude` in a standalone repo (no master repo) and only Core, Kit, and Repo layers apply — identical to current behavior
 
 **Error Scenarios**:
 - Manifest parse error at any layer — error reported with path and parse details, generation aborted
@@ -140,7 +140,7 @@ The first concrete consumer is the standctl integration into cyber-repo, which d
 - `tools` and `disallowed_tools` both specified on same agent — error reported, agent skipped
 
 **Steps**:
-1. [ ] - `p1` - Developer invokes `cfc generate-agents --agent <agent>` inside a repo - `inst-invoke-generate`
+1. [ ] - `p1` - Developer invokes `cfs generate-agents --agent <agent>` inside a repo - `inst-invoke-generate`
 2. [ ] - `p1` - Determine current repo root via existing `find_project_root()` - `inst-find-repo-root`
 3. [ ] - `p1` - Walk up filesystem to discover `manifest.toml` at each layer boundary (repo, master repo) - `inst-walk-up`
 4. [ ] - `p1` - Load kit `manifest.toml` files from `core.toml` kit registrations - `inst-load-kit-manifests`
@@ -157,18 +157,18 @@ The first concrete consumer is the standctl integration into cyber-repo, which d
 
 ### Discover and Register Components
 
-- [ ] `p2` - **ID**: `cpt-cypilot-flow-project-extensibility-discover-register`
+- [ ] `p2` - **ID**: `cpt-studio-flow-project-extensibility-discover-register`
 
 **Actor**: Developer
 
 **Success Scenarios**:
-- Developer runs `cfc generate-agents --agent claude --discover` and conventional directories are scanned, manifest populated, then generation proceeds
+- Developer runs `cfs generate-agents --agent claude --discover` and conventional directories are scanned, manifest populated, then generation proceeds
 
 **Error Scenarios**:
 - No components found in conventional directories — user informed, discovery skipped, generation proceeds without discovered components
 
 **Steps**:
-1. [ ] - `p2` - Developer invokes `cfc generate-agents --agent <agent> --discover` - `inst-invoke-discover`
+1. [ ] - `p2` - Developer invokes `cfs generate-agents --agent <agent> --discover` - `inst-invoke-discover`
 2. [ ] - `p2` - Scan conventional directories for components (`.claude/agents/*.md` for agents, `.claude/skills/*/SKILL.md` for skills, `.claude/commands/*.md` for workflows) — hook discovery deferred - `inst-scan-directories`
 3. [ ] - `p2` - **FOR EACH** discovered component: generate manifest entry - `inst-generate-entries`
 4. [ ] - `p2` - Write component sections into the appropriate `manifest.toml` for the current layer - `inst-write-manifest`
@@ -176,19 +176,19 @@ The first concrete consumer is the standctl integration into cyber-repo, which d
 
 ### Inspect Layer Provenance
 
-- [ ] `p2` - **ID**: `cpt-cypilot-flow-project-extensibility-inspect-provenance`
+- [ ] `p2` - **ID**: `cpt-studio-flow-project-extensibility-inspect-provenance`
 
 **Actor**: Developer
 
 **Success Scenarios**:
-- Developer runs `cfc generate-agents --show-layers` and sees a provenance table showing all components and their layer origins
-- Developer runs `cfc generate-agents --show-layers --json` and receives machine-readable provenance
+- Developer runs `cfs generate-agents --show-layers` and sees a provenance table showing all components and their layer origins
+- Developer runs `cfs generate-agents --show-layers --json` and receives machine-readable provenance
 
 **Error Scenarios**:
 - No manifests found beyond core — report shows only Core and Kit layers
 
 **Steps**:
-1. [ ] - `p2` - Developer invokes `cfc generate-agents --show-layers [--json]` - `inst-invoke-show-layers`
+1. [ ] - `p2` - Developer invokes `cfs generate-agents --show-layers [--json]` - `inst-invoke-show-layers`
 2. [ ] - `p2` - Execute walk-up discovery (same as Generate flow steps 2-7) - `inst-execute-discovery`
 3. [ ] - `p2` - Build provenance table: component ID, winning layer (scope + path), overridden layers (scope + path each) - `inst-build-table`
 4. [ ] - `p2` - **RETURN** provenance report as JSON (`--json`) or human-readable table - `inst-return-provenance`
@@ -197,15 +197,15 @@ The first concrete consumer is the standctl integration into cyber-repo, which d
 
 ### Walk-Up Layer Discovery
 
-- [ ] `p1` - **ID**: `cpt-cypilot-algo-project-extensibility-walk-up-discovery`
+- [ ] `p1` - **ID**: `cpt-studio-algo-project-extensibility-walk-up-discovery`
 
-**Input**: `repo_root` (Path), `cypilot_root` (Path)
+**Input**: `repo_root` (Path), `studio_root` (Path)
 
 **Output**: `List[ManifestLayer]` in resolution order
 
 **Steps**:
 1. [ ] - `p1` - Load kit manifests from `core.toml` kit registrations (kit layer) - `inst-load-kit-layer`
-2. [ ] - `p1` - Load repo manifest from `{cypilot_root}/config/manifest.toml` (repo layer) - `inst-load-repo-layer`
+2. [ ] - `p1` - Load repo manifest from `{studio_root}/config/manifest.toml` (repo layer) - `inst-load-repo-layer`
 3. [ ] - `p1` - Walk up from `repo_root` parent directory - `inst-walk-up-start`
 4. [ ] - `p1` - At each directory, check for `manifest.toml` - `inst-check-manifest`
 5. [ ] - `p1` - Detect master repo boundary: presence of `CLAUDE.md` + `skills/` at same level, or presence of `git/` subdirectory - `inst-detect-master`
@@ -215,7 +215,7 @@ The first concrete consumer is the standctl integration into cyber-repo, which d
 
 ### Resolve Manifest Includes
 
-- [ ] `p1` - **ID**: `cpt-cypilot-algo-project-extensibility-resolve-includes`
+- [ ] `p1` - **ID**: `cpt-studio-algo-project-extensibility-resolve-includes`
 
 **Input**: `manifest` (parsed TOML dict), `manifest_dir` (Path), `include_chain` (set of absolute paths for circular detection)
 
@@ -236,7 +236,7 @@ The first concrete consumer is the standctl integration into cyber-repo, which d
 
 ### Merge Components
 
-- [ ] `p1` - **ID**: `cpt-cypilot-algo-project-extensibility-merge-components`
+- [ ] `p1` - **ID**: `cpt-studio-algo-project-extensibility-merge-components`
 
 **Input**: `List[ManifestLayer]`
 
@@ -252,7 +252,7 @@ The first concrete consumer is the standctl integration into cyber-repo, which d
 
 ### Section Appending
 
-- [ ] `p1` - **ID**: `cpt-cypilot-algo-project-extensibility-section-appending`
+- [ ] `p1` - **ID**: `cpt-studio-algo-project-extensibility-section-appending`
 
 **Input**: `base_content` (str), `append_sections` from layers (list of content strings)
 
@@ -268,7 +268,7 @@ The first concrete consumer is the standctl integration into cyber-repo, which d
 
 ### Generate Skills
 
-- [ ] `p1` - **ID**: `cpt-cypilot-algo-project-extensibility-generate-skills`
+- [ ] `p1` - **ID**: `cpt-studio-algo-project-extensibility-generate-skills`
 
 **Input**: merged `[[skills]]` components, target agent, project root
 
@@ -287,7 +287,7 @@ The first concrete consumer is the standctl integration into cyber-repo, which d
 
 ### Generate Agents
 
-- [x] `p1` - **ID**: `cpt-cypilot-algo-project-extensibility-generate-agents`
+- [x] `p1` - **ID**: `cpt-studio-algo-project-extensibility-generate-agents`
 
 **Input**: merged `[[agents]]` components, target agent tool, project root
 
@@ -310,7 +310,7 @@ The first concrete consumer is the standctl integration into cyber-repo, which d
 
 ### Translate Extended Agent Schema
 
-- [ ] `p1` - **ID**: `cpt-cypilot-algo-project-extensibility-translate-agent-schema`
+- [ ] `p1` - **ID**: `cpt-studio-algo-project-extensibility-translate-agent-schema`
 
 **Input**: semantic agent definition (from merged manifest), target agent tool
 
@@ -359,21 +359,21 @@ The extended agent schema uses semantic fields that translate differently per to
 
 ### Resolve Layer Variables
 
-- [ ] `p1` - **ID**: `cpt-cypilot-algo-project-extensibility-resolve-layer-variables`
+- [ ] `p1` - **ID**: `cpt-studio-algo-project-extensibility-resolve-layer-variables`
 
 **Input**: `layers` (List[ManifestLayer]), existing variables from resolve-vars
 
 **Output**: flat dict of variable to absolute path
 
 **Steps**:
-1. [ ] - `p1` - Start with existing variables from `_collect_all_variables()` (`cypilot_path`, `project_root`, kit resource bindings) - `inst-start-existing-vars`
+1. [ ] - `p1` - Start with existing variables from `_collect_all_variables()` (`studio_path`, `project_root`, kit resource bindings) - `inst-start-existing-vars`
 2. [ ] - `p1` - Add layer path variables from discovered layers: `{base_dir}`, `{master_repo}`, `{repo}` - `inst-add-layer-vars`
 3. [ ] - `p1` - **FOR EACH** layer, resolve source paths relative to that layer's manifest directory - `inst-resolve-source-paths`
 4. [ ] - `p1` - **RETURN** merged variable dict - `inst-return-vars`
 
 ### Build Provenance Report
 
-- [ ] `p2` - **ID**: `cpt-cypilot-algo-project-extensibility-build-provenance`
+- [ ] `p2` - **ID**: `cpt-studio-algo-project-extensibility-build-provenance`
 
 **Input**: `MergedComponents` with provenance metadata
 
@@ -388,7 +388,7 @@ The extended agent schema uses semantic fields that translate differently per to
 
 ### Deterministic Component Assembly
 
-- [ ] `p1` - **ID**: `cpt-cypilot-algo-project-extensibility-deterministic-assembly`
+- [ ] `p1` - **ID**: `cpt-studio-algo-project-extensibility-deterministic-assembly`
 
 **Input**: merged components, resolved variables, append sections
 
@@ -408,7 +408,7 @@ The extended agent schema uses semantic fields that translate differently per to
 
 ### Manifest Layer State Machine
 
-- [ ] `p1` - **ID**: `cpt-cypilot-state-project-extensibility-manifest-layer`
+- [ ] `p1` - **ID**: `cpt-studio-state-project-extensibility-manifest-layer`
 
 **States**: UNDISCOVERED, LOADED, PARSE_ERROR, INCLUDE_ERROR
 
@@ -424,75 +424,75 @@ The extended agent schema uses semantic fields that translate differently per to
 
 ### Manifest V2 Schema Parsing
 
-- [x] `p1` - **ID**: `cpt-cypilot-dod-project-extensibility-manifest-v2-schema`
+- [x] `p1` - **ID**: `cpt-studio-dod-project-extensibility-manifest-v2-schema`
 
 The system **MUST** parse `manifest.toml` files with `version = "2.0"` containing `[[agents]]`, `[[skills]]`, `[[workflows]]`, and `[[rules]]` component sections, plus an optional `includes` array. The `[[agents]]` schema **MUST** support extended fields: `tools`, `disallowed_tools`, `color`, `memory_dir`, and passthrough `model` values beyond `inherit`/`fast`. The schema reserves `[[hooks]]` and `[[permissions]]` for follow-up features; the parser **SHOULD** accept but ignore them. Version `"1.0"` manifests (resources-only) **MUST** continue to work unchanged.
 
 **Implements**:
-- `cpt-cypilot-flow-project-extensibility-generate-with-multi-layer`
-- `cpt-cypilot-algo-project-extensibility-merge-components`
+- `cpt-studio-flow-project-extensibility-generate-with-multi-layer`
+- `cpt-studio-algo-project-extensibility-merge-components`
 
 **Touches**: `manifest.py`
 
 ### Manifest Includes
 
-- [x] `p1` - **ID**: `cpt-cypilot-dod-project-extensibility-includes`
+- [x] `p1` - **ID**: `cpt-studio-dod-project-extensibility-includes`
 
 The system **MUST** support an `includes` array in `manifest.toml` v2.0 that loads subdirectory manifests at the same layer as the includer. Include paths are relative to the including manifest's directory. `prompt_file` and `source` paths in included manifests resolve relative to the *included* manifest's directory. The system **MUST** detect and reject circular includes, enforce a max depth of 3, and error on component ID collisions between includer and includee (not silent overrides). Included manifests' own `includes` arrays are processed recursively within the depth limit.
 
 **Implements**:
-- `cpt-cypilot-algo-project-extensibility-resolve-includes`
+- `cpt-studio-algo-project-extensibility-resolve-includes`
 
 **Touches**: `manifest.py`, `agents.py`
 
 ### Walk-Up Layer Discovery
 
-- [x] `p1` - **ID**: `cpt-cypilot-dod-project-extensibility-walk-up-discovery`
+- [x] `p1` - **ID**: `cpt-studio-dod-project-extensibility-walk-up-discovery`
 
 The system **MUST** walk up the filesystem from repo root, detecting the master repo boundary and loading `manifest.toml` at each discovered layer. Master repo detection uses: `CLAUDE.md` + `skills/` at same level, or presence of `git/` subdirectory. Walk-up stops at master repo root. Missing layers are silently omitted. For MVP, only Core, Kit, Master Repo, and Repo layers are supported. Organization and Project layer detection are deferred to a follow-up.
 
 **Implements**:
-- `cpt-cypilot-flow-project-extensibility-generate-with-multi-layer`
-- `cpt-cypilot-algo-project-extensibility-walk-up-discovery`
+- `cpt-studio-flow-project-extensibility-generate-with-multi-layer`
+- `cpt-studio-algo-project-extensibility-walk-up-discovery`
 
 **Touches**: `layer_discovery.py` (new), `agents.py`
 
 ### Inner-Scope-Wins Merging
 
-- [ ] `p1` - **ID**: `cpt-cypilot-dod-project-extensibility-inner-scope-wins`
+- [ ] `p1` - **ID**: `cpt-studio-dod-project-extensibility-inner-scope-wins`
 
 The system **MUST** merge components from all layers using last-writer-wins semantics where innermost scope (Repo) wins over outermost (Core). Components with the same ID at different layers result in the innermost definition winning. Components from `includes` at the same layer **MUST** error on ID collision (not silently override).
 
 **Implements**:
-- `cpt-cypilot-algo-project-extensibility-merge-components`
+- `cpt-studio-algo-project-extensibility-merge-components`
 
 **Touches**: `agents.py`
 
 ### Section Appending
 
-- [ ] `p1` - **ID**: `cpt-cypilot-dod-project-extensibility-section-appending`
+- [ ] `p1` - **ID**: `cpt-studio-dod-project-extensibility-section-appending`
 
 The system **MUST** support an `append` field on component definitions that appends content to the generated output for that component. Appends from multiple layers stack in resolution order (outermost first). This is the MVP template composition mechanism. Full block-based composition (replace, prepend, delete, insert_after, insert_before with `<!-- @block:NAME -->` markers) is deferred to a follow-up.
 
 **Implements**:
-- `cpt-cypilot-algo-project-extensibility-section-appending`
+- `cpt-studio-algo-project-extensibility-section-appending`
 
 **Touches**: `agents.py`
 
 ### Skills Generation
 
-- [ ] `p1` - **ID**: `cpt-cypilot-dod-project-extensibility-skills-generation`
+- [ ] `p1` - **ID**: `cpt-studio-dod-project-extensibility-skills-generation`
 
 The system **MUST** generate skill files from `[[skills]]` manifest entries into agent-native output paths. Skills are generated for each target agent specified in the skill's `agents` list. Manifest skills coexist with kit-composed skills — they use different code paths and output directories. Generated skill files receive agent-specific frontmatter (e.g., YAML frontmatter with `description:` for Claude Code, `.mdc` format for Cursor).
 
 **Implements**:
-- `cpt-cypilot-algo-project-extensibility-generate-skills`
+- `cpt-studio-algo-project-extensibility-generate-skills`
 
 **Touches**: `agents.py`
 
 ### Agents Generation
 
-- [x] `p1` - **ID**: `cpt-cypilot-dod-project-extensibility-agents-generation`
+- [x] `p1` - **ID**: `cpt-studio-dod-project-extensibility-agents-generation`
 
 The system **MUST** generate agent files from `[[agents]]` manifest entries into agent-native output paths. For each agent entry, `translate_agent_schema()` is called to produce tool-native frontmatter; if the result has `skip = True` (e.g., Windsurf has no subagent support, or Claude cannot represent declared MCP tool capabilities without omission), the agent is skipped with reason logged. Stale output cleanup is allowed only for byte-identical generator output, not locally customized generated files. The assembled file contains a YAML frontmatter block (`name:`, `description:`, plus all translated fields) followed by the body prefix and prompt content. Manifest agents use separate output paths from kit-composed agents.
 
@@ -507,14 +507,14 @@ The system **MUST** generate agent files from `[[agents]]` manifest entries into
 | `windsurf` | skipped (no subagent support) |
 
 **Implements**:
-- `cpt-cypilot-algo-project-extensibility-generate-agents`
-- `cpt-cypilot-flow-project-extensibility-generate-with-multi-layer`
+- `cpt-studio-algo-project-extensibility-generate-agents`
+- `cpt-studio-flow-project-extensibility-generate-with-multi-layer`
 
 **Touches**: `agents.py`
 
 ### Extended Agent Schema
 
-- [ ] `p1` - **ID**: `cpt-cypilot-dod-project-extensibility-extended-agent-schema`
+- [ ] `p1` - **ID**: `cpt-studio-dod-project-extensibility-extended-agent-schema`
 
 The system **MUST** translate extended agent schema fields to agent-native frontmatter for all five supported tools (Claude Code, Cursor, GitHub Copilot, OpenAI Codex, Windsurf). The extended fields are:
 
@@ -529,71 +529,71 @@ The system **MUST** validate that `tools` and `disallowed_tools` are mutually ex
 For Codex specifically: `mode: readonly` → `sandbox_mode = "read-only"`, `mode: readwrite` → `sandbox_mode = "workspace-write"`. Per-agent tool restrictions are not supported in Codex (managed at MCP server level); this limitation should be noted in the generation report.
 
 **Implements**:
-- `cpt-cypilot-algo-project-extensibility-translate-agent-schema`
+- `cpt-studio-algo-project-extensibility-translate-agent-schema`
 
 **Touches**: `agents.py` (template functions)
 
 ### Layer Variable Resolution
 
-- [ ] `p1` - **ID**: `cpt-cypilot-dod-project-extensibility-layer-variables`
+- [ ] `p1` - **ID**: `cpt-studio-dod-project-extensibility-layer-variables`
 
 The system **MUST** extend resolve-vars with layer path variables (`{base_dir}`, `{master_repo}`, `{repo}`) derived from walk-up discovery. Templates at any layer can reference these variables.
 
 **Implements**:
-- `cpt-cypilot-algo-project-extensibility-resolve-layer-variables`
+- `cpt-studio-algo-project-extensibility-resolve-layer-variables`
 
 **Touches**: `resolve_vars.py`
 
 ### Provenance Traceability
 
-- [ ] `p2` - **ID**: `cpt-cypilot-dod-project-extensibility-provenance`
+- [ ] `p2` - **ID**: `cpt-studio-dod-project-extensibility-provenance`
 
 The system **MUST** produce a provenance report showing, for each generated component: the winning layer (scope + manifest path), any overridden layers, the final resolved source path, and include origin if the component came from an included manifest. Available via `--show-layers` flag (human-readable table or JSON with `--json`).
 
 **Implements**:
-- `cpt-cypilot-flow-project-extensibility-inspect-provenance`
-- `cpt-cypilot-algo-project-extensibility-build-provenance`
+- `cpt-studio-flow-project-extensibility-inspect-provenance`
+- `cpt-studio-algo-project-extensibility-build-provenance`
 
 **Touches**: `agents.py`
 
 ### Deterministic Pipeline
 
-- [ ] `p1` - **ID**: `cpt-cypilot-dod-project-extensibility-deterministic`
+- [ ] `p1` - **ID**: `cpt-studio-dod-project-extensibility-deterministic`
 
-The generation pipeline **MUST** be a pure function of filesystem inputs. Zero LLM calls. No network calls, no randomness, no timestamps in output. Running `cfc generate-agents` twice with identical inputs **MUST** produce byte-identical outputs.
+The generation pipeline **MUST** be a pure function of filesystem inputs. Zero LLM calls. No network calls, no randomness, no timestamps in output. Running `cfs generate-agents` twice with identical inputs **MUST** produce byte-identical outputs.
 
 **Implements**:
-- `cpt-cypilot-algo-project-extensibility-deterministic-assembly`
+- `cpt-studio-algo-project-extensibility-deterministic-assembly`
 
 **Touches**: `agents.py`
-**Constraints**: `cpt-cypilot-principle-determinism-first`, `cpt-cypilot-constraint-python-stdlib`
+**Constraints**: `cpt-studio-principle-determinism-first`, `cpt-studio-constraint-python-stdlib`
 
 ### Component Auto-Discovery
 
-- [ ] `p2` - **ID**: `cpt-cypilot-dod-project-extensibility-auto-discovery`
+- [ ] `p2` - **ID**: `cpt-studio-dod-project-extensibility-auto-discovery`
 
 The system **MUST** support a `--discover` flag that scans conventional directories (`.claude/agents/*.md`, `.claude/skills/*/SKILL.md`, `.claude/commands/*.md`) and populates the current layer's `manifest.toml` with discovered component entries. Hook and permission discovery are deferred.
 
 **Implements**:
-- `cpt-cypilot-flow-project-extensibility-discover-register`
+- `cpt-studio-flow-project-extensibility-discover-register`
 
 **Touches**: `agents.py`
 
 ### Backward Compatibility
 
-- [x] `p1` - **ID**: `cpt-cypilot-dod-project-extensibility-backward-compat`
+- [x] `p1` - **ID**: `cpt-studio-dod-project-extensibility-backward-compat`
 
 The system **MUST** produce identical output for standalone repos (no master repo) with no `manifest.toml`. Existing `agents.toml` for kit agents **MUST** be read as fallback when `[[agents]]` is not present in `manifest.toml`. The `_VALID_MODELS` set **MUST** be expanded to accept passthrough model strings while maintaining backward compatibility with `inherit` and `fast`.
 
 **Implements**:
-- `cpt-cypilot-flow-project-extensibility-generate-with-multi-layer`
+- `cpt-studio-flow-project-extensibility-generate-with-multi-layer`
 
 **Touches**: `agents.py`
 
 ## 6. Acceptance Criteria
 
-- [ ] `cfc generate-agents --agent claude` in a standalone repo (no `manifest.toml`, no master repo) produces identical output to current behavior
-- [ ] `cfc generate-agents --agent claude` in a repo under a master repo hierarchy discovers and merges manifests from Core, Kit, Master Repo, and Repo layers
+- [ ] `cfs generate-agents --agent claude` in a standalone repo (no `manifest.toml`, no master repo) produces identical output to current behavior
+- [ ] `cfs generate-agents --agent claude` in a repo under a master repo hierarchy discovers and merges manifests from Core, Kit, Master Repo, and Repo layers
 - [ ] A repo manifest with `includes = ["standctl/manifest.toml"]` correctly loads and merges the included manifest's components at the repo layer
 - [ ] Circular includes are detected and produce a clear error with the include chain
 - [ ] Component ID collision between includer and includee produces an error (not silent override)
@@ -605,8 +605,8 @@ The system **MUST** produce identical output for standalone repos (no master rep
 - [ ] An agent with `model = "sonnet"` translates to `model: sonnet` for Claude and `sandbox_mode = "workspace-write"` + `model = "..."` for Codex
 - [ ] A skill ID defined at both master and repo layers results in the repo-layer definition winning
 - [ ] Section appends from master and repo layers both appear in the generated output, stacked in order
-- [ ] `cfc generate-agents --show-layers` displays a table showing each component's winning layer, including components from included manifests
-- [ ] Running `cfc generate-agents` twice with same inputs produces identical output (diff is empty)
+- [ ] `cfs generate-agents --show-layers` displays a table showing each component's winning layer, including components from included manifests
+- [ ] Running `cfs generate-agents` twice with same inputs produces identical output (diff is empty)
 - [ ] `--discover` flag populates `manifest.toml` with discovered components
 - [ ] Kit manifest v1.0 (resources-only) continues to parse without error
 - [ ] Kit manifest v2.0 with `[[agents]]` section is preferred over separate `agents.toml`

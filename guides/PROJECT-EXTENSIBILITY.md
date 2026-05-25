@@ -1,6 +1,6 @@
 # Project-Level Extensibility Guide
 
-This guide explains how Cyber Constructor's manifest hierarchy enables projects and orchestrator repos to declare their own skills, agents, workflows, and rules — all discoverable by `cfc generate-agents`.
+This guide explains how Constructor Studio's manifest hierarchy enables projects and orchestrator repos to declare their own skills, agents, workflows, and rules — all discoverable by `cfs generate-agents`.
 
 ## Table of Contents
 
@@ -40,27 +40,27 @@ This guide explains how Cyber Constructor's manifest hierarchy enables projects 
 
 ## The Problem
 
-Cyber Constructor generates agent entry points (skills, workflows, subagents) for five AI coding tools from a built-in registry. Without project-level extensibility, there is no mechanism for individual projects to:
+Constructor Studio generates agent entry points (skills, workflows, subagents) for five AI coding tools from a built-in registry. Without project-level extensibility, there is no mechanism for individual projects to:
 
-1. **Add their own skills** — a project that defines custom skills, agents, or workflows cannot register them through `cfc generate-agents`
-2. **Extend base templates** — projects cannot augment Cyber Constructor's generated SKILL.md or workflow proxies with project-specific content
-3. **Register custom agents/subagents** — project-level agents live outside Cyber Constructor's awareness
+1. **Add their own skills** — a project that defines custom skills, agents, or workflows cannot register them through `cfs generate-agents`
+2. **Extend base templates** — projects cannot augment Constructor Studio's generated SKILL.md or workflow proxies with project-specific content
+3. **Register custom agents/subagents** — project-level agents live outside Constructor Studio's awareness
 4. **Include component packages** — tools like standctl that distribute agents and skills as subdirectories within a repo have no way to participate in generation
 
-The result: project-level components work as standalone agent features but aren't portable across agent tools and aren't managed by `cfc generate-agents`.
+The result: project-level components work as standalone agent features but aren't portable across agent tools and aren't managed by `cfs generate-agents`.
 
 ---
 
 ## The Orchestrator Repo Pattern
 
-Cyber Constructor supports an **orchestrator repo** pattern — a parent repository that organizes and coordinates many independent project repos. This provides monorepo-like discoverability with multi-repo isolation.
+Constructor Studio supports an **orchestrator repo** pattern — a parent repository that organizes and coordinates many independent project repos. This provides monorepo-like discoverability with multi-repo isolation.
 
 The orchestrator repo holds:
 - Organization-wide skills, agents, and rules (available to all child repos)
 - Shared templates and conventions (inherited via manifest hierarchy)
-- The filesystem structure that `cpt generate-agents` walks to discover what applies where
+- The filesystem structure that `cfs generate-agents` walks to discover what applies where
 
-Each child repo remains an independent git repository with its own CI, permissions, and history. When Cyber Constructor runs inside a child repo, it walks up the filesystem to discover what the orchestrator provides — and merges those contributions into the generated output.
+Each child repo remains an independent git repository with its own CI, permissions, and history. When Constructor Studio runs inside a child repo, it walks up the filesystem to discover what the orchestrator provides — and merges those contributions into the generated output.
 
 This follows a git/golang-style convention for repo organization:
 
@@ -69,15 +69,15 @@ This follows a git/golang-style convention for repo organization:
 ```
 
 Where `{base_dir}` defaults to `~` or `~/code` and is configurable via:
-- Environment variable: `CYPILOT_BASE_DIR`
+- Environment variable: `STUDIO_BASE_DIR`
 - Master repo config: `[manifest] base_dir = "~/code"`
-- Explicit flag: `cfc generate-agents --base-dir ~/code`
+- Explicit flag: `cfs generate-agents --base-dir ~/code`
 
 ---
 
 ## Four-Layer Manifest Hierarchy
 
-When `cpt generate-agents` runs, it resolves components from four layers. Innermost scope wins on conflicts:
+When `cfs generate-agents` runs, it resolves components from four layers. Innermost scope wins on conflicts:
 
 ```text
 ┌─────────────────────────────────────────────────────────────────┐
@@ -93,7 +93,7 @@ When `cpt generate-agents` runs, it resolves components from four layers. Innerm
 │     manifest.toml in installed kit package                      │
 │     [[resources]], [[agents]], etc.                              │
 ├─────────────────────────────────────────────────────────────────┤
-│  1. Core Layer (cyber-constructor)                              │
+│  1. Core Layer (constructor-studio)                              │
 │     Built-in workflows, SKILL.md, AGENTS.md                     │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -123,9 +123,9 @@ When `cpt generate-agents` runs, it resolves components from four layers. Innerm
 
 ### Resolution Semantics
 
-**Walk-up discovery**: When `cpt generate-agents` runs inside a repo, it walks up the directory tree looking for the master repo boundary:
+**Walk-up discovery**: When `cfs generate-agents` runs inside a repo, it walks up the directory tree looking for the master repo boundary:
 
-- **Repo**: presence of `.bootstrap/` or `.cf-constructor-config.json`
+- **Repo**: presence of `.bootstrap/` or `.studio-config.json`
 - **Master repo**: `CLAUDE.md` + `skills/` at same level, or presence of `git/` subdirectory
 
 **Merge order**: Innermost scope wins for the same component ID:
@@ -316,7 +316,7 @@ allow = [
 ]
 ```
 
-When implemented, `cfc generate-agents` will merge `allow` entries into `.claude/settings.local.json` (additive, idempotent). Without this, importing a tool like standctl via Cyber Constructor still requires manually running the tool's own setup command just for the permissions side-effect.
+When implemented, `cfs generate-agents` will merge `allow` entries into `.claude/settings.local.json` (additive, idempotent). Without this, importing a tool like standctl via Constructor Studio still requires manually running the tool's own setup command just for the permissions side-effect.
 
 ---
 
@@ -348,7 +348,7 @@ Appends from multiple layers stack in resolution order (outermost first, innermo
 
 ## Cross-Agent Translation
 
-Each component type maps to agent-native formats. `cpt generate-agents` handles the translation:
+Each component type maps to agent-native formats. `cfs generate-agents` handles the translation:
 
 | Component | Claude | Cursor | Windsurf | Copilot | Codex |
 |-----------|--------|--------|----------|---------|-------|
@@ -358,7 +358,7 @@ Each component type maps to agent-native formats. `cpt generate-agents` handles 
 | Hook | `.claude/settings.json` | — | — | — | — |
 | Rule | `CLAUDE.md` managed block | `.cursor/rules/*.mdc` | `.windsurf/rules/*.md` | `.github/copilot-instructions.md` | — |
 
-Where a tool doesn't support a component type natively, Cyber Constructor either embeds it in the nearest equivalent or skips it with a note in the generation report.
+Where a tool doesn't support a component type natively, Constructor Studio either embeds it in the nearest equivalent or skips it with a note in the generation report.
 
 **Codex agent format**:
 
@@ -409,10 +409,10 @@ agents = ["claude", "cursor"]
 Then regenerate:
 
 ```bash
-cfc generate-agents --agent claude
+cfs generate-agents --agent claude
 ```
 
-Your custom skill and agent appear alongside Cyber Constructor's built-in outputs.
+Your custom skill and agent appear alongside Constructor Studio's built-in outputs.
 
 ### Multi-Repo Hierarchy with Includes
 
@@ -502,8 +502,8 @@ model = "fast"
 agents = ["claude"]
 ```
 
-Running `cfc generate-agents --agent claude` inside `service-a/` produces merged output from all layers:
-- Kit agents (`cf-constructor-codegen`, `cf-constructor-pr-review`)
+Running `cfs generate-agents --agent claude` inside `service-a/` produces merged output from all layers:
+- Kit agents (`cf-codegen`, `cf-pr-review`)
 - Master repo skill (`org-conventions`), included standctl agents + skill
 - Repo agent (`log-investigator`)
 
@@ -521,10 +521,10 @@ standctl agent                       # sets up permissions
 
 **After** (declarative, all tools at once):
 ```bash
-cfc generate-agents --agent claude   # generates everything from manifest
+cfs generate-agents --agent claude   # generates everything from manifest
 ```
 
-The standctl `manifest.toml` (shown in the multi-repo example above) declares all three agents and the skill. `cpt generate-agents` translates them to each target tool's native format. Permissions remain manual for now (see [Future Work](#future-work)).
+The standctl `manifest.toml` (shown in the multi-repo example above) declares all three agents and the skill. `cfs generate-agents` translates them to each target tool's native format. Permissions remain manual for now (see [Future Work](#future-work)).
 
 ---
 
@@ -533,7 +533,7 @@ The standctl `manifest.toml` (shown in the multi-repo example above) declares al
 For projects that don't want to manually enumerate components, use auto-discovery:
 
 ```bash
-cfc generate-agents --agent claude --discover
+cfs generate-agents --agent claude --discover
 ```
 
 Discovery scans conventional directories:
@@ -541,7 +541,7 @@ Discovery scans conventional directories:
 - `.claude/skills/*/SKILL.md` → project skills
 - `.claude/commands/*.md` → project workflows
 
-Discovery writes found components into the project `manifest.toml`. Subsequent runs read it declaratively — similar to how `cfc kit install` writes resource bindings into `core.toml`.
+Discovery writes found components into the project `manifest.toml`. Subsequent runs read it declaratively — similar to how `cfs kit install` writes resource bindings into `core.toml`.
 
 ---
 
@@ -550,22 +550,22 @@ Discovery writes found components into the project `manifest.toml`. Subsequent r
 - **v1 manifests**: `manifest.version = "1.0"` manifests (resources-only) continue to work unchanged
 - **`agents.toml` fallback**: `_discover_kit_agents()` checks `manifest.toml` `[[agents]]` first, falls back to `agents.toml` if present
 - **Standalone repos**: without an orchestrator hierarchy, only Core + Kit + Repo layers apply — identical to the previous behavior
-- **No new CLI commands**: everything extends the existing `cpt generate-agents`
+- **No new CLI commands**: everything extends the existing `cfs generate-agents`
 - **Model passthrough**: existing `inherit` and `fast` values continue to work; new model names (e.g., `sonnet`, `haiku`) are accepted as passthrough strings
 
 ---
 
 ## Relationship with Workspace Federation
 
-Cyber Constructor has two complementary multi-repo mechanisms that address different dimensions of working across repositories:
+Constructor Studio has two complementary multi-repo mechanisms that address different dimensions of working across repositories:
 
 | | Project Extensibility (this feature) | Workspace Federation |
 |---|---|---|
 | **Direction** | Vertical — walks *up* the filesystem from repo to orchestrator | Horizontal — federates *across* sibling repositories |
-| **Config file** | `manifest.toml` at each layer boundary | `.cf-constructor-workspace.toml` or inline in `core.toml` |
+| **Config file** | `manifest.toml` at each layer boundary | `.studio-workspace.toml` or inline in `core.toml` |
 | **Discovery** | `discover_layers()` — finds manifest layers by walking parent directories to a master repo boundary | `find_workspace_config()` — finds workspace config at project root, then resolves named sources |
 | **Merge model** | Component merging with innermost-wins precedence and provenance tracking | No merging — each source keeps its own independent adapter context |
-| **Primary use case** | Agent/skill/workflow generation via `cpt generate-agents` | Cross-repo artifact traceability via `cpt validate`, `cpt list-ids`, `cpt where-defined` |
+| **Primary use case** | Agent/skill/workflow generation via `cfs generate-agents` | Cross-repo artifact traceability via `cfs validate`, `cfs list-ids`, `cfs where-defined` |
 | **Runtime type** | `ManifestLayer`, `MergedComponents` | `WorkspaceContext`, `SourceContext` |
 
 ### How They Compose
@@ -589,16 +589,16 @@ Project Extensibility    │          │          │
 ```
 
 - **Workspace commands** (`workspace-init`, `workspace-add`, `validate --source`) manage cross-repo source federation and artifact traceability. They use `WorkspaceContext` and `SourceContext`.
-- **Extensibility commands** (`generate-agents`, `generate-agents --show-layers`) manage per-repo agent/skill generation from the manifest layer hierarchy. They use `discover_layers()` and `merge_components()`. (All run as `cfc <command>`.)
+- **Extensibility commands** (`generate-agents`, `generate-agents --show-layers`) manage per-repo agent/skill generation from the manifest layer hierarchy. They use `discover_layers()` and `merge_components()`. (All run as `cfs <command>`.)
 
 ### Orchestrator Repo with Sub-Projects
 
-A common deployment pattern is a quasi-mono-repo: an orchestration repository that contains many sub-projects for specific aspects of a system — services, libraries, infrastructure, documentation, etc. Each sub-project may be a Git submodule, a nested repository, or simply a subdirectory with its own Cyber Constructor adapter. The orchestration repo itself holds shared configuration, organization-wide rules, and cross-cutting agents, while each sub-project maintains its own independent adapter.
+A common deployment pattern is a quasi-mono-repo: an orchestration repository that contains many sub-projects for specific aspects of a system — services, libraries, infrastructure, documentation, etc. Each sub-project may be a Git submodule, a nested repository, or simply a subdirectory with its own Constructor Studio adapter. The orchestration repo itself holds shared configuration, organization-wide rules, and cross-cutting agents, while each sub-project maintains its own independent adapter.
 
 ```text
 orchestrator-repo/                          ← the orchestration repo (has .git/, CLAUDE.md, skills/)
 ├── manifest.toml                           ← master layer: org-wide agents, rules
-├── .cf-constructor-workspace.toml          ← workspace config federating sub-projects
+├── .studio-workspace.toml          ← workspace config federating sub-projects
 ├── service-a/                              ← sub-project with its own .bootstrap/
 │   └── .bootstrap/config/manifest.toml     ← repo layer for service-a
 ├── service-b/
@@ -615,7 +615,7 @@ The developer opens or branches the orchestration repo itself — their working 
 
 **What activates**:
 
-- **Workspace federation**: if the orchestration repo has a `.cf-constructor-workspace.toml` (or inline `[workspace]` in `core.toml`), context loading upgrades to `WorkspaceContext`. Each sub-project becomes a named source with its own `SourceContext`, enabling cross-repo traceability — `cfc validate`, `cfc list-ids`, and `cfc where-defined` resolve artifacts across all federated sources.
+- **Workspace federation**: if the orchestration repo has a `.studio-workspace.toml` (or inline `[workspace]` in `core.toml`), context loading upgrades to `WorkspaceContext`. Each sub-project becomes a named source with its own `SourceContext`, enabling cross-repo traceability — `cfs validate`, `cfs list-ids`, and `cfs where-defined` resolve artifacts across all federated sources.
 - **Layer discovery**: `discover_layers()` runs from the orchestration repo's own `.bootstrap/` root. It finds the orchestration repo's kit layers and repo-layer manifest. Since the orchestration repo *is* the master repo boundary (it has `.git/`), the walk-up stops there — no master layer is added above it.
 
 **Net effect**: traceability spans the full workspace; agent generation uses the orchestration repo's own manifest hierarchy. Sub-project manifests are not merged into the orchestration repo's agent generation — each sub-project's agents are generated independently (see [Current Limitations](#current-limitations)).
@@ -644,15 +644,15 @@ The developer's working directory is inside a specific sub-project — e.g., `or
 
 Layer discovery and workspace federation operate independently. This means:
 
-- `cpt generate-agents` does not discover or merge manifests from workspace sources — it runs within the primary repo's layer hierarchy only
-- Workspace sources with their own `manifest.toml` files must run `cpt generate-agents` independently within each source
+- `cfs generate-agents` does not discover or merge manifests from workspace sources — it runs within the primary repo's layer hierarchy only
+- Workspace sources with their own `manifest.toml` files must run `cfs generate-agents` independently within each source
 - There is no cross-source component merging — each source's manifest hierarchy is self-contained
 
 These boundaries are intentional for the MVP. Cross-source manifest merging would require precedence rules for component conflicts across sources and is tracked as future work.
 
 ### Potential Improvements
 
-1. **Workspace-aware agent generation** — extend `cpt generate-agents` to optionally iterate workspace sources and run layer discovery within each, generating agents for all sources in a single invocation
+1. **Workspace-aware agent generation** — extend `cfs generate-agents` to optionally iterate workspace sources and run layer discovery within each, generating agents for all sources in a single invocation
 2. **Cross-source component visibility** — allow a workspace source's manifest to reference components defined in another source (e.g., a shared skill defined in an infra repo, consumed by a service repo)
 3. **Unified provenance** — extend `--show-layers` to include workspace source attribution alongside layer provenance, so the developer can see both *which layer* and *which source* contributed each component
 
@@ -667,4 +667,4 @@ These items are deferred from the MVP but planned for follow-up features:
 3. **`[[permissions]]` generation** — merge MCP tool permissions into `.claude/settings.local.json` (additive, idempotent); this is an important follow-up as manual permission setup is a significant time sink
 4. **`[[hooks]]` generation** — session hooks into agent-native config (e.g., `.claude/settings.json`)
 5. **Custom section preservation** — detect and preserve `<!-- *:custom -->` markers during regeneration
-6. **Workspace-aware layer discovery** — extend `discover_layers()` to optionally run within each workspace source, enabling cross-source component awareness in `cpt generate-agents`
+6. **Workspace-aware layer discovery** — extend `discover_layers()` to optionally run within each workspace source, enabling cross-source component awareness in `cfs generate-agents`

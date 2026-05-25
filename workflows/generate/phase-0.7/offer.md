@@ -41,7 +41,7 @@ not-their-domain. You answer the questions and pick the next topic.
 → Reply `yes` (suggested when the design space is open or you want
   cross-discipline pushback), `no` (skip — go straight to inputs), or
   `save` (run the panel and persist the transcript + final design under
-  `{cf-constructor-path}/.cache/brainstorm/{slug}-{ISO}/`; saved sessions
+  `{cf-studio-path}/.cache/brainstorm/{slug}-{ISO}/`; saved sessions
   follow manual cache retention).
 
   Optional modifiers (append to `yes` / `save`, whitespace-separated, any
@@ -49,11 +49,11 @@ not-their-domain. You answer the questions and pick the next topic.
   • `:N` — custom round cap, e.g. `yes:15` (default 10,
     `BRAINSTORM_MAX_ROUNDS=10`). `save:N` is also accepted.
   • `mode=fan-out` — dispatch each expert as a separate parallel sub-agent
-    (`cf-constructor-brainstorm-expert`, one per panel member). Requires a
+    (`cf-brainstorm-expert`, one per panel member). Requires a
     host with native sub-agent parallelism (otherwise degrades to
     sequential). Use this when you want strict cross-expert independence.
   • `mode=single-agent` — explicit form of the default; dispatch one
-    `cf-constructor-brainstorm-panel` agent per round with all experts
+    `cf-brainstorm-panel` agent per round with all experts
     deliberating inside it (one cohesive sub-agent context, host-
     independent, INLINE_FALLBACK is a no-op).
 
@@ -79,10 +79,10 @@ not-their-domain. You answer the questions and pick the next topic.
   • `:N` — custom round cap, e.g. `yes:15` (default 10,
     `BRAINSTORM_MAX_ROUNDS=10`).
   • `mode=fan-out` — dispatch each expert as a separate parallel sub-agent
-    (`cf-constructor-brainstorm-expert`). Requires native sub-agent
+    (`cf-brainstorm-expert`). Requires native sub-agent
     parallelism on the host.
   • `mode=single-agent` — explicit form of the default; one
-    `cf-constructor-brainstorm-panel` dispatch per round with all experts
+    `cf-brainstorm-panel` dispatch per round with all experts
     deliberating inside it.
 
   Examples: `yes`, `yes:15`, `yes mode=fan-out`, `yes:20 mode=fan-out`.
@@ -107,7 +107,7 @@ Base verb resolution:
 
 - `yes` → run brainstorm, do not save artifacts.
 - `yes:N` (N positive integer) → run brainstorm with `state.BRAINSTORM_MAX_ROUNDS = N`.
-- `save` / `save:N` → like `yes` / `yes:N`, plus persist transcript + final design under `{cf-constructor-path}/.cache/brainstorm/{slug}-{ISO}/`. Rejected when the offer was emitted without `save` (no-write destination).
+- `save` / `save:N` → like `yes` / `yes:N`, plus persist transcript + final design under `{cf-studio-path}/.cache/brainstorm/{slug}-{ISO}/`. Rejected when the offer was emitted without `save` (no-write destination).
 - `no` → skip brainstorm.
 
 Recognized modifiers:

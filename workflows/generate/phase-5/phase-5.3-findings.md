@@ -1,5 +1,5 @@
 ---
-cf-constructor: true
+cf: true
 type: workflow-fragment
 parent: workflows/generate.md
 description: Invoke when the merged findings list (det + semantic) must be displayed, partitioned, and (when all-mechanical) auto-fixed via the fast-path branch.
@@ -13,7 +13,7 @@ description: Invoke when the merged findings list (det + semantic) must be displ
 
 ### Phase 5.3: Findings Display + Auto-Fix-Mechanical Fast Path
 
-Requires: `workflows/shared/inline-fallback-probe.md` before any `cf-constructor-*` sub-agent dispatch. Pre-dispatch fail-stop and Mode B degradation rules are defined in `{cf-constructor-path}/.core/skills/cypilot/sub-agent-dispatch.md`.
+Requires: `workflows/shared/inline-fallback-probe.md` before any `cf-*` sub-agent dispatch. Pre-dispatch fail-stop and Mode B degradation rules are defined in `{cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md`.
 
 **External entry from `analyze.md` Remediation Handoff option 1**: this phase accepts entry from the analyze workflow (when the user picks "Continue here in fix mode" on the analyze-side handoff menu). On external entry, the orchestrator must initialize the following Phase-5 state before executing the body of this phase:
 

@@ -1,0 +1,6 @@
+version = "1.0"
+
+[sources]
+[sources.constructor-studio-kit-sdlc]
+url = "https://github.com/constructorfabric/studio-kit-sdlc"
+role = "kits"

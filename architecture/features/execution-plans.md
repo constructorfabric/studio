@@ -35,18 +35,18 @@
 
 <!-- /toc -->
 
-- [ ] `p1` - **ID**: `cpt-cypilot-featstatus-execution-plans`
+- [ ] `p1` - **ID**: `cpt-studio-featstatus-execution-plans`
 ## 1. Feature Context
 
-- [ ] `p1` - `cpt-cypilot-feature-execution-plans`
+- [ ] `p1` - `cpt-studio-feature-execution-plans`
 
 ### 1.1 Overview
 
-Execution Plans decompose large agent tasks (artifact generation, validation, code implementation) into self-contained phase files that fit within a single LLM context window. Each phase file is a compiled prompt — all rules, constraints, conventions, and context are pre-resolved and inlined so that any AI agent can execute it without Cypilot knowledge. Accepted delegated execution extends this model by allowing plan outputs to be exported into executor-specific grammars — beginning with ralphex Markdown plans under `docs/plans/` — while Cypilot remains authoritative for decomposition, phase compilation, and deterministic validation commands (see `cpt-cypilot-adr-ralphex-delegation-skill`).
+Execution Plans decompose large agent tasks (artifact generation, validation, code implementation) into self-contained phase files that fit within a single LLM context window. Each phase file is a compiled prompt — all rules, constraints, conventions, and context are pre-resolved and inlined so that any AI agent can execute it without Studio knowledge. Accepted delegated execution extends this model by allowing plan outputs to be exported into executor-specific grammars — beginning with ralphex Markdown plans under `docs/plans/` — while Studio remains authoritative for decomposition, phase compilation, and deterministic validation commands (see `cpt-studio-adr-ralphex-delegation-skill`).
 
 ### 1.2 Purpose
 
-Context window overflow is the primary source of non-deterministic results in Cypilot workflows. A single generate or analyze invocation can load 3000+ lines of instructions (SKILL.md + execution-protocol.md + workflow + rules + template + checklist + example + constraints + project context) before the agent writes any output. This causes:
+Context window overflow is the primary source of non-deterministic results in Studio workflows. A single generate or analyze invocation can load 3000+ lines of instructions (SKILL.md + execution-protocol.md + workflow + rules + template + checklist + example + constraints + project context) before the agent writes any output. This causes:
 
 - **Attention drift**: different parts of instructions "win" attention on each run, producing inconsistent results
 - **Partial completion**: agent runs out of context mid-task, requiring manual re-scoping
@@ -54,31 +54,31 @@ Context window overflow is the primary source of non-deterministic results in Cy
 
 Execution Plans solve this by moving decomposition from the user to the tool. The plan workflow reads all relevant sources once, decomposes the task into phases, and "compiles" each phase into a focused instruction file (≤500 lines target, ≤1000 max) containing only what's needed for that specific sub-task.
 
-**Requirements**: `cpt-cypilot-fr-core-workflows`, `cpt-cypilot-fr-core-execution-plans`
+**Requirements**: `cpt-studio-fr-core-workflows`, `cpt-studio-fr-core-execution-plans`
 
-**Principles**: `cpt-cypilot-principle-determinism-first`, `cpt-cypilot-principle-occams-razor`
+**Principles**: `cpt-studio-principle-determinism-first`, `cpt-studio-principle-occams-razor`
 
 ### 1.3 Actors
 
 | Actor | Role in Feature |
 |-------|-----------------|
-| `cpt-cypilot-actor-user` | Invokes plan workflow, reviews generated phases, triggers phase execution, checks plan progress |
-| `cpt-cypilot-actor-ai-agent` | Generates execution plans, compiles phase files, executes individual phases |
+| `cpt-studio-actor-user` | Invokes plan workflow, reviews generated phases, triggers phase execution, checks plan progress |
+| `cpt-studio-actor-ai-agent` | Generates execution plans, compiles phase files, executes individual phases |
 
 ### 1.4 References
 
-- **PRD**: [PRD.md](../PRD.md) — `cpt-cypilot-fr-core-workflows`, `cpt-cypilot-fr-core-execution-plans`
-- **Design**: [DESIGN.md](../DESIGN.md) — `cpt-cypilot-component-agent-generator`
-- **ADRs**: [ADR-0018](../ADR/0018-cpt-cypilot-adr-ralphex-delegation-skill-v1.md) — `cpt-cypilot-adr-ralphex-delegation-skill` (plan export contract)
-- **Dependencies**: `cpt-cypilot-feature-agent-integration` (builds on generate/analyze workflows)
+- **PRD**: [PRD.md](../PRD.md) — `cpt-studio-fr-core-workflows`, `cpt-studio-fr-core-execution-plans`
+- **Design**: [DESIGN.md](../DESIGN.md) — `cpt-studio-component-agent-generator`
+- **ADRs**: [ADR-0018](../ADR/0018-cpt-studio-adr-ralphex-delegation-skill-v1.md) — `cpt-studio-adr-ralphex-delegation-skill` (plan export contract)
+- **Dependencies**: `cpt-studio-feature-agent-integration` (builds on generate/analyze workflows)
 
 ## 2. Actor Flows (CDSL)
 
 ### Generate Execution Plan
 
-- [x] `p1` - **ID**: `cpt-cypilot-flow-execution-plans-generate-plan`
+- [x] `p1` - **ID**: `cpt-studio-flow-execution-plans-generate-plan`
 
-**Actor**: `cpt-cypilot-actor-user`
+**Actor**: `cpt-studio-actor-user`
 
 **Success Scenarios**:
 - User requests a large task → agent produces a plan manifest + phase files in `.plans/` directory
@@ -93,25 +93,25 @@ Execution Plans solve this by moving decomposition from the user to the tool. Th
 1. [x] - `p1` - User requests task via plan workflow (e.g., "plan generate PRD", "plan analyze DESIGN") - `inst-user-request`
 2. [x] - `p1` - Agent loads task context: identify task type (generate/analyze/implement), target artifact kind, and kit - `inst-load-context`
 3. [x] - `p1` - Agent loads all kit dependencies for target kind: template, rules, checklist, example, constraints - `inst-load-deps`
-4. [x] - `p1` - Agent runs decomposition algorithm `cpt-cypilot-algo-execution-plans-decompose` to split task into phases - `inst-decompose`
-5. [x] - `p1` - Agent creates `.plans/` directory in `{cypilot_path}` if not exists - `inst-create-dir`
+4. [x] - `p1` - Agent runs decomposition algorithm `cpt-studio-algo-execution-plans-decompose` to split task into phases - `inst-decompose`
+5. [x] - `p1` - Agent creates `.plans/` directory in `{cf-studio-path}` if not exists - `inst-create-dir`
 6. [ ] - `p1` - **IF** `.plans/` not in `.gitignore` → agent adds it - `inst-gitignore`  *(not implemented — only `.archive/` is gitignored)*
-7. [x] - `p1` - Agent creates plan directory: `{cypilot_path}/.plans/{task-slug}/` - `inst-create-plan-dir`
+7. [x] - `p1` - Agent creates plan directory: `{cf-studio-path}/.plans/{task-slug}/` - `inst-create-plan-dir`
 8. [x] - `p1` - **FOR EACH** phase in decomposition result - `inst-loop-phases`
-   1. [x] - `p1` - Agent runs compile algorithm `cpt-cypilot-algo-execution-plans-compile-phase` to produce phase file content - `inst-compile`
-   2. [x] - `p1` - Agent runs budget enforcement `cpt-cypilot-algo-execution-plans-enforce-budget` on compiled content - `inst-budget`
+   1. [x] - `p1` - Agent runs compile algorithm `cpt-studio-algo-execution-plans-compile-phase` to produce phase file content - `inst-compile`
+   2. [x] - `p1` - Agent runs budget enforcement `cpt-studio-algo-execution-plans-enforce-budget` on compiled content - `inst-budget`
    3. [x] - `p1` - Agent writes phase file: `phase-{NN}-{slug}.md` - `inst-write-phase`
 9. [x] - `p1` - Agent writes plan manifest: `plan.toml` with all phase metadata - `inst-write-manifest`
 10. [x] - `p1` - Agent reports plan summary: total phases, estimated lines per phase, execution order - `inst-report`
 
 ### Chunk Raw Input Package
 
-- [x] `p1` - **ID**: `cpt-cypilot-flow-execution-plans-chunk-raw-input`
+- [x] `p1` - **ID**: `cpt-studio-flow-execution-plans-chunk-raw-input`
 
-**Actor**: `cpt-cypilot-actor-user`
+**Actor**: `cpt-studio-actor-user`
 
 **Success Scenarios**:
-- User or planner invokes `cpt chunk-input ... --output-dir ...` → command emits deterministic `input/*.md` chunk files and JSON metadata
+- User or planner invokes `cfs chunk-input ... --output-dir ...` → command emits deterministic `input/*.md` chunk files and JSON metadata
 - User combines file inputs with direct prompt text via `--include-stdin` → raw prompt is preserved as `direct-prompt.md` and included in chunk metadata
 - Planner encounters an existing `input/manifest.json` whose `input_signature` matches the current raw input → package is safely reused without re-chunking
 
@@ -121,7 +121,7 @@ Execution Plans solve this by moving decomposition from the user to the tool. Th
 - Output directory cannot be written → command returns JSON `ERROR`
 
 **Steps**:
-1. [x] - `p1` - User or planner invokes `cpt chunk-input [<path> ...] --output-dir <path> [--include-stdin]` - `inst-user-chunk-input`
+1. [x] - `p1` - User or planner invokes `cfs chunk-input [<path> ...] --output-dir <path> [--include-stdin]` - `inst-user-chunk-input`
 2. [x] - `p1` - Command parses arguments and validates required numeric thresholds - `inst-parse-args`
 3. [x] - `p1` - Command reads file sources and optional `stdin` according to invocation mode - `inst-read-sources`
 4. [x] - `p1` - Command computes total line count, canonical `input_signature`, and whether planning is required - `inst-evaluate-threshold`
@@ -133,9 +133,9 @@ Execution Plans solve this by moving decomposition from the user to the tool. Th
 
 ### Execute Phase
 
-- [x] `p1` - **ID**: `cpt-cypilot-flow-execution-plans-execute-phase`
+- [x] `p1` - **ID**: `cpt-studio-flow-execution-plans-execute-phase`
 
-**Actor**: `cpt-cypilot-actor-user`
+**Actor**: `cpt-studio-actor-user`
 
 **Success Scenarios**:
 - User asks to execute next phase → agent reads phase file, follows instructions, produces output
@@ -163,9 +163,9 @@ Execution Plans solve this by moving decomposition from the user to the tool. Th
 
 ### Check Plan Status
 
-- [x] `p2` - **ID**: `cpt-cypilot-flow-execution-plans-check-status`
+- [x] `p2` - **ID**: `cpt-studio-flow-execution-plans-check-status`
 
-**Actor**: `cpt-cypilot-actor-user`
+**Actor**: `cpt-studio-actor-user`
 
 **Success Scenarios**:
 - User asks for plan status → agent reads manifest and reports phase progress
@@ -182,7 +182,7 @@ Execution Plans solve this by moving decomposition from the user to the tool. Th
 
 ### Decompose Task
 
-- [x] `p1` - **ID**: `cpt-cypilot-algo-execution-plans-decompose`
+- [x] `p1` - **ID**: `cpt-studio-algo-execution-plans-decompose`
 
 **Input**: Task type (generate/analyze/implement), target artifact kind, kit dependencies (template, checklist, rules)
 
@@ -208,7 +208,7 @@ Execution Plans solve this by moving decomposition from the user to the tool. Th
 
 ### Compile Phase File
 
-- [x] `p1` - **ID**: `cpt-cypilot-algo-execution-plans-compile-phase`
+- [x] `p1` - **ID**: `cpt-studio-algo-execution-plans-compile-phase`
 
 **Input**: Phase metadata (from decompose), full kit dependencies, project context
 
@@ -231,7 +231,7 @@ Execution Plans solve this by moving decomposition from the user to the tool. Th
 
 ### Enforce Line Budget
 
-- [x] `p1` - **ID**: `cpt-cypilot-algo-execution-plans-enforce-budget`
+- [x] `p1` - **ID**: `cpt-studio-algo-execution-plans-enforce-budget`
 
 **Input**: Compiled phase file content, target budget (500 lines), maximum budget (1000 lines)
 
@@ -249,7 +249,7 @@ Execution Plans solve this by moving decomposition from the user to the tool. Th
 
 ### Normalize Raw Input Sources
 
-- [x] `p1` - **ID**: `cpt-cypilot-algo-execution-plans-chunk-normalize-input`
+- [x] `p1` - **ID**: `cpt-studio-algo-execution-plans-chunk-normalize-input`
 
 **Input**: CLI paths, `stdin`, `stdin_label`
 
@@ -264,7 +264,7 @@ Execution Plans solve this by moving decomposition from the user to the tool. Th
 
 ### Compute Raw Input Chunk Ranges
 
-- [x] `p1` - **ID**: `cpt-cypilot-algo-execution-plans-chunk-ranges`
+- [x] `p1` - **ID**: `cpt-studio-algo-execution-plans-chunk-ranges`
 
 **Input**: `total_lines`, `max_lines`
 
@@ -278,7 +278,7 @@ Execution Plans solve this by moving decomposition from the user to the tool. Th
 
 ### Write Raw Input Package
 
-- [x] `p1` - **ID**: `cpt-cypilot-algo-execution-plans-chunk-write`
+- [x] `p1` - **ID**: `cpt-studio-algo-execution-plans-chunk-write`
 
 **Input**: Normalized sources, output directory, `max_lines`
 
@@ -296,7 +296,7 @@ Execution Plans solve this by moving decomposition from the user to the tool. Th
 
 ### Raw Input Package Lifecycle
 
-- [x] `p1` - **ID**: `cpt-cypilot-state-execution-plans-raw-input-package`
+- [x] `p1` - **ID**: `cpt-studio-state-execution-plans-raw-input-package`
 
 **States**: absent, materialized, reused, failed
 
@@ -310,7 +310,7 @@ Execution Plans solve this by moving decomposition from the user to the tool. Th
 
 ### Plan Lifecycle
 
-- [x] `p1` - **ID**: `cpt-cypilot-state-execution-plans-plan-lifecycle`
+- [x] `p1` - **ID**: `cpt-studio-state-execution-plans-plan-lifecycle`
 
 **States**: pending, in_progress, done, failed
 
@@ -323,7 +323,7 @@ Execution Plans solve this by moving decomposition from the user to the tool. Th
 
 ### Phase Lifecycle
 
-- [x] `p1` - **ID**: `cpt-cypilot-state-execution-plans-phase-lifecycle`
+- [x] `p1` - **ID**: `cpt-studio-state-execution-plans-phase-lifecycle`
 
 **States**: pending, in_progress, done, failed
 
@@ -339,7 +339,7 @@ Execution Plans solve this by moving decomposition from the user to the tool. Th
 
 ### Raw Input Package
 
-- [x] `p1` - **ID**: `cpt-cypilot-dod-execution-plans-raw-input`
+- [x] `p1` - **ID**: `cpt-studio-dod-execution-plans-raw-input`
 
 The system MUST provide a `chunk-input` command that takes file paths and/or `stdin` input and emits a deterministic raw-input package in the output directory. The package MUST contain:
 - `manifest.json` with `input_signature`, source metadata, and ordered chunk metadata
@@ -349,56 +349,56 @@ The system MUST provide a `chunk-input` command that takes file paths and/or `st
 Package reuse MUST depend on an exact `input_signature` match, not only on plan target identity or directory existence. Re-running the command with changed raw input MUST preserve the previous live package unless the replacement package is fully written and successfully swapped into place.
 
 **Implements**:
-- `cpt-cypilot-flow-execution-plans-chunk-raw-input`
-- `cpt-cypilot-algo-execution-plans-chunk-normalize-input`
-- `cpt-cypilot-algo-execution-plans-chunk-ranges`
-- `cpt-cypilot-algo-execution-plans-chunk-write`
+- `cpt-studio-flow-execution-plans-chunk-raw-input`
+- `cpt-studio-algo-execution-plans-chunk-normalize-input`
+- `cpt-studio-algo-execution-plans-chunk-ranges`
+- `cpt-studio-algo-execution-plans-chunk-write`
 
-**Constraints**: `cpt-cypilot-constraint-markdown-contract`
+**Constraints**: `cpt-studio-constraint-markdown-contract`
 
 **Touches**:
-- Directory: `{cypilot_path}/.plans/{task-slug}/input/` (new, contains raw-input package)
+- Directory: `{cf-studio-path}/.plans/{task-slug}/input/` (new, contains raw-input package)
 
 ### Plan Workflow
 
-- [x] `p1` - **ID**: `cpt-cypilot-dod-execution-plans-workflow`
+- [x] `p1` - **ID**: `cpt-studio-dod-execution-plans-workflow`
 
 The system MUST provide a `plan.md` workflow file that instructs AI agents how to decompose tasks into phases and generate self-contained phase files. The workflow MUST follow the same structure as existing `generate.md` and `analyze.md` workflows.
 
 **Implements**:
-- `cpt-cypilot-flow-execution-plans-generate-plan`
-- `cpt-cypilot-flow-execution-plans-execute-phase`
-- `cpt-cypilot-flow-execution-plans-check-status`
+- `cpt-studio-flow-execution-plans-generate-plan`
+- `cpt-studio-flow-execution-plans-execute-phase`
+- `cpt-studio-flow-execution-plans-check-status`
 
-**Constraints**: `cpt-cypilot-constraint-markdown-contract`
+**Constraints**: `cpt-studio-constraint-markdown-contract`
 
 **Touches**:
 - File: `workflows/plan.md` (new)
-- File: `{cypilot_path}/.core/workflows/plan.md` (synced copy)
+- File: `{cf-studio-path}/.core/workflows/plan.md` (synced copy)
 
 ### Phase File Template
 
-- [x] `p1` - **ID**: `cpt-cypilot-dod-execution-plans-template`
+- [x] `p1` - **ID**: `cpt-studio-dod-execution-plans-template`
 
 The system MUST provide a `plan-template.md` requirement file that defines the strict structure for generated phase files. The template MUST enforce:
 - TOML frontmatter with plan/phase metadata
 - Self-contained preamble ("Any AI agent can execute this file")
 - Sections: What, Prior Context, Rules (inlined), Input (pre-resolved), Task (step-by-step), Acceptance Criteria (binary), Output Format
 - No unresolved template variables
-- No external file references that require Cypilot knowledge
+- No external file references that require Studio knowledge
 
 **Implements**:
-- `cpt-cypilot-algo-execution-plans-compile-phase`
+- `cpt-studio-algo-execution-plans-compile-phase`
 
-**Constraints**: `cpt-cypilot-constraint-markdown-contract`
+**Constraints**: `cpt-studio-constraint-markdown-contract`
 
 **Touches**:
 - File: `requirements/plan-template.md` (new)
-- File: `{cypilot_path}/.core/requirements/plan-template.md` (synced copy)
+- File: `{cf-studio-path}/.core/requirements/plan-template.md` (synced copy)
 
 ### Decomposition Strategies
 
-- [x] `p1` - **ID**: `cpt-cypilot-dod-execution-plans-decomposition`
+- [x] `p1` - **ID**: `cpt-studio-dod-execution-plans-decomposition`
 
 The system MUST provide a `plan-decomposition.md` requirement file that defines decomposition strategies for each task type:
 - **Generate**: split by template section groups (2-4 sections per phase)
@@ -408,56 +408,56 @@ The system MUST provide a `plan-decomposition.md` requirement file that defines 
 The file MUST include budget enforcement rules (500-line target, 1000-line max) and phase dependency resolution.
 
 **Implements**:
-- `cpt-cypilot-algo-execution-plans-decompose`
-- `cpt-cypilot-algo-execution-plans-enforce-budget`
+- `cpt-studio-algo-execution-plans-decompose`
+- `cpt-studio-algo-execution-plans-enforce-budget`
 
-**Constraints**: `cpt-cypilot-constraint-markdown-contract`
+**Constraints**: `cpt-studio-constraint-markdown-contract`
 
 **Touches**:
 - File: `requirements/plan-decomposition.md` (new)
-- File: `{cypilot_path}/.core/requirements/plan-decomposition.md` (synced copy)
+- File: `{cf-studio-path}/.core/requirements/plan-decomposition.md` (synced copy)
 
 ### Plan Storage
 
-- [x] `p1` - **ID**: `cpt-cypilot-dod-execution-plans-storage`
+- [x] `p1` - **ID**: `cpt-studio-dod-execution-plans-storage`
 
-The system MUST store execution plans in `{cypilot_path}/.plans/{task-slug}/` directory. The directory MUST be added to `.gitignore` automatically on first use. Each plan directory contains:
+The system MUST store execution plans in `{cf-studio-path}/.plans/{task-slug}/` directory. The directory MUST be added to `.gitignore` automatically on first use. Each plan directory contains:
 - `plan.toml` — manifest with phase metadata and status tracking
 - `input/` — authoritative raw-input package when oversized workflow input was materialized (`manifest.json`, optional `direct-prompt.md`, plus numbered chunk files)
 - `phase-{NN}-{slug}.md` — self-contained phase files
 
 **Implements**:
-- `cpt-cypilot-flow-execution-plans-chunk-raw-input`
-- `cpt-cypilot-flow-execution-plans-generate-plan`
-- `cpt-cypilot-state-execution-plans-raw-input-package`
-- `cpt-cypilot-state-execution-plans-plan-lifecycle`
-- `cpt-cypilot-state-execution-plans-phase-lifecycle`
+- `cpt-studio-flow-execution-plans-chunk-raw-input`
+- `cpt-studio-flow-execution-plans-generate-plan`
+- `cpt-studio-state-execution-plans-raw-input-package`
+- `cpt-studio-state-execution-plans-plan-lifecycle`
+- `cpt-studio-state-execution-plans-phase-lifecycle`
 
 **Touches**:
-- Directory: `{cypilot_path}/.plans/` (new, git-ignored)
+- Directory: `{cf-studio-path}/.plans/` (new, git-ignored)
 
 ### Plan Export Contract
 
-- [ ] `p1` - **ID**: `cpt-cypilot-dod-execution-plans-export`
+- [ ] `p1` - **ID**: `cpt-studio-dod-execution-plans-export`
 
-The system MUST support exporting Cypilot plan outputs into executor-specific grammars for delegated execution. The initial target grammar is ralphex Markdown plans.
+The system MUST support exporting Studio plan outputs into executor-specific grammars for delegated execution. The initial target grammar is ralphex Markdown plans.
 
 **Export rules**:
-- One Cypilot execution plan exports to one ralphex plan file under the ralphex-resolved `plans_dir` (default `docs/plans/`; resolved from ralphex config precedence, not Cypilot-owned)
-- One Cypilot phase maps to one `### Task N:` block or a small contiguous task group inside the exported plan
-- Cypilot phase instructions, task steps, and acceptance criteria are flattened into ralphex-compatible checkboxes and validation commands
-- Exported plans MUST contain a `## Validation Commands` section derived from Cypilot's deterministic validation contract
-- `{cypilot_path}/.plans/{task}/out/` remains the stable interchange point for intermediate outputs consumed by later export passes
-- Exported plans are derived artifacts compiled from canonical Cypilot sources — they are not a second SDLC source of truth
+- One Studio execution plan exports to one ralphex plan file under the ralphex-resolved `plans_dir` (default `docs/plans/`; resolved from ralphex config precedence, not Studio-owned)
+- One Studio phase maps to one `### Task N:` block or a small contiguous task group inside the exported plan
+- Studio phase instructions, task steps, and acceptance criteria are flattened into ralphex-compatible checkboxes and validation commands
+- Exported plans MUST contain a `## Validation Commands` section derived from Studio's deterministic validation contract
+- `{cf-studio-path}/.plans/{task}/out/` remains the stable interchange point for intermediate outputs consumed by later export passes
+- Exported plans are derived artifacts compiled from canonical Studio sources — they are not a second SDLC source of truth
 - Export MUST NOT copy the entire SDLC kit into the executor plan; only the bounded slices needed for the delegated task are included
 
-This feature owns the canonical plan structure and export contract definition. Concrete delegated export (compilation into ralphex grammar, `.ralphex/` overrides, CLI invocation) is implemented by `cpt-cypilot-feature-ralphex-delegation` — specifically `cpt-cypilot-algo-ralphex-delegation-compile-plan` and `cpt-cypilot-algo-ralphex-delegation-map-phase`.
+This feature owns the canonical plan structure and export contract definition. Concrete delegated export (compilation into ralphex grammar, `.ralphex/` overrides, CLI invocation) is implemented by `cpt-studio-feature-ralphex-delegation` — specifically `cpt-studio-algo-ralphex-delegation-compile-plan` and `cpt-studio-algo-ralphex-delegation-map-phase`.
 
-**Constraints**: `cpt-cypilot-constraint-markdown-contract`
+**Constraints**: `cpt-studio-constraint-markdown-contract`
 
 **Touches**:
 - Directory: `{plans_dir}/` (exported ralphex-compatible plans, written by ralphex-delegation feature; path resolved from ralphex config, default `docs/plans/`)
-- Directory: `{cypilot_path}/.plans/{task}/out/` (intermediate interchange outputs)
+- Directory: `{cf-studio-path}/.plans/{task}/out/` (intermediate interchange outputs)
 
 ## 6. Acceptance Criteria
 
@@ -466,10 +466,10 @@ This feature owns the canonical plan structure and export contract definition. C
 - [x] Decomposition strategies file (`requirements/plan-decomposition.md`) exists with strategies for generate/analyze/implement
 - [x] Generated phase files are self-contained: zero unresolved `{variable}` references, zero "open file X" instructions
 - [x] Generated phase files respect line budget: ≤500 lines target, ≤1000 lines maximum
-- [x] Phase files can be executed by any AI agent without Cypilot context or tools
+- [x] Phase files can be executed by any AI agent without Studio context or tools
 - [x] Plan manifest (`plan.toml`) correctly tracks phase status across executions
 - [x] Oversized workflow input can be materialized into deterministic `input/*.md` chunk files with `direct-prompt.md` preservation and stale-output cleanup
 - [ ] `.plans/` directory is automatically git-ignored *(only `.archive/` is currently gitignored)*
-- [ ] Cypilot plan outputs can be exported into ralphex-compatible Markdown plan files under the ralphex-resolved `plans_dir`
+- [ ] Studio plan outputs can be exported into ralphex-compatible Markdown plan files under the ralphex-resolved `plans_dir`
 - [ ] Exported plans contain `## Validation Commands` and `### Task N:` sections matching ralphex grammar
-- [ ] Phase-to-task mapping flattens Cypilot acceptance criteria into ralphex checkboxes
+- [ ] Phase-to-task mapping flattens Studio acceptance criteria into ralphex checkboxes

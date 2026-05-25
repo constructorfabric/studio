@@ -1,16 +1,16 @@
 ---
-cypilot: true
+studio: true
 type: spec
 name: Blueprint Specification
 version: 1.0
 purpose: Define blueprint format, marker syntax, marker reference, placeholder syntax, parsing algorithm, update model, validation rules, and examples
 drivers:
-  - cpt-cypilot-fr-core-blueprint
+  - cpt-studio-fr-core-blueprint
 ---
 
 # Blueprint Specification
 
-> **DEPRECATED per `cpt-cypilot-adr-remove-blueprint-system`**: The blueprint system has been removed. Kits are now direct file packages — all kit files (rules.md, template.md, checklist.md, examples/, constraints.toml, workflows/, SKILL.md) are authored and maintained directly by kit authors, not generated from blueprint markers. This specification is preserved solely as a reference for legacy v2/early-v3 installations that used the blueprint system. New kit development should follow [kit.md](kit.md) instead.
+> **DEPRECATED per `cpt-studio-adr-remove-blueprint-system`**: The blueprint system has been removed. Kits are now direct file packages — all kit files (rules.md, template.md, checklist.md, examples/, constraints.toml, workflows/, SKILL.md) are authored and maintained directly by kit authors, not generated from blueprint markers. This specification is preserved solely as a reference for legacy v2/early-v3 installations that used the blueprint system. New kit development should follow [kit.md](kit.md) instead.
 
 <!-- toc -->
 
@@ -70,19 +70,19 @@ Blueprints with an `artifact` key in `@cpt:blueprint` define artifact kinds (e.g
 
 **File location**:
 - Source: `kits/<kit-slug>/blueprints/<KIND>.md`
-- Installed (user-editable): `{cf-constructor-path}/config/kits/<slug>/blueprints/<KIND>.md`
+- Installed (user-editable): `{cf-studio-path}/config/kits/<slug>/blueprints/<KIND>.md`
 
 **Generated outputs** (see individual specs for format details):
 
 | Output | Location | Spec |
 |--------|----------|------|
-| `rules.md` | `{cf-constructor-path}/.gen/kits/<slug>/artifacts/<KIND>/` | [rules.md](rules.md) |
-| `checklist.md` | `{cf-constructor-path}/.gen/kits/<slug>/artifacts/<KIND>/` | [checklist.md](checklist.md) |
-| `template.md` | `{cf-constructor-path}/.gen/kits/<slug>/artifacts/<KIND>/` | [template.md](template.md) |
-| `example.md` | `{cf-constructor-path}/.gen/kits/<slug>/artifacts/<KIND>/` | [example.md](example.md) |
-| `constraints.toml` | `{cf-constructor-path}/.gen/kits/<slug>/` (kit-wide) | [constraints.md](constraints.md) |
-| codebase `rules.md` | `{cf-constructor-path}/.gen/kits/<slug>/codebase/` | [rules.md](rules.md) |
-| codebase `checklist.md` | `{cf-constructor-path}/.gen/kits/<slug>/codebase/` | [checklist.md](checklist.md) |
+| `rules.md` | `{cf-studio-path}/.gen/kits/<slug>/artifacts/<KIND>/` | [rules.md](rules.md) |
+| `checklist.md` | `{cf-studio-path}/.gen/kits/<slug>/artifacts/<KIND>/` | [checklist.md](checklist.md) |
+| `template.md` | `{cf-studio-path}/.gen/kits/<slug>/artifacts/<KIND>/` | [template.md](template.md) |
+| `example.md` | `{cf-studio-path}/.gen/kits/<slug>/artifacts/<KIND>/` | [example.md](example.md) |
+| `constraints.toml` | `{cf-studio-path}/.gen/kits/<slug>/` (kit-wide) | [constraints.md](constraints.md) |
+| codebase `rules.md` | `{cf-studio-path}/.gen/kits/<slug>/codebase/` | [rules.md](rules.md) |
+| codebase `checklist.md` | `{cf-studio-path}/.gen/kits/<slug>/codebase/` | [checklist.md](checklist.md) |
 
 ---
 
@@ -141,8 +141,8 @@ Each marker may contain two types of fenced code blocks:
 | Marker | Content Blocks | Owner | Description | Generates |
 |--------|---------------|-------|-------------|-----------|
 | `@cpt:blueprint` | toml | core | Blueprint identity and metadata | — |
-| `@cpt:skill` | markdown | core | SKILL.md extension content | → `{cf-constructor-path}/config/SKILL.md` (aggregated) |
-| `@cpt:system-prompt` | markdown | core | Agent directives (ALWAYS/WHEN) | → `{cf-constructor-path}/config/AGENTS.md` (appended) |
+| `@cpt:skill` | markdown | core | SKILL.md extension content | → `{cf-studio-path}/config/SKILL.md` (aggregated) |
+| `@cpt:system-prompt` | markdown | core | Agent directives (ALWAYS/WHEN) | → `{cf-studio-path}/config/AGENTS.md` (appended) |
 | `@cpt:workflow` | toml + markdown | core | Workflow definition | → `workflows/{name}.md` + agent entry points |
 | `@cpt:rules` | toml | core | rules.md structure skeleton | → rules.md |
 | `@cpt:rule` | toml + markdown | core | Individual rule entry | → rules.md |
@@ -199,7 +199,7 @@ Contains a single ` ```markdown ` block with SKILL.md extension content.
 `@cpt:skill`
 ```markdown
 ### PRD Commands
-- `cpt validate --artifact <PRD.md>` — validate PRD
+- `cfs validate --artifact <PRD.md>` — validate PRD
 ### PRD Workflows
 - **Generate PRD**: create a new PRD from template with guided prompts
 - **Analyze PRD**: validate structure then semantic quality
@@ -207,7 +207,7 @@ Contains a single ` ```markdown ` block with SKILL.md extension content.
 `@/cpt:skill`
 ````
 
-Content from all blueprints in the kit is aggregated and written to `{cf-constructor-path}/config/SKILL.md` during `cpt init` / `cypilot kit install`. The main SKILL.md has a navigation rule (`ALWAYS open and follow {cf-constructor-path}/config/SKILL.md WHEN it exists`) that ensures AI agents discover kit capabilities automatically.
+Content from all blueprints in the kit is aggregated and written to `{cf-studio-path}/config/SKILL.md` during `cfs init` / `cfs kit install`. The main SKILL.md has a navigation rule (`ALWAYS open and follow {cf-studio-path}/config/SKILL.md WHEN it exists`) that ensures AI agents discover kit capabilities automatically.
 
 ---
 
@@ -220,14 +220,14 @@ Contains a single ` ```markdown ` block with concise agent directives. Should co
 ````markdown
 `@cpt:system-prompt`
 ```markdown
-ALWAYS load `{cf-constructor-path}/.core/requirements/traceability.md` BEFORE generating or validating a PRD
+ALWAYS load `{cf-studio-path}/.core/requirements/traceability.md` BEFORE generating or validating a PRD
 ALWAYS describe WHAT the system does, NEVER HOW — implementation details belong in DESIGN
 ALWAYS use observable behavior language (MUST/MUST NOT/SHOULD) WHEN writing functional requirements
 ```
 `@/cpt:system-prompt`
 ````
 
-Content from all blueprints in the kit is appended to `{cf-constructor-path}/config/AGENTS.md` during `cpt init` / `cypilot kit install`. Since `{cf-constructor-path}/config/AGENTS.md` is loaded via the Protocol Guard, these directives are automatically active when the agent processes the corresponding artifact kind.
+Content from all blueprints in the kit is appended to `{cf-studio-path}/config/AGENTS.md` during `cfs init` / `cfs kit install`. Since `{cf-studio-path}/config/AGENTS.md` is loaded via the Protocol Guard, these directives are automatically active when the agent processes the corresponding artifact kind.
 
 ---
 
@@ -235,7 +235,7 @@ Content from all blueprints in the kit is appended to `{cf-constructor-path}/con
 
 **Type**: block (zero or more per file)
 
-Contains a ` ```toml ` header block and a ` ```markdown ` content block defining a workflow that agents can execute. The Blueprint Processor generates a workflow `.md` file in the kit's `workflows/` directory; `cpt generate-agents` then creates agent entry points (e.g., `.windsurf/workflows/`) that reference these generated files.
+Contains a ` ```toml ` header block and a ` ```markdown ` content block defining a workflow that agents can execute. The Blueprint Processor generates a workflow `.md` file in the kit's `workflows/` directory; `cfs generate-agents` then creates agent entry points (e.g., `.windsurf/workflows/`) that reference these generated files.
 
 ````markdown
 `@cpt:workflow`
@@ -268,11 +268,11 @@ description = "Review a GitHub PR against configurable checklists and prompts"
 **Generates**: two outputs per workflow:
 
 1. **Kit workflow file**: `.gen/kits/<slug>/workflows/{name}.md` — the full workflow definition assembled from the ` ```markdown ` content block, with frontmatter metadata.
-2. **Agent entry points**: during `cpt generate-agents`, each workflow gets an entry point in every agent's native format that references the kit workflow file:
-   - Windsurf: `.windsurf/workflows/cypilot-{name}.md`
-   - Cursor: `.cursor/rules/cypilot-{name}.md`
-   - Claude: `.claude/commands/cypilot-{name}.md`
-   - Copilot: `.github/prompts/cypilot-{name}.md`
+2. **Agent entry points**: during `cfs generate-agents`, each workflow gets an entry point in every agent's native format that references the kit workflow file:
+   - Windsurf: `.windsurf/workflows/studio-{name}.md`
+   - Cursor: `.cursor/rules/studio-{name}.md`
+   - Claude: `.claude/commands/studio-{name}.md`
+   - Copilot: `.github/prompts/studio-{name}.md`
 
 **Generated kit workflow file** (`.gen/kits/sdlc/workflows/pr-review.md`):
 ```markdown
@@ -291,17 +291,17 @@ description: Review a GitHub PR against configurable checklists and prompts
 ...
 ```
 
-**Generated agent entry point** (`.windsurf/workflows/cf-constructor-pr-review.md`):
+**Generated agent entry point** (`.windsurf/workflows/cf-pr-review.md`):
 ```markdown
 ---
-name: Cypilot PR Review
+name: Studio PR Review
 description: Review a GitHub PR against configurable checklists and prompts
 ---
 
-Follow the workflow defined in `{cf-constructor-path}/config/kits/sdlc/workflows/pr-review.md`
+Follow the workflow defined in `{cf-studio-path}/config/kits/sdlc/workflows/pr-review.md`
 ```
 
-Agent entry points are fully overwritten on every `cpt generate-agents` run. Kit workflow files are regenerated from blueprints on `cpt init`.
+Agent entry points are fully overwritten on every `cfs generate-agents` run. Kit workflow files are regenerated from blueprints on `cfs init`.
 
 ---
 
@@ -367,7 +367,7 @@ section = "semantic"
 - [ ] Purpose MUST NOT contain implementation details
 - [ ] Vision MUST explain WHY the product exists
   - VALID: "Enables developers to validate artifacts" (explains purpose)
-  - INVALID: "A tool for Cypilot" (doesn't explain why it matters)
+  - INVALID: "A tool for Studio" (doesn't explain why it matters)
 ```
 `@/cpt:rule`
 ````
@@ -567,7 +567,7 @@ required = true
 # task = true|false      # optional by default
 priority = true           # true = required | false = prohibited
 template = "cpt-{system}-fr-{slug}"
-examples = ["cpt-cypilot-fr-validation", "cpt-ex-ovwa-fr-track-active-time"]
+examples = ["cpt-studio-fr-validation", "cpt-ex-ovwa-fr-track-active-time"]
 to_code = false
 headings = ["prd-fr"]
 
@@ -796,41 +796,41 @@ The Blueprint Processor parses all markers and invokes output generators. All ou
 
 ### Reference Principle
 
-The **installed kit** in `{cf-constructor-path}/kits/{slug}/` serves as the reference for all update operations. When a kit is installed, its source is saved to `{cf-constructor-path}/kits/{slug}/` — this is the reference copy. User-editable blueprints live in `{cf-constructor-path}/config/kits/{slug}/blueprints/`.
+The **installed kit** in `{cf-studio-path}/kits/{slug}/` serves as the reference for all update operations. When a kit is installed, its source is saved to `{cf-studio-path}/kits/{slug}/` — this is the reference copy. User-editable blueprints live in `{cf-studio-path}/config/kits/{slug}/blueprints/`.
 
 ### Initial Installation
 
-When a kit is installed (`cpt init` or `cypilot kit install`):
+When a kit is installed (`cfs init` or `cfs kit install`):
 
-1. The tool saves the kit source to `{cf-constructor-path}/kits/{slug}/` (reference copy).
-2. Blueprints are copied from `{cf-constructor-path}/kits/{slug}/blueprints/` to `{cf-constructor-path}/config/kits/{slug}/blueprints/` (user-editable).
-3. SHA-256 hashes are computed for all blueprint files and stored in `{cf-constructor-path}/kits/{slug}/conf.toml` as the known-default baseline.
+1. The tool saves the kit source to `{cf-studio-path}/kits/{slug}/` (reference copy).
+2. Blueprints are copied from `{cf-studio-path}/kits/{slug}/blueprints/` to `{cf-studio-path}/config/kits/{slug}/blueprints/` (user-editable).
+3. SHA-256 hashes are computed for all blueprint files and stored in `{cf-studio-path}/kits/{slug}/conf.toml` as the known-default baseline.
 4. All output files are generated from the user blueprints.
-5. The kit is registered in `{cf-constructor-path}/config/core.toml` with slug and config output path.
+5. The kit is registered in `{cf-studio-path}/config/core.toml` with slug and config output path.
 
 ### Update Modes
 
 #### Force Update
 
-**Command**: `cypilot kit update --force`
+**Command**: `cfs kit update --force`
 
 Overwrites all user blueprints from the reference and regenerates all outputs. User edits are discarded.
 
-1. Update `{cf-constructor-path}/kits/{slug}/` with new kit version.
-2. Copy all blueprints from `{cf-constructor-path}/kits/{slug}/blueprints/` → `{cf-constructor-path}/config/kits/{slug}/blueprints/` (overwrite).
+1. Update `{cf-studio-path}/kits/{slug}/` with new kit version.
+2. Copy all blueprints from `{cf-studio-path}/kits/{slug}/blueprints/` → `{cf-studio-path}/config/kits/{slug}/blueprints/` (overwrite).
 3. Regenerate all outputs.
-4. Update kit version in `{cf-constructor-path}/config/core.toml`.
+4. Update kit version in `{cf-studio-path}/config/core.toml`.
 
 Use when: starting fresh, after breaking edits, or when you want to fully sync with the upstream kit.
 
 #### Smart Update (default)
 
-**Command**: `cypilot kit update`
+**Command**: `cfs kit update`
 
 Smart update uses **hash-based customization detection** as a pre-step before three-way merge:
 
 1. Compute SHA-256 of each user blueprint in `config/kits/{slug}/blueprints/`.
-2. Compare against known default hashes stored in `{cf-constructor-path}/kits/{slug}/conf.toml`.
+2. Compare against known default hashes stored in `{cf-studio-path}/kits/{slug}/conf.toml`.
 3. **If hash matches** known default → blueprint is unmodified, auto-update silently (overwrite from new reference).
 4. **If hash differs** → blueprint has been customized by user, apply three-way merge at marker level.
 5. After all blueprints are processed, update hash registry in `conf.toml` with new defaults.
@@ -840,13 +840,13 @@ Smart update uses **hash-based customization detection** as a pre-step before th
 The three-way merge (step 4) uses stable **identity keys** for marker matching across versions:
 
 ```
-{cf-constructor-path}/kits/{slug}/.prev/  ── old reference (saved before update)
+{cf-studio-path}/kits/{slug}/.prev/  ── old reference (saved before update)
     ↕ identity-key match
 config/kits/{slug}/blueprints/     ── user's version
 
-{cf-constructor-path}/kits/{slug}/        ── new reference (current kit version)
+{cf-studio-path}/kits/{slug}/        ── new reference (current kit version)
     ↕ identity-key match
-{cf-constructor-path}/kits/{slug}/.prev/  ── old reference
+{cf-studio-path}/kits/{slug}/.prev/  ── old reference
 ```
 
 All three versions are parsed into segment lists with stable identity keys (see [Parsing Algorithm](#parsing-algorithm)). Markers are matched across versions by their identity key — named markers (`@cpt:TYPE:ID`) match by `TYPE:ID`; TOML-keyed markers match by derived key; legacy unnamed markers match by positional index fallback. After a successful merge, `.prev/` is cleaned up and the reference is replaced with the new version.
@@ -875,7 +875,7 @@ When conflicts are detected during smart update (three-way merge path):
 1. The tool writes a `<KIND>.md.conflicts` file listing all conflicts with both versions.
 2. The tool outputs a warning with conflict count and file path.
 3. The user resolves conflicts manually in the blueprint file.
-4. Running `cpt generate-resources` regenerates outputs from the resolved blueprint.
+4. Running `cfs generate-resources` regenerates outputs from the resolved blueprint.
 
 ---
 
@@ -890,7 +890,7 @@ When conflicts are detected during smart update (three-way merge path):
 
 | Error | Cause | Resolution |
 |-------|-------|------------|
-| `BLUEPRINT_NOT_FOUND` | No `<KIND>.md` in `{cf-constructor-path}/config/kits/<slug>/blueprints/` | Create blueprint or check kit installation |
+| `BLUEPRINT_NOT_FOUND` | No `<KIND>.md` in `{cf-studio-path}/config/kits/<slug>/blueprints/` | Create blueprint or check kit installation |
 | `BLUEPRINT_NO_HEADER` | Missing `@cpt:blueprint` marker | Add `` `@cpt:blueprint` `` with TOML block as first marker |
 | `BLUEPRINT_UNKNOWN_MARKER` | Marker type not registered by core or any kit | Check marker spelling, ensure kit is installed |
 | `BLUEPRINT_UNCLOSED_BLOCK` | Block marker without matching close tag | Add `` `@/cpt:type` `` closing tag |
@@ -903,7 +903,7 @@ When conflicts are detected during smart update (three-way merge path):
 | `BLUEPRINT_DUPLICATE_MARKER_ID` | Two markers of the same type with the same explicit ID in a blueprint | Use unique IDs per marker type |
 | `BLUEPRINT_TAG_MISMATCH` | Closing tag TYPE:ID does not match opening tag | Fix closing tag to match opening |
 | `BLUEPRINT_LEGACY_MARKER` | Non-singleton marker without explicit ID (deprecation warning) | Add explicit ID: `` `@cpt:rule:my-id` `` |
-| `BLUEPRINT_UPDATE_CONFLICT` | Both user and kit modified the same section during smart update | Resolve conflicts in `<KIND>.md.conflicts`, then run `cpt generate-resources` |
+| `BLUEPRINT_UPDATE_CONFLICT` | Both user and kit modified the same section during smart update | Resolve conflicts in `<KIND>.md.conflicts`, then run `cfs generate-resources` |
 
 ---
 

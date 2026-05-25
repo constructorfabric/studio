@@ -101,7 +101,7 @@ def _setup_legacy_project(td: Path, slug: str = "testkit") -> Path:
         "project_root": "..",
         "kits": {
             slug: {
-                "format": "Cypilot",
+                "format": "CFS",
                 "path": f"config/kits/{slug}",
                 "version": "1.0",
             }
@@ -301,7 +301,7 @@ class TestMigrateLegacyKitToManifest(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "mykit": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "config/custom_path/mykit",
                         "version": "1.0",
                     }
@@ -336,7 +336,7 @@ class TestMigrateLegacyKitToManifest(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "mykit": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "C:/external-kits/mykit",
                         "version": "1.0",
                     }
@@ -367,7 +367,7 @@ class TestMigrateLegacyKitToManifest(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "mykit": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "/external-kits/mykit",
                         "version": "1.0",
                     }
@@ -769,7 +769,7 @@ class TestUpdateKitLegacyMigration(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "mykit": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": external_kit_dir.as_posix(),
                         "version": "1.0",
                     }
@@ -820,7 +820,7 @@ class TestUpdateKitLegacyMigration(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "mykit": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "custom-kits/mykit",
                         "version": "1.0",
                         "resources": {

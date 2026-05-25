@@ -62,8 +62,8 @@ class TestCypilotContextMethods:
         ])
 
         # Create kits
-        kit1 = Kit(kit_id="cypilot-sdlc", format="Cypilot", path="kits/sdlc")
-        kit2 = Kit(kit_id="custom", format="Cypilot", path="kits/custom")
+        kit1 = Kit(kit_id="cypilot-sdlc", format="CFS", path="kits/sdlc")
+        kit2 = Kit(kit_id="custom", format="CFS", path="kits/custom")
 
         loaded_kit1 = LoadedKit(
             kit=kit1,
@@ -218,7 +218,7 @@ class TestCypilotContextLoad:
             meta = ArtifactsMeta.from_dict({
                 "version": "1.1",
                 "project_root": "..",
-                "kits": {"k": {"format": "Cypilot", "path": "kits/sdlc"}},
+                "kits": {"k": {"format": "CFS", "path": "kits/sdlc"}},
                 "systems": [
                     {
                         "name": "App",

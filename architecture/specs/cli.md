@@ -1,26 +1,32 @@
 ---
-cypilot: true
+studio: true
 type: spec
-name: Cyber Constructor CLI Specification
+name: Constructor Studio CLI Specification
 version: 1.0
-purpose: Complete CLI interface specification for the cyber-constructor (cfc) tool
+purpose: Complete CLI interface specification for the constructor-studio (cfs) tool
 drivers:
-  - cpt-cypilot-fr-core-installer
-  - cpt-cypilot-fr-core-init
-  - cpt-cypilot-fr-core-skill-engine
-  - cpt-cypilot-fr-core-cli-config
-  - cpt-cypilot-fr-core-version
-  - cpt-cypilot-fr-core-template-qa
-  - cpt-cypilot-fr-core-doctor
-  - cpt-cypilot-fr-core-hooks
-  - cpt-cypilot-fr-core-completions
-  - cpt-cypilot-fr-core-traceability
-  - cpt-cypilot-fr-core-kits
-  - cpt-cypilot-fr-core-workspace
-  - cpt-cypilot-interface-cli-json
+  - cpt-studio-fr-core-installer
+  - cpt-studio-fr-core-init
+  - cpt-studio-fr-core-skill-engine
+  - cpt-studio-fr-core-cli-config
+  - cpt-studio-fr-core-version
+  - cpt-studio-fr-core-template-qa
+  - cpt-studio-fr-core-doctor
+  - cpt-studio-fr-core-hooks
+  - cpt-studio-fr-core-completions
+  - cpt-studio-fr-core-traceability
+  - cpt-studio-fr-core-kits
+  - cpt-studio-fr-core-workspace
+  - cpt-studio-fr-core-mirror-override
+  - cpt-studio-interface-cli-json
+  - cpt-studio-fr-core-dependency-mapping
+  - cpt-studio-fr-core-cdsl
+  - cpt-studio-fr-core-workflows
+  - cpt-studio-fr-core-execution-plans
+  - cpt-studio-fr-core-agents
 ---
 
-# Cyber Constructor CLI Specification
+# Constructor Studio CLI Specification
 
 
 <!-- toc -->
@@ -50,6 +56,14 @@ drivers:
   - [config](#config)
   - [hook](#hook)
   - [completions](#completions)
+  - [map](#map)
+  - [spec-coverage](#spec-coverage)
+  - [delegate](#delegate)
+- [Mirror Commands](#mirror-commands)
+  - [mirror override](#mirror-override)
+  - [mirror list](#mirror-list)
+  - [mirror remove](#mirror-remove)
+  - [mirror clear](#mirror-clear)
 - [Kit Commands](#kit-commands)
   - [SDLC Kit Commands](#sdlc-kit-commands)
 - [Workspace Commands](#workspace-commands)
@@ -75,10 +89,10 @@ drivers:
 
 ## Overview
 
-Cyber Constructor provides a CLI tool invoked as `cfc`. The keyword `cf-constructor` is reserved for agent chat prompts. The tool follows a two-layer architecture:
+Constructor Studio provides a CLI tool invoked as `cfs`. The keyword `cf` is reserved for agent chat prompts. The tool follows a two-layer architecture:
 
 1. **Global CLI Proxy** — a thin shell installed globally via `pipx`, containing zero business logic. It resolves the correct skill bundle and proxies all commands to it.
-2. **Skill Engine** — the actual command executor, installed either in the project (`{cf-constructor-path}/`) or in the global cache (`~/.cf-constructor/cache/`).
+2. **Skill Engine** — the actual command executor, installed either in the project (`{cf-studio-path}/`) or in the global cache (`~/.cf-studio/cache/`).
 
 All CLI output is JSON to stdout. Human-readable messages go to stderr. This enables piping and programmatic consumption.
 
@@ -87,10 +101,10 @@ All CLI output is JSON to stdout. Human-readable messages go to stderr. This ena
 ## Installation
 
 ```bash
-pipx install git+https://github.com/cyberfabric/cyber-constructor.git
+pipx install git+https://github.com/constructorfabric/studio.git
 ```
 
-After installation, `cfc` is available globally as the CLI command. The `cf-constructor` keyword is reserved for agent chat prompts.
+After installation, `cfs` is available globally as the CLI command. The `cf` keyword is reserved for agent chat prompts.
 
 **Requirements**:
 - Python 3.11+ (requires `tomllib` from stdlib)
@@ -106,14 +120,14 @@ After installation, `cfc` is available globally as the CLI command. The `cf-cons
 
 On every invocation, the CLI Proxy executes the following sequence:
 
-1. **Cache check** — if `~/.cf-constructor/cache/` does not exist or is empty, download the latest skill bundle from GitHub before proceeding.
-2. **Target resolution** — if the current directory is inside a project with a Cyber Constructor install directory (default: `.cf-constructor/`), proxy to the project-installed skill. Otherwise, proxy to the cached skill.
+1. **Cache check** — if `~/.cf-studio/cache/` does not exist or is empty, download the latest skill bundle from GitHub before proceeding.
+2. **Target resolution** — if the current directory is inside a project with a Constructor Studio install directory (default: `.cf-studio/`), proxy to the project-installed skill. Otherwise, proxy to the cached skill.
 3. **Background version check** — start a non-blocking check for newer versions. The check MUST NOT delay the main command. Concurrent checks are prevented via a lock file. A newly available version becomes visible on the next invocation.
-4. **Version notice** — if the cached version is newer than the project-installed version, display a notice to stderr: `cfc: update available ({project_version} → {cached_version}). Run: cfc update`.
+4. **Version notice** — if the cached version is newer than the project-installed version, display a notice to stderr: `cfs: update available ({project_version} → {cached_version}). Run: cfs update`.
 5. **Command execution** — forward all arguments to the resolved skill engine.
 
 ```
-cfc <command> [subcommand] [options] [arguments]
+cfs <command> [subcommand] [options] [arguments]
 ```
 
 ---
@@ -126,6 +140,8 @@ cfc <command> [subcommand] [options] [arguments]
 - **stderr** — human-readable messages (progress, warnings, notices).
 - **`--quiet`** — suppress stderr output.
 - **`--verbose`** — increase stderr detail level.
+
+**Exception 1**: the `cfs mirror *` subcommand family (`mirror override`, `mirror list`, `mirror remove`, `mirror clear`, and the `--help` / no-subcommand fallback) is user-facing and emits **plain-text** output to stdout instead of JSON. The JSON-only convention does NOT apply to these subcommands.
 
 ### Exit Codes
 
@@ -151,33 +167,33 @@ cfc <command> [subcommand] [options] [arguments]
 
 ### init
 
-Initialize Cyber Constructor in a project.
+Initialize Constructor Studio in a project.
 
 ```
-cfc init [--dir DIR] [--agents AGENTS]
+cfs init [--dir DIR] [--agents AGENTS]
 ```
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--dir` | `.cf-constructor` | Installation directory |
+| `--dir` | `.cf-studio` | Installation directory |
 | `--agents` | all | Comma-separated agent list: `windsurf,cursor,claude,copilot,openai` |
 
 **Behavior**:
-1. Check if Cyber Constructor is already installed. If yes → abort with message, suggest `cfc update`.
+1. Check if Constructor Studio is already installed. If yes → abort with message, suggest `cfs update`.
 2. If interactive terminal → prompt for installation directory and agent selection.
 3. Copy skill bundle from cache into the install directory.
 4. Define the **root system** — derive name and slug from the project directory name (e.g., directory `my-app/` → `name = "MyApp"`, `slug = "my-app"`).
-5. Create `{cf-constructor-path}/config/core.toml` with project root, root system definition, and kit registrations.
-6. Create `{cf-constructor-path}/config/artifacts.toml` with a fully populated root system entry including default SDLC autodetect rules:
+5. Create `{cf-studio-path}/config/core.toml` with project root, root system definition, and kit registrations.
+6. Create `{cf-studio-path}/config/artifacts.toml` with a fully populated root system entry including default SDLC autodetect rules:
    - `artifacts_dir = "architecture"` (default artifact directory)
    - Autodetect rules for standard artifact kinds: `PRD.md`, `DESIGN.md`, `ADR/*.md`, `DECOMPOSITION.md`, `features/*.md` — all with default traceability levels and glob patterns
    - Default codebase entry: `path = "src"`, common extensions
    - Default ignore patterns: `vendor/*`, `node_modules/*`, `.git/*`
-7. Install all available kits by copying kit files into `{cf-constructor-path}/config/kits/<slug>/` (constraints, artifacts, workflows, SKILL.md) and registering in `core.toml`.
+7. Install all available kits by copying kit files into `{cf-studio-path}/config/kits/<slug>/` (constraints, artifacts, workflows, SKILL.md) and registering in `core.toml`.
 8. Generate agent entry points for selected agents.
 9. Inject root `AGENTS.md` entry: insert managed `<!-- @cf:root-agents -->` block at the beginning of `{project_root}/AGENTS.md` (create file if absent).
-10. Create `{cf-constructor-path}/config/AGENTS.md` with default WHEN rules for standard system prompts.
-11. Output prompt suggestion: `cf-constructor on` or `cf-constructor help` (these are agent chat prompts, not CLI commands).
+10. Create `{cf-studio-path}/config/AGENTS.md` with default WHEN rules for standard system prompts.
+11. Output prompt suggestion: `cf on` or `cf help` (these are agent chat prompts, not CLI commands).
 
 **Root AGENTS.md integrity**: every CLI invocation (not just `init`) verifies the `<!-- @cf:root-agents -->` block in root `AGENTS.md` exists and contains the correct path. If missing or stale, the block is silently re-injected. See [sysprompts.md](./sysprompts.md) for full format.
 
@@ -185,7 +201,7 @@ cfc init [--dir DIR] [--agents AGENTS]
 ```json
 {
   "status": "ok",
-  "install_dir": ".cf-constructor",
+  "install_dir": ".cf-studio",
   "kits_installed": ["sdlc"],
   "agents_configured": ["windsurf", "cursor", "claude", "copilot", "openai"],
   "systems": [{"name": "my-project", "slug": "my-project", "kit": "sdlc"}]
@@ -201,7 +217,7 @@ cfc init [--dir DIR] [--agents AGENTS]
 Update project skill to the cached version.
 
 ```
-cfc update [--project-root P] [--dry-run] [--no-interactive] [-y/--yes]
+cfs update [--project-root P] [--dry-run] [--no-interactive] [-y/--yes]
 ```
 
 | Option | Description |
@@ -212,7 +228,7 @@ cfc update [--project-root P] [--dry-run] [--no-interactive] [-y/--yes]
 | `-y`, `--yes` | Auto-approve all prompts (no interaction) |
 
 **Behavior**:
-1. Resolve project root and Cyber Constructor directory.
+1. Resolve project root and Constructor Studio directory.
 2. Replace `.core/` from cache (always force-overwrite).
 3. For each kit in cache: compare kit version (skip same, file-level diff if newer, copy on first install), update kit files in `config/kits/{slug}/` via interactive diff prompts.
 4. Write aggregate `.gen/AGENTS.md` and `.gen/SKILL.md` from collected kit parts.
@@ -248,7 +264,7 @@ cfc update [--project-root P] [--dry-run] [--no-interactive] [-y/--yes]
 Validate artifacts.
 
 ```
-cfc validate [--artifact PATH] [--system SYSTEM] [--kind KIND] [--strict]
+cfs validate [--artifact PATH] [--system SYSTEM] [--kind KIND] [--strict]
 ```
 
 | Option | Description |
@@ -260,7 +276,7 @@ cfc validate [--artifact PATH] [--system SYSTEM] [--kind KIND] [--strict]
 | `--local-only` | Skip cross-repo workspace validation (validate local repo only) |
 | `--source SOURCE` | Target a specific workspace source for validation (uses that source's adapter context). Returns error when used outside workspace mode. |
 
-**Workspace flag interaction**: `--local-only` and `--source` are independent and can be combined. `--source` narrows **which** artifacts are validated (a single source's artifacts using its own adapter context). `--local-only` controls **whether cross-repo IDs** from other workspace sources are included as reference context. Examples: `cfc validate --source backend` validates the backend source with cross-repo references; `cfc validate --source backend --local-only` validates the backend source without cross-repo references; `cfc validate --local-only` validates the primary repo only without cross-repo references.
+**Workspace flag interaction**: `--local-only` and `--source` are independent and can be combined. `--source` narrows **which** artifacts are validated (a single source's artifacts using its own adapter context). `--local-only` controls **whether cross-repo IDs** from other workspace sources are included as reference context. Examples: `cfs validate --source backend` validates the backend source with cross-repo references; `cfs validate --source backend --local-only` validates the backend source without cross-repo references; `cfs validate --local-only` validates the primary repo only without cross-repo references.
 
 **Without arguments**: validate all registered artifacts across all systems.
 
@@ -308,7 +324,7 @@ cfc validate [--artifact PATH] [--system SYSTEM] [--kind KIND] [--strict]
 List IDs matching criteria.
 
 ```
-cfc list-ids [--kind KIND] [--pattern PATTERN] [--system SYSTEM] [--format FORMAT]
+cfs list-ids [--kind KIND] [--pattern PATTERN] [--system SYSTEM] [--format FORMAT]
 ```
 
 | Option | Description |
@@ -324,7 +340,7 @@ cfc list-ids [--kind KIND] [--pattern PATTERN] [--system SYSTEM] [--format FORMA
 {
   "ids": [
     {
-      "id": "cpt-cypilot-fr-core-init",
+      "id": "cpt-studio-fr-core-init",
       "kind": "fr",
       "file": "architecture/PRD.md",
       "line": 154,
@@ -345,19 +361,19 @@ cfc list-ids [--kind KIND] [--pattern PATTERN] [--system SYSTEM] [--format FORMA
 Find where an ID is defined.
 
 ```
-cfc where-defined --id <id>
+cfs where-defined --id <id>
 ```
 
 **Output** (JSON):
 ```json
 {
-  "id": "cpt-cypilot-fr-core-init",
+  "id": "cpt-studio-fr-core-init",
   "defined_in": {
     "file": "architecture/PRD.md",
     "line": 154,
     "kind": "fr",
     "checked": false,
-    "content_preview": "The system MUST provide an interactive `cfc init` command..."
+    "content_preview": "The system MUST provide an interactive `cfs init` command..."
   }
 }
 ```
@@ -371,13 +387,13 @@ cfc where-defined --id <id>
 Find where an ID is referenced.
 
 ```
-cfc where-used --id <id>
+cfs where-used --id <id>
 ```
 
 **Output** (JSON):
 ```json
 {
-  "id": "cpt-cypilot-fr-core-init",
+  "id": "cpt-studio-fr-core-init",
   "references": [
     {
       "file": "architecture/DESIGN.md",
@@ -398,17 +414,17 @@ cfc where-used --id <id>
 Get content block for an ID definition.
 
 ```
-cfc get-content --id <id>
+cfs get-content --id <id>
 ```
 
 **Output** (JSON):
 ```json
 {
-  "id": "cpt-cypilot-fr-core-init",
+  "id": "cpt-studio-fr-core-init",
   "file": "architecture/PRD.md",
   "line_start": 154,
   "line_end": 159,
-  "content": "The system MUST provide an interactive `cfc init` command..."
+  "content": "The system MUST provide an interactive `cfs init` command..."
 }
 ```
 
@@ -421,7 +437,7 @@ cfc get-content --id <id>
 List all ID kinds known to the system.
 
 ```
-cfc list-id-kinds [--system SYSTEM]
+cfs list-id-kinds [--system SYSTEM]
 ```
 
 **Output** (JSON):
@@ -444,14 +460,14 @@ cfc list-id-kinds [--system SYSTEM]
 Show project status and registry information.
 
 ```
-cfc info
+cfs info
 ```
 
 **Output** (JSON):
 ```json
 {
-  "relative_path": ".cf-constructor",
-  "artifacts_toml": ".cf-constructor/config/artifacts.toml",
+  "relative_path": ".cf-studio",
+  "artifacts_toml": ".cf/config/artifacts.toml",
   "systems": [
     {
       "name": "MyApp",
@@ -477,7 +493,7 @@ cfc info
 Show generated agent integration files without writing anything.
 
 ```
-cfc agents [--agent AGENT | --openai] [--root PATH] [--cf-constructor-root PATH] [--config PATH]
+cfs agents [--agent AGENT | --openai] [--root PATH] [--cf-root PATH] [--config PATH]
 ```
 
 | Option | Description |
@@ -485,11 +501,11 @@ cfc agents [--agent AGENT | --openai] [--root PATH] [--cf-constructor-root PATH]
 | `--agent AGENT` | Limit output to a specific agent: `windsurf`, `cursor`, `claude`, `copilot`, `openai` |
 | `--openai` | Shortcut for `--agent openai` |
 | `--root PATH` | Project root directory to search from (default: current directory) |
-| `--cf-constructor-root PATH` | Explicit Cyber Constructor core root (optional override) |
+| `--cf-root PATH` | Explicit Constructor Studio core root (optional override) |
 | `--config PATH` | Path to agents config JSON (optional; built-in defaults used when omitted) |
 
 **Behavior**:
-1. Resolve project root and Cyber Constructor directory.
+1. Resolve project root and Constructor Studio directory.
 2. Load agent config (or built-in defaults).
 3. Inspect generated workflow proxies, skill shims, and subagent files for the selected agents.
 4. Return a read-only per-agent listing; no files are written.
@@ -503,7 +519,7 @@ cfc agents [--agent AGENT | --openai] [--root PATH] [--cf-constructor-root PATH]
 Generate or update agent integration files.
 
 ```
-cfc generate-agents [--agent AGENT | --openai] [--root PATH] [--cf-constructor-root PATH] [--config PATH] [--dry-run]
+cfs generate-agents [--agent AGENT | --openai] [--root PATH] [--cf-root PATH] [--config PATH] [--dry-run]
 ```
 
 | Option | Description |
@@ -511,7 +527,7 @@ cfc generate-agents [--agent AGENT | --openai] [--root PATH] [--cf-constructor-r
 | `--agent AGENT` | Generate for a specific agent only: `windsurf`, `cursor`, `claude`, `copilot`, `openai` |
 | `--openai` | Shortcut for `--agent openai` |
 | `--root PATH` | Project root directory to search from (default: current directory) |
-| `--cf-constructor-root PATH` | Explicit Cyber Constructor core root (optional override) |
+| `--cf-root PATH` | Explicit Constructor Studio core root (optional override) |
 | `--config PATH` | Path to agents config JSON (optional; built-in defaults used when omitted) |
 | `--dry-run` | Compute planned changes without writing files |
 
@@ -532,15 +548,15 @@ cfc generate-agents [--agent AGENT | --openai] [--root PATH] [--cf-constructor-r
 | Cursor | `.cursor/commands/`, `.cursor/agents/`, `.agents/skills/` (shared) |
 | Claude | `.claude/skills/`, `.claude/agents/` |
 | Copilot | `.github/prompts/`, `.github/copilot-instructions.md`, `.github/agents/`, `.agents/skills/` (shared) |
-| OpenAI | `.agents/skills/` (shared), `.codex/.cf-constructor-installed` (marker), `.codex/agents/` |
+| OpenAI | `.agents/skills/` (shared), `.codex/.constructor-studio-installed` (marker), `.codex/agents/` |
 
 **Detection model** (used by `info` and `update --auto-regenerate`):
-Each agent is detected via Cyber Constructor-specific generated files, not generic tool directories.
-- **Claude**: `.claude/skills/cf-constructor/SKILL.md`
-- **Windsurf**: `.windsurf/workflows/cf-constructor.md` (primary) or legacy `.windsurf/skills/cypilot/SKILL.md` / `.windsurf/skills/cf-constructor/SKILL.md` with `{cf-constructor-path}/` follow-link
-- **Cursor**: `.cursor/commands/cf-constructor.md` (primary) or legacy `.cursor/rules/cypilot.mdc` / `.cursor/rules/cf-constructor.mdc` with `{cf-constructor-path}/` follow-link
-- **Copilot**: `.github/.cf-constructor-installed` (primary), `.github/prompts/cf-constructor.prompt.md` / legacy `.github/prompts/cypilot.prompt.md`, or `.github/copilot-instructions.md` starting with `# Cyber Constructor` / `# Cypilot` (legacy). User-authored `copilot-instructions.md` files are never overwritten.
-- **OpenAI**: `.codex/.cf-constructor-installed` (primary; legacy `.codex/.cypilot-installed` still recognized), `.codex/agents/` with Cyber Constructor content (legacy mixed-install), or `.agents/skills/cf-constructor/SKILL.md` only when no other agent's primary or legacy marker is present (legacy pure)
+Each agent is detected via Constructor Studio-specific generated files, not generic tool directories.
+- **Claude**: `.claude/skills/cf/SKILL.md`
+- **Windsurf**: `.windsurf/workflows/cf.md` (primary) or legacy `.windsurf/skills/studio/SKILL.md` / `.windsurf/skills/cf/SKILL.md` with `{cf-studio-path}/` follow-link
+- **Cursor**: `.cursor/commands/cf.md` (primary) or legacy `.cursor/rules/studio.mdc` / `.cursor/rules/cf.mdc` with `{cf-studio-path}/` follow-link
+- **Copilot**: `.github/.constructor-studio-installed` (primary), `.github/prompts/cf.prompt.md` / legacy `.github/prompts/studio.prompt.md`, or `.github/copilot-instructions.md` starting with `# Constructor Studio` / `# Studio` (legacy). User-authored `copilot-instructions.md` files are never overwritten.
+- **OpenAI**: `.codex/.constructor-studio-installed` (primary; legacy `.codex/.studio-installed` still recognized), `.codex/agents/` with Constructor Studio content (legacy mixed-install), or `.agents/skills/cf/SKILL.md` only when no other agent's primary or legacy marker is present (legacy pure)
 
 **Skill file model**:
 - **Kit workflow skills**: Generated as shared `.agents/skills/{id}/SKILL.md` for all non-Claude agents
@@ -556,7 +572,7 @@ Legacy per-tool manifest skill files are migrated away only when they match gene
 
 ### generate-resources
 
-> **DEPRECATED per `cpt-cypilot-adr-remove-blueprint-system`**: This command has been removed. Kit files are now authored directly and installed/updated via `cfc kit install` / `cfc kit update`. No generation step is needed.
+> **DEPRECATED per `cpt-studio-adr-remove-blueprint-system`**: This command has been removed. Kit files are now authored directly and installed/updated via `cfs kit install` / `cfs kit update`. No generation step is needed.
 
 **Exit**: 0 on success, 1 on error.
 
@@ -567,7 +583,7 @@ Legacy per-tool manifest skill files are migrated away only when they match gene
 Environment health check.
 
 ```
-cfc doctor
+cfs doctor
 ```
 
 **Checks performed**:
@@ -577,10 +593,10 @@ cfc doctor
 | git available | `git --version` succeeds (optional, not required) |
 | gh CLI | `gh auth status` succeeds (required only for PR commands) |
 | Agent detection | at least one supported agent directory found |
-| Config integrity | `{cf-constructor-path}/config/core.toml` exists and parses, schema valid |
+| Config integrity | `{cf-studio-path}/config/core.toml` exists and parses, schema valid |
 | Skill version | project skill matches or is newer than cache |
 | Kit structure | all registered kits have valid entry points |
-| Kit file integrity | all kit files in `{cf-constructor-path}/config/kits/<slug>/` present and valid (conf.toml, constraints.toml, artifacts/, SKILL.md) |
+| Kit file integrity | all kit files in `{cf-studio-path}/config/kits/<slug>/` present and valid (conf.toml, constraints.toml, artifacts/, SKILL.md) |
 
 **Output** (JSON):
 ```json
@@ -603,12 +619,12 @@ cfc doctor
 Validate all example artifacts against their templates.
 
 ```
-cfc self-check [--kit KIT] [--verbose]
+cfs self-check [--kit KIT] [--verbose]
 ```
 
 | Option | Description |
 |--------|-------------|
-| `--kit KIT` | Validate only a specific kit (e.g., `cypilot-sdlc`) |
+| `--kit KIT` | Validate only a specific kit (e.g., `studio-sdlc`) |
 | `--verbose` | Include full per-template error/warning lists |
 
 **Behavior**:
@@ -618,7 +634,7 @@ cfc self-check [--kit KIT] [--verbose]
 4. Validate each example artifact against its template structure and constraints.
 5. Report per-kit, per-kind PASS/FAIL with error details.
 
-> **Note**: `self-check` is also invoked automatically at the end of `cfc update`. If it fails, the update status becomes WARN and the self-check report is included in the update output.
+> **Note**: `self-check` is also invoked automatically at the end of `cfs update`. If it fails, the update status becomes WARN and the self-check report is included in the update output.
 
 **Exit**: 0=PASS, 2=FAIL, 1=ERROR.
 
@@ -629,13 +645,13 @@ cfc self-check [--kit KIT] [--verbose]
 Manage project configuration.
 
 ```
-cfc config <subcommand> [options]
+cfs config <subcommand> [options]
 ```
 
 #### config show
 
 ```
-cfc config show [--section SECTION]
+cfs config show [--section SECTION]
 ```
 
 Display current core configuration. Optional `--section` to show only a part (systems, kits, ignore).
@@ -643,15 +659,15 @@ Display current core configuration. Optional `--section` to show only a part (sy
 #### config system add
 
 ```
-cfc config system add --name NAME --slug SLUG --kit KIT
+cfs config system add --name NAME --slug SLUG --kit KIT
 ```
 
-Add a system definition to `{cf-constructor-path}/config/core.toml`.
+Add a system definition to `{cf-studio-path}/config/core.toml`.
 
 #### config system remove
 
 ```
-cfc config system remove --slug SLUG
+cfs config system remove --slug SLUG
 ```
 
 Remove a system definition.
@@ -659,13 +675,13 @@ Remove a system definition.
 #### config system rename
 
 ```
-cfc config system rename --slug SLUG --new-name NAME [--new-slug SLUG]
+cfs config system rename --slug SLUG --new-name NAME [--new-slug SLUG]
 ```
 
 #### config ignore add
 
 ```
-cfc config ignore add --pattern PATTERN [--reason REASON]
+cfs config ignore add --pattern PATTERN [--reason REASON]
 ```
 
 Add a path pattern to the ignore list.
@@ -673,13 +689,13 @@ Add a path pattern to the ignore list.
 #### config ignore remove
 
 ```
-cfc config ignore remove --pattern PATTERN
+cfs config ignore remove --pattern PATTERN
 ```
 
 #### config kit install
 
 ```
-cfc config kit install --slug SLUG --path PATH
+cfs config kit install --slug SLUG --path PATH
 ```
 
 Register and install a kit.
@@ -695,13 +711,13 @@ All config subcommands support `--dry-run` to preview changes without writing.
 Manage git pre-commit hooks.
 
 ```
-cfc hook install
-cfc hook uninstall
+cfs hook install
+cfs hook uninstall
 ```
 
-**`install`**: creates a git pre-commit hook that runs `cfc lint` on changed artifact files. The hook MUST complete in ≤ 5 seconds for typical changes.
+**`install`**: creates a git pre-commit hook that runs `cfs lint` on changed artifact files. The hook MUST complete in ≤ 5 seconds for typical changes.
 
-**`uninstall`**: removes the Cypilot pre-commit hook.
+**`uninstall`**: removes the Studio pre-commit hook.
 
 **Exit**: 0 on success, 1 on error.
 
@@ -712,12 +728,248 @@ cfc hook uninstall
 Manage shell completions.
 
 ```
-cfc completions install [--shell SHELL]
+cfs completions install [--shell SHELL]
 ```
 
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--shell` | auto-detect | `bash`, `zsh`, or `fish` |
+
+**Exit**: 0 on success, 1 on error.
+
+---
+
+### map
+
+Generate a dependency map of the project's markdown and source files.
+
+```
+cfs map [--out PATH] [--format html|json] [--config FILE] [--no-source] [--local-only] [--inline-data] [--root PATH] [--verbose]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--out PATH` | `md-map.html` | Output file path |
+| `--format html\|json` | `html` | Output format |
+| `--config FILE` | none | Path to `md-map.toml` category override config |
+| `--no-source` | false | Skip source files; emit only markdown nodes and `file-link`/`cpt-doc` edges |
+| `--local-only` | false | Disable workspace federation; scan local source only |
+| `--inline-data` | false | Embed JSON payload inline in HTML; no sidecar `.js` file |
+| `--root PATH` | cwd | Project root directory |
+| `--verbose` | false | Include extra detail in stderr progress messages |
+
+**Drivers**: `cpt-studio-fr-core-dependency-mapping`, `cpt-studio-fr-core-traceability`
+
+**Behavior**:
+1. Discover workspace sources via `find_workspace_config` (skipped when `--local-only`).
+2. Load optional category override from `md-map.toml` or `--config` path.
+3. For each reachable source, walk all `.md` files and registered codebase source files; extract cpt-ID definitions, references, and `@cpt-*` markers.
+4. Build `cpt-doc` (markdown→markdown) and `cpt-impl` (source→markdown) edges; detect phantom cpt-IDs (referenced but undefined).
+5. Extract `file-link` edges from markdown hyperlinks.
+6. Enrich edges with definition-site context.
+7. Compute rectpack category layout.
+8. Serialize to JSON; if `--format html`, wrap in self-contained HTML viewer using vis-network CDN.
+9. Write output to `--out` path. Print summary: node count, edge count, phantom count.
+
+**Stdout**: output file path (one line) plus JSON summary to stderr.
+
+**Stderr**: progress messages, node/edge counts, phantom count summary.
+
+**Exit codes**:
+- 0 — map generated successfully
+- 1 — error (missing config, write failure)
+- 2 — invalid `md-map.toml` override config
+
+---
+
+### spec-coverage
+
+Measure CDSL marker coverage in codebase files.
+
+```
+cfs spec-coverage [--min-coverage N] [--min-file-coverage N] [--min-granularity N] [--min-file-granularity N] [--verbose] [--output PATH]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--min-coverage N` | Minimum overall coverage percentage (0–100); exit 2 if below |
+| `--min-file-coverage N` | Minimum per-file coverage percentage; exit 2 if any file is below |
+| `--min-granularity N` | Minimum overall granularity score (0–1); exit 2 if below |
+| `--min-file-granularity N` | Minimum per-file granularity score; exit 2 if any covered file is below |
+| `--verbose` | Include per-file marker details in output |
+| `--output PATH` | Write report to file instead of stdout |
+
+**Drivers**: `cpt-studio-fr-core-traceability`, `cpt-studio-fr-core-cdsl`
+
+**Behavior**:
+1. Load project context and resolve all registered codebase files from `artifacts.toml`.
+2. For each code file, scan for `@cpt-algo`, `@cpt-flow`, `@cpt-dod` scope markers and `@cpt-begin`/`@cpt-end` block markers.
+3. Calculate coverage percentage (ratio of spec-covered effective lines to total effective lines).
+4. Calculate granularity score: instruction density (`min(1.0, block_count / (effective_lines / 10))`). Files with only scope markers and no block markers receive 0.0.
+5. If any threshold flag is set and the metric is below threshold, exit 2.
+
+**Stdout** (JSON):
+```json
+{
+  "status": "PASS",
+  "summary": {
+    "total_files": 12,
+    "covered_files": 8,
+    "coverage_pct": 72.4,
+    "granularity_score": 0.61
+  },
+  "files": [...],
+  "threshold_failures": []
+}
+```
+
+**Stderr**: human-readable progress and summary.
+
+**Exit codes**:
+- 0 — coverage meets all thresholds (or no thresholds specified)
+- 1 — error (no project found, no codebase entries configured)
+- 2 — coverage or granularity below a specified threshold
+
+---
+
+### delegate
+
+Compile a Constructor Studio plan and delegate to ralphex for autonomous execution.
+
+```
+cfs delegate <plan_dir> [--mode execute|tasks-only|review] [--worktree] [--serve] [--no-serve] [--dry-run] [--default-branch BRANCH] [--plans-dir PATH] [--root PATH]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `plan_dir` | required | Path to the plan directory containing `plan.toml` |
+| `--mode execute\|tasks-only\|review` | `execute` | Delegation mode |
+| `--worktree` | false | Request worktree isolation (valid for `execute` and `tasks-only` only) |
+| `--serve` / `--no-serve` | `--serve` | Enable/disable dashboard serving |
+| `--dry-run` | false | Assemble the delegation command without invoking ralphex |
+| `--default-branch BRANCH` | `main` | Default branch for review precondition |
+| `--plans-dir PATH` | none | Override plans directory (highest precedence) |
+| `--root PATH` | cwd | Project root directory |
+
+**Drivers**: `cpt-studio-fr-core-workflows`, `cpt-studio-fr-core-execution-plans`, `cpt-studio-fr-core-agents`
+
+**Behavior**:
+1. Discover and validate `ralphex` executable (PATH → persisted `core.toml` path).
+2. Load plan manifest from `<plan_dir>/plan.toml`.
+3. Compile Studio plan into ralphex-compatible Markdown (`## Validation Commands` + `### Task N:` sections).
+4. Resolve plans directory from config precedence: `--plans-dir` > `.ralphex/config` > `~/.config/ralphex/` > `docs/plans/` (default).
+5. Write exported plan to `{plans_dir}/{task-slug}.md`.
+6. If `--mode review`, generate `.ralphex/prompts/studio-review-override.md` before invocation.
+7. Invoke `ralphex` with appropriate mode flags unless `--dry-run`.
+8. Return delegation status, ralphex exit code, and output references.
+
+**Stdout** (JSON):
+```json
+{
+  "status": "delegated",
+  "ralphex_path": "/usr/local/bin/ralphex",
+  "validation": {"status": "available", "version": "1.2.3"},
+  "plan_file": "docs/plans/my-task.md",
+  "command": ["ralphex", "docs/plans/my-task.md"],
+  "mode": "execute",
+  "lifecycle_state": "delegated"
+}
+```
+
+**Stderr**: progress messages (discovery, export, invocation status).
+
+**Exit codes**:
+- 0 — delegation successful or dry-run assembled
+- 1 — input error (missing plan directory, missing `plan.toml`, invalid root)
+- 2 — delegation error (ralphex not found, validation failed, ralphex non-zero exit)
+
+---
+
+## Mirror Commands
+
+Mirror commands manage URL override rules that redirect default GitHub repository and asset URLs to alternative hosts before any network operation is performed.
+
+### mirror override
+
+Register or update a URL mirror override.
+
+```
+cfs mirror override <old-url> <new-url>
+```
+
+**Behavior**:
+1. Canonicalize both URLs (strip scheme, trailing `.git`, trailing `/`).
+2. If `~/.constructor-studio/mirrors.toml` exists, write there. Else if `${XDG_CONFIG_HOME:-~/.config}/constructor-studio/mirrors.toml` exists, write there. Else create the XDG path.
+3. Store as a `[[mirror]]` TOML entry with `from` and `to` fields.
+
+**Output** (plain text — see Exception 1 under [Output](#output)):
+```
+Registered: <old-url> -> <new-url>  (wrote: <path>)
+```
+
+**Exit**: 0 on success, 1 on error.
+
+---
+
+### mirror list
+
+Print current effective overrides with their source config file.
+
+```
+cfs mirror list
+```
+
+Reads and merges both config files (XDG first, brand-home second — later entries override on duplicate `from`). Prints each entry with its source path.
+
+**Output** (plain text — see Exception 1 under [Output](#output)):
+```
+<from>  ->  <to>      [<source-path>]
+```
+
+When no overrides are registered:
+```
+(no overrides)
+```
+
+**Exit**: 0.
+
+---
+
+### mirror remove
+
+Delete a single override entry.
+
+```
+cfs mirror remove <old-url>
+```
+
+Removes the entry with the matching canonicalized `from` URL from whichever config file(s) contain it.
+
+**Output** (plain text — see Exception 1 under [Output](#output)):
+```
+Removed: <old-url>
+```
+
+If not found, a message is written to stderr and exit code 1 is returned.
+
+**Exit**: 0 on success, 1 on error.
+
+---
+
+### mirror clear
+
+Delete all override entries.
+
+```
+cfs mirror clear
+```
+
+Clears all `[[mirror]]` entries from the write-target config file (applies write-target resolution rules). Prompts for confirmation unless `--yes` is passed.
+
+**Output** (plain text — see Exception 1 under [Output](#output)):
+```
+Cleared <N> override(s).
+```
 
 **Exit**: 0 on success, 1 on error.
 
@@ -732,7 +984,7 @@ Kit plugins register their own CLI subcommands under the kit's slug namespace.
 #### sdlc autodetect show
 
 ```
-cfc sdlc autodetect show --system SYSTEM
+cfs sdlc autodetect show --system SYSTEM
 ```
 
 Show autodetect rules (artifact patterns, traceability levels, codebase paths) for a system.
@@ -740,19 +992,19 @@ Show autodetect rules (artifact patterns, traceability levels, codebase paths) f
 #### sdlc autodetect add-artifact
 
 ```
-cfc sdlc autodetect add-artifact --system SYSTEM --kind KIND --pattern PATTERN [--traceability FULL|DOCS-ONLY] [--required]
+cfs sdlc autodetect add-artifact --system SYSTEM --kind KIND --pattern PATTERN [--traceability FULL|DOCS-ONLY] [--required]
 ```
 
 #### sdlc autodetect add-codebase
 
 ```
-cfc sdlc autodetect add-codebase --system SYSTEM --name NAME --path PATH --extensions EXTS
+cfs sdlc autodetect add-codebase --system SYSTEM --name NAME --path PATH --extensions EXTS
 ```
 
 #### sdlc pr-review
 
 ```
-cfc sdlc pr-review <number> [--checklist CHECKLIST] [--prompt PROMPT]
+cfs sdlc pr-review <number> [--checklist CHECKLIST] [--prompt PROMPT]
 ```
 
 Review a GitHub PR. Fetches diffs and metadata via `gh` CLI, analyzes against configured prompts and checklists. Read-only (no local modifications). Always re-fetches on each invocation.
@@ -760,7 +1012,7 @@ Review a GitHub PR. Fetches diffs and metadata via `gh` CLI, analyzes against co
 #### sdlc pr-status
 
 ```
-cfc sdlc pr-status <number>
+cfs sdlc pr-status <number>
 ```
 
 Check PR status: comment severity classification, CI status, merge conflict state, unreplied comment audit.
@@ -775,16 +1027,16 @@ Multi-repo workspace federation commands manage cross-repo artifact traceability
 
 ### workspace-init
 
-Initialize a multi-repo workspace by scanning nested sub-directories for repos with Cyber Constructor installs.
+Initialize a multi-repo workspace by scanning nested sub-directories for repos with Constructor Studio installs.
 
 ```
-cfc workspace-init [--root DIR] [--output PATH] [--inline] [--force] [--max-depth N] [--dry-run]
+cfs workspace-init [--root DIR] [--output PATH] [--inline] [--force] [--max-depth N] [--dry-run]
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--root DIR` | Directory to scan for nested repo sub-dirs (default: current project root) |
-| `--output PATH` | Where to write `.cf-constructor-workspace.toml` (default: scan root) |
+| `--output PATH` | Where to write `.studio-workspace.toml` (default: scan root) |
 | `--inline` | Write workspace config inline into current repo's `config/core.toml` instead of standalone file |
 | `--force` | Force reinitialization when a workspace config already exists |
 | `--max-depth N` | Maximum directory depth for nested repo scanning (default: 3). Limits filesystem traversal to prevent unbounded scanning. |
@@ -792,7 +1044,7 @@ cfc workspace-init [--root DIR] [--output PATH] [--inline] [--force] [--max-dept
 
 **Behavior**:
 1. Find project root (`.git` or `AGENTS.md` with `@cf:root-agents` marker).
-2. Scan nested sub-directories (up to `--max-depth` levels, default 3) for project directories with Cyber Constructor adapters. Symlinks are not followed during scanning to prevent loops and traversal issues.
+2. Scan nested sub-directories (up to `--max-depth` levels, default 3) for project directories with Constructor Studio adapters. Symlinks are not followed during scanning to prevent loops and traversal issues.
 3. For each discovered repo: resolve adapter path, compute relative source path, infer role based on directory heuristics:
    - Detect capabilities: source directories (`src/`, `lib/`, `app/`, `pkg/`), documentation directories (`docs/`, `architecture/`, `requirements/`), kits directory (`kits/`)
    - If multiple capabilities present → `full`
@@ -800,7 +1052,7 @@ cfc workspace-init [--root DIR] [--output PATH] [--inline] [--force] [--max-dept
    - If no recognized directories → `full` (default)
 4. Build workspace config with version and discovered sources.
 5. Check for existing workspace — reject cross-type conflicts (inline vs standalone) and require `--force` to reinitialize.
-6. Write config: standalone `.cf-constructor-workspace.toml` or inline `[workspace]` section in `config/core.toml`.
+6. Write config: standalone `.studio-workspace.toml` or inline `[workspace]` section in `config/core.toml`.
 
 **Constraints**: `--inline` and `--output` are mutually exclusive. `--inline` always writes to `config/core.toml`.
 
@@ -808,8 +1060,8 @@ cfc workspace-init [--root DIR] [--output PATH] [--inline] [--force] [--max-dept
 ```json
 {
   "status": "CREATED",
-  "message": "Workspace config created at .cf-constructor-workspace.toml",
-  "config_path": ".cf-constructor-workspace.toml",
+  "message": "Workspace config created at .studio-workspace.toml",
+  "config_path": ".studio-workspace.toml",
   "sources_count": 3,
   "sources": ["repo-a", "repo-b", "repo-c"]
 }
@@ -824,7 +1076,7 @@ cfc workspace-init [--root DIR] [--output PATH] [--inline] [--force] [--max-dept
 Add a source to workspace config.
 
 ```
-cfc workspace-add --name NAME (--path PATH | --url URL) [--branch BRANCH] [--role ROLE] [--adapter PATH] [--inline] [--force]
+cfs workspace-add --name NAME (--path PATH | --url URL) [--branch BRANCH] [--role ROLE] [--adapter PATH] [--inline] [--force]
 ```
 
 | Option | Description |
@@ -834,7 +1086,7 @@ cfc workspace-add --name NAME (--path PATH | --url URL) [--branch BRANCH] [--rol
 | `--url URL` | Git remote URL (HTTPS or SSH) for the source |
 | `--branch BRANCH` | Git branch/ref to checkout |
 | `--role ROLE` | Source role: `artifacts`, `codebase`, `kits`, `full` (default: `full`) |
-| `--adapter PATH` | Path to Cyber Constructor dir within the source (e.g., `.cf-constructor`, `.bootstrap`) |
+| `--adapter PATH` | Path to Constructor Studio dir within the source (e.g., `.cf-studio`, `.bootstrap`) |
 | `--inline` | Add source inline to `config/core.toml` instead of standalone workspace file |
 | `--force` | Replace existing source with the same name instead of returning an error |
 
@@ -853,7 +1105,7 @@ cfc workspace-add --name NAME (--path PATH | --url URL) [--branch BRANCH] [--rol
 {
   "status": "ADDED",
   "message": "Source 'repo-a' added to workspace",
-  "config_path": ".cf-constructor-workspace.toml",
+  "config_path": ".studio-workspace.toml",
   "source": {
     "name": "repo-a",
     "path": "../repo-a",
@@ -872,7 +1124,7 @@ cfc workspace-add --name NAME (--path PATH | --url URL) [--branch BRANCH] [--rol
 Display workspace configuration and per-source status.
 
 ```
-cfc workspace-info
+cfs workspace-info
 ```
 
 **Behavior**:
@@ -887,7 +1139,7 @@ cfc workspace-info
 {
   "status": "OK",
   "version": "1.0",
-  "config_path": ".cf-constructor-workspace.toml",
+  "config_path": ".studio-workspace.toml",
   "is_inline": false,
   "project_root": "/path/to/project",
   "sources_count": 2,
@@ -953,7 +1205,7 @@ cfc workspace-info
 Fetch and update worktrees for Git URL sources.
 
 ```
-cfc workspace-sync [--source NAME] [--dry-run] [--force]
+cfs workspace-sync [--source NAME] [--dry-run] [--force]
 ```
 
 | Option | Description |
@@ -1036,9 +1288,9 @@ CI pipelines should check for exit code 2 to detect validation failures.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `CFC_CACHE_DIR` | Override cache directory location | `~/.cf-constructor/cache/` |
-| `CFC_NO_VERSION_CHECK` | Disable background version check | unset |
-| `CFC_NO_COLOR` | Disable colored stderr output | unset |
+| `CFS_CACHE_DIR` | Override cache directory location | `~/.cf-studio/cache/` |
+| `CFS_NO_VERSION_CHECK` | Disable background version check | unset |
+| `CFS_NO_COLOR` | Disable colored stderr output | unset |
 | `NO_COLOR` | Standard no-color convention (respected) | unset |
 
 ---
@@ -1048,18 +1300,25 @@ CI pipelines should check for exit code 2 to detect validation failures.
 ### Global (per user)
 
 ```
-~/.cf-constructor/
-  cache/                    # Cached skill bundle (latest downloaded)
+~/.cf-studio/                  # Runtime data (cache, logs, locks)
+  cache/                       # Cached skill bundle (latest downloaded)
     skills/
     kits/
     ...
-  version-check.lock        # Prevents concurrent version checks
+  logs/                        # Telemetry JSONL log files (rotated)
+  version-check.lock           # Prevents concurrent version checks
+
+~/.config/constructor-studio/  # XDG-style config dir (primary mirror config)
+  mirrors.toml                 # Mirror URL overrides (primary location for new installs)
+
+~/.constructor-studio/         # Brand-home fallback (mirror config only)
+  mirrors.toml                 # Mirror URL overrides (brand-home fallback location)
 ```
 
 ### Project (per repository)
 
 ```
-{cf-constructor-path}/             # Install directory (default: .cf-constructor/, configurable via --dir)
+{cf-studio-path}/             # Install directory (default: .cf-studio/, configurable via --dir)
   .core/                    # Read-only core files (copied from cache)
     skills/                 # Skill bundle
     workflows/              # Core workflows (generate.md, analyze.md)
@@ -1089,10 +1348,28 @@ CI pipelines should check for exit code 2 to detect validation failures.
 ### Agent Entry Points (generated)
 
 ```
-.windsurf/workflows/        # Windsurf workflow proxies
-.cursor/rules/              # Cursor rule files
-.claude/commands/           # Claude command files
-.github/prompts/            # Copilot prompt files
+.agents/skills/              # Shared skill bundles consumed by adapter hosts
+
+.windsurf/
+  workflows/                 # Windsurf workflow proxies
+
+.cursor/
+  commands/                  # Cursor command files
+  agents/                    # Cursor sub-agent files
+
+.claude/
+  skills/                    # Claude skill files (primary detection target)
+    cf/SKILL.md
+  agents/                    # Claude sub-agent files
+
+.github/
+  prompts/                   # Copilot prompt files
+  agents/                    # Copilot sub-agent files
+  copilot-instructions.md    # Copilot system prompt
+
+.codex/
+  agents/                    # OpenAI Codex sub-agent files
+  .constructor-studio-installed
 ```
 
 ---
@@ -1103,14 +1380,14 @@ CI pipelines should check for exit code 2 to detect validation failures.
 
 | Error Code | Cause | Resolution |
 |------------|-------|------------|
-| `NOT_INITIALIZED` | Command run outside a Cyber Constructor project | Run `cfc init` |
-| `CONFIG_NOT_FOUND` | `{cf-constructor-path}/config/core.toml` missing or corrupt | Run `cfc init` or `cfc doctor` |
-| `KIT_NOT_REGISTERED` | Referenced kit not in config | Run `cfc config kit install` |
+| `NOT_INITIALIZED` | Command run outside a Constructor Studio project | Run `cfs init` |
+| `CONFIG_NOT_FOUND` | `{cf-studio-path}/config/core.toml` missing or corrupt | Run `cfs init` or `cfs doctor` |
+| `KIT_NOT_REGISTERED` | Referenced kit not in config | Run `cfs config kit install` |
 | `ARTIFACT_NOT_FOUND` | Specified artifact path does not exist | Check path |
-| `SCHEMA_VALIDATION` | Config file does not match schema | Run `cfc doctor` for details |
+| `SCHEMA_VALIDATION` | Config file does not match schema | Run `cfs doctor` for details |
 | `GH_CLI_NOT_FOUND` | `gh` CLI not installed (PR commands only) | Install `gh` CLI |
 | `GH_NOT_AUTHENTICATED` | `gh` CLI not authenticated | Run `gh auth login` |
-| `KIT_UPDATE_CONFLICT` | User declined all file updates during kit update | Re-run `cfc kit update` to review changes |
+| `KIT_UPDATE_CONFLICT` | User declined all file updates during kit update | Re-run `cfs kit update` to review changes |
 | `CACHE_EMPTY` | No cached skill and download failed | Check network, retry |
 | `UNSUPPORTED_URL_SCHEME` | Git URL uses scheme other than HTTPS or SSH | Use `https://` or `git@` URL |
 | `SOURCE_ALREADY_EXISTS` | Workspace source name already taken | Use `--force` to replace |
@@ -1136,17 +1413,21 @@ Plus a human-readable message to stderr.
 ## Version Negotiation
 
 ```
-cfc --version
+cfs --version
 ```
 
-**Output** (JSON):
-```json
-{
-  "proxy_version": "0.6.0",
-  "cache_version": "0.6.0",
-  "project_version": "0.5.0",
-  "update_available": true
-}
+**Output** (plain text — see Exception 1 under [Output](#output)):
+
+`cfs --version` is a user-facing diagnostic invocation. It emits **plain-text** lines to stdout, not JSON. The JSON-only convention does NOT apply to this invocation.
+
+```
+constructor-studio <proxy_version>
+skill (cached): <cache_version>
+skill (project): <project_version>
 ```
 
-The proxy version is the version of the globally installed CLI proxy (`pipx` package). The cache version is the version of the skill bundle in `~/.cf-constructor/cache/`. The project version is the version of the skill installed in the project's `{cf-constructor-path}/` directory (null if not in a project).
+Lines 2 and 3 are conditional: `skill (cached)` is omitted when no cached skill bundle exists; `skill (project)` is omitted when not inside a project with a Constructor Studio install.
+
+The proxy version is the version of the globally installed CLI proxy (`pipx` package). The cache version is the version of the skill bundle in `~/.cf-studio/cache/`. The project version is the version of the skill installed in the project's `{cf-studio-path}/` directory (absent if not in a project).
+
+**Exit**: 0.

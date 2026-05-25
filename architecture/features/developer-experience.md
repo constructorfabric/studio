@@ -31,11 +31,11 @@
 
 <!-- /toc -->
 
-- [ ] `p2` - **ID**: `cpt-cypilot-featstatus-developer-experience`
+- [ ] `p2` - **ID**: `cpt-studio-featstatus-developer-experience`
 
 ## 1. Feature Context
 
-- [ ] `p2` - `cpt-cypilot-feature-developer-experience`
+- [ ] `p2` - `cpt-studio-feature-developer-experience`
 
 ### 1. Overview
 
@@ -43,32 +43,32 @@ Enhances developer productivity with environment health checks, template QA, git
 
 ### 2. Purpose
 
-Reduces friction in daily Cypilot usage. `doctor` catches environment issues before they cause cryptic errors. `self-check` catches kit regressions (template/example drift). Hooks enforce validation in CI. Completions improve CLI discoverability. Addresses PRD requirements for template QA (`cpt-cypilot-fr-core-template-qa`), environment diagnostics (`cpt-cypilot-fr-core-doctor`), pre-commit hooks (`cpt-cypilot-fr-core-hooks`), and shell completions (`cpt-cypilot-fr-core-completions`).
+Reduces friction in daily Studio usage. `doctor` catches environment issues before they cause cryptic errors. `self-check` catches kit regressions (template/example drift). Hooks enforce validation in CI. Completions improve CLI discoverability. Addresses PRD requirements for template QA (`cpt-studio-fr-core-template-qa`), environment diagnostics (`cpt-studio-fr-core-doctor`), pre-commit hooks (`cpt-studio-fr-core-hooks`), and shell completions (`cpt-studio-fr-core-completions`).
 
 ### 3. Actors
 
 | Actor | Role in Feature |
 |-------|-----------------|
-| `cpt-cypilot-actor-user` | Runs `cpt doctor`, `cpt self-check`, installs hooks/completions |
-| `cpt-cypilot-actor-ai-agent` | Invokes `cpt resolve-vars` and `cpt info` to resolve template variables for kit file substitution |
-| `cpt-cypilot-actor-ci-pipeline` | Runs validation via pre-commit hooks |
+| `cpt-studio-actor-user` | Runs `cfs doctor`, `cfs self-check`, installs hooks/completions |
+| `cpt-studio-actor-ai-agent` | Invokes `cfs resolve-vars` and `cfs info` to resolve template variables for kit file substitution |
+| `cpt-studio-actor-ci-pipeline` | Runs validation via pre-commit hooks |
 
 ### 4. References
 
-- **PRD**: [PRD.md](../PRD.md) — `cpt-cypilot-fr-core-template-qa`, `cpt-cypilot-fr-core-doctor`, `cpt-cypilot-fr-core-hooks`, `cpt-cypilot-fr-core-completions`
-- **Design**: [DESIGN.md](../DESIGN.md) — `cpt-cypilot-component-validator`
-- **Dependencies**: `cpt-cypilot-feature-traceability-validation`
+- **PRD**: [PRD.md](../PRD.md) — `cpt-studio-fr-core-template-qa`, `cpt-studio-fr-core-doctor`, `cpt-studio-fr-core-hooks`, `cpt-studio-fr-core-completions`
+- **Design**: [DESIGN.md](../DESIGN.md) — `cpt-studio-component-validator`
+- **Dependencies**: `cpt-studio-feature-traceability-validation`
 
 ## 2. Actor Flows (CDSL)
 
 ### Environment Health Check
 
-- [ ] `p2` - **ID**: `cpt-cypilot-flow-developer-experience-doctor`
+- [ ] `p2` - **ID**: `cpt-studio-flow-developer-experience-doctor`
 
-**Actor**: `cpt-cypilot-actor-user`
+**Actor**: `cpt-studio-actor-user`
 
 **Success Scenarios**:
-- User runs `cpt doctor` → all checks pass, environment is healthy
+- User runs `cfs doctor` → all checks pass, environment is healthy
 
 **Error Scenarios**:
 - Python version too old → FAIL with version requirement
@@ -76,7 +76,7 @@ Reduces friction in daily Cypilot usage. `doctor` catches environment issues bef
 - Config corrupted → FAIL with remediation hint
 
 **Steps**:
-1. - `p2` - User invokes `cpt doctor` - `inst-user-doctor`
+1. - `p2` - User invokes `cfs doctor` - `inst-user-doctor`
 2. - `p2` - Check Python version (≥ 3.11) - `inst-check-python`
 3. - `p2` - Check git availability - `inst-check-git`
 4. - `p2` - Check `gh` CLI availability and authentication - `inst-check-gh`
@@ -86,20 +86,20 @@ Reduces friction in daily Cypilot usage. `doctor` catches environment issues bef
 
 ### Self-Check
 
-- [x] `p1` - **ID**: `cpt-cypilot-flow-developer-experience-self-check`
+- [x] `p1` - **ID**: `cpt-studio-flow-developer-experience-self-check`
 
-**Actor**: `cpt-cypilot-actor-user`
+**Actor**: `cpt-studio-actor-user`
 
 **Success Scenarios**:
-- User runs `cpt self-check` → all kit examples validate against their templates/constraints
-- User runs `cpt self-check --kit sdlc` → only SDLC kit checked
+- User runs `cfs self-check` → all kit examples validate against their templates/constraints
+- User runs `cfs self-check --kit sdlc` → only SDLC kit checked
 
 **Error Scenarios**:
 - Example fails template validation → FAIL with specific heading/constraint mismatch details
 - constraints.toml missing → ERROR with hint to regenerate
 
 **Steps**:
-1. [x] - `p1` - User invokes `cpt self-check [--kit K] [--verbose]` - `inst-user-self-check`
+1. [x] - `p1` - User invokes `cfs self-check [--kit K] [--verbose]` - `inst-user-self-check`
 2. [x] - `p1` - Load artifacts registry and kit metadata - `inst-load-registry`
 3. - `p1` - **FOR EACH** kit (or filtered by `--kit`) - `inst-for-each-kit`
    1. - `p1` - Load constraints.toml for the kit - `inst-load-constraints`
@@ -111,29 +111,29 @@ Reduces friction in daily Cypilot usage. `doctor` catches environment issues bef
 
 ### Pre-Commit Hooks
 
-- [ ] `p3` - **ID**: `cpt-cypilot-flow-developer-experience-hooks`
+- [ ] `p3` - **ID**: `cpt-studio-flow-developer-experience-hooks`
 
 **Steps**:
-1. - `p3` - User invokes `cpt hook install` - `inst-install-hook`
+1. - `p3` - User invokes `cfs hook install` - `inst-install-hook`
 2. - `p3` - Write pre-commit hook script to `.git/hooks/pre-commit` - `inst-write-hook`
-3. - `p3` - Hook runs `cpt validate` on staged artifact files - `inst-hook-validate`
+3. - `p3` - Hook runs `cfs validate` on staged artifact files - `inst-hook-validate`
 
 ### TOC Generation
 
-- [x] `p1` - **ID**: `cpt-cypilot-flow-developer-experience-toc`
+- [x] `p1` - **ID**: `cpt-studio-flow-developer-experience-toc`
 
-**Actor**: `cpt-cypilot-actor-user`
+**Actor**: `cpt-studio-actor-user`
 
 **Success Scenarios**:
-- User runs `cpt toc <files>` → TOC generated/updated in each file
-- User runs `cpt toc --dry-run <files>` → changes shown without writing
+- User runs `cfs toc <files>` → TOC generated/updated in each file
+- User runs `cfs toc --dry-run <files>` → changes shown without writing
 
 **Error Scenarios**:
 - File not found → ERROR per file
 - Post-generation validation fails → VALIDATION_FAIL with details
 
 **Steps**:
-1. [x] - `p1` - User invokes `cpt toc <files> [--max-level N] [--indent N] [--dry-run] [--skip-validate]` - `inst-toc-gen-parse-args`
+1. [x] - `p1` - User invokes `cfs toc <files> [--max-level N] [--indent N] [--dry-run] [--skip-validate]` - `inst-toc-gen-parse-args`
 2. [x] - `p1` - **FOR EACH** file - `inst-toc-gen-foreach-file`
    1. [x] - `p1` - Process file: extract headings, generate TOC, insert/update between `<!-- toc -->` markers - `inst-toc-gen-process`
    2. [x] - `p1` - **IF** not dry-run and not skip-validate, validate generated TOC - `inst-toc-gen-validate`
@@ -145,25 +145,25 @@ Reduces friction in daily Cypilot usage. `doctor` catches environment issues bef
 
 ### Resolve Variables
 
-- [x] `p1` - **ID**: `cpt-cypilot-flow-developer-experience-resolve-vars`
+- [x] `p1` - **ID**: `cpt-studio-flow-developer-experience-resolve-vars`
 
-**Actor**: `cpt-cypilot-actor-ai-agent`
+**Actor**: `cpt-studio-actor-ai-agent`
 
 **Success Scenarios**:
-- Agent runs `cpt resolve-vars` → all template variables resolved to absolute paths
-- Agent runs `cpt resolve-vars --kit sdlc` → only SDLC kit variables returned
-- Agent runs `cpt info` → `variables` dict included in output for automatic resolution during Protocol Guard
+- Agent runs `cfs resolve-vars` → all template variables resolved to absolute paths
+- Agent runs `cfs resolve-vars --kit sdlc` → only SDLC kit variables returned
+- Agent runs `cfs info` → `variables` dict included in output for automatic resolution during Protocol Guard
 
 **Error Scenarios**:
 - No project root → ERROR with searched path
-- Cypilot not initialized → ERROR with project_root
+- Studio not initialized → ERROR with project_root
 - Kit not found (with `--kit`) → ERROR with available kits list
 
 **Steps**:
-1. [x] - `p1` - User/agent invokes `cpt resolve-vars [--root P] [--kit K] [--flat]` - `inst-resolve-vars-parse-args`
-2. [x] - `p1` - Discover project root and cypilot directory - `inst-resolve-vars-discover`
+1. [x] - `p1` - User/agent invokes `cfs resolve-vars [--root P] [--kit K] [--flat]` - `inst-resolve-vars-parse-args`
+2. [x] - `p1` - Discover project root and studio directory - `inst-resolve-vars-discover`
 3. [x] - `p1` - Load core.toml for kit resource bindings - `inst-resolve-vars-load-core`
-4. [x] - `p1` - Collect system variables (cypilot_path, project_root) - `inst-resolve-vars-system`
+4. [x] - `p1` - Collect system variables (studio_path, project_root) - `inst-resolve-vars-system`
 5. [x] - `p1` - **FOR EACH** kit with resources in core.toml - `inst-resolve-vars-foreach-kit`
    1. [x] - `p1` - Resolve each resource binding to absolute path - `inst-resolve-vars-resolve-binding`
 6. [x] - `p1` - Merge system + kit variables into flat dict - `inst-resolve-vars-merge`
@@ -177,28 +177,28 @@ Reduces friction in daily Cypilot usage. `doctor` catches environment issues bef
 
 ### Shell Completions
 
-- [ ] `p3` - **ID**: `cpt-cypilot-flow-developer-experience-completions`
+- [ ] `p3` - **ID**: `cpt-studio-flow-developer-experience-completions`
 
 **Steps**:
-1. - `p3` - User invokes `cpt completions install` - `inst-install-completions`
+1. - `p3` - User invokes `cfs completions install` - `inst-install-completions`
 2. - `p3` - Detect shell (bash/zsh/fish) and write completion script - `inst-write-completions`
 
 ## 3. Processes / Business Logic (CDSL)
 
 ### Run Doctor Checks
 
-- [x] `p2` - **ID**: `cpt-cypilot-algo-developer-experience-doctor`
+- [x] `p2` - **ID**: `cpt-studio-algo-developer-experience-doctor`
 
 1. - `p2` - Check `python3 --version` ≥ 3.11 - `inst-check-python-version`
 2. - `p2` - Check `git --version` available - `inst-check-git-version`
 3. - `p2` - Check `gh --version` and `gh auth status` - `inst-check-gh-status`
-4. - `p2` - Check Cypilot installation: `.core/`, `.gen/`, `config/` exist - `inst-check-installation`
+4. - `p2` - Check Studio installation: `.core/`, `.gen/`, `config/` exist - `inst-check-installation`
 5. - `p2` - Attempt to parse `core.toml` and `artifacts.toml` - `inst-check-parseable`
-6. - `p2` - Check `ralphex` availability: discover on `PATH` or via persisted `core.toml` `[integrations.ralphex].executable_path`; if found, run `ralphex --version` to verify compatibility; if missing, WARN with installation guidance (Homebrew, `go install`, binary releases) — ralphex is optional, so missing is WARN not FAIL (see `cpt-cypilot-adr-ralphex-delegation-skill`) - `inst-check-ralphex`
+6. - `p2` - Check `ralphex` availability: discover on `PATH` or via persisted `core.toml` `[integrations.ralphex].executable_path`; if found, run `ralphex --version` to verify compatibility; if missing, WARN with installation guidance (Homebrew, `go install`, binary releases) — ralphex is optional, so missing is WARN not FAIL (see `cpt-studio-adr-ralphex-delegation-skill`) - `inst-check-ralphex`
 
 ### Run Self-Check
 
-- [x] `p1` - **ID**: `cpt-cypilot-algo-developer-experience-self-check`
+- [x] `p1` - **ID**: `cpt-studio-algo-developer-experience-self-check`
 
 1. - `p1` - Load constraints.toml for each kit - `inst-load-kit-constraints`
 2. [x] - `p1` - For each artifact kind, locate template and example paths - `inst-locate-files`
@@ -208,9 +208,9 @@ Reduces friction in daily Cypilot usage. `doctor` catches environment issues bef
 
 ### Resolve Variables
 
-- [x] `p1` - **ID**: `cpt-cypilot-algo-developer-experience-resolve-vars`
+- [x] `p1` - **ID**: `cpt-studio-algo-developer-experience-resolve-vars`
 
-1. [x] - `p1` - Collect system variables: cypilot_path (adapter dir), project_root - `inst-collect-system-vars`
+1. [x] - `p1` - Collect system variables: studio_path (adapter dir), project_root - `inst-collect-system-vars`
 2. [x] - `p1` - For each kit in core_data.kits, extract resources dict - `inst-extract-kit-resources`
 3. [x] - `p1` - For each resource binding, resolve relative path to absolute via adapter_dir - `inst-resolve-binding-path`
 4. [x] - `p1` - Merge system + all kit variables into flat dict (kit IDs are globally unique) - `inst-merge-flat-dict`
@@ -226,45 +226,45 @@ No feature-specific state machines. Self-check is stateless (run → report).
 
 ### Doctor Command
 
-- [ ] `p2` - **ID**: `cpt-cypilot-dod-developer-experience-doctor`
+- [ ] `p2` - **ID**: `cpt-studio-dod-developer-experience-doctor`
 
-- [ ] - `p2` - `cpt doctor` checks Python, git, gh CLI, config integrity, and optional `ralphex` availability
+- [ ] - `p2` - `cfs doctor` checks Python, git, gh CLI, config integrity, and optional `ralphex` availability
 - [ ] - `p2` - Each check reports pass/fail/warn with actionable remediation
 - [ ] - `p2` - Exit code 0 if all checks pass, 2 if any fail (WARN-only does not fail)
 
 ### Self-Check Command
 
-- [x] `p1` - **ID**: `cpt-cypilot-dod-developer-experience-self-check`
+- [x] `p1` - **ID**: `cpt-studio-dod-developer-experience-self-check`
 
-- [x] - `p1` - `cpt self-check` validates all kit examples against their templates/constraints
+- [x] - `p1` - `cfs self-check` validates all kit examples against their templates/constraints
 - [x] - `p1` - `--kit` flag filters to a single kit
 - [x] - `p1` - Reports per-kind pass/fail with specific issues
-- [x] - `p1` - Integrated into `cpt validate` as a fail-fast pre-check
+- [x] - `p1` - Integrated into `cfs validate` as a fail-fast pre-check
 
 ### Resolve Variables Command
 
-- [x] `p1` - **ID**: `cpt-cypilot-dod-developer-experience-resolve-vars`
+- [x] `p1` - **ID**: `cpt-studio-dod-developer-experience-resolve-vars`
 
-- [x] - `p1` - `cpt resolve-vars` resolves all template variables to absolute paths
+- [x] - `p1` - `cfs resolve-vars` resolves all template variables to absolute paths
 - [x] - `p1` - `--kit` flag filters to a single kit
 - [x] - `p1` - `--flat` flag outputs plain variable→path dict
-- [x] - `p1` - `cpt info` includes `variables` dict in output for Protocol Guard
-- [x] - `p1` - System variables (cypilot_path, project_root) always present
+- [x] - `p1` - `cfs info` includes `variables` dict in output for Protocol Guard
+- [x] - `p1` - System variables (studio_path, project_root) always present
 - [x] - `p1` - Kit resource bindings resolved from core.toml registrations
 
 ### Pre-Commit Hooks
 
-- [ ] `p3` - **ID**: `cpt-cypilot-dod-developer-experience-hooks`
+- [ ] `p3` - **ID**: `cpt-studio-dod-developer-experience-hooks`
 
-- [ ] - `p3` - `cpt hook install` writes pre-commit hook
-- [ ] - `p3` - `cpt hook uninstall` removes pre-commit hook
+- [ ] - `p3` - `cfs hook install` writes pre-commit hook
+- [ ] - `p3` - `cfs hook uninstall` removes pre-commit hook
 - [ ] - `p3` - Hook only validates staged artifact files
 
 ### Shell Completions
 
-- [ ] `p3` - **ID**: `cpt-cypilot-dod-developer-experience-completions`
+- [ ] `p3` - **ID**: `cpt-studio-dod-developer-experience-completions`
 
-- [ ] - `p3` - `cpt completions install` writes shell-appropriate completion script
+- [ ] - `p3` - `cfs completions install` writes shell-appropriate completion script
 - [ ] - `p3` - Supports bash, zsh, and fish
 
 ## 6. Implementation Modules
@@ -278,9 +278,9 @@ No feature-specific state machines. Self-check is stateless (run → report).
 
 ## 7. Acceptance Criteria
 
-- [x] `cpt self-check` validates kit integrity and reports per-kind results
-- [x] `cpt resolve-vars` resolves all template variables to absolute paths
-- [x] `cpt info` includes `variables` in output for agent variable resolution
-- [ ] `cpt doctor` reports environment health with pass/fail/warn per check (including optional `ralphex` availability)
+- [x] `cfs self-check` validates kit integrity and reports per-kind results
+- [x] `cfs resolve-vars` resolves all template variables to absolute paths
+- [x] `cfs info` includes `variables` in output for agent variable resolution
+- [ ] `cfs doctor` reports environment health with pass/fail/warn per check (including optional `ralphex` availability)
 - [ ] Pre-commit hooks enforce validation on staged artifacts
 - [ ] Shell completions work for all documented commands

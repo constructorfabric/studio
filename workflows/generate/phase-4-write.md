@@ -18,7 +18,7 @@ version: 1.0
 
 <!-- /toc -->
 
-Requires: `workflows/shared/inline-fallback-probe.md` before any `cf-constructor-*` sub-agent dispatch. Pre-dispatch fail-stop and Mode B degradation rules are defined in `{cf-constructor-path}/.core/skills/cypilot/sub-agent-dispatch.md`.
+Requires: `workflows/shared/inline-fallback-probe.md` before any `cf-*` sub-agent dispatch. Pre-dispatch fail-stop and Mode B degradation rules are defined in `{cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md`.
 
 Only after Phase 3 confirmation (`yes`), execute the author selection flow
 below with a `mode=create` payload. Do not dispatch a write-capable author
@@ -45,18 +45,18 @@ leave target files untouched.
 This block is the canonical write/fix dispatch path for Phase 4 and Phase 5.
 It is intentionally two-step:
 
-1. Dispatch read-only selector `cf-constructor-generate-author` with the full
+1. Dispatch read-only selector `cf-generate-author` with the full
    author payload.
 2. Parse the returned `author_selection` JSON block.
 3. Verify `selected_author` is exactly one of:
-   - `cf-constructor-generate-author-junior`
-   - `cf-constructor-generate-author-middle`
-   - `cf-constructor-generate-author-senior`
-   - `cf-constructor-generate-author-lead`
-   - `cf-constructor-generate-coder-casual`
-   - `cf-constructor-generate-coder-smart`
-   - `cf-constructor-generate-prompt-engineer-casual`
-   - `cf-constructor-generate-prompt-engineer-smart`
+   - `cf-generate-author-junior`
+   - `cf-generate-author-middle`
+   - `cf-generate-author-senior`
+   - `cf-generate-author-lead`
+   - `cf-generate-coder-casual`
+   - `cf-generate-coder-smart`
+   - `cf-generate-prompt-engineer-casual`
+   - `cf-generate-prompt-engineer-smart`
 4. Keep CF_PHASE_GATE=armed while dispatching the selector. Set
    CF_PHASE_GATE=released_for_dispatch only immediately before dispatching the
    selected write-capable author.
@@ -129,7 +129,7 @@ and Dispatch once.
 ## Phase 4 Create Payload
 
 Inputs: see "Inputs (dispatched-prompt contract)" in
-`{cf-constructor-path}/.core/skills/cypilot/agents/cf-constructor-generate-author-worker.md`
+`{cf-studio-path}/.core/skills/studio/agents/cf-generate-author-worker.md`
 (mandatory vs optional listed there). Orchestrator-supplied values for this
 dispatch:
 
@@ -138,7 +138,7 @@ dispatch:
 - `checklist_path` included only when STRICT explicitly requires checklist pre-write
 - `design_artifact_path` code mode only
 - `target_paths` = the full list of output paths for this generation (single-path artifacts pass a one-element array; multi-file artifacts pass the full list and the author writes them atomically in one dispatch — the agent's `target_paths` input is an array by contract)
-- `inputs` = the approved inputs from Phase 1 / Phase 3 — constructed from the collector's `proposed_inputs` JSON block (emitted alongside the human-facing Inputs markdown; open, load, and follow `cf-constructor-generate-collector.md` Output contract) with user edits merged in. Keys are the template's H2 section names (normalized); values are the approved defaults.
+- `inputs` = the approved inputs from Phase 1 / Phase 3 — constructed from the collector's `proposed_inputs` JSON block (emitted alongside the human-facing Inputs markdown; open, load, and follow `cf-generate-collector.md` Output contract) with user edits merged in. Keys are the template's H2 section names (normalized); values are the approved defaults.
 - optional planner metadata when dispatched from a planned task: `author_plan_task_id`, `planner_task_title`, `planner_recommended_author`, `planner_parallel_group`, `planner_dependencies`, `planner_acceptance_criteria`
 - `git_commit_mode` = `GIT_COMMIT_MODE` (one of `"commit"`, `"stage"`, `"none"`; MUST be included)
 - `contributing_guide` = `CONTRIBUTING_GUIDE` (path + key directives object, or `null`; MUST be included)
@@ -149,7 +149,7 @@ Git constraint blocks by mode (include exactly one matching the current `GIT_COM
 - `stage`:  "You MAY `git add` files you wrote. MUST NOT `git commit`, `git push`, `git reset`, `git rebase`, `git stash`, `git checkout --`."
 - `none`:   "MUST NOT run `git commit`, `git push`, `git reset`, `git rebase`, `git stash`, `git checkout --`, or `git add`. Leave changes as uncommitted, unstaged working-tree edits only."
 
-The selected author updates `{cf-constructor-path}/config/artifacts.toml`
+The selected author updates `{cf-studio-path}/config/artifacts.toml`
 when a new artifact path is introduced, creates directories as needed, writes
 the file(s), and verifies content. It returns a `✓ Written` markdown block plus
 a `manifest` JSON block.
@@ -186,6 +186,6 @@ Then fail-stop and surface the reason to the user.
 
 **MUST NOT** dispatch any write-capable author before Phase 3 `yes`. **MUST
 NOT** create files before confirmation, create incomplete files, or create
-placeholder files. Open, load, and follow `skills/cypilot/protocol.md` §
+placeholder files. Open, load, and follow `skills/studio/protocol.md` §
 Agent-safe invocation for the no-auto-approval rule (`--yes`/`-y`/`--force`
 forbidden unless the user explicitly requested non-interactive behavior).

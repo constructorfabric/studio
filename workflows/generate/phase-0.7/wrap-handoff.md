@@ -60,4 +60,4 @@ Stop tokens (`stop` / `enough` / `done`) at any prompt end the session immediate
 
 ### Hand-off to `workflows/generate/phase-1-collect.md`
 
-`workflows/generate/phase-1-collect.md` dispatches `cf-constructor-generate-collector` with `pre_resolved_inputs = PRE_RESOLVED_INPUTS` and `open_questions = CARRYOVER_QUESTIONS`. The collector marks pre-filled sections `[from brainstorm]` and surfaces a `Carryover Questions` mini-section. Open, load, and follow `workflows/generate/phase-1-collect.md`.
+`workflows/generate/phase-1-collect.md` dispatches `cf-generate-collector` with `pre_resolved_inputs = PRE_RESOLVED_INPUTS` and `open_questions = CARRYOVER_QUESTIONS`. The collector marks pre-filled sections `[from brainstorm]` and surfaces a `Carryover Questions` mini-section. Open, load, and follow `workflows/generate/phase-1-collect.md`.

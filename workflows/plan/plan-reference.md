@@ -1,9 +1,9 @@
 ---
-cf-constructor: true
+cf: true
 type: reference
 name: plan-reference
 description: "Invoke when consulting the downstream runtime contract for generated plans (execute-phases, status checks, plan-storage format, execution log)."
-purpose: Reference-only documentation for plan execution downstream from /cf-constructor-plan
+purpose: Reference-only documentation for plan execution downstream from /cf-plan
 loaded_by: workflows/plan.md
 version: 1.0
 ---
@@ -33,7 +33,7 @@ This appendix is the downstream runtime contract for generated plans. It is not 
 When the user requests same-chat native phase execution, re-run
 `workflows/shared/inline-fallback-probe.md`, set `CF_PHASE_GATE=released_for_dispatch`
 immediately before dispatch, and route to
-`{cf-constructor-path}/.core/skills/cypilot/agents/cf-constructor-phase-runner.md`
+`{cf-studio-path}/.core/skills/studio/agents/cf-phase-runner.md`
 only when the re-probe resolves to `SUB_AGENT_SESSION_APPROVED=true` and
 `INLINE_FALLBACK=false`. The dispatch payload MUST carry `plan_dir`,
 `target_phase`, `git_commit_mode`, `contributing_guide`, and the mode-matched
@@ -43,7 +43,7 @@ dispatch returns — success, error, or no-response.
 ### 5.1 Load Phase
 
 1. Read `plan.toml` and use manifest state, not chat memory, as the source of truth.
-2. If `plan.execution_status = "briefs_only"`, do not read a phase file yet; instead return to the Phase 3.2 post-brief choice set so the user can compile phases via inline generation, downstream prompts, or `cf-constructor-phase-compiler`.
+2. If `plan.execution_status = "briefs_only"`, do not read a phase file yet; instead return to the Phase 3.2 post-brief choice set so the user can compile phases via inline generation, downstream prompts, or `cf-phase-compiler`.
 3. If `plan.execution_status = "prompts_emitted"`, do not attempt native phase execution yet because no `phase-*` files are guaranteed to exist. Return to the same Phase 3.2 post-brief choice set, or instruct the operator to use the emitted downstream compilation prompts first.
 4. Select the earliest executable phase whose dependencies are all `done`.
 5. Audit upstream `output_files`, declared `outputs`, and downstream `inputs`; when `lifecycle = "cleanup"` and `plan.lifecycle_status = "done"`, the intentional cleanup removal of `brief-*`, `phase-*`, and `out/` is exempt.
@@ -89,8 +89,8 @@ If a plan is abandoned or same-chat continuation loses state: `plan.toml` is the
 
 Recovery prompt:
 ```text
-I have an incomplete Cyber Constructor execution plan at:
-  {cf-constructor-path}/.plans/{task-slug}/plan.toml
+I have an incomplete Constructor Studio execution plan at:
+  {cf-studio-path}/.plans/{task-slug}/plan.toml
 Please read the plan manifest, audit completed phases against their declared `output_files`, declared `outputs`, and downstream `inputs`, repair stale lifecycle state if work is reopened, and resume from the earliest executable phase.
 ```
 
@@ -102,7 +102,7 @@ When the user asks for plan status, read `plan.toml` and report the task, type, 
 
 ## Plan Storage Format
 
-All plan data lives in `{cf-constructor-path}/.plans/{task-slug}/`:
+All plan data lives in `{cf-studio-path}/.plans/{task-slug}/`:
 ```text
 .plans/
   generate-prd-myapp/

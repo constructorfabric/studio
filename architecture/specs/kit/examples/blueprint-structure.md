@@ -1,4 +1,4 @@
-> **DEPRECATED per `cpt-cypilot-adr-remove-blueprint-system`**: Blueprint files are no longer used. Kits are now direct file packages. This example is preserved for legacy reference only.
+> **DEPRECATED per `cpt-studio-adr-remove-blueprint-system`**: Blueprint files are no longer used. Kits are now direct file packages. This example is preserved for legacy reference only.
 
 Blueprint File Structure Example — illustrates the ordering and structure of all
 marker types in a single blueprint file. This text is outside any marker block
@@ -23,7 +23,7 @@ codebase = false
 `@cpt:skill`
 ```markdown
 ### PRD Commands
-- `cpt validate --artifact <PRD.md>` — validate PRD
+- `cfs validate --artifact <PRD.md>` — validate PRD
 ```
 `@/cpt:skill`
 

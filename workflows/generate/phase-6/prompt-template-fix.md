@@ -1,5 +1,5 @@
 ---
-cf-constructor: true
+cf: true
 type: workflow-fragment
 parent: workflows/generate.md
 description: Invoke when the user picked `R2` (Fix Prompt) on the Remediation Handoff menu and the self-contained bounded-fix prompt must be emitted verbatim as the FINAL section.
@@ -12,9 +12,9 @@ Fix Prompt (copy-paste into new chat if needed):
 ```
 
 ```text
-Invoke skill `cf-constructor`.
+Invoke skill `cf`.
 
-I just completed `/cf-constructor-generate` with unresolved findings. I need a bounded fix via `/cf-constructor-generate(mode=fix)` for these files.
+I just completed `/cf-generate` with unresolved findings. I need a bounded fix via `/cf-generate(mode=fix)` for these files.
 
 Target: {TARGET_TYPE} / {KIND}
 Changed files (already written):

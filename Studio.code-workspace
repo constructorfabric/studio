@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": ".",
+			"name": "studio"
+		},
+		{
+			"path": ".workspace-sources/constructorfabric/studio-kit-sdlc",
+			"name": "kit-sdlc"
+		}
+	],
+	"settings": {
+		"git.autoRepositoryDetection": "openEditors",
+		"git.repositoryScanMaxDepth": 3
+	}
+}

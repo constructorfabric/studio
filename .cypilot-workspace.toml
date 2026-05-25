@@ -1,6 +1,0 @@
-version = "1.0"
-
-[sources]
-[sources.cyber-pilot-kit-sdlc]
-url = "https://github.com/cyberfabric/cyber-pilot-kit-sdlc"
-role = "kits"

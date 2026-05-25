@@ -1,9 +1,9 @@
-# Using AI Agent Tools with Cyber Constructor
+# Using AI Agent Tools with Constructor Studio
 
 
 <!-- toc -->
 
-- [1. What Cyber Constructor generates into host tools](#1-what-cyber-constructor-generates-into-host-tools)
+- [1. What Constructor Studio generates into host tools](#1-what-constructor-studio-generates-into-host-tools)
 - [2. Quick recommendation by tool](#2-quick-recommendation-by-tool)
 - [3. Support matrix](#3-support-matrix)
 - [4. Shared best practices across all tools](#4-shared-best-practices-across-all-tools)
@@ -11,7 +11,7 @@
   - [Practical model-family guidance](#practical-model-family-guidance)
   - [How host limitations affect model choice](#how-host-limitations-affect-model-choice)
 - [5. Claude Code](#5-claude-code)
-  - [Why it fits Cyber Constructor well](#why-it-fits-cyber-constructor-well)
+  - [Why it fits Constructor Studio well](#why-it-fits-constructor-studio-well)
   - [Best use cases](#best-use-cases)
   - [Typical problems](#typical-problems)
   - [How to mitigate](#how-to-mitigate)
@@ -54,7 +54,7 @@
 
 <!-- /toc -->
 
-How to use **Cyber Constructor** with different AI agent hosts, what each tool supports, where the rough edges are, and how to work around them.
+How to use **Constructor Studio** with different AI agent hosts, what each tool supports, where the rough edges are, and how to work around them.
 
 For the canonical product model, workflow model, and setup paths, start with **[README](../README.md)**. This guide is specifically about host differences and operational trade-offs.
 
@@ -63,19 +63,19 @@ For the canonical product model, workflow model, and setup paths, start with **[
 ---
 ---
 
-## 1. What Cyber Constructor generates into host tools
+## 1. What Constructor Studio generates into host tools
 
-Cyber Constructor is not tied to one AI host.
+Constructor Studio is not tied to one AI host.
 
 Instead, it projects its workflows and instructions into the host tool you use.
 
-In practice, `cfc generate-agents --agent <tool>` generates some combination of:
+In practice, `cfs generate-agents --agent <tool>` generates some combination of:
 
 - **workflow commands**
   - entry points for `plan`, `generate`, `analyze`, workspace flows, and kit workflows
 
 - **skill outputs**
-  - host-tool-visible Cyber Constructor skill entry points that route into the core instructions
+  - host-tool-visible Constructor Studio skill entry points that route into the core instructions
 
 - **subagents**
   - isolated task-specific agents with scoped permissions and dedicated prompts, where the host supports them
@@ -88,35 +88,35 @@ Typical setup:
 
 🖥️ **Terminal**:
 ```bash
-cfc generate-agents --agent claude
-cfc generate-agents --agent cursor
-cfc generate-agents --agent copilot
-cfc generate-agents --agent openai
-cfc generate-agents --agent windsurf
+cfs generate-agents --agent claude
+cfs generate-agents --agent cursor
+cfs generate-agents --agent copilot
+cfs generate-agents --agent openai
+cfs generate-agents --agent windsurf
 ```
 
 Subagents are not equally supported across all tools.
 
-That is one of the most important practical differences when using Cyber Constructor.
+That is one of the most important practical differences when using Constructor Studio.
 
 ---
 
 ## 2. Quick recommendation by tool
 
 - **Claude Code**
-  - Best overall fit when you want the fullest Cyber Constructor experience, especially for **generation**, strong subagent support, read-only review isolation, model selection, and worktree isolation.
+  - Best overall fit when you want the fullest Constructor Studio experience, especially for **generation**, strong subagent support, read-only review isolation, model selection, and worktree isolation.
 
 - **Cursor**
-  - Good general-purpose IDE host for Cyber Constructor. Supports subagents, and its **multi-model** nature is a real advantage because you can pair Anthropic for generation with GPT-style models for review. The isolation model is still weaker than Claude Code.
+  - Good general-purpose IDE host for Constructor Studio. Supports subagents, and its **multi-model** nature is a real advantage because you can pair Anthropic for generation with GPT-style models for review. The isolation model is still weaker than Claude Code.
 
 - **GitHub Copilot**
-  - Usable with Cyber Constructor and supports subagents. It is especially attractive when you want **strong review behavior** with GPT-style models, though host-level control is less expressive than Claude Code.
+  - Usable with Constructor Studio and supports subagents. It is especially attractive when you want **strong review behavior** with GPT-style models, though host-level control is less expressive than Claude Code.
 
 - **OpenAI Codex**
   - Strong option for **review**, bounded analysis, and artifact-heavy work when you want GPT-style strictness and carefulness. Works best when tasks stay narrow and validation is explicit.
 
 - **Windsurf**
-  - Still usable with Cyber Constructor workflows and skills, and its **multi-model** nature is a practical plus. But it does **not** support subagents, so treat it as a single-agent host and manually separate contexts.
+  - Still usable with Constructor Studio workflows and skills, and its **multi-model** nature is a practical plus. But it does **not** support subagents, so treat it as a single-agent host and manually separate contexts.
 
 ---
 
@@ -131,19 +131,19 @@ That is one of the most important practical differences when using Cyber Constru
 | Model selection in generated subagents | Yes | Yes | No equivalent | Tool-dependent / less central | N/A |
 | Subagent-scoped hooks | Yes | No | Tool-specific / narrower current surface | No | No |
 | Multi-model host advantage | No | Yes | Yes | No | Yes |
-| Best use mode with Cyber Constructor | Full orchestration | Strong daily-driver | Structured assistance | Bounded execution | Manual separation |
+| Best use mode with Constructor Studio | Full orchestration | Strong daily-driver | Structured assistance | Bounded execution | Manual separation |
 
 **Important distinction**:
 
-- if a host does **not** support subagents, that is a **host limitation**, not a Cyber Constructor limitation
-- Cyber Constructor still gives you workflows, skill routing, validation, traceability, and planning
+- if a host does **not** support subagents, that is a **host limitation**, not a Constructor Studio limitation
+- Constructor Studio still gives you workflows, skill routing, validation, traceability, and planning
 
 ---
 
 ## 4. Shared best practices across all tools
 
 1. **Regenerate integrations after setup changes**
-   - If you changed workflows, skills, kits, or agent config, rerun `cfc generate-agents --agent <tool>`.
+   - If you changed workflows, skills, kits, or agent config, rerun `cfs generate-agents --agent <tool>`.
 
 2. **Use `plan` before large work**
    - Do not push a large ambiguous request straight into `generate`.
@@ -188,7 +188,7 @@ The current subagent defaults already follow this rule of thumb:
 
 ### Practical model-family guidance
 
-In current practical use with Cyber Constructor, the model-family tendency is usually:
+In current practical use with Constructor Studio, the model-family tendency is usually:
 
 - **GPT-thinking models**
   - usually better for **review**, especially when you want stricter, more careful, more exact analysis
@@ -207,7 +207,7 @@ The right choice still depends on the host, the task shape, and the exact model 
 |---|---|---|---|
 | `show config`, `where-defined`, `list-ids`, simple lookup, shallow repo navigation | fast-tier or default / inherit | usually yes | Mostly bounded retrieval and formatting work. |
 | Small formatting fixes, marker recovery, narrow edits with explicit target | fast-tier or default / inherit | yes, if scope is tight | Still validate after the change. |
-| Structured PR review first pass | fast-tier by default, ideally GPT-style review model | yes | This matches the current `cf-constructor-pr-review` default. Escalate if review becomes architectural or cross-artifact. |
+| Structured PR review first pass | fast-tier by default, ideally GPT-style review model | yes | This matches the current `cf-pr-review` default. Escalate if review becomes architectural or cross-artifact. |
 | Deterministic validation triage and checklist scanning | fast-tier or default / inherit | often yes | Good for first-pass issue grouping, but escalate when interpretation becomes non-trivial. |
 | `plan` for large, risky, or multi-phase work | strong reasoning model required | usually no | Decomposition quality matters; weak planning creates downstream drift. |
 | Artifact generation or transformation such as `PRD -> DESIGN -> DECOMPOSITION -> FEATURE` | strong reasoning model required, often GPT-style model preferred | only for tiny bounded rewrites | These tasks mix structure, interpretation, and consistency pressure. GPT-style models often make slightly fewer artifact-level mistakes. |
@@ -225,7 +225,7 @@ The right choice still depends on the host, the task shape, and the exact model 
   - supports generated model selection and is useful as a **multi-model host**; a common practical split is Anthropic for generation and GPT-style models for review. It still lacks Claude-style worktree isolation.
 
 - **GitHub Copilot**
-  - generated agent files do not have the same direct model-selection surface, so choose the right model in the host environment or session before invoking Cyber Constructor workflows. Its multi-model nature is useful when you want stronger review behavior from GPT-style models.
+  - generated agent files do not have the same direct model-selection surface, so choose the right model in the host environment or session before invoking Constructor Studio workflows. Its multi-model nature is useful when you want stronger review behavior from GPT-style models.
 
 - **OpenAI Codex**
   - treat model choice as mostly session-level and prompt-level rather than strongly host-enforced metadata; use stronger GPT-style models for planning, review, architecture, and brownfield work
@@ -237,9 +237,9 @@ The right choice still depends on the host, the task shape, and the exact model 
 
 ## 5. Claude Code
 
-### Why it fits Cyber Constructor well
+### Why it fits Constructor Studio well
 
-Claude Code is the strongest fit for the full Cyber Constructor model.
+Claude Code is the strongest fit for the full Constructor Studio model.
 
 It is the highest-fidelity host for:
 
@@ -250,7 +250,7 @@ It is the highest-fidelity host for:
 - **worktree isolation**
 - **subagent-level hooks**
 
-This makes it the closest match to how Cyber Constructor wants generation and review to be separated.
+This makes it the closest match to how Constructor Studio wants generation and review to be separated.
 
 ### Best use cases
 
@@ -274,12 +274,12 @@ This makes it the closest match to how Cyber Constructor wants generation and re
 
 - use a fresh parent chat for a new major task
 - prefer subagents for codegen and review instead of doing everything in one session
-- rerun `cfc generate-agents --agent claude` after integration-relevant changes
+- rerun `cfs generate-agents --agent claude` after integration-relevant changes
 - still validate and review after codegen
 
 ### Practical recommendation
 
-If you want the most complete Cyber Constructor host today, use **Claude Code**.
+If you want the most complete Constructor Studio host today, use **Claude Code**.
 
 It is also the strongest default when the main task is **code generation**.
 
@@ -289,7 +289,7 @@ It is also the strongest default when the main task is **code generation**.
 
 ### What works well
 
-Cursor supports Cyber Constructor subagents and is a strong day-to-day host for normal coding workflows.
+Cursor supports Constructor Studio subagents and is a strong day-to-day host for normal coding workflows.
 
 It supports:
 
@@ -319,7 +319,7 @@ That means the overall separation is still useful, but not as strong as the Clau
 
 ### Practical recommendation
 
-Use **Cursor** when you want solid Cyber Constructor support inside an interactive IDE workflow and do not strictly depend on Claude-style worktree isolation.
+Use **Cursor** when you want solid Constructor Studio support inside an interactive IDE workflow and do not strictly depend on Claude-style worktree isolation.
 
 It becomes especially attractive when you want one host where:
 
@@ -332,7 +332,7 @@ It becomes especially attractive when you want one host where:
 
 ### What works well
 
-GitHub Copilot supports generated Cyber Constructor subagents and can participate in structured generation and review flows.
+GitHub Copilot supports generated Constructor Studio subagents and can participate in structured generation and review flows.
 
 It is useful for:
 
@@ -349,15 +349,15 @@ The result is still useful, but some control that Claude can express more direct
 ### Typical problems
 
 - **You expect Copilot subagents to enforce as much as Claude Code does**
-- **You rely too much on the host tool and not enough on Cyber Constructor validation**
-- **You have existing GitHub-side instruction files and assume Cyber Constructor will overwrite everything**
+- **You rely too much on the host tool and not enough on Constructor Studio validation**
+- **You have existing GitHub-side instruction files and assume Constructor Studio will overwrite everything**
 
 ### How to mitigate
 
 - keep the tasks explicit and bounded
-- lean more on Cyber Constructor workflows and deterministic validation
+- lean more on Constructor Studio workflows and deterministic validation
 - inspect generated `.github/agents/` outputs when debugging setup issues
-- do not treat host integration as the source of truth; treat Cyber Constructor workflows and validation as the source of truth
+- do not treat host integration as the source of truth; treat Constructor Studio workflows and validation as the source of truth
 
 ### Practical recommendation
 
@@ -371,7 +371,7 @@ It is especially reasonable when your review culture benefits from **GPT-style t
 
 ### What works well
 
-OpenAI Codex can be used with Cyber Constructor and supports generated agent definitions.
+OpenAI Codex can be used with Constructor Studio and supports generated agent definitions.
 
 It works best for:
 
@@ -419,9 +419,9 @@ It is particularly strong for:
 
 Windsurf does **not** support subagents.
 
-This is the most important thing to understand before using Cyber Constructor there.
+This is the most important thing to understand before using Constructor Studio there.
 
-Cyber Constructor still works through:
+Constructor Studio still works through:
 
 - **workflow integrations**
 - **skill outputs**
@@ -441,7 +441,7 @@ In Windsurf, you should manually do what subagents would otherwise help with aut
 
 ### Typical problems
 
-- **You expect `cf-constructor-codegen` or `cf-constructor-pr-review` to exist as host-native subagents**
+- **You expect `cf-codegen` or `cf-pr-review` to exist as host-native subagents**
 - **You run generation and review in the same long session**
 - **You let generation context contaminate review quality**
 - **You expect least-privilege separation that the host cannot enforce**
@@ -452,11 +452,11 @@ In Windsurf, you should manually do what subagents would otherwise help with aut
 - keep one role per chat
 - use `plan` for larger work so each phase stays bounded
 - run validation and review explicitly after generation
-- accept that Windsurf is a **single-agent host** from Cyber Constructor's point of view
+- accept that Windsurf is a **single-agent host** from Constructor Studio's point of view
 
 ### Practical recommendation
 
-Use **Windsurf** with Cyber Constructor when you want the workflow and skill layer, but do not expect host-native subagent orchestration.
+Use **Windsurf** with Constructor Studio when you want the workflow and skill layer, but do not expect host-native subagent orchestration.
 
 Think of Windsurf as **manual context orchestration** rather than **subagent orchestration**.
 
@@ -476,7 +476,7 @@ Its main practical upside is that it can still be valuable as a **multi-model ho
 
 **Fix**:
 
-- rerun `🖥️ cfc generate-agents --agent <tool>`
+- rerun `🖥️ cfs generate-agents --agent <tool>`
 - check whether that host actually supports subagents
 - if not, switch to manual chat separation
 
@@ -501,7 +501,7 @@ Its main practical upside is that it can still be valuable as a **multi-model ho
 **Fix**:
 
 - treat host permissions as helpful, not as your only safety mechanism
-- rely on Cyber Constructor validation, review workflow, and final human review
+- rely on Constructor Studio validation, review workflow, and final human review
 
 ### Problem: one giant task keeps going off the rails
 
@@ -511,7 +511,7 @@ Its main practical upside is that it can still be valuable as a **multi-model ho
 
 **Fix**:
 
-- use `💬 cf-constructor plan: ...`
+- use `💬 cf plan: ...`
 - execute phase by phase
 - validate after each meaningful step
 
@@ -527,13 +527,13 @@ Its main practical upside is that it can still be valuable as a **multi-model ho
 - separate generation from review
 - keep tasks smaller and more explicit
 
-One practical workaround is to use Cyber Constructor to generate the **next-chat prompt** for you.
+One practical workaround is to use Constructor Studio to generate the **next-chat prompt** for you.
 
 Example:
 
 - in the current chat:
-  - 💬 `cf-constructor analyze: generate a bounded prompt for a fresh Windsurf chat that should implement only phase 2 of the approved plan, list the exact files to inspect first, preserve @cpt-* markers, and end by running validation and summarizing any remaining issues`
-  - 💬 `cf-constructor analyze: generate a bounded prompt for a fresh Windsurf chat that should review the code changed for phase 2 against the approved FEATURE and DESIGN, check for missing @cpt-* markers, and return a structured list of issues by severity`
+  - 💬 `cf analyze: generate a bounded prompt for a fresh Windsurf chat that should implement only phase 2 of the approved plan, list the exact files to inspect first, preserve @cpt-* markers, and end by running validation and summarizing any remaining issues`
+  - 💬 `cf analyze: generate a bounded prompt for a fresh Windsurf chat that should review the code changed for phase 2 against the approved FEATURE and DESIGN, check for missing @cpt-* markers, and return a structured list of issues by severity`
 
 - then open a **new Windsurf chat** and paste the generated prompt there
 
@@ -592,5 +592,5 @@ Whether the host supports subagents or not, the operating model should still be:
 - **[README](../README.md)**
 - **[Usage guide](USAGE-GUIDE.md)**
 - **[Configuration guide](CONFIGURATION.md)**
-- **[ADR-0016: Subagent registration](../architecture/ADR/0016-cpt-cypilot-adr-ai-cli-extensibility-subagents-v1.md)**
+- **[ADR-0016: Subagent registration](../architecture/ADR/0016-cpt-studio-adr-ai-cli-extensibility-subagents-v1.md)**
 - **[Workspace specification](../requirements/workspace.md)**

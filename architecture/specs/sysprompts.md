@@ -1,12 +1,12 @@
 ---
-cypilot: true
+studio: true
 type: spec
 name: Project Extension Specification
 version: 1.0
-purpose: Define how projects extend Cyber Constructor behavior through {cf-constructor-path}/config/sysprompts and config/AGENTS.md with operation-scoped system prompts
+purpose: Define how projects extend Constructor Studio behavior through {cf-studio-path}/config/sysprompts and config/AGENTS.md with operation-scoped system prompts
 drivers:
-  - cpt-cypilot-fr-core-config
-  - cpt-cypilot-fr-core-workflows
+  - cpt-studio-fr-core-config
+  - cpt-studio-fr-core-workflows
 ---
 
 # Project Extension Specification
@@ -46,11 +46,11 @@ drivers:
 
 ## Overview
 
-Projects extend Cyber Constructor behavior by placing **system prompts** in `{cf-constructor-path}/config/sysprompts/` and registering them via `{cf-constructor-path}/config/AGENTS.md`. These prompts are loaded by workflows during generate, analyze, and code operations, providing project-specific context without modifying kit files or core configuration.
+Projects extend Constructor Studio behavior by placing **system prompts** in `{cf-studio-path}/config/sysprompts/` and registering them via `{cf-studio-path}/config/AGENTS.md`. These prompts are loaded by workflows during generate, analyze, and code operations, providing project-specific context without modifying kit files or core configuration.
 
 **Key properties**:
-- System prompts live in `{cf-constructor-path}/config/sysprompts/*.md` — plain Markdown files
-- `AGENTS.md` at `{cf-constructor-path}/config/AGENTS.md` maps prompts to operations via `WHEN` rules
+- System prompts live in `{cf-studio-path}/config/sysprompts/*.md` — plain Markdown files
+- `AGENTS.md` at `{cf-studio-path}/config/AGENTS.md` maps prompts to operations via `WHEN` rules
 - Prompts are loaded at runtime — no code generation, no build step
 - Project-specific: conventions, tech stack, domain model, patterns, etc.
 - Complementary to kit files: kit rules define artifact structure, project system prompts define project context
@@ -60,16 +60,16 @@ Projects extend Cyber Constructor behavior by placing **system prompts** in `{cf
 | Concern | Location |
 |---------|----------|
 | Artifact structure, ID kinds, heading rules | Kit files (`rules.md`, `constraints.toml`, `template.md`) |
-| Project tech stack, naming conventions | `{cf-constructor-path}/config/sysprompts/tech-stack.md` |
-| Domain model, entity relationships | `{cf-constructor-path}/config/sysprompts/domain-model.md` |
-| API contract format | `{cf-constructor-path}/config/sysprompts/api-contracts.md` |
+| Project tech stack, naming conventions | `{cf-studio-path}/config/sysprompts/tech-stack.md` |
+| Domain model, entity relationships | `{cf-studio-path}/config/sysprompts/domain-model.md` |
+| API contract format | `{cf-studio-path}/config/sysprompts/api-contracts.md` |
 
 ---
 
 ## Extension Directory
 
 ```
-{cf-constructor-path}/             # Install directory (default: .cf-constructor/)
+{cf-studio-path}/             # Install directory (default: .cf/)
 └── config/
     ├── AGENTS.md              # Navigation rules (WHEN → spec file)
     ├── core.toml              # Core config
@@ -89,12 +89,12 @@ All sysprompt files are optional. Only files referenced in `AGENTS.md` are loade
 
 ## Root AGENTS.md Entry
 
-Cyber Constructor injects the same managed block into the **project root** `AGENTS.md` and `CLAUDE.md`, exposing only the configured install path:
+Constructor Studio injects the same managed block into the **project root** `AGENTS.md` and `CLAUDE.md`, exposing only the configured install path:
 
 ````markdown
 <!-- @cf:root-agents -->
 ```toml
-cf-constructor-path = ".cf-constructor"
+cf-path = ".cf"
 ```
 <!-- /@cf:root-agents -->
 ````
@@ -102,26 +102,26 @@ cf-constructor-path = ".cf-constructor"
 **Behavior**:
 - Inserted at the **beginning** of the root `AGENTS.md` and `CLAUDE.md` files
 - If a file does not exist, it is created
-- The path reflects the actual install directory via `cf-constructor-path`
-- Content between the `<!-- @cf:root-agents -->` and `<!-- /@cf:root-agents -->` markers is **fully managed** by Cyber Constructor — overwritten on every check
+- The path reflects the actual install directory via `cf-path`
+- Content between the `<!-- @cf:root-agents -->` and `<!-- /@cf:root-agents -->` markers is **fully managed** by Constructor Studio — overwritten on every check
 - Manual edits inside the block are discarded
 
-**Integrity check**: every Cyber Constructor CLI invocation (not just `init`) verifies both blocks exist and the path is correct. If a block is missing or stale, it is silently re-injected. This ensures any agent that opens the project is immediately routed to Cyber Constructor's navigation entry point.
+**Integrity check**: every Constructor Studio CLI invocation (not just `init`) verifies both blocks exist and the path is correct. If a block is missing or stale, it is silently re-injected. This ensures any agent that opens the project is immediately routed to Constructor Studio's navigation entry point.
 
 ---
 
 ## config/AGENTS.md
 
-**Location**: `{cf-constructor-path}/config/AGENTS.md`
+**Location**: `{cf-studio-path}/config/AGENTS.md`
 
-`{cf-constructor-path}/config/AGENTS.md` is the project-level navigation file. It declares which system prompts to load for which operations. Agents reach this file via the root `AGENTS.md` entry above.
+`{cf-studio-path}/config/AGENTS.md` is the project-level navigation file. It declares which system prompts to load for which operations. Agents reach this file via the root `AGENTS.md` entry above.
 
-Kit workflow commands are **not** placed here — they are exposed via agent entry points (e.g., `.windsurf/workflows/cf-constructor-*.md`) generated from kit workflow files (see [kit.md](kit/kit.md)).
+Kit workflow commands are **not** placed here — they are exposed via agent entry points (e.g., `.windsurf/workflows/cf-*.md`) generated from kit workflow files (see [kit.md](kit/kit.md)).
 
 ### Required Structure
 
 ```markdown
-# Cyber Constructor: {Project Name}
+# Constructor Studio: {Project Name}
 
 ALWAYS open and follow `sysprompts/tech-stack.md` WHEN writing code, choosing technologies, or adding dependencies
 ALWAYS open and follow `sysprompts/conventions.md` WHEN writing code, naming files/functions/variables, or reviewing code
@@ -135,7 +135,7 @@ ALWAYS open and follow `sysprompts/testing.md` WHEN writing tests, reviewing tes
 ALWAYS open and follow `{sysprompt-path}` WHEN {action-description}
 ```
 
-- `{sysprompt-path}` — relative to `{cf-constructor-path}/config/` (e.g., `sysprompts/tech-stack.md`)
+- `{sysprompt-path}` — relative to `{cf-studio-path}/config/` (e.g., `sysprompts/tech-stack.md`)
 - `{action-description}` — action-based description of WHEN to load the system prompt
 
 **Rules MUST be action-based** — they describe what the agent is doing, not which artifact kind is active:
@@ -143,14 +143,14 @@ ALWAYS open and follow `{sysprompt-path}` WHEN {action-description}
 | Correct | Incorrect |
 |---------|-----------|
 | `WHEN writing code, choosing technologies` | `WHEN generating DESIGN` |
-| `WHEN working with entities, data structures` | `WHEN Cyber Constructor uses kit sdlc` |
+| `WHEN working with entities, data structures` | `WHEN Constructor Studio uses kit sdlc` |
 | `WHEN writing tests, reviewing coverage` | `WHEN working on project` |
 
 ---
 
 ## System Prompt Files
 
-System prompt files are plain Markdown documents in `{cf-constructor-path}/config/sysprompts/`. Each file provides project-specific context that agents load during operations.
+System prompt files are plain Markdown documents in `{cf-studio-path}/config/sysprompts/`. Each file provides project-specific context that agents load during operations.
 
 ### Format
 
@@ -203,15 +203,15 @@ Workflows load project system prompts at specific points:
 
 | Operation | Loaded System Prompts (via WHEN matching) |
 |-----------|-------------------------------------------|
-| `cf-constructor generate PRD` | Prompts matching "working with entities", "writing requirements" |
-| `cf-constructor generate DESIGN` | Prompts matching "designing components", "choosing technologies" |
-| `{cfc_cmd} validate` | Prompts matching relevant artifact content |
+| `cf generate PRD` | Prompts matching "working with entities", "writing requirements" |
+| `cf generate DESIGN` | Prompts matching "designing components", "choosing technologies" |
+| `{cfs_cmd} validate` | Prompts matching relevant artifact content |
 | Code generation/review | `tech-stack.md`, `conventions.md`, `patterns.md` |
 
 ### Loading Algorithm
 
 1. Determine current operation context (generate, analyze, code, etc.)
-2. Read `{cf-constructor-path}/config/AGENTS.md`
+2. Read `{cf-studio-path}/config/AGENTS.md`
 3. For each `WHEN` rule, match the action description against current context
 4. Load matching system prompt files in declaration order
 5. Inject content as system prompt context for the agent
@@ -221,7 +221,7 @@ Workflows load project system prompts at specific points:
 Project system prompts are **additive** — they don't replace kit-level prompts. Loading order:
 
 1. Kit rules and prompts (from `rules.md`, `SKILL.md`) — artifact-kind-level directives
-2. Project `{cf-constructor-path}/config/sysprompts/*.md` (from AGENTS.md WHEN rules) — project-level context
+2. Project `{cf-studio-path}/config/sysprompts/*.md` (from AGENTS.md WHEN rules) — project-level context
 
 If a project system prompt contradicts a kit prompt, the project system prompt takes precedence (project-specific overrides generic).
 
@@ -229,10 +229,10 @@ If a project system prompt contradicts a kit prompt, the project system prompt t
 
 ## System Prompt Discovery
 
-For existing projects, Cyber Constructor can auto-discover system prompt candidates:
+For existing projects, Constructor Studio can auto-discover system prompt candidates:
 
 ```bash
-{cfc_cmd} init --discover
+{cfs_cmd} init --discover
 ```
 
 **Discovery process**:
@@ -261,8 +261,8 @@ For existing projects, Cyber Constructor can auto-discover system prompt candida
 
 | # | Check | Required | How to Verify |
 |---|-------|----------|---------------|
-| A.1 | `{cf-constructor-path}/config/AGENTS.md` exists | YES | File exists |
-| A.2 | Has project name heading | YES | `# Cyber Constructor: {name}` present |
+| A.1 | `{cf-studio-path}/config/AGENTS.md` exists | YES | File exists |
+| A.2 | Has project name heading | YES | `# Constructor Studio: {name}` present |
 | A.3 | All WHEN rules use action-based format | YES | Pattern: `WHEN {verb}ing ...` |
 | A.4 | No orphaned WHEN rules | YES | All referenced system prompt files exist |
 
@@ -278,7 +278,7 @@ For existing projects, Cyber Constructor can auto-discover system prompt candida
 
 **Validation command**:
 ```bash
-{cfc_cmd} validate --sysprompts
+{cfs_cmd} validate --sysprompts
 ```
 
 ---
@@ -289,7 +289,7 @@ For existing projects, Cyber Constructor can auto-discover system prompt candida
 
 ```
 ⚠️ Orphaned WHEN rule: sysprompts/{name}.md not found
-→ Referenced in: {cf-constructor-path}/config/AGENTS.md
+→ Referenced in: {cf-studio-path}/config/AGENTS.md
 → Fix: Create the sysprompt file OR remove the WHEN rule
 ```
 **Action**: WARN — workflow continues without the missing spec.
@@ -297,9 +297,9 @@ For existing projects, Cyber Constructor can auto-discover system prompt candida
 ### AGENTS.md Not Found
 
 ```
-⚠️ Project AGENTS.md not found: {cf-constructor-path}/config/AGENTS.md
+⚠️ Project AGENTS.md not found: {cf-studio-path}/config/AGENTS.md
 → No project-level system prompts will be loaded
-→ Fix: Run `cfc init` to create AGENTS.md
+→ Fix: Run `cfs init` to create AGENTS.md
 ```
 **Action**: WARN — workflows proceed with kit-level system prompts only.
 
@@ -319,9 +319,9 @@ For existing projects, Cyber Constructor can auto-discover system prompt candida
 
 A complete project extension for a TypeScript web application:
 
-`{cf-constructor-path}/config/AGENTS.md`:
+`{cf-studio-path}/config/AGENTS.md`:
 ```markdown
-# Cyber Constructor: MyApp
+# Constructor Studio: MyApp
 
 ALWAYS open and follow `sysprompts/tech-stack.md` WHEN writing code, choosing technologies, or adding dependencies
 ALWAYS open and follow `sysprompts/conventions.md` WHEN writing code, naming files/functions/variables, or reviewing code
@@ -330,7 +330,7 @@ ALWAYS open and follow `sysprompts/testing.md` WHEN writing tests, reviewing tes
 ALWAYS open and follow `sysprompts/api-contracts.md` WHEN creating/consuming APIs, defining endpoints, or handling requests
 ```
 
-`{cf-constructor-path}/config/sysprompts/tech-stack.md`:
+`{cf-studio-path}/config/sysprompts/tech-stack.md`:
 ```markdown
 # Tech Stack
 

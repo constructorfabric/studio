@@ -100,7 +100,7 @@ class TestContextConstraintsResourceBinding(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "sdlc": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "config/kits/sdlc",
                         "version": "2.0",
                         "resources": {
@@ -114,7 +114,7 @@ class TestContextConstraintsResourceBinding(unittest.TestCase):
                 "version": "1.0",
                 "project_root": "..",
                 "kits": {
-                    "sdlc": {"format": "Cypilot", "path": "config/kits/sdlc"},
+                    "sdlc": {"format": "CFS", "path": "config/kits/sdlc"},
                 },
                 "systems": [{"name": "Test", "slug": "test", "kit": "sdlc"}],
             }, config / "artifacts.toml")
@@ -148,7 +148,7 @@ class TestContextConstraintsResourceBinding(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "sdlc": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "config/kits/sdlc",
                         "version": "1.0",
                     },
@@ -159,7 +159,7 @@ class TestContextConstraintsResourceBinding(unittest.TestCase):
                 "version": "1.0",
                 "project_root": "..",
                 "kits": {
-                    "sdlc": {"format": "Cypilot", "path": "config/kits/sdlc"},
+                    "sdlc": {"format": "CFS", "path": "config/kits/sdlc"},
                 },
                 "systems": [{"name": "Test", "slug": "test", "kit": "sdlc"}],
             }, config / "artifacts.toml")
@@ -190,7 +190,7 @@ class TestContextConstraintsResourceBinding(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "sdlc": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "config/kits/sdlc",
                         "version": "2.0",
                         "resources": {
@@ -204,7 +204,7 @@ class TestContextConstraintsResourceBinding(unittest.TestCase):
                 "version": "1.0",
                 "project_root": "..",
                 "kits": {
-                    "sdlc": {"format": "Cypilot", "path": "config/kits/sdlc"},
+                    "sdlc": {"format": "CFS", "path": "config/kits/sdlc"},
                 },
                 "systems": [{"name": "Test", "slug": "test", "kit": "sdlc"}],
             }, config / "artifacts.toml")
@@ -290,7 +290,7 @@ class TestValidateKitsResourcePaths(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "sdlc": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "config/kits/sdlc",
                         "version": "2.0",
                         "resources": {
@@ -305,7 +305,7 @@ class TestValidateKitsResourcePaths(unittest.TestCase):
                 "version": "1.0",
                 "project_root": "..",
                 "kits": {
-                    "sdlc": {"format": "Cypilot", "path": "config/kits/sdlc"},
+                    "sdlc": {"format": "CFS", "path": "config/kits/sdlc"},
                 },
                 "systems": [{"name": "Test", "slug": "test", "kit": "sdlc"}],
             }, config / "artifacts.toml")
@@ -349,7 +349,7 @@ class TestValidateKitsResourcePaths(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "sdlc": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "config/kits/sdlc",
                         "version": "2.0",
                         "resources": {
@@ -363,7 +363,7 @@ class TestValidateKitsResourcePaths(unittest.TestCase):
                 "version": "1.0",
                 "project_root": "..",
                 "kits": {
-                    "sdlc": {"format": "Cypilot", "path": "config/kits/sdlc"},
+                    "sdlc": {"format": "CFS", "path": "config/kits/sdlc"},
                 },
                 "systems": [{"name": "Test", "slug": "test", "kit": "sdlc"}],
             }, config / "artifacts.toml")
@@ -410,7 +410,7 @@ class TestValidateKitsResourcePaths(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "sdlc": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": inaccessible_kit_path,
                         "version": "2.0",
                     },
@@ -421,7 +421,7 @@ class TestValidateKitsResourcePaths(unittest.TestCase):
                 "version": "1.0",
                 "project_root": "..",
                 "kits": {
-                    "sdlc": {"format": "Cypilot", "path": "config/kits/sdlc"},
+                    "sdlc": {"format": "CFS", "path": "config/kits/sdlc"},
                 },
                 "systems": [{"name": "Test", "slug": "test", "kit": "sdlc"}],
             }, config / "artifacts.toml")
@@ -517,7 +517,7 @@ class TestValidateKitsResourcePaths(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "sdlc": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "config/kits/sdlc",
                         "version": "1.0",
                     },
@@ -528,7 +528,7 @@ class TestValidateKitsResourcePaths(unittest.TestCase):
                 "version": "1.0",
                 "project_root": "..",
                 "kits": {
-                    "sdlc": {"format": "Cypilot", "path": "config/kits/sdlc"},
+                    "sdlc": {"format": "CFS", "path": "config/kits/sdlc"},
                 },
                 "systems": [{"name": "Test", "slug": "test", "kit": "sdlc"}],
             }, config / "artifacts.toml")
@@ -566,7 +566,7 @@ class TestValidateKitsResourcePaths(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "sdlc": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "custom-kits/sdlc",
                         "version": "2.0",
                     },
@@ -577,7 +577,7 @@ class TestValidateKitsResourcePaths(unittest.TestCase):
                 "version": "1.0",
                 "project_root": "..",
                 "kits": {
-                    "sdlc": {"format": "Cypilot", "path": "config/kits/sdlc"},
+                    "sdlc": {"format": "CFS", "path": "config/kits/sdlc"},
                 },
                 "systems": [{"name": "Test", "slug": "test", "kit": "sdlc"}],
             }, config / "artifacts.toml")
@@ -744,7 +744,7 @@ class TestValidateKitsFilterWithResources(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "sdlc": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "config/kits/sdlc",
                         "version": "2.0",
                         "resources": {
@@ -752,7 +752,7 @@ class TestValidateKitsFilterWithResources(unittest.TestCase):
                         },
                     },
                     "other": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "config/kits/other",
                         "version": "1.0",
                         "resources": {
@@ -766,8 +766,8 @@ class TestValidateKitsFilterWithResources(unittest.TestCase):
                 "version": "1.0",
                 "project_root": "..",
                 "kits": {
-                    "sdlc": {"format": "Cypilot", "path": "config/kits/sdlc"},
-                    "other": {"format": "Cypilot", "path": "config/kits/other"},
+                    "sdlc": {"format": "CFS", "path": "config/kits/sdlc"},
+                    "other": {"format": "CFS", "path": "config/kits/other"},
                 },
                 "systems": [{"name": "Test", "slug": "test", "kit": "sdlc"}],
             }, config / "artifacts.toml")
@@ -832,7 +832,7 @@ class TestValidateCustomKitRootMetadata(unittest.TestCase):
                 "project_root": "..",
                 "kits": {
                     "sdlc": {
-                        "format": "Cypilot",
+                        "format": "CFS",
                         "path": "custom-kits/sdlc",
                         "version": "2.0",
                     },
@@ -843,7 +843,7 @@ class TestValidateCustomKitRootMetadata(unittest.TestCase):
                 "version": "1.0",
                 "project_root": "..",
                 "kits": {
-                    "sdlc": {"format": "Cypilot", "path": "config/kits/sdlc"},
+                    "sdlc": {"format": "CFS", "path": "config/kits/sdlc"},
                 },
                 "systems": [{
                     "name": "Test",

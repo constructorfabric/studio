@@ -14,11 +14,11 @@ version: 1.0
 
 ### Session setup (panel selection)
 
-Requires: `workflows/shared/inline-fallback-probe.md` before any `cf-constructor-*` sub-agent dispatch.
+Requires: `workflows/shared/inline-fallback-probe.md` before any `cf-*` sub-agent dispatch.
 
-Dispatch sub-agent `cf-constructor-brainstorm-facilitator` with the JSON contract documented in `{cf-constructor-path}/.core/skills/cypilot/agents/cf-constructor-brainstorm-facilitator.md`. Orchestrator-supplied values for this dispatch:
+Dispatch sub-agent `cf-brainstorm-facilitator` with the JSON contract documented in `{cf-studio-path}/.core/skills/studio/agents/cf-brainstorm-facilitator.md`. Orchestrator-supplied values for this dispatch:
 
-- `initial_topic` = a one-paragraph summary of the user's original request (the trigger prompt for this `/cf-constructor-generate` run)
+- `initial_topic` = a one-paragraph summary of the user's original request (the trigger prompt for this `/cf-generate` run)
 - `kind` = `{KIND}`; `rules_loaded` = `true` only when kit rules were actually loaded for this brainstorm session, else `false`
 - `kit_rules_path`, `template_path`, `example_path` = resolved from `rules.md` when available (each `null` when unavailable; pass the key with `null` rather than omitting). A non-null `kit_rules_path` by itself does not make `rules_loaded=true`; the orchestrator must have opened and applied the rules.
 - `project_ctx` = a 2-3-sentence summary covering: the selected `system` (from Phase 0.5), the `KIND` and its kit (when STRICT + kit-mapped), and the most-relevant existing artifact paths identified during Phase 0.5 parent/sibling discovery

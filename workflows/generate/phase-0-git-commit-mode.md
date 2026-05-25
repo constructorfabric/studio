@@ -1,5 +1,5 @@
 ---
-cf-constructor: true
+cf: true
 type: workflow-fragment
 parent: workflows/generate.md
 description: "Invoke when the GIT_COMMIT_MODE session flag is unset and the orchestrator must probe the user once per chat session to determine how write-capable sub-agents are permitted to interact with git."
@@ -17,7 +17,7 @@ description: "Invoke when the GIT_COMMIT_MODE session flag is unset and the orch
 **Session-scoped flag**: `GIT_COMMIT_MODE` is probed once per chat session.
 - If already set from an earlier workflow run in this chat, skip this step entirely.
 - External-entry handoffs (briefs_only stop + resume in a new chat) MUST re-probe.
-- Do NOT re-probe on subsequent `/cf-constructor-generate` runs within the same chat.
+- Do NOT re-probe on subsequent `/cf-generate` runs within the same chat.
 
 If `GIT_COMMIT_MODE` is unset, emit exactly this menu and end the turn (hard interaction boundary — MUST NOT proceed until the user replies):
 

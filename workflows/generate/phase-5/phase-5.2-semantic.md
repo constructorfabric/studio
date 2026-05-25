@@ -1,5 +1,5 @@
 ---
-cf-constructor: true
+cf: true
 type: workflow-fragment
 parent: workflows/generate.md
 description: Invoke when the deterministic gate is PASS (or SKIPPED with proof) and the matched semantic reviewer(s) must be dispatched for the current iteration.
@@ -13,9 +13,9 @@ description: Invoke when the deterministic gate is PASS (or SKIPPED with proof) 
 
 ### Phase 5.2: Semantic Reviewers
 
-Requires: `workflows/shared/inline-fallback-probe.md` before any `cf-constructor-*` sub-agent dispatch.
+Requires: `workflows/shared/inline-fallback-probe.md` before any `cf-*` sub-agent dispatch.
 
-Select reviewer sub-agent(s) by KIND and the current rules' preferences. This generate-side matrix covers the same review axes as `workflows/analyze/phase-3-semantic.md` (artifact / code / consistency / bug-finding). When both `PROMPT_REVIEW=true` and `PROMPT_BUG_REVIEW=true`, both `cf-constructor-semantic-reviewer-prompt` and `cf-constructor-prompt-bug-finder` are dispatched in parallel. Dispatch in parallel.
+Select reviewer sub-agent(s) by KIND and the current rules' preferences. This generate-side matrix covers the same review axes as `workflows/analyze/phase-3-semantic.md` (artifact / code / consistency / bug-finding). When both `PROMPT_REVIEW=true` and `PROMPT_BUG_REVIEW=true`, both `cf-semantic-reviewer-prompt` and `cf-prompt-bug-finder` are dispatched in parallel. Dispatch in parallel.
 
 When `INLINE_FALLBACK=true` (set per `workflows/shared/inline-fallback-probe.md` — user replied `2` or host has no native sub-agent support) AND `MAX_ITER > INLINE_LOOP_WARNING_THRESHOLD` (where `INLINE_LOOP_WARNING_THRESHOLD = 2` per `workflows/generate/phase-5/index.md` § Pre-Phase-Setup), emit the long-loop context-exhaustion warning below before the first iteration of this phase runs (this file is the canonical source of the warning text):
 
@@ -43,14 +43,14 @@ Emit this block only for the file-writing stop path above:
 Pre-Review Warning Handoff
 Files were already written, but automatic review did not run because you stopped at the inline long-loop warning before any validator, reviewer, or author dispatch.
 
-Suggested next step: run `/cf-constructor-analyze` on the written files when you want review coverage.
-You may also resume `/cf-constructor-generate(mode=fix)` later if you want to continue the review/fix loop from these files.
+Suggested next step: run `/cf-analyze` on the written files when you want review coverage.
+You may also resume `/cf-generate(mode=fix)` later if you want to continue the review/fix loop from these files.
 ```
 
 `PROMPT_REVIEW=true` is set on the generate-side when the kit's `artifacts.toml`
 marks the kind with `is_prompt_document = true` OR when any written path is a
 current prompt/instruction target: `workflows/**`, `skills/**/SKILL.md`,
-`skills/cypilot/**/*.md`, `skills/**/agents/*.md`, `AGENTS.md`, or
+`skills/studio/**/*.md`, `skills/**/agents/*.md`, `AGENTS.md`, or
 agent/workflow prompt config. Intent verbs still route through analyze-side
 mode detection.
 
@@ -59,7 +59,7 @@ surface (`manifest.paths_written` on normal generate entry, or `target_paths`
 on analyze→generate external entry):
 
 - `prompt_targets` = review-surface paths matching prompt/workflow/instruction
-  files (`workflows/**`, `skills/**/SKILL.md`, `skills/cypilot/**/*.md`,
+  files (`workflows/**`, `skills/**/SKILL.md`, `skills/studio/**/*.md`,
   `skills/**/agents/*.md`, `requirements/**/*.md`, `AGENTS.md`, and prompt
   config files)
 - `code_targets` = review-surface paths matching code/test/build files owned by
@@ -76,25 +76,25 @@ Decision priority (top-to-bottom; first match wins for the artifact/code axis, p
 
 | Condition | Dispatched sub-agent |
 |---|---|
-| `PROMPT_REVIEW=true` (overrides artifact/code rows) | `cf-constructor-semantic-reviewer-prompt` |
-| `TARGET_TYPE == artifact` and not `PROMPT_REVIEW` | `cf-constructor-semantic-reviewer-artifact` |
-| `TARGET_TYPE == code` and not `PROMPT_REVIEW` | `cf-constructor-semantic-reviewer-code` |
-| `CODE_BUG_REVIEW=true` | `cf-constructor-code-bug-finder` (additive on the code branch) |
-| `PROMPT_BUG_REVIEW=true` | `cf-constructor-prompt-bug-finder` (additive when PROMPT_REVIEW=true; standalone when PROMPT_REVIEW=false) |
-| `rules.md` requests consistency review AND `len(target_paths) ≥ 2` | `cf-constructor-semantic-reviewer-consistency` (additive on any branch above) |
+| `PROMPT_REVIEW=true` (overrides artifact/code rows) | `cf-semantic-reviewer-prompt` |
+| `TARGET_TYPE == artifact` and not `PROMPT_REVIEW` | `cf-semantic-reviewer-artifact` |
+| `TARGET_TYPE == code` and not `PROMPT_REVIEW` | `cf-semantic-reviewer-code` |
+| `CODE_BUG_REVIEW=true` | `cf-code-bug-finder` (additive on the code branch) |
+| `PROMPT_BUG_REVIEW=true` | `cf-prompt-bug-finder` (additive when PROMPT_REVIEW=true; standalone when PROMPT_REVIEW=false) |
+| `rules.md` requests consistency review AND `len(target_paths) ≥ 2` | `cf-semantic-reviewer-consistency` (additive on any branch above) |
 
-Consistency precondition: `cf-constructor-semantic-reviewer-consistency` requires `len(target_paths) ≥ 2`. When the trigger matches but the precondition is unmet, skip the consistency dispatch and log `consistency-skipped: single-target` to the iteration trace; the other reviewer(s) still run normally.
+Consistency precondition: `cf-semantic-reviewer-consistency` requires `len(target_paths) ≥ 2`. When the trigger matches but the precondition is unmet, skip the consistency dispatch and log `consistency-skipped: single-target` to the iteration trace; the other reviewer(s) still run normally.
 
-Each reviewer's dispatch contract lives in its prompt file under `{cf-constructor-path}/.core/skills/cypilot/agents/`. The orchestrator MUST supply the exact JSON fields each reviewer declares (mirrors `workflows/generate/phase-5/phase-5.1-det-gate.md` § validator dispatch). Per-reviewer enumeration:
+Each reviewer's dispatch contract lives in its prompt file under `{cf-studio-path}/.core/skills/studio/agents/`. The orchestrator MUST supply the exact JSON fields each reviewer declares (mirrors `workflows/generate/phase-5/phase-5.1-det-gate.md` § validator dispatch). Per-reviewer enumeration:
 
-- `cf-constructor-semantic-reviewer-artifact` — supply: `target_paths = artifact_targets`, `kit_rules_path` = resolved from `rules.md` (`null` in RELAXED non-kit), `checklist_path` = `{kit_path}/artifacts/{KIND}/checklist.md` (`null` when no kit applies), `template_path` = `{kit_path}/artifacts/{KIND}/template.md` (`null` when unavailable), `example_path` = `{kit_path}/artifacts/{KIND}/examples/example.md` (`null` when unavailable), `cross_ref_paths` = parent/sibling artifacts identified in `workflows/generate/phase-0.5-clarify.md`, `rules_mode = {STRICT|RELAXED}`, `traceability_mode` from `artifacts.toml`.
-- `cf-constructor-semantic-reviewer-code` — supply: `design_artifact_path` from `workflows/generate/phase-0.5-clarify.md`, `code_paths = code_targets`, `cross_ref_paths`, `rules_mode`, `traceability_mode` from `artifacts.toml`, `kit_rules_path` resolved from `rules.md`.
-- `cf-constructor-semantic-reviewer-prompt` — supply: `target_paths = prompt_targets`, `kit_rules_path` resolved from `rules.md` (when loaded), `rules_mode`, `cross_ref_paths`.
-- `cf-constructor-semantic-reviewer-consistency` — supply: `target_paths = artifact_targets` for artifact-only consistency checks, otherwise the full review surface when the consistency rule explicitly spans prompt/workflow targets; `baseline_path` (always supplied; value is the resolved baseline path from `rules.md` or the user-specified baseline, or `null` when no baseline applies), `kit_rules_path` (when loaded), `rules_mode`, `namespace_prefix = "Rcons"`.
-- `cf-constructor-code-bug-finder` — supply: `design_artifact_path` from `workflows/generate/phase-0.5-clarify.md`, `code_paths = code_targets`, `cross_ref_paths`, `rules_mode`, `kit_rules_path` resolved from `rules.md`. Only dispatched when `CODE_BUG_REVIEW=true`.
-- `cf-constructor-prompt-bug-finder` — supply: `target_paths = prompt_targets`, `kit_rules_path` resolved from `rules.md` (when loaded), `rules_mode`, `cross_ref_paths`. Only dispatched when `PROMPT_BUG_REVIEW=true`.
+- `cf-semantic-reviewer-artifact` — supply: `target_paths = artifact_targets`, `kit_rules_path` = resolved from `rules.md` (`null` in RELAXED non-kit), `checklist_path` = `{kit_path}/artifacts/{KIND}/checklist.md` (`null` when no kit applies), `template_path` = `{kit_path}/artifacts/{KIND}/template.md` (`null` when unavailable), `example_path` = `{kit_path}/artifacts/{KIND}/examples/example.md` (`null` when unavailable), `cross_ref_paths` = parent/sibling artifacts identified in `workflows/generate/phase-0.5-clarify.md`, `rules_mode = {STRICT|RELAXED}`, `traceability_mode` from `artifacts.toml`.
+- `cf-semantic-reviewer-code` — supply: `design_artifact_path` from `workflows/generate/phase-0.5-clarify.md`, `code_paths = code_targets`, `cross_ref_paths`, `rules_mode`, `traceability_mode` from `artifacts.toml`, `kit_rules_path` resolved from `rules.md`.
+- `cf-semantic-reviewer-prompt` — supply: `target_paths = prompt_targets`, `kit_rules_path` resolved from `rules.md` (when loaded), `rules_mode`, `cross_ref_paths`.
+- `cf-semantic-reviewer-consistency` — supply: `target_paths = artifact_targets` for artifact-only consistency checks, otherwise the full review surface when the consistency rule explicitly spans prompt/workflow targets; `baseline_path` (always supplied; value is the resolved baseline path from `rules.md` or the user-specified baseline, or `null` when no baseline applies), `kit_rules_path` (when loaded), `rules_mode`, `namespace_prefix = "Rcons"`.
+- `cf-code-bug-finder` — supply: `design_artifact_path` from `workflows/generate/phase-0.5-clarify.md`, `code_paths = code_targets`, `cross_ref_paths`, `rules_mode`, `kit_rules_path` resolved from `rules.md`. Only dispatched when `CODE_BUG_REVIEW=true`.
+- `cf-prompt-bug-finder` — supply: `target_paths = prompt_targets`, `kit_rules_path` resolved from `rules.md` (when loaded), `rules_mode`, `cross_ref_paths`. Only dispatched when `PROMPT_BUG_REVIEW=true`.
 
-`traceability_mode` resolution: read `[systems.<system>] traceability` from `{cf-constructor-path}/config/artifacts.toml`; default to `FULL` when unset. Thread it into every reviewer dispatch whose agent contract declares it.
+`traceability_mode` resolution: read `[systems.<system>] traceability` from `{cf-studio-path}/config/artifacts.toml`; default to `FULL` when unset. Thread it into every reviewer dispatch whose agent contract declares it.
 
 Reviewer return handling:
 

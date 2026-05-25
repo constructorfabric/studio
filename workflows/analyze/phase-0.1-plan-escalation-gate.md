@@ -21,9 +21,9 @@ version: 1.0
 
 ### Sub-Agent Decomposition Bypass
 
-When `SUB_AGENT_SESSION_APPROVED=true` AND `INLINE_FALLBACK=false`, this gate **MUST NOT** propose `/cf-constructor-plan`. Decomposition is handled in-workflow by `workflows/analyze/phase-2.5-reviewer-plan.md`, which builds a `REVIEWER_EXECUTION_PLAN` that partitions the analysis across reviewer sub-agents (methodology × path-partition) for parallel dispatch in Phase 3.
+When `SUB_AGENT_SESSION_APPROVED=true` AND `INLINE_FALLBACK=false`, this gate **MUST NOT** propose `/cf-plan`. Decomposition is handled in-workflow by `workflows/analyze/phase-2.5-reviewer-plan.md`, which builds a `REVIEWER_EXECUTION_PLAN` that partitions the analysis across reviewer sub-agents (methodology × path-partition) for parallel dispatch in Phase 3.
 
-Raw-input overflow remains higher precedence: if `{cf-constructor-path}/.core/requirements/raw-input-overflow.md` has already fired for direct prompt/provided-file input over `500` lines, emit that rule's explicit plan-vs-continue choice before applying this sub-agent decomposition bypass.
+Raw-input overflow remains higher precedence: if `{cf-studio-path}/.core/requirements/raw-input-overflow.md` has already fired for direct prompt/provided-file input over `500` lines, emit that rule's explicit plan-vs-continue choice before applying this sub-agent decomposition bypass.
 
 In that mode: compute and log the estimate for telemetry — `"Plan-escalation: estimate={N} lines, decomposition deferred to Phase 2.5 (sub-agents approved)"` — then skip the rest of this file and proceed. Do not emit any user-facing escalation menu.
 
@@ -53,10 +53,10 @@ The plan workflow can decompose this into focused analysis phases (≤500 lines 
 that ensure every checklist item is checked and nothing is skipped.
 
 Options:
-1. Switch to /cf-constructor-plan (recommended for thorough analysis)
+1. Switch to /cf-plan (recommended for thorough analysis)
 2. Continue here (risk: context overflow, checks may be partially applied)
 
 Suggested: 1 because plan decomposition is the safer default for >2000-line budgets.
 Reply 1 or 2.
 ```
-If user chooses plan: stop and tell them to run `/cf-constructor-plan analyze {KIND}` with the same parameters. If user chooses continue: proceed with aggressive chunking and log _"Proceeding in single-context mode — some checks may be missed for large artifacts."_
+If user chooses plan: stop and tell them to run `/cf-plan analyze {KIND}` with the same parameters. If user chooses continue: proceed with aggressive chunking and log _"Proceeding in single-context mode — some checks may be missed for large artifacts."_

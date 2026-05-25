@@ -13,6 +13,6 @@ Check every path in `{PATHS}` (defaults to `[{PATH}]`; expanded by `workflows/an
 If any check fails for any path in `{PATHS}`:
 ```
 ✗ Target not found: {failing path}
-→ Run /cf-constructor-generate to create it (resolve the failing path's kind via {cf-constructor-path}/config/artifacts.toml when multiple paths are in scope)
+→ Run /cf-generate to create it (resolve the failing path's kind via {cf-studio-path}/config/artifacts.toml when multiple paths are in scope)
 ```
 STOP analysis.

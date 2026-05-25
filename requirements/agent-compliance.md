@@ -1,9 +1,9 @@
 ---
-cf-constructor: true
+cf: true
 type: requirement
 name: Agent Compliance Protocol
 version: 1.0
-purpose: Enforcement protocol for AI agents executing Cypilot workflows (STRICT mode only)
+purpose: Enforcement protocol for AI agents executing Studio workflows (STRICT mode only)
 ---
 
 # Agent Compliance Protocol
@@ -23,10 +23,10 @@ purpose: Enforcement protocol for AI agents executing Cypilot workflows (STRICT 
 <!-- /toc -->
 
 **Type**: Requirement
-**Applies**: Only when Rules Mode = STRICT (see `{cf-constructor-path}/.core/requirements/execution-protocol.md`)
+**Applies**: Only when Rules Mode = STRICT (see `{cf-studio-path}/.core/requirements/execution-protocol.md`)
 
 ## Overview
-This protocol defines mandatory behaviors for AI agents executing Cypilot workflows when Cypilot rules are enabled. It prevents common agent failure modes through structural enforcement.
+This protocol defines mandatory behaviors for AI agents executing Studio workflows when Studio rules are enabled. It prevents common agent failure modes through structural enforcement.
 
 **Key principle**: Trust but verify — agents must provide observable evidence (quotes, line numbers, tool call confirmations) for every claim. "I checked it" without evidence = violation.
 
@@ -86,7 +86,7 @@ Agent MUST structure validation output with these six sections:
 
 | Section | Required content |
 |---|---|
-| **1. Protocol Compliance** | Rules Mode: STRICT (`cypilot-sdlc`); Artifact Read: `{path}` (`{N}` lines); Checklist Loaded: `{path}` (`{N}` lines) |
+| **1. Protocol Compliance** | Rules Mode: STRICT (`studio-sdlc`); Artifact Read: `{path}` (`{N}` lines); Checklist Loaded: `{path}` (`{N}` lines) |
 | **2. Deterministic Gate** | Status: PASS/FAIL; Errors: `{list if any}` |
 | **3. Semantic Review (MANDATORY)** | `Checklist Progress` table with `{ID} \| PASS/FAIL/N/A \| {quote or violation description}` for each category; `Categories Summary` with Total, PASS, FAIL, N/A (explicit), N/A (missing statement) → VIOLATIONS |
 | **4. Agent Self-Test** | Answers to all 6 self-test questions with evidence |
@@ -125,11 +125,11 @@ If agent or user detects anti-pattern violation:
 
 ## Relaxed Mode Behavior
 
-When Rules Mode = RELAXED (no Cypilot rules):
+When Rules Mode = RELAXED (no Studio rules):
 
 - This compliance protocol does NOT apply
 - Agent uses best judgment
-- Output includes disclaimer: `⚠️ Validated without Cypilot rules (reduced rigor)`
+- Output includes disclaimer: `⚠️ Validated without Studio rules (reduced rigor)`
 - User accepts reduced confidence in results
 
 ## Consolidated Validation Checklist

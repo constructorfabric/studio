@@ -22,7 +22,7 @@
 
 ## Context and Problem Statement
 
-Overwork Alert is a minimal macOS example tool intended to demonstrate an end-to-end Cypilot SDLC chain inside this repository. The tool must run continuously, track active work time (idle-aware), and notify the user when their configured limit is exceeded.
+Overwork Alert is a minimal macOS example tool intended to demonstrate an end-to-end Constructor Studio SDLC chain inside this repository. The tool must run continuously, track active work time (idle-aware), and notify the user when their configured limit is exceeded.
 
 We need an execution model that supports background operation and simple user controls (status/pause/resume/reset) with low implementation complexity. The v1 scope explicitly excludes a menubar UI.
 

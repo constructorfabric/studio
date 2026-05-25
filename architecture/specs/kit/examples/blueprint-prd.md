@@ -1,4 +1,4 @@
-> **DEPRECATED per `cpt-cypilot-adr-remove-blueprint-system`**: Blueprint files are no longer used. Kits are now direct file packages. This example is preserved for legacy reference only.
+> **DEPRECATED per `cpt-studio-adr-remove-blueprint-system`**: Blueprint files are no longer used. Kits are now direct file packages. This example is preserved for legacy reference only.
 
 PRD Blueprint Example (SDLC Kit) — a representative PRD blueprint showing
 skills, workflows, rules, checklist, and template markers in use.
@@ -18,8 +18,8 @@ SKILL.md extension — these commands and workflows appear in the agent's SKILL.
 `@cpt:skill`
 ```markdown
 ### PRD Commands
-- `cpt validate --artifact <PRD.md>` — validate PRD
-- `cpt list-ids --kind fr` — list all functional requirements
+- `cfs validate --artifact <PRD.md>` — validate PRD
+- `cfs list-ids --kind fr` — list all functional requirements
 ### PRD Workflows
 - **Generate PRD**: create a new PRD from template with guided prompts
 - **Analyze PRD**: validate structure then semantic quality
@@ -51,7 +51,7 @@ description = "Validate PRD structure then semantic quality"
 ```
 ```markdown
 ## Steps
-1. Run `cpt validate --artifact <PRD.md>`
+1. Run `cfs validate --artifact <PRD.md>`
 2. Review structural issues (headings, IDs, placeholders)
 3. Review semantic quality against checklist
 4. Report findings with actionable remediation

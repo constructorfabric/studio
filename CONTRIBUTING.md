@@ -1,4 +1,4 @@
-# Contributing to Cyber Constructor
+# Contributing to Constructor Studio
 
 
 <!-- toc -->
@@ -28,7 +28,7 @@
 
 <!-- /toc -->
 
-Thank you for your interest in contributing to Cyber Constructor! This guide covers the development workflow, versioning scheme, bootstrap architecture, commit requirements, and CI pipeline.
+Thank you for your interest in contributing to Constructor Studio! This guide covers the development workflow, versioning scheme, bootstrap architecture, commit requirements, and CI pipeline.
 ---
 
 ## Prerequisites
@@ -45,10 +45,10 @@ Thank you for your interest in contributing to Cyber Constructor! This guide cov
 
 ```bash
 # Clone the repo
-git clone https://github.com/cyberfabric/cyber-constructor.git
-cd cyber-constructor
+git clone https://github.com/constructorfabric/studio.git
+cd studio
 
-# Install the cfc/cf-constructor CLI proxy from local source
+# Install the cfs/constructor-studio CLI proxy from local source
 make install-proxy
 
 # Bootstrap: sync .bootstrap/ from local source
@@ -62,12 +62,12 @@ make ci
 
 ## Project Architecture (Self-Hosted Bootstrap)
 
-Cyber Constructor builds itself. The repo is simultaneously the **source code** and a **self-hosted Cyber Constructor project** with its own `.bootstrap/` setup directory.
+Constructor Studio builds itself. The repo is simultaneously the **source code** and a **self-hosted Constructor Studio project** with its own `.bootstrap/` setup directory.
 
 ```
-cyber-constructor/                # Project root
-├── skills/cypilot/               # CANONICAL source: skill engine + scripts
-├── src/cypilot_proxy/            # CANONICAL source: CLI proxy (thin shell)
+studio/                           # Project root
+├── skills/studio/                # CANONICAL source: skill engine + scripts
+├── src/studio_proxy/             # CANONICAL source: CLI proxy (thin shell)
 ├── schemas/                      # CANONICAL source: JSON schemas
 ├── architecture/                 # CANONICAL source: PRD, DESIGN, DECOMPOSITION, features
 ├── requirements/                 # CANONICAL source: checklists
@@ -82,8 +82,8 @@ cyber-constructor/                # Project root
 ### Critical Rule
 
 > **Do not edit files under `.bootstrap/` directly when contributing.**
-> In this self-hosted repo, `.bootstrap/` is a bootstrap copy of a Cyber Constructor version used
-> to develop Cyber Constructor itself — similar to bootstrapping a compiler.
+> In this self-hosted repo, `.bootstrap/` is a bootstrap copy of a Constructor Studio version used
+> to develop Constructor Studio itself — similar to bootstrapping a compiler.
 > This is a repo-specific self-hosted setup, not the general user-project layout described in the README.
 > Treat `.bootstrap/.core/` and `.bootstrap/.gen/` as read-only mirrors.
 > Always edit the canonical source files under project root (`skills/`, `kits/`,
@@ -92,7 +92,7 @@ cyber-constructor/                # Project root
 > testing. After such a test, it is recommended to return `.bootstrap/` to its previous
 > state, and the pull request should be clean of bootstrap-only changes.
 
-The `make update` command runs `cpt update --source . --force`, which:
+The `make update` command runs `cfs update --source . --force`, which:
 1. Copies canonical sources into `.bootstrap/.core/`
 2. Regenerates `.bootstrap/.gen/` aggregates
 3. Updates kit files in `.bootstrap/config/kits/`
@@ -101,13 +101,13 @@ The `make update` command runs `cpt update --source . --force`, which:
 
 ## Versioning
 
-Cyber Constructor has **two independent version tracks**.
+Constructor Studio has **two independent version tracks**.
 
 ### Version Locations
 
 | File | Example | What it versions | When to bump |
 |------|---------|------------------|--------------|
-| `skills/cypilot/scripts/cypilot/__init__.py` | `vX.Y.Z-beta` | **Skill engine** — the core validation/generation logic | Any change to skill engine code |
+| `skills/studio/scripts/studio/__init__.py` | `vX.Y.Z-beta` | **Skill engine** — the core validation/generation logic | Any change to skill engine code |
 | `pyproject.toml` (`version`) | `X.Y.Z-beta` | **CLI proxy** — installed via `pipx` | Changes to proxy routing, caching, or resolution |
 
 ### Releasing a New Version
@@ -118,7 +118,7 @@ Cyber Constructor has **two independent version tracks**.
    git checkout -b vX.Y.Z-beta
    ```
 
-2. **Bump the skill engine version** in `skills/cypilot/scripts/cypilot/__init__.py`:
+2. **Bump the skill engine version** in `skills/studio/scripts/studio/__init__.py`:
    ```python
    __version__ = "vX.Y.Z-beta"
    ```
@@ -227,7 +227,7 @@ All CI is driven through `make`. No virtual environment required — tools run v
 | `make test-verbose` | Tests with verbose output | — |
 | `make test-quick` | Fast tests only (skip `@pytest.mark.slow`) | — |
 | `make test-coverage` | Tests + coverage report (≥90% required) | Yes |
-| `make validate` | Run `cpt validate` — deterministic artifact validation | Yes |
+| `make validate` | Run `cfs validate` — deterministic artifact validation | Yes |
 | `make self-check` | Validate SDLC kit examples against their own templates | Yes |
 | `make check-versions` | Check version consistency across components | Yes |
 | `make spec-coverage` | Check spec coverage (≥80% overall, ≥70% per file) | Yes |
@@ -235,7 +235,7 @@ All CI is driven through `make`. No virtual environment required — tools run v
 | `make vulture` | Dead code scan (report only) | — |
 | `make vulture-ci` | Dead code scan (fails on findings) | Yes |
 | `make install` | Install pytest + pytest-cov via pipx | — |
-| `make install-proxy` | Reinstall `cfc`/`cf-constructor` CLI from local source | — |
+| `make install-proxy` | Reinstall `cfs`/`constructor-studio` CLI from local source | — |
 | `make update` | Sync `.bootstrap/` from local source | — |
 | `make clean` | Remove `__pycache__`, `.pyc`, `.pytest_cache` | — |
 
@@ -261,7 +261,7 @@ All jobs must pass before merge.
 
 ### Code Changes
 
-1. Edit canonical files under `skills/cypilot/scripts/cypilot/` (skill engine), `src/cypilot_proxy/` (CLI proxy), or other project-root source directories
+1. Edit canonical files under `skills/studio/scripts/studio/` (skill engine), `src/studio_proxy/` (CLI proxy), or other project-root source directories
 2. Do not patch mirrored files under `.bootstrap/` directly
 3. If you need a live manual check against the bootstrap copy, run `make update`, perform the test, and then revert `.bootstrap/` back to the previous state before opening the PR
 4. Add or update tests in `tests/`
@@ -270,8 +270,8 @@ All jobs must pass before merge.
 ### Architecture / Spec Changes
 
 1. Edit files under `architecture/` (PRD, DESIGN, DECOMPOSITION, features)
-2. If adding new CDSL entries, run `cpt toc <file>` to regenerate the table of contents
-3. If adding `@cpt-*` code markers, run `cpt validate` to verify traceability (138/138 coverage)
+2. If adding new CDSL entries, run `cfs toc <file>` to regenerate the table of contents
+3. If adding `@cpt-*` code markers, run `cfs validate` to verify traceability (138/138 coverage)
 4. Verify: `make validate`
 
 ---
@@ -293,7 +293,7 @@ All jobs must pass before merge.
    - Version bumps (if any)
    - Which `make` targets were run
 
-4. For spec changes, include `cpt validate` output showing PASS status
+4. For spec changes, include `cfs validate` output showing PASS status
 
 ---
 

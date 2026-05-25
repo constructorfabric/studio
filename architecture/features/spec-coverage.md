@@ -25,11 +25,11 @@
 
 <!-- /toc -->
 
-- [x] `p1` - **ID**: `cpt-cypilot-featstatus-spec-coverage`
+- [x] `p1` - **ID**: `cpt-studio-featstatus-spec-coverage`
 
 ## 1. Feature Context
 
-- [x] `p1` - `cpt-cypilot-feature-spec-coverage`
+- [x] `p1` - `cpt-studio-feature-spec-coverage`
 
 ### 1. Overview
 
@@ -43,42 +43,42 @@ Without spec coverage, teams have no visibility into which parts of the codebase
 
 | Actor | Role in Feature |
 |-------|-----------------|
-| `cpt-cypilot-actor-user` | Invokes `cpt spec-coverage` from CLI to generate coverage report |
-| `cpt-cypilot-actor-ai-agent` | Uses coverage report to identify unspecified code during reverse-engineering |
-| `cpt-cypilot-actor-ci-pipeline` | Runs spec-coverage as a CI gate to enforce minimum coverage thresholds |
+| `cpt-studio-actor-user` | Invokes `cfs spec-coverage` from CLI to generate coverage report |
+| `cpt-studio-actor-ai-agent` | Uses coverage report to identify unspecified code during reverse-engineering |
+| `cpt-studio-actor-ci-pipeline` | Runs spec-coverage as a CI gate to enforce minimum coverage thresholds |
 
 ### 4. References
 
-- **PRD**: [PRD.md](../PRD.md) — `cpt-cypilot-fr-core-traceability`, `cpt-cypilot-fr-core-cdsl`
-- **Design**: [DESIGN.md](../DESIGN.md) — `cpt-cypilot-component-traceability-engine`, `cpt-cypilot-component-validator`
-- **Dependencies**: `cpt-cypilot-feature-traceability-validation`
+- **PRD**: [PRD.md](../PRD.md) — `cpt-studio-fr-core-traceability`, `cpt-studio-fr-core-cdsl`
+- **Design**: [DESIGN.md](../DESIGN.md) — `cpt-studio-component-traceability-engine`, `cpt-studio-component-validator`
+- **Dependencies**: `cpt-studio-feature-traceability-validation`
 
 ## 2. Actor Flows (CDSL)
 
 ### Run Spec Coverage Report
 
-- [x] `p1` - **ID**: `cpt-cypilot-flow-spec-coverage-report`
+- [x] `p1` - **ID**: `cpt-studio-flow-spec-coverage-report`
 
-**Actor**: `cpt-cypilot-actor-user`
+**Actor**: `cpt-studio-actor-user`
 
 **Success Scenarios**:
-- User runs `cpt spec-coverage` → all registered codebase files scanned, coverage report generated with per-file and summary statistics
-- User runs `cpt spec-coverage --min-coverage 80` → same as above, exit code 2 if coverage below threshold
-- User runs `cpt spec-coverage --min-granularity 0.7` → same as above, exit code 2 if granularity below threshold
-- User runs `cpt spec-coverage --min-file-granularity 0.3` → same as above, exit code 2 if any covered file granularity below threshold
+- User runs `cfs spec-coverage` → all registered codebase files scanned, coverage report generated with per-file and summary statistics
+- User runs `cfs spec-coverage --min-coverage 80` → same as above, exit code 2 if coverage below threshold
+- User runs `cfs spec-coverage --min-granularity 0.7` → same as above, exit code 2 if granularity below threshold
+- User runs `cfs spec-coverage --min-file-granularity 0.3` → same as above, exit code 2 if any covered file granularity below threshold
 
 **Error Scenarios**:
 - No codebase entries registered → ERROR with hint to configure artifacts.toml
 - No code files found → report with 0% coverage
 
 **Steps**:
-1. [x] - `p1` - User invokes `cpt spec-coverage [--min-coverage N] [--min-file-coverage N] [--min-granularity N] [--min-file-granularity N] [--verbose]` - `inst-user-spec-coverage`
-2. [x] - `p1` - Load project context: cypilot config, registry, systems, codebase entries - `inst-load-context`
+1. [x] - `p1` - User invokes `cfs spec-coverage [--min-coverage N] [--min-file-coverage N] [--min-granularity N] [--min-file-granularity N] [--verbose]` - `inst-user-spec-coverage`
+2. [x] - `p1` - Load project context: studio config, registry, systems, codebase entries - `inst-load-context`
 3. [x] - `p1` - Resolve all code files from registered codebase entries - `inst-resolve-code-files`
-4. [x] - `p1` - **FOR EACH** code file, scan for `@cpt-*` markers using `cpt-cypilot-algo-spec-coverage-scan` - `inst-foreach-file`
-5. [x] - `p1` - Calculate coverage metrics using `cpt-cypilot-algo-spec-coverage-metrics` - `inst-calc-metrics`
-6. [x] - `p1` - Calculate granularity scores using `cpt-cypilot-algo-spec-coverage-granularity` - `inst-calc-granularity`
-7. [x] - `p1` - Generate report using `cpt-cypilot-algo-spec-coverage-report` - `inst-gen-report`
+4. [x] - `p1` - **FOR EACH** code file, scan for `@cpt-*` markers using `cpt-studio-algo-spec-coverage-scan` - `inst-foreach-file`
+5. [x] - `p1` - Calculate coverage metrics using `cpt-studio-algo-spec-coverage-metrics` - `inst-calc-metrics`
+6. [x] - `p1` - Calculate granularity scores using `cpt-studio-algo-spec-coverage-granularity` - `inst-calc-granularity`
+7. [x] - `p1` - Generate report using `cpt-studio-algo-spec-coverage-report` - `inst-gen-report`
 8. [x] - `p1` - **IF** any threshold flag set AND metric below threshold → exit code 2 - `inst-if-threshold`
 9. [x] - `p1` - **RETURN** JSON report (summary, per-file stats, uncovered files) - `inst-return-report`
 
@@ -90,7 +90,7 @@ Without spec coverage, teams have no visibility into which parts of the codebase
 
 ### Scan Code Coverage
 
-- [x] `p1` - **ID**: `cpt-cypilot-algo-spec-coverage-scan`
+- [x] `p1` - **ID**: `cpt-studio-algo-spec-coverage-scan`
 
 **Input**: Code file path, language configuration
 
@@ -108,7 +108,7 @@ Without spec coverage, teams have no visibility into which parts of the codebase
 
 ### Calculate Coverage Metrics
 
-- [x] `p1` - **ID**: `cpt-cypilot-algo-spec-coverage-metrics`
+- [x] `p1` - **ID**: `cpt-studio-algo-spec-coverage-metrics`
 
 **Input**: List of per-file coverage records
 
@@ -122,7 +122,7 @@ Without spec coverage, teams have no visibility into which parts of the codebase
 
 ### Calculate Granularity Score
 
-- [x] `p1` - **ID**: `cpt-cypilot-algo-spec-coverage-granularity`
+- [x] `p1` - **ID**: `cpt-studio-algo-spec-coverage-granularity`
 
 **Input**: List of per-file coverage records
 
@@ -141,7 +141,7 @@ A file with good granularity has approximately 1 CDSL instruction (`@cpt-begin`/
 
 ### Generate Coverage Report
 
-- [x] `p1` - **ID**: `cpt-cypilot-algo-spec-coverage-report`
+- [x] `p1` - **ID**: `cpt-studio-algo-spec-coverage-report`
 
 **Input**: Coverage metrics, granularity scores, verbosity flag
 
@@ -160,7 +160,7 @@ A file with good granularity has approximately 1 CDSL instruction (`@cpt-begin`/
 
 ### Coverage Report Lifecycle
 
-- [x] `p1` - **ID**: `cpt-cypilot-state-spec-coverage-report`
+- [x] `p1` - **ID**: `cpt-studio-state-spec-coverage-report`
 
 **States**: NOT_RUN, COVERED, PARTIAL, UNCOVERED
 
@@ -173,50 +173,50 @@ A file with good granularity has approximately 1 CDSL instruction (`@cpt-begin`/
 
 ### Coverage Percentage Metric
 
-- [x] `p1` - **ID**: `cpt-cypilot-dod-spec-coverage-percentage`
+- [x] `p1` - **ID**: `cpt-studio-dod-spec-coverage-percentage`
 
 The system **MUST** calculate what percentage of effective code lines (non-blank, non-comment) are within the scope of at least one CDSL marker. Lines between `@cpt-begin`/`@cpt-end` pairs are covered. Lines in files with only scope markers (`@cpt-algo`, `@cpt-flow`) are covered at file level. The metric **MUST** be reported as a float 0.0–100.0.
 
 **Implements**:
-- `cpt-cypilot-algo-spec-coverage-scan`
-- `cpt-cypilot-algo-spec-coverage-metrics`
+- `cpt-studio-algo-spec-coverage-scan`
+- `cpt-studio-algo-spec-coverage-metrics`
 
 **Covers (PRD)**:
-- `cpt-cypilot-fr-core-traceability`
+- `cpt-studio-fr-core-traceability`
 
 **Covers (DESIGN)**:
-- `cpt-cypilot-component-traceability-engine`
+- `cpt-studio-component-traceability-engine`
 
 ### Granularity Quality Metric
 
-- [x] `p1` - **ID**: `cpt-cypilot-dod-spec-coverage-granularity`
+- [x] `p1` - **ID**: `cpt-studio-dod-spec-coverage-granularity`
 
 The system **MUST** calculate instruction density per covered file: `min(1.0, block_marker_count / (effective_lines / 10))`. Files with only scope markers and no block markers **MUST** receive granularity 0.0. The overall granularity **MUST** be the line-weighted average across covered files. Files with granularity < 0.5 **MUST** be flagged in the report.
 
 **Implements**:
-- `cpt-cypilot-algo-spec-coverage-granularity`
+- `cpt-studio-algo-spec-coverage-granularity`
 
 **Covers (PRD)**:
-- `cpt-cypilot-fr-core-cdsl`
+- `cpt-studio-fr-core-cdsl`
 
 **Covers (DESIGN)**:
-- `cpt-cypilot-component-traceability-engine`
+- `cpt-studio-component-traceability-engine`
 
 ### Coverage Report Output
 
-- [x] `p1` - **ID**: `cpt-cypilot-dod-spec-coverage-report`
+- [x] `p1` - **ID**: `cpt-studio-dod-spec-coverage-report`
 
 The system **MUST** output a JSON report with: summary (total files, covered files, coverage %, granularity score), per-file statistics (path, total lines, covered lines, coverage %, granularity, uncovered line ranges), and list of completely uncovered files. The report format **MUST** mirror `coverage.py` JSON output structure. Exit code 0 when above thresholds, 2 when below.
 
 **Implements**:
-- `cpt-cypilot-flow-spec-coverage-report`
-- `cpt-cypilot-algo-spec-coverage-report`
+- `cpt-studio-flow-spec-coverage-report`
+- `cpt-studio-algo-spec-coverage-report`
 
 **Covers (PRD)**:
-- `cpt-cypilot-fr-core-traceability`
+- `cpt-studio-fr-core-traceability`
 
 **Covers (DESIGN)**:
-- `cpt-cypilot-component-validator`
+- `cpt-studio-component-validator`
 
 ## 6. Implementation Modules
 
@@ -231,7 +231,7 @@ The system **MUST** output a JSON report with: summary (total files, covered fil
 
 ## 7. Acceptance Criteria
 
-- [x] `cpt spec-coverage` scans all registered codebase files and produces JSON report
+- [x] `cfs spec-coverage` scans all registered codebase files and produces JSON report
 - [x] Coverage percentage correctly identifies lines within `@cpt-begin`/`@cpt-end` blocks
 - [x] Scope-only files (no block markers) are reported with granularity 0.0
 - [x] Granularity metric correctly penalizes files with few instructions relative to their size

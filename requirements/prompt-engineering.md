@@ -1,5 +1,5 @@
 ---
-cf-constructor: true
+cf: true
 type: requirement
 name: Prompt Engineering Review Methodology
 version: 1.4
@@ -29,7 +29,7 @@ purpose: Systematic methodology for reviewing and improving agent instructions w
 - [L9: Agent Ergonomics](#l9-agent-ergonomics)
 - [L10: Improvement Synthesis](#l10-improvement-synthesis)
 - [Execution Protocol](#execution-protocol)
-- [Integration with Cyber Constructor](#integration-with-cyber-constructor)
+- [Integration with Constructor Studio](#integration-with-constructor-studio)
 - [References](#references)
 - [Validation](#validation)
 
@@ -385,7 +385,7 @@ When the deterministic gate is `SKIPPED`, do not describe semantic review, check
 
 **N/A rule**: mark a check `N/A` only when the document explicitly makes it inapplicable; otherwise mark `FAIL` or `PARTIAL` and explain what is missing.
 
-## Integration with Cyber Constructor
+## Integration with Constructor Studio
 
 - Use this methodology for semantic validation and generation of instruction documents.
 - Keep `AGENTS.md` and related adapters aligned with these rules.

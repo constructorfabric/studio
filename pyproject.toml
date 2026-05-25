@@ -3,19 +3,19 @@ requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "cyber-constructor"
-version = "4.1.0"
-description = "Cyber Constructor global CLI proxy — deterministic agent tool for structured workflows"
+name = "constructor-studio"
+version = "1.0.0"
+description = "Constructor Studio global CLI proxy — deterministic agent tool for structured workflows"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.11.4"
-# @cpt-dod:cpt-cypilot-dod-core-infra-global-package:p1 — zero third-party dependencies
+# @cpt-dod:cpt-studio-dod-core-infra-global-package:p1 — zero third-party dependencies
 dependencies = []
 
 [project.scripts]
-# @cpt-dod:cpt-cypilot-dod-core-infra-global-package:p1 — console entry points
-cfc = "cypilot_proxy.cli:main"
-cf-constructor = "cypilot_proxy.cli:main"
+# @cpt-dod:cpt-studio-dod-core-infra-global-package:p1 — console entry points
+cfs = "studio_proxy.cli:main"
+constructor-studio = "studio_proxy.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

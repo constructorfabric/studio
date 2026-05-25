@@ -1,11 +1,11 @@
 ---
-cypilot: true
+studio: true
 type: spec
 name: Checklist Specification
 version: 1.0
 purpose: Define the format, structure, and usage of checklist.md kit files
 drivers:
-  - cpt-cypilot-fr-core-kits
+  - cpt-studio-fr-core-kits
 ---
 
 # Checklist Specification (checklist.md)
@@ -44,9 +44,9 @@ drivers:
 
 ## Location
 
-**Per-artifact**: `{cf-constructor-path}/config/kits/<slug>/artifacts/<KIND>/checklist.md`
+**Per-artifact**: `{cf-studio-path}/config/kits/<slug>/artifacts/<KIND>/checklist.md`
 
-**Codebase**: `{cf-constructor-path}/config/kits/<slug>/codebase/checklist.md`
+**Codebase**: `{cf-studio-path}/config/kits/<slug>/codebase/checklist.md`
 
 ---
 

@@ -21,9 +21,9 @@ version: 1.0
 
 Run when the gate is `PASS`, if it is `SKIPPED` with Validator availability proof, or when `SEMANTIC_ONLY=true`.
 Requires: `workflows/shared/inline-fallback-probe.md` before any
-`cf-constructor-*` sub-agent dispatch. Pre-dispatch fail-stop and Mode B
+`cf-*` sub-agent dispatch. Pre-dispatch fail-stop and Mode B
 degradation rules are defined in
-`{cf-constructor-path}/.core/skills/cypilot/sub-agent-dispatch.md`.
+`{cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md`.
 
 Set `PARTIAL = false` on entry to this phase unless already set by an
 earlier phase in the same session.
@@ -114,13 +114,13 @@ dispatch multiple sub-agents and merge findings.
 
 | Condition | Dispatched sub-agent |
 |---|---|
-| `PROMPT_REVIEW=true` AND `PROMPT_BUG_REVIEW=true` | dispatch BOTH `cf-constructor-semantic-reviewer-prompt` AND `cf-constructor-prompt-bug-finder` in parallel; merge findings under a single namespaced ID prefix (`Rp` for prompt-reviewer, `Rpb` for bug-finder) |
-| `PROMPT_REVIEW=true` AND `PROMPT_BUG_REVIEW=false` | `cf-constructor-semantic-reviewer-prompt` |
-| `PROMPT_BUG_REVIEW=true` AND `PROMPT_REVIEW=false` | `cf-constructor-prompt-bug-finder` |
-| `ARTIFACT_REVIEW=true` or (`TARGET_TYPE == artifact` and no prompt/code methodology owns the target) | `cf-constructor-semantic-reviewer-artifact` |
-| `TARGET_TYPE == code` or `CODE_REVIEW=true` | `cf-constructor-semantic-reviewer-code` |
-| `CODE_BUG_REVIEW=true` | `cf-constructor-code-bug-finder` |
-| `CONSISTENCY_REVIEW=true` and `len(target_paths) >= 2` | `cf-constructor-semantic-reviewer-consistency` |
+| `PROMPT_REVIEW=true` AND `PROMPT_BUG_REVIEW=true` | dispatch BOTH `cf-semantic-reviewer-prompt` AND `cf-prompt-bug-finder` in parallel; merge findings under a single namespaced ID prefix (`Rp` for prompt-reviewer, `Rpb` for bug-finder) |
+| `PROMPT_REVIEW=true` AND `PROMPT_BUG_REVIEW=false` | `cf-semantic-reviewer-prompt` |
+| `PROMPT_BUG_REVIEW=true` AND `PROMPT_REVIEW=false` | `cf-prompt-bug-finder` |
+| `ARTIFACT_REVIEW=true` or (`TARGET_TYPE == artifact` and no prompt/code methodology owns the target) | `cf-semantic-reviewer-artifact` |
+| `TARGET_TYPE == code` or `CODE_REVIEW=true` | `cf-semantic-reviewer-code` |
+| `CODE_BUG_REVIEW=true` | `cf-code-bug-finder` |
+| `CONSISTENCY_REVIEW=true` and `len(target_paths) >= 2` | `cf-semantic-reviewer-consistency` |
 
 Dispatch inputs:
 - artifact reviewer: `target_paths={PATHS}`, kit rules, checklist, template,
@@ -139,7 +139,7 @@ Dispatch inputs:
   `{PATHS}` to instruction/workflow/prompt files; for change-review prompt
   dispatch, the orchestrator filters `diff_scope.review_targets` to
   prompt-typed targets and uses them as `paths`; prompt-typed targets are paths
-  matching `workflows/**`, `skills/cypilot/**/*.md`, `requirements/**/*.md`,
+  matching `workflows/**`, `skills/studio/**/*.md`, `requirements/**/*.md`,
   `AGENTS.md`, `SKILL.md`, agent prompt files, and prompt config files;
   `kit_rules_path`, `rules_mode`, cross refs.
 - prompt bug finder: same `prompt_targets`, `kit_rules_path`, `rules_mode`,
@@ -156,7 +156,7 @@ Each reviewer returns exactly one caller-visible shape:
   `Partial Checkpoint — <Section>` block, checkpoint JSON, and findings JSON
   limited to already-covered evidence.
 
-`PARTIAL_CHECKPOINT is supported only by reviewers whose contract declares it` (declared via the agent's "Output" section under "PARTIAL_CHECKPOINT support" — see e.g. `skills/cypilot/agents/cf-constructor-semantic-reviewer-prompt.md`).
+`PARTIAL_CHECKPOINT is supported only by reviewers whose contract declares it` (declared via the agent's "Output" section under "PARTIAL_CHECKPOINT support" — see e.g. `skills/studio/agents/cf-semantic-reviewer-prompt.md`).
 For reviewers without that contract, budget exhaustion is a blocking reviewer
 failure or requires the Phase 3 → Phase 4 checkpoint; do not invent a partial
 shape for artifact or consistency reviewers unless their agent prompt defines it.

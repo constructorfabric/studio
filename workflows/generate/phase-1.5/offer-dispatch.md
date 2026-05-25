@@ -1,5 +1,5 @@
 ---
-cf-constructor: true
+cf: true
 type: workflow-fragment
 parent: workflows/generate/phase-1.5-author-plan.md
 description: Mandatory/optional author-plan offer plus planner dispatch and validation for Generate Phase 1.5.
@@ -24,7 +24,7 @@ I will decompose this generate task into author-worker sub-tasks, assign each
 to a specialist sub-agent, and group them for parallel dispatch in Phase 4.
 
 Reply `enter` or `memory` for in-memory plan (default), or `disk` to also save
-a Markdown plan pack under `{cf-constructor-path}/.cache/generate-plans/`.
+a Markdown plan pack under `{cf-studio-path}/.cache/generate-plans/`.
 
 Choose `disk` if the session may be long or context may compact (plan survives compaction); choose `memory` for short sessions (no disk I/O, plan is in-context only).
 ```
@@ -51,7 +51,7 @@ author should handle each task, and mark which tasks can run in parallel.
 Suggested: `memory` (or `enter`) for short sessions; `disk` for sessions that may be long or context-heavy.
 
 Reply `enter` or `memory` for an in-memory plan (default), `disk` to also save
-a Markdown plan pack under `{cf-constructor-path}/.cache/generate-plans/`, or
+a Markdown plan pack under `{cf-studio-path}/.cache/generate-plans/`, or
 `no` to skip the author plan.
 ```
 
@@ -72,13 +72,13 @@ target artifact/code files; Phase 3 `yes` is still required before Phase 4.
 ## Planner Dispatch
 
 Requires: `workflows/shared/inline-fallback-probe.md` before any
-`cf-constructor-*` sub-agent dispatch. Pre-dispatch fail-stop and Mode B
+`cf-*` sub-agent dispatch. Pre-dispatch fail-stop and Mode B
 degradation rules are defined in
-`{cf-constructor-path}/.core/skills/cypilot/sub-agent-dispatch.md`.
+`{cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md`.
 
-Dispatch read-only sub-agent `cf-constructor-generate-planner` with the JSON
+Dispatch read-only sub-agent `cf-generate-planner` with the JSON
 contract documented in
-`{cf-constructor-path}/.core/skills/cypilot/agents/cf-constructor-generate-planner.md`.
+`{cf-studio-path}/.core/skills/studio/agents/cf-generate-planner.md`.
 Orchestrator-supplied values:
 
 - `plan_mode` = `"memory"` or `"disk"` from the user's reply
@@ -117,7 +117,7 @@ Suggested: 1 because most validation failures are transient (incomplete plan, mi
 Reply `1`, `2`, or `3`.
 ```
 
-On `1`: re-dispatch `cf-constructor-generate-planner` with the same inputs and
+On `1`: re-dispatch `cf-generate-planner` with the same inputs and
 re-validate the returned plan.
 
 On `2`: set `AUTHOR_PLAN_OFFER_RESOLVED=declined`,

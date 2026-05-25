@@ -8,19 +8,19 @@ version: 1.3
 
 ### Round loop
 
-Requires: `workflows/shared/inline-fallback-probe.md` before any `cf-constructor-*` sub-agent dispatch.
+Requires: `workflows/shared/inline-fallback-probe.md` before any `cf-*` sub-agent dispatch.
 
-Precondition: INLINE_FALLBACK must be set before the first round (already probed by `workflows/generate/phase-0-dependencies.md` at workflow start). If `INLINE_FALLBACK` is unset at any round-level dispatch site (e.g., after a context-loss / compaction event), follow the universal fail-stop rule in `skills/cypilot/sub-agent-dispatch.md` § Pre-dispatch discipline and re-run the shared probe before continuing. Do NOT re-probe per-round when `INLINE_FALLBACK` is already set.
+Precondition: INLINE_FALLBACK must be set before the first round (already probed by `workflows/generate/phase-0-dependencies.md` at workflow start). If `INLINE_FALLBACK` is unset at any round-level dispatch site (e.g., after a context-loss / compaction event), follow the universal fail-stop rule in `skills/studio/sub-agent-dispatch.md` § Pre-dispatch discipline and re-run the shared probe before continuing. Do NOT re-probe per-round when `INLINE_FALLBACK` is already set.
 
 **Orchestration modes:** This loop supports two exclusive orchestration strategies per round, controlled by environment variables:
-- **Single-agent (default):** `PANEL_MODE_TOPIC` and `PANEL_MODE_CHALLENGE` both default to `"single-agent"`. When set to `"single-agent"`, the orchestrator dispatches the `cf-constructor-brainstorm-panel` agent once per round (not per expert). That agent runs the full round logic with one expert as primary; subsequent experts provide optional critique via the `protocol` field. This is the default because it yields one cohesive deliberation per round, works identically on all hosts, and makes INLINE_FALLBACK a no-op.
-- **Fan-out:** When `PANEL_MODE_TOPIC` or `PANEL_MODE_CHALLENGE` is set to `"fan-out"`, the orchestrator dispatches all relevant panel members in parallel using the `cf-constructor-brainstorm-expert` contract. Each expert independently produces questions/contributions; the orchestrator collects all responses before aggregation. Fan-out is opt-in and requires a host with native sub-agent parallelism (otherwise it degrades to sequential via INLINE_FALLBACK).
+- **Single-agent (default):** `PANEL_MODE_TOPIC` and `PANEL_MODE_CHALLENGE` both default to `"single-agent"`. When set to `"single-agent"`, the orchestrator dispatches the `cf-brainstorm-panel` agent once per round (not per expert). That agent runs the full round logic with one expert as primary; subsequent experts provide optional critique via the `protocol` field. This is the default because it yields one cohesive deliberation per round, works identically on all hosts, and makes INLINE_FALLBACK a no-op.
+- **Fan-out:** When `PANEL_MODE_TOPIC` or `PANEL_MODE_CHALLENGE` is set to `"fan-out"`, the orchestrator dispatches all relevant panel members in parallel using the `cf-brainstorm-expert` contract. Each expert independently produces questions/contributions; the orchestrator collects all responses before aggregation. Fan-out is opt-in and requires a host with native sub-agent parallelism (otherwise it degrades to sequential via INLINE_FALLBACK).
 
 ### Anti-pattern: SILENT_MODE_DOWNGRADE
 
-When `panel_mode=="single-agent"` AND `len(state.panel) > 1`, the orchestrator MUST NOT dispatch one `cf-constructor-brainstorm-expert` per panel member in parallel (or sequentially) in lieu of a single `cf-constructor-brainstorm-panel` dispatch. Doing so is a `SILENT_MODE_DOWNGRADE` failure. The recovery is NOT the agent-availability menu — the agent is registered, the orchestrator simply attempted the wrong agent for the resolved mode. Instead: STOP, reset the Phase-Skip Gate to `armed`, surface `"silent mode downgrade prevented — single-agent mode requires cf-constructor-brainstorm-panel"` (or the symmetric fan-out string when the downgrade direction is reversed), then emit the dedicated downgrade-recovery menu defined below.
+When `panel_mode=="single-agent"` AND `len(state.panel) > 1`, the orchestrator MUST NOT dispatch one `cf-brainstorm-expert` per panel member in parallel (or sequentially) in lieu of a single `cf-brainstorm-panel` dispatch. Doing so is a `SILENT_MODE_DOWNGRADE` failure. The recovery is NOT the agent-availability menu — the agent is registered, the orchestrator simply attempted the wrong agent for the resolved mode. Instead: STOP, reset the Phase-Skip Gate to `armed`, surface `"silent mode downgrade prevented — single-agent mode requires cf-brainstorm-panel"` (or the symmetric fan-out string when the downgrade direction is reversed), then emit the dedicated downgrade-recovery menu defined below.
 
-The same prohibition applies in reverse for `panel_mode=="fan-out"`: do NOT dispatch one `cf-constructor-brainstorm-panel` when the user requested fan-out.
+The same prohibition applies in reverse for `panel_mode=="fan-out"`: do NOT dispatch one `cf-brainstorm-panel` when the user requested fan-out.
 
 ### SILENT_MODE_DOWNGRADE recovery menu
 
@@ -42,7 +42,7 @@ Reply parsing:
 
 This recovery menu is independent of `INLINE_FALLBACK` and does NOT touch the § Agent availability check menu.
 
-**Inline-fallback note:** When `INLINE_FALLBACK=true`, parallel_dispatch degrades to sequential; experts-are-independent guarantee is best-effort in that mode (per `skills/cypilot/sub-agent-dispatch.md` Mode B). In single-agent mode, INLINE_FALLBACK is a no-op: single-agent orchestration is inherently sequential.
+**Inline-fallback note:** When `INLINE_FALLBACK=true`, parallel_dispatch degrades to sequential; experts-are-independent guarantee is best-effort in that mode (per `skills/studio/sub-agent-dispatch.md` Mode B). In single-agent mode, INLINE_FALLBACK is a no-op: single-agent orchestration is inherently sequential.
 
 The loop drives two kinds of rounds, chosen by the user after every round finishes:
 
@@ -82,7 +82,7 @@ while state.topic_current is not None:
     if panel_mode == "fan-out":
       # Legacy parallel dispatch: all experts independently
       contributions = parallel_dispatch([
-        cf-constructor-brainstorm-expert(
+        cf-brainstorm-expert(
             persona = e, topic = state.topic_current, state,
             mode = "topic")
         for e in state.panel
@@ -102,14 +102,14 @@ while state.topic_current is not None:
           # PANEL_MUTATION_DETECTED: fail-stop, skip dispatch
         else:
           # New single-agent panel dispatch
-          envelope = cf-constructor-brainstorm-panel(
+          envelope = cf-brainstorm-panel(
               panel = state.panel, topic = state.topic_current, state,
               mode = "topic", protocol = protocol)
           # Flatten envelope into contributions[] (see state-schema.md § envelope)
           contributions = flatten_envelope(envelope)
       else:
         # New single-agent panel dispatch
-        envelope = cf-constructor-brainstorm-panel(
+        envelope = cf-brainstorm-panel(
             panel = state.panel, topic = state.topic_current, state,
             mode = "topic", protocol = protocol)
         # Flatten envelope into contributions[] (see state-schema.md § envelope)
@@ -127,7 +127,7 @@ while state.topic_current is not None:
     if panel_mode == "fan-out":
       # Legacy parallel dispatch: all experts independently
       contributions = parallel_dispatch([
-        cf-constructor-brainstorm-expert(
+        cf-brainstorm-expert(
             persona = e, topic = state.topic_current, state,
             mode = "challenge",
             challenged_decisions = challenged_decisions)
@@ -148,7 +148,7 @@ while state.topic_current is not None:
           # PANEL_MUTATION_DETECTED: fail-stop, skip dispatch
         else:
           # New single-agent panel dispatch
-          envelope = cf-constructor-brainstorm-panel(
+          envelope = cf-brainstorm-panel(
               panel = state.panel, topic = state.topic_current, state,
               mode = "challenge", challenged_decisions = challenged_decisions,
               protocol = protocol)
@@ -230,13 +230,13 @@ while state.topic_current is not None:
       if pending_round_kind == "topic":
         if panel_mode == "fan-out":
           contributions = parallel_dispatch([
-            cf-constructor-brainstorm-expert(
+            cf-brainstorm-expert(
                 persona = e, topic = state.topic_current, state,
                 mode = "topic", repair_feedback = repair_feedback)
             for e in state.panel
           ])
         else:  # single-agent
-          envelope = cf-constructor-brainstorm-panel(
+          envelope = cf-brainstorm-panel(
               panel = state.panel, topic = state.topic_current, state,
               mode = "topic", protocol = protocol, 
               repair_feedback = repair_feedback)
@@ -244,7 +244,7 @@ while state.topic_current is not None:
       else:  # challenge
         if panel_mode == "fan-out":
           contributions = parallel_dispatch([
-            cf-constructor-brainstorm-expert(
+            cf-brainstorm-expert(
                 persona = e, topic = state.topic_current, state,
                 mode = "challenge",
                 challenged_decisions = challenged_decisions,
@@ -252,7 +252,7 @@ while state.topic_current is not None:
             for e in state.panel
           ])
         else:  # single-agent
-          envelope = cf-constructor-brainstorm-panel(
+          envelope = cf-brainstorm-panel(
               panel = state.panel, topic = state.topic_current, state,
               mode = "challenge", challenged_decisions = challenged_decisions,
               protocol = protocol, repair_feedback = repair_feedback)
@@ -447,7 +447,7 @@ while state.topic_current is not None:
 Before any per-round dispatch, the orchestrator MUST emit exactly one chat line of the form:
 
 ```
-- [BRAINSTORM-DISPATCH]: round={N} kind={topic|challenge} panel_mode={resolved} mode_source={offer-reply|env|default} agent={cf-constructor-brainstorm-panel|cf-constructor-brainstorm-expert} panel_size={len(state.panel)}
+- [BRAINSTORM-DISPATCH]: round={N} kind={topic|challenge} panel_mode={resolved} mode_source={offer-reply|env|default} agent={cf-brainstorm-panel|cf-brainstorm-expert} panel_size={len(state.panel)}
 ```
 
 Omitting this checkpoint is a `MISSING_DISPATCH_CHECKPOINT` failure: STOP, re-emit the checkpoint line, then continue.
@@ -456,7 +456,7 @@ The checkpoint MUST be emitted AFTER the agent availability check resolves the a
 
 ### Agent availability check (pre-dispatch)
 
-Membership semantics and the `INLINE_FALLBACK_THIS_ROUND` lifecycle are defined in `skills/cypilot/sub-agent-dispatch.md § Registered native sub-agent set & INLINE_FALLBACK_THIS_ROUND`.
+Membership semantics and the `INLINE_FALLBACK_THIS_ROUND` lifecycle are defined in `skills/studio/sub-agent-dispatch.md § Registered native sub-agent set & INLINE_FALLBACK_THIS_ROUND`.
 
 Before any sub-agent dispatch, the orchestrator MUST verify the resolved `agent` identifier is present in the host's registered native sub-agent set.
 
@@ -487,7 +487,7 @@ If `INLINE_FALLBACK=true` already, the inline-panel option is the recommended de
 
 ### Envelope flattening (single-agent mode)
 
-When `cf-constructor-brainstorm-panel` returns an `envelope` object (in single-agent mode), the orchestrator flattens it into a `contributions[]` array before persisting. The envelope has two kinds of blocks:
+When `cf-brainstorm-panel` returns an `envelope` object (in single-agent mode), the orchestrator flattens it into a `contributions[]` array before persisting. The envelope has two kinds of blocks:
 
 - **`kind="independent"`**: Primary expert output (questions, initial answers, next_topic_proposal).
 - **`kind="critique"`**: Secondary experts' reviews of the primary's output.
@@ -507,7 +507,7 @@ Open, load, and follow `workflows/generate/phase-0.7/state-schema.md` § envelop
 ### Expert dispatch contracts
 
 **Fan-out mode (panel_mode="fan-out"):**
-Each expert dispatch follows the JSON contract in `{cf-constructor-path}/.core/skills/cypilot/agents/cf-constructor-brainstorm-expert.md`. The facilitator is dispatched once per session; experts are re-dispatched fresh each round (parallel fan-out). Orchestrator-supplied values for every expert dispatch (same shape per expert in a given round):
+Each expert dispatch follows the JSON contract in `{cf-studio-path}/.core/skills/studio/agents/cf-brainstorm-expert.md`. The facilitator is dispatched once per session; experts are re-dispatched fresh each round (parallel fan-out). Orchestrator-supplied values for every expert dispatch (same shape per expert in a given round):
 
 - `persona` = the full panel entry for expert `e` from `state.panel` (`{id, persona, focus, rationale}` — pass the entire object, not just the id)
 - `topic` = the full `state.topic_current` object (`{id, text, section}` — `section` is the template H2 section name when the topic maps to one, else `null`)
@@ -517,7 +517,7 @@ Each expert dispatch follows the JSON contract in `{cf-constructor-path}/.core/s
 - `state` = the orchestrator's brainstorm state with these sub-fields always present: `kind`, `rules_loaded`, `kit_rules_path`, `template_path`, `panel`, `decisions`, `topic_history`. Sub-fields not in this list (`example_path`, `rounds`, `open_questions`, `session_id`, `next_topic_proposals`) are optional — pass them when available, omit otherwise.
 
 **Single-agent mode (panel_mode="single-agent"):**
-The orchestrator dispatches `cf-constructor-brainstorm-panel` once per round (not per expert). Open, load, and follow `workflows/generate/phase-0.7/cf-constructor-brainstorm-panel.md` for the full contract.
+The orchestrator dispatches `cf-brainstorm-panel` once per round (not per expert). Open, load, and follow `{cf-studio-path}/.core/skills/studio/agents/cf-brainstorm-panel.md` for the full contract.
 
 - `panel` = the full `state.panel` array (all experts, to allow the agent to designate a primary)
 - `topic` = the full `state.topic_current` object
