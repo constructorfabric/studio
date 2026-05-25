@@ -1,5 +1,5 @@
 ---
-cypilot: true
+cf: true
 type: requirement
 name: Prompt Engineering Review Methodology
 version: 1.4
@@ -29,7 +29,7 @@ purpose: Systematic methodology for reviewing and improving agent instructions w
 - [L9: Agent Ergonomics](#l9-agent-ergonomics)
 - [L10: Improvement Synthesis](#l10-improvement-synthesis)
 - [Execution Protocol](#execution-protocol)
-- [Integration with Cypilot](#integration-with-cypilot)
+- [Integration with Constructor Studio](#integration-with-constructor-studio)
 - [References](#references)
 - [Validation](#validation)
 
@@ -134,7 +134,7 @@ Agent instructions are executable policy for agent behavior and user interaction
 | `AP-CONFLICTING` | Requirements contradict one another. |
 | `AP-IMPOSSIBLE` | Not all requirements can be satisfied simultaneously. |
 | `AP-NO-ROUTER` | Multi-step or branching instructions lack a compact router/index that says what may load next and when. |
-| `AP-OVERSIZED-RESOURCE` | A loadable instruction resource, module, or deliberate slice exceeds `50` lines. |
+| `AP-OVERSIZED-RESOURCE` | A loadable instruction resource, module, or deliberate slice exceeds `200` lines. |
 | `AP-MONOLITHIC-STEP` | Multiple steps, branches, or modes are bundled into one loadable unit instead of decomposed into routeable modules. |
 
 ### Context & Memory
@@ -197,15 +197,15 @@ Agent instructions are executable policy for agent behavior and user interaction
 
 **CRIT — workflow/skill/methodology overflow control**: any document that tells the agent to load more files MUST define budget, gating, chunking, summarization, and a fail-safe. Minimum controls: max files / max total lines or a mandatory summarize-and-drop policy; rules for when a dependency should load; partial loading by TOC/section/range instead of whole-file default; conversion of loaded text into an operational summary; and a stop / checkpoint / ask-user fallback when budget would be exceeded.
 
-**CRIT — loadable resource budget**: every loadable instruction resource MUST be `<= 50` lines.
+**CRIT — loadable resource budget**: every loadable instruction resource MUST be `<= 200` lines.
 
 A **loadable instruction resource** is any file, module, or deliberate contiguous slice that the agent is expected to load as one active execution unit at runtime. Concrete test: a unit qualifies as a loadable instruction resource only when the agent must ingest it whole at runtime — invoked as a single programmatic load or import (for example a `Read` of the whole file, an `ALWAYS open and follow {path}` directive, a workflow `WHEN`-clause spec load, or a router pointing at the file as the next-load target). Examples that ARE loadable instruction resources: a workflow phase file, a skill `SKILL.md` actively loaded by the protocol guard, a router-referenced module, a checklist file ingested whole during a phase, an agent prompt opened in full.
 
-**Exemptions**: methodology documents, reference guides, multi-chapter specifications, ADRs, design documents, and other non-runtime documentation are exempt from the `<= 50` line cap UNLESS they contain runtime execution sequences or agent-loadable instruction blocks (e.g., `WHEN`-clause specs, `ALWAYS open and follow` directives, or router targets). When such a document carries runtime instructions inline, the runtime block itself is the loadable resource and MUST be either (a) `<= 50` lines, or (b) extracted into its own routeable module so the runtime slice satisfies the cap.
+**Exemptions**: methodology documents, reference guides, multi-chapter specifications, ADRs, design documents, and other non-runtime documentation are exempt from the `<= 200` line cap UNLESS they contain runtime execution sequences or agent-loadable instruction blocks (e.g., `WHEN`-clause specs, `ALWAYS open and follow` directives, or router targets). When such a document carries runtime instructions inline, the runtime block itself is the loadable resource and MUST be either (a) `<= 200` lines, or (b) extracted into its own routeable module so the runtime slice satisfies the cap.
 
-**Measurement rule**: count headings, blank lines, lists, and examples within the runtime-loadable unit (do not count surrounding non-runtime prose in an exempted document). PASS only if every runtime-loadable unit is `<= 50`; FAIL if any runtime unit exceeds `50`.
+**Measurement rule**: count headings, blank lines, lists, and examples within the runtime-loadable unit (do not count surrounding non-runtime prose in an exempted document). PASS only if every runtime-loadable unit is `<= 200`; FAIL if any runtime unit exceeds `200`.
 
-**Migration rule**: during brownfield review or refactor, an oversized legacy prompt may be inspected only through bounded slices `<= 50` lines each to plan decomposition. That temporary inspection does not make the legacy prompt compliant; the legacy document remains non-compliant until decomposed, and the compliant target state is routeable resources `<= 50` lines each.
+**Migration rule**: during brownfield review or refactor, an oversized legacy prompt may be inspected only through bounded slices `<= 200` lines each to plan decomposition. That temporary inspection does not make the legacy prompt compliant; the legacy document remains non-compliant until decomposed, and the compliant target state is routeable resources `<= 200` lines each.
 
 **CRIT — router / lazy-loading decomposition contract**: if behavior spans multiple steps, branches, modes, or recovery paths, the prompt MUST be decomposed into a compact router plus on-demand modules. The router decides what loads next; each module contains only one active branch, one active step, or one tightly related decision/recovery unit. The router MUST NOT inline full instructions for sibling branches or later steps that are not yet active.
 
@@ -222,13 +222,13 @@ A **loadable instruction resource** is any file, module, or deliberate contiguou
 **Mandatory loading protocol**:
 1. Load the router or entry module first.
 2. Resolve the active branch, mode, or step from explicit triggers before loading any downstream module.
-3. Load exactly one downstream module at a time unless two modules are both mandatory for the same immediate action and still respect the `<= 50`-line rule.
+3. Load exactly one downstream module at a time unless two modules are both mandatory for the same immediate action and still respect the `<= 200`-line rule.
 4. After each module, retain only a short operational summary plus required state; drop unrelated raw text.
 5. Load the next module only from an explicit `next`, `when`, `if`, or decision mapping.
 6. Recovery, review, and completion modules load only when their trigger fires; they MUST NOT stay always-on by default.
 7. Resumption MUST restart from the router or checkpoint plus the next required module, not from chat memory alone.
 
-**Decomposition acceptance**: PASS only if a cold-start agent can begin from the router, determine the next module without guessing, load one `<= 50`-line unit at a time, and complete the active path without reading sibling branches first.
+**Decomposition acceptance**: PASS only if a cold-start agent can begin from the router, determine the next module without guessing, load one `<= 200`-line unit at a time, and complete the active path without reading sibling branches first.
 
 **Evidence requirement**: the review output lists loaded files with sizes and sections/ranges, plus the chosen budget and whether it was respected or which fail-safe path was taken.
 
@@ -385,7 +385,7 @@ When the deterministic gate is `SKIPPED`, do not describe semantic review, check
 
 **N/A rule**: mark a check `N/A` only when the document explicitly makes it inapplicable; otherwise mark `FAIL` or `PARTIAL` and explain what is missing.
 
-## Integration with Cypilot
+## Integration with Constructor Studio
 
 - Use this methodology for semantic validation and generation of instruction documents.
 - Keep `AGENTS.md` and related adapters aligned with these rules.

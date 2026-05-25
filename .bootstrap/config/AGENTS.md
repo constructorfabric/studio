@@ -1,4 +1,4 @@
-# Cypilot Adapter: Cypilot
+# Constructor Studio Adapter: Constructor Studio
 
 **Version**: 3.0
 
@@ -6,7 +6,7 @@
 
 ## Project Overview
 
-Cypilot is a workflow-centered methodology framework for AI-assisted software development with design-to-code traceability. This adapter configures Cypilot for the Cypilot framework itself (self-hosted).
+Constructor Studio is a workflow-centered methodology framework for AI-assisted software development with design-to-code traceability. This adapter configures Constructor Studio for the Constructor Studio framework itself (self-hosted).
 
 ---
 
@@ -14,35 +14,35 @@ Cypilot is a workflow-centered methodology framework for AI-assisted software de
 
 ### Schema & Registry
 
-ALWAYS open and follow `{cypilot_path}/.core/schemas/artifacts.schema.json` WHEN working with artifacts.toml
+ALWAYS open and follow `{cf-studio-path}/.core/schemas/artifacts.schema.json` WHEN working with artifacts.toml
 
-ALWAYS open and follow `{cypilot_path}/.core/requirements/artifacts-registry.md` WHEN working with artifacts.toml
+ALWAYS open and follow `{cf-studio-path}/.core/requirements/artifacts-registry.md` WHEN working with artifacts.toml
 
 ### Project Rules
 
-ALWAYS open and follow `{cypilot_path}/config/rules/tech-stack.md` WHEN writing code, choosing technologies, or adding dependencies
+ALWAYS open and follow `{cf-studio-path}/config/rules/tech-stack.md` WHEN writing code, choosing technologies, or adding dependencies
 
-ALWAYS open and follow `{cypilot_path}/config/rules/conventions.md` WHEN writing code, naming files/functions/variables, or reviewing code
+ALWAYS open and follow `{cf-studio-path}/config/rules/conventions.md` WHEN writing code, naming files/functions/variables, or reviewing code
 
-ALWAYS open and follow `{cypilot_path}/config/rules/project-structure.md` WHEN creating files, adding modules, or navigating codebase
+ALWAYS open and follow `{cf-studio-path}/config/rules/project-structure.md` WHEN creating files, adding modules, or navigating codebase
 
-ALWAYS open and follow `{cypilot_path}/config/rules/domain-model.md` WHEN working with entities, data structures, or business logic
+ALWAYS open and follow `{cf-studio-path}/config/rules/domain-model.md` WHEN working with entities, data structures, or business logic
 
-ALWAYS open and follow `{cypilot_path}/config/rules/testing.md` WHEN writing tests, reviewing test coverage, or debugging
+ALWAYS open and follow `{cf-studio-path}/config/rules/testing.md` WHEN writing tests, reviewing test coverage, or debugging
 
-ALWAYS open and follow `{cypilot_path}/config/rules/build-deploy.md` WHEN building, deploying, or configuring CI/CD
+ALWAYS open and follow `{cf-studio-path}/config/rules/build-deploy.md` WHEN building, deploying, or configuring CI/CD
 
-ALWAYS open and follow `{cypilot_path}/config/rules/architecture.md` WHEN modifying architecture, adding components, or refactoring module boundaries
+ALWAYS open and follow `{cf-studio-path}/config/rules/architecture.md` WHEN modifying architecture, adding components, or refactoring module boundaries
 
-ALWAYS open and follow `{cypilot_path}/config/rules/patterns.md` WHEN implementing features or writing business logic
+ALWAYS open and follow `{cf-studio-path}/config/rules/patterns.md` WHEN implementing features or writing business logic
 
-ALWAYS open and follow `{cypilot_path}/config/rules/anti-patterns.md` WHEN reviewing code or refactoring
+ALWAYS open and follow `{cf-studio-path}/config/rules/anti-patterns.md` WHEN reviewing code or refactoring
 
 ---
 
 ## Development Rules
 
-NEVER edit files inside `{cypilot_path}/.core/` or `{cypilot_path}/.gen/` directly — they are read-only copies. ALWAYS edit the canonical source files under project root (`skills/`, `kits/`, `schemas/`, etc.) and then run `cpt update --source . --force` to sync changes into `{cypilot_path}/`.
+NEVER edit files inside `{cf-studio-path}/.core/` or `{cf-studio-path}/.gen/` directly — they are read-only copies. ALWAYS edit the canonical source files under project root (`skills/`, `kits/`, `schemas/`, etc.) and then run `cfs update --source . --force` to sync changes into `{cf-studio-path}/`.
 
 ### Specs-First Development Workflow
 
@@ -58,9 +58,9 @@ ALWAYS update specs and documentation in `architecture/` FIRST BEFORE writing an
    - `architecture/specs/*.md` — for technical specs (CDSL, CLISPEC, etc.)
    - `architecture/ADR/*.md` — for architecture decisions
 
-2. **Validate specs** — run `cpt validate` to ensure artifact integrity
+2. **Validate specs** — run `cfs validate` to ensure artifact integrity
 
-3. **Generate code via Cypilot** — use `/cypilot-generate` workflow to implement code from specs with traceability markers
+3. **Generate code via Constructor Studio** — use `/cypilot-generate` workflow to implement code from specs with traceability markers
 
 NEVER write code directly without first updating the corresponding specs. This ensures design-to-code traceability and prevents implementation drift from design intent.
 

@@ -1,13 +1,13 @@
 ---
-cypilot: true
+studio: true
 type: spec
 name: Constraints Specification
 version: 1.0
 purpose: Define the format, structure, validation semantics, and usage of constraints.toml kit files
 drivers:
-  - cpt-cypilot-fr-core-kits
-  - cpt-cypilot-fr-sdlc-validation
-  - cpt-cypilot-component-validator
+  - cpt-studio-fr-core-kits
+  - cpt-studio-fr-sdlc-validation
+  - cpt-studio-component-validator
 ---
 
 # Constraints Specification (constraints.toml)
@@ -53,7 +53,7 @@ drivers:
 
 ## Location
 
-**Kit-wide**: `{cypilot_path}/config/kits/<slug>/constraints.toml`
+**Kit-wide**: `{cf-studio-path}/config/kits/<slug>/constraints.toml`
 
 ---
 
@@ -219,7 +219,7 @@ Cross-artifact validation builds an index of all ID definitions and references a
 
 ## Artifact Scanning
 
-Cypilot extracts IDs, references, and CDSL instructions from artifacts using best-effort scanning.
+Studio extracts IDs, references, and CDSL instructions from artifacts using best-effort scanning.
 
 **ID definitions** — recognized via human-facing formats:
 ```markdown

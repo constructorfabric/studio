@@ -1,7 +1,7 @@
 ---
-cypilot: true
+cf-studio: true
 type: workflow
-name: cypilot-pr-review
+name: cf-sdlc-pr-review
 description: Review GitHub PRs using LLM-powered analysis with configurable prompts and checklists
 version: 1.0
 purpose: Read-only PR review — fetch diffs/metadata from GitHub, analyze against checklists, produce structured review reports
@@ -9,7 +9,7 @@ purpose: Read-only PR review — fetch diffs/metadata from GitHub, analyze again
 
 # PR Review Workflow
 
-ALWAYS open and follow `{cypilot_path}/.core/skills/cypilot/SKILL.md` FIRST WHEN {cypilot_mode} is `off`
+ALWAYS open and follow `{cf-studio-path}/.core/skills/cf-studio/SKILL.md` FIRST WHEN {cf-studio-mode} is `off`
 
 **Type**: Analysis
 **Role**: Reviewer
@@ -21,17 +21,17 @@ ALWAYS open and follow `{cypilot_path}/.core/skills/cypilot/SKILL.md` FIRST WHEN
 
 | User Intent | Route | Example |
 |-------------|-------|---------|
-| Review a specific PR | **pr-review.md** | "review PR 123", `/cypilot-pr-review 123` |
-| Review all open PRs | **pr-review.md** | "review all PRs", `/cypilot-pr-review ALL` |
-| Check PR status | **pr-status.md** | "PR status 123", `/cypilot-pr-status ALL` |
+| Review a specific PR | **pr-review.md** | "review PR 123", `/cf-sdlc-pr-review 123` |
+| Review all open PRs | **pr-review.md** | "review all PRs", `/cf-sdlc-pr-review ALL` |
+| Check PR status | **pr-status.md** | "PR status 123", `/cf-sdlc-pr-status ALL` |
 
 ---
 
 ## Overview
 
 Accepts one argument: a PR number (e.g. `123`) or `ALL`.
-Also triggered by natural-language prompts like `cypilot review PR 123`,
-`review PR #59`, or `cypilot review PR https://github.com/org/repo/pull/123`.
+Also triggered by natural-language prompts like `cf-studio review PR 123`,
+`review PR #59`, or `cf-studio review PR https://github.com/org/repo/pull/123`.
 
 All review is **read-only** — the LLM reads the downloaded diff file and
 the current repo source without modifying the local working tree.
@@ -45,7 +45,7 @@ Previous results are stale the moment a new review request arrives.
 ## Paths
 
 - **Script**: `python3 {scripts}/pr.py`
-- **Config**: `{cypilot_path}/config/pr-review.toml`
+- **Config**: `{cf-studio-path}/config/pr-review.toml`
 - **Code review template**: `{pr_code_review_template}`
 - **Status report template**: `{pr_status_report_template}`
 - **Checklists**: Referenced per-prompt in `pr-review.toml`
@@ -57,7 +57,7 @@ Previous results are stale the moment a new review request arrives.
 
 - [ ] `gh` CLI installed and authenticated (`gh auth status`)
 - [ ] Repository has GitHub remote configured
-- [ ] `{cypilot_path}/config/pr-review.toml` has `[[prompts]]` configured
+- [ ] `{cf-studio-path}/config/pr-review.toml` has `[[prompts]]` configured
 
 ---
 
@@ -81,7 +81,7 @@ overwrites any previously fetched files.
 Do NOT skip this step. Do NOT reuse previously fetched data.
 
 ## Step 3: Select review prompt and checklist
-Read `{cypilot_path}/config/pr-review.toml` → `[[prompts]]` list. For each prompt
+Read `{cf-studio-path}/config/pr-review.toml` → `[[prompts]]` list. For each prompt
 entry, read the `description` field. Based on the PR title, body (in
 `meta.json`), and the files changed (in `diff.patch`), select the most
 appropriate review prompt. If unsure, default to "Code Review".

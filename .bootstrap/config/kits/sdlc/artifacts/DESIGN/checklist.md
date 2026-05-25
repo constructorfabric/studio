@@ -101,7 +101,7 @@ Before starting the review, confirm:
 
 ## Evidence Requirements (STRICT mode)
 
-**When Rules Mode = STRICT** (per `{cypilot_path}/.core/requirements/agent-compliance.md`):
+**When Rules Mode = STRICT** (per `{cf-studio-path}/.core/requirements/agent-compliance.md`):
 
 ### For Each Checklist Category
 

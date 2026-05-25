@@ -30,7 +30,7 @@
   - [Clear Semantics](#clear-semantics)
   - [Workflow Integration](#workflow-integration)
   - [Tool Generation](#tool-generation)
-- [Usage in Cypilot](#usage-in-cypilot)
+- [Usage in Studio](#usage-in-studio)
   - [In Adapter Configuration](#in-adapter-configuration)
   - [File Location](#file-location)
   - [Validation](#validation)
@@ -116,7 +116,7 @@ COMMAND init-spec
 
 **SYNOPSIS**: Command usage pattern
 ```
-SYNOPSIS: cpt init-spec <slug> [options]
+SYNOPSIS: cfs init-spec <slug> [options]
 ```
 
 **DESCRIPTION**: Brief description (1-2 sentences)
@@ -151,14 +151,14 @@ EXIT CODES:
 **EXAMPLE**: Usage examples (one or more)
 ```
 EXAMPLE:
-  $ cpt init-spec user-authentication
-  $ cpt init-spec data-export --template minimal
-  $ cpt init-spec payment --skip-validation
+  $ cfs init-spec user-authentication
+  $ cfs init-spec data-export --template minimal
+  $ cfs init-spec payment --skip-validation
 ```
 
 ### Optional Sections
 
-**WORKFLOW**: Reference to Cypilot workflow
+**WORKFLOW**: Reference to Studio workflow
 ```
 WORKFLOW: 05-init-spec
 ```
@@ -249,7 +249,7 @@ Reference other commands, workflows, or entities:
 ### Workflow References
 
 ```
-@Workflow.NN-workflow-name     # Reference to Cypilot workflow
+@Workflow.NN-workflow-name     # Reference to Studio workflow
 @Workflow.adapter-config       # Reference to workflow file
 ```
 
@@ -266,7 +266,7 @@ Reference other commands, workflows, or entities:
 
 ```
 COMMAND init-spec
-SYNOPSIS: cpt init-spec <slug> [options]
+SYNOPSIS: cfs init-spec <slug> [options]
 DESCRIPTION: Initialize a new spec with DESIGN.md template
 WORKFLOW: 05-init-spec
 
@@ -285,9 +285,9 @@ EXIT CODES:
   3  Spec directory already exists
 
 EXAMPLE:
-  $ cpt init-spec user-authentication
-  $ cpt init-spec data-export --template minimal
-  $ cpt init-spec payment --skip-validation
+  $ cfs init-spec user-authentication
+  $ cfs init-spec data-export --template minimal
+  $ cfs init-spec payment --skip-validation
 
 RELATED:
   - @CLI.validate-feature
@@ -354,7 +354,7 @@ def parse_clispec(text):
 
 - Direct workflow references
 - Command relationships via RELATED
-- Integration with Cypilot methodology
+- Integration with Studio methodology
 
 ### Tool Generation
 
@@ -367,7 +367,7 @@ From CLISPEC, generate:
 
 ---
 
-## Usage in Cypilot
+## Usage in Studio
 
 ### In Adapter Configuration
 
@@ -383,16 +383,16 @@ Options:
 
 ### File Location
 
-Standard location: `skills/cypilot/cypilot.clispec`
+Standard location: `skills/studio/studio.clispec`
 
 ### Validation
 
 ```bash
 # Validate CLISPEC format
-cpt validate-kits
+cfs validate-kits
 
 # Or custom validator
-your-tool validate-clispec skills/cypilot/cypilot.clispec
+your-tool validate-clispec skills/studio/studio.clispec
 ```
 
 ### Linking from DESIGN.md
@@ -401,7 +401,7 @@ your-tool validate-clispec skills/cypilot/cypilot.clispec
 ## API Contracts
 
 **Format**: CLISPEC
-**Location**: `skills/cypilot/cypilot.clispec`
+**Location**: `skills/studio/studio.clispec`
 
 **Commands**:
 - @CLI.init-spec - Initialize spec
@@ -433,7 +433,7 @@ your-tool validate-clispec skills/cypilot/cypilot.clispec
 - ✅ Type system
 - ❌ Less flexible
 
-**Best for**: CLI tools in Cypilot projects where agent-readability is priority
+**Best for**: CLI tools in Studio projects where agent-readability is priority
 
 ---
 
@@ -478,11 +478,11 @@ Syntax highlighting:
 
 ## References
 
-- **Cypilot Methodology**: `AGENTS.md`
-- **Example Usage**: See `skills/cypilot/cypilot.clispec` for real-world CLISPEC
+- **Studio Methodology**: `AGENTS.md`
+- **Example Usage**: See `skills/studio/studio.clispec` for real-world CLISPEC
 
 ---
 
 ## License
 
-This specification is part of the Cypilot (Spec-Driven Development) methodology.
+This specification is part of the Studio (Spec-Driven Development) methodology.

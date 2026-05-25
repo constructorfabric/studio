@@ -19,7 +19,7 @@
 3. [Tasks](#tasks)
    - [Phase 1: Setup](#phase-1-setup)
    - [Phase 2: Implementation (Work Packages)](#phase-2-implementation-work-packages)
-   - [Phase 3: Cypilot Markers (Traceability Mode ON only)](#phase-3-cypilot-markers-traceability-mode-on-only)
+   - [Phase 3: Constructor Studio Markers (Traceability Mode ON only)](#phase-3-constructor-studio-markers-traceability-mode-on-only)
    - [Phase 4: Sync FEATURE (Traceability Mode ON only)](#phase-4-sync-feature-traceability-mode-on-only)
    - [Phase 5: Quality Check](#phase-5-quality-check)
    - [Phase 6: Tag Verification (Traceability Mode ON only)](#phase-6-tag-verification-traceability-mode-on-only)
@@ -48,7 +48,7 @@
 
 **Source** (one of, in priority order):
 1. FEATURE design — registered artifact with `to_code="true"` IDs
-2. Other Cypilot artifact — PRD, DESIGN, ADR, DECOMPOSITION
+2. Other Constructor Studio artifact — PRD, DESIGN, ADR, DECOMPOSITION
 3. Similar content — user-provided description, feature, or requirements
 4. Prompt only — direct user instructions
 
@@ -67,7 +67,7 @@
 
 ### Traceability
 
-**Load on demand**: `{cypilot_path}/.core/architecture/specs/traceability.md` — WHEN Traceability Mode FULL
+**Load on demand**: `{cf-studio-path}/.core/architecture/specs/traceability.md` — WHEN Traceability Mode FULL
 
 - [ ] Traceability Mode determined per feature (FULL vs DOCS-ONLY)
 - [ ] If Mode ON: markers follow feature syntax (`@cpt-*`, `@cpt-begin`/`@cpt-end`)
@@ -75,7 +75,7 @@
 - [ ] If Mode ON: every implemented CDSL instruction (`[x] ... \`inst-*\``) has a paired `@cpt-begin/.../@cpt-end` block marker in code
 - [ ] If Mode ON: no orphaned/stale markers
 - [ ] If Mode ON: design checkboxes synced with code
-- [ ] If Mode OFF: no Cypilot markers in code
+- [ ] If Mode OFF: no Constructor Studio markers in code
 
 ### Checkbox Cascade
 
@@ -117,9 +117,9 @@ PRD/DESIGN: referenced IDs [x] when ALL downstream refs [x]
 - [ ] Never mark a reference as `[x]` if its definition is still `[ ]` (cross-artifact consistency is validated)
 
 **Validation Checks**:
-- `cypilot validate` will warn if code marker exists but FEATURE checkbox is `[ ]`
-- `cypilot validate` will warn if FEATURE checkbox is `[x]` but code marker is missing
-- `cypilot validate` will report coverage: N% of FEATURE IDs have code markers
+- `cfs validate` will warn if code marker exists but FEATURE checkbox is `[ ]`
+- `cfs validate` will warn if FEATURE checkbox is `[x]` but code marker is missing
+- `cfs validate` will report coverage: N% of FEATURE IDs have code markers
 
 ### Versioning
 
@@ -149,7 +149,7 @@ PRD/DESIGN: referenced IDs [x] when ALL downstream refs [x]
 
 **Load on demand**:
 - `{codebase_checklist}` — WHEN checking code quality
-- `{cypilot_path}/.core/requirements/code-checklist.md` — WHEN checking generic code quality
+- `{cf-studio-path}/.core/requirements/code-checklist.md` — WHEN checking generic code quality
 
 - [ ] Code passes quality checklist
 - [ ] Functions/methods are appropriately sized
@@ -164,10 +164,10 @@ PRD/DESIGN: referenced IDs [x] when ALL downstream refs [x]
 
 **Resolve Source** (priority order):
 1. FEATURE design (registered) — Traceability FULL possible
-2. Other Cypilot artifact (PRD/DESIGN/ADR) — DOCS-ONLY
+2. Other Constructor Studio artifact (PRD/DESIGN/ADR) — DOCS-ONLY
 3. User-provided description — DOCS-ONLY
 4. Prompt only — DOCS-ONLY
-5. None — suggest `/cypilot-generate FEATURE` first
+5. None — suggest `/cf-studio-generate FEATURE` first
 
 **Load Context**:
 - [ ] Read project `AGENTS.md` for code conventions
@@ -185,7 +185,7 @@ PRD/DESIGN: referenced IDs [x] when ALL downstream refs [x]
 5. If Traceability Mode ON: update FEATURE.md checkboxes
 6. Proceed to next work package
 
-### Phase 3: Cypilot Markers (Traceability Mode ON only)
+### Phase 3: Constructor Studio Markers (Traceability Mode ON only)
 
 **Traceability Mode ON only.**
 
@@ -267,7 +267,7 @@ After each work package, sync checkboxes:
 
 ### Phase 2: Traceability Validation (Mode ON only)
 
-**Load on demand**: `{cypilot_path}/.core/architecture/specs/traceability.md` — required for this phase (Mode ON only)
+**Load on demand**: `{cf-studio-path}/.core/architecture/specs/traceability.md` — required for this phase (Mode ON only)
 
 - [ ] Marker format valid
 - [ ] All begin/end pairs matched
@@ -393,18 +393,18 @@ Run expert panel review after producing validation output.
 ### After Success
 
 - [ ] Feature complete → update feature status to IMPLEMENTED in DECOMPOSITION
-- [ ] All features done → `/cypilot-analyze DESIGN` — validate overall design completion
-- [ ] New feature needed → `/cypilot-generate FEATURE` — design next feature
-- [ ] Want expert review only → `/cypilot-analyze semantic` — semantic validation
+- [ ] All features done → `/cf-studio-analyze DESIGN` — validate overall design completion
+- [ ] New feature needed → `/cf-studio-generate FEATURE` — design next feature
+- [ ] Want expert review only → `/cf-studio-analyze semantic` — semantic validation
 
 ### After Issues
 
-- [ ] Design mismatch → `/cypilot-generate FEATURE` — update feature design
-- [ ] Missing tests → continue `/cypilot-generate CODE` — add tests
-- [ ] Code quality issues → continue `/cypilot-generate CODE` — refactor
+- [ ] Design mismatch → `/cf-studio-generate FEATURE` — update feature design
+- [ ] Missing tests → continue `/cf-studio-generate CODE` — add tests
+- [ ] Code quality issues → continue `/cf-studio-generate CODE` — refactor
 
 ### No Design
 
-- [ ] Implementing new feature → `/cypilot-generate FEATURE` first
-- [ ] Implementing from PRD → `/cypilot-generate DESIGN` then DECOMPOSITION
+- [ ] Implementing new feature → `/cf-studio-generate FEATURE` first
+- [ ] Implementing from PRD → `/cf-studio-generate DESIGN` then DECOMPOSITION
 - [ ] Quick prototype → proceed without traceability, suggest FEATURE later

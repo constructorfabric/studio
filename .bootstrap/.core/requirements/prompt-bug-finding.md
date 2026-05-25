@@ -1,5 +1,5 @@
 ---
-cypilot: true
+cf: true
 type: requirement
 name: Prompt Bug-Finding Methodology
 version: 1.3
@@ -197,7 +197,7 @@ Efficiency rules:
 - Review high-priority always-on text before low-priority examples and commentary.
 - Check cross-file boundaries early because prompt bugs often hide in mismatched assumptions between documents.
 
-## Integration with Cypilot
+## Integration with Studio
 
 - Use this methodology when the user asks to find bugs, hidden failure modes, regressions, unsafe behavior, instruction conflicts, routing defects, or root causes in prompts or agent instruction documents.
 - Use `prompt-engineering.md` for clarity, structure, anti-pattern, context-engineering, and improvement synthesis review.

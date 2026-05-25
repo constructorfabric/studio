@@ -1,18 +1,20 @@
 ---
-cypilot: true
+studio: true
 type: requirement
-name: Cypilot DSL (CDSL) Language
+name: Studio DSL (CDSL) Language
 version: 1.1
 purpose: Define syntax and grammar for behavior description language
 ---
 
-# Cypilot DSL (CDSL)
+# Studio DSL (CDSL)
+
+> **Glossary**: CDSL = Constructor DSL — the plain English behavioral specification language defined in this document.
 
 ---
 
 ## Table of Contents
 
-- [Cypilot DSL (CDSL)](#cypilot-dsl-cdsl)
+- [Studio DSL (CDSL)](#studio-dsl-cdsl)
   - [Table of Contents](#table-of-contents)
   - [Agent Instructions](#agent-instructions)
   - [Overview](#overview)
@@ -43,8 +45,8 @@ purpose: Define syntax and grammar for behavior description language
     - [Invalid CDSL Syntax](#invalid-cdsl-syntax)
     - [Missing Required Tokens](#missing-required-tokens)
     - [Duplicate Instruction IDs](#duplicate-instruction-ids)
-    - [Unbalanced Cypilot Markers in Code](#unbalanced-cypilot-markers-in-code)
-    - [Empty Cypilot Block in Code](#empty-cypilot-block-in-code)
+    - [Unbalanced Studio Markers in Code](#unbalanced-studio-markers-in-code)
+    - [Empty Studio Block in Code](#empty-studio-block-in-code)
   - [Consolidated Validation Checklist](#consolidated-validation-checklist)
     - [Structure (S)](#structure-s)
     - [Keyword Usage (K)](#keyword-usage-k)
@@ -67,17 +69,17 @@ purpose: Define syntax and grammar for behavior description language
 **Prerequisite**: Agent confirms understanding before proceeding:
 - [ ] Agent has read and understood this requirement
 - [ ] Agent will follow the rules defined here
-- [ ] Agent understands Cypilot DSL (CDSL) is language-agnostic (no code syntax)
+- [ ] Agent understands Studio DSL (CDSL) is language-agnostic (no code syntax)
 
 ---
 
 ## Overview
 
-**Cypilot DSL (CDSL)** - Plain English behavior description using markdown lists and bold keywords
+**Studio DSL (CDSL)** - Plain English behavior description using markdown lists and bold keywords
 
 **Format**: Numbered markdown lists (1, 2, 3...) + Bold keywords + Plain English
 
-**No code syntax**: Cypilot DSL (CDSL) is language-agnostic, implementation-independent
+**No code syntax**: Studio DSL (CDSL) is language-agnostic, implementation-independent
 
 ---
 
@@ -255,7 +257,7 @@ Goal: Create new dashboard
 - Plain English descriptions
 - Indentation for nested steps
 - Each step line includes `[ ]` or `[x]`, `pN`, and an instruction ID token `inst-{short-id}`
-- For codebase traceability, every implemented instruction marker maps to code via paired Cypilot block markers wrapping non-empty code.
+- For codebase traceability, every implemented instruction marker maps to code via paired Studio block markers wrapping non-empty code.
    - Format: `@cpt-begin:{cpt-id}:p{N}:inst-{id}` ... code ... `@cpt-end:{cpt-id}:p{N}:inst-{id}`
    - Example: `# @cpt-begin:cpt-system-feature-x-algo-validate:p1:inst-check-input`
    - Each begin/end pair wraps **only the specific lines** implementing that one instruction — NOT the entire function
@@ -318,9 +320,9 @@ Goal: Create new dashboard
 
 ## Excluding Examples from Validation
 
-**Purpose**: Documentation and workflow files often contain **example** Cypilot tags that should not be validated as real implementation.
+**Purpose**: Documentation and workflow files often contain **example** Studio tags that should not be validated as real implementation.
 
-**Solution**: Use `!no-cpt-begin` / `!no-cpt-end` block markers to exclude content from Cypilot scanning.
+**Solution**: Use `!no-cpt-begin` / `!no-cpt-end` block markers to exclude content from Studio scanning.
 
 **Syntax**:
 
@@ -337,8 +339,8 @@ Goal: Create new dashboard
 
 **Use Cases**:
 
-1. **Documentation examples**: Wrap example Cypilot tags in docs with exclusion blocks
-2. **Deprecated code**: Mark old code that still has Cypilot tags but shouldn't be validated
+1. **Documentation examples**: Wrap example Studio tags in docs with exclusion blocks
+2. **Deprecated code**: Mark old code that still has Studio tags but shouldn't be validated
 3. **Template/boilerplate code**: Exclude scaffolding/template code from validation
 
 **Example**:
@@ -357,7 +359,7 @@ example_code();
 <!-- !no-cpt-end -->
 ```
 
-**Important**: Use this sparingly. Most Cypilot tags should be real and validated. Only exclude genuine examples/documentation.
+**Important**: Use this sparingly. Most Studio tags should be real and validated. Only exclude genuine examples/documentation.
 
 ---
 
@@ -372,7 +374,7 @@ example_code();
 → Found: {prohibited element}
 → Fix: Replace with plain English description
 ```
-**Action**: FAIL validation — Cypilot DSL (CDSL) must be language-agnostic.
+**Action**: FAIL validation — Studio DSL (CDSL) must be language-agnostic.
 
 ### Missing Required Tokens
 
@@ -396,22 +398,22 @@ example_code();
 ```
 **Action**: FAIL validation — IDs must be unique within scope.
 
-### Unbalanced Cypilot Markers in Code
+### Unbalanced Studio Markers in Code
 
 **If code has `cpt-begin` without matching `cpt-end`**:
 ```
-⚠️ Unbalanced Cypilot marker: {marker}
+⚠️ Unbalanced Studio marker: {marker}
 → Location: {file}:{line}
 → Found: cpt-begin without cpt-end (or vice versa)
 → Fix: Add matching marker or remove orphan
 ```
 **Action**: FAIL validation — markers must be paired.
 
-### Empty Cypilot Block in Code
+### Empty Studio Block in Code
 
 **If `cpt-begin`/`cpt-end` wraps no code**:
 ```
-⚠️ Empty Cypilot block: {marker}
+⚠️ Empty Studio block: {marker}
 → Location: {file}:{line}
 → Block contains no implementation code
 → Fix: Add implementation OR remove markers if not implemented
@@ -475,7 +477,7 @@ example_code();
 |---|-------|----------|---------------|
 | CT.1 | Implemented instructions have code markers | CONDITIONAL | If `[x]`, marker exists in code |
 | CT.2 | Code markers use `cpt-begin`/`cpt-end` format | YES | Paired block markers |
-| CT.3 | Cypilot blocks wrap non-empty code | YES | Code exists between markers |
+| CT.3 | Studio blocks wrap non-empty code | YES | Code exists between markers |
 | CT.4 | No orphan markers in code | YES | All begin/end balanced |
 
 ### Final (F)
@@ -495,9 +497,9 @@ example_code();
 **This file is referenced by**:
 - DESIGN artifacts (behavioral sections)
 - SPEC artifacts (algorithms, flows)
-- Code files (via Cypilot markers)
+- Code files (via Studio markers)
 
 **References**:
 - `overall-design-content.md` — Root DESIGN behavioral sections
 - `spec-design-content.md` — Spec DESIGN behavioral sections
-- `{cypilot_path}/config/AGENTS.md` — Project-specific CDSL overrides (if any)
+- `{cf-studio-path}/config/AGENTS.md` — Project-specific CDSL overrides (if any)

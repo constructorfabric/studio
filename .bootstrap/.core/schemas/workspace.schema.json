@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.com/cypilot/workspace.schema.json",
-  "title": "Cypilot Workspace Configuration (.cypilot-workspace.toml)",
+  "$id": "https://example.com/constructor-studio/workspace.schema.json",
+  "title": "Constructor Studio Workspace Configuration (.studio-workspace.toml)",
   "description": "Federation layer for multi-repo workspace support. Maps named sources (repos) to local paths with roles. Standalone file uses TOML format.",
   "type": "object",
   "additionalProperties": false,
@@ -12,12 +12,12 @@
       "sources": {
         "docs-repo": {
           "path": "../docs-repo",
-          "adapter": ".bootstrap",
+          "adapter": ".cf-studio",
           "role": "artifacts"
         },
         "code-repo": {
           "path": "../code-repo",
-          "adapter": ".bootstrap",
+          "adapter": ".cf-studio",
           "role": "codebase"
         },
         "shared-kits": {
@@ -88,7 +88,7 @@
         "adapter": {
           "type": "string",
           "minLength": 1,
-          "description": "Path to adapter directory within the source repo (e.g., '.bootstrap'). Omit if repo has no adapter."
+          "description": "Path to adapter directory within the source repo (e.g., '.cf-studio'). Omit if repo has no adapter."
         },
         "role": {
           "type": "string",

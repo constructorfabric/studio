@@ -1,14 +1,14 @@
-# Cypilot: Cypilot
+# Studio: Cypilot
 
 ## Navigation Rules
 
-ALWAYS open and follow `{cypilot_path}/config/artifacts.toml` WHEN working with artifacts or codebase
+ALWAYS open and follow `{cf-studio-path}/config/artifacts.toml` WHEN working with artifacts or codebase
 
-ALWAYS open and follow `{cypilot_path}/.core/schemas/artifacts.schema.json` WHEN working with artifacts.toml
+ALWAYS open and follow `{cf-studio-path}/.core/schemas/artifacts.schema.json` WHEN working with artifacts.toml
 
-ALWAYS open and follow `{cypilot_path}/.core/architecture/specs/artifacts-registry.md` WHEN working with artifacts.toml
+ALWAYS open and follow `{cf-studio-path}/.core/architecture/specs/artifacts-registry.md` WHEN working with artifacts.toml
 
-# Cypilot Kit: SDLC (`sdlc`)
+# Constructor Studio Kit: SDLC (`sdlc`)
 
 Agent quick reference.
 
@@ -26,3 +26,4 @@ Artifact-first SDLC pipeline (PRD → ADR + DESIGN → DECOMPOSITION → FEATURE
 | DECOMPOSITION | Executable plan: FEATURE list, ordering, dependencies, and coverage links back to PRD/DESIGN. | `{decomposition_rules}`, `{decomposition_template}`, `{decomposition_checklist}`, `{decomposition_example}` |
 | FEATURE | Precise behavior + DoD: CDSL flows/algos/states + test scenarios for implementability. | `{feature_rules}`, `{feature_template}`, `{feature_checklist}`, `{feature_example}` |
 | CODE | Implementation of FEATURE with optional `@cpt-*` markers and checkbox cascade/coverage validation. | `{codebase_rules}`, `{codebase_checklist}` |
+

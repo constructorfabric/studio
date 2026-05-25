@@ -1,9 +1,9 @@
 ---
-cypilot: true
+cf: true
 type: requirement
 name: Language Complexity (global UX rule)
 version: 1.0
-purpose: Configurable language-complexity level for all Cypilot user-facing output (chat + artifacts/documentation)
+purpose: Configurable language-complexity level for all Studio user-facing output (chat + artifacts/documentation)
 ---
 
 # Language Complexity
@@ -20,7 +20,7 @@ purpose: Configurable language-complexity level for all Cypilot user-facing outp
 
 ## Rule
 
-All Cypilot user-facing output — chat messages from any workflow / methodology / skill, AND any user-facing artifact body (explain portions, review comments, open questions, key takeaways, generated guides, READMEs, validation reports, summaries) — MUST respect the project's `language_complexity` setting. Default is `middle`. Source quotes from input artifacts are exempt (quoted verbatim per existing strict-context rules); spec/normative files (workflows, requirements, kits, agent definitions) are exempt (those are agent-facing instructions, not user-facing prose).
+All Studio user-facing output — chat messages from any workflow / methodology / skill, AND any user-facing artifact body (explain portions, review comments, open questions, key takeaways, generated guides, READMEs, validation reports, summaries) — MUST respect the project's `language_complexity` setting. Default is `middle`. Source quotes from input artifacts are exempt (quoted verbatim per existing strict-context rules); spec/normative files (workflows, requirements, kits, agent definitions) are exempt (those are agent-facing instructions, not user-facing prose).
 
 ## Levels
 
@@ -36,7 +36,7 @@ Methodology MUST self-check the resolved level on every chat message and every a
 
 Priority order:
 1. **Mid-session override**: `change language complexity to {low|middle|high}` (in chat) — session-only
-2. **Project config**: `[language] complexity = "{level}"` in `{cypilot_path}/config/core.toml`
+2. **Project config**: `[language] complexity = "{level}"` in `{cf-studio-path}/config/core.toml`
 3. **Default**: `middle`
 
 `remember new language complexity` persists the current value to `core.toml` (writes the `[language]` table if absent; preserves unrelated keys).

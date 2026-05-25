@@ -1,5 +1,5 @@
 ---
-cypilot: true
+cf: true
 type: requirement
 name: Auto-Configuration Methodology
 version: 1.0
@@ -25,32 +25,32 @@ purpose: Systematic methodology for scanning brownfield projects and generating 
 
 <!-- /toc -->
 
- **Scope**: Brownfield projects where Cypilot is installed but no project-specific rules or specs exist yet.
+ **Scope**: Brownfield projects where Studio is installed but no project-specific rules or specs exist yet.
  
  **Out of scope**: Greenfield projects with no code to scan, and projects that already have configured specs/rules.
  
  ## Agent Instructions
  
- **ALWAYS open and follow** this file WHEN the user asks to configure Cypilot for a project or an auto-config workflow is triggered.
+ **ALWAYS open and follow** this file WHEN the user asks to configure Studio for a project or an auto-config workflow is triggered.
  
- **ALWAYS open and follow** `{cypilot_path}/.core/requirements/reverse-engineering.md` for scan methodology (`L1-L3`, `L8`).
+ **ALWAYS open and follow** `{cf-studio-path}/.core/requirements/reverse-engineering.md` for scan methodology (`L1-L3`, `L8`).
  
- **ALWAYS open and follow** `{cypilot_path}/.core/requirements/prompt-engineering.md` for rule-quality validation.
+ **ALWAYS open and follow** `{cf-studio-path}/.core/requirements/prompt-engineering.md` for rule-quality validation.
  
  **Prerequisites**: confirm the agent has read this methodology, has source access, will follow phases `1 -> 6` in order, will checkpoint after each phase, and will **NOT** write files without user confirmation.
  
  ## Overview
  
- Auto-config scans a brownfield project and generates **per-topic** rule files in `{cypilot_path}/config/rules/` plus contextual `WHEN` rules in `{cypilot_path}/config/AGENTS.md`. Files are split by **topic** (`conventions`, `architecture`, `patterns`, etc.), not by system path, so the agent loads only the guidance relevant to the current activity.
+ Auto-config scans a brownfield project and generates **per-topic** rule files in `{cf-studio-path}/config/rules/` plus contextual `WHEN` rules in `{cf-studio-path}/config/AGENTS.md`. Files are split by **topic** (`conventions`, `architecture`, `patterns`, etc.), not by system path, so the agent loads only the guidance relevant to the current activity.
  
  **Core principle**: extract conventions from code, do not impose them.
  
  | Output | Location | Purpose |
  |---|---|---|
- | Per-topic rule files | `{cypilot_path}/config/rules/{topic}.md` | Focused rules per semantic topic |
- | Doc navigation rules | `{cypilot_path}/config/AGENTS.md` | `WHEN` rules for existing project docs with heading anchors |
- | Rule-file navigation rules | `{cypilot_path}/config/AGENTS.md` | `WHEN` rules that load generated topic files contextually |
- | Registry entries | `{cypilot_path}/config/artifacts.toml` | Detected systems with source paths |
+ | Per-topic rule files | `{cf-studio-path}/config/rules/{topic}.md` | Focused rules per semantic topic |
+ | Doc navigation rules | `{cf-studio-path}/config/AGENTS.md` | `WHEN` rules for existing project docs with heading anchors |
+ | Rule-file navigation rules | `{cf-studio-path}/config/AGENTS.md` | `WHEN` rules that load generated topic files contextually |
+ | Registry entries | `{cf-studio-path}/config/artifacts.toml` | Detected systems with source paths |
  | TOC updates | Existing docs + generated rule files | Navigability for docs and rules |
  
  **Upstream methodologies used**:
@@ -60,21 +60,21 @@ purpose: Systematic methodology for scanning brownfield projects and generating 
  ## Preconditions
  
  **Trigger conditions** (`ANY`):
- - Automatic brownfield detection with no project specs in config (`cypilot.py info` reports `specs: []` or no specs dir, and source-code directories exist)
- - Manual invocation via `cypilot auto-config` or equivalent user request
- - Rescan via `cpt init --rescan` or equivalent reconfigure request
+ - Automatic brownfield detection with no project specs in config (`studio.py info` reports `specs: []` or no specs dir, and source-code directories exist)
+ - Manual invocation via `cf auto-config` or equivalent user request
+ - Rescan via `{cfs_cmd} init --rescan` or equivalent reconfigure request
  
  **Pre-checks**:
- - [ ] Cypilot is initialized (`cypilot.py info` returns `FOUND`)
+ - [ ] Studio is initialized (`studio.py info` returns `FOUND`)
  - [ ] Source-code repository is accessible
- - [ ] `{cypilot_path}/config/` exists and is writable
- - [ ] `{cypilot_path}/config/rules/` is empty, or `--force` is explicitly in use
+ - [ ] `{cf-studio-path}/config/` exists and is writable
+ - [ ] `{cf-studio-path}/config/rules/` is empty, or `--force` is explicitly in use
 
  ## Phase 1: Project Scan
  
  **Goal**: extract raw project data using reverse-engineering methodology.
  
- **Use**: `{cypilot_path}/.core/requirements/reverse-engineering.md` Layers `1`, `2`, `3`, and `8`.
+ **Use**: `{cf-studio-path}/.core/requirements/reverse-engineering.md` Layers `1`, `2`, `3`, and `8`.
  
  | Subphase | Focus | Capture |
  |---|---|---|
@@ -107,11 +107,11 @@ purpose: Systematic methodology for scanning brownfield projects and generating 
 **Goal**: find project docs/specs, add TOCs where missing, and create heading-level navigation rules.
 
 **Scan + capture**:
-- [ ] Search `docs/`, `documentation/`, `guides/`, `wiki/`, `.github/`, standalone guides, ADR dirs, API docs, `README.md` links, `architecture/`, and `{cypilot_path}/config/`
+- [ ] Search `docs/`, `documentation/`, `guides/`, `wiki/`, `.github/`, standalone guides, ADR dirs, API docs, `README.md` links, `architecture/`, and `{cf-studio-path}/config/`
 - [ ] Build `docs_inventory` with `path`, title from first `H1`, TOC present, heading count, estimated topic/scope
 - [ ] For each doc, parse `H1-H4`, identify scope/topic, classify as `Guide` / `Reference` / `Standard` / `Decision`, define `WHEN`, and identify the most useful headings
 
-**TOC flow**: offer `python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py toc {doc_path}`; show missing-TOC docs as `# | File | Headings | Topic`; on approval, run `cypilot toc` per selected doc and verify success.
+**TOC flow**: offer `{cfs_cmd} toc {doc_path}`; show missing-TOC docs as `# | File | Headings | Topic`; on approval, run `{cfs_cmd} toc` per selected doc and verify success.
 
 **Documentation map output**:
 
@@ -185,13 +185,13 @@ Present this to the user before Phase `3`.
 
 **Goal**: generate project-specific rule files from scan data.
 
-**Quality gate**: apply `{cypilot_path}/.core/requirements/prompt-engineering.md` Layer `2` and Layer `5` to every generated rule.
+**Quality gate**: apply `{cf-studio-path}/.core/requirements/prompt-engineering.md` Layer `2` and Layer `5` to every generated rule.
 
 **Base rule-file template**:
 
 ```markdown
 ---
-cypilot: true
+cf: true
 type: project-rule
 topic: {topic-slug}
 generated-by: auto-config
@@ -209,7 +209,7 @@ Evidence: `{file}:{line}` — {what was observed}
 
 **Required checks**: [ ] focused [ ] has TOC [ ] specific [ ] observable [ ] grounded [ ] actionable [ ] `<120` lines [ ] no hallucination [ ] no overlap. One topic file, usually `architecture.md`, **MUST** include a `Critical Files` table.
 
-**Generation protocol**: 1) filter by topic 2) merge/skip if `<3` rules 3) synthesize 4) validate against `AP-VAGUE`, `AP-CONTEXT-BLOAT`, `AP-HALLUCINATION-PRONE` 5) present batch to user 6) write after confirmation 7) run `python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py toc {rule_file_path}`.
+**Generation protocol**: 1) filter by topic 2) merge/skip if `<3` rules 3) synthesize 4) validate against `AP-VAGUE`, `AP-CONTEXT-BLOAT`, `AP-HALLUCINATION-PRONE` 5) present batch to user 6) write after confirmation 7) run `python3 {cf-studio-path}/.core/skills/studio/scripts/studio.py toc {rule_file_path}`.
 
 ## Phase 4: AGENTS.md Integration
 
@@ -220,12 +220,12 @@ Evidence: `{file}:{line}` — {what was observed}
 **Generated topic rules**:
 
 ```markdown
-ALWAYS open and follow `{cypilot_path}/config/rules/conventions.md` WHEN writing or reviewing code
-ALWAYS open and follow `{cypilot_path}/config/rules/architecture.md` WHEN modifying architecture, adding components, or refactoring module boundaries
-ALWAYS open and follow `{cypilot_path}/config/rules/patterns.md` WHEN implementing features or writing business logic
-ALWAYS open and follow `{cypilot_path}/config/rules/testing.md` WHEN writing or running tests
-ALWAYS open and follow `{cypilot_path}/config/rules/api-contracts.md` WHEN writing API endpoints or CLI commands
-ALWAYS open and follow `{cypilot_path}/config/rules/anti-patterns.md` WHEN reviewing code or refactoring
+ALWAYS open and follow `{cf-studio-path}/config/rules/conventions.md` WHEN writing or reviewing code
+ALWAYS open and follow `{cf-studio-path}/config/rules/architecture.md` WHEN modifying architecture, adding components, or refactoring module boundaries
+ALWAYS open and follow `{cf-studio-path}/config/rules/patterns.md` WHEN implementing features or writing business logic
+ALWAYS open and follow `{cf-studio-path}/config/rules/testing.md` WHEN writing or running tests
+ALWAYS open and follow `{cf-studio-path}/config/rules/api-contracts.md` WHEN writing API endpoints or CLI commands
+ALWAYS open and follow `{cf-studio-path}/config/rules/anti-patterns.md` WHEN reviewing code or refactoring
 ```
 
 **Project-doc rules**: point to actionable headings such as `#code-style`, `#pr-process`, `#deployment`, and `#authentication`.
@@ -247,13 +247,13 @@ ALWAYS open and follow `{cypilot_path}/config/rules/anti-patterns.md` WHEN revie
 
 ## Phase 5: Registry Update
 
-**Goal**: register detected systems in `{cypilot_path}/config/artifacts.toml`.
+**Goal**: register detected systems in `{cf-studio-path}/config/artifacts.toml`.
 
 ```toml
 [[systems]]
 name = "{System Name}"
 slug = "{slug}"
-kits = "cypilot-sdlc"
+kits = "studio-sdlc"
 source_paths = ["{path1}", "{path2}"]
 [[systems.artifacts]]
 path = "{source-root}"
@@ -289,7 +289,7 @@ kind = "CODEBASE"
 **Directory structure**:
 
 ```text
-{cypilot_path}/config/
+{cf-studio-path}/config/
 ├── AGENTS.md
 ├── artifacts.toml
 └── rules/ (`conventions.md`, `architecture.md`, `patterns.md`, `testing.md`, `api-contracts.md`, `anti-patterns.md`)
@@ -300,7 +300,7 @@ Generate only topic files with at least `3` project-specific rules. Existing pro
 **Scripted JSON output**:
 
 ```json
-{"status":"PASS","systems_detected":2,"topics_generated":["conventions","architecture","patterns","testing"],"agents_rules_added":4,"registry_entries_added":2,"files_written":["{cypilot_path}/config/rules/conventions.md","{cypilot_path}/config/rules/architecture.md","{cypilot_path}/config/rules/patterns.md","{cypilot_path}/config/rules/testing.md"],"docs_found":3,"docs_toc_generated":2,"doc_navigation_rules_added":5}
+{"status":"PASS","systems_detected":2,"topics_generated":["conventions","architecture","patterns","testing"],"agents_rules_added":4,"registry_entries_added":2,"files_written":["{cf-studio-path}/config/rules/conventions.md","{cf-studio-path}/config/rules/architecture.md","{cf-studio-path}/config/rules/patterns.md","{cf-studio-path}/config/rules/testing.md"],"docs_found":3,"docs_toc_generated":2,"doc_navigation_rules_added":5}
 ```
 
 ## Rule File Format
@@ -309,7 +309,7 @@ Generate only topic files with at least `3` project-specific rules. Existing pro
 
 ```yaml
 ---
-cypilot: true
+cf: true
 type: project-rule
 topic: {topic-slug}
 generated-by: auto-config
@@ -320,7 +320,7 @@ version: 1.0
 **TOC requirements**:
 - [ ] Immediately after frontmatter and `H1`
 - [ ] Covers `H2`/`H3` with GitHub-style anchors
-- [ ] Validate with `python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py toc {rule_file_path}`
+- [ ] Validate with `python3 {cf-studio-path}/.core/skills/studio/scripts/studio.py toc {rule_file_path}`
 
 **Content guidelines**:
 - [ ] Max `120` lines; imperative mood; specific file refs
@@ -350,14 +350,14 @@ WHEN {doc-specific-activity}
 
 | Condition | Response | Action |
 |---|---|---|
-| No source code found | `No source code detected in project` → use `cypilot generate` for greenfield work. | **STOP** |
-| Existing rules found | `Existing rules found in {cypilot_path}/config/rules/` → list files → use `--force` or merge manually. | **STOP** unless `--force` |
+| No source code found | `No source code detected in project` → use `cf generate` for greenfield work. | **STOP** |
+| Existing rules found | `Existing rules found in {cf-studio-path}/config/rules/` → list files → use `--force` or merge manually. | **STOP** unless `--force` |
 | Scan incomplete | `Project scan incomplete: {reason}` → completed list → skipped list → rules generated from partial scan data. | **WARN** and continue |
-| Large codebase | `Large codebase detected ({file_count} files)` → scan top-level structure only → offer `cypilot auto-config --system {slug}`. | Limit scan depth |
+| Large codebase | `Large codebase detected ({file_count} files)` → scan top-level structure only → offer `cf auto-config --system {slug}`. | Limit scan depth |
 
 ## References
 
-- Reverse Engineering: `{cypilot_path}/.core/requirements/reverse-engineering.md`
-- Prompt Engineering: `{cypilot_path}/.core/requirements/prompt-engineering.md`
-- Execution Protocol: `{cypilot_path}/.core/requirements/execution-protocol.md`
-- Generate Workflow: `{cypilot_path}/.core/workflows/generate.md` (triggers auto-config in Brownfield prerequisite)
+- Reverse Engineering: `{cf-studio-path}/.core/requirements/reverse-engineering.md`
+- Prompt Engineering: `{cf-studio-path}/.core/requirements/prompt-engineering.md`
+- Execution Protocol: `{cf-studio-path}/.core/requirements/execution-protocol.md`
+- Generate Workflow: `{cf-studio-path}/.core/workflows/generate.md` (triggers auto-config in Brownfield prerequisite)

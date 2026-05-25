@@ -1,14 +1,14 @@
-# Cypilot project configuration
+# Constructor Studio project configuration
 
 version = "1.0"
 project_root = ".."
 
 [kits]
 [kits.sdlc]
-format = "Cypilot"
+format = "CFS"
 path = "config/kits/sdlc"
-version = "1.3.0"
-source = "github:cyberfabric/cyber-pilot-kit-sdlc"
+version = "1.0.0"
+source = "github:constructorfabric/studio-kit-sdlc"
 
 [kits.sdlc.resources]
 [kits.sdlc.resources.adr_template]
@@ -104,5 +104,6 @@ path = "config/kits/sdlc/AGENTS.md"
 [kits.sdlc.resources.workflow_migrate_openspec]
 path = "config/kits/sdlc/workflows/migrate-openspec.md"
 
+[integrations]
 [integrations.ralphex]
-executable_path = ""  # Resolved absolute path to ralphex binary
+executable_path = ""

@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """PR review helper – fetch PR diffs, metadata, and generate status reports.
 
-Cypilot kit script: lives in kits/sdlc/scripts/pr.py, deployed to .gen/kits/sdlc/scripts/pr.py
+Constructor Studio kit script: lives in kits/sdlc/scripts/pr.py, deployed to .gen/kits/sdlc/scripts/pr.py
 Resolves all paths relative to the project root (detected via git).
 
 All review is done in read-only mode: the script downloads diffs and
 metadata from GitHub but never modifies the local working tree.
 
-@cpt-flow:cpt-cypilot-flow-pr-workflows-review:p1
-@cpt-flow:cpt-cypilot-flow-pr-workflows-status:p1
-@cpt-algo:cpt-cypilot-algo-pr-workflows-fetch-data:p1
-@cpt-algo:cpt-cypilot-algo-pr-workflows-analyze-changes:p1
-@cpt-algo:cpt-cypilot-algo-pr-workflows-classify-comments:p1
-@cpt-dod:cpt-cypilot-dod-pr-workflows-review:p1
-@cpt-dod:cpt-cypilot-dod-pr-workflows-status:p1
+@cpt-flow:cpt-cfs-flow-pr-workflows-review:p1
+@cpt-flow:cpt-cfs-flow-pr-workflows-status:p1
+@cpt-algo:cpt-cfs-algo-pr-workflows-fetch-data:p1
+@cpt-algo:cpt-cfs-algo-pr-workflows-analyze-changes:p1
+@cpt-algo:cpt-cfs-algo-pr-workflows-classify-comments:p1
+@cpt-dod:cpt-cfs-dod-pr-workflows-review:p1
+@cpt-dod:cpt-cfs-dod-pr-workflows-status:p1
 """
 
 import json
@@ -34,7 +34,7 @@ except ModuleNotFoundError:  # Python < 3.11
 _CPT_MARKER = "@cpt:root-agents"
 
 
-# @cpt-begin:cpt-cypilot-algo-pr-workflows-fetch-data:p1:inst-fetch-metadata
+# @cpt-begin:cpt-cfs-algo-pr-workflows-fetch-data:p1:inst-fetch-metadata
 def _find_project_root():
     """Find project root via git rev-parse, then AGENTS.md marker."""
     try:
@@ -79,11 +79,12 @@ def _find_project_root():
 ROOT = _find_project_root()
 
 
-def _read_cypilot_path(project_root):
-    """Read cypilot_path variable from AGENTS.md TOML block.
+def _read_cfs_path(project_root):
+    """Read cf-studio-path from AGENTS.md TOML block.
 
     Parses the ```toml block inside the @cpt:root-agents section.
-    Returns the value (e.g. '.cypilot', 'cypilot', 'cpt') or None.
+    Reads the key `cf-studio-path`.
+    Returns the value (e.g. '.cfs', 'cfs', 'cf-studio', 'constructor-studio') or None.
     """
     agents = os.path.join(project_root, "AGENTS.md")
     if not os.path.isfile(agents):
@@ -95,44 +96,42 @@ def _read_cypilot_path(project_root):
         return None
     if _CPT_MARKER not in content:
         return None
-    # Extract cypilot_path from TOML block
-    m = re.search(
-        r'cypilot_path\s*=\s*"([^"]+)"', content,
-    )
-    if not m:
-        m = re.search(
-            r"cypilot_path\s*=\s*'([^']+)'", content,
-        )
-    return m.group(1).strip() if m else None
+    for key in ("cf-studio-path",):
+        m = re.search(rf'{key}\s*=\s*"([^"]+)"', content)
+        if not m:
+            m = re.search(rf"{key}\s*=\s*'([^']+)'", content)
+        if m:
+            return m.group(1).strip()
+    return None
 
 
-# Resolve cypilot path from AGENTS.md, fallback to common names
-_CYPILOT_REL = _read_cypilot_path(ROOT)
-if _CYPILOT_REL is None:
-    # Auto-detect: check common directory names
-    for _candidate in (".cypilot", "cypilot", "cpt"):
+# Resolve cfs path from AGENTS.md, fallback to common names.
+_CFS_REL = _read_cfs_path(ROOT)
+if _CFS_REL is None:
+    # Auto-detect: check common directory names.
+    for _candidate in (".cfs", "cfs", "cf-studio", "constructor-studio"):
         if os.path.isdir(os.path.join(ROOT, _candidate)):
-            _CYPILOT_REL = _candidate
+            _CFS_REL = _candidate
             break
-    if _CYPILOT_REL is None:
-        _CYPILOT_REL = ".cypilot"
+    if _CFS_REL is None:
+        _CFS_REL = ".cfs"
 
-CYPILOT_PATH = os.path.join(ROOT, _CYPILOT_REL)
+CFS_PATH = os.path.join(ROOT, _CFS_REL)
 
 
 def _load_pr_config():
-    """Load PR review config from {cypilot_path}/config/pr-review.toml.
+    """Load PR review config from {cf-studio-path}/config/pr-review.toml.
 
     Resolution order:
-    1. {cypilot_path}/config/pr-review.toml   (user-editable)
-    2. {cypilot_path}/config/kits/sdlc/scripts/pr-review.toml  (kit default)
-    3. {cypilot_path}/config/pr-review.json   (legacy JSON)
-    4. .cypilot-adapter/pr-review.json        (legacy v1)
+    1. {cf-studio-path}/config/pr-review.toml   (user-editable)
+    2. {cf-studio-path}/config/kits/sdlc/scripts/pr-review.toml  (kit default)
+    3. {cf-studio-path}/config/pr-review.json   (legacy JSON)
+    4. .cf-studio-adapter/pr-review.json        (legacy v1)
     """
     # TOML candidates
     candidates_toml = [
-        os.path.join(CYPILOT_PATH, "config", "pr-review.toml"),
-        os.path.join(CYPILOT_PATH, ".gen", "kits", "sdlc", "scripts", "pr-review.toml"),
+        os.path.join(CFS_PATH, "config", "pr-review.toml"),
+        os.path.join(CFS_PATH, ".gen", "kits", "sdlc", "scripts", "pr-review.toml"),
     ]
     if tomllib is not None:
         for p in candidates_toml:
@@ -141,8 +140,8 @@ def _load_pr_config():
                     return tomllib.load(f)
     # Legacy JSON fallback
     candidates_json = [
-        os.path.join(CYPILOT_PATH, "config", "pr-review.json"),
-        os.path.join(ROOT, ".cypilot-adapter", "pr-review.json"),
+        os.path.join(CFS_PATH, "config", "pr-review.json"),
+        os.path.join(ROOT, ".cf-studio-adapter", "pr-review.json"),
     ]
     for p in candidates_json:
         if os.path.exists(p):
@@ -152,7 +151,7 @@ def _load_pr_config():
 
 
 _PR_CFG = _load_pr_config()
-# @cpt-end:cpt-cypilot-algo-pr-workflows-fetch-data:p1:inst-fetch-metadata
+# @cpt-end:cpt-cfs-algo-pr-workflows-fetch-data:p1:inst-fetch-metadata
 
 # PR data directory (default .prs/, overridable via data_dir or legacy dataDir)
 PRS_DIR = os.path.join(
@@ -275,7 +274,7 @@ def _validate_pr_number(pr_number: str) -> str:
     return pr_dir
 
 
-# @cpt-begin:cpt-cypilot-algo-pr-workflows-fetch-data:p1:inst-fetch-diff
+# @cpt-begin:cpt-cfs-algo-pr-workflows-fetch-data:p1:inst-fetch-diff
 def fetch(pr_number: str):
     pr_dir = _validate_pr_number(pr_number)
     os.makedirs(pr_dir, exist_ok=True)
@@ -388,7 +387,7 @@ def fetch(pr_number: str):
             )
 
     print(f"  ✓ PR #{pr_number} fetched")
-# @cpt-end:cpt-cypilot-algo-pr-workflows-fetch-data:p1:inst-fetch-diff
+# @cpt-end:cpt-cfs-algo-pr-workflows-fetch-data:p1:inst-fetch-diff
 
 
 BOTS = {
@@ -579,7 +578,7 @@ def _ci_summary(meta):
     return ", ".join(parts) if parts else "—"
 
 
-# @cpt-begin:cpt-cypilot-algo-pr-workflows-classify-comments:p1:inst-identify-unreplied
+# @cpt-begin:cpt-cfs-algo-pr-workflows-classify-comments:p1:inst-identify-unreplied
 def status(pr_number: str):
     # Always fetch the latest PR data before report
     fetch(pr_number)
@@ -889,7 +888,7 @@ def status(pr_number: str):
         f"  ✓ Status report → "
         f"{os.path.relpath(report_path, ROOT)}"
     )
-# @cpt-end:cpt-cypilot-algo-pr-workflows-classify-comments:p1:inst-identify-unreplied
+# @cpt-end:cpt-cfs-algo-pr-workflows-classify-comments:p1:inst-identify-unreplied
 
 
 _SEV_ORDER = {
@@ -898,7 +897,7 @@ _SEV_ORDER = {
 }
 
 
-# @cpt-begin:cpt-cypilot-algo-pr-workflows-classify-comments:p1:inst-reorder
+# @cpt-begin:cpt-cfs-algo-pr-workflows-classify-comments:p1:inst-reorder
 def reorder(pr_number: str):
     pr_dir = _validate_pr_number(pr_number)
     report_path = os.path.join(pr_dir, "status.md")
@@ -967,10 +966,10 @@ def reorder(pr_number: str):
     with open(report_path, "w") as f:
         f.write(content)
     print(f"  ✓ PR #{pr_number} status report reordered")
-# @cpt-end:cpt-cypilot-algo-pr-workflows-classify-comments:p1:inst-reorder
+# @cpt-end:cpt-cfs-algo-pr-workflows-classify-comments:p1:inst-reorder
 
 
-# @cpt-begin:cpt-cypilot-flow-pr-workflows-status:p1:inst-user-status
+# @cpt-begin:cpt-cfs-flow-pr-workflows-status:p1:inst-user-status
 def main():
     if len(sys.argv) < 2:
         print(
@@ -1069,7 +1068,7 @@ def main():
             file=sys.stderr,
         )
         sys.exit(1)
-# @cpt-end:cpt-cypilot-flow-pr-workflows-status:p1:inst-user-status
+# @cpt-end:cpt-cfs-flow-pr-workflows-status:p1:inst-user-status
 
 
 if __name__ == "__main__":

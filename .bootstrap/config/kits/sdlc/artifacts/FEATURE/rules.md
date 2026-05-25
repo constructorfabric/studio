@@ -51,7 +51,7 @@
 
 - Read DECOMPOSITION to get feature ID and context
 - Read DESIGN to understand domain types and components
-- Read `{cypilot_path}/config/artifacts.toml` to determine FEATURE artifact path
+- Read `{cf-studio-path}/config/artifacts.toml` to determine FEATURE artifact path
 
 ---
 
@@ -62,7 +62,7 @@
 **Load on demand**: `{feature_template}` — WHEN validating structure
 
 - [ ] FEATURE follows `{feature_template}` structure
-- [ ] Artifact frontmatter (optional): use `cpt:` format for document metadata
+- [ ] Artifact frontmatter (optional): use `cfs:` format for document metadata
 - [ ] References parent feature from DECOMPOSITION manifest
 - [ ] All flows, algorithms, states, DoD items have unique IDs
 - [ ] All IDs follow `cpt-{system}-{kind}-{slug}` pattern (see artifacts.toml for hierarchy)
@@ -92,7 +92,7 @@
 
 ### Traceability
 
-**Load on demand**: `{cypilot_path}/.core/architecture/specs/traceability.md` — WHEN checking ID formats
+**Load on demand**: `{cf-studio-path}/.core/architecture/specs/traceability.md` — WHEN checking ID formats
 
 - [ ] All IDs with `to_code="true"` must be traced to code
 - [ ] Code must contain markers: `@cpt-{kind}:{cpt-id}:p{N}`
@@ -109,13 +109,13 @@
   - which cross-artifact references are required / optional / prohibited
 
 **References**:
-- `{cypilot_path}/.core/requirements/kit-constraints.md`
-- `{cypilot_path}/.core/schemas/kit-constraints.schema.json`
+- `{cf-studio-path}/.core/requirements/kit-constraints.md`
+- `{cf-studio-path}/.core/schemas/kit-constraints.schema.json`
 
 **Validation Checks**:
-- `cypilot validate` enforces `identifiers[<kind>].references` rules (required / optional / prohibited)
-- `cypilot validate` enforces headings scoping for ID definitions and references
-- `cypilot validate` enforces "checked ref implies checked def" consistency
+- `cfs validate` enforces `identifiers[<kind>].references` rules (required / optional / prohibited)
+- `cfs validate` enforces headings scoping for ID definitions and references
+- `cfs validate` enforces "checked ref implies checked def" consistency
 
 ### Scope
 
@@ -202,9 +202,9 @@
 - [ ] When feature is `[x]` → update upstream references in DECOMPOSITION (which cascades to PRD/DESIGN)
 
 **Validation Checks**:
-- `cypilot validate` will warn if `to_code="true"` ID has no code markers
-- `cypilot validate` will warn if a reference points to a non-existent ID
-- `cypilot validate` will report code coverage: N% of CDSL instructions have markers
+- `cfs validate` will warn if `to_code="true"` ID has no code markers
+- `cfs validate` will warn if a reference points to a non-existent ID
+- `cfs validate` will report code coverage: N% of CDSL instructions have markers
 
 **Cross-Artifact References**:
 
@@ -242,7 +242,7 @@ FEATURE documents must NOT contain the following — report as violation if foun
 
 - [ ] Read DECOMPOSITION to get feature ID and context
 - [ ] Read DESIGN to understand domain types and components
-- [ ] Read `{cypilot_path}/config/artifacts.toml` to determine FEATURE artifact path
+- [ ] Read `{cf-studio-path}/config/artifacts.toml` to determine FEATURE artifact path
 
 **FEATURE path resolution**:
 - Read system's `artifacts_dir` from `artifacts.toml` (default: `architecture`)
@@ -266,7 +266,7 @@ FEATURE documents must NOT contain the following — report as violation if foun
 - [ ] Generate state IDs: `cpt-{system}-state-{feature-slug}-{slug}`
 - [ ] Generate DoD IDs: `cpt-{system}-dod-{feature-slug}-{slug}`
 - [ ] Assign priorities (`p1`-`p9`) based on feature priority
-- [ ] Verify ID uniqueness with `cypilot list-ids`
+- [ ] Verify ID uniqueness with `cfs list-ids`
 
 ### Phase 4: Quality Check
 
@@ -279,8 +279,8 @@ FEATURE documents must NOT contain the following — report as violation if foun
 
 ### Phase 5: Table of Contents
 
-- [ ] Run `cypilot toc <artifact-file>` to generate/update Table of Contents
-- [ ] Verify TOC is present and complete with `cypilot validate-toc <artifact-file>`
+- [ ] Run `cfs toc <artifact-file>` to generate/update Table of Contents
+- [ ] Verify TOC is present and complete with `cfs validate-toc <artifact-file>`
 
 ---
 
@@ -288,7 +288,7 @@ FEATURE documents must NOT contain the following — report as violation if foun
 
 ### Phase 1: Structural Validation (Deterministic)
 
-- [ ] Run `cypilot validate --artifact <path>` for:
+- [ ] Run `cfs validate --artifact <path>` for:
   - Template structure compliance
   - ID format validation
   - Priority markers present
@@ -409,7 +409,7 @@ For each issue include:
 - [ ] All TOC anchors point to actual headings in the document
 - [ ] All headings are represented in the TOC
 - [ ] TOC order matches document heading order
-- [ ] Run `cypilot validate-toc <artifact-file>` — must report PASS
+- [ ] Run `cfs validate-toc <artifact-file>` — must report PASS
 
 ---
 
@@ -417,12 +417,12 @@ For each issue include:
 
 ### Missing Decomposition
 
-- [ ] Option 1: Run `/cypilot-generate DECOMPOSITION` first (recommended)
+- [ ] Option 1: Run `/cf-studio-generate DECOMPOSITION` first (recommended)
 - [ ] Option 2: Continue without manifest (FEATURE will lack traceability)
 
 ### Missing Design
 
-- [ ] Option 1: Run `/cypilot-generate DESIGN` first (recommended for architectural context)
+- [ ] Option 1: Run `/cf-studio-generate DESIGN` first (recommended for architectural context)
 - [ ] Option 2: Continue without DESIGN (reduced domain model context)
   - Document "DESIGN pending" in FEATURE frontmatter
   - Skip component/type references validation
@@ -446,8 +446,8 @@ For each issue include:
 
 ### Options
 
-- [ ] FEATURE design complete → `/cypilot-generate CODE` — implement feature
-- [ ] Code implementation done → `/cypilot-analyze CODE` — validate implementation
+- [ ] FEATURE design complete → `/cf-studio-generate CODE` — implement feature
+- [ ] Code implementation done → `/cf-studio-analyze CODE` — validate implementation
 - [ ] Feature IMPLEMENTED → update status in DECOMPOSITION
-- [ ] Another feature to design → `/cypilot-generate FEATURE` — design next feature
-- [ ] Want checklist review only → `/cypilot-analyze semantic` — semantic validation
+- [ ] Another feature to design → `/cf-studio-generate FEATURE` — design next feature
+- [ ] Want checklist review only → `/cf-studio-analyze semantic` — semantic validation

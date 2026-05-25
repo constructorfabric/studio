@@ -1,0 +1,1029 @@
+COMMAND init
+SYNOPSIS: python3 scripts/studio.py init [options]
+DESCRIPTION: Initialize Constructor Studio config for a project
+
+ARGUMENTS:
+
+OPTIONS:
+  --project-root  <path>  Project root directory (default: current directory)
+  --install-dir  <path>  Constructor Studio directory relative to project root (default: .cf-studio)
+  --project-name  <string>  Project name used in AGENTS.md (default: project root folder name)
+  --yes  <boolean>  Do not prompt; accept defaults
+  --dry-run  <boolean>  Compute changes without writing files
+  --force  <boolean>  Overwrite existing files
+
+EXIT CODES:
+  0  Initialization successful
+  1  Error (conflicts, invalid paths, etc.)
+
+EXAMPLE:
+  $ python3 scripts/studio.py init
+  $ python3 scripts/studio.py init --yes
+  $ python3 scripts/studio.py init --project-root . --yes
+  $ python3 scripts/studio.py init --dry-run
+  $ python3 scripts/studio.py init --force
+
+RELATED:
+  - @CLI.info
+  - @CLI.generate-agents
+---
+
+COMMAND validate
+SYNOPSIS: python3 scripts/studio.py validate [--artifact <path>] [--skip-code] [options]
+DESCRIPTION: Validate Constructor Studio artifacts and code traceability. Validates structure against template, cross-references between artifacts, task statuses, and code traceability markers. By default validates both artifacts and code; use --skip-code to validate artifacts only.
+WORKFLOW: design-validate, features-validate, feature-validate, prd-validate, adr-validate, code-validate
+
+ARGUMENTS:
+
+OPTIONS:
+  --artifact  <path>  Path to specific Constructor Studio artifact (if omitted, validates all registered Constructor Studio artifacts)
+  --skip-code  <boolean>  Skip code traceability validation (by default, code is also validated)
+  --verbose  <boolean>  Print full validation report (default: compact summary)
+  --output  <path>  Save validation report to file (default: stdout)
+  --local-only  <boolean>  Skip cross-repo workspace validation (validate local repo only)
+  --source  <string>  Target a specific workspace source for validation (uses that source's adapter context)
+
+EXIT CODES:
+  0  Validation passed
+  1  File system error or no cf found
+  2  Validation failed
+
+OUTPUT:
+  JSON object with:
+  - status: PASS or FAIL
+  - artifacts_validated: Number of artifacts checked
+  - error_count: Total errors found
+  - warning_count: Total warnings found
+  - code_files_scanned: Number of code files checked (when code validation enabled)
+  - to_code_ids_total: IDs marked to_code="true" (FULL traceability only)
+  - code_ids_found: IDs found in code markers
+  - coverage: Coverage ratio (found/required)
+  - next_step: Hint for agent on what to do next (when PASS)
+
+EXAMPLE:
+  $ python3 scripts/studio.py validate
+  $ python3 scripts/studio.py validate --skip-code
+  $ python3 scripts/studio.py validate --artifact architecture/PRD.md
+  $ python3 scripts/studio.py validate --verbose
+  $ python3 scripts/studio.py validate --output report.json
+
+RELATED:
+  - @CLI.list-ids
+  - @CLI.where-defined
+  - @CLI.where-used
+  - @CLI.validate-kits
+  - @Workflow.design-validate
+  - @Workflow.feature-validate
+---
+
+COMMAND validate-kits
+SYNOPSIS: python3 scripts/studio.py validate-kits [--kit <id>] [--template <path>] [options]
+DESCRIPTION: Validate Constructor Studio kit configuration and template files. Checks kit definitions in artifacts.toml and validates template frontmatter, paired markers, and valid marker types/attributes. (Legacy alias: validate-rules; legacy flag alias: --rule)
+WORKFLOW: kits
+
+ARGUMENTS:
+
+OPTIONS:
+  --kit  <id>  Kit ID to validate (if omitted, validates all kits)
+  --template  <path>  Path to specific template file to validate
+  --verbose  <boolean>  Print full validation report
+
+EXIT CODES:
+  0  Validation passed
+  1  File system error or no cf found
+  2  Validation failed
+
+OUTPUT:
+  JSON object with:
+  - status: PASS or FAIL
+  - templates_validated: Number of templates checked
+  - error_count: Total errors found
+  - failed_templates: (non-verbose) List of templates that failed with error_count
+  - errors: List of validation errors (config issues, structure issues, unclosed markers, etc.)
+
+EXAMPLE:
+  $ python3 scripts/studio.py validate-kits
+  $ python3 scripts/studio.py validate-kits --kit cf-sdlc
+  $ python3 scripts/studio.py validate-kits --template templates/PRD.template.md
+  $ python3 scripts/studio.py validate-kits --verbose
+
+RELATED:
+  - @CLI.validate
+  - @Workflow.rules
+---
+
+COMMAND check-language
+SYNOPSIS: python3 scripts/studio.py check-language [paths ...] [--languages <codes>] [--ignore <pattern>] [--quiet]
+DESCRIPTION: Scan Markdown artifacts for characters outside the allowed Unicode script set. Language policy is read from workspace config ([validation] allowed_content_languages) or set via --languages. Default scan target is the project architecture/ folder when no paths are passed.
+WORKFLOW: validation
+
+ARGUMENTS:
+  paths  (zero or more) Files or directories to scan. Defaults to project architecture/ folder.
+
+OPTIONS:
+  --languages  <codes>     Comma-separated language codes to allow (e.g. 'en' or 'en,ru'). Overrides workspace config.
+  --ignore     <pattern>   Glob pattern of files to skip (e.g. 'translations/**/*.md'). May be repeated. Also reads ignore_paths from workspace config.
+  --quiet, -q              Suppress summary header; show violations only.
+
+EXIT CODES:
+  0  All files pass
+  1  Configuration / path error
+  2  One or more language violations found
+
+OUTPUT:
+  JSON object with:
+  - status: PASS or FAIL
+  - allowed_languages: list of permitted language codes used for the scan
+  - files_scanned: total Markdown files examined
+  - violation_count: number of files with disallowed characters
+  - violations: list of {path, line, column, char, script} entries (omitted when status=PASS)
+
+EXAMPLE:
+  $ python3 scripts/studio.py check-language
+  $ python3 scripts/studio.py check-language --languages en,ru architecture/
+  $ python3 scripts/studio.py check-language --ignore 'translations/**/*.md'
+
+RELATED:
+  - @CLI.validate
+  - @Workflow.validation
+---
+
+COMMAND list-ids
+SYNOPSIS: python3 scripts/studio.py list-ids [--artifact <path>] [options]
+DESCRIPTION: List all Constructor Studio IDs from artifacts using template-based parsing. If no artifact is specified, scans all Constructor Studio-format artifacts registered in the config. Use --include-code to also scan code files for Constructor Studio marker references.
+
+ARGUMENTS:
+
+OPTIONS:
+  --artifact  <path>  Path to Constructor Studio artifact file (optional - if omitted, scans all registered Constructor Studio artifacts)
+  --pattern  <string>  Filter IDs by substring or regex pattern
+  --regex  <boolean>  Treat pattern as regular expression
+  --kind  <string>  Filter by ID kind from template markers (e.g., 'requirement', 'spec', 'actor')
+  --all  <boolean>  Include duplicate IDs in results
+  --include-code  <boolean>  Also scan code files for Constructor Studio marker references
+  --source  <string>  Filter by workspace source name (workspace mode only)
+
+EXIT CODES:
+  0  Success
+  1  File system error, artifact not found, or no cf found
+
+OUTPUT:
+  JSON object with:
+  - count: Number of IDs found
+  - artifacts_scanned: Number of artifacts scanned
+  - code_files_scanned: Number of code files scanned (when --include-code)
+  - ids: List of ID objects with id, kind, type, artifact_type, line, artifact, checked
+
+EXAMPLE:
+  $ python3 scripts/studio.py list-ids
+  $ python3 scripts/studio.py list-ids --artifact architecture/PRD.md
+  $ python3 scripts/studio.py list-ids --pattern "-actor-"
+  $ python3 scripts/studio.py list-ids --kind requirement
+  $ python3 scripts/studio.py list-ids --include-code
+  $ python3 scripts/studio.py list-ids --artifact architecture/DESIGN.md --pattern "spec-.*" --regex
+
+RELATED:
+  - @CLI.where-defined
+  - @CLI.get-content
+  - @CLI.validate
+---
+
+COMMAND list-id-kinds
+SYNOPSIS: python3 scripts/studio.py list-id-kinds [--artifact <path>]
+DESCRIPTION: List ID kinds that actually exist in artifacts. Parses artifacts against their templates and returns only kinds that have at least one ID definition.
+
+ARGUMENTS:
+
+OPTIONS:
+  --artifact  <path>  Scan specific artifact (if omitted, scans all registered Constructor Studio artifacts)
+
+EXIT CODES:
+  0  Success
+  1  File system error, no cf found, or artifact not in registry
+
+OUTPUT:
+  JSON object with:
+  - kinds: List of ID kinds found in artifact(s)
+  - kind_counts: Mapping of kind -> count of IDs
+  - kind_to_templates: Mapping of kind -> list of template types where found
+  - template_to_kinds: Mapping of template type -> list of kinds found
+  - artifacts_scanned: Number of artifacts scanned
+
+EXAMPLE:
+  $ python3 scripts/studio.py list-id-kinds
+  $ python3 scripts/studio.py list-id-kinds --artifact architecture/PRD.md
+
+RELATED:
+  - @CLI.list-ids
+---
+
+COMMAND get-content
+SYNOPSIS: python3 scripts/studio.py get-content (--artifact <path> | --code <path>) --id <string> [--inst <string>]
+DESCRIPTION: Get content block for a specific Constructor Studio ID. Works with both artifacts (template-based parsing) and code files (Constructor Studio marker parsing).
+
+ARGUMENTS:
+
+OPTIONS:
+  --artifact  <path>  Path to Constructor Studio artifact file (mutually exclusive with --code)
+  --code  <path>  Path to code file (mutually exclusive with --artifact)
+  --id  <string>  required  Constructor Studio ID to retrieve content for
+  --inst  <string>  Instruction ID for code blocks (e.g., 'inst-validate-input')
+
+EXIT CODES:
+  0  Success
+  1  File system error or file not found
+  2  ID not found
+
+EXAMPLE:
+  $ python3 scripts/studio.py get-content --artifact architecture/PRD.md --id cpt-myapp-actor-admin
+  $ python3 scripts/studio.py get-content --artifact architecture/DESIGN.md --id cpt-myapp-req-auth
+  $ python3 scripts/studio.py get-content --code src/auth.py --id cpt-myapp-feature-auth-flow-login
+  $ python3 scripts/studio.py get-content --code src/auth.py --id cpt-myapp-feature-auth-flow-login --inst inst-validate-creds
+
+RELATED:
+  - @CLI.list-ids
+  - @CLI.validate
+---
+
+COMMAND info
+SYNOPSIS: python3 scripts/studio.py info [options]
+DESCRIPTION: Discover Constructor Studio configuration and location in a project
+
+ARGUMENTS:
+
+OPTIONS:
+  --root  <path>  Project root directory to search from (default: current directory)
+  --cf-root  <path>  Known Constructor Studio core location for enhanced validation
+
+EXIT CODES:
+  0  Constructor Studio found
+  1  File system error
+  2  Constructor Studio not found
+
+OUTPUT:
+  JSON object with:
+  - status: FOUND or NOT_FOUND
+  - project_root: Resolved project root path
+  - constructor_dir: Resolved Constructor Studio directory path
+  - project_name: Name derived from project root directory
+  - kit_details: Per-kit metadata (version, content_dirs, artifact_kinds, workflows, resources)
+  - artifacts_registry: Parsed artifacts.toml contents
+  - agent_integrations: List of detected agent installations
+  - directories: Health check of .core/, .gen/, config/ directories
+  - variables: Flat dict mapping all template variable names to absolute paths (for format_map substitution)
+
+EXAMPLE:
+  $ python3 scripts/studio.py info
+  $ python3 scripts/studio.py info --root /path/to/project
+  $ python3 scripts/studio.py info --root . --cf-root ../CyberConstructor
+
+RELATED:
+  - @CLI.init
+  - @CLI.resolve-vars
+  - @CLI.generate-agents
+---
+
+COMMAND resolve-vars
+SYNOPSIS: python3 scripts/studio.py resolve-vars [options]
+DESCRIPTION: Resolve all template variables ({adr_template}, {scripts}, {cf-studio-path}, etc.) to absolute file paths. Sources: system variables (cf-path, project_root) merged with kit resource bindings from core.toml. Use --kit to filter to a single kit. Use --flat for a plain variable-to-path dict.
+
+ARGUMENTS:
+
+OPTIONS:
+  --root  <path>  Project root directory to search from (default: current directory)
+  --kit  <string>  Filter to a specific kit slug
+  --flat  <boolean>  Output only the flat variables dict (default: structured output)
+
+EXIT CODES:
+  0  Variables resolved successfully
+  1  Error (no project root, no cf directory, or kit not found)
+
+OUTPUT:
+  JSON object with:
+  - status: OK or ERROR
+  - system: System-level variables (cf-path, project_root)
+  - kits: Per-kit resource variables {slug: {var: path}}
+  - variables: Flat merged dict of all variables for format_map() substitution
+  When --flat, outputs only the flat variables dict (no status key).
+
+EXAMPLE:
+  $ python3 scripts/studio.py resolve-vars
+  $ python3 scripts/studio.py resolve-vars --kit sdlc
+  $ python3 scripts/studio.py resolve-vars --flat
+  $ python3 scripts/studio.py resolve-vars --root /path/to/project
+
+RELATED:
+  - @CLI.info
+---
+
+COMMAND where-defined
+SYNOPSIS: python3 scripts/studio.py where-defined --id <id> [options]
+DESCRIPTION: Find where a Constructor Studio ID is defined using template-based parsing. Scans all registered Constructor Studio artifacts.
+
+ARGUMENTS:
+  id  <string>  required  Constructor Studio ID to find definition for
+
+OPTIONS:
+  --artifact  <path>  Limit search to specific artifact (optional)
+
+EXIT CODES:
+  0  Exactly one definition found, or no artifacts available to scan (NO_ARTIFACTS)
+  1  File system error or no cf found
+  2  ID not found after scanning (NOT_FOUND) or ambiguous (multiple definitions)
+
+EXAMPLE:
+  $ python3 scripts/studio.py where-defined --id cpt-myapp-actor-admin
+  $ python3 scripts/studio.py where-defined --id cpt-myapp-req-auth
+  $ python3 scripts/studio.py where-defined --id cpt-myapp-feature-auth --artifact architecture/DECOMPOSITION.md
+
+RELATED:
+  - @CLI.where-used
+  - @CLI.list-ids
+  - @CLI.get-content
+---
+
+COMMAND where-used
+SYNOPSIS: python3 scripts/studio.py where-used --id <id> [options]
+DESCRIPTION: Find all references to a Constructor Studio ID using template-based parsing. Scans all registered Constructor Studio artifacts.
+
+ARGUMENTS:
+  id  <string>  required  Constructor Studio ID to find references for
+
+OPTIONS:
+  --artifact  <path>  Limit search to specific artifact (optional)
+  --include-definitions  <boolean>  Include definitions in results (default: references only)
+
+EXIT CODES:
+  0  Success (references found or not found)
+  1  File system error or no cf found
+
+EXAMPLE:
+  $ python3 scripts/studio.py where-used --id cpt-myapp-actor-admin
+  $ python3 scripts/studio.py where-used --id cpt-myapp-req-auth
+  $ python3 scripts/studio.py where-used --id cpt-myapp-feature-auth --artifact architecture/DESIGN.md
+
+RELATED:
+  - @CLI.where-defined
+  - @CLI.list-ids
+  - @CLI.get-content
+---
+
+COMMAND generate-agents
+SYNOPSIS: python3 scripts/studio.py generate-agents --agent <name> [options]
+DESCRIPTION: Generate/update agent-specific workflow proxies and skill outputs. Creates unified proxy files for workflows (cfs-generate, cfs-analyze, cfs-plan, cfs-workspace) and the cfs skill entry point. Supports windsurf, cursor, claude, copilot, openai.
+ARGUMENTS:
+
+OPTIONS:
+  --agent  <string>  Agent/IDE key (windsurf, cursor, claude, copilot, openai). Omit to init all supported agents.
+  --openai  <boolean>  Shortcut for --agent openai (OpenAI Codex)
+  --root  <path>  Project root directory to search from (default: current directory)
+  --cf-root  <path>  Explicit Constructor Studio core root (optional override)
+  --config  <path>  Path to unified agents config JSON (default: {project-root}/cf-agents.json)
+  --dry-run  <boolean>  Compute changes without writing files
+
+EXIT CODES:
+  0  Success (all workflows and skills synced)
+  1  Error (invalid args, missing project root, invalid config)
+
+OUTPUT:
+  JSON object with:
+  - status: PASS or PARTIAL
+  - agent: Agent name
+  - workflows: Object with created/updated/renamed/deleted counts
+  - skills: Object with created/updated counts and outputs list
+  - errors: List of errors if any
+
+EXAMPLE:
+  $ python3 scripts/studio.py generate-agents --agent windsurf
+  $ python3 scripts/studio.py generate-agents --agent claude --dry-run
+  $ python3 scripts/studio.py generate-agents --agent cursor
+  $ python3 scripts/studio.py generate-agents --openai
+  $ python3 scripts/studio.py generate-agents
+
+RELATED:
+  - @CLI.init
+  - @CLI.info
+---
+
+COMMAND self-check
+SYNOPSIS: python3 scripts/studio.py self-check [--kit <id>] [--verbose]
+DESCRIPTION: Validate example artifacts against their templates (template QA). For each kit package, checks that all example markdown artifacts pass validation against the corresponding template.md. Ensures templates and examples remain synchronized. (Legacy flag alias: --rule)
+WORKFLOW: kits
+
+ARGUMENTS:
+
+OPTIONS:
+  --kit  <id>  Kit ID to check (if omitted, checks all kits)
+  --verbose  <boolean>  Print detailed validation report
+
+EXIT CODES:
+  0  All examples pass validation
+  1  File system error or no cf found
+  2  One or more examples failed validation
+
+OUTPUT:
+  JSON object emitted by `commands/self_check.py` with the following top-level fields:
+  - status: PASS or FAIL (overall — FAIL if any per-template result fails)
+  - project_root: Absolute path of the resolved project root
+  - constructor_dir: Absolute path of the resolved Constructor Studio adapter directory
+  - kits_checked: Number of kits checked
+  - templates_checked: Number of per-template results returned (length of `results`)
+  - results: Array of per-template result objects (one per `(kit, kind)` checked)
+
+  Each `results[i]` object contains:
+  - kit (string): Kit ID this result belongs to
+  - kind (string): Artifact kind validated (e.g. "PRD", "DESIGN")
+  - example_path (string | null): Path of the first validated example for this kit/kind, or null when no example file exists; preserved for backward compatibility with single-example consumers
+  - example_paths (array of string): All example paths validated for this kit/kind, in deterministic sorted order — reflects the updated "check all examples" behavior (a single-example checker would return at most one entry; the full set is validated when multiple exist)
+  - examples_checked (integer): Count of examples validated for this kit/kind (`len(example_paths)`); `0` when the kind has no examples on disk
+  - status (string): PASS or FAIL for this kit/kind
+  - error_count (integer, optional): Present only when status is FAIL; total error count across all validated examples for this kit/kind
+  - errors (array of object, optional): Present only when status is FAIL; aggregated validator errors
+  - warning_count (integer, optional): Present when warnings were produced
+  - warnings (array of object, optional): Present when status is FAIL or `--verbose` was passed
+
+EXAMPLE:
+  $ python3 scripts/studio.py self-check
+  $ python3 scripts/studio.py self-check --kit cf-sdlc
+  $ python3 scripts/studio.py self-check --verbose
+
+RELATED:
+  - @CLI.validate-kits
+  - @CLI.validate
+  - @Workflow.rules
+---
+
+COMMAND toc
+SYNOPSIS: python3 scripts/studio.py toc <files...> [options]
+DESCRIPTION: Generate or update Table of Contents in Markdown files. Parses ATX headings (## … ######) and inserts/updates a TOC between <!-- toc --> and <!-- /toc --> markers. If markers are absent, inserts them after the first H1 heading.
+
+ARGUMENTS:
+  files  <path>  required  One or more Markdown file paths to process
+
+OPTIONS:
+  --max-level  <number>  [default: 6]  Maximum heading level to include (1-6)
+  --indent  <number>  [default: 2]  Indent spaces per nesting level
+  --dry-run  <boolean>  Show what would change without writing files
+  --skip-validate  <boolean>  Skip post-generation validation
+
+EXIT CODES:
+  0  Success
+  1  Error (file not found or processing failure)
+
+OUTPUT:
+  JSON object with:
+  - status: OK, PARTIAL, or ERROR
+  - files_processed: Number of files processed
+  - results: Per-file results with status (UPDATED, UNCHANGED, SKIP, WOULD_UPDATE, ERROR)
+
+EXAMPLE:
+  $ python3 scripts/studio.py toc architecture/specs/traceability.md
+  $ python3 scripts/studio.py toc --dry-run *.md
+  $ python3 scripts/studio.py toc --max-level 3 README.md DESIGN.md
+  $ python3 scripts/studio.py toc --indent 4 docs/*.md
+
+RELATED:
+  - @CLI.validate
+  - @CLI.validate-toc
+
+---
+
+COMMAND chunk-input
+SYNOPSIS: python3 scripts/studio.py chunk-input [<path> ...] --output-dir <path> [--dry-run] [options]
+DESCRIPTION: Chunk oversized workflow input into deterministic line-bounded Markdown files for phased execution plans. Accepts one or more input files. If no paths are provided, the command reads direct prompt text from stdin; when file paths are provided, direct prompt text is added as an extra source only if `--include-stdin` is passed. When stdin is used, the raw direct prompt is preserved as a special `direct-prompt.md` file in the output directory before the numbered markdown chunk files are emitted. The command reports whether the total input size exceeds the planning threshold.
+
+ARGUMENTS:
+  path  <path>  optional  One or more input files to chunk; omit all paths to read only from stdin
+
+OPTIONS:
+  --output-dir  <path>  required  Directory where chunk files will be written
+  --max-lines  <number>  [default: 300]  Maximum lines per emitted chunk file
+  --threshold-lines  <number>  [default: 500]  Raw-input threshold above which planning is required
+  --stdin-label  <string>  Logical source label used when reading from stdin (default: direct-input)
+  --include-stdin  flag  When file paths are provided, also read direct prompt text from stdin as an extra input source; when passed with no file paths, silently falls back to stdin-only mode (same as passing no arguments at all)
+  --dry-run  flag  Evaluate inputs and compute the input signature without writing any files. Reports the same source metadata plus plan_required and input_signature so callers can check for package reuse before requesting user approval. The output-dir path is still validated (must not be an existing non-directory) but no directories or files are created.
+
+EXIT CODES:
+  0  Chunking completed successfully; in dry-run mode, evaluation completed successfully
+  1  Error (including parser validation failures such as missing required args, unreadable input, write failure, or output-dir pointing to an existing non-directory)
+
+OUTPUT:
+  JSON object with:
+  - status: OK or ERROR
+  - message: Present on ERROR outputs, including parser validation failures such as missing `--output-dir`
+  - output_dir: Absolute path where chunk files were (or would be) written
+  - total_sources: Number of input sources processed
+  - total_lines: Total raw input lines across all sources
+  - max_lines: Applied chunk line limit
+  - threshold_lines: Applied planning threshold
+  - input_signature: Content hash of all input sources for package reuse checks
+  - plan_required: true when total_lines exceeds threshold_lines
+
+  Write-mode only (omitted when --dry-run):
+  - package_manifest: Absolute path to `manifest.json` in the output directory
+  - direct_prompt_file: Absolute path to `direct-prompt.md` when raw prompt text came from stdin
+  - chunk_count: Number of markdown chunk files written
+  - chunks: Per-chunk metadata (path, source, part number, line range, line_count)
+
+  Dry-run only (omitted in write mode):
+  - dry_run: true
+
+  Both modes:
+  - sources: Per-source metadata (kind, display_name, label, path, line_count, chunk_count); write mode additionally includes stored_path
+
+EXAMPLE:
+  $ python3 scripts/studio.py chunk-input docs/request.md --output-dir .bootstrap/.plans/my-plan/input --dry-run
+  $ python3 scripts/studio.py chunk-input docs/request.md --output-dir .bootstrap/.plans/my-plan/input
+  $ python3 scripts/studio.py chunk-input architecture/PRD.md architecture/DESIGN.md --output-dir .bootstrap/.plans/review/input
+  $ cat prompt.txt | python3 scripts/studio.py chunk-input docs/request.md --output-dir .bootstrap/.plans/mixed/input --include-stdin --stdin-label prompt
+  $ cat request.txt | python3 scripts/studio.py chunk-input --output-dir .bootstrap/.plans/direct-input/input --stdin-label request
+
+RELATED:
+  - @CLI.info
+  - @Workflow.cfs-plan
+---
+
+COMMAND validate-toc
+SYNOPSIS: python3 scripts/studio.py validate-toc <files...> [options]
+DESCRIPTION: Validate Table of Contents in Markdown files. Checks that a TOC section exists (either ## Table of Contents heading or <!-- toc --> markers), all TOC anchors point to real headings, all headings are represented in the TOC, and the TOC is not stale.
+
+ARGUMENTS:
+  files  <path>  required  One or more Markdown file paths to validate
+
+OPTIONS:
+  --max-level  <number>  [default: 6]  Maximum heading level to include (1-6)
+  --verbose  <boolean>  Include full error/warning details in output
+
+EXIT CODES:
+  0  All files pass validation
+  2  One or more files have TOC errors
+
+OUTPUT:
+  JSON object with:
+  - status: PASS, WARN, or FAIL
+  - files_validated: Number of files validated
+  - error_count: Total errors across all files
+  - warning_count: Total warnings across all files
+  - results: Per-file results with status (PASS, WARN, FAIL, ERROR) and error/warning details
+
+EXAMPLE:
+  $ python3 scripts/studio.py validate-toc architecture/PRD.md
+  $ python3 scripts/studio.py validate-toc --verbose *.md
+  $ python3 scripts/studio.py validate-toc --max-level 3 DESIGN.md DECOMPOSITION.md
+
+RELATED:
+  - @CLI.toc
+  - @CLI.validate
+---
+
+COMMAND update
+SYNOPSIS: python3 scripts/studio.py update [options]
+DESCRIPTION: Update an existing Constructor Studio installation. Refreshes .core/ from cache, updates kit reference copies, compares blueprint versions (skip same, warn if migration needed), regenerates .gen/ from user blueprints, and ensures config/ scaffold. Never overwrites user config files.
+
+ARGUMENTS:
+
+OPTIONS:
+  --project-root  <path>  Project root directory (default: auto-detect)
+  --dry-run  <boolean>  Show what would be done without writing files
+  --no-interactive  <boolean>  Disable interactive prompts (auto-skip customized markers)
+  -y, --yes  <boolean>  Auto-approve all prompts (no interaction)
+
+EXIT CODES:
+  0  Update successful
+  1  Error (no project root, no cache, etc.)
+
+OUTPUT:
+  JSON object with:
+  - status: PASS, WARN, or ABORTED
+  - project_root: Resolved project root path
+  - constructor_dir: Resolved Constructor Studio directory path
+  - dry_run: Whether dry-run mode was used
+  - actions: Object with core_update, kits, gen_agents, gen_skill, config_* statuses
+  - errors: List of errors (if any)
+  - warnings: List of warnings (if any)
+
+EXAMPLE:
+  $ python3 scripts/studio.py update
+  $ python3 scripts/studio.py update --dry-run
+  $ python3 scripts/studio.py update --yes
+  $ python3 scripts/studio.py update --no-interactive
+
+RELATED:
+  - @CLI.init
+  - @CLI.kit-migrate
+  - @CLI.generate-resources
+---
+
+COMMAND spec-coverage
+SYNOPSIS: python3 scripts/studio.py spec-coverage [options]
+DESCRIPTION: Measure CDSL marker coverage in codebase files. Scans registered codebase paths for @cpt-* traceability markers and reports coverage percentage, granularity score, and per-file details.
+
+ARGUMENTS:
+
+OPTIONS:
+  --min-coverage  <number>  Minimum coverage percentage (0-100). Exit 2 if below.
+  --min-granularity  <number>  Minimum granularity score (0-1). Exit 2 if below.
+  --verbose  <boolean>  Include per-file marker details and line ranges
+  --output  <path>  Write report to file instead of stdout
+
+EXIT CODES:
+  0  Coverage meets thresholds (or no thresholds specified)
+  1  Error (no cf found, no context)
+  2  Coverage below specified threshold
+
+OUTPUT:
+  JSON object with:
+  - status: PASS or FAIL
+  - summary: Object with total_files, covered_files, coverage_pct, granularity_score
+  - files: Per-file coverage details (when --verbose)
+  - threshold_failures: List of threshold violations (when thresholds specified)
+
+EXAMPLE:
+  $ python3 scripts/studio.py spec-coverage
+  $ python3 scripts/studio.py spec-coverage --min-coverage 80
+  $ python3 scripts/studio.py spec-coverage --verbose
+  $ python3 scripts/studio.py spec-coverage --min-coverage 80 --min-granularity 0.5
+  $ python3 scripts/studio.py spec-coverage --output coverage-report.json
+
+RELATED:
+  - @CLI.validate
+  - @CLI.list-ids
+---
+
+COMMAND kit install
+SYNOPSIS: python3 scripts/studio.py kit install <path> [options]
+DESCRIPTION: Install a kit from a local source directory. The source must contain a blueprints/ directory with at least one .md file. Copies blueprints and scripts to reference and config directories, generates resources.
+
+ARGUMENTS:
+  path  <path>  required  Path to kit source directory (must contain blueprints/)
+
+OPTIONS:
+  --force  <boolean>  Overwrite existing kit
+  --dry-run  <boolean>  Show what would be done without writing files
+
+EXIT CODES:
+  0  Installation successful
+  1  Error (no project root, no cf directory)
+  2  Invalid source or kit already installed
+
+OUTPUT:
+  JSON object with:
+  - status: PASS or FAIL
+  - action: installed
+  - kit: Kit slug
+  - version: Kit version
+  - files_written: Number of generated files
+  - artifact_kinds: List of artifact kinds generated
+
+EXAMPLE:
+  $ python3 scripts/studio.py kit install /path/to/my-kit
+  $ python3 scripts/studio.py kit install ./kits/sdlc --force
+  $ python3 scripts/studio.py kit install ./kits/sdlc --dry-run
+
+RELATED:
+  - @CLI.kit-update
+  - @CLI.kit-migrate
+  - @CLI.generate-resources
+---
+
+COMMAND kit update
+SYNOPSIS: python3 scripts/studio.py kit update [options]
+DESCRIPTION: Update installed kits. Regenerates .gen/ outputs from user blueprints. With --force, overwrites user blueprints with reference copies first.
+
+ARGUMENTS:
+
+OPTIONS:
+  --kit  <string>  Kit slug to update (default: all)
+  --force  <boolean>  Force overwrite user blueprints with reference copies
+  --dry-run  <boolean>  Show what would be done without writing files
+
+EXIT CODES:
+  0  Update successful
+  2  No kits installed or kit not found
+
+OUTPUT:
+  JSON object with:
+  - status: PASS or WARN
+  - kits_updated: Number of kits updated
+  - results: Per-kit results with action and files_written
+  - errors: List of errors (if any)
+
+EXAMPLE:
+  $ python3 scripts/studio.py kit update
+  $ python3 scripts/studio.py kit update --kit sdlc
+  $ python3 scripts/studio.py kit update --force
+  $ python3 scripts/studio.py kit update --dry-run
+
+RELATED:
+  - @CLI.kit-install
+  - @CLI.kit-migrate
+  - @CLI.generate-resources
+---
+
+COMMAND kit migrate
+SYNOPSIS: python3 scripts/studio.py kit migrate [options]
+DESCRIPTION: Migrate kit blueprints to latest versions from reference using marker-level three-way merge. Compares reference and user blueprints at the @cpt: marker level, prompts for per-marker accept/decline decisions (updates, insertions, deletions, restorations), and regenerates .gen/ after migration.
+
+ARGUMENTS:
+
+OPTIONS:
+  --kit  <string>  Kit slug to migrate (default: all)
+  --dry-run  <boolean>  Show what would be done without writing files
+  --no-interactive  <boolean>  Disable interactive prompts (auto-skip customized markers)
+  -y, --yes  <boolean>  Auto-approve all prompts (no interaction)
+
+EXIT CODES:
+  0  Migration successful (or no migration needed)
+  2  No kits installed or kit not found
+
+OUTPUT:
+  JSON object with:
+  - status: PASS, FAIL, or ABORTED
+  - kits_migrated: Number of kits migrated
+  - kits_current: Number of kits already up to date
+  - kits_aborted: Number of kits where migration was aborted (if any)
+  - results: Per-kit results with blueprint-level details
+  - dry_run: Whether dry-run mode was used (if true)
+
+EXAMPLE:
+  $ python3 scripts/studio.py kit migrate
+  $ python3 scripts/studio.py kit migrate --kit sdlc
+  $ python3 scripts/studio.py kit migrate --dry-run
+  $ python3 scripts/studio.py kit migrate --yes
+  $ python3 scripts/studio.py kit migrate --no-interactive
+
+RELATED:
+  - @CLI.kit-install
+  - @CLI.kit-update
+  - @CLI.update
+---
+
+COMMAND generate-resources
+SYNOPSIS: python3 scripts/studio.py generate-resources [options]
+DESCRIPTION: Regenerate kit resources from user blueprints. Processes @cpt: markers in blueprint files to produce templates, rules, checklists, examples, workflows, constraints, and SKILL.md in .gen/kits/{slug}/.
+
+ARGUMENTS:
+
+OPTIONS:
+  --kit  <string>  Kit slug (default: all)
+  --dry-run  <boolean>  Show what would be done without writing files
+
+EXIT CODES:
+  0  Generation successful
+  2  No kits with blueprints found
+
+OUTPUT:
+  JSON object with:
+  - status: PASS or WARN
+  - kits_processed: Number of kits processed
+  - results: Per-kit results with files_written and artifact_kinds
+  - errors: List of errors (if any)
+
+EXAMPLE:
+  $ python3 scripts/studio.py generate-resources
+  $ python3 scripts/studio.py generate-resources --kit sdlc
+  $ python3 scripts/studio.py generate-resources --dry-run
+
+RELATED:
+  - @CLI.kit-install
+  - @CLI.kit-update
+  - @CLI.update
+---
+
+COMMAND workspace-init
+SYNOPSIS: python3 scripts/studio.py workspace-init [--root <path>] [--output <path>] [--inline] [--force] [--max-depth <N>] [--dry-run]
+DESCRIPTION: Initialize a multi-repo workspace by scanning nested sub-directories for repos with cf directories (.git or AGENTS.md marker). Generates a standalone .cf-workspace.toml or inline [workspace] section in config/core.toml. Creates an empty workspace when no nested repos are found, allowing incremental source addition via workspace-add.
+WORKFLOW: workspace
+
+ARGUMENTS:
+
+OPTIONS:
+  --root  <path>  Directory to scan for nested repos (default: current project root)
+  --output  <path>  Output path for standalone workspace file
+  --inline  <boolean>  Write workspace config inline into config/core.toml instead of standalone file
+  --force  <boolean>  Force reinitialization when a workspace config already exists
+  --max-depth  <integer>  Maximum directory depth for nested repo scanning (default: 3, min: 1). Symlinks are skipped.
+  --dry-run  <boolean>  Preview discovered sources without writing files
+
+EXIT CODES:
+  0  Workspace config created (with or without sources) or dry-run completed
+  1  Error (no project root, scan root not found, cross-type conflict, existing workspace without --force)
+
+OUTPUT:
+  JSON object with:
+  - status: CREATED or DRY_RUN
+  - message: Human-readable description
+  - config_path: Path to generated workspace file (CREATED only)
+  - workspace: Full workspace data object (DRY_RUN only)
+  - sources_count: Number of discovered sources
+  - sources: List of discovered source name strings
+  - hint: Advisory message when custom --output path requires manual config entry (CREATED with --output only)
+
+EXAMPLE:
+  $ python3 scripts/studio.py workspace-init
+  $ python3 scripts/studio.py workspace-init --dry-run
+  $ python3 scripts/studio.py workspace-init --inline
+  $ python3 scripts/studio.py workspace-init --force
+  $ python3 scripts/studio.py workspace-init --root ../repos
+
+RELATED:
+  - @CLI.workspace-add
+  - @CLI.workspace-info
+  - @CLI.info
+---
+
+COMMAND workspace-add
+SYNOPSIS: python3 scripts/studio.py workspace-add --name <name> (--path <path> | --url <url>) [--branch <branch>] [--role <role>] [--adapter <path>] [--inline] [--force]
+DESCRIPTION: Add a source to a workspace config. Auto-detects standalone vs inline workspace. Use --inline to force adding to config/core.toml. Rejects --inline when a standalone workspace already exists to prevent parallel configs. Git URL sources are not supported in inline mode. Returns error if source name already exists unless --force is specified.
+WORKFLOW: workspace
+
+ARGUMENTS:
+
+OPTIONS:
+  --name  <string>  Source name (human-readable key) [required]
+  --path  <path>  Path to the source repo (relative to workspace file or project root)
+  --url  <string>  Git remote URL (HTTPS or SSH) for the source
+  --branch  <string>  Git branch/ref to checkout
+  --role  <string>  Source role: artifacts, codebase, kits, full (default: full)
+  --adapter  <path>  Path to cf dir within the source
+  --inline  <boolean>  Add source inline to config/core.toml instead of standalone workspace file
+  --force  <boolean>  Replace existing source with the same name instead of returning an error
+
+EXIT CODES:
+  0  Source added successfully
+  1  Error (no project root, no workspace config, --inline conflict with standalone, Git URL with inline)
+  2  Invalid arguments (missing required --path or --url, or both provided)
+
+OUTPUT:
+  JSON object with:
+  - status: ADDED
+  - message: Human-readable description of the action
+  - config_path: Path to workspace config file (standalone .cf-workspace.toml or inline core.toml)
+  - source: Object with name, role (always present); path (when path-based), url (when URL-based); adapter, branch (included only when set)
+  - replaced: true if an existing source was overwritten (omitted for new sources)
+
+EXAMPLE:
+  $ python3 scripts/studio.py workspace-add --name docs --path ../docs-repo --role artifacts
+  $ python3 scripts/studio.py workspace-add --name lib --url https://gitlab.com/team/lib.git --branch main
+  $ python3 scripts/studio.py workspace-add --inline --name docs --path ../docs-repo --role artifacts
+
+RELATED:
+  - @CLI.workspace-init
+  - @CLI.workspace-info
+---
+
+COMMAND workspace-info
+SYNOPSIS: python3 scripts/studio.py workspace-info
+DESCRIPTION: Display workspace configuration, list sources, and show per-source status including cf directory detection, artifact counts, and reachability.
+WORKFLOW: workspace
+
+ARGUMENTS:
+
+OPTIONS:
+
+EXIT CODES:
+  0  Workspace info displayed
+  1  Error (no project root, no workspace config)
+
+OUTPUT:
+  JSON object with:
+  - status: OK or ERROR
+  - version: Workspace config version string
+  - config_path: Path to workspace config file (standalone .cf-workspace.toml or inline core.toml)
+  - is_inline: Whether workspace is inline in core.toml
+  - project_root: Path to the project root directory
+  - sources_count: Number of configured sources
+  - sources: Array of source status objects, each with:
+      - name, path, resolved_path, role, reachable, adapter_found
+      - adapter: Configured adapter path (if set)
+      - url, branch: Git remote info (if set)
+      - artifact_count, system_count: Counts from adapter metadata (if reachable)
+      - warning: Reason string (if source unreachable)
+      - metadata_error: Error string (if metadata loading failed)
+  - traceability: Object with cross_repo and resolve_remote_ids booleans
+  - config_warnings: Array of validation warning strings (if any)
+  - context_loaded: Whether workspace context was loaded
+  - reachable_sources: Number of reachable sources (if context loaded)
+  - total_registered_systems: Total systems across all sources (if context loaded)
+
+EXAMPLE:
+  $ python3 scripts/studio.py workspace-info
+
+RELATED:
+  - @CLI.workspace-init
+  - @CLI.workspace-add
+  - @CLI.workspace-sync
+  - @CLI.validate
+---
+
+COMMAND delegate
+SYNOPSIS: python3 scripts/studio.py delegate <plan_dir> [options]
+DESCRIPTION: Compile a Constructor Studio plan and delegate to ralphex for autonomous execution. Discovers ralphex, validates availability, exports the plan, and invokes the delegation command. Supports dry-run mode to assemble the command without invoking.
+
+ARGUMENTS:
+  plan_dir  <path>  required  Path to the Constructor Studio plan directory containing plan.toml
+
+OPTIONS:
+  --mode  <string>  Delegation mode: execute, tasks-only, or review (default: execute)
+  --worktree  <boolean>  Request worktree isolation (execute and tasks-only only)
+  --serve / --no-serve  <boolean>  Enable or disable dashboard serving (default: True)
+  --dry-run  <boolean>  Assemble the command without invoking ralphex
+  --default-branch  <string>  Default branch for review precondition (default: main)
+  --plans-dir  <path>  Override plans directory (highest precedence)
+  --root  <path>  Project root directory (default: current directory)
+
+EXIT CODES:
+  0  Delegation successful (or dry-run command assembled)
+  1  Input error (missing plan directory, missing plan.toml, invalid root)
+  2  Delegation error (ralphex not found, validation failed, ralphex non-zero exit)
+
+OUTPUT:
+  JSON object with:
+  - status: ready (dry-run), delegated (success), or error
+  - ralphex_path: Discovered ralphex executable path
+  - validation: Ralphex availability validation result
+  - bootstrap: Bootstrap gate check result
+  - plan_file: Path to the written exported plan
+  - command: Assembled delegation command list
+  - mode: Delegation mode used
+  - lifecycle_state: Final lifecycle state
+  - error: Error message (when status is error)
+
+EXAMPLE:
+  $ python3 scripts/studio.py delegate .bootstrap/.plans/my-plan --dry-run
+  $ python3 scripts/studio.py delegate .bootstrap/.plans/my-plan --mode tasks-only
+  $ python3 scripts/studio.py delegate .bootstrap/.plans/my-plan --worktree --serve
+  $ python3 scripts/studio.py delegate .bootstrap/.plans/my-plan --root /path/to/project
+
+RELATED:
+  - @CLI.validate
+  - @CLI.info
+---
+
+COMMAND doctor
+SYNOPSIS: python3 scripts/studio.py doctor [--root <path>]
+DESCRIPTION: Run Studio environment health checks. Validates ralphex availability (and other optional integrations). Reports each check as PASS, WARN, or FAIL. Missing optional tools produce WARN (not FAIL). Returns overall status: healthy, degraded, or unhealthy.
+
+ARGUMENTS:
+
+OPTIONS:
+  --root  <path>  Project root to check (default: current directory)
+
+EXIT CODES:
+  0  All checks passed (healthy or degraded with warnings)
+  2  One or more checks failed (unhealthy)
+
+OUTPUT:
+  JSON object with:
+  - status: "healthy", "degraded", or "unhealthy"
+  - checks: Array of check result objects, each with name, status (pass/warn/fail), detail
+  - summary: Human-readable summary string
+
+EXAMPLE:
+  $ python3 scripts/studio.py doctor
+  $ python3 scripts/studio.py doctor --root /path/to/project
+
+RELATED:
+  - @CLI.validate
+  - @CLI.info
+---
+
+COMMAND workspace-sync
+SYNOPSIS: python3 scripts/studio.py workspace-sync [--source <name>] [--dry-run] [--force]
+DESCRIPTION: Fetch and update worktrees for Git URL workspace sources. Iterates all sources with a url field (or a single --source) and runs git fetch + checkout to update the local worktree. Local path sources are skipped. Source resolution does not perform network operations for existing repos — use workspace-sync to explicitly update.
+WORKFLOW: workspace
+
+ARGUMENTS:
+
+OPTIONS:
+  --source  <string>  Sync only the named source (default: all Git URL sources)
+  --dry-run  <boolean>  Show which sources would be synced without network operations
+  --force  <boolean>  Skip dirty worktree check and proceed with destructive git operations
+
+EXIT CODES:
+  0  Sync completed (at least one source synced, or no Git URL sources to sync)
+  1  Error (no project root, no workspace config, named source not found, named source has no Git URL)
+  2  All sources failed to sync
+
+OUTPUT:
+  JSON object with:
+  - status: OK, FAIL, or DRY_RUN
+  - synced: Number of successfully synced sources (OK/FAIL only)
+  - failed: Number of failed sources (OK/FAIL only)
+  - results: Array of per-source result objects, each with:
+      - name: Source name
+      - status: "synced" or "failed"
+      - error: Error message string (failed sources only)
+  - sources: Array of source preview objects (DRY_RUN only), each with name, url, branch
+  - message: Human-readable description (DRY_RUN and no-git-sources only)
+
+EXAMPLE:
+  $ python3 scripts/studio.py workspace-sync
+  $ python3 scripts/studio.py workspace-sync --dry-run
+  $ python3 scripts/studio.py workspace-sync --source backend
+
+RELATED:
+  - @CLI.workspace-init
+  - @CLI.workspace-add
+  - @CLI.workspace-info
+---

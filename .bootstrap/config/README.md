@@ -12,10 +12,10 @@ This directory contains **user-editable** configuration files.
 ## Directories
 
 - `kits/{slug}/blueprints/` — editable copies of kit blueprints.
-  Modify these to customize generated artifacts, then run `cpt generate-resources`.
+  Modify these to customize generated artifacts, then run `cfs generate-resources`.
 
 ## Tips
 
 - `AGENTS.md` and `SKILL.md` start empty. Add any project-specific rules or
   skill instructions here — they will be picked up alongside the generated ones.
-- Changes to blueprints take effect after running `cpt generate-resources`.
+- Changes to blueprints take effect after running `cfs generate-resources`.

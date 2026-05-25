@@ -1,13 +1,13 @@
 ---
-cypilot: true
+cf-studio: true
 type: workflow
-name: cypilot-migrate-openspec
-description: Migrate OpenSpec artifacts to Cypilot SDLC documents with code-verified traceability
+name: cf-sdlc-migrate-openspec
+description: Migrate OpenSpec artifacts to Constructor Studio SDLC documents with code-verified traceability
 version: 1.0
-purpose: Convert any project's OpenSpec artifacts (proposals, specs, designs, tasks) into Cypilot SDLC documents (PRD, DESIGN, ADR, FEATURE, DECOMPOSITION) with full ID-based traceability verified against the actual codebase
+purpose: Convert any project's OpenSpec artifacts (proposals, specs, designs, tasks) into Constructor Studio SDLC documents (PRD, DESIGN, ADR, FEATURE, DECOMPOSITION) with full ID-based traceability verified against the actual codebase
 ---
 
-# Migrate OpenSpec to Cypilot SDLC Artifacts
+# Migrate OpenSpec to Constructor Studio SDLC Artifacts
 
 <!-- toc -->
 
@@ -90,24 +90,24 @@ purpose: Convert any project's OpenSpec artifacts (proposals, specs, designs, ta
 
 ## Overview
 
-This workflow converts OpenSpec artifacts (proposals, main specs, designs, tasks, delta specs) into Cypilot SDLC standard documents (PRD, DESIGN, ADR, FEATURE, DECOMPOSITION) with full ID-based traceability verified against the actual codebase.
+This workflow converts OpenSpec artifacts (proposals, main specs, designs, tasks, delta specs) into Constructor Studio SDLC standard documents (PRD, DESIGN, ADR, FEATURE, DECOMPOSITION) with full ID-based traceability verified against the actual codebase.
 
 **Input**: OpenSpec artifacts at `{openspec_root}/` (main specs and archived changes) + source code at `{codebase_paths}`
-**Output**: Cypilot artifacts at `{artifacts_output}/` + `@cpt-*` code markers in source files, registered in `{cypilot_path}/config/artifacts.toml` with `FULL` traceability
+**Output**: Constructor Studio artifacts at `{artifacts_output}/` + `@cpt-*` code markers in source files, registered in `{cf-studio-path}/config/artifacts.toml` with `FULL` traceability
 
-**Why this workflow exists**: OpenSpec uses convention-based traceability with no formal IDs. Its artifacts were never verified against the actual implementation. Cypilot uses ID-based traceability (`cpt-{system}-{kind}-{slug}`) with enforced coverage. This workflow bridges the gap by grounding every generated document in what the code actually does — not what the specs claim it does.
+**Why this workflow exists**: OpenSpec uses convention-based traceability with no formal IDs. Its artifacts were never verified against the actual implementation. Constructor Studio uses ID-based traceability (`cpt-{system}-{kind}-{slug}`) with enforced coverage. This workflow bridges the gap by grounding every generated document in what the code actually does — not what the specs claim it does.
 
-**Key principle**: The source code is the ultimate source of truth. When an OpenSpec spec contradicts the code, the Cypilot artifact describes the code's actual behavior, and the discrepancy is flagged in the migration report.
+**Key principle**: The source code is the ultimate source of truth. When an OpenSpec spec contradicts the code, the Constructor Studio artifact describes the code's actual behavior, and the discrepancy is flagged in the migration report.
 
 ---
 
 ## Prerequisites
 
-- [ ] Cypilot initialized (`{cypilot_path}/` exists with `config/artifacts.toml`)
+- [ ] Constructor Studio initialized (`{cf-studio-path}/` exists with `config/artifacts.toml`)
 - [ ] OpenSpec directory exists at `{openspec_root}/` with main specs and archived changes
 - [ ] Source code available at `{codebase_paths}`
 - [ ] Agent has read this workflow in full before starting any phase
-- [ ] Agent has access to Cypilot kit resources (resolved via `cypilot resolve-vars`)
+- [ ] Agent has access to Constructor Studio kit resources (resolved via `cfs resolve-vars`)
 
 ---
 
@@ -122,14 +122,14 @@ Before starting migration, resolve these variables:
 | `{system}` | `artifacts.toml` → `systems[].slug` | System slug for ID prefixes (`cpt-{system}-*`) |
 | `{openspec_root}` | User prompt | Root directory of OpenSpec artifacts |
 | `{codebase_paths}` | `artifacts.toml` → `systems[].codebase[].path` | Source code directories to scan |
-| `{artifacts_output}` | User prompt or default `architecture/` | Where to write Cypilot artifacts |
-| `{cypilot_path}` | Standard Cypilot variable | Cypilot config directory |
+| `{artifacts_output}` | User prompt or default `architecture/` | Where to write Constructor Studio artifacts |
+| `{cf-studio-path}` | Standard Constructor Studio variable | Constructor Studio config directory |
 | `{kit_slug}` | `artifacts.toml` → `kits` | Kit providing templates/rules |
 
 ### Discovery Protocol
 
-1. Run `cypilot info` to get `{cypilot_path}` and project root
-2. Read `{cypilot_path}/config/artifacts.toml`:
+1. Run `cfs info` to get `{cf-studio-path}` and project root
+2. Read `{cf-studio-path}/config/artifacts.toml`:
    - Extract `{system}` from first system or ask user if multiple
    - Extract `{codebase_paths}` from system codebase entries
    - Extract `{kit_slug}` from system kit reference
@@ -146,7 +146,7 @@ Before starting migration, resolve these variables:
 
 ### Source → Target Mapping
 
-| OpenSpec Source | Cypilot Target | Relationship |
+| OpenSpec Source | Constructor Studio Target | Relationship |
 |---|---|---|
 | Main specs (`{openspec_root}/specs/*/spec.md`) | **PRD** § Functional Requirements | Each spec requirement → one `cpt-{system}-fr-*` ID |
 | Main specs (non-functional aspects) | **PRD** § Non-Functional Requirements | Performance, reliability, security constraints → `cpt-{system}-nfr-*` IDs |
@@ -297,7 +297,7 @@ Present the inventory to the user:
 **Components**: {N} logical components identified → DESIGN component model
 **Features**: {N} task categories → DECOMPOSITION feature entries
 
-Estimated Cypilot artifacts:
+Estimated Constructor Studio artifacts:
 - 1 PRD document (~{N} FR IDs, ~{M} NFR IDs)
 - 1 DESIGN document (~{N} component IDs, ~{M} principle IDs)
 - {N} ADR documents
@@ -316,7 +316,7 @@ Estimated Cypilot artifacts:
 
 ## Phase 2: Generate PRD
 
-**Goal**: Convert OpenSpec main specs and proposals into a Cypilot PRD, verified against the actual codebase.
+**Goal**: Convert OpenSpec main specs and proposals into a Constructor Studio PRD, verified against the actual codebase.
 
 ### Dependencies
 
@@ -425,7 +425,7 @@ Before presenting to user, verify:
 - [ ] Every NFR has: ID, measurable threshold with units
 - [ ] No placeholders (TODO, TBD, FIXME, [Description])
 - [ ] All IDs follow `cpt-{system}-{kind}-{slug}` format
-- [ ] All IDs unique (run `cypilot list-ids` after write)
+- [ ] All IDs unique (run `cfs list-ids` after write)
 - [ ] Discrepancy log presented for this phase
 
 **Review gate**: Present PRD summary + discrepancy log. Wait for user approval before proceeding.
@@ -434,7 +434,7 @@ Before presenting to user, verify:
 
 ## Phase 3: Generate DESIGN
 
-**Goal**: Convert OpenSpec design artifacts and spec architecture into a Cypilot DESIGN document, verified against the actual codebase.
+**Goal**: Convert OpenSpec design artifacts and spec architecture into a Constructor Studio DESIGN document, verified against the actual codebase.
 
 ### Dependencies
 
@@ -524,7 +524,7 @@ For each logical component:
 
 ## Phase 4: Generate ADRs
 
-**Goal**: Convert OpenSpec design decisions into Cypilot ADR documents.
+**Goal**: Convert OpenSpec design decisions into Constructor Studio ADR documents.
 
 ### Dependencies
 
@@ -717,7 +717,7 @@ For each feature in DECOMPOSITION:
 **Transformation rules (Given/When/Then → CDSL)**:
 
 ```
-OpenSpec:                              Cypilot CDSL:
+OpenSpec:                              Constructor Studio CDSL:
 #### Scenario: User Login     →   ### 2.1 User Login Flow
 - GIVEN user has credentials  →   1. [ ] - `p1` - Verify credentials exist - `inst-login-verify`
 - WHEN user submits form      →   2. [ ] - `p1` - Accept form submission - `inst-login-submit`
@@ -836,11 +836,11 @@ After placing markers for all features:
 
 ## Phase 8: Register & Validate
 
-**Goal**: Register all generated artifacts in Cypilot with FULL traceability and run validation.
+**Goal**: Register all generated artifacts in Constructor Studio with FULL traceability and run validation.
 
 ### Step 8.1: Update artifacts.toml
 
-Update `{cypilot_path}/config/artifacts.toml` with all artifacts and **FULL traceability**:
+Update `{cf-studio-path}/config/artifacts.toml` with all artifacts and **FULL traceability**:
 
 ```toml
 [[systems]]
@@ -896,7 +896,7 @@ path = "src/"
 ### Step 8.2: Run Deterministic Validation
 
 ```bash
-python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py validate
+python3 {cf-studio-path}/.core/skills/cf-studio/scripts/cfs.py validate
 ```
 
 **MUST**: Fix all validation errors before proceeding. Re-run until `"status": "PASS"`.
@@ -912,7 +912,7 @@ Common validation issues during migration:
 ### Step 8.3: Run Spec Coverage
 
 ```bash
-python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py spec-coverage
+python3 {cf-studio-path}/.core/skills/cf-studio/scripts/cfs.py spec-coverage
 ```
 
 Report coverage percentage. Target: 100% of `to_code` IDs covered.
@@ -920,17 +920,17 @@ Report coverage percentage. Target: 100% of `to_code` IDs covered.
 ### Step 8.4: Run TOC Generation
 
 ```bash
-python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py toc {artifacts_output}/PRD.md {artifacts_output}/DESIGN.md {artifacts_output}/DECOMPOSITION.md
+python3 {cf-studio-path}/.core/skills/cf-studio/scripts/cfs.py toc {artifacts_output}/PRD.md {artifacts_output}/DESIGN.md {artifacts_output}/DECOMPOSITION.md
 ```
 
-NEVER write TOC manually — always use `cypilot toc`.
+NEVER write TOC manually — always use `cfs toc`.
 
 ### Step 8.5: Generate Migration Report
 
 ```markdown
 ## Migration Report
 
-### OpenSpec → Cypilot Coverage
+### OpenSpec → Constructor Studio Coverage
 
 | OpenSpec Source | Items | Migrated | Coverage |
 |---|---|---|---|
@@ -965,7 +965,7 @@ NEVER write TOC manually — always use `cypilot toc`.
 
 ### Unmigrated Items
 
-{List any OpenSpec content not captured in Cypilot artifacts, with rationale}
+{List any OpenSpec content not captured in Constructor Studio artifacts, with rationale}
 ```
 
 **Review gate**: Present final migration report. Wait for user approval.
@@ -1020,7 +1020,7 @@ Phase 8: Register & Validate      → artifacts.toml (FULL), validation PASS, mi
 ### ID Collision
 
 **If generated IDs conflict with existing IDs**:
-- Run `cypilot list-ids` to check uniqueness
+- Run `cfs list-ids` to check uniqueness
 - Append disambiguating suffix (e.g., `-v2`, `-alt`)
 - Never silently overwrite existing IDs
 
@@ -1124,9 +1124,9 @@ rules:
 - [ ] FEATURE specs generated for all DECOMPOSITION features with code-verified CDSL notation
 - [ ] `@cpt-*` code markers placed for all `to_code = true` IDs
 - [ ] All artifacts registered in `artifacts.toml` with `traceability = "FULL"`
-- [ ] `cypilot validate` returns PASS
-- [ ] `cypilot spec-coverage` reports target coverage
-- [ ] TOC generated by `cypilot toc` (not manual)
+- [ ] `cfs validate` returns PASS
+- [ ] `cfs spec-coverage` reports target coverage
+- [ ] TOC generated by `cfs toc` (not manual)
 - [ ] Migration report produced with discrepancy log
 - [ ] No placeholders (TODO, TBD, FIXME) in final artifacts
 - [ ] All IDs follow `cpt-{system}-{kind}-{slug}` format

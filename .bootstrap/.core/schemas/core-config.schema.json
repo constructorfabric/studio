@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.com/cypilot/core-config.schema.json",
-  "title": "Cypilot Project Configuration (core.toml)",
-  "description": "Schema for the project-level configuration file that defines kit registrations, resource bindings, and optional path overrides. Located at {cypilot_path}/config/core.toml. System identity is defined in artifacts.toml (see ADR-0014).",
+  "$id": "https://example.com/constructor-studio/core-config.schema.json",
+  "title": "Constructor Studio Project Configuration (core.toml)",
+  "description": "Schema for the project-level configuration file that defines kit registrations, resource bindings, and optional path overrides. Located at {cf-studio-path}/config/core.toml. System identity is defined in artifacts.toml (see ADR-0014).",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "project_root", "kits"],
@@ -12,10 +12,10 @@
       "project_root": "..",
       "kits": {
         "sdlc": {
-          "format": "Cypilot",
+          "format": "CFS",
           "path": "config/kits/sdlc",
           "version": "1.0.0",
-          "source": "github:cyberfabric/cyber-pilot-kit-sdlc"
+          "source": "github:constructorfabric/studio-kit-sdlc"
         }
       }
     },
@@ -24,7 +24,7 @@
       "project_root": "..",
       "kits": {
         "sdlc": {
-          "format": "Cypilot",
+          "format": "CFS",
           "path": "config/kits/sdlc",
           "version": "1.0.0",
           "resources": {
@@ -45,7 +45,7 @@
       "type": "string",
       "minLength": 1,
       "default": "..",
-      "description": "Relative path from the cypilot config directory to the project root. All artifact and codebase paths are resolved relative to this. Default: '..' (one level up from {cypilot_path}/config/)."
+      "description": "Relative path from the studio config directory to the project root. All artifact and codebase paths are resolved relative to this. Default: '..' (one level up from {cf-studio-path}/config/)."
     },
     "kits": {
       "$ref": "#/$defs/kits",
@@ -76,12 +76,12 @@
         "format": {
           "type": "string",
           "minLength": 1,
-          "description": "Kit format identifier. 'Cypilot' enables full tooling support (validation, traceability, code generation)."
+          "description": "Kit format identifier. Use 'CFS' for full Constructor Studio tooling support (validation, traceability, code generation). Other values are treated as custom formats with LLM-only semantic processing."
         },
         "path": {
           "type": "string",
           "minLength": 1,
-          "description": "Relative path from the cypilot directory to the kit package root (e.g. '.core/kits/sdlc')."
+          "description": "Relative path from the studio directory to the kit package root (e.g. '.core/kits/sdlc')."
         },
         "version": {
           "type": "string",
@@ -124,7 +124,7 @@
         "path": {
           "type": "string",
           "minLength": 1,
-          "description": "Resolved filesystem path for this resource, relative to the cypilot directory. Written during manifest-driven installation."
+          "description": "Resolved filesystem path for this resource, relative to the studio directory. Written during manifest-driven installation."
         }
       }
     },
@@ -152,7 +152,7 @@
         "core": {
           "type": "string",
           "minLength": 1,
-          "description": "Relative path to the cypilot core directory. Used when the core is not at the default location."
+          "description": "Relative path to the studio core directory. Used when the core is not at the default location."
         }
       }
     }

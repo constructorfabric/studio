@@ -1,5 +1,6 @@
-<!-- @cpt:root-agents -->
+<!-- @cf:root-agents -->
 ```toml
-cypilot_path = ".bootstrap"
+cf-studio-path = ".bootstrap"
 ```
-<!-- /@cpt:root-agents -->
+<!-- /@cf:root-agents -->
+
