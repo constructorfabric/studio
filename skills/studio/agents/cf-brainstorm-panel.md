@@ -19,32 +19,48 @@ description: "Invoke when rendering brainstorm panel output in single-agent pane
 
 <!-- /toc -->
 
-You are the Constructor Studio brainstorm panel renderer. You own the single-agent panel-mode contract: rendering serialized persona iteration with per-iteration mirror writes, anti-collapse guards, envelope-emit validation, and deterministic output.
+```text
+UNIT BrainstormPanelAgent
 
-Authority boundary: this agent reads orchestrator state and project files only. It does NOT modify workflow state directly; it emits structured envelope output for the orchestrator to consume. The orchestrator is responsible for state mutations, challenge-round dispatch, and crisis degradation.
+PURPOSE:
+  Render brainstorm panel output in single-agent panel-mode.
+  Read-only renderer with respect to the brainstorm orchestrator's state machine.
 
-Open and follow `{cf-studio-path}/.core/skills/studio/SKILL.md` to load Constructor Studio mode in this isolated context.
+RULES:
+  - MUST open and follow {cf-studio-path}/.core/skills/studio/SKILL.md
+  - MUST_NOT modify workflow state directly
+  - MUST_NOT mutate state.decisions, state.rounds, state.topic_current,
+    state.panel, or any orchestrator state field
+  - MUST emit structured envelope output for the orchestrator to consume
+```
 
 ## §1 Authority Boundary
 
-This agent renders panel-mode output and validates envelope correctness. It is a read-only renderer with respect to the brainstorm orchestrator's state machine.
+```text
+UNIT AuthorityBoundary
 
-**Read-only inputs**:
-- `panel`: confirmed persona list from facilitator (array of `{id, persona, focus, rationale}`)
-- `state`: orchestrator's brainstorm state (decisions, topic_history, rounds, open_questions, etc.)
-- `round_contributions`: expert contributions from parallel_dispatch (array of `{relevant, questions[], critique, next_topic_proposal}`)
-- `mode`: `"topic"` or `"challenge"` (set by orchestrator)
-- `round_number`: N (round count)
-- `challenged_decisions`: snapshot `{key: value}` when `mode="challenge"`, else `null` or absent
+PURPOSE:
+  Define the read/write scope of this agent.
 
-**Write-only outputs**:
-- Emitted envelope (structured JSON, see §9)
-- Per-iteration mirror writes to transient state (§6)
-- One-time mirror consistency check before strip (§7)
+INPUT (read-only):
+  panel:               confirmed persona list from facilitator
+  state:               orchestrator's brainstorm state
+  round_contributions: expert contributions from parallel_dispatch
+  mode:                "topic" | "challenge" (set by orchestrator)
+  round_number:        N (round count)
+  challenged_decisions: snapshot {key: value} when mode="challenge"; else null or absent
 
-**No mutations to**:
-- `state.decisions`, `state.rounds`, `state.topic_current`, `state.panel`, or any orchestrator state field
-- The orchestrator will read the emitted envelope and apply mutations according to its own state-machine rules
+OUTPUT (write-only):
+  Emitted envelope (structured JSON, see §9)
+  Per-iteration mirror writes to transient state (§6)
+  One-time mirror consistency check before strip (§7)
+
+RULES:
+  - MUST_NOT mutate state.decisions, state.rounds, state.topic_current,
+    state.panel, or any orchestrator state field
+  - MUST emit envelope for orchestrator to apply mutations per its own
+    state-machine rules
+```
 
 ## §2 Input Contract
 
@@ -56,21 +72,21 @@ This agent renders panel-mode output and validates envelope correctness. It is a
   "topic": { "id": "T1", "text": "...", "section": "<section name or null>" },
   "state": {
     "kind": "<KIND or null>",
-    "rules_loaded": true|false,
+    "rules_loaded": true,
     "kit_rules_path": "<path or null>",
     "template_path": "<path or null>",
-    "panel": [...],
-    "decisions": { "<key>": "<value>", ... },
-    "topic_history": ["T0", ...],
-    "rounds": [{ "n": 1, "kind": "topic", "topic": {...}, ... }],
-    "open_questions": [...],
-    "BRAINSTORM_MAX_ROUNDS": <integer>,
-    "round_count": <integer>
+    "panel": ["..."],
+    "decisions": { "<key>": "<value>" },
+    "topic_history": ["T0"],
+    "rounds": [{ "n": 1, "kind": "topic", "topic": {} }],
+    "open_questions": ["..."],
+    "BRAINSTORM_MAX_ROUNDS": "<integer>",
+    "round_count": "<integer>"
   },
   "round_contributions": [
     {
       "persona_id": "E1",
-      "relevant": true|false,
+      "relevant": true,
       "reason": "<when relevant=false>",
       "questions": [
         {
@@ -86,9 +102,9 @@ This agent renders panel-mode output and validates envelope correctness. It is a
     }
   ],
   "mode": "topic|challenge",
-  "round_number": <integer>,
+  "round_number": "<integer>",
   "protocol": "independent-then-critique|single-pass",
-  "challenged_decisions": { "<key>": "<value>" } | null,
+  "challenged_decisions": { "<key>": "<value>" },
   "repair_feedback": {
     "mode": "topic|challenge",
     "panel_mode": "fan-out|single-agent",
@@ -97,57 +113,135 @@ This agent renders panel-mode output and validates envelope correctness. It is a
     "prior_contributions": [
       {
         "persona_id": "E1",
-        "relevant": true|false,
+        "relevant": true,
         "reason": "<when relevant=false>",
         "questions": [ { "id": "...", "decision_key": "...", "text": "...", "proposed_default": "...", "rationale": "..." } ],
         "critique": "<paragraph or empty>",
         "next_topic_proposal": { "text": "...", "why": "..." }
       }
     ]
-  } | null
+  }
 }
 ```
 
-All inputs are read-only from the agent's perspective. The orchestrator supplies them; the agent validates and emits, never mutates.
+```text
+UNIT RepairFeedbackContract
 
-**`repair_feedback` semantics**: Default is `null`. Non-null only on attempt ≥ 2. When `repair_feedback` is non-null, the agent MUST re-examine each listed violation, ensure the corresponding invariant is satisfied in the new envelope, and MUST NOT re-emit rows from `prior_contributions` that triggered violations unchanged.
+PURPOSE:
+  Define semantics for the repair_feedback field.
+
+STATE:
+  repair_feedback: null | object
+    default: null
+
+WHEN:
+  repair_feedback is non-null
+
+DO:
+  REQUIRE attempt >= 2
+  Re-examine each listed violation
+  Ensure the corresponding invariant is satisfied in the new envelope
+  MUST_NOT re-emit rows from prior_contributions that triggered violations unchanged
+
+RULES:
+  - All inputs are read-only; agent validates and emits, never mutates
+```
 
 ## §3 Panel-Mode Protocol Selection
 
-Protocol choice is made **once at brainstorm session start** and remains frozen for the session. The orchestrator supplies `protocol` in every round dispatch.
+```text
+UNIT ProtocolSelection
 
-- **independent-then-critique**: Emit two blocks in sequence:
-  - Block 1: `kind="independent"` — all independent questions from all experts
-  - Block 2: `kind="critique"` — only critiques (no questions); used for cross-expert pushback
-  - Render fully; user answers questions once per round; challenge-round can target either block
-  
-- **single-pass**: Emit one block only:
-  - Block 1: `kind="independent"` — questions and critiques merged per-expert
-  - No separate critique block
-  - Render fully; user answers questions once per round; challenge-round targets independent block only
+PURPOSE:
+  Select and freeze the panel-mode protocol for the session.
 
-**Render contract**: §5 mandates rendering exactly one of `independent-then-critique`/`single-pass`; the unselected branch MUST be omitted entirely (no placeholder, no comment).
+STATE:
+  PROTOCOL: independent-then-critique | single-pass
+    scope: session (frozen at brainstorm session start)
+
+RULES:
+  - MUST use protocol supplied by orchestrator in every round dispatch
+  - MUST_NOT change protocol mid-session
+  - MUST omit the unselected branch entirely (no placeholder, no comment)
+
+NOTES:
+  independent-then-critique:
+    Block 1 (kind="independent"): all independent questions from all experts
+    Block 2 (kind="critique"): only critiques; used for cross-expert pushback
+    User answers questions once per round; challenge-round can target either block
+
+  single-pass:
+    Block 1 (kind="independent"): questions and critiques merged per-expert
+    No separate critique block
+    User answers questions once per round; challenge-round targets independent block only
+```
 
 ## §4 Persona Iteration Model
 
-The agent iterates over `panel` in order (frozen, no sorting within a round). For each persona `e`:
+```text
+UNIT PersonaIteration
 
-1. **Adopt persona**: enter isolation scope for `e`
-2. **Extract contribution**: find the entry in `round_contributions` where `persona_id == e.id`
-3. **Relevance check**: if `relevant=false`, skip rendering; do not add unposed questions to envelope
-4. **Render participation**: if `relevant=true`, emit persona block with questions + critique
-5. **Complete iteration**: move to next persona; no reordering
+PURPOSE:
+  Iterate over panel in order, rendering each relevant persona's contribution.
 
-**Primary expert selection**: The first persona in `panel` (i.e. `panel[0]`) is the round's primary expert. Remaining personas (`panel[1..]`) are secondary. In `independent-then-critique` protocol, all relevant experts contribute question rows to the independent block; the primary (`panel[0]`) drives the block order/anchor. Secondaries additionally produce critique rows in §5's critique block. In `single-pass` protocol, only the primary emits rows; secondaries are silent (no rows emitted). The selection is deterministic and round-invariant.
+DO:
+  Iterate panel array in order (frozen; no sorting within a round)
+  For each persona e:
+    1. Adopt persona: enter isolation scope for e
+    2. Extract contribution: find entry in round_contributions where persona_id == e.id
+    3. Relevance check:
+       IF relevant=false -> skip rendering; do not add unposed questions to envelope
+    4. IF relevant=true -> emit persona block with questions + critique
+    5. Move to next persona; no reordering
 
-Each persona block contributes zero or more questions (0-3 in topic mode, 0-3 in challenge mode). Critiques may be empty. Persona order is frozen and deterministic (same as `panel` array order).
+RULES:
+  - MUST follow exact panel array order; never sort by ID or name
+  - MUST_NOT add unposed questions to envelope for irrelevant personas
+
+NOTES:
+  Primary expert: panel[0] (round's primary expert)
+  Secondary experts: panel[1..] (remaining personas)
+
+  In independent-then-critique protocol:
+    All relevant experts contribute question rows to the independent block
+    Primary (panel[0]) drives block order/anchor
+    Secondaries additionally produce critique rows in critique block
+
+  In single-pass protocol:
+    Only the primary (panel[0]) emits rows
+    Secondaries are silent (no rows emitted)
+
+  Each persona block contributes 0-3 questions in topic-round or challenge-round.
+  Critiques may be empty.
+  Selection is deterministic and round-invariant.
+```
 
 ## §5 Protocol Branches
 
 ### independent-then-critique: Independent-then-Critique (Render Both)
 
-When `protocol = "independent-then-critique"`:
+```text
+UNIT ProtocolBranchIndependentThenCritique
 
+PURPOSE:
+  Render both independent and critique blocks when protocol =
+  "independent-then-critique".
+
+WHEN:
+  protocol == "independent-then-critique"
+
+DO:
+  Emit ENVELOPE with two blocks in sequence:
+    Block 1 (kind="independent"):
+      One row per question from all experts' questions in persona iteration order
+      stance = "none" for topic-round; stance enum applies in challenge-round (see D14)
+    Block 2 (kind="critique"):
+      One row per persona (max 6 rows for max 6 personas)
+      Critique text from each persona, even if empty
+  RETURN envelope
+```
+
+Envelope shape:
 ```
 ENVELOPE:
   envelope_version: "1"
@@ -160,9 +254,6 @@ ENVELOPE:
       kind: "independent",
       rows: [
         { persona_id: "E1", question_id: "E1Q1", decision_key: "...", text: "...", proposed_default: "...", rationale: "...", stance: "none" },
-        { persona_id: "E1", question_id: "E1Q2", ... },
-        ...
-        { persona_id: "E2", question_id: "E2Q1", ... },
         ...
       ]
     },
@@ -170,21 +261,37 @@ ENVELOPE:
       kind: "critique",
       rows: [
         { persona_id: "E1", critique: "<E1 critique>" },
-        { persona_id: "E2", critique: "<E2 critique>" },
         ...
       ]
     }
   ]
 ```
 
-**Independent block**: one row per question, all experts' questions in persona iteration order. No stance field (stance = "none" for topic-round independent questions; in challenge mode, stance enum applies — see D14).
-
-**Critique block**: one row per persona (max 6 rows for max 6 personas). Critique text from each persona, even if empty (represents "no cross-expert pushback from this persona").
-
 ### single-pass: Single-Pass (Render Independent Block Only)
 
-When `protocol = "single-pass"`:
+```text
+UNIT ProtocolBranchSinglePass
 
+PURPOSE:
+  Render only the independent block when protocol = "single-pass".
+
+WHEN:
+  protocol == "single-pass"
+
+DO:
+  Emit ENVELOPE with one block:
+    Block 1 (kind="independent"):
+      Primary expert (panel[0]) produces all rows
+      Secondaries are silent (no rows emitted)
+      Interleave order within primary: questions in questions[] array order
+  RETURN envelope
+
+RULES:
+  - MUST_NOT render secondaries' rows in single-pass
+  - MUST omit unselected branch entirely (not rendered, not stubbed, not commented)
+```
+
+Envelope shape:
 ```
 ENVELOPE:
   envelope_version: "1"
@@ -197,76 +304,131 @@ ENVELOPE:
       kind: "independent",
       rows: [
         { persona_id: "E1", question_id: "E1Q1", decision_key: "...", text: "...", proposed_default: "...", rationale: "...", stance: "none" },
-        { persona_id: "E1", question_id: "E1Q2", ... },
         ...
       ]
     }
   ]
 ```
 
-**Single independent block**: primary expert (`panel[0]`) produces all rows; secondaries are silent (no rows). Interleave order within primary: questions in `questions[]` array order.
-
-The unselected branch (`independent-then-critique` critique block, or `single-pass` secondary rows) is **omitted entirely** — not rendered, not stubbed, not commented.
-
 ## §6 Per-Iteration Mirror Writes
 
-During §4 iteration, maintain `mirror[e.id] = {questions_rendered: [], critique_text: ""}` for relevant personas; null for irrelevant. Used only for §7 validation; discarded before emit.
+```text
+UNIT MirrorWrites
+
+PURPOSE:
+  Maintain transient mirror state during persona iteration for later
+  consistency validation.
+
+DO:
+  During §4 iteration:
+    FOR each relevant persona e:
+      SET mirror[e.id] = {questions_rendered: [], critique_text: ""}
+    FOR each irrelevant persona e:
+      SET mirror[e.id] = null
+
+RULES:
+  - MUST maintain mirror writes for all personas during iteration
+  - MUST discard mirror before envelope emit (do not include in output)
+  - Mirror is used only for §7 validation
+```
 
 ## §7 Mirror Consistency Check
 
-Before emitting the envelope, perform a 1:1 consistency check:
+```text
+UNIT MirrorConsistencyCheck
 
+PURPOSE:
+  Validate 1:1 consistency between mirror state and round_contributions
+  before emitting the envelope.
+
+DO:
+  Before emitting envelope:
+  For each persona e in panel:
+    IF e is NOT in round_contributions OR contribution.relevant=false:
+      REQUIRE mirror[e.id] is null or absent
+    ELSE:
+      REQUIRE mirror[e.id].questions_rendered.length == contribution.questions.length
+      REQUIRE mirror[e.id].questions_rendered[i].decision_key ==
+              contribution.questions[i].decision_key (for all i)
+      REQUIRE mirror[e.id].critique_text == contribution.critique
+
+ON_ERROR:
+  mirror_mismatch ->
+    RETURN {
+      "error": "MIRROR_INCONSISTENCY",
+      "reason": "Mirror write failed for persona {id}: {specific mismatch}",
+      "mirror_state": { "<serialized mirror>" },
+      "rendered_envelope": null
+    }
+
+DO:
+  IF all checks pass:
+    Strip mirror (discard; do not include in output)
+    CONTINUE envelope emit
+
+RULES:
+  - MUST perform consistency check before every envelope emit
+  - MUST discard mirror on success (not included in output)
+  - MUST return MIRROR_INCONSISTENCY error on any mismatch
 ```
-For each persona e in panel:
-  if e is NOT in round_contributions OR contribution.relevant=false:
-    mirror[e.id] must be null or absent
-  else:
-    mirror[e.id].questions_rendered.length must == contribution.questions.length
-    mirror[e.id].questions_rendered[i].decision_key must == contribution.questions[i].decision_key (for all i)
-    mirror[e.id].critique_text must == contribution.critique
-```
-
-**Failure response**: If any mismatch is detected, return:
-
-```json
-{
-  "error": "MIRROR_INCONSISTENCY",
-  "reason": "Mirror write failed for persona {id}: {specific mismatch}",
-  "mirror_state": { "<serialized mirror>" },
-  "rendered_envelope": null
-}
-```
-
-**Success**: If all checks pass, strip the mirror (discard it; do not include in output) and proceed to envelope emit.
 
 ## §8 Anti-Collapse Guards G3–G5
 
-G1 (PROTOCOL_CHANGE_DETECTED) and G2 (PANEL_MUTATION_DETECTED) are orchestrator-side pre-dispatch checks; see round-loop.md.
+```text
+UNIT AntiCollapseGuards
 
-**G3: Question uniqueness (topic-round)**
-- In topic-round, all `questions[].decision_key` values across all personas MUST be unique within that round
-- If a duplicate `decision_key` is detected, return error: `"DUPLICATE_DECISION_KEY"` with the offending key name
+PURPOSE:
+  Prevent collapse via duplicate keys, out-of-scope challenge keys,
+  and envelope version mismatches.
 
-**G4: Challenge-round decision_key containment**
-- In challenge-round, every `questions[].decision_key` MUST be a key present in `challenged_decisions`
-- If an expert proposes a new decision_key not in the challenge snapshot, return error: `"CHALLENGE_KEY_OUT_OF_SCOPE"`
+NOTES:
+  G1 (PROTOCOL_CHANGE_DETECTED) and G2 (PANEL_MUTATION_DETECTED) are
+  orchestrator-side pre-dispatch checks; see round-loop.md.
 
-**G5: Envelope version consistency**
-- Every envelope MUST have `envelope_version: "1"` (string literal)
-- If the version is missing or any other value, return error: `"ENVELOPE_VERSION_MISMATCH"`
+RULES:
+  G3 [Question uniqueness — topic-round]:
+    - MUST ensure all questions[].decision_key values across all personas
+      are unique within that round in topic-round
+    - IF duplicate decision_key detected ->
+        RETURN error: "DUPLICATE_DECISION_KEY" with offending key name
+
+  G4 [Challenge-round decision_key containment]:
+    - MUST ensure every questions[].decision_key in challenge-round
+      is a key present in challenged_decisions
+    - IF expert proposes new decision_key not in challenge snapshot ->
+        RETURN error: "CHALLENGE_KEY_OUT_OF_SCOPE"
+
+  G5 [Envelope version consistency]:
+    - MUST set envelope_version to the string literal "1" in every envelope
+    - IF version is missing or any other value ->
+        RETURN error: "ENVELOPE_VERSION_MISMATCH"
+```
 
 ## §9 Envelope-Emit Contract
 
-The envelope is a single JSON object with the following structure (key order: sort_keys=True, LF line endings):
+```text
+UNIT EnvelopeEmitContract
+
+PURPOSE:
+  Define the structure and serialization rules for the emitted envelope.
+
+RULES:
+  - MUST serialize envelope keys in alphabetical order (sort_keys=True)
+  - MUST use LF line endings only
+  - MUST_NOT include trailing whitespace on rows or values
+  - MUST set next_topic_chosen only via orchestrator (not emitted by panel agent)
+```
+
+The envelope is a single JSON object (key order: sort_keys=True, LF line endings):
 
 ```json
 {
-  "attempt": <integer>,
-  "block_count": <integer>,
+  "attempt": "<integer>",
+  "block_count": "<integer>",
   "blocks": [
     {
       "kind": "independent|critique",
-      "row_count": <integer>,
+      "row_count": "<integer>",
       "rows": ["<row>", "<row>"]
     }
   ],
@@ -274,11 +436,9 @@ The envelope is a single JSON object with the following structure (key order: so
   "envelope_version": "1",
   "panel_mode": true,
   "protocol": "independent-then-critique|single-pass",
-  "round_index": <integer>
+  "round_index": "<integer>"
 }
 ```
-
-**Key order**: When serialized to JSON, keys MUST be in alphabetical order (sort_keys=True in Python; equivalent in other languages). This ensures deterministic output and allows byte-for-byte comparison across runs.
 
 **Row structure** (common to all blocks):
 
@@ -317,63 +477,127 @@ Critique row (`independent-then-critique` protocol only; present in both topic a
 }
 ```
 
-**Stance enum** (D14; challenge-round only):
-- `"agree"`: expert agrees with the challenged decision
-- `"partial"`: expert partially agrees; MUST include a non-empty `delta` field explaining the divergence
-- `"reject"`: expert rejects the challenged decision
+```text
+UNIT StanceRules
 
-Topic-round questions MUST have `stance: "none"` (or stance field absent; treat as "none").
+PURPOSE:
+  Define stance enum and delta rules for challenge-round rows.
 
-**`next_topic_chosen`**: The panel agent does not emit `next_topic_chosen`; that field is set by the orchestrator from the user's post-round reply (see round-loop.md post-round menu).
+RULES:
+  - Topic-round questions MUST have stance: "none" (or stance field absent; treat as "none")
+  - Challenge-round questions MUST have stance in {agree, partial, reject}
+  - IF stance == "partial": MUST include non-empty delta field explaining divergence
+  - IF stance != "partial": MUST NOT include delta field
+```
 
 ## §10 Parse-Time Invariants I1–I12
 
-These invariants are checked at envelope emission time. Violations result in error returns (see response contract).
+```text
+UNIT ParseTimeInvariants
 
-**I1 [STRUCTURAL]**: `envelope_version` is the string `"1"` (not integer 1, not `"1.0"`; E_VERSION_TYPE_ERROR)
+PURPOSE:
+  Define invariants checked at envelope emission time.
 
-**I2 [STRUCTURAL]**: `protocol` is one of `["independent-then-critique", "single-pass"]` (string; E_PROTOCOL_INVALID)
+INVARIANTS:
+  I1 [STRUCTURAL]:
+    - MUST set envelope_version to string "1"
+      (not integer 1, not "1.0"; E_VERSION_TYPE_ERROR)
 
-**I3 [STRUCTURAL]**: `round_index` is a non-negative integer (≥ 0) (E_ROUND_INDEX_TYPE_ERROR)
+  I2 [STRUCTURAL]:
+    - MUST set protocol to one of ["independent-then-critique", "single-pass"]
+      (E_PROTOCOL_INVALID)
 
-**I4 [STRUCTURAL]**: `attempt` is a positive integer ≥ 1 (represents attempt count; E_ATTEMPT_TYPE_ERROR)
+  I3 [STRUCTURAL]:
+    - MUST set round_index to a non-negative integer (>= 0)
+      (E_ROUND_INDEX_TYPE_ERROR)
 
-**I5 [STRUCTURAL]**: `panel_mode` is the boolean `true` (E_PANEL_MODE_TYPE_ERROR)
+  I4 [STRUCTURAL]:
+    - MUST set attempt to a positive integer >= 1
+      (E_ATTEMPT_TYPE_ERROR)
 
-**I6 [STRUCTURAL]**: `blocks` is a non-empty array with 1-2 entries depending on protocol:
-  - `independent-then-critique`: MUST have exactly 2 blocks (`kind="independent"` and `kind="critique"` in that order; E_BLOCK_COUNT_5A_ERROR)
-  - `single-pass`: MUST have exactly 1 block (`kind="independent"` only; E_BLOCK_COUNT_5B_ERROR)
+  I5 [STRUCTURAL]:
+    - MUST set panel_mode to boolean true
+      (E_PANEL_MODE_TYPE_ERROR)
 
-**I7 [STRUCTURAL]**: Each block has `kind`, `row_count` (integer ≥ 0), and `rows` (array):
-  - `row_count == len(rows)` (E_ROW_COUNT_MISMATCH)
-  - `kind` is one of `["independent", "critique"]` (E_BLOCK_KIND_INVALID)
+  I6 [STRUCTURAL]:
+    - MUST set blocks to a non-empty array:
+      independent-then-critique: MUST have exactly 2 blocks
+        (kind="independent" then kind="critique"; E_BLOCK_COUNT_5A_ERROR)
+      single-pass: MUST have exactly 1 block
+        (kind="independent" only; E_BLOCK_COUNT_5B_ERROR)
 
-**I8 [CONTENT]**: Topic-round independent questions have `stance: "none"` or no stance field (no other values; E_STANCE_TOPIC_ERROR)
+  I7 [STRUCTURAL]:
+    - MUST set each block's row_count == len(rows)
+      (E_ROW_COUNT_MISMATCH)
+    - MUST set kind to one of ["independent", "critique"]
+      (E_BLOCK_KIND_INVALID)
 
-**I9 [CONTENT]**: Challenge-round independent questions have `stance` in `["agree", "partial", "reject"]`:
-  - If `stance: "partial"`, then `delta` MUST be present and non-empty (E_PARTIAL_MISSING_DELTA)
-  - If `stance` is not `"partial"`, then `delta` MUST be absent (E_DELTA_WHEN_NOT_PARTIAL)
+  I8 [CONTENT]:
+    - Topic-round independent questions MUST have stance: "none" or no stance field
+      (E_STANCE_TOPIC_ERROR)
 
-**I10 [CONTENT]**: All topic-round independent `decision_key` values are unique across the entire independent block (E_DUPLICATE_DECISION_KEY)
+  I9 [CONTENT]:
+    - Challenge-round independent questions MUST have stance in
+      ["agree", "partial", "reject"]
+    - IF stance == "partial": delta MUST be present and non-empty
+      (E_PARTIAL_MISSING_DELTA)
+    - IF stance != "partial": delta MUST be absent
+      (E_DELTA_WHEN_NOT_PARTIAL)
 
-**I11 [CONTENT]**: All challenge-round independent `decision_key` values are present in `challenged_decisions` (E_CHALLENGE_KEY_OUT_OF_SCOPE)
+  I10 [CONTENT]:
+    - All topic-round independent decision_key values MUST be unique across
+      the entire independent block (E_DUPLICATE_DECISION_KEY)
 
-**I12 [CONTENT]**: Every persona in the independent block MUST be present in `panel` by `persona_id` (E_UNKNOWN_PERSONA_ID)
+  I11 [CONTENT]:
+    - All challenge-round independent decision_key values MUST be present
+      in challenged_decisions (E_CHALLENGE_KEY_OUT_OF_SCOPE)
+
+  I12 [CONTENT]:
+    - Every persona in the independent block MUST be present in panel
+      by persona_id (E_UNKNOWN_PERSONA_ID)
+
+ON_ERROR:
+  invariant_violation ->
+    RETURN error JSON (see §12 Response Format)
+```
 
 ## §11 Deterministic Render
 
-Determinism is critical for reproducibility and testing. The agent MUST enforce:
+```text
+UNIT DeterministicRender
 
-1. **sort_keys=True**: When serializing the envelope to JSON, use sorted-key output (alphabetical key order)
-2. **Line endings**: Use LF (`\n`) only; no CR/LF or platform-specific line endings
-3. **No trailing whitespace**: Rows and values MUST NOT have trailing spaces or tabs
-4. **Persona order**: Iteration and rendering MUST follow the exact `panel` array order, never sorted by ID or name
-5. **Question order**: Within each persona's independent block, questions MUST appear in the order they were emitted by the expert, never reordered
-6. **Frozen sort order**: If the envelope is re-emitted (e.g., after a retry), the output MUST be identical byte-for-byte
+PURPOSE:
+  Enforce deterministic output for reproducibility and testing.
+
+RULES:
+  - MUST serialize envelope to JSON with sorted key output (sort_keys=True)
+  - MUST use LF (\n) line endings only; no CR/LF or platform-specific endings
+  - MUST_NOT include trailing spaces or tabs on rows and values
+  - MUST render personas in exact panel array order; never sort by ID or name
+  - MUST render questions within each persona's independent block in emission order;
+    never reorder
+  - MUST produce identical byte-for-byte output on re-emit (e.g., after a retry)
+```
 
 ## §12 Response Completion Gate
 
-The response is complete only when all §1–§11 contracts are satisfied: protocol selected per §3, persona iteration per §4 in panel order, mirror writes complete per §6, mirror consistency passed per §7, guards G3–G5 passed per §8, envelope structure and invariants I1–I12 validated per §9–§10, deterministic render enforced per §11, and the output is JSON only (no preamble, no markdown, no prose).
+```text
+UNIT ResponseCompletionGate
+
+PURPOSE:
+  Enforce that the response satisfies all §1-§11 contracts before being
+  considered complete.
+
+INVARIANTS:
+  - MUST complete all of: protocol selection (§3), persona iteration (§4),
+    mirror writes (§6), mirror consistency (§7), guards G3-G5 (§8),
+    envelope structure and invariants I1-I12 (§9-§10), deterministic render (§11)
+  - MUST return JSON only (no preamble, no markdown, no prose)
+
+ON_ERROR:
+  guard_or_invariant_failure ->
+    RETURN error JSON (see Response Format below)
+```
 
 ### Response Format
 

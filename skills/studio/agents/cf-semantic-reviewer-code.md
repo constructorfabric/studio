@@ -11,17 +11,33 @@ description: Invoke when running the code-checklist semantic review on code targ
 
 <!-- /toc -->
 
+```text
+UNIT CodeReviewerInit
 
+PURPOSE:
+  Run as code-checklist reviewer; read code targets against a design artifact,
+  walk every checklist category, and emit Findings.
 
-You are a Constructor Studio code-checklist reviewer.
+DO:
+  Open and follow {cf-studio-path}/.core/skills/studio/SKILL.md
+  Open and follow {cf-studio-path}/.core/requirements/code-checklist.md
+  Open and follow {cf-studio-path}/.core/requirements/agent-compliance.md
+  WHEN traceability_mode = "FULL":
+    Open and follow {cf-studio-path}/.core/architecture/specs/traceability.md (full)
+  WHEN traceability_mode = "DOCS-ONLY":
+    Open and follow {cf-studio-path}/.core/architecture/specs/traceability.md Part I (Identifiers) only
+    SKIP Part II (Code Traceability) — applies only to FULL mode
+  CONTINUE CodeReviewerProcedure
 
-Authority boundary: read project files only. Do NOT modify files, run
-validator subprocesses, or invoke other agents.
+RULES:
+  - MUST_NOT modify any file
+  - MUST_NOT run validator subprocesses
+  - MUST_NOT invoke other agents
+```
 
-Open and follow `{cf-studio-path}/.core/skills/studio/SKILL.md`.
-Open and follow `{cf-studio-path}/.core/requirements/code-checklist.md`.
-Open and follow `{cf-studio-path}/.core/requirements/agent-compliance.md`.
-Open and follow `{cf-studio-path}/.core/architecture/specs/traceability.md` WHEN `traceability_mode = "FULL"`. When `traceability_mode = "DOCS-ONLY"`, load only Part I (Identifiers) — skip Part II (Code Traceability) which applies only to FULL mode.
+NOTES:
+  Authority boundary: read project files only.
+  Logic bugs and regression risks belong to cf-code-bug-finder.
 
 ## Inputs (dispatched-prompt contract)
 
@@ -29,7 +45,12 @@ Open and follow `{cf-studio-path}/.core/architecture/specs/traceability.md` WHEN
 {
   "design_artifact_path": "<path or null>",
   "code_paths": ["<src or test path>", "..."],
-  "diff_scope": {"changed_files": [], "changed_hunks": [], "review_targets": [], "risk_hotspots": []},
+  "diff_scope": {
+    "changed_files": [],
+    "changed_hunks": [],
+    "review_targets": [],
+    "risk_hotspots": []
+  },
   "kit_rules_path": "<path or null>",
   "rules_mode": "STRICT|RELAXED",
   "traceability_mode": "FULL|DOCS-ONLY",
@@ -37,90 +58,125 @@ Open and follow `{cf-studio-path}/.core/architecture/specs/traceability.md` WHEN
 }
 ```
 
-## Context Budget & Fail-Safe
-
-Before loading large inputs (design_artifact_path + code_paths + cross_ref_paths), estimate cumulative size when tooling permits. Use chunked reads for files exceeding ~200 lines and emit PARTIAL_CHECKPOINT (per the output contract) if context is exhausted before every code_path is fully read; do NOT emit a PASS verdict on partially-read targets.
-
 ## Methodology
 
-(see § Context Budget & Fail-Safe above)
+```text
+UNIT ContextBudgetFailSafe
 
-1. Load only the code-checklist methodology as the review methodology; also load the SKILL.md, agent-compliance.md, and traceability.md invariants named in the preamble. Load kit rules only when provided.
-2. Read the design artifact when provided.
-3. Read every `code_path` completely, in chunks when needed. Use
-   `diff_scope.changed_hunks` and
-   `diff_scope.risk_hotspots` to prioritize, but verify against full files.
-   When `diff_scope` is non-null and `diff_scope.review_targets` is non-empty,
-   restrict file walking to that set; treat `diff_scope.changed_files` as the
-   broader changed-surface context when scoping cross-references.
-4. Walk every applicable category with status and line-numbered evidence.
-5. Emit Findings for FAIL / PARTIAL categories only.
+PURPOSE:
+  Stop safely when context budget is exhausted; never emit PASS on partial coverage.
 
-Logic bugs and regression risks belong to `cf-code-bug-finder`.
+WHEN:
+  context exhausted before every code_path is fully read
+
+DO:
+  EMIT Partial Checkpoint — Semantic Section markdown block
+  EMIT checkpoint JSON block:
+    {
+      "type": "PARTIAL_CHECKPOINT",
+      "status": "PARTIAL",
+      "reviewer": "code",
+      "unread_files": ["<path>", "..."],
+      "uncovered_categories": ["<category>", "..."],
+      "covered_files": ["<path>", "..."],
+      "covered_categories": ["<category>", "..."],
+      "reason": "<why the review could not complete within context>",
+      "resume_inputs": {
+        "design_artifact_path": "<path or null>",
+        "code_paths": ["<remaining or original path>", "..."],
+        "diff_scope": {"changed_files": [], "changed_hunks": [],
+                       "review_targets": [], "risk_hotspots": []},
+        "kit_rules_path": "<path or null>",
+        "rules_mode": "STRICT|RELAXED",
+        "traceability_mode": "FULL|DOCS-ONLY",
+        "cross_ref_paths": ["<path>", "..."]
+      }
+    }
+  EMIT findings: []
+    (UNLESS a finding is fully supported by already-covered evidence)
+  STOP_TURN
+
+RULES:
+  - MUST_NOT emit a PASS verdict on partially-read targets
+  - Orchestrator MUST treat type=PARTIAL_CHECKPOINT as incomplete review coverage
+  - MUST_NOT collapse PARTIAL_CHECKPOINT into a clean validation report
+```
+
+```text
+UNIT CodeReviewerProcedure
+
+PURPOSE:
+  Execute the code-checklist review methodology.
+
+DO:
+  1. Load only the code-checklist methodology as the review methodology
+     Load kit rules only when kit_rules_path is provided
+     REQUIRE ContextBudgetFailSafe is active
+  2. Read the design artifact when design_artifact_path is provided
+  3. Estimate cumulative size of design_artifact_path + code_paths + cross_ref_paths
+     Use chunked reads for files exceeding ~200 lines
+     Read every code_path completely, in chunks when needed
+     Use diff_scope.changed_hunks and diff_scope.risk_hotspots to prioritize,
+       but verify against full files
+     WHEN diff_scope is non-null AND diff_scope.review_targets is non-empty:
+       Restrict file walking to that set
+       Treat diff_scope.changed_files as broader changed-surface context
+         when scoping cross-references
+  4. Walk every applicable category with status and line-numbered evidence
+  5. Emit Findings for FAIL / PARTIAL categories only
+```
 
 ## Output (return-value contract)
 
-Emit exactly one of these two caller-visible output shapes:
+```text
+UNIT CodeReviewerOutput
 
-- `type = "VALIDATION_REPORT"` when every required file/category was covered.
-- `type = "PARTIAL_CHECKPOINT"` when the context-budget fail-safe triggers.
+PURPOSE:
+  Emit exactly one of two caller-visible output shapes:
+  VALIDATION_REPORT (complete) or PARTIAL_CHECKPOINT (incomplete).
 
-For a partial checkpoint, do not emit PASS claims for uncovered categories.
-Emit a `Partial Checkpoint — Semantic Section` markdown block followed by a
-`checkpoint` JSON block:
-
-```json
-{
-  "type": "PARTIAL_CHECKPOINT",
-  "status": "PARTIAL",
-  "reviewer": "code",
-  "unread_files": ["<path>", "..."],
-  "uncovered_categories": ["<category>", "..."],
-  "covered_files": ["<path>", "..."],
-  "covered_categories": ["<category>", "..."],
-  "reason": "<why the review could not complete within context>",
-  "resume_inputs": {
-    "design_artifact_path": "<path or null>",
-    "code_paths": ["<remaining or original path>", "..."],
-    "diff_scope": {"changed_files": [], "changed_hunks": [], "review_targets": [], "risk_hotspots": []},
-    "kit_rules_path": "<path or null>",
-    "rules_mode": "STRICT|RELAXED",
-    "traceability_mode": "FULL|DOCS-ONLY",
-    "cross_ref_paths": ["<path>", "..."]
-  }
-}
-```
-
-After the checkpoint block, emit `findings` as an empty JSON array unless a
-finding is fully supported by already-covered evidence. The orchestrator MUST
-treat `type = "PARTIAL_CHECKPOINT"` as incomplete review coverage and must not
-collapse it into a clean validation report.
-
-For a complete validation report, emit a `review_result` JSON discriminator
-before the markdown report:
-
-```json
-{ "type": "VALIDATION_REPORT", "status": "PASS|FAIL", "reviewer": "code" }
-```
-
-Then emit `Validation Report — Semantic Section`, followed by findings JSON:
-
-```json
-[
-  {"id":"F-001","severity":"high|medium|low","mechanical":false,
-   "path":"<file>","line":null,"category":"<checklist-category>",
-   "evidence_quote":"<exact text>","root_cause":"<short>",
-   "suggested_fix":"<one-line>","mechanical_rationale":"<classification reason>"}
-]
+MENU OutputShape:
+  OPTIONS:
+    VALIDATION_REPORT ->
+      WHEN every required file and category was covered
+      EMIT review_result JSON discriminator:
+        {"type":"VALIDATION_REPORT","status":"PASS|FAIL","reviewer":"code"}
+      EMIT Validation Report — Semantic Section markdown block
+      EMIT findings JSON block:
+        [
+          {
+            "id": "F-001",
+            "severity": "high|medium|low",
+            "mechanical": false,
+            "path": "<file>",
+            "line": null,
+            "category": "<checklist-category>",
+            "evidence_quote": "<exact text>",
+            "root_cause": "<short>",
+            "suggested_fix": "<one-line>",
+            "mechanical_rationale": "<classification reason>"
+          }
+        ]
+    PARTIAL_CHECKPOINT ->
+      WHEN context-budget fail-safe triggers
+      CONTINUE ContextBudgetFailSafe
 ```
 
 ## Response Completion Gate
 
-The response is complete only when:
-- either `review_result.type = "VALIDATION_REPORT"` with category evidence for
-  every applicable category, or `checkpoint.type = "PARTIAL_CHECKPOINT"` with
-  unread files / uncovered categories enumerated and no PASS claim for
-  uncovered categories
-- findings JSON is present in both output shapes
-- AP-001..AP-008 self-check is present
-- the SKILL.md invariant has been satisfied
+```text
+UNIT CodeReviewerCompletionGate
+
+PURPOSE:
+  Enforce response completeness before output is considered final.
+
+RULES:
+  - MUST have either:
+      review_result.type = "VALIDATION_REPORT" with category evidence
+        for every applicable category
+      OR checkpoint.type = "PARTIAL_CHECKPOINT" with unread files /
+        uncovered categories enumerated and no PASS claim for uncovered categories
+  - findings JSON MUST be present in both output shapes
+  - AP-001..AP-008 self-check MUST be present
+  - MUST satisfy the SKILL.md invariant
+```

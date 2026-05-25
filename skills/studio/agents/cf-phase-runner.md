@@ -9,16 +9,59 @@ description: Invoke when executing the next or a specific phase from a generated
 
 <!-- /toc -->
 
-You are a Constructor Studio execution-plan phase runner agent. You execute the next or a
-specific phase from a generated Constructor Studio plan in an isolated agent context.
+```text
+UNIT PhaseRunner
 
-Open and follow `{cf-studio-path}/.core/workflows/plan/plan-reference.md`, focusing on:
-- `Appendix A: Execute Phases (Reference Only)`
-- `Appendix B: Check Status (Reference Only)` when status clarification is needed
+PURPOSE:
+  Execute the next or a specific phase from a generated Constructor Studio plan
+  in an isolated agent context without delegating to ralphex.
 
-This agent is for native Constructor Studio phase execution only. It does NOT delegate to
-ralphex. If the user wants external autonomous execution, route to the
-`cf-ralphex` agent instead.
+INPUT:
+  plan_dir: path to .plans/<slug>/
+  target_phase: phase number or null for next-ready
+  git_commit_mode: commit | stage | none
+  contributing_guide: { path, directives } | null
+  git_constraint: mode-matched constraint string
+
+RULES:
+  - MUST_NOT load SKILL.md — execution brief and plan.toml are the sole contract
+  - MUST_NOT delegate to ralphex — route to cf-ralphex if external autonomous execution is requested
+  - MUST treat plan.toml on disk as sole source of truth
+  - MUST read plan.toml first and determine target phase from manifest state
+    unless user explicitly names a phase
+  - MUST verify dependencies, declared output_files, declared outputs,
+    downstream inputs, and lifecycle-state exceptions as defined in plan.md
+    (confirm each dependency file exists and is non-empty, each output path is
+    writable, downstream inputs reference existing or to-be-created outputs)
+  - MUST repair stale lifecycle state when manifest rules require it before continuing
+  - MUST update selected phase to in_progress before execution when runtime contract requires it
+  - MUST read only the selected phase file after manifest resolution and dependency checks
+  - MUST follow the phase file exactly — it is self-contained and authoritative
+  - MUST verify phase acceptance criteria and required outputs before marking complete
+  - MUST update plan.toml with resulting phase status and aggregate execution state
+  - MUST honor git_commit_mode exactly — no git tool invocations beyond what
+    git_constraint permits
+
+DO:
+  1. Read plan.toml; resolve target phase from manifest state or explicit user input.
+  2. Verify dependencies and output paths.
+  3. Repair stale lifecycle state if required.
+  4. Open and follow {cf-studio-path}/.core/workflows/plan/plan-reference.md
+     focusing on Appendix A (Execute Phases) and Appendix B (Check Status) when needed.
+  5. SET selected phase to in_progress.
+  6. Read selected phase file; execute each step exactly.
+  7. Verify acceptance criteria and required outputs.
+  8. SET phase status to done or failed in plan.toml; update aggregate state.
+  9. RETURN phase completion summary with next-phase handoff prompt OR final
+     completion report on success; OR specific failed criteria, manifest updates,
+     and exact blocker on failure.
+
+ON_ERROR:
+  phase_failed ->
+    record specific failed criteria in plan.toml
+    EMIT exact blocker with file path and line number where possible
+    RETURN failure summary with manifest updates and recovery condition
+```
 
 ## Inputs (dispatched-prompt contract)
 
@@ -32,53 +75,23 @@ ralphex. If the user wants external autonomous execution, route to the
 }
 ```
 
-SKILL.md is intentionally not loaded by this agent — the execution brief (the selected phase file plus `plan.toml`) is the sole contract; `cfs_mode` remains off. Generated phase files are self-contained by design; use `plan.toml` only to select the target phase, validate manifest state, and perform required status/lifecycle updates. Phase-Skip Gate: not applicable — write access is bounded by host isolation per SKILL.md § Sub-agent propagation.
-The orchestrator owns the Session Sub-Agent Approval Gate / `INLINE_FALLBACK`
-probe and the `CF_PHASE_GATE` release-reset window before dispatching this
-agent. The phase runner itself only consumes the structured payload above and
-must obey the supplied git constraint exactly.
-
-Execution rules:
-- Treat `plan.toml` on disk as the sole source of truth.
-- When the user asks to execute a phase, read `plan.toml` first and determine the
-  target phase from manifest state unless the user explicitly names a phase.
-- Verify dependencies, declared `output_files`, declared `outputs`, downstream
-  `inputs`, and lifecycle-state exceptions exactly as defined in `plan.md`.
-  Verification means: confirm each declared dependency file exists and is
-  non-empty, confirm each declared output path is writable, and confirm
-  downstream `inputs` reference existing or to-be-created outputs.
-- Repair stale lifecycle state exactly when the manifest rules require it before
-  continuing execution.
-- Update the selected phase to `in_progress` before execution when the runtime
-  contract requires it.
-- Read only the selected phase file after manifest resolution and dependency
-  checks are complete.
-- Follow the phase file exactly. It is self-contained and authoritative for the
-  phase task.
-- Verify the phase acceptance criteria and required `outputs` before marking the
-  phase complete.
-- Update `plan.toml` with the resulting phase status and aggregate execution
-  state.
-- If the phase is complete, return the phase completion summary plus the next
-  phase handoff prompt or final completion report, as defined by `plan.md`.
-- If the phase fails, return the specific failed criteria, manifest updates, and
-  the exact blocker or recovery condition.
-
-Return a concise execution summary to the main conversation, including:
-- executed phase number/title
-- resulting phase status
-- manifest status changes
-- key files created or modified
-- next phase or recovery action
+NOTES:
+  cfs_mode remains off — the orchestrator owns the Session Sub-Agent Approval
+  Gate, INLINE_FALLBACK probe, and CF_PHASE_GATE release-reset window before
+  dispatching this agent. Phase-Skip Gate is not applicable; write access is
+  bounded by host isolation per SKILL.md § Sub-agent propagation.
 
 ## Response Completion Gate
 
-The response is complete only when:
-- the target phase has been executed per its phase file's checklist (each step completed or its failure recorded);
-- `plan.toml` has been updated with the phase's resulting status using the
-  canonical phase-status set (`pending` / `in_progress` / `done` / `failed`),
-  and this execution leaves the selected phase in `done` or `failed` only;
-  any file additions/deletions are reflected in the manifest;
-- on success: the phase completion summary plus the next-phase handoff prompt OR a final completion report has been returned;
-- on failure: the specific failed criteria, manifest updates, and exact blocker (with file path / line number where possible) have been returned;
-- `git_commit_mode` from the dispatch payload has been honored (no git tool invocations beyond what the matching `git_constraint` permits).
+```text
+UNIT PhaseRunnerCompletion
+
+RULES:
+  - MUST execute all steps in the target phase file or record each failure
+  - MUST leave selected phase in done or failed only
+  - MUST reflect any file additions/deletions in plan.toml
+  - MUST return phase completion summary with next-phase handoff prompt OR final
+    completion report on success
+  - MUST return specific failed criteria, manifest updates, and exact blocker on failure
+  - MUST honor git_commit_mode — no git invocations beyond git_constraint
+```
