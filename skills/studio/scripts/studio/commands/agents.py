@@ -2033,20 +2033,53 @@ def _is_agent_installed(agent: str, project_root: Path) -> bool:
         return True
 
     # ── Legacy Windsurf fallback ──────────────────────────────────────────
-    # Pre-rebrand installs used .windsurf/skills/studio/SKILL.md.
+    # Pre-rebrand installs used .windsurf/skills/studio/SKILL.md (or even
+    # older .windsurf/skills/cypilot/SKILL.md, .windsurf/workflows/cypilot-*.md).
     if agent == "windsurf":
-        for legacy_name in ("cf", "studio"):
+        for legacy_name in ("cf", "studio", "cypilot"):
             legacy = project_root / ".windsurf" / "skills" / legacy_name / "SKILL.md"
             if _file_has_studio_follow_link(legacy):
                 return True
+        wf_dir = project_root / ".windsurf" / "workflows"
+        if wf_dir.is_dir():
+            for f in wf_dir.iterdir():
+                if f.is_file() and (f.name.startswith("cypilot-") or f.name == "cypilot.md"):
+                    return True
 
     # ── Legacy Cursor fallback ────────────────────────────────────────────
-    # Pre-rebrand installs used .cursor/rules/studio.mdc.
+    # Pre-rebrand installs used .cursor/rules/studio.mdc (or older
+    # cypilot.mdc / .cursor/agents/cypilot-*.md / .cursor/commands/cypilot-*.md).
     if agent == "cursor":
-        for legacy_name in ("cf.mdc", "studio.mdc"):
+        for legacy_name in ("cf.mdc", "studio.mdc", "cypilot.mdc"):
             legacy = project_root / ".cursor" / "rules" / legacy_name
             if _file_has_studio_follow_link(legacy):
                 return True
+        for sub in ("agents", "commands"):
+            sub_dir = project_root / ".cursor" / sub
+            if sub_dir.is_dir():
+                for f in sub_dir.iterdir():
+                    if f.is_file() and (f.name.startswith("cypilot-") or f.name in ("cypilot.md",)):
+                        return True
+
+    # ── Legacy Claude fallback ────────────────────────────────────────────
+    # Pre-rebrand installs used .claude/skills/cypilot/SKILL.md or any
+    # of the per-workflow .claude/skills/cypilot-*/SKILL.md dirs, or
+    # .claude/agents/cypilot-*.md.
+    if agent == "claude":
+        for legacy_name in ("cf", "studio", "cypilot"):
+            legacy = project_root / ".claude" / "skills" / legacy_name / "SKILL.md"
+            if legacy.is_file():
+                return True
+        skills_dir = project_root / ".claude" / "skills"
+        if skills_dir.is_dir():
+            for d in skills_dir.iterdir():
+                if d.is_dir() and (d.name.startswith("cypilot-") or d.name == "cypilot"):
+                    return True
+        agents_dir = project_root / ".claude" / "agents"
+        if agents_dir.is_dir():
+            for f in agents_dir.iterdir():
+                if f.is_file() and f.name.startswith("cypilot-"):
+                    return True
 
     # ── Legacy Copilot fallback ───────────────────────────────────────────
     # A Constructor Studio-managed copilot-instructions.md (starts with
@@ -2061,15 +2094,26 @@ def _is_agent_installed(agent: str, project_root: Path) -> bool:
                     return True
             except (OSError, UnicodeDecodeError):
                 pass
-        for prompt_name in ("cf.prompt.md", "studio.prompt.md"):
+        for prompt_name in ("cf.prompt.md", "studio.prompt.md", "cypilot.prompt.md"):
             if (project_root / ".github" / "prompts" / prompt_name).is_file():
                 return True
+        prompts_dir = project_root / ".github" / "prompts"
+        if prompts_dir.is_dir():
+            for f in prompts_dir.iterdir():
+                if f.is_file() and f.name.startswith("cypilot-"):
+                    return True
+        legacy_marker = project_root / ".github" / ".cypilot-installed"
+        if legacy_marker.is_file():
+            return True
 
     # ── Legacy OpenAI fallback ────────────────────────────────────────────
     # Detect via Constructor Studio-specific artifacts inside .codex/
     # (agents/*.toml with follow-link) or via shared .agents/skills/
     # cf/SKILL.md when no other tool's marker is present.
     if agent == "openai":
+        legacy_marker = project_root / ".codex" / ".cypilot-installed"
+        if legacy_marker.is_file():
+            return True
         codex_agents = project_root / ".codex" / "agents"
         if codex_agents.is_dir():
             for f in codex_agents.iterdir():
@@ -2699,6 +2743,15 @@ def _process_skills(
                 skills_result["errors"].append("outputs must be an array of objects")
             else:
                 target_skill_abs = core_subpath(studio_root, "skills", "studio", "SKILL.md").resolve()
+                # Fall back to the legacy cypilot path when the studio path
+                # is absent — this covers cache states that copied the new
+                # `skills/studio/` subtree without its top-level SKILL.md
+                # (only `agents/` and `scripts/` were synced), and any
+                # pre-rebrand bootstrap that still uses `skills/cypilot/`.
+                if not target_skill_abs.is_file():
+                    legacy_skill_abs = core_subpath(studio_root, "skills", "cypilot", "SKILL.md").resolve()
+                    if legacy_skill_abs.is_file():
+                        target_skill_abs = legacy_skill_abs
                 if not target_skill_abs.is_file():
                     skills_result["errors"].append(
                         "Constructor Studio skill source not found (expected: " + target_skill_abs.as_posix() + "). "
