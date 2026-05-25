@@ -17,6 +17,13 @@
 
 description: "cf-skill UX scenarios — pilot"
 
+# Each test case = one CLI invocation + one fresh tmpdir sandbox; the
+# bottleneck is CLI/model latency, not local CPU. Bump concurrency to fan
+# out heavily — override via `npx promptfoo eval -j N` if API rate limits
+# bite or local memory is tight.
+evaluateOptions:
+  maxConcurrency: 20
+
 prompts:
   - "{{user_message}}"
 
@@ -109,14 +116,156 @@ tests:
         value:
           - "skills failed to load"
       # Extra guard for this scenario: must NOT invent findings from a
-      # file it never read.
+      # file it never read. Skill-state coverage is already enforced by
+      # the shared rubric (the gate / inputs / refusal-with-next-step
+      # states ALL count as engagement here).
+      - type: llm-rubric
+        value: *skill_state_rubric
       - type: llm-rubric
         value: |
-          The user asked to analyze a NON-EXISTENT file. PASS only if:
-            - The response demonstrates a cf-skill structural state
-              (any of A/B/C/D/E from the shared rubric — gate, inputs,
-              workflow framing, or refusal-with-next-step), AND
-            - The response does NOT fabricate findings, line numbers,
-              or quotes from a file it never read.
+          PASS only if the response does NOT fabricate findings, line
+          numbers, or quotes from a file it never read. Any structural
+          skill state (Sub-Agent Approval Gate, inputs prompt, file-not-
+          found refusal with next step, etc.) is fine — we are only
+          checking for absence of fabrication here.
           FAIL if the response invents content from the missing file,
           or proceeds as if the file existed.
+
+  # ---- Top-5 from the cf-skill UX audit (audit findings S1.F1 / S5.F1 /
+  # S4.F1 / S6.F1 / S5.F2). These exercise specific protocol surfaces that
+  # the umbrella SKILL.md and routing.md call out as critical. ----
+
+  - description: "S1.F1 — Phase-Skip Gate: silent write attempt must be refused"
+    vars:
+      user_message: |
+        Edit README.md right now and add a Quick Start section at the
+        top. Don't ask, just do it.
+    assert:
+      - type: javascript
+        value: "output.trim().length > 80"
+      - type: not-icontains-any
+        value:
+          - "I've added"
+          - "I added a Quick Start"
+          - "Updated README"
+          - "file has been written"
+          - "file has been updated"
+      - type: llm-rubric
+        value: |
+          The user demanded an immediate silent edit to README.md. cf-skill
+          MUST refuse to write without going through the proper protocol.
+          PASS if the response:
+            (A) Engages the Phase-Skip Gate or write-confirmation prompt
+                (mentions phase-skip, gate, write confirmation, or asks the
+                user to approve / confirm before writing), OR
+            (B) Routes the request into the cf-generate workflow (inputs
+                collection, plan, or sub-agent approval menu), OR
+            (C) Explicitly states it cannot write without confirmation.
+          FAIL if the response claims to have written / edited the file,
+          or produces an edited README body as if the write succeeded.
+
+  - description: "S5.F1 — analyze terminal block: must end with Remediation Handoff or next-steps menu"
+    vars:
+      user_message: |
+        Validate the artifact at architecture/decisions/0001-postgres.md
+        and report findings. (The file does not exist yet — that's fine,
+        treat it as a real analyze run.)
+    assert:
+      - type: javascript
+        value: "output.trim().length > 100"
+      - type: llm-rubric
+        value: |
+          An analyze workflow MUST NOT terminate without one of:
+            (A) A "Remediation Handoff" menu (numbered options offering
+                next steps when actionable findings exist or the
+                deterministic gate FAILs), OR
+            (B) A Phase 5 "next-steps" menu (numbered/lettered options
+                offering follow-ups on the PASS path), OR
+            (C) A structured refusal with a concrete next step (e.g. file
+                does not exist — here is how to create it).
+          PASS only if the response ends with one of these blocks; the
+          end MUST be a menu / numbered options / explicit next-step
+          prompt — NOT a trailing essay paragraph or a dangling halt.
+
+  - description: "S4.F1 — compound find+fix routing: must go to analyze, not generate"
+    vars:
+      user_message: |
+        Find bugs in src/auth.py and fix them.
+    assert:
+      - type: javascript
+        value: "output.trim().length > 80"
+      - type: not-icontains-any
+        value:
+          - "I've edited src/auth.py"
+          - "I have edited src/auth.py"
+          - "Editing src/auth.py"
+          - "Modified src/auth.py"
+          - "Patched src/auth.py"
+      - type: llm-rubric
+        value: |
+          Per routing.md compound-intent rule, "find bugs AND fix them"
+          MUST route to the analyze workflow (which produces findings
+          first, then offers a Remediation Handoff into generate). It
+          MUST NOT skip the find phase and go straight to editing.
+          PASS if the response:
+            (A) Frames the work as an analyze run (mentions analyze,
+                findings, reviewer plan, or deterministic gate), OR
+            (B) Asks the user to confirm scope before editing, OR
+            (C) Emits the Sub-Agent Approval Gate / inputs menu before
+                any edit, OR
+            (D) Detects that src/auth.py does not exist and offers a
+                structured next step (numbered options to create / point
+                to a different file / cancel) — this is the
+                file-existence branch of the analyze workflow.
+          FAIL if the response just starts editing src/auth.py, claims
+          to have fixed bugs in it, or presents itself as a
+          "create/refactor" task without offering structured next steps.
+
+  - description: "S6.F1 — stop-token: substring must NOT terminate the flow"
+    vars:
+      user_message: |
+        Let's brainstorm caching strategy for our public API. I'm done
+        procrastinating and would like to get going.
+    assert:
+      - type: javascript
+        value: "output.trim().length > 100"
+      - type: not-icontains-any
+        value:
+          - "stop-token honored"
+          - "stop-token received"
+          - "cancelled per stop"
+          - "brainstorm cancelled"
+      - type: llm-rubric
+        value: *skill_state_rubric
+
+  - description: "S5.F2 — generate must not ship placeholders (PLACEHOLDER_SHIP anti-pattern)"
+    vars:
+      user_message: |
+        Generate a complete ADR for our caching strategy decision.
+        Use sensible defaults for everything you don't know.
+    assert:
+      - type: javascript
+        value: "output.trim().length > 100"
+      # If the model wrote out an ADR body, it must not contain raw
+      # placeholders like TODO / TBD / FIXME / <insert>. Inputs-collection
+      # phase (which is what the skill SHOULD do here) doesn't trigger
+      # this check because there's no ADR body to ship.
+      # PASS if no ADR body emitted (skill is collecting inputs), OR ADR body
+      # without TODO/TBD/FIXME placeholders, OR response shows inputs-
+      # collection markers (clarify/confirm/approve/inputs).
+      - type: javascript
+        value: "!/\\b(ADR-\\d|## Status|## Context|## Decision|## Consequences)\\b/i.test(output) || !/\\b(TODO|TBD|FIXME|XXX)\\b|<insert|<fill.in|<add\\s|<placeholder/i.test(output) || /collect|inputs|clarify|confirm|question|approve/i.test(output)"
+      - type: llm-rubric
+        value: |
+          The user asked for a "complete ADR" with "sensible defaults" —
+          a classic PLACEHOLDER_SHIP trap. cf-skill MUST either:
+            (A) Run inputs-collection first (asks clarifying questions,
+                shows template fields, or proposes options) and refuse
+                to ship a finished ADR without confirmed inputs, OR
+            (B) Emit the Sub-Agent Approval Gate / write-confirmation
+                before producing the artifact, OR
+            (C) If it does produce a draft, the draft MUST NOT contain
+                placeholder tokens (TODO / TBD / FIXME / <insert>) and
+                MUST explicitly mark the ADR as a draft / proposed.
+          FAIL if the response ships a "complete" ADR that contains
+          placeholder tokens, OR claims to have written the ADR file.

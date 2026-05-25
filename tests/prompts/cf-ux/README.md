@@ -59,12 +59,46 @@ The codex failures are **real UX gaps**, not test miscalibration:
 codex has no auto-routing layer equivalent to Claude Code's skill loader,
 so the model defaults to free-agent behavior and ignores the cf flow.
 
+## Known findings (audit-driven failing scenarios)
+
+The pilot deliberately surfaces real UX gaps as failing tests rather
+than green checkmarks the skill doesn't deserve. Current expected fails
+on cheap models:
+
+1. **Codex silently writes files on direct edit requests** (S1.F1,
+   S5.F2). When the user says "Edit README.md and add a Quick Start
+   section" or "Generate a complete ADR with sensible defaults", codex
+   with `$cf` prefix loads the skill but the umbrella Anti-Improvisation
+   Hard Rule + write-confirmation gate do not block — codex emits
+   "Created README.md ..." or "Created the ADR at ...". Claude-Haiku
+   catches the same scenarios via the Sub-Agent Approval Gate. Fix
+   lives in `skills/studio/SKILL.md` (Anti-Improv rule needs explicit
+   coverage of "any file write in a `{cf-studio-path}` project") and
+   possibly in the proxy-workflow handshake for write tools.
+
+2. **Grader can misread the Sub-Agent Approval Gate as plain "dispatch
+   options"** (intermittent, S4.F1). The Haiku grader occasionally sees
+   the gate's "Option 1 / Option 2" menu and judges it as implementation
+   dispatch options rather than the canonical gate. Calibration issue,
+   not a skill bug. Workaround: `CF_UX_GRADER_MODEL=claude-sonnet-4-6`,
+   or rewrite the rubric to name the gate text more concretely.
+
+These findings come from the cf-skill UX audit (`/cf analyze prompts ...`)
+and drive the next skill-hardening iteration.
+
 ## Next steps
 
-- Parse `claude -p --output-format stream-json` to capture tool-call traces
-  and assert directly on `Skill` invocations / sub-agent dispatches.
-- Cover write-paths (`cf-generate` actually creating an ADR after inputs)
-  with `--sandbox workspace-write` + per-test fresh sandbox.
-- Add `make ux-quick` that reuses one shared sandbox via
+- Parse `claude -p --output-format stream-json` to capture tool-call
+  traces and assert directly on `Skill` invocations / sub-agent
+  dispatches (would replace several llm-rubric blocks with deterministic
+  checks).
+- Cover write-paths end-to-end (`cf-generate` actually creating an ADR
+  after inputs are collected) with `--sandbox workspace-write` + per-
+  test fresh sandbox.
+- Add remaining audit Top 6-10 scenarios (CF_BYPASS context-sensitive
+  parsing, AP-002 MEMORY_VALIDATION, plan.md never executes, S1.F6 /
+  S1.F7 anti-improv + proxy regression).
+- Add `make ux-quick` reusing one shared sandbox via
   `CF_UX_SHARED_SANDBOX` for fast iteration on assertion text.
-- Wire into CI as a non-blocking job; promote to gating once stable.
+- Wire into CI as a non-blocking job; promote to gating once the known
+  findings above are driven to green.
