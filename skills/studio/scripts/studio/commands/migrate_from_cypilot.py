@@ -666,9 +666,21 @@ def _run_followup_update(project_root: Path, *, yes: bool) -> tuple[int, Optiona
     # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-run-followup-update
     from .update import cmd_update
 
-    update_args = ["--project-root", project_root.as_posix(), "--no-interactive"]
+    update_args = ["--project-root", project_root.as_posix()]
     if yes:
+        # When the user opted into the migration with --yes the entire flow
+        # should auto-accept every diff (kit-update changes included). The
+        # legacy combination of `--no-interactive` + `--yes` caused the
+        # embedded kit-update sub-flow to auto-decline every file because
+        # `--no-interactive` was treated as a hard "decline all" upstream.
+        # Pass `--yes` alone so accept-everything wins.
         update_args.append("--yes")
+    else:
+        # User did not request `--yes`. We still need a non-blocking run
+        # (the migrator is not interactive past its own prompts), so
+        # suppress interactive prompts; any pending kit-diff is left to the
+        # follow-up `cfs kit update` step the migrator runs next.
+        update_args.append("--no-interactive")
 
     if not is_json_mode():
         return cmd_update(update_args), None

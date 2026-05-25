@@ -2282,10 +2282,25 @@ def update_kit(
         _merged_resources = _sync_manifest_resource_bindings(
             _manifest, config_dir, kit_slug,
         )
-        if source_version or _merged_resources:
+        # Bump core.toml version only when at least one diff was accepted —
+        # OR when there was nothing to diff in the first place (the kit was
+        # already current and the call exists to refresh manifest-derived
+        # resource bindings). Bumping after `partial` (everything declined)
+        # would mark the kit "current" against a remote it does not match,
+        # silently hiding the pending update on the next `cfs kit update`.
+        bumped_safe_to_record = (ver_status != "partial")
+        if (source_version and bumped_safe_to_record) or _merged_resources:
             _kit_root_rel = registered_kit_path if _manifest is not None else ""
+            # When all changes were declined, preserve the previously
+            # registered version so the next update sees the kit as
+            # outdated and re-prompts. Resource bindings still propagate.
+            if not bumped_safe_to_record:
+                _existing = _read_kits_from_core_toml(config_dir).get(kit_slug, {})
+                preserved_version = str(_existing.get("version") or "") or source_version
+            else:
+                preserved_version = source_version
             _register_kit_in_core_toml(
-                config_dir, kit_slug, source_version, studio_dir,
+                config_dir, kit_slug, preserved_version, studio_dir,
                 source=source, resources=_merged_resources, kit_path=_kit_root_rel,
             )
         # @cpt-end:cpt-studio-algo-kit-update:p1:inst-update-core-toml
