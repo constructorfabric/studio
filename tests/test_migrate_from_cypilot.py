@@ -285,7 +285,7 @@ def test_internal_migration_force_replace_copy_failure_returns_error_and_preserv
     assert out["status"] == "ERROR"
     assert out["project_root"] == tmp_path.as_posix()
     assert out["from_dir"] == "cypilot"
-    assert out["cf_constructor_dir"] == (tmp_path / ".cf-constructor").as_posix()
+    assert out["studio_dir"] == (tmp_path / ".cf-constructor").as_posix()
     assert out["actions"]["target_dir"] == "replace_failed"
     backups = out["backups"]
     assert len(backups) == 1
@@ -379,7 +379,7 @@ def test_internal_migration_create_copy_failure_returns_error_and_cleans_partial
     assert out["status"] == "ERROR"
     assert out["project_root"] == tmp_path.as_posix()
     assert out["from_dir"] == "cypilot"
-    assert out["cf_constructor_dir"] == (tmp_path / ".cf-constructor").as_posix()
+    assert out["studio_dir"] == (tmp_path / ".cf-constructor").as_posix()
     assert out["actions"]["target_dir"] == "create_failed"
     assert out["actions"]["target_dir_cleanup"] == "removed"
     assert "simulated create copy failure" in out["error"]
@@ -613,7 +613,7 @@ def test_init_migration_root_marker_write_failure_returns_json_without_update(
     assert out["status"] == "ERROR"
     assert out["project_root"] == tmp_path.as_posix()
     assert out["from_dir"] == "cypilot"
-    assert out["cf_constructor_dir"] == (tmp_path / ".cf-constructor").as_posix()
+    assert out["studio_dir"] == (tmp_path / ".cf-constructor").as_posix()
     assert out["rewrite_step"] == "root_agents"
     assert out["actions"]["target_dir"] == "created"
     assert out["actions"]["core_toml"] == "updated"
@@ -1381,7 +1381,7 @@ def test_implicit_migration_uses_install_dir_as_target(tmp_path, capsys, followu
     out = json.loads(capsys.readouterr().out)
     assert rc == 0
     assert out["status"] == "PASS"
-    assert out["cf_constructor_dir"] == (tmp_path / ".constructor-custom").as_posix()
+    assert out["studio_dir"] == (tmp_path / ".constructor-custom").as_posix()
     assert (tmp_path / ".constructor-custom" / "config" / "core.toml").is_file()
     assert not (tmp_path / ".cf-constructor").exists()
 
@@ -1405,7 +1405,7 @@ def test_implicit_migration_allows_install_dir_matching_legacy_dir(tmp_path, cap
     assert rc == 0
     assert out["status"] == "PASS"
     assert out["from_dir"] == ".bootstrap"
-    assert out["cf_constructor_dir"] == (tmp_path / ".bootstrap").as_posix()
+    assert out["studio_dir"] == (tmp_path / ".bootstrap").as_posix()
     assert out["actions"]["target_dir"] == "reused"
     assert out["actions"]["update"] == "PASS"
     assert (tmp_path / ".bootstrap" / "config" / "core.toml").is_file()
@@ -1578,7 +1578,7 @@ def test_update_accepting_coexisting_legacy_migrates_into_existing_constructor_d
             "status": "PASS",
             "project_root": kwargs["project_root"].as_posix(),
             "from_dir": kwargs["from_dir"],
-            "cf_constructor_dir": (kwargs["project_root"] / kwargs["to_dir"]).as_posix(),
+            "studio_dir": (kwargs["project_root"] / kwargs["to_dir"]).as_posix(),
             "dry_run": bool(kwargs["dry_run"]),
             "actions": {"target_dir": "replaced", "update": "PASS"},
         }
@@ -3112,7 +3112,7 @@ def test_human_migrate_ok_emits_header_details_actions_and_warnings(capsys):
         "dry_run": True,
         "project_root": "/tmp/proj",
         "from_dir": "cypilot",
-        "cf_constructor_dir": "/tmp/proj/.cf-constructor",
+        "studio_dir": "/tmp/proj/.cf-constructor",
         "actions": {"target_dir": "created", "update": "skipped"},
         "warnings": ["something to look at", "another"],
     }
@@ -3140,7 +3140,7 @@ def test_human_migrate_ok_omits_warnings_when_none(capsys):
         "dry_run": False,
         "project_root": "/tmp/proj",
         "from_dir": "cypilot",
-        "cf_constructor_dir": "/tmp/proj/.cf-constructor",
+        "studio_dir": "/tmp/proj/.cf-constructor",
         "actions": {"target_dir": "created"},
     }
 
@@ -3560,7 +3560,7 @@ def test_human_migrate_ok_surfaces_backup_paths_when_present(capsys):
         "dry_run": False,
         "project_root": "/tmp/proj",
         "from_dir": "cypilot",
-        "cf_constructor_dir": "/tmp/proj/.cf-constructor",
+        "studio_dir": "/tmp/proj/.cf-constructor",
         "actions": {"target_dir": "created", "update": "PASS"},
         "warnings": [],
         "backups": [

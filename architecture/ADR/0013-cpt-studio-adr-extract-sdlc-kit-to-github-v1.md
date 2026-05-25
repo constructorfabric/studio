@@ -24,7 +24,7 @@ decision-makers: project maintainer
   - [Changes to Studio Core](#changes-to-studio-core)
   - [Migration Plan (versions < 3.0.8 → GitHub v1.0.0)](#migration-plan-versions--308--github-v100)
   - [`core.toml` Kit Section (new format)](#coretoml-kit-section-new-format)
-  - [`cfs init` Kit Prompt](#cpt-init-kit-prompt)
+  - [`cfs init` Kit Prompt](#cfs-init-kit-prompt)
 - [Traceability](#traceability)
 
 <!-- /toc -->

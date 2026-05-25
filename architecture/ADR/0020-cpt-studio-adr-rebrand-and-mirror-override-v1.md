@@ -12,11 +12,16 @@ decision-makers: project maintainer
 
 - [Context and Problem Statement](#context-and-problem-statement)
 - [Decision Drivers](#decision-drivers)
+- [Considered Options](#considered-options)
 - [Decision Outcome](#decision-outcome)
   - [Rename Decisions](#rename-decisions)
   - [Mirror-Override Decisions](#mirror-override-decisions)
   - [Consequences](#consequences)
   - [Confirmation](#confirmation)
+- [Pros and Cons of the Options](#pros-and-cons-of-the-options)
+  - [Constructor Studio with mirror-override (chosen)](#constructor-studio-with-mirror-override-chosen)
+  - [Two-hop rename without mirror-override](#two-hop-rename-without-mirror-override)
+  - [Constructor Studio rename only, no mirror-override](#constructor-studio-rename-only-no-mirror-override)
 - [Mirror-Override Semantics](#mirror-override-semantics)
   - [Dual Config File Locations](#dual-config-file-locations)
   - [Read-Merge Order](#read-merge-order)
@@ -51,6 +56,12 @@ The v1.0.0 release collapses both hops: a cypilot install migrates **directly** 
 * **Zero-hop migration** — cypilot users migrate directly to Constructor Studio without a Cyber Constructor intermediate step
 * **Network flexibility** — enterprise users need mirror support without modifying source code or build scripts
 * **XDG compliance** — new installs default to XDG config dir; existing brand-home installs are preserved
+
+## Considered Options
+
+* **Constructor Studio with mirror-override (chosen)** — single-hop rename from cypilot directly to Constructor Studio combined with a global URL-redirect mechanism exposed via `cfs mirror`.
+* **Two-hop rename (Cypilot → Cyber Constructor → Constructor Studio) without mirror-override** — keep the intermediate Cyber Constructor name as a real migration target and defer mirror support to a later release.
+* **Constructor Studio rename only, no mirror-override** — apply the v1.0.0 rename but leave enterprise URL redirection to source patches or environment-variable hacks.
 
 ## Decision Outcome
 
@@ -128,6 +139,35 @@ Confirmed when:
 - `cfs mirror list` shows merged set with correct source path for each entry
 - Migrating a cypilot 3.9.0 project writes `.studio-workspace.toml` directly (no intermediate Cyber Constructor form)
 - All `cpt-cypilot-*` ID references in migrated projects are rewritten to `cpt-studio-*`
+
+## Pros and Cons of the Options
+
+### Constructor Studio with mirror-override (chosen)
+
+A single canonical name (`constructor-studio` / `cfs`) combined with a global URL-redirect layer (`cfs mirror`) backed by dual XDG/brand-home TOML configs.
+
+* Good, because cypilot users migrate in one hop with no intermediate Cyber Constructor artifacts
+* Good, because enterprise users can redirect every GitHub URL (API, kit, asset, init/update) without patching source
+* Good, because XDG-preferred write target satisfies platform conventions while preserving existing brand-home installs
+* Neutral, because legacy `cf-constructor-*` and `cypilot/` asset names remain resolvable for one migration window
+* Bad, because users who scripted the `cfc` CLI binary must update their scripts (one-time migration cost)
+
+### Two-hop rename without mirror-override
+
+Keep Cyber Constructor as a real intermediate state and ship mirror support later.
+
+* Good, because each rename hop is smaller and individually reversible
+* Bad, because cypilot users would be forced through two migrations within a short release window
+* Bad, because enterprise users behind mirrors remain blocked until a follow-up release
+* Bad, because the codebase carries two transitional brand names simultaneously, doubling rename surface area
+
+### Constructor Studio rename only, no mirror-override
+
+Apply the v1.0.0 rename but leave URL redirection to ad-hoc means.
+
+* Good, because the v1.0.0 change set is smaller and ships sooner
+* Bad, because enterprise / air-gapped users have no first-class redirection mechanism and must patch source or set per-call env vars
+* Bad, because deferring mirror support introduces a second config schema later, breaking the principle of a single canonical config layout from v1.0.0
 
 ---
 

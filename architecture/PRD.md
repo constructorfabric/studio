@@ -18,7 +18,6 @@
   - [4.2 Out of Scope](#42-out-of-scope)
 - [5. Functional Requirements](#5-functional-requirements)
   - [5.1 Core](#51-core)
-  - [Mirror Override](#mirror-override)
   - [5.2 SDLC Kit (EXTRACTED — External Package)](#52-sdlc-kit-extracted--external-package)
 - [6. Non-Functional Requirements](#6-non-functional-requirements)
   - [6.1 Module-Specific NFRs](#61-module-specific-nfrs)
@@ -417,7 +416,7 @@ The system MUST support a global mirror-override capability that allows users to
 **Actors**:
 `cpt-studio-actor-user`, `cpt-studio-actor-studio-cli`
 
-**Decision record**: ADR-0020 (`cpt-studio-adr-rebrand-and-mirror-override`) — see `architecture/ADR/0020-cpt-studio-adr-rebrand-and-mirror-override-v1.md`.
+**Decision record**: ADR-0020 — see `architecture/ADR/0020-cpt-studio-adr-rebrand-and-mirror-override-v1.md`.
 
 #### Studio DSL (CDSL)
 

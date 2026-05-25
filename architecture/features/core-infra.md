@@ -10,7 +10,7 @@
 - [2. Actor Flows (CDSL)](#2-actor-flows-cdsl)
   - [Global CLI Invocation](#global-cli-invocation)
   - [Project Initialization](#project-initialization)
-  - [Studio Migration](#studio-migration)
+  - [Cypilot Migration](#cypilot-migration)
 - [3. Processes / Business Logic (CDSL)](#3-processes--business-logic-cdsl)
   - [Resolve Skill Target](#resolve-skill-target)
   - [Route Command](#route-command)
@@ -25,6 +25,7 @@
   - [TOML Utilities](#toml-utilities)
   - [Registry Parsing](#registry-parsing)
   - [Context Loading](#context-loading)
+  - [Mirror Override](#mirror-override)
 - [4. States (CDSL)](#4-states-cdsl)
   - [Project Installation State](#project-installation-state)
 - [5. Definitions of Done](#5-definitions-of-done)
@@ -34,6 +35,7 @@
   - [Init Creates Full Config](#init-creates-full-config)
   - [Root AGENTS.md Integrity](#root-agentsmd-integrity)
   - [Usage Telemetry](#usage-telemetry)
+  - [5.x Mirror Override](#5x-mirror-override)
 - [6. Implementation Modules](#6-implementation-modules)
 - [7. Acceptance Criteria](#7-acceptance-criteria)
 
@@ -154,9 +156,9 @@ Enables users to install Studio globally, initialize it in any project with sens
 16. [x] - `p1` - Inject/update CLAUDE.md managed block for Claude agent integration - `inst-init-inject-claude`
 17. [x] - `p1` - Human-friendly formatters for init success and error output - `inst-init-format-output`
 
-### Studio Migration
+### Cypilot Migration
 
-- [x] `p1` - **ID**: `cpt-studio-flow-core-infra-migrate-from-studio`
+- [x] `p1` - **ID**: `cpt-studio-flow-core-infra-migrate-from-cypilot`
 
 **Actors**:
 
@@ -212,7 +214,9 @@ Enables users to install Studio globally, initialize it in any project with sens
 36. [x] - `p1` - Migrate core TOML kit keys, kit paths, kit sources, and obsolete system section - `inst-migrate-core-toml`
 37. [x] - `p1` - Migrate artifacts TOML systems from legacy kit slug to canonical SDLC kit slug - `inst-migrate-artifacts-toml`
 38. [x] - `p1` - Rewrite config markdown terminology and command references from Studio/cfs to Constructor Studio/cfs - `inst-migrate-config-markdown`
-39. [x] - `p1` - Render human migration summary with actions and warnings - `inst-human-output`
+39. [x] - `p1` - Rewrite the `{cypilot_path}` template placeholder to `{cf-studio-path}` across config TOML files (e.g. `pr-review.toml`) under the migrated config dir - `inst-migrate-config-toml-template-vars`
+40. [x] - `p1` - Run `cfs kit update` after migration so renamed kit sources pull their latest release from the canonical `constructorfabric/studio-kit-sdlc` (or the user's mirror); honor `--dry-run` by recording the planned action only - `inst-followup-kit-update`
+41. [x] - `p1` - Render human migration summary with actions and warnings - `inst-human-output`
 
 ## 3. Processes / Business Logic (CDSL)
 
@@ -452,6 +456,25 @@ Enables users to install Studio globally, initialize it in any project with sens
 - [x] - `p1` - Define context data model: LoadedKit, StudioContext dataclasses, imports - `inst-ctx-datamodel`
 - [x] - `p1` - Global context management: get/set/ensure context singleton, get_known_id_kinds query - `inst-ctx-globals`
 
+### Mirror Override
+
+- [ ] `p1` - **ID**: `cpt-studio-algo-core-infra-mirror-override`
+
+**Input**: URL to redirect (any default GitHub URL produced by Constructor Studio)
+
+**Output**: Rewritten URL after applying matching override, or the original URL when no override applies
+
+**Steps**:
+1. [ ] - `p1` - Load merged override entries from XDG (`${XDG_CONFIG_HOME:-~/.config}/constructor-studio/mirrors.toml`) and brand-home (`~/.constructor-studio/mirrors.toml`); brand-home wins on duplicate `from` key - `inst-load-overrides`
+2. [ ] - `p1` - Canonicalize the input URL: strip `https://` / `http://` / `ssh://` / `git@` prefix, trailing `.git`, trailing `/` - `inst-canonicalize-url`
+3. [ ] - `p1` - Apply longest-prefix match across the merged override `from` keys - `inst-longest-prefix-match`
+4. [ ] - `p1` - **IF** a match is found - `inst-if-match`
+   1. [ ] - `p1` - **RETURN** the rewritten URL with the matched `from` replaced by its `to` - `inst-return-rewritten`
+5. [ ] - `p1` - **ELSE** **RETURN** the original (un-rewritten) URL - `inst-return-original`
+
+**Supporting**:
+- [ ] - `p1` - TOML readers for both config locations, write-target resolution (existing brand-home wins, else existing XDG, else create XDG), `set_override` / `remove_override` / `list_overrides` helpers, URL canonicalizer - `inst-mirror-helpers`
+
 ## 4. States (CDSL)
 
 ### Project Installation State
@@ -585,13 +608,13 @@ The system **MUST** provide non-blocking usage telemetry in the CLI proxy that r
 - `cpt-studio-component-cli-proxy`
 - `cpt-studio-constraint-python-stdlib`
 
-## 5.x Mirror Override
+### 5.x Mirror Override
 
-- [ ] `p1` - **ID**: `cpt-studio-dod-core-infra-mirror-override`
+- [x] `p1` - **ID**: `cpt-studio-dod-core-infra-mirror-override`
 
 The system **MUST** provide a global mirror-override capability (`cfs mirror`) that intercepts and rewrites any default download or API URL before network operations are performed. This enables users who mirror GitHub repositories (e.g., on air-gapped networks, corporate proxies, or private GitHub Enterprise instances) to redirect Constructor Studio's default URLs without modifying source code or config files.
 
-### Design
+#### Design
 
 - **Module**: `src/studio_proxy/mirrors.py` exports `load_overrides()`, `apply_override(url) -> url`, `set_override(old, new)`, `remove_override(old)`, `list_overrides()`.
 - **Dual-location config**: overrides are stored in TOML files at two locations, read in merge order: (1) `${XDG_CONFIG_HOME:-~/.config}/constructor-studio/mirrors.toml` and (2) `~/.constructor-studio/mirrors.toml`. On duplicate `from` key the second location wins (brand-home overrides XDG).
@@ -606,7 +629,7 @@ The system **MUST** provide a global mirror-override capability (`cfs mirror`) t
 - **Match semantics**: longest-prefix match on the canonicalized URL. Applied before any GitHub API call, git clone, or asset download.
 - **Integration points**: `cache.py` `_resolve_api_base` and `download_and_cache`; `init`/`update` URL forwarding; kit `source = "github:..."` autodetect resolution.
 
-### CLI Verbs
+#### CLI Verbs
 
 ```
 cfs mirror override <old-url> <new-url>   # register or update an override
@@ -615,7 +638,7 @@ cfs mirror remove <old-url>              # delete an override
 cfs mirror clear                          # delete all overrides
 ```
 
-### Reference
+#### Reference
 
 See ADR-0020 (`architecture/ADR/0020-cpt-studio-adr-rebrand-and-mirror-override-v1.md`) for the full decision record including rationale, write-target resolution algorithm, and backwards-compatibility notes.
 
