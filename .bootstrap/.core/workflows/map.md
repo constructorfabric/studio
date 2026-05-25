@@ -1,7 +1,7 @@
 ---
 cf: true
 type: workflow
-name: cf-map
+name: map
 description: Build interactive dependency maps — scan markdown, source code, cpt references; detect cross-repo edges and phantom cpts; render HTML viewer or JSON
 version: 1.0
 purpose: Guide cfs map workflow from pre-flight through validation

@@ -422,6 +422,29 @@ def test_config_markdown_rewrite_contract_covers_all_supported_files(tmp_path):
         assert "{cypilot_path}" not in text
 
 
+def test_config_toml_template_vars_rewrites_cypilot_path_placeholder(tmp_path):
+    from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
+
+    _make_legacy_project(tmp_path)
+    pr_review_toml = tmp_path / "cypilot" / "config" / "pr-review.toml"
+    pr_review_toml.write_text(
+        '# pr-review config\n'
+        'path = "{cypilot_path}/foo"\n'
+        'unrelated = "value"\n',
+        encoding="utf-8",
+    )
+
+    rc, out = migrate_from_cypilot(project_root=tmp_path, from_dir="cypilot", skip_update=True)
+
+    assert rc == 0
+    assert out["status"] == "PASS"
+    migrated_toml = (tmp_path / ".cf-constructor" / "config" / "pr-review.toml").read_text(encoding="utf-8")
+    assert 'path = "{cf-studio-path}/foo"' in migrated_toml
+    assert "{cypilot_path}" not in migrated_toml
+    assert 'unrelated = "value"' in migrated_toml
+    assert "pr-review.toml" in out["actions"]["config_toml_template_vars"]
+
+
 def test_internal_migration_removes_duplicate_legacy_root_blocks(tmp_path):
     from cypilot.commands.migrate_from_cypilot import migrate_from_cypilot
 

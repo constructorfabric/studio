@@ -240,6 +240,7 @@ def migrate_from_cypilot(
         # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-dry-run-actions
         actions["core_toml"] = "dry_run"
         actions["artifacts_toml"] = "dry_run"
+        actions["config_toml_template_vars"] = "dry_run"
         actions["config_markdown"] = "dry_run"
         actions["root_agents"] = "dry_run"
         actions["root_claude"] = "dry_run"
@@ -762,6 +763,8 @@ def _run_post_copy_rewrites(
              target_dir / "config" / "artifacts.toml",
              warnings=warnings,
          )),
+        ("config_toml_template_vars",
+         lambda: _migrate_config_toml_template_vars(target_dir / "config")),
         ("config_markdown", lambda: _migrate_config_markdown(target_dir / "config")),
         ("root_agents", lambda: _replace_root_block_with_warnings(project_root / "AGENTS.md", target_rel, warnings)),
         ("root_claude", lambda: _replace_root_block_with_warnings(project_root / "CLAUDE.md", target_rel, warnings)),
