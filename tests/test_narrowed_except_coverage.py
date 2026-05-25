@@ -435,7 +435,7 @@ class TestCliAgentsInjectionError(unittest.TestCase):
             root = Path(td)
             (root / ".git").mkdir()
             (root / "AGENTS.md").write_text(
-                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "cpt"\n```\n<!-- /@cf:root-agents -->\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "cpt"\n```\n<!-- /@cf:root-agents -->\n',
                 encoding="utf-8",
             )
             cpt = root / "cpt"
@@ -514,7 +514,7 @@ class TestUpdateValidateKitsFailure(unittest.TestCase):
                 cpt.mkdir()
                 (cpt / "config").mkdir(parents=True)
                 (root / "AGENTS.md").write_text(
-                    '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "cpt"\n```\n<!-- /@cf:root-agents -->\n',
+                    '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "cpt"\n```\n<!-- /@cf:root-agents -->\n',
                     encoding="utf-8",
                 )
                 _write_toml(cpt / "config" / "core.toml", {"version": "1.0"})

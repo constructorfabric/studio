@@ -78,7 +78,7 @@ scope = "project"
 _V1_COMPAT = """\
 [manifest]
 version = "1.0"
-root = "{cf-constructor-path}/config/kits/test"
+root = "{cf-studio-path}/config/kits/test"
 
 [[resources]]
 id = "agents_md"
@@ -622,7 +622,7 @@ def test_v1_resource_id_rejects_hyphens():
     toml_content = """\
 [manifest]
 version = "1.0"
-root = "{cf-constructor-path}/config/kits/test"
+root = "{cf-studio-path}/config/kits/test"
 
 [[resources]]
 id = "my-resource"

@@ -613,7 +613,7 @@ class TestGenerateReviewArtifacts:
                     """\
                     <!-- @cf:root-agents -->
                     ```toml
-                    cf-constructor-path = "cypilot"
+                    cf-studio-path = "cypilot"
                     ```
                     <!-- /@cf:root-agents -->
                     """

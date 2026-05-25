@@ -84,7 +84,7 @@ def test_load_template_vars_invalid_json(monkeypatch, tmp_path):
 def test_flatten_vars_with_nested_kits(tmp_path):
     """Kit resources produce three lookup keys: bare, qualified, fully qualified."""
     data = {
-        "system": {"project_root": str(tmp_path), "cf-constructor-path": str(tmp_path / ".bootstrap")},
+        "system": {"project_root": str(tmp_path), "cf-studio-path": str(tmp_path / ".bootstrap")},
         "kits": {
             "sdlc": {
                 "adr_template": str(tmp_path / "kits" / "sdlc" / "ADR.md"),
@@ -105,10 +105,10 @@ def test_flatten_vars_with_nested_kits(tmp_path):
 
 
 def test_flatten_vars_legacy_cypilot_path_alias(tmp_path):
-    """`cypilot_path` alias is auto-populated from `cf-constructor-path`."""
-    data = {"system": {"cf-constructor-path": str(tmp_path / ".bootstrap")}}
+    """`cypilot_path` alias is auto-populated from `cf-studio-path`."""
+    data = {"system": {"cf-studio-path": str(tmp_path / ".bootstrap")}}
     flat = map_cli._flatten_vars(data, tmp_path)
-    assert flat["cf-constructor-path"] == ".bootstrap"
+    assert flat["cf-studio-path"] == ".bootstrap"
     assert flat["cypilot_path"] == ".bootstrap"
 
 
@@ -126,9 +126,9 @@ def test_count_systems_invalid_toml(tmp_path):
 
 
 def test_skip_dirs_for_meta_includes_adapter(tmp_path):
-    """When CLAUDE.md declares cf-constructor-path, that adapter is in skip_dirs."""
+    """When CLAUDE.md declares cf-studio-path, that adapter is in skip_dirs."""
     (tmp_path / "CLAUDE.md").write_text(
-        'cf-constructor-path = ".bootstrap"\n', encoding="utf-8"
+        'cf-studio-path = ".bootstrap"\n', encoding="utf-8"
     )
     skips = map_cli.skip_dirs_for_meta(tmp_path)
     assert ".git" in skips

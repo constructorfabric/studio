@@ -744,7 +744,7 @@ class TestCLIHelpHumanMode(_HumanModeBase):
             rc = main(["--help"])
         self.assertEqual(rc, 0)
         out = buf.getvalue()
-        self.assertIn("Cyber Constructor CLI", out)
+        self.assertIn("Constructor Studio CLI", out)
         self.assertIn("validate", out)
         self.assertIn("--json", out)
 
@@ -754,7 +754,7 @@ class TestCLIHelpHumanMode(_HumanModeBase):
         with redirect_stderr(buf):
             rc = main([])
         self.assertEqual(rc, 0)
-        self.assertIn("Cyber Constructor CLI", buf.getvalue())
+        self.assertIn("Constructor Studio CLI", buf.getvalue())
 
 
 # ---------------------------------------------------------------------------
@@ -777,7 +777,7 @@ class TestHumanInitOk(_HumanModeBase):
                 {"sdlc": {"files_written": 10, "artifact_kinds": ["PRD", "DESIGN"]}},
             )
         out = buf.getvalue()
-        self.assertIn("Cyber Constructor Init", out)
+        self.assertIn("Constructor Studio Init", out)
         self.assertIn("MyProject", out)
         self.assertIn("Core files", out)
         self.assertIn("sdlc", out)
@@ -896,7 +896,7 @@ class TestReadExistingInstall(unittest.TestCase):
         with TemporaryDirectory() as td:
             root = Path(td)
             agents = root / "AGENTS.md"
-            agents.write_text(f"{MARKER_START}\n```toml\ncf-constructor-path = \"missing\"\n```\n")
+            agents.write_text(f"{MARKER_START}\n```toml\ncf-studio-path = \"missing\"\n```\n")
             result = _read_existing_install(root)
             self.assertIsNone(result)
 
@@ -1084,8 +1084,8 @@ class TestHumanUpdateOk(_HumanModeBase):
                 "cypilot_dir": "/tmp/proj/.cf-constructor",
             })
         out = buf.getvalue()
-        self.assertIn("Cyber Constructor Update", out)
-        self.assertIn("Cyber Constructor dir", out)
+        self.assertIn("Constructor Studio Update", out)
+        self.assertIn("Constructor Studio dir", out)
         self.assertNotIn("Cypilot Update", out)
         self.assertNotIn("Cypilot dir", out)
 
@@ -1098,7 +1098,7 @@ class TestBrandContractPinned(unittest.TestCase):
         self.assertEqual(WORKSPACE_CONFIG_FILENAME, ".cf-constructor-workspace.toml")
 
     def test_init_inject_writes_new_marker_and_key(self):
-        """Fresh _inject_root_agents writes @cf:root-agents + cf-constructor-path (no legacy)."""
+        """Fresh _inject_root_agents writes @cf:root-agents + cf-studio-path (no legacy)."""
         from studio.commands.init import _inject_root_agents
         from tempfile import TemporaryDirectory
         from pathlib import Path
@@ -1108,7 +1108,7 @@ class TestBrandContractPinned(unittest.TestCase):
             _inject_root_agents(root, ".cf-constructor")
             text = (root / "AGENTS.md").read_text(encoding="utf-8")
             self.assertIn("<!-- @cf:root-agents -->", text)
-            self.assertIn('cf-constructor-path = ".cf-constructor"', text)
+            self.assertIn('cf-studio-path = ".cf-constructor"', text)
             self.assertNotIn("@cpt:root-agents", text)
             self.assertNotIn("cypilot_path", text)
 
@@ -1129,7 +1129,7 @@ class TestBrandContractPinned(unittest.TestCase):
                         ".cf-constructor", "MyApp", {},
                     )
                 out = buf.getvalue()
-                self.assertIn("Cyber Constructor", out)
+                self.assertIn("Constructor Studio", out)
                 self.assertNotIn("Cypilot Init", out)
                 self.assertNotIn("cypilot dir", out.lower())
         finally:

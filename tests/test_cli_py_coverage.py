@@ -30,7 +30,7 @@ def _write_json(path: Path, data: dict) -> None:
 def _bootstrap_project_root(root: Path, adapter_rel: str = "adapter") -> Path:
     (root / ".git").mkdir()
     (root / "AGENTS.md").write_text(
-        f'<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "{adapter_rel}"\n```\n',
+        f'<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "{adapter_rel}"\n```\n',
         encoding="utf-8",
     )
     adapter = root / adapter_rel
@@ -1724,7 +1724,7 @@ class TestInitReadExistingInstall(unittest.TestCase):
         with TemporaryDirectory() as td:
             root = Path(td)
             (root / "AGENTS.md").write_text(
-                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "nonexistent"\n```\n<!-- /@cf:root-agents -->\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "nonexistent"\n```\n<!-- /@cf:root-agents -->\n',
                 encoding="utf-8",
             )
             self.assertIsNone(_read_existing_install(root))
@@ -1735,7 +1735,7 @@ class TestInitReadExistingInstall(unittest.TestCase):
             root = Path(td)
             (root / "cpt").mkdir()
             (root / "AGENTS.md").write_text(
-                '<!-- @cf:root-agents -->\n```toml\n"cf-constructor-path" = "cpt"\n```\n<!-- /@cf:root-agents -->\n',
+                '<!-- @cf:root-agents -->\n```toml\n"cf-studio-path" = "cpt"\n```\n<!-- /@cf:root-agents -->\n',
                 encoding="utf-8",
             )
             self.assertEqual(_read_existing_install(root), "cpt")
@@ -1764,7 +1764,7 @@ class TestInjectRootAgents(unittest.TestCase):
             action = _inject_root_agents(root, "cypilot")
             self.assertEqual(action, "updated")
             content = (root / "AGENTS.md").read_text(encoding="utf-8")
-            self.assertIn("cf-constructor-path", content)
+            self.assertIn("cf-studio-path", content)
             self.assertIn("User stuff", content)
 
     def test_unchanged_when_current(self):
@@ -2237,7 +2237,7 @@ class TestCLIPyCoverageListIdsBranches(unittest.TestCase):
             (adapter / "config").mkdir(parents=True)
             (adapter / "config" / "AGENTS.md").write_text("# Test\n", encoding="utf-8")
             (git_root / "AGENTS.md").write_text(
-                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "adapter"\n```\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "adapter"\n```\n',
                 encoding="utf-8",
             )
 

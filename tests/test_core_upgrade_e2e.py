@@ -1,5 +1,5 @@
 """
-DISABLED for Cyber Constructor 4.0.0 — breaking changes in default paths,
+DISABLED for Constructor Studio 4.0.0 — breaking changes in default paths,
 template variable, skill names, and agent names mean v3.x → 4.0.0 upgrade
 paths cannot be exercised. The 4.0.0 release is intentionally a fresh start
 with no migration; this test will be re-enabled (or rewritten for 4.x → 4.y
@@ -206,7 +206,7 @@ def _init_project(root: Path, cache_dir: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 @unittest.skip(
-    "Disabled for Cyber Constructor 4.0.0: breaking changes in default paths, "
+    "Disabled for Constructor Studio 4.0.0: breaking changes in default paths, "
     "template variable name, skill names, and agent names mean v3.x -> 4.0.0 "
     "upgrade paths cannot be exercised. 4.0.0 is intentionally a fresh start "
     "with no migration. Re-enable (or rewrite for 4.x -> 4.y upgrades) in a "

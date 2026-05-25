@@ -358,32 +358,32 @@ def test_flatten_vars_basic():
     from studio.commands.map.cli import _flatten_vars
     data = {
         "system": {
-            "cf-constructor-path": ".bootstrap",
+            "cf-studio-path": ".bootstrap",
             "project_root": "/some/project",
         },
         "kits": {},
     }
     result = _flatten_vars(data, Path("/some/project"))
-    assert "cf-constructor-path" in result
+    assert "cf-studio-path" in result
     # project_root relative to itself should be "." which gets special handling
     assert isinstance(result, dict)
 
 
 def test_flatten_vars_legacy_alias():
-    """_flatten_vars should set cypilot_path from cf-constructor-path when missing."""
+    """_flatten_vars should set cypilot_path from cf-studio-path when missing."""
     from studio.commands.map.cli import _flatten_vars
     data = {
-        "system": {"cf-constructor-path": "/some/project/.bootstrap"},
+        "system": {"cf-studio-path": "/some/project/.bootstrap"},
         "kits": {},
     }
     result = _flatten_vars(data, Path("/some/project"))
-    assert "cf-constructor-path" in result
+    assert "cf-studio-path" in result
     # Legacy alias: cypilot_path should be set
-    if "cf-constructor-path" in result and "cypilot_path" not in result:
+    if "cf-studio-path" in result and "cypilot_path" not in result:
         # This is the branch we're testing
         pass
     # Actually the alias is set when cypilot_path is not present
-    assert "cypilot_path" in result or "cf-constructor-path" in result
+    assert "cypilot_path" in result or "cf-studio-path" in result
 
 
 def test_flatten_vars_with_kits():

@@ -972,7 +972,7 @@ def test_skill_completion_invariants_match_handoff_workflows() -> None:
 def test_skill_requires_session_approval_before_native_subagent_dispatch() -> None:
     """Native sub-agent dispatch requires explicit user approval once per session.
 
-    The platform may expose sub-agent tools, but Cyber Constructor must still
+    The platform may expose sub-agent tools, but Constructor Studio must still
     ask before first use and remember approval for the rest of the session.
     """
     repo_root = Path(__file__).resolve().parents[1]
@@ -1372,12 +1372,12 @@ def test_analyze_methodologies_are_lazy_and_one_per_subagent() -> None:
     ).read_text(encoding="utf-8")
 
     forbidden = [
-        "ALWAYS open and follow `{cf-constructor-path}/.core/requirements/code-checklist.md`",
-        "ALWAYS open and follow `{cf-constructor-path}/.core/requirements/bug-finding.md`",
-        "ALWAYS open and follow `{cf-constructor-path}/.core/requirements/prompt-engineering.md`",
-        "ALWAYS open and follow `{cf-constructor-path}/.core/requirements/prompt-bug-finding.md`",
+        "ALWAYS open and follow `{cf-studio-path}/.core/requirements/code-checklist.md`",
+        "ALWAYS open and follow `{cf-studio-path}/.core/requirements/bug-finding.md`",
+        "ALWAYS open and follow `{cf-studio-path}/.core/requirements/prompt-engineering.md`",
+        "ALWAYS open and follow `{cf-studio-path}/.core/requirements/prompt-bug-finding.md`",
         "open `prompt-engineering.md` and `prompt-bug-finding.md`",
-        "load `{cf-constructor-path}/.core/requirements/code-checklist.md`",
+        "load `{cf-studio-path}/.core/requirements/code-checklist.md`",
     ]
     for text in forbidden:
         assert text not in preamble

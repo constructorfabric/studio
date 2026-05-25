@@ -189,9 +189,9 @@ def test_walk_files_skips_dir_in_nested_path(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_detect_adapter_dir_from_claude_md(tmp_path):
-    """_detect_adapter_dir reads cf-constructor-path from CLAUDE.md."""
+    """_detect_adapter_dir reads cf-studio-path from CLAUDE.md."""
     claude_md = tmp_path / "CLAUDE.md"
-    claude_md.write_text('cf-constructor-path = ".mybootstrap"\n', encoding="utf-8")
+    claude_md.write_text('cf-studio-path = ".mybootstrap"\n', encoding="utf-8")
     result = _detect_adapter_dir(tmp_path)
     assert result == ".mybootstrap"
 
@@ -221,7 +221,7 @@ def test_detect_adapter_dir_malformed_content(tmp_path):
 def test_detect_adapter_dir_trailing_slash_stripped(tmp_path):
     """_detect_adapter_dir strips trailing slash from path value."""
     claude_md = tmp_path / "CLAUDE.md"
-    claude_md.write_text('cf-constructor-path = ".bootstrap/"\n', encoding="utf-8")
+    claude_md.write_text('cf-studio-path = ".bootstrap/"\n', encoding="utf-8")
     result = _detect_adapter_dir(tmp_path)
     # Path(".bootstrap/").name == ".bootstrap"
     assert result == ".bootstrap"
@@ -230,7 +230,7 @@ def test_detect_adapter_dir_trailing_slash_stripped(tmp_path):
 def test_detect_adapter_dir_uses_basename_only(tmp_path):
     """_detect_adapter_dir returns only the basename, not full path."""
     claude_md = tmp_path / "CLAUDE.md"
-    claude_md.write_text('cf-constructor-path = "subdir/.adapter"\n', encoding="utf-8")
+    claude_md.write_text('cf-studio-path = "subdir/.adapter"\n', encoding="utf-8")
     result = _detect_adapter_dir(tmp_path)
     assert result == ".adapter"
 
@@ -255,7 +255,7 @@ def test_scan_repo_include_adapter_false(tmp_path):
     (adapter_dir / "config.md").write_text("# Config\n", encoding="utf-8")
     (tmp_path / "doc.md").write_text("# Doc\n", encoding="utf-8")
     claude_md = tmp_path / "CLAUDE.md"
-    claude_md.write_text('cf-constructor-path = ".bootstrap"\n', encoding="utf-8")
+    claude_md.write_text('cf-studio-path = ".bootstrap"\n', encoding="utf-8")
 
     nodes = scan_repo(ScanOptions(
         project_root=tmp_path,
@@ -275,7 +275,7 @@ def test_scan_repo_include_adapter_true(tmp_path):
     (adapter_dir / "config.md").write_text("# Config\n", encoding="utf-8")
     (tmp_path / "doc.md").write_text("# Doc\n", encoding="utf-8")
     claude_md = tmp_path / "CLAUDE.md"
-    claude_md.write_text('cf-constructor-path = ".bootstrap"\n', encoding="utf-8")
+    claude_md.write_text('cf-studio-path = ".bootstrap"\n', encoding="utf-8")
 
     nodes = scan_repo(ScanOptions(
         project_root=tmp_path,

@@ -34,7 +34,7 @@ def _make_kit_with_manifest(tmp_path: Path) -> Path:
     _write_manifest(kit, """\
         [manifest]
         version = "1.0"
-        root = "{cf-constructor-path}/config/kits/{slug}"
+        root = "{cf-studio-path}/config/kits/{slug}"
         user_modifiable = true
 
         [[resources]]
@@ -70,7 +70,7 @@ class TestLoadManifest:
         assert m is not None
         assert isinstance(m, Manifest)
         assert m.version == "1.0"
-        assert m.root == "{cf-constructor-path}/config/kits/{slug}"
+        assert m.root == "{cf-studio-path}/config/kits/{slug}"
         assert m.user_modifiable is True
         assert len(m.resources) == 2
 
@@ -189,7 +189,7 @@ class TestLoadManifest:
         """)
         m = load_manifest(kit)
         assert m is not None
-        assert m.root == "{cf-constructor-path}/config/kits/{slug}"
+        assert m.root == "{cf-studio-path}/config/kits/{slug}"
         assert m.user_modifiable is True
         assert m.resources[0].user_modifiable is True
         assert m.resources[0].description == ""
@@ -217,7 +217,7 @@ class TestValidateManifest:
 
         m = Manifest(
             version="1.0",
-            root="{cf-constructor-path}/config/kits/{slug}",
+            root="{cf-studio-path}/config/kits/{slug}",
             user_modifiable=True,
             resources=[
                 ManifestResource(id="foo", source="a.md", default_path="a.md", type="file"),
@@ -235,7 +235,7 @@ class TestValidateManifest:
 
         m = Manifest(
             version="1.0",
-            root="{cf-constructor-path}/config/kits/{slug}",
+            root="{cf-studio-path}/config/kits/{slug}",
             user_modifiable=True,
             resources=[
                 ManifestResource(
@@ -257,7 +257,7 @@ class TestValidateManifest:
 
         m = Manifest(
             version="1.0",
-            root="{cf-constructor-path}/config/kits/{slug}",
+            root="{cf-studio-path}/config/kits/{slug}",
             user_modifiable=True,
             resources=[
                 ManifestResource(
@@ -280,7 +280,7 @@ class TestValidateManifest:
 
         m = Manifest(
             version="1.0",
-            root="{cf-constructor-path}/config/kits/{slug}",
+            root="{cf-studio-path}/config/kits/{slug}",
             user_modifiable=True,
             resources=[
                 ManifestResource(
@@ -303,7 +303,7 @@ class TestValidateManifest:
 
         m = Manifest(
             version="1.0",
-            root="{cf-constructor-path}/config/kits/{slug}",
+            root="{cf-studio-path}/config/kits/{slug}",
             user_modifiable=True,
             resources=[
                 ManifestResource(
@@ -324,7 +324,7 @@ class TestValidateManifest:
 
         m = Manifest(
             version="1.0",
-            root="{cf-constructor-path}/config/kits/{slug}",
+            root="{cf-studio-path}/config/kits/{slug}",
             user_modifiable=True,
             resources=[
                 ManifestResource(
@@ -345,7 +345,7 @@ class TestValidateManifest:
 
         m = Manifest(
             version="1.0",
-            root="{cf-constructor-path}/config/kits/{slug}",
+            root="{cf-studio-path}/config/kits/{slug}",
             user_modifiable=True,
             resources=[
                 ManifestResource(

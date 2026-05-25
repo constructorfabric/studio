@@ -89,7 +89,7 @@ def bootstrap_test_project(
     root.mkdir(parents=True, exist_ok=True)
     (root / ".git").mkdir(exist_ok=True)
     (root / "AGENTS.md").write_text(
-        f'<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "{adapter_rel}"\n```\n<!-- /@cf:root-agents -->\n',
+        f'<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "{adapter_rel}"\n```\n<!-- /@cf:root-agents -->\n',
         encoding="utf-8",
     )
     adapter = root / adapter_rel

@@ -222,7 +222,7 @@ class TestCmdUpdateErrors(unittest.TestCase):
             root = Path(td)
             (root / ".git").mkdir()
             (root / "AGENTS.md").write_text(
-                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "cpt"\n```\n<!-- /@cf:root-agents -->\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "cpt"\n```\n<!-- /@cf:root-agents -->\n',
                 encoding="utf-8",
             )
             cwd = os.getcwd()
@@ -244,7 +244,7 @@ class TestCmdUpdateErrors(unittest.TestCase):
             cpt = root / "cpt"
             cpt.mkdir()
             (root / "AGENTS.md").write_text(
-                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "cpt"\n```\n<!-- /@cf:root-agents -->\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "cpt"\n```\n<!-- /@cf:root-agents -->\n',
                 encoding="utf-8",
             )
             cwd = os.getcwd()
@@ -1287,7 +1287,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
             cache = Path(td) / "cache"
             cypilot_dir = self._make_project_with_agents(root, cache)
 
-            # Create Cyber Constructor-specific windsurf marker file
+            # Create Constructor Studio-specific windsurf marker file
             wf = root / ".windsurf" / "workflows" / "cf-constructor.md"
             wf.parent.mkdir(parents=True)
             wf.write_text("old", encoding="utf-8")
@@ -1312,7 +1312,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
             cache = Path(td) / "cache"
             cypilot_dir = self._make_project_with_agents(root, cache)
 
-            # Create Cyber Constructor-specific windsurf marker file
+            # Create Constructor Studio-specific windsurf marker file
             wf = root / ".windsurf" / "workflows" / "cf-constructor.md"
             wf.parent.mkdir(parents=True)
             wf.write_text("old", encoding="utf-8")
@@ -1361,7 +1361,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            # Create Cyber Constructor-specific windsurf marker file
+            # Create Constructor Studio-specific windsurf marker file
             wf = root / ".windsurf" / "workflows" / "cf-constructor.md"
             wf.parent.mkdir(parents=True)
             wf.write_text("old", encoding="utf-8")
@@ -1396,7 +1396,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
             cache = Path(td) / "cache"
             cypilot_dir = self._make_project_with_agents(root, cache)
 
-            # Create Cyber Constructor-specific cursor file + Claude skill file
+            # Create Constructor Studio-specific cursor file + Claude skill file
             cursor_cmd = root / ".cursor" / "commands" / "cf-constructor.md"
             cursor_cmd.parent.mkdir(parents=True)
             cursor_cmd.write_text("old", encoding="utf-8")
@@ -1412,7 +1412,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
             self.assertIn("cursor", result)
             # claude has .claude/skills/cf-constructor/SKILL.md → regenerated
             self.assertIn("claude", result)
-            # windsurf has no Cyber Constructor-specific file → not regenerated
+            # windsurf has no Constructor Studio-specific file → not regenerated
             self.assertNotIn("windsurf", result)
 
     def test_shared_agents_skills_does_not_trigger_all(self):
@@ -1556,7 +1556,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
 
             marker = root / ".github" / ".cf-constructor-installed"
             marker.parent.mkdir(parents=True, exist_ok=True)
-            marker.write_text("# Cyber Constructor Copilot integration marker\n", encoding="utf-8")
+            marker.write_text("# Constructor Studio Copilot integration marker\n", encoding="utf-8")
 
             result = _maybe_regenerate_agents(
                 {"skills": "updated"}, {}, root, cypilot_dir,
@@ -1613,7 +1613,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
             cache = Path(td) / "cache"
             cypilot_dir = self._make_project_with_agents(root, cache)
 
-            # Mixed install: cursor marker + .codex/agents/ with Cyber Constructor-generated toml
+            # Mixed install: cursor marker + .codex/agents/ with Constructor Studio-generated toml
             cursor_cmd = root / ".cursor" / "commands" / "cf-constructor.md"
             cursor_cmd.parent.mkdir(parents=True)
             cursor_cmd.write_text("old", encoding="utf-8")
@@ -1622,7 +1622,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
             codex_agent.write_text(
                 'name = "cf-constructor-ralphex"\n'
                 'developer_instructions = """\n'
-                'ALWAYS open and follow `{cf-constructor-path}/.core/prompts/ralphex.md`\n'
+                'ALWAYS open and follow `{cf-studio-path}/.core/prompts/ralphex.md`\n'
                 '"""\n',
                 encoding="utf-8",
             )
@@ -1686,7 +1686,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
 
             legacy = root / ".windsurf" / "skills" / "cypilot" / "SKILL.md"
             legacy.parent.mkdir(parents=True, exist_ok=True)
-            legacy.write_text("ALWAYS open and follow `{cf-constructor-path}/.core/skills/cypilot/SKILL.md`\n")
+            legacy.write_text("ALWAYS open and follow `{cf-studio-path}/.core/skills/cypilot/SKILL.md`\n")
 
             result = _maybe_regenerate_agents(
                 {"skills": "updated"}, {}, root, cypilot_dir,
@@ -1705,7 +1705,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
 
             legacy = root / ".cursor" / "rules" / "studio.mdc"
             legacy.parent.mkdir(parents=True, exist_ok=True)
-            legacy.write_text("ALWAYS open and follow `{cf-constructor-path}/.core/skills/cypilot/SKILL.md`\n")
+            legacy.write_text("ALWAYS open and follow `{cf-studio-path}/.core/skills/cypilot/SKILL.md`\n")
 
             result = _maybe_regenerate_agents(
                 {"skills": "updated"}, {}, root, cypilot_dir,
@@ -2019,10 +2019,10 @@ class TestMigrateKitSources(unittest.TestCase):
                 "kits": {"sdlc": {"path": "config/kits/sdlc"}},
             }, config / "core.toml")
             result = _migrate_kit_sources(config)
-            self.assertEqual(result, {"sdlc": "github:cyberfabric/cyber-constructor-kit-sdlc"})
+            self.assertEqual(result, {"sdlc": "github:constructorfabric/studio-kit-sdlc"})
             with open(config / "core.toml", "rb") as f:
                 data = tomllib.load(f)
-            self.assertEqual(data["kits"]["sdlc"]["source"], "github:cyberfabric/cyber-constructor-kit-sdlc")
+            self.assertEqual(data["kits"]["sdlc"]["source"], "github:constructorfabric/studio-kit-sdlc")
 
     def test_unknown_kit_skipped(self):
         from studio.commands.update import _migrate_kit_sources
@@ -2351,7 +2351,7 @@ def _make_kit_source_with_manifest(td: Path, slug: str = "testkit") -> Path:
     (kit / "manifest.toml").write_text(textwrap.dedent("""\
         [manifest]
         version = "1.0"
-        root = "{cf-constructor-path}/config/kits/{slug}"
+        root = "{cf-studio-path}/config/kits/{slug}"
         user_modifiable = false
 
         [[resources]]
@@ -2555,7 +2555,7 @@ class TestCmdUpdateManifestMigration(unittest.TestCase):
 
             # AGENTS.md with cypilot_path
             (root / "AGENTS.md").write_text(
-                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "cypilot"\n```\n<!-- /@cf:root-agents -->\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "cypilot"\n```\n<!-- /@cf:root-agents -->\n',
                 encoding="utf-8",
             )
 
@@ -2568,7 +2568,7 @@ class TestCmdUpdateManifestMigration(unittest.TestCase):
             (kit_src / "manifest.toml").write_text(textwrap.dedent("""\
                 [manifest]
                 version = "1.0"
-                root = "{cf-constructor-path}/config/kits/{slug}"
+                root = "{cf-studio-path}/config/kits/{slug}"
                 user_modifiable = false
 
                 [[resources]]
@@ -2705,7 +2705,7 @@ class TestCmdUpdateManifestMigration(unittest.TestCase):
             })
 
             (root / "AGENTS.md").write_text(
-                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "cypilot"\n```\n<!-- /@cf:root-agents -->\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "cypilot"\n```\n<!-- /@cf:root-agents -->\n',
                 encoding="utf-8",
             )
 
@@ -2715,7 +2715,7 @@ class TestCmdUpdateManifestMigration(unittest.TestCase):
             (kit_src / "manifest.toml").write_text(textwrap.dedent("""\
                 [manifest]
                 version = "1.0"
-                root = "{cf-constructor-path}/config/kits/{slug}"
+                root = "{cf-studio-path}/config/kits/{slug}"
                 user_modifiable = false
 
                 [[resources]]
@@ -2785,7 +2785,7 @@ class TestCmdUpdateManifestMigration(unittest.TestCase):
             })
 
             (root / "AGENTS.md").write_text(
-                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "cypilot"\n```\n<!-- /@cf:root-agents -->\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "cypilot"\n```\n<!-- /@cf:root-agents -->\n',
                 encoding="utf-8",
             )
 
@@ -2795,7 +2795,7 @@ class TestCmdUpdateManifestMigration(unittest.TestCase):
             (kit_src / "manifest.toml").write_text(textwrap.dedent("""\
                 [manifest]
                 version = "1.0"
-                root = "{cf-constructor-path}/config/kits/{slug}"
+                root = "{cf-studio-path}/config/kits/{slug}"
                 user_modifiable = false
 
                 [[resources]]

@@ -53,7 +53,7 @@ def _make_manifest_kit_source(td: Path, slug: str = "testkit") -> Path:
         "\n".join([
             "[manifest]",
             'version = "1"',
-            'root = "{cf-constructor-path}/config/kits/{slug}"',
+            'root = "{cf-studio-path}/config/kits/{slug}"',
             "user_modifiable = false",
             "",
             "[[resources]]",
@@ -1924,7 +1924,7 @@ class TestCollectKitMetadataOsError(unittest.TestCase):
             meta = _collect_kit_metadata(kit_dir, "sdlc", "custom-kits/sdlc")
             self.assertEqual(
                 meta["skill_nav"],
-                "ALWAYS invoke `{cf-constructor-path}/custom-kits/sdlc/SKILL.md` FIRST",
+                "ALWAYS invoke `{cf-studio-path}/custom-kits/sdlc/SKILL.md` FIRST",
             )
 
     def test_skill_nav_uses_absolute_registered_custom_path(self):
@@ -2175,7 +2175,7 @@ class TestRegenerateGenAggregates(unittest.TestCase):
             gen_skill = (adapter / ".gen" / "SKILL.md").read_text(encoding="utf-8")
             gen_agents = (adapter / ".gen" / "AGENTS.md").read_text(encoding="utf-8")
             self.assertIn(
-                "ALWAYS invoke `{cf-constructor-path}/config/kits/sdlc/SKILL.md` FIRST",
+                "ALWAYS invoke `{cf-studio-path}/config/kits/sdlc/SKILL.md` FIRST",
                 gen_skill,
             )
             self.assertIn("# Default Agents", gen_agents)
@@ -2210,7 +2210,7 @@ class TestRegenerateGenAggregates(unittest.TestCase):
             gen_skill = (adapter / ".gen" / "SKILL.md").read_text(encoding="utf-8")
             gen_agents = (adapter / ".gen" / "AGENTS.md").read_text(encoding="utf-8")
             self.assertIn(
-                "ALWAYS invoke `{cf-constructor-path}/custom-kits/sdlc/SKILL.md` FIRST",
+                "ALWAYS invoke `{cf-studio-path}/custom-kits/sdlc/SKILL.md` FIRST",
                 gen_skill,
             )
             self.assertIn("# Custom Agents", gen_agents)
@@ -2371,7 +2371,7 @@ class TestCmdKitInstallGithubPath(unittest.TestCase):
                 ):
                     buf = io.StringIO()
                     with redirect_stdout(buf):
-                        rc = cmd_kit_install(["cyberfabric/cyber-constructor-kit-sdlc"])
+                        rc = cmd_kit_install(["constructorfabric/studio-kit-sdlc"])
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
                 self.assertIn(out["status"], ["PASS", "OK"])

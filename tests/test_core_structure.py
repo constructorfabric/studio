@@ -307,7 +307,7 @@ class TestAgentsStructure:
 
     def _verify_agents_type(self, text):
         """Verify agents file has proper structure."""
-        return "cf-constructor-path" in text or "ALWAYS" in text or "WHEN" in text
+        return "cf-studio-path" in text or "ALWAYS" in text or "WHEN" in text
 
     def test_root_agents_exists(self):
         """Root AGENTS.md should exist."""

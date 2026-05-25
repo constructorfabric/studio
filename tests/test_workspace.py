@@ -590,7 +590,7 @@ class TestFindWorkspaceConfig:
             "<!-- @cf:root-agents -->\n"
             "# Project\n\n"
             "```toml\n"
-            'cf-constructor-path = ".cypilot"\n'
+            'cf-studio-path = ".cypilot"\n'
             "```\n"
             "<!-- @cf:root-agents -->\n",
             encoding="utf-8",
@@ -693,7 +693,7 @@ class TestFindWorkspaceConfig:
             agents_md.write_text(
                 "<!-- @cf:root-agents -->\n"
                 "```toml\n"
-                'cf-constructor-path = ".cypilot"\n'
+                'cf-studio-path = ".cypilot"\n'
                 "```\n"
                 "<!-- @cf:root-agents -->\n",
                 encoding="utf-8",
@@ -2012,7 +2012,7 @@ class TestWriteInline:
             with patch("studio.utils.files._read_cypilot_var", return_value=None):
                 exit_code, data = _write_inline(Path(tmpdir), {"sources": {}})
                 assert exit_code == 1
-                assert "cf-constructor-path" in data.get("message", "")
+                assert "cf-studio-path" in data.get("message", "")
 
     def test_success(self):
         with TemporaryDirectory() as tmpdir:
@@ -2512,7 +2512,7 @@ class TestAddToInline:
                 rc = _add_to_inline(args, Path(tmpdir))
                 assert rc == 1
                 out = capsys.readouterr().out
-                assert "cf-constructor-path" in out
+                assert "cf-studio-path" in out
 
     def test_workspace_as_string_reference(self, capsys):
         args = _make_inline_args()

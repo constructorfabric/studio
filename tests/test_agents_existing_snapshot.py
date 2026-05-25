@@ -578,7 +578,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
             stale.write_text(
                 _render_toml_agent(
                     {"name": "cf-constructor-stale", "description": "Stale"},
-                    "{cf-constructor-path}/agents/cf-constructor-stale.md",
+                    "{cf-studio-path}/agents/cf-constructor-stale.md",
                 ),
                 encoding="utf-8",
             )
@@ -644,7 +644,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
             # Build TOML with model field appended
             base_toml = _render_toml_agent(
                 {"name": "cf-constructor-stale", "description": "Stale"},
-                "{cf-constructor-path}/agents/cf-constructor-stale.md",
+                "{cf-studio-path}/agents/cf-constructor-stale.md",
             )
             stale_toml_content = base_toml.rstrip("\n") + "\n" + 'model = "gpt-5.4"\n'
 
@@ -711,7 +711,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
 
             base_toml = _render_toml_agent(
                 {"name": "cf-constructor-stale", "description": "Stale"},
-                "{cf-constructor-path}/agents/cf-constructor-stale.md",
+                "{cf-studio-path}/agents/cf-constructor-stale.md",
             )
             stale = output_dir / "cf-constructor-stale.toml"
             stale.write_text(
@@ -762,7 +762,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
                 'description = "locally edited stale description"\n'
                 'model_reasoning_effort = "high"\n'
                 'developer_instructions = """\n'
-                "ALWAYS open and follow `{cf-constructor-path}/agents/stale.md`\n"
+                "ALWAYS open and follow `{cf-studio-path}/agents/stale.md`\n"
                 '"""\n',
                 encoding="utf-8",
             )
@@ -815,7 +815,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
                 'name = "cf-constructor-stale"\n'
                 'description = "stale"\n'
                 'developer_instructions = """\n'
-                "ALWAYS open and follow `{cf-constructor-path}/agents/stale.md`\n"
+                "ALWAYS open and follow `{cf-studio-path}/agents/stale.md`\n"
                 '"""\n',
                 encoding="utf-8",
             )
@@ -972,7 +972,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
             # Build TOML with canonical marker but malicious follow_target
             base_toml = _render_toml_agent(
                 {"name": "cf-constructor-victim", "description": "Victim"},
-                "{cf-constructor-path}/../agents/cf-constructor-victim.md",
+                "{cf-studio-path}/../agents/cf-constructor-victim.md",
             )
             stale = output_dir / "cf-constructor-victim.toml"
             stale.write_text(base_toml, encoding="utf-8")

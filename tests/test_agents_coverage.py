@@ -49,7 +49,7 @@ class TestResolveConfigKits(unittest.TestCase):
             # No config/kits at cypilot_root level
             # Create adapter config kits
             (project_root / "AGENTS.md").write_text(
-                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "myadapter"\n```\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "myadapter"\n```\n',
                 encoding="utf-8",
             )
             adapter_config_kits = project_root / "myadapter" / "config" / "kits"
@@ -78,7 +78,7 @@ class TestRegisteredKitDirs(unittest.TestCase):
             root = Path(tmpdir)
             (root / ".git").mkdir()
             (root / "AGENTS.md").write_text(
-                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "cypilot"\n```\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "cypilot"\n```\n',
                 encoding="utf-8",
             )
             cfg_dir = root / "cypilot" / "config"
@@ -196,7 +196,7 @@ class TestTargetPathFromRoot(unittest.TestCase):
             project_root = Path(tmpdir)
             target = project_root / "some" / "file.md"
             result = _target_path_from_root(target, project_root, cypilot_root=None)
-            self.assertEqual(result, "{cf-constructor-path}/some/file.md")
+            self.assertEqual(result, "{cf-studio-path}/some/file.md")
 
 
 class TestHasNonOpenAIInstallSignal(unittest.TestCase):
@@ -210,7 +210,7 @@ class TestHasNonOpenAIInstallSignal(unittest.TestCase):
             skill_path = root / ".windsurf" / "skills" / "cypilot" / "SKILL.md"
             skill_path.parent.mkdir(parents=True)
             skill_path.write_text(
-                "ALWAYS open and follow `{cf-constructor-path}/.core/skills/cypilot/SKILL.md`\n",
+                "ALWAYS open and follow `{cf-studio-path}/.core/skills/cypilot/SKILL.md`\n",
                 encoding="utf-8",
             )
 
@@ -224,7 +224,7 @@ class TestHasNonOpenAIInstallSignal(unittest.TestCase):
             rule_path = root / ".cursor" / "rules" / "studio.mdc"
             rule_path.parent.mkdir(parents=True)
             rule_path.write_text(
-                "ALWAYS open and follow `{cf-constructor-path}/.core/skills/cypilot/SKILL.md`\n",
+                "ALWAYS open and follow `{cf-studio-path}/.core/skills/cypilot/SKILL.md`\n",
                 encoding="utf-8",
             )
 
@@ -694,7 +694,7 @@ class TestProcessSingleAgentEdgeCases(unittest.TestCase):
             wf_dir.mkdir(parents=True)
             # Create a stale workflow proxy pointing to a removed workflow
             (wf_dir / "cypilot-old.md").write_text(
-                "# /cypilot-old\n\nALWAYS open and follow `{cf-constructor-path}/.core/workflows/old-removed.md`\n",
+                "# /cypilot-old\n\nALWAYS open and follow `{cf-studio-path}/.core/workflows/old-removed.md`\n",
                 encoding="utf-8",
             )
             cfg = _default_agents_config()
@@ -734,7 +734,7 @@ class TestProcessSingleAgentEdgeCases(unittest.TestCase):
             legacy_dir.mkdir(parents=True)
             legacy_file = legacy_dir / "cf-constructor-generate.md"
             legacy_file.write_text(
-                "# /cf-constructor-generate\n\nALWAYS open and follow `{cf-constructor-path}/.core/workflows/generate.md`\n",
+                "# /cf-constructor-generate\n\nALWAYS open and follow `{cf-studio-path}/.core/workflows/generate.md`\n",
                 encoding="utf-8",
             )
 
@@ -772,7 +772,7 @@ class TestProcessSingleAgentEdgeCases(unittest.TestCase):
             legacy_dir.mkdir(parents=True)
             legacy_file = legacy_dir / "cf-constructor-generate.md"
             legacy_file.write_text(
-                "# /cf-constructor-generate\n\nALWAYS open and follow `{cf-constructor-path}/.core/workflows/analyze.md`\n",
+                "# /cf-constructor-generate\n\nALWAYS open and follow `{cf-studio-path}/.core/workflows/analyze.md`\n",
                 encoding="utf-8",
             )
 
@@ -899,23 +899,23 @@ class TestCypilotRalphexRegistration(unittest.TestCase):
         agents_dir = core_skill / "agents"
         agents_dir.mkdir(parents=True)
         (agents_dir / "cf-constructor-ralphex.md").write_text(
-            "You are a Cyber Constructor ralphex delegation agent.\n",
+            "You are a Constructor Studio ralphex delegation agent.\n",
             encoding="utf-8",
         )
         (agents_dir / "cf-constructor-codegen.md").write_text(
-            "You are a Cyber Constructor code generator.\n",
+            "You are a Constructor Studio code generator.\n",
             encoding="utf-8",
         )
         (agents_dir / "cf-constructor-pr-review.md").write_text(
-            "You are a Cyber Constructor PR reviewer.\n",
+            "You are a Constructor Studio PR reviewer.\n",
             encoding="utf-8",
         )
         (agents_dir / "cf-constructor-phase-runner.md").write_text(
-            "You are a Cyber Constructor phase runner.\n",
+            "You are a Constructor Studio phase runner.\n",
             encoding="utf-8",
         )
         (agents_dir / "cf-constructor-phase-compiler.md").write_text(
-            "You are a Cyber Constructor phase compiler.\n",
+            "You are a Constructor Studio phase compiler.\n",
             encoding="utf-8",
         )
         return root, cpt
@@ -1218,7 +1218,7 @@ class TestCopilotDetection(unittest.TestCase):
             instructions = root / ".github" / "copilot-instructions.md"
             instructions.parent.mkdir(parents=True, exist_ok=True)
             instructions.write_text(
-                "# Cypilot\n\nALWAYS open and follow `{cf-constructor-path}/.core/skills/cypilot/SKILL.md`\n",
+                "# Cypilot\n\nALWAYS open and follow `{cf-studio-path}/.core/skills/cypilot/SKILL.md`\n",
                 encoding="utf-8",
             )
 
@@ -1287,7 +1287,7 @@ class TestCopilotDetection(unittest.TestCase):
             root.mkdir()
             legacy = root / ".windsurf" / "skills" / "cypilot" / "SKILL.md"
             legacy.parent.mkdir(parents=True)
-            legacy.write_text("ALWAYS open and follow `{cf-constructor-path}/.core/skills/cypilot/SKILL.md`\n")
+            legacy.write_text("ALWAYS open and follow `{cf-studio-path}/.core/skills/cypilot/SKILL.md`\n")
             self.assertTrue(_is_agent_installed("windsurf", root))
 
     def test_legacy_cursor_rules_detected(self):
@@ -1299,7 +1299,7 @@ class TestCopilotDetection(unittest.TestCase):
             root.mkdir()
             legacy = root / ".cursor" / "rules" / "studio.mdc"
             legacy.parent.mkdir(parents=True)
-            legacy.write_text("ALWAYS open and follow `{cf-constructor-path}/.core/skills/cypilot/SKILL.md`\n")
+            legacy.write_text("ALWAYS open and follow `{cf-studio-path}/.core/skills/cypilot/SKILL.md`\n")
             self.assertTrue(_is_agent_installed("cursor", root))
 
     def test_legacy_windsurf_non_cypilot_not_detected(self):
@@ -1430,7 +1430,7 @@ class TestOpenAIDetection(unittest.TestCase):
         (cpt / ".core" / "workflows").mkdir(parents=True, exist_ok=True)
         agents_md = root / "AGENTS.md"
         agents_md.write_text(
-            "<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = \"cypilot\"\n```\n<!-- /@cf:root-agents -->\n",
+            "<!-- @cf:root-agents -->\n```toml\ncf-studio-path = \"cypilot\"\n```\n<!-- /@cf:root-agents -->\n",
             encoding="utf-8",
         )
         return root, cpt
@@ -1512,7 +1512,7 @@ class TestLegacyManifestSkillCleanup(unittest.TestCase):
             root = Path(td).resolve()
             legacy = root / ".cursor" / "rules" / "my-rule.mdc"
             legacy.parent.mkdir(parents=True)
-            legacy.write_text("ALWAYS open and follow `{cf-constructor-path}/.core/skills/my-rule/SKILL.md`\n")
+            legacy.write_text("ALWAYS open and follow `{cf-studio-path}/.core/skills/my-rule/SKILL.md`\n")
             src = root / "skills" / "my-rule.md"
             src.parent.mkdir(parents=True)
             src.write_text("# My Rule")
@@ -1551,7 +1551,7 @@ class TestLegacyManifestSkillCleanup(unittest.TestCase):
             root = Path(td).resolve()
             legacy = root / ".cursor" / "rules" / "my-rule.mdc"
             legacy.parent.mkdir(parents=True)
-            # Follow target is NOT a Cypilot path (no {cf-constructor-path}/ prefix)
+            # Follow target is NOT a Cypilot path (no {cf-studio-path}/ prefix)
             legacy.write_text("ALWAYS open and follow `some/other/tool/skill.md`\n")
             src = root / "skills" / "my-rule.md"
             src.parent.mkdir(parents=True)
@@ -1568,7 +1568,7 @@ class TestLegacyManifestSkillCleanup(unittest.TestCase):
             root = Path(td).resolve()
             legacy = root / ".windsurf" / "skills" / "my-rule" / "SKILL.md"
             legacy.parent.mkdir(parents=True)
-            legacy.write_text("ALWAYS open and follow `{cf-constructor-path}/.core/skills/my-rule/SKILL.md`\n")
+            legacy.write_text("ALWAYS open and follow `{cf-studio-path}/.core/skills/my-rule/SKILL.md`\n")
             src = root / "skills" / "my-rule.md"
             src.parent.mkdir(parents=True)
             src.write_text("# My Rule")
@@ -1625,7 +1625,7 @@ class TestLegacyManifestSkillCleanup(unittest.TestCase):
             # Legacy copilot file for a skill that targets only openai
             legacy = root / ".github" / "skills" / "openai-only.md"
             legacy.parent.mkdir(parents=True)
-            legacy.write_text("ALWAYS open and follow `{cf-constructor-path}/.core/skills/openai-only/SKILL.md`\n")
+            legacy.write_text("ALWAYS open and follow `{cf-studio-path}/.core/skills/openai-only/SKILL.md`\n")
             src = root / "skills" / "openai-only.md"
             src.parent.mkdir(parents=True)
             src.write_text("# OpenAI Only")
@@ -1734,7 +1734,7 @@ class TestIsPureCypilotGenerated(unittest.TestCase):
 
         content = (
             "---\nname: cypilot\ndescription: Cypilot skill\n---\n\n"
-            "ALWAYS open and follow `{cf-constructor-path}/.core/workflows/generate.md`\n"
+            "ALWAYS open and follow `{cf-studio-path}/.core/workflows/generate.md`\n"
         )
         self.assertTrue(_is_pure_cypilot_generated(content))
 
@@ -1743,7 +1743,7 @@ class TestIsPureCypilotGenerated(unittest.TestCase):
 
         content = (
             "---\nname: cypilot\ndescription: Cypilot skill\n---\n\n"
-            "ALWAYS open and follow `{cf-constructor-path}/.core/workflows/generate.md`\n\n"
+            "ALWAYS open and follow `{cf-studio-path}/.core/workflows/generate.md`\n\n"
             "## My custom notes\nSome user-authored content here.\n"
         )
         self.assertFalse(_is_pure_cypilot_generated(content))
@@ -1773,7 +1773,7 @@ class TestLegacyCleanupPreservesCustomizedFiles(unittest.TestCase):
         root.mkdir()
         (root / ".git").mkdir()
         (root / "AGENTS.md").write_text(
-            '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = ".bootstrap"\n```\n',
+            '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".bootstrap"\n```\n',
             encoding="utf-8",
         )
         cpt = root / ".bootstrap"
@@ -1799,7 +1799,7 @@ class TestLegacyCleanupPreservesCustomizedFiles(unittest.TestCase):
             legacy.mkdir(parents=True)
             customized_content = (
                 "---\nname: cypilot\ndescription: Cypilot skill\n---\n\n"
-                "ALWAYS open and follow `{cf-constructor-path}/.core/workflows/generate.md`\n\n"
+                "ALWAYS open and follow `{cf-studio-path}/.core/workflows/generate.md`\n\n"
                 "## My team notes\nDo NOT remove — this is our custom setup.\n"
             )
             (legacy / "SKILL.md").write_text(customized_content, encoding="utf-8")
@@ -1842,7 +1842,7 @@ class TestOpenAIDetectionNoCypilotFalsePositive(unittest.TestCase):
             agents_dir.mkdir(parents=True)
             (agents_dir / "studio.md").write_text(
                 "---\nname: cypilot\n---\n\n"
-                "ALWAYS open and follow `{cf-constructor-path}/.core/workflows/generate.md`\n",
+                "ALWAYS open and follow `{cf-studio-path}/.core/workflows/generate.md`\n",
                 encoding="utf-8",
             )
             self.assertTrue(_is_agent_installed("openai", root),
@@ -1857,7 +1857,7 @@ class TestCopilotCustomContent(unittest.TestCase):
         root.mkdir()
         (root / ".git").mkdir()
         (root / "AGENTS.md").write_text(
-            '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = ".bootstrap"\n```\n',
+            '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".bootstrap"\n```\n',
             encoding="utf-8",
         )
         cpt = root / ".bootstrap"
@@ -2042,7 +2042,7 @@ class TestRenderTomlAgentNonStringDescription(unittest.TestCase):
             "description": 123,  # Non-string description
         }
 
-        result = _render_toml_agent(agent, "{cf-constructor-path}/test.md")
+        result = _render_toml_agent(agent, "{cf-studio-path}/test.md")
         self.assertIn("name = ", result)
         self.assertIn('description = "123"', result)
 
@@ -2054,7 +2054,7 @@ class TestRenderTomlAgentNonStringDescription(unittest.TestCase):
             "description": None,  # None description
         }
 
-        result = _render_toml_agent(agent, "{cf-constructor-path}/test.md")
+        result = _render_toml_agent(agent, "{cf-studio-path}/test.md")
         self.assertIn('description = ""', result)
 
 
@@ -2159,14 +2159,14 @@ class TestNormalizeAgentTargetPath(unittest.TestCase):
             current_file = project_root / "skill.md"
             cypilot_root = project_root / "cypilot"
 
-            # Path starting with {cf-constructor-path}/ should pass through
+            # Path starting with {cf-studio-path}/ should pass through
             result = _normalize_agent_target_path(
-                "{cf-constructor-path}/workflows/analyze.md",
+                "{cf-studio-path}/workflows/analyze.md",
                 current_file,
                 project_root,
                 cypilot_root,
             )
-            self.assertEqual(result, "{cf-constructor-path}/workflows/analyze.md")
+            self.assertEqual(result, "{cf-studio-path}/workflows/analyze.md")
 
     def test_normalize_at_prefix(self):
         from studio.commands.agents import _normalize_agent_target_path
@@ -2308,9 +2308,9 @@ class TestExtractCypilotFollowTarget(unittest.TestCase):
     def test_extracts_cypilot_path_target(self):
         from studio.commands.agents import _extract_cypilot_follow_target
 
-        content = "Some text\nALWAYS open and follow `{cf-constructor-path}/test.md`\n"
+        content = "Some text\nALWAYS open and follow `{cf-studio-path}/test.md`\n"
         result = _extract_cypilot_follow_target(content)
-        self.assertEqual(result, "{cf-constructor-path}/test.md")
+        self.assertEqual(result, "{cf-studio-path}/test.md")
 
     def test_rejects_non_cypilot_path(self):
         from studio.commands.agents import _extract_cypilot_follow_target
@@ -2334,7 +2334,7 @@ class TestIsPureCypilotGeneratedV2(unittest.TestCase):
         from studio.commands.agents import _is_pure_cypilot_generated
 
         # Canonical frontmatter (only name + description) → pure
-        content = "---\nname: test\ndescription: A skill\n---\nALWAYS open and follow `{cf-constructor-path}/test.md`\n"
+        content = "---\nname: test\ndescription: A skill\n---\nALWAYS open and follow `{cf-studio-path}/test.md`\n"
         result = _is_pure_cypilot_generated(content)
         self.assertTrue(result)
 
@@ -2342,14 +2342,14 @@ class TestIsPureCypilotGeneratedV2(unittest.TestCase):
         from studio.commands.agents import _is_pure_cypilot_generated
 
         # Non-canonical key (type) means user-customised frontmatter → not pure
-        content = "---\ntype: command\n---\nALWAYS open and follow `{cf-constructor-path}/test.md`\n"
+        content = "---\ntype: command\n---\nALWAYS open and follow `{cf-studio-path}/test.md`\n"
         result = _is_pure_cypilot_generated(content)
         self.assertFalse(result)
 
     def test_with_user_content_not_pure(self):
         from studio.commands.agents import _is_pure_cypilot_generated
 
-        content = "---\nname: test\ndescription: A skill\n---\nALWAYS open and follow `{cf-constructor-path}/test.md`\n\nUser added content here\n"
+        content = "---\nname: test\ndescription: A skill\n---\nALWAYS open and follow `{cf-studio-path}/test.md`\n\nUser added content here\n"
         result = _is_pure_cypilot_generated(content)
         self.assertFalse(result)
 
@@ -2460,7 +2460,7 @@ class TestFileHasCypilotFollowLink(unittest.TestCase):
         with TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "test.md"
             path.write_text(
-                "# /test\n\nALWAYS open and follow `{cf-constructor-path}/test.md`\n",
+                "# /test\n\nALWAYS open and follow `{cf-studio-path}/test.md`\n",
                 encoding="utf-8",
             )
             result = _file_has_cypilot_follow_link(path)
@@ -2575,7 +2575,7 @@ class TestCleanupCypilotLegacySubagents(unittest.TestCase):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             f"---\nname: {name}\ndescription: legacy cypilot subagent\n---\n"
-            "ALWAYS open and follow `{cf-constructor-path}/.core/skills/cypilot/agents/"
+            "ALWAYS open and follow `{cf-studio-path}/.core/skills/cypilot/agents/"
             f"{name}.md`\n",
             encoding="utf-8",
         )
@@ -2620,7 +2620,7 @@ class TestCleanupCypilotLegacySubagents(unittest.TestCase):
                 'name = "cypilot-ralphex"\n'
                 'description = "legacy"\n'
                 'developer_instructions = """\n'
-                'ALWAYS open and follow `{cf-constructor-path}/.core/skills/cypilot/agents/cypilot-ralphex.md`\n'
+                'ALWAYS open and follow `{cf-studio-path}/.core/skills/cypilot/agents/cypilot-ralphex.md`\n'
                 '"""\n',
                 encoding="utf-8",
             )
@@ -2646,7 +2646,7 @@ class TestCleanupCypilotLegacySubagents(unittest.TestCase):
             target.parent.mkdir(parents=True)
             target.write_text(
                 "---\nname: cypilot-codegen\n---\n"
-                "ALWAYS open and follow `{cf-constructor-path}/.core/skills/cypilot/agents/cypilot-codegen.md`\n"
+                "ALWAYS open and follow `{cf-studio-path}/.core/skills/cypilot/agents/cypilot-codegen.md`\n"
                 "\n## My custom additions\n"
                 "Some extra content I added.\n",
                 encoding="utf-8",
@@ -2716,7 +2716,7 @@ class TestIsPureCypilotGeneratedNameDescMismatch(unittest.TestCase):
             f"description: {description}\n"
             f"---\n"
             f"{marker}\n"
-            f"ALWAYS open and follow `{{cf-constructor-path}}/.core/skills/cypilot/agents/test.md`\n"
+            f"ALWAYS open and follow `{{cf-studio-path}}/.core/skills/cypilot/agents/test.md`\n"
         )
 
     def test_expected_name_mismatch_returns_false(self):
@@ -2757,7 +2757,7 @@ class TestIsPureCypilotGeneratedToml(unittest.TestCase):
             f'name = "{name}"\n'
             f'description = "{description}"\n'
             f'developer_instructions = """\n'
-            f'ALWAYS open and follow `{{cf-constructor-path}}/.core/skills/cypilot/agents/my-agent.md`\n'
+            f'ALWAYS open and follow `{{cf-studio-path}}/.core/skills/cypilot/agents/my-agent.md`\n'
             f'"""\n'
         )
 
@@ -2797,7 +2797,7 @@ class TestIsPureCypilotGeneratedToml(unittest.TestCase):
             f"{self._MARKER}\n"
             f'name = "x"\n'
             f'description = "y"\n'
-            f'developer_instructions = "ALWAYS open and follow `{{cf-constructor-path}}/foo.md`"\n'
+            f'developer_instructions = "ALWAYS open and follow `{{cf-studio-path}}/foo.md`"\n'
             f'unknown_extra_key = "bad"\n'
         )
         expected = content
@@ -2831,7 +2831,7 @@ class TestIsPureCypilotGeneratedToml(unittest.TestCase):
             f"{self._MARKER}\n"
             f"name = 42\n"  # integer, not string
             f'description = "y"\n'
-            f'developer_instructions = "ALWAYS open and follow `{{cf-constructor-path}}/agents/x.md`"\n'
+            f'developer_instructions = "ALWAYS open and follow `{{cf-studio-path}}/agents/x.md`"\n'
         )
         expected = content
         result = _is_pure_cypilot_generated_toml(content, expected)
@@ -2898,7 +2898,7 @@ class TestExpectedStaleCypilotGeneratedToml(unittest.TestCase):
                 f"{self._MARKER}\n"
                 f'name = "my-agent"\n'
                 f'description = "desc"\n'
-                f'developer_instructions = "ALWAYS open and follow `{{cf-constructor-path}}/agents/my-agent.md`"\n'
+                f'developer_instructions = "ALWAYS open and follow `{{cf-studio-path}}/agents/my-agent.md`"\n'
                 f'totally_unknown_key = "bad"\n'
             )
             result = _expected_stale_cypilot_generated_toml(toml_file, content, Path(td))
@@ -2932,7 +2932,7 @@ class TestExpectedStaleCypilotGeneratedToml(unittest.TestCase):
                 f"{self._MARKER}\n"
                 f"name = 42\n"  # integer, not string
                 f'description = "desc"\n'
-                f'developer_instructions = "ALWAYS open and follow `{{cf-constructor-path}}/agents/42.md`"\n'
+                f'developer_instructions = "ALWAYS open and follow `{{cf-studio-path}}/agents/42.md`"\n'
             )
             result = _expected_stale_cypilot_generated_toml(toml_file, content, Path(td))
             self.assertIsNone(result)
@@ -2957,7 +2957,7 @@ class TestExpectedStaleCypilotGeneratedToml(unittest.TestCase):
                 f"{self._MARKER}\n"
                 f'name = "my-agent"\n'
                 f'description = "desc"\n'
-                f'developer_instructions = "ALWAYS open and follow `{{cf-constructor-path}}/agents/my-agent.md`"\n'
+                f'developer_instructions = "ALWAYS open and follow `{{cf-studio-path}}/agents/my-agent.md`"\n'
             )
             result = _expected_stale_cypilot_generated_toml(toml_file, content, Path(td))
             self.assertIsNone(result)
@@ -2972,7 +2972,7 @@ class TestExpectedStaleCypilotGeneratedToml(unittest.TestCase):
                 f"{self._MARKER}\n"
                 f'name = "my-agent"\n'
                 f'description = "desc"\n'
-                f'developer_instructions = "ALWAYS open and follow `{{cf-constructor-path}}/../../etc/passwd`"\n'
+                f'developer_instructions = "ALWAYS open and follow `{{cf-studio-path}}/../../etc/passwd`"\n'
             )
             result = _expected_stale_cypilot_generated_toml(toml_file, content, Path(td))
             self.assertIsNone(result)
@@ -2987,7 +2987,7 @@ class TestExpectedStaleCypilotGeneratedToml(unittest.TestCase):
                 f"{self._MARKER}\n"
                 f'name = "my-agent"\n'
                 f'description = "desc"\n'
-                f'developer_instructions = "ALWAYS open and follow `{{cf-constructor-path}}/agents/my-agent.md`"\n'
+                f'developer_instructions = "ALWAYS open and follow `{{cf-studio-path}}/agents/my-agent.md`"\n'
             )
             # Note: the agent file doesn't actually exist under td
             result = _expected_stale_cypilot_generated_toml(toml_file, content, Path(td))
@@ -3013,7 +3013,7 @@ class TestExpectedStaleCypilotGeneratedToml(unittest.TestCase):
                 f"{self._MARKER}\n"
                 f'name = "my-agent"\n'
                 f'description = "Test agent"\n'
-                f'developer_instructions = "ALWAYS open and follow `{{cf-constructor-path}}/agents/my-agent.md`"\n'
+                f'developer_instructions = "ALWAYS open and follow `{{cf-studio-path}}/agents/my-agent.md`"\n'
                 f'model_context_window = 3.14\n'  # float is invalid (expects int)
             )
             result = _expected_stale_cypilot_generated_toml(toml_file, content, cypilot_root)
@@ -3053,7 +3053,7 @@ class TestExpectedStaleCypilotGeneratedToml(unittest.TestCase):
                 f"{self._MARKER}\n"
                 f'name = "my-agent"\n'
                 f'description = "desc"\n'
-                f'developer_instructions = "ALWAYS open and follow `{{cf-constructor-path}}/agents/my-agent.md`"\n'
+                f'developer_instructions = "ALWAYS open and follow `{{cf-studio-path}}/agents/my-agent.md`"\n'
             )
             result = _expected_stale_cypilot_generated_toml(toml_file, content, cypilot_root)
             self.assertIsNone(result)
@@ -3076,7 +3076,7 @@ class TestExpectedStaleCypilotGeneratedToml(unittest.TestCase):
                 f"{self._MARKER}\n"
                 f'name = "my-agent"\n'
                 f'description = "Test agent"\n'
-                f'developer_instructions = "ALWAYS open and follow `{{cf-constructor-path}}/agents/my-agent.md`"\n'
+                f'developer_instructions = "ALWAYS open and follow `{{cf-studio-path}}/agents/my-agent.md`"\n'
                 f'model_context_window = 200000\n'
             )
             result = _expected_stale_cypilot_generated_toml(toml_file, content, cypilot_root)
@@ -3179,7 +3179,7 @@ class TestDiscoverKitAgentsFileSkip(unittest.TestCase):
             root = Path(td)
             (root / ".git").mkdir()
             (root / "AGENTS.md").write_text(
-                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "cpt"\n```\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "cpt"\n```\n',
                 encoding="utf-8",
             )
             cypilot_root = root / "cpt"
@@ -3217,7 +3217,7 @@ class TestProcessWorkflowsRelativeContainment(unittest.TestCase):
             existing_md = wf_dir / "cf-constructor-old.md"
             follow_content = (
                 "<!-- Generated by cf-constructor agents -- do not edit -->\n"
-                "ALWAYS open and follow `{cf-constructor-path}/.core/workflows/old.md`\n"
+                "ALWAYS open and follow `{cf-studio-path}/.core/workflows/old.md`\n"
             )
             existing_md.write_text(follow_content, encoding="utf-8")
 

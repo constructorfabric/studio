@@ -110,7 +110,7 @@ def _make_side_by_side_project(root: Path) -> None:
             "\n"
             "<!-- @cf:root-agents -->\n"
             "```toml\n"
-            'cf-constructor-path = ".cf-constructor"\n'
+            'cf-studio-path = ".cf-constructor"\n'
             "```\n"
             "<!-- /@cf:root-agents -->\n"
         )
@@ -159,16 +159,16 @@ def test_internal_migration_copies_config_and_rewrites_markers(tmp_path):
 
     agents_text = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
     assert "<!-- @cf:root-agents -->" in agents_text
-    assert 'cf-constructor-path = ".cf-constructor"' in agents_text
+    assert 'cf-studio-path = ".cf-constructor"' in agents_text
     assert "<!-- @cpt:root-agents -->" not in agents_text
     assert "# Project rules" in agents_text
 
     core_text = (tmp_path / ".cf-constructor" / "config" / "core.toml").read_text(encoding="utf-8")
-    assert "cyber-constructor-kit-sdlc" in core_text
+    assert "studio-kit-sdlc" in core_text
     assert "cyber-pilot-kit-sdlc" not in core_text
 
     config_agents = (tmp_path / ".cf-constructor" / "config" / "AGENTS.md").read_text(encoding="utf-8")
-    assert "{cf-constructor-path}" in config_agents
+    assert "{cf-studio-path}" in config_agents
     assert "{cypilot_path}" not in config_agents
 
 
@@ -412,8 +412,8 @@ def test_config_markdown_rewrite_contract_covers_all_supported_files(tmp_path):
     assert changed == ["AGENTS.md", "SKILL.md", "README.md"]
     for name in changed:
         text = (config_dir / name).read_text(encoding="utf-8")
-        assert "Path {cf-constructor-path}" in text
-        assert "Run `cfc validate` before using Cyber Constructor." in text
+        assert "Path {cf-studio-path}" in text
+        assert "Run `cfc validate` before using Constructor Studio." in text
         assert "Use cfc update for prose command tokens." in text
         assert "lowercase cypilot stays." in text
         assert "uppercase CYPILOT stays." in text
@@ -506,7 +506,7 @@ def test_internal_migration_removes_duplicate_legacy_root_blocks(tmp_path):
     for name in ("AGENTS.md", "CLAUDE.md"):
         text = (tmp_path / name).read_text(encoding="utf-8")
         assert "<!-- @cf:root-agents -->" in text
-        assert 'cf-constructor-path = ".cf-constructor"' in text
+        assert 'cf-studio-path = ".cf-constructor"' in text
         assert "<!-- @cpt:root-agents -->" not in text
         assert "<!-- /@cpt:root-agents -->" not in text
         assert "Before legacy block." in text
@@ -539,7 +539,7 @@ def test_internal_migration_preserves_malformed_legacy_root_block_tail(tmp_path)
     for name in ("AGENTS.md", "CLAUDE.md"):
         text = (tmp_path / name).read_text(encoding="utf-8")
         assert "<!-- @cf:root-agents -->" in text
-        assert 'cf-constructor-path = ".cf-constructor"' in text
+        assert 'cf-studio-path = ".cf-constructor"' in text
         assert "<!-- @cpt:root-agents -->" in text
         assert "<!-- /@cpt:root-agents -->" not in text
         assert "Intro prose." in text
@@ -667,7 +667,7 @@ def test_internal_migration_removes_legacy_kit_key_when_canonical_exists(tmp_pat
         'format = "CyberConstructor"\n'
         'path = "config/kits/sdlc"\n'
         'version = "2.0.0"\n'
-        'source = "github:cyberfabric/cyber-constructor-kit-sdlc"\n',
+        'source = "github:constructorfabric/studio-kit-sdlc"\n',
         encoding="utf-8",
     )
 
@@ -719,7 +719,7 @@ def test_internal_migration_promotes_legacy_only_kit_and_normalizes_default_meta
     assert "cypilot-sdlc" not in migrated_core
     assert "[kits.sdlc]" in migrated_core
     assert 'path = "config/kits/sdlc"' in migrated_core
-    assert 'source = "github:cyberfabric/cyber-constructor-kit-sdlc"' in migrated_core
+    assert 'source = "github:constructorfabric/studio-kit-sdlc"' in migrated_core
 
     migrated_artifacts = (tmp_path / ".cf-constructor" / "config" / "artifacts.toml").read_text(encoding="utf-8")
     assert 'kit = "sdlc"' in migrated_artifacts
@@ -1122,7 +1122,7 @@ def test_interactive_init_declined_migration_creates_side_by_side_constructor(tm
     captured = capsys.readouterr()
     assert rc == 0
     assert "Existing Cyber Pilot project detected" in captured.err
-    assert "Press N to initialize Cyber Constructor side-by-side and keep Cyber Pilot unchanged." in captured.err
+    assert "Press N to initialize Constructor Studio side-by-side and keep Cyber Pilot unchanged." in captured.err
     assert "not directly migratable" not in captured.err
     out = json.loads(captured.out)
     assert out["status"] == "PASS"
@@ -1268,7 +1268,7 @@ def test_interactive_init_prompts_and_accepting_migrates(tmp_path, capsys, monke
     captured = capsys.readouterr()
     assert rc == 0
     assert "Existing Cyber Pilot project detected" in captured.err
-    assert "Press N to initialize Cyber Constructor side-by-side and keep Cyber Pilot unchanged." in captured.err
+    assert "Press N to initialize Constructor Studio side-by-side and keep Cyber Pilot unchanged." in captured.err
     out = json.loads(captured.out)
     assert out["status"] == "PASS"
     # RC-24: interactive migration defaults to in-place migration (target =
@@ -1290,7 +1290,7 @@ def test_interactive_init_decline_returns_clear_result(tmp_path, capsys, monkeyp
     captured = capsys.readouterr()
     assert rc == 0
     assert "Existing Cyber Pilot project detected" in captured.err
-    assert "Press N to initialize Cyber Constructor side-by-side and keep Cyber Pilot unchanged." in captured.err
+    assert "Press N to initialize Constructor Studio side-by-side and keep Cyber Pilot unchanged." in captured.err
     out = json.loads(captured.out)
     assert out["status"] == "PASS"
     assert out["actions"]["legacy_cypilot"] == "detected"
@@ -1342,7 +1342,7 @@ def test_existing_constructor_wins_over_legacy_migration(tmp_path, capsys, follo
         + "\n"
         + '<!-- @cf:root-agents -->\n'
         + '```toml\n'
-        + 'cf-constructor-path = ".cf-constructor"\n'
+        + 'cf-studio-path = ".cf-constructor"\n'
         + '```\n'
         + '<!-- /@cf:root-agents -->\n',
         encoding="utf-8",
@@ -1411,7 +1411,7 @@ def test_implicit_migration_allows_install_dir_matching_legacy_dir(tmp_path, cap
     assert (tmp_path / ".bootstrap" / "config" / "core.toml").is_file()
     agents_text = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
     assert '<!-- @cf:root-agents -->' in agents_text
-    assert 'cf-constructor-path = ".bootstrap"' in agents_text
+    assert 'cf-studio-path = ".bootstrap"' in agents_text
     assert '<!-- @cpt:root-agents -->' not in agents_text
     assert not (tmp_path / ".cf-constructor").exists()
 
@@ -1528,7 +1528,7 @@ def test_e2e_cpt_update_hands_off_to_cfc_init_for_cypilot_migration(tmp_path):
     assert (tmp_path / ".cf-constructor" / "config" / "artifacts.toml").is_file()
     agents_text = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
     assert "<!-- @cf:root-agents -->" in agents_text
-    assert 'cf-constructor-path = ".cf-constructor"' in agents_text
+    assert 'cf-studio-path = ".cf-constructor"' in agents_text
     assert "<!-- @cpt:root-agents -->" not in agents_text
 
 
@@ -1552,9 +1552,9 @@ def test_update_declining_coexisting_legacy_continues_normal_update(tmp_path, ca
 
     captured = capsys.readouterr()
     assert rc == 0
-    assert "Cyber Pilot detected alongside Cyber Constructor." in captured.err
-    assert "Migrate it into the current Cyber Constructor install now?" in captured.err
-    assert "Press N to continue regular Cyber Constructor update." in captured.err
+    assert "Cyber Pilot detected alongside Constructor Studio." in captured.err
+    assert "Migrate it into the current Constructor Studio install now?" in captured.err
+    assert "Press N to continue regular Constructor Studio update." in captured.err
     out = json.loads(captured.out)
     assert out["status"] == "PASS"
     assert out["dry_run"] is True
@@ -3055,7 +3055,7 @@ def test_migrate_core_toml_skips_non_dict_kit_data(tmp_path):
     # for `kits.extras` (a list) is skipped without raising.
     assert result == "updated"
     new_text = core_toml.read_text(encoding="utf-8")
-    assert "cyber-constructor-kit-sdlc" in new_text
+    assert "studio-kit-sdlc" in new_text
 
 
 def test_migrate_core_toml_drops_top_level_system_section(tmp_path):
@@ -3087,7 +3087,7 @@ def test_migrate_core_toml_returns_unchanged_when_no_legacy_keys(tmp_path):
         'format = "CFS"\n'
         'path = "config/kits/sdlc"\n'
         'version = "1.0.0"\n'
-        'source = "github:cyberfabric/cyber-constructor-kit-sdlc"\n',
+        'source = "github:constructorfabric/studio-kit-sdlc"\n',
         encoding="utf-8",
     )
     snapshot = core_toml.read_text(encoding="utf-8")
@@ -3166,7 +3166,7 @@ def test_migrate_core_toml_appends_warning_when_system_section_removed(tmp_path)
         'format = "CFS"\n'
         'path = "config/kits/sdlc"\n'
         'version = "1.0.0"\n'
-        'source = "github:cyberfabric/cyber-constructor-kit-sdlc"\n',
+        'source = "github:constructorfabric/studio-kit-sdlc"\n',
         encoding="utf-8",
     )
 
@@ -3526,8 +3526,8 @@ def test_migrate_config_markdown_skips_missing_processes_present_silently(tmp_pa
     assert result == ["AGENTS.md"]
     # AGENTS.md was rewritten.
     text = (config_dir / "AGENTS.md").read_text(encoding="utf-8")
-    assert "Cyber Constructor" in text
-    assert "{cf-constructor-path}" in text
+    assert "Constructor Studio" in text
+    assert "{cf-studio-path}" in text
     # SKILL.md and README.md were NOT created as side effects.
     assert not (config_dir / "SKILL.md").exists()
     assert not (config_dir / "README.md").exists()
@@ -3682,7 +3682,7 @@ def test_cmd_init_migration_prompts_for_target_dir_when_no_install_dir_flag(tmp_
     assert rc == 0
     install_dir_prompts = [
         (p, d) for p, d in prompt_calls
-        if "Cyber Constructor directory" in p
+        if "Constructor Studio directory" in p
     ]
     # cmd_init prompted exactly once for the install dir.
     assert len(install_dir_prompts) == 1

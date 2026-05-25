@@ -54,7 +54,7 @@ def _write_manifest_toml(kit_dir: Path, resources: list[dict]) -> None:
     data = {
         "manifest": {
             "version": "1.0",
-            "root": "{cf-constructor-path}/config/kits/{slug}",
+            "root": "{cf-studio-path}/config/kits/{slug}",
             "user_modifiable": False,
         },
         "resources": resources,

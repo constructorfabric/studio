@@ -33,7 +33,7 @@ def _bootstrap_registry(project_root: Path, *, entries: list) -> None:
     (project_root / ".git").mkdir(exist_ok=True)
     # New layout: cypilot_path variable in root AGENTS.md TOML block
     (project_root / "AGENTS.md").write_text(
-        '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "adapter"\n```\n',
+        '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "adapter"\n```\n',
         encoding="utf-8",
     )
     adapter_dir = project_root / "adapter"
@@ -146,7 +146,7 @@ class TestFilesUtilsCoverage(unittest.TestCase):
             (root / ".git").mkdir(exist_ok=True)
             # AGENTS.md points to a non-existent directory
             (root / "AGENTS.md").write_text(
-                '<!-- @cf:root-agents -->\n```toml\ncf-constructor-path = "missing-adapter"\n```\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "missing-adapter"\n```\n',
                 encoding="utf-8",
             )
             self.assertIsNone(find_cypilot_directory(root))
