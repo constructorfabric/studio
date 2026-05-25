@@ -1,5 +1,5 @@
 ---
-cypilot: true
+cf: true
 type: project-rule
 topic: domain-model
 generated-by: auto-config
@@ -93,7 +93,7 @@ A **unique identifier** in format `cpt-{hierarchy-prefix}-{kind}-{slug}`:
 artifacts.toml
 └── systems[]
     ├── name: "Constructor Studio"
-    ├── kit: "cypilot-sdlc"
+    ├── kit: "sdlc"
     ├── artifacts[]
     │   └── {path, kind, traceability}
     ├── codebase[]

@@ -1,5 +1,5 @@
 ---
-cypilot: true
+cf: true
 type: project-rule
 topic: anti-patterns
 generated-by: auto-config
@@ -25,7 +25,7 @@ Project-specific things NOT to do, based on patterns observed in the Constructor
 
 ## Import Across Packages
 
-**Don't**: Import from `cypilot_proxy` inside the skill engine or vice versa.
+**Don't**: Import from `studio_proxy` inside the skill engine or vice versa.
 **Why**: They are separate packages communicating only via subprocess.
 **Do**: Use `subprocess.run` for cross-package calls.
 

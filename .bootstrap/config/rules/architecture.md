@@ -1,5 +1,5 @@
 ---
-cypilot: true
+cf: true
 type: project-rule
 topic: architecture
 generated-by: auto-config
@@ -29,7 +29,7 @@ System design, module boundaries, and key abstractions of the self-hosted Constr
 ## Source Layout
 
 ```
-src/cypilot_proxy/                  # Global proxy package (5 files)
+src/studio_proxy/                  # Global proxy package (5 files)
   cli.py                            # Console entry: resolve skill, forward command
   resolve.py                        # Project-vs-cache skill resolution
   cache.py                          # Cache download/copy logic
@@ -49,7 +49,7 @@ tests/                              # 44 pytest modules + shared conftest/bootst
 
 ## Two-Package Design
 
-The installed `cpt` entry point loads the proxy in `src/cypilot_proxy/`. The proxy discovers the active skill engine (project-local or cached) and forwards the command through `subprocess.run`. All deterministic validation, registry loading, kit management, and workflow support live in `skills/cypilot/scripts/cypilot/`.
+The installed `cpt` entry point loads the proxy in `src/studio_proxy/`. The proxy discovers the active skill engine (project-local or cached) and forwards the command through `subprocess.run`. All deterministic validation, registry loading, kit management, and workflow support live in `skills/cypilot/scripts/cypilot/`.
 
 The repository is also self-hosted: `.bootstrap/` is a live adapter/config tree for this same project, while the canonical editable sources remain under the repo root.
 
@@ -61,7 +61,7 @@ The repository is also self-hosted: `.bootstrap/` is a live adapter/config tree 
 
 Two cooperating path-resolution layers exist:
 
-- **Proxy layer**: `src/cypilot_proxy/resolve.py` walks upward for root `AGENTS.md`, reads the managed TOML block, and resolves `cypilot_path`
+- **Proxy layer**: `src/studio_proxy/resolve.py` walks upward for root `AGENTS.md`, reads the managed TOML block, and resolves `cf-studio-path`
 - **Skill layer**: `skills/cypilot/scripts/cypilot/utils/files.py` resolves project root, adapter root, and `.core` / `.gen` subpaths inside the active adapter
 
 This separation keeps the globally installed proxy small while letting the skill engine own project-layout semantics.
@@ -91,7 +91,7 @@ Kits provide templates, rules, checklists, workflows, scripts, and constraints a
 | `skills/cypilot/scripts/cypilot/utils/artifacts_meta.py` | Parses and normalizes the artifacts registry |
 | `skills/cypilot/scripts/cypilot/commands/init.py` | Initializes or force-reinitializes adapter/config state |
 | `skills/cypilot/scripts/cypilot/commands/update.py` | Refreshes `.core`, `.gen`, and installed kit outputs |
-| `src/cypilot_proxy/resolve.py` | Determines whether commands use project or cached skill |
-| `src/cypilot_proxy/cache.py` | Owns GitHub/local cache population semantics |
+| `src/studio_proxy/resolve.py` | Determines whether commands use project or cached skill |
+| `src/studio_proxy/cache.py` | Owns GitHub/local cache population semantics |
 | `.bootstrap/config/artifacts.toml` | Source of truth for systems, artifacts, codebases |
 | `tests/conftest.py` | sys.path setup — must include all source roots |

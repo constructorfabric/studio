@@ -60,7 +60,7 @@ ALWAYS update specs and documentation in `architecture/` FIRST BEFORE writing an
 
 2. **Validate specs** — run `cfs validate` to ensure artifact integrity
 
-3. **Generate code via Constructor Studio** — use `/cypilot-generate` workflow to implement code from specs with traceability markers
+3. **Generate code via Constructor Studio** — use `/cf-generate` workflow to implement code from specs with traceability markers
 
 NEVER write code directly without first updating the corresponding specs. This ensures design-to-code traceability and prevents implementation drift from design intent.
 

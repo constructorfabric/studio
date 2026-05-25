@@ -1,5 +1,5 @@
 ---
-cypilot: true
+cf: true
 type: project-rule
 topic: project-structure
 generated-by: auto-config
@@ -37,7 +37,7 @@ Never edit `.bootstrap/.core/` or `.bootstrap/.gen/` directly. Edit canonical so
 ## Canonical Source Layout
 
 ```
-src/cypilot_proxy/                    # Thin globally installed proxy
+src/studio_proxy/                    # Thin globally installed proxy
 skills/cypilot/scripts/cypilot/      # Skill engine package
 architecture/                        # PRD, DESIGN, ADRs, specs, features
 requirements/                        # Methodologies and validation guidance
@@ -46,7 +46,7 @@ tests/                               # 44 pytest modules + shared helpers
 scripts/                             # Maintenance/check scripts
 ```
 
-Treat `src/cypilot_proxy/` and `skills/cypilot/scripts/cypilot/` as separate layers: proxy routing vs skill-engine business logic.
+Treat `src/studio_proxy/` and `skills/cypilot/scripts/cypilot/` as separate layers: proxy routing vs skill-engine business logic.
 
 ## Skill Package Layout
 
@@ -55,7 +55,7 @@ skills/cypilot/scripts/cypilot/
   cli.py          # Main command router
   commands/       # 23 command modules (one per command family)
   utils/          # 20 shared utility modules
-  __main__.py     # python -m cypilot entry
+  __main__.py     # python -m studio_proxy entry
   constants.py    # Shared constants and regexes
 ```
 
@@ -65,11 +65,11 @@ Add new CLI behavior in `commands/{name}.py`, wire it through `cli.py`, and put 
 
 | File | Use |
 |------|-----|
-| `AGENTS.md` | Root managed block that declares `cypilot_path` |
+| `AGENTS.md` | Root managed block that declares `cf-studio-path` |
 | `.bootstrap/config/AGENTS.md` | Project navigation rules, including auto-config sections |
 | `.bootstrap/config/artifacts.toml` | Source of truth for systems, artifacts, and codebases |
 | `pyproject.toml` | Proxy package metadata and `cpt` console entry point |
-| `src/cypilot_proxy/cli.py` | Proxy command forwarding |
+| `src/studio_proxy/cli.py` | Proxy command forwarding |
 | `skills/cypilot/scripts/cypilot/cli.py` | Skill-engine dispatch hub |
 | `skills/cypilot/scripts/cypilot/commands/init.py` | Init / force-reinit behavior |
 | `Makefile` | Canonical local test, validate, and sync commands |

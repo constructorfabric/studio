@@ -1,5 +1,5 @@
 ---
-cypilot: true
+cf: true
 type: project-rule
 topic: conventions
 generated-by: auto-config
@@ -36,7 +36,7 @@ Evidence: `commands/validate.py:14`, `commands/init.py`, `cli.py:34-98`.
 
 Use `snake_case.py` for all Python modules. Use `UPPERCASE.md` for major documentation files (`AGENTS.md`, `README.md`). CLI spec lives at `architecture/specs/CLISPEC.md`. Use kebab-case for non-Python config files (`artifacts.toml`, `core.toml`).
 
-Evidence: `src/cypilot_proxy/`, `skills/cypilot/scripts/cypilot/utils/`.
+Evidence: `src/studio_proxy/`, `skills/cypilot/scripts/cypilot/utils/`.
 
 ## Code Style
 
@@ -56,7 +56,7 @@ Evidence: `utils/context.py:21-38`, `utils/artifacts_meta.py`, `utils/codebase.p
 
 Production code uses `@cpt-{kind}:{id}:p{N}` scope markers and `@cpt-begin`/`@cpt-end` block markers. Place scope markers on the line above or inside the docstring of the function they trace. Block markers wrap the implementation steps of a traced flow.
 
-Evidence: `src/cypilot_proxy/cli.py:7-11` (scope), `src/cypilot_proxy/cli.py:54-56` (begin/end).
+Evidence: `src/studio_proxy/cli.py:7-11` (scope), `src/studio_proxy/cli.py:54-56` (begin/end).
 
 ## Testing Conventions
 

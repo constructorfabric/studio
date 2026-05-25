@@ -71,7 +71,7 @@ studio/                           # Project root
 ├── schemas/                      # CANONICAL source: JSON schemas
 ├── architecture/                 # CANONICAL source: PRD, DESIGN, DECOMPOSITION, features
 ├── requirements/                 # CANONICAL source: checklists
-├── .bootstrap/                   # Self-hosted setup directory (cypilot_path = ".bootstrap")
+├── .bootstrap/                   # Self-hosted setup directory (cf-studio-path = ".bootstrap")
 │   ├── .core/                    #   READ-ONLY mirror of skills/, schemas/, architecture/, etc.
 │   ├── .gen/                     #   AUTO-GENERATED aggregates (AGENTS.md, SKILL.md, README.md)
 │   └── config/                   #   User-editable config + kit outputs (core.toml, artifacts.toml, kits/)

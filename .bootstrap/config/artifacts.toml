@@ -1,4 +1,4 @@
-# Cypilot artifacts registry
+# Constructor Studio artifacts registry
 
 [[ignore]]
 reason = "Internal test fixtures contain synthetic/broken cpt markers and IDs"
@@ -9,7 +9,7 @@ patterns = [
 ]
 
 [[ignore]]
-reason = "Extracted to cyberfabric/cyber-pilot-kit-sdlc per cpt-cypilot-adr-extract-sdlc-kit"
+reason = "Extracted to constructorfabric/studio-kit-sdlc per cpt-cypilot-adr-extract-sdlc-kit"
 patterns = [
   "architecture/features/sdlc-kit.md",
   "architecture/features/pr-workflows.md",
@@ -18,13 +18,13 @@ patterns = [
 [[ignore]]
 reason = "Vendored third-party libraries (kept verbatim under upstream license); see assets/vendor/PROVENANCE.md"
 patterns = [
-  "skills/cypilot/scripts/cypilot/vendor/**",
-  "skills/cypilot/scripts/cypilot/commands/map/__init__.py",
+  "skills/studio/scripts/studio/vendor/**",
+  "skills/studio/scripts/studio/commands/map/__init__.py",
 ]
 
 [[systems]]
-name = "Cypilot"
-slug = "cypilot"
+name = "Constructor Studio"
+slug = "studio"
 kit = "sdlc"
 children = []
 
@@ -71,15 +71,15 @@ kind = "FEATURE"
 traceability = "DOCS-ONLY"
 
 [[systems.autodetect.codebase]]
-name = "Cypilot Proxy"
-path = "src/cypilot_proxy"
+name = "Studio Proxy"
+path = "src/studio_proxy"
 extensions = [".py"]
 singleLineComments = ["#"]
 multiLineComments = [{start = '"""', end = '"""'}]
 
 [[systems.autodetect.codebase]]
-name = "Cypilot CLI"
-path = "skills/cypilot/scripts/cypilot"
+name = "Studio CLI"
+path = "skills/studio/scripts/studio"
 extensions = [".py"]
 singleLineComments = ["#"]
 multiLineComments = [{start = '"""', end = '"""'}]
