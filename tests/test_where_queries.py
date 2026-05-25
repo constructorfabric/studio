@@ -28,7 +28,7 @@ from studio.cli import main
 # ---------------------------------------------------------------------------
 
 def _setup_project(root: Path) -> Path:
-    """Bootstrap a minimal Cypilot project. Returns adapter dir."""
+    """Bootstrap a minimal Constructor Studio project. Returns adapter dir."""
     (root / ".git").mkdir(exist_ok=True)
     (root / "AGENTS.md").write_text(
         '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "adapter"\n```\n',

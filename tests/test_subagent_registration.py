@@ -32,14 +32,14 @@ from studio.commands.agents import (
 
 _AGENTS_TOML = """\
 [agents.cypilot-codegen]
-description = "Cypilot code generator. Implements fully-specified requirements."
+description = "Constructor Studio code generator. Implements fully-specified requirements."
 prompt_file = "agents/cypilot-codegen.md"
 mode = "readwrite"
 isolation = true
 model = "inherit"
 
 [agents.cypilot-pr-review]
-description = "Cypilot PR reviewer. Checklist-based review in isolated context."
+description = "Constructor Studio PR reviewer. Checklist-based review in isolated context."
 prompt_file = "agents/cypilot-pr-review.md"
 mode = "readonly"
 isolation = false
@@ -357,9 +357,9 @@ class TestRenderTomlAgent(unittest.TestCase):
         self.assertIn('name = "cypilot-codegen"', result)
 
     def test_has_top_level_description(self):
-        agent = _make_semantic_agent("cypilot-codegen", description="Cypilot code generator.")
+        agent = _make_semantic_agent("cypilot-codegen", description="Constructor Studio code generator.")
         result = _render_toml_agent(agent, "@/agents/cypilot-codegen.md")
-        self.assertIn('description = "Cypilot code generator."', result)
+        self.assertIn('description = "Constructor Studio code generator."', result)
 
     def test_has_developer_instructions_with_pointer(self):
         agent = _make_semantic_agent("cypilot-codegen")

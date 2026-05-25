@@ -1,4 +1,4 @@
-"""Shared test helpers for Cypilot tests."""
+"""Shared test helpers for Constructor Studio tests."""
 from __future__ import annotations
 
 import io

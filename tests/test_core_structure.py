@@ -1,7 +1,7 @@
 """
-Tests for Cypilot project core structure validation.
+Tests for Constructor Studio project core structure validation.
 
-Validates that the Cypilot project itself follows Cypilot conventions:
+Validates that the Constructor Studio project itself follows Constructor Studio conventions:
 - Directory structure
 - Base file structure (frontmatter, sections)
 - Requirements file structure
@@ -48,7 +48,7 @@ class TestDirectoriesExist:
 
 
 class TestBaseStructure:
-    """Validate base file structure for Cypilot specification files."""
+    """Validate base file structure for Constructor Studio specification files."""
 
     def _get_spec_files(self):
         """Scan all .md files in requirements/ and workflows/."""
@@ -95,7 +95,7 @@ class TestBaseStructure:
         return bool(re.fullmatch(r"\d+\.\d+", str(frontmatter.get("version", "")).strip()))
 
     def _has_title_format(self, path: Path) -> bool:
-        """Verify title format # Cypilot: {Title} or similar heading."""
+        """Verify title format # Constructor Studio: {Title} or similar heading."""
         text = path.read_text(encoding="utf-8")
         parsed = self._parse_frontmatter(text)
         if parsed is None:

@@ -441,7 +441,7 @@ class TestGenerateReviewArtifacts:
     """Tests for generate_review_artifacts() — derived review override generation."""
 
     def _make_project(self, tmp: str) -> tuple[str, str]:
-        """Create a minimal project with plan dir and canonical Cypilot sources."""
+        """Create a minimal project with plan dir and canonical Constructor Studio sources."""
         repo_root = Path(tmp) / "repo"
         repo_root.mkdir()
         (repo_root / ".git").mkdir()
@@ -519,7 +519,7 @@ class TestGenerateReviewArtifacts:
             assert r1["artifacts"] == r2["artifacts"]
 
     def test_artifact_references_canonical_sources(self):
-        """Generated review override references Cypilot canonical sources."""
+        """Generated review override references Constructor Studio canonical sources."""
         with TemporaryDirectory() as tmp:
             repo_root, plan_dir = self._make_project(tmp)
             generate_review_artifacts(plan_dir, repo_root)

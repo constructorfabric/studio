@@ -1,4 +1,4 @@
-"""Tests for codebase.py - Cypilot code traceability marker parsing."""
+"""Tests for codebase.py - Constructor Studio code traceability marker parsing."""
 import pytest
 from pathlib import Path
 from textwrap import dedent

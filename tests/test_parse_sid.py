@@ -14,7 +14,7 @@ from skills.cypilot.scripts.cypilot.utils.constraints import parse_cpt, ParsedCy
 
 
 class TestSimpleIds:
-    """Tests for simple Cypilot IDs: cpt-{system}-{kind}-{slug}"""
+    """Tests for simple Constructor Studio IDs: cpt-{system}-{kind}-{slug}"""
 
     def test_basic_simple_id(self):
         """Parse a basic simple ID."""
@@ -128,7 +128,7 @@ class TestMultiWordSystems:
 
 
 class TestCompositeIds:
-    """Tests for composite Cypilot IDs: cpt-{system}-{kind1}-{slug1}-{kind2}-{slug2}"""
+    """Tests for composite Constructor Studio IDs: cpt-{system}-{kind1}-{slug1}-{kind2}-{slug2}"""
 
     def test_basic_composite_id(self):
         """Parse a composite ID (feature-algo)."""
@@ -369,10 +369,10 @@ class TestEdgeCases:
 
 
 class TestRealWorldScenarios:
-    """Tests based on real Cypilot usage patterns."""
+    """Tests based on real Constructor Studio usage patterns."""
 
     def test_cypilot_self_referential(self):
-        """Parse Cypilot's own IDs (cpt-cypilot-*)."""
+        """Parse Constructor Studio's own IDs (cpt-cypilot-*)."""
         result = parse_cpt(
             cpt="cpt-cypilot-adr-initial-architecture-v1",
             expected_kind="adr",
