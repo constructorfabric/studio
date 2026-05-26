@@ -1853,7 +1853,7 @@ def _compute_workflow_skill_id(wf_name: str, kit_slug: Optional[str], prefix: st
         ``cf-sdlc-pr-review``) so kit surfaces are namespaced and do not
         collide with core or other kits.
     """
-    if wf_name in ("studio", "cf"):
+    if wf_name == "cf":
         return "cf"
     if kit_slug:
         return f"{prefix}{kit_slug}-{wf_name}"
