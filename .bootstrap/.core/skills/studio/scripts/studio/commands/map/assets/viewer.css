@@ -601,6 +601,22 @@ html, body {
   border-color: #3050a0;
 }
 
+.cpt-view-toggle {
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 10px;
+  line-height: 1.4;
+  background: transparent;
+  border: 1px solid #c0c8e0;
+  border-radius: 3px;
+  color: #557;
+  cursor: pointer;
+  user-select: none;
+}
+.cpt-view-toggle:hover { background: #eef0fa; color: #3050a0; border-color: #3050a0; }
+
+.ref-card .snippet-wrap { margin-top: 4px; }
+
 /* Active cpt filter panel in sidebar */
 #cpt-filter-section.empty { display: none; }
 #cpt-filter-section h2 { color: #3050a0; }

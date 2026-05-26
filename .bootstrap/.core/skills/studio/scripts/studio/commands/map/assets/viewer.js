@@ -773,8 +773,33 @@
         const card = el("div", { className: "ref-card" });
         card.appendChild(cptChip(u.cpt_id, "definer"));
         const meta = "line " + u.line + (u.marker_kind ? " · " + u.marker_kind : "");
-        card.appendChild(el("div", {}, el("span", {}, meta)));
-        card.appendChild(renderSnippet(u.snippet));
+        const metaRow = el("div", {});
+        metaRow.appendChild(el("span", {}, meta));
+        const hasSpec = !!u.def_snippet;
+        const snippetWrap = el("div", { className: "snippet-wrap" });
+        snippetWrap.appendChild(renderSnippet(u.snippet));
+        if (hasSpec) {
+          let mode = "code";
+          const toggleBtn = el("button", { className: "cpt-view-toggle", title: "Show definition from spec" }, "spec ⇄");
+          toggleBtn.addEventListener("click", function (ev) {
+            ev.stopPropagation();
+            mode = (mode === "code") ? "spec" : "code";
+            snippetWrap.innerHTML = "";
+            if (mode === "code") {
+              snippetWrap.appendChild(renderSnippet(u.snippet));
+              toggleBtn.textContent = "spec ⇄";
+              toggleBtn.title = "Show definition from spec";
+            } else {
+              const defOpts = { className: "snippet", sourceName: "definition" };
+              snippetWrap.appendChild(collapsible(mdElement(u.def_snippet || "", defOpts), u.def_snippet || ""));
+              toggleBtn.textContent = "code ⇄";
+              toggleBtn.title = "Show code at use site";
+            }
+          });
+          metaRow.appendChild(toggleBtn);
+        }
+        card.appendChild(metaRow);
+        card.appendChild(snippetWrap);
         return card;
       }
       useEntries.slice(0, INITIAL).forEach(function (u) {
