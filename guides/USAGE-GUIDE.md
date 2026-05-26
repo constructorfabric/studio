@@ -25,6 +25,8 @@
   - [Use `generate` when](#use-generate-when)
   - [Use `analyze` when](#use-analyze-when)
   - [What `analyze` is for in practice](#what-analyze-is-for-in-practice)
+  - [Use `brainstorm` when](#use-brainstorm-when)
+  - [Use `pdsl` when](#use-pdsl-when)
   - [Default routing rule](#default-routing-rule)
   - [Recommended execution loop for artifacts and code](#recommended-execution-loop-for-artifacts-and-code)
 - [7. Practical usage habits](#7-practical-usage-habits)
@@ -60,7 +62,11 @@
   - [Risk](#risk)
   - [Mitigation](#mitigation)
   - [Delegation preflight](#delegation-preflight)
+  - [`cfs delegate` CLI options](#cfs-delegate-cli-options)
+  - [Managing large inputs (`cfs chunk-input`)](#managing-large-inputs-cfs-chunk-input)
 - [15. Quick decision checklist](#15-quick-decision-checklist)
+- [16. Mirror overrides](#16-mirror-overrides)
+- [17. Dependency map (`cfs map` / `/cf-map`)](#17-dependency-map-cfs-map--cf-map)
 - [Further reading](#further-reading)
 
 <!-- /toc -->
@@ -481,6 +487,33 @@ How to choose between them:
 - **Need cross-document alignment?** Ask for consistency, contradiction, gap, or drift analysis.
 - **Need to understand an unfamiliar codebase first?** Start with reverse engineering or brownfield analysis before generation.
 - **Need a large review?** Use `plan` first, then execute the analysis in bounded phases.
+
+### Use `brainstorm` when
+
+Use `brainstorm` for **open-ended exploration before scope is decided** — early-stage ideation, option mapping, structured panel critique, or "what should this look like" conversations that are too unformed for `plan` or `generate`.
+
+Unlike chat brainstorming, the Constructor Studio brainstorm workflow runs a **facilitator + multi-expert panel** with scoped numbered options, so the output is structured enough that downstream `cf generate` / `cf plan` can consume it.
+
+- 💬 `cf brainstorm: explore options for splitting the billing service from the monolith`
+- 💬 `cf brainstorm: panel critique of our proposed retention policy`
+- 💬 `cf brainstorm: map alternatives for caching layer placement`
+
+Use `brainstorm` **before** `plan` when scope itself is the open question. Skip it when the change is already well-understood.
+
+### Use `pdsl` when
+
+Use `pdsl` for authoring, transforming, or reviewing **prompt / workflow / skill / agent instruction files** as compact state-machine-like contracts. PDSL (Prompt DSL) is the format used internally by Constructor Studio's own workflow files — explicit `UNIT`, `DO`, `MENU`, `STATE`, `STOP_TURN` blocks instead of free-form prose.
+
+Use `pdsl` when:
+- you need to write a new prompt / workflow / skill / agent instruction file from scratch as a precise contract
+- you have prose-style instructions and want them converted to compact PDSL (preserving behavior)
+- you want to review existing prompt files for state-machine correctness, missing `STOP_TURN`, hidden prose rules, or handoff bugs
+
+- 💬 `cf pdsl: review .claude/agents/my-agent.md for state-machine correctness`
+- 💬 `cf pdsl: transform this prose workflow into PDSL`
+- 💬 `cf pdsl: author a new agent instruction file for code review`
+
+This is an authoring/operating tool for the people who write Constructor Studio prompts and agents themselves; most end users will never need it.
 
 ### Default routing rule
 
@@ -910,6 +943,37 @@ Even after a clean delegated loop, the result is still not automatically guarant
 
 A final **human review remains mandatory**.
 
+### `cfs delegate` CLI options
+
+`cfs delegate <plan-dir>` compiles a Constructor Studio plan and hands it to RalphEx. The mode controls how aggressively RalphEx acts:
+
+| Mode | What it does | When to pick |
+|---|---|---|
+| `execute` (default) | Run the full plan: compile, execute phases, attempt the validation loop | You trust the plan and want hands-off execution |
+| `tasks-only` | Compile and emit per-phase task files, but stop before execution | You want a review surface before any code is written |
+| `review` | Generate a review of an already-executed plan against the default branch | Post-execution audit / drift detection |
+
+Useful flags:
+
+- 🖥️ `cfs delegate .bootstrap/.plans/my-plan --dry-run` — assemble and print the ralphex command without invoking it (recommended **before** every first real delegation)
+- 🖥️ `cfs delegate <plan-dir> --worktree` — request worktree isolation so RalphEx works on a copy (only valid for `execute` / `tasks-only`)
+- 🖥️ `cfs delegate <plan-dir> --no-serve` — skip the dashboard
+- 🖥️ `cfs delegate <plan-dir> --mode review --default-branch main` — review-mode against a non-default branch
+- 🖥️ `cfs delegate <plan-dir> --plans-dir custom/plans` — override the plans directory lookup
+
+> **Start with `--dry-run`.** Inspect the assembled command and confirm the plan directory, mode, and worktree choice match your intent before letting RalphEx start.
+
+### Managing large inputs (`cfs chunk-input`)
+
+When a request brings a large external input — a long requirement doc, a wide PR diff, several files — the workflow may hit the raw-input overflow threshold. `cfs chunk-input` is a deterministic, idempotent way to **package** that input into line-bounded chunks the plan/generate workflows can consume cleanly:
+
+- 🖥️ `cfs chunk-input docs/big-spec.md --output-dir .bootstrap/.cache/chunks/` — chunk one file (default 300 lines / chunk)
+- 🖥️ `cfs chunk-input --max-lines 500 path1.md path2.md --output-dir <dir>` — multiple files, larger chunk size
+- 🖥️ `echo "prompt text" | cfs chunk-input --include-stdin docs/spec.md --output-dir <dir>` — combine pasted prompt with file inputs
+- 🖥️ `cfs chunk-input ... --dry-run` — show what would be written, write nothing
+
+Use this **before** invoking `cf plan: ...` on a large input. The chunked output is reproducible: the same input always yields the same chunk set, so the plan workflow sees stable context across runs.
+
 
 ---
 
@@ -951,6 +1015,43 @@ cfs mirror clear      # delete all overrides
 ```
 
 Overrides are stored in `${XDG_CONFIG_HOME:-~/.config}/constructor-studio/mirrors.toml` (XDG primary) with brand-home fallback at `~/.constructor-studio/mirrors.toml`. Both locations are read on startup and merged; the last entry for a duplicate `from` wins. See [ADR-0020](../architecture/ADR/0020-cpt-studio-adr-rebrand-and-mirror-override-v1.md) for the full match and write-target semantics.
+
+---
+
+## 17. Dependency map (`cfs map` / `/cf-map`)
+
+`cfs map` builds an interactive **markdown ↔ source dependency map** of the project — every `@cpt-*` identifier, every cross-file link, every artifact-to-code reference becomes a node and edge in a graph you can open in the browser.
+
+### Why use it
+
+- **See traceability at a glance** — which DESIGN docs link to which FEATURE specs, which features have code markers, which IDs are orphaned.
+- **Find phantom and dangling references before review** — broken links, IDs that look defined but never resolve, drift across renames.
+- **Onboard onto an unfamiliar repo** — the rendered graph is usually the fastest way to grok how artifacts, rules, workflows, and code wire together.
+- **CI signal** — `--format json` gives a stable graph artifact you can diff or assert against between commits.
+
+### When to use it
+
+- **Before a big review** — render the map first, then ask `cf analyze: find dangling references` against it. You catch broken cross-refs without reading every file.
+- **Brownfield landing** — first move in an unfamiliar repo; the categories in the legend tell you where the important surfaces are.
+- **After a rename or restructure** — quickly verify nothing was orphaned by the move.
+- **Workspace work** — `cfs map` (without `--local-only`) walks resolved workspace sources too.
+
+### Typical commands
+
+- 🖥️ `cfs map` — render `md-map.html` + `md-map.json` at the project root (open the HTML file directly)
+- 🖥️ `cfs map --inline-data` — embed graph data inside the HTML so the file is fully self-contained (shareable in chat / PR)
+- 🖥️ `cfs map --format json --local-only` — JSON for CI, no workspace traversal
+- 🖥️ `cfs map --include-adapter` — also walk `{cf-studio-path}/` so `.cf-studio/...` references resolve
+
+### Chat workflow
+
+- 💬 `cf map: render the dependency map`
+- 💬 `cf map: find dangling references` — routes into `analyze` on the map
+- 💬 `cf map: help me configure md-map.toml` — interactive config-assist for path → category styling
+
+To control which directories become named categories (and their colors) in the rendered graph, drop an `md-map.toml` at the project root. See the **[Configuration guide §9](CONFIGURATION.md#9-dependency-map-cfs-map--cf-map)** for the schema.
+
+> **Read-only by design.** `cfs map` never modifies artifacts or code — safe to run anytime, in CI, or on a colleague's checkout.
 
 ## Further reading
 

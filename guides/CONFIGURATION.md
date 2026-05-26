@@ -17,6 +17,9 @@
 - [7. Systems, Autodetect, and Codebase Registration](#7-systems-autodetect-and-codebase-registration)
   - [Autodetect patterns](#autodetect-patterns)
   - [Codebase entries](#codebase-entries)
+- [8b. Language Policy (`cfs check-language`, `LANG001`)](#8b-language-policy-cfs-check-language-lang001)
+- [9. Dependency Map (`cfs map` / `/cf-map`)](#9-dependency-map-cfs-map--cf-map)
+- [10. Mirror Overrides (`cfs mirror`)](#10-mirror-overrides-cfs-mirror)
 - [Further Reading](#further-reading)
 
 <!-- /toc -->
@@ -230,8 +233,10 @@ When `to_code = true`, implementation code must contain `@cpt-*` markers linking
 
 - 🖥️ `cfs list-ids` — list all IDs across all artifacts
 - 🖥️ `cfs list-ids --kind fr` — list only functional requirement IDs
+- 🖥️ `cfs list-id-kinds` — list every configured ID kind with counts (useful for discovery before `list-ids --kind`)
 - 🖥️ `cfs where-defined --id cpt-myapp-fr-user-auth` — find where an ID is defined
 - 🖥️ `cfs where-used --id cpt-myapp-fr-user-auth` — find all references to an ID
+- 🖥️ `cfs get-content --id cpt-myapp-fr-user-auth` — print the content block defined under an ID (handy for AI prompts and quick inspection)
 
 - 💬 `cf analyze: find all IDs of kind flow in the auth feature`
 - 💬 `cf analyze: show which artifacts reference cpt-myapp-fr-user-auth`
@@ -405,6 +410,127 @@ cfs update                          # update Constructor Studio core + all kits
 
 ---
 
+## 8b. Language Policy (`cfs check-language`, `LANG001`)
+
+Constructor Studio can deterministically restrict which Unicode scripts are allowed inside Markdown artifacts — useful when policy requires English-only documentation, or when you want to allow a curated multilingual set (e.g. `en,ru`).
+
+**Why configure this**: prevent accidental script mixing, catch copy-pasted homoglyph attacks in IDs, enforce house-language for shipped artifacts. Failures surface as `LANG001` violations during `cfs validate` and standalone via `cfs check-language`.
+
+**Configuration**: workspace config under `[validation]` controls the default allow-list.
+
+```toml
+[validation]
+allowed_content_languages = ["en"]    # or ["en", "ru"]
+ignore_paths              = ["translations/**/*.md"]
+```
+
+- 🖥️ `cfs check-language` — scan default `architecture/` folder using workspace config
+- 🖥️ `cfs check-language --languages en` — override allow-list inline
+- 🖥️ `cfs check-language --languages en,ru architecture/ docs/` — scan custom paths with multi-script allow
+- 🖥️ `cfs check-language --ignore "translations/**/*.md"` — skip a glob
+- 🖥️ `cfs check-language --quiet` — violations only, no summary header
+
+`LANG001` errors include the file, line, and offending character so you can fix or whitelist quickly.
+
+---
+
+## 9. Dependency Map (`cfs map` / `/cf-map`)
+
+`cfs map` builds an interactive **markdown ↔ source dependency map** by scanning links, code references, and `@cpt-*` identifiers across the project. It is the fastest way to see how artifacts, rules, workflows, and code wire together — and where the wiring is broken (phantom IDs, dangling links, uncategorized files).
+
+**Why configure this**: the default scan reads every Markdown file under the project root and tags nodes by path. With a project-local `md-map.toml` you control which directories become named categories, what colors they use in the rendered graph, and whether files outside those categories are still shown.
+
+**What it affects**: `cfs map` output (`md-map.html`, `md-map.json`) and the `/cf-map` slash-command workflow (`cf map: ...`). The map is read-only — it never edits artifacts or code.
+
+### CLI
+
+- 🖥️ `cfs map` — render `md-map.html` + `md-map.json` at the project root (default)
+- 🖥️ `cfs map --format json` — emit only the JSON graph (for CI / tooling)
+- 🖥️ `cfs map --out custom/path.html` — write to a custom location
+- 🖥️ `cfs map --config md-map.toml` — explicitly point at a config file
+- 🖥️ `cfs map --no-source` — markdown-only scan (skip code under registered codebases)
+- 🖥️ `cfs map --local-only` — restrict to current repo (skip workspace sources)
+- 🖥️ `cfs map --inline-data` — embed graph data inside the HTML (self-contained file)
+- 🖥️ `cfs map --include-adapter` — also walk the `{cf-studio-path}/` adapter dir so links to `{cf-studio-path}/...` resolve as nodes
+
+### Chat workflow (`/cf-map`)
+
+- 💬 `cf map: render the dependency map` — runs the full four-phase workflow (pre-flight → configure → generate → validate)
+- 💬 `cf map: find dangling references` — routes into `analyze` with the map as input
+- 💬 `cf map: export the graph as json`
+- 💬 `cf map: help me configure md-map.toml` — interactive config-assist phase
+
+### `md-map.toml` — categories and styling
+
+`md-map.toml` lives at the project root and defines **categories**: named groups of paths that share a color in the rendered graph. Without it, the map still works but every file falls into a generic `uncategorized` bucket.
+
+```toml
+[[categories]]
+name  = "workflows"
+paths = ["workflows/**", ".bootstrap/.core/workflows/**"]
+[categories.style]
+color      = "#14b8a6"
+background = "#f0fdfa"
+
+[[categories]]
+name  = "architecture-adr"
+paths = ["architecture/ADR/**"]
+[categories.style]
+color      = "#3b82f6"
+background = "#eff6ff"
+```
+
+| Key | What it controls |
+|---|---|
+| `[[categories]]` | One entry per category; first matching glob wins for a file |
+| `name` | Category label shown in the legend and used for filtering |
+| `paths` | Glob list (relative to project root) — `**` is supported |
+| `style.color` | Border / line color in the rendered graph |
+| `style.background` | Node fill color |
+
+When `md-map.toml` is loaded, the renderer hides the synthetic `uncategorized` bucket by default; toggle via the config-assist phase prompt `show_uncategorized`.
+
+- 💬 `cf map: add a new category named "kits" rooted at .cf-studio/config/kits/**`
+- 💬 `cf map: change the workflows category color to #14b8a6`
+- 💬 `cf generate: update md-map.toml so .github/agents/** is grouped under a copilot-agents category`
+
+---
+
+## 10. Mirror Overrides (`cfs mirror`)
+
+`cfs mirror` lets you globally remap any default URL that Constructor Studio resolves (registry, kit fetch, proxy, skill engine) to a fork or internal mirror. This is the right surface when your organization needs to pin all `constructorfabric/*` traffic to an internal Git host without forking the CLI.
+
+**Why configure this**: enterprise air-gapped installs, forks of the studio core, kit testing against an in-flight fork, or temporarily swapping an upstream URL during incident response.
+
+**What it affects**: every URL the CLI and skill engine resolve. Overrides are pure substring replacements applied at resolution time.
+
+| Subcommand | Effect |
+|---|---|
+| `cfs mirror override <from> <to>` | Register or update a substring override |
+| `cfs mirror list` | Print current overrides with the source file path |
+| `cfs mirror sources` | List default URLs that can be mirrored (with current effective form) |
+| `cfs mirror remove <from>` | Delete one override |
+| `cfs mirror clear [--yes]` | Delete all overrides |
+
+🖥️ **Terminal**:
+```bash
+# Redirect all official URLs to your fork
+cfs mirror override github.com/constructorfabric/studio github.com/ainetx/studio
+
+# Broad org-level rewrite (matches constructorfabric/studio AND constructorfabric/studio-kit-sdlc, etc.)
+cfs mirror override constructorfabric ainetx
+
+cfs mirror list
+cfs mirror remove github.com/constructorfabric/studio
+cfs mirror clear --yes
+```
+
+**Storage**: overrides are written to `${XDG_CONFIG_HOME:-~/.config}/constructor-studio/mirrors.toml` (XDG primary) with a brand-home fallback at `~/.constructor-studio/mirrors.toml`. The read-merge / write-primary dual-location semantics and full URL matching rules are documented in [ADR-0020](../architecture/ADR/0020-cpt-studio-adr-rebrand-and-mirror-override-v1.md).
+
+> Overrides are **machine-global** (per user account), not per-repo. They override default URLs for *every* Constructor Studio project on this machine.
+
+---
+
  ## Quick Reference — Terminal
  
  | What you want | Command |
@@ -415,13 +541,21 @@ cfs update                          # update Constructor Studio core + all kits
 | Validate artifacts + code | `cfs validate` |
 | Validate kit config | `cfs validate-kits` |
 | ID coverage in code | `cfs spec-coverage` |
+| Language script policy check | `cfs check-language` |
 | List all IDs | `cfs list-ids` |
 | List IDs by kind | `cfs list-ids --kind <kind>` |
+| List configured ID kinds | `cfs list-id-kinds` |
 | Find ID definition | `cfs where-defined --id <id>` |
 | Find ID references | `cfs where-used --id <id>` |
+| Print content block for an ID | `cfs get-content --id <id>` |
 | See current config | `cfs info` |
 | Resolve resource paths | `cfs resolve-vars --flat` |
 | Generate agent files | `cfs generate-agents --agent windsurf` |
+| Build dependency map | `cfs map` |
+| Export map as JSON | `cfs map --format json` |
+| Register a URL mirror | `cfs mirror override <from> <to>` |
+| List mirror overrides | `cfs mirror list` |
+| Clear all mirrors | `cfs mirror clear --yes` |
 
  ## Quick Reference — Prompts
  
@@ -471,5 +605,6 @@ cfs update                          # update Constructor Studio core + all kits
 | Traceability & markers | `architecture/specs/traceability.md` |
 | CDSL language | `architecture/specs/CDSL.md` |
 | CLI commands | `architecture/specs/cli.md` |
+| Mirror overrides | `architecture/ADR/0020-cpt-studio-adr-rebrand-and-mirror-override-v1.md` |
 | System prompts | `architecture/specs/sysprompts.md` |
 | Workspace config | `schemas/workspace.schema.json` |

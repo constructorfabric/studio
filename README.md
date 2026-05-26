@@ -442,6 +442,7 @@ Recommended reading path: **README -> [Usage guide](guides/USAGE-GUIDE.md) -> [A
 - **Deeper reference**
   - **[Workspace specification](requirements/workspace.md)**
   - **[Project extensibility guide](guides/PROJECT-EXTENSIBILITY.md)**
+  - **[Migrating from Cypilot](guides/MIGRATING-FROM-CYPILOT.md)**
   - **[Historical story-driven walkthrough](guides/STORY.md)**
   - **[Requirements and checklists](requirements/)**
   - **[Architecture and ADRs](architecture/)**
