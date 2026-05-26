@@ -1,7 +1,7 @@
 ---
 cf: true
 type: workflow
-name: map
+name: cf-map
 description: Build interactive dependency maps — scan markdown, source code, cpt references; detect cross-repo edges and phantom cpts; render HTML viewer or JSON
 version: 1.0
 purpose: Guide cfs map workflow from pre-flight through validation
@@ -278,14 +278,19 @@ DO:
   7. EMIT_MENU PaletteMenu
      WAIT user.reply
      STOP_TURN
-  8. After palette chosen, emit the full proposed TOML block in chat with the derived names
-     populated in the `name = "..."` field for each category.
-     Include a note: "Names are derived from path prefixes. Use `edit-names` if you want to
-     refine them, or `approve` to accept."
-  9. EMIT_MENU ConfigAssistActionMenu
+  8. After palette chosen, EMIT_MENU UncategorizedBucketMenu
      WAIT user.reply
      STOP_TURN
-  10. On approve:
+  9. After uncategorized bucket choice, emit the full proposed TOML block in chat with:
+     - Top-level field: show_uncategorized = {true|false} (based on step 8 choice)
+     - Derived category names populated in the `name = "..."` field for each category
+     Include a note: "Names are derived from path prefixes. Use `edit-names` if you want to
+     refine them, or `approve` to accept. Toggle `show_uncategorized` directly in the TOML
+     if you change your mind before approve."
+  10. EMIT_MENU ConfigAssistActionMenu
+      WAIT user.reply
+      STOP_TURN
+  11. On approve:
         a. EMIT "About to write ./md-map.toml ({N} categories). Reply `yes` to confirm."
         b. WAIT user.reply
            STOP_TURN
@@ -294,15 +299,15 @@ DO:
         d. After write:
              EMIT "Re-running map with new config..."
              CONTINUE MapPhase3 with `--config ./md-map.toml` appended to the RUN line
-  11. On edit-names:
+  12. On edit-names:
         WAIT user.reply with renames
         STOP_TURN
-        RE-EMIT updated TOML; loop back to step 9
-  12. On add-manual:
+        RE-EMIT updated TOML; loop back to step 10
+  13. On add-manual:
         WAIT user.reply for one or more manual {name, paths, style?} entries
         STOP_TURN
-        APPEND to proposed config; loop back to step 9
-  13. On skip:
+        APPEND to proposed config; loop back to step 10
+  14. On skip:
         CONTINUE MapNextSteps
 
 MENU PaletteMenu:
@@ -397,17 +402,33 @@ MENU ThemePickerMenu:
     WAIT user.reply
     STOP_TURN
 
+MENU UncategorizedBucketMenu:
+  TITLE: >
+    Should nodes NOT matching any [[categories]] path be hidden, or shown as a single "_uncategorized" bucket?
+    Reply 1 (hide) or 2 (show as bucket).
+  OPTIONS:
+    1 hide ->
+      SET config.show_uncategorized = false
+      CONTINUE next step (render TOML)
+    2 bucket ->
+      SET config.show_uncategorized = true
+      CONTINUE next step (render TOML)
+  INVALID:
+    EMIT "Reply with 1 or 2."
+    WAIT user.reply
+    STOP_TURN
+
 MENU ConfigAssistActionMenu:
   TITLE: >
     Review the proposed TOML above. What would you like to do?
     Reply with: approve, edit-names, add-manual, or skip.
   OPTIONS:
     approve ->
-      (proceed to step 10 — write confirmation)
+      (proceed to step 11 — write confirmation)
     edit-names ->
-      (proceed to step 11 — rename loop)
+      (proceed to step 12 — rename loop)
     add-manual ->
-      (proceed to step 12 — append manual entries)
+      (proceed to step 13 — append manual entries)
     skip ->
       CONTINUE MapNextSteps
   INVALID:
