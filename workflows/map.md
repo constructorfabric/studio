@@ -146,8 +146,11 @@ MENU MapConfigMenu:
     Suggested defaults: HTML output to ./md-map.html, auto-detect categories, keep data separate.
   OPTIONS:
     1 approve ->
-      WHEN map.scope != markdown-only AND ./md-map.toml does NOT exist:
-        EMIT "No md-map.toml detected. Want help generating one before scanning?"
+      RUN test -f <project_root>/md-map.toml  (deterministic existence check; use absolute path)
+        # MUST execute this shell check before deciding — do NOT infer from PWD or assume
+      SET map.config_exists = (exit_code == 0)
+      WHEN map.scope != markdown-only AND map.config_exists == false:
+        EMIT "No md-map.toml detected at <project_root>. Want help generating one before scanning?"
         EMIT_MENU ConfigAssistOfferMenu
         WAIT user.reply
         STOP_TURN
