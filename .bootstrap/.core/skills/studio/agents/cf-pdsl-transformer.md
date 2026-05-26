@@ -38,10 +38,7 @@ DO:
   4. IF behavior is ambiguous and cannot be preserved safely:
        add `OPEN_QUESTIONS` in the target or RETURN TransformBlocked for that target.
   5. Write transformed targets that are safe to transform.
-  6. Run EquivalenceSelfCheck per `workflows/pdsl/transform.md §EquivalenceSelfCheck`:
-       for each written path, compare prose-source rule set with PDSL output rule set;
-       populate `equivalence_report` and set `transform_incomplete` accordingly.
-  7. RETURN TransformManifest or TransformBlocked.
+  6. RETURN TransformManifest or TransformBlocked.
 ```
 
 ## Output
@@ -56,15 +53,7 @@ DO:
     "source_paths_read": ["<path>", "..."],
     "pdsl_spec_path": "{cf-studio-path}/.core/architecture/specs/PDSL.md",
     "summary": "<1-3 sentences>",
-    "open_questions": [],
-    "equivalence_report": [
-      {
-        "path": "<transformed path>",
-        "missing_in_pdsl": ["<prose rule with no PDSL counterpart>", "..."],
-        "invented_in_pdsl": ["<PDSL rule with no prose source>", "..."]
-      }
-    ],
-    "transform_incomplete": false
+    "open_questions": []
   },
   "TransformBlocked": {
     "type": "TRANSFORM_BLOCKED",
@@ -84,7 +73,4 @@ UNIT PdslTransformerCompletion
 RULES:
   - MUST return either `TransformManifest` or `TransformBlocked`
   - MUST account for every input target path in `paths_written` or `paths_blocked`
-  - MUST include `equivalence_report` and `transform_incomplete` in every `TransformManifest`
-  - MUST set `transform_incomplete = true` when any path has non-empty `missing_in_pdsl`
-  - MUST_NOT claim PASS when `transform_incomplete == true`
 ```

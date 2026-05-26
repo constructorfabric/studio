@@ -296,34 +296,6 @@ def _split_md_cpt(path: Path) -> Tuple[List[str], List[CptUse]]:
 # Source scanning
 # ---------------------------------------------------------------------------
 
-def _resolve_registry_path_for_root(root: Path) -> Optional[Path]:
-    """Resolve the artifacts registry path via the canonical adapter_dir helper.
-
-    Uses find_studio_directory / load_artifacts_registry so that the registry
-    at <adapter_dir>/config/artifacts.toml is found even when it is not at the
-    project root.  Falls back to the flat project-root layout when studio
-    discovery fails (defensive; keeps backward compat with legacy repos).
-    Returns None when no registry file can be located.
-    """
-    try:
-        from studio.utils.files import find_studio_directory, load_artifacts_registry
-        adapter_dir = find_studio_directory(root) or root
-        cfg, _err = load_artifacts_registry(adapter_dir)
-        if cfg is None:
-            return None
-        # Mirror the fallback chain from load_artifacts_registry to get the path.
-        for candidate in (
-            adapter_dir / "artifacts.toml",
-            adapter_dir / "config" / "artifacts.toml",
-            adapter_dir / "artifacts.json",
-        ):
-            if candidate.is_file():
-                return candidate
-    except Exception:  # pylint: disable=broad-exception-caught  # registry resolution is best-effort
-        pass
-    return None
-
-
 def _scan_sources(root: Path, source_name: str, skip_dirs: Set[str]) -> List[Node]:
     """Scan source files driven by [[systems.codebase]] entries in artifacts.toml.
 
@@ -331,8 +303,8 @@ def _scan_sources(root: Path, source_name: str, skip_dirs: Set[str]) -> List[Nod
     DOCS-ONLY systems contribute no source nodes.
     """
     # @cpt-begin:cpt-studio-algo-map-scan:p1:inst-scan-sources
-    registry_path = _resolve_registry_path_for_root(root)
-    if registry_path is None:
+    registry_path = root / "artifacts.toml"
+    if not registry_path.is_file():
         return []
 
     try:

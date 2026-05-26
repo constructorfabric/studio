@@ -102,14 +102,6 @@ Input rules:
   files, specs, or notes.
 - Missing required inputs MUST trigger a scoped question and `STOP_TURN`.
 
-Per-mode shape:
-
-| Mode      | target_paths shape       |
-|-----------|--------------------------|
-| new       | array of exactly 1 path  |
-| transform | array of 1..N paths      |
-| review    | array of 1..N paths      |
-
 ## Dispatch Gate
 
 ```text

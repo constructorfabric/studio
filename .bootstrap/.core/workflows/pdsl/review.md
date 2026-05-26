@@ -27,8 +27,7 @@ WHEN:
 
 REQUIRE:
   target_paths is non-empty
-  SUB_AGENT_SESSION_APPROVED == true
-    OR (host.supports_native_subagents == false AND INLINE_FALLBACK == true)
+  SUB_AGENT_SESSION_APPROVED == true OR INLINE_FALLBACK == true
 
 DO:
   IF SUB_AGENT_SESSION_APPROVED == unset AND INLINE_FALLBACK == unset:

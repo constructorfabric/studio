@@ -272,9 +272,13 @@ MENU GitCommitModeProbe:
     STOP_TURN
 
 NOTES:
-  Verbatim user-facing prompt text and full mode semantics are the canonical
-  source of truth in workflows/generate/phase-0-git-commit-mode.md.
-  This MENU captures only the state-machine surface; do not duplicate prose here.
+  The MENU TITLE, OPTIONS labels, and INVALID text are duplicated from
+  workflows/generate/phase-0-git-commit-mode.md so that the skill can
+  self-execute the probe without loading the workflow file. The workflow
+  file remains the canonical source for long-form mode descriptions
+  (per-mode semantics, edge-case behavior, rationale). When changing the
+  user-facing wording, edit BOTH the workflow file AND this MENU; keep
+  them byte-aligned. Long-form prose stays in the workflow file only.
 ```
 
 ---

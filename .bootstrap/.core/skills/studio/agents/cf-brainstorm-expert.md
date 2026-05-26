@@ -101,6 +101,7 @@ DO:
   1. IF topic is not in this persona's domain
      AND another panel persona clearly owns it:
        RETURN { "relevant": false, "reason": "<one-sentence>" }
+       STOP_TURN
   2. IF topic is relevant, produce 1-3 questions where each question has:
        - `id`: non-empty, unique within this response, e.g. <persona.id>Q1
        - `decision_key`: unique across all rendered questions in this topic-round
@@ -133,6 +134,7 @@ DO:
      AND no cross-cutting concern (security, cost, reliability, UX, compliance)
      bears on them:
        RETURN { "relevant": false, "reason": "<one-sentence>" }
+       STOP_TURN
   2. IF relevant, produce a non-empty `critique` paragraph naming:
        the specific decision(s) being challenged
        the failure mode (risk, hidden cost, lost optionality, contradiction
@@ -151,14 +153,13 @@ DO:
   4. SET next_topic_proposal = null
 
 RULES:
+  - `critique` MUST be non-empty in challenge mode; empty or whitespace-only is a contract violation
+  - every `questions[].decision_key` MUST name a key present in `challenged_decisions`
+  - `questions[].decision_key` values MUST be unique within this response
+  - `next_topic_proposal` MUST be null in challenge mode
+  - emit at most one question and one counter-proposal for any challenged decision key
   - MUST_NOT invent irrelevant pushback
-  SEE_ALSO: BrainstormExpertCompletionGate
 ```
-
-Challenge-mode behavioral invariants are authoritative in
-`BrainstormExpertCompletionGate`; `ChallengeMode` references them via
-`SEE_ALSO` and `BrainstormExpertCompletionGate` is the only authoring
-location for changes to those invariants.
 
 ```text
 UNIT KitRulesCheck

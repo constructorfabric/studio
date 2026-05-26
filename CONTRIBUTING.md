@@ -92,6 +92,8 @@ studio/                           # Project root
 > testing. After such a test, it is recommended to return `.bootstrap/` to its previous
 > state, and the pull request should be clean of bootstrap-only changes.
 
+**Exception — runtime-needed bootstrap changes.** When a branch introduces a change that must be exercisable at runtime in the same branch (for example, a new `SKILL.md` state machine that the skill loader needs to find immediately, or a workflow edit that the orchestrator must be able to load without a separate `make update` pass), the bootstrap propagation MAY be committed alongside the top-level edit. Such commits SHOULD use the prefix `chore(bootstrap):` in the commit subject OR include a `Bootstrap-Runtime: true` trailer so they are greppable in history. Reviewers may still ask for a follow-up cleanup commit that reverts the bootstrap deltas once the runtime evaluation is complete.
+
 The `make update` command runs `cfs update --source . --force`, which:
 1. Copies canonical sources into `.bootstrap/.core/`
 2. Regenerates `.bootstrap/.gen/` aggregates
