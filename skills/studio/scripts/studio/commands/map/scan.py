@@ -354,10 +354,28 @@ def _scan_sources(root: Path, source_name: str, skip_dirs: Set[str]) -> List[Nod
     if meta is None:
         return []
 
+    # Expand autodetect rules so that [[systems.autodetect.codebase]] entries
+    # are promoted into SystemNode.codebase before iter_all_codebase() is called.
+    # adapter_dir is the studio directory that owns the registry; project_root is
+    # the scan root (i.e. the git repo root passed as ``root``).
+    # Guard: only use adapter resolution when root == project_root to avoid
+    # picking up the parent project's adapter when scanning a fixture sub-dir.
+    try:
+        from studio.utils.files import find_studio_directory, find_project_root
+        detected_root = find_project_root(root)
+        if detected_root is not None and detected_root.resolve() == root.resolve():
+            adapter_dir = find_studio_directory(root) or root
+        else:
+            adapter_dir = root
+        meta.expand_autodetect(adapter_dir=adapter_dir, project_root=root)
+    except Exception:  # pylint: disable=broad-exception-caught  # expand is best-effort
+        pass
+
     nodes: List[Node] = []
     seen: Set[Path] = set()
 
     for cb, _system in meta.iter_all_codebase():
+        # cb.path is project_root-relative after expand_autodetect resolves it.
         cb_path = cb.path.lstrip("./")
         cb_dir = root / cb_path
         if not cb_dir.is_dir():
