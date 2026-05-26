@@ -1,5 +1,9 @@
 /* cfs map viewer — 3-column layout */
 
+:root {
+  --inspector-width: 320px;
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
 }
@@ -31,6 +35,19 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  transition: width 0.18s ease, padding 0.18s ease;
+}
+
+#sidebar.collapsed {
+  width: 0;
+  min-width: 0;
+  padding-left: 0;
+  padding-right: 0;
+  overflow: hidden;
+}
+
+#sidebar.no-anim {
+  transition: none;
 }
 
 #sidebar h2 {
@@ -200,6 +217,39 @@ html, body {
   min-height: 14px;
 }
 
+/* ── Sidebar toggle button ── */
+#sidebar-toggle {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 4;
+  width: 28px;
+  height: 28px;
+  font-size: 16px;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #d0d0e0;
+  border-radius: 6px;
+  color: #334;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  padding: 0;
+}
+
+#sidebar-toggle:hover {
+  background: #eef0fa;
+  border-color: #c0c8e0;
+  color: #3050a0;
+}
+
+#sidebar-toggle:focus {
+  outline: 2px solid #3050a0;
+  outline-offset: 2px;
+}
+
 /* ── Graph (center, fills) ── */
 #graph-wrap {
   flex: 1;
@@ -271,15 +321,15 @@ html, body {
 #graph-wrap.hand-mode #hand-overlay { cursor: grab; }
 #graph-wrap.hand-mode #hand-overlay.grabbing { cursor: grabbing; }
 
-/* ── Inspector (right, 320px, hidden by default) ── */
+/* ── Inspector (right, variable width, hidden by default) ── */
 #inspector {
-  width: 320px;
+  width: var(--inspector-width, 320px);
   flex-shrink: 0;
   background: #fff;
   border-left: 1px solid #dde;
   padding: 0;
   overflow-y: auto;
-  transform: translateX(320px);
+  transform: translateX(var(--inspector-width, 320px));
   transition: transform 0.2s ease;
   display: flex;
   flex-direction: column;
@@ -289,6 +339,26 @@ html, body {
 
 #inspector.open {
   transform: translateX(0);
+}
+
+/* ── Inspector resize handle ── */
+#inspector-resize-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 5px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 11;
+  pointer-events: none;
+}
+
+#inspector.open #inspector-resize-handle {
+  pointer-events: auto;
+}
+
+#inspector-resize-handle:hover {
+  background: rgba(48, 80, 160, 0.18);
 }
 
 #inspector-header {

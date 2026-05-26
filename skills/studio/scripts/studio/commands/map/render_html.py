@@ -71,6 +71,7 @@ _TEMPLATE = """<!doctype html>
 <div id="app">
   <aside id="sidebar"></aside>
   <div id="graph-wrap">
+    <button id="sidebar-toggle" title="Toggle category panel" aria-pressed="false">☰</button>
     <main id="graph"></main>
     <div id="hand-overlay"></div>
     <div id="toolbar">
@@ -82,7 +83,9 @@ _TEMPLATE = """<!doctype html>
       <button id="tb-hand"     title="Hand tool — drag anywhere to pan">✋</button>
     </div>
   </div>
-  <section id="inspector"></section>
+  <section id="inspector">
+    <div id="inspector-resize-handle" aria-label="Resize inspector"></div>
+  </section>
 </div>
 {data_script}
 <script>

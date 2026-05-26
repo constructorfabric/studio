@@ -69,10 +69,13 @@
       document.getElementById("graph").textContent = "ERROR: window.MAP_DATA not found.";
       return;
     }
+    restoreInspectorWidth();
     buildSidebar(data);
     const network = buildGraph(data);
     buildSearch(data, network);
     wireToolbar();
+    wireSidebarToggle();
+    wireInspectorResize();
   });
 
   /* ── Sidebar ─────────────────────────────────────────────────── */
@@ -1195,6 +1198,91 @@
       e.preventDefault();
       zoomBy(e.deltaY > 0 ? 1 / 1.12 : 1.12);
     }, { passive: false });
+  }
+
+  /* ── Sidebar toggle ─────────────────────────────────────────── */
+  function wireSidebarToggle() {
+    const btn = document.getElementById("sidebar-toggle");
+    const sidebar = document.getElementById("sidebar");
+    if (!btn || !sidebar) return;
+
+    // Restore persisted state without animation.
+    const saved = localStorage.getItem("mapViewerSidebarCollapsed");
+    if (saved === "1") {
+      sidebar.classList.add("no-anim", "collapsed");
+      btn.setAttribute("aria-pressed", "true");
+      // Remove no-anim after a frame so subsequent toggles animate.
+      requestAnimationFrame(function () {
+        sidebar.classList.remove("no-anim");
+      });
+    } else {
+      btn.setAttribute("aria-pressed", "false");
+    }
+
+    btn.addEventListener("click", function () {
+      const collapsed = sidebar.classList.toggle("collapsed");
+      btn.setAttribute("aria-pressed", collapsed ? "true" : "false");
+      localStorage.setItem("mapViewerSidebarCollapsed", collapsed ? "1" : "0");
+    });
+  }
+
+  /* ── Inspector width persistence ────────────────────────────── */
+  function restoreInspectorWidth() {
+    const saved = localStorage.getItem("mapViewerInspectorWidth");
+    if (saved) {
+      const px = parseInt(saved, 10);
+      if (!isNaN(px) && px >= 240 && px <= 800) {
+        document.documentElement.style.setProperty("--inspector-width", px + "px");
+      }
+    }
+  }
+
+  /* ── Inspector resize handle ─────────────────────────────────── */
+  function wireInspectorResize() {
+    const handle = document.getElementById("inspector-resize-handle");
+    const inspector = document.getElementById("inspector");
+    if (!handle || !inspector) return;
+
+    let dragging = false;
+    let startX = 0;
+    let startWidth = 0;
+
+    handle.addEventListener("pointerdown", function (e) {
+      if (!inspector.classList.contains("open")) return;
+      e.preventDefault();
+      dragging = true;
+      startX = e.clientX;
+      startWidth = inspector.getBoundingClientRect().width;
+      handle.setPointerCapture(e.pointerId);
+      document.body.style.userSelect = "none";
+    });
+
+    handle.addEventListener("pointermove", function (e) {
+      if (!dragging) return;
+      // Handle is on the left edge; dragging left = wider, right = narrower.
+      const dx = startX - e.clientX;
+      let newWidth = startWidth + dx;
+      newWidth = Math.max(240, Math.min(800, newWidth));
+      document.documentElement.style.setProperty("--inspector-width", newWidth + "px");
+    });
+
+    handle.addEventListener("pointerup", function (e) {
+      if (!dragging) return;
+      dragging = false;
+      document.body.style.userSelect = "";
+      // Persist final width.
+      const current = getComputedStyle(document.documentElement)
+        .getPropertyValue("--inspector-width").trim();
+      const px = parseInt(current, 10);
+      if (!isNaN(px)) {
+        localStorage.setItem("mapViewerInspectorWidth", String(px));
+      }
+    });
+
+    handle.addEventListener("pointercancel", function () {
+      dragging = false;
+      document.body.style.userSelect = "";
+    });
   }
 
   /* Build a clickable chip-row for a cpt-id with two actions:
