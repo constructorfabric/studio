@@ -397,6 +397,11 @@ Enables users to install, update, and validate kit packages with interactive fil
 **Supporting**:
 - [x] - `p1` - Semantic version comparison helper (parse `X.Y.Z` and compare) - `inst-whatsnew-version-cmp`
 - [x] - `p1` - ANSI formatting helper for summary and details text (bold version, cyan code spans) - `inst-whatsnew-format`
+- [x] - `p1` - Module-level imports and type aliases for whatsnew utilities - `inst-whatsnew-imports`
+- [x] - `p1` - ANSI color availability check (stderr TTY detection) - `inst-whatsnew-ansi-check`
+- [x] - `p1` - `format_whatsnew_text`: apply ANSI bold/cyan formatting to version headers and inline code spans - `inst-whatsnew-format-text`
+- [x] - `p1` - `read_whatsnew`: load and normalize entries from `whatsnew.toml` (handles `whatsnew.X.Y.Z` key prefix) - `inst-whatsnew-read-toml`
+- [x] - `p1` - `show_whatsnew`: orchestrate filter, sort, display, and acknowledgment prompt - `inst-whatsnew-show-core`
 
 ### Kit Snapshot
 

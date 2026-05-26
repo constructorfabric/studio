@@ -379,6 +379,18 @@ Enables users to install Studio globally, initialize it in any project with sens
 
 **Supporting**:
 - [x] - `p1` - Human-friendly output formatter for info command (callback passed to ui.result) - `inst-info-human-fmt`
+- [x] - `p1` - JSON mode flag: `_json_mode` global, `set_json_mode`, `is_json_mode` - `inst-ui-json-mode-flag`
+- [x] - `p1` - ANSI escape code constants and color availability/application helpers - `inst-ui-ansi-helpers`
+- [x] - `p1` - `header`: print bold section header to stderr (suppressed in JSON mode) - `inst-ui-progress-header`
+- [x] - `p1` - `step` / `substep`: progress step indicators printed to stderr - `inst-ui-progress-step`
+- [x] - `p1` - `success` / `error` / `warn` / `info`: status message printers to stderr - `inst-ui-status-messages`
+- [x] - `p1` - `detail` / `hint` / `blank` / `divider`: supplementary output helpers to stderr - `inst-ui-detail-hint`
+- [x] - `p1` - `table`: aligned column table renderer to stderr - `inst-ui-table`
+- [x] - `p1` - `file_action`: file-change icon printer (created/updated/unchanged/etc.) to stderr - `inst-ui-file-action`
+- [x] - `p1` - `result` JSON branch: serialize result dict as JSON to stdout in `--json` mode - `inst-ui-result-json`
+- [x] - `p1` - `result` human branch: invoke `human_fn` or generic status/message fallback to stderr - `inst-ui-result-human`
+- [x] - `p1` - `relpath`: convert absolute path to cwd-relative path with fallback - `inst-ui-relpath`
+- [x] - `p1` - `_UI` singleton class exposing all helpers as static methods via `ui` module attribute - `inst-ui-singleton`
 
 ### Project Root Detection
 
@@ -478,6 +490,10 @@ Enables users to install Studio globally, initialize it in any project with sens
 
 **Supporting**:
 - [ ] - `p1` - TOML readers for both config locations, write-target resolution (existing brand-home wins, else existing XDG, else create XDG), `set_override` / `remove_override` / `list_overrides` helpers, URL canonicalizer - `inst-mirror-helpers`
+- [x] - `p1` - XDG and brand-home config path resolvers for `mirrors.toml` locations - `inst-mirror-config-paths`
+- [x] - `p1` - `_load_file`: parse a single `mirrors.toml` file into `(from, to)` tuple list - `inst-mirror-load-file`
+- [x] - `p1` - `_load_overrides`: merge XDG and brand-home entries; brand-home wins on duplicate `from` - `inst-mirror-merge-overrides`
+- [x] - `p1` - `apply_override`: apply all registered overrides as substring replacements to a URL - `inst-mirror-apply-override`
 
 ## 4. States (CDSL)
 

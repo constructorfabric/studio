@@ -238,6 +238,17 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 - [x] - `p1` - TOC validation phase within artifact validation - `inst-check-toc`
 - [x] - `p1` - Build definitions-by-ID index from scanned artifact IDs - `inst-build-defs-index`
 - [x] - `p1` - Heading context resolution for CDSL instruction line matching - `inst-check-cdsl-heading-ctx`
+- [x] - `p1` - `constraint_hint`: generate human-readable constraint hint string from an `IdConstraint` - `inst-constraint-hint`
+- [x] - `p1` - `normalize_heading_id_for_check`: strip numbering prefix and canonicalize heading text for matching - `inst-normalize-heading-id`
+- [x] - `p1` - `validate_task_priority`: check task-checkbox and priority-marker presence/prohibition against constraints - `inst-validate-task-priority`
+- [x] - `p1` - `validate_id_heading_constraint`: verify an ID definition sits under an allowed heading pattern - `inst-validate-id-heading-constraint`
+- [x] - `p1` - `validate_id_format` kind-hint branch: emit DISALLOWED_KIND / MISSING_KIND errors per constraint - `inst-validate-id-kind-hint`
+- [x] - `p1` - `validate_id_format` heading-description branch: emit WRONG_HEADING error when ID is under wrong heading - `inst-validate-id-heading-desc`
+- [x] - `p1` - `validate_id_format` system-match branch: emit WRONG_SYSTEM error for IDs with unexpected system prefix - `inst-validate-id-match-system`
+- [x] - `p1` - `validate_id_format` composite-nested branch: handle nested IDs within composite parent scopes - `inst-validate-id-composite-nested`
+- [x] - `p1` - `validate_id_format` kind-extractor: parse kind token from ID slug for constraint lookup - `inst-validate-id-extract-kind`
+- [x] - `p1` - `validate_id_format` definitions loop: iterate all scanned ID definitions and dispatch per-ID checks - `inst-validate-id-defs-loop`
+- [x] - `p1` - `validate_id_format` required-check: emit MISSING_REQUIRED_KIND error for required kinds absent from artifact - `inst-validate-id-required-check`
 
 ### Cross-Validate Artifacts
 
@@ -261,6 +272,13 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 
 **Supporting**:
 - [x] - `p1` - Setup helpers: system matcher, kind extractor, external-system detector, heading-info builder, constraint indexing - `inst-cross-datamodel`
+- [x] - `p1` - `cross_datamodel` constraints-index builder: map systemâ†’kindâ†’ArtifactKindConstraints for fast lookup - `inst-cross-build-constraints-index`
+- [x] - `p1` - `cross_datamodel` kind-tokens collector: aggregate all ID kind tokens seen across artifacts - `inst-cross-collect-kind-tokens`
+- [x] - `p1` - `cross_datamodel` system-matcher helper: check whether an ID's system prefix matches a registered system - `inst-cross-match-system`
+- [x] - `p1` - `cross_datamodel` kind-extractor helper: parse kind token from a `cpt-{sys}-{kind}-{slug}` ID string - `inst-cross-extract-kind`
+- [x] - `p1` - `cross_datamodel` external-ref detector: determine whether a reference ID belongs to an external system - `inst-cross-external-ref`
+- [x] - `p1` - `cross_datamodel` headings-info builder: produce per-artifact heading context map for coverage rules - `inst-cross-headings-info`
+- [x] - `p1` - `enforce_coverage` reference-coverage rules loop: check required cross-references between artifact kinds per constraint - `inst-cross-ref-coverage-rules`
 
 ### Scan Code Markers
 
@@ -366,6 +384,22 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 **Supporting**:
 - [x] - `p1` - Imports, constants, fence tracking, GitHub anchor slug generation - `inst-toc-util-datamodel`
 - [x] - `p1` - Internal helpers: unique slug, next heading finder, manual TOC stripping, TOC section finder, entry extraction, anchor building, heading line finder - `inst-toc-util-helpers`
+- [x] - `p1` - Fence-state update helper used by heading parser and TOC inserters - `inst-toc-util-fence-update`
+- [x] - `p1` - HTML marker constants for `<!-- toc -->` / `<!-- /toc -->` fence detection - `inst-toc-util-markers-constants`
+- [x] - `p1` - GitHub-compatible anchor slug generator: lowercase, strip special chars, replace spaces with hyphens - `inst-toc-util-github-anchor`
+- [x] - `p1` - Unique-slug deduplicator: append `-N` suffix on collision - `inst-toc-util-unique-slug`
+- [x] - `p1` - Manual TOC stripper: remove leading list lines before any heading - `inst-toc-util-strip-manual`
+- [x] - `p1` - Link regex constant for matching `[text](anchor)` TOC entries - `inst-toc-util-link-re`
+- [x] - `p1` - TOC section finder: locate `<!-- toc -->` / `<!-- /toc -->` marker bounds in content lines - `inst-toc-util-find-section`
+- [x] - `p1` - TOC entry extractor: parse existing `[text](#anchor)` lines from a TOC block - `inst-toc-util-extract-entries`
+- [x] - `p1` - Anchor builder: map heading text to expected GitHub anchor slugs for comparison - `inst-toc-util-build-anchors`
+- [x] - `p1` - Heading line finder: locate the line index of a given heading text in content lines - `inst-toc-util-find-heading-line`
+- [x] - `p1` - Numbered TOC builder: generate `1. [text](#anchor)` lines from parsed heading tuples - `inst-toc-util-build-toc-numbered`
+- [x] - `p1` - Bulleted TOC builder: generate `- [text](#anchor)` lines with indentation from heading level - `inst-toc-util-build-toc-bullets`
+- [x] - `p1` - Marker-based TOC replace branch: overwrite content between existing `<!-- toc -->` / `<!-- /toc -->` markers - `inst-toc-util-insert-markers-replace`
+- [x] - `p1` - Heading-based TOC replace branch: overwrite content under existing `## Table of Contents` heading - `inst-toc-util-insert-heading-replace`
+- [x] - `p1` - Heading-based TOC new-insert branch: inject `## Table of Contents` before first heading when absent - `inst-toc-util-insert-heading-new`
+- [x] - `p1` - TOC validate init: build heading list and expected TOC string before comparison checks - `inst-toc-util-validate-init`
 
 ### Markdown Parsing Utilities
 
@@ -425,6 +459,14 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 - [x] - `p1` - Heading line regex, number prefix regex, and module exports - `inst-headings-datamodel`
 - [x] - `p1` - Helper functions for heading pattern compilation, wildcard mapping, and best-match selection - `inst-match-headings-helpers`
 - [x] - `p1` - Entry-point function signature for `validate_headings_contract` - `inst-validate-headings-entry`
+- [x] - `p1` - `resolve_scope` init: set up per-constraint scope stacks before match loop - `inst-resolve-scope-init`
+- [x] - `p1` - `resolve_scope` match loop: iterate headings and assign each to a matching constraint scope - `inst-resolve-scope-match-loop`
+- [x] - `p1` - `resolve_scope` stack management: push/pop active constraint IDs based on heading level - `inst-resolve-scope-stack`
+- [x] - `p1` - `validate_init` helpers: pre-build lookup tables and heading index for the validation context - `inst-validate-hc-helpers`
+- [x] - `p1` - `check_numbering` inner function definition: closure over context for sibling-numbering enforcement - `inst-check-numbering-fn`
+- [x] - `p1` - `match_headings` inner function definition: closure over context for hierarchical pattern matching - `inst-match-headings-fn`
+- [x] - `p1` - `match_headings` scope resolver: determine which constraint scope applies to current heading - `inst-match-headings-scope`
+- [x] - `p1` - `match_headings` main loop: iterate document headings and emit errors for violations - `inst-match-headings-loop`
 
 ### Load Constraints
 
@@ -444,6 +486,15 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 **Supporting**:
 - [x] - `p1` - Examples parser, heading-constraint ID slugifier, and references map parser - `inst-constraints-helpers`
 - [x] - `p1` - Normalize heading IDs and validate prev/next references in parsed constraints - `inst-constraints-normalize`
+- [x] - `p1` - `slugify_heading_id`: convert heading pattern text to a stable constraint slug - `inst-slugify-heading-id`
+- [x] - `p1` - `parse_references_map`: build reference rules dict from TOML `[[references]]` array - `inst-parse-references-map`
+- [x] - `p1` - `parse_kit_constraints` main loop: iterate artifact kinds and accumulate parsed constraints - `inst-parse-kit-loop`
+- [x] - `p1` - `assign_heading_ids`: assign auto-generated IDs to heading constraints that lack explicit IDs - `inst-assign-heading-ids`
+- [x] - `p1` - `link_heading_prev_next`: wire `prev` / `next` back-references between adjacent heading constraints - `inst-link-heading-prev-next`
+- [x] - `p1` - `normalize_heading_ids`: top-level entry point that calls assign and link in order - `inst-normalize-heading-ids`
+- [x] - `p1` - `normalize_id_entry`: resolve `headings` field strings to HeadingConstraint objects within an ID constraint - `inst-normalize-id-entry`
+- [x] - `p1` - `parse_identifier_entry`: parse a single `[[identifiers]]` TOML table into an `IdConstraint` - `inst-parse-identifier-entry`
+- [x] - `p1` - `parse_identifiers_block`: iterate the `[[identifiers]]` array and collect parsed `IdConstraint` objects - `inst-parse-identifiers-block`
 
 ### Content Language Scan
 

@@ -30,7 +30,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 _FENCE_RE = re.compile(r"^(`{3,}|~{3,})")
+# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-datamodel
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-fence-update
 def _fence_update(
     line: str, state: Optional[Tuple[str, int]],
 ) -> Optional[Tuple[str, int]]:
@@ -59,16 +61,20 @@ def _fence_update(
         if stripped.lstrip()[m.end():].strip() == "":
             return None
     return state
+# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-fence-update
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-markers-constants
 TOC_MARKER_START = "<!-- toc -->"
 TOC_MARKER_END = "<!-- /toc -->"
 
 _TOC_HEADING_NAMES = frozenset({"table of contents", "toc"})
+# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-markers-constants
 
 # ---------------------------------------------------------------------------
 # Anchor / slug
 # ---------------------------------------------------------------------------
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-github-anchor
 def github_anchor(text: str) -> str:
     """Convert heading text to a GitHub-compatible anchor slug.
 
@@ -89,7 +95,7 @@ def github_anchor(text: str) -> str:
     # Each space → hyphen individually (GitHub preserves consecutive hyphens)
     text = re.sub(r"\s", "-", text)
     return text.strip("-")
-# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-datamodel
+# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-github-anchor
 
 # ---------------------------------------------------------------------------
 # Heading parsing
@@ -182,6 +188,7 @@ def build_toc(
         # don't contain nested brackets that break anchor parsing.
         return re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", raw)
 
+    # @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-build-toc-numbered
     if numbered:
         # Parent-stack approach: numbered top-level, bulleted sub-items
         parent_stack: List[int] = []
@@ -204,6 +211,8 @@ def build_toc(
             else:
                 indent = " " * indent_size * depth
                 toc_lines.append(f"{indent}- [{disp}](#{slug})")
+    # @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-build-toc-numbered
+    # @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-build-toc-bullets
     else:
         # Flat bullet approach: all items bulleted
         for level, text in headings:
@@ -211,6 +220,7 @@ def build_toc(
             disp = _display(text)
             indent = " " * indent_size * (level - min_level)
             toc_lines.append(f"{indent}- [{disp}](#{slug})")
+    # @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-build-toc-bullets
 
     return "\n".join(toc_lines)
 # @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-build-toc
@@ -231,7 +241,9 @@ def _next_heading_or_separator(
         if re.match(r"^#{1,6}\s", lines[j]) or lines[j].strip() == "---":
             return j
     return None
+# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-helpers
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-unique-slug
 def _unique_slug(text: str, slug_counts: Dict[str, int]) -> str:
     """Return a unique GitHub-compatible slug, tracking duplicates."""
     slug = github_anchor(text)
@@ -241,7 +253,7 @@ def _unique_slug(text: str, slug_counts: Dict[str, int]) -> str:
     else:
         slug_counts[slug] = 0
         return slug
-# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-helpers
+# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-unique-slug
 
 # ---------------------------------------------------------------------------
 # TOC insertion — marker-based (for CLI ``cfs toc``)
@@ -280,6 +292,7 @@ def insert_toc_markers(
             end_idx = i
             break
 
+    # @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-insert-markers-replace
     if start_idx is not None and end_idx is not None:
         # Replace content between markers
         new_lines = lines[: start_idx + 1] + ["", toc_text, ""] + lines[end_idx:]
@@ -304,6 +317,7 @@ def insert_toc_markers(
 
         toc_block = ["", TOC_MARKER_START, "", toc_text, "", TOC_MARKER_END, ""]
         new_lines = lines[:insert_pos] + toc_block + lines[insert_pos:]
+    # @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-insert-markers-replace
 
     return "\n".join(new_lines)
 # @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-insert-markers
@@ -361,6 +375,7 @@ def insert_toc_heading(
             toc_end = end if end is not None else len(lines)
             break
 
+    # @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-insert-heading-replace
     if toc_start is not None and toc_end is not None:
         # Strip blank lines around the replacement region
         while toc_start > 0 and lines[toc_start - 1].strip() == "":
@@ -370,7 +385,9 @@ def insert_toc_heading(
         before = "\n".join(lines[:toc_start])
         after = "\n".join(lines[toc_end:])
         return f"{before}\n\n{toc_section}\n\n{after}"
+    # @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-insert-heading-replace
 
+    # @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-insert-heading-new
     # --- No existing ToC: insert before first non-frontmatter --- ---
     i = 0
     # Skip YAML frontmatter (starts and ends with ---)
@@ -411,13 +428,14 @@ def insert_toc_heading(
 
     # Fallback: prepend
     return f"{toc_section}\n\n{content}"
+    # @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-insert-heading-new
 # @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-insert-heading
 
 # ---------------------------------------------------------------------------
 # File-level processing (for CLI command)
 # ---------------------------------------------------------------------------
 
-# @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-helpers
+# @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-strip-manual
 def _strip_manual_toc(content: str) -> Tuple[str, bool]:
     """Remove a standalone ``## Table of Contents`` section not inside markers.
 
@@ -469,7 +487,7 @@ def _strip_manual_toc(content: str) -> Tuple[str, bool]:
 
     new_lines = lines[:start] + lines[end:]
     return "\n".join(new_lines), True
-# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-helpers
+# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-strip-manual
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-process-file
 def process_file(
@@ -521,10 +539,12 @@ def process_file(
 # TOC validation
 # ---------------------------------------------------------------------------
 
-# @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-helpers
+# @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-link-re
 # Regex to extract markdown links from TOC entries: ``[text](#anchor)``
 _TOC_LINK_RE = re.compile(r"\[([^\]]+)\]\(#([^)]+)\)")
+# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-link-re
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-find-section
 def _find_toc_section(
     lines: List[str],
 ) -> Optional[Tuple[int, int, str]]:
@@ -561,7 +581,9 @@ def _find_toc_section(
             return (start_idx, i + 1, "markers")
 
     return None
+# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-find-section
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-extract-entries
 def _extract_toc_entries(
     lines: List[str],
     toc_start: int,
@@ -576,7 +598,9 @@ def _extract_toc_entries(
         for display, anchor in _TOC_LINK_RE.findall(lines[i]):
             entries.append((display.strip(), anchor.strip(), i + 1))
     return entries
+# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-extract-entries
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-build-anchors
 def _build_expected_anchors(
     headings: List[Tuple[int, str]],
 ) -> Dict[str, str]:
@@ -590,7 +614,7 @@ def _build_expected_anchors(
         slug = _unique_slug(text, slug_counts)
         result[slug] = text
     return result
-# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-helpers
+# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-build-anchors
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-validate
 def validate_toc(
@@ -615,6 +639,7 @@ def validate_toc(
     Returns ``{"errors": [...], "warnings": [...]}`` in the same format
     as ``validate_artifact_file``.
     """
+    # @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-validate-init
     from . import error_codes as EC
     from .constraints import error
 
@@ -642,6 +667,7 @@ def validate_toc(
     if not headings:
         # No headings → nothing to validate
         return {"errors": errors, "warnings": warnings}
+    # @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-validate-init
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-validate-toc:p1:inst-toc-parse-existing
     # 1. TOC exists?
@@ -731,7 +757,7 @@ def validate_toc(
     return {"errors": errors, "warnings": warnings}
 # @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-validate
 
-# @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-helpers
+# @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-find-heading-line
 def _find_heading_line(lines: List[str], heading_text: str) -> int:
     """Find the 1-based line number of a heading by its text."""
     fence: Optional[Tuple[str, int]] = None
@@ -746,4 +772,4 @@ def _find_heading_line(lines: List[str], heading_text: str) -> int:
         if m and m.group(2).strip() == heading_text:
             return i + 1
     return 1
-# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-helpers
+# @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-find-heading-line

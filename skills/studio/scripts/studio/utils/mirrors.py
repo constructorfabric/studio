@@ -25,7 +25,7 @@ from typing import List, Tuple
 
 from ._tomllib_compat import tomllib
 
-
+# @cpt-begin:cpt-studio-algo-core-infra-mirror-override:p1:inst-mirror-config-paths
 def _xdg_path() -> Path:
     xdg_config_home = os.environ.get("XDG_CONFIG_HOME", "")
     base = Path(xdg_config_home) if xdg_config_home else Path.home() / ".config"
@@ -34,8 +34,9 @@ def _xdg_path() -> Path:
 
 def _brand_home_path() -> Path:
     return Path.home() / ".constructor-studio" / "mirrors.toml"
+# @cpt-end:cpt-studio-algo-core-infra-mirror-override:p1:inst-mirror-config-paths
 
-
+# @cpt-begin:cpt-studio-algo-core-infra-mirror-override:p1:inst-mirror-load-file
 def _load_file(path: Path) -> List[Tuple[str, str]]:
     if not path.is_file():
         return []
@@ -50,8 +51,9 @@ def _load_file(path: Path) -> List[Tuple[str, str]]:
         if f and t:
             out.append((f, t))
     return out
+# @cpt-end:cpt-studio-algo-core-infra-mirror-override:p1:inst-mirror-load-file
 
-
+# @cpt-begin:cpt-studio-algo-core-infra-mirror-override:p1:inst-mirror-merge-overrides
 def _load_overrides() -> List[Tuple[str, str]]:
     """Merged overrides in apply order (XDG first, then brand-home).
 
@@ -63,8 +65,9 @@ def _load_overrides() -> List[Tuple[str, str]]:
     for f, t in xdg + brand:
         merged[f] = (f, t)
     return list(merged.values())
+# @cpt-end:cpt-studio-algo-core-infra-mirror-override:p1:inst-mirror-merge-overrides
 
-
+# @cpt-begin:cpt-studio-algo-core-infra-mirror-override:p1:inst-mirror-apply-override
 def apply_override(url: str) -> str:
     """Apply every registered mirror override to ``url`` as substring replacement.
 
@@ -78,3 +81,4 @@ def apply_override(url: str) -> str:
         if from_ in result:
             result = result.replace(from_, to_)
     return result
+# @cpt-end:cpt-studio-algo-core-infra-mirror-override:p1:inst-mirror-apply-override

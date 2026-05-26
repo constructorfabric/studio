@@ -13,7 +13,9 @@ from typing import Dict, Tuple
 
 from ._tomllib_compat import tomllib
 
+# @cpt-begin:cpt-studio-algo-kit-whatsnew-display:p1:inst-whatsnew-imports
 logger = logging.getLogger(__name__)
+# @cpt-end:cpt-studio-algo-kit-whatsnew-display:p1:inst-whatsnew-imports
 
 # @cpt-begin:cpt-studio-algo-kit-whatsnew-display:p1:inst-whatsnew-format
 _ANSI_ESCAPE_RE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|[@-Z\\-_])")
@@ -104,11 +106,13 @@ def compare_versions(v1: str, v2: str) -> int:
 # @cpt-end:cpt-studio-algo-kit-whatsnew-display:p1:inst-whatsnew-version-cmp
 
 
+# @cpt-begin:cpt-studio-algo-kit-whatsnew-display:p1:inst-whatsnew-ansi-check
 def stderr_supports_ansi() -> bool:
     """Check if stderr supports ANSI escape codes."""
     return hasattr(sys.stderr, "isatty") and sys.stderr.isatty()
+# @cpt-end:cpt-studio-algo-kit-whatsnew-display:p1:inst-whatsnew-ansi-check
 
-
+# @cpt-begin:cpt-studio-algo-kit-whatsnew-display:p1:inst-whatsnew-format-text
 def format_whatsnew_text(text: str, *, use_ansi: bool) -> str:
     """Format markdown-like text for terminal display.
 
@@ -120,9 +124,11 @@ def format_whatsnew_text(text: str, *, use_ansi: bool) -> str:
         return _INLINE_CODE_RE.sub(_replace_inline_code_markup_with_ansi, formatted)
     plain = _BOLD_MARKUP_RE.sub(_replace_bold_markup, text)
     return _INLINE_CODE_RE.sub(_replace_inline_code_markup, plain)
+# @cpt-end:cpt-studio-algo-kit-whatsnew-display:p1:inst-whatsnew-format-text
 # @cpt-end:cpt-studio-algo-kit-whatsnew-display:p1:inst-whatsnew-format
 
 
+# @cpt-begin:cpt-studio-algo-kit-whatsnew-display:p1:inst-whatsnew-read-toml
 def read_whatsnew(path: Path) -> Dict[str, Dict[str, str]]:
     """Read a whatsnew.toml file.
 
@@ -159,6 +165,7 @@ def read_whatsnew(path: Path) -> Dict[str, Dict[str, str]]:
                 }
 
     return result
+# @cpt-end:cpt-studio-algo-kit-whatsnew-display:p1:inst-whatsnew-read-toml
 
 
 # @cpt-begin:cpt-studio-algo-kit-whatsnew-display:p1:inst-display-entries
@@ -222,6 +229,7 @@ def _prompt_continue(interactive: bool) -> bool:
 # @cpt-end:cpt-studio-algo-kit-whatsnew-display:p1:inst-prompt-continue
 
 
+# @cpt-begin:cpt-studio-algo-kit-whatsnew-display:p1:inst-whatsnew-show-core
 def show_core_whatsnew(
     cache_whatsnew: Dict[str, Dict[str, str]],
     installed_whatsnew: Dict[str, Dict[str, str]],
@@ -245,6 +253,7 @@ def show_core_whatsnew(
     use_ansi = stderr_supports_ansi()
     _display_whatsnew_entries(missing, "What's new in Studio", use_ansi=use_ansi)
     return _prompt_continue(interactive)
+# @cpt-end:cpt-studio-algo-kit-whatsnew-display:p1:inst-whatsnew-show-core
 
 
 # @cpt-begin:cpt-studio-algo-kit-whatsnew-display:p1:inst-read-whatsnew

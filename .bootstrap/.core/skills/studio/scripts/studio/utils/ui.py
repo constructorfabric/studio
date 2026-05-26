@@ -29,7 +29,7 @@ from typing import Any, Callable, Dict, List, Optional
 # ---------------------------------------------------------------------------
 # Global output mode
 # ---------------------------------------------------------------------------
-
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-json-mode-flag
 _json_mode: bool = False
 
 
@@ -40,12 +40,13 @@ def set_json_mode(enabled: bool) -> None:
 
 def is_json_mode() -> bool:
     return _json_mode
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-json-mode-flag
 
 
 # ---------------------------------------------------------------------------
 # ANSI helpers (stdlib only, no deps)
 # ---------------------------------------------------------------------------
-
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-ansi-helpers
 _RESET = "\033[0m"
 _BOLD = "\033[1m"
 _DIM = "\033[2m"
@@ -66,19 +67,21 @@ def _c(code: str, text: str) -> str:
     if _has_color():
         return f"{code}{text}{_RESET}"
     return text
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-ansi-helpers
 
 
 # ---------------------------------------------------------------------------
 # Public API — progress messages (stderr, suppressed in JSON mode)
 # ---------------------------------------------------------------------------
-
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-progress-header
 def header(title: str) -> None:
     """Print a bold section header."""
     if _json_mode:
         return
     sys.stderr.write(f"\n  {_c(_BOLD, title)}\n")
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-progress-header
 
-
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-progress-step
 def step(msg: str) -> None:
     """Print a step indicator."""
     if _json_mode:
@@ -91,8 +94,9 @@ def substep(msg: str) -> None:
     if _json_mode:
         return
     sys.stderr.write(f"    {msg}\n")
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-progress-step
 
-
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-status-messages
 def success(msg: str) -> None:
     """Print a success message."""
     if _json_mode:
@@ -119,8 +123,9 @@ def info(msg: str) -> None:
     if _json_mode:
         return
     sys.stderr.write(f"  {msg}\n")
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-status-messages
 
-
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-detail-hint
 def detail(key: str, value: str) -> None:
     """Print a key: value detail line."""
     if _json_mode:
@@ -147,8 +152,9 @@ def divider() -> None:
     if _json_mode:
         return
     sys.stderr.write(f"  {_c(_DIM, '─' * 50)}\n")
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-detail-hint
 
-
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-table
 def table(headers: List[str], rows: List[List[str]], indent: int = 4) -> None:
     """Print a simple aligned table to stderr."""
     if _json_mode:
@@ -175,8 +181,9 @@ def table(headers: List[str], rows: List[List[str]], indent: int = 4) -> None:
             for i in range(len(widths))
         )
         sys.stderr.write(f"{prefix}{line}\n")
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-table
 
-
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-file-action
 def file_action(path: str, action: str) -> None:
     """Print a file action (created/updated/unchanged)."""
     if _json_mode:
@@ -193,12 +200,13 @@ def file_action(path: str, action: str) -> None:
     }
     icon = icons.get(action, " ")
     sys.stderr.write(f"    {icon} {path} {_c(_DIM, f'({action})')}\n")
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-file-action
 
 
 # ---------------------------------------------------------------------------
 # Result output — the main dual-mode function
 # ---------------------------------------------------------------------------
-
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-result-json
 def result(
     data: Dict[str, Any],
     *,
@@ -214,7 +222,9 @@ def result(
     if _json_mode:
         print(json.dumps(data, indent=2, ensure_ascii=False))
         return
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-result-json
 
+    # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-result-human
     if human_fn is not None:
         human_fn(data)
         return
@@ -230,24 +240,26 @@ def result(
         warn(f"Aborted" + (f": {message}" if message else ""))
     else:
         info(f"Status: {status}" + (f" — {message}" if message else ""))
+    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-result-human
 
 
 # ---------------------------------------------------------------------------
 # Path helpers
 # ---------------------------------------------------------------------------
-
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-relpath
 def relpath(path: str) -> str:
     """Return *path* relative to cwd, falling back to the original on error."""
     try:
         return os.path.relpath(path)
     except ValueError:
         return path
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-relpath
 
 
 # ---------------------------------------------------------------------------
 # Convenience singleton
 # ---------------------------------------------------------------------------
-
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-singleton
 class _UI:
     """Namespace object so commands can do ``from ..utils.ui import ui``."""
     header = staticmethod(header)
@@ -269,3 +281,4 @@ class _UI:
 
 
 ui = _UI()
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-singleton
