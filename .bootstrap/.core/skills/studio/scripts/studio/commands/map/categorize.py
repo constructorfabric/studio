@@ -25,6 +25,7 @@ class OverrideCategory:
 @dataclass(frozen=True)
 class OverrideConfig:
     categories: List[OverrideCategory] = field(default_factory=list)
+    show_uncategorized: bool = False
 
 
 @dataclass(frozen=True)

@@ -92,15 +92,20 @@ def _categories_section(
         origins.setdefault(n.category, Counter())[n.category_origin] += 1
     out: Dict[str, dict] = {}
     for cat, info in cats.items():
-        # Prefer user-defined style from md-map.toml [categories.style] when
-        # the override entry has a color set; fall back to _deterministic_style.
-        override_style = (category_styles or {}).get(cat)
-        if override_style and override_style.get("color"):
-            style = dict(override_style)
-            # When background is absent, omit the key and let CSS handle it.
-            style = {k: v for k, v in style.items() if v is not None}
+        # Fixed gray style for the _uncategorized bucket — never call
+        # _deterministic_style for it and ignore any user-defined style entry.
+        if cat == "_uncategorized":
+            style: Dict[str, str] = {"color": "#6b7280", "background": "#f3f4f6"}
         else:
-            style = _deterministic_style(cat)
+            # Prefer user-defined style from md-map.toml [categories.style] when
+            # the override entry has a color set; fall back to _deterministic_style.
+            override_style = (category_styles or {}).get(cat)
+            if override_style and override_style.get("color"):
+                style = dict(override_style)
+                # When background is absent, omit the key and let CSS handle it.
+                style = {k: v for k, v in style.items() if v is not None}
+            else:
+                style = _deterministic_style(cat)
         out[cat] = {
             "node_count": info["count"],
             "origin_counts": {
@@ -108,6 +113,7 @@ def _categories_section(
                 "registry": origins[cat].get("registry", 0),
                 "parent-dir": origins[cat].get("parent-dir", 0),
                 "phantom": origins[cat].get("phantom", 0),
+                "uncategorized-bucket": origins[cat].get("uncategorized-bucket", 0),
             },
             "style": style,
         }

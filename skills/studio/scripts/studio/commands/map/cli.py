@@ -76,6 +76,26 @@ def cmd_map(argv: List[str]) -> int:
     ))
     # @cpt-end:cpt-studio-flow-map-cli:p1:inst-collect-nodes
 
+    # @cpt-begin:cpt-studio-flow-map-cli:p1:inst-filter-override
+    # Apply override filtering: when an override config is loaded, only nodes
+    # that matched an override category are kept by default.  When
+    # show_uncategorized=true, non-matched nodes are bucketed instead.
+    if override is not None:
+        if override.show_uncategorized:
+            for n in all_nodes:
+                if n.category_origin != "override":
+                    n.category = "_uncategorized"
+                    n.category_origin = "uncategorized-bucket"
+        else:
+            if not override.categories:
+                print(
+                    "map: override config has zero categories and show_uncategorized=false;"
+                    " result will be empty",
+                    file=sys.stderr,
+                )
+            all_nodes = [n for n in all_nodes if n.category_origin == "override"]
+    # @cpt-end:cpt-studio-flow-map-cli:p1:inst-filter-override
+
     # @cpt-begin:cpt-studio-flow-map-cli:p1:inst-build-edges
     template_vars = _load_template_vars(primary_root)
     file_edges = extract_file_links(
@@ -84,6 +104,21 @@ def cmd_map(argv: List[str]) -> int:
     cpt_edges, phantoms = build_cpt_edges(all_nodes)
     edges = list(file_edges) + list(cpt_edges)
     nodes_all = list(all_nodes) + list(phantoms)
+
+    # Apply phantom handling for override paths: phantoms are generated after
+    # the earlier bucketing/filter step so they need a second pass here.
+    if override is not None:
+        if override.show_uncategorized:
+            # Bucket phantoms into _uncategorized (same rule as non-override nodes).
+            for n in nodes_all:
+                if n.category_origin == "phantom":
+                    n.category = "_uncategorized"
+                    n.category_origin = "uncategorized-bucket"
+        else:
+            # Drop phantoms and any edges that reference removed nodes.
+            nodes_all = [n for n in nodes_all if n.category_origin == "override"]
+            _node_ids = {n.id for n in nodes_all}
+            edges = [e for e in edges if e.from_id in _node_ids and e.to_id in _node_ids]
 
     enrich_edges(edges, nodes_all, project_root_by_source=project_root_by_source)
     # @cpt-end:cpt-studio-flow-map-cli:p1:inst-build-edges
@@ -194,6 +229,7 @@ def _load_override(primary_root: Path, explicit: Optional[str]) -> Optional[Over
     except Exception as exc:  # pylint: disable=broad-exception-caught  # override config validation
         print(f"map: invalid {path}: {exc}", file=sys.stderr)
         sys.exit(2)
+    show_uncategorized = bool(data.get("show_uncategorized", False))
     cats = []
     for entry in data.get("categories", []):
         style = entry.get("style", {}) or {}
@@ -203,7 +239,7 @@ def _load_override(primary_root: Path, explicit: Optional[str]) -> Optional[Over
             color=style.get("color"),
             background=style.get("background"),
         ))
-    return OverrideConfig(categories=cats)
+    return OverrideConfig(categories=cats, show_uncategorized=show_uncategorized)
     # @cpt-end:cpt-studio-flow-map-cli:p1:inst-load-override
 
 
