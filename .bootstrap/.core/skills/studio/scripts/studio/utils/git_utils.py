@@ -234,8 +234,14 @@ def resolve_git_source(
     # Determine branch
     branch = getattr(source, "branch", None) or "HEAD"
 
+    # Apply mirror overrides before cloning (honors user mirrors.toml config).
+    # _compute_local_path keeps the original URL for consistent directory naming;
+    # the override is applied only at the clone step.
+    from .mirrors import apply_override
+    clone_url = apply_override(getattr(source, "url", ""))
+
     # Clone or fetch
-    return _clone_if_missing(getattr(source, "url", ""), local_path, branch)
+    return _clone_if_missing(clone_url, local_path, branch)
 # @cpt-end:cpt-studio-algo-workspace-resolve-git-url:p1:inst-git-return-path
 # @cpt-end:cpt-studio-algo-workspace-resolve-git-url:p1:inst-git-if-fail
 # @cpt-end:cpt-studio-algo-workspace-resolve-git-url:p1:inst-git-else-clone
