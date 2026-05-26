@@ -29,8 +29,7 @@ PURPOSE:
 RULES:
   - MUST open and follow {cf-studio-path}/.core/skills/studio/SKILL.md
   - MUST_NOT modify workflow state directly
-  - MUST_NOT mutate state.decisions, state.rounds, state.topic_current,
-    state.panel, or any orchestrator state field
+  - SEE_ALSO: AuthorityBoundary
   - MUST emit structured envelope output for the orchestrator to consume
 ```
 
@@ -162,7 +161,7 @@ STATE:
 RULES:
   - MUST use protocol supplied by orchestrator in every round dispatch
   - MUST_NOT change protocol mid-session
-  - MUST omit the unselected branch entirely (no placeholder, no comment)
+  - SEE_ALSO: ProtocolBranchSinglePass
 
 NOTES:
   independent-then-critique:
@@ -573,7 +572,7 @@ RULES:
   - MUST serialize envelope to JSON with sorted key output (sort_keys=True)
   - MUST use LF (\n) line endings only; no CR/LF or platform-specific endings
   - MUST_NOT include trailing spaces or tabs on rows and values
-  - MUST render personas in exact panel array order; never sort by ID or name
+  - SEE_ALSO: PersonaIteration
   - MUST render questions within each persona's independent block in emission order;
     never reorder
   - MUST produce identical byte-for-byte output on re-emit (e.g., after a retry)
