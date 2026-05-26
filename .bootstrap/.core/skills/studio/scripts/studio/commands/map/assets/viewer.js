@@ -703,7 +703,9 @@
     const insp = document.getElementById("inspector");
     // Ensure inspector is visible before populating
     insp.classList.add("open");
+    const _handle1 = document.getElementById("inspector-resize-handle");
     insp.innerHTML = "";
+    if (_handle1) insp.appendChild(_handle1);
 
     /* Header */
     const header = el("div", { id: "inspector-header" });
@@ -834,7 +836,9 @@
     const insp = document.getElementById("inspector");
     // Ensure inspector is visible before populating
     insp.classList.add("open");
+    const _handle2 = document.getElementById("inspector-resize-handle");
     insp.innerHTML = "";
+    if (_handle2) insp.appendChild(_handle2);
 
     const header = el("div", { id: "inspector-header" });
     const badge = el("span", { className: "kind-badge edge" }, edge.type);
