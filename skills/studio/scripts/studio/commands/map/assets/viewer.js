@@ -1482,10 +1482,71 @@
         ALLOW_DATA_ATTR: false,
       });
       wireInternalLinks(wrap, opts.sourceRelPath, opts.sourceName);
+      wireCptCodes(wrap);
     } catch (err) {
       wrap.appendChild(el("pre", {}, text));
     }
     return wrap;
+  }
+
+  /* Scan rendered markdown for inline <code>cpt-...</code> tokens.
+   * Replace each with a chip (click → jump to definer) + ⊕ button
+   * that expands the spec snippet inline below the host block. */
+  function wireCptCodes(rootEl) {
+    const CPT_RE = /^cpt-[a-z0-9][a-z0-9-]*(?::p\d+)?(?::inst-[a-z0-9-]+)?$/;
+    const codes = Array.prototype.slice.call(rootEl.querySelectorAll("code"));
+    codes.forEach(function (codeEl) {
+      if (codeEl.closest("pre")) return;
+      const text = (codeEl.textContent || "").trim();
+      if (!CPT_RE.test(text)) return;
+      const cptId = text;
+
+      const wrap = el("span", { className: "cpt-inline-ref" });
+      const idSpan = el("span", { className: "cpt-id link cpt-link inline" }, cptId);
+      idSpan.title = "Jump to the node defining this cpt-id";
+      idSpan.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        const set = (window._cfcCptDefiners || {})[cptId];
+        if (!set || set.size === 0) { flashNotFound(idSpan); return; }
+        navigateOne(idSpan, set, cptId);
+      });
+      wrap.appendChild(idSpan);
+
+      const expandBtn = el("button", { className: "cpt-inline-expand", title: "Show definition inline" }, "⊕");
+      let panel = null;
+      expandBtn.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        if (panel && panel.parentNode) {
+          panel.parentNode.removeChild(panel);
+          panel = null;
+          expandBtn.textContent = "⊕";
+          expandBtn.title = "Show definition inline";
+          return;
+        }
+        const specText = lookupCptDefSnippet(cptId);
+        panel = el("div", { className: "cpt-inline-panel" });
+        if (specText) {
+          panel.appendChild(mdElement(specText, { className: "snippet" }));
+        } else {
+          panel.appendChild(el("p", { className: "muted" }, "(no spec snippet available)"));
+        }
+        // Anchor the inline panel to the nearest block-level ancestor so it
+        // appears below the whole list item / paragraph, not mid-line.
+        let block = wrap.parentNode;
+        while (block && block !== rootEl) {
+          const tag = (block.tagName || "").toLowerCase();
+          if (["p","li","td","th","blockquote","pre","h1","h2","h3","h4","h5","h6"].indexOf(tag) >= 0) break;
+          block = block.parentNode;
+        }
+        if (!block) block = wrap.parentNode;
+        block.parentNode.insertBefore(panel, block.nextSibling);
+        expandBtn.textContent = "⊖";
+        expandBtn.title = "Hide definition";
+      });
+      wrap.appendChild(expandBtn);
+
+      codeEl.parentNode.replaceChild(wrap, codeEl);
+    });
   }
 
   /* Intercept clicks on <a> elements inside rendered Markdown.
