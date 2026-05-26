@@ -93,16 +93,16 @@ def cmd_map(argv: List[str]) -> int:
         nodes_all, edges, category_style=None, verbose=args.verbose,
     )
 
-    art_toml = primary_root / "artifacts.toml"
-    if not art_toml.exists():
+    art_toml, adapter_dir = _resolve_artifacts_toml(primary_root)
+    if art_toml is None:
         print(
-            "map: no artifacts.toml found at project root; source scanning disabled",
+            "map: no artifacts.toml found via adapter resolution; source scanning disabled",
             file=sys.stderr,
         )
     scan_meta = {
-        "artifacts_toml": "artifacts.toml" if art_toml.exists() else None,
-        "systems_scanned": _count_systems(primary_root),
-        "systems_docs_only": _count_systems(primary_root, docs_only=True),
+        "artifacts_toml": str(art_toml.relative_to(primary_root)) if art_toml is not None else None,
+        "systems_scanned": _count_systems(adapter_dir),
+        "systems_docs_only": _count_systems(adapter_dir, docs_only=True),
         "skip_dirs": sorted(skip_dirs_for_meta(primary_root)),
     }
 
@@ -295,15 +295,42 @@ def skip_dirs_for_meta(primary_root: Path):
     # @cpt-end:cpt-studio-flow-map-cli:p1:inst-skip-dirs-for-meta
 
 
-def _count_systems(primary_root: Path, docs_only: bool = False) -> int:
+def _resolve_artifacts_toml(primary_root: Path):
+    """Resolve the artifacts registry path via the canonical adapter_dir helper.
+
+    Returns (resolved_path_or_None, adapter_dir_or_primary_root).
+    adapter_dir falls back to primary_root when studio discovery fails.
+    """
+    try:
+        from studio.utils.files import find_studio_directory, load_artifacts_registry
+        adapter_dir = find_studio_directory(primary_root) or primary_root
+        cfg, _err = load_artifacts_registry(adapter_dir)
+        if cfg is None:
+            return None, adapter_dir
+        # Reconstruct the resolved file path for scan_meta reporting.
+        # Mirror the fallback chain from load_artifacts_registry.
+        for candidate in (
+            adapter_dir / "artifacts.toml",
+            adapter_dir / "config" / "artifacts.toml",
+            adapter_dir / "artifacts.json",
+        ):
+            if candidate.is_file():
+                return candidate, adapter_dir
+        return None, adapter_dir
+    except Exception:  # pylint: disable=broad-exception-caught  # registry resolution is best-effort
+        return None, primary_root
+
+
+def _count_systems(adapter_dir: Optional[Path], docs_only: bool = False) -> int:
+    if adapter_dir is None:
+        return 0
     try:
         from studio.utils.artifacts_meta import ArtifactsMeta
-        art_toml = primary_root / "artifacts.toml"
-        if not art_toml.exists():
+        from studio.utils.files import load_artifacts_registry
+        cfg, _err = load_artifacts_registry(adapter_dir)
+        if cfg is None:
             return 0
-        with art_toml.open("rb") as f:
-            data = tomllib.load(f)
-        meta = ArtifactsMeta.from_dict(data)
+        meta = ArtifactsMeta.from_dict(cfg)
         if docs_only:
             return sum(
                 1 for s in meta.systems

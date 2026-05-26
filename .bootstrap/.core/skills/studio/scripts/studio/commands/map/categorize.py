@@ -133,15 +133,14 @@ def _node_slug_path(system_node) -> str:
 def _build_registry_index(project_root: Path) -> List[_RegistryEntry]:
     """Walk artifacts.toml and emit (path_prefix → category) entries, longest-first."""
     # @cpt-begin:cpt-studio-algo-map-categorize:p1:inst-build-registry-index
-    art_toml = project_root / "artifacts.toml"
-    if not art_toml.exists():
-        return []
     try:
-        from studio.utils._tomllib_compat import tomllib
-        with art_toml.open("rb") as f:
-            data = tomllib.load(f)
+        from studio.utils.files import find_studio_directory, load_artifacts_registry
         from studio.utils.artifacts_meta import ArtifactsMeta
-        meta = ArtifactsMeta.from_dict(data)
+        adapter_dir = find_studio_directory(project_root) or project_root
+        cfg, _err = load_artifacts_registry(adapter_dir)
+        if cfg is None:
+            return []
+        meta = ArtifactsMeta.from_dict(cfg)
     except Exception:  # pylint: disable=broad-exception-caught  # registry is optional; categorize must not raise
         return []
 
