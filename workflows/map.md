@@ -254,15 +254,34 @@ DO:
      For each group capture: prefix, node_count, sample 3 rel_paths.
   4. FILTER groups: keep only those with node_count >= 5.
   5. SORT by node_count descending; take top 10.
-  6. PROPOSE one [[categories]] entry per group with:
-       - name = "" (placeholder — user must fill; emit reminder)
+  6. DERIVE category names deterministically from the group's path prefix using:
+       - Lowercase the entire prefix
+       - Replace `/`, `.`, and `_` with `-`
+       - Strip leading `-` characters
+       - Collapse consecutive `-` into a single `-`
+       - Strip trailing `-`
+     On collision (two prefixes normalize to the same name), suffix duplicates with `-2`, `-3`, ...
+     in order of appearance.
+     Then PROPOSE one [[categories]] entry per group with:
+       - name = "<derived-name>" (derived from path prefix per rule above)
        - paths = [<group_prefix> + "/**"]
        - style.color / style.background = picked from palette (see step 7).
+     
+     Normalization examples:
+     | Prefix | → | Derived Name |
+     |---|---|---|
+     | `skills/studio` | → | `skills-studio` |
+     | `.bootstrap/config` | → | `bootstrap-config` |
+     | `.claude/agents` | → | `claude-agents` |
+     | `architecture/ADR` | → | `architecture-adr` |
+     | `examples/overwork_alert` | → | `examples-overwork-alert` |
   7. EMIT_MENU PaletteMenu
      WAIT user.reply
      STOP_TURN
-  8. After palette chosen, emit the full proposed TOML block in chat
-     (rendered, with placeholder names "category-1", "category-2", ...).
+  8. After palette chosen, emit the full proposed TOML block in chat with the derived names
+     populated in the `name = "..."` field for each category.
+     Include a note: "Names are derived from path prefixes. Use `edit-names` if you want to
+     refine them, or `approve` to accept."
   9. EMIT_MENU ConfigAssistActionMenu
      WAIT user.reply
      STOP_TURN
