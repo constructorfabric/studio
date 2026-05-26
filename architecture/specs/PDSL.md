@@ -131,6 +131,35 @@ Allowed operators:
 
 Pattern names MUST be defined nearby or in a referenced requirement.
 
+File-scoped patterns MAY be declared in a local `PATTERNS:` block at the top
+of the PDSL file. Patterns intended for reuse across files MUST be registered
+in `requirements/pdsl-patterns.md`.
+
+---
+
+## PATTERNS Block
+
+A `PATTERNS:` block declares named patterns for use in `matches()` conditions.
+
+```text
+PATTERNS:
+  slug-format: /^[a-z][a-z0-9-]{0,62}$/
+    description: Lowercase kebab-case identifier, 1-63 chars
+  semver-tag: /^\d+\.\d+\.\d+$/
+    description: Strict three-part semantic version tag
+```
+
+Rules:
+
+- A `PATTERNS:` block is file-scoped. It MUST appear before the first `UNIT`
+  that references it.
+- Pattern names MUST be unique within a file.
+- Patterns shared across multiple files MUST be registered in the canonical
+  patterns registry at `requirements/pdsl-patterns.md`.
+- A `matches()` call MUST reference a name defined in the local `PATTERNS:`
+  block or in the canonical registry. Undefined names are a PDSL authoring
+  error.
+
 ---
 
 ## Actions
