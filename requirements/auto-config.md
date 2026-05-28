@@ -12,6 +12,7 @@ purpose: Systematic methodology for scanning brownfield projects and generating 
 <!-- toc -->
 
 - [Phase 1.5: Documentation Discovery](#phase-15-documentation-discovery)
+- [Runtime Contract](#runtime-contract)
 - [Phase 2: System Detection](#phase-2-system-detection)
 - [Phase 3: Rule Generation](#phase-3-rule-generation)
 - [Phase 4: AGENTS.md Integration](#phase-4-agentsmd-integration)
@@ -38,6 +39,101 @@ purpose: Systematic methodology for scanning brownfield projects and generating 
  **ALWAYS open and follow** `{cf-studio-path}/.core/requirements/prompt-engineering.md` for rule-quality validation.
  
  **Prerequisites**: confirm the agent has read this methodology, has source access, will follow phases `1 -> 6` in order, will checkpoint after each phase, and will **NOT** write files without user confirmation.
+
+## Runtime Contract
+
+```text
+UNIT AutoConfigActivation
+
+PURPOSE:
+  Route brownfield setup and rescan requests into the auto-config methodology.
+
+WHEN:
+  auto-config intent or brownfield setup intent is detected
+
+DO:
+  REQUIRE this methodology is active
+  REQUIRE controller has loaded `{cf-studio-path}/.core/requirements/reverse-engineering.md`
+  REQUIRE controller has loaded `{cf-studio-path}/.core/requirements/prompt-engineering.md`
+  SET AUTO_CONFIG_MODE = true
+
+RULES:
+  - MUST treat upstream methodologies as controller-owned prompt assets
+  - MUST_NOT let prompt-consuming sub-agents reopen those prompt files from disk
+  - MUST provide any dispatched subset through `prompt_context_view`
+```
+
+```text
+UNIT AutoConfigPhaseSequence
+
+PURPOSE:
+  Define the required phase order for an auto-config run.
+
+STATE:
+  AUTO_CONFIG_PHASE: phase_1_scan | phase_1_5_docs | phase_2_systems | phase_3_rules | phase_4_agents | phase_5_registry | phase_6_validation | done
+    default: phase_1_scan
+
+DO:
+  REQUIRE brownfield prerequisites pass before Phase 1
+  SET AUTO_CONFIG_PHASE = phase_1_scan
+  CONTINUE project scan
+  SET AUTO_CONFIG_PHASE = phase_1_5_docs
+  CONTINUE documentation discovery
+  SET AUTO_CONFIG_PHASE = phase_2_systems
+  CONTINUE system and topic detection
+  SET AUTO_CONFIG_PHASE = phase_3_rules
+  CONTINUE rule generation
+  SET AUTO_CONFIG_PHASE = phase_4_agents
+  CONTINUE AGENTS integration
+  SET AUTO_CONFIG_PHASE = phase_5_registry
+  CONTINUE registry update
+  SET AUTO_CONFIG_PHASE = phase_6_validation
+  CONTINUE validation
+  SET AUTO_CONFIG_PHASE = done
+
+RULES:
+  - MUST execute phases in order
+  - MUST checkpoint after each phase
+  - MUST obtain user confirmation at every defined checkpoint before writing
+```
+
+```text
+UNIT AutoConfigWriteBoundaries
+
+PURPOSE:
+  Make the phase-specific write surfaces explicit.
+
+RULES:
+  - MUST restrict generated rule files to `{cf-studio-path}/config/rules/`
+  - MUST restrict generated navigation rules to `{cf-studio-path}/config/AGENTS.md`
+  - MUST restrict detected-system registration to `{cf-studio-path}/config/artifacts.toml`
+  - MUST preserve existing project docs except for approved TOC additions
+  - MUST stop when existing rules are present unless `--force` is explicitly active
+```
+
+```text
+UNIT AutoConfigErrorHandling
+
+PURPOSE:
+  Define deterministic recovery and stop conditions for auto-config.
+
+ON_ERROR:
+  no_source_code_found ->
+    EMIT "No source code detected in project"
+    RETURN blocker
+
+  existing_rules_found ->
+    EMIT "Existing rules found in {cf-studio-path}/config/rules/"
+    RETURN blocker
+
+  scan_incomplete ->
+    EMIT "Project scan incomplete: {reason}"
+    CONTINUE with partial-scan warning
+
+  large_codebase ->
+    EMIT "Large codebase detected ({file_count} files)"
+    CONTINUE with limited scan depth
+```
  
  ## Overview
  

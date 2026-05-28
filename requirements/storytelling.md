@@ -13,6 +13,7 @@ purpose: Pedagogical companion methodology for explanatory walkthroughs of artif
 
 - [Execution Protocol (MUST NOT be bypassed)](#execution-protocol-must-not-be-bypassed)
 - [Agent Instructions](#agent-instructions)
+- [Router Contract](#router-contract)
 - [Overview](#overview)
 - [EXPLAIN_MODE Activation](#explainmode-activation)
 - [Module loading](#module-loading)
@@ -21,7 +22,7 @@ purpose: Pedagogical companion methodology for explanatory walkthroughs of artif
 
 <!-- /toc -->
 
-**Shared block**: Open, load, and follow `requirements/storytelling-shared.md` as a prefix block before any phase-specific section below.
+**Shared block**: The dispatching controller loads and follows `{cf-studio-path}/.core/requirements/storytelling-shared.md` as a prefix block before any phase-specific section below, then publishes the needed prompt text through `prompt_context_view`.
 
 This file is the **router**. The full methodology is split across five files for compact runtime loading: this router (~200 lines) plus four modules under `{cf-studio-path}/.core/requirements/storytelling-*.md`. Sibling methodologies are single-file (`prompt-engineering.md`, `bug-finding.md`, `reverse-engineering.md`); the storytelling spec is split because its surface — multi-mode, multi-phase, optional export — is materially larger and would otherwise force chunked loading and reduced determinism guarantees.
 
@@ -62,6 +63,81 @@ WHEN loaded with `EXPLAIN_EXPORT=true` (via `generate.md` WHEN-rule on guide/REA
 **MUST** follow phases E0 → E5 in order. **MUST NOT** skip Discovery. **MUST NOT** skip the Strict-Context Boundary.
 
 **MUST NOT** treat storytelling output as a validation report.
+
+## Router Contract
+
+```text
+UNIT StorytellingActivation
+
+PURPOSE:
+  Route explain-style requests into the storytelling methodology with explicit
+  controller-owned prompt loading.
+
+WHEN:
+  explain-style intent is detected
+
+DO:
+  REQUIRE this router is active
+  REQUIRE controller has loaded `{cf-studio-path}/.core/requirements/execution-protocol.md`
+  REQUIRE controller has loaded `{cf-studio-path}/.core/requirements/storytelling-shared.md`
+  SET EXPLAIN_MODE = true
+
+RULES:
+  - MUST treat storytelling prompt assets as controller-owned prompt assets
+  - MUST_NOT let prompt-consuming sub-agents reopen storytelling prompt files
+    from disk
+  - MUST deliver storytelling prompt content through `prompt_context_view`
+    whenever a sub-agent participates in the session
+```
+
+```text
+UNIT StorytellingExecutionSequence
+
+PURPOSE:
+  Make the mandatory E0-E5 interaction order explicit.
+
+STATE:
+  STORYTELLING_PHASE: e0 | e1_mode | e1_disposition | e1_audience | e1_plan | e2 | e5 | done
+    default: e0
+
+DO:
+  SET STORYTELLING_PHASE = e0
+  REQUIRE Phase E0 pre-flight completes before any answer-style content
+  SET STORYTELLING_PHASE = e1_mode
+  EMIT numbered mode prompt
+  WAIT user.reply
+  STOP_TURN
+
+RULES:
+  - MUST_NOT emit portion content or summary before plan approval resolves
+  - MUST run disposition resolution after mode resolution and before audience
+    resolution
+  - MUST run audience resolution before plan approval whenever the audience is
+    not already explicit
+  - MUST enter Phase E2 only after the numbered plan-approval gate resolves
+  - MUST enter Phase E5 only after Phase E2 completes or the user requests wrap
+  - MUST keep the four E1 gates as separate user-interaction boundaries
+  - MUST treat skipped gates as a critical contract failure
+```
+
+```text
+UNIT StorytellingModuleLoading
+
+PURPOSE:
+  Define which storytelling modules the controller loads.
+
+DO:
+  REQUIRE controller loads `{cf-studio-path}/.core/requirements/storytelling-phases.md`
+  REQUIRE controller loads `{cf-studio-path}/.core/requirements/storytelling-modes.md`
+  REQUIRE controller loads `{cf-studio-path}/.core/requirements/storytelling-preferences.md`
+  IF EXPLAIN_EXPORT == true:
+    REQUIRE controller loads `{cf-studio-path}/.core/requirements/storytelling-export.md`
+
+RULES:
+  - MUST load only the router-required modules for the active mode
+  - MUST_NOT speculatively load unrelated prompt modules
+  - MUST publish any dispatched subset through `prompt_context_view`
+```
 
 ## Overview
 

@@ -12,6 +12,7 @@ purpose: Technology-agnostic methodology for systematic project analysis
 <!-- toc -->
 
 - [Agent Instructions](#agent-instructions)
+- [Runtime Contract](#runtime-contract)
 - [Overview](#overview)
 - [Layer Map](#layer-map)
 - [L1: Surface Reconnaissance](#l1-surface-reconnaissance)
@@ -39,6 +40,82 @@ purpose: Technology-agnostic methodology for systematic project analysis
 **ALWAYS open and follow** `{cf-studio-path}/.core/requirements/execution-protocol.md` for workflow context.
 
 **Prerequisites**: confirm the agent has read this methodology, has repository access, will execute layers `1 -> 9` in order, and will checkpoint after each layer.
+
+## Runtime Contract
+
+```text
+UNIT ReverseEngineeringActivation
+
+PURPOSE:
+  Activate this methodology as a controller-owned prompt asset for brownfield
+  analysis and generation work.
+
+WHEN:
+  analyze-codebase or brownfield-generation intent is detected
+
+DO:
+  REQUIRE this methodology is active
+  REQUIRE controller has loaded `{cf-studio-path}/.core/requirements/execution-protocol.md`
+  SET REVERSE_ENGINEERING_MODE = true
+
+RULES:
+  - MUST treat this methodology as controller-owned prompt context
+  - MUST deliver any dispatched prompt subset through `prompt_context_view`
+  - MUST_NOT let prompt-consuming sub-agents reopen this file from disk
+```
+
+```text
+UNIT ReverseEngineeringLayerOrder
+
+PURPOSE:
+  Make the layer-by-layer execution order explicit.
+
+STATE:
+  RE_LAYER: l1 | l2 | l3 | l4 | l5 | l6 | l7 | l8 | l9 | done
+    default: l1
+
+DO:
+  REQUIRE repository access before L1
+  SET RE_LAYER = l1
+  REQUIRE layers progress in order through l2, l3, l4, l5, l6, l7, l8, and l9
+  REQUIRE prior-layer findings are carried forward at every transition
+  EMIT checkpoint after completing each layer
+  SET RE_LAYER = done
+
+RULES:
+  - MUST execute layers in order
+  - MUST checkpoint after each layer
+  - MUST record explicit gaps instead of inventing missing findings
+```
+
+```text
+UNIT ReverseEngineeringErrorHandling
+
+PURPOSE:
+  Define the deterministic response when a reverse-engineering step cannot
+  complete normally.
+
+ON_ERROR:
+  repository_access_failed ->
+    EMIT "Repository access failed: {error}"
+    RETURN blocker
+
+  layer_incomplete ->
+    EMIT "Layer {N} incomplete: {reason}"
+    RETURN partial checkpoint
+
+  external_dependency_unavailable ->
+    EMIT "External dependency unavailable: {service}"
+    CONTINUE with UNVERIFIED boundary note
+
+  timebox_exceeded ->
+    EMIT "Time box exceeded for Layer {N}"
+    RETURN partial checkpoint
+
+  generated_or_obfuscated_code ->
+    EMIT "Obfuscated/generated code detected: {location}"
+    CONTINUE using generator/source analysis
+```
 
 ## Overview
 

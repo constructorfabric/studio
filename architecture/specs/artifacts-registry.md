@@ -13,6 +13,7 @@ purpose: Define structure and usage of artifacts.toml for agent operations
 ## Table of Contents
 
 - [Agent Instructions](#agent-instructions)
+- [Runtime Contract](#runtime-contract)
 - [Overview](#overview)
 - [Schema Version](#schema-version)
 - [Root Structure](#root-structure)
@@ -46,6 +47,71 @@ ALWAYS open and follow `{cf-studio-path}/.core/requirements/artifacts-registry.m
 - [ ] Agent has read and understood this requirement
 - [ ] Agent knows where artifacts.toml is located (via `{cfs_cmd} info`)
 - [ ] Agent will use CLI commands, not direct file manipulation
+
+## Runtime Contract
+
+```text
+UNIT ArtifactsRegistryActivation
+
+PURPOSE:
+  Define how controller workflows activate this specification when artifact
+  registry work is in scope.
+
+WHEN:
+  artifact-registry intent or `artifacts.toml` work is detected
+
+DO:
+  REQUIRE controller loads this specification
+  REQUIRE controller resolves the Studio install path with `{cfs_cmd} info`
+  SET ARTIFACTS_REGISTRY_MODE = true
+
+RULES:
+  - MUST treat this specification as controller-owned prompt context
+  - MUST_NOT let prompt-consuming sub-agents reopen this file from disk
+  - MUST pass any dispatched prompt subset through `prompt_context_view`
+```
+
+```text
+UNIT ArtifactsRegistryOperations
+
+PURPOSE:
+  Make registry discovery and mutation boundaries explicit.
+
+DO:
+  REQUIRE registry path is resolved before artifact work begins
+  REQUIRE artifact operations use `{cfs_cmd}` CLI commands
+  REQUIRE direct manual edits to `artifacts.toml` follow the schema and
+    validation rules in this specification
+
+RULES:
+  - MUST use CLI-assisted discovery for registry location
+  - MUST use registered kit metadata from `core.toml` when resolving templates
+  - MUST keep ignored paths globally invisible to artifact and code scanning
+```
+
+```text
+UNIT ArtifactsRegistryErrors
+
+PURPOSE:
+  Define deterministic stop and continue behavior for registry failures.
+
+ON_ERROR:
+  registry_not_found ->
+    EMIT "Registry not found: {cf-studio-path}/config/artifacts.toml"
+    RETURN blocker
+
+  toml_parse_error ->
+    EMIT "Invalid TOML in artifacts.toml: {parse error}"
+    RETURN blocker
+
+  missing_kit_reference ->
+    EMIT "Invalid kit reference: {system_name} -> {kit_id}"
+    CONTINUE with system validation failure
+
+  artifact_not_found ->
+    EMIT "Artifact not found: {artifact_path}"
+    CONTINUE with skipped artifact warning
+```
 
 ---
 
