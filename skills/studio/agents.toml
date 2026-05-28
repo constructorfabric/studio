@@ -151,10 +151,12 @@ description = """\
 Invoke when scanning a project for residual cypilot/cpt/Cypilot/Cyber Pilot \
 references that the mechanical `cfs init --migrate-from-cypilot=yes` did not \
 touch (source code, CI, docs, agent configs, workspaces, build files) — \
-read-only post-deterministic cleanup; emits a structured findings list for the \
+read-only post-deterministic cleanup; consumes Constructor Studio mode via \
+`prompt_context_view` and emits a structured findings list for the \
 planner to categorize. Dispatched by the `migrate from cypilot` orchestrator \
 after user approval."""
 prompt_file = "agents/cf-migrate-scanner.md"
+requires_shared_context_pack = true
 mode = "readonly"
 isolation = false
 model = "cf:tier:cheap"
@@ -175,6 +177,7 @@ substitutions), B (needs-review context-sensitive), and C (cascade operations: \
 workspace rename, member-repo cascade, agent-config regeneration). Emits a plan \
 the orchestrator presents to the user for review BEFORE dispatching the migrator."""
 prompt_file = "agents/cf-migrate-planner.md"
+requires_shared_context_pack = true
 mode = "readonly"
 isolation = false
 model = "cf:tier:balanced"
@@ -191,6 +194,7 @@ category C operations printed for manual execution. Returns a migration manifest
 of every change applied. Operates in-place (isolation = false) so its edits are \
 visible to the verifier without requiring a commit."""
 prompt_file = "agents/cf-migrate-migrator.md"
+requires_shared_context_pack = true
 mode = "readwrite"
 isolation = false
 model = "cf:tier:cheap"
@@ -208,6 +212,7 @@ and surfaces residue (regressed, missed-by-plan, or noticed-but-not-in-plan \
 items) for the orchestrator to feed back into another migrator pass. Bounded \
 by the orchestrator's 3-iteration cap."""
 prompt_file = "agents/cf-migrate-verifier.md"
+requires_shared_context_pack = true
 mode = "readonly"
 isolation = false
 model = "cf:tier:cheap"
@@ -241,6 +246,7 @@ patch, or uncommitted changes — resolves the Git diff scope, changed files, \
 hunks, and review targets so the orchestrator does not perform semantic \
 diff scanning itself."""
 prompt_file = "agents/cf-diff-scope-resolver.md"
+requires_shared_context_pack = true
 mode = "readonly"
 isolation = false
 # Fast scope-resolution-only agent. Stays at haiku-tier (no matrix override
@@ -261,6 +267,7 @@ validator command for the target bootstrap (`validate`, `validate --artifact`, \
 Gate block (per-command exit code, JSON status, error_count, warning_count, \
 overall PASS/FAIL/SKIPPED with availability proof)."""
 prompt_file = "agents/cf-deterministic-validator.md"
+requires_shared_context_pack = true
 mode = "readonly"
 isolation = false
 model = "cf:tier:cheap"
@@ -272,10 +279,12 @@ context_window = "medium"
 [agents.cf-semantic-reviewer-artifact]
 description = """\
 Invoke when running the kit-checklist semantic review on an artifact target \
-plus its cross-refs — loads the kit checklist, walks every category, and emits \
-Findings (severity, mechanical, path, line, evidence_quote, root_cause, \
+plus its cross-refs — consumes checklist/compliance prompt assets through \
+`prompt_context_view`, walks every category, and emits Findings (severity, \
+mechanical, path, line, evidence_quote, root_cause, \
 suggested_fix) against the artifact-mode semantic-review contract."""
 prompt_file = "agents/cf-semantic-reviewer-artifact.md"
+requires_shared_context_pack = true
 mode = "readonly"
 isolation = false
 model = "cf:tier:balanced"
@@ -287,9 +296,11 @@ context_window = "high"
 [agents.cf-semantic-reviewer-code]
 description = """\
 Invoke when running the code-checklist semantic review on code targets against \
-a design artifact — loads only the code-checklist methodology, walks every \
+a design artifact — consumes the review methodology via \
+`prompt_context_view`, walks every \
 category, and emits Findings against the code-checklist review contract."""
 prompt_file = "agents/cf-semantic-reviewer-code.md"
+requires_shared_context_pack = true
 mode = "readonly"
 isolation = false
 model = "cf:tier:balanced"
@@ -301,9 +312,10 @@ context_window = "high"
 [agents.cf-code-bug-finder]
 description = """\
 Invoke when running the code bug-finding methodology on code targets — loads \
-only bug-finding.md and emits Findings for correctness, logic, reliability, \
+that methodology via `prompt_context_view` and emits Findings for correctness, logic, reliability, \
 security, concurrency, performance, and integration defects."""
 prompt_file = "agents/cf-code-bug-finder.md"
+requires_shared_context_pack = true
 mode = "readonly"
 isolation = false
 model = "cf:tier:balanced"
@@ -315,11 +327,13 @@ context_window = "high"
 [agents.cf-semantic-reviewer-prompt]
 description = """\
 Invoke when running the 10-layer prompt-engineering review on prompt / \
-instruction targets (workflows, skills, agent prompts, AGENTS.md) — loads the \
-prompt-engineering methodology, honors SKILL/compliance invariants, and emits \
+instruction targets (workflows, skills, agent prompts, AGENTS.md) — consumes \
+the prompt-engineering methodology and compliance assets through \
+`prompt_context_view`, and emits \
 Findings plus review_result/checkpoint discriminator outputs in the Prompt \
 Review schema."""
 prompt_file = "agents/cf-semantic-reviewer-prompt.md"
+requires_shared_context_pack = true
 mode = "readonly"
 isolation = false
 model = "cf:tier:balanced"
@@ -331,10 +345,11 @@ context_window = "high"
 [agents.cf-prompt-bug-finder]
 description = """\
 Invoke when running the prompt-bug-finding methodology on prompt / instruction \
-targets — loads only prompt-bug-finding.md and emits Findings for behavioral \
+targets — consumes that methodology via `prompt_context_view` and emits Findings for behavioral \
 defects, routing bugs, unsafe defaults, hidden failure modes, and handoff \
 breakage."""
 prompt_file = "agents/cf-prompt-bug-finder.md"
+requires_shared_context_pack = true
 mode = "readonly"
 isolation = false
 model = "cf:tier:balanced"
@@ -346,9 +361,11 @@ context_window = "high"
 [agents.cf-pdsl-author]
 description = """\
 Invoke when cf-pdsl new mode must create a new prompt, workflow, skill, or \
-agent instruction file as a compact PDSL contract with explicit state, menus, \
+agent instruction file as a compact PDSL contract using the shared-context-pack \
+PDSL spec with explicit state, menus, \
 UX prompts, stop points, authority boundaries, and completion gates."""
 prompt_file = "agents/cf-pdsl-author.md"
+requires_shared_context_pack = true
 mode = "readwrite"
 isolation = false
 model = "cf:tier:balanced"
@@ -363,6 +380,7 @@ Invoke when cf-pdsl transform mode must convert existing prose prompt, \
 workflow, skill, requirement, or agent instruction files into PDSL while \
 preserving behavior, constraints, state transitions, menus, and handoffs."""
 prompt_file = "agents/cf-pdsl-transformer.md"
+requires_shared_context_pack = true
 mode = "readwrite"
 isolation = false
 model = "cf:tier:balanced"
@@ -377,6 +395,7 @@ Invoke when cf-pdsl review mode must inspect prompt, workflow, skill, \
 requirement, or agent instruction files for PDSL correctness, compactness, \
 state/menu/UX safety, hidden prose rules, missing STOP_TURN, and handoff bugs."""
 prompt_file = "agents/cf-pdsl-reviewer.md"
+requires_shared_context_pack = true
 mode = "readonly"
 isolation = false
 model = "cf:tier:balanced"
@@ -388,9 +407,11 @@ context_window = "high"
 [agents.cf-semantic-reviewer-consistency]
 description = """\
 Invoke when cross-checking terminology, references, normative claims, and \
-scope across ≥ 2 target documents — loads consistency-checklist and emits \
+scope across ≥ 2 target documents — consumes the consistency checklist via \
+`prompt_context_view` and emits \
 Findings against the consistency contract."""
 prompt_file = "agents/cf-semantic-reviewer-consistency.md"
+requires_shared_context_pack = true
 mode = "readonly"
 isolation = false
 model = "cf:tier:balanced"
@@ -407,6 +428,7 @@ a 3-6-person expert panel (persona, focus, rationale) and a seed topic for \
 round 1. Pure function: orchestrator collects user edits before the round \
 loop starts."""
 prompt_file = "agents/cf-brainstorm-facilitator.md"
+requires_shared_context_pack = true
 mode = "readonly"
 isolation = false
 model = "cf:tier:balanced"
@@ -428,6 +450,7 @@ sets `next_topic_proposal = null`; counter-proposals are emitted as the \
 questions' `proposed_default`. Dispatched \
 in parallel for the full panel per round."""
 prompt_file = "agents/cf-brainstorm-expert.md"
+requires_shared_context_pack = true
 mode = "readonly"
 isolation = true
 model = "cf:tier:balanced"
@@ -463,6 +486,7 @@ orchestrator to show. When pre_resolved_inputs is supplied (from brainstorm), \
 pre-fills those sections marked [from brainstorm] and proposes only the \
 remaining ones."""
 prompt_file = "agents/cf-generate-collector.md"
+requires_shared_context_pack = true
 mode = "readonly"
 isolation = false
 model = "cf:tier:cheap"
@@ -479,6 +503,7 @@ path-partition, identify dependencies, and mark which tasks can run in \
 parallel. Read-only; disk-mode plan files are written by the orchestrator \
 from the returned plan."""
 prompt_file = "agents/cf-analyze-planner.md"
+requires_shared_context_pack = true
 mode = "readonly"
 isolation = false
 model = "cf:tier:cheap"
@@ -495,6 +520,7 @@ tasks, recommend author worker agents, identify dependencies, and mark which \
 tasks can run in parallel. Read-only; disk-mode plan files are written by the \
 orchestrator from the returned plan."""
 prompt_file = "agents/cf-generate-planner.md"
+requires_shared_context_pack = true
 mode = "readonly"
 isolation = false
 model = "cf:tier:cheap"
@@ -524,9 +550,10 @@ context_window = "medium"
 description = """\
 Invoke when the generate-author selector chooses junior for simple, bounded \
 create/fix tasks: one file, complete inputs, low-risk prose or mechanical \
-edits, and no architectural/code/security ambiguity. Uses the shared author \
+edits, and no architectural/code/security ambiguity. Consumes the shared author \
 contract and returns a manifest."""
 prompt_file = "agents/cf-generate-author-junior.md"
+requires_shared_context_pack = true
 mode = "readwrite"
 isolation = false
 model = "cf:tier:cheap"
@@ -539,9 +566,10 @@ context_window = "medium"
 description = """\
 Invoke when the generate-author selector chooses middle for standard artifact \
 or small code create/fix tasks with clear inputs, moderate cross-references, \
-or small mechanical review-loop batches. Uses the shared author contract and \
+or small mechanical review-loop batches. Consumes the shared author contract and \
 returns a manifest."""
 prompt_file = "agents/cf-generate-author-middle.md"
+requires_shared_context_pack = true
 mode = "readwrite"
 isolation = false
 model = "cf:tier:balanced"
@@ -554,9 +582,10 @@ context_window = "high"
 description = """\
 Invoke when the generate-author selector chooses senior for complex artifacts, \
 code changes, multi-file writes, strict-rule outputs, or non-mechanical fixes \
-that require careful judgment. Uses the shared author contract and returns a \
+that require careful judgment. Consumes the shared author contract and returns a \
 manifest."""
 prompt_file = "agents/cf-generate-author-senior.md"
+requires_shared_context_pack = true
 mode = "readwrite"
 isolation = false
 model = "cf:tier:balanced"
@@ -570,9 +599,10 @@ description = """\
 Invoke when the generate-author selector chooses lead for high-risk or broad \
 generation/fix tasks: cross-system architecture, security/concurrency/data \
 integrity concerns, workflow/agent prompt changes, large finding batches, or \
-uncertain scope where cheaper tiers are likely to fail. Uses the shared author \
+uncertain scope where cheaper tiers are likely to fail. Consumes the shared author \
 contract and returns a manifest."""
 prompt_file = "agents/cf-generate-author-lead.md"
+requires_shared_context_pack = true
 mode = "readwrite"
 isolation = false
 model = "cf:tier:expensive"
@@ -585,9 +615,10 @@ context_window = "high"
 description = """\
 Invoke when the generate-author selector chooses coder-casual for small, \
 code-only create/fix tasks with complete inputs, at most two source/test files, \
-no security/concurrency/data-model risk, and no prompt/artifact writing. Uses \
+no security/concurrency/data-model risk, and no prompt/artifact writing. Consumes \
 the shared author contract and returns a manifest."""
 prompt_file = "agents/cf-generate-coder-casual.md"
+requires_shared_context_pack = true
 mode = "readwrite"
 isolation = false
 model = "cf:tier:cheap"
@@ -601,9 +632,10 @@ description = """\
 Invoke when the generate-author selector chooses coder-smart for code-only \
 tasks that need deeper implementation judgment: behavior changes, tests, \
 refactors, API boundaries, or moderate security/concurrency/data implications, \
-without prompt/workflow authoring. Uses the shared author contract and returns \
+without prompt/workflow authoring. Consumes the shared author contract and returns \
 a manifest."""
 prompt_file = "agents/cf-generate-coder-smart.md"
+requires_shared_context_pack = true
 mode = "readwrite"
 isolation = false
 model = "cf:tier:balanced"
@@ -616,9 +648,10 @@ context_window = "high"
 description = """\
 Invoke when the generate-author selector chooses prompt-engineer-casual for \
 small prompt/workflow/agent wording or routing edits with local scope and no \
-state-machine, handoff, or multi-file semantic redesign. Uses the shared \
+state-machine, handoff, or multi-file semantic redesign. Consumes the shared \
 author contract and returns a manifest."""
 prompt_file = "agents/cf-generate-prompt-engineer-casual.md"
+requires_shared_context_pack = true
 mode = "readwrite"
 isolation = false
 model = "cf:tier:cheap"
@@ -631,9 +664,10 @@ context_window = "medium"
 description = """\
 Invoke when the generate-author selector chooses prompt-engineer-smart for \
 prompt/workflow/agent/skill changes that affect state, routing, handoffs, \
-sub-agent contracts, validation criteria, or multi-file prompt semantics. Uses \
+sub-agent contracts, validation criteria, or multi-file prompt semantics. Consumes \
 the shared author contract and returns a manifest."""
 prompt_file = "agents/cf-generate-prompt-engineer-smart.md"
+requires_shared_context_pack = true
 mode = "readwrite"
 isolation = false
 model = "cf:tier:balanced"

@@ -11,6 +11,72 @@ description: Invoke when running the code-checklist semantic review on code targ
 
 <!-- /toc -->
 
+## Prompt Context Contract
+
+`prompt_context_view` is the sole prompt and instruction source for this
+dispatch. Missing required prompt context is an orchestration error.
+
+```json
+{
+  "agent_id": "cf-semantic-reviewer-code",
+  "prompt_context_requirements": {
+    "requires_shared_context_pack": true,
+    "required_assets": [
+      {
+        "asset_key": "studio_mode_contract",
+        "accepted_origins": ["core"],
+        "accepted_types": ["skill"],
+        "match_tags": ["constructor-studio-mode"],
+        "section_tags": [],
+        "required_when": null
+      },
+      {
+        "asset_key": "code_review_checklist",
+        "accepted_origins": ["core"],
+        "accepted_types": ["requirement"],
+        "match_tags": ["code-review", "checklist"],
+        "section_tags": [],
+        "required_when": null
+      },
+      {
+        "asset_key": "agent_compliance",
+        "accepted_origins": ["core"],
+        "accepted_types": ["requirement"],
+        "match_tags": ["agent-compliance"],
+        "section_tags": [],
+        "required_when": null
+      }
+    ],
+    "optional_assets": [
+      {
+        "asset_key": "traceability_full",
+        "accepted_origins": ["core"],
+        "accepted_types": ["instruction"],
+        "match_tags": ["traceability", "full"],
+        "section_tags": [],
+        "required_when": "traceability_mode == FULL"
+      },
+      {
+        "asset_key": "traceability_identifiers",
+        "accepted_origins": ["core"],
+        "accepted_types": ["instruction"],
+        "match_tags": ["traceability", "identifiers"],
+        "section_tags": [],
+        "required_when": "traceability_mode == DOCS-ONLY"
+      },
+      {
+        "asset_key": "kit_validation_rules",
+        "accepted_origins": ["kit"],
+        "accepted_types": ["rule", "checklist"],
+        "match_tags": ["kit-rules", "validation"],
+        "section_tags": [],
+        "required_when": "kit_rules_path != null"
+      }
+    ]
+  }
+}
+```
+
 ```text
 UNIT CodeReviewerInit
 
@@ -19,13 +85,12 @@ PURPOSE:
   walk every checklist category, and emit Findings.
 
 DO:
-  Open and follow {cf-studio-path}/.core/skills/studio/SKILL.md
-  Open and follow {cf-studio-path}/.core/requirements/code-checklist.md
-  Open and follow {cf-studio-path}/.core/requirements/agent-compliance.md
+  REQUIRE prompt_context_view includes `studio_mode_contract`,
+    `code_review_checklist`, and `agent_compliance`
   WHEN traceability_mode = "FULL":
-    Open and follow {cf-studio-path}/.core/architecture/specs/traceability.md (full)
+    REQUIRE prompt_context_view includes `traceability_full`
   WHEN traceability_mode = "DOCS-ONLY":
-    Open and follow {cf-studio-path}/.core/architecture/specs/traceability.md Part I (Identifiers) only
+    REQUIRE prompt_context_view includes `traceability_identifiers`
     SKIP Part II (Code Traceability) — applies only to FULL mode
   CONTINUE CodeReviewerProcedure
 
@@ -33,6 +98,7 @@ RULES:
   - MUST_NOT modify any file
   - MUST_NOT run validator subprocesses
   - MUST_NOT invoke other agents
+  - MUST_NOT open prompt assets from disk directly
 ```
 
 NOTES:
@@ -109,8 +175,8 @@ PURPOSE:
   Execute the code-checklist review methodology.
 
 DO:
-  1. Load only the code-checklist methodology as the review methodology
-     Load kit rules only when kit_rules_path is provided
+  1. Load only the `code_review_checklist` asset as the review methodology
+     Load `kit_validation_rules` only when that asset is present
      REQUIRE ContextBudgetFailSafe is active
   2. Read the design artifact when design_artifact_path is provided
   3. Estimate cumulative size of design_artifact_path + code_paths + cross_ref_paths

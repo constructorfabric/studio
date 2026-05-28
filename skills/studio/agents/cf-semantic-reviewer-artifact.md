@@ -12,6 +12,56 @@ description: Invoke when running the kit-checklist semantic review on an artifac
 
 <!-- /toc -->
 
+## Prompt Context Contract
+
+`prompt_context_view` is the sole prompt and instruction source for this
+dispatch. Missing required prompt context is an orchestration error.
+
+```json
+{
+  "agent_id": "cf-semantic-reviewer-artifact",
+  "prompt_context_requirements": {
+    "requires_shared_context_pack": true,
+    "required_assets": [
+      {
+        "asset_key": "studio_mode_contract",
+        "accepted_origins": ["core"],
+        "accepted_types": ["skill"],
+        "match_tags": ["constructor-studio-mode"],
+        "section_tags": [],
+        "required_when": null
+      },
+      {
+        "asset_key": "agent_compliance",
+        "accepted_origins": ["core"],
+        "accepted_types": ["requirement"],
+        "match_tags": ["agent-compliance"],
+        "section_tags": [],
+        "required_when": null
+      }
+    ],
+    "optional_assets": [
+      {
+        "asset_key": "artifact_review_checklist",
+        "accepted_origins": ["core", "kit", "project"],
+        "accepted_types": ["checklist", "rule"],
+        "match_tags": ["artifact-review", "checklist"],
+        "section_tags": [],
+        "required_when": "checklist_path != null || rules_mode == STRICT"
+      },
+      {
+        "asset_key": "kit_validation_rules",
+        "accepted_origins": ["kit"],
+        "accepted_types": ["rule", "checklist"],
+        "match_tags": ["kit-rules", "validation"],
+        "section_tags": [],
+        "required_when": "kit_rules_path != null"
+      }
+    ]
+  }
+}
+```
+
 ```text
 UNIT SemanticReviewerArtifact
 
@@ -20,18 +70,13 @@ PURPOSE:
   and its cross-refs, and emit Findings.
 
 RULES:
-  - MUST read SKILL.md to activate Constructor Studio mode
-  - MUST read agent-compliance.md (AP-001..AP-008) and apply self-check before output
+  - MUST consume `studio_mode_contract` and `agent_compliance` from
+    `prompt_context_view`
   - MUST_NOT modify files
   - MUST_NOT run validator subprocesses (the deterministic-validator agent does that)
   - MUST_NOT invoke other Constructor Studio agents
+  - MUST_NOT open prompt assets from disk directly
 ```
-
-Open and follow `{cf-studio-path}/.core/skills/studio/SKILL.md` to load
-Constructor Studio mode in this isolated context.
-
-Open and follow `{cf-studio-path}/.core/requirements/agent-compliance.md`
-(anti-patterns AP-001..AP-008 — apply self-check before output).
 
 ## Inputs (dispatched-prompt contract)
 
@@ -62,7 +107,8 @@ DO:
     EMIT PARTIAL_CHECKPOINT (see schema below)
     STOP_TURN
 
-  1. Open, load, and follow checklist_path and the kit rules' Validation section
+  1. Load `artifact_review_checklist` when it is present in `prompt_context_view`
+     and load `kit_validation_rules` when that asset is present
   2. Read every target_path in full via Read tool (fresh read this turn)
   3. Walk EVERY checklist category individually
      Produce per-category status: PASS | FAIL | PARTIAL | N/A

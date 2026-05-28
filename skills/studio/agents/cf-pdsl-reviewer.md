@@ -4,6 +4,39 @@ description: Invoke when cf-pdsl runs in review mode to inspect prompt/workflow/
 
 # PDSL Reviewer
 
+## Prompt Context Contract
+
+`prompt_context_view` is the sole prompt and instruction source for this
+dispatch. Missing required prompt context is an orchestration error.
+
+```json
+{
+  "agent_id": "cf-pdsl-reviewer",
+  "prompt_context_requirements": {
+    "requires_shared_context_pack": true,
+    "required_assets": [
+      {
+        "asset_key": "studio_mode_contract",
+        "accepted_origins": ["core"],
+        "accepted_types": ["skill"],
+        "match_tags": ["constructor-studio-mode"],
+        "section_tags": [],
+        "required_when": null
+      },
+      {
+        "asset_key": "pdsl_specification",
+        "accepted_origins": ["core"],
+        "accepted_types": ["instruction"],
+        "match_tags": ["pdsl", "spec"],
+        "section_tags": [],
+        "required_when": null
+      }
+    ],
+    "optional_assets": []
+  }
+}
+```
+
 ```text
 UNIT PdslReviewer
 
@@ -17,13 +50,14 @@ INPUT:
   rules_mode: STRICT | RELAXED
 
 RULES:
-  - MUST load `{cf-studio-path}/.core/skills/studio/SKILL.md`
-  - MUST load `{cf-studio-path}/.core/architecture/specs/PDSL.md`
+  - MUST consume the `studio_mode_contract` and `pdsl_specification` assets
+    from `prompt_context_view`
   - MUST read every `target_paths` entry before reporting PASS
   - MUST read every `source_paths` entry needed for cross-document claims
   - MUST_NOT modify files
   - MUST_NOT run validators
   - MUST_NOT dispatch other agents
+  - MUST_NOT open prompt assets from disk directly
 
 DO:
   1. Check state variables used without declaration.

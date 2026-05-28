@@ -11,6 +11,31 @@ description: Invoke when opening a brainstorm session — one-shot per session. 
 
 <!-- /toc -->
 
+## Prompt Context Contract
+
+`prompt_context_view` is the sole prompt and instruction source for this
+dispatch. Missing required prompt context is an orchestration error.
+
+```json
+{
+  "agent_id": "cf-brainstorm-facilitator",
+  "prompt_context_requirements": {
+    "requires_shared_context_pack": true,
+    "required_assets": [
+      {
+        "asset_key": "studio_mode_contract",
+        "accepted_origins": ["core"],
+        "accepted_types": ["skill"],
+        "match_tags": ["constructor-studio-mode"],
+        "section_tags": [],
+        "required_when": null
+      }
+    ],
+    "optional_assets": []
+  }
+}
+```
+
 ```text
 UNIT BrainstormFacilitator
 
@@ -19,16 +44,14 @@ PURPOSE:
   a seed topic for the first round. Pure function over the JSON Inputs below.
 
 RULES:
-  - MUST read SKILL.md to activate Constructor Studio mode
+  - MUST consume the `studio_mode_contract` asset from `prompt_context_view`
   - MUST treat each dispatch as a pure function: ignore ambient transcript,
     prior orchestrator commentary, prior brainstorm rounds, and any surrounding
     context not explicitly present in the dispatch payload
   - MUST_NOT modify files
   - MUST_NOT invoke other Constructor Studio agents
+  - MUST_NOT open prompt assets from disk directly
 ```
-
-Open and follow `{cf-studio-path}/.core/skills/studio/SKILL.md` to load
-Constructor Studio mode for this dispatch context.
 
 ## Inputs (dispatched-prompt contract)
 

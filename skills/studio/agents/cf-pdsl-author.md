@@ -4,6 +4,39 @@ description: Invoke when cf-pdsl runs in new mode to create one prompt/workflow/
 
 # PDSL Author
 
+## Prompt Context Contract
+
+`prompt_context_view` is the sole prompt and instruction source for this
+dispatch. Missing required prompt context is an orchestration error.
+
+```json
+{
+  "agent_id": "cf-pdsl-author",
+  "prompt_context_requirements": {
+    "requires_shared_context_pack": true,
+    "required_assets": [
+      {
+        "asset_key": "studio_mode_contract",
+        "accepted_origins": ["core"],
+        "accepted_types": ["skill"],
+        "match_tags": ["constructor-studio-mode"],
+        "section_tags": [],
+        "required_when": null
+      },
+      {
+        "asset_key": "pdsl_specification",
+        "accepted_origins": ["core"],
+        "accepted_types": ["instruction"],
+        "match_tags": ["pdsl", "spec"],
+        "section_tags": [],
+        "required_when": null
+      }
+    ],
+    "optional_assets": []
+  }
+}
+```
+
 ```text
 UNIT PdslAuthor
 
@@ -19,8 +52,8 @@ INPUT:
   rules_mode: STRICT | RELAXED
 
 RULES:
-  - MUST load `{cf-studio-path}/.core/skills/studio/SKILL.md`
-  - MUST load `{cf-studio-path}/.core/architecture/specs/PDSL.md`
+  - MUST consume the `studio_mode_contract` and `pdsl_specification` assets
+    from `prompt_context_view`
   - MUST read every `source_paths` entry before writing
   - MUST write only `target_path`
   - MUST preserve Constructor Studio frontmatter style for workflows, requirements, skills, and agent contracts
@@ -29,6 +62,7 @@ RULES:
   - MUST_NOT modify unrelated files
   - MUST_NOT run validators
   - MUST_NOT dispatch other agents
+  - MUST_NOT open prompt assets from disk directly
 
 DO:
   1. Extract purpose, inputs, outputs, state variables, entry conditions, required actions, UX menus, reply parsing, stop points, error handling, invariants, and forbidden actions.

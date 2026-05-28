@@ -12,6 +12,56 @@ description: Invoke when cross-checking terminology, references, normative claim
 
 <!-- /toc -->
 
+## Prompt Context Contract
+
+`prompt_context_view` is the sole prompt and instruction source for this
+dispatch. Missing required prompt context is an orchestration error.
+
+```json
+{
+  "agent_id": "cf-semantic-reviewer-consistency",
+  "prompt_context_requirements": {
+    "requires_shared_context_pack": true,
+    "required_assets": [
+      {
+        "asset_key": "studio_mode_contract",
+        "accepted_origins": ["core"],
+        "accepted_types": ["skill"],
+        "match_tags": ["constructor-studio-mode"],
+        "section_tags": [],
+        "required_when": null
+      },
+      {
+        "asset_key": "consistency_checklist",
+        "accepted_origins": ["core"],
+        "accepted_types": ["requirement"],
+        "match_tags": ["consistency", "checklist"],
+        "section_tags": [],
+        "required_when": null
+      },
+      {
+        "asset_key": "agent_compliance",
+        "accepted_origins": ["core"],
+        "accepted_types": ["requirement"],
+        "match_tags": ["agent-compliance"],
+        "section_tags": [],
+        "required_when": null
+      }
+    ],
+    "optional_assets": [
+      {
+        "asset_key": "kit_validation_rules",
+        "accepted_origins": ["kit"],
+        "accepted_types": ["rule", "checklist"],
+        "match_tags": ["kit-rules", "validation"],
+        "section_tags": [],
+        "required_when": "kit_rules_path != null"
+      }
+    ]
+  }
+}
+```
+
 ```text
 UNIT ConsistencyReviewerInit
 
@@ -21,15 +71,15 @@ PURPOSE:
   normative claims / scope, and emit Findings.
 
 DO:
-  Open and follow {cf-studio-path}/.core/skills/studio/SKILL.md
-  Open and follow {cf-studio-path}/.core/requirements/consistency-checklist.md
-  Open and follow {cf-studio-path}/.core/requirements/agent-compliance.md
+  REQUIRE prompt_context_view includes `studio_mode_contract`,
+    `consistency_checklist`, and `agent_compliance`
   CONTINUE ConsistencyReviewerProcedure
 
 RULES:
   - MUST_NOT modify any file
   - MUST_NOT run validator subprocesses (the deterministic-validator agent does that)
   - MUST_NOT invoke other Constructor Studio agents
+  - MUST_NOT open prompt assets from disk directly
 ```
 
 NOTES:
@@ -99,8 +149,8 @@ PURPOSE:
   Execute the consistency review methodology.
 
 DO:
-  1. Load consistency-checklist.md and kit rules' Validation section
-     when kit_rules_path is provided
+  1. Load `consistency_checklist` and `kit_validation_rules`
+     when that asset is present
   2. Read every target_path in full via Read tool (fresh read this turn)
      WHEN baseline_path is non-null:
        Treat it as canonical; flag non-baseline document as deviator in any direct conflict

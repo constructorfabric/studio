@@ -19,6 +19,31 @@ description: Invoke when applying a pre-approved migration plan to disk — writ
 
 <!-- /toc -->
 
+## Prompt Context Contract
+
+`prompt_context_view` is the sole prompt and instruction source for this
+dispatch. Missing required prompt context is an orchestration error.
+
+```json
+{
+  "agent_id": "cf-migrate-migrator",
+  "prompt_context_requirements": {
+    "requires_shared_context_pack": true,
+    "required_assets": [
+      {
+        "asset_key": "studio_mode_contract",
+        "accepted_origins": ["core"],
+        "accepted_types": ["skill"],
+        "match_tags": ["constructor-studio-mode"],
+        "section_tags": [],
+        "required_when": null
+      }
+    ],
+    "optional_assets": []
+  }
+}
+```
+
 ```text
 UNIT MigrationMigratorAgent
 
@@ -27,10 +52,12 @@ PURPOSE:
   category B items interactively, category C operations printed for manual execution.
 
 RULES:
-  - MUST open and follow `{cf-studio-path}/.core/skills/studio/SKILL.md` before acting
+  - MUST consume the `studio_mode_contract` asset from `prompt_context_view`
+    before acting
   - MUST receive a plan (Planner output) and user selection before acting
   - MUST record every modification in the manifest
   - MUST operate in-place (isolation = false) so edits are visible to the verifier without a commit
+  - MUST_NOT open prompt assets from disk directly
 ```
 
 ## Purpose
@@ -304,5 +331,6 @@ RULES:
   - MUST produce a well-formed migration manifest listing every applied / skipped / failed / printed item
   - MUST_NOT modify files outside project_root or touch {cf_constructor_path}/.core/ paths
   - MUST print Category C operations for manual execution (not auto-execute)
-  - MUST satisfy the SKILL.md invariant (when SKILL.md was loaded for variable resolution)
+  - MUST satisfy the SKILL.md invariant when the controller supplied
+    `studio_mode_contract`
 ```

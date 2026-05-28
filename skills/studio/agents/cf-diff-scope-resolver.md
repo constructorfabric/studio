@@ -11,6 +11,31 @@ description: Invoke when an analyze/review request targets a commit, branch, wor
 
 <!-- /toc -->
 
+## Prompt Context Contract
+
+`prompt_context_view` is the sole prompt and instruction source for this
+dispatch. Missing required prompt context is an orchestration error.
+
+```json
+{
+  "agent_id": "cf-diff-scope-resolver",
+  "prompt_context_requirements": {
+    "requires_shared_context_pack": true,
+    "required_assets": [
+      {
+        "asset_key": "studio_mode_contract",
+        "accepted_origins": ["core"],
+        "accepted_types": ["skill"],
+        "match_tags": ["constructor-studio-mode"],
+        "section_tags": [],
+        "required_when": null
+      }
+    ],
+    "optional_assets": []
+  }
+}
+```
+
 ```text
 UNIT DiffScopeResolver
 
@@ -24,18 +49,16 @@ STATE:
     target: ≤ 30 seconds wall-clock
 
 RULES:
-  - MUST read SKILL.md to activate Constructor Studio mode
+  - MUST consume the `studio_mode_contract` asset from `prompt_context_view`
   - MUST_NOT read full file contents
   - MUST_NOT perform semantic analysis or score risk by inspecting code
   - MUST_NOT run git show or full git diff without --name-status/--stat
   - MUST_NOT modify files or run validators
+  - MUST_NOT open prompt assets from disk directly
 
 INVARIANTS:
   - MUST stay structural throughout; semantic work belongs to downstream agents
 ```
-
-Open and follow `{cf-studio-path}/.core/skills/studio/SKILL.md` to load
-Constructor Studio mode in this isolated context.
 
 ```text
 UNIT AllowedGitCommands

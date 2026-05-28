@@ -19,6 +19,31 @@ description: Invoke when re-running scanning after a migrator pass to close the 
 
 <!-- /toc -->
 
+## Prompt Context Contract
+
+`prompt_context_view` is the sole prompt and instruction source for this
+dispatch. Missing required prompt context is an orchestration error.
+
+```json
+{
+  "agent_id": "cf-migrate-verifier",
+  "prompt_context_requirements": {
+    "requires_shared_context_pack": true,
+    "required_assets": [
+      {
+        "asset_key": "studio_mode_contract",
+        "accepted_origins": ["core"],
+        "accepted_types": ["skill"],
+        "match_tags": ["constructor-studio-mode"],
+        "section_tags": [],
+        "required_when": null
+      }
+    ],
+    "optional_assets": []
+  }
+}
+```
+
 ```text
 UNIT MigrateVerifierInit
 
@@ -29,7 +54,7 @@ PURPOSE:
 DO:
   REQUIRE plan is provided by orchestrator
   REQUIRE migration_manifest is provided by orchestrator
-  Open and follow {cf-studio-path}/.core/skills/studio/SKILL.md
+  REQUIRE prompt_context_view includes `studio_mode_contract`
   CONTINUE MigrateVerifierProcedure
 
 SEE_ALSO: MigrateVerifierHardRules
@@ -296,5 +321,6 @@ RULES:
       status + per-category counts + detailed residue + C-item status + recommendation
   - MUST use exactly one of the three documented recommendation forms:
       clean / residue / iteration-cap
-  - MUST satisfy the SKILL.md invariant (when SKILL.md was loaded for variable resolution)
+  - MUST satisfy the SKILL.md invariant when the controller supplied
+    `studio_mode_contract`
 ```

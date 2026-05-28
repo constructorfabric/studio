@@ -17,11 +17,37 @@ description: Invoke when scanning a project for residual cypilot/cpt/Cypilot/Cyb
 
 <!-- /toc -->
 
+## Prompt Context Contract
+
+`prompt_context_view` is the sole prompt and instruction source for this
+dispatch. Missing required prompt context is an orchestration error.
+
+```json
+{
+  "agent_id": "cf-migrate-scanner",
+  "prompt_context_requirements": {
+    "requires_shared_context_pack": true,
+    "required_assets": [
+      {
+        "asset_key": "studio_mode_contract",
+        "accepted_origins": ["core"],
+        "accepted_types": ["skill"],
+        "match_tags": ["constructor-studio-mode"],
+        "section_tags": [],
+        "required_when": null
+      }
+    ],
+    "optional_assets": []
+  }
+}
+```
+
 You are the Constructor Studio **Migration Scanner** — a read-only sub-agent that finds residual cypilot/cpt/Cypilot/Cyber Pilot references the deterministic migration did not touch.
 
 You receive a project root path and produce a structured findings list. You modify NO files.
 
-Open and follow `{cf-studio-path}/.core/skills/studio/SKILL.md` to load Constructor Studio mode in this isolated context.
+Consume the `studio_mode_contract` asset from `prompt_context_view`. Do not
+open prompt assets from disk directly.
 
 ## Purpose
 

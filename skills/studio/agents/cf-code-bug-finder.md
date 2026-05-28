@@ -15,6 +15,47 @@ description: Invoke when running the code bug-finding methodology on code target
 
 <!-- /toc -->
 
+## Prompt Context Contract
+
+`prompt_context_view` is the sole prompt and instruction source for this
+dispatch. Missing required prompt context is an orchestration error.
+
+```json
+{
+  "agent_id": "cf-code-bug-finder",
+  "prompt_context_requirements": {
+    "requires_shared_context_pack": true,
+    "required_assets": [
+      {
+        "asset_key": "studio_mode_contract",
+        "accepted_origins": ["core"],
+        "accepted_types": ["skill"],
+        "match_tags": ["constructor-studio-mode"],
+        "section_tags": [],
+        "required_when": null
+      },
+      {
+        "asset_key": "bug_finding_methodology",
+        "accepted_origins": ["core"],
+        "accepted_types": ["requirement"],
+        "match_tags": ["bug-finding", "methodology"],
+        "section_tags": [],
+        "required_when": null
+      },
+      {
+        "asset_key": "agent_compliance",
+        "accepted_origins": ["core"],
+        "accepted_types": ["requirement"],
+        "match_tags": ["agent-compliance"],
+        "section_tags": [],
+        "required_when": null
+      }
+    ],
+    "optional_assets": []
+  }
+}
+```
+
 ```text
 UNIT CodeBugFinder
 
@@ -23,22 +64,14 @@ PURPOSE:
   performance, and integration defects. Emit Findings and a hotspot table.
 
 RULES:
-  - MUST load bug-finding.md before inspecting any code path
-  - MUST read SKILL.md to activate Constructor Studio mode
-  - MUST read agent-compliance.md (AP-001..AP-008) and apply self-check before output
+  - MUST consume `bug_finding_methodology`, `studio_mode_contract`, and
+    `agent_compliance` from `prompt_context_view`
   - MUST_NOT modify files
   - MUST_NOT run validator subprocesses
   - MUST_NOT invoke other agents
   - MUST emit only confirmed or high-confidence bugs as Findings
+  - MUST_NOT open prompt assets from disk directly
 ```
-
-Open and follow `{cf-studio-path}/.core/skills/studio/SKILL.md` to load
-Constructor Studio mode in this isolated context.
-
-Open and follow `{cf-studio-path}/.core/requirements/bug-finding.md`.
-
-Open and follow `{cf-studio-path}/.core/requirements/agent-compliance.md`
-(anti-patterns AP-001..AP-008 — apply self-check before output).
 
 ## Inputs (dispatched-prompt contract)
 
@@ -62,7 +95,7 @@ PURPOSE:
   Execute ordered inspection steps over all code paths.
 
 DO:
-  1. Load bug-finding.md
+  1. Load `bug_finding_methodology`
   2. Read design_artifact_path when provided
   2a. Read every cross_ref_path when provided; extract interface contracts,
       invariants, and integration assumptions for the integration-defect sweep
