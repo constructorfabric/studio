@@ -634,6 +634,34 @@ Recommended migration order:
 High-value early targets include prompt reviewers, bug finders, consistency
 reviewers, code reviewers, and planners.
 
+Phase 2 of the shared-context-pack migration establishes three companion
+contracts that later phases must follow:
+
+- rewrite policy:
+  `.bootstrap/.plans/implement-shared-context-pack-pdsl-migration/out/phase-02-rewrite-rules.md`
+- agent-context contract:
+  `.bootstrap/.plans/implement-shared-context-pack-pdsl-migration/out/phase-02-agent-context-contract.md`
+- path-prefix policy:
+  `.bootstrap/.plans/implement-shared-context-pack-pdsl-migration/out/phase-02-path-prefix-policy.md`
+
+Those companion contracts refine this specification with the following
+requirements:
+
+- prompt-consuming sub-agents must declare semantic
+  `prompt_context_requirements` and must treat `prompt_context_view` as their
+  sole prompt/instruction source
+- only top-level orchestrators, dedicated shared-context-pack builders, or
+  another explicitly designated top-level controller may load prompt assets
+  from disk
+- controller-owned imperative prompt loads must use runtime
+  `{cf-studio-path}`-prefixed references when a runtime mirror exists
+- requirements and specs may stay prose-first when they are reference
+  material, but any executable gating behavior, state, menus, approval
+  boundaries, or failure handling consumed as instructions must be made
+  explicit in PDSL during migration
+- missing required prompt context must stop dispatch rather than silently
+  degrade into direct prompt-file reads by the target sub-agent
+
 ---
 
 ## References
@@ -641,3 +669,6 @@ reviewers, code reviewers, and planners.
 - [Project Extension Specification](sysprompts.md)
 - [PDSL Specification](PDSL.md)
 - [Identifiers & Traceability Specification](traceability.md)
+- [Phase 02 Rewrite Rules](../../.bootstrap/.plans/implement-shared-context-pack-pdsl-migration/out/phase-02-rewrite-rules.md)
+- [Phase 02 Agent Context Contract](../../.bootstrap/.plans/implement-shared-context-pack-pdsl-migration/out/phase-02-agent-context-contract.md)
+- [Phase 02 Path Prefix Policy](../../.bootstrap/.plans/implement-shared-context-pack-pdsl-migration/out/phase-02-path-prefix-policy.md)
