@@ -42,7 +42,7 @@ PURPOSE:
   Load preamble before any other analyze phase work.
 
 DO:
-  REQUIRE workflows/analyze/preamble.md is loaded and followed FIRST
+  REQUIRE {cf-studio-path}/.core/workflows/analyze/preamble.md is loaded and followed FIRST
 ```
 
 NOTES: preamble.md performs route-only methodology selection plus storytelling
@@ -58,8 +58,24 @@ PURPOSE:
   Load canonical STRICT/RELAXED and stop-token behavior before any phase.
 
 DO:
-  REQUIRE workflows/shared/mode-resolution.md is loaded and followed
-  REQUIRE workflows/shared/stop-token-policy.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/shared/mode-resolution.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/shared/stop-token-policy.md is loaded and followed
+```
+
+```text
+UNIT AnalyzeSharedContextPack
+
+PURPOSE:
+  Keep analyze-phase prompt loading controller-owned and pack-aware.
+
+RULES:
+  - Workflow fragments referenced by analyze are controller-owned prompt assets
+    loaded from {cf-studio-path}/.core/workflows/...
+  - Before any reviewer dispatch, the controller MUST reuse or extend
+    SHARED_CONTEXT_PACK and derive prompt_context_view that satisfies the
+    dispatched agent's prompt_context_requirements
+  - Analyze MUST NOT rely on prompt-consuming sub-agents reopening workflow,
+    requirement, spec, or AGENTS prompt files directly
 ```
 
 ## Rules
@@ -71,10 +87,10 @@ PURPOSE:
   Load completion contract and pre-output self-check.
 
 DO:
-  REQUIRE workflows/analyze/rules.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/analyze/rules.md is loaded and followed
 
 RULES:
-  - MUST load workflows/analyze/rules.md — unconditionally required
+  - MUST load {cf-studio-path}/.core/workflows/analyze/rules.md — unconditionally required
 ```
 
 ## Overview
@@ -87,10 +103,10 @@ PURPOSE:
   and actionable-findings contract before any phase executes.
 
 DO:
-  REQUIRE workflows/analyze/overview.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/analyze/overview.md is loaded and followed
 
 RULES:
-  - MUST load workflows/analyze/overview.md before any phase executes
+  - MUST load {cf-studio-path}/.core/workflows/analyze/overview.md before any phase executes
 ```
 
 ## Context Budget & Overflow Prevention (CRITICAL)
@@ -106,7 +122,7 @@ WHEN:
   OR estimated total context > 1200 lines
 
 DO:
-  REQUIRE workflows/analyze/context-budget.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/analyze/context-budget.md is loaded and followed
 ```
 
 ## Phase 0: Ensure Dependencies
@@ -118,11 +134,12 @@ PURPOSE:
   Resolve dependencies and run Mode Detection matrix.
 
 DO:
-  REQUIRE workflows/analyze/phase-0-dependencies.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/analyze/phase-0-dependencies.md is loaded and followed
 ```
 
 NOTES: Phase 0 + Phase 0.5 dependency resolution and the Mode Detection matrix
-are fully defined in phase-0-dependencies.md.
+are fully defined in
+{cf-studio-path}/.core/workflows/analyze/phase-0-dependencies.md.
 
 ## Phase 0.5: Clarify Analysis Scope
 
@@ -136,10 +153,10 @@ WHEN:
   phase-0-dependencies.md routes scope clarification
 
 DO:
-  REQUIRE workflows/analyze/phase-0.5-scope.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/analyze/phase-0.5-scope.md is loaded and followed
 
 RULES:
-  - MUST NOT load workflows/analyze/phase-0.5-scope.md independently from the router
+  - MUST NOT load {cf-studio-path}/.core/workflows/analyze/phase-0.5-scope.md independently from the router
   - MUST load it only when phase-0-dependencies.md triggers it (after plan-escalation
     gate resolves, when scope/traceability/registry-consistency/cross-refs paths are unclear)
 ```
@@ -153,7 +170,7 @@ PURPOSE:
   Run existence check across {PATHS}.
 
 DO:
-  REQUIRE workflows/analyze/phase-1-file-check.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/analyze/phase-1-file-check.md is loaded and followed
 ```
 
 ## Phase 2: Deterministic Gate
@@ -165,7 +182,7 @@ PURPOSE:
   Dispatch deterministic validators and enforce gate behavior.
 
 DO:
-  REQUIRE workflows/analyze/phase-2-det-gate.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/analyze/phase-2-det-gate.md is loaded and followed
 
 RULES:
   - MUST skip Phase 2 when SEMANTIC_ONLY=true (sub-file enforces; router proceeds to Phase 3)
@@ -184,7 +201,7 @@ WHEN:
   AND INLINE_FALLBACK == false
 
 DO:
-  REQUIRE workflows/analyze/phase-2.5-reviewer-plan.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/analyze/phase-2.5-reviewer-plan.md is loaded and followed
 
 RULES:
   - MUST auto-skip when INLINE_FALLBACK=true, EXPLAIN_MODE=true, or no active methodology flag
@@ -204,7 +221,7 @@ PURPOSE:
   and EXPLAIN_MODE boundary.
 
 DO:
-  REQUIRE workflows/analyze/phase-3-semantic.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/analyze/phase-3-semantic.md is loaded and followed
 ```
 
 ## Phase 3 → Phase 4 Checkpoint
@@ -216,7 +233,7 @@ PURPOSE:
   Run context-budget recovery checkpoint between semantic review and output.
 
 DO:
-  REQUIRE workflows/analyze/phase-3-to-4-checkpoint.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/analyze/phase-3-to-4-checkpoint.md is loaded and followed
 ```
 
 ## Phase 4: Output
@@ -232,7 +249,7 @@ WHEN:
   OR deterministic gate returned FAIL
 
 DO:
-  REQUIRE workflows/analyze/phase-4-output/index.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/analyze/phase-4-output/index.md is loaded and followed
 
 NOTES:
   Dispatcher selects schema sub-file by mode and routes Remediation Handoff
@@ -252,7 +269,7 @@ WHEN:
   AND EXPLAIN_MODE == false
 
 DO:
-  REQUIRE workflows/analyze/phase-5-next-steps.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/analyze/phase-5-next-steps.md is loaded and followed
 ```
 
 ## Terminal Block Invariant
@@ -267,7 +284,7 @@ INVARIANTS:
   - MUST NOT end response without one of:
       Remediation Handoff menu (when actionable findings exist or deterministic gate FAIL)
       Phase 5 next-steps menu (PASS path, EXPLAIN_MODE=false)
-  - IF workflows/analyze/phase-4-output/index.md OR workflows/analyze/phase-5-next-steps.md
+  - IF {cf-studio-path}/.core/workflows/analyze/phase-4-output/index.md OR {cf-studio-path}/.core/workflows/analyze/phase-5-next-steps.md
     is not loadable:
       STOP and surface the missing file before emitting any final response
 ```
@@ -281,7 +298,7 @@ PURPOSE:
   Load target-type × template / checklist / design matrix.
 
 DO:
-  REQUIRE workflows/analyze/state-summary.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/analyze/state-summary.md is loaded and followed
 ```
 
 ## Key Principles
@@ -296,7 +313,7 @@ WHEN:
   finalizing the response
 
 DO:
-  REQUIRE workflows/analyze/key-principles.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/analyze/key-principles.md is loaded and followed
 ```
 
 ## Agent Self-Test (STRICT mode — AFTER completing work)
@@ -311,7 +328,7 @@ WHEN:
   STRICT mode finalization requires self-test
 
 DO:
-  REQUIRE workflows/analyze/agent-self-test.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/analyze/agent-self-test.md is loaded and followed
 ```
 
 NOTES: Also referenced from Standard Analysis Output section 4.
@@ -328,5 +345,5 @@ WHEN:
   post-flight checklist must be verified before ending the response
 
 DO:
-  REQUIRE workflows/analyze/validation-criteria.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/analyze/validation-criteria.md is loaded and followed
 ```

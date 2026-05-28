@@ -47,7 +47,7 @@ WHEN:
   project is BROWNFIELD
 
 DO:
-  REQUIRE workflows/generate/reverse-engineering.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/generate/reverse-engineering.md is loaded and followed
 ```
 
 ## Overview
@@ -68,6 +68,22 @@ RULES:
     phase-appropriate dependencies are known
   - Key variables: {cf-studio-path}/config/, {ARTIFACTS_REGISTRY}, {KITS_PATH}, {PATH}
   - Use {KITS_PATH}/artifacts/{KIND}/examples/ for style and quality guidance
+```
+
+```text
+UNIT GenerateSharedContextPack
+
+PURPOSE:
+  Keep generate-phase prompt loading controller-owned and pack-aware.
+
+RULES:
+  - Workflow fragments referenced by generate are controller-owned prompt
+    assets loaded from {cf-studio-path}/.core/workflows/...
+  - Before any downstream author or reviewer dispatch, the controller MUST
+    reuse or extend SHARED_CONTEXT_PACK and derive prompt_context_view that
+    satisfies the dispatched agent's prompt_context_requirements
+  - Generate MUST NOT rely on prompt-consuming sub-agents reopening workflow,
+    requirement, spec, or AGENTS prompt files directly
 ```
 
 ## Context Budget & Overflow Prevention (CRITICAL)
@@ -121,8 +137,8 @@ PURPOSE:
   Load canonical STRICT/RELAXED and stop-token behavior.
 
 DO:
-  REQUIRE workflows/shared/mode-resolution.md is loaded and followed
-  REQUIRE workflows/shared/stop-token-policy.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/shared/mode-resolution.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/shared/stop-token-policy.md is loaded and followed
 ```
 
 ## Phase 0: Ensure Dependencies
@@ -134,14 +150,17 @@ PURPOSE:
   Resolve dependencies after protocol.md loads.
 
 WHEN:
-  workflow enters dependency resolution after skills/studio/protocol.md
+  workflow enters dependency resolution after
+  {cf-studio-path}/.core/skills/studio/protocol.md
 
 DO:
-  REQUIRE workflows/generate/phase-0-dependencies.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/generate/phase-0-dependencies.md is loaded and followed
 
 NOTES:
-  phase-0-dependencies.md delegates the INLINE_FALLBACK probe to
-  workflows/shared/inline-fallback-probe.md (canonical block reused by analyze.md).
+  {cf-studio-path}/.core/workflows/generate/phase-0-dependencies.md delegates
+  the INLINE_FALLBACK probe to
+  {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md
+  (canonical block reused by analyze.md).
 ```
 
 ## Phase 0.1: Plan Escalation Gate
@@ -153,7 +172,7 @@ PURPOSE:
   Run plan escalation gate after dependencies load.
 
 DO:
-  REQUIRE workflows/shared/plan-escalation-gate.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/shared/plan-escalation-gate.md is loaded and followed
 ```
 
 ## Phase 0.2: Review-Loop Configuration
@@ -165,10 +184,10 @@ PURPOSE:
   Load COLLECTOR_MAX_ITER configuration.
 
 DO:
-  REQUIRE workflows/generate/phase-0.2-review-loop-cfg.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/generate/phase-0.2-review-loop-cfg.md is loaded and followed
 
 NOTES:
-  MAX_ITER prompt + parser live in workflows/generate/phase-5/index.md
+  MAX_ITER prompt + parser live in {cf-studio-path}/.core/workflows/generate/phase-5/index.md
   § Pre-Phase-Setup (also the analyze.md external-entry point).
 ```
 
@@ -185,7 +204,7 @@ WHEN:
   AND Phase 0.5 has not yet started
 
 DO:
-  REQUIRE workflows/generate/phase-0-git-commit-mode.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/generate/phase-0-git-commit-mode.md is loaded and followed
 
 RULES:
   - MUST skip if GIT_COMMIT_MODE is already set from an earlier run in this chat session
@@ -204,7 +223,7 @@ WHEN:
   AND before Phase 0.7 / Phase 1
 
 DO:
-  REQUIRE workflows/generate/phase-0.5-clarify.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/generate/phase-0.5-clarify.md is loaded and followed
 ```
 
 ## Phase 0.7: Brainstorm
@@ -221,7 +240,7 @@ WHEN:
   AND active KIND's rules.md does NOT set brainstorm = "disabled"
 
 DO:
-  REQUIRE workflows/generate/phase-0.7/index.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/generate/phase-0.7/index.md is loaded and followed
 ```
 
 ## Phase 1: Collect Information
@@ -236,7 +255,7 @@ WHEN:
   dependency resolution and Phase 0.5 / 0.7 are complete
 
 DO:
-  REQUIRE workflows/generate/phase-1-collect.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/generate/phase-1-collect.md is loaded and followed
 ```
 
 ## Phase 1.5: Author Plan
@@ -252,7 +271,7 @@ WHEN:
   AND before Phase 3 summary
 
 DO:
-  REQUIRE workflows/generate/phase-1.5-author-plan.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/generate/phase-1.5-author-plan.md is loaded and followed
 
 RULES:
   - The author plan is optional for the user
@@ -272,7 +291,7 @@ WHEN:
   OR must emit a Phase 2.5 checkpoint for a long-running generation
 
 DO:
-  REQUIRE workflows/generate/phase-2-checkpoint.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/generate/phase-2-checkpoint.md is loaded and followed
 ```
 
 ## Phase 3: Summary
@@ -289,7 +308,7 @@ WHEN:
   AND user must confirm yes/no/modify before any files are written
 
 DO:
-  REQUIRE workflows/generate/phase-3-summary.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/generate/phase-3-summary.md is loaded and followed
 ```
 
 ## Phase 4: Write
@@ -305,7 +324,7 @@ WHEN:
   AND author must be dispatched (mode=create) to write files atomically
 
 DO:
-  REQUIRE workflows/generate/phase-4-write.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/generate/phase-4-write.md is loaded and followed
 ```
 
 ## Phase 5: Review Loop
@@ -321,7 +340,7 @@ WHEN:
   OR analyze.md Remediation Handoff option 1 routes external entry into Phase 5.3
 
 DO:
-  REQUIRE workflows/generate/phase-5/index.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/generate/phase-5/index.md is loaded and followed
 ```
 
 ## Phase 6: Offer Next Steps
@@ -336,7 +355,7 @@ WHEN:
   Phase 5 exits
 
 DO:
-  REQUIRE workflows/generate/phase-6/index.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/generate/phase-6/index.md is loaded and followed
 
 RULES:
   - Remediation Handoff: conditional on non-empty remaining_findings
@@ -358,7 +377,7 @@ WHEN:
   (during any generate phase)
 
 DO:
-  REQUIRE workflows/generate/error-handling.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/generate/error-handling.md is loaded and followed
 ```
 
 ## State Summary & Validation Criteria
@@ -377,7 +396,7 @@ WHEN:
   post-flight checklist must be verified before ending the response
 
 DO:
-  REQUIRE workflows/generate/validation-criteria.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/generate/validation-criteria.md is loaded and followed
 ```
 
 ## Agent Self-Test (STRICT mode — AFTER completing work)
@@ -392,6 +411,6 @@ WHEN:
   STRICT mode finalization requires self-test
 
 DO:
-  REQUIRE workflows/generate/validation-criteria.md § Agent Self-Test
+  REQUIRE {cf-studio-path}/.core/workflows/generate/validation-criteria.md § Agent Self-Test
     (STRICT mode — AFTER completing work) is loaded and followed
 ```

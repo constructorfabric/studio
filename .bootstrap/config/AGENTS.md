@@ -10,6 +10,17 @@ Constructor Studio is a workflow-centered methodology framework for AI-assisted 
 
 ---
 
+## Shared Context Pack
+
+Top-level Constructor Studio controllers own prompt-asset discovery and runtime
+loading for this repository. Reuse the session `SHARED_CONTEXT_PACK`,
+revalidate reused assets by `etag`, extend it only for missing prompt assets,
+and derive one minimal `prompt_context_view` per sub-agent dispatch.
+Prompt-consuming sub-agents must not reopen AGENTS, SKILL, workflow,
+requirement, spec, or kit prompt files directly.
+
+---
+
 ## Navigation Rules
 
 ### Schema & Registry
@@ -70,7 +81,7 @@ NEVER write code directly without first updating the corresponding specs. This e
 
 <!-- auto-config:docs:start -->
 
-ALWAYS open and follow `architecture/specs/CLISPEC.md` WHEN writing CLI commands, modifying command dispatch, or adding new subcommands
+ALWAYS open and follow `{cf-studio-path}/.core/architecture/specs/CLISPEC.md` WHEN writing CLI commands, modifying command dispatch, or adding new subcommands
 
 ALWAYS open and follow `CONTRIBUTING.md#development-setup` WHEN setting up development environment or onboarding
 

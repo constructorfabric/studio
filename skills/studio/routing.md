@@ -37,6 +37,22 @@ RULES:
 ```
 
 ```text
+UNIT RoutingSharedContextPack
+
+PURPOSE:
+  Keep workflow routing controller-owned and aligned with shared-context-pack
+  loading boundaries.
+
+RULES:
+  - Routed workflow and agent prompt assets are controller-owned runtime loads
+    and MUST use {cf-studio-path}-prefixed runtime paths when mirrors exist
+  - Routing MUST reuse or extend SHARED_CONTEXT_PACK before any downstream
+    dispatch that depends on prompt assets
+  - Routing MUST NOT instruct prompt-consuming sub-agents to open workflow,
+    AGENTS, SKILL, requirement, or spec prompt files directly
+```
+
+```text
 UNIT WorkflowRoutingTable
 
 PURPOSE:
@@ -58,37 +74,37 @@ DO:
        transform prompts to dsl | convert prompt prose to dsl |
        compact prompt instructions | review prompt dsl |
        check prompt state machines | instruction dsl
-       -> open and follow workflows/pdsl.md
+       -> open and follow {cf-studio-path}/.core/workflows/pdsl.md
 
   5. WHEN request matches "plan" | "decompose" | "break down"
-       -> open and follow workflows/plan.md
+       -> open and follow {cf-studio-path}/.core/workflows/plan.md
 
   6. WHEN request matches any of:
        create | edit | fix | update | implement | refactor | setup | build
        AND CompoundFindFix does NOT apply
-       -> open and follow workflows/generate.md
+       -> open and follow {cf-studio-path}/.core/workflows/generate.md
 
   7. WHEN request matches any of:
        analyze | validate | review | check | inspect | audit | compare |
        explain | walk through | teach | onboard |
        bug hunt | find bugs | prompt bugs
        OR CompoundFindFix applies
-       -> open and follow workflows/analyze.md
+       -> open and follow {cf-studio-path}/.core/workflows/analyze.md
 
   8. WHEN request matches any of:
        workspace | multi-repo | add source | cross-reference
-       -> open and follow workflows/workspace.md
+       -> open and follow {cf-studio-path}/.core/workflows/workspace.md
 
   9. WHEN request matches any of:
        map | dependency map | cfs map | visualize dependencies | render graph
-       -> open and follow workflows/cf-map.md
+       -> open and follow {cf-studio-path}/.core/workflows/cf-map.md
 
   10. WHEN request matches any of:
         auto-config | configure project | scan brownfield | generate rules
-        -> open and follow workflows/auto-config.md
+        -> open and follow {cf-studio-path}/.core/workflows/auto-config.md
 
   11. WHEN request matches "migrate from cypilot" | "migrate-from-cypilot"
-        -> open and follow migrate-from-cypilot.md
+        -> open and follow {cf-studio-path}/.core/skills/studio/migrate-from-cypilot.md
 ```
 
 ```text

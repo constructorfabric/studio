@@ -23,9 +23,25 @@ PURPOSE:
 
 RULES:
   - ALWAYS open and follow `{cf-studio-path}/.core/skills/studio/SKILL.md` WHEN `{cfs_mode}` == off
-  - ALWAYS open and follow `skills/studio/protocol.md` FIRST
+  - ALWAYS open and follow `{cf-studio-path}/.core/skills/studio/protocol.md` FIRST
   - ALWAYS open and follow `{cf-studio-path}/.core/architecture/specs/PDSL.md`
-  - ALWAYS open and follow `workflows/shared/stop-token-policy.md`
+  - ALWAYS open and follow `{cf-studio-path}/.core/workflows/shared/stop-token-policy.md`
+```
+
+```text
+UNIT PdslSharedContextPack
+
+PURPOSE:
+  Keep PDSL prompt loading controller-owned and pack-aware.
+
+RULES:
+  - Mode files and PDSL helper contracts are controller-owned prompt assets
+    loaded from {cf-studio-path}/.core/...
+  - Before any cf-pdsl-* dispatch, the controller MUST reuse or extend
+    SHARED_CONTEXT_PACK and derive prompt_context_view that satisfies the
+    dispatched agent's prompt_context_requirements
+  - PDSL sub-agents MUST NOT self-bootstrap by reopening SKILL, workflow, spec,
+    or AGENTS prompt files directly
 ```
 
 ## Intent Routing
@@ -57,13 +73,13 @@ MENU PdslModeMenu:
   TITLE: Choose PDSL mode
   OPTIONS:
     1 new -> SET PDSL_MODE = new
-             LOAD workflows/pdsl/new.md
+             LOAD {cf-studio-path}/.core/workflows/pdsl/new.md
              STOP_TURN
     2 transform -> SET PDSL_MODE = transform
-                   LOAD workflows/pdsl/transform.md
+                   LOAD {cf-studio-path}/.core/workflows/pdsl/transform.md
                    STOP_TURN
     3 review -> SET PDSL_MODE = review
-                LOAD workflows/pdsl/review.md
+                LOAD {cf-studio-path}/.core/workflows/pdsl/review.md
                 STOP_TURN
   INVALID:
     EMIT "Reply with 1, 2, or 3."
@@ -144,12 +160,16 @@ DO (after approval resolved):
 RULES:
   - MUST apply Sub-Agent Approval Gate (SKILL.md) before any DISPATCH
   - MUST apply dispatch protocol from sub-agent-dispatch.md before any DISPATCH
+  - MUST satisfy the dispatched agent's prompt_context_requirements from
+    SHARED_CONTEXT_PACK and pass prompt_context_view before any cf-pdsl-*
+    dispatch or inline contract
   - MUST_NOT dispatch write-capable modes (new, transform) until write summary is user-approved
   - MUST_NOT default INLINE_FALLBACK from host capability or missing approval
 
 NOTES:
-  Full approval gate semantics defined in SKILL.md § Session Sub-Agent Approval Gate
-  and sub-agent-dispatch.md.
+  Full approval gate semantics defined in
+  {cf-studio-path}/.core/skills/studio/SKILL.md § Session Sub-Agent Approval Gate
+  and {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md.
 ```
 
 ## Completion

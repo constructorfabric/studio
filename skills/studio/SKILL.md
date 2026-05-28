@@ -111,6 +111,38 @@ RULES:
 
 ---
 
+## Shared Context Pack
+
+```text
+UNIT SharedContextPackAuthority
+
+PURPOSE:
+  Make controller-owned shared-context-pack loading the only legal prompt-asset
+  loading path for Constructor Studio workflow execution.
+
+STATE:
+  SHARED_CONTEXT_PACK:
+    session_scoped logical pack
+    reused across workflow runs
+
+RULES:
+  - A chat session MUST have exactly one logical SHARED_CONTEXT_PACK
+  - Top-level controllers MUST reuse the existing session pack before loading
+    any new prompt asset
+  - Reused prompt assets MUST be revalidated by etag and refreshed or replaced
+    before they contribute to prompt_context_view when stale
+  - Only a dispatching controller, a dedicated shared-context-pack builder
+    acting on behalf of that controller, or another explicitly designated
+    top-level runtime controller may load prompt assets from disk
+  - Prompt-consuming sub-agents MUST declare prompt_context_requirements and
+    MUST consume prompt_context_view as their sole prompt/instruction source
+  - Missing required prompt context MUST fail dispatch before the sub-agent runs
+  - Controller-owned prompt loads MUST use {cf-studio-path}-prefixed runtime
+    paths when a runtime mirror exists
+```
+
+---
+
 ## Phase-Skip Gate (`CF_PHASE_GATE`)
 
 ```text
@@ -242,7 +274,7 @@ RULES:
   - MUST include CONTRIBUTING_GUIDE (path + directives, or null)
     in every write-capable sub-agent dispatch payload
   - Mode semantics defined in:
-    workflows/generate/phase-0-git-commit-mode.md
+    {cf-studio-path}/.core/workflows/generate/phase-0-git-commit-mode.md
   - Orthogonal to CF_PHASE_GATE: GIT_COMMIT_MODE guards git;
     CF_PHASE_GATE guards write tools
 
@@ -273,7 +305,7 @@ MENU GitCommitModeProbe:
 
 NOTES:
   The MENU TITLE, OPTIONS labels, and INVALID text are duplicated from
-  workflows/generate/phase-0-git-commit-mode.md so that the skill can
+  {cf-studio-path}/.core/workflows/generate/phase-0-git-commit-mode.md so that the skill can
   self-execute the probe without loading the workflow file. The workflow
   file remains the canonical source for long-form mode descriptions
   (per-mode semantics, edge-case behavior, rationale). When changing the
@@ -390,7 +422,7 @@ INVARIANTS:
   - /cf-plan (prompts_emitted stop):
       terminal = emitted prompt set; no Phase 4.2 menu
   - /cf-plan (raw-input n / decomposition n stop):
-      terminal = canonical stop message from workflows/plan.md; no terminal menu
+      terminal = canonical stop message from {cf-studio-path}/.core/workflows/plan.md; no terminal menu
 
 RULES:
   - Fix Prompt / Plan Prompt / Direct Review Prompt / Plan Review Prompt

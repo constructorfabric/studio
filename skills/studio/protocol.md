@@ -61,6 +61,33 @@ RULES:
 ```
 
 ```text
+UNIT SharedContextPackProtocol
+
+PURPOSE:
+  Treat runtime instruction surfaces loaded during Protocol Guard as
+  controller-owned prompt assets that populate or refresh the shared context
+  pack before any downstream dispatch.
+
+RULES:
+  - ProtocolGuard loads {cf-studio-path}/.gen/AGENTS.md,
+    {cf-studio-path}/config/AGENTS.md, {cf-studio-path}/.gen/SKILL.md,
+    {cf-studio-path}/config/SKILL.md, and
+    {cf-studio-path}/.core/requirements/language-complexity.md on behalf of
+    the top-level runtime controller only
+  - The controller MUST reuse matching SHARED_CONTEXT_PACK assets before
+    re-reading disk, revalidate reused assets by etag, and refresh or replace
+    stale assets before reuse
+  - Mixed-content runtime assets loaded here MUST contribute only their
+    instruction-bearing sections to SHARED_CONTEXT_PACK
+  - Prompt-consuming sub-agents MUST receive needed instruction text through
+    prompt_context_view rather than reopening these files directly
+  - Missing or stale prompt assets that cannot be refreshed MUST surface a
+    deterministic controller-owned error before downstream dispatch
+  - ExecutionVisibility logging MUST include whether the controller reused,
+    refreshed, or extended SHARED_CONTEXT_PACK during Protocol Guard
+```
+
+```text
 UNIT ConstructorStudioContextBlock
 
 PURPOSE:

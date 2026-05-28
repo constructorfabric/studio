@@ -28,7 +28,7 @@ DO:
   REQUIRE {cf-studio-path}/.gen/AGENTS.md is loaded and followed after config/AGENTS.md
   IF {cfs_mode} == off:
     REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is loaded and followed FIRST
-  REQUIRE workflows/shared/stop-token-policy.md is loaded and followed
+  REQUIRE {cf-studio-path}/.core/workflows/shared/stop-token-policy.md is loaded and followed
     WHEN any workspace decision prompt is emitted
 
 RULES:
@@ -40,6 +40,22 @@ RULES:
 NOTES:
   Type: Operation. Role: Any.
   Output: .studio-workspace.toml or inline [workspace] in config/core.toml
+```
+
+```text
+UNIT WorkspaceSharedContextPack
+
+PURPOSE:
+  Keep workspace bootstrap prompt loading controller-owned and pack-aware.
+
+RULES:
+  - {cf-studio-path}/config/AGENTS.md and {cf-studio-path}/.gen/AGENTS.md are
+    controller-owned prompt assets when loaded as instructions and MUST be
+    reused or refreshed in SHARED_CONTEXT_PACK before downstream dispatch
+  - Workspace helpers MUST receive needed instruction text through
+    prompt_context_view rather than reopening AGENTS or workflow prompt files
+  - Workspace router fragments MUST remain compact controller-owned loads from
+    {cf-studio-path}/.core/workflows/workspace/...
 ```
 
 ## Overview
@@ -74,15 +90,15 @@ MENU WorkspacePhaseRouter:
   TITLE: Load phase by current step (machine reference — not a user-facing menu)
   OPTIONS:
     discovering candidate repositories or presenting zero-results guidance ->
-      LOAD workflows/workspace/phase-1-discover.md
+      LOAD {cf-studio-path}/.core/workflows/workspace/phase-1-discover.md
     confirming selected source settings and workspace location ->
-      LOAD workflows/workspace/phase-2-configure.md
+      LOAD {cf-studio-path}/.core/workflows/workspace/phase-2-configure.md
     writing standalone or inline workspace configuration ->
-      LOAD workflows/workspace/phase-3-generate.md
+      LOAD {cf-studio-path}/.core/workflows/workspace/phase-3-generate.md
     validating reachability, adapters, and cross-repo behavior ->
-      LOAD workflows/workspace/phase-4-validate.md
+      LOAD {cf-studio-path}/.core/workflows/workspace/phase-4-validate.md
     presenting post-setup next steps ->
-      LOAD workflows/workspace/next-steps.md
+      LOAD {cf-studio-path}/.core/workflows/workspace/next-steps.md
 
   INVALID:
     EMIT "Unrecognised phase step. Reply with one of: discovering candidate repositories, confirming selected source settings, writing workspace configuration, validating reachability, or presenting post-setup next steps."
@@ -105,6 +121,6 @@ PURPOSE:
 
 RULES:
   - MUST NOT inline phase bodies in this router file
-  - MUST create or update a workflows/workspace/phase-*.md fragment for any new phase
+  - MUST create or update a {cf-studio-path}/.core/workflows/workspace/phase-*.md fragment for any new phase
     and add only a router row in WorkspacePhaseRouter above
 ```
