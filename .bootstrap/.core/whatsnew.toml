@@ -1,3 +1,0 @@
-# Constructor Studio — What's New
-# Entries are shown once during `cfs update` when the user hasn't seen them yet.
-# Keys are version strings; only entries missing from config/whatsnew.toml are displayed.

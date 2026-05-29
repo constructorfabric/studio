@@ -72,8 +72,9 @@ RULES:
   - Workflow fragments referenced by analyze are controller-owned prompt assets
     loaded from {cf-studio-path}/.core/workflows/...
   - Before any reviewer dispatch, the controller MUST reuse or extend
-    SHARED_CONTEXT_PACK and derive prompt_context_view that satisfies the
-    dispatched agent's prompt_context_requirements
+    SHARED_CONTEXT_PACK, load the reviewer prompt source, and synthesize a
+    final dispatch prompt that includes only the task-relevant instruction
+    context
   - Analyze MUST NOT rely on prompt-consuming sub-agents reopening workflow,
     requirement, spec, or AGENTS prompt files directly
 ```
@@ -157,7 +158,7 @@ DO:
 
 RULES:
   - MUST NOT load {cf-studio-path}/.core/workflows/analyze/phase-0.5-scope.md independently from the router
-  - MUST load it only when phase-0-dependencies.md triggers it (after plan-escalation
+  - MUST load it only when {cf-studio-path}/.core/workflows/analyze/phase-0-dependencies.md triggers it (after plan-escalation
     gate resolves, when scope/traceability/registry-consistency/cross-refs paths are unclear)
 ```
 

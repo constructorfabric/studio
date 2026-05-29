@@ -23,7 +23,7 @@ PURPOSE:
   Enforce entry preconditions and inline-fallback probe before any Phase 5 work.
 
 RULES:
-  - REQUIRE workflows/shared/inline-fallback-probe.md loaded before any cf-* sub-agent
+  - REQUIRE `{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md` loaded before any cf-* sub-agent
     dispatch in this phase or its sub-files
   - Pre-dispatch fail-stop and Mode B degradation rules defined in
     {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md
@@ -187,7 +187,7 @@ DO:
         IF judgmental non-empty: LOAD phase-5.4-approval.md
         INCREMENT N after every author dispatch
         APPEND author-returned findings_not_fixable to carry_forward
-          (open, load, and follow phase-5.4-approval.md § Session-level carry-forward)
+          (open, load, and follow {cf-studio-path}/.core/workflows/generate/phase-5/phase-5.4-approval.md § Session-level carry-forward)
         IF N > MAX_ITER: EMIT_MENU IterationCapPrompt
       TERMINATE when:
         no findings remain (loop_exit = "clean"), OR

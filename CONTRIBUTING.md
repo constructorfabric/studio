@@ -85,14 +85,12 @@ studio/                           # Project root
 > In this self-hosted repo, `.bootstrap/` is a bootstrap copy of a Constructor Studio version used
 > to develop Constructor Studio itself — similar to bootstrapping a compiler.
 > This is a repo-specific self-hosted setup, not the general user-project layout described in the README.
-> Treat `.bootstrap/.core/` and `.bootstrap/.gen/` as read-only mirrors.
-> Always edit the canonical source files under project root (`skills/`, `kits/`,
-> `schemas/`, `architecture/`, `requirements/`, etc.). Run `make update` only when you
-> need to verify new behavior live against the bootstrap copy, for example during manual
-> testing. After such a test, it is recommended to return `.bootstrap/` to its previous
-> state, and the pull request should be clean of bootstrap-only changes.
-
-**Exception — runtime-needed bootstrap changes.** When a branch introduces a change that must be exercisable at runtime in the same branch (for example, a new `SKILL.md` state machine that the skill loader needs to find immediately, or a workflow edit that the orchestrator must be able to load without a separate `make update` pass), the bootstrap propagation MAY be committed alongside the top-level edit. Such commits SHOULD use the prefix `chore(bootstrap):` in the commit subject OR include a `Bootstrap-Runtime: true` trailer so they are greppable in history. Reviewers may still ask for a follow-up cleanup commit that reverts the bootstrap deltas once the runtime evaluation is complete.
+> Treat `.bootstrap/.core/` and `.bootstrap/.gen/` as generated bootstrap mirrors that are
+> intentionally **not tracked in git**. Always edit the canonical source files under project
+> root (`skills/`, `kits/`, `schemas/`, `architecture/`, `requirements/`, etc.).
+> Before starting work, run `make update` so your local bootstrap copy is in sync with the
+> canonical source. Re-run `make update` whenever you need to refresh the local bootstrap for
+> manual verification, but do not commit `.bootstrap/.core/` or `.bootstrap/.gen/`.
 
 The `make update` command runs `cfs update --source . --force`, which:
 1. Copies canonical sources into `.bootstrap/.core/`

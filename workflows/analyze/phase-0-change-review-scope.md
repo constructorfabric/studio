@@ -17,7 +17,7 @@ WHEN:
   CHANGE_REVIEW == true
 
 DO:
-  REQUIRE inline-fallback-probe has run (workflows/shared/inline-fallback-probe.md)
+  REQUIRE {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md has run
   DISPATCH cf-diff-scope-resolver with:
     worktree_path   = explicit repo/worktree path OR resolved workspace source
     commit_sha      = requested commit SHA OR null

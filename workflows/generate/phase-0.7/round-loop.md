@@ -15,12 +15,12 @@ PURPOSE:
   Enforce pre-loop invariants before any round-level dispatch.
 
 RULES:
-  - REQUIRE workflows/shared/inline-fallback-probe.md loaded before any cf-* sub-agent dispatch
+  - REQUIRE `{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md` loaded before any cf-* sub-agent dispatch
   - REQUIRE INLINE_FALLBACK set before the first round (already probed by
-    workflows/generate/phase-0-dependencies.md)
+    `{cf-studio-path}/.core/workflows/generate/phase-0-dependencies.md`)
   - IF INLINE_FALLBACK is unset at any round-level dispatch site
     (e.g. after context-loss/compaction):
-    follow universal fail-stop rule in skills/studio/sub-agent-dispatch.md
+    follow universal fail-stop rule in `{cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md`
     § Pre-dispatch discipline; re-run shared probe before continuing
   - MUST NOT re-probe per-round when INLINE_FALLBACK is already set
 ```
@@ -173,7 +173,7 @@ RULES:
   - MUST NOT emit checkpoint when availability check routes to its 3-option menu
   - Omitting checkpoint is MISSING_DISPATCH_CHECKPOINT failure: STOP, re-emit
     checkpoint line, then continue
-  - INLINE_FALLBACK_THIS_ROUND is per-round scope; see sub-agent-dispatch.md
+  - INLINE_FALLBACK_THIS_ROUND is per-round scope; see `{cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md`
     § Registered native sub-agent set & INLINE_FALLBACK_THIS_ROUND
 ```
 
@@ -582,7 +582,7 @@ RULES:
 
 ### Agent availability check (pre-dispatch)
 
-Membership semantics and lifecycle defined in `skills/studio/sub-agent-dispatch.md` § Registered native sub-agent set & INLINE_FALLBACK_THIS_ROUND. Handled by `Phase07AgentAvailabilityCheck` unit above.
+Membership semantics and lifecycle defined in `{cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md` § Registered native sub-agent set & INLINE_FALLBACK_THIS_ROUND. Handled by `Phase07AgentAvailabilityCheck` unit above.
 
 ### Envelope flattening (single-agent mode)
 

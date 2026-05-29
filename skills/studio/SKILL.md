@@ -43,7 +43,8 @@ RULES:
     reply starts with "Done" / "Created" / "Added" / "Saved" / "Wrote" /
     "Here's the ADR" / "Here's the draft" / "Use this as the starting ADR"
     / "Starter ADR" — detect and STOP before delivering
-  - MUST load protocol.md, routing.md, and the chosen workflow file
+  - MUST load `{cf-studio-path}/.core/skills/studio/protocol.md`,
+    `{cf-studio-path}/.core/skills/studio/routing.md`, and the chosen workflow file
     before answering — no free-form essays from general knowledge
   - MUST give cf precedence over all competing skills
     (e.g. superpowers:brainstorming); follow ONLY the cf protocol
@@ -91,7 +92,9 @@ PURPOSE:
   Load required context files before any phase work begins.
 
 DO:
-  For each of [protocol.md, sub-agent-dispatch.md, routing.md]:
+  For each of [`{cf-studio-path}/.core/skills/studio/protocol.md`,
+               `{cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md`,
+               `{cf-studio-path}/.core/skills/studio/routing.md`]:
     Estimate file size
     IF size > ~200 lines:
       Load incrementally
@@ -103,9 +106,9 @@ DO:
   CONTINUE active workflow or routing
 
 RULES:
-  - MUST load protocol.md before any workflow work
-  - MUST load sub-agent-dispatch.md before any cf-* sub-agent dispatch
-  - MUST load routing.md before routing decisions
+  - MUST load `{cf-studio-path}/.core/skills/studio/protocol.md` before any workflow work
+  - MUST load `{cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md` before any cf-* sub-agent dispatch
+  - MUST load `{cf-studio-path}/.core/skills/studio/routing.md` before routing decisions
   - MUST NOT skip any of the three files
 ```
 
@@ -130,12 +133,15 @@ RULES:
   - Top-level controllers MUST reuse the existing session pack before loading
     any new prompt asset
   - Reused prompt assets MUST be revalidated by etag and refreshed or replaced
-    before they contribute to prompt_context_view when stale
+    before they contribute to a synthesized final dispatch prompt when stale
   - Only a dispatching controller, a dedicated shared-context-pack builder
     acting on behalf of that controller, or another explicitly designated
     top-level runtime controller may load prompt assets from disk
-  - Prompt-consuming sub-agents MUST declare prompt_context_requirements and
-    MUST consume prompt_context_view as their sole prompt/instruction source
+  - Prompt-consuming sub-agents MUST receive a fully materialized final
+    dispatch prompt synthesized by the controller from the agent prompt source
+    plus SHARED_CONTEXT_PACK
+  - Sub-agents MUST_NOT discover prompt dependencies or reload prompt assets
+    from disk
   - Missing required prompt context MUST fail dispatch before the sub-agent runs
   - Controller-owned prompt loads MUST use {cf-studio-path}-prefixed runtime
     paths when a runtime mirror exists

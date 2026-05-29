@@ -39,9 +39,9 @@ DO:
     before any prompt that relies on stop-token behavior
 
 RULES:
-  - MUST load SKILL.md first when cfs_mode is off
-  - MUST load protocol.md before any phase work
-  - MUST load stop-token-policy.md before any stop-token-dependent prompt
+  - MUST load {cf-studio-path}/.core/skills/studio/SKILL.md first when cfs_mode is off
+  - MUST load `{cf-studio-path}/.core/skills/studio/protocol.md` before any phase work
+  - MUST load `{cf-studio-path}/.core/workflows/shared/stop-token-policy.md` before any stop-token-dependent prompt
   - MUST load {cf-studio-path}/.core/requirements/plan-template.md WHEN compiling phase files
   - MUST load {cf-studio-path}/.core/requirements/plan-decomposition.md WHEN decomposing tasks into phases
   - MUST load {cf-studio-path}/.core/requirements/prompt-engineering.md WHEN compiling phase files

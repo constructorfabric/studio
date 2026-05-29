@@ -11,46 +11,16 @@ description: Invoke when parsing a template into per-section questions and propo
 
 <!-- /toc -->
 
-## Prompt Context Contract
+## Dispatch Guidance
 
-`prompt_context_view` is the sole prompt and instruction source for this
-dispatch. Missing required prompt context is an orchestration error.
+This file is orchestration-time guidance for the controller, not a runtime
+self-bootstrap contract for the dispatched sub-agent.
 
-```json
-{
-  "agent_id": "cf-generate-collector",
-  "prompt_context_requirements": {
-    "requires_shared_context_pack": true,
-    "required_assets": [
-      {
-        "asset_key": "studio_mode_contract",
-        "accepted_origins": ["core"],
-        "accepted_types": ["skill"],
-        "match_tags": ["constructor-studio-mode"],
-        "section_tags": [],
-        "required_when": null
-      }
-    ],
-    "optional_assets": []
-  }
-}
-```
+The controller MUST load this file, resolve the task-relevant instruction
+assets from `SHARED_CONTEXT_PACK`, and synthesize a fully materialized final
+dispatch prompt for this agent. The dispatched sub-agent MUST execute only that
+final prompt and MUST NOT open prompt assets from disk directly.
 
-```text
-UNIT GenerateCollector
-
-PURPOSE:
-  Parse a template into per-section questions, propose defaults grounded in
-  project context and brainstorm decisions, and return a single Inputs block
-  for the orchestrator to show the user.
-
-RULES:
-  - MUST consume the `studio_mode_contract` asset from `prompt_context_view`
-  - MUST_NOT modify files
-  - MUST_NOT write the artifact (the tiered generate-author dispatch does that)
-  - MUST_NOT invoke other Constructor Studio agents
-  - MUST_NOT open prompt assets from disk directly
-```
 
 ## Inputs (dispatched-prompt contract)
 

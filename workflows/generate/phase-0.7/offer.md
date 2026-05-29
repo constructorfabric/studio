@@ -180,5 +180,5 @@ NOTES:
   1. state.run_config.PANEL_MODE_TOPIC / PANEL_MODE_CHALLENGE (set by mode= modifier)
   2. env vars PANEL_MODE_TOPIC / PANEL_MODE_CHALLENGE
   3. workflow default "single-agent"
-  Open, load, and follow round-loop.md § Round loop for implementation.
+  Open, load, and follow `{cf-studio-path}/.core/workflows/generate/phase-0.7/round-loop.md` § Round loop for implementation.
 ```

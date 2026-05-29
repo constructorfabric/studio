@@ -25,7 +25,7 @@ PURPOSE:
   Enforce entry conditions before dispatching write-capable author.
 
 DO:
-  REQUIRE workflows/shared/inline-fallback-probe.md loaded before dispatch
+  REQUIRE {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md loaded before dispatch
   NOTE: Pre-dispatch fail-stop and Mode B degradation rules in
     {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md
 
@@ -209,7 +209,7 @@ NOTES:
   a manifest JSON block.
   MUST persist manifest.paths_written for Phase 5.
   MUST echo Written lines to user verbatim.
-  Open, load, and follow cf-generate-collector.md Output contract for
+  Open, load, and follow {cf-studio-path}/.core/skills/studio/agents/cf-generate-collector.md Output contract for
   proposed_inputs JSON block shape.
 ```
 

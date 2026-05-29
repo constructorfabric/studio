@@ -62,9 +62,9 @@ purpose: Define syntax and grammar for behavior description language
 
 **ALWAYS open and follow**: This file WHEN writing behavioral sections (algorithms, flows, state machines) in DESIGN artifacts
 
-**ALWAYS open and follow**: `overall-design-content.md` WHEN specifying behavioral sections in root DESIGN.md
+**ALWAYS open and follow**: `{cf-studio-path}/.core/architecture/specs/overall-design-content.md` WHEN specifying behavioral sections in root DESIGN.md
 
-**ALWAYS open and follow**: `spec-design-content.md` WHEN specifying behavioral sections in spec DESIGN.md
+**ALWAYS open and follow**: `{cf-studio-path}/.core/architecture/specs/spec-design-content.md` WHEN specifying behavioral sections in spec DESIGN.md
 
 **Prerequisite**: Agent confirms understanding before proceeding:
 - [ ] Agent has read and understood this requirement

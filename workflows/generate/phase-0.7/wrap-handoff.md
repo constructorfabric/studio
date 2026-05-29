@@ -1,7 +1,7 @@
 ---
-description: "Invoke when the brainstorm session ends (user wrap-up, stop-token, or BRAINSTORM_MAX_ROUNDS cap) and the wrap-up summary + handoff to Phase 1 must run."
+description: "Invoke when the brainstorm session ends (user wrap-up, stop-token, or BRAINSTORM_MAX_ROUNDS cap) and the wrap-up summary + next-step routing menu must run."
 name: phase-0.7-wrap-handoff
-purpose: Brainstorm loop exit — consolidated design block, approve/iterate/discard branches, stop-token semantics, Phase 1 hand-off
+purpose: Brainstorm loop exit — consolidated design block, save/generate/analyze/iterate routing, stop-token semantics, Phase 1 or review hand-off
 loaded_by: workflows/generate/phase-0.7/index.md
 version: 1.1
 ---
@@ -10,7 +10,7 @@ version: 1.1
 
 - [Consolidated design block (loop exit)](#consolidated-design-block-loop-exit)
 - [Contributions shape and orchestration modes](#contributions-shape-and-orchestration-modes)
-- [Hand-off to `workflows/generate/phase-1-collect.md`](#hand-off-to-workflowsgeneratephase-1-collectmd)
+- [Hand-off routing](#hand-off-routing)
 
 <!-- /toc -->
 
@@ -20,7 +20,7 @@ version: 1.1
 UNIT BrainstormWrapHandoff
 
 PURPOSE:
-  Emit consolidated design block on loop exit; route to Phase 1 based on user choice.
+  Emit consolidated design block on loop exit; route based on explicit user choice.
 
 DO:
   WHEN state.topic_current becomes None:
@@ -38,42 +38,64 @@ Decisions:
 Open questions (carry into inputs):
 - {open_question}
 
-Reply `approve` (suggested) to hand decisions to input collection,
-`iterate` to reopen a specific topic for another round, or `discard handoff`
-to ignore brainstorm decisions and proceed from scratch. In `save` mode, the
-saved brainstorm cache remains on disk and follows manual retention.
+Next-step menu follows immediately:
+1. Save brainstorm results only
+2. Send results to generate input collection
+3. Send results to review/analyze
+4. Reopen a topic for another brainstorm round
+In `save` mode, the saved brainstorm cache remains on disk and follows manual retention.
 ---
+    EMIT_MENU WrapHandoffMenu
     WAIT user.reply
     STOP_TURN
 
 MENU WrapHandoffMenu:
-  TITLE: Brainstorm wrap-up
+  TITLE: Brainstorm complete — choose next step (reply 1, 2, 3, or 4)
   OPTIONS:
-    approve ->
+    1 ->
+      NOTE: preserve brainstorm outputs; do not enter generate or analyze
+      NOTE: if session used save, keep saved cache artifacts on disk
+      EMIT "Brainstorm results saved. No workflow handoff started."
+      STOP_TURN
+    2 ->
       SET PRE_RESOLVED_INPUTS = state.decisions
       SET CARRYOVER_QUESTIONS = state.open_questions
       CONTINUE workflows/generate/phase-1-collect.md
-    iterate ->
+    3 ->
+      SET REVIEW_BRAINSTORM_RESULTS = {
+        decisions: state.decisions,
+        open_questions: state.open_questions,
+        topic_history: state.topic_history,
+        rounds: state.rounds
+      }
+      CONTINUE workflows/analyze.md
+      WITH:
+        brainstorm_review = true
+        brainstorm_results = REVIEW_BRAINSTORM_RESULTS
+    4 ->
       EMIT "Which topic gap should be reopened?"
       WAIT user.reply
       STOP_TURN
       APPEND as forced topic
       SET pending_round_kind = "topic"
       RESUME round loop (first iteration of resumed loop is always topic-round)
-    discard | discard handoff ->
-      SET PRE_RESOLVED_INPUTS = {}
-      SET CARRYOVER_QUESTIONS = []
-      NOTE: if session used save, do NOT delete cache artifacts
-      CONTINUE workflows/generate/phase-1-collect.md
   stop_token (stop / enough / done) ->
-    NOTE: unanswered questions become open_questions;
-          current decisions carry forward
-    CONTINUE workflows/generate/phase-1-collect.md
+    EMIT_MENU WrapHandoffMenu
+    WAIT user.reply
+    STOP_TURN
+  INVALID:
+    EMIT "Reply with 1, 2, 3, or 4."
+    WAIT user.reply
+    STOP_TURN
 
 RULES:
   - MUST prepend RELAXED brainstorm warning when rules_mode == RELAXED
     per the contract declared in save-and-rules.md § Rules respect
-  - MUST NOT delete cache artifacts on discard when session used save
+  - MUST NOT auto-route directly into generate without the wrap-handoff menu
+  - MUST_NOT interpret stop-token as implicit approval for generate
+  - MUST preserve brainstorm decisions/open questions when routing to generate
+    or analyze
+  - MUST keep saved cache artifacts on disk when session used save
 ```
 
 ### Contributions shape and orchestration modes
@@ -110,22 +132,35 @@ NOTES:
     pooling vs. fan-out parallelism.
 ```
 
-### Hand-off to `workflows/generate/phase-1-collect.md`
+### Hand-off routing
 
 ```text
-UNIT BrainstormPhase1Handoff
+UNIT BrainstormNextStepRouting
 
 PURPOSE:
-  Define the handoff contract to Phase 1.
+  Define the explicit next-step routes after brainstorm wrap-up.
 
 DO:
-  CONTINUE workflows/generate/phase-1-collect.md
-  WITH:
-    pre_resolved_inputs = PRE_RESOLVED_INPUTS
-    open_questions = CARRYOVER_QUESTIONS
+  WHEN user chose 2:
+    CONTINUE workflows/generate/phase-1-collect.md
+    WITH:
+      pre_resolved_inputs = PRE_RESOLVED_INPUTS
+      open_questions = CARRYOVER_QUESTIONS
+
+  WHEN user chose 3:
+    CONTINUE workflows/analyze.md
+    WITH:
+      brainstorm_review = true
+      brainstorm_results = REVIEW_BRAINSTORM_RESULTS
 
 NOTES:
-  The collector marks pre-filled sections [from brainstorm] and surfaces
-  a Carryover Questions mini-section.
-  Open, load, and follow {cf-studio-path}/.core/workflows/generate/phase-1-collect.md.
+  Generate route:
+    The collector marks pre-filled sections [from brainstorm] and surfaces
+    a Carryover Questions mini-section.
+    Open, load, and follow {cf-studio-path}/.core/workflows/generate/phase-1-collect.md.
+
+  Analyze route:
+    The review/analyze path treats brainstorm outputs as the review subject for
+    the next workflow. Carry decisions, open questions, topic history, and
+    rounds forward as controller-owned context for that review handoff.
 ```

@@ -34,11 +34,11 @@ DO:
     WHEN any workspace decision prompt is emitted
 
 RULES:
-  - MUST load SKILL.md first when cfs_mode is off
-  - MUST load config/AGENTS.md after SKILL.md when cfs_mode is off
-  - MUST load config/AGENTS.md first when cfs_mode is not off
-  - MUST load .gen/AGENTS.md after config/AGENTS.md
-  - MUST load stop-token-policy.md before any workspace decision prompt
+  - MUST load {cf-studio-path}/.core/skills/studio/SKILL.md first when cfs_mode is off
+  - MUST load {cf-studio-path}/config/AGENTS.md after SKILL.md when cfs_mode is off
+  - MUST load {cf-studio-path}/config/AGENTS.md first when cfs_mode is not off
+  - MUST load {cf-studio-path}/.gen/AGENTS.md after config/AGENTS.md
+  - MUST load {cf-studio-path}/.core/workflows/shared/stop-token-policy.md before any workspace decision prompt
 
 NOTES:
   Type: Operation. Role: Any.
@@ -55,8 +55,9 @@ RULES:
   - {cf-studio-path}/config/AGENTS.md and {cf-studio-path}/.gen/AGENTS.md are
     controller-owned prompt assets when loaded as instructions and MUST be
     reused or refreshed in SHARED_CONTEXT_PACK before downstream dispatch
-  - Workspace helpers MUST receive needed instruction text through
-    prompt_context_view rather than reopening AGENTS or workflow prompt files
+  - Workspace helpers MUST receive needed instruction text through a
+    controller-synthesized final dispatch prompt rather than reopening AGENTS
+    or workflow prompt files
   - Workspace router fragments MUST remain compact controller-owned loads from
     {cf-studio-path}/.core/workflows/workspace/...
 ```

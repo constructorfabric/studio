@@ -100,7 +100,7 @@ PURPOSE:
   Dispatch cf-analyze-planner and validate the returned reviewer execution plan.
 
 DO:
-  REQUIRE inline-fallback-probe.md has run (workflows/shared/inline-fallback-probe.md)
+  REQUIRE `{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md` has run
   DISPATCH cf-analyze-planner (read-only) with:
     plan_mode             = "memory" or "disk"
     target_type, mode, kind, rules_mode, system

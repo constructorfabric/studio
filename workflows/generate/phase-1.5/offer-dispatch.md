@@ -135,7 +135,7 @@ PURPOSE:
   Dispatch cf-generate-planner and validate returned plan.
 
 DO:
-  REQUIRE workflows/shared/inline-fallback-probe.md loaded before dispatch
+  REQUIRE {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md loaded before dispatch
   NOTE: Pre-dispatch fail-stop and Mode B degradation rules in
     {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md
 
@@ -152,7 +152,7 @@ DO:
     brainstorm_decisions = Phase 0.7 decisions or {}
     open_questions = Phase 0.7 open questions or []
     available_authors = registered write-capable author worker agents from
-      workflows/generate/phase-4-write.md § Author Selection and Dispatch
+      {cf-studio-path}/.core/workflows/generate/phase-4-write.md § Author Selection and Dispatch
 
   PARSE marker "<!-- author_plan -->" and following JSON block
 

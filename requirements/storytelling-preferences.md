@@ -45,7 +45,7 @@ The methodology assumes some host-runtime tools that may not be present in every
 | `mkdir -p` (filesystem) | Cache directory creation at wrap-time, package directory creation in export mode | (basic shell — almost always present) | If directory create fails (permission, disk full): warn user with the exact filesystem error; emit wrap output normally; flag in Session block that persistence failed; omit `Resume this session` / file-save next-steps from Suggested Next Steps |
 | `generate_dispatch` | Phase E0 input access — derives `handle.generate_route_available` for the generate-routing sub-prompt gate | tool list at session start includes `cf-generate` skill OR `Skill` tool can invoke `cf-generate` | `generate_route_available=false`; sub-prompt suppressed entirely (no "unavailable" message) |
 
-Cross-reference: the preflight Step 5b sub-rule (see `skills/studio/agents/storytelling-preflight.md` § Step 5b).
+Cross-reference: the preflight Step 5b sub-rule (see `{cf-studio-path}/.core/skills/studio/agents/storytelling-preflight.md` § Step 5b).
 
 At Phase E0 entry, methodology probes each capability (cheap probes only — `command -v X`, tool-list scan, no network calls during the probe). The result is held in working memory as `{capability_map}` and consulted whenever an input access tier is selected (Phase E0), an artifact disposition is offered (Artifact Disposition section above — the `post-to-resource` availability-status is computed from this map), or a progress-tracking decision is made (TaskCreate Progress Tracking below). The capability matrix is NOT user-visible by default; it surfaces in chat only when (a) the user-fallback prompt fires (showing what was tried and what's missing), or (b) the disposition prompt's `post-to-resource` availability-status is shown.
 
@@ -60,7 +60,7 @@ pack_handle = {
 }
 ```
 
-On the receiving side, the consumer loads the persisted `content_pack` from `kit_path` and verifies the `etag` field (added per `skills/studio/agents/storytelling-context-pack.md`). On etag mismatch, unreadable `kit_path`, or `kit_path == null`, the consumer MUST re-dispatch `storytelling-context-pack` rather than fail silently.
+On the receiving side, the consumer loads the persisted `content_pack` from `kit_path` and verifies the `etag` field (added per `{cf-studio-path}/.core/skills/studio/agents/storytelling-context-pack.md`). On etag mismatch, unreadable `kit_path`, or `kit_path == null`, the consumer MUST re-dispatch `storytelling-context-pack` rather than fail silently.
 
 Consumers MUST NOT branch their reasoning on `content_pack.strategy`. When the target anchor has `resolved_section_text != null`, the consumer uses it verbatim; otherwise it issues a narrow Read against `canonical_path` for the anchor's `line_range`.
 
@@ -132,7 +132,7 @@ All three disposition options take effect **immediately on each artifact-create 
    - GitLab MR — `glab mr note` or MCP equivalent
    - Notion page — MCP `mcp__plugin_Notion_notion__*` comment-create
    - Jira ticket — MCP Jira add-comment
-   - **Local file** (`handle.local_editable == true` AND `handle.generate_route_available == true` AND none of the above) — there is no external resource to post to; instead, each artifact-create event is routed through the **generate-routing** handler (see `skills/studio/agents/storytelling-gate.md` § Gate: generate-routing), which dispatches the `cf-generate` skill against the local file in the mode classified for that artifact (`fix` / `brainstorm` / `generate` — see `requirements/storytelling-modes.md` § classified_mode label). The per-comment generate-routing 4-option consent menu (Route now / Queue / No / Never-ask-again-this-session, default = Route now under this disposition) is the post-confirmation prompt; selecting Queue defers to the batch `send comments` verb. The save-to-file path is still used as the auto-save fallback when a generate dispatch fails — see § Dispatch-Failure Audit Log.
+   - **Local file** (`handle.local_editable == true` AND `handle.generate_route_available == true` AND none of the above) — there is no external resource to post to; instead, each artifact-create event is routed through the **generate-routing** handler (see `{cf-studio-path}/.core/skills/studio/agents/storytelling-gate.md` § Gate: generate-routing), which dispatches the `cf-generate` skill against the local file in the mode classified for that artifact (`fix` / `brainstorm` / `generate` — see `{cf-studio-path}/.core/requirements/storytelling-modes.md` § classified_mode label). The per-comment generate-routing 4-option consent menu (Route now / Queue / No / Never-ask-again-this-session, default = Route now under this disposition) is the post-confirmation prompt; selecting Queue defers to the batch `send comments` verb. The save-to-file path is still used as the auto-save fallback when a generate dispatch fails — see § Dispatch-Failure Audit Log.
    - Otherwise (no PR, no MCP/CLI resource handler, AND `local_editable == false` OR `generate_route_available == false`) — post unavailable; methodology MUST tell the user during the disposition prompt with the concrete reason (e.g. `directory target`, `remote access tier`, `generate-route handler unavailable`) and fall back to `save-to-file`. Picking option 3 under this branch produces a one-line ack `⚠️ post-to-resource unavailable — switched to save-to-file` and proceeds.
 
    Each post is **confirmed immediately on the artifact-create event**, not at wrap. Methodology shows the post payload (file:line + comment body for review comments; question text + author tag for open-questions) and asks:
@@ -191,7 +191,7 @@ Append-only; never truncated; never deleted in-session. One record per failure, 
 Per-failure record schema:
 ```json
 {
-  "dispatch_key": "<sha1 — see storytelling-phases.md § Open-question buffer entry shape>",
+  "dispatch_key": "<sha1 — see {cf-studio-path}/.core/requirements/storytelling-phases.md § Open-question buffer entry shape>",
   "class": "write_conflict | transient_io | cfc_invocation_error | validation_rejected | unknown",
   "attempt": <int, 1 or 2>,
   "ts": "<ISO timestamp>",

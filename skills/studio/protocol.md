@@ -79,8 +79,10 @@ RULES:
     stale assets before reuse
   - Mixed-content runtime assets loaded here MUST contribute only their
     instruction-bearing sections to SHARED_CONTEXT_PACK
-  - Prompt-consuming sub-agents MUST receive needed instruction text through
-    prompt_context_view rather than reopening these files directly
+  - Prompt-consuming sub-agents MUST receive a controller-synthesized final
+    dispatch prompt that already includes the needed instruction text from
+    SHARED_CONTEXT_PACK
+  - Prompt-consuming sub-agents MUST_NOT reopen these files directly
   - Missing or stale prompt assets that cannot be refreshed MUST surface a
     deterministic controller-owned error before downstream dispatch
   - ExecutionVisibility logging MUST include whether the controller reused,

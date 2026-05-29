@@ -58,8 +58,8 @@ RULES:
 - [ ] When the user picks option 2 or 3 in their next turn, the corresponding `Fix Prompt` / `Plan Prompt` is emitted as the FINAL section of that next response; option 1 is dispatched in-session without emitting any prompt block
 - [ ] Output to chat only
 - [ ] Next steps suggested
-- [ ] No completed `/cf-analyze` path bypassed Phase 3 except the deterministic-FAIL blocking branch defined in `phase-2-det-gate.md` and except `EXPLAIN_MODE=true` runs which legitimately bypass Phase 3 per `preamble.md`; incomplete semantic review is reported as `PARTIAL` with resume guidance
-- [ ] When `EXPLAIN_MODE=true`: Storytelling Protocol phases E0-E5 from `storytelling.md` were followed in order
+- [ ] No completed `/cf-analyze` path bypassed Phase 3 except the deterministic-FAIL blocking branch defined in `{cf-studio-path}/.core/workflows/analyze/phase-2-det-gate.md` and except `EXPLAIN_MODE=true` runs which legitimately bypass Phase 3 per `{cf-studio-path}/.core/workflows/analyze/preamble.md`; incomplete semantic review is reported as `PARTIAL` with resume guidance
+- [ ] When `EXPLAIN_MODE=true`: Storytelling Protocol phases E0-E5 from `{cf-studio-path}/.core/requirements/storytelling.md` were followed in order
 - [ ] When `EXPLAIN_MODE=true`: storytelling `{mode}` (presentation / review / onboarding / decision / socratic / change-impact) was resolved at session start via the **always-ask** prompt (methodology emitted the 6-mode prompt with a suggested default, waited for explicit user confirmation; mode was NEVER auto-selected from intent verbs / KIND defaults / project preference) and applied consistently throughout (audience composition, slot semantics, body style, wrap-output schema match the resolved mode)
 - [ ] When `EXPLAIN_MODE=true`: Phase 4 used the Storytelling Output schema (Wrap section) and did NOT emit the `Remediation Handoff` menu, `Fix Prompt`, or `Plan Prompt`
 - [ ] When `EXPLAIN_MODE=true`: Phase 5 (Offer Next Steps) was skipped — only the Storytelling Output schema's `Suggested Next Steps` section was emitted; no second/duplicate next-step menu

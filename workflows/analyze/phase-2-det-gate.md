@@ -18,22 +18,22 @@ WHEN:
 DO:
   IF SEMANTIC_ONLY == true OR EXPLAIN_MODE == true:
     CONTINUE workflows/analyze/phase-3-semantic.md
-  REQUIRE inline-fallback-probe.md has run (workflows/shared/inline-fallback-probe.md)
+  REQUIRE {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md has run
   DISPATCH cf-deterministic-validator with:
     target_paths    = diff_scope.review_targets when CHANGE_REVIEW=true, else {PATHS}
     target_kinds    = per-path map from artifacts.toml (default {TARGET_TYPE} when unmapped)
     rules_mode      = "{STRICT|RELAXED}"
     language_check_configured = true|false from .studio-workspace.toml
   Embed returned Validation Results block verbatim into Phase 4 output.
-  Carry det_findings JSON forward into remediation-handoff.md when applicable.
+  Carry det_findings JSON forward into {cf-studio-path}/.core/workflows/analyze/phase-4-output/remediation-handoff.md when applicable.
   IF gate result == FAIL:
     CONTINUE workflows/analyze/phase-4-output/index.md
-    REQUIRE remediation-handoff.md when actionable issues exist
+    REQUIRE {cf-studio-path}/.core/workflows/analyze/phase-4-output/remediation-handoff.md when actionable issues exist
   IF gate result == PASS OR SKIPPED (with Validator availability proof):
     CONTINUE workflows/analyze/phase-3-semantic.md
 
 RULES:
-  - MUST run inline-fallback-probe.md before any cf-* sub-agent dispatch
+  - MUST run {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md before any cf-* sub-agent dispatch
   - MUST skip this unit when SEMANTIC_ONLY=true OR EXPLAIN_MODE=true
   - MUST embed Validation Results block verbatim; MUST_NOT redefine the field set
   - MUST_NOT use the agent's own checklist walkthrough as a substitute for the

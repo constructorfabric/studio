@@ -19,45 +19,16 @@ description: "Invoke when rendering brainstorm panel output in single-agent pane
 
 <!-- /toc -->
 
-## Prompt Context Contract
+## Dispatch Guidance
 
-`prompt_context_view` is the sole prompt and instruction source for this
-dispatch. Missing required prompt context is an orchestration error.
+This file is orchestration-time guidance for the controller, not a runtime
+self-bootstrap contract for the dispatched sub-agent.
 
-```json
-{
-  "agent_id": "cf-brainstorm-panel",
-  "prompt_context_requirements": {
-    "requires_shared_context_pack": true,
-    "required_assets": [
-      {
-        "asset_key": "studio_mode_contract",
-        "accepted_origins": ["core"],
-        "accepted_types": ["skill"],
-        "match_tags": ["constructor-studio-mode"],
-        "section_tags": [],
-        "required_when": null
-      }
-    ],
-    "optional_assets": []
-  }
-}
-```
+The controller MUST load this file, resolve the task-relevant instruction
+assets from `SHARED_CONTEXT_PACK`, and synthesize a fully materialized final
+dispatch prompt for this agent. The dispatched sub-agent MUST execute only that
+final prompt and MUST NOT open prompt assets from disk directly.
 
-```text
-UNIT BrainstormPanelAgent
-
-PURPOSE:
-  Render brainstorm panel output in single-agent panel-mode.
-  Read-only renderer with respect to the brainstorm orchestrator's state machine.
-
-RULES:
-  - MUST consume the `studio_mode_contract` asset from `prompt_context_view`
-  - MUST_NOT modify workflow state directly
-  - SEE_ALSO: AuthorityBoundary
-  - MUST emit structured envelope output for the orchestrator to consume
-  - MUST_NOT open prompt assets from disk directly
-```
 
 ## §1 Authority Boundary
 
@@ -408,7 +379,7 @@ PURPOSE:
 
 NOTES:
   G1 (PROTOCOL_CHANGE_DETECTED) and G2 (PANEL_MUTATION_DETECTED) are
-  orchestrator-side pre-dispatch checks; see round-loop.md.
+  orchestrator-side pre-dispatch checks; see `{cf-studio-path}/.core/workflows/generate/phase-0.7/round-loop.md`.
 
 RULES:
   G3 [Question uniqueness — topic-round]:

@@ -68,7 +68,8 @@ DO:
 RULES:
   - MUST treat this specification as controller-owned prompt context
   - MUST_NOT let prompt-consuming sub-agents reopen this file from disk
-  - MUST pass any dispatched prompt subset through `prompt_context_view`
+  - MUST pass any dispatched prompt subset through the
+    controller-synthesized final dispatch prompt
 ```
 
 ```text

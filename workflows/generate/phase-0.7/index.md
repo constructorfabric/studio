@@ -25,16 +25,21 @@ DO:
   LOAD round-loop.md
     WHEN each brainstorm round (dispatch + INLINE_FALLBACK degradation)
   LOAD wrap-handoff.md
-    WHEN all rounds complete; consolidate design and hand off to Phase 1
+    WHEN all rounds complete; consolidate design and route to the user's chosen next step
   LOAD save-and-rules.md
     WHEN mode=save requested OR rules-respect / standalone-use check fires
 
-  AFTER wrap-handoff.md completes (or after save-and-rules.md when that fires last):
-    CONTINUE workflows/generate/phase-1-collect.md
+  AFTER wrap-handoff.md completes:
+    DO NOT auto-continue to phase-1-collect.md
+    wrap-handoff.md owns the next-step route selection
+
+  AFTER save-and-rules.md when that fires last:
+    DO NOT auto-continue to phase-1-collect.md unless wrap-handoff.md selected
+    the generate route explicitly
 
 ON_ERROR:
   wrap_handoff_failure ->
     STOP
     EMIT error to user
-    FORBID proceeding to phase-1-collect.md
+    FORBID proceeding to phase-1-collect.md or analyze.md
 ```

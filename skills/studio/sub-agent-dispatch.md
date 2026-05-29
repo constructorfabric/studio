@@ -4,22 +4,34 @@ description: "Invoke when about to dispatch a cf-* sub-agent — applies dispatc
 
 # Sub-Agent Dispatch
 
-Workflows reference named `cf-*` sub-agents. Each contract lives in
-`{cf-studio-path}/.core/skills/studio/agents/<name>.md`.
+Workflows reference named `cf-*` sub-agents. Each agent prompt source lives in
+`{cf-studio-path}/.core/skills/studio/agents/<name>.md` and is read by the
+controller as orchestration-time guidance for generating the final dispatch
+prompt.
 
-Mode A: when native dispatch is approved for this session, dispatch the named
-agent and consume its declared output. Pass approval state in the dispatch
-context; sub-agents loading `SKILL.md` do not ask the session approval prompt
-unless they will dispatch another `cf-*` sub-agent.
+Mode A: when native dispatch is approved for this session, the controller loads
+the agent prompt source, synthesizes a final task-specific dispatch prompt from
+that source plus `SHARED_CONTEXT_PACK`, then dispatches the named agent and
+consumes its declared output.
 
 Mode B: when the user explicitly declined native dispatch for this session or
-the host has no native sub-agent support, inline the named agent contract:
-open and follow the agent file, substitute dispatch inputs, satisfy its
-Response Completion Gate, and return the declared output shape. If the named agent file has no explicit Response Completion Gate section, apply the default completion criterion: return the full declared output shape with no required field empty or null.
+the host has no native sub-agent support, inline the named agent prompt source:
+open and follow the agent file, use it as orchestration guidance to synthesize
+the final task-specific prompt, satisfy its Response Completion Gate, and
+return the declared output shape. If the named agent file has no explicit
+Response Completion Gate section, apply the default completion criterion:
+return the full declared output shape with no required field empty or null.
+
+Synthesis invariants:
+- Final dispatch prompt synthesis MUST be lossless with respect to required semantics in the source prompt.
+- The controller MUST carry forward all mandatory input fields, output fields, invariants, enums, row schemas, completion gates, and invalid-output conditions from the source prompt.
+- The controller MUST_NOT replace a normative schema or invariant block with a loose prose summary when doing so could omit required fields or behavioral constraints.
+- If a source prompt defines required per-row or per-item fields, the final dispatch prompt MUST restate those requirements explicitly.
+- If the controller cannot preserve the required semantics without ambiguity, it MUST include the stricter source-side rules verbatim or near-verbatim rather than compressing further.
 
 Pre-dispatch discipline:
-- First apply the Session Sub-Agent Approval Gate in `SKILL.md`.
-- Probe once per workflow run for INLINE_FALLBACK; SUB_AGENT_SESSION_APPROVED carries across runs in the same chat session (see SKILL.md § Session Sub-Agent Approval Gate for the canonical probe semantics). INLINE_FALLBACK does NOT carry across workflow runs — it is re-derived from SUB_AGENT_SESSION_APPROVED at the start of each workflow run and MUST NOT be inherited from a prior run's resolved value.
+- First apply the Session Sub-Agent Approval Gate in `{cf-studio-path}/.core/skills/studio/SKILL.md`.
+- Probe once per workflow run for INLINE_FALLBACK; SUB_AGENT_SESSION_APPROVED carries across runs in the same chat session (see `{cf-studio-path}/.core/skills/studio/SKILL.md` § Session Sub-Agent Approval Gate for the canonical probe semantics). INLINE_FALLBACK does NOT carry across workflow runs — it is re-derived from SUB_AGENT_SESSION_APPROVED at the start of each workflow run and MUST NOT be inherited from a prior run's resolved value.
 - Never switch modes silently mid-workflow. If a mid-workflow re-probe (triggered by an external-entry handoff or unset INLINE_FALLBACK at a dispatch site) yields a different result from the prior probe (Mode A → Mode B or vice versa), the orchestrator MUST surface the change to the user before continuing.
 - If a dispatch site finds `INLINE_FALLBACK` unset, stop and run
   `workflows/shared/inline-fallback-probe.md`.

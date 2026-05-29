@@ -64,8 +64,8 @@ the 3-line collapse threshold. The differences are load-bearing:
 
 Collapsing the two into a single template guarded by a `routing_kind` switch would require five
 inline conditionals, defeating the "self-contained final prompt — usable in a fresh chat without
-any prior context" rule above. Keep separate; do NOT collapse. Open, load, and follow `prompt-template-plan-review.md`
-and `prompt-template-direct-review.md` headers for the same rationale.
+any prior context" rule above. Keep separate; do NOT collapse. Open, load, and follow `{cf-studio-path}/.core/workflows/generate/phase-6/prompt-template-plan-review.md`
+and `{cf-studio-path}/.core/workflows/generate/phase-6/prompt-template-direct-review.md` headers for the same rationale.
 -->
 
-Finding I18 (DRY: Plan-Review vs Direct-Review templates) — re-evaluated in plan phase 5: **KEEP SEPARATE**. See the comment block above for the diff summary and rationale. Both `prompt-template-plan-review.md` and `prompt-template-direct-review.md` carry header comments restating the same decision so future readers do not re-open the question.
+Finding I18 (DRY: Plan-Review vs Direct-Review templates) — re-evaluated in plan phase 5: **KEEP SEPARATE**. See the comment block above for the diff summary and rationale. Both `{cf-studio-path}/.core/workflows/generate/phase-6/prompt-template-plan-review.md` and `{cf-studio-path}/.core/workflows/generate/phase-6/prompt-template-direct-review.md` carry header comments restating the same decision so future readers do not re-open the question.

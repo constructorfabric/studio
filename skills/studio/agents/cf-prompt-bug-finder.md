@@ -15,65 +15,16 @@ description: Invoke when running the prompt-bug-finding methodology on prompt / 
 
 <!-- /toc -->
 
-## Prompt Context Contract
+## Dispatch Guidance
 
-`prompt_context_view` is the sole prompt and instruction source for this
-dispatch. Missing required prompt context is an orchestration error.
+This file is orchestration-time guidance for the controller, not a runtime
+self-bootstrap contract for the dispatched sub-agent.
 
-```json
-{
-  "agent_id": "cf-prompt-bug-finder",
-  "prompt_context_requirements": {
-    "requires_shared_context_pack": true,
-    "required_assets": [
-      {
-        "asset_key": "studio_mode_contract",
-        "accepted_origins": ["core"],
-        "accepted_types": ["skill"],
-        "match_tags": ["constructor-studio-mode"],
-        "section_tags": [],
-        "required_when": null
-      },
-      {
-        "asset_key": "prompt_bug_finding_methodology",
-        "accepted_origins": ["core"],
-        "accepted_types": ["requirement"],
-        "match_tags": ["prompt-bug-finding", "methodology"],
-        "section_tags": [],
-        "required_when": null
-      },
-      {
-        "asset_key": "agent_compliance",
-        "accepted_origins": ["core"],
-        "accepted_types": ["requirement"],
-        "match_tags": ["agent-compliance"],
-        "section_tags": [],
-        "required_when": null
-      }
-    ],
-    "optional_assets": []
-  }
-}
-```
+The controller MUST load this file, resolve the task-relevant instruction
+assets from `SHARED_CONTEXT_PACK`, and synthesize a fully materialized final
+dispatch prompt for this agent. The dispatched sub-agent MUST execute only that
+final prompt and MUST NOT open prompt assets from disk directly.
 
-```text
-UNIT PromptBugFinder
-
-PURPOSE:
-  Read prompt / instruction targets for behavioral defects, routing bugs,
-  unsafe defaults, hidden failure modes, and handoff breakage. Emit Findings
-  and a hotspot table.
-
-RULES:
-  - MUST consume `prompt_bug_finding_methodology`,
-    `studio_mode_contract`, and `agent_compliance` from
-    `prompt_context_view`
-  - MUST_NOT modify files
-  - MUST_NOT run validator subprocesses
-  - MUST_NOT invoke other agents
-  - MUST emit only confirmed or high-confidence behavioral defects as Findings
-  - MUST_NOT open prompt assets from disk directly
-```
 
 ## Inputs (dispatched-prompt contract)
 
@@ -190,7 +141,7 @@ MENU TerminalStates:
       REQUIRE findings JSON is present
       REQUIRE residual risk summary is present
       REQUIRE AP-001..AP-008 self-check performed after all findings/table/summary
-      REQUIRE SKILL.md invariant satisfied
+      REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md invariant satisfied
     partial_run ->
       REQUIRE PARTIAL_CHECKPOINT JSON is present with:
         covered_paths, pending_paths, findings_so_far,

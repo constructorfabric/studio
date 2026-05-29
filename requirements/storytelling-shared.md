@@ -56,7 +56,7 @@ Per Anti-Patterns #16, #17, #19, #20:
 
 ## Path Conventions (Portability)
 
-Per Anti-Pattern #28e; see `storytelling-preferences.md` §Path Conventions for full scope.
+Per Anti-Pattern #28e; see `{cf-studio-path}/.core/requirements/storytelling-preferences.md` §Path Conventions for full scope.
 
 - ALL written artifacts and internal cross-references: **relative paths** from project root
 - Forbidden absolute prefixes: `/Users/...`, `/Volumes/...`, `/home/...`, `C:\...`
@@ -67,4 +67,4 @@ Per Anti-Pattern #28e; see `storytelling-preferences.md` §Path Conventions for 
 
 Every chat message AND every artifact write self-checks against resolved `language_complexity` (low/middle/high; default middle).
 
-Source quotes exempt (verbatim). See `.bootstrap/.core/requirements/language-complexity.md` for full rule.
+Source quotes exempt (verbatim). See `{cf-studio-path}/.core/requirements/language-complexity.md` for the full rule.

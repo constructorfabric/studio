@@ -23,10 +23,10 @@ WHEN:
   judgmental is non-empty (mixed or judgmental-only iterations)
 
 DO:
-  REQUIRE workflows/shared/inline-fallback-probe.md loaded before dispatch
+  REQUIRE `{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md` loaded before dispatch
   NOTE: Pre-dispatch fail-stop and Mode B degradation rules in
     {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md
-  NOTE: Full findings list already rendered in phase-5.3-findings.md § Findings display;
+  NOTE: Full findings list already rendered in `{cf-studio-path}/.core/workflows/generate/phase-5/phase-5.3-findings.md` § Findings display;
         MUST NOT re-render it here
 
   EMIT exactly:

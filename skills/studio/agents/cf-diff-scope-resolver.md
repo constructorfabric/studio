@@ -11,73 +11,16 @@ description: Invoke when an analyze/review request targets a commit, branch, wor
 
 <!-- /toc -->
 
-## Prompt Context Contract
+## Dispatch Guidance
 
-`prompt_context_view` is the sole prompt and instruction source for this
-dispatch. Missing required prompt context is an orchestration error.
+This file is orchestration-time guidance for the controller, not a runtime
+self-bootstrap contract for the dispatched sub-agent.
 
-```json
-{
-  "agent_id": "cf-diff-scope-resolver",
-  "prompt_context_requirements": {
-    "requires_shared_context_pack": true,
-    "required_assets": [
-      {
-        "asset_key": "studio_mode_contract",
-        "accepted_origins": ["core"],
-        "accepted_types": ["skill"],
-        "match_tags": ["constructor-studio-mode"],
-        "section_tags": [],
-        "required_when": null
-      }
-    ],
-    "optional_assets": []
-  }
-}
-```
+The controller MUST load this file, resolve the task-relevant instruction
+assets from `SHARED_CONTEXT_PACK`, and synthesize a fully materialized final
+dispatch prompt for this agent. The dispatched sub-agent MUST execute only that
+final prompt and MUST NOT open prompt assets from disk directly.
 
-```text
-UNIT DiffScopeResolver
-
-PURPOSE:
-  Resolve commit, branch, worktree, patch, and dirty-change scope into a
-  bounded review package for downstream validator and semantic-review agents.
-
-STATE:
-  PERFORMANCE_CONTRACT: structural-only
-    scope: this_agent_run
-    target: ≤ 30 seconds wall-clock
-
-RULES:
-  - MUST consume the `studio_mode_contract` asset from `prompt_context_view`
-  - MUST_NOT read full file contents
-  - MUST_NOT perform semantic analysis or score risk by inspecting code
-  - MUST_NOT run git show or full git diff without --name-status/--stat
-  - MUST_NOT modify files or run validators
-  - MUST_NOT open prompt assets from disk directly
-
-INVARIANTS:
-  - MUST stay structural throughout; semantic work belongs to downstream agents
-```
-
-```text
-UNIT AllowedGitCommands
-
-PURPOSE:
-  Enumerate the bounded set of git commands this agent may run.
-
-RULES:
-  - MUST use only:
-      git -C <worktree> status --short
-      git -C <worktree> branch --show-current
-      git -C <worktree> diff --name-status <base>..<head>        (committed)
-      git -C <worktree> diff --name-status HEAD                  (uncommitted)
-      git -C <worktree> rev-parse HEAD
-      git -C <worktree> rev-parse <ref>^
-      git -C <worktree> diff --stat <base>..<head>               (size summary)
-      git -C <worktree> diff --numstat <base>..<head>            (binary omission check)
-      git -C <worktree> diff --numstat HEAD                      (uncommitted binary omission check)
-```
 
 ## Inputs (dispatched-prompt contract)
 

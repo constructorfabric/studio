@@ -4,7 +4,7 @@ description: "Invoke when a Constructor Studio author worker sub-agent (junior/m
 
 <!-- toc -->
 
-- [Prompt Context Contract](#prompt-context-contract)
+- [Dispatch Guidance](#dispatch-guidance)
 - [Tier Guard](#tier-guard)
 - [Inputs (dispatched-prompt contract)](#inputs-dispatched-prompt-contract)
 - [Git Constraint (read from dispatch context — MUST obey)](#git-constraint-read-from-dispatch-context--must-obey)
@@ -27,51 +27,16 @@ target files plus `{cf-studio-path}/config/artifacts.toml` in
 `mode=create`. It does NOT validate (the deterministic-validator does that)
 and does NOT invoke other Constructor Studio agents.
 
-## Prompt Context Contract
+## Dispatch Guidance
 
-`prompt_context_view` is the sole prompt and instruction source for this
-dispatch. Missing required prompt context is an orchestration error.
+This file is orchestration-time guidance for the controller, not a runtime
+self-bootstrap contract for the dispatched sub-agent.
 
-```json
-{
-  "agent_id": "cf-generate-author-worker",
-  "prompt_context_requirements": {
-    "requires_shared_context_pack": true,
-    "required_assets": [
-      {
-        "asset_key": "studio_mode_contract",
-        "accepted_origins": ["core"],
-        "accepted_types": ["skill"],
-        "match_tags": ["constructor-studio-mode"],
-        "section_tags": [],
-        "required_when": null
-      },
-      {
-        "asset_key": "author_production_rules",
-        "accepted_origins": ["core"],
-        "accepted_types": ["instruction"],
-        "match_tags": ["author-production-rules"],
-        "section_tags": [],
-        "required_when": null
-      }
-    ],
-    "optional_assets": []
-  }
-}
-```
+The controller MUST load this file, resolve the task-relevant instruction
+assets from `SHARED_CONTEXT_PACK`, and synthesize a fully materialized final
+dispatch prompt for this agent. The dispatched sub-agent MUST execute only that
+final prompt and MUST NOT open prompt assets from disk directly.
 
-```text
-UNIT AuthorWorkerPromptContext
-
-PURPOSE:
-  Consume the shared Constructor Studio execution contract from
-  `prompt_context_view`.
-
-RULES:
-  - MUST consume `studio_mode_contract` from `prompt_context_view`
-  - MUST consume `author_production_rules` from `prompt_context_view`
-  - MUST_NOT open prompt assets from disk directly
-```
 
 ## Tier Guard
 
@@ -190,7 +155,7 @@ PURPOSE:
 
 RULES:
   - MUST follow the `git_constraint` string from the dispatch payload verbatim
-  - The string is the exact mode-matched block from `workflows/generate/phase-4-write.md`
+  - The string is the exact mode-matched block from `{cf-studio-path}/.core/workflows/generate/phase-4-write.md`
     § Git constraint blocks for the active `git_commit_mode`
   - MUST_NOT default to any git behavior not explicitly permitted by that string
   - MUST_NOT run `git commit`, `git add`, or `git stage` unless both

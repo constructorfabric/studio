@@ -55,9 +55,9 @@ NOTES:
 
 ## Phase 5: Offer Next Steps
 
-When `EXPLAIN_MODE=true`, **skip this phase entirely** — the Storytelling Output schema (`workflows/analyze/phase-4-output/output-storytelling.md`) already emits a contextual `Suggested Next Steps` section, so running this sub-file would produce a redundant menu. (EXPLAIN_MODE was set in `preamble.md`; no re-load of `phase-0-dependencies.md` needed. Open, load, and follow `{cf-studio-path}/.core/requirements/storytelling.md` § Agent Instructions for the full skip-list.)
+When `EXPLAIN_MODE=true`, **skip this phase entirely** — the Storytelling Output schema (`{cf-studio-path}/.core/workflows/analyze/phase-4-output/output-storytelling.md`) already emits a contextual `Suggested Next Steps` section, so running this sub-file would produce a redundant menu. (EXPLAIN_MODE was set in `{cf-studio-path}/.core/workflows/analyze/preamble.md`; no re-load of `{cf-studio-path}/.core/workflows/analyze/phase-0-dependencies.md` needed. Open, load, and follow `{cf-studio-path}/.core/requirements/storytelling.md` § Agent Instructions for the full skip-list.)
 
-Read `## Next Steps` from `rules.md` and present applicable options.
+Read `## Next Steps` from `{cf-studio-path}/.core/workflows/analyze/rules.md` and present applicable options.
 
 PASS:
 ```

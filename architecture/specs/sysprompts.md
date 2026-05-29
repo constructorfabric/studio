@@ -73,7 +73,7 @@ RULES:
   - When loaded into `SHARED_CONTEXT_PACK`, those assets MUST be recorded with
     `origin = "project"`
   - Prompt-consuming sub-agents MUST receive the selected prompt text through
-    `prompt_context_view`
+    the controller-synthesized final dispatch prompt
   - Prompt-consuming sub-agents MUST_NOT reopen project sysprompt files
     directly from disk
 ```
@@ -90,8 +90,8 @@ DO:
   REQUIRE controller evaluates action-based `WHEN` rules against the current context
   REQUIRE controller loads matching system prompt files in declaration order
   REQUIRE controller publishes matched prompt text into `SHARED_CONTEXT_PACK`
-  REQUIRE controller derives `prompt_context_view` for any prompt-consuming
-    sub-agent dispatch
+  REQUIRE controller synthesizes a final dispatch prompt for any
+    prompt-consuming sub-agent dispatch
 
 RULES:
   - MUST keep kit prompts and project sysprompts separate prompt-asset families
@@ -188,10 +188,10 @@ Kit workflow commands are **not** placed here — they are exposed via agent ent
 ```markdown
 # Constructor Studio: {Project Name}
 
-ALWAYS open and follow `sysprompts/tech-stack.md` WHEN writing code, choosing technologies, or adding dependencies
-ALWAYS open and follow `sysprompts/conventions.md` WHEN writing code, naming files/functions/variables, or reviewing code
-ALWAYS open and follow `sysprompts/domain-model.md` WHEN working with entities, data structures, or business logic
-ALWAYS open and follow `sysprompts/testing.md` WHEN writing tests, reviewing test coverage, or debugging
+ALWAYS open and follow `{cf-studio-path}/config/sysprompts/tech-stack.md` WHEN writing code, choosing technologies, or adding dependencies
+ALWAYS open and follow `{cf-studio-path}/config/sysprompts/conventions.md` WHEN writing code, naming files/functions/variables, or reviewing code
+ALWAYS open and follow `{cf-studio-path}/config/sysprompts/domain-model.md` WHEN working with entities, data structures, or business logic
+ALWAYS open and follow `{cf-studio-path}/config/sysprompts/testing.md` WHEN writing tests, reviewing test coverage, or debugging
 ```
 
 ### WHEN Rule Format
@@ -280,7 +280,7 @@ Workflows load project system prompts at specific points:
 3. For each `WHEN` rule, match the action description against current context
 4. Load matching system prompt files in declaration order
 5. Publish matching prompt text into `SHARED_CONTEXT_PACK` as `origin = "project"` assets
-6. Derive `prompt_context_view` for any prompt-consuming sub-agent
+6. Synthesize the final dispatch prompt for any prompt-consuming sub-agent
 
 ### Interaction with Kit Prompts
 
@@ -291,8 +291,9 @@ Project system prompts are **additive** — they don't replace kit-level prompts
 
 If a project system prompt contradicts a kit prompt, the project system prompt takes precedence (project-specific overrides generic).
 
-Prompt-consuming sub-agents receive the relevant project context through
-`prompt_context_view`; they MUST NOT reopen project sysprompt files directly.
+Prompt-consuming sub-agents receive the relevant project context through the
+controller-synthesized final dispatch prompt; they MUST NOT reopen project
+sysprompt files directly.
 
 ---
 
@@ -392,11 +393,11 @@ A complete project extension for a TypeScript web application:
 ```markdown
 # Constructor Studio: MyApp
 
-ALWAYS open and follow `sysprompts/tech-stack.md` WHEN writing code, choosing technologies, or adding dependencies
-ALWAYS open and follow `sysprompts/conventions.md` WHEN writing code, naming files/functions/variables, or reviewing code
-ALWAYS open and follow `sysprompts/domain-model.md` WHEN working with entities, data structures, or business logic
-ALWAYS open and follow `sysprompts/testing.md` WHEN writing tests, reviewing test coverage, or debugging
-ALWAYS open and follow `sysprompts/api-contracts.md` WHEN creating/consuming APIs, defining endpoints, or handling requests
+ALWAYS open and follow `{cf-studio-path}/config/sysprompts/tech-stack.md` WHEN writing code, choosing technologies, or adding dependencies
+ALWAYS open and follow `{cf-studio-path}/config/sysprompts/conventions.md` WHEN writing code, naming files/functions/variables, or reviewing code
+ALWAYS open and follow `{cf-studio-path}/config/sysprompts/domain-model.md` WHEN working with entities, data structures, or business logic
+ALWAYS open and follow `{cf-studio-path}/config/sysprompts/testing.md` WHEN writing tests, reviewing test coverage, or debugging
+ALWAYS open and follow `{cf-studio-path}/config/sysprompts/api-contracts.md` WHEN creating/consuming APIs, defining endpoints, or handling requests
 ```
 
 `{cf-studio-path}/config/sysprompts/tech-stack.md`:

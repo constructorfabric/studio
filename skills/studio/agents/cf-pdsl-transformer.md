@@ -4,76 +4,16 @@ description: Invoke when cf-pdsl runs in transform mode to convert one or more p
 
 # PDSL Transformer
 
-## Prompt Context Contract
+## Dispatch Guidance
 
-`prompt_context_view` is the sole prompt and instruction source for this
-dispatch. Missing required prompt context is an orchestration error.
+This file is orchestration-time guidance for the controller, not a runtime
+self-bootstrap contract for the dispatched sub-agent.
 
-```json
-{
-  "agent_id": "cf-pdsl-transformer",
-  "prompt_context_requirements": {
-    "requires_shared_context_pack": true,
-    "required_assets": [
-      {
-        "asset_key": "studio_mode_contract",
-        "accepted_origins": ["core"],
-        "accepted_types": ["skill"],
-        "match_tags": ["constructor-studio-mode"],
-        "section_tags": [],
-        "required_when": null
-      },
-      {
-        "asset_key": "pdsl_specification",
-        "accepted_origins": ["core"],
-        "accepted_types": ["instruction"],
-        "match_tags": ["pdsl", "spec"],
-        "section_tags": [],
-        "required_when": null
-      }
-    ],
-    "optional_assets": []
-  }
-}
-```
+The controller MUST load this file, resolve the task-relevant instruction
+assets from `SHARED_CONTEXT_PACK`, and synthesize a fully materialized final
+dispatch prompt for this agent. The dispatched sub-agent MUST execute only that
+final prompt and MUST NOT open prompt assets from disk directly.
 
-```text
-UNIT PdslTransformer
-
-PURPOSE:
-  Convert existing prose prompt/workflow/skill files into PDSL while preserving behavior.
-
-INPUT:
-  target_paths: prompt/workflow/skill files to transform
-  source_paths: optional cross-reference paths
-  transform_policy: in_place
-  pdsl_spec_path: {cf-studio-path}/.core/architecture/specs/PDSL.md
-  rules_mode: STRICT | RELAXED
-
-RULES:
-  - MUST consume the `studio_mode_contract` and `pdsl_specification` assets
-    from `prompt_context_view`
-  - MUST read every `target_paths` entry before writing
-  - MUST read every `source_paths` entry before writing
-  - MUST write only files listed in `target_paths`
-  - MUST preserve frontmatter, generated-source warnings, public API headings, named anchors, and handoff labels
-  - MUST preserve behavior before compacting language
-  - MUST keep rationale and background in `NOTES`
-  - MUST_NOT drop `MUST`, `ALWAYS`, `NEVER`, `FORBID`, `REQUIRE`, approval, state-reset, or STOP_TURN semantics
-  - MUST_NOT modify unrelated files
-  - MUST_NOT run validators
-  - MUST_NOT dispatch other agents
-  - MUST_NOT open prompt assets from disk directly
-
-DO:
-  1. Build a behavior inventory for each target: hard rules, state lifecycle, mode routing, menus, accepted replies, stop points, handoffs, error recovery, authority boundaries, validation gates, and completion gates.
-  2. Rewrite behavior into PDSL blocks.
-  3. Move non-executable rationale into `NOTES`.
-  4. IF behavior is ambiguous and cannot be preserved safely:
-       add `OPEN_QUESTIONS` in the target or RETURN TransformBlocked for that target.
-  5. Write transformed targets that are safe to transform.
-  6. RETURN TransformManifest or TransformBlocked.
-```
 
 ## Output
 

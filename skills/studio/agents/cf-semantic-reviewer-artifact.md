@@ -12,74 +12,16 @@ description: Invoke when running the kit-checklist semantic review on an artifac
 
 <!-- /toc -->
 
-## Prompt Context Contract
+## Dispatch Guidance
 
-`prompt_context_view` is the sole prompt and instruction source for this
-dispatch. Missing required prompt context is an orchestration error.
+This file is orchestration-time guidance for the controller, not a runtime
+self-bootstrap contract for the dispatched sub-agent.
 
-```json
-{
-  "agent_id": "cf-semantic-reviewer-artifact",
-  "prompt_context_requirements": {
-    "requires_shared_context_pack": true,
-    "required_assets": [
-      {
-        "asset_key": "studio_mode_contract",
-        "accepted_origins": ["core"],
-        "accepted_types": ["skill"],
-        "match_tags": ["constructor-studio-mode"],
-        "section_tags": [],
-        "required_when": null
-      },
-      {
-        "asset_key": "agent_compliance",
-        "accepted_origins": ["core"],
-        "accepted_types": ["requirement"],
-        "match_tags": ["agent-compliance"],
-        "section_tags": [],
-        "required_when": null
-      }
-    ],
-    "optional_assets": [
-      {
-        "asset_key": "artifact_review_checklist",
-        "accepted_origins": ["core", "kit", "project"],
-        "accepted_types": ["checklist", "rule"],
-        "match_tags": ["artifact-review", "checklist"],
-        "section_tags": [],
-        "required_when": "checklist_path != null || rules_mode == STRICT"
-      },
-      {
-        "asset_key": "kit_validation_rules",
-        "accepted_origins": ["kit"],
-        "accepted_types": ["rule", "checklist"],
-        "match_tags": ["kit-rules", "validation"],
-        "section_tags": [],
-        "required_when": "kit_rules_path != null"
-      }
-    ]
-  }
-}
-```
+The controller MUST load this file, resolve the task-relevant instruction
+assets from `SHARED_CONTEXT_PACK`, and synthesize a fully materialized final
+dispatch prompt for this agent. The dispatched sub-agent MUST execute only that
+final prompt and MUST NOT open prompt assets from disk directly.
 
-```text
-UNIT SemanticReviewerArtifact
-
-PURPOSE:
-  Load the kit checklist, walk every category individually over the artifact
-  and its cross-refs, and emit Findings.
-
-RULES:
-  - MUST consume `studio_mode_contract` and `agent_compliance` from
-    `prompt_context_view`
-  - MUST_NOT modify files
-  - MUST_NOT run validator subprocesses (the deterministic-validator agent does that)
-  - MUST_NOT invoke other Constructor Studio agents
-  - MUST_NOT open prompt assets from disk directly
-  - MUST treat `artifact_review_checklist` as required prompt context whenever
-    `checklist_path != null || rules_mode == STRICT`
-  - MUST fail closed whenever that required checklist prompt context is absent
-```
 
 ## Inputs (dispatched-prompt contract)
 
@@ -113,19 +55,19 @@ DO:
     EMIT PARTIAL_CHECKPOINT (see schema below)
     STOP_TURN
 
-  1. IF checklist_required AND `artifact_review_checklist` is absent from
-       `prompt_context_view`:
+  1. IF checklist_required AND the synthesized final dispatch prompt is missing
+       `artifact_review_checklist`:
        EMIT review_result:
          {"type":"VALIDATION_REPORT","status":"FAIL","reviewer":"artifact"}
        EMIT Findings:
          [{"id":"F-CONTEXT-CHECKLIST","severity":"high","mechanical":false,
            "path":null,"line":null,"category":"prompt-context",
-           "evidence_quote":"artifact_review_checklist missing from prompt_context_view",
-           "root_cause":"orchestrator did not supply the checklist asset required by the prompt-context contract",
-           "suggested_fix":"re-dispatch with artifact_review_checklist resolved into prompt_context_view",
+           "evidence_quote":"artifact_review_checklist missing from final dispatch prompt",
+           "root_cause":"orchestrator did not synthesize the checklist asset into the final dispatch prompt",
+           "suggested_fix":"re-dispatch with artifact_review_checklist injected from SHARED_CONTEXT_PACK",
            "mechanical_rationale":"This is an orchestration contract failure, not a deterministic file-local defect."}]
        STOP_TURN
-     Load `artifact_review_checklist` when it is present in `prompt_context_view`
+     Load `artifact_review_checklist` when it is present in the final dispatch prompt
      and load `kit_validation_rules` when that asset is present
   2. Read every target_path in full via Read tool (fresh read this turn)
   3. Read every declared cross_ref_path in full via Read tool (fresh read this turn)
@@ -138,16 +80,16 @@ DO:
 ON_ERROR:
   kit_rules_path == null AND rules_mode == RELAXED ->
     Skip loading the Validation section
-  artifact_review_checklist missing from prompt_context_view ->
+  artifact_review_checklist missing from final dispatch prompt ->
     IF checklist_required:
       EMIT review_result:
         {"type":"VALIDATION_REPORT","status":"FAIL","reviewer":"artifact"}
       EMIT Findings:
         [{"id":"F-CONTEXT-CHECKLIST","severity":"high","mechanical":false,
           "path":null,"line":null,"category":"prompt-context",
-          "evidence_quote":"artifact_review_checklist missing from prompt_context_view",
-          "root_cause":"orchestrator did not supply the checklist asset required by the prompt-context contract",
-          "suggested_fix":"re-dispatch with artifact_review_checklist resolved into prompt_context_view",
+          "evidence_quote":"artifact_review_checklist missing from final dispatch prompt",
+          "root_cause":"orchestrator did not synthesize the checklist asset into the final dispatch prompt",
+          "suggested_fix":"re-dispatch with artifact_review_checklist injected from SHARED_CONTEXT_PACK",
           "mechanical_rationale":"This is an orchestration contract failure, not a deterministic file-local defect."}]
       STOP_TURN
     Restrict review to placeholder / empty-section / ID-format sweep

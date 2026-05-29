@@ -86,5 +86,5 @@ RULES:
   - MUST emit structured error block listing written and failed files on any failure
   - MUST NOT re-write already successful files on retry (option 1)
   - Disk-mode cache files are pre-Phase-4 writes (not target-artifact writes);
-    MUST disclose on failure/abandonment; open and follow error-handling.md
+    MUST disclose on failure/abandonment; open and follow {cf-studio-path}/.core/workflows/generate/error-handling.md
 ```

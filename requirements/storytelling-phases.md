@@ -33,7 +33,7 @@ purpose: Phase-by-phase protocol for the storytelling methodology
 
 <!-- /toc -->
 
-Loaded by `requirements/storytelling.md` (router). Defines the E0-E5 protocol shared by all storytelling modes. For mode-specific deltas (audience, slot renames, two-portion review rhythm) see `storytelling-modes.md`. For preferences (page size, artifact language, checkpoint) see `storytelling-preferences.md`. For export-mode behavior see `storytelling-export.md`.
+Loaded by `{cf-studio-path}/.core/requirements/storytelling.md` (router). Defines the E0-E5 protocol shared by all storytelling modes. For mode-specific deltas (audience, slot renames, two-portion review rhythm) see `{cf-studio-path}/.core/requirements/storytelling-modes.md`. For preferences (page size, artifact language, checkpoint) see `{cf-studio-path}/.core/requirements/storytelling-preferences.md`. For export-mode behavior see `{cf-studio-path}/.core/requirements/storytelling-export.md`.
 
 ## Phase E0: Pre-flight
 
@@ -94,9 +94,9 @@ Extract from the prompt:
 
 ### Step 2: Resolve mode (always-ask)
 
-Methodology emits the 6-mode prompt (template in `storytelling-modes.md`); waits for explicit user confirmation (Enter accepts the suggestion, or pick by number/name). Mode resolution is interactive every session — intent verbs / KIND defaults / `default_mode` from preferences.json only inform the suggested default, never bypass the prompt.
+Methodology emits the 6-mode prompt (template in `{cf-studio-path}/.core/requirements/storytelling-modes.md`); waits for explicit user confirmation (Enter accepts the suggestion, or pick by number/name). Mode resolution is interactive every session — intent verbs / KIND defaults / `default_mode` from preferences.json only inform the suggested default, never bypass the prompt.
 
-After mode resolution but BEFORE role/audience derivation, methodology emits the **artifact disposition** prompt (template + resolution rules in `storytelling-preferences.md` Artifact Disposition). The list of accumulating artifact types in the prompt depends on the resolved mode (review adds review-comments; all modes have open-questions and bookmarks). The methodology MUST wait for explicit user confirmation; the project `artifact_disposition` preference informs the suggested default but does NOT bypass the prompt.
+After mode resolution but BEFORE role/audience derivation, methodology emits the **artifact disposition** prompt (template + resolution rules in `{cf-studio-path}/.core/requirements/storytelling-preferences.md` Artifact Disposition). The list of accumulating artifact types in the prompt depends on the resolved mode (review adds review-comments; all modes have open-questions and bookmarks). The methodology MUST wait for explicit user confirmation; the project `artifact_disposition` preference informs the suggested default but does NOT bypass the prompt.
 
 ### Step 3: Auto-derive role from artifact
 
@@ -281,7 +281,7 @@ Cross-reference: the 2-attempts-per-key cap (see Phase E3 buffer entry shape bel
 - **Open-questions reminder** every 3-4 portions if buffer ≥ 2: `📝 K open questions accumulated. Save now? (yes / no / wrap)`
 - **Comprehension check** every 2-3 portions: `Before continuing — anything unclear from the last N portions? (yes / no)` — yes branches into Deeper on user-specified topic; no continues
 
-(Auto-checkpoint during the session is **forbidden** — see `storytelling-preferences.md` Checkpoint and Resume.)
+(Auto-checkpoint during the session is **forbidden** — see `{cf-studio-path}/.core/requirements/storytelling-preferences.md` Checkpoint and Resume.)
 
 The two gates can stack on the same portion; consolidate into a single footer block.
 

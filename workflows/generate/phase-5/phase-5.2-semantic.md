@@ -21,7 +21,7 @@ PURPOSE:
   and current rules' preferences.
 
 DO:
-  REQUIRE workflows/shared/inline-fallback-probe.md loaded before dispatch
+  REQUIRE `{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md` loaded before dispatch
 
   DERIVE typed target sets from current review surface
     (manifest.paths_written on normal generate entry; target_paths on

@@ -15,47 +15,16 @@ description: Invoke when turning the migrate-scanner's findings into a categoriz
 
 <!-- /toc -->
 
-## Prompt Context Contract
+## Dispatch Guidance
 
-`prompt_context_view` is the sole prompt and instruction source for this
-dispatch. Missing required prompt context is an orchestration error.
+This file is orchestration-time guidance for the controller, not a runtime
+self-bootstrap contract for the dispatched sub-agent.
 
-```json
-{
-  "agent_id": "cf-migrate-planner",
-  "prompt_context_requirements": {
-    "requires_shared_context_pack": true,
-    "required_assets": [
-      {
-        "asset_key": "studio_mode_contract",
-        "accepted_origins": ["core"],
-        "accepted_types": ["skill"],
-        "match_tags": ["constructor-studio-mode"],
-        "section_tags": [],
-        "required_when": null
-      }
-    ],
-    "optional_assets": []
-  }
-}
-```
+The controller MUST load this file, resolve the task-relevant instruction
+assets from `SHARED_CONTEXT_PACK`, and synthesize a fully materialized final
+dispatch prompt for this agent. The dispatched sub-agent MUST execute only that
+final prompt and MUST NOT open prompt assets from disk directly.
 
-```text
-UNIT MigratePlannerInit
-
-PURPOSE:
-  Run as read-only sub-agent; take Scanner findings and produce a categorized
-  migration plan. Modify NO files.
-
-DO:
-  REQUIRE scan_findings is provided by orchestrator
-  REQUIRE prompt_context_view includes `studio_mode_contract`
-  CONTINUE MigratePlannerProcedure
-
-RULES:
-  - MUST_NOT modify any file
-  - MUST_NOT open prompt assets from disk directly
-```
 
 ## Purpose
 

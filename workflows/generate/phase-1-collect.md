@@ -21,7 +21,7 @@ PURPOSE:
   Dispatch collector sub-agent, manage edit-iteration loop, await final approval.
 
 DO:
-  REQUIRE workflows/shared/inline-fallback-probe.md loaded before dispatch
+  REQUIRE `{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md` loaded before dispatch
   DISPATCH cf-generate-collector with JSON contract from
     {cf-studio-path}/.core/skills/studio/agents/cf-generate-collector.md
   WITH orchestrator-supplied values:

@@ -1,6 +1,6 @@
 ---
 name: generate-phase-0-dependencies
-description: "Invoke when the generate workflow enters dependency resolution after protocol.md — ensures kit deps, capability probe, CONTRIBUTING discovery, and raw-input overflow rule."
+description: "Invoke when the generate workflow enters dependency resolution after `{cf-studio-path}/.core/skills/studio/protocol.md` — ensures kit deps, capability probe, CONTRIBUTING discovery, and raw-input overflow rule."
 purpose: Generate Phase 0 — ensure dependencies, capability probe, CONTRIBUTING discovery, raw-input overflow rule
 loaded_by: workflows/generate.md
 version: 1.0
@@ -18,13 +18,13 @@ version: 1.0
 UNIT GeneratePhase0Dependencies
 
 PURPOSE:
-  After protocol.md, resolve kit deps, sub-agent approval, CONTRIBUTING discovery,
+  After `{cf-studio-path}/.core/skills/studio/protocol.md`, resolve kit deps, sub-agent approval, CONTRIBUTING discovery,
   raw-input overflow rule, and panel mode flags before Phase 1.
 
 DO:
   REQUIRE KITS_PATH, phase-appropriate dependency set, and REQUIREMENTS are known
-    from skills/studio/protocol.md
-  NOTE: {cfs_cmd}, {cf-studio-path}, {project_root} resolved by protocol.md;
+    from `{cf-studio-path}/.core/skills/studio/protocol.md`
+  NOTE: {cfs_cmd}, {cf-studio-path}, {project_root} resolved by `{cf-studio-path}/.core/skills/studio/protocol.md`;
         on context loss re-run `{cfs_cmd} --json info` before any path-dependent step
   LOAD {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md
     (evaluates SKILL.md § Session Sub-Agent Approval Gate; assigns INLINE_FALLBACK)

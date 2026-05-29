@@ -278,9 +278,9 @@ PURPOSE:
   Route phase compilation to cf-phase-compiler subagents (option [3]).
 
 DO:
-  REQUIRE Session Sub-Agent Approval Gate (SKILL.md) is resolved before this option runs
+  REQUIRE Session Sub-Agent Approval Gate ({cf-studio-path}/.core/skills/studio/SKILL.md) is resolved before this option runs
   OPEN {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md
-  FOLLOW inline-fallback-probe.md
+  FOLLOW {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md
 
   IF INLINE_FALLBACK == true:
     EMIT "Option [3] is unavailable for this run (INLINE_FALLBACK=true)."

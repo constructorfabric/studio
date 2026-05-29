@@ -16,7 +16,7 @@ PURPOSE:
   Dispatch cf-deterministic-validator and route based on gate result.
 
 DO:
-  REQUIRE workflows/shared/inline-fallback-probe.md loaded before dispatch
+  REQUIRE `{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md` loaded before dispatch
   DISPATCH cf-deterministic-validator with JSON contract from
     {cf-studio-path}/.core/skills/studio/agents/cf-deterministic-validator.md
   WITH orchestrator-supplied values:

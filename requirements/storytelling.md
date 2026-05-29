@@ -53,10 +53,10 @@ WHEN this methodology is loaded:
 - Skip Phase 2 deterministic gate of `analyze.md`
 - Skip Phase 3 standard semantic checklist of `analyze.md`
 - Skip Phase 5 (Offer Next Steps) of `analyze.md` — Suggested Next Steps already covered by the Storytelling Output schema (running both would duplicate)
-- Use the Storytelling Output schema (see `storytelling-phases.md` Phase E5) in `analyze.md` Phase 4 instead of the standard schema
+- Use the Storytelling Output schema (see `{cf-studio-path}/.core/requirements/storytelling-phases.md` Phase E5) in `analyze.md` Phase 4 instead of the standard schema
 - Override `enforceRemediationPrompts`: do NOT emit `Fix Prompt` / `Plan Prompt`
 
-WHEN loaded with `EXPLAIN_EXPORT=true` (via `generate.md` WHEN-rule on guide/README/package-export intent), additionally load `storytelling-export.md` and write a Markdown package to disk instead of delivering portions in chat.
+WHEN loaded with `EXPLAIN_EXPORT=true` (via `generate.md` WHEN-rule on guide/README/package-export intent), additionally load `{cf-studio-path}/.core/requirements/storytelling-export.md` and write a Markdown package to disk instead of delivering portions in chat.
 
 **MUST** ground every non-trivial claim in the input. **MUST NOT** invent facts beyond the input. **MUST silently skip** ungrounded claims — do NOT insert `[?]` markers in the methodology's narrative; do NOT push to the open-questions buffer for gaps the methodology itself notices. Open-questions buffer entries are created **only** in response to user-asked questions the input cannot answer.
 
@@ -154,7 +154,7 @@ Common features: explicit role/audience awareness; **always-ask** mode resolutio
 
 ## EXPLAIN_MODE Activation
 
-(This section covers the `analyze.md` routing flag that loads this methodology. For sub-modes — `presentation` / `review` / `onboarding` / etc. — see `storytelling-modes.md`.)
+(This section covers the `analyze.md` routing flag that loads this methodology. For sub-modes — `presentation` / `review` / `onboarding` / etc. — see `{cf-studio-path}/.core/requirements/storytelling-modes.md`.)
 
 `EXPLAIN_MODE=true` is set when this file is loaded via the `analyze.md` WHEN-rule on intent like:
 `explain X`, `tell me about X`, `walk me through X`, `teach me X`, `present X`, `introduce X`, `let's understand X`, `make sense of X`, `review {PR / artifact}`, `onboard me to X`, `quiz me on X`, `what changed in X`.
@@ -163,7 +163,7 @@ Intent matching is **intent-based, not language-specific**. The methodology MUST
 
 If both `EXPLAIN_MODE` and `PROMPT_REVIEW` intents are detected, ask the user to disambiguate before loading either methodology.
 
-`EXPLAIN_EXPORT=true` is set additionally when loaded via the `generate.md` WHEN-rule on guide/README/package-export intent — see `storytelling-export.md`.
+`EXPLAIN_EXPORT=true` is set additionally when loaded via the `generate.md` WHEN-rule on guide/README/package-export intent — see `{cf-studio-path}/.core/requirements/storytelling-export.md`.
 
 ## Module loading
 

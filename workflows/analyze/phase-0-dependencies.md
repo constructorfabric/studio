@@ -76,7 +76,7 @@ RULES:
 
 NOTES:
   Variable checkpoint: {cfs_cmd}, {cf-studio-path}, and {project_root}
-  come from skills/studio/protocol.md; re-run info after context loss.
+  come from `{cf-studio-path}/.core/skills/studio/protocol.md`; re-run info after context loss.
   Per-run analyze flags are initialized in preamble.md; this file only
   matches conditions to set flags to true. ARTIFACT_REVIEW=false is the
   default before artifact target detection.

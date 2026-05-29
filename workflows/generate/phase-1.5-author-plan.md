@@ -73,7 +73,7 @@ PURPOSE:
 
 DO:
   IF AUTHOR_PLAN_OFFER_RESOLVED is a continuation state
-    (see workflows/generate/phase-1.5/state-contract.md):
+    (see {cf-studio-path}/.core/workflows/generate/phase-1.5/state-contract.md):
     CONTINUE workflows/generate/phase-3-summary.md
 
   IF AUTHOR_PLAN_OFFER_RESOLVED is a terminal cancellation state:

@@ -12,78 +12,16 @@ description: Invoke when cross-checking terminology, references, normative claim
 
 <!-- /toc -->
 
-## Prompt Context Contract
+## Dispatch Guidance
 
-`prompt_context_view` is the sole prompt and instruction source for this
-dispatch. Missing required prompt context is an orchestration error.
+This file is orchestration-time guidance for the controller, not a runtime
+self-bootstrap contract for the dispatched sub-agent.
 
-```json
-{
-  "agent_id": "cf-semantic-reviewer-consistency",
-  "prompt_context_requirements": {
-    "requires_shared_context_pack": true,
-    "required_assets": [
-      {
-        "asset_key": "studio_mode_contract",
-        "accepted_origins": ["core"],
-        "accepted_types": ["skill"],
-        "match_tags": ["constructor-studio-mode"],
-        "section_tags": [],
-        "required_when": null
-      },
-      {
-        "asset_key": "consistency_checklist",
-        "accepted_origins": ["core"],
-        "accepted_types": ["requirement"],
-        "match_tags": ["consistency", "checklist"],
-        "section_tags": [],
-        "required_when": null
-      },
-      {
-        "asset_key": "agent_compliance",
-        "accepted_origins": ["core"],
-        "accepted_types": ["requirement"],
-        "match_tags": ["agent-compliance"],
-        "section_tags": [],
-        "required_when": null
-      }
-    ],
-    "optional_assets": [
-      {
-        "asset_key": "kit_validation_rules",
-        "accepted_origins": ["kit"],
-        "accepted_types": ["rule", "checklist"],
-        "match_tags": ["kit-rules", "validation"],
-        "section_tags": [],
-        "required_when": "kit_rules_path != null"
-      }
-    ]
-  }
-}
-```
+The controller MUST load this file, resolve the task-relevant instruction
+assets from `SHARED_CONTEXT_PACK`, and synthesize a fully materialized final
+dispatch prompt for this agent. The dispatched sub-agent MUST execute only that
+final prompt and MUST NOT open prompt assets from disk directly.
 
-```text
-UNIT ConsistencyReviewerInit
-
-PURPOSE:
-  Run as cross-document consistency reviewer; load consistency-checklist,
-  read every target document, cross-check terminology / references /
-  normative claims / scope, and emit Findings.
-
-DO:
-  REQUIRE prompt_context_view includes `studio_mode_contract`,
-    `consistency_checklist`, and `agent_compliance`
-  CONTINUE ConsistencyReviewerProcedure
-
-RULES:
-  - MUST_NOT modify any file
-  - MUST_NOT run validator subprocesses (the deterministic-validator agent does that)
-  - MUST_NOT invoke other Constructor Studio agents
-  - MUST_NOT open prompt assets from disk directly
-```
-
-NOTES:
-  Authority boundary: this agent reads project files only.
 
 ## Inputs (dispatched-prompt contract)
 

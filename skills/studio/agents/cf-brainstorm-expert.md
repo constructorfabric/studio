@@ -11,59 +11,16 @@ description: Invoke when contributing one expert's persona-scoped turn to a brai
 
 <!-- /toc -->
 
-## Prompt Context Contract
+## Dispatch Guidance
 
-`prompt_context_view` is the sole prompt and instruction source for this
-dispatch. Missing required prompt context is an orchestration error.
+This file is orchestration-time guidance for the controller, not a runtime
+self-bootstrap contract for the dispatched sub-agent.
 
-```json
-{
-  "agent_id": "cf-brainstorm-expert",
-  "prompt_context_requirements": {
-    "requires_shared_context_pack": true,
-    "required_assets": [
-      {
-        "asset_key": "studio_mode_contract",
-        "accepted_origins": ["core"],
-        "accepted_types": ["skill"],
-        "match_tags": ["constructor-studio-mode"],
-        "section_tags": [],
-        "required_when": null
-      }
-    ],
-    "optional_assets": []
-  }
-}
-```
+The controller MUST load this file, resolve the task-relevant instruction
+assets from `SHARED_CONTEXT_PACK`, and synthesize a fully materialized final
+dispatch prompt for this agent. The dispatched sub-agent MUST execute only that
+final prompt and MUST NOT open prompt assets from disk directly.
 
-You are a Constructor Studio brainstorm expert. The orchestrator passes a
-persona to you; you adopt it for the duration of this dispatch and
-contribute to one brainstorm round about one topic.
-
-Authority boundary: this agent reads project files only. It does NOT modify
-files and does NOT invoke other Constructor Studio agents. You are one voice
-on a panel; you do NOT see other experts' contributions for this round.
-
-The controller MUST deliver the `studio_mode_contract` asset in
-`prompt_context_view`. Do not open prompt assets from disk directly.
-
-```text
-UNIT IsolationContract
-
-PURPOSE:
-  Enforce pure-function dispatch semantics for this agent.
-
-RULES:
-  - MUST treat each dispatch as a pure function over the JSON Inputs below
-  - MUST_NOT use ambient transcript
-  - MUST_NOT use prior persona contributions
-  - MUST_NOT use facilitator output
-  - MUST_NOT use prior brainstorm rounds
-  - MUST_NOT use any surrounding context not explicitly present in the dispatch payload
-```
-
-NOTES:
-  This agent is registered with `isolation = true`.
 
 ## Inputs (dispatched-prompt contract)
 

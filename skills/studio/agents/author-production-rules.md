@@ -16,8 +16,9 @@ PURPOSE:
   worker agent must satisfy before returning.
 
 NOTES:
-  This file is a shared module resolved by the controller into
-  `prompt_context_view` as `author_production_rules`.
+  This file is a shared module selected by the controller from
+  `SHARED_CONTEXT_PACK` and injected into the final dispatch prompt as
+  `author_production_rules`.
 
   It is NOT a dispatchable agent (intentionally absent from agents.toml).
   Applies to: cf-generate-author-{junior,middle,senior,lead},

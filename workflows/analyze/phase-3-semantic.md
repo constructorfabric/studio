@@ -26,7 +26,7 @@ WHEN:
   OR SEMANTIC_ONLY == true
 
 DO:
-  REQUIRE REVIEWER_PLAN_RESOLVED is set by phase-2.5-reviewer-plan.md
+  REQUIRE REVIEWER_PLAN_RESOLVED is set by {cf-studio-path}/.core/workflows/analyze/phase-2.5-reviewer-plan.md
     IF REVIEWER_PLAN_RESOLVED is unset:
       EMIT "Reviewer plan is unset. Routing back to Phase 2.5 to rebuild the plan."
       CONTINUE workflows/analyze/phase-2.5-reviewer-plan.md § Storage Choice
@@ -35,7 +35,7 @@ DO:
     STOP_TURN (do not enter Phase 3)
   IF PARTIAL != true:
     SET PARTIAL = false
-  REQUIRE inline-fallback-probe.md has run before any cf-* dispatch
+  REQUIRE {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md has run before any cf-* dispatch
   IF REVIEWER_EXECUTION_PLAN is non-null:
     CONTINUE PlannedMultiReviewerDispatch
   IF REVIEWER_PLAN_RESOLVED is one of:

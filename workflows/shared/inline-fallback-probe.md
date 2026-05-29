@@ -27,8 +27,8 @@ WHEN:
   any workflow is about to dispatch a cf-* sub-agent
 
 DO:
-  REQUIRE SKILL.md § "Session Sub-Agent Approval Gate" is loaded
-  REQUIRE skills/studio/sub-agent-dispatch.md is loaded
+  REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md § "Session Sub-Agent Approval Gate" is loaded
+  REQUIRE `{cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md` is loaded
   IF host.supports_native_subagents == true AND SUB_AGENT_SESSION_APPROVED == unset:
     EMIT_MENU SubAgentApprovalMenu
     WAIT user.reply
@@ -50,7 +50,7 @@ MENU SubAgentApprovalMenu:
     STOP_TURN
 
 RULES:
-  - MUST apply SKILL.md § "Session Sub-Agent Approval Gate" then sub-agent-dispatch.md, in that order
+  - MUST apply SKILL.md § "Session Sub-Agent Approval Gate" then `{cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md`, in that order
   - MUST emit SubAgentApprovalMenu verbatim as defined in SKILL.md § "Session Sub-Agent Approval Gate"
     (option 1 = native sub-agents + remember for session, Suggested: 1;
      option 2 = inline fallback for this workflow)

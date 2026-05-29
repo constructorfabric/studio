@@ -21,7 +21,7 @@ PURPOSE:
   Dispatch facilitator, render proposed panel, manage panel edits, confirm seed topic.
 
 DO:
-  REQUIRE workflows/shared/inline-fallback-probe.md loaded before any cf-* sub-agent dispatch
+  REQUIRE `{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md` loaded before any cf-* sub-agent dispatch
   DISPATCH cf-brainstorm-facilitator with JSON contract from
     {cf-studio-path}/.core/skills/studio/agents/cf-brainstorm-facilitator.md
   WITH orchestrator-supplied values:

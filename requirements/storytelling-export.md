@@ -24,11 +24,11 @@ purpose: EXPLAIN_EXPORT=true behavior — write a navigable Markdown package ins
 
 <!-- /toc -->
 
-Loaded by `requirements/storytelling.md` (router) when `EXPLAIN_EXPORT=true`. Phases (E0-E5) and modes (presentation/review/onboarding/decision/socratic/change-impact) come from `storytelling-phases.md` and `storytelling-modes.md`; this module overrides only the output target (files instead of chat) and a few delivery rules.
+Loaded by `{cf-studio-path}/.core/requirements/storytelling.md` (router) when `EXPLAIN_EXPORT=true`. Phases (E0-E5) and modes (presentation/review/onboarding/decision/socratic/change-impact) come from `{cf-studio-path}/.core/requirements/storytelling-phases.md` and `{cf-studio-path}/.core/requirements/storytelling-modes.md`; this module overrides only the output target (files instead of chat) and a few delivery rules.
 
 ## When this loads
 
-`EXPLAIN_EXPORT=true` is set by the `generate.md` WHEN-rule on intent like `generate guide for X`, `make a README from X`, `export explain package`, `create training material from X`, `build onboarding doc set` — equivalents in any user language. Standard `generate.md` write-permission gates apply (user confirmation before writing files; no auto-approval flags unless explicitly requested).
+`EXPLAIN_EXPORT=true` is set by the `{cf-studio-path}/.core/workflows/generate.md` WHEN-rule on intent like `generate guide for X`, `make a README from X`, `export explain package`, `create training material from X`, `build onboarding doc set` — equivalents in any user language. Standard `{cf-studio-path}/.core/workflows/generate.md` write-permission gates apply (user confirmation before writing files; no auto-approval flags unless explicitly requested).
 
 ## Output structure
 

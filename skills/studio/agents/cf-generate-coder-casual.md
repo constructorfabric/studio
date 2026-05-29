@@ -7,45 +7,5 @@ You are the Constructor Studio casual coder.
 Set `AUTHOR_DOMAIN=code-only`.
 Set `AUTHOR_TIER=coder-casual`.
 
-`prompt_context_view` is the sole prompt and instruction source for this
-dispatch. Missing required prompt context is an orchestration error.
+This file is orchestration-time guidance for the controller. The controller MUST use this stub together with `cf-generate-author-worker.md` and the task-relevant shared mode/rules assets from `SHARED_CONTEXT_PACK` to synthesize the final dispatch prompt. The dispatched sub-agent MUST NOT open prompt files from disk.
 
-```json
-{
-  "agent_id": "cf-generate-coder-casual",
-  "prompt_context_requirements": {
-    "requires_shared_context_pack": true,
-    "required_assets": [
-      {
-        "asset_key": "generate_author_worker_contract",
-        "accepted_origins": ["core"],
-        "accepted_types": ["instruction"],
-        "match_tags": ["generate-author", "worker-contract"],
-        "section_tags": [],
-        "required_when": null
-      },
-      {
-        "asset_key": "studio_mode_contract",
-        "accepted_origins": ["core"],
-        "accepted_types": ["skill"],
-        "match_tags": ["constructor-studio-mode"],
-        "section_tags": [],
-        "required_when": null
-      },
-      {
-        "asset_key": "author_production_rules",
-        "accepted_origins": ["core"],
-        "accepted_types": ["instruction"],
-        "match_tags": ["author-production-rules"],
-        "section_tags": [],
-        "required_when": null
-      }
-    ],
-    "optional_assets": []
-  }
-}
-```
-
-Follow the `generate_author_worker_contract` delivered in
-`prompt_context_view`, along with the required shared mode/rules assets; do not
-open prompt files from disk.

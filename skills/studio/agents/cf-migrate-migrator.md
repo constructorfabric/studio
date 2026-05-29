@@ -19,46 +19,16 @@ description: Invoke when applying a pre-approved migration plan to disk — writ
 
 <!-- /toc -->
 
-## Prompt Context Contract
+## Dispatch Guidance
 
-`prompt_context_view` is the sole prompt and instruction source for this
-dispatch. Missing required prompt context is an orchestration error.
+This file is orchestration-time guidance for the controller, not a runtime
+self-bootstrap contract for the dispatched sub-agent.
 
-```json
-{
-  "agent_id": "cf-migrate-migrator",
-  "prompt_context_requirements": {
-    "requires_shared_context_pack": true,
-    "required_assets": [
-      {
-        "asset_key": "studio_mode_contract",
-        "accepted_origins": ["core"],
-        "accepted_types": ["skill"],
-        "match_tags": ["constructor-studio-mode"],
-        "section_tags": [],
-        "required_when": null
-      }
-    ],
-    "optional_assets": []
-  }
-}
-```
+The controller MUST load this file, resolve the task-relevant instruction
+assets from `SHARED_CONTEXT_PACK`, and synthesize a fully materialized final
+dispatch prompt for this agent. The dispatched sub-agent MUST execute only that
+final prompt and MUST NOT open prompt assets from disk directly.
 
-```text
-UNIT MigrationMigratorAgent
-
-PURPOSE:
-  Apply a pre-approved migration plan to disk: category A substitutions mechanically,
-  category B items interactively, category C operations printed for manual execution.
-
-RULES:
-  - MUST consume the `studio_mode_contract` asset from `prompt_context_view`
-    before acting
-  - MUST receive a plan (Planner output) and user selection before acting
-  - MUST record every modification in the manifest
-  - MUST operate in-place (isolation = false) so edits are visible to the verifier without a commit
-  - MUST_NOT open prompt assets from disk directly
-```
 
 ## Purpose
 

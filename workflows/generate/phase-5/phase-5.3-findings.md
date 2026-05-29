@@ -86,7 +86,7 @@ PURPOSE:
   approval gate.
 
 DO:
-  REQUIRE workflows/shared/inline-fallback-probe.md loaded before dispatch
+  REQUIRE `{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md` loaded before dispatch
 
   IF MAX_ITER == 0:
     SKIP partition + auto-fix logic
@@ -204,7 +204,7 @@ finding's `mechanical_rationale` alone. No user approval required. Auto-fixing n
 
   EXECUTE workflows/generate/phase-4-write.md § Author Selection and Dispatch
   APPEND returned findings_not_fixable to carry_forward
-    (open, load, follow phase-5.4-approval.md § Session-level carry-forward)
+    (open, load, follow {cf-studio-path}/.core/workflows/generate/phase-5/phase-5.4-approval.md § Session-level carry-forward)
   UPDATE manifest from returned manifest
   SET N = N + 1
   IF N > MAX_ITER:

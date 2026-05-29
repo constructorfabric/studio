@@ -64,7 +64,7 @@ RULES:
   - Code generation mode: design/spec context first; load checklist during validation/review
     unless current rules explicitly require it during implementation
   - Config mode: create/update config files
-  - After protocol.md: TARGET_TYPE, RULES, KIND, PATH, MODE, and resolved
+  - After `{cf-studio-path}/.core/skills/studio/protocol.md`: TARGET_TYPE, RULES, KIND, PATH, MODE, and resolved
     phase-appropriate dependencies are known
   - Key variables: {cf-studio-path}/config/, {ARTIFACTS_REGISTRY}, {KITS_PATH}, {PATH}
   - Use {KITS_PATH}/artifacts/{KIND}/examples/ for style and quality guidance
@@ -80,8 +80,9 @@ RULES:
   - Workflow fragments referenced by generate are controller-owned prompt
     assets loaded from {cf-studio-path}/.core/workflows/...
   - Before any downstream author or reviewer dispatch, the controller MUST
-    reuse or extend SHARED_CONTEXT_PACK and derive prompt_context_view that
-    satisfies the dispatched agent's prompt_context_requirements
+    reuse or extend SHARED_CONTEXT_PACK, load the agent prompt source, and
+    synthesize a final dispatch prompt with only the task-relevant instruction
+    context
   - Generate MUST NOT rely on prompt-consuming sub-agents reopening workflow,
     requirement, spec, or AGENTS prompt files directly
 ```
@@ -147,7 +148,7 @@ DO:
 UNIT GeneratePhase0
 
 PURPOSE:
-  Resolve dependencies after protocol.md loads.
+  Resolve dependencies after `{cf-studio-path}/.core/skills/studio/protocol.md` loads.
 
 WHEN:
   workflow enters dependency resolution after

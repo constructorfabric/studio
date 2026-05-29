@@ -19,46 +19,16 @@ description: Invoke at storytelling workflow phase E5 (wrap) to synthesize the f
 
 <!-- /toc -->
 
-## Prompt Context Contract
+## Dispatch Guidance
 
-`prompt_context_view` is the sole prompt and instruction source for this
-dispatch. Missing required prompt context is an orchestration error.
+This file is orchestration-time guidance for the controller, not a runtime
+self-bootstrap contract for the dispatched sub-agent.
 
-```json
-{
-  "agent_id": "storytelling-wrap",
-  "prompt_context_requirements": {
-    "requires_shared_context_pack": true,
-    "required_assets": [
-      {
-        "asset_key": "studio_mode_contract",
-        "accepted_origins": ["core"],
-        "accepted_types": ["skill"],
-        "match_tags": ["constructor-studio-mode"],
-        "section_tags": [],
-        "required_when": null
-      }
-    ],
-    "optional_assets": []
-  }
-}
-```
+The controller MUST load this file, resolve the task-relevant instruction
+assets from `SHARED_CONTEXT_PACK`, and synthesize a fully materialized final
+dispatch prompt for this agent. The dispatched sub-agent MUST execute only that
+final prompt and MUST NOT open prompt assets from disk directly.
 
-```text
-UNIT StorytellingWrapAgent
-
-PURPOSE:
-  Synthesize the final session summary from accumulated session state at phase E5 (wrap).
-
-RULES:
-  - REQUIRE prompt_context_view includes `studio_mode_contract`
-  - MUST treat each dispatch as a pure function over the JSON Inputs; ignore ambient transcript
-  - MUST_NOT write files
-  - MUST_NOT invoke downstream storytelling phases
-  - MUST_NOT invoke other Constructor Studio agents
-  - MUST execute Steps 1-7 in order; skipping any step is a contract violation
-  - MUST_NOT open prompt assets from disk directly
-```
 
 ## Inputs (dispatched-prompt contract)
 

@@ -38,8 +38,8 @@ RULES:
   - Mode files and PDSL helper contracts are controller-owned prompt assets
     loaded from {cf-studio-path}/.core/...
   - Before any cf-pdsl-* dispatch, the controller MUST reuse or extend
-    SHARED_CONTEXT_PACK and derive prompt_context_view that satisfies the
-    dispatched agent's prompt_context_requirements
+    SHARED_CONTEXT_PACK, load the agent prompt source, and synthesize the
+    final dispatch prompt with only the task-relevant instruction context
   - PDSL sub-agents MUST NOT self-bootstrap by reopening SKILL, workflow, spec,
     or AGENTS prompt files directly
 ```
@@ -168,9 +168,9 @@ DO (after approval resolved):
 
 RULES:
   - MUST apply Sub-Agent Approval Gate (SKILL.md) before any DISPATCH
-  - MUST apply dispatch protocol from sub-agent-dispatch.md before any DISPATCH
-  - MUST satisfy the dispatched agent's prompt_context_requirements from
-    SHARED_CONTEXT_PACK and pass prompt_context_view before any cf-pdsl-*
+  - MUST apply dispatch protocol from `{cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md` before any DISPATCH
+  - MUST synthesize the dispatched agent's final prompt from
+    SHARED_CONTEXT_PACK plus the agent prompt source before any cf-pdsl-*
     dispatch or inline contract
   - MUST_NOT dispatch write-capable modes (new, transform) until write summary is user-approved
   - MUST_NOT default INLINE_FALLBACK from host capability or missing approval
