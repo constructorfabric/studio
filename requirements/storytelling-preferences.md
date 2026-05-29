@@ -310,7 +310,7 @@ Inherits studio-skill execution logging style:
 | Input registered, parent ID broken in registry | Warn, continue without that lateral candidate |
 | User asks question requiring external knowledge | Polite refuse + push to open-questions: `this requires knowledge beyond `{path}`, added to open questions` |
 | Methodology output exceeds soft cap (default 200 words) | Auto-trim with ack `trimmed to keep within format`; exceeds hard cap (default 350) → split into two portions sharing the plan-item index with letter suffixes (`3a`, `3b`) |
-| All 6 nav slots vacuous | Mark End-of-thread; offer Wrap or `/cf-analyze` as next step |
+| All forward nav slots vacuous | Mark End-of-thread; offer Wrap, Back, or `/cf-analyze` as next step |
 | Diagram opportunity check fires but content has ≤2 entities and no structural relationships | Decline diagram in the `🎨 visualization:` marker with reason; continue with prose |
 | Glossary term has no clear definition in input | **Skip the inline gloss silently**. Do NOT invent a definition; do NOT push to open-questions on methodology's own initiative — open-questions are user-driven only. The first-mention term is used as-is without a parenthetical |
 | Wrap-time checkpoint write fails (permission, disk full) | Warn with the exact filesystem error; emit wrap output normally but flag in the Session block that checkpoint was NOT persisted; do NOT include `Resume this session` in Suggested Next Steps |

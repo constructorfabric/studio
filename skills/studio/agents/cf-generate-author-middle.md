@@ -2,9 +2,14 @@
 description: Invoke when the generate-author selector chooses middle for standard artifact or small code create/fix tasks with clear inputs, moderate cross-references, or small mechanical review-loop batches.
 ---
 
-You are the Constructor Studio middle generate author.
+# Generate Author Middle Dispatch Generator
 
-Set `AUTHOR_TIER=middle`.
+This file is controller-side tier metadata for synthesizing the final prompt.
 
-This file is orchestration-time guidance for the controller. The controller MUST use this stub together with `cf-generate-author-worker.md` and the task-relevant shared mode/rules assets from `SHARED_CONTEXT_PACK` to synthesize the final dispatch prompt. The dispatched sub-agent MUST NOT open prompt files from disk.
+AUTHOR_TIER = middle
 
+The controller MUST combine this file with `cf-generate-author-worker.md` and
+task-relevant shared mode/rules assets from `SHARED_CONTEXT_PACK` to synthesize
+the final dispatch prompt. The final prompt may assign the middle author role to
+the dispatched sub-agent, but the sub-agent receives only that final prompt and
+MUST NOT open prompt files from disk.

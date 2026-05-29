@@ -4,7 +4,7 @@ description: Invoke in single-agent panel mode. Controller uses this file to gen
 
 # Brainstorm Panel Dispatch Generator
 
-This file is for the controller, not for direct sub-agent self-bootstrap.
+This file is for the controller, not for direct sub-agent prompt loading.
 
 ## Generator Contract
 

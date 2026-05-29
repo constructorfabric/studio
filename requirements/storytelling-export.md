@@ -148,7 +148,7 @@ To avoid silently dropping audience-relevant gaps, methodology MAY emit a chat-o
 
 ## Refused operations during EXPLAIN_EXPORT
 
-- Per-portion chat navigation prompts (the 6-slot Phase E2 nav block) MUST NOT be emitted; navigation lives in file footers
+- Per-portion chat navigation prompts (the 7-slot Phase E2 nav block) MUST NOT be emitted; navigation lives in file footers
 - Mid-session Wrap (Phase E5 trigger 2) is disabled — `stop` / `abort` halt batch generation and leave a partial package on disk; methodology does NOT prompt to "save a checkpoint" because the package files themselves are the persisted state
 
 ## Re-generation

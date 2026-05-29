@@ -264,7 +264,7 @@ Enables users to install Studio globally, initialize it in any project with sens
 8. [x] - `p1` - **RETURN** exit code from handler (0=PASS, 1=error, 2=FAIL) - `inst-return-code`
 
 **Supporting**:
-- [x] - `p1` - Imports, command wrapper functions, context loading, help text, command descriptions, section layout, `__main__` block - `inst-route-helpers`
+- [x] - `p1` - Imports, command wrapper functions, context loading, help text, command descriptions, section layout, `__main__` block, and thin `cf-help` workflow routing for `/cf help` - `inst-route-helpers`
 
 ### Define Root System
 

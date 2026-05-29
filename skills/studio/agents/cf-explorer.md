@@ -4,7 +4,7 @@ description: Invoke when a controller needs read-only discovery of task-relevant
 
 # Explorer Dispatch Generator
 
-This file is for the controller, not for direct sub-agent self-bootstrap.
+This file is for the controller, not for direct sub-agent prompt loading.
 
 ## Generator Contract
 

@@ -4,7 +4,7 @@ description: Invoke for one persona-scoped brainstorm contribution in fan-out mo
 
 # Brainstorm Expert Dispatch Generator
 
-This file is for the controller, not for direct sub-agent self-bootstrap.
+This file is for the controller, not for direct sub-agent prompt loading.
 
 ## Generator Contract
 

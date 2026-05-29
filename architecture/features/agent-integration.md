@@ -101,11 +101,21 @@ Without this feature, users would need to manually create and maintain agent-spe
 **Success Scenarios**:
 - Agent triggers generate workflow → loads SKILL.md, resolves kit, loads rules/template/checklist/example
 - Agent triggers analyze workflow → loads SKILL.md, runs validation, presents report
+- Agent triggers explore workflow → emits a resource map/context summary, offers an explicit save bundle location (`{cf-studio-path}/.cache/explore/{slug}-{ISO}/` by default or a user-selected folder), and writes only after confirmation while keeping explorer output in `resource_context`
+- Agent invokes `/cf` or the root skill without a routable request → clarification
+  exposes the full route family instead of a partial workflow subset, including
+  delegation, phase compile/execute, brainstorm, PDSL, plan, explore, generate,
+  analyze/explain, workspace, map, auto-config, migration, and installed-kit
+  shortcut examples such as PR review/status.
 
 **Steps**:
 1. - `p1` - Agent loads SKILL.md navigation hub - `inst-load-skill`
 2. - `p1` - Agent resolves workflow file from `.core/workflows/` or `.gen/kits/*/workflows/` - `inst-resolve-workflow`
 3. - `p1` - Agent follows workflow execution protocol - `inst-follow-protocol`
+4. - `p1` - Explore workflow save behavior stays orchestrator-owned: after emitting the resource map/context summary, the agent offers explicit save options, defaults to `{cf-studio-path}/.cache/explore/{slug}-{ISO}/`, may accept a user-selected folder, writes `result.json`, `resource-map.md`, and `summary.md` only after confirmation, and does not merge explorer output into `SHARED_CONTEXT_PACK` - `inst-explore-save-offer`
+5. - `p1` - If routing is ambiguous, agent presents every core route family
+   plus direct installed-kit shortcut examples before asking the user to choose
+   or restate a concrete request - `inst-clarify-full-route-family`
 
 ## 3. Processes / Business Logic (CDSL)
 
@@ -232,6 +242,8 @@ Without this feature, users would need to manually create and maintain agent-spe
 - [x] - `p1` - Composed SKILL.md includes core commands section
 - [x] - `p1` - Composed SKILL.md includes all `@cpt:skill` sections from installed kits
 - [x] - `p1` - Composed SKILL.md written to `.gen/SKILL.md`
+- [x] - `p1` - Root skill metadata advertises all chat-facing route families
+  rather than only plan/generate/analyze/workspace shortcuts
 
 ### Workflow Discovery
 
@@ -253,5 +265,7 @@ Without this feature, users would need to manually create and maintain agent-spe
 - [x] `cfs agents` reports generated integration files in read-only mode
 - [x] Agent entry points correctly reference SKILL.md and workflow files
 - [x] SKILL.md composition includes all installed kit skill sections
+- [x] Ambiguous `/cf` clarification surfaces all core route families and
+  installed-kit shortcut examples
 - [x] `--dry-run` mode shows planned output without writing files
 - [x] Re-running `cfs generate-agents` after kit install produces updated entry points

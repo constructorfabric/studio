@@ -1,41 +1,46 @@
 ---
-description: "Invoke when a Constructor Studio author worker sub-agent (junior/middle/senior/lead, coder-casual/coder-smart, prompt-engineer-casual/prompt-engineer-smart) loads its shared contract — provides Inputs schema, mode=create/fix methodology, placeholder/ID/CDSL/traceability rules, and Response Completion Gate."
+description: "Invoke when the controller needs shared generator guidance for a Constructor Studio author worker sub-agent (junior/middle/senior/lead, coder-casual/coder-smart, prompt-engineer-casual/prompt-engineer-smart): provides input schema, mode=create/fix methodology, placeholder/ID/CDSL/traceability rules, and response completion gate."
 ---
 
 <!-- toc -->
 
-- [Dispatch Guidance](#dispatch-guidance)
+- [Dispatch Generator Contract](#dispatch-generator-contract)
 - [Tier Guard](#tier-guard)
-- [Inputs (dispatched-prompt contract)](#inputs-dispatched-prompt-contract)
+- [Frozen Input Payload](#frozen-input-payload)
 - [Git Constraint (read from dispatch context — MUST obey)](#git-constraint-read-from-dispatch-context--must-obey)
 - [Methodology — `mode=create`](#methodology--modecreate)
 - [Methodology — `mode=fix`](#methodology--modefix)
-- [Output (return-value contract)](#output-return-value-contract)
+- [Output Contract](#output-contract)
 - [Response Completion Gate](#response-completion-gate)
 
 <!-- /toc -->
 
-You are a Constructor Studio generate author worker. The tier-specific prompt
-sets `AUTHOR_TIER` before loading this file. The coder-* and
-prompt-engineer-* stubs also set `AUTHOR_DOMAIN` before loading this file;
-generic author-* stubs (junior/middle/senior/lead) do not. You write the
-artifact or code in `mode=create`, or patch it against approved findings in
-`mode=fix`, and return a manifest of changed files.
+This file is the shared controller-side generator source for generate author
+workers. Tier-specific generator stubs provide `AUTHOR_TIER`; coder-* and
+prompt-engineer-* stubs also provide `AUTHOR_DOMAIN`; generic author-* stubs
+(junior/middle/senior/lead) do not. The controller uses this file plus that
+tier metadata to synthesize the final dispatch prompt that tells the sub-agent
+how to write the artifact/code in `mode=create` or patch approved findings in
+`mode=fix`.
 
-Authority boundary: this agent reads project files and writes the specified
-target files plus `{cf-studio-path}/config/artifacts.toml` in
-`mode=create`. It does NOT validate (the deterministic-validator does that)
-and does NOT invoke other Constructor Studio agents.
+Authority boundary to inject into the final prompt: the dispatched author may
+read project files and write the specified target files plus
+`{cf-studio-path}/config/artifacts.toml` in `mode=create`. It does NOT validate
+(the deterministic-validator does that) and does NOT invoke other Constructor
+Studio agents.
 
-## Dispatch Guidance
+## Dispatch Generator Contract
 
-This file is orchestration-time guidance for the controller, not a runtime
-self-bootstrap contract for the dispatched sub-agent.
+This file is a controller-side prompt generator source, not a runtime prompt for the dispatched sub-agent.
 
-The controller MUST load this file, resolve the task-relevant instruction
-assets from `SHARED_CONTEXT_PACK`, and synthesize a fully materialized final
-dispatch prompt for this agent. The dispatched sub-agent MUST execute only that
-final prompt and MUST NOT open prompt assets from disk directly.
+The controller MUST use this file to synthesize the final dispatch prompt for
+the agent. The final prompt MUST include the task statement, frozen input
+payload, task-relevant instruction assets resolved from `SHARED_CONTEXT_PACK`,
+allowed resource context, output contract, completion gate, and the explicit
+rule that the dispatched sub-agent executes only that final prompt.
+
+The dispatched sub-agent MUST NOT open prompt assets from disk and MUST NOT
+rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
 
 
 ## Tier Guard
@@ -96,7 +101,7 @@ RULES:
                             or output contracts; no code/data changes
 ```
 
-## Inputs (dispatched-prompt contract)
+## Frozen Input Payload
 
 ```json
 {
@@ -212,7 +217,7 @@ RULES:
       `suggested_fix` governs; rationale is explanatory context only
 ```
 
-## Output (return-value contract)
+## Output Contract
 
 A markdown block listing every changed file:
 

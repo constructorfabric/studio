@@ -143,6 +143,7 @@ DO:
     {cf-studio-path}/.core/skills/studio/agents/cf-generate-planner.md
   WITH orchestrator-supplied values:
     plan_mode = "memory" or "disk" from user's reply
+    work_request = original generate request / approved statement of what must be done
     target_type, mode, kind, name, rules_mode, system
     template_path, example_path, kit_rules_path, checklist_path
     design_artifact_path (code mode only, otherwise null)
@@ -158,6 +159,7 @@ DO:
 
   VALIDATE:
     - every task's recommended_author is one of the registered author worker agents
+    - work_request is present, non-empty, and preserves what the user asked to do
     - every target path is covered by at least one task
     - tasks in the same parallel_group have disjoint target_paths
     - no parallel group contains more than one task with updates_artifacts_toml=true

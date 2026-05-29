@@ -5,22 +5,25 @@ description: Invoke when the analyze workflow needs a reviewer execution plan: d
 <!-- toc -->
 
 - [Purpose](#purpose)
-- [Inputs (dispatched-prompt contract)](#inputs-dispatched-prompt-contract)
+- [Frozen Input Payload](#frozen-input-payload)
 - [Planning Rules](#planning-rules)
 - [Output Contract](#output-contract)
 - [Response Completion Gate](#response-completion-gate)
 
 <!-- /toc -->
 
-## Dispatch Guidance
+## Dispatch Generator Contract
 
-This file is orchestration-time guidance for the controller, not a runtime
-self-bootstrap contract for the dispatched sub-agent.
+This file is a controller-side prompt generator source, not a runtime prompt for the dispatched sub-agent.
 
-The controller MUST load this file, resolve the task-relevant instruction
-assets from `SHARED_CONTEXT_PACK`, and synthesize a fully materialized final
-dispatch prompt for this agent. The dispatched sub-agent MUST execute only that
-final prompt and MUST NOT open prompt assets from disk directly.
+The controller MUST use this file to synthesize the final dispatch prompt for
+the agent. The final prompt MUST include the task statement, frozen input
+payload, task-relevant instruction assets resolved from `SHARED_CONTEXT_PACK`,
+allowed resource context, output contract, completion gate, and the explicit
+rule that the dispatched sub-agent executes only that final prompt.
+
+The dispatched sub-agent MUST NOT open prompt assets from disk and MUST NOT
+rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
 
 
 ## Purpose
@@ -29,11 +32,12 @@ Create a lightweight reviewer execution plan for the analyze workflow. Decompose
 the analyze run into reviewer sub-agent tasks partitioned by methodology and
 path-partition, identify dependencies, and mark which tasks can run in parallel.
 
-## Inputs (dispatched-prompt contract)
+## Frozen Input Payload
 
 ```json
 {
   "plan_mode": "memory|disk",
+  "work_request": "<original user request / what must be done>",
   "target_type": "artifact|code|mixed",
   "mode": "review|consistency|prompt|bug|explain|change",
   "kind": "<KIND or null>",
@@ -101,6 +105,10 @@ RULES:
       Partition per-methodology tasks by paths: split into groups of up to 4 paths
       so reviewers can run in parallel on disjoint partitions
   - Each task MUST name exactly one reviewer from available_reviewers
+  - Every plan MUST preserve work_request as the authoritative statement of
+    what must be reviewed/analyzed; task titles, methodology, partitions, and
+    sequencing explain how to execute it but MUST_NOT replace or omit the
+    work_request
   - Each task MUST name exactly one methodology
   - Each task MUST have a non-empty path_partition subset of applicable inputs
   - Tasks for different methodologies MAY run in the same parallel group
@@ -147,6 +155,7 @@ DO:
   EMIT reviewer_plan JSON block:
     {
       "plan_mode": "memory|disk",
+      "work_request": "<preserved original request / what must be done>",
       "summary": "<short summary>",
       "tasks": [
         {
@@ -178,6 +187,9 @@ DO:
 
 RULES:
   - MUST use exactly the marker <!-- reviewer_plan --> at column 0
+  - Every disk-mode plan MUST preserve work_request in plan.json and Markdown
+    cache files so a resumed session can recover what must be reviewed/analyzed
+    without inferring it from task sequencing
   - MUST_NOT emit prose after the JSON block
 ```
 
@@ -199,6 +211,8 @@ RULES:
     methodology must be disjoint
   - Every reviewer MUST be one of the registered reviewer sub-agents
     and MUST match the task's methodology
+  - work_request MUST be non-empty and MUST preserve the original requested
+    review/analyze scope, not only the execution sequence
   - Every task MUST have at least one acceptance criterion
   - The reviewer_plan JSON block MUST be well-formed and follow the contract
   - MUST satisfy the SKILL.md invariant

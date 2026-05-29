@@ -103,6 +103,7 @@ DO:
   REQUIRE `{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md` has run
   DISPATCH cf-analyze-planner (read-only) with:
     plan_mode             = "memory" or "disk"
+    work_request          = original analyze request / approved statement of what must be reviewed or analyzed
     target_type, mode, kind, rules_mode, system
     kit_rules_path, checklist_path, template_path, example_path, design_artifact_path
     target_paths          = resolved analyze target set
@@ -117,6 +118,7 @@ DO:
   Parse marker <!-- reviewer_plan --> and following JSON block.
   Validate:
     - every active methodology has at least one task
+    - work_request is present, non-empty, and preserves what the user asked to analyze
     - union of path_partition per methodology covers every applicable input path
     - partitions for same methodology are disjoint
     - every reviewer matches task's methodology
@@ -147,9 +149,14 @@ DO:
     scope: {cf-studio-path}/.cache/analyze-plans/{slug}-{ISO}/**
   Write cache files:
     {cf-studio-path}/.cache/analyze-plans/{slug}-{ISO}/index.md
+      (work_request, summary, risk flags, ordered parallel groups, task table)
     {cf-studio-path}/.cache/analyze-plans/{slug}-{ISO}/plan.json
+      (exact parsed REVIEWER_EXECUTION_PLAN including work_request)
     {cf-studio-path}/.cache/analyze-plans/{slug}-{ISO}/reviewers/{reviewer}.md
+      (reviewer task subset grouped by methodology, parallel group, and dependency order)
     {cf-studio-path}/.cache/analyze-plans/{slug}-{ISO}/tasks/{task_id}.md
+      (task title, work_request, methodology, reviewer, path partition,
+       dependencies, parallel group, rationale, acceptance criteria)
   SET CF_PHASE_GATE = armed
   IF all writes succeed:
     SET REVIEWER_PLAN_CACHE_DIR = directory path

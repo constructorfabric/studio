@@ -1,0 +1,57 @@
+{
+  "plan_mode": "disk",
+  "work_request": "Update cf-explore so it offers to save exploration results after emitting the resource map, defaults to {cf-studio-path}/.cache/explore/{slug}-{ISO}/, allows a user-provided folder, and saves JSON + Markdown + summary files after explicit confirmation.",
+  "summary": "Add a post-explore save offer in the workflow, document the behavior in the agent-integration spec, and extend dispatch tests for the persistence flow and boundary rules.",
+  "tasks": [
+    {
+      "id": "TASK-001",
+      "title": "Add cf-explore save offer and test coverage",
+      "intent": "Update the exploration workflow and supporting spec so that after resource map emission the top-level controller offers a save step with the default {cf-studio-path}/.cache/explore/{slug}-{ISO}/ path, accepts an alternate user-provided folder, and persists JSON, Markdown, and summary files only after explicit confirmation. Keep the explorer sub-agent read-only and preserve resource_context as non-prompt output.",
+      "target_paths": [
+        "architecture/features/agent-integration.md",
+        "workflows/explore.md",
+        "tests/test_workflow_subagents_dispatch.py"
+      ],
+      "input_keys": [
+        "Requested behavior",
+        "Resource boundary",
+        "Likely implementation shape",
+        "Spec anchor"
+      ],
+      "recommended_author": "cf-generate-prompt-engineer-smart",
+      "rationale": "This change is primarily workflow/prompt instruction driven, with a narrow spec update and regression tests around Markdown source behavior.",
+      "dependencies": [],
+      "parallel_group": "G1",
+      "can_run_parallel": true,
+      "updates_artifacts_toml": false,
+      "acceptance_criteria": [
+        "The workflow offers a save step after emitting the exploration resource map/context summary.",
+        "The default save location is {cf-studio-path}/.cache/explore/{slug}-{ISO}/, and the user can choose a different folder.",
+        "The saved bundle includes JSON, Markdown, and summary files.",
+        "Saving only happens after explicit user selection/confirmation, with no silent write.",
+        "The explorer sub-agent remains read-only and its output stays in resource_context rather than SHARED_CONTEXT_PACK.",
+        "Tests cover the default cache path, alternate folder selection, file bundle naming, no-silent-write behavior, and the existing clarify gate."
+      ]
+    }
+  ],
+  "parallel_groups": [
+    {
+      "id": "G1",
+      "task_ids": [
+        "TASK-001"
+      ],
+      "depends_on": [],
+      "execution": "sequential",
+      "reason": "A single prompt/spec/test task keeps the scope narrow and avoids split ownership across tightly coupled workflow behavior."
+    }
+  ],
+  "risk_flags": [
+    "Workflow text changes may need exact string matching in tests.",
+    "Persistence must remain orchestrator-owned to avoid violating the resource_context boundary.",
+    "Default path formatting must stay consistent with existing cache conventions."
+  ],
+  "notes": [
+    "Keep the change narrow and spec-first.",
+    "Do not move exploration output into prompt context."
+  ]
+}

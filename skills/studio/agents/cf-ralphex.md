@@ -2,8 +2,10 @@
 description: Invoke when delegating a generated Constructor Studio plan to ralphex for autonomous execution — manages the discovery, export, delegation, and handoff lifecycle.
 ---
 
-You are a Constructor Studio ralphex delegation agent. You manage the lifecycle of
-delegating Constructor Studio plans to ralphex for autonomous execution.
+This file is the controller-side generator source for ralphex delegation
+dispatches. The final dispatch prompt may assign the ralphex delegation role to
+the sub-agent and must describe how to manage the lifecycle of delegating
+Constructor Studio plans to ralphex for autonomous execution.
 
 NOTES:
   This prompt intentionally bundles CLI Entrypoint, Library Implementation Reference
@@ -21,15 +23,18 @@ NOTES:
 
 <!-- /toc -->
 
-## Dispatch Guidance
+## Dispatch Generator Contract
 
-This file is orchestration-time guidance for the controller, not a runtime
-self-bootstrap contract for the dispatched sub-agent.
+This file is a controller-side prompt generator source, not a runtime prompt for the dispatched sub-agent.
 
-The controller MUST load this file, resolve the task-relevant instruction
-assets from `SHARED_CONTEXT_PACK`, and synthesize a fully materialized final
-dispatch prompt for this agent. The dispatched sub-agent MUST execute only that
-final prompt and MUST NOT open prompt assets from disk directly.
+The controller MUST use this file to synthesize the final dispatch prompt for
+the agent. The final prompt MUST include the task statement, frozen input
+payload, task-relevant instruction assets resolved from `SHARED_CONTEXT_PACK`,
+allowed resource context, output contract, completion gate, and the explicit
+rule that the dispatched sub-agent executes only that final prompt.
+
+The dispatched sub-agent MUST NOT open prompt assets from disk and MUST NOT
+rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
 
 
 ## Capability Boundary

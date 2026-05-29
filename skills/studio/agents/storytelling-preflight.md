@@ -5,7 +5,7 @@ description: Invoke at storytelling workflow phase E0 to resolve input access ti
 <!-- toc -->
 
 - [Authority boundary](#authority-boundary)
-- [Inputs (dispatched-prompt contract)](#inputs-dispatched-prompt-contract)
+- [Frozen Input Payload](#frozen-input-payload)
 - [Methodology](#methodology)
   - [Step 1 — Canonicalize path and derive session_id](#step-1--canonicalize-path-and-derive-session_id)
   - [Step 2 — Session discovery scan](#step-2--session-discovery-scan)
@@ -15,23 +15,26 @@ description: Invoke at storytelling workflow phase E0 to resolve input access ti
   - [Step 5 — Detect target_type and primary_language](#step-5--detect-target_type-and-primary_language)
   - [Step 5b — Local-editable detection](#step-5b--local-editable-detection)
   - [Step 6 — Load preferences](#step-6--load-preferences)
-- [Output (return-value contract)](#output-return-value-contract)
+- [Output Contract](#output-contract)
 - [Response Completion Gate](#response-completion-gate)
 
 <!-- /toc -->
 
-## Dispatch Guidance
+## Dispatch Generator Contract
 
-This file is orchestration-time guidance for the controller, not a runtime
-self-bootstrap contract for the dispatched sub-agent.
+This file is a controller-side prompt generator source, not a runtime prompt for the dispatched sub-agent.
 
-The controller MUST load this file, resolve the task-relevant instruction
-assets from `SHARED_CONTEXT_PACK`, and synthesize a fully materialized final
-dispatch prompt for this agent. The dispatched sub-agent MUST execute only that
-final prompt and MUST NOT open prompt assets from disk directly.
+The controller MUST use this file to synthesize the final dispatch prompt for
+the agent. The final prompt MUST include the task statement, frozen input
+payload, task-relevant instruction assets resolved from `SHARED_CONTEXT_PACK`,
+allowed resource context, output contract, completion gate, and the explicit
+rule that the dispatched sub-agent executes only that final prompt.
+
+The dispatched sub-agent MUST NOT open prompt assets from disk and MUST NOT
+rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
 
 
-## Inputs (dispatched-prompt contract)
+## Frozen Input Payload
 
 ```json
 {
@@ -354,7 +357,7 @@ RULES:
   - MUST set preferences_loaded to an object (never null)
 ```
 
-## Output (return-value contract)
+## Output Contract
 
 ```json
 {

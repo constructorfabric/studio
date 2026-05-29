@@ -4,7 +4,7 @@ description: Invoke when opening a brainstorm session. Controller uses this file
 
 # Brainstorm Facilitator Dispatch Generator
 
-This file is for the controller, not for direct sub-agent self-bootstrap.
+This file is for the controller, not for direct sub-agent prompt loading.
 
 ## Generator Contract
 

@@ -29,14 +29,14 @@ DO:
 
   WRITE these cache files:
     {cf-studio-path}/.cache/generate-plans/{slug}-{ISO}/index.md
-      (summary, risk flags, ordered parallel groups, task table)
+      (work_request, summary, risk flags, ordered parallel groups, task table)
     {cf-studio-path}/.cache/generate-plans/{slug}-{ISO}/plan.json
-      (exact parsed AUTHOR_EXECUTION_PLAN)
+      (exact parsed AUTHOR_EXECUTION_PLAN including work_request)
     {cf-studio-path}/.cache/generate-plans/{slug}-{ISO}/agents/{author_agent}.md
       per involved author (subset of tasks for that author, grouped by parallel
       group and dependency order)
     {cf-studio-path}/.cache/generate-plans/{slug}-{ISO}/tasks/{task_id}.md
-      per planned task (task title, intent, target paths, recommended author,
+      per planned task (task title, work_request, intent, target paths, recommended author,
       dependencies, parallel group, rationale, input keys, acceptance criteria)
 
   IF all writes succeed:

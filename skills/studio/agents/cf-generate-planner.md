@@ -5,22 +5,25 @@ description: "Invoke when generate inputs are approved and the workflow needs a 
 <!-- toc -->
 
 - [Purpose](#purpose)
-- [Inputs (dispatched-prompt contract)](#inputs-dispatched-prompt-contract)
+- [Frozen Input Payload](#frozen-input-payload)
 - [Planning Rules](#planning-rules)
 - [Output Contract](#output-contract)
 - [Response Completion Gate](#response-completion-gate)
 
 <!-- /toc -->
 
-## Dispatch Guidance
+## Dispatch Generator Contract
 
-This file is orchestration-time guidance for the controller, not a runtime
-self-bootstrap contract for the dispatched sub-agent.
+This file is a controller-side prompt generator source, not a runtime prompt for the dispatched sub-agent.
 
-The controller MUST load this file, resolve the task-relevant instruction
-assets from `SHARED_CONTEXT_PACK`, and synthesize a fully materialized final
-dispatch prompt for this agent. The dispatched sub-agent MUST execute only that
-final prompt and MUST NOT open prompt assets from disk directly.
+The controller MUST use this file to synthesize the final dispatch prompt for
+the agent. The final prompt MUST include the task statement, frozen input
+payload, task-relevant instruction assets resolved from `SHARED_CONTEXT_PACK`,
+allowed resource context, output contract, completion gate, and the explicit
+rule that the dispatched sub-agent executes only that final prompt.
+
+The dispatched sub-agent MUST NOT open prompt assets from disk and MUST NOT
+rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
 
 
 ## Purpose
@@ -29,11 +32,12 @@ Create a lightweight execution plan for the generate author workers. Decompose
 work into author tasks, recommend author worker agents, identify dependencies,
 and mark which tasks can run in parallel.
 
-## Inputs (dispatched-prompt contract)
+## Frozen Input Payload
 
 ```json
 {
   "plan_mode": "memory|disk",
+  "work_request": "<original user request / what must be done>",
   "target_type": "artifact|code|config|mixed",
   "mode": "create|fix",
   "kind": "<KIND or null>",
@@ -77,6 +81,9 @@ RULES:
   - Hard limit: maximum 10 tasks per plan
   - Preferred range: 1–3 tasks unless the work is clearly multi-domain or parallelizable
   - Every task MUST name one recommended author from available_authors
+  - Every plan MUST preserve work_request as the authoritative statement of
+    what must be done; task titles, intent, sequencing, and acceptance criteria
+    explain how to execute it but MUST_NOT replace or omit the work_request
   - Every task MUST list its target_paths
   - Target paths in the same parallel group MUST be disjoint
   - MUST_NOT put two tasks that update {cf-studio-path}/config/artifacts.toml
@@ -111,6 +118,7 @@ DO:
   EMIT author_plan JSON block:
     {
       "plan_mode": "memory|disk",
+      "work_request": "<preserved original request / what must be done>",
       "summary": "<short summary>",
       "tasks": [
         {
@@ -143,6 +151,9 @@ DO:
 
 RULES:
   - MUST use exactly the marker <!-- author_plan --> at column 0
+  - Every disk-mode plan MUST preserve work_request in plan.json and Markdown
+    cache files so a resumed session can recover what must be done without
+    inferring it from task sequencing
   - MUST_NOT emit prose after the JSON block
 ```
 
@@ -158,6 +169,8 @@ RULES:
   - Every target_paths entry MUST be covered by at least one task
   - MUST_NOT have two tasks in the same parallel group share a target path
   - Every recommended_author MUST be one of the registered author worker agents
+  - work_request MUST be non-empty and MUST preserve the original requested
+    work scope, not only the execution sequence
   - Every task MUST have at least one acceptance criterion
   - The author_plan JSON block MUST be well-formed and follow the contract
   - MUST satisfy the SKILL.md invariant

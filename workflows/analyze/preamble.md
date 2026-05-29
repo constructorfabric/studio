@@ -39,11 +39,63 @@ STATE:
   enforceRemediationPrompts: true | false
     default: true
     reset: start of workflow run
+  CF_HELP_PRESET: false | true
+    default: false
+  EXPLAIN_TARGET: string | null
+    default: null
+  STORYTELLING_MODE: string | null
+    default: null
+  STORYTELLING_ARTIFACT_DISPOSITION: string | null
+    default: null
+  STORYTELLING_AUDIENCE: string | null
+    default: null
+  STORYTELLING_CONTEXT_PACK_STRATEGY: string | null
+    default: null
+  STORYTELLING_PLAN_APPROVED: false | true
+    default: false
+  STORYTELLING_DIAGRAM_FORMAT: ascii | mermaid | both | null
+    default: null
+  STORYTELLING_DIAGRAM_FORMAT_PRESET: false | true
+    default: false
+  STORYTELLING_HELP_GOAL: string | null
+    default: null
 
 DO:
   ALWAYS load {cf-studio-path}/.core/skills/studio/SKILL.md WHEN {cfs_mode} == off
   ALWAYS load {cf-studio-path}/.core/skills/studio/protocol.md FIRST
-  Initialize all flags to their defaults (listed in STATE above)
+  Initialize workflow-owned analysis flags to their defaults:
+    SEMANTIC_ONLY=false, CHANGE_REVIEW=false, CODE_REVIEW=false,
+    CODE_BUG_REVIEW=false, CONSISTENCY_REVIEW=false, PROMPT_REVIEW=false,
+    PROMPT_BUG_REVIEW=false, EXPLAIN_MODE=false, ARTIFACT_REVIEW=false,
+    CF_PHASE_GATE=armed, enforceRemediationPrompts=true
+  PRESERVE route-supplied preset variables if already set by routing:
+    CF_HELP_PRESET, EXPLAIN_TARGET, STORYTELLING_MODE,
+    STORYTELLING_ARTIFACT_DISPOSITION, STORYTELLING_AUDIENCE,
+    STORYTELLING_CONTEXT_PACK_STRATEGY, STORYTELLING_PLAN_APPROVED,
+    STORYTELLING_DIAGRAM_FORMAT, STORYTELLING_DIAGRAM_FORMAT_PRESET,
+    STORYTELLING_HELP_GOAL
+  IF CF_HELP_PRESET == true:
+    LOAD {cf-studio-path}/.core/requirements/storytelling.md
+    SET EXPLAIN_MODE = true
+    SET EXPLAIN_TARGET = "{cf-studio-path}" unless already set
+    SET STORYTELLING_MODE = "presentation" unless already set
+    SET STORYTELLING_ARTIFACT_DISPOSITION = "chat-only" unless already set
+    SET STORYTELLING_AUDIENCE = "Constructor Studio newcomers" unless already set
+    SET STORYTELLING_CONTEXT_PACK_STRATEGY = "hybrid" unless already set
+    SET STORYTELLING_PLAN_APPROVED = true
+    SET STORYTELLING_DIAGRAM_FORMAT = "ascii" unless already set
+    SET STORYTELLING_DIAGRAM_FORMAT_PRESET = true
+    SET enforceRemediationPrompts = false
+    FORBID Phase 2 deterministic gate
+    FORBID Phase 3 standard semantic checklist
+    FORBID Phase 5 (Storytelling Output emits Suggested Next Steps)
+    REQUIRE Storytelling Output schema in Phase 4
+    FORBID emitting Fix Prompt / Plan Prompt
+    CONTINUE through the normal Storytelling Protocol E0-E5 using the
+    prefilled variables as already-resolved gate answers
+    do not ask mode, disposition, audience, context-pack-strategy, export,
+    plan-approval, or diagram-format questions for this run
+    FORBID custom one-shot help rendering or a generic status overview
   Match methodology flags from user request:
     IF code/codebase/implementation analysis:
       SET CODE_REVIEW = true
@@ -93,7 +145,8 @@ MENU StorytellingVsPromptReviewMenu:
     STOP_TURN
 
 INVARIANTS:
-  - MUST initialize ALL flags before Phase 0 runs
+  - MUST initialize workflow-owned analysis flags before Phase 0 runs
+  - MUST preserve route-supplied preset variables across initialization
   - Phase 0 (phase-0-dependencies.md) MUST_NOT re-initialize flags to false
   - MUST_NOT auto-enter EXPLAIN_MODE for ordinary review/audit/inspect requests
     (review my changes, review this PR, review this diff, audit this design,
@@ -102,6 +155,11 @@ INVARIANTS:
   - WHEN EXPLAIN_MODE=true: the NEXT user-visible assistant message MUST be the
     E0/E1 explain-session opener; any direct explanation/summary/walkthrough
     emitted before the four E1 gates resolve is INVALID (see {cf-studio-path}/.core/requirements/storytelling.md AP-#0)
+  - WHEN CF_HELP_PRESET=true: the preset variables are the E1 gate answers;
+    MUST_NOT ask those gates again; MUST run the normal Storytelling Protocol
+    E0-E5 against EXPLAIN_TARGET={cf-studio-path}; MUST_NOT replace it with a
+    custom one-shot overview/status summary; MUST render diagrams as ASCII
+    inline in chat unless the user overrides mid-session
   - MUST set enforceRemediationPrompts=false ONLY when EXPLAIN_MODE=true
   - Each methodology is loaded by exactly one matched sub-agent; the orchestrator
     only routes and merges outputs
@@ -123,7 +181,9 @@ ALWAYS open and follow `{cf-studio-path}/.core/skills/studio/SKILL.md` WHEN {cfs
 
 ALWAYS open and follow `{cf-studio-path}/.core/skills/studio/protocol.md` FIRST
 
-Initialize per-run analyze flags before matching: `SEMANTIC_ONLY=false`, `CHANGE_REVIEW=false`, `CODE_REVIEW=false`, `CODE_BUG_REVIEW=false`, `CONSISTENCY_REVIEW=false`, `PROMPT_REVIEW=false`, `PROMPT_BUG_REVIEW=false`, `EXPLAIN_MODE=false`, `ARTIFACT_REVIEW=false`, `CF_PHASE_GATE=armed`. Phase 0 (`phase-0-dependencies.md`) only MATCHES conditions and SETS flags to true; it MUST NOT re-initialize them to false. CHANGE_REVIEW is set true by phase-0-dependencies.md; ARTIFACT_REVIEW is set true by phase-0-dependencies.md when the resolved target is an artifact and no prompt/code methodology has taken ownership.
+Initialize per-run analyze flags before matching: `SEMANTIC_ONLY=false`, `CHANGE_REVIEW=false`, `CODE_REVIEW=false`, `CODE_BUG_REVIEW=false`, `CONSISTENCY_REVIEW=false`, `PROMPT_REVIEW=false`, `PROMPT_BUG_REVIEW=false`, `EXPLAIN_MODE=false`, `ARTIFACT_REVIEW=false`, `CF_PHASE_GATE=armed`. Preserve any route-supplied preset variables such as `CF_HELP_PRESET`, `EXPLAIN_TARGET`, `STORYTELLING_DIAGRAM_FORMAT`, and `STORYTELLING_*` values; do not reset them to defaults after routing. Phase 0 (`phase-0-dependencies.md`) only MATCHES conditions and SETS flags to true; it MUST NOT re-initialize them to false. CHANGE_REVIEW is set true by phase-0-dependencies.md; ARTIFACT_REVIEW is set true by phase-0-dependencies.md when the resolved target is an artifact and no prompt/code methodology has taken ownership.
+
+WHEN `CF_HELP_PRESET=true`, treat `cf help` as a normal explain/storytelling request whose required variables are already resolved: `EXPLAIN_TARGET={cf-studio-path}`, `STORYTELLING_MODE=presentation`, `STORYTELLING_ARTIFACT_DISPOSITION=chat-only`, `STORYTELLING_AUDIENCE=Constructor Studio newcomers`, `STORYTELLING_CONTEXT_PACK_STRATEGY=hybrid`, `STORYTELLING_PLAN_APPROVED=true`, `STORYTELLING_DIAGRAM_FORMAT=ascii`, and `STORYTELLING_DIAGRAM_FORMAT_PRESET=true`. Do not ask mode, disposition, audience, context-pack-strategy, export, plan-approval, or diagram-format questions; run the normal Storytelling Protocol E0-E5 against `{cf-studio-path}` with standard portions, source grounding, navigation, and ASCII inline diagrams. Do NOT replace it with a custom one-shot `Cf Overview` status summary.
 
 WHEN user requests analysis of code, codebase changes, or implementation behavior (Code mode), set `CODE_REVIEW=true`. Do NOT open `code-checklist.md` or `bug-finding.md` in the orchestrator; Phase 3 dispatches separate code methodology sub-agents.
 

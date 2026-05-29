@@ -73,9 +73,9 @@ For all non-socratic modes: Body is always present; lens annotates what was just
 
 Review is **storytelling + Q&A interleaved as separate portions**, not "presentation with panel reactions appended". For each plan item the methodology emits TWO portions in sequence:
 
-1. **Presentation portion** — Body presents the chunk (source-grounded, audience-adapted, ≤ resolved page-size, with diagram per Phase E4). Identical shape to a presentation-mode portion. Progress marker: `📍 {idx}/{N} • phase: presentation • topic: "{plan-item}"`. Nav Next slot points to **"Challenge: panel reactions for {plan-item}"** (intra-item, not next plan item).
+1. **Presentation portion** — Body presents the chunk (source-grounded, audience-adapted, ≤ resolved page-size, with diagram per Phase E4). Identical shape to a presentation-mode portion. Progress marker: `📍 {idx}/{N} • phase: presentation • topic: "{plan-item}"`. The Next topics menu includes **"Challenge: panel reactions for {plan-item}"** as the suggested continue candidate (intra-item, not next plan item).
 
-2. **Challenge portion** — emitted only after user advances. Body: a 1-2 sentence recap of what was just presented + numbered panel reactions `Q1` / `Q2` / … from each panellist (1-2 critical questions / concerns per panellist, anchored to lines/sections where possible). Diagram per Phase E4 if relevant (panel-topology, gap diagram). Progress marker: `📍 {idx}/{N} • phase: challenge • topic: "{plan-item}"`. Nav Next slot points to **"Presentation: {next-plan-item}"** (or Wrap if last). **Comment slot** is most useful here — picking it asks `Which panel question to draft as a review comment? [Q1 / Q2 / Q3 / your own wording]`.
+2. **Challenge portion** — emitted only after user advances. Body: a 1-2 sentence recap of what was just presented + numbered panel reactions `Q1` / `Q2` / … from each panellist (1-2 critical questions / concerns per panellist, anchored to lines/sections where possible). Diagram per Phase E4 if relevant (panel-topology, gap diagram). Progress marker: `📍 {idx}/{N} • phase: challenge • topic: "{plan-item}"`. The Next topics menu includes **"Presentation: {next-plan-item}"** as the suggested continue candidate (or Wrap if last). **Comment slot** is most useful here — picking it asks `Which panel question to draft as a review comment? [Q1 / Q2 / Q3 / your own wording]`.
 
 **classified_mode label.** Every comment drafted in review mode is automatically classified by intent into one of `generate` / `fix` / `brainstorm`, using a tiered heuristic (Tier 1: prefix tokens like `fix:`, `add:`, `idea:`; Tier 2: signals like imperative on a code line ⇒ `fix`, question form on an artifact ⇒ `brainstorm`; Tier 3: defaults — code-mode ⇒ `fix`, artifact-mode ⇒ `brainstorm`). The classified mode appears as a label on the comment (e.g. `Q-3 [fix]`) and is stored as `intent_initial` plus `intent_initial_tier ∈ {1,2,3}` on the buffer entry (see `{cf-studio-path}/.core/requirements/storytelling-phases.md` § Open-question buffer entry shape). The label is informational; the user may override it via `change to {mode}` or via the inline shorthand `1 fix` / `2 brainstorm` at the generate-routing sub-prompt.
 
@@ -120,7 +120,7 @@ This module specifies the table-row level deltas per mode. Strict vs underspecif
 
 **Strictly specified** (Validation Checklist enforces):
 - Per-portion rhythm — number of portions per plan item, presence of Body before lens, mid-section vs separate-portion placement
-- Slot-name deltas — Ask → Comment (review); Lateral → Context (onboarding); Deeper → Pros/Cons (decision); Deeper → Why + Lateral → Affected (change-impact); 6-slot count and Next-first ordering invariant
+- Slot-name deltas — Ask → Comment (review); Lateral → Context (onboarding); Deeper → Pros/Cons (decision); Deeper → Why + Lateral → Affected (change-impact); 7-slot count, Back availability, and Next-first ordering invariant
 - Source-grounding, page-size invariant, no-scroll rule, clickable Markdown refs, audience adaptation, visualize-by-default — all unchanged
 
 **Underspecified** (best-effort with required inline fallback ack):
