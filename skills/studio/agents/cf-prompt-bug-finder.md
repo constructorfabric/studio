@@ -49,7 +49,8 @@ PURPOSE:
   Execute ordered inspection steps over all target paths.
 
 DO:
-  1. Load `prompt_bug_finding_methodology`
+  1. Load `requirements/prompt-bug-finding.md` via the controller-supplied
+     `prompt_bug_finding_methodology` asset
   2. Read every target_path in full via Read tool
   2a. Read every cross_ref_path when provided; use them as additional context
       when probing for instruction-routing and handoff defects across sibling

@@ -365,7 +365,9 @@ class TestRenderTomlAgent(unittest.TestCase):
         agent = _make_semantic_agent("cypilot-codegen")
         result = _render_toml_agent(agent, "@/agents/cypilot-codegen.md")
         self.assertIn('developer_instructions = """', result)
-        self.assertIn("ALWAYS open and follow", result)
+        self.assertIn("Constructor Studio endpoint only", result)
+        self.assertIn("Prompt source:", result)
+        self.assertNotIn("ALWAYS open and follow", result)
         self.assertIn("agents/cypilot-codegen.md", result)
 
     def test_no_nested_agents_sections(self):
@@ -443,7 +445,9 @@ class TestSubagentIntegration(unittest.TestCase):
             codegen_content = codegen_path.read_text(encoding="utf-8")
             self.assertIn("name: cypilot-codegen", codegen_content)
             self.assertIn("isolation: worktree", codegen_content)
-            self.assertIn("ALWAYS open and follow", codegen_content)
+            self.assertIn("Constructor Studio endpoint only", codegen_content)
+            self.assertIn("Prompt source:", codegen_content)
+            self.assertNotIn("ALWAYS open and follow", codegen_content)
             self.assertNotIn("{target_agent_path}", codegen_content)
 
             pr_content = pr_review_path.read_text(encoding="utf-8")
@@ -504,7 +508,9 @@ class TestSubagentIntegration(unittest.TestCase):
                 self.assertIn('name = "', content)
                 self.assertIn('description = "', content)
                 self.assertIn('developer_instructions = """', content)
-                self.assertIn("ALWAYS open and follow", content)
+                self.assertIn("Constructor Studio endpoint only", content)
+                self.assertIn("Prompt source:", content)
+                self.assertNotIn("ALWAYS open and follow", content)
                 self.assertNotIn("[agents.", content,
                     f"{toml_path.name} must use top-level fields, not [agents.*] sections")
 

@@ -59,11 +59,12 @@ def test_validate_all_workflows_have_required_structure():
         if 'type: workflow' not in content:
             errors.append(f"{workflow_path.name}: Missing type: workflow frontmatter")
 
-        # All workflows must have some form of steps/phases
+        # All workflows must have some executable structure: legacy headings
+        # or current PDSL-style UNIT blocks.
         if workflow_path.name not in no_steps_allowed:
-            has_steps = any(s in content for s in ['## Steps', '## Step', '## Phase'])
+            has_steps = any(s in content for s in ['## Steps', '## Step', '## Phase', '\nUNIT '])
             if not has_steps:
-                errors.append(f"{workflow_path.name}: Missing Steps/Phase section")
+                errors.append(f"{workflow_path.name}: Missing Steps/Phase/UNIT section")
 
         # All workflows must have cf: true frontmatter (or legacy cf-constructor: true)
         if 'cf: true' not in content and 'cf-constructor: true' not in content:

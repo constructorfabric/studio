@@ -68,6 +68,9 @@ DO:
            {path, risk: "user-named direct target", evidence: "direct_targets"}
   7. Compute binary_paths first:
        paths reported by git diff --numstat with -\t- markers
+       Allowed probes:
+         git -C <worktree> diff --numstat <base>..<head>
+         git -C <worktree> diff --numstat HEAD
   8. Compute review_targets:
        direct_targets UNION {changed_files.path | status in {M,A,R,U,?}}
        deduped, sorted

@@ -27,15 +27,17 @@ SKILLS_AGENTS = REPO_ROOT / "skills" / "studio" / "agents"
 BASELINE = {
     "cf-brainstorm-expert": {
         "MUST": 20,
-        "MUST_NOT": 11,
+        # 2026-05-29 shared-context-pack consolidation moved repeated
+        # disk-loading prohibitions into the controller dispatch contract.
+        "MUST_NOT": 7,
         "FORBID": 0,
         "REQUIRE": 2,
-        "STOP_TURN": 2,
+        "STOP_TURN": 0,
         "INVARIANTS": 0,
     },
     "cf-code-bug-finder": {
         "MUST": 6,
-        "MUST_NOT": 3,
+        "MUST_NOT": 0,
         "FORBID": 2,
         "REQUIRE": 6,
         "STOP_TURN": 1,
@@ -43,7 +45,7 @@ BASELINE = {
     },
     "cf-generate-author": {
         "MUST": 18,
-        "MUST_NOT": 3,
+        "MUST_NOT": 1,
         "FORBID": 0,
         "REQUIRE": 0,
         "STOP_TURN": 0,
@@ -61,16 +63,16 @@ BASELINE = {
         "INVARIANTS": 1,
     },
     "cf-pdsl-reviewer": {
-        "MUST": 8,
-        "MUST_NOT": 4,
-        "FORBID": 1,
+        "MUST": 7,
+        "MUST_NOT": 1,
+        "FORBID": 0,
         "REQUIRE": 0,
-        "STOP_TURN": 1,
-        "INVARIANTS": 1,
+        "STOP_TURN": 0,
+        "INVARIANTS": 0,
     },
     "cf-semantic-reviewer-code": {
         "MUST": 5,
-        "MUST_NOT": 5,
+        "MUST_NOT": 2,
         "FORBID": 0,
         "REQUIRE": 1,
         "STOP_TURN": 1,
@@ -78,7 +80,7 @@ BASELINE = {
     },
     "storytelling-gate": {
         "MUST": 54,
-        "MUST_NOT": 8,
+        "MUST_NOT": 5,
         "FORBID": 0,
         "REQUIRE": 1,
         "STOP_TURN": 0,
@@ -86,7 +88,7 @@ BASELINE = {
     },
     "cf-analyze-planner": {
         "MUST": 18,
-        "MUST_NOT": 9,
+        "MUST_NOT": 7,
         "FORBID": 0,
         "REQUIRE": 0,
         "STOP_TURN": 0,

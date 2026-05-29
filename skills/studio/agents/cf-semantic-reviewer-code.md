@@ -95,7 +95,8 @@ PURPOSE:
   Execute the code-checklist review methodology.
 
 DO:
-  1. Load only the `code_review_checklist` asset as the review methodology
+  1. Load only `requirements/code-checklist.md` via the controller-supplied
+     `code_review_checklist` asset as the review methodology
      Load `kit_validation_rules` only when that asset is present
      REQUIRE ContextBudgetFailSafe is active
   2. Read the design artifact when design_artifact_path is provided

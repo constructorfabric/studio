@@ -269,14 +269,15 @@ class TestWorkflowStructure:
         wf_files = [f for f in wf_dir.glob("*.md") if f.name not in exclude]
         for f in wf_files:
             text = f.read_text(encoding="utf-8")
-            # Check for numbered steps, Step N pattern, or Phase N pattern
+            # Check for legacy numbered headings or current PDSL UNIT blocks.
             has_steps = bool(re.search(r"(^|\n)##+ (Step \d+|Phase \d+|1\.|2\.|3\.)", text))
-            assert has_steps, f"{f.name} missing numbered steps"
+            has_unit = bool(re.search(r"(^|\n)UNIT [A-Za-z0-9_]+", text))
+            assert has_steps or has_unit, f"{f.name} missing numbered steps or UNIT blocks"
 
     def test_workflow_next_steps(self):
         """Workflow should have Next Steps or similar conclusion."""
         wf_dir = PROJECT_ROOT / "workflows"
-        wf_files = [f for f in wf_dir.glob("*.md") if f.name not in ("README.md", "AGENTS.md", "explain.md", "auto-config.md", "brainstorm.md", "pdsl.md", "studio.md")]
+        wf_files = [f for f in wf_dir.glob("*.md") if f.name not in ("README.md", "AGENTS.md", "explain.md", "auto-config.md", "brainstorm.md", "pdsl.md", "studio.md", "help.md")]
         for f in wf_files:
             text = f.read_text(encoding="utf-8").lower()
             has_conclusion = "next" in text or "after" in text or "complete" in text or "done" in text
@@ -346,6 +347,10 @@ class TestAgentsStructure:
                 continue
             # Skip deleted workflow requirements files
             if ref.startswith("requirements/workflow-"):
+                continue
+            # Bare instruction names in AGENTS.md are contract references, not
+            # repository-root file paths.
+            if ref == "SKILL.md":
                 continue
             ref_path = PROJECT_ROOT / ref
             assert ref_path.exists(), f"AGENTS.md references non-existent file: {ref}"

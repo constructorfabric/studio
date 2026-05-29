@@ -940,7 +940,7 @@ class TestCypilotRalphexRegistration(unittest.TestCase):
         agents = data.get("agents", {})
         self.assertIn("cf-ralphex", agents)
         entry = agents["cf-ralphex"]
-        self.assertEqual(entry["prompt_file"], "agents/cf-ralphex.md")
+        self.assertNotIn("prompt_file", entry)
         self.assertEqual(entry["mode"], "readwrite")
         self.assertFalse(entry.get("isolation", False))
 
@@ -975,10 +975,11 @@ class TestCypilotRalphexRegistration(unittest.TestCase):
                 len(ralphex_files) > 0,
                 f"Expected cf-ralphex subagent proxy, got: {all_files}",
             )
-            # Verify the generated file uses ALWAYS open and follow
             proxy_path = Path(ralphex_files[0])
             content = proxy_path.read_text(encoding="utf-8")
-            self.assertIn("ALWAYS open and follow", content)
+            self.assertIn("Constructor Studio endpoint only", content)
+            self.assertIn("Prompt source:", content)
+            self.assertNotIn("ALWAYS open and follow", content)
             self.assertIn("cf-ralphex", content)
             # Verify readwrite tools (not readonly)
             self.assertIn("Write", content)
@@ -1003,7 +1004,9 @@ class TestCypilotRalphexRegistration(unittest.TestCase):
             )
             proxy_path = Path(ralphex_files[0])
             content = proxy_path.read_text(encoding="utf-8")
-            self.assertIn("ALWAYS open and follow", content)
+            self.assertIn("Constructor Studio endpoint only", content)
+            self.assertIn("Prompt source:", content)
+            self.assertNotIn("ALWAYS open and follow", content)
             # Cursor readwrite gets edit tool
             self.assertIn("edit", content)
 
@@ -1026,7 +1029,9 @@ class TestCypilotRalphexRegistration(unittest.TestCase):
             )
             proxy_path = Path(ralphex_files[0])
             content = proxy_path.read_text(encoding="utf-8")
-            self.assertIn("ALWAYS open and follow", content)
+            self.assertIn("Constructor Studio endpoint only", content)
+            self.assertIn("Prompt source:", content)
+            self.assertNotIn("ALWAYS open and follow", content)
             # Copilot readwrite gets wildcard tools
             self.assertIn('"*"', content)
 
@@ -1049,7 +1054,9 @@ class TestCypilotRalphexRegistration(unittest.TestCase):
             )
             content = Path(toml_files[0]).read_text(encoding="utf-8")
             self.assertIn("cf-ralphex", content)
-            self.assertIn("ALWAYS open and follow", content)
+            self.assertIn("Constructor Studio endpoint only", content)
+            self.assertIn("Prompt source:", content)
+            self.assertNotIn("ALWAYS open and follow", content)
 
     def test_ralphex_not_forked_per_tool(self):
         """All generated proxies point to the same canonical prompt path."""

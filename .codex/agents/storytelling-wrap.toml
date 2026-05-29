@@ -5,5 +5,5 @@ model = "gpt-5.4"
 model_reasoning_effort = "medium"
 model_context_window = 400000
 developer_instructions = """
-Constructor Studio endpoint only. Final prompt is supplied by the cf controller at dispatch time.
+Constructor Studio endpoint only. Prompt source: {cf-studio-path}/.core/skills/studio/agents/storytelling-wrap.md. Final prompt is supplied by the cf controller at dispatch time.
 """

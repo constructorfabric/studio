@@ -51,7 +51,8 @@ PURPOSE:
   Execute ordered inspection steps over all code paths.
 
 DO:
-  1. Load `bug_finding_methodology`
+  1. Load `requirements/bug-finding.md` via the controller-supplied
+     `bug_finding_methodology` asset
   2. Read design_artifact_path when provided
   2a. Read every cross_ref_path when provided; extract interface contracts,
       invariants, and integration assumptions for the integration-defect sweep

@@ -69,7 +69,9 @@ PURPOSE:
   Load methodology and walk all 10 layers over every target.
 
 DO:
-  1. Load `prompt_engineering_methodology` as review methodology
+  1. Load `prompt-engineering.md` as review methodology
+     Load `requirements/prompt-engineering.md` via the controller-supplied
+     `prompt_engineering_methodology` asset
      Load required `studio_mode_contract` and `agent_compliance` invariants
      WHEN kit_rules_path is non-null:
        load the `kit_validation_rules` asset

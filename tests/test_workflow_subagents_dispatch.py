@@ -1118,7 +1118,7 @@ def test_diff_scope_resolver_agent_registered_and_prompt_contract() -> None:
 
     agent = agents["cf-diff-scope-resolver"]
     prompt = (
-        repo_root / "skills" / "studio" / agent["prompt_file"]
+        repo_root / "skills" / "studio" / "agents" / "cf-diff-scope-resolver.md"
     ).read_text(encoding="utf-8")
 
     assert agent["mode"] == "readonly"

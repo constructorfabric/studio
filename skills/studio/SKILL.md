@@ -1,7 +1,7 @@
 ---
 name: cf
 aliases: [cf-studio]
-description: "Invoke for requests to create, edit, fix, update, implement, refactor, set up, build, analyze, validate, review, check, inspect, audit, compare, explain, walk through, teach, onboard, brainstorm, ideate, explore options, discover requirements, map dependencies, plan, decompose, find context, author or review prompt DSL, configure projects, scan brownfield projects, manage workspaces, delegate work, compile phases, execute phases, migrate from Cypilot, migrate OpenSpec, review PRs, report PR status, or get help."
+description: "Invoke for requests to create, edit, fix, update, implement, refactor, set up, build, analyze, validate, review, check, inspect, audit, compare, explain, walk through, teach, onboard, brainstorm, ideate, explore options, discover requirements, mapping, map dependencies, plan, decompose, find context, PDSL prompt work, configure projects, scan brownfield projects, manage workspaces, delegation, delegate work, phase compile/execute, compile phases, execute phases, migration, migrate from Cypilot, migrate OpenSpec, review PRs, report PR status, or get help."
 ---
 
 # Constructor Studio Unified Tool
@@ -20,8 +20,6 @@ RULES:
   - MUST SET {cfs_mode} = on before any other action
   - MUST/ALWAYS are mandatory throughout this skill
 ```
-
----
 
 ## Hard Rules
 
@@ -55,8 +53,6 @@ RULES:
     or structured refusal with a next step
 ```
 
----
-
 ## Proxy-Workflow Mode Handshake
 
 ```text
@@ -81,8 +77,6 @@ DO:
 NOTES:
   Proxy workflows: cf-brainstorm, cf-auto-config, cf-explain, cf-explore, cf-plan.
 ```
-
----
 
 ## Bootstrap
 
@@ -130,8 +124,6 @@ RULES:
   - Required explore/brainstorm gates MUST run before write-capable phases
 ```
 
----
-
 ## Shared Context Pack
 
 ```text
@@ -164,8 +156,6 @@ RULES:
   - Controller-owned prompt loads MUST use {cf-studio-path}-prefixed runtime
     paths when a runtime mirror exists
 ```
-
----
 
 ## Phase-Skip Gate (`CF_PHASE_GATE`)
 

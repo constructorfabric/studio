@@ -1,5 +1,5 @@
 # @cpt-algo:cpt-studio-spec-init-structure-change-infrastructure:p1
-.PHONY: test test-verbose test-quick test-coverage test-coverage-diff validate validate-examples validate-feature validate-code validate-code-feature self-check validate-kits validate-kits-sdlc vulture vulture-ci pylint install install-pipx install-proxy install-prompt-tests clean help check-pytest check-pytest-cov check-pipx check-vulture check-pylint check-versions check-prompt-tests update spec-coverage ci lint-ci test-prompts test-prompts-view
+.PHONY: test test-verbose test-quick test-coverage test-coverage-diff validate validate-examples validate-feature validate-code validate-code-feature self-check validate-kits validate-kits-sdlc vulture vulture-ci pylint install install-pipx install-proxy install-prompt-tests clean help check-pytest check-pytest-cov check-pipx check-vulture check-pylint check-versions check-prompt-tests update seed-cache ensure-bootstrap spec-coverage ci lint-ci test-prompts test-prompts-view
 
 # Detect container architecture for act (arm64 on Apple Silicon, amd64 otherwise)
 UNAME_M := $(shell uname -m)
@@ -15,6 +15,8 @@ ACT_FLAGS ?= --container-architecture $(ACT_ARCH)
 PYTHON ?= python3
 PIPX ?= pipx
 CFS ?= cfs
+BOOTSTRAP_STUDIO ?= .bootstrap/.core/skills/studio/scripts/studio.py
+SOURCE_STUDIO ?= skills/studio/scripts/studio.py
 PYTEST_PIPX ?= $(PIPX) run --spec pytest pytest
 PYTEST_PIPX_COV ?= $(PIPX) run --spec pytest-cov pytest
 VULTURE_PIPX ?= $(PIPX) run --spec vulture vulture
@@ -196,9 +198,9 @@ pylint: check-pylint
 	PYTHONPATH=src:skills/studio/scripts $(PYLINT_PIPX) $(PYLINT_TARGETS)
 
 # Spec coverage check (Constructor Studio system only)
-spec-coverage:
+spec-coverage: ensure-bootstrap
 	@echo "Checking spec coverage (Constructor Studio system)..."
-	$(PYTHON) .bootstrap/.core/skills/studio/scripts/studio.py spec-coverage --system studio --min-coverage 90 --min-file-coverage 60 --min-granularity 0.44
+	$(PYTHON) $(BOOTSTRAP_STUDIO) spec-coverage --system studio --min-coverage 90 --min-file-coverage 60 --min-granularity 0.44
 
 # Check version consistency
 check-versions:
@@ -206,24 +208,50 @@ check-versions:
 
 # Update .bootstrap from local source
 update:
-	$(CFS) update --source . --force
+	@if [ ! -f "$(BOOTSTRAP_STUDIO)" ]; then \
+		$(MAKE) seed-cache; \
+		$(PYTHON) $(SOURCE_STUDIO) update --from-dir . -y; \
+	elif [ "$(CFS)" = "cfs" ] && command -v cfs >/dev/null 2>&1; then \
+		cfs update --source . --force; \
+	elif [ -f "$(BOOTSTRAP_STUDIO)" ]; then \
+		$(PYTHON) $(BOOTSTRAP_STUDIO) update --from-dir . -y; \
+	else \
+		$(PYTHON) $(SOURCE_STUDIO) update --from-dir . -y; \
+	fi
+
+seed-cache:
+	@echo "Seeding Constructor Studio cache from tracked source..."
+	@rm -rf "$$HOME/.cf-studio/cache"
+	@mkdir -p "$$HOME/.cf-studio/cache"
+	@cp -R requirements schemas workflows skills architecture "$$HOME/.cf-studio/cache/"
+	@if [ -f whatsnew.toml ]; then cp whatsnew.toml "$$HOME/.cf-studio/cache/"; fi
+	@if [ -d .bootstrap/config/kits ]; then \
+		mkdir -p "$$HOME/.cf-studio/cache/kits"; \
+		cp -R .bootstrap/config/kits/* "$$HOME/.cf-studio/cache/kits/"; \
+	fi
+
+ensure-bootstrap:
+	@if [ ! -f "$(BOOTSTRAP_STUDIO)" ]; then \
+		echo "Bootstrap studio entrypoint missing; running make update..."; \
+		$(MAKE) update; \
+	fi
 
 # Validate core methodology spec
-validate:
+validate: ensure-bootstrap
 	$(CFS) validate
 
 # Validate SDLC examples against templates
-self-check:
+self-check: ensure-bootstrap
 	@echo "Running self-check: validating SDLC examples against templates..."
 	$(CFS) self-check
 
 # Validate all registered kits
-validate-kits:
+validate-kits: ensure-bootstrap
 	@echo "Validating all registered kits..."
 	$(CFS) validate-kits
 
 # Validate kits/sdlc kit by path
-validate-kits-sdlc:
+validate-kits-sdlc: ensure-bootstrap
 	@echo "Validating kits/sdlc..."
 	$(CFS) validate-kits kits/sdlc
 

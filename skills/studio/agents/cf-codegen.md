@@ -55,6 +55,8 @@ RULES:
   - MUST end with Post-Write Review Handoff menu when files were written
   - MUST emit Remediation Handoff menu immediately before Post-Write Review Handoff
     when remaining_findings is non-empty
+  - Prompt blocks are emitted only on next turn after the user selects a
+    handoff prompt option
   - MUST satisfy the `studio_mode_contract` invariant
   - VALID stopping state: INLINE_FALLBACK was unset at a nested dispatch site and
     `inline_fallback_probe_contract` was followed as a hard interaction

@@ -81,6 +81,10 @@ _TMPL_DESCRIPTION = "description: {description}"
 _AGENT_TEMPLATE_HEADER = ["---", _TMPL_NAME, _TMPL_DESCRIPTION]
 _ALWAYS_FOLLOW_TARGET_PATH = "ALWAYS open and follow `{target_path}`"
 _FOLLOW_LINK_RE = re.compile(r"ALWAYS open and follow `([^`]+)`")
+_ENDPOINT_POINTER = (
+    "Constructor Studio endpoint only. Prompt source: {target_agent_path}. "
+    "Final prompt is supplied by the cf controller at dispatch time."
+)
 
 # Ownership marker injected into every generated file so developers know
 # not to hand-edit them.  Markdown files use an HTML comment; TOML files
@@ -126,6 +130,22 @@ def _extract_studio_follow_target(content: str) -> Optional[str]:
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-extract-studio-follow-target
 
 
+def _extract_studio_endpoint_target(content: str) -> Optional[str]:
+    """Return the prompt-source target from a generated endpoint-only proxy."""
+    marker = "Prompt source: "
+    start = content.find(marker)
+    if start == -1:
+        return None
+    start += len(marker)
+    end = content.find(". Final prompt", start)
+    if end == -1:
+        return None
+    target = content[start:end].strip()
+    if target.startswith("{cf-studio-path}/"):
+        return target
+    return None
+
+
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-is-pure-studio-generated
 def _is_pure_studio_generated(
     content: str,
@@ -146,7 +166,8 @@ def _is_pure_studio_generated(
     When *expected_name* or *expected_description* are provided the corresponding
     frontmatter values must match exactly; a mismatch means the user edited them.
     """
-    if _GENERATED_MARKER not in content:
+    has_generated_marker = _GENERATED_MARKER in content
+    if not has_generated_marker and not _extract_studio_follow_target(content):
         return False
     # Strip generated-file ownership marker before structural checks
     stripped = _GENERATED_MARKER_RE.sub("", content)
@@ -172,9 +193,16 @@ def _is_pure_studio_generated(
             if expected_description is not None and fm.get("description") != expected_description:
                 return False
             stripped = stripped[end + 4:]  # skip past closing ---
-    lines = stripped.splitlines()
-    # If only whitespace remains, the file is purely generated
-    return not any(line.strip() for line in lines)
+    nonblank = [line.strip() for line in stripped.splitlines() if line.strip()]
+    if not nonblank:
+        return True
+    if len(nonblank) == 1:
+        line = nonblank[0]
+        if _extract_studio_follow_target(line):
+            return True
+        if line.startswith("Constructor Studio endpoint only. Prompt source: "):
+            return True
+    return False
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-is-pure-studio-generated
 
 
@@ -321,7 +349,11 @@ def _is_pure_studio_generated_toml(content: str, expected_content: Optional[str]
     instructions = data.get("developer_instructions")
     if not isinstance(instructions, str):
         return False
-    if not _extract_studio_follow_target(instructions.strip()):
+    stripped_instructions = instructions.strip()
+    if not (
+        _extract_studio_follow_target(stripped_instructions)
+        or _extract_studio_endpoint_target(stripped_instructions)
+    ):
         return False
     return data == expected_data
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-is-pure-studio-generated-toml
@@ -365,12 +397,15 @@ def _expected_stale_studio_generated_toml(
     if toml_file.stem != name:
         return None
 
-    follow_target = _extract_studio_follow_target(instructions.strip())
-    if not follow_target:
+    target = (
+        _extract_studio_follow_target(instructions.strip())
+        or _extract_studio_endpoint_target(instructions.strip())
+    )
+    if not target:
         return None
 
     studio_root_resolved = studio_root.resolve()
-    suffix = follow_target[len("{cf-studio-path}/"):]
+    suffix = target[len("{cf-studio-path}/"):]
     suffix_parts = [p for p in suffix.split("/") if p not in ("", ".")]
     if any(part == ".." for part in suffix_parts):
         return None
@@ -385,13 +420,17 @@ def _expected_stale_studio_generated_toml(
     prompt_description = _extract_frontmatter_description(prompt_path)
     if not prompt_description:
         return None
+    description = data.get("description")
+    host_description = _build_host_registration_description(prompt_description, target)
+    if description not in (prompt_description, host_description):
+        return None
 
     rendered = _render_toml_agent(
         {
             "name": name,
-            "description": _build_host_registration_description(prompt_description, follow_target),
+            "description": description,
         },
-        follow_target,
+        target,
     )
     if extra_keys:
         # Append permitted extras in deterministic order, matching the generator's output ordering.
@@ -632,19 +671,41 @@ def _validate_agent_entry(
     if "/" in name or "\\" in name or ".." in name:
         sys.stderr.write(f"WARNING: skipping agent with unsafe name: {name!r}\n")
         return None
-    prompt_source_abs = _default_agent_prompt_source(name, source_dir)
-    try:
-        prompt_source_abs.relative_to(source_dir.resolve())
-    except ValueError:
+    raw_prompt_file = info.get("prompt_file")
+    prompt_source_abs: Optional[Path]
+    prompt_file_abs: Optional[Path]
+    prompt_file_value: Optional[str]
+    if raw_prompt_file is None:
+        prompt_source_abs = _default_agent_prompt_source(name, source_dir)
+        prompt_file_value = f"agents/{name}.md"
+    elif not isinstance(raw_prompt_file, str):
         sys.stderr.write(
-            f"WARNING: agent {name!r} prompt source escapes source dir, skipping\n"
+            f"WARNING: agent {name!r} prompt_file must be a string, skipping\n"
         )
         return None
-    if not prompt_source_abs.is_file():
-        sys.stderr.write(
-            f"WARNING: agent {name!r} prompt source not found: {prompt_source_abs}, skipping\n"
+    elif not raw_prompt_file.strip():
+        prompt_source_abs = None
+        prompt_file_value = ""
+    else:
+        prompt_file_value = raw_prompt_file
+        prompt_path = Path(raw_prompt_file)
+        prompt_source_abs = (
+            prompt_path.resolve()
+            if prompt_path.is_absolute()
+            else (source_dir / prompt_path).resolve()
         )
-        return None
+
+    if prompt_source_abs is not None:
+        try:
+            prompt_source_abs.relative_to(source_dir.resolve())
+        except ValueError:
+            sys.stderr.write(
+                f"WARNING: agent {name!r} prompt source escapes source dir, skipping\n"
+            )
+            return None
+        prompt_file_abs = prompt_source_abs
+    else:
+        prompt_file_abs = None
 
     mode = info.get("mode", "readwrite")
     if mode not in _VALID_AGENT_MODES:
@@ -708,6 +769,8 @@ def _validate_agent_entry(
         "name": name,
         "description": info.get("description", f"Constructor Studio {name} subagent"),
         "prompt_source_abs": prompt_source_abs,
+        "prompt_file_abs": prompt_file_abs,
+        "prompt_file": prompt_file_value,
         "mode": mode,
         "isolation": bool(info.get("isolation", False)),
         "model": model,
@@ -1111,6 +1174,12 @@ def _discover_kit_agents(
             entry = _validate_agent_entry(name, info, source_dir, seen_names)
             if entry is None:
                 continue
+            prompt_source_abs = entry.get("prompt_source_abs")
+            if prompt_source_abs is not None and not prompt_source_abs.is_file():
+                sys.stderr.write(
+                    f"WARNING: agent {name!r} prompt source not found: {prompt_source_abs}, skipping\n"
+                )
+                continue
             seen_names.add(name)
             out.append(entry)
 
@@ -1176,7 +1245,7 @@ def _agent_template_claude(agent: Dict[str, Any]) -> List[str]:
 
     if agent["isolation"]:
         lines.append("isolation: worktree")
-    lines += ["---", _GENERATED_MARKER, ""]
+    lines += ["---", _GENERATED_MARKER, "", _ENDPOINT_POINTER, ""]
     return lines
 
 
@@ -1220,6 +1289,8 @@ def _agent_template_cursor(agent: Dict[str, Any]) -> List[str]:
     lines.append("---")
     lines.append(_GENERATED_MARKER)
     lines.append("")
+    lines.append(_ENDPOINT_POINTER)
+    lines.append("")
 
     comment = _format_unsupported_field_comment(agent)
     if comment:
@@ -1247,6 +1318,8 @@ def _agent_template_copilot(agent: Dict[str, Any]) -> List[str]:
 
     lines.append("---")
     lines.append(_GENERATED_MARKER)
+    lines.append("")
+    lines.append(_ENDPOINT_POINTER)
     lines.append("")
 
     comment = _format_unsupported_field_comment(agent)
@@ -1320,9 +1393,10 @@ def _render_toml_agent(agent: Dict[str, Any], target_agent_path: str) -> str:
         if tokens is not None:
             lines.append(f"model_context_window = {tokens}")
 
+    endpoint_pointer = _ENDPOINT_POINTER.format(target_agent_path=target_agent_path)
     lines += [
         'developer_instructions = """',
-        "Constructor Studio endpoint only. Final prompt is supplied by the cf controller at dispatch time.",
+        _escape_toml_multiline_string(endpoint_pointer),
         '"""',
     ]
     return "\n".join(lines) + "\n"
@@ -3143,9 +3217,10 @@ def _process_subagents(
         target_agent_paths: Dict[str, str] = {}
         registration_descriptions: Dict[str, str] = {}
         for ka in kit_agents:
-            if ka.get("prompt_source_abs"):
+            prompt_source_abs = ka.get("prompt_source_abs") or ka.get("prompt_file_abs")
+            if prompt_source_abs:
                 target_agent_path = _target_path_from_root(
-                    ka["prompt_source_abs"], project_root, studio_root,
+                    prompt_source_abs, project_root, studio_root,
                 )
                 target_agent_paths[ka["name"]] = target_agent_path
                 registration_descriptions[ka["name"]] = _build_host_registration_description(
@@ -4904,8 +4979,16 @@ def _build_openai_agent_file(
     context_window = translated.get("model_context_window")
     if context_window is not None:
         toml_lines.append(f"model_context_window = {int(context_window)}")
+    dev_instructions = _apply_variables(source_content, variables)
+    append = getattr(agent, "append", "")
+    if append:
+        dev_instructions = (
+            dev_instructions.rstrip("\n")
+            + "\n"
+            + _apply_variables(str(append), variables)
+        )
     toml_lines.append('developer_instructions = """')
-    toml_lines.append("Constructor Studio endpoint only. Final prompt is supplied by the cf controller at dispatch time.")
+    toml_lines.append(_escape_toml_multiline_string(dev_instructions))
     toml_lines.append('"""')
     content = "\n".join(toml_lines) + "\n"
     rel_out = path_template.replace("{id}", agent_id)
@@ -4966,12 +5049,15 @@ def _build_standard_agent_file(
     frontmatter_lines.extend(translated.get("frontmatter", []))
     frontmatter_lines.append("---")
 
-    content = (
-        "\n".join(frontmatter_lines)
-        + "\n"
-        + _GENERATED_MARKER
-        + "\n"
-    )
+    content = "\n".join(frontmatter_lines) + "\n" + _GENERATED_MARKER + "\n\n"
+    content += translated.get("body_prefix", "")
+    content += source_content
+    body_suffix = translated.get("body_suffix", "")
+    if body_suffix:
+        content = content.rstrip("\n") + body_suffix
+    append = getattr(agent, "append", "")
+    if append:
+        content = content.rstrip("\n") + "\n" + append
 
     # Sanitize variable values: strip newlines to prevent breaking YAML
     # frontmatter structure (consistent with TOML sanitization in OpenAI path).

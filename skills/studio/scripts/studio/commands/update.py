@@ -370,9 +370,14 @@ def cmd_update(argv: List[str]) -> int:
                 kit_src, _ = _download_kit_from_github(owner, repo, version)
                 tmp_to_clean = kit_src.parent
             except (OSError, ValueError, KeyError, RuntimeError) as exc:
-                errors.append({"path": kit_slug, "error": f"Download failed: {exc}"})
-                ui.warn(f"{kit_slug}: download failed: {exc}")
-                continue
+                cache_kit = CACHE_DIR / "kits" / kit_slug
+                if cache_kit.is_dir():
+                    kit_src = cache_kit
+                    ui.warn(f"{kit_slug}: download failed, using cached kit: {exc}")
+                else:
+                    errors.append({"path": kit_slug, "error": f"Download failed: {exc}"})
+                    ui.warn(f"{kit_slug}: download failed: {exc}")
+                    continue
         elif not source_str:
             # No source — check cache fallback
             cache_kit = CACHE_DIR / "kits" / kit_slug
