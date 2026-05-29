@@ -1,0 +1,236 @@
+{
+  "session_id": "agent-workflows-wrap-mvp-2026-05-29",
+  "kind": "FEATURE",
+  "system": "Constructor Studio",
+  "rules_loaded": false,
+  "topic_history": [
+    "T1",
+    "T2"
+  ],
+  "topic_current": null,
+  "panel": [
+    {
+      "id": "E1",
+      "persona": "Workflow State Architect",
+      "focus": [
+        "phase gates",
+        "handoffs",
+        "round/state semantics"
+      ],
+      "rationale": "Agent workflows are state-machine-heavy; good ideas likely touch routing, checkpoints, or recovery."
+    },
+    {
+      "id": "E2",
+      "persona": "Prompt Context Boundary Reviewer",
+      "focus": [
+        "SHARED_CONTEXT_PACK",
+        "prompt loading",
+        "sub-agent context isolation"
+      ],
+      "rationale": "Recent work prevents agents from reopening prompt assets and keeps context controller-owned."
+    },
+    {
+      "id": "E3",
+      "persona": "Agent UX Designer",
+      "focus": [
+        "user-facing menus",
+        "questions",
+        "defaults",
+        "progressive disclosure"
+      ],
+      "rationale": "Workflow quality depends on asking the right thing at the right time."
+    },
+    {
+      "id": "E4",
+      "persona": "Deterministic Guardrails Engineer",
+      "focus": [
+        "validation",
+        "fail-closed behavior",
+        "anti-pattern checks"
+      ],
+      "rationale": "Constructor Studio's advantage is deterministic control around nondeterministic agents."
+    },
+    {
+      "id": "E5",
+      "persona": "Workflow Adoption Strategist",
+      "focus": [
+        "daily trust",
+        "usability",
+        "adoption"
+      ],
+      "rationale": "Feature ideas should improve real usage, not only internal elegance."
+    }
+  ],
+  "resource_context": {
+    "exploration_status": "complete_with_prompt_asset_boundary",
+    "summary": "Strongest brainstorm anchors are execution plans, shared-context-pack boundaries, agent/subagent integration, deterministic validation, and UX trust surfaces.",
+    "resources": [
+      {
+        "path": "architecture/specs/shared-context-pack.md",
+        "why_relevant": "Primary source for SHARED_CONTEXT_PACK ownership, final prompt synthesis, and leaf-agent isolation rules."
+      },
+      {
+        "path": "architecture/features/execution-plans.md",
+        "why_relevant": "Source for phase flow, decomposition strategy, compiled phase semantics, and status lifecycle."
+      },
+      {
+        "path": "architecture/features/agent-integration.md",
+        "why_relevant": "Defines generate/analyze workflow surface, clarify/save behavior, routing scope, and agent entry-point boundaries."
+      },
+      {
+        "path": "architecture/features/subagent-registration.md",
+        "why_relevant": "Source for host-native subagent orchestration, isolated contexts, and task-specific delegation modes."
+      },
+      {
+        "path": "architecture/features/developer-experience.md",
+        "why_relevant": "Adoption and trust surface for diagnostics, self-check, and low-friction remediation loops."
+      },
+      {
+        "path": "architecture/PRD.md",
+        "why_relevant": "Top-level product intent for determinism-first workflows, execution plans, agent integration, and UX expectations."
+      },
+      {
+        "path": "architecture/DESIGN.md",
+        "why_relevant": "System-level component and sequence view for skill engine, validator, agent generator, and delegated execution."
+      }
+    ],
+    "missing_context_questions": []
+  },
+  "decisions": {
+    "feature_direction": "Improve cf-brainstorm -> wrap as a thin MVP slice for Agent workflows.",
+    "recovery_semantics": "Conservative adaptive resume: resume only after deterministic state integrity check; otherwise rewind to the last valid checkpoint, then offer workflow switch.",
+    "context_failure_policy": "Tiered: hard fail for boundary, security, or contract violations; reduced mode or user choice only for non-critical gaps.",
+    "workflow_navigation": "Adaptive navigator: recommend one path when intent is confident; show 2-3 outcome-based paths when ambiguous.",
+    "phase_handoff_visibility": "Compact ledger line: always show one compact state line; require confirmation only for risk, ambiguity, or fallback.",
+    "brainstorm_handoff": "Single recommended primary handoff; optional secondary handoff only on request or high ambiguity.",
+    "menu_labels": "Outcome label first, workflow name secondary.",
+    "validator_visibility": "Tiered: hard failures immediately, warnings grouped at checkpoints or wrap.",
+    "repair_behavior": "Offer repair menu in later slices; repeated prompt/workflow defects may produce patch proposals in wrap summaries.",
+    "trust_preview": "Compact line with next action, fallback behavior, and rough cost/time.",
+    "adaptive_defaults_scope": "Repo/workspace plus task type.",
+    "learning_signal": "Hybrid bounded: implicit choices plus optional one-click feedback for uncertain recommendations; applies only to repo/task defaults and diagnostics, never safety or contract rules.",
+    "context_provenance": "Compact by default, expandable detail in verbose/on request.",
+    "context_slice_reuse": "Lease-based in later slices: reuse only when purpose, scope, and TTL match the new dispatch.",
+    "mvp_boundary": "cf-brainstorm -> wrap only: compact ledger line, hard context validation, single primary handoff path, and save-full-session outcome.",
+    "save_behavior": "Save full brainstorm session state as a standalone wrap outcome without starting cf-plan or cf-generate.",
+    "wrap_menu": "Primary: Create an implementation plan (cf-plan). Save/finish: Save the full brainstorm session; Finish without saving. Other: Clarify scope (cf-explore / cf-analyze); Show context details."
+  },
+  "rounds": [
+    {
+      "n": 1,
+      "kind": "topic",
+      "panel_mode": "single-agent",
+      "protocol": "independent-then-critique",
+      "topic": {
+        "id": "T1",
+        "text": "Find high-leverage feature ideas for Constructor Studio agent workflows, especially generate/analyze/plan/brainstorm behavior, context handling, sub-agent orchestration, and user-facing phase flow.",
+        "section": null
+      },
+      "feature_ideas": [
+        "Phase Ledger and Resume Contracts",
+        "Context Lease System for SHARED_CONTEXT_PACK",
+        "Adaptive Workflow Navigator",
+        "Workflow Contract Validator and Anti-Pattern Scanner",
+        "Trust Loop Features: Preview, Commit, and Learn"
+      ],
+      "answer_keys": [
+        "recovery_semantics",
+        "context_failure_policy",
+        "workflow_navigation",
+        "phase_handoff_visibility",
+        "brainstorm_handoff",
+        "menu_labels",
+        "validator_visibility",
+        "repair_behavior",
+        "trust_preview",
+        "adaptive_defaults_scope",
+        "learning_signal",
+        "context_provenance",
+        "context_slice_reuse",
+        "mvp_boundary"
+      ],
+      "critique_summary": "The feature is coherent, but can become ceremony if ledger, context, and provenance surfaces are too verbose. MVP should stay narrow."
+    },
+    {
+      "n": 2,
+      "kind": "challenge",
+      "panel_mode": "single-agent",
+      "protocol": "independent-then-critique",
+      "topic": {
+        "id": "T1",
+        "text": "Find high-leverage feature ideas for Constructor Studio agent workflows, especially generate/analyze/plan/brainstorm behavior, context handling, sub-agent orchestration, and user-facing phase flow.",
+        "section": null
+      },
+      "challenged_decisions": [
+        "recovery_semantics",
+        "brainstorm_handoff",
+        "mvp_boundary"
+      ],
+      "answer_keys": [
+        "recovery_semantics",
+        "brainstorm_handoff",
+        "mvp_boundary"
+      ],
+      "outcome": "Accepted all three challenge counter-proposals."
+    },
+    {
+      "n": 3,
+      "kind": "topic",
+      "panel_mode": "single-agent",
+      "protocol": "independent-then-critique",
+      "topic": {
+        "id": "T2",
+        "text": "Design the UX wrap menu for cf-brainstorm MVP: outcome labels, single recommended primary handoff, optional secondary handoff, compact ledger/context validation line, and Russian-language user-facing clarity.",
+        "section": null
+      },
+      "answer_keys": [
+        "wrap_menu",
+        "save_behavior"
+      ],
+      "outcome": "Accepted wrap menu with an explicit save-full-session outcome."
+    }
+  ],
+  "open_questions": [
+    {
+      "question_id": "OQ1",
+      "decision_key": "ledger_schema",
+      "text": "What exact compact ledger fields are required for the cf-brainstorm -> wrap MVP?",
+      "reason": "deferred_decision",
+      "source": "brainstorm"
+    },
+    {
+      "question_id": "OQ2",
+      "decision_key": "context_validation_contract",
+      "text": "What deterministic state/context checks define a valid primary handoff from cf-brainstorm to cf-plan?",
+      "reason": "deferred_decision",
+      "source": "brainstorm"
+    }
+  ],
+  "wrap_menu": {
+    "status_line": "Outcome: direction selected. Context: verified - 3 anchors - next step ~5-10 min - fallback: return to the valid checkpoint.",
+    "primary": {
+      "label": "Create an implementation plan",
+      "workflow": "cf-plan"
+    },
+    "save_or_finish": [
+      {
+        "label": "Save the full brainstorm session",
+        "effect": "write full session state without workflow handoff"
+      },
+      {
+        "label": "Finish without saving",
+        "effect": "stop without workflow handoff"
+      }
+    ],
+    "other_actions": [
+      {
+        "label": "Clarify scope",
+        "workflow": "cf-explore / cf-analyze"
+      },
+      {
+        "label": "Show context details",
+        "effect": "expand provenance/context details"
+      }
+    ]
+  }
+}
