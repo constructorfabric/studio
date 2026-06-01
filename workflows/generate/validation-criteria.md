@@ -82,8 +82,7 @@ INVARIANTS:
     deterministic gate is SKIPPED
   - MUST have completed final-response gate self-check before ending response
     (for file-writing output)
-  - WHEN Phase 6 skip is taken on the clean path because output is chat-only,
-    no files changed, remaining_findings is empty, and no outstanding validation or waiver decision remains:
+  - IF output was chat-only AND no files changed AND remaining_findings is empty AND no outstanding validation or waiver decision remains:
     terminal handoff requirements are exempt for that Phase 6 skip path
   - WHEN files written AND remaining_findings is empty:
     MUST have emitted Post-Write Review Handoff menu as FINAL section
@@ -96,8 +95,7 @@ INVARIANTS:
   - MUST have emitted terminal handoff menu with exactly the three canonical
     options for current state (Remediation: R1/R2/R3; Post-Write Review: W1/W2/W3)
     with actual counts filled in
-  - WHEN Phase 6 skip is taken on the clean chat-only path because no files
-    changed, remaining_findings is empty, and no outstanding validation or waiver decision remains:
+  - IF output was chat-only AND no files changed AND remaining_findings is empty AND no outstanding validation or waiver decision remains:
     MUST skip terminal handoff menu emission instead of synthesizing a
     terminal handoff heading
   - WHEN user picks R2/R3/W2/W3 in their next turn:
@@ -149,9 +147,14 @@ NOTES:
     IF Phase 6 skip applies because output is chat-only, no files changed,
        remaining_findings is empty, and no outstanding validation or waiver decision remains:
       self-test handoff-heading evidence is exempt
-      RECORD explicit evidence that the clean Phase 6 skip path was taken
-      instead of emitting `### Agent Self-Test Results` or any terminal handoff
-      heading
+      EMIT heading exactly `### Clean Phase 6 Skip Evidence`
+      EMIT one structured line containing:
+        skip_reason=phase_6_clean_chat_only;
+        output=chat-only;
+        files_changed=false;
+        remaining_findings=empty;
+        outstanding_validation_or_waiver_decision=false
+      DO NOT emit `### Agent Self-Test Results` or any terminal handoff heading
 
 UNIT AgentSelfTestRelaxed
 

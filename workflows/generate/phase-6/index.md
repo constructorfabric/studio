@@ -28,6 +28,23 @@ WHEN:
     - remaining_findings is empty
     - no outstanding validation or waiver decision remains
 
+  NOTE outstanding validation or waiver decision:
+    Outstanding validation includes pending reviewer validation,
+    validation_result = "needs_action", any non-terminal validation status,
+    queued remediation tasks, and async validation checks that have not reached
+    terminal PASS, FAIL, SKIPPED_WITH_EVIDENCE, or WAIVED state.
+    Outstanding waiver state includes waiver_pending,
+    waiver_exception_pending, unresolved waiver determination, and any waiver
+    whose applicability is required before terminal routing.
+    remaining_findings non-empty always forces Phase 6. AUTHOR_PLAN_OFFER_RESOLVED
+    alone does not clear outstanding validation unless validation_result is
+    terminal.
+    Example forcing Phase 6: chat-only output, no files changed,
+    remaining_findings empty, validation_result = "needs_action".
+    Example allowing skip: chat-only output, no files changed,
+    remaining_findings empty, validation_result = PASS, no waiver state, and no
+    queued remediation or async checks.
+
 RULES:
   - Late-phase routing relies on controller-supplied prompt_context_view slices
   - MUST NOT reopen prompt assets from disk

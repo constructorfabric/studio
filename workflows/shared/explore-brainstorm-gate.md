@@ -20,7 +20,7 @@ STATE:
   BRAINSTORM_DECISION: unset | required | suggested | skipped | complete
   RESOURCE_CONTEXT: null | cf-explorer result JSON
   BRAINSTORM_CONTEXT: null | brainstorm handoff JSON
-  ad_hoc_search_attempted: boolean  default: false
+  ad_hoc_search_attempted: boolean  default: false  scope: workflow_run
 
 ORDER:
   1. Resolve required/suggested explore.

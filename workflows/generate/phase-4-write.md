@@ -138,6 +138,27 @@ DO:
         CF_PHASE_GATE MUST be treated as released only for that task's dispatch
         window while its lease is valid, and MUST be reset for every task
         independently before the group is considered complete.
+        Lease expiration recovery:
+          - When lease TTL expires before completion_status is terminal,
+            CF_PHASE_GATE for that task_id becomes claimable again; record
+            expired_by when known and the retry window used for the next claim.
+          - A create-or-update guarded by task_id and lease TTL MUST fail fast
+            when the prior lease expired during the operation, publish a
+            lease-expired event, and leave released_at unchanged for the losing
+            writer.
+        CAS retry semantics:
+          - reset_at and completion_status updates MUST use bounded backoff
+            with a fixed max retry count after CAS conflicts; after retries are
+            exhausted, surface a recoverable error or escalate through
+            workflows/generate/error-handling.md.
+          - A reset that cannot prove lease ownership or CAS success MUST NOT
+            clear another owner's released_at or completion_status.
+        CF_PHASE_GATE claim conflicts:
+          - Competing claims for the same task_id MUST be rejected while a
+            valid lease exists.
+          - The rejection MUST return owner lease metadata (task_id,
+            selected_author, released_at, lease TTL expiry, completion_status)
+            so the caller can wait for expiry/completion or abort.
       IF INLINE_FALLBACK == true:
         run tasks sequentially in listed order
         EMIT one-line warning that planned parallelism degraded to sequential inline execution

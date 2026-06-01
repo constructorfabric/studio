@@ -162,7 +162,7 @@ DO:
     REQUIRE {cf-studio-path}/.core/workflows/generate/validation-criteria.md § Detailed Post-Flight Checklist
 
   IF STRICT_MODE AND preparing final response gate:
-    REQUIRE {cf-studio-path}/.core/workflows/generate/validation-criteria.md § Agent Self-Test
+    REQUIRE {cf-studio-path}/.core/workflows/generate/validation-criteria.md § Agent Self-Test (STRICT mode — post-flight lazy)
 
 RULES:
   // Phase 0.a

@@ -36,6 +36,28 @@ DO:
       contract before this file proceeds
     MUST NOT re-run adapter acceptance checks or branch mapping inside the
       Phase 5 lazy loop body
+    CANONICAL external-entry definitions:
+      - "analyze-side accepted payload predicates" are the nondeferrable
+        adapter checks that prove the payload has source analyze run id,
+        target_paths, all_findings, deterministic validation result or skip
+        evidence, semantic report blocks when available, MAX_ITER, files_changed
+        state, and explicit remediation handoff option 1 selection.
+      - "payload shaping" transforms the analyze output into
+        Phase5ExternalEntryPayload:
+          {source_workflow:"analyze", source_run_id, target_paths,
+           all_findings, remaining_findings, files_changed,
+           validation_result, validator_evidence, semantic_reports,
+           max_iter, entry_branch}.
+        remaining_findings MUST equal all_findings on MAX_ITER=0 entry unless
+        the analyze adapter supplies a validated narrower remediation set.
+      - "branch mapping" sets entry_branch by deterministic algorithm:
+        MAX_ITER == 0 -> phase-5.3-findings;
+        validation_result == "FAIL" -> phase-5.1-deterministic;
+        otherwise -> phase-5.2-semantic.
+      - Adapter acceptance checks that are nondeferrable: schema validation,
+        target path normalization, finding id stability, validation_result
+        terminal-or-explicitly-skipped status, MAX_ITER resolution, and branch
+        mapping. Phase 5 consumes only the validated, shaped, mapped payload.
 
 RULES:
   - REQUIRE `{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md` loaded before any cf-* sub-agent
