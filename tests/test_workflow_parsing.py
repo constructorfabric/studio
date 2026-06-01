@@ -27,12 +27,13 @@ def test_parse_workflow_extracts_all_sections():
 
     content = workflow_path.read_text(encoding='utf-8')
 
-    # generate.md uses phase-based structure with Prerequisite checks
-    has_prerequisites = 'Prerequisite' in content
-    has_phases = '## Phase' in content
+    # generate.md now uses PDSL-style UNIT blocks while retaining explicit
+    # bootstrap prerequisites and phase-fragment loading in the DO section.
+    has_prerequisites = 'UNIT RootSkillEntrypointBootstrap' in content
+    has_phases = '// Phase ' in content and 'REQUIRE {cf-studio-path}/.core/workflows/generate/phase-' in content
 
-    assert has_prerequisites, f"{workflow_path.name}: Prerequisite section not found"
-    assert has_phases, f"{workflow_path.name}: Phase section not found"
+    assert has_prerequisites, f"{workflow_path.name}: Bootstrap prerequisite unit not found"
+    assert has_phases, f"{workflow_path.name}: Phase fragment load section not found"
 
 
 def test_validate_all_workflows_have_required_structure():
@@ -85,5 +86,6 @@ def test_generate_workflow_has_template_resolution():
     # generate.md should have template-related content
     assert "template" in content.lower(), "generate.md should reference templates"
     assert "artifact" in content.lower(), "generate.md should reference artifacts"
-    # generate.md uses Phase structure instead of Steps
-    assert "## Phase" in content, "generate.md should use Phase structure"
+    # generate.md uses PDSL UNIT structure and loads phase fragments explicitly.
+    assert "UNIT Generate" in content, "generate.md should use UNIT structure"
+    assert "// Phase 1: collect inputs" in content, "generate.md should load phase fragments"

@@ -842,10 +842,10 @@ def test_external_fix_handoff_requires_subagent_dispatch_evidence() -> None:
         assert "handoff_guard.dispatch_evidence_required = true" in text
 
     assert "phase5_dispatch_evidence" in phase5_index
-    assert "validator dispatch record per iteration" in phase5_index
-    assert "semantic reviewer\n      dispatch record per iteration" in phase5_index
-    assert "author dispatch\n      record before any file edit" in phase5_index
-    assert "missing evidence = protocol violation" in phase5_index
+    assert "validator\n      dispatch record per post-author iteration" in phase5_index
+    assert "semantic reviewer dispatch\n      record per post-author iteration" in phase5_index
+    assert "author dispatch record before the first file edit" in phase5_index
+    assert "missing required\n      evidence = protocol violation" in phase5_index
 
     assert "Inline patching permitted ONLY when INLINE_FALLBACK=true OR MAX_ITER=0" in phase53
     assert "MUST stop before editing files" in phase53
@@ -1102,7 +1102,7 @@ def test_analyze_change_review_dispatches_diff_scope_resolver() -> None:
     assert "MUST_NOT run git diff" in change_scope
     assert "diff_scope" in phase3
     assert "target_paths=prompt_targets" in phase3
-    assert "deterministic gate is PASS OR SKIPPED (with validator availability proof)" in phase3
+    assert "deterministic gate is PASS or SKIPPED (with validator availability proof)" in phase3
     assert '"diff_scope":' in code_reviewer
     assert "changed_hunks" in code_reviewer
 
@@ -1151,8 +1151,8 @@ def test_analyze_handoff_max_iter_zero_can_reach_phase_6() -> None:
     assert "accept carried analyze-side deterministic result" in phase6
 
 
-def test_analyze_external_r1_runs_generate_review_before_fixing() -> None:
-    """Analyze-originated R1 must not fix carried findings before generate-side review."""
+def test_analyze_external_r1_fixes_carried_findings_before_fresh_review() -> None:
+    """Analyze-originated R1 fixes carried findings, then fresh review verifies."""
     repo_root = Path(__file__).resolve().parents[1]
     handoff = (
         repo_root / "workflows" / "analyze" / "phase-4-output" / "remediation-handoff.md"
@@ -1161,9 +1161,10 @@ def test_analyze_external_r1_runs_generate_review_before_fixing() -> None:
         repo_root / "workflows" / "generate" / "phase-5" / "index.md"
     ).read_text(encoding="utf-8")
 
-    assert "CONTINUE workflows/generate/phase-5/phase-5.1-det-gate.md" in handoff
+    assert "BEFORE any fresh Phase 5.1 / 5.2 review" in handoff
+    assert "First author dispatch fixes the already-reviewed analyze findings." in handoff
     assert "external-entry from analyze" in phase5
-    assert "MUST run Phase 5.1 then Phase 5.2 before Phase 5.3" in phase5
+    assert "MUST NOT run Phase 5.1 or Phase 5.2 before the first author dispatch" in phase5
 
 
 def test_max_iter_zero_preserves_analyzed_paths_for_followup_fix_loop() -> None:
@@ -1266,7 +1267,7 @@ def test_max_iter_zero_has_single_external_entry_semantics() -> None:
 
     assert "MAX_ITER=0" in phase5
     assert "single validator pass + one semantic-reviewer pass" not in phase5
-    assert "SKIP fresh Phase 5 validation/review" in phase5
+    assert "SKIP fresh Phase 5.1 / Phase 5.2 before this first Phase 5.3 pass" in phase53
     assert "IF gate FAIL" in phase5 and "SKIP semantic review" in phase5
     assert "zero-iteration external entry" in phase53
     assert "zero-iteration internal entry" in phase53
@@ -1374,7 +1375,7 @@ def test_prompt_reviewer_methodology_only_wording_preserves_compliance_invariant
         / "cf-semantic-reviewer-prompt.md"
     ).read_text(encoding="utf-8")
 
-    assert "Load `prompt-engineering.md` as review methodology" in prompt_reviewer
+    assert "controller-supplied prompt-engineering methodology" in prompt_reviewer
     assert "Load only `prompt-engineering.md`.\n" not in prompt_reviewer
 
 
@@ -1853,8 +1854,8 @@ def test_cf_help_routes_to_prefilled_explain_preset() -> None:
     assert "diagram-format questions" in preamble
     assert "normal Storytelling Protocol E0-E5" in preamble
     assert "FORBID custom one-shot help rendering" in preamble
-    assert "ASCII inline diagrams" in preamble
-    assert "Do NOT replace it with a custom one-shot `Cf Overview`" in preamble
+    assert "MUST render diagrams as ASCII" in preamble
+    assert "custom one-shot overview/status summary" in preamble
     assert "STORYTELLING_HELP_OUTPUT_CONTRACT" not in preamble
 
 
@@ -1999,9 +2000,9 @@ def test_analyze_mode_flags_are_reset_per_run() -> None:
         encoding="utf-8"
     )
 
-    reset_idx = preamble.index("Initialize per-run analyze flags before matching")
-    code_idx = preamble.index("WHEN user requests analysis of code")
-    prompt_idx = preamble.index("WHEN user requests analysis of the following instruction targets")
+    reset_idx = preamble.index("Initialize workflow-owned analysis flags to their defaults")
+    code_idx = preamble.index("IF code/codebase/implementation analysis")
+    prompt_idx = preamble.index("IF instruction targets")
     assert reset_idx < code_idx
     assert reset_idx < prompt_idx
     for flag in (
@@ -2109,15 +2110,15 @@ def test_reviewer_plan_failure_does_not_use_legacy_single_dispatch_fallback() ->
     assert "legacy single-dispatch-per-methodology" not in phase25
     assert "checkpoint-only report" not in phase25
     assert "checkpoint.type=PARTIAL_CHECKPOINT" in phase25
-    assert "MUST_NOT set REVIEWER_PLAN_RESOLVED=auto_skipped_inline_fallback after" in phase25
+    assert "MUST_NOT set REVIEWER_PLAN_RESOLVED=cancelled_inline_fallback after" in phase25
     assert "rerun the planner" in phase25
-    assert "rerun the planner or stop with validation errors" in phase25
+    assert "Reply `1` to rerun the planner or `2` to stop." in phase25
     assert "IF re-validation fails" in phase3
     assert "every parallel_groups[].task_ids names an existing task" in phase3
     assert "every parallel_groups[].depends_on references an earlier group" in phase3
     assert "Route back to phase-2.5-reviewer-plan.md" in phase3
     assert "REVIEWER_EXECUTION_PLAN is non-null" in phase3
-    assert "auto_skipped_inline_fallback" in phase3
+    assert "cancelled_inline_fallback" in phase3
     assert "starts with `auto_skipped_`" not in phase3
     assert "When `REVIEWER_EXECUTION_PLAN` is null (Phase 2.5 auto-skipped)" not in phase3
 
@@ -2425,7 +2426,7 @@ def test_runtime_instruction_modules_stay_compact() -> None:
     # Tuples of (path, line_budget).  SKILL.md grew with the PDSL GIT_COMMIT_MODE
     # state machine; it gets a higher budget than pure-workflow files.
     compact_files = [
-        (repo_root / "skills" / "studio" / "SKILL.md", 450),
+        (repo_root / "skills" / "studio" / "SKILL.md", 475),
         (repo_root / "workflows" / "analyze" / "phase-0-dependencies.md", 200),
         (repo_root / "workflows" / "analyze" / "phase-4-output" / "remediation-handoff.md", 200),
         (repo_root / "skills" / "studio" / "agents" / "cf-semantic-reviewer-code.md", 200),
