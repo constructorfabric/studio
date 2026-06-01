@@ -188,7 +188,7 @@ INVARIANTS:
   - MUST NOT end response without one of:
       Remediation Handoff menu (actionable findings exist or deterministic gate FAIL)
       Phase 5 next-steps menu (PASS path, EXPLAIN_MODE=false)
-  - IF phase-4-output/index.md OR phase-5-next-steps.md is not loadable: STOP and surface missing file before emitting any final response
+  - IF the required terminal file (phase-4-output/index.md for remediation handoff, or phase-5-next-steps.md for PASS path) is not loadable: STOP and surface missing file error before emitting final response.
 ```
 
 ```text

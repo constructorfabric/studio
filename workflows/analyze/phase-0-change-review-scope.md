@@ -20,7 +20,7 @@ DO:
     as the diff-scope resolver source contract
   SYNTHESIZE final dispatch prompt from resolver contract + SHARED_CONTEXT_PACK + payload below
   IF resolver contract not loaded / unreadable / ambiguous / not reflected in dispatch prompt:
-    FAIL per sub-agent-dispatch.md § Contract-read-and-use gate
+    FAIL per sub-agent-dispatch.md § SubAgentContractReadGate
     FORBID dispatch
     STOP_TURN
   DISPATCH cf-diff-scope-resolver with:
@@ -59,7 +59,7 @@ RULES:
     "Dispatch blocked: ..." error, then MUST STOP_TURN
   - MUST dispatch cf-diff-scope-resolver immediately after inline-fallback-probe
     and before Phase 1 file checks
-  - MUST apply sub-agent-dispatch.md § Contract-read-and-use gate before dispatch
+  - MUST apply sub-agent-dispatch.md § SubAgentContractReadGate before dispatch
   - MUST derive methodology flags from diff_scope.changed_files typed sets,
     not from raw review_targets
   - MUST_NOT silently enable CODE_REVIEW or CODE_BUG_REVIEW for prompt-only or

@@ -27,7 +27,7 @@ DO:
     SHARED_CONTEXT_PACK and the payload below
   IF collector source contract is not loaded, unreadable, ambiguous, or not
      reflected in the final dispatch prompt:
-    FAIL per sub-agent-dispatch.md § Contract-read-and-use gate
+    FAIL per sub-agent-dispatch.md § SubAgentContractReadGate
     FORBID dispatch
   DISPATCH cf-generate-collector with the synthesized final prompt and
     orchestrator-supplied payload:
@@ -56,7 +56,7 @@ MENU Phase1EditLoop:
       CONTINUE workflows/generate/phase-1.5-author-plan.md
     per-item edits ->
       IF COLLECTOR_MAX_ITER exhausted:
-        EMIT BLOCKED status with current stored_proposed_inputs
+        EMIT BLOCKED status with partial Inputs: stored_proposed_inputs snapshot
         STOP_TURN
       MERGE user modifications into stored_proposed_inputs
       LOAD {cf-studio-path}/.core/skills/studio/agents/cf-generate-collector.md
@@ -65,7 +65,7 @@ MENU Phase1EditLoop:
         SHARED_CONTEXT_PACK and the updated payload
       IF collector source contract is missing, unreadable, ambiguous, or not
          reflected in the final prompt:
-        FAIL per sub-agent-dispatch.md § Contract-read-and-use gate
+        FAIL per sub-agent-dispatch.md § SubAgentContractReadGate
         FORBID re-dispatch
       RE-DISPATCH cf-generate-collector with the synthesized final prompt and
         updated payload:
@@ -78,7 +78,7 @@ MENU Phase1EditLoop:
       DECREMENT COLLECTOR_MAX_ITER
       IF COLLECTOR_MAX_ITER exhausted:
         EMIT refreshed Inputs block
-        EMIT BLOCKED status with partial Inputs block
+        EMIT BLOCKED status with partial Inputs: refreshed Inputs block
         STOP_TURN
       ELSE:
         EMIT refreshed Inputs block
@@ -86,7 +86,7 @@ MENU Phase1EditLoop:
 
 RULES:
   - MUST show Inputs markdown to user verbatim
-  - MUST apply sub-agent-dispatch.md § Contract-read-and-use gate before
+  - MUST apply sub-agent-dispatch.md § SubAgentContractReadGate before
     initial collector dispatch and every collector re-dispatch
   - MUST persist returned JSON as stored_proposed_inputs
   - MUST replace stored_proposed_inputs on every collector return before showing

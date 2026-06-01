@@ -557,7 +557,7 @@ RULES:
   Fan-out (panel_mode="fan-out"):
     - MUST open, load, and follow {cf-studio-path}/.core/skills/studio/agents/cf-brainstorm-expert.md per expert dispatch
     - Final prompt MUST preserve canonical input payload, output contract, parse-time invariants, completion gate, final emit instruction
-    - Fail-closed per sub-agent-dispatch.md § Contract-read-and-use gate if contract missing/unreadable/ambiguous
+    - Fail-closed per sub-agent-dispatch.md § SubAgentContractReadGate if contract missing/unreadable/ambiguous
     - Per-expert per-round fields: persona, topic, mode, challenged_decisions (required when mode="challenge"; omit/null when mode="topic"), repair_feedback (optional)
     - state sub-fields ALWAYS: kind, rules_loaded, kit_rules_path, template_path, panel, decisions, topic_history, resource_context
     - state sub-fields OPTIONAL when available: example_path, rounds, open_questions, session_id, next_topic_proposals

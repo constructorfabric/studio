@@ -8,6 +8,51 @@ description: "Invoke when Phase 5 exits and the orchestrator must assemble the P
 # Phase 6 — Offer Next Steps (Dispatcher)
 
 ```text
+UNIT Phase6EntryGate
+
+PURPOSE:
+  Decide whether Phase 6 must load after Phase 5 exit or may be skipped on the
+  chat-only clean path.
+
+WHEN:
+  LOAD this phase after Phase 5 exit when at least one is true:
+    - Validation Results body exists or must be surfaced
+    - waiver or waiver-exception state must be evaluated or rendered
+    - files were written or changed
+    - remaining_findings is non-empty
+    - validation state is unresolved, including any outstanding validation or
+      waiver decision
+  SKIP this phase only when all are true:
+    - output is chat-only
+    - no files changed
+    - remaining_findings is empty
+    - no outstanding validation or waiver decision remains
+
+  NOTE outstanding validation or waiver decision:
+    Outstanding validation includes pending reviewer validation,
+    validation_result = "needs_action", any non-terminal validation status,
+    queued remediation tasks, and async validation checks that have not reached
+    terminal PASS, FAIL, SKIPPED_WITH_EVIDENCE, or WAIVED state.
+    Outstanding waiver state includes waiver_pending,
+    waiver_exception_pending, unresolved waiver determination, and any waiver
+    whose applicability is required before terminal routing.
+    remaining_findings non-empty always forces Phase 6. AUTHOR_PLAN_OFFER_RESOLVED
+    alone does not clear outstanding validation unless validation_result is
+    terminal.
+    Example forcing Phase 6: chat-only output, no files changed,
+    remaining_findings empty, validation_result = "needs_action".
+    Example allowing skip: chat-only output, no files changed,
+    remaining_findings empty, validation_result = PASS, no waiver state, and no
+    queued remediation or async checks.
+
+RULES:
+  - Late-phase routing relies on controller-supplied prompt_context_view slices
+  - MUST NOT reopen prompt assets from disk
+  - If validation prerequisites, waiver applicability, or terminal clean/dirty
+    state is unresolved, Phase 6 is required and clean skip is forbidden
+```
+
+```text
 UNIT Phase6PrerequisiteGuard
 
 PURPOSE:
@@ -47,6 +92,13 @@ DO:
      outside these exceptions:
     ABORT with clear prerequisite error stating which Phase 5 output is missing
     FORBID emitting handoff menus
+
+RULES:
+  - Any unresolved question about whether requirement (2) is satisfied or
+    waived counts as an outstanding validation/waiver decision and forces
+    Phase 6 entry; clean skip is forbidden until resolved
+  - Consume Phase 5 outputs and waiver state from controller-supplied
+    prompt_context_view slices; MUST NOT reopen prompt assets from disk
 
 NOTES:
   Same exception (det-gate FAIL bypasses reviewer-block requirement) applies
@@ -104,7 +156,8 @@ DO:
   IF remaining_findings is empty AND files were written:
     LOAD post-write-handoff.md as terminal section
 
-  IF output was chat-only AND no files changed AND remaining_findings is empty:
+  IF output was chat-only AND no files changed AND remaining_findings is empty
+     AND no outstanding validation or waiver decision remains:
     SKIP both handoff menus
 
   IF chat-only output with non-empty remaining_findings:
@@ -120,6 +173,8 @@ RULES:
   - MUST emit remediation handoff when remaining_findings is non-empty
     (for any file-writing generate flow: validated, RELAXED unvalidated,
      artifacts, code, workflow/instruction updates, multi-file edits)
+  - Phase 6 skip is allowed only on the chat-only clean path with no files
+    changed, no findings, and no outstanding validation/waiver decision
   - If files were written and remaining_findings is empty:
     MUST emit Post-Write Review Handoff menu as FINAL section;
     omitting it makes generate output incomplete

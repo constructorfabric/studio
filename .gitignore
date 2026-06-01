@@ -115,3 +115,4 @@ md-map.html
 md-map.html.js
 md-map.json
 .claude/scheduled_tasks.lock
+.bootstrap/.cache/generate-plans/cf-generate-lazy-loading-*/

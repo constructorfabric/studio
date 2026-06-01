@@ -2,7 +2,7 @@
 cf: true
 type: workflow-fragment
 parent: workflows/generate.md
-description: Invoke when the orchestrator enters the Phase 5 review loop after Phase 4 writes files (or on external entry from analyze.md Remediation Handoff option 1).
+description: Invoke when the orchestrator enters the Phase 5 review loop after Phase 4 writes complete (or on external entry from analyze.md Remediation Handoff option 1 after the analyze-side adapter finishes its accepted payload and branch mapping work).
 ---
 
 # Phase 5 — Review Loop (Dispatcher)
@@ -19,13 +19,56 @@ description: Invoke when the orchestrator enters the Phase 5 review loop after P
 UNIT Phase5Entry
 
 PURPOSE:
-  Enforce entry preconditions and inline-fallback probe before any Phase 5 work.
+  Enforce entry preconditions and inline-fallback probe before any lazy
+  Phase 5 branch work begins.
+
+DO:
+  REQUIRE one of:
+    - internal generate path with Phase 4 writes/updates complete
+    - external entry from analyze→generate remediation handoff option 1 with
+      analyze-side accepted payload predicates, payload shaping, and branch
+      mapping already resolved
+  IF internal generate path:
+    FORBID loading any Phase 5 branch file before Phase 4 write completion
+  IF external-entry from analyze→generate (option 1):
+    TREAT analyze-side remediation adapter checks as eager/nondeferrable
+    REQUIRE accepted external-entry payload already mapped onto the Phase 5
+      contract before this file proceeds
+    MUST NOT re-run adapter acceptance checks or branch mapping inside the
+      Phase 5 lazy loop body
+    CANONICAL external-entry definitions:
+      - "analyze-side accepted payload predicates" are the nondeferrable
+        adapter checks that prove the payload has source analyze run id,
+        target_paths, all_findings, deterministic validation result or skip
+        evidence, semantic report blocks when available, MAX_ITER, files_changed
+        state, and explicit remediation handoff option 1 selection.
+      - "payload shaping" transforms the analyze output into
+        Phase5ExternalEntryPayload:
+          {source_workflow:"analyze", source_run_id, target_paths,
+           all_findings, remaining_findings, files_changed,
+           validation_result, validator_evidence, semantic_reports,
+           max_iter, entry_branch}.
+        remaining_findings MUST equal all_findings on MAX_ITER=0 entry unless
+        the analyze adapter supplies a validated narrower remediation set.
+      - "branch mapping" sets entry_branch by deterministic algorithm:
+        MAX_ITER == 0 -> phase-5.3-findings;
+        validation_result == "FAIL" -> phase-5.1-deterministic;
+        otherwise -> phase-5.2-semantic.
+      - Adapter acceptance checks that are nondeferrable: schema validation,
+        target path normalization, finding id stability, validation_result
+        terminal-or-explicitly-skipped status, MAX_ITER resolution, and branch
+        mapping. Phase 5 consumes only the validated, shaped, mapped payload.
 
 RULES:
   - REQUIRE `{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md` loaded before any cf-* sub-agent
     dispatch in this phase or its sub-files
   - Pre-dispatch fail-stop and Mode B degradation rules defined in
     {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md
+  - Late-phase instructions in this phase and its sub-files come from
+    controller-supplied prompt_context_view slices; MUST NOT reopen prompt
+    assets from disk
+  - After entry, the Phase 5 loop body stays lazy: phase-5.* branch files load
+    only when the dispatcher branch below requires them
 ```
 
 ## Pre-Phase-Setup (MAX_ITER resolution)
@@ -116,16 +159,9 @@ MENU IterationCapMenu:
       WAIT user.reply
       STOP_TURN
     accept ->
-      RUN one deterministic validator pass through phase-5.1-det-gate.md
-        ON gate PASS or validator-backed SKIPPED:
-          SET loop_exit = "max-iter-stopped"
-          SET remaining_findings = carry_forward
-          CONTINUE workflows/generate/phase-5/phase-5.5-final.md
-        ON gate FAIL:
-          SURFACE validator findings to user
-          EMIT_MENU IterationCapMenu
-          WAIT user.reply
-          STOP_TURN
+      SET loop_exit = "max-iter-stopped"
+      SET remaining_findings = carry_forward
+      CONTINUE workflows/generate/phase-5/phase-5.5-final.md
     stop ->
       SET loop_exit = "manual-handoff"
       SET remaining_findings = carry_forward
@@ -225,7 +261,7 @@ RULES:
     Constructor Studio adapter)
 
 NOTES:
-  Sub-file load conditions:
+  Sub-file load conditions (lazy; load only by matched branch):
     phase-5.1-det-gate.md: post-author iterations begin; dispatch deterministic validator
     phase-5.2-semantic.md: det gate PASS or SKIPPED; dispatch matched semantic reviewer(s)
     phase-5.3-findings.md: external entry displays carried analyze findings first;

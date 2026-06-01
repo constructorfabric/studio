@@ -53,5 +53,7 @@ RULES:
   - MUST return concise summary: phase number, output filename, line count, budget status
   - IF compilation failed: MUST report exact blocker AND MUST_NOT leave partial
     output file under output_path
-  - MUST honor git_commit_mode — no git invocations beyond git_constraint
+  - MUST honor git_commit_mode; treat git_constraint as policy data, never as
+    shell text, and use only explicit allow-listed git commands permitted by
+    git_commit_mode
 ```

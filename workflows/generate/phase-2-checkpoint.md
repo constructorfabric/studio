@@ -45,14 +45,16 @@ NOTES:
 UNIT Phase25Checkpoint
 
 PURPOSE:
-  Emit a checkpoint when artifacts have >10 sections or generation spans
-  multiple turns.
+  Emit a checkpoint when artifacts have >10 sections, generation spans
+  multiple turns, or resumable section/state bookkeeping must be preserved.
 
 WHEN:
-  artifact has > 10 sections OR generation spans multiple turns
+  artifact has > 10 sections OR generation spans multiple turns OR resumable
+  section/state bookkeeping exists or must be emitted for resume safety
 
 DO:
-  IF artifact has > 10 sections OR generation spans multiple turns:
+  IF artifact has > 10 sections OR generation spans multiple turns OR
+     resumable section/state bookkeeping exists or must be emitted:
     EMIT exactly:
 ---
 ### Generation Checkpoint
@@ -68,8 +70,11 @@ Resume: Re-read this checkpoint, verify no file changes, continue to Phase 3.
 RULES:
   - Default: checkpoint is chat-only
   - MUST write a checkpoint file ONLY when user explicitly requests/approves it
+  - This fragment is lazy-loaded only when the WHEN predicate is true
   - On resume after compaction:
     RE-READ target file if it exists
-    RE-LOAD rules dependencies
+    RE-LOAD only the controller-supplied prompt_context_view slices required
+      for the saved phase and checkpoint bookkeeping
+    MUST NOT reopen prompt assets from disk
     CONTINUE from saved phase
 ```

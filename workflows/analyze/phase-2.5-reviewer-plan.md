@@ -81,7 +81,7 @@ DO:
     SHARED_CONTEXT_PACK and the payload below
   IF planner source contract is not loaded, unreadable, ambiguous, or not
      reflected in the final dispatch prompt:
-    FAIL per sub-agent-dispatch.md § Contract-read-and-use gate
+    FAIL per sub-agent-dispatch.md § SubAgentContractReadGate
     FORBID dispatch
   DISPATCH cf-analyze-planner (read-only) with:
     plan_mode             = "memory" or "disk"
@@ -196,7 +196,7 @@ MENU PlannerRecoveryMenu:
     STOP_TURN
 
 INVARIANTS:
-  - MUST apply sub-agent-dispatch.md § Contract-read-and-use gate before
+  - MUST apply sub-agent-dispatch.md § SubAgentContractReadGate before
     dispatching cf-analyze-planner
   - MUST_NOT set REVIEWER_PLAN_RESOLVED=cancelled_inline_fallback after
     planner dispatch has already failed validation

@@ -21,6 +21,9 @@ STATE:
     scope: session
   INLINE_FALLBACK: unset | true | false
     scope: workflow_run
+  INLINE_FALLBACK_PROBED: false | true
+    default: false
+    scope: workflow_run
   ESCALATION_ESTIMATE: integer (lines)
     scope: workflow_run
 
@@ -39,19 +42,24 @@ DO:
     RUN workflows/shared/inline-fallback-probe.md
     CONTINUE PlanEscalationGate (re-evaluate after resolution)
 
+  IF INLINE_FALLBACK_PROBED == true
+     AND INLINE_FALLBACK == false
+     AND SUB_AGENT_SESSION_APPROVED != true:
+    FAIL_FAST invariant violation:
+      INLINE_FALLBACK=false is allowed only when INLINE_FALLBACK_PROBED=true
+      and SUB_AGENT_SESSION_APPROVED=true; the inline-fallback probe MUST NOT
+      leave or flip to SUB_AGENT_SESSION_APPROVED!=true with INLINE_FALLBACK=false.
+    SURFACE invalid state and STOP before retrying plan escalation.
+
   IF SUB_AGENT_SESSION_APPROVED == true AND INLINE_FALLBACK == false:
     CONTINUE SubAgentDecompositionBypass
 
   IF INLINE_FALLBACK == unset:
-    RUN workflows/shared/inline-fallback-probe.md
-    CONTINUE PlanEscalationGate (re-evaluate after resolution)
+    STOP and surface unresolved INLINE_FALLBACK after inline-fallback-probe.md;
+    do not enter NoNativeDispatchPlanHandoff or SubAgentDecompositionBypass.
 
   IF INLINE_FALLBACK == true OR host.supports_native_subagents == false:
     CONTINUE NoNativeDispatchPlanHandoff
-
-  IF SUB_AGENT_SESSION_APPROVED != true:
-    RUN workflows/shared/inline-fallback-probe.md
-    CONTINUE PlanEscalationGate (re-evaluate after resolution)
 
 NOTES:
   ESCALATION_ESTIMATE: estimated line count of the current task, derived from

@@ -25,7 +25,7 @@ DO:
     plus SHARED_CONTEXT_PACK and the payload below
   IF source contract is not loaded, unreadable, ambiguous, or not reflected in
      the final dispatch prompt:
-    FAIL per sub-agent-dispatch.md § Contract-read-and-use gate
+    FAIL per sub-agent-dispatch.md § SubAgentContractReadGate
     FORBID dispatch
   DISPATCH cf-deterministic-validator with synthesized final prompt including:
     target_paths    = diff_scope.review_targets when CHANGE_REVIEW=true, else {PATHS}
@@ -45,7 +45,7 @@ DO:
 
 RULES:
   - MUST run {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md before any cf-* sub-agent dispatch
-  - MUST apply sub-agent-dispatch.md § Contract-read-and-use gate before
+  - MUST apply sub-agent-dispatch.md § SubAgentContractReadGate before
     dispatching cf-deterministic-validator
   - MUST skip this unit when SEMANTIC_ONLY=true OR EXPLAIN_MODE=true
   - MUST embed Validation Results block verbatim; MUST_NOT redefine the field set

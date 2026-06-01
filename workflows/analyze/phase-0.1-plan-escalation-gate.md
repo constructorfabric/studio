@@ -16,7 +16,7 @@ PURPOSE:
   approved) or offer plan escalation to the user.
 
 STATE:
-  PLANNER_ESCALATION_RESULT: bypassed | proceed_small | proceed_medium_warn | escalated
+  PLANNER_ESCALATION_RESULT: unset | bypassed | escalated
     default: unset
 
 WHEN:

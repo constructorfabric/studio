@@ -20,6 +20,7 @@ STATE:
   BRAINSTORM_DECISION: unset | required | suggested | skipped | complete
   RESOURCE_CONTEXT: null | cf-explorer result JSON
   BRAINSTORM_CONTEXT: null | brainstorm handoff JSON
+  ad_hoc_search_attempted: boolean  default: false  scope: workflow_run
 
 ORDER:
   1. Resolve required/suggested explore.
@@ -37,6 +38,8 @@ RESOURCE BOUNDARY:
   - Local ad-hoc search by the orchestrator (`rg`, `grep`, `find`, IDE search,
     manual directory walks, or equivalent) MUST_NOT replace cf-explore when
     any REQUIRE_EXPLORE condition applies.
+  - Any local ad-hoc search step MUST set ad_hoc_search_attempted = true before
+    ExploreBrainstormAction is evaluated so the gate can stop on that signal.
   - After cf-explore completes, the orchestrator MAY inspect concrete
     RESOURCE_CONTEXT paths/slices as needed by later phases.
 

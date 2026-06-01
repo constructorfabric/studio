@@ -21,7 +21,7 @@ DO:
     SHARED_CONTEXT_PACK and the payload below
   IF validator source contract is not loaded, unreadable, ambiguous, or not
      reflected in the final dispatch prompt:
-    FAIL per sub-agent-dispatch.md § Contract-read-and-use gate
+    FAIL per sub-agent-dispatch.md § SubAgentContractReadGate
     FORBID dispatch
   DISPATCH cf-deterministic-validator with the synthesized final prompt and
     orchestrator-supplied payload:
@@ -57,7 +57,7 @@ RULES:
   - PASS and SKIPPED outcomes MUST preserve det_gate_result and
     det_gate_evidence for Phase 5.3 / Phase 5.5; clearing all_findings MUST
     NOT erase validator proof
-  - MUST apply sub-agent-dispatch.md § Contract-read-and-use gate before
+  - MUST apply sub-agent-dispatch.md § SubAgentContractReadGate before
     dispatching cf-deterministic-validator
   - RELAXED mode: loop may exit via explicitly unvalidated Deterministic gate: SKIPPED
     or Deterministic gate: FAIL path on phase-5.4-approval.md § option 4
