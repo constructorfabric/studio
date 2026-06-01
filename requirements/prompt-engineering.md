@@ -2,8 +2,8 @@
 cf: true
 type: requirement
 name: Prompt Engineering Review Methodology
-version: 1.4
-purpose: Systematic methodology for reviewing and improving agent instructions with compact-prompts optimization, interaction UX quality, and router-based decomposition
+version: 1.5
+purpose: Systematic methodology for reviewing and improving agent instructions with evidence-backed constraint framing, compact-prompts optimization, interaction UX quality, and router-based decomposition
 ---
 
 # Prompt Engineering Review Methodology
@@ -45,9 +45,11 @@ purpose: Systematic methodology for reviewing and improving agent instructions w
 
 Agent instructions are executable policy for agent behavior and user interaction. Review them like software: classify the artifact, test for ambiguity, verify structure, identify missing contracts, detect anti-patterns, manage context budget, confirm testability, check interaction UX, check model ergonomics, then synthesize prioritized fixes.
 
-**High-priority rule**: for analysis and generation work, aggressively reduce loaded context whenever behavior, determinism, constraints, safety, output contracts, and recovery rules remain intact.
-
-**CRITICAL interaction UX rule**: whenever instructions ask the user for input, confirmation, or a choice, review whether the prompt explains why the input is needed, what the user is expected to provide, what each option leads to, which option is suggested in the current context, and exactly how the user should reply.
+**Review stance**:
+- Reduce loaded context whenever behavior, determinism, constraints, safety, output contracts, and recovery rules stay intact.
+- Prefer positive, action-oriented requirements. If blocked behavior matters, pair the prohibition with the required alternative and a verification check.
+- Keep one response surface to `3-7` primary rules when possible; allow up to `10` only when rules are short, independent, and checked. Beyond that, decompose or validate.
+- For every user ask, confirm the prompt explains why the input is needed, what the user should provide, what each option does next, which path is suggested, and how to reply.
 
 ## Layer Map
 
@@ -87,6 +89,10 @@ Agent instructions are executable policy for agent behavior and user interaction
 **Sentence quality**: use imperative mood, prefer active voice, and keep to one action per sentence when possible.
 
 **Framing**: prefer positive requirements; if a negative is necessary, pair it with the required alternative; distinguish `MUST NOT` / `NEVER` from `SHOULD NOT` / `AVOID`.
+
+**Negative-constraint handling**: flag negative-only instructions (`do not X`, `never Y`, `avoid Z`) unless they also state the desired replacement behavior. Name exact blocked tokens only when verification depends on exact matching; otherwise prefer category-level constraints plus the required replacement behavior.
+
+**Instruction count**: count active requirements the model must satisfy in one response. Treat `> 7` concurrent requirements as a risk and `> 10` as a decomposition trigger unless the prompt includes a validator, checklist, or iterative self-refinement loop.
 
 **Priority**: critical rules are marked (`MUST`, `REQUIRED`, `CRITICAL`), optional rules are marked (`MAY`, `OPTIONAL`, `CONSIDER`), and importance hierarchy is obvious.
 
@@ -133,6 +139,9 @@ Agent instructions are executable policy for agent behavior and user interaction
 | `AP-LONG-WINDED` | The same rule is padded with prose, repetition, or bloated examples. |
 | `AP-CONFLICTING` | Requirements contradict one another. |
 | `AP-IMPOSSIBLE` | Not all requirements can be satisfied simultaneously. |
+| `AP-NEGATIVE-ONLY` | A prohibition says what not to do without stating the required alternative behavior. |
+| `AP-FORBIDDEN-PRIMING` | A prompt repeatedly names exact blocked tokens or labels when category-level wording would preserve the rule. |
+| `AP-INSTRUCTION-DENSITY` | More than `7` active requirements compete in one response surface, or more than `10` are present without decomposition or validation. |
 | `AP-NO-ROUTER` | Multi-step or branching instructions lack a compact router/index that says what may load next and when. |
 | `AP-OVERSIZED-RESOURCE` | A loadable instruction resource, module, or deliberate slice exceeds `200` lines. |
 | `AP-MONOLITHIC-STEP` | Multiple steps, branches, or modes are bundled into one loadable unit instead of decomposed into routeable modules. |
@@ -142,10 +151,11 @@ Agent instructions are executable policy for agent behavior and user interaction
 | Code | Detect when |
 |---|---|
 | `AP-CONTEXT-BLOAT` | Excessive context dilutes priorities. |
-| `AP-SYSTEM-PROMPT-BLOAT` | A system prompt violates `6.1.3`: always-on text is `> 200` lines or embeds conditional blocks that should be modular. |
+| `AP-SYSTEM-PROMPT-BLOAT` | A system prompt violates the compact-prompt always-on budget rule: always-on text is `> 200` lines or embeds conditional blocks that should be modular. |
 | `AP-CONTEXT-STARVATION` | Critical context is missing. |
 | `AP-CONTEXT-DRIFT` | Required context may be lost through compaction or long sessions. |
 | `AP-BURIED-PRIORITY` | Critical rules are hidden instead of surfaced early and scannably. |
+| `AP-LOST-MIDDLE` | Critical instructions or references sit in the middle of a long prompt where attention may degrade. |
 | `AP-VAGUE-REFERENCE` | References such as `the above` or `this` have no clear antecedent. |
 | `AP-ASSUMES-MEMORY` | The document assumes the agent will remember earlier turns. |
 | `AP-NO-CHECKPOINT` | Long workflows lack state checkpoints. |
@@ -261,7 +271,9 @@ A **loadable instruction resource** is any file, module, or deliberate contiguou
 
 **Lifecycle**: specify what loads at start, what loads on demand, what can be summarized when context is low, what must never be dropped, how critical state survives compaction, what belongs in files vs working memory, and how context loss is detected and recovered.
 
-**Attention management**: repeat or reinforce critical instructions, visually emphasize important sections, keep guardrails in a dedicated section, avoid too many competing instructions, group related rules, and separate low-priority content.
+**Attention management**: place critical instructions near the beginning or end of the active prompt surface, repeat or reinforce only the highest-risk constraints, visually emphasize important sections, keep guardrails in a dedicated section, avoid too many competing instructions, group related rules, and separate low-priority content.
+
+**Instruction-density audit**: list every active instruction that must be followed in the next response. Merge duplicates, remove non-operative prose, and convert large rule sets into a router plus current-phase checklist. If the active set remains `> 10`, mark `AP-INSTRUCTION-DENSITY` and recommend decomposition.
 
 ## L7: Testability Assessment
 
@@ -270,6 +282,8 @@ A **loadable instruction resource** is any file, module, or deliberate contiguou
 **Observable outputs**: require visible artifacts, visible intermediate steps, and explicit compliance evidence.
 
 **Built-in checks**: include validation criteria, a pre-completion self-check, checklist formatting for critical steps, and proof-of-work requirements when appropriate.
+
+**Constraint self-check**: when a prompt has `5+` active constraints, require the agent to verify the final answer against the constraints before completion. The self-check may be internal or visible, but the final output contract must make compliance observable when failure risk is high.
 
 **Interactive UX checks**: when the document asks the user to choose or confirm, verify that tests can confirm all of the following from the emitted prompt alone: why the input is needed, what reply format is accepted, what each option does, and whether any suggested option is anchored to the current context.
 
@@ -313,6 +327,10 @@ A **loadable instruction resource** is any file, module, or deliberate contiguou
 
 **Training alignment**: use familiar prompt patterns, an appropriate role/persona, and a style consistent with effective prompting.
 
+**Positive action bias**: rewrite vague or negative rules into direct actions. Prefer `Do X when Y` over `Do not forget X`; prefer `If data is missing, say UNKNOWN` over `Do not hallucinate`.
+
+**Constraint realism**: treat exact word counts, exact token counts, exact character limits, and long simultaneous rule sets as high-risk unless automated validation or post-processing is available.
+
 **Graceful degradation**: define what happens on partial failure, whether the agent can recover without intervention, and when it must ask for help.
 
 **Hallucination prevention**: require verification or citation, permit uncertainty, mark speculation, and use external tools for factual queries.
@@ -320,6 +338,8 @@ A **loadable instruction resource** is any file, module, or deliberate contiguou
 **Iterative compatibility**: support iterative improvement, define how feedback is incorporated, and keep partial success actionable.
 
 **Conversation compatibility**: support multi-turn use, clarification requests, and mid-task scope changes.
+
+**Examples over rule volume**: when format, tone, or structure matters, prefer one compact positive example over several overlapping prose rules. Keep examples small and remove any example that no longer changes behavior.
 
 ## L10: Improvement Synthesis
 
@@ -393,9 +413,19 @@ When the deterministic gate is `SKIPPED`, do not describe semantic review, check
 
 ## References
 
-This document is the authoritative working method. External sources informed its design, but the prompt surface here stays intentionally compact.
+This document is the authoritative working method. External sources inform its design, but the prompt surface here stays intentionally compact.
 
 **Companion methodology**: `prompt-bug-finding.md` for bug hunting, hidden failure modes, unsafe behavior, regressions, instruction conflicts, or root-cause analysis in prompts and agent instructions.
+
+**Research and practice references**:
+
+- OpenAI prompt engineering best practices: put instructions first, separate instruction from context, use specific desired formats, show examples, reduce imprecise wording, and state what to do instead of only what not to do. https://help.openai.com/en/articles/6654000-using-advanced-prompt-engineering-techniques
+- `Semantic Gravity Wells: Why Negative Constraints Backfire`: negative constraints can fail because naming forbidden terms primes the model toward them. https://arxiv.org/abs/2601.08070
+- `Curse of Instructions`: instruction following degrades as the number of simultaneous instructions increases; prompts with up to ten verifiable instructions show sharp all-instruction success loss, partially improved by self-refinement. https://openreview.net/forum?id=R6q67CDBCH
+- `InFoBench`: complex instructions are better evaluated by decomposing them into simpler criteria and checking requirement-level compliance. https://arxiv.org/abs/2401.03601
+- `FollowBench`: incrementally adding constraints exposes weaknesses in fine-grained constraint following. https://arxiv.org/abs/2310.20410
+- `Lost in the Middle`: long-context models may underuse information placed in the middle of long inputs; critical rules should not be buried there. https://arxiv.org/abs/2307.03172
+- `What Prompts Don't Say`: simply adding more requirements does not reliably improve performance because instruction-following capacity is limited and requirements may conflict. https://arxiv.org/abs/2505.13360
 
 ## Validation
 
@@ -408,6 +438,9 @@ Review is complete when:
 - [ ] Implementation guidance provided
 - [ ] Safe compact-prompts opportunities identified and prioritized for prompt/instruction documents
 - [ ] Compact-prompts findings reported explicitly in the review output
+- [ ] Negative-only instructions checked and paired with required alternative behavior where needed
+- [ ] Active instruction count checked; `> 7` constraints treated as risk and `> 10` constraints decomposed or validator-backed
+- [ ] Critical instructions checked for beginning/end placement rather than being buried in long-context middle sections
 - [ ] For every user-facing interaction point, question purpose, option clarity, option outcomes, suggested-path quality, reply format, and fallback clarity were checked explicitly
 - [ ] Required completion gates, terminal blocks, and false-completion paths were checked explicitly when the document defines a final response contract
 - [ ] Verification plan included

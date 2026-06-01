@@ -51,10 +51,16 @@ PURPOSE:
 DO:
   1. Load `requirements/prompt-bug-finding.md` via the controller-supplied
      `prompt_bug_finding_methodology` asset
-  2. Read every target_path in full via Read tool
-  2a. Read every cross_ref_path when provided; use them as additional context
-      when probing for instruction-routing and handoff defects across sibling
-      agents/workflows
+  2. Consume every target_path in full from the controller-supplied
+     `prompt_context_view` / target slices for this turn
+     IF any target path lacks complete supplied coverage for this run:
+       EMIT PARTIAL_CHECKPOINT naming the uncovered paths
+       STOP_TURN
+  2a. Consume every cross_ref_path from controller-supplied slices when
+      provided; use them as additional context when probing for
+      instruction-routing and handoff defects across sibling agents/workflows
+      Only read non-prompt resources from disk when they are explicitly named
+      in allowed resource context
   3. Map: behavioral hotspots, invariants, branches, handoffs, user-decision
      points, state, recovery, and prompt bug-classes
   4. Build or refute concrete counterexample dialogues / execution traces
@@ -63,7 +69,17 @@ DO:
 
 ## Output Contract
 
-Emit `Validation Report — Prompt Bug Section` markdown followed by findings JSON:
+Emit `Validation Report — Prompt Bug Section` markdown followed by a complete-run
+discriminator JSON and findings JSON:
+
+```json
+{
+  "review_result": {
+    "type": "VALIDATION_REPORT",
+    "section": "Prompt Bug Section"
+  }
+}
+```
 
 ```json
 [
@@ -110,20 +126,24 @@ WHEN:
 
 DO:
   EMIT Partial Checkpoint — Prompt Bug Section markdown block
-  EMIT partial checkpoint JSON (see schema below)
+  EMIT partial-run discriminator JSON (see schema below)
+  EMIT findings JSON containing only findings_so_far
   FORBID emitting a complete validation report
   STOP_TURN
 ```
 
 ```json
 {
-  "status": "PARTIAL_CHECKPOINT",
-  "covered_paths": ["<paths fully read>"],
-  "pending_paths": ["<paths not yet read>"],
-  "findings_so_far": [],
-  "hotspot_table_so_far": [{"file_line": "<file:line>", "risk_class": "<class>", "evidence": "<one sentence>"}],
-  "residual_risk_so_far": "<brief note on coverage state>",
-  "resume_instructions": "Re-dispatch with target_paths set to pending_paths. Pass the same kit_rules_path, rules_mode, and cross_ref_paths. Merge findings_so_far with the resumed run's findings before reporting."
+  "checkpoint": {
+    "type": "PARTIAL_CHECKPOINT",
+    "section": "Prompt Bug Section",
+    "covered_paths": ["<paths fully read>"],
+    "pending_paths": ["<paths not yet read>"],
+    "findings_so_far": [],
+    "hotspot_table_so_far": [{"file_line": "<file:line>", "risk_class": "<class>", "evidence": "<one sentence>"}],
+    "residual_risk_so_far": "<brief note on coverage state>",
+    "resume_instructions": "Re-dispatch with target_paths set to pending_paths. Pass the same kit_rules_path, rules_mode, and cross_ref_paths. Merge findings_so_far with the resumed run's findings before reporting."
+  }
 }
 ```
 
@@ -142,13 +162,17 @@ MENU TerminalStates:
   OPTIONS:
     complete_run ->
       REQUIRE hotspot table is present (per Additional Output Sections)
+      REQUIRE review_result.type == "VALIDATION_REPORT"
       REQUIRE findings JSON is present
       REQUIRE residual risk summary is present
       REQUIRE AP-001..AP-008 self-check performed after all findings/table/summary
-      REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md invariant satisfied
+      REQUIRE controller-supplied studio invariants were included in the final
+        dispatch prompt; the dispatched agent MUST_NOT reopen SKILL.md from disk
     partial_run ->
-      REQUIRE PARTIAL_CHECKPOINT JSON is present with:
+      REQUIRE checkpoint.type == "PARTIAL_CHECKPOINT"
+      REQUIRE checkpoint JSON is present with:
         covered_paths, pending_paths, findings_so_far,
         hotspot_table_so_far, residual_risk_so_far, resume_instructions
+      REQUIRE findings JSON is present and matches findings_so_far
       FORBID PASS claim or complete-run claim for uncovered paths
 ```

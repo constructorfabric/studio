@@ -7,7 +7,6 @@ description: Invoke when the orchestrator enters the Phase 5 review loop after P
 
 # Phase 5 — Review Loop (Dispatcher)
 
-
 <!-- toc -->
 
 - [Pre-Phase-Setup (MAX_ITER resolution)](#pre-phase-setup-maxiter-resolution)
@@ -57,22 +56,30 @@ Reply with a number (suggested: 5 — balances fix coverage against context cost
 ---
     WAIT user.reply
     STOP_TURN
+    PARSE reply:
+      bare positive integer -> SET MAX_ITER = number
+      enter -> SET MAX_ITER = 5
+      0 -> SET MAX_ITER = 0 (selects zero-iteration branch)
+      otherwise ->
+        EMIT "Reply with a non-negative integer, enter for 5, or 0 to skip."
+        WAIT user.reply
+        STOP_TURN
 
   IF entering Phase 5 from external entry (analyze→generate via
      workflows/analyze/phase-4-output/remediation-handoff.md option 1):
-    MUST NOT re-prompt MAX_ITER here; MAX_ITER already resolved by analyze side
-    NOTE: canonical MAX_ITER prompt is owned by
+    USE MAX_ITER value set by analyze-side handoff; treat as resolved
+    SKIP PARSE
+    NOTE: re-prompting MAX_ITER here is forbidden; canonical prompt is owned by
           workflows/analyze/phase-4-output/remediation-handoff.md option 1
           next-turn routing step (b); it MUST wait for user reply before
           handing off here
 
-  PARSE reply:
-    bare number -> SET MAX_ITER = number
-    enter -> SET MAX_ITER = 5
-    0 -> SET MAX_ITER = 0 (selects zero-iteration branch)
-
 RULES:
-  - MUST NOT re-prompt MAX_ITER on analyze-side remediation handoff option 1 entry
+  - MUST NOT re-prompt MAX_ITER on analyze-side remediation handoff option 1 entry;
+    on external-entry, MAX_ITER is already set by the analyze-side handoff and
+    the PARSE block MUST be skipped entirely
+  - MAX_ITER MUST be an integer >= 0; negative values, decimals, ranges, and
+    non-numeric text are invalid and MUST re-prompt without selecting a default
 ```
 
 ### Review-Loop Iteration Cap Prompt
@@ -109,10 +116,16 @@ MENU IterationCapMenu:
       WAIT user.reply
       STOP_TURN
     accept ->
-      SET loop_exit = "max-iter-stopped"
-      SET remaining_findings = carry_forward
-      CONTINUE workflows/generate/phase-5/phase-5.5-final.md
-      NOTE: cap prompt accept exits only after post-fix deterministic gate
+      RUN one deterministic validator pass through phase-5.1-det-gate.md
+        ON gate PASS or validator-backed SKIPPED:
+          SET loop_exit = "max-iter-stopped"
+          SET remaining_findings = carry_forward
+          CONTINUE workflows/generate/phase-5/phase-5.5-final.md
+        ON gate FAIL:
+          SURFACE validator findings to user
+          EMIT_MENU IterationCapMenu
+          WAIT user.reply
+          STOP_TURN
     stop ->
       SET loop_exit = "manual-handoff"
       SET remaining_findings = carry_forward
@@ -152,21 +165,21 @@ DO:
       handoff_guard.max_iter_resolved = true
       handoff_guard.dispatch_evidence_required = true
     IF MAX_ITER > 0:
-      MUST run Phase 5.1 then Phase 5.2 before Phase 5.3 so carried findings
-      are refreshed against generate-side validator/reviewer contracts before
-      any author dispatch
+      MUST enter Phase 5.3 first with carried analyze findings; those findings
+      were already produced by analyze-side deterministic and semantic review.
+      MUST NOT run Phase 5.1 or Phase 5.2 before the first author dispatch on
+      external entry merely to refresh already-reviewed findings.
     NOTE: When MAX_ITER > 0 AND INLINE_FALLBACK=false, phase5_dispatch_evidence
-      MUST contain: validator dispatch record per iteration, semantic reviewer
-      dispatch record per iteration when reaching Phase 5.2, author dispatch
-      record before any file edit; each record = compact object with iteration,
-      phase, agent_id, target_paths, result_marker or equivalent dispatch-return
-      proof; missing evidence = protocol violation: STOP before editing files
-
-  IF MAX_ITER == 0 AND external-entry:
-    SKIP fresh Phase 5 validation/review
-    CONTINUE phase-5.3-findings.md for external-entry handling
-      (renders carried findings, sets remaining_findings = all_findings,
-       routes to phase-6/index.md with mandatory remediation-handoff.md menu)
+      MUST contain: author dispatch record before the first file edit; validator
+      dispatch record per post-author iteration; semantic reviewer dispatch
+      record per post-author iteration when reaching Phase 5.2. Each record =
+      compact object with iteration, phase, agent_id, target_paths,
+      result_marker or equivalent dispatch-return proof; missing required
+      evidence = protocol violation: STOP before editing files
+    NOTE: When MAX_ITER == 0 AND external-entry, phase-5.3-findings.md sets
+      remaining_findings = all_findings and routes to phase-6/index.md with
+      the mandatory remediation-handoff.md menu; no validator or reviewer
+      dispatch evidence is required.
 
   IF MAX_ITER == 0 AND internal generate flow:
     RUN one deterministic validator pass through phase-5.1-det-gate.md
@@ -180,7 +193,12 @@ DO:
 
   IF MAX_ITER >= 1:
     RUN bounded review loop:
-      EACH iteration:
+      FIRST external-entry iteration from analyze→generate:
+        LOAD phase-5.3-findings.md directly with carried analyze findings
+        LOAD phase-5.4-approval.md when judgmental is non-empty
+        EXECUTE author dispatch when approved or all-mechanical fast-path applies
+        INCREMENT N after author dispatch
+      EACH post-author iteration:
         LOAD phase-5.1-det-gate.md
         ON det PASS or SKIPPED: LOAD phase-5.2-semantic.md
         LOAD phase-5.3-findings.md
@@ -208,9 +226,10 @@ RULES:
 
 NOTES:
   Sub-file load conditions:
-    phase-5.1-det-gate.md: each iteration begins; dispatch deterministic validator
+    phase-5.1-det-gate.md: post-author iterations begin; dispatch deterministic validator
     phase-5.2-semantic.md: det gate PASS or SKIPPED; dispatch matched semantic reviewer(s)
-    phase-5.3-findings.md: findings list (merged across det + semantic) must be displayed
+    phase-5.3-findings.md: external entry displays carried analyze findings first;
+      post-author iterations display findings merged across det + semantic
     phase-5.4-approval.md: judgmental is non-empty; user approval required
     phase-5.5-final.md: loop exits; assemble final Validation Results body for phase-6/index.md
 ```

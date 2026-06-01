@@ -94,7 +94,7 @@ Extract from the prompt:
 
 ### Step 2: Resolve mode (always-ask)
 
-Methodology emits the 6-mode prompt (template in `{cf-studio-path}/.core/requirements/storytelling-modes.md`); waits for explicit user confirmation (Enter accepts the suggestion, or pick by number/name). Mode resolution is interactive every session — intent verbs / KIND defaults / `default_mode` from preferences.json only inform the suggested default, never bypass the prompt.
+Methodology emits the 6-mode prompt (template in `{cf-studio-path}/.core/requirements/storytelling-modes.md`); waits for explicit user confirmation. Reply contract for both the mode prompt and the disposition prompt: pick by number, exact name, or Enter for the suggestion. Mode resolution is interactive every session — intent verbs / KIND defaults / `default_mode` from preferences.json only inform the suggested default, never bypass the prompt.
 
 After mode resolution but BEFORE role/audience derivation, methodology emits the **artifact disposition** prompt (template + resolution rules in `{cf-studio-path}/.core/requirements/storytelling-preferences.md` Artifact Disposition). The list of accumulating artifact types in the prompt depends on the resolved mode (review adds review-comments; all modes have open-questions and bookmarks). The methodology MUST wait for explicit user confirmation; the project `artifact_disposition` preference informs the suggested default but does NOT bypass the prompt.
 
@@ -347,7 +347,7 @@ Hard rules, enforced inside every portion:
 
 1. **Information SHALL come from the input only**: target artifact / codebase region + its registered linked artifacts (parents/children fetched in E0) + the user's prompt. **Nothing else.**
 
-2. **No invention. No agent-initiated gap markers.** If a claim cannot be grounded, the rule is **silently skip**. MUST NOT insert `[?]` markers in the methodology's narrative; MUST NOT push to open-questions buffer on its own initiative. Open-questions entries created **only** when the user asks a question the input cannot answer (see User input handling). NEVER paraphrase domain knowledge as if from the input.
+2. **Ground or omit.** If a claim cannot be grounded, omit it rather than fabricating. MUST NOT insert placeholder gap markers in the methodology's narrative or push to the open-questions buffer on its own initiative. When the user directly asks for unavailable information, say the input does not cover it and create an open-question entry per User input handling. Open-questions entries are otherwise created **only** when the user asks a question the input cannot answer. NEVER paraphrase domain knowledge as if from the input.
 
 3. **Source reference required** for every non-trivial claim, as a **clickable Markdown link** (plain-text refs like `(DESIGN.md §4.2)` are forbidden):
    - Unregistered file with heading: `(see [{file} §{section}]({path}#{anchor}))` — ex: `(see [DESIGN.md §4.2 Data Model](DESIGN.md#42-data-model))`

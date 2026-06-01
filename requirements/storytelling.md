@@ -28,7 +28,7 @@ This file is the **router**. The full methodology is split across five files for
 
 ## Execution Protocol (MUST NOT be bypassed)
 
-⛔ **STOP** — if you are an agent and you have just loaded this methodology in response to an explain-style request, the **most common failure mode** is to skip the interactive discovery phase and emit a single-shot summary of the input. **This is forbidden.** Producing a flat "Change Summary" / "Document Overview" / "Here's what this is about" response WITHOUT running through the four E1 user-interaction gates (mode → disposition → audience → plan approval) violates the core methodology contract. See Anti-Pattern #0 below.
+**First-turn contract**: once this methodology loads, the next user-visible assistant message is the E0/E1 opener. Run the four E1 user-interaction gates (mode → disposition → audience → plan approval) in order before any explanatory content begins. See Anti-Pattern #0 below.
 
 The mandatory execution sequence — each step MUST emit chat output and WAIT for user response before continuing:
 
@@ -40,7 +40,7 @@ The mandatory execution sequence — each step MUST emit chat output and WAIT fo
 6. **Phase E2** — portion-by-portion delivery loop with the 7-slot navigation block; user advances each portion explicitly
 7. **Phase E5** — wrap (plan exhaustion or user `wrap`)
 
-Until the user has explicitly approved the plan at gate 4, the agent MUST NOT emit any portion content or summary of the input. The four E1 gates are mandatory user-interaction checkpoints — even when the user's initial prompt seems "clear" (e.g. specific PR URL + audience hint), the methodology runs the gates. Skipping any gate is a CRITICAL violation.
+Before gate 4 approval, emit only the E0/E1 setup and the required choice prompts. The four E1 gates remain mandatory even when the user's initial prompt seems "clear" (for example a specific PR URL plus an audience hint). Skipping any gate is a CRITICAL violation.
 
 ## Agent Instructions
 
@@ -54,11 +54,11 @@ WHEN this methodology is loaded:
 - Skip Phase 3 standard semantic checklist of `analyze.md`
 - Skip Phase 5 (Offer Next Steps) of `analyze.md` — Suggested Next Steps already covered by the Storytelling Output schema (running both would duplicate)
 - Use the Storytelling Output schema (see `{cf-studio-path}/.core/requirements/storytelling-phases.md` Phase E5) in `analyze.md` Phase 4 instead of the standard schema
-- Override `enforceRemediationPrompts`: do NOT emit `Fix Prompt` / `Plan Prompt`
+- Override `enforceRemediationPrompts`: suppress analyze remediation prompt blocks
 
 WHEN loaded with `EXPLAIN_EXPORT=true` (via `generate.md` WHEN-rule on guide/README/package-export intent), additionally load `{cf-studio-path}/.core/requirements/storytelling-export.md` and write a Markdown package to disk instead of delivering portions in chat.
 
-**MUST** ground every non-trivial claim in the input. **MUST NOT** invent facts beyond the input. **MUST silently skip** ungrounded claims — do NOT insert `[?]` markers in the methodology's narrative; do NOT push to the open-questions buffer for gaps the methodology itself notices. Open-questions buffer entries are created **only** in response to user-asked questions the input cannot answer.
+**MUST** ground every non-trivial claim in the input. **MUST NOT** invent facts beyond the input. Omit ungrounded claims rather than fabricating or inserting placeholder gap markers in the methodology's narrative, and do not push to the open-questions buffer for gaps the methodology itself notices. When the user directly asks for information the input does not cover, say so and create an open-question entry. Open-questions buffer entries are created **only** in response to user-asked questions the input cannot answer.
 
 **MUST** follow phases E0 → E5 in order. **MUST NOT** skip Discovery. **MUST NOT** skip the Strict-Context Boundary.
 
@@ -156,8 +156,8 @@ Common features: explicit role/audience awareness; **always-ask** mode resolutio
 
 (This section covers the `analyze.md` routing flag that loads this methodology. For sub-modes — `presentation` / `review` / `onboarding` / etc. — see `{cf-studio-path}/.core/requirements/storytelling-modes.md`.)
 
-`EXPLAIN_MODE=true` is set when this file is loaded via the `analyze.md` WHEN-rule on intent like:
-`explain X`, `tell me about X`, `walk me through X`, `teach me X`, `present X`, `introduce X`, `let's understand X`, `make sense of X`, `review {PR / artifact}`, `onboard me to X`, `quiz me on X`, `what changed in X`.
+`EXPLAIN_MODE=true` is set when this file is loaded via the `analyze.md` WHEN-rule on explicit explain-style intent like:
+`explain X`, `tell me about X`, `walk me through X`, `teach me X`, `present X`, `introduce X`, `let's understand X`, `make sense of X`, `walk me through review of {PR / artifact}`, `review {PR / artifact} in walkthrough mode`, `onboard me to X`, `quiz me on X`, `what changed in X`.
 
 Intent matching is **intent-based, not language-specific**. The methodology MUST recognize equivalent phrases in any user language as the same intent.
 
@@ -184,7 +184,7 @@ Concretely: under standard chat-mode `EXPLAIN_MODE=true`, the agent loads three 
 
 | # | Anti-pattern | Why it's wrong |
 |---|---|---|
-| **0** | **Setting `EXPLAIN_MODE=true` and then emitting a normal one-shot answer / single-shot summary / "Change Summary" / "Document Overview" / review verdict / walkthrough content WITHOUT running the four E1 user-interaction gates (mode → disposition → audience → plan approval).** This is the most common storytelling failure mode, a CRITICAL violation, and the same defect the analyze.md routing invariant calls out at the handoff seam. | Storytelling is interactive by contract. Even when the user's initial prompt looks clear (specific URL + audience hint + "explain" verb), the methodology MUST run gates 1-4 in order, WAIT for explicit user replies at each, and only THEN start E2 portion delivery. The next user-visible message after `EXPLAIN_MODE=true` is set MUST be the E0/E1 opener (input-access log + mode prompt), NEVER an answer-style output. A flat one-shot summary bypassing the gates is the same output the user could have gotten from standard analyze — it defeats the entire purpose of EXPLAIN_MODE. Recovery: any such output is INVALID and MUST be discarded; agent restarts by emitting the E0/E1 opener. |
+| **0** | **Setting `EXPLAIN_MODE=true` and then emitting answer-style content before the four E1 user-interaction gates (mode → disposition → audience → plan approval) resolve.** This is the most common storytelling failure mode, a CRITICAL violation, and the same defect the analyze.md routing invariant calls out at the handoff seam. | Storytelling is interactive by contract. Even when the user's initial prompt looks clear (specific URL + audience hint + "explain" verb), the methodology MUST run gates 1-4 in order, WAIT for explicit user replies at each, and only THEN start E2 portion delivery. The next user-visible message after `EXPLAIN_MODE=true` is set MUST be the E0/E1 opener (input-access log + mode prompt). Recovery: any such output is INVALID and MUST be discarded; agent restarts by emitting the E0/E1 opener. |
 | 1 | Auto-selecting any storytelling mode without emitting the always-ask prompt | Mode resolution is **always interactive**; intent verbs / KIND / `default_mode` only feed the suggested default — they MUST NEVER auto-set `{mode}`. Every session asks; user confirms (Enter accepts the suggestion) |
 | 2 | Combining presentation Body and panel reactions into a single portion in review mode | Review uses the **two-portion-per-plan-item rhythm**: presentation first, then a separate challenge portion. Packing both collapses the rhythm |
 | 3 | Skipping the presentation portion in review mode and emitting only the challenge portion | Review = storytelling + Q&A as two sequential portions per plan item, not Q&A alone |
@@ -203,9 +203,9 @@ Concretely: under standard chat-mode `EXPLAIN_MODE=true`, the agent loads three 
 | 16 | Plain-text source references like `(DESIGN.md §4.2)` instead of clickable Markdown links | Forces manual navigation; clickable refs mandatory per Phase E3 |
 | 17 | When analyzing a PR / MR, citing files-in-the-diff with commit-SHA blob URLs (`/blob/{sha}/{path}#L...`) instead of PR-view inline-diff URLs (`/pull/{N}/files#diff-{hash}R{a}-R{b}`) | Blob/SHA URLs drop the user out of the review context; only files NOT in the diff fall back to blob/SHA |
 | 18 | Reading the artifact verbatim (summarizing without insight) | Defeats pedagogical purpose; user can read the file themselves |
-| 19 | Speculating beyond input (with or without `[?]` mark) | Violates strict-context boundary; the rule is silently skip ungrounded claims |
-| 20 | Inserting `[?]` markers in the methodology's own narrative | Open-questions are user-driven only; agent-initiated gap markers are forbidden |
-| 21 | Pushing entries to open-questions buffer for gaps the methodology itself notices (including glossary misses) | Buffer is reserved for unanswerable user questions; agent-noticed gaps are silently skipped |
+| 19 | Speculating beyond input, including by signaling unsupported gaps inline | Violates strict-context boundary; the rule is to omit ungrounded claims unless answering a direct user question about missing coverage |
+| 20 | Inserting placeholder gap markers in the methodology's own narrative | Open-questions are user-driven only; agent-initiated gap markers are forbidden |
+| 21 | Pushing entries to open-questions buffer for gaps the methodology itself notices (including glossary misses) | Buffer is reserved for unanswerable user questions; agent-noticed gaps are omitted |
 | 22 | Inventing analogies without `(analogy — not from artifact)` disclaimer | Violates strict-context policy |
 | 23 | Treating an external resource (URL / PR ref / ticket ID) as a missing local file and stopping with "input not found" | Phase E0 input access chain (MCP → skill → CLI → user fallback) MUST run for non-local targets before reporting any "not found" |
 | 24 | Falling through to the user-fallback prompt without first attempting MCP / skill / CLI access | Chain is priority-ordered; fallback is the last resort and MUST cite the reason |
@@ -227,7 +227,7 @@ Concretely: under standard chat-mode `EXPLAIN_MODE=true`, the agent loads three 
 | 28f | Emitting chat output or writing artifact bodies that breach the resolved `language_complexity` level — long compound sentences at `low`, rare/archaic words at `middle`, etc. | Global Studio rule per `{cf-studio-path}/.core/requirements/language-complexity.md`: every chat message AND every artifact write self-checks against the resolved level (`low` / `middle` / `high`, default `middle`) and rewrites before emitting if a draft sentence breaches the level. Source quotes are exempt (verbatim) |
 | 29 | Auto-checkpointing during the session (every N portions / on Phase transitions / on pivots) | Forbidden — session state is held in working memory; persistence is wrap-time only |
 | 30 | Resuming session without verifying input unchanged | Risks delivering stale content; methodology MUST verify `input_hash` and warn on mismatch |
-| 31 | Adding `Fix Prompt` / `Plan Prompt` | Analyze contract leakage; open questions are author-routed, not Studio-routed |
+| 31 | Adding analyze remediation prompt blocks | Analyze contract leakage; open questions are author-routed, not Studio-routed |
 | 32 | Emitting per-portion chat navigation prompts when `EXPLAIN_EXPORT=true` | In export mode the navigation lives in file footers; chat is for E0/E1 + final summary only |
 | 33 | Auto-generating gap entries to fill `open-questions.md` in an export package | Open-questions remain user-driven; pure-batch export typically yields an empty buffer; methodology MAY suggest the user run a review-mode export but MUST NOT manufacture entries |
 | 34 | Attempting to export a `socratic` session | Socratic is interactive by definition; methodology MUST refuse with the required message and write nothing |
@@ -270,13 +270,13 @@ Concretely: under standard chat-mode `EXPLAIN_MODE=true`, the agent loads three 
 (Single consolidated checklist, organized by load level. Strict assertions enforce specified aspects per `storytelling-modes.md` Skeleton scope; underspecified aspects require inline fallback ack instead of strict enforcement.)
 
 **Routing & mode resolution**:
-- [ ] **Execution protocol**: agent ran Phase E0 → all four E1 gates (mode / disposition / audience / plan approval) → E2 portion delivery → E5 wrap, in order. NO single-shot summary of the input was emitted before the user approved the plan at gate 4. This is the prerequisite for ALL other storytelling validation entries — if the four gates were skipped, the session is invalid regardless of which sub-rules look fine
+- [ ] **Execution protocol**: agent ran Phase E0 → all four E1 gates (mode / disposition / audience / plan approval) → E2 portion delivery → E5 wrap, in order. No answer-style output was emitted before the user approved the plan at gate 4. This is the prerequisite for ALL other storytelling validation entries — if the four gates were skipped, the session is invalid regardless of which sub-rules look fine
 - [ ] `EXPLAIN_MODE=true` set when this methodology loads
 - [ ] Phase 2 deterministic gate skipped (or marked SKIPPED with reason "EXPLAIN_MODE")
 - [ ] Phase 3 standard checklist replaced by Storytelling Protocol (E0-E5)
 - [ ] Phase 4 used the Storytelling Output schema
 - [ ] Phase 5 of `analyze.md` skipped (Suggested Next Steps came from Storytelling Output, not duplicated)
-- [ ] `enforceRemediationPrompts` overridden — no `Fix Prompt` / `Plan Prompt`
+- [ ] `enforceRemediationPrompts` overridden — no analyze remediation prompt blocks
 - [ ] Storytelling `{mode}` resolved at session start via the **always-ask** prompt — methodology emitted the 6-mode prompt with a suggested default and waited for explicit user confirmation; mode was NEVER silently auto-set
 - [ ] Artifact disposition (`chat-only` / `save-to-file` / `post-to-resource` / `mixed`) resolved at session start via the always-ask prompt — emitted after mode resolution, before role/audience confirmation, with the resolved post-to-resource branch shown in option 3's label (PR posting via {handler} / Notion-Jira-GitLab posting via {handler} / local-file generate-routing dispatch of `cf-generate` / unavailable falling back to save-to-file). The project `artifact_disposition` preference informed the suggested default but did NOT bypass the prompt. `state.post_to_resource_branch` is recorded when `selected_tag == "post-to-resource"`
 
@@ -302,7 +302,7 @@ Concretely: under standard chat-mode `EXPLAIN_MODE=true`, the agent loads three 
 - [ ] If mid-session `change mode to {X}` was issued, methodology rebuilt audience and consistently applied the new mode's slot/body/suggested-slot semantics from the next portion onward; v1 fallback acknowledgements were emitted inline when an underspecified aspect required presentation defaults
 
 **Phase E3 strict-context**:
-- [ ] Every non-trivial claim has source ref as a clickable Markdown link (NOT plain-text); ungrounded claims silently skipped (no agent-initiated `[?]` markers); no agent-initiated open-questions entries (including glossary misses)
+- [ ] Every non-trivial claim has source ref as a clickable Markdown link (NOT plain-text); ungrounded claims omitted unless answering a direct user question about missing coverage (no agent-initiated `[?]` markers); no agent-initiated open-questions entries (including glossary misses)
 - [ ] When analyzing a PR / MR: files-in-the-diff cited with PR-view inline-diff URLs; commit-SHA blob URLs allowed only for files NOT in the PR diff
 - [ ] Open-questions buffer entries originate **only** from user-asked questions the input cannot answer
 - [ ] No analogies introduced without `(analogy — not from artifact)` disclaimer

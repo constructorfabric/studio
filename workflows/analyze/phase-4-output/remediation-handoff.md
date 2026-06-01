@@ -6,6 +6,8 @@ loaded_by: workflows/analyze.md
 version: 1.0
 ---
 
+# Analyze Phase 4 — Remediation Handoff
+
 ```text
 UNIT AnalyzeRemediationHandoff
 
@@ -44,15 +46,19 @@ MENU RemediationHandoffMenu:
            SET handoff_guard.dispatch_evidence_required = true
            IF MAX_ITER == 0:
              CONTINUE workflows/generate/phase-5/phase-5.3-findings.md
+               (sets remaining_findings = all_findings; routes to phase-6/index.md
+                with mandatory remediation-handoff.md menu)
            IF MAX_ITER > 0:
-             CONTINUE workflows/generate/phase-5/phase-5.1-det-gate.md
-             then Phase 5.2 before phase-5.3-findings.md and before author dispatch
-             Each iteration MUST dispatch cf-deterministic-validator (5.1) and
-               matched semantic reviewer sub-agent set (5.2) on target_paths
-               BEFORE author dispatch
-             FORBID shortcutting the loop with inline review, inline fix, or
-               single-pass summary
-             Loop until clean or MAX_ITER hit
+             CONTINUE workflows/generate/phase-5/phase-5.3-findings.md
+             using carried analyze findings as the first iteration's findings
+             BEFORE any fresh Phase 5.1 / 5.2 review
+             First author dispatch fixes the already-reviewed analyze findings.
+             After author dispatch, every subsequent iteration MUST dispatch
+               cf-deterministic-validator (5.1) and matched semantic reviewer
+               sub-agent set (5.2) on the written files before any further
+               author dispatch
+             FORBID re-running validator/reviewer before the first author
+               dispatch merely to refresh findings already produced by analyze
     2 -> EMIT fix-prompt-template.md as the FINAL section
     3 -> EMIT plan-prompt-template.md as the FINAL section
   INVALID:
@@ -72,10 +78,10 @@ RULES:
   - MUST re-probe INLINE_FALLBACK before any Phase 5 dispatch after option 1
   - MUST_NOT shortcut the fix loop with inline review, inline fix, or
     single-pass summary when MAX_ITER > 0
-  - MUST produce phase5_dispatch_evidence for validator, semantic reviewer(s),
-    and author dispatches when MAX_ITER > 0 AND INLINE_FALLBACK=false;
-    missing dispatch evidence is a protocol violation — stop and repair workflow
-    state instead of editing files inline
+  - MUST produce phase5_dispatch_evidence for author dispatch before the first
+    external-entry edit when MAX_ITER > 0 AND INLINE_FALLBACK=false; validator
+    and semantic reviewer dispatch evidence is required for every post-author
+    iteration that reaches Phase 5.1 / 5.2
   - EXPLAIN_MODE=true disables this menu entirely
 
 NOTES:

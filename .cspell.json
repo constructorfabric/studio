@@ -1,0 +1,27 @@
+{
+  "version": "0.2",
+  "words": [
+    "PDSL",
+    "Rcons",
+    "Rpb",
+    "TOCTOU",
+    "subagent",
+    "subagents",
+    "plaintext",
+    "worktree",
+    "worktrees",
+    "cfs",
+    "toml",
+    "yaml",
+    "frontmatter",
+    "semver",
+    "kebab",
+    "brownfield",
+    "greenfield"
+  ],
+  "ignorePaths": [
+    ".bootstrap/**",
+    "node_modules/**",
+    ".prs/**"
+  ]
+}

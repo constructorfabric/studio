@@ -90,7 +90,10 @@ Per Anti-Patterns #16, #17, #19, #20:
 
 - Every non-trivial claim: **clickable Markdown link** source ref (NOT plain-text `(DESIGN.md §4.2)`)
 - PR/MR analysis: files-in-diff use PR-view inline-diff URLs (`/pull/{N}/files#diff-{hash}R{a}-R{b}`); files NOT in diff use blob/SHA
-- Ungrounded claims: **silently skipped** — no `[?]` markers; no agent-initiated open-questions
+- Ungrounded claims: omit rather than fabricate — no `[?]` markers; no
+  agent-initiated open-questions. When the user directly asks for unavailable
+  information, state the input does not cover it and create the user-driven
+  open-question entry.
 - Source quotes: original artifact language; chat replies follow user prompt language
 
 ## Path Conventions (Portability)

@@ -5,6 +5,40 @@ description: "Invoke when routing a Constructor Studio command or user request t
 # Constructor Studio Routing
 
 ```text
+UNIT CanonicalRoutingPrecedenceState
+
+PURPOSE:
+  Provide the single precedence and dispatch-state model used by bootstrap,
+  workflow entrypoints, explain proxying, quick-command handling, and fallback
+  dispatch gates.
+
+ORDER:
+  1. Root cf skill bootstrap: load and follow SKILL.md, then protocol.md,
+     sub-agent-dispatch.md, routing.md, and the selected workflow.
+  2. Workflow routing: evaluate WorkflowRoutingTable top-to-bottom; first
+     match wins, with CompoundFindFix forcing analyze before generate.
+  3. Explain entry: set EXPLAIN_MODE=true before entering explain.md; explain.md
+     must pass EXPLAIN_MODE=true into analyze.md rather than relying on an
+     implicit analyze fallback.
+  4. Workspace prompt bootstrap: when AGENTS prompt assets are needed, load
+     {cf-studio-path}/.gen/AGENTS.md before {cf-studio-path}/config/AGENTS.md
+     after the root cf skill bootstrap.
+  5. Direct workspace quick commands are narrow {cfs_cmd} CLI fast paths that
+     bypass workspace setup phases only; they do not bypass root cf protocol
+     when invoked through the full /cf workflow entry.
+  6. Fallback dispatch state is unreadable while INLINE_FALLBACK_PROBED=false;
+     only shared/inline-fallback-probe.md may resolve INLINE_FALLBACK for the
+     active workflow run.
+
+RULES:
+  - MUST use this unit as the canonical precedence reference in workflow
+    entrypoints and dispatch-state checks.
+  - MUST treat unresolved native dispatch, missing prompt_context_view slices,
+    missing dispatch manifest fields, or unverifiable checkpoint fingerprints
+    as fail-closed before sub-agent execution.
+```
+
+```text
 UNIT CfsRouting
 
 PURPOSE:
@@ -13,7 +47,7 @@ PURPOSE:
 
 RULES:
   - MUST evaluate entries top-to-bottom and stop at the first match
-  - MUST prefer entry 9 (analyze) over entry 8 (generate) on compound
+  - MUST prefer entry 10 (analyze) over entry 8 (generate) on compound
     find+fix intent (see UNIT CompoundFindFix below)
   - MUST surface raw-input-overflow rule when raw input exceeds 500 lines
     before continuing to generate or analyze
@@ -102,25 +136,29 @@ DO:
        -> open and follow {cf-studio-path}/.core/workflows/generate.md
 
   9. WHEN request matches any of:
+       explain | walk through | teach | onboard
+       -> SET EXPLAIN_MODE = true
+          open and follow {cf-studio-path}/.core/workflows/explain.md
+
+  10. WHEN request matches any of:
        analyze | validate | review | check | inspect | audit | compare |
-       explain | walk through | teach | onboard |
        bug hunt | find bugs | prompt bugs
        OR CompoundFindFix applies
        -> open and follow {cf-studio-path}/.core/workflows/analyze.md
 
-  10. WHEN request matches any of:
+  11. WHEN request matches any of:
        workspace | multi-repo | add source | cross-reference
        -> open and follow {cf-studio-path}/.core/workflows/workspace.md
 
-  11. WHEN request matches any of:
+  12. WHEN request matches any of:
        map | dependency map | cfs map | visualize dependencies | render graph
        -> open and follow {cf-studio-path}/.core/workflows/map.md
 
-  12. WHEN request matches any of:
+  13. WHEN request matches any of:
         auto-config | configure project | scan brownfield | generate rules
         -> open and follow {cf-studio-path}/.core/workflows/auto-config.md
 
-  13. WHEN request matches "migrate from cypilot" | "migrate-from-cypilot"
+  14. WHEN request matches "migrate from cypilot" | "migrate-from-cypilot"
         -> open and follow {cf-studio-path}/.core/skills/studio/migrate-from-cypilot.md
 ```
 
@@ -129,15 +167,15 @@ UNIT CompoundFindFix
 
 PURPOSE:
   Resolve ambiguous requests that match both fix/update/refactor (entry 8)
-  and find-bugs/bug-hunt/audit/review (entry 9) keywords simultaneously.
+  and find-bugs/bug-hunt/audit/review (entry 10) keywords simultaneously.
 
 WHEN:
   request matches keywords from entry 8 (fix | update | refactor)
-  AND request matches keywords from entry 9 (find bugs | bug hunt | audit | review)
+  AND request matches keywords from entry 10 (find bugs | bug hunt | audit | review)
 
 DO:
   SET routing_winner = analyze
-  CONTINUE WorkflowRoutingTable entry 9
+  CONTINUE WorkflowRoutingTable entry 10
 
 NOTES:
   Routing both to generate skips the find phase entirely. The analyze run
@@ -191,28 +229,29 @@ WHEN:
      cf | /cf | cf on | /cf on | cfs on | cf-studio | cf-studio on
 
 DO:
-  EMIT "I need one routing choice. Pick what you want to do next, or reply with a direct installed-kit shortcut such as `list PRs`, `review PR 123`, `PR status 123`, or `migrate-openspec` when those kit instructions are loaded."
+  EMIT "I need one routing choice. Reply with one number from 1-15, or reply with a direct installed-kit shortcut such as `list PRs`, `review PR 123`, `PR status 123`, or `migrate-openspec` when those kit instructions are loaded."
   EMIT_MENU RoutingClarificationMenu
   WAIT user.reply
   STOP_TURN
 
 MENU RoutingClarificationMenu:
+  TITLE: Reply with exactly one option number, or a concrete installed-kit shortcut.
   OPTIONS:
     1 -> help -- Show a polished beginner-friendly cf overview without asking setup questions. CONTINUE WorkflowRoutingTable entry 0
     2 -> brainstorm -- Explore options, decisions, requirements, or tradeoffs with an expert panel. CONTINUE WorkflowRoutingTable entry 4
     3 -> explain -- Get a source-grounded walkthrough of code, artifacts, architecture, or decisions. CONTINUE WorkflowRoutingTable entry 9
     4 -> explore -- Find relevant project context, files, resources, and prior decisions before acting. CONTINUE WorkflowRoutingTable entry 7
     5 -> generate -- Create, edit, implement, refactor, fix, or update files/artifacts. CONTINUE WorkflowRoutingTable entry 8
-    6 -> analyze -- Review, audit, validate, compare, inspect, or find bugs. CONTINUE WorkflowRoutingTable entry 9
+    6 -> analyze -- Review, audit, validate, compare, inspect, or find bugs. CONTINUE WorkflowRoutingTable entry 10
     7 -> plan -- Break a large task into executable phases with briefs. CONTINUE WorkflowRoutingTable entry 6
     8 -> pdsl -- Author, compact, transform, or review prompt/workflow/agent instruction contracts. CONTINUE WorkflowRoutingTable entry 5
-    9 -> map -- Build dependency, traceability, or cross-reference maps. CONTINUE WorkflowRoutingTable entry 11
-    10 -> workspace -- Configure or inspect multi-repo workspace sources and references. CONTINUE WorkflowRoutingTable entry 10
-    11 -> auto-config -- Discover project setup and Constructor Studio/kit configuration. CONTINUE WorkflowRoutingTable entry 12
+    9 -> map -- Build dependency, traceability, or cross-reference maps. CONTINUE WorkflowRoutingTable entry 12
+    10 -> workspace -- Configure or inspect multi-repo workspace sources and references. CONTINUE WorkflowRoutingTable entry 11
+    11 -> auto-config -- Discover project setup and Constructor Studio/kit configuration. CONTINUE WorkflowRoutingTable entry 13
     12 -> delegate -- Delegate an approved generated plan to the runtime executor. CONTINUE WorkflowRoutingTable entry 1
     13 -> compile phase -- Compile a plan phase brief into an executable phase. CONTINUE WorkflowRoutingTable entry 2
     14 -> execute phase -- Execute the next or specified generated plan phase. CONTINUE WorkflowRoutingTable entry 3
-    15 -> migrate-from-cypilot -- Migrate legacy Cypilot setup into Constructor Studio conventions. CONTINUE WorkflowRoutingTable entry 13
+    15 -> migrate-from-cypilot -- Migrate legacy Cypilot setup into Constructor Studio conventions. CONTINUE WorkflowRoutingTable entry 14
   INVALID:
     EMIT "Reply with 1-15, or reply with a concrete direct request such as `review PR 123`."
     WAIT user.reply

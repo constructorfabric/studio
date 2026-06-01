@@ -223,22 +223,40 @@ RULES:
   - MUST_NOT proceed to Post-Run Handoff when status == "error"
 
 MENU BootstrapApprovalMenu:
-  TITLE: ralphex --init is needed. Run it?
+  TITLE: |
+    ralphex --init is needed before delegation can continue.
+
+    Command/action: ralphex --init
+    Target: local delegation runtime configuration for this repository
+    Effect: initialize or update ralphex bootstrap files needed to run
+    delegation; delegation remains stopped if you cancel.
+    Consequence:
+      - Reply 1: run `ralphex --init` now, then resume this delegation flow from the bootstrap step.
+      - Reply 2: do not initialize ralphex; stop this delegation attempt.
+
+    Reply with exactly one number: 1 to approve this exact initialization, or 2 to abort.
   OPTIONS:
     1 -> run `ralphex --init` with explicit user approval
     2 -> abort delegation
   INVALID:
-    EMIT "Reply with 1 or 2."
+    EMIT "Reply with exactly one number: 1 or 2."
     WAIT user.reply
     STOP_TURN
 
 MENU RetryOrAbortMenu:
-  TITLE: Delegation failed. Choose an action.
+  TITLE: |
+    Delegation failed.
+
+    Consequence:
+      - Reply 1: retry the same delegation flow against the same plan target.
+      - Reply 2: stop here and leave the failed delegation unresolved.
+
+    Reply with exactly one number: 1 to retry or 2 to abort.
   OPTIONS:
     1 -> retry delegation
     2 -> abort
   INVALID:
-    EMIT "Reply with 1 or 2."
+    EMIT "Reply with exactly one number: 1 or 2."
     WAIT user.reply
     STOP_TURN
 ```

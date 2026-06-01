@@ -231,7 +231,7 @@ MENU RawInputMaterializationMenu:
          STOP carrying full raw input in active chat context once package exists
          SET CF_PHASE_GATE = armed
          CONTINUE Phase2Decompose
-    n -> EMIT "Raw-input materialization declined — continue with direct workflow if you prefer reduced guarantees"
+    n -> EMIT "Raw-input materialization declined — stop and re-run with smaller input or approve materialization when ready"
          STOP_TURN  (valid completion state for /cf-plan; no files created)
   INVALID:
     EMIT "Reply with y or n."

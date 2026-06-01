@@ -6,13 +6,7 @@ loaded_by: workflows/generate/phase-0.7/index.md
 version: 1.0
 ---
 
-<!-- toc -->
-
-- [Session setup (panel selection)](#session-setup-panel-selection)
-
-<!-- /toc -->
-
-### Session setup (panel selection)
+# Phase 0.7: Panel Selection
 
 ```text
 UNIT Phase07PanelSelection
@@ -22,9 +16,15 @@ PURPOSE:
 
 DO:
   REQUIRE `{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md` loaded before any cf-* sub-agent dispatch
-  DISPATCH cf-brainstorm-facilitator with JSON contract from
-    {cf-studio-path}/.core/skills/studio/agents/cf-brainstorm-facilitator.md
-  WITH orchestrator-supplied values:
+  LOAD {cf-studio-path}/.core/skills/studio/agents/cf-brainstorm-facilitator.md
+    as the facilitator source contract
+  SYNTHESIZE final dispatch prompt from the loaded facilitator contract plus
+    SHARED_CONTEXT_PACK and the payload below
+  IF facilitator source contract is not loaded, unreadable, ambiguous, or not
+     reflected in the final dispatch prompt:
+    FAIL per sub-agent-dispatch.md § Contract-read-and-use gate
+    FORBID dispatch
+  DISPATCH cf-brainstorm-facilitator with the synthesized final prompt including:
     initial_topic = one-paragraph summary of user's original request
     kind = {KIND}
     rules_loaded = true ONLY when kit rules actually loaded for this brainstorm session,
@@ -39,32 +39,16 @@ DO:
                   artifact paths from Phase 0.5 parent/sibling discovery
 
   RECEIVE { proposed_panel: [...3..6 entries], seed_topic: {...} }
+  SET confirmed_list = proposed_panel
+  SET confirmed_seed_topic = seed_topic
 
-  EMIT exactly:
----
-Proposed panel for `{KIND}: {name}`:
-
-E1. Domain Architect      — focus: domain model, actor boundaries
-                            why: <rationale>
-E2. Security Reviewer     — focus: auth, data-handling
-                            why: <rationale>
-...
-
-Seed topic for round 1:
-`{seed_topic.text}`
-
-Choose exactly one action:
-1. `start` — use this panel and this seed topic, then begin round 1.
-2. `seed: <topic>` — replace only the seed topic, then show this screen again.
-3. `drop E2,E4` — remove listed panel members. Min 3 participants.
-4. `swap E2: <new persona> (<focus>)` — replace one panel member.
-5. `add: <persona> (<focus>)` — add one panel member. Max 6 participants.
-W. `wrap` — stop setup and open the wrap/save menu.
-
-One reply form per turn. Compound replies such as
-`drop E2; add: X (focus)` are refused with a one-line clarifier.
-After every edit, re-render the full panel plus seed topic.
----
+  EMIT proposed panel display containing:
+    - header: "Proposed panel for {KIND}: {name}:"
+    - E1..E6 entries: persona name, focus, why rationale
+    - "Seed topic for round 1:" + seed_topic.text
+    - numbered action menu: 1=start, 2=seed:<topic>, 3=drop E{N},
+      4=swap E{N}:<persona>(<focus>), 5=add:<persona>(<focus>), W=wrap
+    - one-liner: "One reply form per turn. Compound replies refused."
   WAIT user.reply
 
 MENU PanelEditLoop:
@@ -75,22 +59,24 @@ MENU PanelEditLoop:
       SET state.topic_current = confirmed_seed_topic
       CONTINUE Phase07ExplorePanelContext
     accept ->
-      Treat as backwards-compatible alias for start.
       SET state.panel = confirmed_list
       SET state.topic_current = confirmed_seed_topic
       CONTINUE Phase07ExplorePanelContext
     drop E{N},E{M} ->
       REMOVE listed experts from proposed panel
+      SET confirmed_list = proposed panel
       REQUIRE min 3 remain
       EMIT re-rendered panel
       WAIT user.reply
     swap E{N}: <new persona> (<focus>) ->
       REPLACE E{N} with new persona
+      SET confirmed_list = proposed panel
       EMIT re-rendered panel
       WAIT user.reply
     add: <persona> (<focus>) ->
       REQUIRE panel size < 6
       ADD new persona to panel
+      SET confirmed_list = proposed panel
       EMIT re-rendered panel
       WAIT user.reply
     seed: <topic> ->
@@ -111,11 +97,14 @@ RULES:
   - MUST require min 3 panel members; MUST NOT allow more than 6
   - MUST re-render proposed panel and seed topic after every edit until user
     replies start
-  - MUST treat accept as an alias for start but SHOULD NOT show accept in the
-    primary user-facing action list
+  - MUST treat accept as backwards-compatible alias for start; MUST NOT show
+    accept in the primary user-facing action list
   - MUST always show wrap as a user-facing option in the panel setup menu
   - MUST set state.panel = confirmed_list and state.topic_current before
     entering round loop
+
+NOTES:
+  accept alias exists for backwards compatibility with earlier prompt versions.
 ```
 
 ```text
@@ -132,9 +121,15 @@ DO:
     KIND, name, system, rules_mode
     known artifact paths from Phase 0.5 parent/sibling discovery
 
-  DISPATCH cf-explorer with generator contract from
-    {cf-studio-path}/.core/skills/studio/agents/cf-explorer.md
-  WITH:
+  LOAD {cf-studio-path}/.core/skills/studio/agents/cf-explorer.md
+    as the explorer source contract
+  SYNTHESIZE final dispatch prompt from the loaded explorer contract plus
+    SHARED_CONTEXT_PACK and the payload below
+  IF explorer source contract is not loaded, unreadable, ambiguous, or not
+     reflected in the final dispatch prompt:
+    FAIL per sub-agent-dispatch.md § Contract-read-and-use gate
+    FORBID dispatch
+  DISPATCH cf-explorer with the synthesized final prompt including:
     task = state.topic_current.text
     intent = "brainstorm"
     panel = state.panel
@@ -153,6 +148,8 @@ RULES:
   - MUST run before the first brainstorm round after panel confirmation
   - MUST NOT put docs/code/artifacts into SHARED_CONTEXT_PACK
   - MUST pass resource_context to every brainstorm panel/expert dispatch
+  - MUST apply sub-agent-dispatch.md § Contract-read-and-use gate before
+    facilitator and explorer dispatch
   - IF cf-explorer returns exploration_status == "insufficient":
       still enter the round loop, but downstream panel/expert agents MUST ask
       for missing context instead of inventing project-specific proposals
