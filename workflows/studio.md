@@ -1,4 +1,3 @@
-<!-- markdownlint-disable MD041 -->
 ---
 cf: true
 type: workflow
