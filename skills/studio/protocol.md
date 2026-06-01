@@ -39,25 +39,34 @@ RULES:
 UNIT ProtocolGuard
 
 PURPOSE:
-  Load all project configuration and specs before workflow work begins.
+  Resolve all project configuration and controller-owned prompt assets before
+  workflow work begins.
 
 DO:
   1. Run {cfs_cmd} --json info
   2. Store the returned variables map
   3. WHEN {cf-studio-path}/.gen/AGENTS.md exists
-       open and follow {cf-studio-path}/.gen/AGENTS.md
+       load or reuse it as a controller-owned SHARED_CONTEXT_PACK asset, then
+       follow only the instruction slice selected for the top-level controller
   4. WHEN {cf-studio-path}/config/AGENTS.md exists
-       open and follow {cf-studio-path}/config/AGENTS.md
+       load or reuse it as a controller-owned SHARED_CONTEXT_PACK asset, then
+       follow only the instruction slice selected for the top-level controller
   5. WHEN {cf-studio-path}/.gen/SKILL.md exists
-       open and follow {cf-studio-path}/.gen/SKILL.md
+       load or reuse it as a controller-owned SHARED_CONTEXT_PACK asset, then
+       follow only the instruction slice selected for the top-level controller
   6. WHEN {cf-studio-path}/config/SKILL.md exists
-       open and follow {cf-studio-path}/config/SKILL.md
+       load or reuse it as a controller-owned SHARED_CONTEXT_PACK asset, then
+       follow only the instruction slice selected for the top-level controller
   7. Resolve registry, intent, target, rules, and matched WHEN-clause specs
-  8. Open and follow {cf-studio-path}/.core/requirements/language-complexity.md
+  8. Load or reuse {cf-studio-path}/.core/requirements/language-complexity.md
+     as a controller-owned SHARED_CONTEXT_PACK asset and follow the selected
+     top-level controller slice
 
 RULES:
   - MUST execute steps 1-8 in order before any workflow work
   - MUST store the variables map returned by step 1 for later substitution
+  - MUST_NOT instruct prompt-consuming sub-agents to reopen any ProtocolGuard
+    prompt asset from disk; dispatches receive needed text via prompt_context_view
 ```
 
 ```text
@@ -69,7 +78,7 @@ PURPOSE:
   pack before any downstream dispatch.
 
 RULES:
-  - ProtocolGuard loads {cf-studio-path}/.gen/AGENTS.md,
+  - ProtocolGuard resolves {cf-studio-path}/.gen/AGENTS.md,
     {cf-studio-path}/config/AGENTS.md, {cf-studio-path}/.gen/SKILL.md,
     {cf-studio-path}/config/SKILL.md, and
     {cf-studio-path}/.core/requirements/language-complexity.md on behalf of
@@ -128,12 +137,23 @@ STATE:
     default: unset
     scope: per_write_command
 
+  write_command:
+    exact command or file-write operation being approved
+
+  write_target:
+    exact target path, resource, or configuration key being changed
+
+  write_effect:
+    concrete side effect, including created/modified files or external writes
+
 RULES:
   - MUST preserve the canonical CF_PHASE_GATE model and reset semantics from
     {cf-studio-path}/.core/skills/studio/SKILL.md
   - MUST use {cfs_cmd} --json <subcommand> for all CLI invocations
     EXCEPT init, delegate, and update (run those without --json)
   - MUST obtain explicit user confirmation before any write-capable command
+  - MUST populate write_command, write_target, and write_effect before emitting
+    WriteConfirmationMenu
   - MUST_NOT add --yes, -y, or --force to any command
     unless the user explicitly requested it
   - MUST_NOT execute a write-capable command unless BOTH conditions hold:
@@ -161,14 +181,24 @@ ON_ERROR:
     STOP_TURN
 
 MENU WriteConfirmationMenu:
-  TITLE: Confirm write-capable command
+  TITLE: |
+    Confirm write-capable action.
+
+    Command/action: {write_command}
+    Target: {write_target}
+    Effect: {write_effect}
+    Consequence:
+      - Reply 1: run exactly this action against this target and apply the effect above.
+      - Reply 2: do not run the action; no write is performed.
+
+    Reply with exactly one number: 1 to approve this exact action, or 2 to cancel.
   OPTIONS:
     1 -> SET write_confirmation_obtained = true
          CONTINUE AgentSafeInvocation
     2 -> EMIT "Write cancelled."
          STOP_TURN
   INVALID:
-    EMIT "Reply with 1 to confirm or 2 to cancel."
+    EMIT "Reply with exactly one number: 1 to confirm or 2 to cancel."
     WAIT user.reply
     STOP_TURN
 ```

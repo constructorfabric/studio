@@ -92,8 +92,11 @@ Resolution at every artifact-write event (priority order):
      1. English (most portable)
      2. {detected-chat-language} — your prompt language
      3. Other — specify in your reply
+   ```
+   After you reply with a language, methodology asks a separate prompt:
+   ```text
    Remember this choice for all future explain sessions in this project? (yes / no)
-   → suggested: 1, remember=yes
+   → suggested: yes
    ```
    On `remember=yes` write `{"artifact_language": "{value}"}` to `preferences.json` (mkdir -p if missing). On `remember=no` hold value in working memory for the rest of the session only.
 
@@ -127,7 +130,7 @@ All three disposition options take effect **immediately on each artifact-create 
 
    On first append in a session, methodology writes a session header (`## Session {ISO-timestamp} — {role} for {audience}, mode={mode}`) so multiple intra-day sessions on the same target accumulate without overwriting. Each artifact entry is appended under that header. Methodology emits a one-line confirmation in chat per append: `📝 Q-3 appended to {path} (line 42)`. The session continues immediately — wrap does NOT re-prompt for save (already saved). Wrap output reports the cumulative path + entry count.
 
-3. **`post-to-resource`** — methodology **posts** the artifact directly to the target **right now** via the same access tier that fetched the input (MCP / skill / CLI). Availability check at session start, in priority order (first matching branch defines the handler):
+3. **`post-to-resource`** — methodology **posts or routes** the artifact to the resolved target **right now** via the same access tier that fetched the input (MCP / skill / CLI), or via generate-routing for a local editable file. Availability check at session start, in priority order (first matching branch defines the handler):
    - GitHub PR (target_is_pr=true) — review comments via `gh pr review {N} --comment-file ...` or `mcp__github__create_review_comment`; open-questions / takeaways as a single summary comment via `gh pr comment` or equivalent
    - GitLab MR — `glab mr note` or MCP equivalent
    - Notion page — MCP `mcp__plugin_Notion_notion__*` comment-create
@@ -135,16 +138,31 @@ All three disposition options take effect **immediately on each artifact-create 
    - **Local file** (`handle.local_editable == true` AND `handle.generate_route_available == true` AND none of the above) — there is no external resource to post to; instead, each artifact-create event is routed through the **generate-routing** handler (see `{cf-studio-path}/.core/skills/studio/agents/storytelling-gate.md` § Gate: generate-routing), which dispatches the `cf-generate` skill against the local file in the mode classified for that artifact (`fix` / `brainstorm` / `generate` — see `{cf-studio-path}/.core/requirements/storytelling-modes.md` § classified_mode label). The per-comment generate-routing 4-option consent menu (Route now / Queue / No / Never-ask-again-this-session, default = Route now under this disposition) is the post-confirmation prompt; selecting Queue defers to the batch `send comments` verb. The save-to-file path is still used as the auto-save fallback when a generate dispatch fails — see § Dispatch-Failure Audit Log.
    - Otherwise (no PR, no MCP/CLI resource handler, AND `local_editable == false` OR `generate_route_available == false`) — post unavailable; methodology MUST tell the user during the disposition prompt with the concrete reason (e.g. `directory target`, `remote access tier`, `generate-route handler unavailable`) and fall back to `save-to-file`. Picking option 3 under this branch produces a one-line ack `⚠️ post-to-resource unavailable — switched to save-to-file` and proceeds.
 
-   Each post is **confirmed immediately on the artifact-create event**, not at wrap. Methodology shows the post payload (file:line + comment body for review comments; question text + author tag for open-questions) and asks:
+   Each post or route action is **confirmed immediately on the artifact-create event**, not at wrap. Methodology shows the exact payload (file:line + comment body for review comments; question text + author tag for open-questions), the resolved target, and the fallback path when relevant, then asks:
    ```text
-   Post this draft now to {target}?
-     1. Post — send to {target} via {handler}
-     2. Save instead — append to {save-to-file path} for this item only
-     3. Discard — drop this artifact, don't save or post
-     4. Skip rest — switch disposition to save-to-file for ALL remaining items in this session
+   Confirm what to do with this draft.
+
+   Action: {post_action_label}
+   Target: {target}
+   Effect:
+     - Reply 1: {post_action_effect}
+     - Reply 2: append this item to {save-to-file path} and do not post or route it
+     - Reply 3: discard this item and persist nothing
+     - Reply 4: switch all remaining items in this session to save-to-file
+
+   Reply with exactly one number from 1-4.
+     1. {post_action_label}
+     2. Save this item to {save-to-file path}
+     3. Discard this item
+     4. Switch remaining items to save-to-file
    → suggested: 1
    ```
-   On `Post`: methodology calls the handler; on success, emits one-line confirmation `📤 Q-3 posted to PR #25 ({URL})`; on failure (network / permissions / rate limit), reports the exact error AND falls back to save-to-file for that item with `📝 Q-3 post failed ({error}) — saved to {path} instead`. The session continues immediately. Wrap output reports cumulative post count + any failures.
+   `{post_action_label}` and `{post_action_effect}` MUST be branch-specific:
+   - PR / GitLab / Notion / Jira branch: name the exact post action and handler, e.g. `Post to PR #25 via gh pr comment`; effect states that the draft will be sent to that external resource now
+   - Local-file generate-routing branch: name the exact route action and classified mode, e.g. `Route to cf-generate on requirements/auth.md in fix mode`; effect states that the draft will dispatch generate-routing against that file now
+   - Unavailable branch: option 1 MUST_NOT appear; the disposition prompt must already have converted this branch to `save-to-file`
+
+   On reply `1`, methodology calls the resolved handler; on success, emits a one-line confirmation that names the exact target and result (`📤 Q-3 posted to PR #25 ({URL})` or equivalent routed-action confirmation). On failure (network / permissions / rate limit), methodology reports the exact error AND falls back to save-to-file for that item with `📝 Q-3 post failed ({error}) — saved to {path} instead`. The session continues immediately. Wrap output reports cumulative post count + any failures.
 
 **Crucial: deferring artifact persistence to wrap is FORBIDDEN** for `save-to-file` and `post-to-resource` dispositions. Saying "I'll save this at wrap" when the user picked save-to-file is broken UX (wrap ends the session, so user can't both continue and save). Persistence happens immediately; the session continues uninterrupted; wrap merely reports the cumulative results. See Anti-Pattern #28d.
 
@@ -154,26 +172,35 @@ All three disposition options take effect **immediately on each artifact-create 
 This {mode} session may produce accumulating artifacts:
 {conditional list per mode — review comments / open questions / bookmarks}
 
-How should they be handled at session end?
+How should each artifact be handled when it is created?
   1. chat-only — draft in chat, you copy/paste manually
-  2. save-to-file — write to {cf-studio-path}/.cache/explain/{...}-{slug}-{date}.md at wrap
-  3. post-to-resource — {dynamic-label per the post-to-resource resolver above; one of: PR posting via {handler} / Notion-Jira-GitLab posting via {handler} / **invoke the cf-generate skill (fix / brainstorm / generate, classified per comment) on the local file via generate-routing** / unavailable for this target ({reason}) — falls back to save-to-file}; each post / dispatch confirmed individually
+  2. save-to-file — append immediately to {cf-studio-path}/.cache/explain/{...}-{slug}-{date}.md
+  3. {post_option_label} — {post_option_effect}
   4. mixed — pick per artifact type (secondary prompt)
 
 → suggested: {S} ({why-suggested})
 
-Remember this choice for all future explain sessions in this project? (yes / no)
+Reply with exactly one number from 1-4. After you choose, I will ask separately whether
+to remember the choice for future explain sessions in this project.
 ```
 
-`{S}` is computed in priority order: project preference (`artifact_disposition` from `preferences.json`) → `save-to-file` (default; preserves history; reliable). The dynamic line for option 3 MUST match the rendered branch from the post-to-resource resolver in `skills/studio/agents/storytelling-gate.md` § Gate: artifact-disposition: external-resource handlers (PR / Notion / Jira / GitLab) show the concrete handler; the local-file branch explicitly names `cf-generate` and the classified mode label; the unavailable branch names the reason and the fallback. The legacy line `posting NOT available — falls back to save-to-file` is reserved for the unavailable branch only — it MUST NOT appear when the local-file branch applies.
+`{S}` is computed in priority order: project preference (`artifact_disposition` from `preferences.json`) → `save-to-file` (default; preserves history; reliable). `{post_option_label}` and `{post_option_effect}` MUST render the exact branch-specific action, target, and consequence for option 3:
+- PR / Notion / Jira / GitLab branch: name the exact resource and handler, and state that each artifact will be posted there immediately after per-item confirmation
+- Local-file branch: name the exact local file target plus `cf-generate` classified mode, and state that each artifact will be routed there immediately after per-item confirmation
+- Unavailable branch: state that posting is unavailable for the named reason and that choosing option 3 switches this session to `save-to-file`
 
-On `remember=yes`, write `{"artifact_disposition": "{value}"}` to `preferences.json`. The disposition prompt always emits at session start (like the mode prompt) — preferences.json informs the suggested default but does NOT bypass the prompt. Methodology MUST NOT proceed past the prompt without an explicit user response.
+The legacy line `posting NOT available — falls back to save-to-file` is reserved for the unavailable branch only — it MUST NOT appear when the local-file branch applies.
+
+After a valid 1-4 disposition reply, emit a separate persistence prompt:
+`Remember this choice for all future explain sessions in this project? Reply yes or no.`
+On `yes`, write `{"artifact_disposition": "{value}"}` to `preferences.json`.
+The disposition prompt always emits at session start (like the mode prompt) — preferences.json informs the suggested default but does NOT bypass the prompt. Methodology MUST NOT proceed past the prompt without an explicit user response to both the disposition prompt and the persistence prompt.
 
 **Override mid-session**: `change disposition to {X}` switches subsequent artifact handling. `remember new disposition` persists. `mixed` mode triggers a per-type prompt (review-comments? open-questions? bookmarks?) at first use of each artifact type.
 
 **Explicit drafting requirement** (applies to all dispositions): every time the methodology drafts an artifact (Comment slot in review, push to open-questions, bookmark), it MUST surface a one-line note in chat indicating disposition status, e.g.:
-- `📋 drafted comment Q-3 (chat-only — copy at wrap)` /
-- `📝 added Q-3 to open-questions buffer (save-to-file at wrap → {path})` /
+- `📋 drafted comment Q-3 (chat-only — copy from chat; wrap will repeat drafts)` /
+- `📝 appended Q-3 to {path} (save-to-file; persisted now)` /
 - `📤 posting comment Q-3 to PR... [yes / no / skip-rest]?`
 
 Silent drafting (artifact created but nothing emitted in chat) is forbidden — see Anti-Patterns.

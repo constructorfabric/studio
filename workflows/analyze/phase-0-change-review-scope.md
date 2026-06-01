@@ -6,54 +6,70 @@ loaded_by: workflows/analyze/phase-0-dependencies.md
 version: 1.0
 ---
 
+# Change Review Scope Resolver
+
 ```text
 UNIT ChangeReviewScopeResolver
+PURPOSE: Dispatch cf-diff-scope-resolver and derive typed target sets from the
+         returned diff_scope before Phase 1 file checks.
 
-PURPOSE:
-  Dispatch cf-diff-scope-resolver and derive typed target sets from the
-  returned diff_scope before Phase 1 file checks.
-
-WHEN:
-  CHANGE_REVIEW == true
-
+WHEN: CHANGE_REVIEW == true
 DO:
   REQUIRE {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md has run
+  LOAD {cf-studio-path}/.core/skills/studio/agents/cf-diff-scope-resolver.md
+    as the diff-scope resolver source contract
+  SYNTHESIZE final dispatch prompt from resolver contract + SHARED_CONTEXT_PACK + payload below
+  IF resolver contract not loaded / unreadable / ambiguous / not reflected in dispatch prompt:
+    FAIL per sub-agent-dispatch.md § Contract-read-and-use gate
+    FORBID dispatch
+    STOP_TURN
   DISPATCH cf-diff-scope-resolver with:
-    worktree_path   = explicit repo/worktree path OR resolved workspace source
-    commit_sha      = requested commit SHA OR null
-    base_ref        = explicit base OR null (agent uses <commit_sha>^)
-    include_uncommitted = true for worktree/dirty/staged/unstaged changes
-    direct_targets  = explicit paths named by the user
-    review_intent   = original review request text
+    worktree_path        = explicit repo/worktree path OR resolved workspace source
+    commit_sha           = requested commit SHA OR null
+    base_ref             = explicit base OR null (agent uses <commit_sha>^)
+    include_uncommitted  = true for worktree/dirty/staged/unstaged changes
+    direct_targets       = explicit paths named by the user
+    review_intent        = original review request text
   SET diff_scope = returned JSON
   IF diff_scope.review_targets is empty:
     EMIT "No reviewable targets found."
     STOP_TURN
   SET {PATHS} = diff_scope.review_targets
-  Derive typed target sets from diff_scope.changed_files:
-    SET prompt_targets  = paths matching prompt/workflow/instruction patterns
-    SET code_targets    = paths matching code/test/build patterns, excluding prompt_targets
-    SET artifact_targets = diff_scope.review_targets minus prompt_targets minus code_targets
-  IF prompt_targets is non-empty:
+  SET prompt_targets   = diff_scope.changed_files matching prompt/workflow/instruction patterns
+  SET code_targets     = diff_scope.changed_files matching code/test/build patterns,
+                         excluding prompt_targets
+  SET artifact_targets = diff_scope.review_targets minus prompt_targets minus code_targets
+  IF prompt_targets non-empty:
     SET PROMPT_REVIEW = true
-    IF review_intent is change-review, defect-oriented, or generic review/audit:
+    IF review_intent is change-review / defect-oriented / generic review / audit:
       SET PROMPT_BUG_REVIEW = true
-  IF code_targets is non-empty:
+  IF code_targets non-empty:
     SET CODE_REVIEW = true
-  IF code_targets is non-empty AND review_intent is defect-oriented:
+  IF code_targets non-empty AND review_intent is defect-oriented:
     SET CODE_BUG_REVIEW = true
+  IF artifact_targets non-empty:
+    SET ARTIFACT_REVIEW = true
 
 RULES:
+  - MUST enter fail-closed mode for CHANGE_REVIEW until inline-fallback-probe state
+    and resolver contract-read-and-use check are both resolved
+  - While fail-closed, MUST_NOT run or narrate local git status/diff, changed-file
+    triage, cfs validate, local semantic review, findings, summaries, or remediation menus
+  - While fail-closed, MAY emit only the missing gate menu or matching
+    "Dispatch blocked: ..." error, then MUST STOP_TURN
   - MUST dispatch cf-diff-scope-resolver immediately after inline-fallback-probe
     and before Phase 1 file checks
-  - MUST derive methodology flags from diff_scope.changed_files typed sets, not
-    from raw review_targets
+  - MUST apply sub-agent-dispatch.md § Contract-read-and-use gate before dispatch
+  - MUST derive methodology flags from diff_scope.changed_files typed sets,
+    not from raw review_targets
   - MUST_NOT silently enable CODE_REVIEW or CODE_BUG_REVIEW for prompt-only or
     artifact-only diffs
-  - MUST surface mismatch if user requests a code bug hunt but diff contains no
-    code_targets; do not reuse prompt or artifact files as code-review inputs
+  - MUST enable ARTIFACT_REVIEW for artifact_targets not owned by prompt/code
+    methodology so artifact-only diffs cannot auto-skip semantic review
+  - MUST surface mismatch if user requests a code bug hunt but diff has no
+    code_targets; MUST_NOT reuse prompt or artifact files as code-review inputs
   - MUST_NOT run git diff, changed-file triage, hotspot mapping, or semantic
-    search over the diff; those belong to the resolver and downstream reviewers
+    search over the diff — those belong to the resolver and downstream reviewers
 
 NOTES:
   prompt_targets match: workflows/**, skills/studio/**/*.md,

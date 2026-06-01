@@ -6,11 +6,7 @@ loaded_by: workflows/analyze.md
 version: 1.0
 ---
 
-<!-- toc -->
-
-- [Context Budget & Overflow Prevention (CRITICAL)](#context-budget--overflow-prevention-critical)
-
-<!-- /toc -->
+# Analyze — Context Budget
 
 ```text
 UNIT AnalyzeContextBudget
@@ -21,10 +17,11 @@ PURPOSE:
 
 WHEN:
   Phase 0 is about to load large documents
-  OR estimated total context would exceed 1200 lines
+  OR estimated total context would exceed 1200 retained instruction/input lines
 
 DO:
-  Estimate size before loading large docs (e.g. with `wc -l`); state the budget for this turn.
+  Estimate size before loading large docs (e.g. with `wc -l`); state both
+  estimated retained lines and percent of original context window for this turn.
   Load only what is used: prefer rules.md Validation and needed checklist categories only.
   Use read_file ranges; summarize each chunk; keep only extracted criteria.
   IF checks cannot be completed within context:
@@ -34,6 +31,8 @@ DO:
 
 RULES:
   - MUST estimate context size before loading large documents
+  - "1200 lines" means retained lines after slice extraction, not raw file
+    lines that will be summarized and dropped
   - MUST use chunked reads and summarize-and-drop
   - MUST_NOT claim overall PASS when context budget is exhausted
   - MUST output PARTIAL with checkpoint when checks cannot complete
@@ -42,15 +41,7 @@ NOTES:
   Plan escalation: Phase 0.1 is mandatory after dependencies load.
   When SUB_AGENT_SESSION_APPROVED=true AND INLINE_FALLBACK=false, the gate
   logs the estimate and proceeds without proposing /cf-plan; decomposition is
-  handled in-workflow by Phase 2.5 (reviewer plan). Otherwise the legacy
-  size-based escalation menu fires when budget is exceeded.
+  handled in-workflow by Phase 2.5 (reviewer plan). Otherwise the fallback
+  menu routes to /cf-plan or stop; local single-context continuation is not
+  allowed by default.
 ```
-
-## Context Budget & Overflow Prevention (CRITICAL)
-- Budget first: estimate size before loading large docs (for example with `wc -l`) and state the budget for this turn.
-- Load only what you use: prefer rules.md Validation and only needed checklist categories; avoid large registries/specs unless required.
-- Chunk reads and summarize-and-drop: use `read_file` ranges, summarize each chunk, and keep only extracted criteria.
-- Fail-safe: if checks cannot be completed within context, output `PARTIAL` with checkpoint status and resume guidance; do not claim overall PASS.
-- Plan escalation: [Phase 0.1](phase-0.1-plan-escalation-gate.md) is mandatory after dependencies load. When `SUB_AGENT_SESSION_APPROVED=true` AND `INLINE_FALLBACK=false`, the gate logs the estimate and proceeds without proposing `/cf-plan`; decomposition is handled in-workflow by Phase 2.5 (reviewer plan). Otherwise the legacy size-based escalation menu fires when budget is exceeded.
-
-Next: `workflows/analyze/phase-0-dependencies.md` for Phase 0 dependency resolution.

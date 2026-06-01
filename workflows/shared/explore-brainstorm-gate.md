@@ -34,6 +34,21 @@ RESOURCE BOUNDARY:
   - cf-explore MUST NOT add resource contents to SHARED_CONTEXT_PACK.
   - Prompt assets remain controller-owned instruction context and are handled
     only through SHARED_CONTEXT_PACK.
+  - Local ad-hoc search by the orchestrator (`rg`, `grep`, `find`, IDE search,
+    manual directory walks, or equivalent) MUST_NOT replace cf-explore when
+    any REQUIRE_EXPLORE condition applies.
+  - After cf-explore completes, the orchestrator MAY inspect concrete
+    RESOURCE_CONTEXT paths/slices as needed by later phases.
+
+REQUIRE_EXPLORE FOR ANY PROJECT-RESOURCE SEARCH WHEN:
+  - The workflow needs to find or discover relevant files, code references,
+    architecture docs, artifacts, tests, examples, configs, usage sites,
+    dependencies, owners, impact surface, or cross-file context.
+  - The user asks any search/discovery question such as "find", "locate",
+    "where", "what uses", "impact", "related files", "dependencies",
+    "references", "context", "scan", "inspect the project", or equivalent,
+    unless exact target files and all required surrounding context are already
+    supplied.
 
 REQUIRE_EXPLORE WHEN:
   - Active workflow is cf-brainstorm and panel personas have been selected.
@@ -50,17 +65,22 @@ REQUIRE_EXPLORE WHEN:
     "impact", "consistency", "what uses", or requests cross-file reasoning.
 
 SUGGEST_EXPLORE WHEN:
-  - Active workflow is cf-pdsl transform/review and related prompt dependencies
-    are not explicit.
   - Active workflow is cf-generate for a small isolated edit but neighboring
     context may affect correctness.
   - Active workflow is cf-analyze with explicit targets but likely cross-refs
     or architectural context would improve findings.
 
 SKIP_EXPLORE WHEN:
-  - User supplied exact target files and all required surrounding context.
+  - User supplied exact target files and all required surrounding context; this
+    means the agent can name every file/path it will inspect without searching
+    and no "find", "where", "impact", "uses", "dependencies", "references",
+    or "context" question remains open.
   - Active workflow is cf-map generating a graph; map performs its own scan.
-  - Active workflow is a pure prompt/proxy route with no project-resource need.
+  - Active workflow is a pure prompt/proxy route with no project-resource need;
+    prompt assets are loaded by the controller through SHARED_CONTEXT_PACK, not
+    discovered as project resources.
+  - The only required file access is a controller-owned workflow/agent/skill/
+    requirement prompt asset already named by the active protocol.
 
 REQUIRE_BRAINSTORM WHEN:
   - User explicitly asks to brainstorm, ideate, explore options, decide,
@@ -95,6 +115,10 @@ PURPOSE:
   Execute the decision without hiding workflow control from the user.
 
 DO:
+  IF ad_hoc_search_attempted:
+    EMIT "Use cf-explorer sub-agent for required project-resource discovery."
+    STOP_TURN
+
   IF EXPLORE_DECISION == required:
     LOAD {cf-studio-path}/.core/workflows/explore.md
     run with intent = active workflow name
@@ -117,13 +141,22 @@ DO:
     STOP_TURN
 
 MENU ExploreOfferMenu:
-  TITLE: Additional project context may improve this workflow. What should I do?
+  TITLE: |
+    Additional neighboring context may improve this workflow.
+    Reply with 1 to spend time on discovery first, 2 to continue faster with
+    known context only, or 3 to narrow the scope before deciding.
   OPTIONS:
-    1 run-explore -> LOAD {cf-studio-path}/.core/workflows/explore.md
+    1 run-explore -> improve correctness by discovering relevant resources;
+                     costs an extra workflow step.
+                     LOAD {cf-studio-path}/.core/workflows/explore.md
                      run with intent = active workflow name
-    2 continue -> SET EXPLORE_DECISION = skipped
-                  continue active workflow
-    3 narrow-scope -> ask one scoped question for paths or limits
+                     CONTINUE
+    2 continue -> continue fastest using only supplied/known context; may miss
+                  neighboring project constraints.
+                  SET EXPLORE_DECISION = skipped
+                  CONTINUE
+    3 narrow-scope -> ask one scoped question for paths or limits before
+                      choosing discovery or continuation.
                       WAIT user.reply
                       STOP_TURN
   INVALID:
@@ -132,13 +165,21 @@ MENU ExploreOfferMenu:
     STOP_TURN
 
 MENU BrainstormOfferMenu:
-  TITLE: This task has design choices. What should I do before continuing?
+  TITLE: |
+    This task has design choices.
+    Reply with 1 to explore tradeoffs first, 2 to continue with the current
+    default, or 3 to answer one scope question before deciding.
   OPTIONS:
-    1 run-brainstorm -> LOAD {cf-studio-path}/.core/workflows/brainstorm.md
+    1 run-brainstorm -> improve decision quality with explicit tradeoffs;
+                        costs an extra workflow step.
+                        LOAD {cf-studio-path}/.core/workflows/brainstorm.md
                         seed with active task and RESOURCE_CONTEXT when present
-    2 continue -> SET BRAINSTORM_DECISION = skipped
-                  continue active workflow
-    3 ask-scope-question -> ask one scoped decision question
+                        CONTINUE
+    2 continue -> continue fastest using the safe default already available.
+                  SET BRAINSTORM_DECISION = skipped
+                  CONTINUE
+    3 ask-scope-question -> ask one scoped decision question before choosing a
+                            strategy.
                             WAIT user.reply
                             STOP_TURN
   INVALID:
@@ -161,13 +202,13 @@ MATRIX:
     explore: current workflow
     brainstorm: offer in terminal menu only
   cf-generate:
-    explore: required for brownfield/broad/unclear; suggested for narrow edits
+    explore: required for brownfield/broad/unclear/search/discovery; suggested for narrow edits with exact paths
     brainstorm: required for unresolved decisions; suggested for broad work
   cf-plan:
-    explore: required for brownfield/architecture/multi-file/unclear
+    explore: required for brownfield/architecture/multi-file/unclear/search/discovery
     brainstorm: required for unresolved strategy; suggested for multiple valid decompositions
   cf-analyze:
-    explore: required for missing targets or cross-file/project questions; suggested for explicit targets with likely cross-refs
+    explore: required for missing targets, search/discovery, or cross-file/project questions; suggested for explicit targets with likely cross-refs
     brainstorm: never before findings; offer only as remediation strategy next-step
   cf-explain:
     explore: required when target is unspecified; otherwise inherited from analyze
@@ -179,7 +220,7 @@ MATRIX:
     explore: required for setup/config generation
     brainstorm: suggested for precedence, federation policy, or rollout choices
   cf-pdsl:
-    explore: suggested for transform/review with implicit dependencies
+    explore: required for project-resource discovery; skip for pure prompt-asset dependency loading through SHARED_CONTEXT_PACK
     brainstorm: suggested for new prompt architecture or policy changes
   cf-map:
     explore: skip

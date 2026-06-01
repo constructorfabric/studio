@@ -16,16 +16,44 @@ PDSL. It is for files such as `skills/**/*.md`, `workflows/**/*.md`,
 ## Bootstrap
 
 ```text
+UNIT RootSkillEntrypointBootstrap
+PURPOSE: Prevent direct workflow entry from bypassing the root cf skill.
+DO:
+  1. REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is loaded completely
+     and followed FIRST.
+  2. REQUIRE CfSkillInit, Bootstrap, HardRules, and
+     WorkflowProtocolNonSubstitution from SKILL.md have completed.
+  3. CONTINUE this workflow only after the root cf skill routing/entrypoint
+     selects it.
+RULES:
+  - MUST execute before any workflow-specific unit in this file.
+  - MUST_NOT treat protocol.md, routing.md, or a thin proxy skill as a
+    substitute for loading and following SKILL.md.
+  - If this workflow file is opened directly, STOP workflow phases until
+    SKILL.md has been loaded completely and followed.
+  - This gate applies to the top-level controller only; dispatched sub-agents
+    consume the synthesized final prompt and supplied context slices.
+```
+
+```text
 UNIT PdslBootstrap
 
 PURPOSE:
   Load required files before any phase work begins.
 
 RULES:
-  - ALWAYS open and follow `{cf-studio-path}/.core/skills/studio/SKILL.md` WHEN `{cfs_mode}` == off
-  - ALWAYS open and follow `{cf-studio-path}/.core/skills/studio/protocol.md` FIRST
-  - ALWAYS open and follow `{cf-studio-path}/.core/architecture/specs/PDSL.md`
-  - ALWAYS open and follow `{cf-studio-path}/.core/workflows/shared/stop-token-policy.md`
+  - The top-level controller loads or reuses `{cf-studio-path}/.core/skills/studio/SKILL.md`
+    WHEN `{cfs_mode}` == off, and follows it before any workflow-local
+    bootstrap or protocol asset
+  - The top-level controller loads or reuses `{cf-studio-path}/.core/skills/studio/protocol.md`
+    only after SKILL.md bootstrap/routing has completed
+  - The top-level controller loads or reuses `{cf-studio-path}/.core/architecture/specs/PDSL.md`
+  - The top-level controller loads or reuses `{cf-studio-path}/.core/workflows/shared/stop-token-policy.md`
+  - The top-level controller loads `{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md`
+    before any cf-pdsl-* dispatch decision
+  - Any cf-pdsl-* sub-agent receives required slices through prompt_context_view
+    and MUST_NOT reopen SKILL, workflow, requirement, spec, AGENTS, or kit
+    prompt files from disk
 ```
 
 ```text
@@ -158,32 +186,18 @@ Input rules:
 UNIT PdslDispatchGate
 
 PURPOSE:
-  Enforce Sub-Agent Approval Gate semantics before any DISPATCH.
+  Resolve canonical inline-fallback state before any cf-pdsl-* dispatch or
+  inline contract.
 
 WHEN:
-  SUB_AGENT_SESSION_APPROVED == unset
-  AND host.supports_native_subagents == true
+  before any mode-specific cf-pdsl-* dispatch decision
 
 DO:
-  EMIT_MENU SubAgentApprovalMenu
-  WAIT user.reply
-  STOP_TURN
-
-MENU SubAgentApprovalMenu:
-  TITLE: This workflow can use Constructor Studio sub-agents for isolated/parallel work.
-  OPTIONS:
-    1 -> SET SUB_AGENT_SESSION_APPROVED = true
-         SET INLINE_FALLBACK = false
-         CONTINUE PdslDispatchGate
-    2 -> SET INLINE_FALLBACK = true
-         CONTINUE PdslDispatchGate
-  INVALID:
-    EMIT "Reply with 1 or 2."
-    WAIT user.reply
-    STOP_TURN
-
-DO (after approval resolved):
-  IF INLINE_FALLBACK == true OR host.supports_native_subagents == false:
+  REQUIRE {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md is loaded
+  RUN InlineFallbackProbe
+  REQUIRE returned.state == resolved
+  REQUIRE INLINE_FALLBACK_PROBED == true
+  IF INLINE_FALLBACK == true:
     inline the matching contract:
       cf-pdsl-author      -> {cf-studio-path}/.core/skills/studio/agents/cf-pdsl-author.md
       cf-pdsl-transformer -> {cf-studio-path}/.core/skills/studio/agents/cf-pdsl-transformer.md
@@ -192,18 +206,28 @@ DO (after approval resolved):
     DISPATCH named sub-agent
 
 RULES:
-  - MUST apply Sub-Agent Approval Gate (SKILL.md) before any DISPATCH
+  - MUST route Sub-Agent Approval Gate, HostNoNativeSubAgentMenu, and
+    NativeSubAgentPolicyConflict handling through shared
+    inline-fallback-probe.md
+  - MUST treat NativeSubAgentPolicyConflict as a distinct approval boundary
+    owned by the shared probe
   - MUST apply dispatch protocol from `{cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md` before any DISPATCH
   - MUST synthesize the dispatched agent's final prompt from
     SHARED_CONTEXT_PACK plus the agent prompt source before any cf-pdsl-*
     dispatch or inline contract
   - MUST_NOT dispatch write-capable modes (new, transform) until write summary is user-approved
-  - MUST_NOT default INLINE_FALLBACK from host capability or missing approval
+  - MUST_NOT read or branch on INLINE_FALLBACK unless
+    INLINE_FALLBACK_PROBED == true for the active workflow run
+  - MUST_NOT emit local approval or fallback menus in this workflow
+  - MUST_NOT default INLINE_FALLBACK from host capability, policy conflict, or
+    missing approval
 
 NOTES:
-  Full approval gate semantics defined in
-  {cf-studio-path}/.core/skills/studio/SKILL.md § Session Sub-Agent Approval Gate
-  and {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md.
+  Full approval gate semantics and the INLINE_FALLBACK_PROBED /
+  NativeSubAgentPolicyConflict state machine are defined in
+  {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md,
+  {cf-studio-path}/.core/skills/studio/SKILL.md § Session Sub-Agent Approval
+  Gate, and {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md.
 ```
 
 ## Completion

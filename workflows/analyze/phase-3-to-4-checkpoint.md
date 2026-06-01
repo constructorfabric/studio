@@ -12,13 +12,15 @@ UNIT AnalyzePhase3To4Checkpoint
 PURPOSE:
   Evaluate context budget after semantic review; emit a checkpoint and offer
   continue-in-chat or fresh-chat-resume when budget is low or PARTIAL=true.
+  Fresh-chat resume is valid only after explicit rehydration proof is shown.
 
 WHEN:
   Before entering Phase 4 Output
 
 DO:
-  Estimate remaining context budget.
-  IF budget >= 30% of original capacity AND PARTIAL == false:
+  Estimate remaining context budget as percent_remaining =
+    floor(remaining_context_tokens / original_context_tokens * 100).
+  IF percent_remaining >= 30 AND PARTIAL == false:
     CONTINUE workflows/analyze/phase-4-output/index.md (no stop)
   ELSE:
     Emit checkpoint (see required fields below)
@@ -36,7 +38,8 @@ MENU Phase3To4Menu:
     1 -> CONTINUE workflows/analyze/phase-4-output/index.md
     2 -> Emit a fresh-chat resume prompt as the final section (must include
          target_paths, deterministic gate summary, methodology dispatch status,
-         findings JSON, semantic report inventory, and resume fingerprints)
+         findings JSON, semantic report inventory, resume fingerprints, and the
+         required rehydration-proof checklist)
          STOP_TURN
   INVALID:
     EMIT "Reply `1` or `2`."
@@ -44,7 +47,7 @@ MENU Phase3To4Menu:
     STOP_TURN
 
 RULES:
-  - MUST emit checkpoint when budget < 30% of original capacity OR PARTIAL=true
+  - MUST emit checkpoint when percent_remaining < 30 OR PARTIAL=true
   - MUST include target_paths / analyzed_paths grouped by methodology
     (artifact, code, code_bug, prompt, prompt_bug, consistency)
     and including diff/change-review scope when present
@@ -63,16 +66,31 @@ RULES:
   - MUST include deterministic resume gate: file fingerprints or mtimes for every
     target_path, cross_ref_path, design_artifact_path, loaded methodology file,
     and rules/checklist file that affected the review
+  - MUST include dispatch manifest inventory for every completed or attempted
+    cf-* dispatch: source contract path, source contract fingerprint,
+    SHARED_CONTEXT_PACK id, prompt_context_view slice ids, allowed resource ids,
+    target fingerprints, dispatch mode, and completion status
+  - MUST require a rehydration-proof block before any fresh-chat resume may
+    continue to Phase 4. The proof block MUST show the current target summary,
+    target fingerprints, methodology/rules fingerprints, dispatch-manifest
+    verification result, and findings/semantic-report reload status.
   - MUST_NOT infer a default when the user replies anything other than 1 or 2
-  - MUST re-read target set and all referenced rules/methodology files on fresh-chat resume
+  - On fresh-chat resume, the top-level controller MUST rehydrate target set and
+    referenced rules/methodology prompt assets into SHARED_CONTEXT_PACK, then
+    provide prompt_context_view slices to any downstream prompt-consuming
+    sub-agent; sub-agents MUST_NOT reopen prompt assets from disk
+  - MUST verify dispatch manifest inventory against the current prompt assets on
+    fresh-chat resume before reusing any semantic findings
   - MUST verify deterministic resume gate against checkpoint including methodology-file fingerprints on resume
   - MUST reload findings JSON and semantic report inventory on resume
-  - MUST skip to Phase 4 only when gate matches on resume
+  - MUST fail closed when any rehydration-proof field is missing, unreadable, or mismatched
+  - MUST skip to Phase 4 only when the rehydration proof is emitted and every gate matches on resume
   - MUST_NOT reuse the checkpoint silently when any fingerprint changed on resume;
     rerun the affected deterministic/semantic review groups or ask the user
 
 NOTES:
   The checkpoint fields above are target-set centric (not single-artifact centric)
   to support multi-path and multi-methodology analyze runs.
-  Fresh-chat resume prompt MUST start with "Invoke skill cf" and embed the checkpoint.
+  Fresh-chat resume prompt MUST start with "Invoke skill cf", embed the checkpoint,
+  and require the rehydration-proof block before Phase 4 continuation.
 ```

@@ -5,13 +5,7 @@ parent: workflows/generate.md
 description: Invoke when the deterministic gate is PASS (or SKIPPED with proof) and the matched semantic reviewer(s) must be dispatched for the current iteration.
 ---
 
-<!-- toc -->
-
-- [Phase 5.2: Semantic Reviewers](#phase-52-semantic-reviewers)
-
-<!-- /toc -->
-
-### Phase 5.2: Semantic Reviewers
+# Generate Phase 5.2: Semantic Reviewers
 
 ```text
 UNIT Phase52SemanticReviewers
@@ -28,7 +22,7 @@ DO:
      analyze→generate external entry):
     prompt_targets = paths matching: workflows/**, skills/**/SKILL.md,
       skills/studio/**/*.md, skills/**/agents/*.md, requirements/**/*.md,
-      AGENTS.md, and prompt config files
+      **/AGENTS.md, AGENTS.md, and prompt config files
     code_targets = paths matching code/test/build files owned by code reviewer
       methodology, EXCLUDING any path already in prompt_targets
     artifact_targets = paths NOT in prompt_targets and NOT in code_targets
@@ -44,34 +38,47 @@ DO:
     READ [systems.<system>] traceability from {cf-studio-path}/config/artifacts.toml
     DEFAULT to FULL when unset
 
-  DISPATCH reviewers in parallel per decision priority (first match wins for
-    artifact/code axis; consistency and bug-finder rows may be additive):
-    1. PROMPT_REVIEW=true (overrides artifact/code rows):
+  DISPATCH reviewers in parallel per target-set routing:
+    1. PROMPT_REVIEW=true AND prompt_targets non-empty:
+         LOAD and USE contract for cf-semantic-reviewer-prompt before synthesis;
+         fail-closed if missing/unread/unused
          DISPATCH cf-semantic-reviewer-prompt WITH prompt_targets
-    2. TARGET_TYPE==artifact AND NOT PROMPT_REVIEW:
+    2. artifact_targets non-empty:
+         LOAD and USE contract for cf-semantic-reviewer-artifact before synthesis;
+         fail-closed if missing/unread/unused
          DISPATCH cf-semantic-reviewer-artifact WITH artifact_targets
-    3. TARGET_TYPE==code AND NOT PROMPT_REVIEW:
+    3. code_targets non-empty:
+         LOAD and USE contract for cf-semantic-reviewer-code before synthesis;
+         fail-closed if missing/unread/unused
          DISPATCH cf-semantic-reviewer-code WITH code_targets
     4. CODE_BUG_REVIEW=true (additive on code branch):
+         LOAD and USE contract for cf-code-bug-finder before synthesis;
+         fail-closed if missing/unread/unused
          DISPATCH cf-code-bug-finder WITH code_targets
     5. PROMPT_BUG_REVIEW=true (additive when PROMPT_REVIEW=true;
          standalone when PROMPT_REVIEW=false):
+         LOAD and USE contract for cf-prompt-bug-finder before synthesis;
+         fail-closed if missing/unread/unused
          DISPATCH cf-prompt-bug-finder WITH prompt_targets
     6. rules.md requests consistency review AND len(target_paths) >= 2 (additive):
+         LOAD and USE contract for cf-semantic-reviewer-consistency before synthesis;
+         fail-closed if missing/unread/unused
          DISPATCH cf-semantic-reviewer-consistency
          IF len(target_paths) < 2:
            SKIP consistency dispatch
            LOG "consistency-skipped: single-target" to iteration trace
 
-  BOTH PROMPT_REVIEW=true AND PROMPT_BUG_REVIEW=true:
-    DISPATCH cf-semantic-reviewer-prompt AND cf-prompt-bug-finder in parallel
-
 RULES:
   - Prompt reviewers and prompt bug-finders MUST receive ONLY prompt_targets
   - Code reviewers and code bug-finders MUST receive ONLY code_targets
   - Artifact reviewers MUST receive ONLY artifact_targets
+  - Mixed prompt/code/artifact target sets MUST be reviewed by every applicable
+    reviewer; PROMPT_REVIEW must not suppress code or artifact review for
+    non-prompt targets in the same iteration
   - Each reviewer's dispatch contract lives in its prompt file under
     {cf-studio-path}/.core/skills/studio/agents/
+  - MUST apply sub-agent-dispatch.md § Contract-read-and-use gate before every
+    reviewer DISPATCH or parallel reviewer dispatch
   - MUST supply exact JSON fields each reviewer declares
   - MUST NOT skip dispatch for registered reviewers when trigger condition matches
 ```
@@ -87,10 +94,10 @@ DO:
   IF INLINE_FALLBACK == true AND MAX_ITER > INLINE_LOOP_WARNING_THRESHOLD (2):
     EMIT exactly (before first iteration of this phase runs):
 ---
-⚠️ Inline mode detected with MAX_ITER={MAX_ITER}. Sequential inline review may
+Inline mode detected with MAX_ITER={MAX_ITER}. Sequential inline review may
 exhaust context (each iteration loads the full reviewer prompt set + per-target
 reads in this orchestrator's context window). Recommend reducing MAX_ITER to 2
-or splitting the run. Reply `reduce: N` (1 ≤ N ≤ current MAX_ITER) to lower
+or splitting the run. Reply `reduce: N` (1 <= N <= current MAX_ITER) to lower
 MAX_ITER, or `continue` to proceed at risk.
 ---
     WAIT user.reply
@@ -103,7 +110,7 @@ MENU InlineFallbackWarningMenu:
       SET MAX_ITER = N
       CONTINUE
     reduce: N (out-of-range) ->
-      EMIT "reduce: N must satisfy 1 ≤ N ≤ {current MAX_ITER}; reply again or `continue`."
+      EMIT "reduce: N must satisfy 1 <= N <= {current MAX_ITER}; reply again or `continue`."
       WAIT user.reply
       STOP_TURN
     continue ->
@@ -117,7 +124,7 @@ MENU InlineFallbackWarningMenu:
         RETURN control to user without Phase 6
 ```
 
-#### Pre-Review Warning Handoff
+## Pre-Review Warning Handoff
 
 ```text
 UNIT Phase52PreReviewWarningHandoff
@@ -163,6 +170,7 @@ NOTES:
   cf-semantic-reviewer-code:
     design_artifact_path = from phase-0.5-clarify.md
     code_paths = code_targets
+    diff_scope = Phase 0 diff scope when present
     cross_ref_paths, rules_mode, traceability_mode
     kit_rules_path = resolved from rules.md
 
@@ -201,12 +209,16 @@ PURPOSE:
 
 DO:
   FOR each reviewer return:
-    IF review_result.type == "VALIDATION_REPORT":
+    SET SEMANTIC_REVIEW_PARTIAL = false
+    Normalize the returned discriminator into reviewer_return.type from either
+      review_result.type or checkpoint.type; if both are present or neither is
+      present, fail closed as malformed reviewer output.
+    IF reviewer_return.type == "VALIDATION_REPORT":
       REQUIRE the reviewer-owned Validation Report — <Section> block and findings JSON
-    IF checkpoint.type == "PARTIAL_CHECKPOINT":
+    IF reviewer_return.type == "PARTIAL_CHECKPOINT":
       REQUIRE reviewer-owned Partial Checkpoint — <Section> block,
         checkpoint JSON, and findings JSON
-      STORE checkpoint under semantic_partial_checkpoints
+      STORE checkpoint under semantic_partial_checkpoints[reviewer_name]
       SET SEMANTIC_REVIEW_PARTIAL = true
       MERGE only findings backed by already-covered evidence
       MUST NOT require Validation Report — <Section> block for that reviewer
@@ -214,7 +226,7 @@ DO:
       NOTE: PARTIAL_CHECKPOINT only supported by reviewers whose contract declares it
 
   IF any reviewer returns PARTIAL_CHECKPOINT:
-    APPEND checkpoint to iteration trace
+    APPEND each checkpoint to iteration trace without overwriting other reviewer checkpoints
     SKIP author auto-fix for the checkpoint itself
     HAND control to phase-5.3-findings.md WITH all_findings containing only
       validator/reviewer findings backed by already-covered evidence

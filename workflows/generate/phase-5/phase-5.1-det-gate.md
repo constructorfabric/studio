@@ -5,9 +5,7 @@ parent: workflows/generate.md
 description: Invoke when each Phase 5 iteration begins and the deterministic validator must run before any semantic reviewer dispatch.
 ---
 
-### Phase 5.1: Deterministic Gate
-
-<!-- The `Validation Results` block schema is owned by the deterministic-validator agent file (`{cf-studio-path}/.core/skills/studio/agents/cf-deterministic-validator.md` § Output). Workflows reference it by name only; do NOT redefine the field set here — always reproduce the template from the agent file verbatim. -->
+# Generate Phase 5.1: Deterministic Gate
 
 ```text
 UNIT Phase51DeterministicGate
@@ -17,18 +15,23 @@ PURPOSE:
 
 DO:
   REQUIRE `{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md` loaded before dispatch
-  DISPATCH cf-deterministic-validator with JSON contract from
-    {cf-studio-path}/.core/skills/studio/agents/cf-deterministic-validator.md
-  WITH orchestrator-supplied values:
+  LOAD {cf-studio-path}/.core/skills/studio/agents/cf-deterministic-validator.md
+    as the validator source contract
+  SYNTHESIZE final dispatch prompt from the loaded validator contract plus
+    SHARED_CONTEXT_PACK and the payload below
+  IF validator source contract is not loaded, unreadable, ambiguous, or not
+     reflected in the final dispatch prompt:
+    FAIL per sub-agent-dispatch.md § Contract-read-and-use gate
+    FORBID dispatch
+  DISPATCH cf-deterministic-validator with the synthesized final prompt and
+    orchestrator-supplied payload:
     target_paths = Phase 5 target_paths state on external analyze→generate entry;
                    otherwise manifest.paths_written from phase-4-write.md
                    (or last accepted manifest from prior iteration)
     target_kinds = { "<path>": "{TARGET_TYPE}" } per path
     rules_mode = {STRICT|RELAXED}
     language_check_configured = true|false from .studio-workspace.toml
-
   CAPTURE returned Validation Results block and det_findings JSON array
-
   APPEND phase5_dispatch_evidence record:
     phase = "5.1"
     agent_id = "cf-deterministic-validator"
@@ -39,6 +42,10 @@ MENU Det51Routing:
   TITLE: Deterministic gate routing (machine reference)
   OPTIONS:
     PASS or SKIPPED (with Validator availability proof) ->
+      SET det_gate_result = returned deterministic gate result
+      SET det_gate_evidence = returned validator availability proof when SKIPPED,
+        otherwise returned Validation Results marker
+      SET all_findings = []
       CONTINUE workflows/generate/phase-5/phase-5.2-semantic.md
     FAIL ->
       SET all_findings = det_findings
@@ -47,7 +54,21 @@ MENU Det51Routing:
 
 RULES:
   - STRICT mode: gate result is authoritative
+  - PASS and SKIPPED outcomes MUST preserve det_gate_result and
+    det_gate_evidence for Phase 5.3 / Phase 5.5; clearing all_findings MUST
+    NOT erase validator proof
+  - MUST apply sub-agent-dispatch.md § Contract-read-and-use gate before
+    dispatching cf-deterministic-validator
   - RELAXED mode: loop may exit via explicitly unvalidated Deterministic gate: SKIPPED
     or Deterministic gate: FAIL path on phase-5.4-approval.md § option 4
     manual-handoff branch
+
+NOTES:
+  Validator availability proof: an exit-0 result from running the bootstrap
+  validator command (e.g. `cfs validate --version` or `cpt validate --version`)
+  confirming no canonical validator route is target-applicable for the current
+  written output. Must be recorded explicitly alongside Skip reason and
+  Validator-backed evidence note before SKIPPED is accepted as a gate result.
+  Consistent with how analyze/phase-2-det-gate.md and
+  workflows/generate/error-handling.md handle the SKIPPED path.
 ```

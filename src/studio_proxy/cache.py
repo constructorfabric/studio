@@ -271,16 +271,37 @@ def _resolve_api_base(url: str) -> str:
         return apply_override(canonical)
     return apply_override(url)
 
-def resolve_latest_version(
+def _resolve_default_branch_snapshot(api_base: str) -> Optional[Dict[str, str]]:
+    """Resolve the repository default branch to a concrete commit snapshot."""
+    from studio_proxy.mirrors import apply_override
+    repo_data = _github_json(apply_override(api_base))
+    default_branch = str(repo_data.get("default_branch") or "").strip()
+    if not default_branch:
+        return None
+    ref_data = _github_json(apply_override(f"{api_base}/git/ref/heads/{default_branch}"))
+    obj = ref_data.get("object", {})
+    if not isinstance(obj, dict):
+        return None
+    commit_sha = str(obj.get("sha") or "").strip()
+    if not commit_sha:
+        return None
+    return {
+        "branch": default_branch,
+        "commit_sha": commit_sha,
+        "download_url": apply_override(f"{api_base}/tarball/{commit_sha}"),
+    }
+
+
+def _resolve_latest_version_with_metadata(
     api_base: Optional[str] = None,
-) -> Tuple[Optional[str], Optional[str]]:
+) -> Tuple[Optional[str], Optional[str], Dict[str, str]]:
     """
     Query GitHub API for the latest release tag and asset download URL.
 
     Args:
         api_base: Custom GitHub API base URL (for forks). Defaults to GITHUB_API_BASE.
 
-    Returns (version_tag, asset_url) or (None, None) on failure.
+    Returns (version_tag, asset_url, metadata) or (None, None, {}) on failure.
     """
     from studio_proxy.mirrors import apply_override
     # inst-resolve-version
@@ -291,6 +312,26 @@ def resolve_latest_version(
         with urlopen(req, timeout=30) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except HTTPError as e:
+        if e.code == 404:
+            try:
+                snapshot = _resolve_default_branch_snapshot(base)
+            except (HTTPError, URLError, json.JSONDecodeError, OSError) as exc:
+                sys.stderr.write(f"No releases found and default branch resolution failed: {exc}\n")
+                return None, None, {}
+            if not snapshot:
+                sys.stderr.write("No releases found and default branch could not be resolved.\n")
+                return None, None, {}
+            sys.stderr.write(
+                "No releases found. Using default branch commit "
+                f"{snapshot['branch']}@{snapshot['commit_sha']}.\n"
+            )
+            return snapshot["commit_sha"], snapshot["download_url"], {
+                "resolver_mode": "default_branch_snapshot",
+                "resolution_basis": "github_default_branch",
+                "default_branch": snapshot["branch"],
+                "commit_sha": snapshot["commit_sha"],
+                "verified": "unverified",
+            }
         body = ""
         try:
             body = e.read().decode("utf-8", errors="replace")
@@ -304,14 +345,14 @@ def resolve_latest_version(
                     sys.stderr.write(f"  {err_data['message']}\n")
             except json.JSONDecodeError:
                 sys.stderr.write(f"  {body[:200]}\n")
-        return None, None
+        return None, None, {}
     except (URLError, json.JSONDecodeError, OSError) as e:
         sys.stderr.write(f"GitHub API error: {e}\n")
-        return None, None
+        return None, None, {}
 
     tag = data.get("tag_name")
     if not tag:
-        return None, None
+        return None, None, {}
 
     # Look for a .tar.gz or .zip asset named studio-skill-* (new name).
     # Also accept cf-constructor-skill-* during the cypilot-migration legacy window
@@ -326,13 +367,28 @@ def resolve_latest_version(
             asset_url = asset.get("browser_download_url")
             if asset_url:
                 asset_url = apply_override(asset_url)
-            return tag, asset_url
+            return tag, asset_url, {}
 
     # Fallback: use the source tarball
     tarball_url = data.get("tarball_url")
     if tarball_url:
         tarball_url = apply_override(tarball_url)
-    return tag, tarball_url
+    return tag, tarball_url, {}
+
+
+def resolve_latest_version(
+    api_base: Optional[str] = None,
+) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Query GitHub API for the latest release tag and asset download URL.
+
+    Returns (version_tag, asset_url) or (None, None) on failure.
+    """
+    resolved_version, asset_url, _metadata = _resolve_latest_version_with_metadata(
+        api_base=api_base,
+    )
+    return resolved_version, asset_url
+
 
 def copy_from_local(
     source_dir: str,
@@ -447,7 +503,9 @@ def download_and_cache(
     requested_ref = "latest" if version is None or version == "latest" else version
     metadata: Dict[str, Any]
     if version is None or version == "latest":
-        resolved_version, asset_url = resolve_latest_version(api_base=api_base)
+        resolved_version, asset_url, latest_metadata = _resolve_latest_version_with_metadata(
+            api_base=api_base,
+        )
         if resolved_version is None:
             offline = _last_known_offline_metadata(api_base, canonical_source)
             if offline and cache_dir.is_dir() and version_file.is_file():
@@ -463,12 +521,16 @@ def download_and_cache(
             "installed_version": resolved_version,
             "requested_ref": requested_ref,
             "resolved_ref": resolved_version,
-            "resolver_mode": "latest_release",
-            "resolution_basis": "github_release",
+            "resolver_mode": latest_metadata.get("resolver_mode", "latest_release"),
+            "resolution_basis": latest_metadata.get("resolution_basis", "github_release"),
             "download_url": asset_url,
-            "verified": "verified",
+            "verified": latest_metadata.get("verified", "verified"),
             "freshness": "fresh",
         }
+        if latest_metadata.get("default_branch"):
+            metadata["default_branch"] = latest_metadata["default_branch"]
+        if latest_metadata.get("commit_sha"):
+            metadata["commit_sha"] = latest_metadata["commit_sha"]
     else:
         try:
             metadata = _resolve_explicit_github_version(api_base, version)
@@ -495,6 +557,9 @@ def download_and_cache(
                 cached_provenance.get("freshness") != metadata.get("freshness")
                 or cached_provenance.get("verified") != metadata.get("verified")
                 or cached_provenance.get("resolver_mode") != metadata.get("resolver_mode")
+                or cached_provenance.get("resolution_basis") != metadata.get("resolution_basis")
+                or cached_provenance.get("default_branch") != metadata.get("default_branch")
+                or cached_provenance.get("commit_sha") != metadata.get("commit_sha")
             ):
                 metadata.update({
                     "download_url": asset_url,

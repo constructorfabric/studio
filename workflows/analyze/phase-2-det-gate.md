@@ -6,6 +6,8 @@ loaded_by: workflows/analyze.md
 version: 1.0
 ---
 
+# Analyze Phase 2 — Deterministic Gate
+
 ```text
 UNIT AnalyzePhase2DeterministicGate
 
@@ -16,12 +18,21 @@ WHEN:
   SEMANTIC_ONLY == false AND EXPLAIN_MODE == false
 
 DO:
-  IF SEMANTIC_ONLY == true OR EXPLAIN_MODE == true:
-    CONTINUE workflows/analyze/phase-3-semantic.md
   REQUIRE {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md has run
-  DISPATCH cf-deterministic-validator with:
+  LOAD {cf-studio-path}/.core/skills/studio/agents/cf-deterministic-validator.md
+    as the validator source contract
+  SYNTHESIZE final dispatch prompt from the loaded validator source contract
+    plus SHARED_CONTEXT_PACK and the payload below
+  IF source contract is not loaded, unreadable, ambiguous, or not reflected in
+     the final dispatch prompt:
+    FAIL per sub-agent-dispatch.md § Contract-read-and-use gate
+    FORBID dispatch
+  DISPATCH cf-deterministic-validator with synthesized final prompt including:
     target_paths    = diff_scope.review_targets when CHANGE_REVIEW=true, else {PATHS}
-    target_kinds    = per-path map from artifacts.toml (default {TARGET_TYPE} when unmapped)
+    target_kinds    = per-path map derived from Phase 0 typed sets
+                      (prompt_targets -> prompt, code_targets -> code,
+                       artifact_targets -> artifact), falling back to artifacts.toml
+                      and then {TARGET_TYPE} only for paths not present in a typed set
     rules_mode      = "{STRICT|RELAXED}"
     language_check_configured = true|false from .studio-workspace.toml
   Embed returned Validation Results block verbatim into Phase 4 output.
@@ -30,17 +41,23 @@ DO:
     CONTINUE workflows/analyze/phase-4-output/index.md
     REQUIRE {cf-studio-path}/.core/workflows/analyze/phase-4-output/remediation-handoff.md when actionable issues exist
   IF gate result == PASS OR SKIPPED (with Validator availability proof):
-    CONTINUE workflows/analyze/phase-3-semantic.md
+    CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-2.5-reviewer-plan.md
 
 RULES:
   - MUST run {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md before any cf-* sub-agent dispatch
+  - MUST apply sub-agent-dispatch.md § Contract-read-and-use gate before
+    dispatching cf-deterministic-validator
   - MUST skip this unit when SEMANTIC_ONLY=true OR EXPLAIN_MODE=true
   - MUST embed Validation Results block verbatim; MUST_NOT redefine the field set
   - MUST_NOT use the agent's own checklist walkthrough as a substitute for the
     dispatched validator (anti-pattern SIMULATED_VALIDATION)
   - MUST emit remediation-handoff.md when FAIL produces actionable issues
+  - MUST route PASS/SKIPPED through Phase 2.5 before Phase 3 whenever semantic
+    methodology may run; Phase 3 owns no implicit planner auto-skip
 
 NOTES:
+  Validator availability proof: exit-0 result from cfs validate --version or
+    equivalent availability check run before the dispatch.
   Validation Results block schema is owned by:
     {cf-studio-path}/.core/skills/studio/agents/cf-deterministic-validator.md § Output
   Always reproduce the template from the agent file verbatim.

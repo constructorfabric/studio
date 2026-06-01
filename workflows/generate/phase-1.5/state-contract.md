@@ -5,15 +5,7 @@ parent: workflows/generate/phase-1.5-author-plan.md
 description: Canonical state contract for Generate Phase 1.5 author-plan offer resolution, continuation states, and terminal cancellation states.
 ---
 
-<!-- toc -->
-
-- [State Contract](#state-contract)
-  - [Mandatory-Decompose Branch](#mandatory-decompose-branch)
-  - [Downstream Requirements](#downstream-requirements)
-
-<!-- /toc -->
-
-## State Contract
+# Generate Phase 1.5: State Contract
 
 ```text
 UNIT Phase15StateContract
@@ -26,7 +18,6 @@ STATE:
   AUTHOR_PLAN_OFFER_RESOLVED:
     memory
     | disk
-    | declined
     | auto_skipped_no_author_plan_flag
     | auto_skipped_rules_disabled
     | cancelled_by_stop_token
@@ -39,7 +30,7 @@ STATE:
 
 RULES:
   Continuation states:
-    memory | disk | declined | auto_skipped_no_author_plan_flag |
+    memory | disk | auto_skipped_no_author_plan_flag |
     auto_skipped_rules_disabled
 
   Terminal cancellation states:
@@ -61,7 +52,7 @@ RULES:
     - KIND's rules.md explicitly sets author_plan = "disabled"
 ```
 
-### Mandatory-Decompose Branch
+## Mandatory-Decompose Branch
 
 ```text
 UNIT Phase15MandatoryDecomposeBranch
@@ -81,12 +72,11 @@ RULES:
   - auto_skipped_* states are unreachable in this branch
   - Planner dispatch is unconditional
   - AUTHOR_EXECUTION_PLAN is expected non-null on successful planner exit
-  - declined REMAINS reachable through planner-failure recovery ONLY when
-    planner validation fails and user explicitly chooses "Skip author plan"
-    recovery option; that path is a valid continuation state to Phase 3
+  - Planner-failure recovery MUST NOT continue to Phase 3 without a valid
+    AUTHOR_EXECUTION_PLAN; recovery choices are rerun or terminal cancellation
 ```
 
-### Downstream Requirements
+## Downstream Requirements
 
 ```text
 UNIT Phase15DownstreamRequirements
@@ -97,6 +87,11 @@ PURPOSE:
 RULES:
   - Phase 3 and Phase 4 MUST only run when AUTHOR_PLAN_OFFER_RESOLVED
     is a continuation state
+  - When target_paths includes instruction-file targets
+    (`workflows/**`, `requirements/**`, any `AGENTS.md`,
+    `skills/**/SKILL.md`, `skills/**/agents/*.md`, and equivalent
+    prompt/agent contracts), continuation authorizes only planner/author
+    dispatch continuation; it does NOT authorize controller-local patching
   - IF a later phase observes a terminal cancellation state:
     MUST fail-stop without dispatching write-capable author
     MUST leave target files untouched

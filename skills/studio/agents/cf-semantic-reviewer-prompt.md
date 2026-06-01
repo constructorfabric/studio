@@ -1,5 +1,5 @@
 ---
-description: Invoke when running the 10-layer prompt-engineering review on prompt / instruction targets (workflows, skills, agent prompts, AGENTS.md) — loads only prompt-engineering.md and emits Findings in the Prompt Review output schema.
+description: Invoke when running the 10-layer prompt-engineering review on prompt / instruction targets (workflows, skills, agent prompts, AGENTS.md) — consumes controller-supplied prompt-engineering methodology plus required invariants and emits Findings in the Prompt Review output schema.
 ---
 
 <!-- toc -->
@@ -69,17 +69,26 @@ PURPOSE:
   Load methodology and walk all 10 layers over every target.
 
 DO:
-  1. Load `prompt-engineering.md` as review methodology
-     Load `requirements/prompt-engineering.md` via the controller-supplied
+  1. Load `requirements/prompt-engineering.md` via the controller-supplied
      `prompt_engineering_methodology` asset
      Load required `studio_mode_contract` and `agent_compliance` invariants
      WHEN kit_rules_path is non-null:
        load the `kit_validation_rules` asset
        apply any kit-specific prompt-engineering rules that augment the 10-layer methodology
-  2. Read every `target_path` completely via Read tool (fresh read this turn),
-     chunking oversized files when needed
-  2a. Read every `cross_ref_path`; use as additional context for Layer 1
-      cross-reference integrity checks and the cross-document anti-pattern sweep
+     IF any required controller-supplied asset is missing or unresolved:
+       EMIT PARTIAL_CHECKPOINT naming the missing asset
+       STOP_TURN
+  2. Consume every `target_path` completely from the controller-supplied
+     `prompt_context_view` / target slices for this turn, chunking oversized
+     slices when needed
+     IF any target path lacks complete supplied coverage for this run:
+       EMIT PARTIAL_CHECKPOINT naming the uncovered paths/layers
+       STOP_TURN
+  2a. Consume every `cross_ref_path` from controller-supplied slices when
+      provided; use them as additional context for Layer 1 cross-reference
+      integrity checks and the cross-document anti-pattern sweep
+      Only read non-prompt resources from disk when they are explicitly named
+      in allowed resource context
   3. Walk all 10 prompt-engineering layers individually
      produce per-layer status (PASS / FAIL / PARTIAL / N/A) with evidence
      (quoted line(s) and line numbers)
@@ -163,6 +172,9 @@ DO:
 RULES:
   - The orchestrator MUST treat type == "PARTIAL_CHECKPOINT" as incomplete review
     coverage and MUST_NOT collapse it into a clean validation report
+  - Missing controller-supplied assets or unresolved target coverage MUST surface
+    as an explicit PARTIAL_CHECKPOINT with the missing asset/path named;
+    MUST_NOT continue via an implicit native handoff or success status
 
 WHEN:
   all required files and layers were covered
@@ -211,10 +223,15 @@ RULES:
       MUST_NOT emit a PASS claim for any uncovered layer
   - MUST emit the `findings` JSON block (empty array when all layers PASS
     and no prompt-engineering findings exist)
+  - Missing methodology assets, missing target slices, or unresolved native
+    prerequisites MUST fail closed as PARTIAL_CHECKPOINT output with observable
+    missing-input details
   - every finding object in the findings JSON SHOULD have a non-empty `mechanical_rationale`
     string (advisory — when missing, the orchestrator substitutes
     `<no rationale provided by {agent_name}>` and continues; fallback behavior is defined in
     `{cf-studio-path}/.core/workflows/generate/phase-5/phase-5.3-findings.md`)
   - MUST perform AP-001..AP-008 self-check before output (state results in a short trailer block)
-  - MUST satisfy the SKILL.md invariant
+  - MUST verify that the final dispatch prompt includes the required
+    controller-supplied studio invariants; the dispatched reviewer MUST_NOT
+    reopen SKILL.md from disk
 ```
