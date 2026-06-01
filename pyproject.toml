@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=64"]
+requires = ["setuptools>=64", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "constructor-studio"
-version = "1.0.0"
+dynamic = ["version"]
 description = "Constructor Studio global CLI proxy — deterministic agent tool for structured workflows"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -19,6 +19,10 @@ constructor-studio = "studio_proxy.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools_scm]
+version_scheme = "guess-next-dev"
+local_scheme = "no-local-version"
 
 [tool.pylint.main]
 jobs = 0

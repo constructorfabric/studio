@@ -37,7 +37,7 @@ Studio uses a layered architecture with a thin global CLI proxy at the top, a de
 
 The system separates concerns into five layers: Global CLI Proxy (installation, caching, version management), Core Skill Engine (command routing, deterministic execution), Kit System (GitHub-based kit installation, domain-specific file packages: rules, templates, checklists, constraints, workflows), Config Management (structured config directory, schema validation), and Agent Integration (multi-agent entry point generation). Each layer has clear boundaries and communicates through well-defined interfaces.
 
-Each kit is a file package: a collection of artifact definitions (rules, checklists, templates, examples, constraints, workflows, scripts) installable from GitHub repositories and copied into the kit's config directory (default: `{cf-studio-path}/config/kits/<slug>/`) during installation. Kit updates use file-level diff: each file in the new kit version is compared against the user's installed copy, and changed files are presented as unified diffs with interactive accept/decline/modify prompts. All kit files are user-editable and preserved across updates via interactive diff. The core knows about kits through registration in `{cf-studio-path}/config/core.toml` (with `source` and `version` fields tracking the GitHub origin). Studio core does not bundle any domain-specific kits — all kits are external packages. During `cfs init`, the user is prompted to install the SDLC kit (`constructorfabric/studio-kit-sdlc`) with `[a]ccept / [d]ecline`. A plugin system for custom hooks and CLI subcommands is planned for p2.
+Each kit is a file package: a collection of artifact definitions (rules, checklists, templates, examples, constraints, workflows, scripts) installable from GitHub repositories and copied into the kit's config directory (default: `{cf-studio-path}/config/kits/<slug>/`) during installation. Kit updates use file-level diff: each file in the new kit version is compared against the user's installed copy, and changed files are presented as unified diffs with interactive accept/decline/modify prompts. All kit files are user-editable and preserved across updates via interactive diff. The core knows about kits through registration in `{cf-studio-path}/config/core.toml` with source provenance, display/backcompat version, content identity, and verification state. Studio core does not bundle any domain-specific kits — all kits are external packages. During `cfs init`, the user is prompted to install the SDLC kit (`constructorfabric/studio-kit-sdlc`) with `[a]ccept / [d]ecline`. A plugin system for custom hooks and CLI subcommands is planned for p2.
 
 ### 1.2 Architecture Drivers
 
@@ -48,6 +48,8 @@ Each kit is a file package: a collection of artifact definitions (rules, checkli
 - [x] `p1` - `cpt-studio-fr-core-installer`
 
 **Design Response**: Thin proxy shell with local cache at `~/.cf-studio/cache/`. On every invocation the proxy ensures a cached skill bundle exists, routes commands to the project-installed or cached skill, and performs non-blocking background version checks. The proxy contains zero skill logic.
+
+For GitHub-backed cache sources, GitHub Release/tag resolution is the version authority. The proxy records structured provenance for the cached bundle, including requested source, effective source after mirror/fork override, resolved tag or release, asset/content digest when available, install timestamp, and verification state. Local/path cache modes are explicitly non-GitHub and report `verified = unknown` unless a local content digest is available.
 
 ##### Usage Telemetry
 
@@ -65,7 +67,9 @@ Each kit is a file package: a collection of artifact definitions (rules, checkli
 
 - [x] `p1` - `cpt-studio-fr-core-config`
 
-**Design Response**: The config directory (`{cf-studio-path}/config/`) holds all project configuration. `core.toml` stores the project root and kit registrations (format, path, version, source, resource bindings for manifest-driven kits). `artifacts.toml` stores the artifact registry — including system definitions (name, slug, kit), autodetect rules, ignore patterns, and codebase definitions. System identity is defined exclusively in `artifacts.toml` `[[systems]]` (see `cpt-studio-adr-remove-system-from-core-toml`). `AGENTS.md` and `SKILL.md` are user-editable extension points for agent navigation rules and skill instructions respectively. `{cf-studio-path}/config/kits/<slug>/` directories hold all kit files — artifacts, workflows, per-kit SKILL.md, constraints, and scripts (all user-editable). Kit-specific config files (e.g., `pr-review.toml`) also live in `config/`. `{cf-studio-path}/.gen/` holds only auto-generated aggregate files (`AGENTS.md`, `SKILL.md`, `README.md`) assembled from installed kits. All TOML config files use deterministic serialization. Kit files are user-editable and preserved across updates via interactive diff.
+**Design Response**: The config directory (`{cf-studio-path}/config/`) holds all project configuration. `core.toml` stores the project root and kit registrations, including format, path, version, structured source provenance, content identity, verification state, and resource bindings for manifest-driven kits. `artifacts.toml` stores the artifact registry — including system definitions (name, slug, kit), autodetect rules, ignore patterns, and codebase definitions. System identity is defined exclusively in `artifacts.toml` `[[systems]]` (see `cpt-studio-adr-remove-system-from-core-toml`). `AGENTS.md` and `SKILL.md` are user-editable extension points for agent navigation rules and skill instructions respectively. `{cf-studio-path}/config/kits/<slug>/` directories hold all kit files — artifacts, workflows, per-kit SKILL.md, constraints, and scripts (all user-editable). Kit-specific config files (e.g., `pr-review.toml`) also live in `config/`. `{cf-studio-path}/.gen/` holds only auto-generated aggregate files (`AGENTS.md`, `SKILL.md`, `README.md`) assembled from installed kits. All TOML config files use deterministic serialization. Kit files are user-editable and preserved across updates via interactive diff.
+
+Source provenance distinguishes requested source from effective source. For mirrored or forked GitHub sources, the effective source after override is the authority used for release/tag lookup, update checks, and reporting. Local/path sources are stored as non-GitHub provenance and are never interpreted as GitHub release-backed installs.
 
 ##### Deterministic Skill Engine
 
@@ -97,7 +101,7 @@ Accepted delegated execution extends this model by allowing Studio-authored plan
 
 - [x] `p1` - `cpt-studio-fr-core-kits`
 
-**Design Response**: Kit Manager handles kit lifecycle: installation from GitHub repositories (`cfs kit install <owner/repo[@version]>`), copying kit files into the kit's config directory, registration in `core.toml` (with config path, GitHub source, and version), and version tracking via GitHub tags. Each kit is a collection of ready-to-use files (rules, templates, checklists, examples, constraints, workflows, scripts). Kit updates download the new version from GitHub and display version-specific release notes from `whatsnew.toml` (if present) before the interactive file-level diff — showing all entries between the installed version and the new version, allowing users to review changes before proceeding. File-level diff compares each file in the new version against the user's installed copy, and all changed files are presented as unified diffs with interactive accept/decline/accept-all/decline-all/modify prompts. Studio core bundles no kits — all kits are external GitHub packages. A plugin system for custom CLI subcommands and hooks is planned for p2.
+**Design Response**: Kit Manager handles kit lifecycle: installation from GitHub repositories (`cfs kit install <owner/repo[@version]>`) or explicit local paths, copying kit files into the kit's config directory, registration in `core.toml` with structured provenance and content identity, and version tracking via GitHub releases/tags for GitHub-backed kits. Each kit is a collection of ready-to-use files (rules, templates, checklists, examples, constraints, workflows, scripts). Kit updates download the new version from GitHub and display version-specific release notes from `whatsnew.toml` (if present) before the interactive file-level diff — showing all entries between the installed version and the new version, allowing users to review changes before proceeding. File-level diff compares each file in the new version against the user's installed copy, and all changed files are presented as unified diffs with interactive accept/decline/accept-all/decline-all/modify prompts. GitHub-backed kit updates resolve against the effective GitHub source and its release/tag authority. Local/path kits are explicitly non-GitHub: they may be copied and diffed, but they do not receive GitHub release notes, tag verification, or remote update checks. Studio core bundles no kits — all kits are external GitHub packages. A plugin system for custom CLI subcommands and hooks is planned for p2.
 
 ##### Declarative Kit Installation Manifest
 
@@ -165,6 +169,8 @@ user_modifiable = false
 - [ ] `p2` - `cpt-studio-fr-core-version`
 
 **Design Response**: The `update` command copies the cached skill into the project, detects directory layout and automatically restructures if the old layout is detected, migrates `{cf-studio-path}/config/core.toml` (including removal of the legacy `[system]` section per `cpt-studio-adr-remove-system-from-core-toml`), migrates bundled kit references to GitHub sources for projects upgrading from versions < 3.0.8 (see `cpt-studio-adr-extract-sdlc-kit`), and regenerates agent entry points. The update command does NOT update kit files — kit updates are a separate operation via `cfs kit update`. Config migration preserves all user settings. Version information is accessible via `--version`.
+
+Version output distinguishes package metadata from installed state. `--version` reports the proxy/package version, cache bundle state, and project-installed core state separately. Reported installed-state items include provenance and verification status (`verified`, `unverified`, or `unknown`) when known so users can tell the difference between package metadata, locally installed files, and release/tag-verified content. Per-kit provenance remains stored in `core.toml` and is surfaced through kit update/report paths rather than the proxy-level `--version` output.
 
 ##### CLI Configuration Interface
 
@@ -291,6 +297,7 @@ The following architecture decision records (ADRs) drive the design:
 - `cpt-studio-adr-ralphex-delegation-skill` — integrate ralphex through a dedicated delegation skill that preserves Studio as the source of truth for planning, SDLC assets, and validation contracts while delegating autonomous execution
 - `cpt-studio-adr-unified-manifest-hierarchy` — unified manifest.toml v2.0 with six-layer walk-up discovery for project-level extensibility
 - `cpt-studio-adr-rebrand-and-mirror-override` — rebrand to Constructor Studio (`cfs`) and global mirror-override capability
+- `cpt-studio-adr-github-release-version-authority` — GitHub Release/tag provenance as the version authority for GitHub-backed proxy and kit state
 
 ### 1.3 Architecture Layers
 
@@ -300,9 +307,11 @@ At the top sits the **AI Agent layer** — external coding assistants (Windsurf,
 
 The **Global CLI Proxy layer** (`cfs` (with `studio` / `cpt` as aliases), installed via pipx) is a thin stateless shell. It resolves the target skill — either from the project's local install directory or from the global cache (`~/.cf-studio/cache/`) — and forwards the invocation. The proxy contains zero skill logic.
 
+Its package version is derived from SCM tag metadata at build/install time, so maintainers do not update a checked-in `pyproject.toml` version for releases. Its installed-content version authority is the configured effective source: GitHub releases/tags for GitHub-backed bundles, and local content identity only for explicit local/path modes. Mirror and fork overrides are resolved before authority checks, so reporting never treats the pre-override URL as authoritative.
+
 Below the proxy is the **Core Skill Engine layer** — the heart of the system. It owns the command router, JSON output serialization, SKILL.md, workflows, and the execution protocol. Three core components live here: the **Validator** (deterministic structural and cross-artifact checks), the **Traceability Engine** (ID scanning, resolution, and coverage analysis), and the **Config Manager** (schema-validated TOML config read/write with migration support; system identity sourced from `artifacts.toml`, kit registrations from `core.toml`). When delegation is requested, this layer remains the source of truth for rule resolution, plan compilation, validation contracts, and export metadata; external executors consume only the bounded delegated artifacts rather than the full adapter state.
 
-At the bottom is the **Kit layer**. The **Kit Manager** handles kit installation from GitHub repositories, registration (with source and version tracking), file-level diff updates, kit config relocation, and layout migration. Each kit is an independently installable file package. Studio core bundles no kits — during `cfs init`, the user is prompted to install the SDLC kit (`constructorfabric/studio-kit-sdlc`) with `[a]ccept / [d]ecline`. A plugin system for custom hooks and CLI subcommands is planned for p2.
+At the bottom is the **Kit layer**. The **Kit Manager** handles kit installation from GitHub repositories or local paths, registration with structured source provenance and content identity, file-level diff updates, kit config relocation, and layout migration. Each kit is an independently installable file package. Studio core bundles no kits — during `cfs init`, the user is prompted to install the SDLC kit (`constructorfabric/studio-kit-sdlc`) with `[a]ccept / [d]ecline`. A plugin system for custom hooks and CLI subcommands is planned for p2.
 
 - [ ] `p3` - **ID**: `cpt-studio-tech-python-stdlib`
 
@@ -474,6 +483,9 @@ Validation rules cannot be bypassed or weakened in STRICT mode. The deterministi
 | NamespaceRule | Maps a Git host (e.g. `gitlab.com`) to a local directory template (e.g. `{org}/{repo}`) for deterministic worktree placement | `ResolveConfig.namespace[]` |
 | SourceContext | Runtime context for a single workspace source: resolved path, adapter dir, loaded metadata, kits, reachability status | Built by context loader from `SourceEntry` |
 | WorkspaceContext | Multi-repo workspace runtime context wrapping a primary `StudioContext` and remote `SourceContext` entries with traceability flags | Built by context loader when workspace config is found |
+| SourceProvenance | Structured source metadata: source type, requested source, effective source after mirror/fork override, resolved ref/tag, install/update mode, and verification state | `core.toml`, cache metadata |
+| ContentIdentity | Stable identity for installed content, such as release tag, commit/ref when known, asset digest or tree digest, and timestamp | `core.toml`, kit `conf.toml`, cache metadata |
+| VersionReport | Runtime view separating package metadata, cached bundle state, project-installed core state, and installed kit states | `cfs --version`, `cfs info` |
 
 **Relationships**:
 - System → Kit: each system is assigned to exactly one kit (by slug)
@@ -499,6 +511,8 @@ Validation rules cannot be bypassed or weakened in STRICT mode. The deterministi
 - SourceContext → StudioContext: each reachable source lazily resolves its own adapter context; unreachable sources skip adapter resolution
 - WorkspaceContext → StudioContext: workspace wraps one primary context (the current repo)
 - WorkspaceContext → SourceContext[]: every SourceEntry produces a SourceContext; unreachable sources have `reachable=false` and `path=None` (never omitted)
+- SourceProvenance → ContentIdentity: each verified GitHub-backed provenance record resolves to a content identity when GitHub provides a commit, tag, asset digest, archive digest, or equivalent tree identity
+- VersionReport → SourceProvenance[]: version output presents package metadata separately from cache, project core, and kit provenance records
 
 ### 3.2 Component Model
 
@@ -563,6 +577,9 @@ Provides a stable global entry point (`cfs` (with `studio`/`cpt` as aliases)) th
 - Perform non-blocking background version checks
 - Display version update notices when cached version is newer than project version
 - Collect and emit usage telemetry (local JSONL logs + optional OTLP HTTP) via non-blocking daemon thread
+- Resolve GitHub-backed cache versions from the effective GitHub source's release/tag authority
+- Persist cache provenance and content identity for version reporting
+- Distinguish tag-derived package version, cached bundle version, project-installed version, and verification state in `--version`
 
 ##### Responsibility boundaries
 
@@ -705,8 +722,8 @@ Manages the kit lifecycle — installing, registering, and updating kits. Enable
 
 - Kit installation from GitHub or local directories: download kit from a GitHub source (`cfs kit install <owner/repo[@version]>`) or install from a local directory (`cfs kit install --path <dir>`), copy all kit files from source into `{cf-studio-path}/config/kits/{slug}/`, register in `core.toml` with source and version metadata, regenerate `.gen/AGENTS.md` and `.gen/SKILL.md` to include the new kit's navigation and skill routing. All files in the kit's config directory are user-editable and preserved across updates via interactive diff
 - Manifest-driven installation (see `cpt-studio-fr-core-kit-manifest`): if the kit source contains `manifest.toml`, the Kit Manager validates it against `kit-manifest.schema.json`, reads all declared resources, prompts the user for destination paths on `user_modifiable` resources (offering defaults), copies each resource to its resolved path, resolves template variables (`{identifier}`) in kit files, and registers all resolved paths in `core.toml` under `[kits.{slug}.resources]`. If no `manifest.toml` is present, falls back to the current behavior (copy predefined content directories and files). The kit root directory itself (`{cf-studio-path}/config/kits/{slug}`) may be relocated by the user during manifest-driven installation if the manifest declares `user_modifiable = true`
-- Kit registration: add kit entry to `{cf-studio-path}/config/core.toml` with config output path, GitHub source (`github:<owner>/<repo>`), version (GitHub tag), and resolved resource paths (`resources` map)
-- Version tracking: store kit version in `{cf-studio-path}/config/kits/{slug}/conf.toml`; kit source and version also tracked in `core.toml`
+- Kit registration: add kit entry to `{cf-studio-path}/config/core.toml` with config output path, source provenance (`github`, `local_path`, or other explicit source type), requested source, effective source after mirror/fork override, version/ref, content identity, verification state, and resolved resource paths (`resources` map)
+- Version tracking: for GitHub-backed kits, resolve versions through the effective GitHub source's releases/tags; for local/path kits, record local provenance and content identity without GitHub update semantics. Kit source, version/ref, identity, and verification state are tracked in `core.toml`; kit-local metadata may also be stored in `{cf-studio-path}/config/kits/{slug}/conf.toml`
 - Update modes: force (`--force`) overwrites all kit files; interactive (default) uses file-level diff — compares each file in the new version against user's installed copy, shows unified diffs, prompts with accept/decline/accept-all/decline-all/modify via Resource Diff Engine. For manifest-driven kits, updates apply diffs to the registered resource paths (not just the kit directory), detect new resources in the updated manifest (prompt user for path and register), and warn about resources removed from the manifest (preserve existing paths in `core.toml`). When updating a legacy-installed kit (no `resources` section in `core.toml`) and the new version introduces a manifest, auto-populate all resource bindings from existing kit root + manifest defaults before applying diffs
 - Resource path exposure: resolved resource variables are returned by `cfs info` as part of kit information, enabling agents and scripts to discover resource locations programmatically
 - Layout restructuring: detect old directory layout and automatically restructure (move generated outputs from `.gen/kits/` to `config/kits/`, clean up `.gen/kits/`)

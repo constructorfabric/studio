@@ -8,6 +8,7 @@ Walks directory tree to find project-installed skill, falls back to cache.
 
 # @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-resolve-helpers
 import os
+import json
 import re
 import tomllib
 from pathlib import Path
@@ -98,6 +99,10 @@ def get_cache_dir() -> Path:
 def get_version_file() -> Path:
     """Return the version marker file path."""
     return get_cache_dir() / ".version"
+
+def get_cache_provenance_file() -> Path:
+    """Return the structured cache provenance file path."""
+    return get_cache_dir() / ".provenance.json"
 # @cpt-end:cpt-studio-algo-core-infra-resolve-skill:p1:inst-resolve-helpers
 
 def find_project_skill(start_dir: Optional[Path] = None) -> Optional[Path]:
@@ -187,6 +192,30 @@ def get_cached_version() -> Optional[str]:
     if version_file.is_file():
         return version_file.read_text(encoding="utf-8").strip()
     return None
+
+def get_cache_provenance() -> Optional[Dict[str, Any]]:
+    """Read structured cache provenance metadata, if present."""
+    provenance_file = get_cache_provenance_file()
+    return _read_provenance_file(provenance_file)
+
+def get_project_provenance(skill_path: Path) -> Optional[Dict[str, Any]]:
+    """Read project-installed core provenance metadata, if present."""
+    for parent in skill_path.parents:
+        if parent.name == ".core":
+            return _read_provenance_file(parent / ".provenance.json")
+        provenance = _read_provenance_file(parent / ".provenance.json")
+        if provenance is not None:
+            return provenance
+    return None
+
+def _read_provenance_file(provenance_file: Path) -> Optional[Dict[str, Any]]:
+    if not provenance_file.is_file():
+        return None
+    try:
+        data = json.loads(provenance_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
 
 def get_project_version(skill_path: Path) -> Optional[str]:
     """Read version from project-installed skill's __init__.py."""

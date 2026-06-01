@@ -7,7 +7,7 @@ project_root = ".."
 [kits.sdlc]
 format = "CFS"
 path = "config/kits/sdlc"
-version = "1.0.0"
+version = "v1.0.0"
 source = "github:constructorfabric/studio-kit-sdlc"
 
 [kits.sdlc.resources]
@@ -103,6 +103,25 @@ path = "config/kits/sdlc/AGENTS.md"
 
 [kits.sdlc.resources.workflow_migrate_openspec]
 path = "config/kits/sdlc/workflows/migrate-openspec.md"
+
+[kits.sdlc.source_provenance]
+source_type = "github"
+resolver_mode = "latest_release"
+resolution_basis = "github_release"
+requested_ref = "latest"
+resolved_ref = "v1.0.0"
+canonical_source = "github:constructorfabric/studio-kit-sdlc"
+effective_source = "github:constructorfabric/studio-kit-sdlc"
+verified = "verified"
+freshness = "fresh"
+
+[kits.sdlc.content_identity]
+commit_sha = "78b02ac"
+resolved_ref = "v1.0.0"
+identity = "constructorfabric/studio-kit-sdlc@v1.0.0#78b02ac"
+
+[kits.sdlc.local_metadata]
+conf_version = "1.0.0"
 
 [integrations]
 [integrations.ralphex]

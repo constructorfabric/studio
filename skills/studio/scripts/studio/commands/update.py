@@ -275,10 +275,15 @@ def cmd_update(argv: List[str]) -> int:
         _cache_whatsnew = CACHE_DIR / "whatsnew.toml"
         if _cache_whatsnew.is_file():
             shutil.copy2(_cache_whatsnew, core_dir / "whatsnew.toml")
+        _cache_provenance = CACHE_DIR / ".provenance.json"
+        if _cache_provenance.is_file():
+            shutil.copy2(_cache_provenance, core_dir / ".provenance.json")
+            actions["install_provenance"] = "updated"
     else:
         copy_results = {d: "dry_run" for d in COPY_DIRS}
         for item in COPY_ARCHITECTURE_ITEMS:
             copy_results[f"architecture/{item}"] = "dry_run"
+        actions["install_provenance"] = "dry_run"
     actions["core_update"] = copy_results
     for name, action in copy_results.items():
         ui.file_action(f".core/{name}/", action)
@@ -340,7 +345,8 @@ def cmd_update(argv: List[str]) -> int:
     ui.step("Updating kits...")
     from .kit import (
         update_kit, regenerate_gen_aggregates,
-        _read_kits_from_core_toml, _parse_github_source, _download_kit_from_github,
+        _read_kits_from_core_toml, _parse_github_source,
+        _download_kit_from_github_with_authority,
         _read_kit_version_from_core,
     )
 
@@ -352,6 +358,7 @@ def cmd_update(argv: List[str]) -> int:
         source_str = kit_data.get("source", "")
         kit_src: Optional[Path] = None
         tmp_to_clean: Optional[Path] = None
+        authority_metadata: Optional[Dict[str, Any]] = None
 
         if source_str.startswith("github:"):
             if args.dry_run:
@@ -365,14 +372,51 @@ def cmd_update(argv: List[str]) -> int:
                 }
                 continue
             owner_repo = source_str.removeprefix("github:")
+            owner = repo = version = ""
             try:
                 owner, repo, version = _parse_github_source(owner_repo)
-                kit_src, _ = _download_kit_from_github(owner, repo, version)
+                kit_src, _resolved_version, authority_metadata = _download_kit_from_github_with_authority(
+                    owner,
+                    repo,
+                    version,
+                    previous_entry=kit_data,
+                )
                 tmp_to_clean = kit_src.parent
             except (OSError, ValueError, KeyError, RuntimeError) as exc:
                 cache_kit = CACHE_DIR / "kits" / kit_slug
                 if cache_kit.is_dir():
                     kit_src = cache_kit
+                    previous_provenance = kit_data.get("source_provenance", {})
+                    previous_identity = kit_data.get("content_identity", {})
+                    if isinstance(previous_provenance, dict):
+                        resolved_ref = str(
+                            previous_provenance.get("resolved_ref")
+                            or kit_data.get("version")
+                            or ""
+                        )
+                        authority_metadata = {
+                            "source_type": "github",
+                            "requested_ref": previous_provenance.get(
+                                "requested_ref",
+                                version or "latest",
+                            ),
+                            "resolved_ref": resolved_ref,
+                            "installed_version": resolved_ref,
+                            "canonical_source": previous_provenance.get(
+                                "canonical_source",
+                                f"github:{owner}/{repo}" if owner and repo else source_str,
+                            ),
+                            "effective_source": previous_provenance.get(
+                                "effective_source",
+                                source_str,
+                            ),
+                            "resolver_mode": "offline_last_known",
+                            "resolution_basis": "last_known_core_toml",
+                            "verified": "stale",
+                            "freshness": "last_known",
+                        }
+                        if isinstance(previous_identity, dict) and previous_identity.get("commit_sha"):
+                            authority_metadata["commit_sha"] = previous_identity["commit_sha"]
                     ui.warn(f"{kit_slug}: download failed, using cached kit: {exc}")
                 else:
                     errors.append({"path": kit_slug, "error": f"Download failed: {exc}"})
@@ -415,6 +459,7 @@ def cmd_update(argv: List[str]) -> int:
                 interactive=interactive,
                 auto_approve=args.yes,
                 source=source_str,
+                authority_metadata=authority_metadata,
             )
 
             # @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-manifest-legacy-migration-algo

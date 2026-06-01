@@ -14,6 +14,7 @@
   - [Kit CLI Dispatcher](#kit-cli-dispatcher)
 - [3. Processes / Business Logic (CDSL)](#3-processes--business-logic-cdsl)
   - [GitHub Helpers](#github-helpers)
+  - [GitHub Kit Version Authority](#github-kit-version-authority)
   - [Kit Content Management](#kit-content-management)
   - [Gen Aggregation](#gen-aggregation)
   - [Kit Installation](#kit-installation)
@@ -30,11 +31,13 @@
   - [Kit Validation Engine](#kit-validation-engine)
   - [Kit Validate by Path](#kit-validate-by-path)
   - [Kit Config Helpers](#kit-config-helpers)
+  - [Kit Source Mode Validation](#kit-source-mode-validation)
   - [Manifest-Driven Installation](#manifest-driven-installation)
   - [Manifest Legacy Migration](#manifest-legacy-migration)
   - [Manifest Resource Resolution](#manifest-resource-resolution)
   - [Manifest Source Path Mapping](#manifest-source-path-mapping)
 - [4. States (CDSL)](#4-states-cdsl)
+  - [Kit Authority State](#kit-authority-state)
   - [Kit Installation State](#kit-installation-state)
 - [5. Definitions of Done](#5-definitions-of-done)
   - [Kit Install Copies Files](#kit-install-copies-files)
@@ -53,11 +56,11 @@
 
 ### 1. Overview
 
-Manage kit lifecycle — installation, file-level diff updates, interactive conflict resolution, SKILL/AGENTS composition, and kit structural validation. Kits are direct file packages (per `cpt-studio-adr-remove-blueprint-system`).
+Manage kit lifecycle — installation, file-level diff updates, interactive conflict resolution, SKILL/AGENTS composition, and kit structural validation. Kits are direct file packages (per `cpt-studio-adr-remove-blueprint-system`). For GitHub-backed kits, version authority comes from resolved GitHub Release/tag/ref provenance and content identity, not from kit-local `conf.toml`.
 
 ### 2. Purpose
 
-Enables users to install, update, and validate kit packages with interactive file-level diffs, automatic `.gen/` aggregation, and structural validation. Kits are direct file packages stored in `config/kits/{slug}/` — no blueprint processing, no three-way merge, no hash detection. Kits may optionally include a `manifest.toml` for declarative resource placement, user-modifiable paths, and template variable resolution.
+Enables users to install, update, and validate kit packages with interactive file-level diffs, automatic `.gen/` aggregation, and structural validation. Kits are direct file packages stored in `config/kits/{slug}/` — no blueprint processing, no three-way merge, no hash detection. Kits may optionally include a `manifest.toml` for declarative resource placement, user-modifiable paths, and template variable resolution. Local/path kit operations are explicitly outside GitHub authority and record local provenance only.
 
 ### 3. Actors
 
@@ -87,7 +90,9 @@ Enables users to install, update, and validate kit packages with interactive fil
 **Steps**:
 1. [x] - `p1` - Parse CLI arguments (path, --force, --dry-run) - `inst-parse-args`
 2. [x] - `p1` - Validate kit source directory exists - `inst-validate-source`
-3. [x] - `p1` - Read slug and version from source conf.toml - `inst-read-slug-version`
+3. [x] - `p1` - Read kit slug from source `conf.toml`; read `conf.toml version` only as optional local metadata and never as GitHub release authority - `inst-read-slug-version`
+3a. [ ] - `p1` - **IF** installing from GitHub: resolve requested GitHub ref to authoritative GitHub metadata via `cpt-studio-algo-kit-github-version-authority`; set `core.toml [kits.<slug>].version` from GitHub release/ref metadata, not from `conf.toml` - `inst-resolve-github-authority`
+3b. [ ] - `p1` - **IF** installing from `--path`: mark resolver mode as local/path, do not apply GitHub authority, and reject GitHub selector flags or `owner/repo[@ref]` selectors mixed with local/path mode - `inst-validate-source-mode`
 4. [x] - `p1` - Resolve project root and studio directory via `_resolve_studio_dir` - `inst-resolve-project`
 5. [x] - `p1` - Check if kit already installed; fail if exists without --force - `inst-check-existing`
 6. [x] - `p1` - **IF** --dry-run: return preview and STOP - `inst-dry-run`
@@ -97,7 +102,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 10. [x] - `p1` - Format and output result JSON - `inst-output-result`
 
 **Supporting**:
-- [x] - `p1` - Resolve GitHub source: parse owner/repo, download tarball, extract to temp dir - `inst-resolve-github-source`
+- [x] - `p1` - Resolve GitHub source: parse owner/repo and requested ref, resolve canonical/effective source, requested_ref, resolved_ref, commit_sha/content identity, version display value, verified/freshness state, then download tarball and extract to temp dir - `inst-resolve-github-source`
 - [x] - `p1` - Cleanup temporary download directory in finally block - `inst-cleanup-tmp`
 - [x] - `p1` - Human-friendly output formatter for install results - `inst-human-output`
 
@@ -112,6 +117,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 **Steps**:
 1. [x] - `p1` - Parse CLI arguments (path, --force, --dry-run, --no-interactive, -y) - `inst-parse-args`
 2. [x] - `p1` - Validate kit source directory exists - `inst-validate-source`
+2a. [ ] - `p1` - Validate source mode: registered GitHub-backed updates use GitHub authority; local `--path` updates are outside GitHub authority and conflict with GitHub selector flags - `inst-validate-source-mode`
 3. [x] - `p1` - Read slug from source conf.toml - `inst-read-slug`
 4. [x] - `p1` - Resolve project root and studio directory - `inst-resolve-project`
 5. [x] - `p1` - **IF** kit source contains `whatsnew.toml`: display whatsnew entries via `cpt-studio-algo-kit-whatsnew-display`; in interactive mode prompt to continue or abort - `inst-show-whatsnew`
@@ -122,7 +128,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 
 **Supporting**:
-- [x] - `p1` - Resolve GitHub update targets: download source kits for each registered kit - `inst-resolve-github-targets`
+- [x] - `p1` - Resolve GitHub update targets from registered kit metadata; online resolution refreshes requested_ref, resolved_ref, commit_sha/content identity, canonical/effective source, verified/freshness state, and display version; offline fallback uses the last-known persisted state only and MUST NOT infer authority from local kit files - `inst-resolve-github-targets`
 - [x] - `p1` - Build normalized update result dict from kit update output - `inst-build-update-result`
 - [x] - `p1` - Human-friendly output formatter for update results - `inst-human-output`
 
@@ -165,20 +171,37 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 ### GitHub Helpers
 
-- [x] `p1` - **ID**: `cpt-studio-algo-kit-github-helpers`
+- [ ] `p1` - **ID**: `cpt-studio-algo-kit-github-helpers`
 
-**Input**: GitHub source string (`owner/repo[@version]`), optional `GITHUB_TOKEN`
+**Input**: GitHub source string (`owner/repo[@ref]`), optional `GITHUB_TOKEN`, optional last-known persisted source state
 
-**Output**: Downloaded kit directory path, resolved version string
+**Output**: Downloaded kit directory path plus structured GitHub authority metadata
 
 **Steps**:
 1. [x] - `p1` - Build HTTP headers for GitHub API (Accept, User-Agent, optional Bearer token) - `inst-github-headers`
-2. [x] - `p1` - Parse GitHub source string into (owner, repo, version) tuple - `inst-parse-source`
-3. [x] - `p1` - Resolve latest release tag from GitHub API; fall back to default branch if no releases - `inst-resolve-release`
-4. [x] - `p1` - Download tarball from GitHub API, extract to temp directory, return extracted path and version - `inst-download`
+2. [x] - `p1` - Parse GitHub source string into owner, repo, and requested_ref; empty requested_ref means resolver chooses latest release/default branch - `inst-parse-source`
+3. [x] - `p1` - Resolve GitHub authority: determine resolver_mode, resolution_basis, requested_ref, resolved_ref, commit_sha/content identity, canonical_source, effective_source, version display value, verified state, and freshness state - `inst-resolve-release`
+4. [x] - `p1` - Download tarball using the resolved effective ref, extract to temp directory, and return extracted path plus authority metadata - `inst-download`
+5. [ ] - `p1` - **IF** GitHub cannot be reached and last-known metadata exists: mark freshness as stale/offline and use last-known requested_ref/resolved_ref/commit_sha/version for reporting; do not guess from local files or `conf.toml` - `inst-offline-last-known`
 
 **Supporting**:
 - [x] - `p1` - Module imports and dependencies for kit management commands - `inst-kit-imports`
+
+### GitHub Kit Version Authority
+
+- [ ] `p1` - **ID**: `cpt-studio-algo-kit-github-version-authority`
+
+**Input**: GitHub owner/repo, requested_ref, resolver mode, optional last-known metadata
+
+**Output**: Structured authority metadata for `core.toml [kits.<slug>]`
+
+**Rules**:
+1. [ ] - `p1` - For GitHub-backed kits, `core.toml [kits.<slug>].version` is the display/backcompat release version resolved from GitHub; it MUST NOT be read from kit `conf.toml` - `inst-core-version-github-authority`
+2. [ ] - `p1` - Persist `resolver_mode`, `resolution_basis`, `requested_ref`, `resolved_ref`, `commit_sha` or equivalent content identity, `canonical_source`, `effective_source`, `verified`, and `freshness` in structured metadata under the kit registration - `inst-persist-authority-metadata`
+3. [ ] - `p1` - `conf.toml version` is optional local/package metadata only; it MAY be reported as migrated/local metadata but MUST NOT drive GitHub update currentness checks - `inst-conf-version-local-only`
+4. [ ] - `p1` - For latest-release resolution, store the requested selector separately from the resolved release tag and commit identity so future updates can refresh the selector without losing the previous content identity - `inst-store-selector-and-identity`
+5. [ ] - `p1` - For branch or SHA resolution, store both the requested ref and immutable resolved content identity; currentness checks compare content identity where available - `inst-store-ref-identity`
+6. [ ] - `p1` - Offline fallback uses the last-known persisted GitHub state and marks freshness stale/offline; it MUST NOT inspect installed files or local `conf.toml` to invent a GitHub version - `inst-offline-authority`
 
 ### Kit Content Management
 
@@ -221,7 +244,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 - [x] `p1` - **ID**: `cpt-studio-algo-kit-install`
 
-**Input**: Kit source path, studio dir, slug, version
+**Input**: Kit source path, studio dir, slug, authority metadata or local metadata
 
 **Output**: Result dict with status, files_copied, actions, metadata
 
@@ -229,9 +252,9 @@ Enables users to install, update, and validate kit packages with interactive fil
 1. [x] - `p1` - Validate kit source directory exists - `inst-validate-source`
 2. [x] - `p1` - **IF** kit source contains `manifest.toml`: delegate to `install_kit_with_manifest` and **RETURN** its result - `inst-manifest-install`
 3. [x] - `p1` - Copy kit content to `config/kits/{slug}/` via `_copy_kit_content` (legacy path) - `inst-copy-content`
-4. [x] - `p1` - Read version from source `conf.toml` if not provided - `inst-read-version`
+4. [x] - `p1` - **IF** GitHub authority metadata is absent: read version from source `conf.toml` only as optional local/path metadata; **ELSE** ignore `conf.toml version` for authoritative registration - `inst-read-version`
 5. [x] - `p1` - Seed config files from kit's scripts/ directory - `inst-seed-configs`
-6. [x] - `p1` - Register kit in `core.toml` with path and version - `inst-register-core`
+6. [x] - `p1` - Register kit in `core.toml` with path, source mode, display/backcompat version, and structured authority metadata when GitHub-backed - `inst-register-core`
 7. [x] - `p1` - Collect metadata for `.gen/` aggregation - `inst-collect-meta`
 8. [x] - `p1` - **RETURN** result with status, files_copied, actions, skill_nav, agents_content - `inst-return-result`
 
@@ -246,13 +269,13 @@ Enables users to install, update, and validate kit packages with interactive fil
 **Steps**:
 1. [x] - `p1` - Resolve config dir paths (config_dir, config_kits_dir, config_kit_dir) - `inst-resolve-config`
 2. [x] - `p1` - **IF** dry_run: return early with dry_run status - `inst-dry-run-check`
-3. [x] - `p1` - Read source version from `conf.toml` - `inst-read-source-version`
-4. [x] - `p1` - **IF** not force and version matches installed: return "current" status with metadata - `inst-version-check`
+3. [x] - `p1` - Resolve source version/currentness input from GitHub authority metadata for GitHub-backed kits; read `conf.toml version` only for local/path metadata - `inst-read-source-version`
+4. [x] - `p1` - **IF** not force and authoritative content identity or resolved display version matches installed GitHub metadata: return "current" status with source/freshness metadata - `inst-version-check`
 5. [x] - `p1` - **IF** source has `manifest.toml` and kit has no `resources` in core.toml: trigger `migrate_legacy_kit_to_manifest` - `inst-legacy-manifest-migration`
 6. [x] - `p1` - **IF** source has `manifest.toml`: build source-path-to-resource-id mapping from manifest, resolve resource bindings from `core.toml` via `cpt-studio-algo-kit-manifest-resolve` - `inst-resolve-resource-bindings`
 7. [x] - `p1` - **IF** the authoritative installed root from `config/core.toml` `kits.{slug}.path` does not exist (defaulting to `config/kits/{slug}` when missing): first-install via `_copy_kit_content`, seed configs, register in core.toml - `inst-first-install`
 8. [x] - `p1` - **ELSE**: existing kit — delegate to `file_level_kit_update` for interactive diff, passing `resource_bindings`, `source_to_resource_id`, and `resource_info` for manifest-driven kits - `inst-file-level-diff`
-9. [x] - `p1` - Update version in `core.toml` from source version - `inst-update-core-toml`
+9. [x] - `p1` - Update `core.toml` version and structured authority metadata from GitHub resolution for GitHub-backed kits; for local/path mode, update only local metadata derived from the provided path - `inst-update-core-toml`
 10. [x] - `p1` - Collect metadata for `.gen/` aggregation - `inst-collect-metadata`
 11. [x] - `p1` - **RETURN** result with kit, version, gen, accepted/declined files - `inst-return-result`
 
@@ -456,9 +479,9 @@ Enables users to install, update, and validate kit packages with interactive fil
 **Steps**:
 1. [x] - `p1` - Read top-level `version` from conf.toml as integer - `inst-read-conf-version`
 2. [x] - `p1` - Read kit `slug` from source conf.toml - `inst-read-slug`
-3. [x] - `p1` - Read installed kit version from `core.toml [kits.{slug}].version` - `inst-read-version-from-core`
-4. [x] - `p1` - Read kit version string from conf.toml path - `inst-read-kit-version`
-5. [x] - `p1` - Register or update kit entry in `core.toml` with format, path, and version - `inst-register-core`
+3. [x] - `p1` - Read installed kit display/backcompat version from `core.toml [kits.{slug}].version`; for GitHub-backed kits this value is GitHub-derived - `inst-read-version-from-core`
+4. [x] - `p1` - Read kit version string from `conf.toml` as optional local metadata only - `inst-read-kit-version`
+5. [x] - `p1` - Register or update kit entry in `core.toml` with format, path, source, display/backcompat version, and structured authority metadata without overwriting existing last-known GitHub state unless a new verified resolution exists - `inst-register-core`
 
 **Supporting**:
 - [x] - `p1` - Resolve project root and studio directory from CWD - `inst-resolve-studio-dir`
@@ -467,6 +490,20 @@ Enables users to install, update, and validate kit packages with interactive fil
 - [x] - `p1` - Wrapper function for reading kit version from core.toml - `inst-read-version-core-fn`
 - [x] - `p1` - Wrapper function for reading kit version from conf.toml path - `inst-read-kit-version-fn`
 - [x] - `p1` - Wrapper function for registering/updating kit in core.toml - `inst-register-core-fn`
+
+### Kit Source Mode Validation
+
+- [ ] `p1` - **ID**: `cpt-studio-algo-kit-source-mode-validation`
+
+**Input**: CLI arguments, registered kit entry, optional source path
+
+**Output**: Source mode decision or validation error
+
+**Steps**:
+1. [ ] - `p1` - Classify mode as `github` when using `owner/repo[@ref]` or registered `github:` source; classify as `local_path` when using `--path` - `inst-classify-source-mode`
+2. [ ] - `p1` - Reject invocations that combine local/path mode with GitHub selector flags or GitHub ref syntax - `inst-reject-mode-conflicts`
+3. [ ] - `p1` - For local/path mode, skip GitHub authority resolution and treat `conf.toml version` as optional local metadata only - `inst-local-path-outside-authority`
+4. [ ] - `p1` - For GitHub mode, require persisted source metadata to be refreshed from GitHub when online or reused as last-known state when offline - `inst-github-mode-authority`
 
 ### Manifest-Driven Installation
 
@@ -548,6 +585,17 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 ## 4. States (CDSL)
 
+### Kit Authority State
+
+- [ ] `p1` - **ID**: `cpt-studio-state-kit-authority`
+
+| State | Condition | Transitions |
+|-------|-----------|-------------|
+| `verified_fresh` | GitHub metadata was resolved online for the effective source/ref and content identity | -> `verified_stale` when offline age/freshness policy expires, -> `changed` when new content identity resolves |
+| `verified_stale` | Last-known GitHub metadata exists but could not be refreshed online | -> `verified_fresh` after successful refresh |
+| `local_only` | Kit was installed or updated from local/path mode | -> `verified_fresh` only after explicit GitHub source registration/resolution |
+| `unknown` | No persisted authority metadata exists | -> `verified_fresh` after GitHub resolution, -> `local_only` for path mode |
+
 ### Kit Installation State
 
 - [x] `p1` - **ID**: `cpt-studio-state-kit-installation`
@@ -572,6 +620,8 @@ Enables users to install, update, and validate kit packages with interactive fil
 3. [x] - `p1` - `.gen/` aggregates are updated after install
 4. [x] - `p1` - **IF** kit contains `manifest.toml`: all declared resources are placed at resolved paths, template variables resolved, resource bindings registered in `core.toml`
 5. [x] - `p1` - **IF** manifest with `user_modifiable` resources: user is prompted for each modifiable path
+6. [x] - `p1` - GitHub-backed installs persist GitHub-derived version authority and structured source/content metadata; `conf.toml version` is not authoritative
+7. [x] - `p1` - Local/path installs are recorded as outside GitHub authority and reject conflicting GitHub selector options
 
 ### Kit Update Shows Diffs
 
@@ -585,6 +635,8 @@ Enables users to install, update, and validate kit packages with interactive fil
 6. [x] - `p1` - **IF** manifest-driven kit with resource bindings: files are updated at their registered paths, not default `config/kits/{slug}/` paths
 7. [x] - `p1` - **IF** manifest-driven kit: new resources (in manifest but not in `core.toml` bindings) trigger path prompt and are registered
 8. [x] - `p1` - **IF** kit source contains `whatsnew.toml`: display new version entries before file-level diff; user can abort update after reviewing
+9. [x] - `p1` - GitHub-backed updates determine currentness from persisted/refreshed GitHub authority metadata, not `conf.toml`
+10. [x] - `p1` - Offline GitHub update fallback reports and uses last-known source state only; it does not guess versions from local files
 
 ### Kit Validate Checks Integrity
 
@@ -622,3 +674,8 @@ Enables users to install, update, and validate kit packages with interactive fil
 - [ ] `p1` - `cfs info` outputs resolved resource variables for manifest-driven kits
 - [x] `p1` - `cfs kit update` displays whatsnew entries from kit's `whatsnew.toml` before file-level diff (versions > installed version)
 - [ ] `p1` - All CDSL instructions have corresponding `@cpt-begin`/`@cpt-end` markers in code
+- [x] `p1` - GitHub-backed kit registrations store `version` as GitHub-derived display/backcompat release/ref version plus structured authority metadata: resolver_mode, resolution_basis, requested_ref, resolved_ref, commit_sha/content identity, canonical_source, effective_source, verified, and freshness
+- [x] `p1` - `conf.toml version` is optional local metadata only and never determines GitHub-backed install/update authority
+- [x] `p1` - Local/path kit operations are outside GitHub authority and reject GitHub selector/ref flags
+- [ ] `p1` - Kit install/update/report output shows source, effective source, content identity, authority freshness, and any migration from legacy `conf.toml` metadata
+- [x] `p1` - Offline GitHub fallback uses last-known persisted state and never guesses from installed files or local `conf.toml`
