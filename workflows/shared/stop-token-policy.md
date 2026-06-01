@@ -127,7 +127,7 @@ WHEN:
 
 DO:
   IF prompt is raw-input materialization [y/n]:
-    EMIT "Raw-input materialization declined — continue with direct workflow if you prefer reduced guarantees"
+    EMIT "Raw-input materialization declined — stop and re-run with smaller input or approve /cf-plan materialization when ready"
     STOP (valid completion state, no further routing)
 
   IF prompt is decomposition [y/n]:

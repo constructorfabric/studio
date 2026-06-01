@@ -23,14 +23,35 @@ purpose: Guide cfs map workflow from pre-flight through validation
 <!-- /toc -->
 
 ```text
+UNIT RootSkillEntrypointBootstrap
+PURPOSE: Prevent direct workflow entry from bypassing the root cf skill.
+DO:
+  1. REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is loaded completely
+     and followed FIRST.
+  2. REQUIRE CfSkillInit, Bootstrap, HardRules, and
+     WorkflowProtocolNonSubstitution from SKILL.md have completed.
+  3. CONTINUE this workflow only after the root cf skill routing/entrypoint
+     selects it.
+RULES:
+  - MUST execute before any workflow-specific unit in this file.
+  - MUST_NOT treat protocol.md, routing.md, or a thin proxy skill as a
+    substitute for loading and following SKILL.md.
+  - If this workflow file is opened directly, STOP workflow phases until
+    SKILL.md has been loaded completely and followed.
+  - This gate applies to the top-level controller only; dispatched sub-agents
+    consume the synthesized final prompt and supplied context slices.
+```
+
+```text
 UNIT MapBootstrap
 
 PURPOSE:
   Load required agent context before any map phase work begins.
 
 DO:
-  REQUIRE {cf-studio-path}/config/AGENTS.md is loaded and followed FIRST
-  REQUIRE {cf-studio-path}/.gen/AGENTS.md is loaded and followed after config/AGENTS.md
+  REQUIRE {cf-studio-path}/.gen/AGENTS.md is loaded and followed FIRST
+  REQUIRE {cf-studio-path}/config/AGENTS.md is loaded and followed after .gen/AGENTS.md
+  REQUIRE bootstrap order matches ProtocolGuard for AGENTS prompt assets
   EMIT_MENU MapIntentRouter
   WAIT user.reply
   STOP_TURN
@@ -85,7 +106,7 @@ DO:
     (look for [[systems.codebase]] or [[systems.autodetect.codebase]] entries in artifacts.toml)
   CHECK for .studio-workspace.toml in project root (federation axis)
   CHECK for [[systems.codebase]] or [[systems.autodetect.codebase]] entries in
-    <adapter_dir>/config/artifacts.toml or <project_root>/artifacts.toml (source-scanning axis)
+    {cf-studio-path}/config/artifacts.toml or <project_root>/artifacts.toml (source-scanning axis)
   EMIT discovered state:
     Federation: ".studio-workspace.toml present" OR "no workspace config — federation unavailable"
     Source scanning: list [[systems.codebase]] / [[systems.autodetect.codebase]] entries found,
@@ -157,7 +178,16 @@ MENU MapConfigMenu:
       OTHERWISE:
         CONTINUE MapPhase3
     2 field-edits ->
-      SET map.config_pending_edits = user.named_fields
+      PARSE user.named_fields as:
+        format = html|json
+        out = <relative-or-absolute path>
+        config = <path or auto>
+        inline_data = true|false
+      IF any field is unknown or invalid:
+        EMIT "Editable fields: format, out, config, inline_data."
+        WAIT user.reply
+        STOP_TURN
+      SET map.config_pending_edits = parsed fields
       RE-EMIT updated proposal with map.config_pending_edits applied
       WAIT user.reply
       STOP_TURN
@@ -199,11 +229,11 @@ PURPOSE:
 
 DO:
   WHEN map.scope == single-repo:
-    RUN python3 {cf-studio-path}/.core/skills/studio/scripts/studio.py --json map --local-only [--out PATH] [--format html|json] [--config PATH]
+    RUN python3 {cf-studio-path}/.core/skills/studio/scripts/studio.py --json map --local-only [--out PATH] [--format html|json] [--config PATH] [--inline-data when format=html AND inline_data=true]
   WHEN map.scope == with-workspace:
-    RUN python3 {cf-studio-path}/.core/skills/studio/scripts/studio.py --json map [--out PATH] [--format html|json] [--config PATH]
+    RUN python3 {cf-studio-path}/.core/skills/studio/scripts/studio.py --json map [--out PATH] [--format html|json] [--config PATH] [--inline-data when format=html AND inline_data=true]
   WHEN map.scope == markdown-only:
-    RUN python3 {cf-studio-path}/.core/skills/studio/scripts/studio.py --json map --no-source [--out PATH] [--format html|json] [--config PATH]
+    RUN python3 {cf-studio-path}/.core/skills/studio/scripts/studio.py --json map --no-source [--out PATH] [--format html|json] [--config PATH] [--inline-data when format=html AND inline_data=true]
   VERIFY output file exists and size is reasonable
   IF format == html:
     EMIT file path; note that it opens in a browser
@@ -221,8 +251,13 @@ PURPOSE:
   Inspect the map for completeness and phantom references.
 
 DO:
-  CHECK: Open generated .html in a browser; verify vis-network graph renders without errors
-  COUNT: nodes/edges via JSON or browser DevTools (markdown nodes, source nodes, cross-repo edges)
+  IF format == html:
+    CHECK: Open generated .html in a browser; verify vis-network graph renders without errors
+    COUNT: nodes/edges via embedded JSON, .html.js sidecar, or browser DevTools
+      (markdown nodes, source nodes, cross-repo edges)
+  IF format == json:
+    CHECK: Parse generated JSON; verify top-level nodes/edges arrays exist
+    COUNT: nodes/edges directly from JSON
   CHECK: Search JSON for phantom:<cpt-id> nodes or dangling_cpt_uses array (dangling references)
   VERIFY: nodes are color-coded by category; check if md-map.toml override helped
   IF dangling cpts found:

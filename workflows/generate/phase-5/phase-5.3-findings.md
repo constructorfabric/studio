@@ -73,8 +73,12 @@ RULES:
     handoff_guard.dispatch_evidence_required = true
   - Inline patching permitted ONLY when INLINE_FALLBACK=true OR MAX_ITER=0
   - When MAX_ITER > 0 AND INLINE_FALLBACK=false:
-    missing phase5_dispatch_evidence for required validator/reviewer/author sequence
-    MUST stop before editing files and repair dispatch state
+    before the first external-entry author dispatch, missing author dispatch
+    evidence MUST stop before editing files and repair dispatch state
+  - When MAX_ITER > 0 AND INLINE_FALLBACK=false:
+    after the first external-entry author dispatch, missing validator/reviewer
+    dispatch evidence for any post-author iteration that reached Phase 5.1/5.2
+    MUST stop before any further edit and repair dispatch state
     FORBID applying patches inline
 ```
 
@@ -104,6 +108,12 @@ DO:
     NOTE: Remediation Handoff menu MANDATORY when remaining_findings non-empty
 
   SET remaining_findings = []  # before any branch executes
+
+  IF external analyze→generate entry AND N == 1 AND MAX_ITER >= 1:
+    USE carried analyze findings as all_findings
+    SKIP fresh Phase 5.1 / Phase 5.2 before this first Phase 5.3 pass
+    NOTE: the first author dispatch fixes already-reviewed analyze findings;
+          Phase 5.1 / Phase 5.2 run after that write to verify the result
 
   PARTITION all_findings:
     mechanical = [f for f in all_findings if f.mechanical]
@@ -177,13 +187,10 @@ All {m_count} findings are mechanical — deterministic fixes derivable from eac
 finding's `mechanical_rationale` alone. No user approval required. Auto-fixing now.
 ---
 
-  IF user types stop_token BEFORE orchestrator dispatches auto-fix
-    (while announcement is being read):
-    TREAT as phase-5.4-approval.md § option 4 (manual-handoff)
-    SKIP auto-fix dispatch
-    SET remaining_findings = all_findings
-    SET loop_exit = "manual-handoff"
-    CONTINUE workflows/generate/phase-6/index.md
+  NOTE: This fast path has no user-input WAIT point after the announcement.
+        Stop tokens are observable only at explicit menus/WAIT states such as
+        Phase 5.4 approval or the iteration-cap menu; they MUST_NOT be modeled
+        as an interruptible announcement-read branch.
 
   BUILD mode=fix Inputs contract:
     mode = "fix"
@@ -203,6 +210,12 @@ finding's `mechanical_rationale` alone. No user approval required. Auto-fixing n
       (both on success AND on failure)
 
   EXECUTE workflows/generate/phase-4-write.md § Author Selection and Dispatch
+  APPEND phase5_dispatch_evidence record:
+    phase = "5.3"
+    agent_id = selected_author
+    target_paths = target_paths
+    result_marker = returned Written block or manifest marker
+    iteration = N
   APPEND returned findings_not_fixable to carry_forward
     (open, load, follow {cf-studio-path}/.core/workflows/generate/phase-5/phase-5.4-approval.md § Session-level carry-forward)
   UPDATE manifest from returned manifest

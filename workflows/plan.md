@@ -9,21 +9,27 @@ purpose: Universal workflow for generating execution plans with phased delivery
 
 # Plan
 
-<!-- toc -->
-
-- [Overview](#overview)
-- [Context Budget & Overflow Prevention (CRITICAL)](#context-budget--overflow-prevention-critical)
-- [Phase 0: Resolve Variables & Discover Tools](#phase-0-resolve-variables--discover-tools)
-- [Phase 0.a: Explore / Brainstorm Applicability](#phase-0a-explore--brainstorm-applicability)
-- [Phase 1: Assess Scope](#phase-1-assess-scope)
-- [Phase 2: Decompose](#phase-2-decompose)
-- [Phase 3: Compile Phase Files](#phase-3-compile-phase-files)
-- [Phase 4: Finalize Plan](#phase-4-finalize-plan)
-- [Plan Lifecycle](#plan-lifecycle)
-- [Plan Reference](#plan-reference)
-- [Completion Invariants](#completion-invariants)
-
-<!-- /toc -->
+```text
+UNIT RootSkillEntrypointBootstrap
+PURPOSE: Prevent direct workflow entry from bypassing the root cf skill.
+DO:
+  1. REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is loaded completely
+     and followed FIRST.
+  2. REQUIRE CfSkillInit, Bootstrap, HardRules, and
+     WorkflowProtocolNonSubstitution from SKILL.md have completed.
+  3. CONTINUE this workflow only after the root cf skill routing/entrypoint
+     selects it.
+RULES:
+  - MUST execute before any workflow-specific unit in this file.
+  - MUST_NOT treat protocol.md, routing.md, or a thin proxy skill as a
+    substitute for loading and following SKILL.md.
+  - MUST follow routing.md § CanonicalRoutingPrecedenceState for workflow
+    entry, fallback dispatch state, and prompt-context ownership.
+  - If this workflow file is opened directly, STOP workflow phases until
+    SKILL.md has been loaded completely and followed.
+  - This gate applies to the top-level controller only; dispatched sub-agents
+    consume the synthesized final prompt and supplied context slices.
+```
 
 ```text
 UNIT PlanBootstrap
@@ -41,8 +47,8 @@ DO:
 
 RULES:
   - MUST load {cf-studio-path}/.core/skills/studio/SKILL.md first when cfs_mode is off
-  - MUST load `{cf-studio-path}/.core/skills/studio/protocol.md` before any phase work
-  - MUST load `{cf-studio-path}/.core/workflows/shared/stop-token-policy.md` before any stop-token-dependent prompt
+  - MUST load {cf-studio-path}/.core/skills/studio/protocol.md before any phase work
+  - MUST load {cf-studio-path}/.core/workflows/shared/stop-token-policy.md before any stop-token-dependent prompt
   - MUST load {cf-studio-path}/.core/requirements/plan-template.md WHEN compiling phase files
   - MUST load {cf-studio-path}/.core/requirements/plan-decomposition.md WHEN decomposing tasks into phases
   - MUST load {cf-studio-path}/.core/requirements/prompt-engineering.md WHEN compiling phase files
@@ -56,7 +62,7 @@ NOTES:
     This workflow ONLY generates execution plans (does not implement) — phase-2-decompose.md
     Complete coverage, compact loading — phase-1-assess.md
     Kit rules are law — phase-1-assess.md
-    Deterministic first — phase-3-compile.md
+    Gate order: explore/brainstorm (Phase 0.a) → assess (Phase 1) → decompose (Phase 2) → compile (Phase 3) — see phase sub-files
     Interactive questions completeness — phase-1-assess.md
     Brief before compile — phase-3-compile.md
   For context compaction recovery during multi-phase workflows, follow
@@ -152,10 +158,8 @@ DO:
   REQUIRE {cf-studio-path}/.core/workflows/shared/explore-brainstorm-gate.md is loaded and followed
 
 RULES:
-  - MUST run required cf-explore for brownfield, architecture, multi-file, or
-    unclear target plans
-  - MUST run required cf-brainstorm when decomposition depends on unresolved
-    strategy or acceptance semantics
+  - MUST delegate explore/brainstorm applicability, replacement, and skip
+    decisions to shared/explore-brainstorm-gate.md
   - MUST include RESOURCE_CONTEXT and BRAINSTORM_CONTEXT in Phase 1 assessment
     when either exists
 ```
@@ -221,7 +225,7 @@ DO:
 
 NOTES:
   Contains Phase 4.1 self-validation, gated Phase 4.2 next-steps menu
-  (native-execution branch [1]–[5], fallback branch [1]–[4]), and New-Chat Startup Prompt.
+  (native-execution branch [1]-[5], fallback branch [1]-[4]), and New-Chat Startup Prompt.
 ```
 
 ## Plan Lifecycle

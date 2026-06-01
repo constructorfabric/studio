@@ -9,368 +9,216 @@ purpose: Universal workflow for analysing any Constructor Studio artifact or cod
 
 # Analyze
 
-<!-- toc -->
-
-- [Preamble](#preamble)
-- [Rules Mode Behavior](#rules-mode-behavior)
-- [Rules](#rules)
-- [Overview](#overview)
-- [Context Budget & Overflow Prevention (CRITICAL)](#context-budget--overflow-prevention-critical)
-- [Phase 0: Ensure Dependencies](#phase-0-ensure-dependencies)
-- [Phase 0.a: Explore Applicability](#phase-0a-explore-applicability)
-- [Phase 0.5: Clarify Analysis Scope](#phase-05-clarify-analysis-scope)
-- [Phase 1: File Existence Check](#phase-1-file-existence-check)
-- [Phase 2: Deterministic Gate](#phase-2-deterministic-gate)
-- [Phase 2.5: Reviewer Plan](#phase-25-reviewer-plan)
-- [Phase 3: Semantic Review (Conditional)](#phase-3-semantic-review-conditional)
-- [Phase 3 → Phase 4 Checkpoint](#phase-3--phase-4-checkpoint)
-- [Phase 4: Output](#phase-4-output)
-- [Phase 5: Offer Next Steps](#phase-5-offer-next-steps)
-- [Terminal Block Invariant](#terminal-block-invariant)
-- [State Summary](#state-summary)
-- [Key Principles](#key-principles)
-- [Agent Self-Test (STRICT mode — AFTER completing work)](#agent-self-test-strict-mode--after-completing-work)
-- [Validation Criteria](#validation-criteria)
-
-<!-- /toc -->
-
-## Preamble
+```text
+UNIT RootSkillEntrypointBootstrap
+PURPOSE: Prevent direct workflow entry from bypassing the root cf skill.
+DO:
+  1. REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is loaded completely
+     and followed FIRST.
+  2. REQUIRE CfSkillInit, Bootstrap, HardRules, and
+     WorkflowProtocolNonSubstitution from SKILL.md have completed.
+  3. CONTINUE this workflow only after the root cf skill routing/entrypoint
+     selects it.
+RULES:
+  - MUST execute before any workflow-specific unit in this file.
+  - MUST_NOT treat protocol.md, routing.md, or a thin proxy skill as a
+    substitute for loading and following SKILL.md.
+  - MUST follow routing.md § CanonicalRoutingPrecedenceState for explain-mode
+    entry, fallback dispatch state, and prompt-context ownership.
+  - If this workflow file is opened directly, STOP workflow phases until
+    SKILL.md has been loaded completely and followed.
+  - This gate applies to the top-level controller only; dispatched sub-agents
+    consume the synthesized final prompt and supplied context slices.
+```
 
 ```text
 UNIT AnalyzePreamble
-
-PURPOSE:
-  Load preamble before any other analyze phase work.
-
+PURPOSE: Load preamble before any other phase.
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/analyze/preamble.md is loaded and followed FIRST
+  CONTINUE {cf-studio-path}/.core/workflows/analyze/preamble.md
+NOTES: Performs route-only methodology selection and storytelling trigger handling; methodology implementations load only inside matched Phase 3 sub-agents.
 ```
-
-NOTES: preamble.md performs route-only methodology selection plus storytelling
-trigger handling; code, bug-finding, consistency, and prompt methodologies are
-loaded only inside matched Phase 3 sub-agents.
-
-## Rules Mode Behavior
 
 ```text
 UNIT AnalyzeRulesMode
-
-PURPOSE:
-  Load canonical STRICT/RELAXED and stop-token behavior before any phase.
-
+PURPOSE: Load STRICT/RELAXED and stop-token behavior before any phase.
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/shared/mode-resolution.md is loaded and followed
-  REQUIRE {cf-studio-path}/.core/workflows/shared/stop-token-policy.md is loaded and followed
+  CONTINUE {cf-studio-path}/.core/workflows/shared/mode-resolution.md
+  CONTINUE {cf-studio-path}/.core/workflows/shared/stop-token-policy.md
 ```
 
 ```text
 UNIT AnalyzeSharedContextPack
-
-PURPOSE:
-  Keep analyze-phase prompt loading controller-owned and pack-aware.
-
+PURPOSE: Keep analyze prompt loading controller-owned and pack-aware.
 RULES:
-  - Workflow fragments referenced by analyze are controller-owned prompt assets
-    loaded from {cf-studio-path}/.core/workflows/...
-  - Before any reviewer dispatch, the controller MUST reuse or extend
-    SHARED_CONTEXT_PACK, load the reviewer prompt source, and synthesize a
-    final dispatch prompt that includes only the task-relevant instruction
-    context
-  - Analyze MUST NOT rely on prompt-consuming sub-agents reopening workflow,
-    requirement, spec, or AGENTS prompt files directly
+  - Workflow fragments are controller-owned assets loaded from {cf-studio-path}/.core/workflows/...
+  - Before reviewer dispatch MUST reuse or extend SHARED_CONTEXT_PACK, load reviewer prompt source, and synthesize a final dispatch prompt with only task-relevant context
+  - MUST_NOT rely on sub-agents reopening workflow, requirement, spec, or AGENTS prompt files directly
 ```
-
-## Rules
 
 ```text
 UNIT AnalyzeRules
-
-PURPOSE:
-  Load completion contract and pre-output self-check.
-
+PURPOSE: Load completion contract and pre-output self-check.
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/analyze/rules.md is loaded and followed
-
+  CONTINUE {cf-studio-path}/.core/workflows/analyze/rules.md
 RULES:
-  - MUST load {cf-studio-path}/.core/workflows/analyze/rules.md — unconditionally required
+  - MUST load rules.md unconditionally
 ```
 
-## Overview
+```text
+UNIT AnalyzeChangeReviewFailClosed
+PURPOSE: Keep change-review runs fail-closed until gate states resolve.
+WHEN: CHANGE_REVIEW == true
+RULES:
+  - Before gate resolution MUST apply {cf-studio-path}/.core/skills/studio/SKILL.md § Change-Review Fail-Closed Sentinel
+  - MUST_NOT run local git status/diff, cfs validate, semantic review, findings, summaries, or remediation menus while sentinel is active
+  - MAY emit only the missing gate menu or matching `Dispatch blocked: ...` error, then MUST STOP_TURN
+```
 
 ```text
 UNIT AnalyzeOverview
-
-PURPOSE:
-  Load mode resolution, command surface, prompt-review trigger semantics,
-  and actionable-findings contract before any phase executes.
-
+PURPOSE: Load mode resolution, command surface, prompt-review trigger semantics, and actionable-findings contract.
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/analyze/overview.md is loaded and followed
-
+  CONTINUE {cf-studio-path}/.core/workflows/analyze/overview.md
 RULES:
-  - MUST load {cf-studio-path}/.core/workflows/analyze/overview.md before any phase executes
+  - MUST load before any phase executes
 ```
-
-## Context Budget & Overflow Prevention (CRITICAL)
 
 ```text
 UNIT AnalyzeContextBudget
-
-PURPOSE:
-  Enforce context budget before loading large documents.
-
-WHEN:
-  Phase 0 is about to load large documents
-  OR estimated total context > 1200 lines
-
+PURPOSE: Enforce context budget before loading large documents.
+WHEN: Phase 0 is about to load large documents OR estimated total context > 1200 lines
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/analyze/context-budget.md is loaded and followed
+  CONTINUE {cf-studio-path}/.core/workflows/analyze/context-budget.md
 ```
-
-## Phase 0: Ensure Dependencies
 
 ```text
 UNIT AnalyzePhase0
-
-PURPOSE:
-  Resolve dependencies and run Mode Detection matrix.
-
+PURPOSE: Resolve dependencies and run Mode Detection matrix.
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/analyze/phase-0-dependencies.md is loaded and followed
+  CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-0-dependencies.md
+NOTES: Phase 0 + 0.5 dependency resolution and Mode Detection matrix fully defined in phase-0-dependencies.md.
 ```
-
-NOTES: Phase 0 + Phase 0.5 dependency resolution and the Mode Detection matrix
-are fully defined in
-{cf-studio-path}/.core/workflows/analyze/phase-0-dependencies.md.
-
-## Phase 0.a: Explore Applicability
 
 ```text
 UNIT AnalyzeExploreGate
-
-PURPOSE:
-  Decide whether analysis/explanation needs project-resource discovery before
-  target validation and reviewer dispatch.
-
-WHEN:
-  AnalyzePhase0 completed
-  AND before Phase 0.5 / Phase 1
-
+PURPOSE: Decide whether discovery is needed before target validation and reviewer dispatch.
+WHEN: AnalyzePhase0 completed AND before Phase 0.5 / Phase 1
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/shared/explore-brainstorm-gate.md is loaded and followed
-
+  CONTINUE {cf-studio-path}/.core/workflows/shared/explore-brainstorm-gate.md
 RULES:
-  - MUST run required cf-explore when targets are missing or cross-file/project
-    context is the review subject
-  - MUST NOT run cf-brainstorm before findings; brainstorm is only a later
-    remediation-strategy next step
-  - MUST pass RESOURCE_CONTEXT to semantic reviewers only as resource context,
-    not prompt context
+  - MUST delegate explore applicability, replacement, and skip decisions to
+    shared/explore-brainstorm-gate.md
+  - MUST NOT run cf-brainstorm before findings; brainstorm is only a later remediation next step
+  - MUST pass RESOURCE_CONTEXT to semantic reviewers as resource context only, not prompt context
 ```
-
-## Phase 0.5: Clarify Analysis Scope
 
 ```text
 UNIT AnalyzePhase05
-
-PURPOSE:
-  Clarify scope when required by Phase 0 dependency resolution.
-
-WHEN:
-  phase-0-dependencies.md routes scope clarification
-
+PURPOSE: Clarify scope when required by Phase 0 dependency resolution.
+WHEN: phase-0-dependencies.md routes scope clarification
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/analyze/phase-0.5-scope.md is loaded and followed
-
+  CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-0.5-scope.md
 RULES:
-  - MUST NOT load {cf-studio-path}/.core/workflows/analyze/phase-0.5-scope.md independently from the router
-  - MUST load it only when {cf-studio-path}/.core/workflows/analyze/phase-0-dependencies.md triggers it (after plan-escalation
-    gate resolves, when scope/traceability/registry-consistency/cross-refs paths are unclear)
+  - MUST NOT load independently; load only when phase-0-dependencies.md triggers it
 ```
-
-## Phase 1: File Existence Check
 
 ```text
 UNIT AnalyzePhase1
-
-PURPOSE:
-  Run existence check across {PATHS}.
-
+PURPOSE: Run existence check across {PATHS}.
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/analyze/phase-1-file-check.md is loaded and followed
+  CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-1-file-check.md
 ```
-
-## Phase 2: Deterministic Gate
 
 ```text
 UNIT AnalyzePhase2
-
-PURPOSE:
-  Dispatch deterministic validators and enforce gate behavior.
-
+PURPOSE: Dispatch deterministic validators and enforce gate behavior.
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/analyze/phase-2-det-gate.md is loaded and followed
-
+  CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-2-det-gate.md
 RULES:
-  - MUST skip Phase 2 when SEMANTIC_ONLY=true (sub-file enforces; router proceeds to Phase 3)
+  - MUST skip when SEMANTIC_ONLY=true (sub-file enforces; router proceeds to Phase 3)
 ```
-
-## Phase 2.5: Reviewer Plan
 
 ```text
 UNIT AnalyzePhase25
-
-PURPOSE:
-  Produce REVIEWER_EXECUTION_PLAN for parallel dispatch in Phase 3.
-
-WHEN:
-  SUB_AGENT_SESSION_APPROVED == true
-  AND INLINE_FALLBACK == false
-
+PURPOSE: Produce REVIEWER_EXECUTION_PLAN for parallel dispatch in Phase 3.
+WHEN: SUB_AGENT_SESSION_APPROVED == true AND INLINE_FALLBACK == false
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/analyze/phase-2.5-reviewer-plan.md is loaded and followed
-
+  CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-2.5-reviewer-plan.md
 RULES:
   - MUST auto-skip when INLINE_FALLBACK=true, EXPLAIN_MODE=true, or no active methodology flag
-    (sub-file enforces its own auto-skip conditions)
-
-NOTES:
-  SUB_AGENT_SESSION_APPROVED and INLINE_FALLBACK are declared in {cf-studio-path}/.core/skills/studio/SKILL.md § Session Sub-Agent Approval Gate.
+NOTES: SUB_AGENT_SESSION_APPROVED and INLINE_FALLBACK declared in SKILL.md § Session Sub-Agent Approval Gate.
 ```
-
-## Phase 3: Semantic Review (Conditional)
 
 ```text
 UNIT AnalyzePhase3
-
-PURPOSE:
-  Run reviewer dispatch matrix, namespaced finding IDs, rules-mode behavior,
-  and EXPLAIN_MODE boundary.
-
+PURPOSE: Run reviewer dispatch matrix, namespaced finding IDs, rules-mode behavior, and EXPLAIN_MODE boundary.
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/analyze/phase-3-semantic.md is loaded and followed
+  CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-3-semantic.md
 ```
-
-## Phase 3 → Phase 4 Checkpoint
 
 ```text
 UNIT AnalyzePhase3to4
-
-PURPOSE:
-  Run context-budget recovery checkpoint between semantic review and output.
-
+PURPOSE: Run context-budget recovery checkpoint between semantic review and output.
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/analyze/phase-3-to-4-checkpoint.md is loaded and followed
+  CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-3-to-4-checkpoint.md
 ```
-
-## Phase 4: Output
 
 ```text
 UNIT AnalyzePhase4
-
-PURPOSE:
-  Emit output when semantic review or deterministic-gate FAIL is ready.
-
-WHEN:
-  semantic review is complete
-  OR deterministic gate returned FAIL
-
+PURPOSE: Emit output when semantic review or deterministic-gate FAIL is ready.
+WHEN: semantic review is complete OR deterministic gate returned FAIL
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/analyze/phase-4-output/index.md is loaded and followed
-
-NOTES:
-  Dispatcher selects schema sub-file by mode and routes Remediation Handoff
-  menu when actionable findings exist.
+  CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-4-output/index.md
+NOTES: Dispatcher selects schema sub-file by mode and routes Remediation Handoff menu when actionable findings exist.
 ```
-
-## Phase 5: Offer Next Steps
 
 ```text
 UNIT AnalyzePhase5
-
-PURPOSE:
-  Offer next steps when overall result is PASS and not in EXPLAIN mode.
-
-WHEN:
-  overall result == PASS
-  AND EXPLAIN_MODE == false
-
+PURPOSE: Offer next steps when overall result is PASS and not in EXPLAIN mode.
+WHEN: overall result == PASS AND EXPLAIN_MODE == false
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/analyze/phase-5-next-steps.md is loaded and followed
+  CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-5-next-steps.md
 ```
-
-## Terminal Block Invariant
 
 ```text
 UNIT AnalyzeTerminal
-
-PURPOSE:
-  Enforce that every analyze response ends with the correct terminal block.
-
+PURPOSE: Enforce correct terminal block ends every analyze response.
 INVARIANTS:
   - MUST NOT end response without one of:
-      Remediation Handoff menu (when actionable findings exist or deterministic gate FAIL)
+      Remediation Handoff menu (actionable findings exist or deterministic gate FAIL)
       Phase 5 next-steps menu (PASS path, EXPLAIN_MODE=false)
-  - IF {cf-studio-path}/.core/workflows/analyze/phase-4-output/index.md OR {cf-studio-path}/.core/workflows/analyze/phase-5-next-steps.md
-    is not loadable:
-      STOP and surface the missing file before emitting any final response
+  - IF phase-4-output/index.md OR phase-5-next-steps.md is not loadable: STOP and surface missing file before emitting any final response
 ```
-
-## State Summary
 
 ```text
 UNIT AnalyzeStateSummary
-
-PURPOSE:
-  Load target-type × template / checklist / design matrix.
-
+PURPOSE: Load target-type x template / checklist / design matrix.
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/analyze/state-summary.md is loaded and followed
+  CONTINUE {cf-studio-path}/.core/workflows/analyze/state-summary.md
 ```
-
-## Key Principles
 
 ```text
 UNIT AnalyzeKeyPrinciples
-
-PURPOSE:
-  Load key principles when finalizing the response.
-
-WHEN:
-  finalizing the response
-
+PURPOSE: Load key principles when finalizing the response.
+WHEN: finalizing the response
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/analyze/key-principles.md is loaded and followed
+  CONTINUE {cf-studio-path}/.core/workflows/analyze/key-principles.md
 ```
-
-## Agent Self-Test (STRICT mode — AFTER completing work)
 
 ```text
 UNIT AnalyzeSelfTest
-
-PURPOSE:
-  Answer canonical self-test questions in STRICT mode after completing work.
-
-WHEN:
-  STRICT mode finalization requires self-test
-
+PURPOSE: Answer canonical self-test questions in STRICT mode after completing work.
+WHEN: STRICT mode finalization requires self-test
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/analyze/agent-self-test.md is loaded and followed
-```
-
+  CONTINUE {cf-studio-path}/.core/workflows/analyze/agent-self-test.md
 NOTES: Also referenced from Standard Analysis Output section 4.
-
-## Validation Criteria
+```
 
 ```text
 UNIT AnalyzeValidation
-
-PURPOSE:
-  Verify post-flight checklist before ending the response.
-
-WHEN:
-  post-flight checklist must be verified before ending the response
-
+PURPOSE: Verify post-flight checklist before ending the response.
+WHEN: post-flight checklist must be verified before ending the response
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/analyze/validation-criteria.md is loaded and followed
+  CONTINUE {cf-studio-path}/.core/workflows/analyze/validation-criteria.md
 ```

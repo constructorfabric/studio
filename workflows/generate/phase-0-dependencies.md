@@ -98,7 +98,8 @@ DO:
   LOAD {cf-studio-path}/.core/requirements/raw-input-overflow.md
   IF (user_prompt_lines + all_provided_file_lines) > 500:
     STOP direct generation
-    EMIT offer: /cf-plan vs continue here with reduced guarantees
+    EMIT offer: /cf-plan vs stop; local continuation is not available unless a
+      downstream workflow explicitly preserves it after this choice
     WAIT user.reply
     STOP_TURN
 

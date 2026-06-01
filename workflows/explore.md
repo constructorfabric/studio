@@ -10,6 +10,26 @@ purpose: Standalone explore command; discovers resource context and returns a co
 # Explore Workflow
 
 ```text
+UNIT RootSkillEntrypointBootstrap
+PURPOSE: Prevent direct workflow entry from bypassing the root cf skill.
+DO:
+  1. REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is loaded completely
+     and followed FIRST.
+  2. REQUIRE CfSkillInit, Bootstrap, HardRules, and
+     WorkflowProtocolNonSubstitution from SKILL.md have completed.
+  3. CONTINUE this workflow only after the root cf skill routing/entrypoint
+     selects it.
+RULES:
+  - MUST execute before any workflow-specific unit in this file.
+  - MUST_NOT treat protocol.md, routing.md, or a thin proxy skill as a
+    substitute for loading and following SKILL.md.
+  - If this workflow file is opened directly, STOP workflow phases until
+    SKILL.md has been loaded completely and followed.
+  - This gate applies to the top-level controller only; dispatched sub-agents
+    consume the synthesized final prompt and supplied context slices.
+```
+
+```text
 UNIT ExploreWorkflow
 
 PURPOSE:
@@ -19,34 +39,47 @@ PURPOSE:
 DO:
   REQUIRE ExploreClarifyGate resolved before any cf-explorer dispatch
   REQUIRE `{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md` loaded before cf-explorer dispatch
-  DISPATCH cf-explorer with generator contract from
-    {cf-studio-path}/.core/skills/studio/agents/cf-explorer.md
-  WITH orchestrator-supplied values:
+  LOAD {cf-studio-path}/.core/skills/studio/agents/cf-explorer.md
+    as the explorer source contract
+  SYNTHESIZE final dispatch prompt from the loaded explorer contract plus
+    SHARED_CONTEXT_PACK and the payload below
+  IF explorer source contract is not loaded, unreadable, ambiguous, or not
+     reflected in the final dispatch prompt:
+    FAIL per sub-agent-dispatch.md § Contract-read-and-use gate
+    FORBID dispatch
+  DISPATCH cf-explorer with the synthesized final prompt including:
     task = user's explore request or parent workflow task
-    intent = "standalone" | "brainstorm" | "generate" | "analyze" | "plan" | "workspace" | "pdsl"
+    intent = "standalone" | "brainstorm" | "generate" | "analyze" | "plan" | "workspace" | "PDSL"
     panel = null unless called from brainstorm after panel selection
     known_paths = paths already resolved by parent workflow
     search_roots = project roots allowed for read-only discovery
     constraints = relevant scope, system, KIND, and user-provided limits
 
   RECEIVE explorer result JSON
+  VALIDATE explorer result JSON has:
+    {
+      "type": "EXPLORER_RESULT",
+      "exploration_status": "sufficient|insufficient|blocked",
+      "resource_context": {
+        "resources": [{"path": "<path-or-id>", "kind": "<kind>", "reason": "<why relevant>", "summary": "<bounded summary>"}],
+        "missing_context_questions": [],
+        "searches_run": []
+      }
+    }
   EMIT resource map and context summary
   RUN ExploreSaveOffer
-  EMIT numbered next-actions menu:
-    1. Use this context in brainstorm
-    2. Use this context in plan
-    3. Use this context in generate
-    4. Use this context in analyze/review
-    5. Refine exploration scope
-    6. Stop
 
 RULES:
   - MUST NOT put source code, docs, artifacts, diffs, or architecture files into
     SHARED_CONTEXT_PACK
+  - MUST apply sub-agent-dispatch.md § Contract-read-and-use gate before
+    dispatching cf-explorer
   - MUST treat explorer output as resource_context, not prompt_context
   - MUST NOT silently write files
   - MUST NOT dispatch prompt-consuming sub-agents with resource paths only when
     the task requires resolved resource summaries or excerpts
+  - Parent workflows MAY skip this gate only when they supply a non-empty
+    parent workflow task or known_paths
 ```
 
 ```text
@@ -113,8 +146,43 @@ RULES:
 UNIT ExploreNextActions
 
 PURPOSE:
-  Continue to the standard post-exploration next-actions menu after the save
-  offer has resolved.
+  Present post-exploration next-action options after the save offer resolves.
+
+WHEN:
+  ExploreSaveOffer has resolved (saved, skipped, or custom path saved)
+
+DO:
+  EMIT_MENU ExploreNextActionsMenu
+
+MENU ExploreNextActionsMenu:
+  TITLE: What would you like to do with this context?
+  OPTIONS:
+    1 | brainstorm ->
+      CONTINUE workflows/generate.md WITH intent="brainstorm"
+        resource_context = state.resource_context
+    2 | plan ->
+      CONTINUE workflows/plan.md
+        resource_context = state.resource_context
+    3 | generate ->
+      CONTINUE workflows/generate.md
+        resource_context = state.resource_context
+    4 | analyze | review ->
+      CONTINUE workflows/analyze.md
+        resource_context = state.resource_context
+    5 | refine | explore again ->
+      CONTINUE ExploreWorkflow
+    6 | stop | done ->
+      EMIT "Exploration complete."
+      STOP_TURN
+  INVALID:
+    EMIT "Reply with 1-6 or one of: brainstorm, plan, generate, analyze, refine, stop."
+    WAIT user.reply
+    STOP_TURN
+
+RULES:
+  - MUST pass resource_context forward to whichever workflow is chosen
+  - MUST NOT re-run ExploreSaveOffer when looping back via refine
+  - MUST stop cleanly when user replies stop or done
 ```
 
 ```text
@@ -157,6 +225,6 @@ RULES:
     downstream workflow purpose
   - MUST accept free-text topic replies as the task for the next explore turn
   - MUST carry any user-provided extra context into `constraints`
-  - Parent workflows MAY skip this gate only when they supply a non-empty
+  - Parent workflows MAY skip this clarify gate only when they supply a non-empty
     parent workflow task or known_paths
 ```

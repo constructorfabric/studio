@@ -102,8 +102,8 @@ def test_download_and_cache_writes_github_provenance(monkeypatch, tmp_path):
     monkeypatch.setenv("CFS_CACHE_DIR", str(tmp_path / "cache"))
     monkeypatch.setattr(
         cache,
-        "resolve_latest_version",
-        lambda api_base=None: ("v9.8.7", "https://downloads.example/studio.tar.gz"),
+        "_resolve_latest_version_with_metadata",
+        lambda api_base=None: ("v9.8.7", "https://downloads.example/studio.tar.gz", {}),
     )
 
     class FakeResp:
@@ -126,6 +126,118 @@ def test_download_and_cache_writes_github_provenance(monkeypatch, tmp_path):
     assert '"requested_ref": "latest"' in provenance
     assert '"resolved_ref": "v9.8.7"' in provenance
     assert '"verified": "verified"' in provenance
+
+
+def test_download_and_cache_no_releases_uses_default_branch_snapshot(monkeypatch, tmp_path):
+    import studio_proxy.cache as cache
+
+    monkeypatch.setenv("CFS_CACHE_DIR", str(tmp_path / "cache"))
+    calls = []
+    commits = iter(["abc123", "def456"])
+
+    class FakeResp:
+        def __init__(self, data):
+            self._data = data
+        def __enter__(self):
+            return self
+        def __exit__(self, *_args):
+            return None
+        def read(self):
+            return self._data
+
+    def fake_urlopen(req, **_kwargs):
+        url = req.full_url
+        calls.append(url)
+        if url.endswith("/releases/latest"):
+            raise HTTPError(url, 404, "Not Found", hdrs=None, fp=None)
+        if url == "https://api.github.com/repos/o/r":
+            return FakeResp(json.dumps({"default_branch": "trunk"}).encode())
+        if url.endswith("/git/ref/heads/trunk"):
+            commit = next(commits)
+            return FakeResp(json.dumps({
+                "object": {"type": "commit", "sha": commit},
+            }).encode())
+        if url.endswith("/tarball/abc123"):
+            return FakeResp(_skill_tarball())
+        if url.endswith("/tarball/def456"):
+            return FakeResp(_skill_tarball())
+        raise AssertionError(url)
+
+    monkeypatch.setattr(cache, "urlopen", fake_urlopen)
+
+    success, message = cache.download_and_cache(url="o/r")
+
+    assert success is True
+    assert "abc123" in message
+    assert any(call.endswith("/tarball/abc123") for call in calls)
+    assert not any(call.endswith("/tarball/main") for call in calls)
+    metadata = json.loads((tmp_path / "cache" / ".provenance.json").read_text(encoding="utf-8"))
+    assert metadata["installed_version"] == "abc123"
+    assert metadata["resolved_ref"] == "abc123"
+    assert metadata["resolver_mode"] == "default_branch_snapshot"
+    assert metadata["resolution_basis"] == "github_default_branch"
+    assert metadata["default_branch"] == "trunk"
+    assert metadata["commit_sha"] == "abc123"
+    assert metadata["verified"] == "unverified"
+
+    success, message = cache.download_and_cache(url="o/r")
+
+    assert success is True
+    assert "already up to date" not in message
+    assert "def456" in message
+    assert any(call.endswith("/tarball/def456") for call in calls)
+    metadata = json.loads((tmp_path / "cache" / ".provenance.json").read_text(encoding="utf-8"))
+    assert metadata["installed_version"] == "def456"
+    assert metadata["resolved_ref"] == "def456"
+    assert metadata["default_branch"] == "trunk"
+    assert metadata["commit_sha"] == "def456"
+
+
+def test_download_and_cache_refreshes_default_branch_snapshot_metadata(monkeypatch, tmp_path):
+    import studio_proxy.cache as cache
+
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    monkeypatch.setenv("CFS_CACHE_DIR", str(cache_dir))
+    (cache_dir / ".version").write_text("abc123", encoding="utf-8")
+    (cache_dir / ".provenance.json").write_text(json.dumps({
+        "source_type": "github",
+        "installed_version": "abc123",
+        "requested_ref": "latest",
+        "resolved_ref": "abc123",
+        "resolver_mode": "default_branch_snapshot",
+        "resolution_basis": "github_default_branch",
+        "canonical_source": "https://api.github.com/repos/o/r",
+        "effective_source": "https://api.github.com/repos/o/r",
+        "default_branch": "main",
+        "commit_sha": "abc123",
+        "verified": "unverified",
+        "freshness": "fresh",
+    }), encoding="utf-8")
+    monkeypatch.setattr(
+        cache,
+        "_resolve_latest_version_with_metadata",
+        lambda api_base=None: (
+            "abc123",
+            "https://api.github.com/repos/o/r/tarball/abc123",
+            {
+                "resolver_mode": "default_branch_snapshot",
+                "resolution_basis": "github_default_branch",
+                "default_branch": "trunk",
+                "commit_sha": "abc123",
+                "verified": "unverified",
+            },
+        ),
+    )
+    monkeypatch.setattr(cache, "urlopen", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("downloaded")))
+
+    success, message = cache.download_and_cache(url="o/r")
+
+    assert success is True
+    assert "already up to date" in message
+    metadata = json.loads((cache_dir / ".provenance.json").read_text(encoding="utf-8"))
+    assert metadata["default_branch"] == "trunk"
+    assert metadata["commit_sha"] == "abc123"
 
 
 def test_download_and_cache_explicit_release_uses_release_metadata(monkeypatch, tmp_path):
@@ -396,8 +508,8 @@ def test_download_and_cache_refreshes_offline_provenance_on_cache_hit(monkeypatc
     }), encoding="utf-8")
     monkeypatch.setattr(
         cache,
-        "resolve_latest_version",
-        lambda api_base=None: ("v1.2.3", "https://api.github.com/repos/o/r/tarball/v1.2.3"),
+        "_resolve_latest_version_with_metadata",
+        lambda api_base=None: ("v1.2.3", "https://api.github.com/repos/o/r/tarball/v1.2.3", {}),
     )
 
     success, message = cache.download_and_cache(url="https://github.com/o/r")
@@ -431,8 +543,8 @@ def test_download_and_cache_equivalent_repo_spelling_hits_cache(monkeypatch, tmp
     }), encoding="utf-8")
     monkeypatch.setattr(
         cache,
-        "resolve_latest_version",
-        lambda api_base=None: ("v1.2.3", "https://api.github.com/repos/o/r/tarball/v1.2.3"),
+        "_resolve_latest_version_with_metadata",
+        lambda api_base=None: ("v1.2.3", "https://api.github.com/repos/o/r/tarball/v1.2.3", {}),
     )
     monkeypatch.setattr(cache, "urlopen", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("downloaded")))
 

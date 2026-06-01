@@ -6,14 +6,15 @@ loaded_by: workflows/generate.md
 version: 1.0
 ---
 
-## Phase 0.1: Plan Escalation Gate
+# Phase 0.1: Plan Escalation Gate
 
 ```text
 UNIT PlanEscalationGate
 
 PURPOSE:
-  Decide whether to escalate to /cf-plan or proceed inline,
-  based on sub-agent approval state and estimated context size.
+  Decide whether to hand off to /cf-plan or proceed with native in-workflow
+  decomposition based on resolved sub-agent dispatch mode. The estimate is
+  informational for this gate.
 
 STATE:
   SUB_AGENT_SESSION_APPROVED: unset | true
@@ -21,6 +22,7 @@ STATE:
   INLINE_FALLBACK: unset | true | false
     scope: workflow_run
   ESCALATION_ESTIMATE: integer (lines)
+    scope: workflow_run
 
 WHEN:
   entering Phase 0.1 of generate workflow
@@ -30,21 +32,32 @@ DO:
 
   IF raw-input-overflow rule has already fired for direct prompt/provided-file
   input over 500 lines:
-    EMIT raw-input-overflow plan-vs-continue choice (higher precedence — resolve first)
+    EMIT raw-input-overflow plan-vs-stop choice (higher precedence — resolve first)
     STOP_TURN
+
+  IF INLINE_FALLBACK_PROBED != true:
+    RUN workflows/shared/inline-fallback-probe.md
+    CONTINUE PlanEscalationGate (re-evaluate after resolution)
 
   IF SUB_AGENT_SESSION_APPROVED == true AND INLINE_FALLBACK == false:
     CONTINUE SubAgentDecompositionBypass
 
-  IF SUB_AGENT_SESSION_APPROVED == true AND INLINE_FALLBACK == unset:
+  IF INLINE_FALLBACK == unset:
     RUN workflows/shared/inline-fallback-probe.md
     CONTINUE PlanEscalationGate (re-evaluate after resolution)
 
-  CONTINUE LegacySizeBasedEscalation
+  IF INLINE_FALLBACK == true OR host.supports_native_subagents == false:
+    CONTINUE NoNativeDispatchPlanHandoff
+
+  IF SUB_AGENT_SESSION_APPROVED != true:
+    RUN workflows/shared/inline-fallback-probe.md
+    CONTINUE PlanEscalationGate (re-evaluate after resolution)
 
 NOTES:
+  ESCALATION_ESTIMATE: estimated line count of the current task, derived from
+    target file count x average lines per file x cost-per-line heuristic.
   raw-input-overflow rule defined in the calling workflow's Phase 0 raw-input check
-  (generate.md Phase 0).
+    (generate.md Phase 0).
 ```
 
 ```text
@@ -69,14 +82,15 @@ NOTES:
 ```
 
 ```text
-UNIT LegacySizeBasedEscalation
+UNIT NoNativeDispatchPlanHandoff
 
 PURPOSE:
-  Apply size-based escalation for the inline-fallback path.
+  Prevent local single-context continuation when native sub-agent dispatch is
+  unavailable, unset, or explicitly bypassed; route to plan handoff or stop.
 
 WHEN:
-  SUB_AGENT_SESSION_APPROVED != true
-  OR INLINE_FALLBACK == true
+  INLINE_FALLBACK == true
+  OR host.supports_native_subagents == false
 
 DO:
   REQUIRE estimate of total context from:
@@ -87,47 +101,44 @@ DO:
     project context
     ~30% reasoning overhead
 
-  IF ESCALATION_ESTIMATE <= 1500:
-    CONTINUE next phase (optimal zone)
-
-  IF ESCALATION_ESTIMATE >= 1501 AND ESCALATION_ESTIMATE <= 2500:
-    EMIT "This is a medium-sized task. Activating chunked loading — will checkpoint if context runs low."
-    CONTINUE next phase
-
-  IF ESCALATION_ESTIMATE > 2500:
-    EMIT_MENU PlanEscalationMenu
-    WAIT user.reply
-    STOP_TURN
+  EMIT_MENU PlanEscalationMenu
+  WAIT user.reply
+  STOP_TURN
 
 MENU PlanEscalationMenu:
   TITLE: |
-    ⚠️ This task is large — estimated ~{ESCALATION_ESTIMATE} lines of context needed (`rules.md`, active generation dependencies, output, project ctx).
-    This exceeds the safe single-context budget (~2500 lines). The plan workflow can decompose this into focused phases (≤500 lines each) that ensure every kit rule is followed and nothing is skipped.
+    Native sub-agent dispatch is not active for this generate run.
+    Estimated context: ~{ESCALATION_ESTIMATE} lines (`rules.md`, active generation dependencies, output, project ctx).
+
+    Local single-context continuation is not allowed as a default. Use /cf-plan
+    to decompose this into focused phases, or stop and rerun with native
+    sub-agents enabled.
 
     Options:
-    1. Switch to /cf-plan (recommended for full quality)
-    2. Continue here (risk: context overflow, rules may be partially applied)
+    1. Switch to /cf-plan
+    2. Stop
 
-    Suggested: 1 because plan decomposition is the safer default for large tasks.
+    Suggested: 1 because plan decomposition is the safe fallback when native
+    sub-agent dispatch is not active.
     Reply with `1` or `2`.
   OPTIONS:
     1 ->
       EMIT "Run /cf-plan generate {KIND} with the same parameters."
       STOP_TURN
     2 ->
-      EMIT "Proceeding in single-context mode — quality may be reduced for large artifacts."
-      CONTINUE next phase
+      EMIT "Stopped before local single-context generation."
+      STOP_TURN
   INVALID:
     EMIT "Reply with 1 or 2."
     WAIT user.reply
     STOP_TURN
 
-NOTES:
-  Why these thresholds: rule-following quality drops above ~2000 lines of active
-  constraints; SDLC kit files plus output and reasoning can easily exceed 2500.
-
-  Per-option rationale (not part of user-facing prompt):
-    Option 1 (Switch to /cf-plan): decomposes the task into focused phases,
-      reduces context-overflow risk.
-    Option 2 (Continue here): faster, but context overflow may reduce rule coverage.
+RULES:
+  - MUST_NOT continue to the next generate phase from this branch
+  - MUST treat an unresolved NativeSubAgentPolicyConflictMenu from
+    workflows/shared/inline-fallback-probe.md as higher precedence than this
+    menu; do not reinterpret that conflict as permission to hand off to /cf-plan
+    or continue locally
+  - MUST_NOT offer a "continue here" or local single-context option
+  - MUST route to /cf-plan handoff or stop
 ```
