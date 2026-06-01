@@ -23,7 +23,9 @@ RULES:
 ```text
 Invoke skill `cf`.
 
-I need a bounded fix via `/cf-generate` for `{PATH}` ({KIND}).
+Invoke skill `cf-generate`.
+
+I need a bounded fix for `{PATH}` ({KIND}).
 
 Analysis status: {PASS|FAIL|PARTIAL}
 Deterministic gate: {exit code, errors, warnings — or "skipped"}

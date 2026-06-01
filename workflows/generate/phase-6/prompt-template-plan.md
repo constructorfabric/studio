@@ -29,7 +29,11 @@ Plan Prompt (copy-paste into new chat if needed):
 ```text
 Invoke skill `cf`.
 
-I just completed `/cf-generate` with unresolved findings. I need a phased remediation plan via `/cf-plan` for these files.
+I just completed Invoke skill `cf-generate` with unresolved findings.
+
+Invoke skill `cf-plan`.
+
+I need a phased remediation plan for these files.
 
 Target: {TARGET_TYPE} / {KIND}
 Changed files (already written):

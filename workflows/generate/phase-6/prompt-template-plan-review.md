@@ -8,8 +8,8 @@ description: Invoke when the user picked `W3` (Plan Review Prompt) on the Post-W
 <!--
 Finding I18 (plan phase 5) — KEEP SEPARATE from `prompt-template-direct-review.md`.
 
-This template routes the next agent to `/cf-plan` (PHASED review plan) and asks for a
-follow-up first-phase execution prompt. The Direct Review template routes to `/cf-analyze`
+This template routes the next agent to Invoke skill `cf-plan` (PHASED review plan) and asks for a
+follow-up first-phase execution prompt. The Direct Review template routes to Invoke skill `cf-analyze`
 (IMMEDIATE review) instead. The two diverge across 7 load-bearing lines (heading, routing verb,
 lead-in, focus, closing) — well above the 3-line collapse threshold; collapsing would require
 inline conditionals that break the "self-contained final prompt usable in a fresh chat" contract.
@@ -40,7 +40,9 @@ Plan Review Prompt (copy-paste into new chat if needed):
 ```text
 Invoke skill `cf`.
 
-I just completed `/cf-generate` and want a phased review plan for the generated changes.
+I just completed Invoke skill `cf-generate` and want a phased review plan for the generated changes.
+
+Invoke skill `cf-plan`.
 
 Target: {TARGET_TYPE} / {KIND}
 Changed files:
@@ -54,7 +56,7 @@ Remaining findings carried over from generation (review these explicitly):
 1. **[{severity}]** {file}:{line} — {description}. Evidence: "{quote}". Root cause: {expectation}.
 {... all remaining_findings}
 
-Use `/cf-plan` to create a phased review plan for these changes.
+Create a phased review plan for these changes.
 Focus on review coverage, risk hotspots, and the minimal set of review phases needed for high confidence.
 After creating the plan, give me the next execution prompt for the first review phase.
 

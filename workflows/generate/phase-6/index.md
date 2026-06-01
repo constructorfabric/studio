@@ -119,9 +119,9 @@ DO:
     EMIT exactly:
 ---
 What would you like to do next?
-1. Review written files — run /cf-analyze on the generated or modified files. Suggested when files changed and confidence matters.
-2. Continue generating — start another /cf-generate request using the current results as context.
-3. Plan follow-up work — start /cf-plan when remaining work is broad or multi-step.
+1. Review written files — Invoke skill cf-analyze on the generated or modified files. Suggested when files changed and confidence matters.
+2. Continue generating — Invoke skill cf-generate using the current results as context.
+3. Plan follow-up work — Invoke skill cf-plan when remaining work is broad or multi-step.
 4. Done — end the generate session with no further workflow handoff.
 5. Other — say what you want to change or do next.
 Reply with the option number or a short custom instruction.
@@ -131,7 +131,7 @@ Reply with the option number or a short custom instruction.
     EMIT exactly:
 ---
 What would you like to do next?
-1. Run /cf-analyze on the written files — Suggested when files were created; validates the output and surfaces any remaining issues.
+1. Invoke skill cf-analyze on the written files — Suggested when files were created; validates the output and surfaces any remaining issues.
 2. Done — end the generate session with no further workflow handoff.
 3. Other — describe the next action.
 Reply with the option number or a short custom instruction.

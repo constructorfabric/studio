@@ -29,7 +29,11 @@ Fix Prompt (copy-paste into new chat if needed):
 ```text
 Invoke skill `cf`.
 
-I just completed `/cf-generate` with unresolved findings. I need a bounded fix via `/cf-generate(mode=fix)` for these files.
+I just completed Invoke skill `cf-generate` with unresolved findings.
+
+Invoke skill `cf-generate` with mode=fix.
+
+I need a bounded fix for these files.
 
 Target: {TARGET_TYPE} / {KIND}
 Changed files (already written):

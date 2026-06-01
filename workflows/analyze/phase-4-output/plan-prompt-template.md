@@ -23,7 +23,9 @@ RULES:
 ```text
 Invoke skill `cf`.
 
-I need a phased remediation plan via `/cf-plan` for `{PATH}` ({KIND}).
+Invoke skill `cf-plan`.
+
+I need a phased remediation plan for `{PATH}` ({KIND}).
 
 Analysis status: {PASS|FAIL|PARTIAL}
 Deterministic gate: {exit code, errors, warnings — or "skipped"}

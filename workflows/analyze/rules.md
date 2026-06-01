@@ -65,9 +65,9 @@ NOTES:
     After a PASS result, present these options:
     - Deeper analysis — run a related analysis (consistency, code, or prompt-bug review)
       on the same or adjacent targets; reply "deeper".
-    - Handoff to /cf-generate — apply remediation for findings or improvements;
+    - Handoff to Invoke skill cf-generate — apply remediation for findings or improvements;
       reply "generate".
-    - Handoff to /cf-plan — decompose multi-phase remediation into a structured plan;
+    - Handoff to Invoke skill cf-plan — decompose multi-phase remediation into a structured plan;
       reply "plan".
     - End session — no further action needed; reply "done".
 ```
@@ -77,6 +77,6 @@ NOTES:
 After a PASS result, present these options (Phase 5 reads this section):
 
 - **Deeper analysis** — run a related analysis (consistency, code, or prompt-bug review) on the same or adjacent targets; reply `deeper`.
-- **Handoff to `/cf-generate`** — apply remediation for findings or improvements; reply `generate`.
-- **Handoff to `/cf-plan`** — decompose multi-phase remediation into a structured plan; reply `plan`.
+- **Handoff to Invoke skill `cf-generate`** — apply remediation for findings or improvements; reply `generate`.
+- **Handoff to Invoke skill `cf-plan`** — decompose multi-phase remediation into a structured plan; reply `plan`.
 - **End session** — no further action needed; reply `done`.

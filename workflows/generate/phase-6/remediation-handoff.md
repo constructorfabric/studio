@@ -29,9 +29,9 @@ DO:
 ---
 Remaining findings: High {h} / Medium {m} / Low {l}. How do you want to address them?
 
-R1. Continue here in fix mode — invoke `/cf-generate(mode=fix)` in this session on the remaining findings
-R2. Generate a Fix Prompt — emit a self-contained prompt for direct fix via `/cf-generate` in a new chat
-R3. Generate a Plan Prompt — emit a self-contained prompt for phased remediation via `/cf-plan` in a new chat
+R1. Continue here in fix mode — Invoke skill `cf-generate` with mode=fix in this session on the remaining findings
+R2. Generate a Fix Prompt — emit a self-contained prompt for direct fix via Invoke skill `cf-generate` in a new chat
+R3. Generate a Plan Prompt — emit a self-contained prompt for phased remediation via Invoke skill `cf-plan` in a new chat
 
 Suggested: {R1|R2|R3} because {scope/risk reason}.
 
