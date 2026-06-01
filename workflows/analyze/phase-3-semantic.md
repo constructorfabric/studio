@@ -60,7 +60,10 @@ DO:
     - partitions for same methodology are disjoint
     - every reviewer matches task's methodology
     - every parallel_groups[].task_ids names an existing task
+    - every task.parallel_group is a string id matching an existing parallel_groups[].id
     - every parallel_groups[].depends_on references an earlier group
+    - every parallel_groups[] entry includes id, task_ids, depends_on, execution, and reason
+    - every parallel_groups[].execution is "parallel" or "sequential"
     - each depends_on group has completed before its group runs
   IF re-validation fails:
     EMIT failure details

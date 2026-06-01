@@ -26,9 +26,13 @@ purpose: Systematic methodology for scanning brownfield projects and generating 
 
 <!-- /toc -->
 
- **Scope**: Brownfield projects where Studio is installed but no project-specific rules or specs exist yet.
+ **Scope**: Brownfield projects where Studio is installed and the user wants
+ to generate, refresh, or rescan project-specific rules/spec navigation.
  
- **Out of scope**: Greenfield projects with no code to scan, and projects that already have configured specs/rules.
+ **Out of scope**: Greenfield projects with no code to scan. Existing
+ configured specs/rules are not out of scope; they activate refresh/rescan
+ mode and require an explicit update strategy before overwriting generated
+ sections.
  
  ## Agent Instructions
  
@@ -72,6 +76,8 @@ PURPOSE:
 STATE:
   AUTO_CONFIG_PHASE: phase_1_scan | phase_1_5_docs | phase_2_systems | phase_3_rules | phase_4_agents | phase_5_registry | phase_6_validation | done
     default: phase_1_scan
+  AUTO_CONFIG_RULE_MODE: create | refresh | selective | report_only | cancel
+    default: create
 
 DO:
   REQUIRE brownfield prerequisites pass before Phase 1
@@ -95,6 +101,9 @@ RULES:
   - MUST execute phases in order
   - MUST checkpoint after each phase
   - MUST obtain user confirmation at every defined checkpoint before writing
+  - MUST NOT replace this methodology with `cfs update`, `make update`,
+    bootstrap refresh, kit refresh, cache refresh, or generated-agent refresh
+    unless the user explicitly asks to leave auto-config and run those commands
 ```
 
 ```text
@@ -108,7 +117,39 @@ RULES:
   - MUST restrict generated navigation rules to `{cf-studio-path}/config/AGENTS.md`
   - MUST restrict detected-system registration to `{cf-studio-path}/config/artifacts.toml`
   - MUST preserve existing project docs except for approved TOC additions
-  - MUST stop when existing rules are present unless `--force` is explicitly active
+  - MUST preserve user-authored content outside auto-config managed blocks
+  - WHEN existing generated rule files or auto-config blocks are present:
+      MUST present ExistingRulesRefreshMenu before Phase 3 writes
+      MUST NOT fail closed merely because rules already exist
+      MUST NOT overwrite user-authored rules unless the selected mode explicitly
+        includes that file and the Phase 3 write preview identifies the change
+
+MENU ExistingRulesRefreshMenu:
+  TITLE: |
+    Existing auto-config rules or navigation blocks were found.
+
+    Choose how to refresh them:
+    1. Refresh generated rules and auto-config AGENTS blocks from a new scan
+    2. Select files/sections to refresh after the scan summary
+    3. Keep existing rules and only report scan findings
+    4. Cancel auto-config
+  OPTIONS:
+    1 ->
+      SET AUTO_CONFIG_RULE_MODE = refresh
+      CONTINUE phase_1_scan
+    2 ->
+      SET AUTO_CONFIG_RULE_MODE = selective
+      CONTINUE phase_1_scan
+    3 ->
+      SET AUTO_CONFIG_RULE_MODE = report_only
+      CONTINUE phase_1_scan with writes disabled for existing rule files
+    4 ->
+      SET AUTO_CONFIG_RULE_MODE = cancel
+      STOP_TURN
+  INVALID:
+    EMIT "Reply with 1, 2, 3, or 4."
+    WAIT user.reply
+    STOP_TURN
 ```
 
 ```text
@@ -123,8 +164,10 @@ ON_ERROR:
     RETURN blocker
 
   existing_rules_found ->
-    EMIT "Existing rules found in {cf-studio-path}/config/rules/"
-    RETURN blocker
+    EMIT "Existing rules found in {cf-studio-path}/config/rules/ — choose refresh, selective refresh, report-only, or cancel."
+    EMIT_MENU ExistingRulesRefreshMenu
+    WAIT user.reply
+    STOP_TURN
 
   scan_incomplete ->
     EMIT "Project scan incomplete: {reason}"
@@ -164,7 +207,8 @@ ON_ERROR:
  - [ ] Studio is initialized (`studio.py info` returns `FOUND`)
  - [ ] Source-code repository is accessible
  - [ ] `{cf-studio-path}/config/` exists and is writable
- - [ ] `{cf-studio-path}/config/rules/` is empty, or `--force` is explicitly in use
+ - [ ] `{cf-studio-path}/config/rules/` is empty, or ExistingRulesRefreshMenu has
+   resolved to refresh, selective refresh, or report-only mode
 
  ## Phase 1: Project Scan
  

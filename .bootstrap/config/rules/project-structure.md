@@ -38,7 +38,7 @@ Never edit `.bootstrap/.core/` or `.bootstrap/.gen/` directly. Edit canonical so
 
 ```
 src/studio_proxy/                    # Thin globally installed proxy
-skills/cypilot/scripts/cypilot/      # Skill engine package
+skills/studio/scripts/studio/        # Studio engine package
 architecture/                        # PRD, DESIGN, ADRs, specs, features
 requirements/                        # Methodologies and validation guidance
 schemas/                             # JSON schemas
@@ -46,15 +46,15 @@ tests/                               # 44 pytest modules + shared helpers
 scripts/                             # Maintenance/check scripts
 ```
 
-Treat `src/studio_proxy/` and `skills/cypilot/scripts/cypilot/` as separate layers: proxy routing vs skill-engine business logic.
+Treat `src/studio_proxy/` and `skills/studio/scripts/studio/` as separate layers: proxy routing vs Studio-engine business logic.
 
 ## Skill Package Layout
 
 ```
-skills/cypilot/scripts/cypilot/
+skills/studio/scripts/studio/
   cli.py          # Main command router
-  commands/       # 23 command modules (one per command family)
-  utils/          # 20 shared utility modules
+  commands/       # Command modules (one per command family)
+  utils/          # Shared utility modules
   __main__.py     # python -m studio_proxy entry
   constants.py    # Shared constants and regexes
 ```
@@ -68,8 +68,8 @@ Add new CLI behavior in `commands/{name}.py`, wire it through `cli.py`, and put 
 | `AGENTS.md` | Root managed block that declares `cf-studio-path` |
 | `.bootstrap/config/AGENTS.md` | Project navigation rules, including auto-config sections |
 | `.bootstrap/config/artifacts.toml` | Source of truth for systems, artifacts, and codebases |
-| `pyproject.toml` | Proxy package metadata and `cpt` console entry point |
+| `pyproject.toml` | Proxy package metadata and `cfs` / `constructor-studio` console entry points |
 | `src/studio_proxy/cli.py` | Proxy command forwarding |
-| `skills/cypilot/scripts/cypilot/cli.py` | Skill-engine dispatch hub |
-| `skills/cypilot/scripts/cypilot/commands/init.py` | Init / force-reinit behavior |
+| `skills/studio/scripts/studio/cli.py` | Studio-engine dispatch hub |
+| `skills/studio/scripts/studio/commands/init.py` | Init / force-reinit behavior |
 | `Makefile` | Canonical local test, validate, and sync commands |

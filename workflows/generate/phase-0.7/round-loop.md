@@ -407,7 +407,10 @@ MENU QuestionReactionMenu:
   INVALID:
     IF reply is non-empty free text: treat as option 2 custom-answer
     ELSE:
-      EMIT "Reply with 1, 2, 3, 4 in challenge rounds, 5, wrap, or a custom answer."
+      IF challenge-round:
+        EMIT "Reply with 1 accept default, 2 custom answer, 3 skip, 4 keep current, 5 wrap, or a custom answer."
+      ELSE:
+        EMIT "Reply with 1 accept default, 2 custom answer, 3 skip, 5 wrap, or a custom answer."
       WAIT user.reply
       STOP_TURN
 

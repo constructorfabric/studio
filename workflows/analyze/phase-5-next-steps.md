@@ -28,13 +28,18 @@ DO:
 MENU NextStepsMenu:
   TITLE: "What would you like to do next?"
   OPTIONS:
-    1 {option from rules Next Steps for success} ->
-        State why and what happens next (suggested when clearest continuation)
-    2 {option from rules Next Steps} ->
-        State what this does next
-    3 Other -> Say what you want to change or do next
+    1 deeper ->
+        Run a related deeper analysis on the same or adjacent targets.
+    2 generate ->
+        Handoff to /cf-generate for improvements or follow-up changes.
+    3 plan ->
+        Handoff to /cf-plan to decompose broader follow-up work.
+    4 done ->
+        End the analyze session with no further workflow handoff.
+    5 other ->
+        Say what you want to change or do next.
   INVALID:
-    EMIT "Reply 1, 2, or 3, or describe what you want to do next."
+    EMIT "Reply 1, 2, 3, 4, 5, or describe what you want to do next."
     WAIT user.reply
     STOP_TURN
 
@@ -62,9 +67,11 @@ Read `## Next Steps` from `{cf-studio-path}/.core/workflows/analyze/rules.md` an
 PASS:
 ```
 What would you like to do next?
-1. {option from rules Next Steps for success} — Suggested when it is the clearest continuation from the current result; state why and what happens next.
-2. {option from rules Next Steps} — State what this does next.
-3. Other — Say what you want to change or do next.
+1. Deeper analysis — run a related consistency, code, or prompt-bug review on the same or adjacent targets.
+2. Handoff to /cf-generate — apply improvements or follow-up changes.
+3. Handoff to /cf-plan — decompose broader follow-up work into phases.
+4. Done — end the analyze session with no further workflow handoff.
+5. Other — say what you want to change or do next.
 Reply with the option number or a short custom instruction.
 ```
 FAIL:

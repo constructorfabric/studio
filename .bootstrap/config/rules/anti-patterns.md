@@ -43,7 +43,7 @@ Project-specific things NOT to do, based on patterns observed in the Constructor
 
 ## Hardcoded Layout Paths
 
-**Don't**: Hardcode `cypilot/.core/` or `cypilot/.gen/` as string literals.
+**Don't**: Hardcode `.bootstrap/.core/`, `.bootstrap/.gen/`, `.cf-studio/.core/`, or `.cf-studio/.gen/` as string literals.
 **Why**: Layout may change; helpers exist for this purpose.
 **Do**: Use `core_subpath()` / `gen_subpath()` from `utils/files.py`.
 

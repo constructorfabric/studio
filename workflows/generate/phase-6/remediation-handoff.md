@@ -35,7 +35,8 @@ R3. Generate a Plan Prompt — emit a self-contained prompt for phased remediati
 
 Suggested: {R1|R2|R3} because {scope/risk reason}.
 
-Reply `R1`, `R2`, or `R3`. The Post-Write Review Handoff menu unlocks only after remediation clears; do NOT combine remediation and review replies (e.g. `R1, W2`) — combined replies are refused with a clarifying prompt. W-only replies are refused while remediation is pending; process an `R*` choice first.
+Reply with exactly one remediation choice: `R1`, `R2`, or `R3`.
+Do not combine remediation and review choices. The `W*` review menu unlocks only after remediation clears.
 ---
   WAIT user.reply (next turn)
 

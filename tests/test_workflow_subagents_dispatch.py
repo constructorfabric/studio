@@ -511,7 +511,13 @@ def _fake_invoke(agent_id: str, payload: dict) -> dict:
                 "methodology": "prompt",
                 "path_partition": payload["target_paths"],
             }],
-            "parallel_groups": [{"id": "G1", "task_ids": ["RTASK-001"], "depends_on": []}],
+            "parallel_groups": [{
+                "id": "G1",
+                "task_ids": ["RTASK-001"],
+                "depends_on": [],
+                "execution": "parallel",
+                "reason": "Fixture group has one read-only reviewer task.",
+            }],
         }
     elif agent_id == "cf-generate-planner":
         response["result"]["author_plan_marker"] = "<!-- author_plan -->"
@@ -521,7 +527,13 @@ def _fake_invoke(agent_id: str, payload: dict) -> dict:
                 "author": "cf-generate-author-middle",
                 "target_paths": payload["target_paths"],
             }],
-            "parallel_groups": [{"id": "G1", "task_ids": ["ATASK-001"], "depends_on": []}],
+            "parallel_groups": [{
+                "id": "G1",
+                "task_ids": ["ATASK-001"],
+                "depends_on": [],
+                "execution": "parallel",
+                "reason": "Fixture group has one author task.",
+            }],
         }
     elif agent_id == "cf-generate-author":
         response["result"]["author_selection"] = {
@@ -2097,6 +2109,34 @@ def test_analyze_planner_prompt_includes_requirements_as_prompt_targets() -> Non
     assert "requirements/**/*.md" in planner
 
 
+def test_planner_contracts_reject_incomplete_or_numeric_parallel_groups() -> None:
+    """Planner prompts must forbid the invalid shape that forces rerun loops."""
+    repo_root = Path(__file__).resolve().parents[1]
+    analyze_planner = (
+        repo_root
+        / "skills"
+        / "studio"
+        / "agents"
+        / "cf-analyze-planner.md"
+    ).read_text(encoding="utf-8")
+    generate_planner = (
+        repo_root
+        / "skills"
+        / "studio"
+        / "agents"
+        / "cf-generate-planner.md"
+    ).read_text(encoding="utf-8")
+
+    for planner in (analyze_planner, generate_planner):
+        assert "Numeric values such as 1 or 2 are invalid." in planner
+        assert (
+            "Every parallel_groups[] entry MUST include all required fields:"
+            in planner
+        )
+        assert "id, task_ids, depends_on, execution, and reason" in planner
+        assert 'Every parallel_groups[].execution value MUST be exactly "parallel" or' in planner
+
+
 def test_reviewer_plan_failure_does_not_use_legacy_single_dispatch_fallback() -> None:
     """Planner failure after sub-agent decomposition must not drop to oversized legacy dispatch."""
     repo_root = Path(__file__).resolve().parents[1]
@@ -2115,7 +2155,9 @@ def test_reviewer_plan_failure_does_not_use_legacy_single_dispatch_fallback() ->
     assert "Reply `1` to rerun the planner or `2` to stop." in phase25
     assert "IF re-validation fails" in phase3
     assert "every parallel_groups[].task_ids names an existing task" in phase3
+    assert "every task.parallel_group is a string id matching an existing parallel_groups[].id" in phase3
     assert "every parallel_groups[].depends_on references an earlier group" in phase3
+    assert "every parallel_groups[] entry includes id, task_ids, depends_on, execution, and reason" in phase3
     assert "Route back to phase-2.5-reviewer-plan.md" in phase3
     assert "REVIEWER_EXECUTION_PLAN is non-null" in phase3
     assert "cancelled_inline_fallback" in phase3

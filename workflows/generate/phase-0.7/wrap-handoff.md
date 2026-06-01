@@ -156,12 +156,19 @@ PURPOSE:
 
 DO:
   WHEN user chose 2:
+    REQUIRE output_destination allows file writes
+    WRITE state.json to {cf-studio-path}/.cache/brainstorm/{session_id}/state.json
+    WRITE design.md to {cf-studio-path}/.cache/brainstorm/{session_id}/design.md
+    EMIT "Brainstorm results saved to disk under {cf-studio-path}/.cache/brainstorm/{session_id}/. No workflow handoff started."
+    STOP_TURN
+
+  WHEN user chose 3:
     CONTINUE workflows/generate/phase-1-collect.md
     WITH:
       pre_resolved_inputs = PRE_RESOLVED_INPUTS
       open_questions = CARRYOVER_QUESTIONS
 
-  WHEN user chose 3:
+  WHEN user chose 4:
     CONTINUE workflows/analyze.md
     WITH:
       brainstorm_review = true

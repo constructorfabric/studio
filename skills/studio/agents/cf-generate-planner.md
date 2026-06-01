@@ -96,6 +96,14 @@ RULES:
     registry work, or mixed tasks that are not pure code or pure prompt engineering
   - MUST mark dependencies explicitly; a task can be in a later parallel group
     when it depends on another task's output or could conflict on the same path
+  - Every task.parallel_group value MUST be a string group id matching an
+    existing parallel_groups[].id, using the `G<number>` form (for example
+    "G1"). Numeric values such as 1 or 2 are invalid.
+  - Every parallel_groups[] entry MUST include all required fields:
+    id, task_ids, depends_on, execution, and reason.
+  - Every parallel_groups[].depends_on reference MUST name an earlier group
+  - Every parallel_groups[].execution value MUST be exactly "parallel" or
+    "sequential".
   - In disk mode, produce the same JSON plan as memory mode;
     the orchestrator renders the Markdown plan pack from the JSON,
     including one file per involved author agent and one file per task
@@ -172,6 +180,10 @@ RULES:
   - work_request MUST be non-empty and MUST preserve the original requested
     work scope, not only the execution sequence
   - Every task MUST have at least one acceptance criterion
+  - Every task.parallel_group MUST be a named string group id matching an
+    existing parallel_groups[].id; numeric group values fail the gate
+  - Every parallel_groups[] entry MUST include id, task_ids, depends_on,
+    execution, and reason
   - The author_plan JSON block MUST be well-formed and follow the contract
   - MUST satisfy the SKILL.md invariant
 ```

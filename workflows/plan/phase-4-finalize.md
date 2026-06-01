@@ -163,15 +163,15 @@ MENU Phase4NextStepsNative:
   PREAMBLE:
     The plan passed self-validation. Choose your next action:
   OPTIONS:
-    1 -> EMIT "Validate plan thoroughly — run /cf-analyze on the plan"
+    1 -> CONTINUE Phase4AnalyzePlan
          (Suggested default before execution — verify the plan thoroughly with /cf-analyze)
     2 -> CONTINUE Phase4NativePhaseDispatch
          (Start executing the first phase now in this chat with the native phase runner)
     3 -> CONTINUE Phase4EmitStartupPrompt
          (Generate a handoff prompt for a separate execution chat)
-    4 -> EMIT "Review plan files — inspect phase files before execution"
+    4 -> CONTINUE Phase4ReviewPlanFiles
          (Inspect the plan files manually before deciding what to do next)
-    5 -> EMIT "Modify plan — adjust phases, add/remove content"
+    5 -> CONTINUE Phase4ModifyPlan
          (Rework the plan structure or contents before execution)
   PREAMBLE_REPLY: Reply with `1`, `2`, `3`, `4`, or `5`.
   INVALID:
@@ -184,19 +184,59 @@ MENU Phase4NextStepsFallback:
   PREAMBLE:
     The plan passed self-validation. Choose your next action:
   OPTIONS:
-    1 -> EMIT "Validate plan thoroughly — run /cf-analyze on the plan"
+    1 -> CONTINUE Phase4AnalyzePlan
          (Suggested default before execution — verify the plan thoroughly with /cf-analyze)
     2 -> CONTINUE Phase4EmitStartupPrompt
          (Generate a handoff prompt for a separate execution chat)
-    3 -> EMIT "Review plan files — inspect phase files before execution"
+    3 -> CONTINUE Phase4ReviewPlanFiles
          (Inspect the plan files manually before deciding what to do next)
-    4 -> EMIT "Modify plan — adjust phases, add/remove content"
+    4 -> CONTINUE Phase4ModifyPlan
          (Rework the plan structure or contents before execution)
   PREAMBLE_REPLY: Reply with `1`, `2`, `3`, or `4`.
   INVALID:
     EMIT "Reply with 1, 2, 3, or 4."
     WAIT user.reply
     STOP_TURN
+```
+
+```text
+UNIT Phase4AnalyzePlan
+
+PURPOSE:
+  Route the completed plan into analyze review after the user chooses
+  validation from the Phase 4 next-steps menu.
+
+DO:
+  CONTINUE workflows/analyze.md
+  WITH:
+    target_paths = ["{cf-studio-path}/.plans/{task-slug}/plan.toml"]
+    cross_refs = ["{cf-studio-path}/.plans/{task-slug}/phase-*.md"]
+    work_request = "Validate the completed execution plan before execution."
+```
+
+```text
+UNIT Phase4ReviewPlanFiles
+
+PURPOSE:
+  Show the concrete plan files to inspect and wait for the user's next action.
+
+DO:
+  EMIT "Review plan files at {cf-studio-path}/.plans/{task-slug}/. Reply with `execute`, `handoff`, `validate`, or a specific file/change request."
+  WAIT user.reply
+  STOP_TURN
+```
+
+```text
+UNIT Phase4ModifyPlan
+
+PURPOSE:
+  Route requested plan modifications back to the plan workflow instead of
+  ending after advice text.
+
+DO:
+  EMIT "Describe the plan change you want: add/remove phases, adjust scope, or update specific phase files."
+  WAIT user.reply
+  STOP_TURN
 ```
 
 ## New-Chat Startup Prompt

@@ -15,6 +15,9 @@ PURPOSE:
   before Phase 0.
 
 DO:
+  IF AUTO_CONFIG == true:
+    CONTINUE AutoConfigFastPath
+
   IF project is GREENFIELD:
     SKIP this section
     PROCEED to Phase 0
@@ -74,6 +77,12 @@ WHEN:
   AUTO_CONFIG == true (set by /cf-auto-config thin entry point at workflows/auto-config.md)
 
 DO:
+  TREAT this branch as higher precedence than normal generate update/refactor
+    routing and higher precedence than any `{cfs_cmd} --json info` notice that
+    suggests `cfs update`.
+  FORBID satisfying AUTO_CONFIG by running `cfs update`, `make update`,
+    bootstrap refresh, kit refresh, cache refresh, or generated-agent refresh
+    unless the user explicitly switches from auto-config to those commands.
   SKIP the yes/no/skip offer prompt above
   RUN auto-config methodology ({cf-studio-path}/.core/requirements/auto-config.md)
     Phases 1→6 directly

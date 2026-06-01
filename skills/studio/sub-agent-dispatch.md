@@ -236,13 +236,34 @@ DO:
     SET registered = true
   ELSE:
     SET registered = false
-    EMIT availability menu
-    WAIT user.reply (inline / mode-switch / abort)
+    EMIT_MENU NativeAgentUnavailableMenu
+    WAIT user.reply
     STOP_TURN
 
 RULES:
   - MUST default to unregistered when neither method can resolve membership
   - MUST_NOT attempt a probe dispatch to resolve membership; doing so would consume SUB_AGENT_SESSION_APPROVED capacity without authorization
+
+MENU NativeAgentUnavailableMenu:
+  TITLE: |
+    The requested native cf-* sub-agent is not registered in this host.
+
+    Options:
+    1. Use inline fallback for this workflow step
+    2. Switch mode or choose a different registered agent
+    3. Abort this dispatch
+
+    Suggested: 3 when isolation is required; choose 1 only for a bounded task
+    where inline execution is acceptable.
+    Reply with 1, 2, or 3.
+  OPTIONS:
+    1 -> SET INLINE_FALLBACK_THIS_ROUND = true; CONTINUE caller availability recovery path
+    2 -> EMIT "Name the mode or registered agent to use instead."; WAIT user.reply; STOP_TURN
+    3 -> EMIT "Dispatch aborted because the requested native sub-agent is unavailable."; STOP_TURN
+  INVALID:
+    EMIT "Reply with 1, 2, or 3."
+    WAIT user.reply
+    STOP_TURN
 ```
 
 ```text

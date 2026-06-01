@@ -27,7 +27,7 @@ Testing rules extracted from the current Constructor Studio repo.
 - `pytest` is the test framework
 - `pytest-cov` is used for coverage reporting
 - Coverage target is `90%` per file in CI
-- `tests/conftest.py` bootstraps import paths for `tests/`, `skills/cypilot/scripts/`, and `examples/overwork_alert/src`
+- `tests/conftest.py` bootstraps import paths for `tests/`, `skills/studio/scripts/`, and `examples/overwork_alert/src`
 
 ## How To Run Tests
 

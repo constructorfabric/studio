@@ -189,6 +189,10 @@ DO:
     - tasks in the same parallel_group have disjoint target_paths
     - no parallel group contains more than one task with updates_artifacts_toml=true
     - every parallel_groups[].task_ids entry names an existing task
+    - every task.parallel_group is a string id matching an existing parallel_groups[].id
+    - every parallel_groups[].depends_on references an earlier group
+    - every parallel_groups[] entry includes id, task_ids, depends_on, execution, and reason
+    - every parallel_groups[].execution is "parallel" or "sequential"
 
   IF validation passes:
     SET AUTHOR_EXECUTION_PLAN = parsed author_plan JSON

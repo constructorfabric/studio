@@ -12,17 +12,17 @@ version: 1.0
 <!-- toc -->
 
 - [Core Concepts](#core-concepts)
-  - [Constructor Studio Framework](#cypilot-framework)
+  - [Constructor Studio Framework](#constructor-studio-framework)
   - [Kit](#kit)
   - [Adapter](#adapter)
   - [Artifact](#artifact)
-  - [Constructor Studio ID](#cypilot-id)
-  - [Constructor Studio Marker](#cypilot-marker)
+  - [Constructor Studio ID](#constructor-studio-id)
+  - [Constructor Studio Marker](#constructor-studio-marker)
   - [Traceability Levels](#traceability-levels)
 - [System Hierarchy](#system-hierarchy)
 - [Key Data Structures](#key-data-structures)
   - [ArtifactsMeta](#artifactsmeta)
-  - [Constructor StudioContext](#cypilotcontext)
+  - [StudioContext](#studiocontext)
   - [Template](#template)
   - [CodeFile](#codefile)
 - [Workflows](#workflows)
@@ -60,7 +60,7 @@ config/kits/sdlc/
 ```
 
 ### Adapter
-A **project-specific configuration** in `cypilot/config/` that configures Constructor Studio for a project:
+A **project-specific configuration** in `{cf-studio-path}/config/` that configures Constructor Studio for a project:
 - `AGENTS.md` - Custom navigation rules (WHEN clauses)
 - `artifacts.toml` - Registry of systems, artifacts, codebase
 - `rules/*.md` - Project-specific rules (per-topic)
@@ -74,9 +74,9 @@ A **design document** tracked by Constructor Studio (PRD, DESIGN, DECOMPOSITION,
 
 ### Constructor Studio ID
 A **unique identifier** in format `cpt-{hierarchy-prefix}-{kind}-{slug}`:
-- `cpt-cypilot-fr-must-authenticate` - Functional requirement
-- `cpt-cypilot-core-comp-api-gateway` - Component definition
-- `cpt-cypilot-core-auth-flow-login` - Flow definition
+- `cpt-studio-fr-must-authenticate` - Functional requirement
+- `cpt-studio-core-comp-api-gateway` - Component definition
+- `cpt-studio-core-auth-flow-login` - Flow definition
 
 ### Constructor Studio Marker
 **Code traceability markers** linking code to design:
@@ -110,7 +110,7 @@ Parses `artifacts.toml` and provides lookups:
 - `iter_all_artifacts()` → Iterator
 - `iter_all_codebase()` → Iterator
 
-### Constructor StudioContext
+### StudioContext
 Global context loaded at CLI startup:
 - `adapter_dir` - Path to adapter
 - `project_root` - Path to project root

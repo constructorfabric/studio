@@ -23,7 +23,7 @@ WHEN:
   files were written AND remaining_findings is empty
 
 DO:
-  EMIT immediately after informational next-step menu:
+  EMIT one terminal post-write handoff block:
 ---
 Changes written: {N} file(s). How do you want to review them?
 
@@ -64,6 +64,6 @@ RULES:
   - Post-write review remains LOCKED until remediation choice is processed
     and Phase 6 re-enters with no remaining findings
   - Re-emission contract: when Phase 6 R1 fix-loop exits cleanly back to Phase 6
-    with remaining_findings empty, MUST re-emit this menu before ending response;
-    MUST NOT assume user scrolled back to a previous menu
+    with remaining_findings empty, MUST emit this single terminal handoff block
+    before ending response; MUST NOT assume user scrolled back to a previous menu
 ```

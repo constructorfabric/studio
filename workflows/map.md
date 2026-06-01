@@ -505,12 +505,12 @@ MENU MapNextStepsMenu:
     Reply with the option number or a short custom instruction.
   OPTIONS:
     1 ->
-      EMIT "Opening the map in a browser — explore the interactive graph."
+      CONTINUE MapOpenHtmlViewer
       (Suggested default)
     2 ->
-      EMIT "Export JSON and analyze with jq — for programmatic access to nodes/edges."
+      CONTINUE MapExportJson
     3 ->
-      EMIT "Check for dangling cpts — run cfs where-used <cpt-id> to diagnose phantom references."
+      WAIT user cpt-id to diagnose with `cfs where-used <cpt-id>`
     4 ->
       CONTINUE MapPhaseConfigAssist
     5 ->
@@ -527,4 +527,28 @@ NOTES:
   - For dangling cpts, use `cfs where-used <cpt-id>` to find missing definitions
   - Update md-map.toml if categorization needs adjustment (option 4 scaffolds the file)
   - Share the map with team for architecture review
+```
+
+```text
+UNIT MapOpenHtmlViewer
+
+PURPOSE:
+  Continue from the map next-step menu into the existing HTML map artifact.
+
+DO:
+  EMIT "Open the generated HTML map artifact in your browser to explore the interactive graph. Reply `config` to refine categories, `json` to export data, or describe another map action."
+  WAIT user.reply
+  STOP_TURN
+```
+
+```text
+UNIT MapExportJson
+
+PURPOSE:
+  Continue from the map next-step menu into a concrete JSON export path.
+
+DO:
+  EMIT "Generate or use the JSON map artifact, then inspect it with tools such as `jq`. Reply `run json` to generate JSON now, `config` to refine categories, or describe another map action."
+  WAIT user.reply
+  STOP_TURN
 ```

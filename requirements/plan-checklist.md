@@ -126,7 +126,7 @@ purpose: Checklist for validating execution plans — used by analyze workflow a
 - [ ] User is asked about lifecycle strategy after plan generation.
 - [ ] `plan.toml` sets `lifecycle` to `gitignore`, `cleanup`, `archive`, or `manual`.
 - [ ] The lifecycle action is implemented.
-- [ ] The last phase Output Format includes `ALL PHASES COMPLETE`, the lifecycle strategy reference, and `Continue in this chat? [y/n]`.
+- [ ] The last phase Output Format includes `ALL PHASES COMPLETE`, the lifecycle strategy reference, and a `Continue in this chat?` menu that states what each reply does.
 - [ ] Every non-final phase includes a single fenced, copy-pasteable next-phase prompt with both the `plan.toml` path and the next phase file path.
 - [ ] The user is told to validate before execution, given `/cf-analyze` on the plan directory, and offered validation as an explicit next step.
 

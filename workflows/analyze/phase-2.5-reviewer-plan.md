@@ -105,7 +105,10 @@ DO:
     - partitions for same methodology are disjoint
     - every reviewer matches task's methodology
     - every parallel_groups[].task_ids names an existing task
+    - every task.parallel_group is a string id matching an existing parallel_groups[].id
     - every parallel_groups[].depends_on references an earlier group
+    - every parallel_groups[] entry includes id, task_ids, depends_on, execution, and reason
+    - every parallel_groups[].execution is "parallel" or "sequential"
   IF validation fails OR planner returns checkpoint.type=PARTIAL_CHECKPOINT:
     INCREMENT PLANNER_RETRY_COUNT
     IF PLANNER_RETRY_COUNT >= PLANNER_RETRY_MAX:

@@ -34,10 +34,21 @@ PURPOSE:
   Pass through to generate.md with AUTO_CONFIG mode active.
 
 DO:
+  INTERPRET user intent as auto-config methodology execution:
+    - "auto-config", "auto-config update", "update auto-config",
+      "rescan", "refresh rules", and equivalents mean scan/rescan the
+      project and generate or update inferred config/rules.
+    - They MUST NOT be satisfied by `cfs update`, `make update`, bootstrap
+      refresh, kit refresh, cache refresh, or generated-agent refresh unless
+      the user explicitly asks for those update commands instead of
+      auto-config.
   LOAD skill `cf` IN GENERATE + AUTO_CONFIG mode, AUTO_CONFIG=true
   The target generate workflow MUST apply
   {cf-studio-path}/.core/workflows/shared/explore-brainstorm-gate.md;
   cf-explore is required for auto-config before config writes.
+  The target generate workflow MUST enter the AUTO_CONFIG fast path before
+  normal generate update/write routing, author-planning for arbitrary config
+  updates, or CLI update suggestions from `{cfs_cmd} --json info`.
   Completion signal from the generate side MUST be one of:
     { "type": "AUTO_CONFIG_RESULT", "status": "complete", "paths_written": [], "validation_status": "PASS|WARN|FAIL|SKIPPED" }
     { "type": "AUTO_CONFIG_RESULT", "status": "blocked", "reason": "<one-line>", "next_action": "<user action>" }

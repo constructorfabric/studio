@@ -29,12 +29,12 @@ MENU RemediationHandoffMenu:
     Actionable findings: High {h} / Medium {m} / Low {l}. How do you want to proceed?
     Suggested: {1|2|3} because {scope/risk reason}.
   OPTIONS:
-    1 -> load skill `cf`; enter fix mode:
+    1 -> Continue here in fix mode:
            Re-probe INLINE_FALLBACK via workflows/shared/inline-fallback-probe.md
            EMIT canonical MAX_ITER resolution prompt from
              workflows/generate/phase-5/index.md § Pre-Phase-Setup (default 5; 0 skips loop)
            WAIT user.reply for MAX_ITER
-           Initialize Phase 5 state:
+           Initialize Phase 5 state internally:
              all_findings = merged findings
              analyzed_paths = analyzed paths
              external_target_paths = analyzed_paths

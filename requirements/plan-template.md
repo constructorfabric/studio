@@ -201,7 +201,15 @@ Plan: {cf-studio-path}/.plans/{task-slug}/plan.toml
 Lifecycle: {lifecycle_strategy}
 ```
 
-Then ask: `Continue in this chat? [y/n]`
+Then ask:
+```text
+Continue in this chat?
+1. Yes — choose the next task or workflow to run in this chat.
+2. No — end the workflow here; the completed plan remains at the path above.
+
+Suggested: 2 when all planned work is complete.
+Reply `1` or `2`.
+```
 ```
 
 ## Compilation Rules

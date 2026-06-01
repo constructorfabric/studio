@@ -32,14 +32,15 @@ MENU NextStepsMenu:
     3 -> Review or edit workspace/source fields before using the workspace further.
     4 -> Other — describe the next workspace action you want (e.g., a `cfs` command to run, a config field to change, or a workspace-related question).
   STOP_TOKEN:
-    silent exit; no further menus
+    EMIT "Workspace setup complete. No further workspace action selected."
+    STOP_TURN
   INVALID:
     EMIT "Reply with 1, 2, 3, or 4, or describe a custom next step."
     WAIT user.reply
     STOP_TURN
 
 NOTES:
-  Stop tokens (stop/enough/done) at this menu produce a silent exit with no further menus.
+  Stop tokens (stop/enough/done) at this menu emit a one-line completion acknowledgement and no further menus.
   See workflows/shared/stop-token-policy.md.
   Suggested post-setup actions include: running validate from each repo, using list-ids to confirm
   artifact visibility, adding source fields to artifacts.toml for remote repos, and adding workspace
