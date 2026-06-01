@@ -10,6 +10,7 @@ Kits are direct file packages — no blueprint processing or generation.
 import argparse
 import json
 import os
+import re
 import shutil
 import sys
 import tarfile
@@ -69,6 +70,181 @@ def _parse_github_source(source: str) -> Tuple[str, str, str]:
 _GITHUB_TARBALL_MAX_MEMBERS = 4096
 _GITHUB_TARBALL_MAX_TOTAL_SIZE = 512 * 1024 * 1024
 _GITHUB_TARBALL_MAX_EXPANSION_RATIO = 200
+
+
+_SEMVER_TAG_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$")
+
+
+def _semver_key(tag: str) -> Optional[Tuple[int, int, int, int]]:
+    match = _SEMVER_TAG_RE.match(tag)
+    if not match:
+        return None
+    major, minor, patch = (int(part) for part in match.groups())
+    stable = 0 if "-" in tag else 1
+    return major, minor, patch, stable
+
+
+def _resolve_latest_semver_tag(owner: str, repo: str) -> str:
+    """Resolve the highest semver-like GitHub tag, if any."""
+    from ..utils.mirrors import apply_override
+    url = apply_override(f"https://api.github.com/repos/{owner}/{repo}/tags?per_page=100")
+    req = urllib.request.Request(url, headers=_github_headers())
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read())
+    except Exception as exc:
+        raise RuntimeError(
+            f"Failed to query GitHub tags for {owner}/{repo}: {exc}"
+        ) from exc
+    candidates: List[Tuple[Tuple[int, int, int, int], str]] = []
+    for tag_data in data if isinstance(data, list) else []:
+        if not isinstance(tag_data, dict):
+            continue
+        name = str(tag_data.get("name") or "")
+        key = _semver_key(name)
+        if key is not None:
+            candidates.append((key, name))
+    if not candidates:
+        return ""
+    return max(candidates)[1]
+
+
+def _resolve_github_ref(
+    owner: str,
+    repo: str,
+    requested_ref: str = "",
+    previous_entry: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Resolve GitHub kit selector into structured authority metadata."""
+    canonical_source = f"github:{owner}/{repo}"
+    if requested_ref:
+        return {
+            "source_type": "github",
+            "requested_ref": requested_ref,
+            "resolved_ref": requested_ref,
+            "installed_version": requested_ref,
+            "canonical_source": canonical_source,
+            "effective_source": canonical_source,
+            "resolver_mode": "explicit",
+            "resolution_basis": "github_ref",
+            "verified": "verified",
+            "freshness": "fresh",
+        }
+
+    try:
+        resolved_ref = _resolve_latest_github_release(owner, repo)
+    except RuntimeError:
+        if previous_entry:
+            previous_provenance = previous_entry.get("source_provenance", {})
+            previous_identity = previous_entry.get("content_identity", {})
+            resolved_ref = str(
+                previous_provenance.get("resolved_ref")
+                or previous_entry.get("version")
+                or ""
+            )
+            if resolved_ref:
+                return {
+                    "source_type": "github",
+                    "requested_ref": previous_provenance.get("requested_ref", "latest"),
+                    "resolved_ref": resolved_ref,
+                    "installed_version": resolved_ref,
+                    "commit_sha": previous_identity.get("commit_sha", ""),
+                    "canonical_source": previous_provenance.get("canonical_source", canonical_source),
+                    "effective_source": previous_provenance.get("effective_source", canonical_source),
+                    "resolver_mode": "offline_last_known",
+                    "resolution_basis": "last_known_core_toml",
+                    "verified": "stale",
+                    "freshness": "last_known",
+                }
+        raise
+
+    return {
+        "source_type": "github",
+        "requested_ref": "latest",
+        "resolved_ref": resolved_ref,
+        "installed_version": resolved_ref,
+        "canonical_source": canonical_source,
+        "effective_source": canonical_source,
+        "resolver_mode": "latest_release" if resolved_ref else "default_branch",
+        "resolution_basis": "github_release" if resolved_ref else "github_default_branch",
+        "verified": "verified",
+        "freshness": "fresh",
+    }
+
+
+def _derive_commit_sha_from_tar_root(extracted_dir: Path, owner: str, repo: str) -> str:
+    prefix = f"{owner}-{repo}-"
+    name = extracted_dir.name
+    if name.startswith(prefix):
+        return name[len(prefix):]
+    parts = name.rsplit("-", 1)
+    return parts[-1] if len(parts) == 2 else ""
+
+
+def _enrich_authority_with_content_identity(
+    authority_metadata: Dict[str, Any],
+    extracted_dir: Path,
+    owner: str,
+    repo: str,
+) -> Dict[str, Any]:
+    enriched = dict(authority_metadata)
+    commit_sha = enriched.get("commit_sha") or _derive_commit_sha_from_tar_root(
+        extracted_dir, owner, repo,
+    )
+    resolved_ref = str(enriched.get("resolved_ref") or enriched.get("installed_version") or "")
+    if commit_sha:
+        enriched["commit_sha"] = commit_sha
+    identity = f"{owner}/{repo}@{resolved_ref}"
+    if commit_sha:
+        identity = f"{identity}#{commit_sha}"
+    enriched["identity"] = identity
+    enriched["content_identity"] = {
+        "resolved_ref": resolved_ref,
+        **({"commit_sha": commit_sha} if commit_sha else {}),
+        "identity": identity,
+    }
+    return enriched
+
+
+def _authority_result_summary(
+    authority_metadata: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, str]]:
+    if not authority_metadata:
+        return None
+    summary = {
+        "resolver_mode": str(authority_metadata.get("resolver_mode") or ""),
+        "resolution_basis": str(authority_metadata.get("resolution_basis") or ""),
+        "requested_ref": str(authority_metadata.get("requested_ref") or ""),
+        "resolved_ref": str(authority_metadata.get("resolved_ref") or ""),
+        "commit_sha": str(authority_metadata.get("commit_sha") or ""),
+        "freshness": str(authority_metadata.get("freshness") or ""),
+        "verified": str(authority_metadata.get("verified") or ""),
+    }
+    return {key: value for key, value in summary.items() if value}
+
+
+def _authority_commit_changed(
+    authority_metadata: Optional[Dict[str, Any]],
+    installed_kit_entry: Dict[str, Any],
+) -> bool:
+    if not authority_metadata:
+        return False
+    new_identity = authority_metadata.get("content_identity", {})
+    old_identity = installed_kit_entry.get("content_identity", {})
+    new_commit = str(
+        authority_metadata.get("commit_sha")
+        or (new_identity.get("commit_sha") if isinstance(new_identity, dict) else "")
+        or ""
+    )
+    old_commit = str(
+        (
+            old_identity.get("commit_sha")
+            if isinstance(old_identity, dict)
+            else ""
+        )
+        or ""
+    )
+    return bool(new_commit and old_commit and new_commit != old_commit)
 
 
 def _validate_tar_archive_before_extract(
@@ -189,6 +365,32 @@ def _download_kit_from_github(
 # @cpt-end:cpt-studio-algo-kit-github-helpers:p1:inst-download
 
 
+def _download_kit_from_github_with_authority(
+    owner: str,
+    repo: str,
+    requested_ref: str = "",
+    previous_entry: Optional[Dict[str, Any]] = None,
+) -> Tuple[Path, str, Dict[str, Any]]:
+    authority_metadata = _resolve_github_ref(
+        owner,
+        repo,
+        requested_ref,
+        previous_entry=previous_entry,
+    )
+    resolved_ref = str(authority_metadata.get("resolved_ref") or "")
+    kit_source, resolved_version = _download_kit_from_github(owner, repo, resolved_ref)
+    if resolved_version and not authority_metadata.get("resolved_ref"):
+        authority_metadata["resolved_ref"] = resolved_version
+        authority_metadata["installed_version"] = resolved_version
+    authority_metadata = _enrich_authority_with_content_identity(
+        authority_metadata,
+        kit_source,
+        owner,
+        repo,
+    )
+    return kit_source, resolved_version, authority_metadata
+
+
 # @cpt-begin:cpt-studio-algo-kit-github-helpers:p1:inst-resolve-release
 def _resolve_latest_github_release(owner: str, repo: str) -> str:
     """Query GitHub API for the latest release tag.
@@ -217,8 +419,8 @@ def _resolve_latest_github_release(owner: str, repo: str) -> str:
             f"Failed to query GitHub releases for {owner}/{repo}: {exc}"
         ) from exc
 
-    # No releases found — use default branch (empty ref = default branch tarball)
-    return ""
+    # No releases found — use the highest semver-like tag if available.
+    return _resolve_latest_semver_tag(owner, repo)
 # @cpt-end:cpt-studio-algo-kit-github-helpers:p1:inst-resolve-release
 
 # ---------------------------------------------------------------------------
@@ -666,6 +868,7 @@ def install_kit(
     source: str = "",
     *,
     interactive: bool = False,
+    authority_metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Install a kit: copy ready files from source into config/kits/{slug}/.
 
@@ -718,6 +921,7 @@ def install_kit(
         return install_kit_with_manifest(
             kit_source, studio_dir, kit_slug, kit_version,
             manifest, interactive=interactive, source=source,
+            authority_metadata=authority_metadata,
             kit_path=(
                 kit_entry.get("path", "")
                 if has_registered_kit_path and isinstance(kit_entry, dict)
@@ -734,10 +938,14 @@ def install_kit(
 
     # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-read-version
     # Read version from source conf.toml (conf.toml is NOT copied into installed kit)
-    if not kit_version:
-        src_conf = kit_source / _KIT_CONF_FILE
-        if src_conf.is_file():
-            kit_version = _read_kit_version(src_conf)
+    local_metadata: Dict[str, str] = {}
+    src_conf = kit_source / _KIT_CONF_FILE
+    if src_conf.is_file():
+        conf_version = _read_kit_version(src_conf)
+        if conf_version:
+            local_metadata["conf_version"] = conf_version
+            if not kit_version:
+                kit_version = conf_version
     # @cpt-end:cpt-studio-algo-kit-install:p1:inst-read-version
 
     # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-seed-configs
@@ -749,7 +957,15 @@ def install_kit(
 
     # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-register-core
     # Register in core.toml
-    _register_kit_in_core_toml(config_dir, kit_slug, kit_version, studio_dir, source=source)
+    _register_kit_in_core_toml(
+        config_dir,
+        kit_slug,
+        kit_version,
+        studio_dir,
+        source=source,
+        authority_metadata=authority_metadata,
+        local_metadata=local_metadata or None,
+    )
     # @cpt-end:cpt-studio-algo-kit-install:p1:inst-register-core
 
     # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-collect-meta
@@ -789,6 +1005,7 @@ def install_kit_with_manifest(
     interactive: bool = True,
     source: str = "",
     kit_path: str = "",
+    authority_metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Install a kit using its manifest.toml — manifest-driven installation.
 
@@ -914,10 +1131,14 @@ def install_kit_with_manifest(
 
     # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-register-bindings
     # Read version from source conf.toml if not provided
-    if not kit_version:
-        src_conf = kit_source / _KIT_CONF_FILE
-        if src_conf.is_file():
-            kit_version = _read_kit_version(src_conf)
+    local_metadata: Dict[str, str] = {}
+    src_conf = kit_source / _KIT_CONF_FILE
+    if src_conf.is_file():
+        conf_version = _read_kit_version(src_conf)
+        if conf_version:
+            local_metadata["conf_version"] = conf_version
+            if not kit_version:
+                kit_version = conf_version
 
     # Seed kit config files into config/ (only if missing)
     scripts_dir = kit_root / "scripts"
@@ -928,6 +1149,8 @@ def install_kit_with_manifest(
     _register_kit_in_core_toml(
         config_dir, kit_slug, kit_version, studio_dir,
         source=source, resources=resource_bindings, kit_path=kit_root_rel,
+        authority_metadata=authority_metadata,
+        local_metadata=local_metadata or None,
     )
     # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-register-bindings
 
@@ -1152,7 +1375,7 @@ def migrate_legacy_kit_to_manifest(
 # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-resolve-github-source
 def _resolve_install_source_github(
     source_arg: str,
-) -> Optional[Tuple[Path, str, str, str, Optional[Path], Optional[int]]]:
+) -> Optional[Tuple[Path, str, str, str, Optional[Path], Optional[int], Optional[Dict[str, Any]]]]:
     """Parse and download a GitHub kit source for ``cmd_kit_install``.
 
     Returns ``(kit_source, kit_slug, kit_version, github_source, tmp_dir, None)``
@@ -1171,23 +1394,23 @@ def _resolve_install_source_github(
 
     ui.step(f"Downloading {owner}/{repo}" + (f"@{version}" if version else " (latest)") + "...")
     try:
-        kit_source, resolved_version = _download_kit_from_github(owner, repo, version)
+        kit_source, resolved_version, authority_metadata = _download_kit_from_github_with_authority(
+            owner,
+            repo,
+            version,
+        )
     except RuntimeError as exc:
         ui.result({"status": "FAIL", "message": str(exc)})
-        return (Path("."), "", "", "", None, 1)
+        return (Path("."), "", "", "", None, 1, None)
 
-    conf_file = kit_source / _KIT_CONF_FILE
     kit_slug = _read_kit_slug(kit_source)
     if not kit_slug:
         ui.result({"status": "FAIL", "message": f"Kit at {kit_source} is missing manifest.toml; cannot resolve slug."})
-        return (Path("."), "", "", "", None, 1)
-    kit_version = (
-        resolved_version or _read_kit_version(conf_file)
-        if conf_file.is_file() else resolved_version
-    )
+        return (Path("."), "", "", "", None, 1, None)
+    kit_version = resolved_version
     github_source = f"github:{owner}/{repo}"
     ui.substep(f"Resolved: {kit_slug}@{kit_version or '(dev)'}")
-    return (kit_source, kit_slug, kit_version, github_source, kit_source.parent, None)
+    return (kit_source, kit_slug, kit_version, github_source, kit_source.parent, None, authority_metadata)
 # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-resolve-github-source
 
 
@@ -1227,6 +1450,7 @@ def cmd_kit_install(argv: List[str]) -> int:
 
     # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-validate-source
     github_source = ""  # "github:owner/repo" for registration
+    authority_metadata: Optional[Dict[str, Any]] = None
     tmp_dir_to_clean: Optional[Path] = None
 
     if args.local_path:
@@ -1250,7 +1474,7 @@ def cmd_kit_install(argv: List[str]) -> int:
         if gh is None:
             return 2
         # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-read-slug-version
-        kit_source, kit_slug, kit_version, github_source, tmp_dir_to_clean, exit_code = gh
+        kit_source, kit_slug, kit_version, github_source, tmp_dir_to_clean, exit_code, authority_metadata = gh
         # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-read-slug-version
         if exit_code is not None:
             return exit_code
@@ -1305,7 +1529,15 @@ def cmd_kit_install(argv: List[str]) -> int:
         # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-dry-run
 
         # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-delegate-install
-        result = install_kit(kit_source, studio_dir, kit_slug, kit_version, source=github_source, interactive=True)
+        result = install_kit(
+            kit_source,
+            studio_dir,
+            kit_slug,
+            kit_version,
+            source=github_source,
+            interactive=True,
+            authority_metadata=authority_metadata,
+        )
         # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-delegate-install
 
         # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-regen-gen
@@ -1386,7 +1618,7 @@ def _human_kit_install(data: dict) -> None:
 # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-resolve-github-targets
 def _resolve_github_update_targets(
     kits_map: Dict[str, Dict[str, Any]],
-) -> Tuple[List[Tuple[str, Path, str, Optional[Path]]], List[Dict[str, Any]]]:
+) -> Tuple[List[Tuple[str, Path, str, Optional[Path], Optional[Dict[str, Any]]]], List[Dict[str, Any]]]:
     """Download GitHub kit sources and return update targets list.
 
     For each kit with a ``github:`` source, downloads the tarball and appends
@@ -1398,7 +1630,7 @@ def _resolve_github_update_targets(
         Tuple of (targets, failures) where failures are dicts with
         kit, action="ERROR", message, and optionally source.
     """
-    targets: List[Tuple[str, Path, str, Optional[Path]]] = []
+    targets: List[Tuple[str, Path, str, Optional[Path], Optional[Dict[str, Any]]]] = []
     failures: List[Dict[str, Any]] = []
     for slug, kit_data in kits_map.items():
         source_str = kit_data.get("source", "")
@@ -1424,11 +1656,42 @@ def _resolve_github_update_targets(
 
         ui.step(f"Downloading {owner}/{repo}...")
         try:
-            kit_source_dir, _resolved = _download_kit_from_github(owner, repo, version)
-            targets.append((slug, kit_source_dir, source_str, kit_source_dir.parent))
+            kit_source_dir, _resolved, authority_metadata = _download_kit_from_github_with_authority(
+                owner,
+                repo,
+                version,
+                previous_entry=kit_data,
+            )
+            targets.append((slug, kit_source_dir, source_str, kit_source_dir.parent, authority_metadata))
         except RuntimeError as exc:
             msg = f"Kit '{slug}': download failed: {exc}"
             ui.warn(msg)
+            try:
+                authority_metadata = _resolve_github_ref(
+                    owner,
+                    repo,
+                    version,
+                    previous_entry=kit_data,
+                )
+            except RuntimeError:
+                authority_metadata = None
+            if authority_metadata and authority_metadata.get("freshness") == "last_known":
+                current_version = str(kit_data.get("version") or "")
+                last_known_ref = str(authority_metadata.get("resolved_ref") or "")
+                if current_version and current_version == last_known_ref:
+                    msg = (
+                        f"Kit '{slug}': GitHub unavailable; installed version "
+                        f"{current_version} matches last-known release authority"
+                    )
+                    ui.warn(msg)
+                    failures.append({
+                        "kit": slug,
+                        "action": "current",
+                        "message": msg,
+                        "source": source_str,
+                        "authority": authority_metadata,
+                    })
+                    continue
             failures.append({"kit": slug, "action": "failed", "message": msg, "source": source_str})
     return targets, failures
 # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-resolve-github-targets
@@ -1463,6 +1726,8 @@ def _build_kit_update_result(kit_slug: str, kit_r: Dict[str, Any]) -> Dict[str, 
     }
     if kit_r.get("errors"):
         result["errors"] = list(kit_r.get("errors", []))
+    if kit_r.get("authority"):
+        result["authority"] = kit_r["authority"]
     return result
 # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-build-update-result
 
@@ -1517,7 +1782,7 @@ def cmd_kit_update(argv: List[str]) -> int:
 
     # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-validate-source
     # Build list of (slug, source_dir, github_source, tmp_dir) to update
-    update_targets: List[Tuple[str, Path, str, Optional[Path]]] = []
+    update_targets: List[Tuple[str, Path, str, Optional[Path], Optional[Dict[str, Any]]]] = []
     source_failures: List[Dict[str, Any]] = []
 
     if args.local_path:
@@ -1532,7 +1797,7 @@ def cmd_kit_update(argv: List[str]) -> int:
         # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-read-slug
         kit_slug = args.slug or _read_kit_slug(kit_source) or kit_source.name
         # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-read-slug
-        update_targets.append((kit_slug, kit_source, "", None))
+        update_targets.append((kit_slug, kit_source, "", None, None))
     else:
         kits_map = _read_kits_from_core_toml(config_dir)
         if not kits_map:
@@ -1555,7 +1820,32 @@ def cmd_kit_update(argv: List[str]) -> int:
 
         update_targets, source_failures = _resolve_github_update_targets(kits_map)
         if not update_targets:
-            if source_failures:
+            source_failure_actions = {
+                _normalize_kit_update_action(sf.get("action"))
+                for sf in source_failures
+            }
+            if source_failures and source_failure_actions <= {"current"}:
+                current_results = []
+                for sf in source_failures:
+                    result = {
+                        "kit": sf.get("kit", ""),
+                        "action": "current",
+                        "accepted": [],
+                        "declined": [],
+                        "files_written": 0,
+                        "unchanged": 0,
+                    }
+                    if sf.get("authority"):
+                        result["authority"] = _authority_result_summary(sf.get("authority")) or sf["authority"]
+                    current_results.append(result)
+                ui.result({
+                    "status": "PASS",
+                    "kits_updated": 0,
+                    "results": current_results,
+                    "message": "All kits are up to date",
+                }, human_fn=lambda d: _human_kit_update(d))
+                return 0
+            elif source_failures:
                 ui.result({
                     "status": "FAIL",
                     "message": "All kits failed source resolution",
@@ -1580,9 +1870,15 @@ def cmd_kit_update(argv: List[str]) -> int:
             normalized_source_failure.get("action"),
         )
         all_results.append(normalized_source_failure)
-        errors.append(f"{sf['kit']}: {sf['message']}")
+        if normalized_source_failure["action"] != "current":
+            errors.append(f"{sf['kit']}: {sf['message']}")
 
-    for kit_slug, kit_source, github_source, tmp_dir in update_targets:
+    for update_target in update_targets:
+        if len(update_target) == 4:
+            kit_slug, kit_source, github_source, tmp_dir = update_target
+            authority_metadata = None
+        else:
+            kit_slug, kit_source, github_source, tmp_dir, authority_metadata = update_target
         # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-show-whatsnew
         if not args.dry_run:
             installed_version = _read_kit_version_from_core(config_dir, kit_slug)
@@ -1614,6 +1910,7 @@ def cmd_kit_update(argv: List[str]) -> int:
                 auto_approve=args.yes,
                 force=args.force,
                 source=github_source,
+                authority_metadata=authority_metadata,
             )
             # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-legacy-migration
         except Exception as exc:  # pylint: disable=broad-exception-caught  # per-kit safety net — must not crash the update loop
@@ -1687,6 +1984,23 @@ def _human_kit_update(data: dict) -> None:
         if unchanged:
             parts.append(f"{unchanged} unchanged")
         ui.step("  ".join(parts))
+        authority = r.get("authority", {})
+        if isinstance(authority, dict) and authority:
+            authority_parts = []
+            basis = authority.get("resolution_basis") or authority.get("resolver_mode")
+            resolved_ref = authority.get("resolved_ref")
+            commit_sha = authority.get("commit_sha")
+            freshness = authority.get("freshness")
+            if basis:
+                authority_parts.append(f"basis={basis}")
+            if resolved_ref:
+                authority_parts.append(f"ref={resolved_ref}")
+            if commit_sha:
+                authority_parts.append(f"commit={commit_sha}")
+            if freshness:
+                authority_parts.append(f"freshness={freshness}")
+            if authority_parts:
+                ui.substep("  authority: " + ", ".join(authority_parts))
         for fp in accepted:
             ui.substep(f"  ~ {fp}")
         for fp in declined:
@@ -1994,6 +2308,7 @@ def _perform_first_install_kit(
     source_version: str,
     studio_dir: Path,
     source: str = "",
+    authority_metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Copy kit content, seed configs, and register in core.toml for a first install.
 
@@ -2003,7 +2318,21 @@ def _perform_first_install_kit(
     scripts_dir = config_kit_dir / "scripts"
     if scripts_dir.is_dir():
         _seed_kit_config_files(scripts_dir, config_dir, {})
-    _register_kit_in_core_toml(config_dir, kit_slug, source_version, studio_dir, source=source)
+    local_metadata = {}
+    src_conf = source_dir / _KIT_CONF_FILE
+    if src_conf.is_file():
+        conf_version = _read_kit_version(src_conf)
+        if conf_version:
+            local_metadata["conf_version"] = conf_version
+    _register_kit_in_core_toml(
+        config_dir,
+        kit_slug,
+        source_version,
+        studio_dir,
+        source=source,
+        authority_metadata=authority_metadata,
+        local_metadata=local_metadata or None,
+    )
     return {
         "status": "PASS",
         "action": "installed",
@@ -2101,6 +2430,7 @@ def update_kit(
     auto_approve: bool = False,
     force: bool = False,
     source: str = "",
+    authority_metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Full update cycle for a single kit.
 
@@ -2128,6 +2458,9 @@ def update_kit(
     config_dir = studio_dir / "config"
 
     result: Dict[str, Any] = {"kit": kit_slug}
+    authority_summary = _authority_result_summary(authority_metadata)
+    if authority_summary:
+        result["authority"] = authority_summary
     # @cpt-end:cpt-studio-algo-kit-update:p1:inst-resolve-config
 
     installed_kit_dir, installed_kit_rel, installed_kit_entry, has_registered_kit_path = _resolve_installed_kit_root(
@@ -2157,14 +2490,24 @@ def update_kit(
     # @cpt-begin:cpt-studio-algo-kit-update:p1:inst-read-source-version
     # Read source version
     src_conf = source_dir / _KIT_CONF_FILE
-    source_version = _read_kit_version(src_conf) if src_conf.is_file() else ""
+    local_conf_version = _read_kit_version(src_conf) if src_conf.is_file() else ""
+    if authority_metadata and authority_metadata.get("resolved_ref"):
+        source_version = str(authority_metadata.get("resolved_ref") or "")
+    elif authority_metadata and authority_metadata.get("installed_version"):
+        source_version = str(authority_metadata.get("installed_version") or "")
+    else:
+        source_version = local_conf_version
     # @cpt-end:cpt-studio-algo-kit-update:p1:inst-read-source-version
 
     # @cpt-begin:cpt-studio-algo-kit-update:p1:inst-version-check
     # ── Version check (skip update if same version, unless force) ────────
     if not force and source_version and installed_kit_dir.is_dir():
         installed_version = _read_kit_version_from_core(config_dir, kit_slug)
-        if installed_version and installed_version == source_version:
+        if (
+            installed_version
+            and installed_version == source_version
+            and not _authority_commit_changed(authority_metadata, installed_kit_entry)
+        ):
             result["version"] = {"status": "current"}
             result["gen"] = {"files_written": 0}
             # Still collect metadata for .gen/ aggregation
@@ -2188,6 +2531,7 @@ def update_kit(
             _mig_result = migrate_legacy_kit_to_manifest(
                 source_dir, studio_dir, kit_slug, interactive=interactive,
             )
+            result["manifest_migration"] = _mig_result
             if _mig_result.get("status") == "FAIL":
                 sys.stderr.write(
                     f"kit: warning: manifest migration for '{kit_slug}' failed: "
@@ -2224,6 +2568,7 @@ def update_kit(
                 _manifest,
                 interactive=interactive and not auto_approve,
                 source=source,
+                authority_metadata=authority_metadata,
                 kit_path=registered_kit_path if has_registered_kit_path else "",
             )
             files_written = _install_result.get("files_copied", 0)
@@ -2231,6 +2576,7 @@ def update_kit(
             _install_result = _perform_first_install_kit(
                 source_dir, installed_kit_dir, config_dir, kit_slug, source_version, studio_dir,
                 source=source,
+                authority_metadata=authority_metadata,
             )
             files_written = _install_result.get("files_copied", 0)
         install_status = str(_install_result.get("status", "PASS")).upper()
@@ -2304,6 +2650,11 @@ def update_kit(
             _register_kit_in_core_toml(
                 config_dir, kit_slug, preserved_version, studio_dir,
                 source=source, resources=_merged_resources, kit_path=_kit_root_rel,
+                authority_metadata=authority_metadata,
+                local_metadata=(
+                    {"conf_version": local_conf_version}
+                    if local_conf_version else None
+                ),
             )
         # @cpt-end:cpt-studio-algo-kit-update:p1:inst-update-core-toml
 
@@ -2462,6 +2813,8 @@ def _register_kit_in_core_toml(
     source: str = "",
     resources: Optional[Dict[str, Dict[str, str]]] = None,
     kit_path: str = "",
+    authority_metadata: Optional[Dict[str, Any]] = None,
+    local_metadata: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Register or update a kit entry in config/core.toml."""
     # @cpt-begin:cpt-studio-algo-kit-config-helpers:p1:inst-register-core
@@ -2495,8 +2848,42 @@ def _register_kit_in_core_toml(
         existing["path"] = f"config/kits/{kit_slug}"
     if source:
         existing["source"] = source
-    if kit_version:
+    if authority_metadata:
+        source_type = "github" if source.startswith("github:") else "unknown"
+        source_provenance = {
+            "source_type": authority_metadata.get("source_type", source_type),
+            "resolver_mode": authority_metadata.get("resolver_mode", ""),
+            "resolution_basis": authority_metadata.get("resolution_basis", ""),
+            "requested_ref": authority_metadata.get("requested_ref", ""),
+            "resolved_ref": authority_metadata.get("resolved_ref", ""),
+            "canonical_source": authority_metadata.get("canonical_source", source),
+            "effective_source": authority_metadata.get("effective_source", source),
+            "verified": authority_metadata.get("verified", "unknown"),
+            "freshness": authority_metadata.get("freshness", "unknown"),
+        }
+        existing["source_provenance"] = {
+            key: value for key, value in source_provenance.items() if value != ""
+        }
+        content_identity = {
+            "commit_sha": authority_metadata.get("commit_sha", ""),
+            "resolved_ref": authority_metadata.get("resolved_ref", ""),
+            "identity": authority_metadata.get("identity", ""),
+        }
+        existing["content_identity"] = {
+            key: value for key, value in content_identity.items() if value != ""
+        }
+        authority_version = (
+            authority_metadata.get("installed_version")
+            or authority_metadata.get("version")
+            or authority_metadata.get("resolved_ref")
+            or kit_version
+        )
+        if authority_version:
+            existing["version"] = str(authority_version)
+    elif kit_version:
         existing["version"] = kit_version
+    if local_metadata:
+        existing["local_metadata"] = local_metadata
     if resources is not None:
         existing["resources"] = resources
     kits[kit_slug] = existing

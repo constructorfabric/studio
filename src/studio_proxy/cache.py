@@ -16,12 +16,18 @@ import shutil
 import sys
 import tarfile
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from studio_proxy.resolve import get_cache_dir, get_version_file
+from studio_proxy.resolve import (
+    get_cache_dir,
+    get_cache_provenance,
+    get_cache_provenance_file,
+    get_version_file,
+)
 
 # GitHub repository for skill bundle releases
 GITHUB_OWNER = "constructorfabric"
@@ -65,6 +71,176 @@ def _get_github_headers() -> dict:
     if token:
         headers["Authorization"] = f"Bearer {token}"
     return headers
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _write_cache_provenance(metadata: Dict[str, Any]) -> None:
+    """Persist structured cache provenance; legacy .version remains separate."""
+    provenance_file = get_cache_provenance_file()
+    provenance_file.parent.mkdir(parents=True, exist_ok=True)
+    provenance_file.write_text(
+        json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _github_json(url: str) -> Dict[str, Any]:
+    req = Request(url, headers=_get_github_headers())
+    with urlopen(req, timeout=30) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    return data if isinstance(data, dict) else {}
+
+
+def _select_release_download_url(release_data: Dict[str, Any]) -> Optional[str]:
+    from studio_proxy.mirrors import apply_override
+    for asset in release_data.get("assets", []):
+        name = asset.get("name", "")
+        if (
+            name.startswith("studio-skill") or name.startswith("cf-constructor-skill")
+        ) and (
+            name.endswith(".tar.gz") or name.endswith(".zip")
+        ):
+            asset_url = asset.get("browser_download_url")
+            return apply_override(asset_url) if asset_url else None
+    tarball_url = release_data.get("tarball_url")
+    return apply_override(tarball_url) if tarball_url else None
+
+
+def _canonical_api_base(url: Optional[str]) -> str:
+    """Return the canonical GitHub API source before mirror overrides."""
+    if url is None:
+        return GITHUB_API_BASE
+    raw = str(url).strip().rstrip("/")
+    if raw.startswith("https://api.github.com/repos/"):
+        return raw
+    if raw.startswith("https://github.com/"):
+        path = raw[len("https://github.com/"):]
+        parts = path.strip("/").split("/")
+        if len(parts) >= 2:
+            return f"https://api.github.com/repos/{parts[0]}/{parts[1]}"
+    if "/" in raw and not raw.startswith("http"):
+        return f"https://api.github.com/repos/{raw}"
+    return raw
+
+
+def _resolve_tag_commit_sha(api_base: str, requested_ref: str) -> str:
+    from studio_proxy.mirrors import apply_override
+    tag_url = apply_override(f"{api_base}/git/ref/tags/{requested_ref}")
+    tag_data = _github_json(tag_url)
+    obj = tag_data.get("object", {})
+    if not isinstance(obj, dict):
+        return ""
+    commit_sha = str(obj.get("sha") or "")
+    if obj.get("type") == "tag":
+        tag_object_url = obj.get("url") or apply_override(f"{api_base}/git/tags/{commit_sha}")
+        tag_object = _github_json(str(tag_object_url))
+        tag_target = tag_object.get("object", {})
+        if isinstance(tag_target, dict):
+            return str(tag_target.get("sha") or commit_sha)
+    return commit_sha
+
+
+def _resolve_explicit_github_version(api_base: str, requested_ref: str) -> Dict[str, Any]:
+    """Resolve an explicit selector through GitHub Release, tag, then ref fallback."""
+    from studio_proxy.mirrors import apply_override
+    release_url = apply_override(f"{api_base}/releases/tags/{requested_ref}")
+    try:
+        release_data = _github_json(release_url)
+        resolved_ref = str(release_data.get("tag_name") or requested_ref)
+        try:
+            commit_sha = _resolve_tag_commit_sha(api_base, resolved_ref)
+        except HTTPError as exc:
+            if exc.code != 404:
+                raise
+            commit_sha = str(release_data.get("target_commitish") or "")
+        return {
+            "source_type": "github",
+            "installed_version": resolved_ref,
+            "requested_ref": requested_ref,
+            "resolved_ref": resolved_ref,
+            "commit_sha": commit_sha,
+            "resolver_mode": "explicit_release",
+            "resolution_basis": "github_release",
+            "download_url": _select_release_download_url(release_data),
+            "verified": "verified",
+            "freshness": "fresh",
+        }
+    except HTTPError as exc:
+        if exc.code != 404:
+            raise
+
+    try:
+        commit_sha = _resolve_tag_commit_sha(api_base, requested_ref)
+        return {
+            "source_type": "github",
+            "installed_version": requested_ref,
+            "requested_ref": requested_ref,
+            "resolved_ref": requested_ref,
+            "commit_sha": str(commit_sha or ""),
+            "resolver_mode": "semver_tag_fallback",
+            "resolution_basis": "github_tag",
+            "download_url": apply_override(f"{api_base}/tarball/{requested_ref}"),
+            "verified": "verified",
+            "freshness": "fresh",
+        }
+    except HTTPError as exc:
+        if exc.code != 404:
+            raise
+
+    return {
+        "source_type": "github",
+        "installed_version": requested_ref,
+        "requested_ref": requested_ref,
+        "resolved_ref": requested_ref,
+        "resolver_mode": "github_ref",
+        "resolution_basis": "github_ref",
+        "download_url": apply_override(f"{api_base}/tarball/{requested_ref}"),
+        "verified": "unverified",
+        "freshness": "unknown",
+    }
+
+
+def _last_known_offline_metadata(
+    api_base: str,
+    canonical_source: str,
+) -> Optional[Dict[str, Any]]:
+    metadata = get_cache_provenance()
+    if not metadata:
+        return None
+    if metadata.get("source_type") != "github":
+        return None
+    cached_effective = str(metadata.get("effective_source") or "")
+    cached_canonical = str(metadata.get("canonical_source") or "")
+    if cached_effective and cached_effective != api_base:
+        return None
+    if cached_canonical and cached_canonical != canonical_source:
+        return None
+    offline = dict(metadata)
+    offline["resolver_mode"] = "offline_last_known"
+    offline["resolution_basis"] = "last_known_cache_provenance"
+    offline["verified"] = "unknown"
+    offline["freshness"] = "offline"
+    offline["effective_source"] = offline.get("effective_source") or api_base
+    offline["offline_at"] = _utc_now_iso()
+    return offline
+
+
+def _cache_matches_authority(
+    resolved_version: str,
+    metadata: Dict[str, Any],
+) -> bool:
+    cached = get_cache_provenance()
+    if not cached:
+        return False
+    return (
+        cached.get("source_type") == metadata.get("source_type")
+        and cached.get("resolved_ref") == resolved_version
+        and cached.get("effective_source") == metadata.get("effective_source")
+        and cached.get("canonical_source") == metadata.get("canonical_source")
+    )
 
 
 def _resolve_api_base(url: str) -> str:
@@ -218,10 +394,24 @@ def copy_from_local(
         elif item.is_file():
             shutil.copy2(item, dst)
 
-    version_file.write_text(f"local:{local_version}", encoding="utf-8")
+    display_version = f"local:{local_version}"
+    version_file.write_text(display_version, encoding="utf-8")
+    _write_cache_provenance({
+        "source_type": "local_path",
+        "installed_version": display_version,
+        "requested_ref": "local",
+        "resolved_ref": local_version,
+        "resolver_mode": "local_path",
+        "resolution_basis": "local_path",
+        "canonical_source": source.as_posix(),
+        "effective_source": source.as_posix(),
+        "verified": "unknown",
+        "freshness": "local",
+        "resolved_at": _utc_now_iso(),
+    })
 
     return True, (
-        f"Cached: local:{local_version}\n"
+        f"Cached: {display_version}\n"
         f"  from: {source}\n"
         f"  to:   {cache_dir}"
     )
@@ -248,25 +438,69 @@ def download_and_cache(
     version_file = get_version_file()
 
     # Resolve API base for custom URL (fork support)
+    canonical_source = _canonical_api_base(url)
     api_base = apply_override(GITHUB_API_BASE)
     if url is not None:
         api_base = _resolve_api_base(url)
 
     # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-resolve-version
+    requested_ref = "latest" if version is None or version == "latest" else version
+    metadata: Dict[str, Any]
     if version is None or version == "latest":
         resolved_version, asset_url = resolve_latest_version(api_base=api_base)
         if resolved_version is None:
+            offline = _last_known_offline_metadata(api_base, canonical_source)
+            if offline and cache_dir.is_dir() and version_file.is_file():
+                _write_cache_provenance(offline)
+                return True, (
+                    f"Using last-known cache state (version {offline.get('resolved_ref') or offline.get('installed_version')})\n"
+                    "  freshness: offline\n"
+                    "  reverify:  cfs update --force"
+                )
             return False, "Failed to resolve latest version from GitHub API. Check network connectivity."
+        metadata = {
+            "source_type": "github",
+            "installed_version": resolved_version,
+            "requested_ref": requested_ref,
+            "resolved_ref": resolved_version,
+            "resolver_mode": "latest_release",
+            "resolution_basis": "github_release",
+            "download_url": asset_url,
+            "verified": "verified",
+            "freshness": "fresh",
+        }
     else:
-        resolved_version = version
-        # GitHub API /tarball/{ref} works uniformly for tags, branches, and SHAs
-        asset_url = apply_override(f"{api_base}/tarball/{version}")
+        try:
+            metadata = _resolve_explicit_github_version(api_base, version)
+        except (HTTPError, URLError, json.JSONDecodeError, OSError) as exc:
+            return False, f"Failed to resolve version {version} from GitHub API: {exc}"
+        resolved_version = str(metadata.get("resolved_ref") or version)
+        asset_url = metadata.get("download_url")
     # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-resolve-version
+
+    metadata.update({
+        "canonical_source": canonical_source,
+        "effective_source": api_base,
+    })
 
     # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-if-cache-fresh
     if not force and version_file.is_file():
         cached_version = version_file.read_text(encoding="utf-8").strip()
-        if cached_version == resolved_version:
+        if cached_version == resolved_version and _cache_matches_authority(
+            resolved_version,
+            metadata,
+        ):
+            cached_provenance = get_cache_provenance() or {}
+            if (
+                cached_provenance.get("freshness") != metadata.get("freshness")
+                or cached_provenance.get("verified") != metadata.get("verified")
+                or cached_provenance.get("resolver_mode") != metadata.get("resolver_mode")
+            ):
+                metadata.update({
+                    "download_url": asset_url,
+                    "resolved_at": _utc_now_iso(),
+                })
+                _write_cache_provenance(metadata)
             # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-cache-hit
             return True, f"Cache already up to date (version {resolved_version})"
             # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-cache-hit
@@ -335,6 +569,11 @@ def download_and_cache(
 
     # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-write-version
     version_file.write_text(resolved_version, encoding="utf-8")
+    metadata.update({
+        "download_url": asset_url,
+        "resolved_at": _utc_now_iso(),
+    })
+    _write_cache_provenance(metadata)
     # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-write-version
 
     # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-cache-path-new

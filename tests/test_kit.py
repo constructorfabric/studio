@@ -10,6 +10,7 @@ import os
 import shutil
 import sys
 import tarfile
+import tomllib
 import unittest
 from contextlib import redirect_stdout, redirect_stderr
 from pathlib import Path, PureWindowsPath
@@ -256,6 +257,58 @@ class TestCmdKitUpdate(unittest.TestCase):
             finally:
                 os.chdir(cwd)
 
+    def test_update_offline_last_known_current_exits_success(self):
+        from studio.commands.kit import cmd_kit_update
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            from studio.utils import toml_utils
+            toml_utils.dump({
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {
+                    "sdlc": {
+                        "format": "CFS",
+                        "path": "config/kits/sdlc",
+                        "source": "github:o/r",
+                        "version": "v1.0.0",
+                    },
+                },
+            }, adapter / "config" / "core.toml")
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                with patch(
+                    "studio.commands.kit._resolve_github_update_targets",
+                    return_value=(
+                        [],
+                        [{
+                            "kit": "sdlc",
+                            "action": "current",
+                            "message": "offline current",
+                            "source": "github:o/r",
+                            "authority": {
+                                "resolver_mode": "offline_last_known",
+                                "resolved_ref": "v1.0.0",
+                                "freshness": "last_known",
+                            },
+                        }],
+                    ),
+                ):
+                    buf = io.StringIO()
+                    with redirect_stdout(buf):
+                        rc = cmd_kit_update([])
+                self.assertEqual(rc, 0)
+                out = json.loads(buf.getvalue())
+                self.assertEqual(out["status"], "PASS")
+                self.assertEqual(out["results"][0]["action"], "current")
+                self.assertEqual(
+                    out["results"][0]["authority"]["resolver_mode"],
+                    "offline_last_known",
+                )
+            finally:
+                os.chdir(cwd)
+
     def test_update_manifest_invalid_binding_fails(self):
         from studio.commands.kit import cmd_kit_update
         from studio.utils import toml_utils
@@ -420,6 +473,184 @@ class TestCmdKitUpdate(unittest.TestCase):
 
 
 class TestKitHelpers(unittest.TestCase):
+    def test_human_kit_install_covers_status_variants(self):
+        from studio.commands.kit import _human_kit_install
+        from studio.utils.ui import set_json_mode
+
+        set_json_mode(False)
+        try:
+            cases = [
+                {
+                    "status": "DRY_RUN",
+                    "kit": "drykit",
+                    "version": "v1",
+                    "action": "planned",
+                    "source": "/src",
+                    "target": "/dst",
+                },
+                {
+                    "status": "PASS",
+                    "kit": "okkit",
+                    "version": "v2",
+                    "action": "installed",
+                    "files_written": 3,
+                    "artifact_kinds": ["FEATURE", "ADR"],
+                    "errors": ["non-fatal warning"],
+                },
+                {
+                    "status": "FAIL",
+                    "kit": "badkit",
+                    "version": "v3",
+                    "action": "failed",
+                    "files_written": 0,
+                    "message": "Install failed hard",
+                    "hint": "Use a valid kit source",
+                },
+                {
+                    "status": "ODD",
+                    "kit": "oddkit",
+                    "version": "v4",
+                    "action": "weird",
+                    "files_written": 1,
+                },
+            ]
+            err = io.StringIO()
+            with redirect_stderr(err):
+                for case in cases:
+                    _human_kit_install(case)
+            rendered = err.getvalue()
+            self.assertIn("Dry run", rendered)
+            self.assertIn("FEATURE, ADR", rendered)
+            self.assertIn("Use a valid kit source", rendered)
+            self.assertIn("Status: ODD", rendered)
+        finally:
+            set_json_mode(True)
+
+    def test_human_kit_update_covers_status_and_authority_variants(self):
+        from studio.commands.kit import _human_kit_update
+        from studio.utils.ui import set_json_mode
+
+        set_json_mode(False)
+        try:
+            err = io.StringIO()
+            with redirect_stderr(err):
+                _human_kit_update({
+                    "status": "PASS",
+                    "kits_updated": 1,
+                    "results": [{
+                        "kit": "sdlc",
+                        "action": "updated",
+                        "accepted": ["SKILL.md"],
+                        "declined": ["AGENTS.md"],
+                        "unchanged": 2,
+                        "authority": {
+                            "resolution_basis": "latest_release",
+                            "resolved_ref": "v2.0.0",
+                            "commit_sha": "abc123",
+                            "freshness": "fresh",
+                        },
+                    }],
+                })
+                _human_kit_update({
+                    "status": "WARN",
+                    "kits_updated": 0,
+                    "results": [{"kit": "warnkit", "action": "current"}],
+                    "errors": ["source warning"],
+                })
+                _human_kit_update({
+                    "status": "FAIL",
+                    "kits_updated": 0,
+                    "results": [{
+                        "kit": "offline",
+                        "action": "current",
+                        "authority": {"resolver_mode": "offline_last_known"},
+                    }],
+                })
+            rendered = err.getvalue()
+            self.assertIn("sdlc: updated", rendered)
+            self.assertIn("basis=latest_release", rendered)
+            self.assertIn("~ SKILL.md", rendered)
+            self.assertIn("AGENTS.md (declined)", rendered)
+            self.assertIn("source warning", rendered)
+            self.assertIn("Status: FAIL", rendered)
+        finally:
+            set_json_mode(True)
+
+    def test_build_kit_update_result_normalizes_errors_and_authority(self):
+        from studio.commands.kit import (
+            _build_kit_update_result,
+            _normalize_kit_update_action,
+        )
+
+        self.assertEqual(_normalize_kit_update_action("ERROR"), "failed")
+        self.assertEqual(_normalize_kit_update_action(" fail "), "failed")
+        self.assertEqual(_normalize_kit_update_action(None), "")
+        result = _build_kit_update_result("sdlc", {
+            "version": "FAILED",
+            "gen": "dry_run",
+            "gen_rejected": ["AGENTS.md"],
+            "errors": ["boom"],
+            "authority": {"resolved_ref": "v1"},
+        })
+        self.assertEqual(result["action"], "failed")
+        self.assertEqual(result["accepted"], [])
+        self.assertEqual(result["declined"], ["AGENTS.md"])
+        self.assertEqual(result["files_written"], 0)
+        self.assertEqual(result["unchanged"], 0)
+        self.assertEqual(result["errors"], ["boom"])
+        self.assertEqual(result["authority"]["resolved_ref"], "v1")
+
+    def test_resolve_github_update_targets_covers_source_branches(self):
+        import studio.commands.kit as kit_module
+        from studio.commands.kit import _resolve_github_update_targets
+        from studio.utils.ui import set_json_mode
+
+        set_json_mode(False)
+        with TemporaryDirectory() as td:
+            source_dir = Path(td) / "okkit"
+            source_dir.mkdir()
+            last_known = {
+                "freshness": "last_known",
+                "resolved_ref": "v1.0.0",
+                "resolver_mode": "offline_last_known",
+            }
+            kits_map = {
+                "missing": {},
+                "local": {"source": "file:/tmp/kit"},
+                "invalid": {"source": "github:not-enough-parts"},
+                "ok": {"source": "github:owner/ok", "version": "v0.9.0"},
+                "offline": {"source": "github:owner/offline", "version": "v1.0.0"},
+                "broken": {"source": "github:owner/broken", "version": "v0.1.0"},
+            }
+            try:
+                with patch.object(
+                    kit_module,
+                    "_download_kit_from_github_with_authority",
+                    side_effect=[
+                        (source_dir, "v2.0.0", {"resolved_ref": "v2.0.0"}),
+                        RuntimeError("network unavailable"),
+                        RuntimeError("tarball unavailable"),
+                    ],
+                ):
+                    with patch.object(
+                        kit_module,
+                        "_resolve_github_ref",
+                        side_effect=[last_known, RuntimeError("still unavailable")],
+                    ):
+                        err = io.StringIO()
+                        with redirect_stderr(err):
+                            targets, failures = _resolve_github_update_targets(kits_map)
+                self.assertEqual(len(targets), 1)
+                self.assertEqual(targets[0][0], "ok")
+                by_kit = {failure["kit"]: failure for failure in failures}
+                self.assertEqual(by_kit["missing"]["action"], "ERROR")
+                self.assertEqual(by_kit["local"]["action"], "ERROR")
+                self.assertEqual(by_kit["invalid"]["action"], "ERROR")
+                self.assertEqual(by_kit["offline"]["action"], "current")
+                self.assertEqual(by_kit["broken"]["action"], "failed")
+            finally:
+                set_json_mode(True)
+
     def test_read_kit_version_valid(self):
         from studio.commands.kit import _read_kit_version
         from studio.utils import toml_utils
@@ -467,6 +698,147 @@ class TestKitHelpers(unittest.TestCase):
             config_dir = Path(td)
             (config_dir / "core.toml").write_text("{{invalid", encoding="utf-8")
             _register_kit_in_core_toml(config_dir, "nokit", "1", Path(td))
+
+    def test_read_conf_version_handles_valid_missing_and_invalid(self):
+        from studio.commands.kit import _read_conf_version
+        from studio.utils import toml_utils
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            valid = root / "valid.toml"
+            missing_version = root / "missing_version.toml"
+            invalid = root / "invalid.toml"
+            toml_utils.dump({"version": "7"}, valid)
+            toml_utils.dump({"other": "value"}, missing_version)
+            invalid.write_text("version = 'not-an-int'\n", encoding="utf-8")
+
+            self.assertEqual(_read_conf_version(valid), 7)
+            self.assertEqual(_read_conf_version(missing_version), 0)
+            self.assertEqual(_read_conf_version(invalid), 0)
+            self.assertEqual(_read_conf_version(root / "absent.toml"), 0)
+
+    def test_layout_copy_backup_restore_helpers(self):
+        from studio.commands.kit import (
+            _backup_existing_config_kit,
+            _copy_legacy_kit_item,
+            _restore_existing_config_kit,
+        )
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            source_dir = root / "source_dir"
+            source_dir.mkdir()
+            (source_dir / "new.txt").write_text("new", encoding="utf-8")
+            dst_dir = root / "dst_dir"
+            dst_dir.mkdir()
+            (dst_dir / "old.txt").write_text("old", encoding="utf-8")
+
+            _copy_legacy_kit_item(source_dir, dst_dir)
+            self.assertFalse((dst_dir / "old.txt").exists())
+            self.assertEqual((dst_dir / "new.txt").read_text(encoding="utf-8"), "new")
+
+            source_file = root / "source.txt"
+            source_file.write_text("source", encoding="utf-8")
+            existing_file = root / "existing.txt"
+            existing_file.write_text("keep", encoding="utf-8")
+            _copy_legacy_kit_item(source_file, existing_file)
+            self.assertEqual(existing_file.read_text(encoding="utf-8"), "keep")
+            copied_file = root / "copied.txt"
+            _copy_legacy_kit_item(source_file, copied_file)
+            self.assertEqual(copied_file.read_text(encoding="utf-8"), "source")
+
+            config_kit = root / "config" / "kits" / "sdlc"
+            config_kit.mkdir(parents=True)
+            (config_kit / "SKILL.md").write_text("original", encoding="utf-8")
+            backup = _backup_existing_config_kit(config_kit, root / "backup" / "sdlc")
+            shutil.rmtree(config_kit)
+            _restore_existing_config_kit(backup, config_kit)
+            self.assertEqual((config_kit / "SKILL.md").read_text(encoding="utf-8"), "original")
+
+            shutil.rmtree(config_kit)
+            _restore_existing_config_kit(root / "missing_backup", config_kit)
+            self.assertFalse(config_kit.exists())
+
+    def test_migrate_single_kits_dir_entry_success_and_rollback(self):
+        import studio.commands.kit as kit_module
+        from studio.commands.kit import _migrate_single_kits_dir_entry
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            kit_dir = root / "kits" / "sdlc"
+            (kit_dir / "docs").mkdir(parents=True)
+            (kit_dir / "docs" / "guide.md").write_text("guide", encoding="utf-8")
+            (kit_dir / "conf.toml").write_text("version = 1\n", encoding="utf-8")
+            (kit_dir / "blueprints").mkdir()
+            (kit_dir / "blueprints" / "skip.md").write_text("skip", encoding="utf-8")
+            config_kits = root / "config" / "kits"
+            config_kits.mkdir(parents=True)
+            backup_dir = root / ".layout_backup"
+
+            result = _migrate_single_kits_dir_entry(kit_dir, config_kits, backup_dir)
+            self.assertEqual(result, "migrated")
+            self.assertEqual((config_kits / "sdlc" / "docs" / "guide.md").read_text(encoding="utf-8"), "guide")
+            self.assertFalse((config_kits / "sdlc" / "blueprints").exists())
+
+            (config_kits / "sdlc" / "SKILL.md").write_text("existing", encoding="utf-8")
+            with patch.object(kit_module.os, "replace", side_effect=OSError("replace failed")):
+                result = _migrate_single_kits_dir_entry(kit_dir, config_kits, backup_dir)
+            self.assertTrue(result.startswith("FAILED: replace failed"))
+            self.assertEqual((config_kits / "sdlc" / "SKILL.md").read_text(encoding="utf-8"), "existing")
+
+    def test_migrate_single_gen_kit_entry_success_and_rollback(self):
+        import studio.commands.kit as kit_module
+        from studio.commands.kit import _migrate_single_gen_kit_entry
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            gen_kit = root / ".gen" / "kits" / "sdlc"
+            (gen_kit / "agents").mkdir(parents=True)
+            (gen_kit / "agents" / "A.md").write_text("agent", encoding="utf-8")
+            (gen_kit / "SKILL.md").write_text("generated", encoding="utf-8")
+            config_kits = root / "config" / "kits"
+            config_kit = config_kits / "sdlc"
+            config_kit.mkdir(parents=True)
+            (config_kit / "SKILL.md").write_text("existing", encoding="utf-8")
+            backup_dir = root / ".layout_backup"
+
+            result = _migrate_single_gen_kit_entry(gen_kit, config_kits, backup_dir)
+            self.assertEqual(result, "migrated")
+            self.assertEqual((config_kit / "SKILL.md").read_text(encoding="utf-8"), "existing")
+            self.assertEqual((config_kit / "agents" / "A.md").read_text(encoding="utf-8"), "agent")
+
+            with patch.object(kit_module.os, "replace", side_effect=OSError("replace failed")):
+                result = _migrate_single_gen_kit_entry(gen_kit, config_kits, backup_dir)
+            self.assertTrue(result.startswith("FAILED: replace failed"))
+            self.assertEqual((config_kit / "SKILL.md").read_text(encoding="utf-8"), "existing")
+
+    def test_update_core_toml_kit_paths_rewrites_only_legacy_paths(self):
+        from studio.commands.kit import _update_core_toml_kit_paths
+        from studio.utils import toml_utils
+
+        with TemporaryDirectory() as td:
+            config_dir = Path(td) / "config"
+            config_dir.mkdir()
+            _update_core_toml_kit_paths(config_dir)
+
+            core = config_dir / "core.toml"
+            toml_utils.dump({
+                "version": "1.0",
+                "kits": {
+                    "from_gen": {"path": ".gen/kits/from_gen"},
+                    "from_kits": {"path": "kits/from_kits"},
+                    "current": {"path": "config/kits/current"},
+                    "string": "ignored",
+                },
+            }, core)
+
+            _update_core_toml_kit_paths(config_dir)
+            with open(core, "rb") as f:
+                data = tomllib.load(f)
+            self.assertEqual(data["kits"]["from_gen"]["path"], "config/kits/from_gen")
+            self.assertEqual(data["kits"]["from_kits"]["path"], "config/kits/from_kits")
+            self.assertEqual(data["kits"]["current"]["path"], "config/kits/current")
+            self.assertEqual(data["kits"]["string"], "ignored")
 
 
 class TestResolveRegisteredKitDir(unittest.TestCase):
@@ -1458,6 +1830,33 @@ class TestHumanKitUpdate(unittest.TestCase):
         self.assertIn("5 unchanged", out)
         self.assertIn("complete", out)
 
+    def test_authority_summary(self):
+        from studio.commands.kit import _human_kit_update
+        buf = io.StringIO()
+        with redirect_stderr(buf):
+            _human_kit_update({
+                "status": "PASS",
+                "kits_updated": 1,
+                "results": [
+                    {
+                        "kit": "sdlc",
+                        "action": "updated",
+                        "authority": {
+                            "resolution_basis": "github_release",
+                            "resolved_ref": "v2.0.0",
+                            "commit_sha": "abc123",
+                            "freshness": "fresh",
+                        },
+                    },
+                ],
+            })
+        out = buf.getvalue()
+        self.assertIn("authority", out)
+        self.assertIn("basis=github_release", out)
+        self.assertIn("ref=v2.0.0", out)
+        self.assertIn("commit=abc123", out)
+        self.assertIn("freshness=fresh", out)
+
     def test_warn_with_errors(self):
         from studio.commands.kit import _human_kit_update
         buf = io.StringIO()
@@ -1609,6 +2008,28 @@ class TestDownloadKitFromGithub(unittest.TestCase):
             # Cleanup
             shutil.rmtree(result_dir.parent, ignore_errors=True)
 
+    def test_with_authority_derives_commit_identity_from_tar_root(self):
+        from studio.commands.kit import _download_kit_from_github_with_authority
+
+        tar_bytes = self._make_tarball_bytes([
+            {"name": "owner-repo-abc123/", "type": tarfile.DIRTYPE},
+            {"name": "owner-repo-abc123/conf.toml", "data": b"version = 1\n"},
+        ])
+
+        with patch(
+            "studio.commands.kit.urllib.request.urlopen",
+            return_value=self._fake_response(tar_bytes),
+        ):
+            result_dir, ver, authority = _download_kit_from_github_with_authority(
+                "owner", "repo", "v1.0",
+            )
+            self.assertTrue(result_dir.is_dir())
+            self.assertEqual(ver, "v1.0")
+            self.assertEqual(authority["commit_sha"], "abc123")
+            self.assertEqual(authority["content_identity"]["commit_sha"], "abc123")
+            self.assertIn("#abc123", authority["identity"])
+            shutil.rmtree(result_dir.parent, ignore_errors=True)
+
     def test_unsafe_path_rejected(self):
         from studio.commands.kit import _download_kit_from_github
 
@@ -1736,10 +2157,29 @@ class TestResolveLatestRelease(unittest.TestCase):
         import urllib.error
         from studio.commands.kit import _resolve_latest_github_release
 
-        exc = urllib.error.HTTPError("url", 404, "Not Found", {}, None)
-        with patch("studio.commands.kit.urllib.request.urlopen", side_effect=exc):
+        class FakeResp:
+            def read(self):
+                return json.dumps([
+                    {"name": "v1.9.0"},
+                    {"name": "v2.0.0"},
+                    {"name": "not-semver"},
+                ]).encode()
+            def __enter__(self):
+                return self
+            def __exit__(self, *a):
+                pass
+
+        def fake_urlopen(req, **_kwargs):
+            url = req.full_url
+            if url.endswith("/releases/latest"):
+                raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+            if url.endswith("/tags?per_page=100"):
+                return FakeResp()
+            raise AssertionError(url)
+
+        with patch("studio.commands.kit.urllib.request.urlopen", fake_urlopen):
             tag = _resolve_latest_github_release("o", "r")
-            self.assertEqual(tag, "")
+            self.assertEqual(tag, "v2.0.0")
 
     def test_api_error_raises(self):
         import urllib.error
@@ -1755,6 +2195,125 @@ class TestResolveLatestRelease(unittest.TestCase):
         with patch("studio.commands.kit.urllib.request.urlopen", side_effect=OSError("dns")):
             with self.assertRaises(RuntimeError):
                 _resolve_latest_github_release("o", "r")
+
+
+class TestResolveGithubRef(unittest.TestCase):
+    def test_explicit_ref_does_not_call_latest_release(self):
+        from studio.commands.kit import _resolve_github_ref
+
+        calls = []
+
+        def fake_latest(_owner, _repo):
+            calls.append("latest")
+            return "v9"
+
+        with patch("studio.commands.kit._resolve_latest_github_release", fake_latest):
+            meta = _resolve_github_ref("o", "r", "v1.0")
+
+        self.assertEqual(calls, [])
+        self.assertEqual(meta["requested_ref"], "v1.0")
+        self.assertEqual(meta["resolved_ref"], "v1.0")
+        self.assertEqual(meta["resolver_mode"], "explicit")
+
+    def test_latest_release_metadata(self):
+        from studio.commands.kit import _resolve_github_ref
+
+        with patch("studio.commands.kit._resolve_latest_github_release", return_value="v2.0"):
+            meta = _resolve_github_ref("o", "r", "")
+
+        self.assertEqual(meta["requested_ref"], "latest")
+        self.assertEqual(meta["resolved_ref"], "v2.0")
+        self.assertEqual(meta["resolver_mode"], "latest_release")
+        self.assertEqual(meta["resolution_basis"], "github_release")
+
+    def test_latest_release_network_error_uses_previous_provenance(self):
+        from studio.commands.kit import _resolve_github_ref
+
+        previous = {
+            "source_provenance": {
+                "requested_ref": "latest",
+                "resolved_ref": "v2.0",
+                "resolver_mode": "latest_release",
+                "resolution_basis": "github_release",
+            },
+            "content_identity": {"commit_sha": "abc123"},
+            "version": "v2.0",
+        }
+
+        with patch("studio.commands.kit._resolve_latest_github_release", side_effect=RuntimeError("offline")):
+            meta = _resolve_github_ref("o", "r", "", previous_entry=previous)
+
+        self.assertEqual(meta["resolved_ref"], "v2.0")
+        self.assertEqual(meta["freshness"], "last_known")
+        self.assertEqual(meta["verified"], "stale")
+        self.assertEqual(meta["commit_sha"], "abc123")
+
+
+class TestKitUpdateAuthorityIdentity(unittest.TestCase):
+    def test_same_ref_with_new_commit_does_not_short_circuit_as_current(self):
+        from studio.commands.kit import install_kit, update_kit
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            old_src = _make_kit_source(Path(td), "driftkit")
+            new_src = _make_kit_source(Path(td), "driftkit-new")
+            (new_src / "SKILL.md").write_text("# Kit driftkit\nUpdated.\n", encoding="utf-8")
+
+            install_kit(
+                old_src,
+                adapter,
+                "driftkit",
+                "main",
+                source="github:o/r",
+                authority_metadata={
+                    "source_type": "github",
+                    "requested_ref": "main",
+                    "resolved_ref": "main",
+                    "installed_version": "main",
+                    "canonical_source": "github:o/r",
+                    "effective_source": "github:o/r",
+                    "resolver_mode": "explicit",
+                    "resolution_basis": "github_ref",
+                    "verified": "verified",
+                    "freshness": "fresh",
+                    "commit_sha": "old123",
+                    "identity": "o/r@main#old123",
+                },
+            )
+
+            result = update_kit(
+                "driftkit",
+                new_src,
+                adapter,
+                interactive=False,
+                auto_approve=True,
+                source="github:o/r",
+                authority_metadata={
+                    "source_type": "github",
+                    "requested_ref": "main",
+                    "resolved_ref": "main",
+                    "installed_version": "main",
+                    "canonical_source": "github:o/r",
+                    "effective_source": "github:o/r",
+                    "resolver_mode": "explicit",
+                    "resolution_basis": "github_ref",
+                    "verified": "verified",
+                    "freshness": "fresh",
+                    "commit_sha": "new456",
+                    "identity": "o/r@main#new456",
+                },
+            )
+
+            self.assertEqual(result["version"]["status"], "updated")
+            self.assertEqual(result["authority"]["resolution_basis"], "github_ref")
+            self.assertEqual(result["authority"]["commit_sha"], "new456")
+            with open(adapter / "config" / "core.toml", "rb") as f:
+                data = tomllib.load(f)
+            self.assertEqual(
+                data["kits"]["driftkit"]["content_identity"]["commit_sha"],
+                "new456",
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -2082,6 +2641,141 @@ class TestRegisterKitInCoreToml(unittest.TestCase):
                 data = tomllib.load(f)
             self.assertEqual(data["kits"]["mykit"]["source"], "github:o/r")
 
+    def test_with_github_authority_metadata(self):
+        from studio.commands.kit import _register_kit_in_core_toml
+        from studio.utils import toml_utils
+        import tomllib
+        with TemporaryDirectory() as td:
+            config = Path(td)
+            toml_utils.dump({"kits": {}}, config / "core.toml")
+            _register_kit_in_core_toml(
+                config,
+                "mykit",
+                "v2.0.0",
+                Path(td),
+                source="github:o/r",
+                authority_metadata={
+                    "requested_ref": "latest",
+                    "resolved_ref": "v2.0.0",
+                    "commit_sha": "abc123",
+                    "canonical_source": "github:o/r",
+                    "effective_source": "github:mirror/r",
+                    "resolver_mode": "latest_release",
+                    "resolution_basis": "github_release",
+                    "verified": "verified",
+                    "freshness": "fresh",
+                },
+            )
+            with open(config / "core.toml", "rb") as f:
+                data = tomllib.load(f)
+            kit = data["kits"]["mykit"]
+            self.assertEqual(kit["version"], "v2.0.0")
+            self.assertEqual(kit["source_provenance"]["source_type"], "github")
+            self.assertEqual(kit["source_provenance"]["requested_ref"], "latest")
+            self.assertEqual(kit["source_provenance"]["resolved_ref"], "v2.0.0")
+            self.assertEqual(kit["source_provenance"]["effective_source"], "github:mirror/r")
+            self.assertEqual(kit["content_identity"]["commit_sha"], "abc123")
+
+    def test_install_kit_uses_github_version_not_conf_version_for_authority(self):
+        from studio.commands.kit import install_kit
+        from studio.utils import toml_utils
+        import tomllib
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            kit_src = _make_kit_source(root, "mykit")
+            toml_utils.dump({"version": "999.0.0", "slug": "mykit"}, kit_src / "conf.toml")
+            studio_dir = root / ".cf-studio"
+            (studio_dir / "config").mkdir(parents=True)
+            toml_utils.dump({"kits": {}}, studio_dir / "config" / "core.toml")
+
+            result = install_kit(
+                kit_src,
+                studio_dir,
+                "mykit",
+                "v2.0.0",
+                source="github:o/r",
+                authority_metadata={
+                    "requested_ref": "latest",
+                    "resolved_ref": "v2.0.0",
+                    "commit_sha": "abc123",
+                    "canonical_source": "github:o/r",
+                    "effective_source": "github:o/r",
+                    "resolver_mode": "latest_release",
+                    "resolution_basis": "github_release",
+                    "verified": "verified",
+                    "freshness": "fresh",
+                },
+            )
+
+            self.assertEqual(result["version"], "v2.0.0")
+            with open(studio_dir / "config" / "core.toml", "rb") as f:
+                data = tomllib.load(f)
+            kit = data["kits"]["mykit"]
+            self.assertEqual(kit["version"], "v2.0.0")
+            self.assertEqual(kit["source_provenance"]["resolved_ref"], "v2.0.0")
+            self.assertEqual(kit["local_metadata"]["conf_version"], "999.0.0")
+
+    def test_update_kit_currentness_uses_github_authority_not_conf_version(self):
+        from studio.commands.kit import update_kit
+        from studio.utils import toml_utils
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            source = _make_kit_source(root, "mykit")
+            toml_utils.dump({"version": "999.0.0", "slug": "mykit"}, source / "conf.toml")
+            studio_dir = root / ".cf-studio"
+            installed = studio_dir / "config" / "kits" / "mykit"
+            installed.mkdir(parents=True)
+            (installed / "SKILL.md").write_text("# installed\n", encoding="utf-8")
+            toml_utils.dump({
+                "kits": {
+                    "mykit": {
+                        "format": "CFS",
+                        "path": "config/kits/mykit",
+                        "source": "github:o/r",
+                        "version": "v2.0.0",
+                    },
+                },
+            }, studio_dir / "config" / "core.toml")
+
+            result = update_kit(
+                "mykit",
+                source,
+                studio_dir,
+                source="github:o/r",
+                authority_metadata={
+                    "requested_ref": "latest",
+                    "resolved_ref": "v2.0.0",
+                    "commit_sha": "abc123",
+                    "canonical_source": "github:o/r",
+                    "effective_source": "github:o/r",
+                    "resolver_mode": "latest_release",
+                    "resolution_basis": "github_release",
+                    "verified": "verified",
+                    "freshness": "fresh",
+                },
+            )
+
+            self.assertEqual(result["version"]["status"], "current")
+
+    def test_local_install_does_not_create_github_authority(self):
+        from studio.commands.kit import install_kit
+        from studio.utils import toml_utils
+        import tomllib
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            kit_src = _make_kit_source(root, "mykit")
+            studio_dir = root / ".cf-studio"
+            (studio_dir / "config").mkdir(parents=True)
+            toml_utils.dump({"kits": {}}, studio_dir / "config" / "core.toml")
+
+            install_kit(kit_src, studio_dir, "mykit")
+
+            with open(studio_dir / "config" / "core.toml", "rb") as f:
+                data = tomllib.load(f)
+            kit = data["kits"]["mykit"]
+            self.assertNotIn("source_provenance", kit)
+            self.assertEqual(kit["local_metadata"]["conf_version"], "1")
+
     def test_with_explicit_path(self):
         from studio.commands.kit import _register_kit_in_core_toml
         from studio.utils import toml_utils
@@ -2365,9 +3059,15 @@ class TestCmdKitInstallGithubPath(unittest.TestCase):
             cwd = os.getcwd()
             try:
                 os.chdir(root)
-                with patch(
-                    "studio.commands.kit._download_kit_from_github",
-                    return_value=(kit_src, "1.0"),
+                with (
+                    patch(
+                        "studio.commands.kit._resolve_latest_github_release",
+                        return_value="1.0",
+                    ),
+                    patch(
+                        "studio.commands.kit._download_kit_from_github",
+                        return_value=(kit_src, "1.0"),
+                    ),
                 ):
                     buf = io.StringIO()
                     with redirect_stdout(buf):
@@ -2537,9 +3237,15 @@ class TestCmdKitUpdateCli(unittest.TestCase):
             cwd = os.getcwd()
             try:
                 os.chdir(root)
-                with patch(
-                    "studio.commands.kit._download_kit_from_github",
-                    return_value=(kit_src, "1.0"),
+                with (
+                    patch(
+                        "studio.commands.kit._resolve_latest_github_release",
+                        return_value="1.0",
+                    ),
+                    patch(
+                        "studio.commands.kit._download_kit_from_github",
+                        return_value=(kit_src, "1.0"),
+                    ),
                 ):
                     buf = io.StringIO()
                     with redirect_stdout(buf):

@@ -21,7 +21,9 @@ from typing import List, Optional
 from studio_proxy.resolve import (
     find_cached_skill,
     find_project_skill,
+    get_cache_provenance,
     get_cached_version,
+    get_project_provenance,
     get_project_version,
     resolve_skill,
 )
@@ -178,15 +180,46 @@ def main(argv: Optional[List[str]] = None) -> int:
     # Handle --version with no value: show version info
     if args and args[0] == "--version" and len(args) == 1:
         from studio_proxy import __version__
-        print(f"constructor-studio {__version__}")
+        print(f"package: constructor-studio {__version__}")
         cached = get_cached_version()
         if cached:
-            print(f"skill (cached): {cached}")
+            print(f"skill cache: {cached}")
+            provenance = get_cache_provenance()
+            if provenance:
+                source_type = provenance.get("source_type")
+                effective_source = provenance.get("effective_source")
+                resolved_ref = provenance.get("resolved_ref")
+                verified = provenance.get("verified")
+                if source_type:
+                    print(f"  source: {source_type}")
+                if effective_source:
+                    print(f"  effective source: {effective_source}")
+                if resolved_ref:
+                    print(f"  resolved ref: {resolved_ref}")
+                if verified:
+                    print(f"  verified: {verified}")
         project_skill = find_project_skill()
         if project_skill:
             pv = get_project_version(project_skill)
             if pv:
-                print(f"skill (project): {pv}")
+                print(f"skill project: {pv}")
+                print(f"  path: {project_skill}")
+                project_provenance = get_project_provenance(project_skill)
+                if project_provenance:
+                    source_type = project_provenance.get("source_type")
+                    effective_source = project_provenance.get("effective_source")
+                    resolved_ref = project_provenance.get("resolved_ref")
+                    verified = project_provenance.get("verified")
+                    if source_type:
+                        print(f"  source: {source_type}")
+                    if effective_source:
+                        print(f"  effective source: {effective_source}")
+                    if resolved_ref:
+                        print(f"  resolved ref: {resolved_ref}")
+                    if verified:
+                        print(f"  verified: {verified}")
+                else:
+                    print("  verified: unknown")
         return 0
 
     # Extract --version VERSION, --force, --source, --url, --no-cache only for init and update commands

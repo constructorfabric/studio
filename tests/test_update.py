@@ -278,6 +278,16 @@ class TestCmdUpdateErrors(unittest.TestCase):
             root.mkdir()
             cache = Path(td) / "cache"
             _make_cache(cache)
+            (cache / ".provenance.json").write_text(
+                json.dumps({
+                    "source_type": "github",
+                    "installed_version": "v9.8.7",
+                    "resolved_ref": "v9.8.7",
+                    "effective_source": "github:o/r",
+                    "verified": "verified",
+                }),
+                encoding="utf-8",
+            )
             _init_project(root, cache)
 
             cwd = os.getcwd()
@@ -353,6 +363,16 @@ class TestCmdUpdatePipeline(unittest.TestCase):
             root.mkdir()
             cache = Path(td) / "cache"
             _make_cache(cache)
+            (cache / ".provenance.json").write_text(
+                json.dumps({
+                    "source_type": "github",
+                    "installed_version": "v9.8.7",
+                    "resolved_ref": "v9.8.7",
+                    "effective_source": "github:o/r",
+                    "verified": "verified",
+                }),
+                encoding="utf-8",
+            )
             _init_project(root, cache)
 
             cwd = os.getcwd()
@@ -374,6 +394,9 @@ class TestCmdUpdatePipeline(unittest.TestCase):
                 self.assertIn("actions", out)
                 self.assertIn("core_update", out["actions"])
                 self.assertIn("kits", out["actions"])
+                self.assertEqual(out["actions"]["install_provenance"], "updated")
+                installed_provenance = root / ".cf-studio" / ".core" / ".provenance.json"
+                self.assertTrue(installed_provenance.is_file())
             finally:
                 os.chdir(cwd)
 
@@ -462,6 +485,200 @@ class TestCmdUpdatePipeline(unittest.TestCase):
                 ver = sdlc_r.get("version", {})
                 # Version drift runs the diff; if file content is identical, status is "current"
                 self.assertIn(ver.get("status"), ["created", "updated", "current"])
+            finally:
+                os.chdir(cwd)
+
+    def test_update_github_kit_records_authority_metadata(self):
+        """Main cmd_update path persists GitHub release authority for kits."""
+        from studio.commands.update import cmd_update
+        from studio.utils import toml_utils
+        import tomllib
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            root.mkdir()
+            cache_v1 = Path(td) / "cache_v1"
+            _make_cache(cache_v1, kit_version=1)
+            adapter = _init_project(root, cache_v1)
+
+            cache_v2 = Path(td) / "cache_v2"
+            _make_cache(cache_v2, kit_version=2)
+            kit_src_v2 = cache_v2 / "kits" / "sdlc"
+
+            core_toml = adapter / "config" / "core.toml"
+            with open(core_toml, "rb") as f:
+                core_data = tomllib.load(f)
+            core_data["kits"]["sdlc"]["source"] = "github:o/r"
+            toml_utils.dump(core_data, core_toml)
+
+            authority = {
+                "source_type": "github",
+                "requested_ref": "latest",
+                "resolved_ref": "v2.0.0",
+                "installed_version": "v2.0.0",
+                "canonical_source": "github:o/r",
+                "effective_source": "github:o/r",
+                "resolver_mode": "latest_release",
+                "resolution_basis": "github_release",
+                "verified": "verified",
+                "freshness": "fresh",
+                "commit_sha": "abc123",
+                "identity": "o/r@v2.0.0#abc123",
+            }
+
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                with (
+                    patch("studio.commands.update.CACHE_DIR", cache_v2),
+                    patch(
+                        "studio.commands.kit._download_kit_from_github_with_authority",
+                        return_value=(kit_src_v2, "v2.0.0", authority),
+                    ),
+                ):
+                    buf = io.StringIO()
+                    err = io.StringIO()
+                    with redirect_stdout(buf), redirect_stderr(err):
+                        rc = cmd_update(["-y"])
+                self.assertEqual(rc, 0)
+            finally:
+                os.chdir(cwd)
+
+            with open(core_toml, "rb") as f:
+                updated_core = tomllib.load(f)
+            kit_data = updated_core["kits"]["sdlc"]
+            self.assertEqual(kit_data["version"], "v2.0.0")
+            self.assertEqual(
+                kit_data["source_provenance"]["resolution_basis"],
+                "github_release",
+            )
+            self.assertEqual(
+                kit_data["content_identity"]["commit_sha"],
+                "abc123",
+            )
+
+    def test_update_github_kit_cache_fallback_preserves_authority_metadata(self):
+        """Offline cache fallback must not use local kit conf.toml as authority."""
+        from studio.commands.update import cmd_update
+        from studio.utils import toml_utils
+        import tomllib
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            root.mkdir()
+            cache_v1 = Path(td) / "cache_v1"
+            _make_cache(cache_v1, kit_version=1)
+            adapter = _init_project(root, cache_v1)
+
+            cache_v2 = Path(td) / "cache_v2"
+            _make_cache(cache_v2, kit_version=2)
+
+            core_toml = adapter / "config" / "core.toml"
+            with open(core_toml, "rb") as f:
+                core_data = tomllib.load(f)
+            core_data["kits"]["sdlc"]["source"] = "github:o/r"
+            core_data["kits"]["sdlc"]["version"] = "v1.0.0"
+            core_data["kits"]["sdlc"]["source_provenance"] = {
+                "source_type": "github",
+                "requested_ref": "latest",
+                "resolved_ref": "v1.0.0",
+                "canonical_source": "github:o/r",
+                "effective_source": "github:o/r",
+                "resolver_mode": "latest_release",
+                "resolution_basis": "github_release",
+                "verified": "verified",
+                "freshness": "fresh",
+            }
+            core_data["kits"]["sdlc"]["content_identity"] = {
+                "resolved_ref": "v1.0.0",
+                "commit_sha": "abc123",
+                "identity": "o/r@v1.0.0#abc123",
+            }
+            toml_utils.dump(core_data, core_toml)
+
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                with (
+                    patch("studio.commands.update.CACHE_DIR", cache_v2),
+                    patch(
+                        "studio.commands.kit._download_kit_from_github_with_authority",
+                        side_effect=RuntimeError("offline"),
+                    ),
+                ):
+                    buf = io.StringIO()
+                    err = io.StringIO()
+                    with redirect_stdout(buf), redirect_stderr(err):
+                        rc = cmd_update(["-y"])
+                self.assertEqual(rc, 0)
+            finally:
+                os.chdir(cwd)
+
+            with open(core_toml, "rb") as f:
+                updated_core = tomllib.load(f)
+            kit_data = updated_core["kits"]["sdlc"]
+            self.assertEqual(kit_data["version"], "v1.0.0")
+            self.assertEqual(
+                kit_data["source_provenance"]["resolver_mode"],
+                "latest_release",
+            )
+            self.assertEqual(
+                kit_data["content_identity"]["commit_sha"],
+                "abc123",
+            )
+
+    def test_update_invalid_github_source_with_cache_does_not_crash(self):
+        """Invalid GitHub source plus cache fallback returns structured output."""
+        from studio.commands.update import cmd_update
+        from studio.utils import toml_utils
+        import tomllib
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            root.mkdir()
+            cache_v1 = Path(td) / "cache_v1"
+            _make_cache(cache_v1, kit_version=1)
+            adapter = _init_project(root, cache_v1)
+
+            core_toml = adapter / "config" / "core.toml"
+            with open(core_toml, "rb") as f:
+                core_data = tomllib.load(f)
+            core_data["kits"]["sdlc"]["source"] = "github:bad-source"
+            core_data["kits"]["sdlc"]["version"] = "v1.0.0"
+            core_data["kits"]["sdlc"]["source_provenance"] = {
+                "source_type": "github",
+                "requested_ref": "latest",
+                "resolved_ref": "v1.0.0",
+                "canonical_source": "github:bad-source",
+                "effective_source": "github:bad-source",
+                "resolver_mode": "latest_release",
+                "resolution_basis": "github_release",
+                "verified": "verified",
+                "freshness": "fresh",
+            }
+            toml_utils.dump(core_data, core_toml)
+
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                with patch("studio.commands.update.CACHE_DIR", cache_v1):
+                    buf = io.StringIO()
+                    err = io.StringIO()
+                    with redirect_stdout(buf), redirect_stderr(err):
+                        rc = cmd_update(["-y"])
+                self.assertEqual(rc, 0)
+                output = json.loads(buf.getvalue())
+                self.assertEqual(output["status"], "WARN")
+                self.assertIn("kits", output["actions"])
+                self.assertIn("sdlc", output["actions"]["kits"])
+                self.assertEqual(
+                    output["actions"]["kits"]["sdlc"]["version"]["status"],
+                    "current",
+                )
+                self.assertEqual(
+                    output["actions"]["kits"]["sdlc"]["authority"]["resolver_mode"],
+                    "offline_last_known",
+                )
             finally:
                 os.chdir(cwd)
 

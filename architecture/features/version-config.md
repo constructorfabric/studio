@@ -13,6 +13,7 @@
   - [Manage Config via CLI](#manage-config-via-cli)
 - [3. Processes / Business Logic (CDSL)](#3-processes--business-logic-cdsl)
   - [Update Pipeline](#update-pipeline)
+  - [Resolve GitHub Version Authority](#resolve-github-version-authority)
   - [Layout Restructuring](#layout-restructuring)
   - [Compare Blueprint Versions (LEGACY)](#compare-blueprint-versions-legacy)
   - [Migrate Config](#migrate-config)
@@ -20,6 +21,8 @@
   - [Installation Version State](#installation-version-state)
 - [5. Definitions of Done](#5-definitions-of-done)
   - [Update Command](#update-command)
+  - [GitHub Version Authority](#github-version-authority)
+  - [Version CLI Output](#version-cli-output)
   - [Config CLI Commands](#config-cli-commands)
   - [Config Migration](#config-migration)
   - [ralphex Integration Settings](#ralphex-integration-settings)
@@ -36,11 +39,11 @@
 
 ### 1. Overview
 
-Enables project skill updates with config migration, and provides CLI commands for managing ignore lists and kit registrations. System definitions are managed in `artifacts.toml` (per `cpt-studio-adr-remove-system-from-core-toml`). The update command refreshes `.core/` from cache, detects and auto-restructures old directory layouts, migrates bundled kit references to GitHub sources (versions < 3.0.8), and ensures `config/` scaffold files exist without overwriting user content. Kit file updates are a separate operation via `cfs kit update`.
+Enables project skill updates with config migration, and provides CLI commands for managing ignore lists and kit registrations. System definitions are managed in `artifacts.toml` (per `cpt-studio-adr-remove-system-from-core-toml`). The update command refreshes `.core/` from the GitHub-backed proxy cache, whose version authority is the resolved GitHub Release/tag provenance captured at cache/update time. Local version files inside copied skill content are diagnostic only and MUST NOT be treated as authoritative. Project installs persist structured install provenance and freshness state in the project install metadata file. Kit file updates remain a separate operation via `cfs kit update`.
 
 ### 2. Purpose
 
-Ensures teams can upgrade Studio without losing configuration or customizations. Config CLI commands eliminate manual TOML editing and enforce schema validation. Addresses PRD requirements for version management (`cpt-studio-fr-core-version`) and CLI configuration (`cpt-studio-fr-core-cli-config`).
+Ensures teams can upgrade Studio without losing configuration or customizations while keeping GitHub-backed version state auditable and drift-free. Config CLI commands eliminate manual TOML editing and enforce schema validation. Addresses PRD requirements for version management (`cpt-studio-fr-core-version`) and CLI configuration (`cpt-studio-fr-core-cli-config`).
 
 ### 3. Actors
 
@@ -65,7 +68,9 @@ Ensures teams can upgrade Studio without losing configuration or customizations.
 
 **Success Scenarios**:
 - User runs `cfs update` → `.core/` refreshed from cache, old layout auto-restructured if detected, bundled kit refs migrated to GitHub sources, config scaffold ensured
+- User runs `cfs update` → report shows the resolved GitHub Release/tag, commit/content identity, whether project install metadata was updated, and that local copied version files were ignored as authority
 - Bundled kit (no `source` field) → auto-migrated to GitHub source
+- Offline update/status lookup → uses last-known installed state, marks freshness/verification as offline, last-known, stale, unverified, or unknown according to the reporting surface, and prints the remediation command to re-verify online
 
 **Error Scenarios**:
 - Studio not initialized → error with hint to run `cfs init`
@@ -88,6 +93,10 @@ Ensures teams can upgrade Studio without losing configuration or customizations.
 12. [x] - `p1` - Display core whatsnew entries (cache vs installed) before applying update - `inst-whatsnew`
 13. [x] - `p1` - Helper functions: ensure file creation, config README, auto-regenerate agents, read/show whatsnew - `inst-update-helpers`
 14. [x] - `p1` - Human-friendly formatter for update report output - `inst-update-format-output`
+15. [ ] - `p1` - Resolve authoritative cache provenance from GitHub Release/tag metadata; record resolved ref, release/tag name, commit/content identity, source URL, and verification timestamp - `inst-resolve-github-provenance`
+16. [ ] - `p1` - Ignore local copied skill version files for version authority; use them only as legacy/display diagnostics when provenance is absent - `inst-ignore-local-version-authority`
+17. [ ] - `p1` - Persist project install metadata with structured provenance and freshness state after `.core/` refresh succeeds - `inst-write-install-metadata`
+18. [ ] - `p1` - Include resolved release/tag, commit/content identity, metadata update status, and local-files-ignored note in the update report - `inst-report-provenance`
 
 ### Manage Config via CLI
 
@@ -120,6 +129,19 @@ Ensures teams can upgrade Studio without losing configuration or customizations.
 7. [x] - `p1` - Helper: check manifest presence and resource binding state before triggering migration - `inst-manifest-legacy-migration-helper`
 8. [x] - `p1` - (Removed — no separate regen step; kit files are updated directly) - `inst-regen-algo`
 9. [x] - `p1` - Ensure config scaffold - `inst-scaffold-algo`
+
+### Resolve GitHub Version Authority
+
+- [ ] `p1` - **ID**: `cpt-studio-algo-version-config-github-authority`
+
+**Authority Rule**: For GitHub-backed proxy package builds, proxy cache, and project install state, release tags are the source of version truth. The Python package version is derived dynamically from SCM tag metadata at build/install time, while installed cache/project state uses resolved GitHub Release/tag provenance captured during cache resolution or update. Local version files copied into `.core/` or cache content are not authoritative.
+
+1. [ ] - `p1` - Resolve explicit version, `latest`, or default target to a GitHub Release/tag/ref - `inst-authority-resolve-ref`
+2. [ ] - `p1` - Capture source repository, resolved release/tag, resolved commit/content identity, asset/source URL, and retrieval timestamp - `inst-authority-capture-provenance`
+3. [ ] - `p1` - Write cache/project provenance only after downloaded content is successfully extracted and installed - `inst-authority-commit-state`
+4. [ ] - `p1` - Mark freshness as `verified` when GitHub resolution succeeds online; mark as `unknown`/`unverified` when only last-known local state is available - `inst-authority-freshness`
+5. [ ] - `p1` - Never overwrite authoritative provenance from local copied `__version__`, `.version`, or equivalent legacy files - `inst-authority-ignore-local-files`
+6. [ ] - `p1` - Configure proxy package metadata so `pyproject.toml` declares dynamic versioning from SCM tags instead of a checked-in literal package version - `inst-proxy-dynamic-version`
 
 ### Layout Restructuring
 
@@ -169,9 +191,15 @@ Ensures teams can upgrade Studio without losing configuration or customizations.
 - [x] `p1` - **ID**: `cpt-studio-state-version-config-installation`
 
 ```
-[CURRENT] --new-cache-available--> [OUTDATED] --update--> [CURRENT]
-[OUTDATED] --update-with-migration--> [MIGRATION_NEEDED] --manual-resolve--> [CURRENT]
+[UNINSTALLED] --init/update-online--> [INSTALLED_VERIFIED]
+[INSTALLED_VERIFIED] --new-release/tag-available--> [OUTDATED_VERIFIED]
+[OUTDATED_VERIFIED] --update-online--> [INSTALLED_VERIFIED]
+[INSTALLED_VERIFIED] --offline-lookup--> [INSTALLED_UNVERIFIED]
+[INSTALLED_UNVERIFIED] --online-reverify--> [INSTALLED_VERIFIED]
+[OUTDATED_VERIFIED] --update-with-migration--> [MIGRATION_NEEDED] --manual-resolve--> [INSTALLED_VERIFIED]
 ```
+
+Installed state is derived from project install metadata. Freshness describes whether the last-known provenance was verified against GitHub during the current operation. Offline lookup MUST NOT claim freshness; it reports the last-known release/tag and remediation command.
 
 ## 5. Definitions of Done
 
@@ -188,6 +216,27 @@ Ensures teams can upgrade Studio without losing configuration or customizations.
 - [x] - `p1` - `cfs update` removes leftover `config/kits/*/blueprints/` directories from pre-ADR-0001 installs
 - [x] - `p1` - `cfs update` removes legacy `[system]` section from `config/core.toml` (system identity now lives in `artifacts.toml`)
 - [x] - `p1` - `cfs update` auto-migrates legacy kits to manifest-driven resource bindings when source contains `manifest.toml` and core.toml lacks `[kits.{slug}.resources]`
+- [ ] - `p1` - `cfs update` updates project install metadata after successful `.core/` refresh
+- [ ] - `p1` - `cfs update` reports authoritative GitHub provenance instead of local copied version-file values
+
+### GitHub Version Authority
+
+- [ ] `p1` - **ID**: `cpt-studio-dod-version-config-github-authority`
+
+- [ ] - `p1` - GitHub-backed cache/project state uses resolved GitHub Release/tag provenance as version authority
+- [ ] - `p1` - Local copied version files are ignored for authority and treated only as legacy/display diagnostics
+- [ ] - `p1` - Project install metadata stores structured provenance: source repo, resolved release/tag/ref, commit/content identity, retrieval timestamp, and freshness state
+- [ ] - `p1` - Offline lookup reports last-known state with freshness `unknown`/`unverified` and a remediation command
+- [ ] - `p1` - `cfs update` report includes resolved release/tag, commit/content identity, metadata update status, and local-files-ignored status
+
+### Version CLI Output
+
+- [ ] `p1` - **ID**: `cpt-studio-dod-version-config-cli-version`
+
+- [ ] - `p1` - `cfs --version` separates package metadata from installed engine state
+- [ ] - `p1` - Proxy/package version is reported from installed package metadata derived from the Git release tag
+- [ ] - `p1` - Cached/project engine state is reported from structured install/cache provenance when available
+- [ ] - `p1` - Offline or stale provenance is clearly labeled as last-known and freshness `unknown`/`unverified`
 
 ### Config CLI Commands
 
@@ -224,6 +273,9 @@ Note: `plans_dir` and other execution-time settings are owned by ralphex's own c
 | Module | Path | Responsibility |
 |--------|------|----------------|
 | Update Command | `skills/.../commands/update.py` | Update pipeline, layout restructuring, file-level kit diff |
+| Proxy Cache Provenance | `src/studio_proxy/cache.py` / `src/studio_proxy/resolve.py` | Resolve GitHub Release/tag authority, persist cache provenance, expose last-known freshness |
+| Version CLI | `src/studio_proxy/cli.py` | Print package metadata separately from cached/project installed engine state |
+| Project Install Metadata | `skills/.../commands/update.py` | Persist project install provenance and freshness after successful update |
 
 ## 7. Acceptance Criteria
 
@@ -235,3 +287,11 @@ Note: `plans_dir` and other execution-time settings are owned by ralphex's own c
 - [ ] Config migration preserves all user settings with backup
 - [ ] `core.toml` `[integrations.ralphex]` section persists resolved executable path
 - [x] `cfs update` automatically runs self-check after update and reports WARN if integrity check fails
+- [ ] GitHub Release/tag provenance is the authority for GitHub-backed cache and project install state
+- [ ] Local copied version files do not determine installed version authority
+- [ ] Project install metadata records structured provenance and freshness state
+- [ ] `cfs --version` separates proxy package version from cached/project engine install state
+- [ ] `cfs update` reports resolved release/tag, commit/content identity, metadata updated, and local files ignored
+- [ ] Offline lookup reports last-known state, freshness unknown/unverified, and remediation command
+- [ ] Tests cover cross-source version authority matrix: GitHub release asset, GitHub tag/ref tarball, local source, existing legacy `.version`/`__version__`, and offline last-known lookup
+- [ ] Tests cover legacy idempotency: repeated update of pre-provenance installs does not churn metadata or regress legacy migrations
