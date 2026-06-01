@@ -2,7 +2,7 @@
 cf: true
 type: workflow-phase
 name: plan-phase-2-decompose
-description: "Invoke when /cf-plan enters Phase 2 to decompose the assessed task into phases: lifecycle selection, data-flow analysis, review gate placement, and execution-context budget prediction."
+description: "Invoke when cf-plan enters Phase 2 to decompose the assessed task into phases: lifecycle selection, data-flow analysis, review gate placement, and execution-context budget prediction."
 loaded_by: workflows/plan.md
 version: 1.0
 ---
@@ -180,8 +180,8 @@ MENU DecompositionConfirmMenu:
     Proceed with manifest + brief generation after any required raw-input materialization? [y/n]
   OPTIONS:
     y -> CONTINUE Phase3Compile
-    n -> EMIT "Decomposition declined — rework the phase boundaries and re-run /cf-plan when ready."
-         STOP_TURN  (valid completion state for /cf-plan; no files created)
+    n -> EMIT "Decomposition declined — rework the phase boundaries and re-run Invoke skill `cf-plan` when ready."
+         STOP_TURN  (valid completion state for cf-plan; no files created)
   INVALID:
     EMIT "Reply with y or n."
     WAIT user.reply

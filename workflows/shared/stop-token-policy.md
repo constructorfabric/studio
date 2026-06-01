@@ -127,11 +127,11 @@ WHEN:
 
 DO:
   IF prompt is raw-input materialization [y/n]:
-    EMIT "Raw-input materialization declined — stop and re-run with smaller input or approve /cf-plan materialization when ready"
+    EMIT "Raw-input materialization declined — stop and re-run with smaller input or approve Invoke skill `cf-plan` materialization when ready"
     STOP (valid completion state, no further routing)
 
   IF prompt is decomposition [y/n]:
-    EMIT "Decomposition declined — rework the phase boundaries and re-run /cf-plan when ready"
+    EMIT "Decomposition declined — rework the phase boundaries and re-run Invoke skill `cf-plan` when ready"
     STOP (valid completion state, no further routing)
 
   IF prompt is Phase 3.2A brief-checkpoint [1]–[4]:

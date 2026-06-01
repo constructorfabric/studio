@@ -28,8 +28,8 @@ DO:
 Changes written: {N} file(s). How do you want to review them?
 
 W1. Review here — Invoke skill `cf-analyze` in this session on the written files
-W2. Generate a Direct Review Prompt — emit a self-contained prompt that starts with `Invoke skill cf-analyze` in a new chat
-W3. Generate a Plan Review Prompt — emit a self-contained prompt that starts with `Invoke skill cf-plan` in a new chat (for phased review on broad / multi-file / strict-coverage scope)
+W2. Generate a Direct Review Prompt — emit a self-contained prompt that starts with Invoke skill `cf-analyze` in a new chat
+W3. Generate a Plan Review Prompt — emit a self-contained prompt that starts with Invoke skill `cf-plan` in a new chat (for phased review on broad / multi-file / strict-coverage scope)
 
 Suggested: {W1|W2|W3} because {scope/risk reason}.
 
@@ -41,7 +41,7 @@ MENU PostWriteHandoffMenu:
   TITLE: Post-write review choice (next-turn reply)
   OPTIONS:
     W1 ->
-      Invoke skill cf-analyze in this session
+      Invoke skill `cf-analyze` in this session
       WITH target_paths=manifest.paths_written, target_kinds, rules_mode,
            carried Validation Results, remaining_findings
       NOTE: no prompt block emitted

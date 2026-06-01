@@ -73,7 +73,7 @@ Before any user interaction:
 
   Tier-1/2 matches are offered with `Start fresh` and `Cancel` alternatives before E1 Discovery proceeds.
 
-- [ ] **Input size guards**: `<50 lines` → warn "input small, continue?" (default yes); `≤2000 lines` → proceed; `>2000 lines` → offer **narrow-to-section** (NOT `/cf-plan` — that workflow is for autonomous execution): parse top-level headings (markdown `^#{1,3} ` for docs; entry-points / module boundaries for code; best-effort heuristics elsewhere); show as scope options; default suggestion = High-level overview. If user picks a section, narrow Read-range; override (continue full) tagged as reduced fidelity.
+- [ ] **Input size guards**: `<50 lines` → warn "input small, continue?" (default yes); `≤2000 lines` → proceed; `>2000 lines` → offer **narrow-to-section** (NOT Invoke skill `cf-plan` — that workflow is for autonomous execution): parse top-level headings (markdown `^#{1,3} ` for docs; entry-points / module boundaries for code; best-effort heuristics elsewhere); show as scope options; default suggestion = High-level overview. If user picks a section, narrow Read-range; override (continue full) tagged as reduced fidelity.
 
 - [ ] **Registry resolution**: target in `artifacts.toml` → load KIND, retrieve linked artifacts via `{cfs_cmd} --json where-defined {id}` and `{cfs_cmd} --json where-used {id}`. Unregistered → graceful degrade (role defaults to SME, no auto-Lateral candidates).
 
@@ -150,7 +150,7 @@ Approve and proceed?
 → suggested: 1 (Go)
 ```
 
-User confirms by number / keyword / Enter for the suggestion. Free-text shorthand also accepted: `go`/`yes`/Enter → E2; `edit X` / `swap N and M` → adjust; `pivot to {topic}` → rebuild; `cancel` → exit. Cancel ack: `Explain mode cancelled. Run /cf-analyze for standard analysis.`
+User confirms by number / keyword / Enter for the suggestion. Free-text shorthand also accepted: `go`/`yes`/Enter → E2; `edit X` / `swap N and M` → adjust; `pivot to {topic}` → rebuild; `cancel` → exit. Cancel ack: `Explain mode cancelled. Invoke skill `cf-analyze` for standard analysis.`
 
 ## Phase E2: Portion Delivery Loop
 
@@ -527,9 +527,9 @@ Same disposition rules as Open Questions above — `chat-only` shown inline (cop
 ### Suggested Next Steps (2-3, contextual; max 4 candidates)
 0. **Resume this session**: write `explain --resume {session-id}` (or `resume explain session {session-id}`) in your next chat (checkpoint: `{path}`) — appears ONLY when a fresh checkpoint was written this turn (mid-session early wrap, user accepted save). Resume is a methodology-level intent-routed action, not a dedicated CLI subcommand.
 1. `explain {linked-artifact-id}` — when registered linked artifacts exist
-2. `validate `{path}` via /cf-analyze` — **only when target is a Studio-registered artifact** (resolved via `{cfs_cmd} --json where-defined {id}` / present in `artifacts.toml`); for unregistered files / external resources / generic codebase paths, this entry MUST NOT appear because `{cfs_cmd} validate` would fail with `Artifact not in Studio registry`
+2. `validate {path}` via Invoke skill `cf-analyze` — **only when target is a Studio-registered artifact** (resolved via `{cfs_cmd} --json where-defined {id}` / present in `artifacts.toml`); for unregistered files / external resources / generic codebase paths, this entry MUST NOT appear because `{cfs_cmd} validate` would fail with `Artifact not in Studio registry`
 3. `forward open-questions to {likely-author}` — when buffer non-empty
-4. `/cf-plan implement {path}` — only when KIND ∈ {PRD, DESIGN, FEATURE, ADR, DECOMPOSITION}
+4. Invoke skill `cf-plan` to implement `{path}` — only when KIND ∈ {PRD, DESIGN, FEATURE, ADR, DECOMPOSITION}
 ```
 
 Pick 2-3 of the candidate next-steps contextually. **No `Fix Prompt` / `Plan Prompt`** — explicit override of `enforceRemediationPrompts`.

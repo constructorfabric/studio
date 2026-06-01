@@ -2,7 +2,7 @@
 cf: true
 type: workflow-phase
 name: plan-phase-0-discover
-description: "Invoke when /cf-plan enters Phase 0 to resolve runtime variables and build a dynamic tool map from the CLISPEC."
+description: "Invoke when cf-plan enters Phase 0 to resolve runtime variables and build a dynamic tool map from the CLISPEC."
 loaded_by: workflows/plan.md
 version: 1.0
 ---

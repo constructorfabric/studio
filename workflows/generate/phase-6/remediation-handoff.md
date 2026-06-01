@@ -95,6 +95,7 @@ Combined R+W replies are not supported (since each `R*` may change `remaining_fi
 RULES:
   - MUST NOT emit post-write-handoff.md while remediation is pending
   - MUST refuse combined R+W replies with the verbatim one-line clarifier
+  - W-only replies are refused while remediation is pending
   - MUST refuse W-only replies while remediation pending
   - MUST refuse multiple-choice replies within one menu with one-line clarifier
 ```

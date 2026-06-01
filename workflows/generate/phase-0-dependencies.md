@@ -98,13 +98,13 @@ DO:
   LOAD {cf-studio-path}/.core/requirements/raw-input-overflow.md
   IF (user_prompt_lines + all_provided_file_lines) > 500:
     STOP direct generation
-    EMIT offer: /cf-plan vs stop; local continuation is not available unless a
+    EMIT offer: Invoke skill `cf-plan` vs stop; local continuation is not available unless a
       downstream workflow explicitly preserves it after this choice
     WAIT user.reply
     STOP_TURN
 
 RULES:
-  - MUST stop and offer /cf-plan when input exceeds 500 lines
+  - MUST stop and offer Invoke skill `cf-plan` when input exceeds 500 lines
   - MUST follow raw-input-overflow.md exactly as specified in that file
 ```
 

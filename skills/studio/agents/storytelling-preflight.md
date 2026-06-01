@@ -224,7 +224,7 @@ DO:
 RULES:
   - MUST run regardless of access_tier
   - MUST_NOT set byte_size = 0 silently for cli tier
-  - MUST_NOT suggest /cf-plan as a workaround when block_too_large (Anti-Pattern #0)
+  - MUST_NOT suggest cf-plan as a workaround when block_too_large (Anti-Pattern #0)
   - MUST_NOT skip measurement for mcp or cli tiers
 ```
 
@@ -396,7 +396,7 @@ RULES:
     OR when path safety guard fires (path outside project_root)
   - MUST set abort = false otherwise
   - MUST set abort_message = null when abort == false
-  - MUST_NOT mention /cf-plan in abort_message
+  - MUST_NOT mention cf-plan in abort_message
 ```
 
 ## Response Completion Gate
@@ -417,7 +417,7 @@ RULES:
   - MUST have handle.target_type as one of the four enumerated values
   - MUST have handle.size_guard_verdict as one of the three enumerated values
   - MUST have abort_message non-null when abort == true
-  - MUST_NOT include /cf-plan in abort_message
+  - MUST_NOT include cf-plan in abort_message
   - WHEN access_tier == "user_fallback": canonical fallback prompt MUST have been emitted
     (before the JSON, as a user-facing message) AND byte_size MUST be 0
   - MUST have handle.local_editable present as a boolean

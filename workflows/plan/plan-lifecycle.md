@@ -1,7 +1,7 @@
 ---
 cf: true
 type: reference
-description: "Invoke when Phase 2.1 of /cf-plan requires the user to select a plan lifecycle strategy — presents the lifecycle menu, records the selection, and defines normative handling rules for each strategy."
+description: "Invoke when Phase 2.1 of cf-plan requires the user to select a plan lifecycle strategy — presents the lifecycle menu, records the selection, and defines normative handling rules for each strategy."
 loaded_by: workflows/plan.md
 version: 1.0
 ---

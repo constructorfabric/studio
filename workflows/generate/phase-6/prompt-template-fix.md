@@ -13,7 +13,7 @@ PURPOSE:
 
 RULES:
   - MUST verify Validation Results body is present and complete before emitting
-  - MUST begin with "Invoke skill cf"
+  - MUST begin with "Invoke skill `cf`"
   - MUST embed inline: changed file paths, what changed, kind/target,
     completed Validation Results body verbatim, full remaining_findings list
   - MUST NOT reference "previous chat" or content outside the prompt itself

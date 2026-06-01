@@ -91,6 +91,6 @@ RULES:
 NOTES:
   The checkpoint fields above are target-set centric (not single-artifact centric)
   to support multi-path and multi-methodology analyze runs.
-  Fresh-chat resume prompt MUST start with "Invoke skill cf", embed the checkpoint,
+  Fresh-chat resume prompt MUST start with "Invoke skill `cf`", embed the checkpoint,
   and require the rehydration-proof block before Phase 4 continuation.
 ```

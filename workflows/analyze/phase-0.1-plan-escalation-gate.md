@@ -57,7 +57,7 @@ MENU PlanEscalationMenu:
     sub-agent dispatch is not active.
   OPTIONS:
     1 -> SET PLANNER_ESCALATION_RESULT = escalated
-         EMIT "Switch to /cf-plan analyze {KIND} with the same parameters."
+         EMIT "Switch to Invoke skill `cf-plan` to analyze {KIND} with the same parameters."
          STOP_TURN
     2 -> EMIT "Stopped before local single-context analysis."
          STOP_TURN
@@ -74,11 +74,11 @@ RULES:
     review, findings, summaries, remediation menus, plan-escalation bypass
     text, or plan menus; it MAY emit only the missing gate menu or the
     matching `Dispatch blocked: ...` error, then MUST STOP_TURN
-  - MUST_NOT propose /cf-plan when SUB_AGENT_SESSION_APPROVED=true AND INLINE_FALLBACK=false
+  - MUST_NOT propose Invoke skill `cf-plan` when SUB_AGENT_SESSION_APPROVED=true AND INLINE_FALLBACK=false
   - MUST apply raw-input-overflow rule at higher precedence than the bypass
   - MUST treat an unresolved NativeSubAgentPolicyConflictMenu from
     workflows/shared/inline-fallback-probe.md as higher precedence than this
-    menu; do not reinterpret that conflict as permission to hand off to /cf-plan
+    menu; do not reinterpret that conflict as permission to hand off to Invoke skill `cf-plan`
     or continue locally
   - MUST run plan-handoff/stop fallback only when INLINE_FALLBACK=true OR
     host.supports_native_subagents=false

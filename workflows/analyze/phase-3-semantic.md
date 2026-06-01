@@ -39,7 +39,7 @@ DO:
       REQUIRE {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md
       STOP_TURN
     IF INLINE_FALLBACK == true:
-      EMIT "Reviewer execution plan requires native sub-agent dispatch. Re-run with native sub-agents, switch to /cf-plan, or stop."
+      EMIT "Reviewer execution plan requires native sub-agent dispatch. Re-run with native sub-agents, switch to Invoke skill `cf-plan`, or stop."
       STOP_TURN
     CONTINUE PlannedMultiReviewerDispatch
   IF REVIEWER_PLAN_RESOLVED == auto_skipped_no_methodology OR REVIEWER_PLAN_RESOLVED == auto_skipped_explain_mode:

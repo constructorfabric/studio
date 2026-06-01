@@ -31,9 +31,9 @@ MENU NextStepsMenu:
     1 deeper ->
         Run a related deeper analysis on the same or adjacent targets.
     2 generate ->
-        Handoff to /cf-generate for improvements or follow-up changes.
+        Handoff to Invoke skill `cf-generate` for improvements or follow-up changes.
     3 plan ->
-        Handoff to /cf-plan to decompose broader follow-up work.
+        Handoff to Invoke skill `cf-plan` to decompose broader follow-up work.
     4 done ->
         End the analyze session with no further workflow handoff.
     5 other ->
@@ -68,8 +68,8 @@ PASS:
 ```
 What would you like to do next?
 1. Deeper analysis — run a related consistency, code, or prompt-bug review on the same or adjacent targets.
-2. Handoff to /cf-generate — apply improvements or follow-up changes.
-3. Handoff to /cf-plan — decompose broader follow-up work into phases.
+2. Handoff to Invoke skill `cf-generate` — apply improvements or follow-up changes.
+3. Handoff to Invoke skill `cf-plan` — decompose broader follow-up work into phases.
 4. Done — end the analyze session with no further workflow handoff.
 5. Other — say what you want to change or do next.
 Reply with the option number or a short custom instruction.

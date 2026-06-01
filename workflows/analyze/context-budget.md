@@ -40,8 +40,8 @@ RULES:
 NOTES:
   Plan escalation: Phase 0.1 is mandatory after dependencies load.
   When SUB_AGENT_SESSION_APPROVED=true AND INLINE_FALLBACK=false, the gate
-  logs the estimate and proceeds without proposing /cf-plan; decomposition is
+  logs the estimate and proceeds without proposing Invoke skill `cf-plan`; decomposition is
   handled in-workflow by Phase 2.5 (reviewer plan). Otherwise the fallback
-  menu routes to /cf-plan or stop; local single-context continuation is not
+  menu routes to Invoke skill `cf-plan` or stop; local single-context continuation is not
   allowed by default.
 ```

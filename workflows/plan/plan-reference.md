@@ -3,7 +3,7 @@ cf: true
 type: reference
 name: plan-reference
 description: "Invoke when consulting the downstream runtime contract for generated plans (execute-phases, status checks, plan-storage format, execution log)."
-purpose: Reference-only documentation for plan execution downstream from /cf-plan
+purpose: Reference-only documentation for plan execution downstream from cf-plan
 loaded_by: workflows/plan.md
 version: 1.0
 ---

@@ -33,7 +33,7 @@ DO:
   IF INLINE_FALLBACK == true:
     SET REVIEWER_PLAN_RESOLVED = cancelled_inline_fallback
     SET REVIEWER_EXECUTION_PLAN = null
-    EMIT "Reviewer decomposition requires native sub-agent dispatch. Inline fallback cannot silently continue to semantic review. Re-run with native sub-agents, switch to /cf-plan, or stop."
+    EMIT "Reviewer decomposition requires native sub-agent dispatch. Inline fallback cannot silently continue to semantic review. Re-run with native sub-agents, switch to Invoke skill `cf-plan`, or stop."
     STOP_TURN
   IF EXPLAIN_MODE == true:
     SET REVIEWER_PLAN_RESOLVED = auto_skipped_explain_mode

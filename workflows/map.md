@@ -482,7 +482,7 @@ MENU ConfigAssistActionMenu:
 | Markdown-only quick map | `cfs map --no-source` |
 | Single-repo map (skip federation) | `cfs map --local-only` |
 | Machine-readable graph | `cfs map --format json --out map.json` |
-| Custom categories | `cfs map --config md-map.toml` (use `/cf-map` → option 4 "Generate or refine md-map.toml config" to scaffold) |
+| Custom categories | `cfs map --config md-map.toml` (use Invoke skill `cf-map` → option 4 "Generate or refine md-map.toml config" to scaffold) |
 | Self-contained HTML (no sidecar) | `cfs map --inline-data` |
 | Debug layout | `cfs map -v` or `cfs map --verbose` |
 

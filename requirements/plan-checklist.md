@@ -26,7 +26,7 @@ purpose: Checklist for validating execution plans — used by analyze workflow a
 <!-- /toc -->
 
 ## Procedure
-- [ ] Use this checklist after plan generation, during `/cf-analyze` on a plan, or when debugging failing phases.
+- [ ] Use this checklist after plan generation, during Invoke skill `cf-analyze` on a plan, or when debugging failing phases.
 - [ ] Verify interactive questions, rules coverage, lifecycle handoff, and validation next-step behavior explicitly.
 
 ## 1. Structural Validation
@@ -128,7 +128,7 @@ purpose: Checklist for validating execution plans — used by analyze workflow a
 - [ ] The lifecycle action is implemented.
 - [ ] The last phase Output Format includes `ALL PHASES COMPLETE`, the lifecycle strategy reference, and a `Continue in this chat?` menu that states what each reply does.
 - [ ] Every non-final phase includes a single fenced, copy-pasteable next-phase prompt with both the `plan.toml` path and the next phase file path.
-- [ ] The user is told to validate before execution, given `/cf-analyze` on the plan directory, and offered validation as an explicit next step.
+- [ ] The user is told to validate before execution, given Invoke skill `cf-analyze` on the plan directory, and offered validation as an explicit next step.
 
 ## Validation Procedure
 - [ ] Self-validation runs all categories, reports every FAIL with issue and location, computes `passed_items / total_items`, and requires correction before execution if pass rate is below 100%.

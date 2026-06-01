@@ -97,7 +97,7 @@ RULES:
       MUST NOT require {cf-studio-path}/.gen/AGENTS.md load unless the direct
       CLI command itself requires workspace prompt assets
       MUST still require write-confirmation when write-capable
-  - Full /cf workspace setup workflow (Phase 0-4) is unaffected and uses
+  - Full cf workspace setup workflow (Phase 0-4) is unaffected and uses
     standard RootSkillEntrypointBootstrap and Protocol Guard
 ```
 

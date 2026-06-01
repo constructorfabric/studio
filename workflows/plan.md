@@ -54,7 +54,7 @@ RULES:
   - MUST load {cf-studio-path}/.core/requirements/prompt-engineering.md WHEN compiling phase files
     (phase files ARE agent instructions)
   - MUST load {cf-studio-path}/.core/requirements/plan-checklist.md WHEN validating plans
-    (Phase 4.1 self-validation or /cf-analyze on plan)
+    (Phase 4.1 self-validation or Invoke skill `cf-analyze` on plan)
 
 NOTES:
   Type: Operation.
@@ -273,5 +273,5 @@ DO:
 
 INVARIANTS:
   - MUST end with Phase 4 next-steps menu OR Phase 3 brief-checkpoint menu
-    when a /cf-plan run compiled phase files
+    when a cf-plan run compiled phase files
 ```

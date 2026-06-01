@@ -2,7 +2,7 @@
 cf: true
 type: workflow-phase
 name: plan-phase-1-assess
-description: "Invoke when /cf-plan enters Phase 1 to assess task scope: identify task type, extract navigation rules, estimate compiled size, scan for interaction points, and identify the target artifact."
+description: "Invoke when cf-plan enters Phase 1 to assess task scope: identify task type, extract navigation rules, estimate compiled size, scan for interaction points, and identify the target artifact."
 loaded_by: workflows/plan.md
 version: 1.0
 ---
@@ -39,7 +39,7 @@ DO:
 NOTES:
   For implement requests, inspect the direct prompt plus any provided FEATURE, DESIGN,
   code, or task files before deciding the target. Small implement tasks map to direct
-  /cf-generate execution when compiled estimate is <= 500 and no reusable authoritative
+  Invoke skill `cf-generate` execution when compiled estimate is <= 500 and no reusable authoritative
   raw-input package exists.
 ```
 
@@ -206,7 +206,7 @@ DO:
 
   IF compiled estimate <= 500
     AND oversized raw input does NOT already have an approved or reusable plan package:
-    STOP_TURN — direct user to /cf-generate or /cf-analyze
+    STOP_TURN — direct user to Invoke skill `cf-generate` or Invoke skill `cf-analyze`
 
   IF (direct prompt text + all provided files) > 500 total lines
     AND no authoritative raw-input package with same plan.input_signature exists:
@@ -232,7 +232,7 @@ MENU RawInputMaterializationMenu:
          SET CF_PHASE_GATE = armed
          CONTINUE Phase2Decompose
     n -> EMIT "Raw-input materialization declined — stop and re-run with smaller input or approve materialization when ready"
-         STOP_TURN  (valid completion state for /cf-plan; no files created)
+         STOP_TURN  (valid completion state for cf-plan; no files created)
   INVALID:
     EMIT "Reply with y or n."
     WAIT user.reply

@@ -12,7 +12,7 @@ version: 1.0
 UNIT PlanEscalationGate
 
 PURPOSE:
-  Decide whether to hand off to /cf-plan or proceed with native in-workflow
+  Decide whether to hand off to Invoke skill `cf-plan` or proceed with native in-workflow
   decomposition based on resolved sub-agent dispatch mode. The estimate is
   informational for this gate.
 
@@ -76,7 +76,7 @@ PURPOSE:
   to Phase 1.5.
 
 RULES:
-  - MUST NOT propose /cf-plan when SUB_AGENT_SESSION_APPROVED == true
+  - MUST NOT propose Invoke skill `cf-plan` when SUB_AGENT_SESSION_APPROVED == true
     AND INLINE_FALLBACK == false
   - MUST compute and log estimate for telemetry:
     "Plan-escalation: estimate={ESCALATION_ESTIMATE} lines, decomposition deferred to Phase 1.5 (sub-agents approved)"
@@ -118,12 +118,12 @@ MENU PlanEscalationMenu:
     Native sub-agent dispatch is not active for this generate run.
     Estimated context: ~{ESCALATION_ESTIMATE} lines (`rules.md`, active generation dependencies, output, project ctx).
 
-    Local single-context continuation is not allowed as a default. Use /cf-plan
+    Local single-context continuation is not allowed as a default. Use Invoke skill `cf-plan`
     to decompose this into focused phases, or stop and rerun with native
     sub-agents enabled.
 
     Options:
-    1. Switch to /cf-plan
+    1. Switch to Invoke skill `cf-plan`
     2. Stop
 
     Suggested: 1 because plan decomposition is the safe fallback when native
@@ -131,7 +131,7 @@ MENU PlanEscalationMenu:
     Reply with `1` or `2`.
   OPTIONS:
     1 ->
-      EMIT "Run /cf-plan generate {KIND} with the same parameters."
+      EMIT "Invoke skill `cf-plan` to generate {KIND} with the same parameters."
       STOP_TURN
     2 ->
       EMIT "Stopped before local single-context generation."
@@ -145,8 +145,8 @@ RULES:
   - MUST_NOT continue to the next generate phase from this branch
   - MUST treat an unresolved NativeSubAgentPolicyConflictMenu from
     workflows/shared/inline-fallback-probe.md as higher precedence than this
-    menu; do not reinterpret that conflict as permission to hand off to /cf-plan
+    menu; do not reinterpret that conflict as permission to hand off to Invoke skill `cf-plan`
     or continue locally
   - MUST_NOT offer a "continue here" or local single-context option
-  - MUST route to /cf-plan handoff or stop
+  - MUST route to Invoke skill `cf-plan` handoff or stop
 ```

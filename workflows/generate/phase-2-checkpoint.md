@@ -58,7 +58,7 @@ DO:
     EMIT exactly:
 ---
 ### Generation Checkpoint
-**Workflow**: /cf-generate {KIND}
+**Workflow**: Invoke skill `cf-generate` {KIND}
 **Phase**: 2 complete, ready for Phase 3
 **Inputs collected**: {section summaries}
 **Author plan**: {AUTHOR_PLAN_OFFER_RESOLVED}; {task/group summary or "single author flow"}

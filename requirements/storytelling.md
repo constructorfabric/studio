@@ -284,7 +284,7 @@ Concretely: under standard chat-mode `EXPLAIN_MODE=true`, the agent loads three 
 - [ ] Invocation handling ran; no-target / unresolvable-target → session-discovery mode emitted
 - [ ] Input access resolution ran the chain (local → MCP → skill → CLI → user fallback) for non-local targets; telemetry recorded the resolution method; arbitrary shell-command fallback was NEVER offered or executed
 - [ ] Existing-session scan ran; tier-1 / tier-2 matches offered with `Start fresh` and `Cancel` alternatives; tier-3 collisions NOT auto-offered
-- [ ] Oversized input → narrow-to-section offered (NOT `/cf-plan`)
+- [ ] Oversized input → narrow-to-section offered (NOT Invoke skill `cf-plan`)
 
 **Phase E1 discovery**:
 - [ ] Role + audience + plan resolved; plan approval received

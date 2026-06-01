@@ -2,7 +2,7 @@
 cf: true
 type: workflow-phase
 name: plan-phase-3-compile
-description: "Invoke when /cf-plan enters Phase 3 to write the plan manifest, generate compilation briefs, present the post-brief choice menu, produce phase files or phase-generation prompts, and validate compiled phase files."
+description: "Invoke when cf-plan enters Phase 3 to write the plan manifest, generate compilation briefs, present the post-brief choice menu, produce phase files or phase-generation prompts, and validate compiled phase files."
 loaded_by: workflows/plan.md
 version: 1.0
 ---
@@ -17,7 +17,7 @@ DO:
   FOLLOW plan-template.md
 NOTES:
   Phase 3 minimizes context: write manifest, write briefs, stop for user choice on phase-file production.
-  Manifest and all brief-* files are mandatory outputs of /cf-plan.
+  Manifest and all brief-* files are mandatory outputs of cf-plan.
 ```
 
 ```text

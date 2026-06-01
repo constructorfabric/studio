@@ -216,7 +216,7 @@ RULES:
 ON_ERROR:
   write_while_armed ->
     SET CF_PHASE_GATE = armed
-    EMIT "phase-skip prevented — switching to /cf-<workflow>"
+    EMIT "phase-skip prevented — switching to Invoke skill `cf-<workflow>`"
     Route into matching workflow without writing
     STOP_TURN
   NotebookEdit_or_MultiEdit_partial_failure ->
@@ -447,16 +447,16 @@ UNIT CompletionInvariants
 PURPOSE: Enforce that every response ends with the correct workflow terminal block.
 INVARIANTS:
   - MUST_NOT consider a response complete until the correct terminal block present
-  - /cf-generate (no remaining findings): terminal = Post-Write Review Handoff menu
-  - /cf-generate (remaining findings): terminal = Remediation Handoff menu;
+  - cf-generate (no remaining findings): terminal = Post-Write Review Handoff menu
+  - cf-generate (remaining findings): terminal = Remediation Handoff menu;
     W1/W2/W3 options MUST be locked until remediation clears
-  - /cf-generate (pre-review warning stop with files written):
+  - cf-generate (pre-review warning stop with files written):
     terminal = Pre-Review Warning Handoff block (phase-5.2-semantic.md)
-  - /cf-analyze (actionable findings): terminal = Remediation Handoff menu
-  - /cf-plan (compiled phase files): terminal = Phase 4.2 next-steps menu
+  - cf-analyze (actionable findings): terminal = Remediation Handoff menu
+  - cf-plan (compiled phase files): terminal = Phase 4.2 next-steps menu
     OR Phase 3.2A brief-checkpoint menu (when briefs_only)
-  - /cf-plan (prompts_emitted stop): terminal = emitted prompt set; no Phase 4.2 menu
-  - /cf-plan (raw-input n / decomposition n stop): terminal = canonical stop
+  - cf-plan (prompts_emitted stop): terminal = emitted prompt set; no Phase 4.2 menu
+  - cf-plan (raw-input n / decomposition n stop): terminal = canonical stop
     message from {cf-studio-path}/.core/workflows/plan.md; no terminal menu
 RULES:
   - Analyze remediation and review handoff prompt blocks MUST be emitted only

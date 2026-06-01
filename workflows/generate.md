@@ -74,7 +74,7 @@ RULES:
   - MUST use read_file ranges, summarize each chunk, keep only extracted criteria
   - MUST stop and output a checkpoint in chat (do not write files) if required steps cannot fit in context
   - WHEN SUB_AGENT_SESSION_APPROVED=true AND INLINE_FALLBACK=false AND INLINE_FALLBACK_PROBED=true:
-      gate logs estimate and proceeds without proposing /cf-plan;
+      gate logs estimate and proceeds without proposing Invoke skill `cf-plan`;
       decomposition handled in-workflow by Phase 1.5 (mandatory in that branch)
   - WHEN INLINE_FALLBACK_PROBED=false:
       run shared/inline-fallback-probe.md before reading INLINE_FALLBACK or
@@ -82,7 +82,7 @@ RULES:
   - WHEN INLINE_FALLBACK_PROBED=true:
       fallback-gated branches MAY read INLINE_FALLBACK only as resolved by
       shared/inline-fallback-probe.md for the active workflow run
-  - OTHERWISE: plan-escalation gate offers /cf-plan or stop when native
+  - OTHERWISE: plan-escalation gate offers Invoke skill `cf-plan` or stop when native
     sub-agent dispatch is not active; estimate is informational and local
     single-context continuation is not the default fallback
   - Critical anti-pattern failures (STRICT mode): SKIP_TEMPLATE, SKIP_EXAMPLE, SKIP_CHECKLIST,

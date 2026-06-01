@@ -88,7 +88,7 @@ NOTES:
   "Actionable findings" = any FAIL, PARTIAL, blocking validator error, or
   recommendation requiring artifact, code, or instruction changes.
   Prompt templates are on-demand only: self-contained, start with
-  "Invoke skill cf", include full findings inline, include target path/kind
+  "Invoke skill `cf`", include full findings inline, include target path/kind
   and deterministic gate status, state the route, ask the next agent to
   fix root causes plus tests/validation.
 ```

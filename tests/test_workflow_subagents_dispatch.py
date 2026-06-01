@@ -1028,10 +1028,10 @@ def test_skill_completion_invariants_match_handoff_workflows() -> None:
     assert "MUST trigger the `Remediation Handoff` menu" in analyze_overview
     assert "MUST trigger both remediation prompts in the same response" not in analyze_overview
 
-    assert "load skill `cf`; enter fix mode" in analyze_handoff
-    assert 'start with' in analyze_handoff and '"Invoke skill cf"' in analyze_handoff
-    assert "load skill `cf` and route to `/cf-analyze`" in post_write_handoff
-    assert "starts with `Invoke skill cf` and routes to `/cf-analyze`" in post_write_handoff
+    assert "Continue here in fix mode" in analyze_handoff
+    assert 'start with' in analyze_handoff and '"Invoke skill `cf`"' in analyze_handoff
+    assert "Invoke skill `cf-analyze` in this session" in post_write_handoff
+    assert "starts with Invoke skill `cf-analyze`" in post_write_handoff
 
 
 def test_skill_requires_session_approval_before_native_subagent_dispatch() -> None:
@@ -1556,7 +1556,7 @@ def test_remediation_menus_have_one_dynamic_suggestion_slot() -> None:
     assert "Suggested: {1|2|3} because {scope/risk reason}." in analyze_handoff
     assert "Suggested: {R1|R2|R3} because {scope/risk reason}." in generate_handoff
     for option_line in (
-        "load skill `cf`; enter fix mode",
+        "Continue here in fix mode",
         "fix-prompt-template.md",
         "plan-prompt-template.md",
     ):

@@ -2,7 +2,7 @@
 cf: true
 type: workflow-phase
 name: plan-phase-4-finalize
-description: "Invoke when /cf-plan enters Phase 4 to validate the completed plan, report the result, offer next-steps, and emit the new-chat startup prompt when the user chooses execution handoff."
+description: "Invoke when cf-plan enters Phase 4 to validate the completed plan, report the result, offer next-steps, and emit the new-chat startup prompt when the user chooses execution handoff."
 loaded_by: workflows/plan.md
 version: 1.0
 ---
@@ -164,7 +164,7 @@ MENU Phase4NextStepsNative:
     The plan passed self-validation. Choose your next action:
   OPTIONS:
     1 -> CONTINUE Phase4AnalyzePlan
-         (Suggested default before execution — verify the plan thoroughly with /cf-analyze)
+         (Suggested default before execution — verify the plan thoroughly with Invoke skill `cf-analyze`)
     2 -> CONTINUE Phase4NativePhaseDispatch
          (Start executing the first phase now in this chat with the native phase runner)
     3 -> CONTINUE Phase4EmitStartupPrompt
@@ -185,7 +185,7 @@ MENU Phase4NextStepsFallback:
     The plan passed self-validation. Choose your next action:
   OPTIONS:
     1 -> CONTINUE Phase4AnalyzePlan
-         (Suggested default before execution — verify the plan thoroughly with /cf-analyze)
+         (Suggested default before execution — verify the plan thoroughly with Invoke skill `cf-analyze`)
     2 -> CONTINUE Phase4EmitStartupPrompt
          (Generate a handoff prompt for a separate execution chat)
     3 -> CONTINUE Phase4ReviewPlanFiles

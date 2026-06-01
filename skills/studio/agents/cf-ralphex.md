@@ -293,7 +293,7 @@ DO:
 
      ### Next Steps
      1. Review output artifacts listed above
-     2. Run `/cf-analyze` on changed files if validation passed
+     2. Invoke skill `cf-analyze` on changed files if validation passed
      3. If failed: inspect error output, fix issues, and re-delegate
 
   STOP_TURN

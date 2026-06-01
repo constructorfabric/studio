@@ -139,8 +139,8 @@ Pre-Review Warning Handoff
 Files were already written, but automatic review did not run because you stopped
 at the inline long-loop warning before any validator, reviewer, or author dispatch.
 
-Suggested next step: run `/cf-analyze` on the written files when you want review coverage.
-You may also resume `/cf-generate(mode=fix)` later if you want to continue the review/fix loop from these files.
+Suggested next step: Invoke skill `cf-analyze` on the written files when you want review coverage.
+You may also resume Invoke skill `cf-generate` with mode=fix later if you want to continue the review/fix loop from these files.
 ---
 
 RULES:

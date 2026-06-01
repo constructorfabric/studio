@@ -71,10 +71,10 @@ MENU BrownfieldAutoConfigOffer:
 UNIT AutoConfigFastPath
 
 PURPOSE:
-  Define AUTO_CONFIG fast path behavior when invoked via /cf-auto-config.
+  Define AUTO_CONFIG fast path behavior when invoked via Invoke skill `cf-auto-config`.
 
 WHEN:
-  AUTO_CONFIG == true (set by /cf-auto-config thin entry point at workflows/auto-config.md)
+  AUTO_CONFIG == true (set by Invoke skill `cf-auto-config` thin entry point at workflows/auto-config.md)
 
 DO:
   TREAT this branch as higher precedence than normal generate update/refactor
