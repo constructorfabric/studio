@@ -72,7 +72,7 @@ DO:
     LOAD each task reviewer contract from {cf-studio-path}/.core/skills/studio/agents/{reviewer}.md
     SYNTHESIZE dispatch prompt from loaded contract + SHARED_CONTEXT_PACK + task payload
     IF any reviewer contract is not loaded, unreadable, ambiguous, or not reflected in prompt:
-      FAIL per sub-agent-dispatch.md § Contract-read-and-use gate
+      FAIL per sub-agent-dispatch.md § SubAgentContractReadGate
       FORBID dispatch for that task
     Build reviewer dispatch payload per task:
       artifact tasks        -> target_paths = task.path_partition
@@ -164,7 +164,7 @@ DO:
 
 RULES:
   - MUST run inline-fallback-probe.md before any cf-* sub-agent dispatch
-  - MUST apply sub-agent-dispatch.md § Contract-read-and-use gate before every reviewer dispatch
+  - MUST apply sub-agent-dispatch.md § SubAgentContractReadGate before every reviewer dispatch
   - MUST set PARTIAL=false on entry unless already set by an earlier phase
   - MUST REQUIRE REVIEWER_PLAN_RESOLVED is set before entering
   - MUST_NOT enter Phase 3 when REVIEWER_PLAN_RESOLVED=cancelled_partial_cache
@@ -180,7 +180,7 @@ RULES:
 
 ON_ERROR:
   re-validation failure -> EMIT details; WAIT user.reply; STOP_TURN
-  contract-read failure -> FAIL per sub-agent-dispatch.md § Contract-read-and-use gate; FORBID dispatch
+  contract-read failure -> FAIL per sub-agent-dispatch.md § SubAgentContractReadGate; FORBID dispatch
 
 NOTES:
   - Artifact reviewer inputs: target_paths, kit rules, checklist, template, examples/example.md, cross refs, rules_mode, traceability_mode

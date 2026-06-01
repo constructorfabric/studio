@@ -115,3 +115,10 @@ md-map.html
 md-map.html.js
 md-map.json
 .claude/scheduled_tasks.lock
+.bootstrap/.cache/generate-plans/cf-generate-lazy-loading-20260601T164857Z/index.md
+.bootstrap/.cache/generate-plans/cf-generate-lazy-loading-20260601T164857Z/plan.json
+.bootstrap/.cache/generate-plans/cf-generate-lazy-loading-20260601T164857Z/agents/cf-generate-coder-smart.md
+.bootstrap/.cache/generate-plans/cf-generate-lazy-loading-20260601T164857Z/agents/cf-generate-prompt-engineer-smart.md
+.bootstrap/.cache/generate-plans/cf-generate-lazy-loading-20260601T164857Z/tasks/TASK-001.md
+.bootstrap/.cache/generate-plans/cf-generate-lazy-loading-20260601T164857Z/tasks/TASK-002.md
+.bootstrap/.cache/generate-plans/cf-generate-lazy-loading-20260601T164857Z/tasks/TASK-003.md

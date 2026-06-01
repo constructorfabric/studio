@@ -238,7 +238,7 @@ MENU InlineFallbackRerouteMenu:
         SHARED_CONTEXT_PACK prompt_context_view slices, prompt_engineering_context,
         and payload below
       IF compiler source contract is not loaded, unreadable, ambiguous, or not reflected in final dispatch prompt:
-        FAIL per sub-agent-dispatch.md § Contract-read-and-use gate
+        FAIL per sub-agent-dispatch.md § SubAgentContractReadGate
         FORBID dispatch
       SET CF_PHASE_GATE = released_for_dispatch
       DISPATCH cf-phase-compiler with synthesized final prompt including:

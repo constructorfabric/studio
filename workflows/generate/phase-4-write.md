@@ -85,7 +85,7 @@ DO:
     WAIT user.reply
     STOP_TURN
   IF selector or selected-author contract missing, unreadable, ambiguous, or not reflected in final prompt:
-    FAIL per sub-agent-dispatch.md § Contract-read-and-use gate
+    FAIL per sub-agent-dispatch.md § SubAgentContractReadGate
     FORBID dispatch
   IF instruction_file_targets non-empty AND selected_author not in (cf-generate-prompt-engineer-casual | cf-generate-prompt-engineer-smart):
     REQUIRE author_selection.reasons explicitly records why higher-capability non-prompt-engineer author required
@@ -96,7 +96,7 @@ DO:
 
 RULES:
   - MUST NOT be left CF_PHASE_GATE in released_for_dispatch across turns
-  - MUST apply sub-agent-dispatch.md § Contract-read-and-use gate before selector dispatch and before selected-author dispatch
+  - MUST apply sub-agent-dispatch.md § SubAgentContractReadGate before selector dispatch and before selected-author dispatch
   - MUST treat prompt-engineer-* as default author family for instruction-file targets; only selector may justify escalation
   - MUST reset CF_PHASE_GATE = armed immediately after inline write block on both success and failure
 
@@ -127,9 +127,17 @@ DO:
       IF INLINE_FALLBACK == false: tasks in same group MAY dispatch in parallel
         Each parallel task owns its own gate-release record:
           task_id, selected_author, released_at, reset_at, completion_status.
+        Gate-release record updates and CF_PHASE_GATE transitions MUST be
+        synchronized with atomic DB operations or distributed locks
+        (row-level transactions, compare-and-set/optimistic locking, or
+        short-lived leases) so two orchestrator instances cannot claim the
+        same gate window.
+        released_at MUST be set by an atomic create-or-update guarded by
+        task_id and a lease TTL. Resets MUST update reset_at and
+        completion_status only when the lease is held or CAS succeeds.
         CF_PHASE_GATE MUST be treated as released only for that task's dispatch
-        window and MUST be reset for every task independently before the group
-        is considered complete.
+        window while its lease is valid, and MUST be reset for every task
+        independently before the group is considered complete.
       IF INLINE_FALLBACK == true:
         run tasks sequentially in listed order
         EMIT one-line warning that planned parallelism degraded to sequential inline execution
@@ -181,6 +189,12 @@ RULES:
   - git_commit_mode MUST be included
   - contributing_guide MUST be included (null when not found)
   - git_constraint MUST be included verbatim matching current GIT_COMMIT_MODE
+  - commit, stage, and none git_constraint values are data. Render them as
+    verbatim/code text or escape shell metacharacters before display.
+  - MUST NOT interpolate git_constraint values into exec/system/shell calls.
+    Any consumer that must pass related behavior to a shell MUST use an
+    explicit allow-list or shell-escaping function and reject raw
+    git_constraint strings in shell contexts.
 
 NOTES: Selected author updates {cf-studio-path}/config/artifacts.toml when new artifact path
   introduced, creates directories as needed, writes file(s), verifies content; returns Written

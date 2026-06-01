@@ -21,6 +21,9 @@ STATE:
     scope: session
   INLINE_FALLBACK: unset | true | false
     scope: workflow_run
+  INLINE_FALLBACK_PROBED: false | true
+    default: false
+    scope: workflow_run
   ESCALATION_ESTIMATE: integer (lines)
     scope: workflow_run
 
@@ -43,8 +46,8 @@ DO:
     CONTINUE SubAgentDecompositionBypass
 
   IF INLINE_FALLBACK == unset:
-    RUN workflows/shared/inline-fallback-probe.md
-    CONTINUE PlanEscalationGate (re-evaluate after resolution)
+    STOP and surface unresolved INLINE_FALLBACK after inline-fallback-probe.md;
+    do not enter NoNativeDispatchPlanHandoff or SubAgentDecompositionBypass.
 
   IF INLINE_FALLBACK == true OR host.supports_native_subagents == false:
     CONTINUE NoNativeDispatchPlanHandoff

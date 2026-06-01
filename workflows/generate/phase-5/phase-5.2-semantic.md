@@ -77,7 +77,7 @@ RULES:
     non-prompt targets in the same iteration
   - Each reviewer's dispatch contract lives in its prompt file under
     {cf-studio-path}/.core/skills/studio/agents/
-  - MUST apply sub-agent-dispatch.md § Contract-read-and-use gate before every
+  - MUST apply sub-agent-dispatch.md § SubAgentContractReadGate before every
     reviewer DISPATCH or parallel reviewer dispatch
   - MUST supply exact JSON fields each reviewer declares
   - MUST NOT skip dispatch for registered reviewers when trigger condition matches

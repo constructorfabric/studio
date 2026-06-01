@@ -45,7 +45,7 @@ DO:
     SHARED_CONTEXT_PACK and the payload below
   IF explorer source contract is not loaded, unreadable, ambiguous, or not
      reflected in the final dispatch prompt:
-    FAIL per sub-agent-dispatch.md § Contract-read-and-use gate
+    FAIL per sub-agent-dispatch.md § SubAgentContractReadGate
     FORBID dispatch
   DISPATCH cf-explorer with the synthesized final prompt including:
     task = user's explore request or parent workflow task
@@ -72,7 +72,7 @@ DO:
 RULES:
   - MUST NOT put source code, docs, artifacts, diffs, or architecture files into
     SHARED_CONTEXT_PACK
-  - MUST apply sub-agent-dispatch.md § Contract-read-and-use gate before
+  - MUST apply sub-agent-dispatch.md § SubAgentContractReadGate before
     dispatching cf-explorer
   - MUST treat explorer output as resource_context, not prompt_context
   - MUST NOT silently write files

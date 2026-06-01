@@ -144,6 +144,10 @@ UNIT Phase15PlannerDispatch
 PURPOSE:
   Dispatch cf-generate-planner and validate returned plan.
 
+STATE:
+  PLANNER_VALIDATION_RETRY_COUNT: integer  default: 0  scope: workflow_run
+  PLANNER_VALIDATION_MAX_RETRIES: integer  default: 2  scope: workflow_run
+
 DO:
   REQUIRE {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md loaded before dispatch
   REQUIRE {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md loaded
@@ -153,7 +157,7 @@ DO:
     SHARED_CONTEXT_PACK and the payload below
   IF planner source contract is not loaded, unreadable, ambiguous, or not
      reflected in the final dispatch prompt:
-    FAIL per sub-agent-dispatch.md § Contract-read-and-use gate
+    FAIL per sub-agent-dispatch.md § SubAgentContractReadGate
     FORBID dispatch
 
   DISPATCH cf-generate-planner (read-only) with synthesized final prompt
@@ -188,6 +192,7 @@ DO:
 
   IF validation passes:
     SET AUTHOR_EXECUTION_PLAN = parsed author_plan JSON
+    SET PLANNER_VALIDATION_RETRY_COUNT = 0
     CONTINUE Phase15Handoff
 
   IF validation fails:
@@ -199,18 +204,24 @@ MENU PlannerValidationFailureMenu:
   TITLE: Planner validation failed: {reason}.
   OPTIONS:
     1 ->
+      INCREMENT PLANNER_VALIDATION_RETRY_COUNT
+      IF PLANNER_VALIDATION_RETRY_COUNT > PLANNER_VALIDATION_MAX_RETRIES:
+        EMIT_MENU PlannerValidationFailureTerminalMenu
+        WAIT user.reply
+        STOP_TURN
       LOAD {cf-studio-path}/.core/skills/studio/agents/cf-generate-planner.md
         as the planner source contract
       SYNTHESIZE final dispatch prompt from planner contract plus
         SHARED_CONTEXT_PACK and the same inputs
       IF planner source contract is not loaded, unreadable, ambiguous, or not
          reflected in the final dispatch prompt:
-        FAIL per sub-agent-dispatch.md § Contract-read-and-use gate
+        FAIL per sub-agent-dispatch.md § SubAgentContractReadGate
         FORBID re-dispatch
       RE-DISPATCH cf-generate-planner with synthesized final prompt
       RE-VALIDATE returned plan
       IF validation passes:
         SET AUTHOR_EXECUTION_PLAN = parsed author_plan JSON
+        SET PLANNER_VALIDATION_RETRY_COUNT = 0
         CONTINUE Phase15Handoff
       IF validation fails again:
         EMIT_MENU PlannerValidationFailureMenu
@@ -234,6 +245,20 @@ MENU PlannerValidationFailureMenu:
     EMIT "Reply with 1, 2, or 3."
     WAIT user.reply
     STOP_TURN
+
+MENU PlannerValidationFailureTerminalMenu:
+  TITLE: Planner validation failed after {PLANNER_VALIDATION_MAX_RETRIES} retry attempts.
+  OPTIONS:
+    1 stop ->
+      SET AUTHOR_PLAN_OFFER_RESOLVED = cancelled_planner_failure
+      SET AUTHOR_EXECUTION_PLAN = null
+      SET CF_PHASE_GATE = armed
+      STOP current generate sub-flow
+      FORBID entering Phase 3 or Phase 4
+    stop_token ->
+      SET AUTHOR_PLAN_OFFER_RESOLVED = cancelled_planner_failure
+      SET AUTHOR_EXECUTION_PLAN = null
+      STOP without entering Phase 3 or Phase 4
 
 RULES:
   - MUST_NOT continue to Phase 3 without a valid AUTHOR_EXECUTION_PLAN

@@ -55,5 +55,7 @@ RULES:
   - MUST return phase completion summary with next-phase handoff prompt OR final
     completion report on success
   - MUST return specific failed criteria, manifest updates, and exact blocker on failure
-  - MUST honor git_commit_mode — no git invocations beyond git_constraint
+  - MUST honor git_commit_mode; treat git_constraint as policy data, never as
+    shell text, and use only explicit allow-listed git commands permitted by
+    git_commit_mode
 ```

@@ -147,8 +147,8 @@ NOTES:
   `design_artifact_path` is used in code mode. `inputs` is populated for `mode=create`;
   `findings` is populated for `mode=fix`. Planner metadata fields are optional and appear only
   when Phase 4 executes an `AUTHOR_EXECUTION_PLAN` task. `git_commit_mode`, `contributing_guide`,
-  and `git_constraint` are always present in the dispatch payload; they govern all git operations
-  for this invocation.
+  and `git_constraint` are always present in the dispatch payload; they constrain
+  all git operations for this invocation and are never shell commands.
 
 ## Git Constraint (read from dispatch context — MUST obey)
 
@@ -156,15 +156,18 @@ NOTES:
 UNIT GitConstraint
 
 PURPOSE:
-  Enforce git behavior from the dispatch payload git_constraint string.
+  Enforce git behavior from the dispatch payload git_constraint data.
 
 RULES:
-  - MUST follow the `git_constraint` string from the dispatch payload verbatim
+  - MUST treat the `git_constraint` string from the dispatch payload as
+    read-only policy data, not executable shell text
   - The string is the exact mode-matched block from `{cf-studio-path}/.core/workflows/generate/phase-4-write.md`
     § Git constraint blocks for the active `git_commit_mode`
   - MUST_NOT default to any git behavior not explicitly permitted by that string
   - MUST_NOT run `git commit`, `git add`, or `git stage` unless both
     `git_commit_mode` and `git_constraint` permit it
+  - MUST_NOT interpolate `git_constraint` into exec/system/shell calls; use
+    explicit allow-listed git commands derived from `git_commit_mode`
   - WHEN git_commit_mode == "none": MUST_NOT invoke any git tool at all
 ```
 

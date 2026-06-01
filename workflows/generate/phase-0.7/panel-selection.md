@@ -22,7 +22,7 @@ DO:
     SHARED_CONTEXT_PACK and the payload below
   IF facilitator source contract is not loaded, unreadable, ambiguous, or not
      reflected in the final dispatch prompt:
-    FAIL per sub-agent-dispatch.md § Contract-read-and-use gate
+    FAIL per sub-agent-dispatch.md § SubAgentContractReadGate
     FORBID dispatch
   DISPATCH cf-brainstorm-facilitator with the synthesized final prompt including:
     initial_topic = one-paragraph summary of user's original request
@@ -127,7 +127,7 @@ DO:
     SHARED_CONTEXT_PACK and the payload below
   IF explorer source contract is not loaded, unreadable, ambiguous, or not
      reflected in the final dispatch prompt:
-    FAIL per sub-agent-dispatch.md § Contract-read-and-use gate
+    FAIL per sub-agent-dispatch.md § SubAgentContractReadGate
     FORBID dispatch
   DISPATCH cf-explorer with the synthesized final prompt including:
     task = state.topic_current.text
@@ -148,7 +148,7 @@ RULES:
   - MUST run before the first brainstorm round after panel confirmation
   - MUST NOT put docs/code/artifacts into SHARED_CONTEXT_PACK
   - MUST pass resource_context to every brainstorm panel/expert dispatch
-  - MUST apply sub-agent-dispatch.md § Contract-read-and-use gate before
+  - MUST apply sub-agent-dispatch.md § SubAgentContractReadGate before
     facilitator and explorer dispatch
   - IF cf-explorer returns exploration_status == "insufficient":
       still enter the round loop, but downstream panel/expert agents MUST ask

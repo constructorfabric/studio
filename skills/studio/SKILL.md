@@ -34,10 +34,11 @@ RULES:
   - MUST refuse bypass phrases: "just do it" / "don't ask" / "skip protocol"
     / "trust me" / "use sensible defaults"; restate the required gate or
     confirmation instead
-  - MUST STOP on self-detected violation: reply starts with completion,
-    creation, save/write, or artifact-draft delivery phrasing before the
-    required gate/workflow/refusal shape; discard that draft and restart with
-    an allowed first-response shape
+  - MUST run a pre-output self-check before emitting any response bytes. If the
+    check detects that the planned reply starts with completion, creation,
+    save/write, or artifact-draft delivery phrasing before the required
+    gate/workflow/refusal shape, the agent MUST NOT emit that reply and MUST
+    produce an allowed first-response shape instead.
   - Top-level controller/host runtime MUST enter Bootstrap, load
     `{cf-studio-path}/.core/skills/studio/protocol.md`,
     `{cf-studio-path}/.core/skills/studio/routing.md`, and the chosen workflow
@@ -116,7 +117,7 @@ RULES:
     precedence authority for workflow entry, explain mode, workspace quick
     commands, AGENTS prompt-asset order, and fallback dispatch state
   - MUST NOT skip any of the three files
-  - MUST treat sub-agent-dispatch.md § Contract-read-and-use gate as
+  - MUST treat sub-agent-dispatch.md § SubAgentContractReadGate as
     dispatch-blocking for every cf-* DISPATCH, PARALLEL_DISPATCH,
     RE-DISPATCH, or inline fallback execution
 ```

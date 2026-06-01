@@ -58,9 +58,19 @@ RULES:
   - Before any downstream author/reviewer dispatch: controller MUST reuse or extend SHARED_CONTEXT_PACK,
     load the agent prompt source, and synthesize a final dispatch prompt with only task-relevant context
   - MUST_NOT rely on sub-agents reopening workflow, requirement, spec, or AGENTS prompt files directly
+  - Late phases and prompt-consuming sub-agents MUST consume only controller-supplied
+    prompt_context_view slices from SHARED_CONTEXT_PACK; they MUST_NOT reopen prompt assets from disk
   - MUST estimate size before loading large docs and state the budget for this turn
   - MUST load only generation-phase sections required for current KIND
   - MUST defer checklist loading to validation/review unless rules require earlier
+  - The controller MUST lazy-load Phase 1.5 only at the first post-approval branch
+    after Phase 1 inputs approved where author-plan applicability, storage mode,
+    author-plan-derived dispatch, or author-plan-derived menu behavior must be resolved
+  - Eager Phase 1.5 applicability is limited to instruction-file classification,
+    explicit auto-skip conditions, and the boundary that author-plan resolution
+    MUST happen before Phase 3 summary or disk/write-path selection where applicable
+  - The controller MUST load the minimal validation manifest eagerly and defer the
+    detailed post-flight checklist and STRICT self-test until the final validation gate
   - MUST use read_file ranges, summarize each chunk, keep only extracted criteria
   - MUST stop and output a checkpoint in chat (do not write files) if required steps cannot fit in context
   - WHEN SUB_AGENT_SESSION_APPROVED=true AND INLINE_FALLBACK=false AND INLINE_FALLBACK_PROBED=true:
@@ -105,6 +115,10 @@ DO:
   // Phase 0.2: review-loop config (MAX_ITER)
   REQUIRE {cf-studio-path}/.core/workflows/generate/phase-0.2-review-loop-cfg.md
 
+  // Eager validation boundary: minimal validation manifest only
+  IF entering Generate eager validation boundary to load the minimal validation manifest before any late validation fragments:
+    REQUIRE {cf-studio-path}/.core/workflows/generate/validation-criteria.md § Minimal Validation Manifest
+
   // Phase 0.x: GIT_COMMIT_MODE probe
   IF GIT_COMMIT_MODE == unset:
     REQUIRE {cf-studio-path}/.core/workflows/generate/phase-0-git-commit-mode.md
@@ -120,11 +134,13 @@ DO:
   // Phase 1: collect inputs
   REQUIRE {cf-studio-path}/.core/workflows/generate/phase-1-collect.md
 
-  // Phase 1.5: author plan (mandatory unless auto-skip condition in that file applies)
-  REQUIRE {cf-studio-path}/.core/workflows/generate/phase-1.5-author-plan.md
+  // Phase 1.5: lazy-load after Phase 1 inputs approved at the first post-approval branch
+  IF Phase 1 inputs approved AND current branch is the first post-approval branch that must resolve author-plan applicability, storage mode, author-plan-derived dispatch, or author-plan-derived menu behavior before Phase 3 summary or disk/write-path selection where applicable:
+    REQUIRE {cf-studio-path}/.core/workflows/generate/phase-1.5-author-plan.md
 
   // Phase 2 / 2.5: no-op or checkpoint
-  REQUIRE {cf-studio-path}/.core/workflows/generate/phase-2-checkpoint.md
+  IF artifact >10 sections OR expected multi-turn OR resumable section/state bookkeeping is required:
+    REQUIRE {cf-studio-path}/.core/workflows/generate/phase-2-checkpoint.md
 
   // Phase 3: summary + confirmation gate (no files written until explicit yes)
   REQUIRE {cf-studio-path}/.core/workflows/generate/phase-3-summary.md
@@ -134,15 +150,18 @@ DO:
     REQUIRE {cf-studio-path}/.core/workflows/generate/phase-4-write.md
 
   // Phase 5: bounded review loop
-  REQUIRE {cf-studio-path}/.core/workflows/generate/phase-5/index.md
+  IF Phase 4 writes complete OR entering from external analyze remediation entry with analyze-side accepted payload predicates, payload shaping/mapping onto the Phase 5 contract, and branch mapping already resolved:
+    REQUIRE {cf-studio-path}/.core/workflows/generate/phase-5/index.md
 
   // Phase 6: next-steps and handoff menus
-  REQUIRE {cf-studio-path}/.core/workflows/generate/phase-6/index.md
+  IF Phase 5 exit requires validation results, validation/waiver state, files changed, findings, waivers, or unresolved validation state reporting:
+    REQUIRE {cf-studio-path}/.core/workflows/generate/phase-6/index.md
 
-  // Post-flight validation
-  REQUIRE {cf-studio-path}/.core/workflows/generate/validation-criteria.md
+  // Post-flight validation: lazy-load detailed checklist only when ending the run
+  IF preparing post-flight validation, terminal handoff, or final response output:
+    REQUIRE {cf-studio-path}/.core/workflows/generate/validation-criteria.md § Detailed Post-Flight Checklist
 
-  IF STRICT_MODE:
+  IF STRICT_MODE AND preparing final response gate:
     REQUIRE {cf-studio-path}/.core/workflows/generate/validation-criteria.md § Agent Self-Test
 
 RULES:
@@ -154,9 +173,22 @@ RULES:
   // Phase 0.x
   - MUST skip GIT_COMMIT_MODE probe if already set from an earlier run in this session
   // Phase 1.5
-  - Author plan is mandatory unless an explicit auto-skip condition in phase-1.5-author-plan.md applies
+  - Author plan is mandatory unless an explicit auto-skip condition applies
   - User chooses storage mode (memory or disk), not whether planning runs
+  - Phase 1.5 entry predicates are evaluated eagerly after Phase 1 inputs approved,
+    but the full phase body is lazy-loaded only at the first post-approval branch
+    that needs author-plan resolution before Phase 3 summary or disk/write-path
+    selection where applicable
+  - Phase 2 checkpoint loading is lazy; load it only for artifact >10 sections,
+    expected multi-turn execution, or resumable section/state bookkeeping
+  - Phase 5 review-loop loading is lazy; load it only after Phase 4 writes complete
+    or when analyze.md hands remediation into the external entry with accepted
+    payload predicates, payload shaping/mapping onto the Phase 5 contract, and
+    branch mapping already resolved
   // Phase 6
+  - Phase 6 menu loading is lazy; load it only when Phase 5 exit must report
+    validation results, validation/waiver state, files changed, findings, waivers,
+    or unresolved validation state
   - Remediation Handoff: conditional on non-empty remaining_findings
   - Post-Write Review Handoff: mandatory when files were written
 
@@ -169,5 +201,7 @@ NOTES:
   phase-0-dependencies.md delegates INLINE_FALLBACK probe to shared/inline-fallback-probe.md
   (same canonical block reused by analyze.md).
   MAX_ITER prompt + parser live in phase-5/index.md § Pre-Phase-Setup (also analyze.md external-entry point).
-  Phase 5 also accepts external entry from analyze.md Remediation Handoff option 1 into Phase 5.3.
+  Phase 5 also accepts external entry from analyze.md Remediation Handoff option 1 into
+  Phase 5.3 only after analyze-side accepted payload predicates, payload shaping/mapping
+  onto the Phase 5 contract, and branch mapping are already resolved.
 ```
