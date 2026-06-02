@@ -49,14 +49,13 @@ UNIT PdslSharedContextPack
 PURPOSE:
   Keep PDSL prompt loading controller-owned and pack-aware.
 
+DO:
+  - LOAD {cf-studio-path}/.core/workflows/shared/shared-context-pack-ownership.md
+  - CONTINUE SharedContextPackOwnership
+
 RULES:
-  - ALWAYS Mode files and PDSL helper contracts are controller-owned prompt assets
-    loaded from {cf-studio-path}/.core/...
-  - ALWAYS Before any cf-pdsl-* dispatch, the controller ALWAYS reuses or extends
-    SHARED_CONTEXT_PACK, load the agent prompt source, and synthesize the
-    final dispatch prompt with only the task-relevant instruction context
-  - ALWAYS PDSL sub-agents NEVER self-bootstrap by reopening SKILL, workflow, spec,
-    or AGENTS prompt files directly
+  - ALWAYS Mode files and PDSL helper contracts remain the workflow-specific
+    prompt-asset family for this shared ownership contract
 ```
 
 ## Intent Routing

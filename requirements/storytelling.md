@@ -78,15 +78,16 @@ WHEN:
   - REQUIRE explain-style intent is detected
 
 DO:
-  - REQUIRE this router is active
-  - REQUIRE controller has loaded `{cf-studio-path}/.core/requirements/execution-protocol.md`
-  - REQUIRE controller has loaded `{cf-studio-path}/.core/requirements/storytelling-shared.md`
-  - SET EXPLAIN_MODE = true
+  - SET ACTIVATION_INTENT = explain_style
+  - SET ACTIVATION_REQUIRED_PROMPT_ASSETS = storytelling_runtime_assets
+  - SET ACTIVATION_MODE_FLAG = EXPLAIN_MODE
+  - LOAD {cf-studio-path}/.core/requirements/shared/runtime-activation-contract.md
+  - CONTINUE SharedRuntimeActivationContract
 
 RULES:
-  - ALWAYS treat storytelling prompt assets as controller-owned prompt assets
-  - NEVER let prompt-consuming sub-agents reopen storytelling prompt files
-    from disk
+  - ALWAYS storytelling runtime assets include
+    `{cf-studio-path}/.core/requirements/execution-protocol.md` and
+    `{cf-studio-path}/.core/requirements/storytelling-shared.md`
   - ALWAYS deliver storytelling prompt content through `prompt_context_view`
     whenever a sub-agent participates in the session
 ```

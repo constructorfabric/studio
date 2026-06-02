@@ -65,17 +65,16 @@ PURPOSE:
   Define project sysprompt surfaces as prompt assets with controller-owned
   loading authority.
 
+DO:
+  - LOAD {cf-studio-path}/.core/workflows/shared/shared-context-pack-ownership.md
+  - CONTINUE SharedContextPackOwnership
+
 RULES:
   - ALWAYS `{cf-studio-path}/config/AGENTS.md` and
-    `{cf-studio-path}/config/sysprompts/*.md` are prompt assets when used as
-    operating instructions
-  - ALWAYS A dispatching controller may load those prompt assets from disk
-  - ALWAYS When loaded into `SHARED_CONTEXT_PACK`, those assets ALWAYS be recorded with
-    `origin = "project"`
-  - ALWAYS Prompt-consuming sub-agents ALWAYS receive the selected prompt text through
-    the controller-synthesized final dispatch prompt
-  - ALWAYS Prompt-consuming sub-agents NEVER reopen project sysprompt files
-    directly from disk
+    `{cf-studio-path}/config/sysprompts/*.md` remain the project prompt-asset
+    family for this shared ownership contract
+  - ALWAYS When loaded into `SHARED_CONTEXT_PACK`, those assets ALWAYS be
+    recorded with `origin = "project"`
 ```
 
 ```pdsl

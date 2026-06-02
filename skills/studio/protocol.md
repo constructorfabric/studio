@@ -77,6 +77,10 @@ PURPOSE:
   controller-owned prompt assets that populate or refresh the shared context
   pack before any downstream dispatch.
 
+DO:
+  - LOAD {cf-studio-path}/.core/workflows/shared/shared-context-pack-ownership.md
+  - CONTINUE SharedContextPackOwnership
+
 RULES:
   - ALWAYS ProtocolGuard resolves {cf-studio-path}/.gen/AGENTS.md,
     {cf-studio-path}/config/AGENTS.md, {cf-studio-path}/.gen/SKILL.md,
@@ -88,14 +92,10 @@ RULES:
     stale assets before reuse
   - ALWAYS Mixed-content runtime assets loaded here ALWAYS contribute only their
     instruction-bearing sections to SHARED_CONTEXT_PACK
-  - ALWAYS Prompt-consuming sub-agents ALWAYS receive a controller-synthesized final
-    dispatch prompt that already includes the needed instruction text from
-    SHARED_CONTEXT_PACK
-  - ALWAYS Prompt-consuming sub-agents NEVER reopen these files directly
-  - ALWAYS Missing or stale prompt assets that cannot be refreshed ALWAYS surface a
-    deterministic controller-owned error before downstream dispatch
-  - ALWAYS ExecutionVisibility logging ALWAYS include whether the controller reused,
-    refreshed, or extended SHARED_CONTEXT_PACK during Protocol Guard
+  - ALWAYS Missing or stale prompt assets that cannot be refreshed ALWAYS surface
+    a deterministic controller-owned error before downstream dispatch
+  - ALWAYS ExecutionVisibility logging ALWAYS include whether the controller
+    reused, refreshed, or extended SHARED_CONTEXT_PACK during Protocol Guard
 ```
 
 ```pdsl

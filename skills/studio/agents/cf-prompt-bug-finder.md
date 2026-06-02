@@ -126,16 +126,16 @@ PURPOSE:
   Emit a checkpoint when context budget is exhausted before all target_paths
   are read, rather than risk truncated output.
 
-WHEN:
-  - REQUIRE fewer than 20% of estimated remaining context budget remains
-  - AND NOT all target_paths have been fully read
-
 DO:
-  - EMIT Partial Checkpoint — Prompt Bug Section markdown block
-  - EMIT partial-run discriminator JSON (see schema below)
-  - EMIT findings JSON containing only findings_so_far
-  - NEVER emitting a complete validation report
-  - STOP_TURN
+  - SET PARTIAL_CHECKPOINT_TARGETS = target_paths
+  - SET PARTIAL_CHECKPOINT_SECTION = Partial Checkpoint — Prompt Bug Section
+  - SET PARTIAL_CHECKPOINT_JSON = partial-run discriminator JSON
+  - SET PARTIAL_CHECKPOINT_FINDINGS = findings JSON containing only findings_so_far
+  - LOAD {cf-studio-path}/.core/skills/studio/agents/shared/context-budget-partial-checkpoint.md
+  - CONTINUE SharedContextBudgetPartialCheckpoint
+
+RULES:
+  - ALWAYS the findings JSON contain only findings_so_far for partial runs
 ```
 
 ```json

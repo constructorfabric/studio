@@ -88,6 +88,7 @@ Spaider.code-workspace
 .bootstrap/.plans/implement-thin-orchestrator-workflows/
 .bootstrap/.plans/implement-shared-context-pack-pdsl-migration/
 .bootstrap/.plans/audit-studio-prompts/
+.bootstrap/.plans/pdsl-semantic-reuse-refactor/
 
 # Artifacts
 .prs/*

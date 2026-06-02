@@ -55,15 +55,16 @@ UNIT WorkspaceSharedContextPack
 PURPOSE:
   Keep workspace bootstrap prompt loading controller-owned and pack-aware.
 
+DO:
+  - LOAD {cf-studio-path}/.core/workflows/shared/shared-context-pack-ownership.md
+  - CONTINUE SharedContextPackOwnership
+
 RULES:
-  - ALWAYS {cf-studio-path}/config/AGENTS.md and {cf-studio-path}/.gen/AGENTS.md are
-    controller-owned prompt assets when loaded as instructions and ALWAYS be
-    reused or refreshed in SHARED_CONTEXT_PACK before downstream dispatch
-  - ALWAYS Workspace helpers ALWAYS receive needed instruction text through a
-    controller-synthesized final dispatch prompt rather than reopening AGENTS
-    or workflow prompt files
-  - ALWAYS Workspace router fragments ALWAYS remain compact controller-owned loads from
-    {cf-studio-path}/.core/workflows/workspace/...
+  - ALWAYS {cf-studio-path}/config/AGENTS.md and {cf-studio-path}/.gen/AGENTS.md
+    remain the workspace-specific prompt-asset family for this shared ownership
+    contract
+  - ALWAYS Workspace router fragments ALWAYS remain compact controller-owned
+    loads from {cf-studio-path}/.core/workflows/workspace/...
 ```
 
 ## Overview
