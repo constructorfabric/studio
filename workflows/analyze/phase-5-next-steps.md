@@ -76,4 +76,4 @@ Reply with the option number or a short custom instruction.
 ```
 FAIL:
 
-When actionable findings exist, this sub-file does NOT emit a separate menu. The `{cf-studio-path}/.core/workflows/analyze/phase-4-output/remediation-handoff.md` menu IS the next-step selector for failure cases. Do not duplicate or paraphrase it here. MUST NOT ask whether the handoff menu should be generated and MUST NOT defer it to a later user turn — the menu is emitted as the final section of the current response per `{cf-studio-path}/.core/workflows/analyze/phase-4-output/remediation-handoff.md` § `enforceRemediationPrompts`.
+When actionable findings exist, this sub-file does NOT emit a separate menu. The `{cf-studio-path}/.core/workflows/analyze/phase-4-output/remediation-handoff.md` menu IS the next-step selector for failure cases. Do not duplicate or paraphrase it here. MUST NOT ask whether the handoff menu should be generated and MUST NOT defer it to a later user turn — the menu is emitted as the final section of the current response per `{cf-studio-path}/.core/workflows/analyze/phase-4-output/remediation-handoff.md` § `UNIT AnalyzeRemediationHandoff`.

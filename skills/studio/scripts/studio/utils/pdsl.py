@@ -102,7 +102,7 @@ PATTERN_DEF_RE = re.compile(r"^\s{2}(?P<name>[A-Za-z][A-Za-z0-9_-]*)\s*:\s*/")
 MATCHES_RE = re.compile(r"\bmatches\(\s*[^,]+,\s*(?P<quote>['\"]?)(?P<name>[A-Za-z][A-Za-z0-9_-]*)\1\s*\)")
 SECTION_HEAD_RE = re.compile(r"^(?P<section>[A-Z][A-Z0-9_-]*):")
 ACTION_HEAD_RE = re.compile(r"^-\s+(?P<token>[A-Z][A-Z0-9_-]*)(?=\b|\s|$)")
-MENU_OPTION_RE = re.compile(r"^-\s+(?P<number>\d+)\b.*->")
+MENU_OPTION_RE = re.compile(r"^(?:-\s+)?(?P<number>\d+)\b.*->")
 
 # @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-load-rule-registry
 SECTION_HEADERS = {
@@ -445,7 +445,10 @@ def _validate_section_item(
 ) -> List[PdslFinding]:
     stripped = raw_line.strip()
     if not stripped.startswith("- "):
-        return []
+        if section == "OPTIONS" and menu_expected is not None and re.match(r"^\d+\b", stripped):
+            pass
+        else:
+            return []
     indent_len = len(raw_line) - len(raw_line.lstrip(" "))
     if indent_len > 2 and not (section == "OPTIONS" and menu_expected is not None):
         return []
@@ -465,7 +468,7 @@ def _validate_section_item(
             return [_finding(
                 block, "PDSL400", line_no, raw_line,
                 "MENU OPTIONS item must start with a decimal number and contain ->",
-                hint="Use `- 1 label -> ACTION ...` format.",
+                hint="Use `1 label -> ACTION ...` format.",
             )]
         number = int(option.group("number"))
         if menu_expected is not None and number != menu_expected:

@@ -107,14 +107,14 @@ MENU ExploreSaveMenu:
         summary.md = task summary, exploration status, resource count, and missing-context questions
       EMIT "Saved exploration bundle to <user path>."
       CONTINUE ExploreNextActions
-    3 | skip | no ->
+    4 | skip | no ->
       EMIT "Skipped saving. No files were written."
       CONTINUE ExploreNextActions
-    4 | cancel ->
+    5 | cancel ->
       EMIT "Explore save canceled. No files were written."
       STOP_TURN
   INVALID:
-    EMIT "Reply with 1-4, `save`, `skip`, or `folder: <path>`."
+    EMIT "Reply with 1-5, `save`, `skip`, or `folder: <path>`."
     WAIT user.reply
     STOP_TURN
 

@@ -33,6 +33,11 @@ DO:
 
 RULES:
   - ALWAYS keep output stable
+
+MENU Pick:
+  OPTIONS:
+    1 one -> RETURN done
+    2 two -> RETURN done
 """
 
 
@@ -223,7 +228,7 @@ def test_pdsl_validate_source_covers_structural_edge_cases() -> None:
 TITLE:
   Pick one.
 OPTIONS:
-  - 1 one -> RETURN ok
+  1 one -> RETURN ok
   - two -> RETURN bad
   - 3 three -> RETURN bad
 UNIT Dup

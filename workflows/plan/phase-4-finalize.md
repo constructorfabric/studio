@@ -229,9 +229,9 @@ DO:
 MENU Phase4ReviewPlanFilesMenu:
   TITLE: Plan files ready
   OPTIONS:
-    1 execute -> Continue to plan execution
-    2 handoff -> Generate handoff prompt
-    3 validate -> Validate the completed plan before execution
+    1 execute -> CONTINUE Phase4NativePhaseDispatch
+    2 handoff -> CONTINUE Phase4EmitStartupPrompt
+    3 validate -> CONTINUE Phase4AnalyzePlan
     4 modify -> CONTINUE Phase4ModifyPlan
   INVALID:
     EMIT "Reply with 1, 2, 3, or 4."

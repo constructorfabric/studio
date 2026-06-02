@@ -75,13 +75,13 @@ DO:
     ELSE:
       - RETURN control to user without proceeding to Phase 6
 
-  - REQUIRE prompt is from {cf-studio-path}/.core/workflows/generate/phase-1.5/offer-dispatch.md
+  - REQUIRE prompt is from {cf-studio-path}/.core/workflows/generate/phase-1.5/offer-dispatch.md AND active menu is MandatoryOfferMenu OR OptionalOfferMenu
   - RUN (storage-choice prompts):
     - SET AUTHOR_PLAN_OFFER_RESOLVED = cancelled_by_stop_token
     SKIP Phase 3 / Phase 4
     STOP current generate sub-flow
 
-  - REQUIRE prompt is from {cf-studio-path}/.core/workflows/generate/phase-1.5/offer-dispatch.md
+  - REQUIRE prompt is from {cf-studio-path}/.core/workflows/generate/phase-1.5/offer-dispatch.md AND active menu is PlannerValidationFailureMenu OR PlannerValidationFailureTerminalMenu OR AuthorPlanApprovalMenu
   - RUN (planner-validation recovery prompt):
     - SET AUTHOR_PLAN_OFFER_RESOLVED = cancelled_planner_failure
     SKIP Phase 3 / Phase 4

@@ -138,6 +138,7 @@ MENU StorageModePrompt:
     1 standalone -> CONTINUE {cf-studio-path}/.core/workflows/workspace/phase-2-configure.md
     2 inline ->
       IF any selected repo is a Git URL:
+        EMIT "Inline storage is not supported for Git URL sources; please choose standalone storage or change the selected repos."
         EMIT_MENU StorageModePrompt
         WAIT user.reply
         STOP_TURN
