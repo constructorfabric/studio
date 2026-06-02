@@ -56,13 +56,13 @@ MENU BrownfieldAutoConfigOffer:
             generation with task-matched project rules.
       EXECUTE auto-config methodology (Phases 1→6)
       RETURN to generate
-      CONTINUE workflows/generate/phase-0-dependencies.md
+      CONTINUE {cf-studio-path}/.core/workflows/generate/phase-0-dependencies.md
     no ->
       CANCEL the generate workflow
     skip ->
       PROCEED without task-matched project-specific specs/rules
         (reduced quality for this run)
-      CONTINUE workflows/generate/phase-0-dependencies.md
+      CONTINUE {cf-studio-path}/.core/workflows/generate/phase-0-dependencies.md
   INVALID:
     EMIT "Reply with yes, no, or skip."
     WAIT user.reply
@@ -74,7 +74,7 @@ PURPOSE:
   Define AUTO_CONFIG fast path behavior when invoked via Invoke skill `cf-auto-config`.
 
 WHEN:
-  - REQUIRE AUTO_CONFIG == true (set by Invoke skill `cf-auto-config` thin entry point at workflows/auto-config.md)
+  - REQUIRE AUTO_CONFIG == true (set by Invoke skill `cf-auto-config` thin entry point at {cf-studio-path}/.core/workflows/auto-config.md)
 
 DO:
   - RUN TREAT this branch as higher precedence than normal generate update/refactor

@@ -51,7 +51,7 @@ DO:
         target_phase = {target_phase}
         git_commit_mode = GIT_COMMIT_MODE
         contributing_guide = CONTRIBUTING_GUIDE
-        git_constraint = mode-matched block from workflows/generate/phase-4-write.md § Git constraint blocks
+        git_constraint = mode-matched block from {cf-studio-path}/.core/workflows/generate/phase-4-write.md § Git constraint blocks
     - SET CF_PHASE_GATE = armed  (immediately after dispatch returns — success, error, or no-response)
 
 RULES:

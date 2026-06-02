@@ -378,7 +378,7 @@ def validate_credentials(user, password):
 | Acronym | Expansion | Notes |
 |---------|-----------|-------|
 | CPT | Canonical Provenance Trace | Identifier scheme `cpt-{system}-{kind}-{slug}-v{N}`; tag scheme `cpt-{role}-{...}-v{N}`. The `{system}` token is `studio` from v1.0.0. |
-| CDSL | Constructor DSL | Domain-specific plain English behavioral specification language used in kit/blueprint authoring; defined in `architecture/specs/CDSL.md`. |
+| CDSL | Constructor DSL | Domain-specific plain English behavioral specification language used in kit/blueprint authoring; defined in `{cf-studio-path}/.core/architecture/specs/CDSL.md`. |
 | CFS | Constructor Fabric Studio | The CLI binary (`cfs`). Use the short form `cfs` in code; spell out only in marketing prose. |
 
 ---

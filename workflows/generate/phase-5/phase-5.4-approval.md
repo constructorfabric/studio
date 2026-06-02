@@ -29,21 +29,9 @@ DO:
   - RUN NOTE: Full findings list already rendered in `{cf-studio-path}/.core/workflows/generate/phase-5/phase-5.3-findings.md` § Findings display;
         - NEVER re-render it here
 
-  - EMIT exactly:
-- RUN ---
-- RUN Mixed iteration {N}/{MAX_ITER}: {m_count} mechanical (will be auto-fixed when you proceed) + {j_count} judgmental (need your call).
-- RUN Mechanical IDs (queued for auto-fix on options 1 / 2): {comma-separated mechanical IDs}.
-- RUN Judgmental IDs (need approval): {comma-separated judgmental IDs}.
-
-- RUN How do you want to proceed with the judgmental findings?
-
-- RUN Approve all → fix all judgmental + auto-fix all mechanical       (suggested)
-- RUN Approve subset → reply IDs of judgmental to fix (e.g. `2: V-003, Rp-007`); mechanical batch is still auto-fixed. Reply `2:` with no IDs to apply the mechanical batch only — un-approved judgmental findings are carried forward in session state and are also left in place for the next iteration's reviewers to re-detect.
-- RUN No fixes — defer ALL findings → applies NO fixes this iteration: the mechanical batch is suppressed (NOT auto-applied) AND all judgmental findings are deferred; ALL remaining findings (mechanical + judgmental) surface to the `workflows/generate/phase-6/remediation-handoff.md` menu. Files remain in their as-of-`workflows/generate/phase-4-write.md` state. Use this when you want to inspect or hand off every finding — including the mechanical ones — before any more fixes. (Contrast with bare `2:` which applies the mechanical batch while deferring judgmental.)
-- RUN Stop loop → no fixes this iteration; exit loop; remaining_findings = all findings (mechanical + judgmental); same `workflows/generate/phase-6/remediation-handoff.md` menu applies. (Like option 3, no mechanical batch is applied; use bare `2:` to apply the mechanical batch before stopping.)
-
-- RUN Reply `1`, `2: <comma-separated judgmental IDs>` (or bare `2:` for mechanical-only), `3`, or `4`.
-- RUN ---
+  - EMIT "Mixed iteration {N}/{MAX_ITER}: {m_count} mechanical queued for auto-fix when you proceed; {j_count} judgmental need your approval. Mechanical IDs: {comma-separated mechanical IDs}. Judgmental IDs: {comma-separated judgmental IDs}."
+  - EMIT "Approve subset with `2:` to apply the mechanical batch only, or `2: <IDs>` to approve selected judgmental findings; un-approved judgmental findings are carried forward in session state."
+  - EMIT_MENU Phase54ApprovalMenu
   - WAIT user.reply
   - STOP_TURN
 ```
@@ -112,14 +100,14 @@ MENU Phase54ApprovalMenu:
     ^3$ ->
       SET loop_exit = "user-accepted"
       SET remaining_findings = all_findings ∪ carry_forward
-      CONTINUE workflows/generate/phase-6/index.md
+      CONTINUE {cf-studio-path}/.core/workflows/generate/phase-6/index.md
       NOTE: remediation-handoff.md MANDATORY; post-write-handoff.md LOCKED
             until remediation clears
 
     ^4$ ->
       SET loop_exit = "manual-handoff"
       SET remaining_findings = all_findings ∪ carry_forward
-      CONTINUE workflows/generate/phase-6/index.md
+      CONTINUE {cf-studio-path}/.core/workflows/generate/phase-6/index.md
       NOTE: remediation-handoff.md MANDATORY
 
     ^(stop|enough|done)$ ->

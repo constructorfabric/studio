@@ -1,12 +1,16 @@
-"""Validate PDSL keyword positions used in instruction prompts."""
+"""Validate PDSL prompt blocks through the PDSL CLI."""
 
 from __future__ import annotations
 
+import json
 import re
+import subprocess
+import sys
 from collections import defaultdict
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+STUDIO_PY = REPO_ROOT / "skills" / "studio" / "scripts" / "studio.py"
 
 PROMPT_ROOTS = (
     REPO_ROOT / "skills",
@@ -15,85 +19,103 @@ PROMPT_ROOTS = (
     REPO_ROOT / "architecture",
 )
 
-# Mirrors the keyword table in architecture/specs/PDSL.md, plus condition
-# operators named in that spec.
-KNOWN_PDSL_KEYWORDS = {
-    "UNIT",
-    "PURPOSE",
-    "INPUT",
-    "OUTPUT",
-    "STATE",
-    "WHEN",
-    "DO",
-    "SET",
-    "LOAD",
-    "RUN",
-    "EMIT",
-    "EMIT_MENU",
-    "MENU",
-    "TITLE",
-    "OPTIONS",
-    "INVALID",
-    "WAIT",
-    "STOP_TURN",
-    "CONTINUE",
-    "DISPATCH",
-    "RETURN",
-    "REQUIRE",
-    "RULES",
-    "ON_ERROR",
-    "INVARIANTS",
-    "NOTES",
-    "ALWAYS",
-    "NEVER",
-    "AND",
-    "OR",
-    "NOT",
-    "PATTERNS",
-}
+RUNTIME_PROMPT_ROOTS = (
+    REPO_ROOT / "skills" / "studio",
+    REPO_ROOT / "workflows",
+    REPO_ROOT / "requirements",
+    REPO_ROOT / "architecture" / "specs",
+)
+
+CF_PATH_RE = re.compile(r"\{cf-studio-path\}/(?P<path>[A-Za-z0-9_./*{}<>:-]+)")
+
+RUNTIME_ACTION_RE = re.compile(
+    r"\b("
+    r"LOAD|REQUIRE|CONTINUE|ROUTE|OPEN|FOLLOW|READ|DISPATCH|SEE|SEE_ALSO|Canon|"
+    r"canonical|defined in|declared in|from|per|owns|loaded|load|follow|open"
+    r")\b"
+)
+
+SOURCE_EQUIVALENT_CONTEXT_RE = re.compile(
+    r"\b("
+    r"source-equivalent|target_paths|prompt_targets|code_targets|artifact_targets|"
+    r"paths matching|matching:|It is for files such as|source_paths?|"
+    r"loaded_by:|parent:|description:|artifact path|output_files|file:"
+    r")\b"
+)
+
+ALLOWED_CF_ROOTS = (
+    ".core/",
+    ".gen/",
+    "config/",
+    ".cache/",
+    ".plans/",
+)
 
 FENCE_RE = re.compile(r"^```(?P<lang>[A-Za-z0-9_-]+)?\s*$")
-KEYWORD_RE = re.compile(r"^[A-Z][A-Z_-]*$")
-SECTION_HEADERS = {
-    "PURPOSE",
-    "INPUT",
-    "OUTPUT",
-    "STATE",
-    "WHEN",
-    "DO",
-    "RULES",
-    "ON_ERROR",
-    "INVARIANTS",
-    "NOTES",
-    "PATTERNS",
-    "TITLE",
-    "OPTIONS",
-    "INVALID",
-}
-ACTION_KEYWORDS = {
-    "SET",
-    "LOAD",
-    "RUN",
-    "EMIT",
-    "EMIT_MENU",
-    "WAIT",
-    "STOP_TURN",
-    "CONTINUE",
-    "DISPATCH",
-    "RETURN",
-    "REQUIRE",
-    "NEVER",
-}
-STATE_KEYWORDS = {"SET"}
-WHEN_KEYWORDS = {"REQUIRE", "AND", "OR", "NOT"}
-RULE_KEYWORDS = {"ALWAYS", "NEVER"}
-DEPRECATED_RULE_KEYWORDS = {"MUST", "MUST_NOT", "SHOULD", "MAY"}
-DEPRECATED_KEYWORDS = {
-    "FORBID",
-    "PARALLEL_DISPATCH",
-    "RE-DISPATCH",
-    *DEPRECATED_RULE_KEYWORDS,
-}
+
+
+def _prompt_files() -> list[Path]:
+    files: list[Path] = []
+    for root in PROMPT_ROOTS:
+        files.extend(sorted(root.rglob("*.md")))
+    return files
+
+
+def _runtime_prompt_files() -> list[Path]:
+    files: list[Path] = []
+    for root in RUNTIME_PROMPT_ROOTS:
+        files.extend(sorted(root.rglob("*.md")))
+    files.extend(sorted((REPO_ROOT / "skills" / "studio").glob("*.toml")))
+    return files
+
+
+def _runtime_prompt_source_refs() -> set[str]:
+    refs: set[str] = set()
+    for path in _runtime_prompt_files():
+        refs.add(path.relative_to(REPO_ROOT).as_posix())
+    return refs
+
+
+def _cf_reference_has_existing_static_prefix(ref: str) -> bool:
+    """Return true when a `{cf-studio-path}` ref targets a known adapter path.
+
+    Template references such as `config/kits/{slug}/SKILL.md` are validated by
+    their static prefix because the concrete runtime path is intentionally
+    variable.
+    """
+    if not ref.startswith(ALLOWED_CF_ROOTS):
+        return False
+    if ref.startswith((".cache/", ".plans/")):
+        # Cache and plan references are runtime-created namespaces. Their
+        # existence is not guaranteed in a fresh checkout or coverage job.
+        return True
+    if ref.startswith("config/"):
+        # Config references may point at optional project/user files. The
+        # namespace is canonical even when a concrete file is materialized only
+        # after init/update.
+        return True
+    if ref in {".gen/AGENTS.md", ".gen/SKILL.md"}:
+        return True
+    if ref.startswith(".gen/kits/") and any(token in ref for token in ("{", "}", "<", ">")):
+        return True
+
+    if ref.startswith(".core/"):
+        source_ref = ref.removeprefix(".core/")
+        root = REPO_ROOT
+    elif ref.startswith(".gen/"):
+        root = REPO_ROOT / ".bootstrap"
+        source_ref = ref
+    else:
+        root = REPO_ROOT / ".bootstrap"
+        source_ref = ref
+
+    if any(token in ref for token in ("{", "}", "*", "<", ">")):
+        static_prefix = re.split(r"[{*<]", source_ref, maxsplit=1)[0].rstrip("/")
+        if not static_prefix:
+            return True
+        static_path = root / static_prefix
+        return static_path.exists() or static_path.parent.exists()
+    return (root / source_ref).exists()
 
 
 def _iter_pdsl_blocks(path: Path) -> list[tuple[int, list[str]]]:
@@ -120,132 +142,44 @@ def _iter_pdsl_blocks(path: Path) -> list[tuple[int, list[str]]]:
     return blocks
 
 
-def _candidate_tokens(
-    line: str,
-    section: str | None,
-    *,
-    allow_continuation: bool = False,
-) -> tuple[str | None, list[str], str | None, bool]:
-    stripped = line.strip()
-    if not stripped or stripped.startswith("//"):
-        return section, [], None, False
-
-    indent_len = len(line) - len(line.lstrip(" "))
-    if allow_continuation and indent_len > 2:
-        return section, [], None, False
-
-    if stripped.startswith("- "):
-        item = stripped[2:].strip()
-        head = re.match(r"(?P<token>[A-Z][A-Z0-9_-]*)(?=\b|\s|$)", item)
-        token = head.group("token") if head else None
-        if section == "STATE":
-            return section, [token] if token else [], None if token in STATE_KEYWORDS else "STATE", True
-        if section == "WHEN":
-            return section, [token] if token else [], None if token in WHEN_KEYWORDS else "WHEN", True
-        if section == "DO":
-            return section, [token] if token else [], None if token in ACTION_KEYWORDS else "DO", True
-        if section == "OPTIONS":
-            return section, [], None if re.match(r"\d+\b.*->", item) else "OPTIONS", True
-        if section in {"RULES", "INVARIANTS"}:
-            return section, [token] if token else [], None if token in RULE_KEYWORDS else section, True
-        return section, [], None, False
-
-    candidates: list[str] = []
-
-    unit_or_menu = re.match(r"(?P<token>UNIT|MENU)\s+\S+", stripped)
-    if unit_or_menu:
-        return None, [unit_or_menu.group("token")], None, False
-
-    section_head = re.match(r"(?P<token>[A-Z][A-Z0-9_-]*):(?P<payload>\s*.*)?$", stripped)
-    if section_head:
-        token = section_head.group("token")
-        if token not in SECTION_HEADERS:
-            return section, [], None, False
-        section = token
-        candidates.append(token)
-        payload = (section_head.group("payload") or "").strip()
-        if token in {"STATE", "WHEN", "DO", "RULES", "INVARIANTS"} and payload:
-            return section, candidates, token, False
-        return section, candidates, None, False
-
-    if section == "WHEN":
-        for operator in re.findall(r"\b(AND|OR|NOT)\b", stripped):
-            candidates.append(operator)
-        return section, candidates, "WHEN", False
-
-    action_head = re.match(r"(?P<token>[A-Z][A-Z0-9_-]*)(?=\b|\s|$)", stripped)
-    if section == "OPTIONS" and "->" in stripped:
-        return section, [], None if re.match(r"\d+\b.*->", stripped) else "OPTIONS", True
-
-    if section in {"DO", "OPTIONS", "INVALID", "ON_ERROR"} and action_head:
-        token = action_head.group("token")
-        if token in ACTION_KEYWORDS | DEPRECATED_KEYWORDS:
-            candidates.append(token)
-
-    if "->" in stripped:
-        for action in re.findall(r"->\s*([A-Z][A-Z0-9_-]*)(?=\b|\s|$)", stripped):
-            if action in ACTION_KEYWORDS | DEPRECATED_KEYWORDS:
-                candidates.append(action)
-
-    if section in {"STATE", "DO", "RULES", "INVARIANTS"}:
-        return section, candidates, section, False
-    if section is None:
-        return section, candidates, "UNIT", False
-    return section, candidates, None, False
-
-
-def test_pdsl_blocks_use_known_keywords() -> None:
-    """Report PDSL line/action keywords not declared by the current spec allowlist."""
-    unknown: dict[str, list[str]] = defaultdict(list)
-    invalid_structure: dict[str, list[str]] = defaultdict(list)
-
-    for root in PROMPT_ROOTS:
-        for path in sorted(root.rglob("*.md")):
-            rel = path.relative_to(REPO_ROOT)
-            for block_start, block in _iter_pdsl_blocks(path):
-                section: str | None = None
-                previous_item_section: str | None = None
-                for offset, line in enumerate(block):
-                    section, tokens, structure_error, starts_item = _candidate_tokens(
-                        line,
-                        section,
-                        allow_continuation=previous_item_section == section,
-                    )
-                    if structure_error:
-                        invalid_structure[structure_error].append(f"{rel}:{block_start + offset}")
-                    previous_item_section = section if starts_item else previous_item_section
-                    for token in tokens:
-                        if len(token) <= 1:
-                            continue
-                        if KEYWORD_RE.match(token) and token not in KNOWN_PDSL_KEYWORDS:
-                            unknown[token].append(f"{rel}:{block_start + offset}")
-
-    failures: list[str] = []
-    failures.extend(
-        f"unknown {token}: {', '.join(locations[:12])}"
-        + (f" ... (+{len(locations) - 12})" if len(locations) > 12 else "")
-        for token, locations in sorted(unknown.items())
+def test_prompt_pdsl_blocks_pass_cfs_pdsl_validate() -> None:
+    """Prompt PDSL validation is covered by the production `pdsl validate` command."""
+    cmd = [
+        sys.executable,
+        str(STUDIO_PY),
+        "pdsl",
+        "validate",
+        *_prompt_files(),
+        "--json",
+    ]
+    completed = subprocess.run(
+        [str(part) for part in cmd],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
     )
-    failures.extend(
-        f"invalid {section} item: {', '.join(locations[:12])}"
-        + (f" ... (+{len(locations) - 12})" if len(locations) > 12 else "")
-        for section, locations in sorted(invalid_structure.items())
-    )
-    assert not failures, "\n".join(failures)
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    payload = json.loads(completed.stdout)
+    assert payload["command"] == "pdsl validate"
+    assert payload["ok"] is True
+    assert payload["summary"]["error_count"] == 0
+    assert payload["summary"]["fail_count"] == 0
+    assert payload["summary"]["finding_count"] == 0
 
 
 def test_named_pdsl_units_and_menus_are_not_exact_duplicates() -> None:
     """Exact duplicate named PDSL blocks should be defined once and loaded."""
     blocks_by_body: dict[str, list[str]] = defaultdict(list)
 
-    for root in PROMPT_ROOTS:
-        for path in sorted(root.rglob("*.md")):
-            rel = path.relative_to(REPO_ROOT)
-            for block_start, block in _iter_pdsl_blocks(path):
-                body = "\n".join(line.rstrip() for line in block).strip()
-                if not re.search(r"^(UNIT|MENU)\s+\S+", body, re.MULTILINE):
-                    continue
-                blocks_by_body[body].append(f"{rel}:{block_start}")
+    for path in _prompt_files():
+        rel = path.relative_to(REPO_ROOT)
+        for block_start, block in _iter_pdsl_blocks(path):
+            body = "\n".join(line.rstrip() for line in block).strip()
+            if not re.search(r"^(UNIT|MENU)\s+\S+", body, re.MULTILINE):
+                continue
+            blocks_by_body[body].append(f"{rel}:{block_start}")
 
     duplicates = [
         f"{locations[0]} duplicated at {', '.join(locations[1:])}"
@@ -259,17 +193,16 @@ def test_pdsl_unit_and_menu_names_are_unique() -> None:
     """PDSL UNIT/MENU names should have a single authoritative definition."""
     definitions: dict[tuple[str, str], list[str]] = defaultdict(list)
 
-    for root in PROMPT_ROOTS:
-        for path in sorted(root.rglob("*.md")):
-            rel = path.relative_to(REPO_ROOT)
-            for block_start, block in _iter_pdsl_blocks(path):
-                body = "\n".join(block)
-                match = re.search(r"^(UNIT|MENU)\s+([^:\n]+):?", body, re.MULTILINE)
-                if not match:
-                    continue
-                definitions[(match.group(1), match.group(2).strip())].append(
-                    f"{rel}:{block_start}"
-                )
+    for path in _prompt_files():
+        rel = path.relative_to(REPO_ROOT)
+        for block_start, block in _iter_pdsl_blocks(path):
+            body = "\n".join(block)
+            match = re.search(r"^(UNIT|MENU)\s+([^:\n]+):?", body, re.MULTILINE)
+            if not match:
+                continue
+            definitions[(match.group(1), match.group(2).strip())].append(
+                f"{rel}:{block_start}"
+            )
 
     duplicates = [
         f"{kind} {name}: {', '.join(locations)}"
@@ -277,3 +210,44 @@ def test_pdsl_unit_and_menu_names_are_unique() -> None:
         if len(locations) > 1
     ]
     assert not duplicates, "\n".join(sorted(duplicates))
+
+
+def test_prompt_runtime_references_use_cf_studio_path() -> None:
+    """Runtime prompt references must use `{cf-studio-path}` adapter paths.
+
+    The scanner builds the known prompt/runtime path set from canonical source
+    files and verifies that prompt instructions reference those files through
+    the adapter mirror (`.core`, `.gen`, `config`, `.cache`, `.plans`) unless the
+    line is explicitly describing source-equivalent target matching.
+    """
+    source_refs = _runtime_prompt_source_refs()
+    findings: list[str] = []
+
+    for path in _runtime_prompt_files():
+        rel = path.relative_to(REPO_ROOT).as_posix()
+        for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            for match in CF_PATH_RE.finditer(line):
+                ref = match.group("path").rstrip("`'\"),.;:")
+                if not _cf_reference_has_existing_static_prefix(ref):
+                    findings.append(
+                        f"{rel}:{line_no}: invalid {{cf-studio-path}} reference `{ref}`"
+                    )
+
+            if "{cf-studio-path}" in line:
+                continue
+            if SOURCE_EQUIVALENT_CONTEXT_RE.search(line):
+                continue
+            if not RUNTIME_ACTION_RE.search(line):
+                continue
+
+            for source_ref in source_refs:
+                if source_ref not in line:
+                    continue
+                findings.append(
+                    f"{rel}:{line_no}: bare runtime prompt reference `{source_ref}`; "
+                    "use `{cf-studio-path}/.core/...` or mark the line as "
+                    "source-equivalent target context"
+                )
+                break
+
+    assert not findings, "\n".join(sorted(findings))

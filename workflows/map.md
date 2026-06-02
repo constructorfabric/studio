@@ -523,9 +523,21 @@ PURPOSE:
   Continue from the map next-step menu into the existing HTML map artifact.
 
 DO:
-  - EMIT "Open the generated HTML map artifact in your browser to explore the interactive graph. Reply `config` to refine categories, `json` to export data, or describe another map action."
+  - EMIT "Open the generated HTML map artifact in your browser to explore the interactive graph."
+  - EMIT_MENU MapOpenHtmlViewerMenu
   - WAIT user.reply
   - STOP_TURN
+
+MENU MapOpenHtmlViewerMenu:
+  TITLE: HTML map next action
+  OPTIONS:
+    1 config -> CONTINUE MapPhaseConfigAssist
+    2 json -> CONTINUE MapExportJson
+    3 custom action -> CONTINUE MapCustomAction
+  INVALID:
+    EMIT "Reply with 1, 2, or 3: <map action>."
+    WAIT user.reply
+    STOP_TURN
 ```
 
 ```pdsl
@@ -535,7 +547,40 @@ PURPOSE:
   Continue from the map next-step menu into a concrete JSON export path.
 
 DO:
-  - EMIT "Generate or use the JSON map artifact, then inspect it with tools such as `jq`. Reply `run json` to generate JSON now, `config` to refine categories, or describe another map action."
+  - EMIT "Generate or use the JSON map artifact, then inspect it with tools such as `jq`."
+  - EMIT_MENU MapExportJsonMenu
   - WAIT user.reply
+  - STOP_TURN
+
+MENU MapExportJsonMenu:
+  TITLE: JSON map next action
+  OPTIONS:
+    1 run json -> CONTINUE MapRunJsonExport
+    2 config -> CONTINUE MapPhaseConfigAssist
+    3 custom action -> CONTINUE MapCustomAction
+  INVALID:
+    EMIT "Reply with 1, 2, or 3: <map action>."
+    WAIT user.reply
+    STOP_TURN
+```
+
+```pdsl
+UNIT MapRunJsonExport
+
+PURPOSE:
+  Run the concrete JSON export path for the current map.
+
+DO:
+  - RUN `cfs map --format json --out map.json`
+```
+
+```pdsl
+UNIT MapCustomAction
+
+PURPOSE:
+  Collect the user's custom map action and route it back into the map workflow.
+
+DO:
+  - WAIT user supplied map action
   - STOP_TURN
 ```

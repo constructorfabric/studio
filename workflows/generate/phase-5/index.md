@@ -88,15 +88,8 @@ STATE:
 
 DO:
   - REQUIRE entering Phase 5 from internal generate path:
-    - EMIT exactly:
-- RUN ---
-- RUN How many automatic review iterations should run before I check in with you?
-
-- RUN Each iteration: validate + review the written files → auto-fix mechanical
-- RUN issues → ask you to approve any non-mechanical findings → re-validate.
-
-- RUN Reply with a number (suggested: 5 — balances fix coverage against context cost; use 2 or less in inline mode), `enter` for 5, or `0` to skip the loop.
-- RUN ---
+    - EMIT "Each review iteration validates and reviews written files, auto-fixes mechanical issues, asks you to approve non-mechanical findings, then re-validates."
+    - EMIT_MENU MaxIterMenu
     - WAIT user.reply
     - STOP_TURN
     PARSE reply:
@@ -104,7 +97,7 @@ DO:
       enter -> SET MAX_ITER = 5
       0 -> SET MAX_ITER = 0 (selects zero-iteration branch)
       otherwise ->
-        - EMIT "Reply with a non-negative integer, enter for 5, or 0 to skip."
+        - EMIT_MENU MaxIterMenu
         - WAIT user.reply
         - STOP_TURN
 
@@ -123,6 +116,17 @@ RULES:
     the PARSE block ALWAYS be skipped entirely
   - ALWAYS MAX_ITER ALWAYS be an integer >= 0; negative values, decimals, ranges, and
     non-numeric text are invalid and ALWAYS re-prompt without selecting a default
+
+MENU MaxIterMenu:
+  TITLE: Automatic review iterations
+  OPTIONS:
+    1 default 5 -> SET MAX_ITER = 5
+    2 custom N -> SET MAX_ITER = N when N is a non-negative integer
+    3 skip loop -> SET MAX_ITER = 0
+  INVALID:
+    EMIT "Reply with 1 for default 5, 2: <non-negative integer>, or 3 to skip."
+    WAIT user.reply
+    STOP_TURN
 ```
 
 ### Review-Loop Iteration Cap Prompt
@@ -134,38 +138,29 @@ PURPOSE:
   Reusable sub-block emitted by every Phase 5 iteration-end branch when N > MAX_ITER.
 
 DO:
-  - EMIT exactly:
-- RUN ---
-- RUN Iteration {N} complete; you set MAX_ITER={MAX_ITER}. Continue, accept current state, or stop?
-
-- RUN `extend: <M>` → raise MAX_ITER to <M> and run another iteration (must be > current MAX_ITER)
-- RUN `accept`     → exit the loop now; loop_exit = "max-iter-stopped"; remaining_findings = carry_forward (suggested when current findings look acceptable)
-- RUN `stop`       → exit the loop now; loop_exit = "manual-handoff"; remaining_findings = carry_forward (use when you want to inspect / hand off the remaining findings before any more fixes)
-
-- RUN Reply `extend: <M>`, `accept`, or `stop`.
-- RUN ---
+  - EMIT "Iteration {N} complete; MAX_ITER={MAX_ITER}. Choose whether to extend the loop, accept the current state, or stop for handoff."
+  - EMIT_MENU IterationCapMenu
   - WAIT user.reply
   - STOP_TURN
 
 MENU IterationCapMenu:
   TITLE: Iteration cap
   OPTIONS:
-    1 extend: M (M positive integer > current MAX_ITER) ->
+    1 extend: M (run more iterations; M must be > current MAX_ITER) ->
       SET MAX_ITER = M
       CONTINUE iteration loop
-    2 extend: M (invalid — M not positive integer or M <= current MAX_ITER) ->
-      EMIT "extend: <M> must be a positive integer greater than current MAX_ITER
-            ({current_MAX_ITER}); reply again."
-      WAIT user.reply
-      STOP_TURN
-    3 accept ->
+    2 accept current state ->
       SET loop_exit = "max-iter-stopped"
       SET remaining_findings = carry_forward
-      CONTINUE workflows/generate/phase-5/phase-5.5-final.md
-    4 stop ->
+      CONTINUE {cf-studio-path}/.core/workflows/generate/phase-5/phase-5.5-final.md
+    3 stop for handoff ->
       SET loop_exit = "manual-handoff"
       SET remaining_findings = carry_forward
-      CONTINUE workflows/generate/phase-6/index.md
+      CONTINUE {cf-studio-path}/.core/workflows/generate/phase-6/index.md
+  INVALID:
+    EMIT "Reply with 1: <M> where M is greater than current MAX_ITER, 2 to accept, or 3 to stop."
+    WAIT user.reply
+    STOP_TURN
 
 RULES:
   - ALWAYS use same wording at every emission site (canonical wording defined here)

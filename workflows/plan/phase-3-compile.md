@@ -205,7 +205,7 @@ RULES:
 UNIT Phase3ProduceViaSubagents
 PURPOSE: Route phase compilation to cf-phase-compiler subagents (option [3]).
 DO:
-  - REQUIRE Session Sub-Agent Approval Gate ({cf-studio-path}/.core/skills/studio/SKILL.md) is resolved
+  - REQUIRE Session Sub-Agent Approval Gate ({cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md) is resolved
   - RUN OPEN {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md
   - RUN FOLLOW {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md
   - REQUIRE INLINE_FALLBACK == true:
@@ -239,14 +239,14 @@ MENU InlineFallbackRerouteMenu:
         SHARED_CONTEXT_PACK prompt_context_view slices, prompt_engineering_context,
         and payload below
       IF compiler source contract is not loaded, unreadable, ambiguous, or not reflected in final dispatch prompt:
-        FAIL per sub-agent-dispatch.md § SubAgentContractReadGate
+        FAIL per {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md § SubAgentContractReadGate
         NEVER dispatch
       SET CF_PHASE_GATE = released_for_dispatch
       DISPATCH cf-phase-compiler with synthesized final prompt including:
           brief_file = {cf-studio-path}/.plans/{task-slug}/{brief_file}
           git_commit_mode = GIT_COMMIT_MODE
           contributing_guide = CONTRIBUTING_GUIDE
-          git_constraint = mode-matched constraint block from workflows/generate/phase-4-write.md § Git constraint blocks
+          git_constraint = mode-matched constraint block from {cf-studio-path}/.core/workflows/generate/phase-4-write.md § Git constraint blocks
       ACCEPT result only IF it reports: compile summary, phase identity, output file path, compile-time validation outcome
       EMIT "Phase {N} compiled via subagent → {filename} ({lines} lines)"
       SET CF_PHASE_GATE = armed

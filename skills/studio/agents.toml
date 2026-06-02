@@ -135,7 +135,7 @@ context_window = "medium"
 # ---------------------------------------------------------------------------
 # Migrate-from-Cypilot sub-agent set
 #
-# Coordinated by `skills/studio/migrate-from-cypilot.md` (the orchestrator
+# Coordinated by `{cf-studio-path}/.core/skills/studio/migrate-from-cypilot.md` (the orchestrator
 # loaded by the workflow-routing keyword `migrate from cypilot`). The
 # orchestrator dispatches each agent sequentially with explicit user-approval
 # gates and a bounded migrator↔verifier loop.

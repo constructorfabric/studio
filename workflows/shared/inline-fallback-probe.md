@@ -1,8 +1,8 @@
 ---
 name: inline-fallback-probe
 description: "Invoke when any workflow is about to dispatch a cf-* sub-agent to apply the canonical sub-agent approval gate and INLINE_FALLBACK probe rule."
-purpose: Canonical sub-agent approval + INLINE_FALLBACK probe rule (citation to SKILL.md)
-loaded_by: "workflows/generate.md, workflows/analyze.md, workflows/plan.md, workflows/analyze/phase-0-dependencies.md, workflows/analyze/phase-0-change-review-scope.md, workflows/analyze/phase-2.5-reviewer-plan.md, workflows/generate/phase-0-dependencies.md, workflows/generate/phase-4-write.md, workflows/generate/phase-5/phase-5.2-semantic.md, workflows/generate/phase-5/phase-5.3-findings.md, plus any individual phase file that requires inline-fallback resolution before a sub-agent dispatch"
+purpose: Canonical sub-agent approval + INLINE_FALLBACK probe rule (citation to {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md)
+loaded_by: "{cf-studio-path}/.core/workflows/generate.md, {cf-studio-path}/.core/workflows/analyze.md, {cf-studio-path}/.core/workflows/plan.md, plus any individual phase file that requires inline-fallback resolution before a sub-agent dispatch"
 version: 1.0
 ---
 
@@ -25,8 +25,8 @@ WHEN:
   - REQUIRE any workflow is about to dispatch a cf-* sub-agent
 
 DO:
-  - REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md § "Session Sub-Agent Approval Gate" is loaded
   - REQUIRE {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md is loaded
+  - REQUIRE {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md § "Session Sub-Agent Approval Gate" is loaded
   - REQUIRE NATIVE_SUBAGENT_POLICY_CONFLICT == false
      AND native cf-* sub-agents are discoverable or already selected for this workflow
      AND host/tool policy requires explicit delegation before sub-agent tool use
@@ -53,7 +53,7 @@ DO:
     - STOP_TURN
 
 RULES:
-  - ALWAYS apply SKILL.md § "Session Sub-Agent Approval Gate" then sub-agent-dispatch.md, in that order
+  - ALWAYS apply {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md § "Session Sub-Agent Approval Gate"
   - ALWAYS treat native sub-agent dispatch as the default when the host supports it
   - ALWAYS treat explicit-delegation host-policy conflict as a distinct approval boundary
   - NEVER fall through to HostNoNativeSubAgentMenu when native cf-* agents are discoverable but only policy-blocked pending explicit delegation
@@ -73,7 +73,7 @@ RULES:
     preserve the dispatch manifest/checkpoint fingerprint when one exists,
     then STOP_TURN
   - NEVER allow any INLINE_FALLBACK-gated block or SubAgentDecompositionBypass logic to execute unless INLINE_FALLBACK_PROBED == true
-  - ALWAYS emit SubAgentApprovalMenu, NativeSubAgentPolicyConflictMenu, and HostNoNativeSubAgentMenu verbatim as defined in SKILL.md § "Session Sub-Agent Approval Gate"
+  - ALWAYS emit SubAgentApprovalMenu, NativeSubAgentPolicyConflictMenu, and HostNoNativeSubAgentMenu verbatim as defined in {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md § "Session Sub-Agent Approval Gate"
   - ALWAYS SubAgentApprovalMenu title begins: "Approve sub-agent use for this session"
   - ALWAYS SubAgentApprovalMenu keeps Suggested: 1 as the native-dispatch recommendation
   - NEVER redefine approval-menu title text, options, suggested choices, or option semantics locally
@@ -106,27 +106,27 @@ INVARIANTS:
   - NEVER set INLINE_FALLBACK = false unless SUB_AGENT_SESSION_APPROVED == true
 
 NOTES:
-  Approval menus are defined canonically in skills/studio/SKILL.md — reference
+  Approval menus are defined canonically in {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md — reference
   them there and do not redefine them locally.
 
   INLINE_FALLBACK_PROBED guards against race conditions: bypass logic ALWAYS check this flag
   before acting on INLINE_FALLBACK value.
 
   INLINE_FALLBACK-gated dispatch sites:
-    workflows/generate/phase-0.7/offer.md
-    workflows/generate/phase-0.7/round-loop.md
-    workflows/generate/phase-1.5-author-plan.md
-    workflows/generate/phase-4-write.md
-    workflows/generate/phase-5/phase-5.2-semantic.md
-    workflows/generate/phase-5/phase-5.3-findings.md
-    workflows/analyze/phase-2-det-gate.md
-    workflows/analyze/phase-2.5-reviewer-plan.md
+    {cf-studio-path}/.core/workflows/generate/phase-0.7/offer.md
+    {cf-studio-path}/.core/workflows/generate/phase-0.7/round-loop.md
+    {cf-studio-path}/.core/workflows/generate/phase-1.5-author-plan.md
+    {cf-studio-path}/.core/workflows/generate/phase-4-write.md
+    {cf-studio-path}/.core/workflows/generate/phase-5/phase-5.2-semantic.md
+    {cf-studio-path}/.core/workflows/generate/phase-5/phase-5.3-findings.md
+    {cf-studio-path}/.core/workflows/analyze/phase-2-det-gate.md
+    {cf-studio-path}/.core/workflows/analyze/phase-2.5-reviewer-plan.md
 
   Single-agent panel mode (rounds[].panel_mode="single-agent") is inherently
   sequential; INLINE_FALLBACK degradation is a no-op for it.
 
-  Canon: {cf-studio-path}/.core/skills/studio/SKILL.md § "Session Sub-Agent
-  Approval Gate" and {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md.
+  Canon: {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md §
+  "Session Sub-Agent Approval Gate".
 
   "Native cf-* sub-agents are discoverable or desired for this workflow" means
   the current workflow/phase references a cf-* dispatch path or selected

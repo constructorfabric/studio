@@ -21,7 +21,224 @@ NOTES:
   If agent file has no explicit Response Completion Gate, default: return full declared output shape with no required field empty or null.
   CONTINUE in this protocol is a non-returning transfer of control — the called unit does not return to the caller.
   PostPlanDispatchGuard ALWAYS be invoked by DispatchGate when REVIEWER_EXECUTION_PLAN is non-null — see CONTINUE PostPlanDispatchGuard in DispatchGate DO block step 1.
-  SEE: skills/studio/SKILL.md § Session Sub-Agent Approval Gate
+  SEE: SubAgentApprovalGate in this file.
+```
+
+```pdsl
+UNIT SubAgentDefaultPolicy
+PURPOSE: Make native sub-agent dispatch the default execution path whenever
+         the host can provide it.
+RULES:
+  - ALWAYS Native cf-* dispatch is the default for every workflow phase referencing
+    a cf-* sub-agent when the host supports native sub-agents
+  - ALWAYS A host/tool policy requiring explicit delegation/approval before sub-agent
+    tool use is a distinct blocked state when native cf-* sub-agents are
+    discoverable or desired; ALWAYS resolve with NativeSubAgentPolicyConflictMenu;
+    NEVER collapse into host.supports_native_subagents == false
+  - NEVER decide on its own to avoid native sub-agents for convenience,
+    context size, simplicity, latency, or implementation preference
+  - ALWAYS may avoid native sub-agents only when: (1) user explicitly selected inline
+    fallback in SubAgentApprovalMenu; OR (2) host cannot provide native support
+    AND user explicitly selected inline fallback in recovery menu; OR (3) the
+    workflow phase has no cf-* dispatch path
+  - ALWAYS If orchestrator believes native sub-agents should not be used while host
+    supports them: ALWAYS ask via SubAgentApprovalMenu and STOP_TURN; NEVER
+    continue locally in the same turn
+  - ALWAYS After SUB_AGENT_SESSION_APPROVED == true: workflow phases with cf-* dispatch
+    paths ALWAYS use native sub-agents unless a later explicit user menu selection
+    changes the mode for a documented scope
+INVARIANTS:
+  - ALWAYS Inline fallback / no-dispatch is never orchestrator-default when native
+    sub-agents are available
+  - ALWAYS Missing approval is a blocked state, not permission to continue locally
+  - ALWAYS Context-management concerns route to planner/decomposition or checkpoint;
+    they do not authorize bypassing native sub-agent dispatch
+  - ALWAYS Emitting a "continuing locally / calling out the deviation" message while
+    native cf-* sub-agents are discoverable but policy-blocked is a violation
+```
+
+## Session Sub-Agent Approval Gate
+
+```pdsl
+UNIT SubAgentApprovalGate
+PURPOSE: Obtain explicit user approval for native sub-agent dispatch,
+         once per chat session.
+STATE:
+  - SET SUB_AGENT_SESSION_APPROVED: unset | true
+    default: unset  scope: session  reset: external-entry handoffs re-probe
+
+  - SET INLINE_FALLBACK: unset | true | false
+    default: unset  scope: workflow_run (NOT carried across workflow runs)
+
+  - SET INLINE_FALLBACK_PROBED: false | true
+    default: false  scope: workflow_run
+
+  - SET NATIVE_SUBAGENT_POLICY_CONFLICT: false | true
+    default: false  scope: workflow_run (derived)
+
+WHEN:
+  - REQUIRE SUB_AGENT_SESSION_APPROVED == unset
+  - AND native cf-* sub-agents are discoverable or desired for the current workflow
+DO:
+  - REQUIRE host/tool policy requires explicit user delegation or approval
+     AND INLINE_FALLBACK == unset:
+    - SET NATIVE_SUBAGENT_POLICY_CONFLICT = true
+    - EMIT_MENU NativeSubAgentPolicyConflictMenu
+    - WAIT user.reply
+    - STOP_TURN
+  - REQUIRE host.supports_native_subagents == true:
+    - EMIT_MENU SubAgentApprovalMenu
+    - WAIT user.reply
+    - STOP_TURN
+  - REQUIRE host.supports_native_subagents == false:
+    - EMIT_MENU HostNoNativeSubAgentMenu
+    - WAIT user.reply
+    - STOP_TURN
+
+MENU SubAgentApprovalMenu:
+  TITLE: |
+    Approve sub-agent use for this session.
+
+    This workflow uses Constructor Studio sub-agents by default for
+    isolated/parallel work when the host supports them.
+
+    | Option | Action |
+    |---|---|
+    | 1 | Use native sub-agents — isolated/parallel dispatch, remembered for this session |
+    | 2 | Use inline fallback for this workflow — no isolation, slower, but no host primitive needed |
+
+    Suggested: 1 because native dispatch preserves context-isolation and
+    parallelism when the host supports it.
+
+    Reply with 1 or 2.
+  OPTIONS:
+    1 ->
+      SET SUB_AGENT_SESSION_APPROVED = true
+      SET INLINE_FALLBACK = false
+      SET INLINE_FALLBACK_PROBED = true
+      CONTINUE CurrentWorkflow
+    2 ->
+      SET INLINE_FALLBACK = true
+      SET INLINE_FALLBACK_PROBED = true
+      CONTINUE CurrentWorkflow
+  INVALID:
+    EMIT "Reply with 1 or 2."
+    WAIT user.reply
+    STOP_TURN
+NOTES:
+  SubAgentApprovalMenu, NativeSubAgentPolicyConflictMenu, and
+  HostNoNativeSubAgentMenu are the canonical menu definitions.
+  inline-fallback-probe.md ALWAYS reference these menu definitions and NEVER
+  redefine their wording or option semantics locally.
+
+MENU NativeSubAgentPolicyConflictMenu:
+  TITLE: |
+    Native cf-* sub-agents are discoverable for this workflow, but this host
+    requires your explicit delegation approval before I can dispatch them.
+
+    Options:
+    1. Authorize native sub-agent/delegation for this session
+    2. Use explicit inline fallback for this workflow
+    3. Stop
+
+    Suggested: 1 because native dispatch preserves isolation and parallelism.
+    Reply with 1, 2, or 3.
+  OPTIONS:
+    1 ->
+      SET SUB_AGENT_SESSION_APPROVED = true
+      SET INLINE_FALLBACK = false
+      SET INLINE_FALLBACK_PROBED = true
+      CONTINUE CurrentWorkflow
+    2 ->
+      SET INLINE_FALLBACK = true
+      SET INLINE_FALLBACK_PROBED = true
+      CONTINUE CurrentWorkflow
+    3 ->
+      EMIT "Stopped before choosing native dispatch or inline fallback."
+      STOP_TURN
+  INVALID:
+    EMIT "Reply with 1, 2, or 3."
+    WAIT user.reply
+    STOP_TURN
+
+MENU HostNoNativeSubAgentMenu:
+  TITLE: |
+    Native sub-agents are not available in this host.
+
+    I need one fallback choice before continuing because this workflow normally
+    uses sub-agent isolation for cf-* dispatches.
+
+    Options:
+    1. Use inline fallback for this workflow — no isolation or parallelism
+    2. Stop before local execution
+
+    Suggested: 2 when isolation is required; choose 1 only for a bounded task
+    where inline execution is acceptable.
+    Reply with 1 or 2.
+  OPTIONS:
+    1 ->
+      SET INLINE_FALLBACK = true
+      SET INLINE_FALLBACK_PROBED = true
+      CONTINUE CurrentWorkflow
+    2 ->
+      EMIT "Sub-agent dispatch unavailable; stopping before local execution."
+      STOP_TURN
+  INVALID:
+    EMIT "Reply with 1 to use inline fallback or 2 to stop."
+    WAIT user.reply
+    STOP_TURN
+
+RULES:
+  - ALWAYS apply SubAgentDefaultPolicy before resolving this gate
+  - ALWAYS check policy-conflict condition first (highest priority) before checking
+    host.supports_native_subagents
+  - ALWAYS emit NativeSubAgentPolicyConflictMenu and STOP_TURN when native cf-*
+    sub-agents are discoverable but host/tool policy requires explicit user
+    delegation before sub-agent tool use
+  - ALWAYS emit SubAgentApprovalMenu and STOP_TURN when host.supports_native_subagents
+    == true and no policy conflict is active
+  - ALWAYS end the turn (STOP_TURN) immediately after emitting any menu
+  - ALWAYS trim reply and accept the active menu's option numbers when embedded
+    in longer phrases (e.g. "option 1 please")
+  - NEVER continue without native sub-agents while host supports them unless
+    user explicitly selected option 2
+  - NEVER continue in inline fallback when host does not support native
+    sub-agents unless user explicitly selected HostNoNativeSubAgentMenu option 1
+  - NEVER reinterpret policy-conflict blocking as host lacking native support
+  - NEVER default INLINE_FALLBACK from host capability or missing approval
+  - NEVER set INLINE_FALLBACK = true from missing approval alone
+  - NEVER carry INLINE_FALLBACK across workflow runs
+  - ALWAYS carry SUB_AGENT_SESSION_APPROVED across runs in the same chat session
+  - ALWAYS re-probe on external-entry handoffs
+  - ALWAYS Sub-agents ALWAYS skip this gate unless they will dispatch another cf-* sub-agent
+  - NEVER narrate the policy conflict and continue locally
+
+INVARIANTS:
+  - ALWAYS Native sub-agents are the default path when host.supports_native_subagents == true
+  - NEVER set INLINE_FALLBACK = true from missing approval or missing host
+    support alone; explicit user fallback selection required
+  - NEVER set INLINE_FALLBACK = false unless SUB_AGENT_SESSION_APPROVED == true
+```
+
+```pdsl
+UNIT ChangeReviewFailClosedSentinel
+PURPOSE: Forbid local change-review work until required gate and dispatch
+         states are resolved.
+WHEN:
+  - REQUIRE CHANGE_REVIEW == true
+RULES:
+  - ALWAYS treat unresolved native-sub-agent approval, unresolved inline-fallback
+    probe/menu state, or unresolved resolver/validator/reviewer
+    contract-read-and-use state as fail-closed
+  - ALWAYS While fail-closed: NEVER run or narrate local git status, git diff,
+    changed-file triage, cfs validate, local semantic review, findings,
+    review summaries, or remediation menus
+  - ALWAYS While fail-closed: may emit only the missing gate menu required to resolve
+    the blocked state, OR the matching "Dispatch blocked: ..." error from
+    {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md
+  - ALWAYS After either allowed output: ALWAYS STOP_TURN
+  - ALWAYS Resolving one gate does not weaken the sentinel for later dispatch sites;
+    each required dispatch gate remains fail-closed until resolved
 ```
 
 ```pdsl
@@ -41,8 +258,8 @@ DO:
      (SubAgentContractReadGate chains to RegisteredNativeSubAgentSet when INLINE_FALLBACK==false, then to SubAgentModeSelect)
 
 RULES:
-  - ALWAYS apply Session Sub-Agent Approval Gate from skills/studio/SKILL.md before any dispatch
-  - ALWAYS apply SKILL.md § Change-Review Fail-Closed Sentinel before any resolver/validator/reviewer dispatch when CHANGE_REVIEW == true
+  - ALWAYS apply SubAgentApprovalGate before any dispatch
+  - ALWAYS apply ChangeReviewFailClosedSentinel before any resolver/validator/reviewer dispatch when CHANGE_REVIEW == true
   - ALWAYS probe once per workflow run for INLINE_FALLBACK; NEVER inherit INLINE_FALLBACK from a prior workflow run
   - ALWAYS When SUB_AGENT_SESSION_APPROVED == true, re-derived workflow-run default is INLINE_FALLBACK=false; NEVER override to true without explicit user selection for the current documented scope
   - NEVER switch modes silently mid-workflow; if a mid-workflow re-probe yields a different mode result, ALWAYS surface the change to the user before continuing
@@ -90,17 +307,31 @@ RULES:
 ON_ERROR:
   LocalAnalysisSubstitutionViolation ->
     EMIT "Dispatch blocked: local semantic analysis must not substitute for planned reviewer sub-agent tasks defined in REVIEWER_EXECUTION_PLAN."
-    EMIT "Recovery options:"
-    EMIT "1. Return to native reviewer dispatch and continue the pending REVIEWER_EXECUTION_PLAN tasks"
-    EMIT "2. Abort this review dispatch"
-    EMIT "Reply with 1 or 2."
+    EMIT_MENU LocalAnalysisSubstitutionRecoveryMenu
     WAIT user.reply
     STOP_TURN
   PlanRequiresNativeDispatch ->
     EMIT "Dispatch blocked: plan-requires-native-dispatch — INLINE_FALLBACK==true does not exempt tasks defined in REVIEWER_EXECUTION_PLAN from the native sub-agent dispatch requirement."
-    EMIT "Recovery options:"
-    EMIT "1. Turn off inline fallback for this step and continue with native reviewer dispatch"
-    EMIT "2. Abort this review dispatch"
+    EMIT_MENU PlanRequiresNativeDispatchMenu
+    WAIT user.reply
+    STOP_TURN
+
+MENU LocalAnalysisSubstitutionRecoveryMenu:
+  TITLE: Local analysis blocked
+  OPTIONS:
+    1 native reviewer dispatch -> Return to native reviewer dispatch and continue pending REVIEWER_EXECUTION_PLAN tasks
+    2 abort -> Abort this review dispatch
+  INVALID:
+    EMIT "Reply with 1 or 2."
+    WAIT user.reply
+    STOP_TURN
+
+MENU PlanRequiresNativeDispatchMenu:
+  TITLE: Native dispatch required
+  OPTIONS:
+    1 native reviewer dispatch -> Turn off inline fallback for this step and continue with native reviewer dispatch
+    2 abort -> Abort this review dispatch
+  INVALID:
     EMIT "Reply with 1 or 2."
     WAIT user.reply
     STOP_TURN
@@ -137,7 +368,8 @@ WHEN:
 
 DO:
   - EMIT workflow-inline warning text if provided, else:
-    - EMIT "Inline-fallback mode active — isolation, parallelism, and subprocess separation guarantees are reduced for this dispatch. Continue? [y/n]"
+    - EMIT "Inline-fallback mode active — isolation, parallelism, and subprocess separation guarantees are reduced for this dispatch."
+  - EMIT_MENU InlineFallbackWarningMenu
   - WAIT user.reply
   - STOP_TURN
 
@@ -145,15 +377,37 @@ WHEN:
   - REQUIRE user.reply received
 
 DO:
-  - REQUIRE normalize(user.reply) matches /^(y|yes)$/i:
+  - REQUIRE normalize(user.reply) matches /^(1|continue)$/i:
     - CONTINUE SubAgentContractReadGate
   - RUN otherwise
-    - EMIT "Dispatch aborted. Choose: (a) retry with inline-fallback acknowledged, (b) switch to parent workflow plan-escalation menu, (c) stop."
+    - EMIT_MENU InlineFallbackAbortMenu
     - WAIT user.reply
     - STOP_TURN
 
 RULES:
   - NEVER silently continue on non-affirmative reply
+
+MENU InlineFallbackWarningMenu:
+  TITLE: Continue with inline fallback?
+  OPTIONS:
+    1 continue -> CONTINUE SubAgentContractReadGate
+    2 choose another path -> EMIT_MENU InlineFallbackAbortMenu
+    3 stop -> STOP_TURN
+  INVALID:
+    EMIT "Reply with 1 to continue, 2 to choose another path, or 3 to stop."
+    WAIT user.reply
+    STOP_TURN
+
+MENU InlineFallbackAbortMenu:
+  TITLE: Inline fallback not accepted
+  OPTIONS:
+    1 retry acknowledged -> Retry with inline fallback acknowledged
+    2 plan escalation -> Switch to parent workflow plan-escalation menu
+    3 stop -> Stop this dispatch
+  INVALID:
+    EMIT "Reply with 1, 2, or 3."
+    WAIT user.reply
+    STOP_TURN
 ```
 
 ```pdsl
@@ -198,7 +452,7 @@ RULES:
   - ALWAYS Frozen input payload ALWAYS be delivered as JSON when source prompt defines a JSON input contract
   - ALWAYS For prompt-consuming reviewer, planner, author, and collector contracts, frozen input payload ALWAYS include controller-supplied `prompt_context_view` slices from SHARED_CONTEXT_PACK for instruction assets only, plus explicit allowed-resource entries for every target_path and required cross_ref_path the sub-agent must inspect; dispatch ALWAYS fail if instruction slices are missing/incomplete or if target/cross-reference resources are not explicitly allowed
   - ALWAYS Dispatch ALWAYS fail before execution when any dispatch manifest field is missing or cannot be verified against the current controller-owned prompt assets
-  - ALWAYS Final prompt ALWAYS include an allowed-resource block naming every project file the sub-agent may inspect. A file under workflows/**, requirements/**, skills/**, AGENTS.md, or a kit prompt path is a prompt asset only when used as an instruction dependency; when explicitly listed as target_paths or cross_ref_paths, it is a target resource and ALWAYS be read by the sub-agent as analysis input, not supplied through prompt_context_view and not executed as instructions
+  - ALWAYS Final prompt ALWAYS include an allowed-resource block naming every project file the sub-agent may inspect. A file under {cf-studio-path}/.core/workflows/**, {cf-studio-path}/.core/requirements/**, {cf-studio-path}/.core/skills/**, {cf-studio-path}/.gen/AGENTS.md, {cf-studio-path}/config/AGENTS.md, or a kit prompt path is a prompt asset only when used as an instruction dependency; when explicitly listed as target_paths or cross_ref_paths, it is a target resource and ALWAYS be read by the sub-agent as analysis input, not supplied through prompt_context_view and not executed as instructions
   - ALWAYS Dispatch manifest and any continuation checkpoint ALWAYS include the same
     checkpoint fingerprint computed from source contract fingerprint,
     SHARED_CONTEXT_PACK id, prompt_context_view slice ids, allowed resource ids,
@@ -226,15 +480,23 @@ RULES:
 ```
 
 ```pdsl
-UNIT SubAgentDispatchInstructionFileAuthoringBoundary
+UNIT InstructionFileAuthoringBoundary
 PURPOSE: Prevent direct instruction-file writes when cf-generate author dispatch is available.
 
 RULES:
-  - ALWAYS Instruction-file targets: paths under workflows/**, requirements/**, any AGENTS.md, any skills/**/SKILL.md, any skills/**/agents/*.md, and equivalent prompt/agent contract files
+  - ALWAYS Instruction-file targets:
+    any path under {cf-studio-path}/.core/workflows/**
+    | any path under {cf-studio-path}/.core/requirements/**
+    | {cf-studio-path}/.gen/AGENTS.md
+    | {cf-studio-path}/config/AGENTS.md
+    | any path under {cf-studio-path}/.core/skills/**/SKILL.md
+    | any path under {cf-studio-path}/.core/skills/**/agents/*.md
+    | any source-equivalent workflow/requirement/AGENTS/skill/agent path named
+      by the active workflow
   - ALWAYS use generate selector + selected-author dispatch path when an instruction-file target has a cf-generate author dispatch path
   - NEVER use apply_patch/Edit/Write/MultiEdit/NotebookEdit/shell-write directly on instruction-file targets while native author dispatch is available
   - ALWAYS INLINE_FALLBACK=true means Mode B execution of the selected author contract; it is NOT permission for controller-local manual patching
-  - ALWAYS If controller detects it is about to manually patch an instruction-file target while native author dispatch is available: ALWAYS STOP, keep file untouched, route to workflows/generate/phase-1.5-author-plan.md then workflows/generate/phase-4-write.md
+  - ALWAYS If controller detects it is about to manually patch an instruction-file target while native author dispatch is available: ALWAYS STOP, keep file untouched, route to {cf-studio-path}/.core/workflows/generate/phase-1.5-author-plan.md then {cf-studio-path}/.core/workflows/generate/phase-4-write.md
   - ALWAYS Controller-local instruction-file edits allowed only in a documented emergency fallback after explicit user mode selection naming the files and stating why the author-dispatch path is unavailable or blocked
 
 ON_ERROR:

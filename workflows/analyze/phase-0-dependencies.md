@@ -66,7 +66,7 @@ DO:
      OR (CONSISTENCY_REVIEW == true AND fewer than two paths captured)
      OR (ARTIFACT_REVIEW == true AND artifact not in artifacts.toml):
     - LOAD {cf-studio-path}/.core/workflows/analyze/phase-0.5-scope.md
-  - CONTINUE workflows/analyze/phase-1-file-check.md
+  - CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-1-file-check.md
 
 RULES:
   - NEVER pre-enable CODE_REVIEW or CODE_BUG_REVIEW for a diff-scoped run

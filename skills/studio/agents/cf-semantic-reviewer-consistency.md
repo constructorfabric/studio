@@ -19,11 +19,16 @@ This file is a controller-side prompt generator source, not a runtime prompt for
 The controller MUST use this file to synthesize the final dispatch prompt for
 the agent. The final prompt MUST include the task statement, frozen input
 payload, task-relevant instruction assets resolved from `SHARED_CONTEXT_PACK`,
-allowed resource context, output contract, completion gate, and the explicit
+allowed resource metadata/path list, output contract, completion gate, and the explicit
 rule that the dispatched sub-agent executes only that final prompt.
 
 The dispatched sub-agent MUST NOT open prompt assets from disk and MUST NOT
 rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
+Files listed in `target_paths` or `baseline_path` are reviewed resources:
+the controller MUST pass them only as paths plus metadata/summaries and MUST NOT
+inline their file bodies into the dispatch prompt. Instruction assets may be
+inlined from `SHARED_CONTEXT_PACK` only when they are checklist, template,
+example, kit rules, methodology, output contract, or required studio invariants.
 
 
 ## Frozen Input Payload
@@ -94,6 +99,7 @@ DO:
      when that asset is present
   - RUN Read every target_path in full via Read tool (fresh read this turn)
      WHEN baseline_path is non-null:
+       Read baseline_path fresh via tool/disk access before treating it as canonical
        Treat it as canonical; flag non-baseline document as deviator in any direct conflict
      WHEN baseline_path is null AND target documents make conflicting claims of equal authority:
        Use majority-usage consensus across target_paths
@@ -193,6 +199,13 @@ PURPOSE:
   Enforce response completeness before output is considered final.
 
 RULES:
+  - ALWAYS fail closed with review_result status FAIL when authoritative evidence
+    for any reviewed file was supplied inline instead of read fresh from
+    `target_paths` / `baseline_path`; categorize it as an orchestration contract
+    violation
+  - ALWAYS AP/self-check trailer explicitly state that all `target_paths` and
+    `baseline_path` used as authoritative evidence were read fresh via
+    tool/disk access this turn
   - ALWAYS have a review_result JSON block
     {"type":"VALIDATION_REPORT","status":"PASS|FAIL","reviewer":"consistency"}
     present before the Validation Report block

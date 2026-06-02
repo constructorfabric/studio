@@ -38,75 +38,27 @@ DO:
         rounds = len(state.rounds) when state.json exists
 
     IF saved sessions found:
-      - EMIT exactly:
-- RUN ---
-- RUN [Phase0.5]: Brainstorm selected, but the topic is missing.
-
-- RUN I found saved brainstorm sessions you can continue:
-- RUN {title} — {session_id}, {status}, {rounds} rounds, updated {updated}
-- RUN ...
-
-- RUN Or start a new brainstorm topic:
-- RUN N. A new Constructor Studio feature
-- RUN N+1. A workflow or prompt redesign
-- RUN N+2. A codebase architecture change
-- RUN N+3. A PR/review strategy
-- RUN N+4. Another specific problem or decision
-
-- RUN Reply with a saved session number to continue it, or reply with a short new
-- RUN topic. You can also reply `new: <topic>` to force a new session.
-- RUN ---
+      - EMIT "Brainstorm selected, but the topic is missing. I found saved brainstorm sessions you can continue: {title} — {session_id}, {status}, {rounds} rounds, updated {updated}; ... Reply with a saved session number to continue it, or choose a new topic from the menu."
+      - EMIT_MENU BrainstormTopicMenu
       - WAIT user.reply
       - STOP_TURN
 
     ELSE:
-      - EMIT exactly:
-- RUN ---
-- RUN [Phase0.5]: Brainstorm selected, but the topic is missing.
-
-- RUN No saved brainstorm sessions were found under
-- RUN `{cf-studio-path}/.cache/brainstorm/`.
-
-- RUN What should we brainstorm?
-
-- RUN Reply with a short topic, for example:
-
-- RUN A new Constructor Studio feature
-- RUN A workflow or prompt redesign
-- RUN A codebase architecture change
-- RUN A PR/review strategy
-- RUN Another specific problem or decision
-- RUN ---
+      - EMIT "Brainstorm selected, but the topic is missing. No saved brainstorm sessions were found under `{cf-studio-path}/.cache/brainstorm/`."
+      - EMIT_MENU BrainstormTopicMenu
       - WAIT user.reply
       - STOP_TURN
 
   - REQUIRE system context is unclear:
-    - EMIT exactly:
-- RUN ---
-- RUN Why this input is needed: system selection controls registry placement, ID prefixes, and traceability boundaries.
-
-- RUN Which system does this artifact/code belong to?
-- RUN {list systems from artifacts.toml}
-- RUN Create new system
-- RUN Suggested: the current or nearest registered system when one owns the target path; otherwise `Create new system`.
-- RUN Reply with the system name or `Create new system`.
-- RUN ---
+    - EMIT "Why this input is needed: system selection controls registry placement, ID prefixes, and traceability boundaries. Suggested: the current or nearest registered system when one owns the target path; otherwise create a new system."
+    - EMIT_MENU SystemSelectionMenu
     - WAIT user.reply
     - SET selected_system = user.reply
     - STOP_TURN
 
   - REQUIRE output destination is unclear:
-    - EMIT exactly:
-- RUN ---
-- RUN Why this input is needed: destination controls whether this workflow writes files, updates the registry, or returns a chat-only preview.
-
-- RUN Where should the result go?
-- RUN File (will be written to disk and registered)
-- RUN Chat only (preview, no file created)
-- RUN MCP tool / external system (specify as `MCP: <tool>` or `External: <system>`)
-- RUN Suggested: File for durable artifacts/code changes; Chat only for previews.
-- RUN Reply with `File`, `Chat only`, `MCP: <tool>`, or `External: <system>`.
-- RUN ---
+    - EMIT "Why this input is needed: destination controls whether this workflow writes files, updates the registry, or returns a chat-only preview. Suggested: File for durable artifacts/code changes; Chat only for previews. Reply with `File`, `Chat only`, `MCP: <tool>`, or `External: <system>` via the numbered menu."
+    - EMIT_MENU OutputDestinationMenu
     - WAIT user.reply
     - SET output_destination = user.reply
     - STOP_TURN
@@ -123,6 +75,42 @@ DO:
   - RUN FOR new IDs:
     USE cpt-{system}-{kind}-{slug}
     VERIFY uniqueness with `{cfs_cmd} --json list-ids`
+
+MENU BrainstormTopicMenu:
+  TITLE: Choose brainstorm topic source
+  OPTIONS:
+    1 saved session N -> Continue saved brainstorm session N
+    2 new feature -> SET brainstorm_topic = "A new Constructor Studio feature"
+    3 workflow or prompt redesign -> SET brainstorm_topic = "A workflow or prompt redesign"
+    4 codebase architecture change -> SET brainstorm_topic = "A codebase architecture change"
+    5 PR/review strategy -> SET brainstorm_topic = "A PR/review strategy"
+    6 custom topic -> SET brainstorm_topic = user supplied topic
+  INVALID:
+    EMIT "Reply with 1: <session number>, 2, 3, 4, 5, or 6: <custom topic>."
+    WAIT user.reply
+    STOP_TURN
+
+MENU SystemSelectionMenu:
+  TITLE: Choose system context
+  OPTIONS:
+    1 existing system -> SET selected_system = user supplied existing system name from artifacts.toml
+    2 create new system -> SET selected_system = "Create new system"
+  INVALID:
+    EMIT "Reply with 1: <existing system name> or 2 to create a new system."
+    WAIT user.reply
+    STOP_TURN
+
+MENU OutputDestinationMenu:
+  TITLE: Choose output destination
+  OPTIONS:
+    1 file -> SET output_destination = File
+    2 chat only -> SET output_destination = Chat only
+    3 MCP tool -> SET output_destination = MCP tool named by user
+    4 external system -> SET output_destination = External system named by user
+  INVALID:
+    EMIT "Reply with 1 for File, 2 for Chat only, 3: <MCP tool>, or 4: <external system>."
+    WAIT user.reply
+    STOP_TURN
 
 RULES:
   - ALWAYS check for saved brainstorm sessions before asking for a new topic when

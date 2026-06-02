@@ -53,7 +53,7 @@ MENU Phase1EditLoop:
   OPTIONS:
     1 approve all ->
       EMIT "Inputs confirmed. Proceeding to author planning..."
-      CONTINUE workflows/generate/phase-1.5-author-plan.md
+      CONTINUE {cf-studio-path}/.core/workflows/generate/phase-1.5-author-plan.md
     2 per-item edits ->
       IF COLLECTOR_MAX_ITER exhausted:
         EMIT BLOCKED status with partial Inputs: stored_proposed_inputs snapshot

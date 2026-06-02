@@ -46,11 +46,11 @@ MENU Det51Routing:
       SET det_gate_evidence = returned validator availability proof when SKIPPED,
         otherwise returned Validation Results marker
       SET all_findings = []
-      CONTINUE workflows/generate/phase-5/phase-5.2-semantic.md
+      CONTINUE {cf-studio-path}/.core/workflows/generate/phase-5/phase-5.2-semantic.md
     2 FAIL ->
       SET all_findings = det_findings
       SKIP workflows/generate/phase-5/phase-5.2-semantic.md
-      CONTINUE workflows/generate/phase-5/phase-5.3-findings.md
+      CONTINUE {cf-studio-path}/.core/workflows/generate/phase-5/phase-5.3-findings.md
 
 RULES:
   - ALWAYS STRICT mode: gate result is authoritative

@@ -17,7 +17,7 @@ and a short description of where it is used.
 
 The registry is currently empty. Add an entry when the first PDSL UNIT requires
 a named pattern. Local `PATTERNS:` blocks in individual PDSL files may declare
-file-scoped patterns without registering them here, per `architecture/specs/PDSL.md`
+file-scoped patterns without registering them here, per `{cf-studio-path}/.core/architecture/specs/PDSL.md`
 §PATTERNS Block.
 
 ## Registered Patterns

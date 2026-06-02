@@ -26,7 +26,7 @@ DO:
     workflows/generate/phase-1.5-author-plan.md
   - REQUIRE AUTHOR_PLAN_OFFER_RESOLVED is unset:
     FAIL-STOP
-    ROUTE back to workflows/generate/phase-1.5-author-plan.md
+    ROUTE back to {cf-studio-path}/.core/workflows/generate/phase-1.5-author-plan.md
 
   - REQUIRE AUTHOR_PLAN_OFFER_RESOLVED is a terminal cancellation state
     (cancelled_by_stop_token | cancelled_planner_failure | cancelled_partial_write):
@@ -34,7 +34,7 @@ DO:
     LEAVE target files untouched
     - RETURN
 
-  - EMIT exactly:
+  - EMIT:
 - RUN ---
 - RUN ## Summary
 - RUN **Target**: {TARGET_TYPE}
@@ -47,23 +47,19 @@ DO:
 - RUN **Files to write**: `{path}`: {description}; {additional files if any}
 - RUN **Artifacts registry**: `{cf-studio-path}/config/artifacts.toml`: {entry additions/updates, if any}
 - RUN **STRICT self-check**: template loaded = {yes/no}; example referenced = {yes/no}; checklist status = {required-and-complete/deferred-to-phase-5}; placeholders absent = {yes/no}; explicit `yes` received = {yes/no}
-- RUN **Proceed?** [yes/no/modify]
-- RUN Reply with `yes`, `no`, or `modify`.
-- RUN `yes` → Suggested when the summary is accurate; write files and continue to validation.
-- RUN `no` → Cancel without writing files.
-- RUN `modify` → Revisit the inputs or proposal before any files are written.
 - RUN ---
+  - EMIT_MENU Phase3ConfirmationMenu
   - WAIT user.reply
   - STOP_TURN
 
 MENU Phase3ConfirmationMenu:
   TITLE: Phase 3 confirmation
   OPTIONS:
-    1 yes ->
-      CONTINUE workflows/generate/phase-4-write.md
-    2 no ->
+    1 yes (write files and continue to validation) ->
+      CONTINUE {cf-studio-path}/.core/workflows/generate/phase-4-write.md
+    2 no (cancel without writing files) ->
       CANCEL without writing files
-    3 modify ->
+    3 modify (revisit inputs or proposal before writing) ->
       EMIT "What would you like to change?"
       WAIT user.reply
       STOP_TURN

@@ -39,18 +39,38 @@ DO:
 
 ON_ERROR:
   missing_output_path ->
-    EMIT "Provide one output path for the new prompt file."
+    EMIT_MENU NewPromptMissingOutputMenu
     WAIT user.reply
     CONTINUE NewPromptMode
 
   missing_intent ->
-    EMIT "Describe the prompt's purpose, expected inputs, outputs, and UX decisions."
+    EMIT_MENU NewPromptMissingIntentMenu
     WAIT user.reply
     CONTINUE NewPromptMode
 
   dispatch_failed ->
     SET CF_PHASE_GATE = armed
     EMIT failure_summary
+    STOP_TURN
+
+MENU NewPromptMissingOutputMenu:
+  TITLE: New PDSL prompt output path
+  OPTIONS:
+    1 provide output path -> SET target_paths = user supplied single output path
+    2 stop -> STOP_TURN
+  INVALID:
+    EMIT "Reply with 1: <output path> or 2 to stop."
+    WAIT user.reply
+    STOP_TURN
+
+MENU NewPromptMissingIntentMenu:
+  TITLE: New PDSL prompt intent
+  OPTIONS:
+    1 describe intent -> SET source context = user supplied purpose, inputs, outputs, and UX decisions
+    2 stop -> STOP_TURN
+  INVALID:
+    EMIT "Reply with 1: <purpose/inputs/outputs/UX> or 2 to stop."
+    WAIT user.reply
     STOP_TURN
 ```
 

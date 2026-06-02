@@ -151,6 +151,10 @@ def _cmd_check_language(argv: List[str]) -> int:
     from .commands.check_language import cmd_check_language
     return cmd_check_language(argv)
 
+def _cmd_pdsl(argv: List[str]) -> int:
+    from .commands.pdsl import cmd_pdsl
+    return cmd_pdsl(argv)
+
 # =============================================================================
 # VISUALIZATION COMMANDS
 # =============================================================================
@@ -187,7 +191,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     analysis_commands = ["validate", "validate-kits", "validate-toc", "spec-coverage", "check-language"]
     legacy_aliases = ["validate-code", "validate-rules"]
     kit_commands = ["kit"]
-    utility_commands = ["toc", "chunk-input"]
+    utility_commands = ["toc", "chunk-input", "pdsl"]
     search_commands = [
         "init", "update",
         "list-ids", "list-id-kinds",
@@ -232,6 +236,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             "resolve-vars": "Resolve template variables to absolute paths",
             "toc": "Generate/update Table of Contents",
             "chunk-input": "Chunk oversized workflow input into line-bounded Markdown files",
+            "pdsl": "Validate PDSL prompt blocks",
             "workspace-init": "Initialize multi-repo workspace",
             "workspace-add": "Add a source to workspace config",
             "workspace-info": "Show workspace config and source status",
@@ -365,6 +370,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return _cmd_doctor(rest)
     elif cmd == "check-language":
         return _cmd_check_language(rest)
+    elif cmd == "pdsl":
+        return _cmd_pdsl(rest)
     elif cmd == "map":
         return _cmd_map(rest)
     else:

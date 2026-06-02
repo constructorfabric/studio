@@ -38,7 +38,7 @@ DO:
   - RUN Embed returned Validation Results block verbatim into Phase 4 output.
   - RUN Carry det_findings JSON forward into {cf-studio-path}/.core/workflows/analyze/phase-4-output/remediation-handoff.md when applicable.
   - REQUIRE gate result == FAIL:
-    - CONTINUE workflows/analyze/phase-4-output/index.md
+    - CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-4-output/index.md
     - REQUIRE {cf-studio-path}/.core/workflows/analyze/phase-4-output/remediation-handoff.md when actionable issues exist
   - REQUIRE gate result == PASS OR SKIPPED (with Validator availability proof):
     - CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-2.5-reviewer-plan.md

@@ -20,10 +20,10 @@ WHEN:
 DO:
   - REQUIRE invoke_flag == "--no-author-plan":
     - SET AUTHOR_PLAN_OFFER_RESOLVED = auto_skipped_no_author_plan_flag
-    - CONTINUE workflows/generate/phase-3-summary.md
+    - CONTINUE {cf-studio-path}/.core/workflows/generate/phase-3-summary.md
   - REQUIRE kind_rules.author_plan == "disabled":
     - SET AUTHOR_PLAN_OFFER_RESOLVED = auto_skipped_rules_disabled
-    - CONTINUE workflows/generate/phase-3-summary.md
+    - CONTINUE {cf-studio-path}/.core/workflows/generate/phase-3-summary.md
 ```
 
 ```pdsl
@@ -38,44 +38,30 @@ WHEN:
   - AND NOT (invoke_flag == "--no-author-plan" OR kind_rules.author_plan == "disabled")
 
 DO:
-  - EMIT exactly:
-- RUN ---
-- RUN Author plan (mandatory — sub-agents approved): pick storage.
-
-- RUN I will decompose this generate task into author-worker sub-tasks, assign each
-- RUN to a specialist sub-agent, and group them for parallel dispatch in Phase 4.
-
-- RUN Reply `enter` or `memory` for in-memory plan (default), or `disk` to also save
-- RUN a Markdown plan pack under `{cf-studio-path}/.cache/generate-plans/`.
-
-- RUN Choose `disk` if the session may be long or context may compact; choose `memory`
-- RUN for short sessions (no disk I/O, plan is in-context only).
-- RUN ---
+  - EMIT "Author plan is mandatory because sub-agents are approved. I will decompose this generate task into author-worker sub-tasks, assign each to a specialist sub-agent, and group them for parallel dispatch in Phase 4."
+  - EMIT "Choose disk for long or context-heavy sessions. Disk saves only the plan pack under `{cf-studio-path}/.cache/generate-plans/`; it does not authorize target file writes."
+  - EMIT_MENU MandatoryOfferMenu
   - WAIT user.reply
   - STOP_TURN
 
 MENU MandatoryOfferMenu:
   TITLE: Mandatory author-plan storage choice
   OPTIONS:
-    1 empty | enter | memory | 1 ->
+    1 memory (default; aliases: enter, empty, memory) ->
       SET AUTHOR_PLAN_OFFER_RESOLVED = memory
       CONTINUE Phase15PlannerDispatch
-    2 disk | save | 2 ->
+    2 disk (save Markdown plan pack) ->
       SET AUTHOR_PLAN_OFFER_RESOLVED = disk
       LOAD {cf-studio-path}/.core/workflows/generate/phase-1.5/disk-mode.md
       CONTINUE Phase15PlannerDispatch
-    3 stop | stop_token ->
+    3 stop ->
       SET AUTHOR_PLAN_OFFER_RESOLVED = cancelled_by_stop_token
       SET CF_PHASE_GATE = armed
       LOAD {cf-studio-path}/.core/workflows/shared/stop-token-policy.md
       STOP current generate sub-flow
       NEVER entering Phase 3 or Phase 4
-    4 no | skip | 3 ->
-      EMIT "Decomposition is mandatory while sub-agents are approved. Reply enter/memory or disk."
-      WAIT user.reply
-      STOP_TURN
   INVALID:
-    EMIT "Reply not recognized. Expected enter/memory or disk."
+    EMIT "Reply with 1 for memory, 2 for disk, or 3 to stop. Author planning is mandatory while sub-agents are approved."
     WAIT user.reply
     STOP_TURN
 ```
@@ -91,45 +77,30 @@ WHEN:
   - AND NOT (invoke_flag == "--no-author-plan" OR kind_rules.author_plan == "disabled")
 
 DO:
-  - EMIT exactly:
-- RUN ---
-- RUN Author plan required before the final summary.
-
-- RUN Native sub-agent dispatch is not active for this run. I must still build an
-- RUN author plan before Phase 3.
-
-- RUN Suggested: `memory` (or `enter`) for short sessions; `disk` for long or
-- RUN context-heavy sessions.
-
-- RUN Reply `enter` or `memory` for an in-memory plan (default), `disk` to also save
-- RUN a Markdown plan pack under `{cf-studio-path}/.cache/generate-plans/`, or
-- RUN `stop` to cancel.
-- RUN ---
+  - EMIT "Author plan is required before the final summary. Native sub-agent dispatch is not active for this run, but the workflow still needs an author plan before Phase 3."
+  - EMIT "Choose disk for long or context-heavy sessions. Disk saves only the plan pack under `{cf-studio-path}/.cache/generate-plans/`; it does not authorize target file writes."
+  - EMIT_MENU OptionalOfferMenu
   - WAIT user.reply
   - STOP_TURN
 
 MENU OptionalOfferMenu:
   TITLE: Required author-plan storage choice
   OPTIONS:
-    1 empty | enter | memory | 1 ->
+    1 memory (default; aliases: enter, empty, memory) ->
       SET AUTHOR_PLAN_OFFER_RESOLVED = memory
       CONTINUE Phase15PlannerDispatch
-    2 disk | save | 2 ->
+    2 disk (save Markdown plan pack) ->
       SET AUTHOR_PLAN_OFFER_RESOLVED = disk
       LOAD {cf-studio-path}/.core/workflows/generate/phase-1.5/disk-mode.md
       CONTINUE Phase15PlannerDispatch
-    3 no | skip | 3 ->
-      EMIT "Author planning is required before Phase 3. Reply enter/memory, disk, or stop."
-      WAIT user.reply
-      STOP_TURN
-    4 stop | stop_token ->
+    3 stop ->
       SET AUTHOR_PLAN_OFFER_RESOLVED = cancelled_by_stop_token
       SET CF_PHASE_GATE = armed
       LOAD {cf-studio-path}/.core/workflows/shared/stop-token-policy.md
       STOP current generate sub-flow
       NEVER entering Phase 3 or Phase 4
   INVALID:
-    EMIT "Reply not recognized. Expected enter/memory, disk, or stop."
+    EMIT "Reply with 1 for memory, 2 for disk, or 3 to stop. Author planning is required before Phase 3."
     WAIT user.reply
     STOP_TURN
 

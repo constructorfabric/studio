@@ -15,7 +15,7 @@ PURPOSE: Load the shared root cf skill entrypoint bootstrap and preserve analyze
 DO:
   - LOAD {cf-studio-path}/.core/workflows/shared/root-skill-entrypoint-bootstrap.md
 RULES:
-  - ALWAYS follow routing.md § CanonicalRoutingPrecedenceState for explain-mode
+  - ALWAYS follow {cf-studio-path}/.core/skills/studio/routing.md § CanonicalRoutingPrecedenceState for explain-mode
     entry, fallback dispatch state, and prompt-context ownership.
 ```
 
@@ -59,7 +59,7 @@ PURPOSE: Keep change-review runs fail-closed until gate states resolve.
 WHEN:
   - REQUIRE CHANGE_REVIEW == true
 RULES:
-  - ALWAYS Before gate resolution ALWAYS apply {cf-studio-path}/.core/skills/studio/SKILL.md § Change-Review Fail-Closed Sentinel
+  - ALWAYS Before gate resolution ALWAYS apply {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md § Change-Review Fail-Closed Sentinel
   - NEVER run local git status/diff, cfs validate, semantic review, findings, summaries, or remediation menus while sentinel is active
   - ALWAYS may emit only the missing gate menu or matching `Dispatch blocked: ...` error, then ALWAYS STOP_TURN
 ```
@@ -140,7 +140,7 @@ DO:
   - CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-2.5-reviewer-plan.md
 RULES:
   - ALWAYS auto-skip when INLINE_FALLBACK=true, EXPLAIN_MODE=true, or no active methodology flag
-NOTES: SUB_AGENT_SESSION_APPROVED and INLINE_FALLBACK declared in SKILL.md § Session Sub-Agent Approval Gate.
+NOTES: SUB_AGENT_SESSION_APPROVED and INLINE_FALLBACK declared in {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md § Session Sub-Agent Approval Gate.
 ```
 
 ```pdsl

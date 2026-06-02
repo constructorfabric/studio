@@ -107,14 +107,14 @@ MENU ExploreSaveMenu:
         summary.md = task summary, exploration status, resource count, and missing-context questions
       EMIT "Saved exploration bundle to <user path>."
       CONTINUE ExploreNextActions
-    3 | skip | no ->
+    4 | skip | no ->
       EMIT "Skipped saving. No files were written."
       CONTINUE ExploreNextActions
-    4 | cancel ->
+    5 | cancel ->
       EMIT "Explore save canceled. No files were written."
       STOP_TURN
   INVALID:
-    EMIT "Reply with 1-4, `save`, `skip`, or `folder: <path>`."
+    EMIT "Reply with 1-5, `save`, `skip`, or `folder: <path>`."
     WAIT user.reply
     STOP_TURN
 
@@ -145,16 +145,16 @@ MENU ExploreNextActionsMenu:
   TITLE: What would you like to do with this context?
   OPTIONS:
     1 | brainstorm ->
-      CONTINUE workflows/generate.md WITH intent="brainstorm"
+      CONTINUE {cf-studio-path}/.core/workflows/generate.md WITH intent="brainstorm"
         resource_context = state.resource_context
     2 | plan ->
-      CONTINUE workflows/plan.md
+      CONTINUE {cf-studio-path}/.core/workflows/plan.md
         resource_context = state.resource_context
     3 | generate ->
-      CONTINUE workflows/generate.md
+      CONTINUE {cf-studio-path}/.core/workflows/generate.md
         resource_context = state.resource_context
     4 | analyze | review ->
-      CONTINUE workflows/analyze.md
+      CONTINUE {cf-studio-path}/.core/workflows/analyze.md
         resource_context = state.resource_context
     5 | refine | explore again ->
       CONTINUE ExploreWorkflow
