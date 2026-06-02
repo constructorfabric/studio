@@ -50,15 +50,15 @@ PURPOSE:
   Execute ordered steps to build the Inputs block.
 
 DO:
-  1. Parse the template's H2 sections into an ordered list
-  2. For each section, decide its source:
+  - RUN Parse the template's H2 sections into an ordered list
+  - RUN For each section, decide its source:
        WHEN section name (or normalized form) appears in pre_resolved_inputs:
-         SET source = "brainstorm"
+         - SET source = "brainstorm"
          Use that value
        ELSE:
          Propose a concrete default grounded in example_path and project context
-         SET source = "proposal"
-  3. Build the Inputs markdown block per the workflow spec (Phase 1 format):
+         - SET source = "proposal"
+  - RUN Build the Inputs markdown block per the workflow spec (Phase 1 format):
        Add [from brainstorm] tags on pre-filled sections
        Add Carryover Questions mini-section listing open_questions
 ```
@@ -72,25 +72,25 @@ PURPOSE:
   Emit three artifacts in fixed order: markdown block, marker line, JSON block.
 
 DO:
-  1. Emit user-facing markdown Inputs block (shown to user verbatim)
+  - RUN Emit user-facing markdown Inputs block (shown to user verbatim)
      End the markdown block with the line:
        Reply: `approve all` or provide edits per item
-  2. Emit raw HTML-comment marker line at column 0:
+  - RUN Emit raw HTML-comment marker line at column 0:
        <!-- proposed_inputs -->
      RULES:
-       - MUST emit at column 0 (NOT inside any code fence)
-       - WHEN marker would fall inside a fenced block:
+       - ALWAYS emit at column 0 (NOT inside any code fence)
+       - ALWAYS WHEN marker would fall inside a fenced block:
            Close the fence before emitting the marker line
            Resume a new fence after
-       - The orchestrator regex matches ^<!-- proposed_inputs --> only outside
+       - ALWAYS The orchestrator regex matches ^<!-- proposed_inputs --> only outside
          fences; placing the marker inside a fence makes it undetectable
-  3. Immediately after the marker line, emit a standard json-fenced code block:
+  - EMIT Immediately after the marker line, emit a standard json-fenced code block:
        Keys: template H2 section names (normalized — lowercased, spaces → _,
              punctuation stripped)
        Values: proposed defaults exactly as they appear verbatim in the
                markdown block above
 
-FORBID: preamble or trailing remarks after the JSON block
+- NEVER: preamble or trailing remarks after the JSON block
 
 NOTES:
   Orchestrator locates this block by matching the regex:
@@ -122,10 +122,10 @@ PURPOSE:
   is complete.
 
 RULES:
-  - MUST have exactly one Inputs block entry for every H2 section of the template
-  - MUST tag every brainstorm-filled section with [from brainstorm]
-  - MUST include carryover questions list (empty when no open questions)
-  - MUST have proposed_inputs JSON block after the markdown block with one
+  - ALWAYS have exactly one Inputs block entry for every H2 section of the template
+  - ALWAYS tag every brainstorm-filled section with [from brainstorm]
+  - ALWAYS include carryover questions list (empty when no open questions)
+  - ALWAYS have proposed_inputs JSON block after the markdown block with one
     key per H2 section (normalized) and the corresponding default value
-  - MUST satisfy the SKILL.md invariant
+  - ALWAYS satisfy the SKILL.md invariant
 ```

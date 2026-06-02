@@ -31,17 +31,17 @@ ON_ERROR:
     STOP_TURN
 
   user_abandonment ->
-    FORBID auto-proceed with assumptions
+    NEVER auto-proceed with assumptions
     NOTE: state is resumed by re-running the workflow command
     NOTE: target artifact/code files are untouched before Phase 4
     IF AUTHOR_PLAN_CACHE_DIR exists OR partial cache write was reported:
       EMIT partial cache state (do not claim no pre-Phase-4 files exist)
     RULES:
-      - MUST_NOT claim no pre-Phase-4 files exist when AUTHOR_PLAN_CACHE_DIR exists
-      - MUST disclose partial cache writes
-      - MUST_NOT auto-cleanup
+      - NEVER claim no pre-Phase-4 files exist when AUTHOR_PLAN_CACHE_DIR exists
+      - ALWAYS disclose partial cache writes
+      - NEVER auto-cleanup
 
-  validation_failure_loop (3+ iterations) ->
+  - ALWAYS validation_failure_loop (3+ iterations) ->
     EMIT_MENU ValidationFailureMenu
     WAIT user.reply
     STOP_TURN
@@ -61,7 +61,7 @@ MENU ValidationFailureMenu:
       REQUIRE rules_mode == RELAXED
       SET loop_exit = "explicit-unvalidated"
       EMIT "Deterministic gate: FAIL"
-      FORBID presenting result as PASS
+      NEVER presenting result as PASS
       IF manifest.paths_written non-empty:
         EMIT Post-Write Review Handoff menu
         IF remaining_findings non-empty:
@@ -72,13 +72,13 @@ MENU ValidationFailureMenu:
     STOP_TURN
 
 RULES:
-  - MUST NOT continue with incomplete state on tool failure
-  - MUST NOT auto-proceed on user abandonment
-  - MUST surface AUTHOR_PLAN_CACHE_DIR state on resume or abandonment
+  - NEVER continue with incomplete state on tool failure
+  - NEVER auto-proceed on user abandonment
+  - ALWAYS surface AUTHOR_PLAN_CACHE_DIR state on resume or abandonment
     when AUTHOR_PLAN_CACHE_DIR exists or a partial cache write was reported
-  - Option 3 is RELAXED-mode only; result is marked Deterministic gate: FAIL
-    and MUST NOT be presented as PASS
-  - MUST emit Post-Write Review Handoff menu (and Remediation Handoff when
+  - ALWAYS Option 3 is RELAXED-mode only; result is marked Deterministic gate: FAIL
+    and NEVER be presented as PASS
+  - ALWAYS emit Post-Write Review Handoff menu (and Remediation Handoff when
     remaining_findings non-empty) even on option 3 exit when files were written
 
 NOTES:

@@ -19,19 +19,19 @@ PDSL. It is for files such as `skills/**/*.md`, `workflows/**/*.md`,
 UNIT RootSkillEntrypointBootstrap
 PURPOSE: Prevent direct workflow entry from bypassing the root cf skill.
 DO:
-  1. REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is loaded completely
+  - REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is loaded completely
      and followed FIRST.
-  2. REQUIRE CfSkillInit, Bootstrap, HardRules, and
+  - REQUIRE CfSkillInit, Bootstrap, HardRules, and
      WorkflowProtocolNonSubstitution from SKILL.md have completed.
-  3. CONTINUE this workflow only after the root cf skill routing/entrypoint
+  - CONTINUE this workflow only after the root cf skill routing/entrypoint
      selects it.
 RULES:
-  - MUST execute before any workflow-specific unit in this file.
-  - MUST_NOT treat protocol.md, routing.md, or a thin proxy skill as a
+  - ALWAYS execute before any workflow-specific unit in this file.
+  - NEVER treat protocol.md, routing.md, or a thin proxy skill as a
     substitute for loading and following SKILL.md.
-  - If this workflow file is opened directly, STOP workflow phases until
+  - ALWAYS If this workflow file is opened directly, STOP workflow phases until
     SKILL.md has been loaded completely and followed.
-  - This gate applies to the top-level controller only; dispatched sub-agents
+  - ALWAYS This gate applies to the top-level controller only; dispatched sub-agents
     consume the synthesized final prompt and supplied context slices.
 ```
 
@@ -42,17 +42,17 @@ PURPOSE:
   Load required files before any phase work begins.
 
 RULES:
-  - The top-level controller loads or reuses `{cf-studio-path}/.core/skills/studio/SKILL.md`
+  - ALWAYS The top-level controller loads or reuses `{cf-studio-path}/.core/skills/studio/SKILL.md`
     WHEN `{cfs_mode}` == off, and follows it before any workflow-local
     bootstrap or protocol asset
-  - The top-level controller loads or reuses `{cf-studio-path}/.core/skills/studio/protocol.md`
+  - ALWAYS The top-level controller loads or reuses `{cf-studio-path}/.core/skills/studio/protocol.md`
     only after SKILL.md bootstrap/routing has completed
-  - The top-level controller loads or reuses `{cf-studio-path}/.core/architecture/specs/PDSL.md`
-  - The top-level controller loads or reuses `{cf-studio-path}/.core/workflows/shared/stop-token-policy.md`
-  - The top-level controller loads `{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md`
+  - ALWAYS The top-level controller loads or reuses `{cf-studio-path}/.core/architecture/specs/PDSL.md`
+  - ALWAYS The top-level controller loads or reuses `{cf-studio-path}/.core/workflows/shared/stop-token-policy.md`
+  - ALWAYS The top-level controller loads `{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md`
     before any cf-pdsl-* dispatch decision
-  - Any cf-pdsl-* sub-agent receives required slices through prompt_context_view
-    and MUST_NOT reopen SKILL, workflow, requirement, spec, AGENTS, or kit
+  - ALWAYS Any cf-pdsl-* sub-agent receives required slices through prompt_context_view
+    and NEVER reopen SKILL, workflow, requirement, spec, AGENTS, or kit
     prompt files from disk
 ```
 
@@ -63,12 +63,12 @@ PURPOSE:
   Keep PDSL prompt loading controller-owned and pack-aware.
 
 RULES:
-  - Mode files and PDSL helper contracts are controller-owned prompt assets
+  - ALWAYS Mode files and PDSL helper contracts are controller-owned prompt assets
     loaded from {cf-studio-path}/.core/...
-  - Before any cf-pdsl-* dispatch, the controller MUST reuse or extend
+  - ALWAYS Before any cf-pdsl-* dispatch, the controller ALWAYS reuses or extends
     SHARED_CONTEXT_PACK, load the agent prompt source, and synthesize the
     final dispatch prompt with only the task-relevant instruction context
-  - PDSL sub-agents MUST NOT self-bootstrap by reopening SKILL, workflow, spec,
+  - ALWAYS PDSL sub-agents NEVER self-bootstrap by reopening SKILL, workflow, spec,
     or AGENTS prompt files directly
 ```
 
@@ -81,27 +81,27 @@ PURPOSE:
   Select and load exactly one PDSL mode file.
 
 STATE:
-  PDSL_MODE: unset | new | transform | review
+  - SET PDSL_MODE: unset | new | transform | review
     default: unset
     scope: workflow_run
 
 WHEN:
-  PDSL_MODE == unset
+  - REQUIRE PDSL_MODE == unset
 
 DO:
-  IF user intent matches a new alias:
-    SET PDSL_MODE = new
-    CONTINUE PdslExploreBrainstormGate
-  ELSE IF user intent matches a transform alias:
-    SET PDSL_MODE = transform
-    CONTINUE PdslExploreBrainstormGate
-  ELSE IF user intent matches a review alias:
-    SET PDSL_MODE = review
-    CONTINUE PdslExploreBrainstormGate
-  ELSE:
-    EMIT_MENU PdslModeMenu
-    WAIT user.reply
-    STOP_TURN
+  - REQUIRE user intent matches a new alias:
+    - SET PDSL_MODE = new
+    - CONTINUE PdslExploreBrainstormGate
+  - RUN otherwise IF user intent matches a transform alias:
+    - SET PDSL_MODE = transform
+    - CONTINUE PdslExploreBrainstormGate
+  - RUN otherwise IF user intent matches a review alias:
+    - SET PDSL_MODE = review
+    - CONTINUE PdslExploreBrainstormGate
+  - RUN otherwise
+    - EMIT_MENU PdslModeMenu
+    - WAIT user.reply
+    - STOP_TURN
 
 MENU PdslModeMenu:
   TITLE: Choose PDSL mode
@@ -134,19 +134,19 @@ PURPOSE:
   design exploration before dispatch.
 
 WHEN:
-  PDSL_MODE is selected
-  AND before mode-specific dispatch
+  - REQUIRE PDSL_MODE is selected
+  - AND before mode-specific dispatch
 
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/shared/explore-brainstorm-gate.md is loaded and followed
-  CONTINUE PdslModeDispatch
+  - REQUIRE {cf-studio-path}/.core/workflows/shared/explore-brainstorm-gate.md is loaded and followed
+  - CONTINUE PdslModeDispatch
 
 RULES:
-  - SHOULD offer cf-explore for transform/review when source_paths omit related
+  - ALWAYS offer cf-explore for transform/review when source_paths omit related
     workflows, requirements, agent prompts, or specs needed for consistency
-  - SHOULD offer cf-brainstorm for new prompt architecture, state/menu policy,
+  - ALWAYS offer cf-brainstorm for new prompt architecture, state/menu policy,
     dispatch semantics, or cross-agent contract changes
-  - MUST NOT require brainstorm for mechanical compacting or direct review when
+  - NEVER require brainstorm for mechanical compacting or direct review when
     target_paths and source_paths are explicit
 ```
 
@@ -157,19 +157,19 @@ PURPOSE:
   Load exactly one mode file after explore/brainstorm applicability has resolved.
 
 DO:
-  IF PDSL_MODE == new:
-    LOAD {cf-studio-path}/.core/workflows/pdsl/new.md
-    STOP_TURN
-  IF PDSL_MODE == transform:
-    LOAD {cf-studio-path}/.core/workflows/pdsl/transform.md
-    STOP_TURN
-  IF PDSL_MODE == review:
-    LOAD {cf-studio-path}/.core/workflows/pdsl/review.md
-    STOP_TURN
-  IF PDSL_MODE == unset:
-    EMIT_MENU PdslModeMenu
-    WAIT user.reply
-    STOP_TURN
+  - REQUIRE PDSL_MODE == new:
+    - LOAD {cf-studio-path}/.core/workflows/pdsl/new.md
+    - STOP_TURN
+  - REQUIRE PDSL_MODE == transform:
+    - LOAD {cf-studio-path}/.core/workflows/pdsl/transform.md
+    - STOP_TURN
+  - REQUIRE PDSL_MODE == review:
+    - LOAD {cf-studio-path}/.core/workflows/pdsl/review.md
+    - STOP_TURN
+  - REQUIRE PDSL_MODE == unset:
+    - EMIT_MENU PdslModeMenu
+    - WAIT user.reply
+    - STOP_TURN
 ```
 
 ## Shared Inputs
@@ -188,13 +188,13 @@ All modes use this shared context.
 
 Input rules:
 
-- `target_paths` MUST be explicit for `transform` and `review`.
-- `target_paths[0]` MUST be explicit for `new` when the workflow writes a file.
-- `source_paths` MAY include related workflows, requirements, existing prompt
+- `target_paths` are required for `transform` and `review`.
+- `target_paths[0]` is required for `new` when the workflow writes a file.
+- `source_paths` may include related workflows, requirements, existing prompt
   files, specs, or notes.
-- PDSL instruction blocks in generated or transformed Markdown MUST be fenced
+- PDSL instruction blocks in generated or transformed Markdown are fenced
   with `pdsl`, not `text`.
-- Missing required inputs MUST trigger a scoped question and `STOP_TURN`.
+- Missing required inputs trigger a scoped question and `STOP_TURN`.
 
 ## Dispatch Gate
 
@@ -206,36 +206,36 @@ PURPOSE:
   inline contract.
 
 WHEN:
-  before any mode-specific cf-pdsl-* dispatch decision
+  - REQUIRE before any mode-specific cf-pdsl-* dispatch decision
 
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md is loaded
-  RUN InlineFallbackProbe
-  REQUIRE returned.state == resolved
-  REQUIRE INLINE_FALLBACK_PROBED == true
-  IF INLINE_FALLBACK == true:
+  - REQUIRE {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md is loaded
+  - RUN InlineFallbackProbe
+  - REQUIRE returned.state == resolved
+  - REQUIRE INLINE_FALLBACK_PROBED == true
+  - REQUIRE INLINE_FALLBACK == true:
     inline the matching contract:
       cf-pdsl-author      -> {cf-studio-path}/.core/skills/studio/agents/cf-pdsl-author.md
       cf-pdsl-transformer -> {cf-studio-path}/.core/skills/studio/agents/cf-pdsl-transformer.md
       cf-pdsl-reviewer    -> {cf-studio-path}/.core/skills/studio/agents/cf-pdsl-reviewer.md
-  ELSE:
-    DISPATCH named sub-agent
+  - RUN otherwise
+    - DISPATCH named sub-agent
 
 RULES:
-  - MUST route Sub-Agent Approval Gate, HostNoNativeSubAgentMenu, and
+  - ALWAYS route Sub-Agent Approval Gate, HostNoNativeSubAgentMenu, and
     NativeSubAgentPolicyConflict handling through shared
     inline-fallback-probe.md
-  - MUST treat NativeSubAgentPolicyConflict as a distinct approval boundary
+  - ALWAYS treat NativeSubAgentPolicyConflict as a distinct approval boundary
     owned by the shared probe
-  - MUST apply dispatch protocol from `{cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md` before any DISPATCH
-  - MUST synthesize the dispatched agent's final prompt from
+  - ALWAYS apply dispatch protocol from `{cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md` before any DISPATCH
+  - ALWAYS synthesize the dispatched agent's final prompt from
     SHARED_CONTEXT_PACK plus the agent prompt source before any cf-pdsl-*
     dispatch or inline contract
-  - MUST_NOT dispatch write-capable modes (new, transform) until write summary is user-approved
-  - MUST_NOT read or branch on INLINE_FALLBACK unless
+  - NEVER dispatch write-capable modes (new, transform) until write summary is user-approved
+  - NEVER read or branch on INLINE_FALLBACK unless
     INLINE_FALLBACK_PROBED == true for the active workflow run
-  - MUST_NOT emit local approval or fallback menus in this workflow
-  - MUST_NOT default INLINE_FALLBACK from host capability, policy conflict, or
+  - NEVER emit local approval or fallback menus in this workflow
+  - NEVER default INLINE_FALLBACK from host capability, policy conflict, or
     missing approval
 
 NOTES:
@@ -255,21 +255,21 @@ PURPOSE:
   Define terminal conditions for all PDSL modes.
 
 INVARIANTS:
-  - MUST NOT claim completion for new or transform mode until a manifest is returned
-  - MUST NOT claim completion for review mode until a validation report is returned
-  - After a successful manifest or validation report, MUST emit
+  - NEVER claim completion for new or transform mode until a manifest is returned
+  - NEVER claim completion for review mode until a validation report is returned
+  - ALWAYS After a successful manifest or validation report, ALWAYS emit
     PdslCompletionMenu unless the invoked sub-mode has already emitted an
     equivalent terminal handoff menu
-  - MUST NOT claim PASS for any unread target path
-  - Review validation report MUST include all six sections:
+  - NEVER claim PASS for any unread target path
+  - ALWAYS Review validation report ALWAYS includes all six sections:
       1. Summary
       2. Files Reviewed
       3. Findings
       4. Compactness Opportunities
       5. Residual Risks
       6. Recommended Fixes
-  - If the workflow cannot read all requested files it MUST return a partial
-    checkpoint and MUST NOT claim PASS for unread paths
+  - ALWAYS If the workflow cannot read all requested files it ALWAYS returns a partial
+    checkpoint and NEVER claims PASS for unread paths
 
 MENU PdslCompletionMenu:
   TITLE: "PDSL workflow complete. What next?"

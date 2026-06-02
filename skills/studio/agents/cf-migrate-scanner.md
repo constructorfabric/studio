@@ -53,10 +53,10 @@ PURPOSE:
   Stop safely when remaining context budget is insufficient to complete the scan.
 
 WHEN:
-  remaining context budget cannot cover the next step or item
+  - REQUIRE remaining context budget cannot cover the next step or item
 
 DO:
-  EMIT PARTIAL_CHECKPOINT JSON block using schema:
+  - EMIT PARTIAL_CHECKPOINT JSON block using schema:
     {
       "type": "PARTIAL_CHECKPOINT",
       "agent": "cf-migrate-scanner",
@@ -65,11 +65,11 @@ DO:
       "evidence_collected": ["<completed scan buckets or hotspot checks>", "..."],
       "resume_inputs": {"<dispatch fields needed to resume>": "<value>"}
     }
-  STOP_TURN
+  - STOP_TURN
 
 RULES:
-  - MUST_NOT emit a final PASS / FAIL verdict on a partial run
-  - MUST emit only what has been scanned so far and what remains
+  - NEVER emit a final PASS / FAIL verdict on a partial run
+  - ALWAYS emit only what has been scanned so far and what remains
 ```
 
 ## Procedure
@@ -145,17 +145,17 @@ PURPOSE:
   Suppress known-intentional matches before emitting findings.
 
 RULES:
-  - MUST skip matches inside `src/studio_proxy/` for all patterns
+  - ALWAYS skip matches inside `src/studio_proxy/` for all patterns
     (this is the Constructor Studio package name, intentionally new-brand)
-  - MUST skip `cpt_marker` pattern matches when source-file category is `code`
+  - ALWAYS skip `cpt_marker` pattern matches when source-file category is `code`
     (per v4.0.0 design all @cpt-* markers in source files are intentionally preserved)
-  - MUST include `cpt_marker` matches when source-file category is `doc`
+  - ALWAYS include `cpt_marker` matches when source-file category is `doc`
     (markers in user-facing docs may genuinely be residue)
-  - MUST_NOT flag `format = "CFS"` inside a `[kits.<slug>]` or `[kit.<slug>]` TOML table
+  - NEVER flag `format = "CFS"` inside a `[kits.<slug>]` or `[kit.<slug>]` TOML table
     (`format = "Cypilot"` in those same tables is pre-migration state — record as expected)
-  - MUST classify `cypilot` in a `# noqa:` comment or near a deprecation notice
+  - ALWAYS classify `cypilot` in a `# noqa:` comment or near a deprecation notice
     as `intentional_likely` (low priority) — let the user decide
-  - MUST_NOT speculate about user intent beyond these rules
+  - NEVER speculate about user intent beyond these rules
 ```
 
 ### Step 4 — Output
@@ -217,11 +217,11 @@ Total findings: {N}
 UNIT ScannerHardRules
 
 RULES:
-  - MUST_NOT modify any file
-  - MUST_NOT recurse into excluded directories
-  - MUST_NOT speculate about user intent; classify by the rules above only
-  - MUST produce output machine-parseable by the Planner matching the structure in Step 4
-  - WHEN grep / rg are unavailable:
+  - NEVER modify any file
+  - NEVER recurse into excluded directories
+  - NEVER speculate about user intent; classify by the rules above only
+  - ALWAYS produce output machine-parseable by the Planner matching the structure in Step 4
+  - ALWAYS WHEN grep / rg are unavailable:
       fall back to a Python-script scan using the Read tool to enumerate files
       report the fallback method in the output
 ```
@@ -232,10 +232,10 @@ RULES:
 UNIT ScannerCompletionGate
 
 RULES:
-  - MUST have run all configured search patterns
-  - MUST emit findings list in the documented output structure
-  - MUST include hotspot scan section
-  - MUST have applied intentional-keep filtering
+  - ALWAYS have run all configured search patterns
+  - ALWAYS emit findings list in the documented output structure
+  - ALWAYS include hotspot scan section
+  - ALWAYS have applied intentional-keep filtering
     (project memory: `_migrate_config_markdown` deliberately preserves `cpt.` and line-start `cpt`)
-  - MUST satisfy the SKILL.md invariant
+  - ALWAYS satisfy the SKILL.md invariant
 ```

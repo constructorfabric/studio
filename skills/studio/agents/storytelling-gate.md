@@ -87,11 +87,11 @@ PURPOSE:
   Define required and optional dispatch payload fields.
 
 RULES:
-  - MUST treat gate_id and handle as required on every dispatch
-  - MUST treat user_reply = null as a Phase 1 (render) dispatch
-  - MUST treat user_reply as a non-null trimmed string on Phase 2 (parse) dispatch
-  - MUST accept null for state fields when the corresponding gate has not yet been resolved
-  - MUST treat revision_notes as null when absent
+  - ALWAYS treat gate_id and handle as required on every dispatch
+  - ALWAYS treat user_reply = null as a Phase 1 (render) dispatch
+  - ALWAYS treat user_reply as a non-null trimmed string on Phase 2 (parse) dispatch
+  - ALWAYS accept null for state fields when the corresponding gate has not yet been resolved
+  - ALWAYS treat revision_notes as null when absent
 ```
 
 **Plan-gate Edit re-dispatch contract**: when Phase 2 of the plan gate returns
@@ -110,21 +110,21 @@ PURPOSE:
   Define the two dispatch phases: render (Phase 1) and parse (Phase 2).
 
 WHEN:
-  user_reply == null
+  - REQUIRE user_reply == null
 
 DO:
-  Build and RETURN rendered menu string (Phase 1 output JSON)
-  Orchestrator emits rendered_menu verbatim to user and waits for reply
-  Orchestrator re-dispatches this agent with user_reply set
+  - RUN Build and RETURN rendered menu string (Phase 1 output JSON)
+  - RUN Orchestrator emits rendered_menu verbatim to user and waits for reply
+  - RUN Orchestrator re-dispatches this agent with user_reply set
 
 WHEN:
-  user_reply is non-null
+  - REQUIRE user_reply is non-null
 
 DO:
-  Parse reply against parse_table
-  Resolve selected_tag
-  RETURN parse result (Phase 2 output JSON)
-  Orchestrator records result in workflow state
+  - RUN Parse reply against parse_table
+  - RUN Resolve selected_tag
+  - RETURN parse result (Phase 2 output JSON)
+  - RUN Orchestrator records result in workflow state
 
 NOTES:
   The plan gate deviates from the standard two-phase model: it is still
@@ -145,7 +145,7 @@ PURPOSE:
   Select the storytelling mode for the session.
 
 DO:
-  Apply suggested default heuristic (first match wins):
+  - RUN Apply suggested default heuristic (first match wins):
     IF user_prompt contains {explain, walkthrough, present, demo}   -> suggested = presentation (n=1)
     IF user_prompt contains {review, critique, approve, lgtm}       -> suggested = review (n=2)
     IF user_prompt contains {onboard, introduce, new to, first time}-> suggested = onboarding (n=3)
@@ -154,8 +154,8 @@ DO:
     IF handle.target_type == "pr" OR user_prompt contains
        {change, diff, impact, break}                                -> suggested = change-impact (n=6)
     OTHERWISE                                                       -> suggested = presentation (n=1)
-  Render menu with [default] on suggested option
-  RETURN Phase 1 output with parse_table and suggested_default_n
+  - RUN Render menu with [default] on suggested option
+  - RETURN Phase 1 output with parse_table and suggested_default_n
 ```
 
 **Menu options** (fixed order):
@@ -182,7 +182,7 @@ PURPOSE:
   Select how story output artifacts are handled.
 
 DO:
-  Apply post-to-resource label resolver for option 3 (first match wins):
+  - RUN Apply post-to-resource label resolver for option 3 (first match wins):
     IF handle.target_type == "pr"
       -> label = "Post to resource — post review comments + summary to the PR
                   via {handler} ({gh CLI | MCP github tool})"
@@ -199,26 +199,26 @@ DO:
       -> label = "Post to resource — unavailable for this target ({reason});
                   selecting will fall back to save-to-file"
 
-  Evaluate suppression condition:
+  - RUN Evaluate suppression condition:
     IF handle.target_type NOT IN {pr}
        AND no MCP/CLI resource handler
        AND handle.local_editable == false
        AND handle.generate_route_available == false
       -> suppress option 3; renumber mixed to 3; collapse parse_table to 3 entries
 
-  Apply suggested default heuristic:
+  - RUN Apply suggested default heuristic:
     IF state.preferences_loaded.artifact_disposition is set
        AND matches a valid tag still present in rendered menu
       -> use it as default
     OTHERWISE -> default = chat-only (n=1)
 
-  RETURN Phase 1 output
+  - RETURN Phase 1 output
 
 RULES:
-  - MUST resolve option 3 label dynamically from the resolver above
-  - MUST suppress option 3 entirely when ALL three suppression conditions hold
-  - MUST renumber mixed to 3 and collapse parse_table when option 3 suppressed
-  - MUST include post_to_resource_branch in Phase 2 output
+  - ALWAYS resolve option 3 label dynamically from the resolver above
+  - ALWAYS suppress option 3 entirely when ALL three suppression conditions hold
+  - ALWAYS renumber mixed to 3 and collapse parse_table when option 3 suppressed
+  - ALWAYS include post_to_resource_branch in Phase 2 output
     when selected_tag == "post-to-resource"
 
 ON_ERROR:
@@ -259,17 +259,17 @@ PURPOSE:
   disposition (Post or Save) has been resolved.
 
 WHEN:
-  Per-item disposition for this comment resolved to post-to-resource
+  - REQUIRE Per-item disposition for this comment resolved to post-to-resource
     OR save-to-file
-  AND handle.local_editable == true
-  AND handle.generate_route_available == true
+  - AND handle.local_editable == true
+  - AND handle.generate_route_available == true
 
 DO:
-  IF state.session_state.generate_route_never_ask == true
+  - REQUIRE state.session_state.generate_route_never_ask == true
     -> SET route_choice = "no" on comment buffer entry (auto-suppress; no menu)
     -> RETURN suppressed
-  Substitute {classified_mode} with state.comment.intent_final
-  Apply suggested default heuristic (first match wins):
+  - RUN Substitute {classified_mode} with state.comment.intent_final
+  - RUN Apply suggested default heuristic (first match wins):
     IF state.artifact_disposition == "post-to-resource"
        AND state.post_to_resource_branch == "local_file"
       -> suggest 1 (Route now)
@@ -280,25 +280,25 @@ DO:
       -> suggest 2 (Queue)
     OTHERWISE
       -> suggest 3 (No)
-  Render {suggested_line} as "Suggested: <N> — <label>."
-  Mark suggested option with [default] in menu
-  Render menu verbatim (substituting {classified_mode} and {suggested_line})
-  RETURN Phase 1 output
+  - RUN Render {suggested_line} as "Suggested: <N> — <label>."
+  - RUN Mark suggested option with [default] in menu
+  - RUN Render menu verbatim (substituting {classified_mode} and {suggested_line})
+  - RETURN Phase 1 output
 
 WHEN:
-  handle.local_editable == false
+  - REQUIRE handle.local_editable == false
     OR handle.generate_route_available == false
 
 DO:
-  SET route_choice = "no" on comment buffer entry
-  RETURN suppressed (no menu rendered; no "unavailable" message emitted to chat)
+  - SET route_choice = "no" on comment buffer entry
+  - RETURN suppressed (no menu rendered; no "unavailable" message emitted to chat)
 
 RULES:
-  - MUST suppress this gate when local_editable=false OR generate_route_available=false
-  - MUST suppress when generate_route_never_ask == true
-  - MUST_NOT auto-dispatch cf-generate on suggested default without explicit user reply
-  - MUST echo comment_id in Phase 2 output
-  - MUST apply inline intent-override grammar in Phase 2
+  - ALWAYS suppress this gate when local_editable=false OR generate_route_available=false
+  - ALWAYS suppress when generate_route_never_ask == true
+  - NEVER auto-dispatch cf-generate on suggested default without explicit user reply
+  - ALWAYS echo comment_id in Phase 2 output
+  - ALWAYS apply inline intent-override grammar in Phase 2
 
 MENU GenerateRoutingMenu:
   TITLE: Also route this comment to the generate skill for direct fix?
@@ -358,25 +358,25 @@ PURPOSE:
   Select the target audience for the story.
 
 DO:
-  Derive >= 3 audience candidates from handle + user_prompt (build in order):
-    1. IF handle.primary_language is non-null -> add "<primary_language> developer"
-    2. IF handle.target_type == "code"        -> add "software engineer"
-    3. IF handle.target_type == "artifact"    -> add "technical writer"
-    4. IF handle.target_type == "pr"          -> add "code reviewer"
-    5. IF handle.target_type == "directory"   -> add "engineering team member"
-    6. IF state.mode == "onboarding"          -> add "new team member"
-    7. IF state.mode == "decision"            -> add "engineering manager"
-    8. IF state.mode == "review"              -> add "senior engineer"
-    9. ALWAYS add "non-technical stakeholder" as last candidate
+  - RUN Derive >= 3 audience candidates from handle + user_prompt (build in order):
+    - REQUIRE handle.primary_language is non-null -> add "<primary_language> developer"
+    - IF handle.target_type == "code"        -> add "software engineer"
+    - IF handle.target_type == "artifact"    -> add "technical writer"
+    - IF handle.target_type == "pr"          -> add "code reviewer"
+    - IF handle.target_type == "directory"   -> add "engineering team member"
+    - IF state.mode == "onboarding"          -> add "new team member"
+    - IF state.mode == "decision"            -> add "engineering manager"
+    - IF state.mode == "review"              -> add "senior engineer"
+    - ALWAYS add "non-technical stakeholder" as last candidate
     Deduplicate preserving order; keep first 5 candidates
     Number 1-N; add option N+1 as "Other (type your own)"
-  Set suggested_default_n = 1
-  RETURN Phase 1 output with dynamic parse_table
+  - RUN Set suggested_default_n = 1
+  - RETURN Phase 1 output with dynamic parse_table
 
 RULES:
-  - MUST derive >= 3 candidates before rendering
-  - MUST include "Other (type your own)" as the last option
-  - MUST accept free_text_override in Phase 2 (non-digit or out-of-range digit)
+  - ALWAYS derive >= 3 candidates before rendering
+  - ALWAYS include "Other (type your own)" as the last option
+  - ALWAYS accept free_text_override in Phase 2 (non-digit or out-of-range digit)
 ```
 
 **Phase 2 parse**:
@@ -396,27 +396,27 @@ PURPOSE:
   Draft a storytelling plan and obtain approval via 4-option menu.
 
 DO:
-  Build plan of 3-7 items; each item has:
+  - RUN Build plan of 3-7 items; each item has:
     n:       1-based item number
     title:   short section title (<= 8 words)
     summary: one sentence describing what that section delivers
 
-  Shape plan from inputs:
+  - RUN Shape plan from inputs:
     handle.target_type + handle.primary_language -> scope to actual artifact type
     state.mode                                  -> tailor narrative arc
     state.audience                              -> pitch depth and vocabulary
     handle.size_guard_verdict == "warn_large"   -> add "Scope and Boundaries" item first
 
-  IF revision_notes is non-null (re-dispatch after Edit reply):
+  - REQUIRE revision_notes is non-null (re-dispatch after Edit reply):
     Rewrite previous plan in place applying revision_notes
-    MUST_NOT generate a completely new plan from scratch
+    - NEVER generate a completely new plan from scratch
     Render updated plan with approval menu
 
-  Render:
+  - RUN Render:
     Numbered markdown list of plan items
     Followed immediately by 4-option approval menu (verbatim block below)
 
-  Set suggested_default_n = 1 (Go)
+  - RUN Set suggested_default_n = 1 (Go)
 
 MENU PlanApprovalMenu:
   TITLE: What would you like to do?
@@ -426,18 +426,18 @@ MENU PlanApprovalMenu:
     3 [pivot]  -> next_action = "pivot"; orchestrator re-enters mode gate
     4 [cancel] -> next_action = "cancel"; orchestrator aborts workflow
   KEYWORD_ALIASES (case-insensitive, after trim and punctuation strip):
-    go | 1 | accept | (empty/Enter) -> go
-    edit | 2                        -> edit; trailing text becomes revision_notes
-    pivot | 3                       -> pivot
-    cancel | 4 | stop               -> cancel
+    5 go | 1 | accept | (empty/Enter) -> go
+    6 edit | 2                        -> edit; trailing text becomes revision_notes
+    7 pivot | 3                       -> pivot
+    8 cancel | 4 | stop               -> cancel
   INVALID:
     RETURN next_action = "re-render" with offending input in raw_input
 
 RULES:
-  - MUST include both plan body AND 4-option Go/Edit/Pivot/Cancel block in Phase 1
-  - MUST apply revision_notes in-place; never regenerate from scratch
-  - MUST treat empty input (Enter) as go (suggested default n=1)
-  - IF user_reply == "2" with no trailing text:
+  - ALWAYS include both plan body AND 4-option Go/Edit/Pivot/Cancel block in Phase 1
+  - ALWAYS apply revision_notes in-place; never regenerate from scratch
+  - ALWAYS treat empty input (Enter) as go (suggested default n=1)
+  - ALWAYS IF user_reply == "2" with no trailing text:
       SET revision_notes = null
       RETURN next_action = "edit"
       (orchestrator prompts user for revision instructions before re-dispatching Phase 1)
@@ -483,12 +483,12 @@ PURPOSE:
   Select how source content is packaged into story context.
 
 DO:
-  Apply suggested default heuristic (first match wins):
+  - RUN Apply suggested default heuristic (first match wins):
     IF handle.byte_size < 32768   -> suggest snippets (n=1)
     IF handle.byte_size < 262144  -> suggest hybrid (n=3)
     OTHERWISE                     -> suggest anchors (n=2)
-  Render menu with [default] on suggested option
-  RETURN Phase 1 output
+  - RUN Render menu with [default] on suggested option
+  - RETURN Phase 1 output
 ```
 
 **Menu options** (fixed order):
@@ -512,12 +512,12 @@ PURPOSE:
   Select the export format for story output.
 
 WHEN:
-  state.artifact_disposition IN {save-to-file, post-to-resource, mixed}
+  - REQUIRE state.artifact_disposition IN {save-to-file, post-to-resource, mixed}
 
 DO:
-  Set suggested_default_n = 1 (markdown)
-  Render menu with [default] on option 1
-  RETURN Phase 1 output
+  - RUN Set suggested_default_n = 1 (markdown)
+  - RUN Render menu with [default] on option 1
+  - RETURN Phase 1 output
 ```
 
 **Menu options** (fixed order):
@@ -544,11 +544,11 @@ PURPOSE:
   Build and return the rendered menu and associated metadata.
 
 DO:
-  REQUIRE gate_id is known
-  Identify gate from gate_id
-  Apply gate's suggested default heuristic -> suggested_default_n
-  Build parse_table per gate specification
-  Build rendered_menu:
+  - REQUIRE gate_id is known
+  - RUN Identify gate from gate_id
+  - RUN Apply gate's suggested default heuristic -> suggested_default_n
+  - RUN Build parse_table per gate specification
+  - RUN Build rendered_menu:
     Emit context_summary line if it aids orientation
     Render numbered option list exactly as defined in gate catalogue
     Mark suggested default: append [default] to that option's label
@@ -558,12 +558,12 @@ DO:
       ELSE substitute {classified_mode} with state.comment.intent_final
            render {suggested_line} per heuristic
     FOR plan gate: draft plan body then append approval menu block verbatim
-  RETURN Phase 1 output JSON
+  - RETURN Phase 1 output JSON
 
 RULES:
-  - MUST_NOT emit literal {suggested_line} placeholder in rendered_menu
-  - MUST_NOT emit literal {classified_mode} placeholder in rendered_menu
-  - MUST include both plan body AND approval menu in plan-gate rendered_menu
+  - NEVER emit literal {suggested_line} placeholder in rendered_menu
+  - NEVER emit literal {classified_mode} placeholder in rendered_menu
+  - ALWAYS include both plan body AND approval menu in plan-gate rendered_menu
 ```
 
 ### Phase 2 — Parse
@@ -575,38 +575,38 @@ PURPOSE:
   Parse user reply, resolve selected_tag, and return parse result.
 
 DO:
-  Trim user_reply -> raw_input
-  Normalize: lowercase, strip punctuation
-  Extract leading digit if present
-  Attempt digit lookup in parse_table
-  IF match:
-    SET selected_n and selected_tag from parse_table
-  IF no match OR non-digit (free text):
+  - RUN Trim user_reply -> raw_input
+  - RUN Normalize: lowercase, strip punctuation
+  - RUN Extract leading digit if present
+  - RUN Attempt digit lookup in parse_table
+  - REQUIRE match:
+    - SET selected_n and selected_tag from parse_table
+  - REQUIRE no match OR non-digit (free text):
     FOR gates that do not accept free text
       (mode, artifact-disposition, generate-routing, context-pack-strategy, export-format):
-      EMIT "Invalid reply — please enter a number between 1 and N."
-      RETURN selected_tag=null, next_action="render"
+      - EMIT "Invalid reply — please enter a number between 1 and N."
+      - RETURN selected_tag=null, next_action="render"
     FOR audience gate:
-      SET selected_tag = raw_input
-      SET free_text_override = raw_input
-      SET next_action = "accept"
+      - SET selected_tag = raw_input
+      - SET free_text_override = raw_input
+      - SET next_action = "accept"
     FOR plan gate: follow plan-gate parse rules
-  Determine next_action:
+  - RUN Determine next_action:
     FOR non-plan gates on successful parse: next_action = "accept"
     FOR plan gate: follow plan-gate parse table
-  FOR generate-routing gate:
+  - RUN FOR generate-routing gate:
     Scan remainder of raw_input for intent token (generate|fix|brainstorm)
     IF found -> SET intent_override to that token
     ELSE     -> SET intent_override = null
     IF selected_tag == "never_ask":
-      SET session_state.generate_route_never_ask = true
-  RETURN Phase 2 output JSON
+      - SET session_state.generate_route_never_ask = true
+  - RETURN Phase 2 output JSON
 
 RULES:
-  - MUST_NOT guess intended selection when reply is unparseable
-  - MUST return next_action = "re-render" with unparseable input in raw_input
+  - NEVER guess intended selection when reply is unparseable
+  - ALWAYS return next_action = "re-render" with unparseable input in raw_input
     when reply cannot be parsed for any gate
-  - MUST echo comment_id for generate-routing gate Phase 2
+  - ALWAYS echo comment_id for generate-routing gate Phase 2
 ```
 
 ## Output Contract
@@ -655,42 +655,42 @@ PURPOSE:
   Enforce that every response satisfies all output invariants.
 
 INVARIANTS:
-  - MUST return either TransformManifest or TransformBlocked (agent contract)
-  - MUST return JSON only (no chat, no preamble, no markdown wrapping outside the JSON block)
-  - MUST set phase correctly (render when user_reply=null; parse otherwise)
-  - MUST set gate_id in output to match gate_id in input
-  - Phase 1: rendered_menu MUST be non-empty; parse_table MUST be non-empty;
-    suggested_default_n MUST be a valid 1-based index
-  - Phase 1 plan gate: rendered_menu MUST contain both numbered plan items
+  - ALWAYS return either TransformManifest or TransformBlocked (agent contract)
+  - ALWAYS return JSON only (no chat, no preamble, no markdown wrapping outside the JSON block)
+  - ALWAYS set phase correctly (render when user_reply=null; parse otherwise)
+  - ALWAYS set gate_id in output to match gate_id in input
+  - ALWAYS Phase 1: rendered_menu ALWAYS be non-empty; parse_table ALWAYS be non-empty;
+    suggested_default_n ALWAYS be a valid 1-based index
+  - ALWAYS Phase 1 plan gate: rendered_menu ALWAYS contain both numbered plan items
     AND 4-option Go/Edit/Pivot/Cancel approval block
-  - Phase 1 audience gate: rendered_menu MUST present >= 3 dynamically derived
-    candidates plus "Other"; parse_table MUST cover all presented options
-  - Phase 2: raw_input MUST be the verbatim trimmed user reply
-  - Phase 2: next_action MUST be one of: go | edit | pivot | cancel | accept | render | re-render
-  - Phase 2 successful parse: selected_tag MUST be non-null and present in
+  - ALWAYS Phase 1 audience gate: rendered_menu ALWAYS present >= 3 dynamically derived
+    candidates plus "Other"; parse_table ALWAYS cover all presented options
+  - ALWAYS Phase 2: raw_input ALWAYS be the verbatim trimmed user reply
+  - ALWAYS Phase 2: next_action ALWAYS be one of: go | edit | pivot | cancel | accept | render | re-render
+  - ALWAYS Phase 2 successful parse: selected_tag ALWAYS be non-null and present in
     parse_table values (or free_text_override for audience/plan-edit paths)
-  - Phase 2 failed parse for strict gates: selected_tag = null AND next_action = "render"
-  - Phase 2 plan gate edit path: next_action = "edit";
-    revision_notes MUST be non-null when edit instructions were present in user_reply
-  - Phase 2 plan gate pivot path: next_action = "pivot"
-  - Phase 2 plan gate cancel path: next_action = "cancel"
-  - revision_notes MUST be null for all non-plan gates
-  - intent_override MUST be null for all non-generate-routing gates
-  - Phase 1 generate-routing suppressed: rendered_menu = null AND suppressed = true;
+  - ALWAYS Phase 2 failed parse for strict gates: selected_tag = null AND next_action = "render"
+  - ALWAYS Phase 2 plan gate edit path: next_action = "edit";
+    revision_notes ALWAYS be non-null when edit instructions were present in user_reply
+  - ALWAYS Phase 2 plan gate pivot path: next_action = "pivot"
+  - ALWAYS Phase 2 plan gate cancel path: next_action = "cancel"
+  - ALWAYS revision_notes ALWAYS be null for all non-plan gates
+  - ALWAYS intent_override ALWAYS be null for all non-generate-routing gates
+  - ALWAYS Phase 1 generate-routing suppressed: rendered_menu = null AND suppressed = true;
     parse_table and suggested_default_n may be omitted
-  - Phase 1 generate-routing not suppressed: rendered_menu MUST be non-empty;
-    {classified_mode} MUST be substituted; {suggested_line} MUST be substituted;
+  - ALWAYS Phase 1 generate-routing not suppressed: rendered_menu ALWAYS be non-empty;
+    {classified_mode} ALWAYS be substituted; {suggested_line} ALWAYS be substituted;
     suppressed = null
-  - Phase 2 generate-routing: intent_override MUST be one of generate|fix|brainstorm|null;
-    selected_tag MUST be one of route_now|queue|no|never_ask on successful parse
-  - post_to_resource_branch MUST be null for all gates other than artifact-disposition,
+  - ALWAYS Phase 2 generate-routing: intent_override ALWAYS be one of generate|fix|brainstorm|null;
+    selected_tag ALWAYS be one of route_now|queue|no|never_ask on successful parse
+  - ALWAYS post_to_resource_branch ALWAYS be null for all gates other than artifact-disposition,
     and null on artifact-disposition gate when selected_tag != "post-to-resource"
-  - Phase 1 artifact-disposition gate: option 3 in rendered_menu MUST carry one of
+  - ALWAYS Phase 1 artifact-disposition gate: option 3 in rendered_menu ALWAYS carry one of
     the four resolver-branch labels per the post-to-resource resolver;
-    the literal placeholder "Post to resource — push via MCP resource tool" MUST NOT appear;
-    when ALL three suppression conditions hold, option 3 MUST be absent and
-    parse_table MUST collapse to three entries
-  - Phase 2 artifact-disposition gate with selected_tag == "post-to-resource":
-    post_to_resource_branch MUST be one of pr|mcp_resource|local_file|unavailable
-  - SKILL.md invariant MUST be satisfied
+    the literal placeholder "Post to resource — push via MCP resource tool" NEVER appear;
+    when ALL three suppression conditions hold, option 3 ALWAYS be absent and
+    parse_table ALWAYS collapse to three entries
+  - ALWAYS Phase 2 artifact-disposition gate with selected_tag == "post-to-resource":
+    post_to_resource_branch ALWAYS be one of pr|mcp_resource|local_file|unavailable
+  - ALWAYS SKILL.md invariant ALWAYS be satisfied
 ```

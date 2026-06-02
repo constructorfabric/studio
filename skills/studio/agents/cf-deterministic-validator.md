@@ -53,7 +53,7 @@ NOTES:
   adapter.
 
 DO:
-  For each (path, kind):
+  - RUN For each (path, kind):
 
     WHEN kind == "artifact":
       Run {validator_cmd} --json validate --artifact <path>
@@ -82,9 +82,9 @@ DO:
 UNIT ValidatorExecution
 
 DO:
-  Run each command via Bash
-  Capture: exit code, JSON status, error_count, warning_count
-  WHEN command fails (exit non-zero OR status != "PASS"):
+  - RUN Run each command via Bash
+  - RUN Capture: exit code, JSON status, error_count, warning_count
+  - RUN WHEN command fails (exit non-zero OR status != "PASS"):
     Capture error payload verbatim into det_findings
 ```
 
@@ -125,15 +125,15 @@ PURPOSE:
   Classify each validator finding as mechanical or not.
 
 RULES:
-  - MUST set mechanical: true for:
+  - ALWAYS set mechanical: true for:
       TOC mismatches
       language violations
       schema-required-field errors
-  - MUST default mechanical: false for everything else
-  - MUST include a one-sentence mechanical_rationale in every Finding
+  - ALWAYS default mechanical: false for everything else
+  - ALWAYS include a one-sentence mechanical_rationale in every Finding
     (which validator-code rule forced mechanical: true, or why the failure
     required judgment)
-  - MUST surface mechanical_rationale verbatim to the user for audit before
+  - ALWAYS surface mechanical_rationale verbatim to the user for audit before
     any auto-fix proceeds
 ```
 
@@ -147,14 +147,14 @@ PURPOSE:
   is considered complete.
 
 RULES:
-  - MUST have executed every selected validator command (no simulated output)
-  - MUST list every command's exit code + JSON fields + overall gate in
+  - ALWAYS have executed every selected validator command (no simulated output)
+  - ALWAYS list every command's exit code + JSON fields + overall gate in
     the Validation Results block
-  - MUST have det_findings JSON block (empty array when gate is PASS)
-  - SHOULD have non-empty mechanical_rationale on every finding object
+  - ALWAYS have det_findings JSON block (empty array when gate is PASS)
+  - ALWAYS have non-empty mechanical_rationale on every finding object
     (when missing, orchestrator substitutes
     "<no rationale provided by {agent_name}>" and continues;
     fallback behavior defined in
     workflows/generate/phase-5/phase-5.3-findings.md)
-  - MUST satisfy the SKILL.md invariant
+  - ALWAYS satisfy the SKILL.md invariant
 ```

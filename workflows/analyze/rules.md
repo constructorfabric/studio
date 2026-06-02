@@ -20,36 +20,36 @@ PURPOSE:
   reference list, and pre-output self-check gate.
 
 RULES:
-  - MUST check EVERY SINGLE applicable criterion individually
-  - MUST verify EACH ITEM; do not check categories in bulk
-  - MUST read the COMPLETE artifact
-  - MUST validate EVERY ID, reference, and section
-  - MUST check for ALL placeholders, empty sections, and missing content
-  - MUST cross-reference EVERY actor/capability/requirement ID
-  - MUST report EVERY issue found
-  - MUST_NOT skip checks
-  - MUST_NOT assume sections are correct without verifying
-  - MUST_NOT give benefit of doubt
+  - ALWAYS check EVERY SINGLE applicable criterion individually
+  - ALWAYS verify EACH ITEM; do not check categories in bulk
+  - ALWAYS read the COMPLETE artifact
+  - ALWAYS validate EVERY ID, reference, and section
+  - ALWAYS check for ALL placeholders, empty sections, and missing content
+  - ALWAYS cross-reference EVERY actor/capability/requirement ID
+  - ALWAYS report EVERY issue found
+  - NEVER skip checks
+  - NEVER assume sections are correct without verifying
+  - NEVER give benefit of doubt
 
 INVARIANTS:
-  - One missed issue = INVALID analysis
-  - When actionable issues exist AND EXPLAIN_MODE=false: response MUST end with
+  - ALWAYS One missed issue = INVALID analysis
+  - ALWAYS When actionable issues exist AND EXPLAIN_MODE=false: response ALWAYS end with
     the Remediation Handoff menu (3 options: in-session fix continuation,
     Fix Prompt, Plan Prompt) as the FINAL section
-  - An analysis summary alone is NOT completion
-  - A validation report alone is NOT completion
-  - A generic next-step menu without the three remediation handoff options is NOT completion
-  - When EXPLAIN_MODE=true: completion contract does NOT apply; Storytelling Output
-    schema (Phase 4) is the complete output; MUST_NOT emit handoff menu / Fix / Plan prompts
+  - ALWAYS An analysis summary alone is NOT completion
+  - ALWAYS A validation report alone is NOT completion
+  - ALWAYS A generic next-step menu without the three remediation handoff options is NOT completion
+  - ALWAYS When EXPLAIN_MODE=true: completion contract does NOT apply; Storytelling Output
+    schema (Phase 4) is the complete output; NEVER emit handoff menu / Fix / Plan prompts
 
-DO (pre-output self-check gate):
-  Before emitting output, verify ALL of the following:
-    - Did I report PASS without semantic review? -> IF yes: STOP and restart
-    - Did I use a fresh Read tool call this turn? -> IF no: STOP and restart
-    - Are N/A claims backed by quoted document lines? -> IF no: STOP and restart
-    - Is per-category evidence present? -> IF no: STOP and restart
-    - Did I show actual {cfs_cmd} validate output? -> IF no: STOP and restart
-  IF any answer fails: STOP and restart with compliance
+- ALWAYS DO (pre-output self-check gate):
+  - ALWAYS Before emitting output, verify ALL of the following:
+    - ALWAYS Did I report PASS without semantic review? -> IF yes: STOP and restart
+    - ALWAYS Did I use a fresh Read tool call this turn? -> IF no: STOP and restart
+    - ALWAYS Are N/A claims backed by quoted document lines? -> IF no: STOP and restart
+    - ALWAYS Is per-category evidence present? -> IF no: STOP and restart
+    - ALWAYS Did I show actual {cfs_cmd} validate output? -> IF no: STOP and restart
+  - ALWAYS IF any answer fails: STOP and restart with compliance
 
 NOTES:
   Anti-pattern reference list (full list in

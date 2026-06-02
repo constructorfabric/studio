@@ -175,36 +175,36 @@ The controller MUST NOT:
 UNIT PanelRenderRules
 
 RULES:
-  - panel order is frozen; MUST follow input order exactly
-  - `protocol` is frozen for the session
-  - `repair_feedback`, when present, MUST be applied; violating rows from prior_contributions MUST_NOT be re-emitted unchanged
-  - The panel agent emits only an envelope; it MUST_NOT mutate orchestrator state
-  - Use resource_context for project-specific architecture/code/artifact claims
-  - MUST_NOT invent project facts absent from resource_context
-  - MAY inspect only non-prompt resource paths explicitly listed in
+  - ALWAYS panel order is frozen; ALWAYS follow input order exactly
+  - ALWAYS `protocol` is frozen for the session
+  - ALWAYS `repair_feedback`, when present, ALWAYS be applied; violating rows from prior_contributions NEVER be re-emitted unchanged
+  - ALWAYS The panel agent emits only an envelope; it NEVER mutate orchestrator state
+  - ALWAYS Use resource_context for project-specific architecture/code/artifact claims
+  - NEVER invent project facts absent from resource_context
+  - ALWAYS may inspect only non-prompt resource paths explicitly listed in
     resource_context.resources when the final dispatch prompt grants resource
     reads
-  - IF resource_context.exploration_status == "insufficient" OR a persona has
+  - ALWAYS IF resource_context.exploration_status == "insufficient" OR a persona has
     unresolved missing_context:
-      that persona's independent row MUST ask for the missing information
+      that persona's independent row ALWAYS ask for the missing information
       instead of proposing a substantive architecture decision
-      proposed_default MUST start with "Please provide: "
-      rationale MUST explain why the missing context is required
+      proposed_default ALWAYS start with "Please provide: "
+      rationale ALWAYS explain why the missing context is required
 
-INDEPENDENT-THEN-CRITIQUE:
-  - blocks length MUST be exactly 2
-  - block[0].kind = "independent"
-  - block[1].kind = "critique"
-  - independent block contains one row per emitted question in panel order
-  - critique block contains one row per persona in panel order
+- ALWAYS INDEPENDENT-THEN-CRITIQUE:
+  - ALWAYS blocks length ALWAYS be exactly 2
+  - ALWAYS block[0].kind = "independent"
+  - ALWAYS block[1].kind = "critique"
+  - ALWAYS independent block contains one row per emitted question in panel order
+  - ALWAYS critique block contains one row per persona in panel order
 
-SINGLE-PASS:
-  - blocks length MUST be exactly 1
-  - block[0].kind = "independent"
-  - only primary persona emits rows
+- ALWAYS SINGLE-PASS:
+  - ALWAYS blocks length ALWAYS be exactly 1
+  - ALWAYS block[0].kind = "independent"
+  - ALWAYS only primary persona emits rows
 
-ROW SHAPES:
-  - topic independent row:
+- ALWAYS ROW SHAPES:
+  - ALWAYS topic independent row:
       persona_id
       question_id
       decision_key
@@ -212,7 +212,7 @@ ROW SHAPES:
       proposed_default
       rationale
       stance = "none"
-  - challenge independent row:
+  - ALWAYS challenge independent row:
       persona_id
       question_id
       decision_key
@@ -221,7 +221,7 @@ ROW SHAPES:
       rationale
       stance = "agree|partial|reject"
       delta required only when stance == "partial"
-  - critique row:
+  - ALWAYS critique row:
       persona_id
       critique
 ```
@@ -272,23 +272,23 @@ Error envelope:
 ```pdsl
 UNIT PanelInvariants
 
-I1  envelope_version MUST be string "1"
-I2  protocol MUST be "independent-then-critique" or "single-pass"
-I3  round_index MUST be integer >= 0
-I4  attempt MUST be integer >= 1
-I5  panel_mode MUST be boolean true
-I6  blocks MUST be:
+I1  envelope_version ALWAYS be string "1"
+I2  protocol ALWAYS be "independent-then-critique" or "single-pass"
+I3  round_index ALWAYS be integer >= 0
+I4  attempt ALWAYS be integer >= 1
+I5  panel_mode ALWAYS be boolean true
+I6  blocks ALWAYS be:
       exactly 2 for independent-then-critique
       exactly 1 for single-pass
-I7  each block.row_count MUST equal len(block.rows)
-    each block.kind MUST be "independent" or "critique"
-I8  topic-mode independent rows MUST have stance "none" or omit stance
-I9  challenge-mode independent rows MUST use stance in {agree, partial, reject}
-    delta MUST be present and non-empty only when stance == "partial"
-I10 topic-mode independent decision_key values MUST be unique across the independent block
-I11 challenge-mode independent decision_key values MUST be keys from challenged_decisions
-I12 every persona_id referenced in the envelope MUST exist in panel
-I13 when context is insufficient for a persona, its proposed_default MUST be a
+I7  each block.row_count ALWAYS equal len(block.rows)
+    each block.kind ALWAYS be "independent" or "critique"
+I8  topic-mode independent rows ALWAYS have stance "none" or omit stance
+I9  challenge-mode independent rows ALWAYS use stance in {agree, partial, reject}
+    delta ALWAYS be present and non-empty only when stance == "partial"
+I10 topic-mode independent decision_key values ALWAYS be unique across the independent block
+I11 challenge-mode independent decision_key values ALWAYS be keys from challenged_decisions
+I12 every persona_id referenced in the envelope ALWAYS exist in panel
+I13 when context is insufficient for a persona, its proposed_default ALWAYS be a
     concrete "Please provide: ..." request for missing context, not an invented
     project-specific decision
 ```
@@ -299,10 +299,10 @@ I13 when context is insufficient for a persona, its proposed_default MUST be a
 UNIT PanelCompletionGate
 
 RULES:
-  - MUST satisfy the protocol/render rules above
-  - MUST satisfy invariants I1-I13 above
-  - MUST render deterministic JSON only
-  - MUST use sorted keys and LF line endings
-  - MUST emit no markdown, no prose, no commentary outside the JSON object
-  - MUST satisfy the SKILL.md invariant
+  - ALWAYS satisfy the protocol/render rules above
+  - ALWAYS satisfy invariants I1-I13 above
+  - ALWAYS render deterministic JSON only
+  - ALWAYS use sorted keys and LF line endings
+  - ALWAYS emit no markdown, no prose, no commentary outside the JSON object
+  - ALWAYS satisfy the SKILL.md invariant
 ```

@@ -22,16 +22,16 @@ PURPOSE:
   Define the core invariants governing every brainstorm round.
 
 INVARIANTS:
-  - MUST run exactly one topic per round (multiple sub-questions per topic allowed,
+  - ALWAYS run exactly one topic per round (multiple sub-questions per topic allowed,
     up to 3 per expert)
-  - MUST dispatch all experts independently in fan-out mode: same (persona, topic, state),
+  - ALWAYS dispatch all experts independently in fan-out mode: same (persona, topic, state),
     no expert sees another's output within the round
-  - MUST render an expert returning relevant=false as "{persona}: skipped — {reason}"
+  - ALWAYS render an expert returning relevant=false as "{persona}: skipped — {reason}"
     (skip is first-class)
-  - MUST let user drive topic order from expert proposals or custom input;
-    MUST NOT auto-advance topics
-  - After the user accepts brainstorm, every subsequent user-facing brainstorm
-    menu MUST expose `W` / `wrap` so the session can enter wrap-handoff and
+  - ALWAYS let user drive topic order from expert proposals or custom input;
+    NEVER auto-advance topics
+  - ALWAYS After the user accepts brainstorm, every subsequent user-facing brainstorm
+    menu ALWAYS expose `W` / `wrap` so the session can enter wrap-handoff and
     offer save/generate/analyze routing at any point
 
 NOTES:
@@ -48,11 +48,11 @@ PURPOSE:
   Present brainstorm offer after Phase 0.5 and apply auto-skip and INLINE_FALLBACK rules.
 
 DO:
-  IF auto_skip_condition applies:
-    SET brainstorm_accepted = false
-    CONTINUE Phase1
+  - REQUIRE auto_skip_condition applies:
+    - SET brainstorm_accepted = false
+    - CONTINUE Phase1
 
-  IF INLINE_FALLBACK == true:
+  - REQUIRE INLINE_FALLBACK == true:
     PREPEND to offer block:
       "⚠️ Inline mode detected — brainstorm expert independence is best-effort
        because each persona will see earlier personas' output in the orchestrator's
@@ -60,74 +60,74 @@ DO:
        Consider replying `no` to skip the panel, or restarting this flow in a host
        with native sub-agents next time."
 
-  IF output_destination allows file writes:
-    EMIT exactly:
----
-Want a brainstorm panel before I collect inputs?
+  - REQUIRE output_destination allows file writes:
+    - EMIT exactly:
+- RUN ---
+- RUN Want a brainstorm panel before I collect inputs?
 
-I'll assemble a 3-6-person expert panel relevant to `{KIND}: {name}`. Each
-round we pick one topic, the panel reviews it, then I walk you through the
-resulting questions one by one. For each question I explain why it matters,
-offer answer options, record your reaction, and only after the full queue is
-resolved do I offer next topic / challenge / wrap choices.
+- RUN I'll assemble a 3-6-person expert panel relevant to `{KIND}: {name}`. Each
+- RUN round we pick one topic, the panel reviews it, then I walk you through the
+- RUN resulting questions one by one. For each question I explain why it matters,
+- RUN offer answer options, record your reaction, and only after the full queue is
+- RUN resolved do I offer next topic / challenge / wrap choices.
 
-→ Reply `yes` (suggested when the design space is open or you want
-  cross-discipline pushback), `no` (skip — go straight to inputs), or
-  `save` (run the panel and persist the transcript + final design under
-  `{cf-studio-path}/.cache/brainstorm/{slug}-{ISO}/`; saved sessions
-  follow manual cache retention).
+- RUN → Reply `yes` (suggested when the design space is open or you want
+  - RUN cross-discipline pushback), `no` (skip — go straight to inputs), or
+  - RUN `save` (run the panel and persist the transcript + final design under
+  - RUN `{cf-studio-path}/.cache/brainstorm/{slug}-{ISO}/`; saved sessions
+  - RUN follow manual cache retention).
 
-  Optional modifiers (append to `yes` / `save`, whitespace-separated, any
-  order):
-  • `:N` — custom round cap, e.g. `yes:15` (default 10,
+  - RUN Optional modifiers (append to `yes` / `save`, whitespace-separated, any
+  - RUN order):
+  - RUN • `:N` — custom round cap, e.g. `yes:15` (default 10,
     `BRAINSTORM_MAX_ROUNDS=10`). `save:N` is also accepted.
-  • `mode=fan-out` — dispatch each expert as a separate parallel sub-agent
+  - RUN • `mode=fan-out` — dispatch each expert as a separate parallel sub-agent
     (`cf-brainstorm-expert`, one per panel member). Requires a
     host with native sub-agent parallelism (otherwise degrades to
     sequential). Use this when you want strict cross-expert independence.
-  • `mode=single-agent` — explicit form of the default; dispatch one
+  - RUN • `mode=single-agent` — explicit form of the default; dispatch one
     `cf-brainstorm-panel` agent per round with all experts
     deliberating inside it (one cohesive sub-agent context, host-
     independent, INLINE_FALLBACK is a no-op).
 
-  Examples: `yes`, `yes:15`, `yes mode=fan-out`, `save:20 mode=fan-out`.
----
-  ELSE (chat-only / no-write destination):
-    EMIT exactly:
----
-Want a brainstorm panel before I collect inputs?
+  - RUN Examples: `yes`, `yes:15`, `yes mode=fan-out`, `save:20 mode=fan-out`.
+- RUN ---
+  - RUN otherwise (chat-only / no-write destination):
+    - EMIT exactly:
+- RUN ---
+- RUN Want a brainstorm panel before I collect inputs?
 
-I'll assemble a 3-6-person expert panel relevant to `{KIND}: {name}`. Each
-round we pick one topic, the panel reviews it, then I walk you through the
-resulting questions one by one. For each question I explain why it matters,
-offer answer options, record your reaction, and only after the full queue is
-resolved do I offer next topic / challenge / wrap choices.
+- RUN I'll assemble a 3-6-person expert panel relevant to `{KIND}: {name}`. Each
+- RUN round we pick one topic, the panel reviews it, then I walk you through the
+- RUN resulting questions one by one. For each question I explain why it matters,
+- RUN offer answer options, record your reaction, and only after the full queue is
+- RUN resolved do I offer next topic / challenge / wrap choices.
 
-→ Reply `yes` (suggested when the design space is open or you want
-  cross-discipline pushback) or `no` (skip — go straight to inputs).
+- RUN → Reply `yes` (suggested when the design space is open or you want
+  - RUN cross-discipline pushback) or `no` (skip — go straight to inputs).
 
-  Optional modifiers (append to `yes`, whitespace-separated, any order):
-  • `:N` — custom round cap, e.g. `yes:15` (default 10,
+  - RUN Optional modifiers (append to `yes`, whitespace-separated, any order):
+  - RUN • `:N` — custom round cap, e.g. `yes:15` (default 10,
     `BRAINSTORM_MAX_ROUNDS=10`).
-  • `mode=fan-out` — dispatch each expert as a separate parallel sub-agent
+  - RUN • `mode=fan-out` — dispatch each expert as a separate parallel sub-agent
     (`cf-brainstorm-expert`). Requires native sub-agent
     parallelism on the host.
-  • `mode=single-agent` — explicit form of the default; one
+  - RUN • `mode=single-agent` — explicit form of the default; one
     `cf-brainstorm-panel` dispatch per round with all experts
     deliberating inside it.
 
-  Examples: `yes`, `yes:15`, `yes mode=fan-out`, `yes:20 mode=fan-out`.
----
+  - RUN Examples: `yes`, `yes:15`, `yes mode=fan-out`, `yes:20 mode=fan-out`.
+- RUN ---
 
-  WAIT user.reply
-  STOP_TURN
+  - WAIT user.reply
+  - STOP_TURN
 
 RULES:
-  - MUST auto-skip (treat as `no`) when --no-brainstorm flag is present
-  - MUST auto-skip when KIND's rules.md has brainstorm = "disabled"
-  - MUST NOT include `save` in the offer when output_destination is chat-only or no-write
-  - MUST reject `save` reply when offer was emitted without save option
-  - MUST prepend INLINE_FALLBACK warning before the offer block when INLINE_FALLBACK=true
+  - ALWAYS auto-skip (treat as `no`) when --no-brainstorm flag is present
+  - ALWAYS auto-skip when KIND's rules.md has brainstorm = "disabled"
+  - NEVER include `save` in the offer when output_destination is chat-only or no-write
+  - ALWAYS reject `save` reply when offer was emitted without save option
+  - ALWAYS prepend INLINE_FALLBACK warning before the offer block when INLINE_FALLBACK=true
 ```
 
 ### Reply parsing
@@ -139,45 +139,45 @@ PURPOSE:
   Parse the user's brainstorm offer reply into base verb and modifiers.
 
 DO:
-  TOKENIZE user reply on whitespace
-  SET base_verb = first token (yes / yes:N / save / save:N / no)
-  SET modifiers = remaining tokens of form key=value
+  - RUN TOKENIZE user reply on whitespace
+  - SET base_verb = first token (yes / yes:N / save / save:N / no)
+  - SET modifiers = remaining tokens of form key=value
 
-  SWITCH base_verb:
+  - RUN SWITCH base_verb:
     yes ->
-      SET brainstorm_mode = run
-      SET save_artifacts = false
+      - SET brainstorm_mode = run
+      - SET save_artifacts = false
     yes:N (N positive integer) ->
-      SET brainstorm_mode = run
-      SET state.BRAINSTORM_MAX_ROUNDS = N
-      SET save_artifacts = false
+      - SET brainstorm_mode = run
+      - SET state.BRAINSTORM_MAX_ROUNDS = N
+      - SET save_artifacts = false
     save / save:N ->
-      REQUIRE output_destination allows file writes
-      SET brainstorm_mode = run
-      SET save_artifacts = true
+      - REQUIRE output_destination allows file writes
+      - SET brainstorm_mode = run
+      - SET save_artifacts = true
       IF N present: SET state.BRAINSTORM_MAX_ROUNDS = N
     no ->
-      SET brainstorm_mode = skip
-      CONTINUE Phase1
+      - SET brainstorm_mode = skip
+      - CONTINUE Phase1
 
-  FOR each modifier:
+  - RUN FOR each modifier:
     mode=fan-out ->
-      SET state.run_config.PANEL_MODE_TOPIC = "fan-out"
-      SET state.run_config.PANEL_MODE_CHALLENGE = "fan-out"
+      - SET state.run_config.PANEL_MODE_TOPIC = "fan-out"
+      - SET state.run_config.PANEL_MODE_CHALLENGE = "fan-out"
     mode=single-agent ->
-      SET state.run_config.PANEL_MODE_TOPIC = "single-agent"
-      SET state.run_config.PANEL_MODE_CHALLENGE = "single-agent"
+      - SET state.run_config.PANEL_MODE_TOPIC = "single-agent"
+      - SET state.run_config.PANEL_MODE_CHALLENGE = "single-agent"
     unknown modifier ->
-      EMIT one-line error naming unknown token
-      EMIT offer again
-      WAIT user.reply
-      STOP_TURN
+      - EMIT one-line error naming unknown token
+      - EMIT offer again
+      - WAIT user.reply
+      - STOP_TURN
 
 RULES:
-  - MUST reject unknown modifiers with a one-line error naming the unknown token
-  - MUST reject duplicate mode= modifiers in one reply
-  - MUST NOT allow save when offer was emitted without save option
-  - To set PANEL_MODE_TOPIC and PANEL_MODE_CHALLENGE to different values,
+  - ALWAYS reject unknown modifiers with a one-line error naming the unknown token
+  - ALWAYS reject duplicate mode= modifiers in one reply
+  - NEVER allow save when offer was emitted without save option
+  - ALWAYS To set PANEL_MODE_TOPIC and PANEL_MODE_CHALLENGE to different values,
     use env-var override from phase-0-dependencies.md § Panel Mode Flags
 
 NOTES:

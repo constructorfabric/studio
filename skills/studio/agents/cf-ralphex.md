@@ -53,12 +53,12 @@ PURPOSE:
   preserving the delegation boundary.
 
 RULES:
-  - MUST rely on the controller to inject `studio_mode_contract` and any other
+  - ALWAYS rely on the controller to inject `studio_mode_contract` and any other
     required instruction assets into the final dispatch prompt
-  - MUST treat the synthesized final dispatch prompt as the sole prompt and
+  - ALWAYS treat the synthesized final dispatch prompt as the sole prompt and
     instruction source
-  - MUST_NOT open prompt assets from disk directly
-  - MUST keep runtime orchestration in the documented CLI and Python modules;
+  - NEVER open prompt assets from disk directly
+  - ALWAYS keep runtime orchestration in the documented CLI and Python modules;
     this prompt does not redefine subprocess behavior
 ```
 
@@ -71,13 +71,13 @@ PURPOSE:
   Invoke ralphex delegation via the canonical CLI command.
 
 DO:
-  Run: {cfs_cmd} delegate <plan_dir> [--mode execute|tasks-only|review]
+  - RUN Run: {cfs_cmd} delegate <plan_dir> [--mode execute|tasks-only|review]
        [--worktree] [--serve] [--dry-run] [--plans-dir <path>]
        [--default-branch <branch>] [--root <path>]
 
 RULES:
   - NEVER add `--json` to `{cfs_cmd} delegate`
-  - MUST always invoke as `{cfs_cmd} delegate ...` without `--json`
+  - ALWAYS always invoke as `{cfs_cmd} delegate ...` without `--json`
 
 ON_ERROR:
   exit_code 1 -> report input error (missing plan directory or invalid root)
@@ -137,22 +137,22 @@ PURPOSE:
   Route behavior based on run_delegation() result status.
 
 STATE:
-  DELEGATION_STATUS: ready | delegated | error
+  - SET DELEGATION_STATUS: ready | delegated | error
 
 WHEN:
-  run_delegation() result is available
+  - REQUIRE run_delegation() result is available
 
 DO:
-  SET DELEGATION_STATUS = result["status"]
+  - SET DELEGATION_STATUS = result["status"]
 
 MENU DelegationOutcomeMenu:
   OPTIONS:
-    "ready" ->
+    1 "ready" ->
       EMIT assembled command, plan file, mode, and lifecycle_state as dry-run summary
       STOP_TURN
-    "delegated" ->
+    2 "delegated" ->
       CONTINUE PostRunHandoff
-    "error" ->
+    3 "error" ->
       CONTINUE DelegationErrorHandling
 
 ON_ERROR:
@@ -178,10 +178,10 @@ PURPOSE:
   Generate the Constructor Studio review override before invoking ralphex in review mode.
 
 WHEN:
-  mode == "review"
+  - REQUIRE mode == "review"
 
 DO:
-  Generate review override at `.ralphex/prompts/cf-review-override.md`
+  - RUN Generate review override at `.ralphex/prompts/cf-review-override.md`
     (references exported Constructor Studio review-contract metadata; does not
      instruct raw prompt-asset reloads)
     (classifies changed files as code or prompt/instruction; applies matching branch)
@@ -191,7 +191,7 @@ DO:
     (regenerated on every review-mode delegation — not cached)
 
 RULES:
-  - MUST_NOT treat ralphex as a host-tool subagent or new public Constructor Studio analyze CLI
+  - NEVER treat ralphex as a host-tool subagent or new public Constructor Studio analyze CLI
 ```
 
 ```pdsl
@@ -201,26 +201,26 @@ PURPOSE:
   Report errors from run_delegation() with context and recovery options.
 
 WHEN:
-  DELEGATION_STATUS == error
+  - REQUIRE DELEGATION_STATUS == error
 
 DO:
-  EMIT result["error"] and result["lifecycle_state"]
-  IF result["bootstrap"]["needed"] == true:
-    EMIT "ralphex --init is required"
-    EMIT_MENU BootstrapApprovalMenu
-    WAIT user.reply
-    STOP_TURN
-  IF result["error"] references review precondition failure:
-    EMIT the precondition (e.g. no commits ahead of default branch)
-    EMIT suggested resolution
-    STOP_TURN
-  EMIT error message, lifecycle state at failure
-  EMIT_MENU RetryOrAbortMenu
-  WAIT user.reply
-  STOP_TURN
+  - EMIT result["error"] and result["lifecycle_state"]
+  - REQUIRE result["bootstrap"]["needed"] == true:
+    - EMIT "ralphex --init is required"
+    - EMIT_MENU BootstrapApprovalMenu
+    - WAIT user.reply
+    - STOP_TURN
+  - REQUIRE result["error"] references review precondition failure:
+    - EMIT the precondition (e.g. no commits ahead of default branch)
+    - EMIT suggested resolution
+    - STOP_TURN
+  - EMIT error message, lifecycle state at failure
+  - EMIT_MENU RetryOrAbortMenu
+  - WAIT user.reply
+  - STOP_TURN
 
 RULES:
-  - MUST_NOT proceed to Post-Run Handoff when status == "error"
+  - NEVER proceed to Post-Run Handoff when status == "error"
 
 MENU BootstrapApprovalMenu:
   TITLE: |
@@ -270,18 +270,18 @@ PURPOSE:
   Execute post-delegation steps and emit the structured handoff report.
 
 WHEN:
-  DELEGATION_STATUS == delegated
+  - REQUIRE DELEGATION_STATUS == delegated
 
 DO:
-  1. Call read_handoff_status(exit_code, output_refs, partial)
+  - RUN Call read_handoff_status(exit_code, output_refs, partial)
      to classify delegation outcome (success / partial / failed)
-  2. Call check_completed_plans(plans_dir, task_slug)
+  - RUN Call check_completed_plans(plans_dir, task_slug)
      to inspect the ralphex-managed `completed/` subdirectory for lifecycle artifacts
-  3. Call run_validation_commands(commands, cwd=repo_root)
+  - RUN Call run_validation_commands(commands, cwd=repo_root)
      with validation commands extracted from `## Validation Commands` section of result["plan_file"]
      (each non-empty, non-heading line in that section is one command)
-  4. Call report_handoff(...) to assemble the delegation summary
-  5. EMIT the structured Delegation Handoff Report:
+  - RUN Call report_handoff(...) to assemble the delegation summary
+  - EMIT the structured Delegation Handoff Report:
 
      ## Delegation Handoff Report
      - **Status**: {report["status"]} (success | partial | failed)
@@ -292,11 +292,11 @@ DO:
      - **Output refs**: {report["output_refs"] as bulleted list, or "none"}
 
      ### Next Steps
-     1. Review output artifacts listed above
-     2. Invoke skill `cf-analyze` on changed files if validation passed
-     3. If failed: inspect error output, fix issues, and re-delegate
+     - Review output artifacts listed above
+     - Invoke skill `cf-analyze` on changed files if validation passed
+     - If failed: inspect error output, fix issues, and re-delegate
 
-  STOP_TURN
+  - STOP_TURN
 ```
 
 NOTES:
@@ -310,11 +310,11 @@ PURPOSE:
   Block delegation when ralphex is not initialized.
 
 WHEN:
-  result["bootstrap"]["needed"] == true
+  - REQUIRE result["bootstrap"]["needed"] == true
 
 RULES:
-  - MUST report that `.ralphex/config` is missing and `ralphex --init` is required
-  - MUST request explicit user approval before running `ralphex --init`
+  - ALWAYS report that `.ralphex/config` is missing and `ralphex --init` is required
+  - ALWAYS request explicit user approval before running `ralphex --init`
   - NEVER run `ralphex --init` automatically — it is always an opt-in action
 ```
 
@@ -324,15 +324,15 @@ RULES:
 UNIT RalphexCompletionGate
 
 RULES:
-  - MUST have called run_delegation() and have the result dict available
-  - WHEN status == "error":
-      MUST report error with lifecycle state, failure reason, and recovery options (retry/abort/bootstrap)
-  - WHEN status == "ready" (dry-run):
-      MUST report assembled command, plan file, mode, and lifecycle state
-      MUST skip Post-Run Handoff (ralphex was not invoked)
-  - WHEN status == "delegated":
-      MUST have executed Post-Run Handoff steps 1–5
-      MUST emit the structured Delegation Handoff Report
-  - MUST_NOT end response with only a summary or status update
-  - MUST satisfy the `studio_mode_contract` invariant
+  - ALWAYS have called run_delegation() and have the result dict available
+  - ALWAYS WHEN status == "error":
+      ALWAYS report error with lifecycle state, failure reason, and recovery options (retry/abort/bootstrap)
+  - ALWAYS WHEN status == "ready" (dry-run):
+      ALWAYS report assembled command, plan file, mode, and lifecycle state
+      ALWAYS skip Post-Run Handoff (ralphex was not invoked)
+  - ALWAYS WHEN status == "delegated":
+      ALWAYS have executed Post-Run Handoff steps 1–5
+      ALWAYS emit the structured Delegation Handoff Report
+  - NEVER end response with only a summary or status update
+  - ALWAYS satisfy the `studio_mode_contract` invariant
 ```

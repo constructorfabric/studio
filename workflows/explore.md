@@ -13,19 +13,19 @@ purpose: Standalone explore command; discovers resource context and returns a co
 UNIT RootSkillEntrypointBootstrap
 PURPOSE: Prevent direct workflow entry from bypassing the root cf skill.
 DO:
-  1. REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is loaded completely
+  - REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is loaded completely
      and followed FIRST.
-  2. REQUIRE CfSkillInit, Bootstrap, HardRules, and
+  - REQUIRE CfSkillInit, Bootstrap, HardRules, and
      WorkflowProtocolNonSubstitution from SKILL.md have completed.
-  3. CONTINUE this workflow only after the root cf skill routing/entrypoint
+  - CONTINUE this workflow only after the root cf skill routing/entrypoint
      selects it.
 RULES:
-  - MUST execute before any workflow-specific unit in this file.
-  - MUST_NOT treat protocol.md, routing.md, or a thin proxy skill as a
+  - ALWAYS execute before any workflow-specific unit in this file.
+  - NEVER treat protocol.md, routing.md, or a thin proxy skill as a
     substitute for loading and following SKILL.md.
-  - If this workflow file is opened directly, STOP workflow phases until
+  - ALWAYS If this workflow file is opened directly, STOP workflow phases until
     SKILL.md has been loaded completely and followed.
-  - This gate applies to the top-level controller only; dispatched sub-agents
+  - ALWAYS This gate applies to the top-level controller only; dispatched sub-agents
     consume the synthesized final prompt and supplied context slices.
 ```
 
@@ -37,17 +37,17 @@ PURPOSE:
   resources into SHARED_CONTEXT_PACK.
 
 DO:
-  REQUIRE ExploreClarifyGate resolved before any cf-explorer dispatch
-  REQUIRE `{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md` loaded before cf-explorer dispatch
-  LOAD {cf-studio-path}/.core/skills/studio/agents/cf-explorer.md
+  - REQUIRE ExploreClarifyGate resolved before any cf-explorer dispatch
+  - REQUIRE `{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md` loaded before cf-explorer dispatch
+  - LOAD {cf-studio-path}/.core/skills/studio/agents/cf-explorer.md
     as the explorer source contract
-  SYNTHESIZE final dispatch prompt from the loaded explorer contract plus
+  - RUN SYNTHESIZE final dispatch prompt from the loaded explorer contract plus
     SHARED_CONTEXT_PACK and the payload below
-  IF explorer source contract is not loaded, unreadable, ambiguous, or not
+  - REQUIRE explorer source contract is not loaded, unreadable, ambiguous, or not
      reflected in the final dispatch prompt:
     FAIL per sub-agent-dispatch.md § SubAgentContractReadGate
-    FORBID dispatch
-  DISPATCH cf-explorer with the synthesized final prompt including:
+    - NEVER dispatch
+  - DISPATCH cf-explorer with the synthesized final prompt including:
     task = user's explore request or parent workflow task
     intent = "standalone" | "brainstorm" | "generate" | "analyze" | "plan" | "workspace" | "PDSL"
     panel = null unless called from brainstorm after panel selection
@@ -55,8 +55,8 @@ DO:
     search_roots = project roots allowed for read-only discovery
     constraints = relevant scope, system, KIND, and user-provided limits
 
-  RECEIVE explorer result JSON
-  VALIDATE explorer result JSON has:
+  - RUN RECEIVE explorer result JSON
+  - RUN VALIDATE explorer result JSON has:
     {
       "type": "EXPLORER_RESULT",
       "exploration_status": "sufficient|insufficient|blocked",
@@ -66,19 +66,19 @@ DO:
         "searches_run": []
       }
     }
-  EMIT resource map and context summary
-  RUN ExploreSaveOffer
+  - EMIT resource map and context summary
+  - RUN ExploreSaveOffer
 
 RULES:
-  - MUST NOT put source code, docs, artifacts, diffs, or architecture files into
+  - NEVER put source code, docs, artifacts, diffs, or architecture files into
     SHARED_CONTEXT_PACK
-  - MUST apply sub-agent-dispatch.md § SubAgentContractReadGate before
+  - ALWAYS apply sub-agent-dispatch.md § SubAgentContractReadGate before
     dispatching cf-explorer
-  - MUST treat explorer output as resource_context, not prompt_context
-  - MUST NOT silently write files
-  - MUST NOT dispatch prompt-consuming sub-agents with resource paths only when
+  - ALWAYS treat explorer output as resource_context, not prompt_context
+  - NEVER silently write files
+  - NEVER dispatch prompt-consuming sub-agents with resource paths only when
     the task requires resolved resource summaries or excerpts
-  - Parent workflows MAY skip this gate only when they supply a non-empty
+  - ALWAYS Parent workflows may skip this gate only when they supply a non-empty
     parent workflow task or known_paths
 ```
 
@@ -90,15 +90,15 @@ PURPOSE:
   the resource map/context summary is shown.
 
 WHEN:
-  explorer result JSON has been received and summarized
+  - REQUIRE explorer result JSON has been received and summarized
 
 DO:
-  SET default_save_dir = `{cf-studio-path}/.cache/explore/{slug}-{ISO}/`
-  EMIT "Save this exploration bundle?"
-  EMIT `Default folder: {cf-studio-path}/.cache/explore/{slug}-{ISO}/`
-  EMIT "Saved bundle files are `result.json`, `resource-map.md`, and `summary.md`."
-  EMIT_MENU ExploreSaveMenu
-  WAIT user.reply
+  - SET default_save_dir = `{cf-studio-path}/.cache/explore/{slug}-{ISO}/`
+  - EMIT "Save this exploration bundle?"
+  - EMIT `Default folder: {cf-studio-path}/.cache/explore/{slug}-{ISO}/`
+  - EMIT "Saved bundle files are `result.json`, `resource-map.md`, and `summary.md`."
+  - EMIT_MENU ExploreSaveMenu
+  - WAIT user.reply
 
 MENU ExploreSaveMenu:
   OPTIONS:
@@ -113,7 +113,7 @@ MENU ExploreSaveMenu:
       EMIT "Reply with `folder: <path>` for the save location."
       WAIT user.reply
       STOP_TURN
-    folder: <path> ->
+    3 folder: <path> ->
       SAVE_BUNDLE folder=<user path>
         result.json = exact explorer result JSON
         resource-map.md = rendered resource map and context summary
@@ -132,14 +132,14 @@ MENU ExploreSaveMenu:
     STOP_TURN
 
 RULES:
-  - MUST keep saving orchestrator-owned; cf-explorer remains read-only
-  - MUST persist the exact explorer result JSON as `result.json`
-  - MUST render the resource map/context summary into `resource-map.md`
-  - MUST write `summary.md` with task summary, exploration status, resource count,
+  - ALWAYS keep saving orchestrator-owned; cf-explorer remains read-only
+  - ALWAYS persist the exact explorer result JSON as `result.json`
+  - ALWAYS render the resource map/context summary into `resource-map.md`
+  - ALWAYS write `summary.md` with task summary, exploration status, resource count,
     and missing-context questions
-  - MUST NOT silently write exploration results from running explore alone
-  - MUST allow a user-selected folder instead of the default cache path
-  - MUST keep explorer output in `resource_context`, not `SHARED_CONTEXT_PACK`
+  - NEVER silently write exploration results from running explore alone
+  - ALWAYS allow a user-selected folder instead of the default cache path
+  - ALWAYS keep explorer output in `resource_context`, not `SHARED_CONTEXT_PACK`
 ```
 
 ```pdsl
@@ -149,10 +149,10 @@ PURPOSE:
   Present post-exploration next-action options after the save offer resolves.
 
 WHEN:
-  ExploreSaveOffer has resolved (saved, skipped, or custom path saved)
+  - REQUIRE ExploreSaveOffer has resolved (saved, skipped, or custom path saved)
 
 DO:
-  EMIT_MENU ExploreNextActionsMenu
+  - EMIT_MENU ExploreNextActionsMenu
 
 MENU ExploreNextActionsMenu:
   TITLE: What would you like to do with this context?
@@ -180,9 +180,9 @@ MENU ExploreNextActionsMenu:
     STOP_TURN
 
 RULES:
-  - MUST pass resource_context forward to whichever workflow is chosen
-  - MUST NOT re-run ExploreSaveOffer when looping back via refine
-  - MUST stop cleanly when user replies stop or done
+  - ALWAYS pass resource_context forward to whichever workflow is chosen
+  - NEVER re-run ExploreSaveOffer when looping back via refine
+  - ALWAYS stop cleanly when user replies stop or done
 ```
 
 ```pdsl
@@ -193,18 +193,18 @@ PURPOSE:
   without a user goal.
 
 WHEN:
-  intent == "standalone"
-  AND request is activation-only / no-task explore intent:
+  - REQUIRE intent == "standalone"
+  - AND request is activation-only / no-task explore intent:
     explore | cf-explore | /cf-explore | skill explorer | explorer |
     find context | discover context
-  AND no concrete topic/question/path/decision is present
+  - AND no concrete topic/question/path/decision is present
 
 DO:
-  EMIT "[Explore]: I need a topic before I search the project."
-  EMIT "What should I explore?"
-  EMIT_MENU ExploreClarifyMenu
-  WAIT user.reply
-  STOP_TURN
+  - EMIT "[Explore]: I need a topic before I search the project."
+  - EMIT "What should I explore?"
+  - EMIT_MENU ExploreClarifyMenu
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU ExploreClarifyMenu:
   OPTIONS:
@@ -219,12 +219,12 @@ MENU ExploreClarifyMenu:
     STOP_TURN
 
 RULES:
-  - MUST_NOT dispatch cf-explorer before this gate resolves for standalone
+  - NEVER dispatch cf-explorer before this gate resolves for standalone
     empty explore requests
-  - MUST ask for at least one concrete topic, question, path, decision, or
+  - ALWAYS ask for at least one concrete topic, question, path, decision, or
     downstream workflow purpose
-  - MUST accept free-text topic replies as the task for the next explore turn
-  - MUST carry any user-provided extra context into `constraints`
-  - Parent workflows MAY skip this clarify gate only when they supply a non-empty
+  - ALWAYS accept free-text topic replies as the task for the next explore turn
+  - ALWAYS carry any user-provided extra context into `constraints`
+  - ALWAYS Parent workflows may skip this clarify gate only when they supply a non-empty
     parent workflow task or known_paths
 ```

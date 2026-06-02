@@ -13,11 +13,11 @@ PURPOSE:
   Emit the self-contained Fix Prompt when the user selects remediation option 2.
 
 RULES:
-  - MUST emit as the FINAL section of the response
-  - MUST start with "Invoke skill `cf`"
-  - MUST be self-contained: include PATH, KIND, status, and full numbered issue list
-  - MUST embed all findings with severity, file, line, evidence, root cause
-  - MUST_NOT omit any actionable finding
+  - ALWAYS emit as the FINAL section of the response
+  - ALWAYS start with "Invoke skill `cf`"
+  - ALWAYS be self-contained: include PATH, KIND, status, and full numbered issue list
+  - ALWAYS embed all findings with severity, file, line, evidence, root cause
+  - NEVER omit any actionable finding
 ```
 
 ```text

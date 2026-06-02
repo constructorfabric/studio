@@ -28,13 +28,13 @@ PURPOSE:
   Map user request signals to a task type and target workflow.
 
 DO:
-  MATCH user request signals:
+  - RUN MATCH user request signals:
     create | generate | write | update | draft + artifact kind -> SET task_type = generate
-                                                                   SET target_workflow = generate.md
+                                                                   - SET target_workflow = generate.md
     validate | review | check | audit | analyze + artifact kind -> SET task_type = analyze
-                                                                    SET target_workflow = analyze.md
+                                                                    - SET target_workflow = analyze.md
     implement | code | build | develop + feature name           -> SET task_type = implement
-                                                                   SET target_workflow = generate.md (code mode)
+                                                                   - SET target_workflow = generate.md (code mode)
 
 NOTES:
   For implement requests, inspect the direct prompt plus any provided FEATURE, DESIGN,
@@ -52,14 +52,14 @@ PURPOSE:
   Load all applicable navigation-linked files before plan generation begins.
 
 DO:
-  OPEN {cf-studio-path}/.core/workflows/{target_workflow}
-  SCAN all navigation directives
-  LIST referenced files + WHEN conditions
-  EVALUATE each condition
-  OPEN every applicable file
-  EXTRACT only sections/ranges needed for plan generation
-  RECORD loaded-file manifest with: path, reason, sections/ranges, line_count
-  EMIT:
+  - RUN OPEN {cf-studio-path}/.core/workflows/{target_workflow}
+  - RUN SCAN all navigation directives
+  - RUN LIST referenced files + WHEN conditions
+  - RUN EVALUATE each condition
+  - RUN OPEN every applicable file
+  - RUN EXTRACT only sections/ranges needed for plan generation
+  - RUN RECORD loaded-file manifest with: path, reason, sections/ranges, line_count
+  - EMIT:
     Context loaded for plan generation:
       Workflow: {target_workflow} ({N} navigation rules processed)
       Files inspected: {M} files
@@ -68,9 +68,9 @@ DO:
       All navigation rules processed? [YES/NO]
 
 RULES:
-  - MUST NOT proceed until ALL applicable navigation rules are processed
-  - MUST NOT proceed until every required file referenced by navigation rules has been opened
-  - MUST NOT proceed until every retained slice needed for planning is captured in the manifest
+  - NEVER proceed until ALL applicable navigation rules are processed
+  - NEVER proceed until every required file referenced by navigation rules has been opened
+  - NEVER proceed until every retained slice needed for planning is captured in the manifest
 ```
 
 ## 1.2 Estimate Compiled Size
@@ -82,15 +82,15 @@ PURPOSE:
   Determine whether to continue planning or route to direct execution.
 
 DO:
-  COMPUTE estimate = template_lines + rules_lines + checklist_lines + existing_content_lines
+  - RUN COMPUTE estimate = template_lines + rules_lines + checklist_lines + existing_content_lines
 
-  IF oversized raw input already has an approved or reusable plan package:
+  - REQUIRE oversized raw input already has an approved or reusable plan package:
     REMAIN on plan path regardless of estimate
-    CONTINUE Phase1IdentifyTarget
-  ELSE IF estimate <= 500:
-    CONTINUE Phase1IdentifyTarget  (resolve {task-slug} before checking for reusable package)
-  ELSE:
-    CONTINUE Phase1IdentifyTarget  (estimate > 500, continue planning)
+    - CONTINUE Phase1IdentifyTarget
+  - RUN otherwise IF estimate <= 500:
+    - CONTINUE Phase1IdentifyTarget  (resolve {task-slug} before checking for reusable package)
+  - RUN otherwise
+    - CONTINUE Phase1IdentifyTarget  (estimate > 500, continue planning)
 ```
 
 ## 1.3 Identify Target & Resolve Kit Inputs
@@ -102,34 +102,34 @@ PURPOSE:
   Resolve artifact, kit, target_key, and input_signature before the interaction scan.
 
 DO:
-  RESOLVE based on task_type:
+  - RUN RESOLVE based on task_type:
     generate -> artifact kind, file path, kit
     analyze  -> artifact kind, file path, kit
     implement -> FEATURE spec path, CDSL blocks
 
-  COMPUTE plan.target_key:
+  - RUN COMPUTE plan.target_key:
     generate artifact target:
       IF single resolved output artifact path known:
-        SET plan.target_key = artifact-path:{absolute path}
+        - SET plan.target_key = artifact-path:{absolute path}
       ELSE:
-        SET plan.target_key = artifact:{artifact kind}:{explicit artifact name}
+        - SET plan.target_key = artifact:{artifact kind}:{explicit artifact name}
     analyze path target:
-      SET plan.target_key = path:{absolute path} for primary file/directory target
+      - SET plan.target_key = path:{absolute path} for primary file/directory target
       (analyze artifact target follows generate artifact-target rule)
     implement target:
       IF absolute FEATURE path known:   SET plan.target_key = feature-path:{absolute FEATURE path}
       ELSE IF FEATURE ID known:         SET plan.target_key = feature-id:{FEATURE ID}
       ELSE:                             SET plan.target_key = feature-title:{normalized FEATURE title}
 
-  COMPUTE plan.input_signature:
+  - RUN COMPUTE plan.input_signature:
     DERIVE from each source's kind, path, and content hash (direct prompt + every provided file)
-    RUN {cfs_cmd} --json chunk-input ... --output-dir {cf-studio-path}/.plans/{task-slug}/input --dry-run
+    - RUN {cfs_cmd} --json chunk-input ... --output-dir {cf-studio-path}/.plans/{task-slug}/input --dry-run
       (add --include-stdin when direct prompt text must be included)
-    SET plan.input_signature = returned signature value
+    - SET plan.input_signature = returned signature value
 
-  COMPUTE {task-slug} immediately for deterministic plan-directory naming and reuse
+  - RUN COMPUTE {task-slug} immediately for deterministic plan-directory naming and reuse
 
-  EMIT:
+  - EMIT:
     Plan scope:
       Type: {generate|analyze|implement}
       Target: {artifact kind or feature name}
@@ -155,20 +155,20 @@ INPUT:
   target workflow, rules.md, checklist.md, template.md, all applicable navigation-linked files
 
 DO:
-  SCAN all files listed in INPUT recursively for these signals:
+  - RUN SCAN all files listed in INPUT recursively for these signals:
     question: ask the user | ask user | what is | which | trailing ?
     input:    user provides | user specifies | user enters | input from user
     confirm:  wait for | confirm | approval | before proceeding
     review:   review | present for | show to user | user inspects
     decision: choose | select | option A or B | decide
 
-  FOR each finding:
+  - RUN FOR each finding:
     CLASSIFY as Pre-resolvable | Phase-bound | Cross-phase
 
-  ASK all pre-resolvable and cross-phase questions now
-  RECORD answers in a decisions block
+  - RUN ASK all pre-resolvable and cross-phase questions now
+  - RUN RECORD answers in a decisions block
 
-  EMIT:
+  - EMIT:
     Interaction points scan complete:
       Files scanned: {N}
       Interaction points found: {M}
@@ -178,15 +178,15 @@ DO:
       All source files scanned? [YES/NO]
       All interaction points classified? [YES/NO]
 
-  IF zero found:
-    EMIT "No interaction points detected — task is fully autonomous"
+  - REQUIRE zero found:
+    - EMIT "No interaction points detected — task is fully autonomous"
     OMIT User Decisions from phase files
 
 RULES:
-  - MUST NOT proceed if any source file was not scanned
-  - MUST NOT proceed if any interaction point remains unclassified
+  - NEVER proceed if any source file was not scanned
+  - NEVER proceed if any interaction point remains unclassified
 
-CONTINUE Phase1RawInputCheck
+- ALWAYS CONTINUE Phase1RawInputCheck
 ```
 
 ```pdsl
@@ -197,22 +197,22 @@ PURPOSE:
   or prompt for raw-input materialization.
 
 DO:
-  IF {cf-studio-path}/.plans/{task-slug}/input/manifest.json exists:
+  - REQUIRE {cf-studio-path}/.plans/{task-slug}/input/manifest.json exists:
     READ its input_signature
     COMPARE to input_signature from --dry-run invocation above
     IF they match exactly:
       REMAIN on plan path and reuse that authoritative raw-input package
-      STOP_TURN (no further routing check needed)
+      - STOP_TURN (no further routing check needed)
 
-  IF compiled estimate <= 500
+  - REQUIRE compiled estimate <= 500
     AND oversized raw input does NOT already have an approved or reusable plan package:
-    STOP_TURN — direct user to Invoke skill `cf-generate` or Invoke skill `cf-analyze`
+    - STOP_TURN — direct user to Invoke skill `cf-generate` or Invoke skill `cf-analyze`
 
-  IF (direct prompt text + all provided files) > 500 total lines
+  - REQUIRE (direct prompt text + all provided files) > 500 total lines
     AND no authoritative raw-input package with same plan.input_signature exists:
-    EMIT_MENU RawInputMaterializationMenu
-    WAIT user.reply
-    STOP_TURN
+    - EMIT_MENU RawInputMaterializationMenu
+    - WAIT user.reply
+    - STOP_TURN
 
 MENU RawInputMaterializationMenu:
   TITLE: Oversized raw input detected (~{N} lines total). Proceed with raw-input materialization? [y/n]
@@ -224,14 +224,14 @@ MENU RawInputMaterializationMenu:
       `input_signature` and only replaces the existing package after the full replacement
       package is staged successfully.
   OPTIONS:
-    y -> SET CF_PHASE_GATE = released_for_orchestrator_write
+    1 y -> SET CF_PHASE_GATE = released_for_orchestrator_write
             scope = {cf-studio-path}/.plans/{task-slug}/input/
          EXECUTE chunk-input (without --dry-run)
          RECORD emitted chunk paths + manifest.json
          STOP carrying full raw input in active chat context once package exists
          SET CF_PHASE_GATE = armed
          CONTINUE Phase2Decompose
-    n -> EMIT "Raw-input materialization declined — stop and re-run with smaller input or approve materialization when ready"
+    2 n -> EMIT "Raw-input materialization declined — stop and re-run with smaller input or approve materialization when ready"
          STOP_TURN  (valid completion state for cf-plan; no files created)
   INVALID:
     EMIT "Reply with y or n."
@@ -239,6 +239,6 @@ MENU RawInputMaterializationMenu:
     STOP_TURN
 
 RULES:
-  - MUST wait for explicit user confirmation before creating input/ directory or executing chunk-input without --dry-run
-  - MUST NOT create any files or directories when user replies n
+  - ALWAYS wait for explicit user confirmation before creating input/ directory or executing chunk-input without --dry-run
+  - NEVER create any files or directories when user replies n
 ```

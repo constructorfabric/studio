@@ -15,29 +15,29 @@ PURPOSE:
   cf-deterministic-validator dispatch for Phase 6 handoff.
 
 DO:
-  REPRODUCE the final-iteration cf-deterministic-validator Validation Results block
+  - RUN REPRODUCE the final-iteration cf-deterministic-validator Validation Results block
     verbatim (canonical block with all placeholders filled in)
     NOTE: block schema owned by
       {cf-studio-path}/.core/skills/studio/agents/cf-deterministic-validator.md § Output;
-      MUST NOT redefine here; reproduce from agent's final-iteration return value
+      - NEVER redefine here; reproduce from agent's final-iteration return value
 
-  APPEND Semantic Review summary block:
----
-Semantic Review: closed {c}, accepted-as-is {a}, handed-off {h}; total iterations {N}; loop_exit={clean|user-accepted|manual-handoff|max-iter-stopped|max-iter-stopped-with-failures}.
-remaining_findings = [ {id}, {id}, ... ]   # empty list when loop_exit=clean
-det_gate_final_result = {PASS|FAIL|SKIPPED}
----
+  - RUN APPEND Semantic Review summary block:
+- RUN ---
+- RUN Semantic Review: closed {c}, accepted-as-is {a}, handed-off {h}; total iterations {N}; loop_exit={clean|user-accepted|manual-handoff|max-iter-stopped|max-iter-stopped-with-failures}.
+- RUN remaining_findings = [ {id}, {id}, ... ]   # empty list when loop_exit=clean
+- RUN det_gate_final_result = {PASS|FAIL|SKIPPED}
+- RUN ---
 
 RULES:
-  - det_gate_final_result MUST be exactly one of: "PASS", "FAIL", "SKIPPED"
-  - det_gate_final_result reflects the final-iteration deterministic gate outcome
+  - ALWAYS det_gate_final_result ALWAYS be exactly one of: "PASS", "FAIL", "SKIPPED"
+  - ALWAYS det_gate_final_result reflects the final-iteration deterministic gate outcome
     (or "SKIPPED" with validator availability proof when gate was not run)
-  - det_gate_final_result is the authoritative named field consumed by
+  - ALWAYS det_gate_final_result is the authoritative named field consumed by
     workflows/generate/phase-6/index.md § prerequisite guard
-  - Both blocks together constitute the canonical Validation Results body that
+  - ALWAYS Both blocks together constitute the canonical Validation Results body that
     phase-6/index.md emits verbatim when an on-demand emission template is dispatched
-  - MUST proceed to phase-6/index.md
-  - phase-6/index.md MUST NOT proceed without a completed Validation Results body
+  - ALWAYS proceed to phase-6/index.md
+  - ALWAYS phase-6/index.md NEVER proceed without a completed Validation Results body
     (canonical template fields filled with actual values)
-  - Open, load, and follow {cf-studio-path}/.core/workflows/generate/phase-6/index.md § prerequisite guard
+  - ALWAYS Open, load, and follow {cf-studio-path}/.core/workflows/generate/phase-6/index.md § prerequisite guard
 ```

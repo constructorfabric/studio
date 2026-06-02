@@ -22,48 +22,48 @@ PURPOSE:
   before any file writes.
 
 DO:
-  REQUIRE AUTHOR_PLAN_OFFER_RESOLVED is set by
+  - REQUIRE AUTHOR_PLAN_OFFER_RESOLVED is set by
     workflows/generate/phase-1.5-author-plan.md
-  IF AUTHOR_PLAN_OFFER_RESOLVED is unset:
+  - REQUIRE AUTHOR_PLAN_OFFER_RESOLVED is unset:
     FAIL-STOP
     ROUTE back to workflows/generate/phase-1.5-author-plan.md
 
-  IF AUTHOR_PLAN_OFFER_RESOLVED is a terminal cancellation state
+  - REQUIRE AUTHOR_PLAN_OFFER_RESOLVED is a terminal cancellation state
     (cancelled_by_stop_token | cancelled_planner_failure | cancelled_partial_write):
     STOP current generate sub-flow
     LEAVE target files untouched
-    RETURN
+    - RETURN
 
-  EMIT exactly:
----
-## Summary
-**Target**: {TARGET_TYPE}
-**Kind**: {KIND}
-**Name**: {name}
-**Path**: {path}
-**Mode**: {MODE}
-**Content preview**: {brief overview of what will be created/changed}
-**Author plan**: {memory/disk/auto-skipped/cancelled}; {task count + parallel group summary OR "single author flow"}
-**Files to write**: `{path}`: {description}; {additional files if any}
-**Artifacts registry**: `{cf-studio-path}/config/artifacts.toml`: {entry additions/updates, if any}
-**STRICT self-check**: template loaded = {yes/no}; example referenced = {yes/no}; checklist status = {required-and-complete/deferred-to-phase-5}; placeholders absent = {yes/no}; explicit `yes` received = {yes/no}
-**Proceed?** [yes/no/modify]
-Reply with `yes`, `no`, or `modify`.
-`yes` → Suggested when the summary is accurate; write files and continue to validation.
-`no` → Cancel without writing files.
-`modify` → Revisit the inputs or proposal before any files are written.
----
-  WAIT user.reply
-  STOP_TURN
+  - EMIT exactly:
+- RUN ---
+- RUN ## Summary
+- RUN **Target**: {TARGET_TYPE}
+- RUN **Kind**: {KIND}
+- RUN **Name**: {name}
+- RUN **Path**: {path}
+- RUN **Mode**: {MODE}
+- RUN **Content preview**: {brief overview of what will be created/changed}
+- RUN **Author plan**: {memory/disk/auto-skipped/cancelled}; {task count + parallel group summary OR "single author flow"}
+- RUN **Files to write**: `{path}`: {description}; {additional files if any}
+- RUN **Artifacts registry**: `{cf-studio-path}/config/artifacts.toml`: {entry additions/updates, if any}
+- RUN **STRICT self-check**: template loaded = {yes/no}; example referenced = {yes/no}; checklist status = {required-and-complete/deferred-to-phase-5}; placeholders absent = {yes/no}; explicit `yes` received = {yes/no}
+- RUN **Proceed?** [yes/no/modify]
+- RUN Reply with `yes`, `no`, or `modify`.
+- RUN `yes` → Suggested when the summary is accurate; write files and continue to validation.
+- RUN `no` → Cancel without writing files.
+- RUN `modify` → Revisit the inputs or proposal before any files are written.
+- RUN ---
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU Phase3ConfirmationMenu:
   TITLE: Phase 3 confirmation
   OPTIONS:
-    yes ->
+    1 yes ->
       CONTINUE workflows/generate/phase-4-write.md
-    no ->
+    2 no ->
       CANCEL without writing files
-    modify ->
+    3 modify ->
       EMIT "What would you like to change?"
       WAIT user.reply
       STOP_TURN
@@ -80,9 +80,9 @@ MENU Phase3ConfirmationMenu:
     STOP_TURN
 
 RULES:
-  - MUST NOT emit Summary block when AUTHOR_PLAN_OFFER_RESOLVED is a
+  - NEVER emit Summary block when AUTHOR_PLAN_OFFER_RESOLVED is a
     terminal cancellation state
-  - MUST NOT write files before receiving yes
-  - Max 3 modify iterations; after that require explicit "continue iterating"
+  - NEVER write files before receiving yes
+  - ALWAYS Max 3 modify iterations; after that require explicit "continue iterating"
     or stop the generate workflow
 ```

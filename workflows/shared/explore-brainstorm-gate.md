@@ -16,99 +16,99 @@ PURPOSE:
   exploration, or both before it continues.
 
 STATE:
-  EXPLORE_DECISION: unset | required | suggested | skipped | complete
-  BRAINSTORM_DECISION: unset | required | suggested | skipped | complete
-  RESOURCE_CONTEXT: null | cf-explorer result JSON
-  BRAINSTORM_CONTEXT: null | brainstorm handoff JSON
-  ad_hoc_search_attempted: boolean  default: false  scope: workflow_run
+  - SET EXPLORE_DECISION: unset | required | suggested | skipped | complete
+  - SET BRAINSTORM_DECISION: unset | required | suggested | skipped | complete
+  - SET RESOURCE_CONTEXT: null | cf-explorer result JSON
+  - SET BRAINSTORM_CONTEXT: null | brainstorm handoff JSON
+  - SET ad_hoc_search_attempted: boolean  default: false  scope: workflow_run
 
-ORDER:
-  1. Resolve required/suggested explore.
-  2. Resolve required/suggested brainstorm.
-  3. If both apply, run explore before brainstorm unless RESOURCE_CONTEXT is
+- SET ORDER:
+  - SET Resolve required/suggested explore.
+  - SET Resolve required/suggested brainstorm.
+  - SET If both apply, run explore before brainstorm unless RESOURCE_CONTEXT is
      already complete for the current task.
 
-RESOURCE BOUNDARY:
-  - cf-explore discovers non-prompt project resources only: code, docs,
+- SET RESOURCE BOUNDARY:
+  - SET cf-explore discovers non-prompt project resources only: code, docs,
     artifacts, architecture specs as task subject, diffs, configs, examples,
     and generated runtime outputs.
-  - cf-explore MUST NOT add resource contents to SHARED_CONTEXT_PACK.
-  - Prompt assets remain controller-owned instruction context and are handled
+  - SET cf-explore NEVER add resource contents to SHARED_CONTEXT_PACK.
+  - SET Prompt assets remain controller-owned instruction context and are handled
     only through SHARED_CONTEXT_PACK.
-  - Local ad-hoc search by the orchestrator (`rg`, `grep`, `find`, IDE search,
-    manual directory walks, or equivalent) MUST_NOT replace cf-explore when
+  - SET Local ad-hoc search by the orchestrator (`rg`, `grep`, `find`, IDE search,
+    manual directory walks, or equivalent) NEVER replace cf-explore when
     any REQUIRE_EXPLORE condition applies.
-  - Any local ad-hoc search step MUST set ad_hoc_search_attempted = true before
+  - SET Any local ad-hoc search step ALWAYS set ad_hoc_search_attempted = true before
     ExploreBrainstormAction is evaluated so the gate can stop on that signal.
-  - After cf-explore completes, the orchestrator MAY inspect concrete
+  - SET After cf-explore completes, the orchestrator may inspect concrete
     RESOURCE_CONTEXT paths/slices as needed by later phases.
 
-REQUIRE_EXPLORE FOR ANY PROJECT-RESOURCE SEARCH WHEN:
-  - The workflow needs to find or discover relevant files, code references,
+- SET REQUIRE_EXPLORE FOR ANY PROJECT-RESOURCE SEARCH WHEN:
+  - SET The workflow needs to find or discover relevant files, code references,
     architecture docs, artifacts, tests, examples, configs, usage sites,
     dependencies, owners, impact surface, or cross-file context.
-  - The user asks any search/discovery question such as "find", "locate",
+  - SET The user asks any search/discovery question such as "find", "locate",
     "where", "what uses", "impact", "related files", "dependencies",
     "references", "context", "scan", "inspect the project", or equivalent,
     unless exact target files and all required surrounding context are already
     supplied.
 
-REQUIRE_EXPLORE WHEN:
-  - Active workflow is cf-brainstorm and panel personas have been selected.
-  - Active workflow is cf-auto-config.
-  - Active workflow is cf-workspace setup or workspace config generation.
-  - Active workflow is cf-plan for an existing project, brownfield change,
+- SET REQUIRE_EXPLORE WHEN:
+  - SET Active workflow is cf-brainstorm and panel personas have been selected.
+  - SET Active workflow is cf-auto-config.
+  - SET Active workflow is cf-workspace setup or workspace config generation.
+  - SET Active workflow is cf-plan for an existing project, brownfield change,
     architecture-affecting work, multi-file implementation, or unclear target
     surface.
-  - Active workflow is cf-generate and task touches existing code/docs,
+  - SET Active workflow is cf-generate and task touches existing code/docs,
     architecture, prompts, workflows, skills, requirements, multi-file behavior,
     integrations, or an unspecified target path.
-  - Active workflow is cf-analyze or cf-explain and the user did not provide
+  - SET Active workflow is cf-analyze or cf-explain and the user did not provide
     explicit target paths, asks about project/architecture behavior, asks "where",
     "impact", "consistency", "what uses", or requests cross-file reasoning.
 
-SUGGEST_EXPLORE WHEN:
-  - Active workflow is cf-generate for a small isolated edit but neighboring
+- SET SUGGEST_EXPLORE WHEN:
+  - SET Active workflow is cf-generate for a small isolated edit but neighboring
     context may affect correctness.
-  - Active workflow is cf-analyze with explicit targets but likely cross-refs
+  - SET Active workflow is cf-analyze with explicit targets but likely cross-refs
     or architectural context would improve findings.
 
-SKIP_EXPLORE WHEN:
-  - User supplied exact target files and all required surrounding context; this
+- SET SKIP_EXPLORE WHEN:
+  - SET User supplied exact target files and all required surrounding context; this
     means the agent can name every file/path it will inspect without searching
     and no "find", "where", "impact", "uses", "dependencies", "references",
     or "context" question remains open.
-  - Active workflow is cf-map generating a graph; map performs its own scan.
-  - Active workflow is a pure prompt/proxy route with no project-resource need;
+  - SET Active workflow is cf-map generating a graph; map performs its own scan.
+  - SET Active workflow is a pure prompt/proxy route with no project-resource need;
     prompt assets are loaded by the controller through SHARED_CONTEXT_PACK, not
     discovered as project resources.
-  - The only required file access is a controller-owned workflow/agent/skill/
+  - SET The only required file access is a controller-owned workflow/agent/skill/
     requirement prompt asset already named by the active protocol.
 
-REQUIRE_BRAINSTORM WHEN:
-  - User explicitly asks to brainstorm, ideate, explore options, decide,
+- SET REQUIRE_BRAINSTORM WHEN:
+  - SET User explicitly asks to brainstorm, ideate, explore options, decide,
     compare approaches, design requirements, or map tradeoffs.
-  - Active workflow is cf-generate and implementation depends on unresolved
+  - SET Active workflow is cf-generate and implementation depends on unresolved
     product, architecture, UX, safety, compatibility, or workflow-policy
     decisions.
-  - Active workflow is cf-plan and phase decomposition depends on unresolved
+  - SET Active workflow is cf-plan and phase decomposition depends on unresolved
     strategy, milestones, ownership boundaries, or acceptance semantics.
 
-SUGGEST_BRAINSTORM WHEN:
-  - Active workflow is cf-generate and the change is broad but a safe default
+- SET SUGGEST_BRAINSTORM WHEN:
+  - SET Active workflow is cf-generate and the change is broad but a safe default
     exists.
-  - Active workflow is cf-plan and there are multiple valid decomposition
+  - SET Active workflow is cf-plan and there are multiple valid decomposition
     strategies.
-  - Active workflow is cf-auto-config, cf-workspace, or cf-pdsl new/transform
+  - SET Active workflow is cf-auto-config, cf-workspace, or cf-pdsl new/transform
     and user-facing defaults, precedence, or policy choices are ambiguous.
-  - Active workflow is cf-analyze and findings require choosing a remediation
+  - SET Active workflow is cf-analyze and findings require choosing a remediation
     strategy rather than simply reporting defects.
 
-SKIP_BRAINSTORM WHEN:
-  - User asks for direct execution, review, explanation, mapping, or deterministic
+- SET SKIP_BRAINSTORM WHEN:
+  - SET User asks for direct execution, review, explanation, mapping, or deterministic
     validation and no design choice is unresolved.
-  - User passes --no-brainstorm or active rules explicitly disable brainstorm.
-  - The task is a narrow mechanical edit with explicit target and outcome.
+  - SET User passes --no-brainstorm or active rules explicitly disable brainstorm.
+  - SET The task is a narrow mechanical edit with explicit target and outcome.
 ```
 
 ```pdsl
@@ -118,30 +118,30 @@ PURPOSE:
   Execute the decision without hiding workflow control from the user.
 
 DO:
-  IF ad_hoc_search_attempted:
-    EMIT "Use cf-explorer sub-agent for required project-resource discovery."
-    STOP_TURN
+  - REQUIRE ad_hoc_search_attempted:
+    - EMIT "Use cf-explorer sub-agent for required project-resource discovery."
+    - STOP_TURN
 
-  IF EXPLORE_DECISION == required:
-    LOAD {cf-studio-path}/.core/workflows/explore.md
+  - REQUIRE EXPLORE_DECISION == required:
+    - LOAD {cf-studio-path}/.core/workflows/explore.md
     run with intent = active workflow name
-    SET RESOURCE_CONTEXT = explorer result JSON
-    SET EXPLORE_DECISION = complete
+    - SET RESOURCE_CONTEXT = explorer result JSON
+    - SET EXPLORE_DECISION = complete
 
-  IF EXPLORE_DECISION == suggested:
-    EMIT_MENU ExploreOfferMenu
-    WAIT user.reply
-    STOP_TURN
+  - REQUIRE EXPLORE_DECISION == suggested:
+    - EMIT_MENU ExploreOfferMenu
+    - WAIT user.reply
+    - STOP_TURN
 
-  IF BRAINSTORM_DECISION == required:
-    LOAD {cf-studio-path}/.core/workflows/brainstorm.md
+  - REQUIRE BRAINSTORM_DECISION == required:
+    - LOAD {cf-studio-path}/.core/workflows/brainstorm.md
     seed brainstorm with active task and RESOURCE_CONTEXT when present
-    SET BRAINSTORM_DECISION = complete after wrap handoff
+    - SET BRAINSTORM_DECISION = complete after wrap handoff
 
-  IF BRAINSTORM_DECISION == suggested:
-    EMIT_MENU BrainstormOfferMenu
-    WAIT user.reply
-    STOP_TURN
+  - REQUIRE BRAINSTORM_DECISION == suggested:
+    - EMIT_MENU BrainstormOfferMenu
+    - WAIT user.reply
+    - STOP_TURN
 
 MENU ExploreOfferMenu:
   TITLE: |

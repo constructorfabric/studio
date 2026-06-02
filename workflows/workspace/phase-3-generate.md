@@ -23,32 +23,32 @@ NOTES:
   CF_PHASE_GATE is defined session-scoped in SKILL.md § Phase-Skip Gate; only armed and released_for_orchestrator_write are used here.
 
 WHEN:
-  WORKSPACE_ALL_SOURCES_CONFIRMED == true
-  AND final workspace location is resolved and valid
+  - REQUIRE WORKSPACE_ALL_SOURCES_CONFIRMED == true
+  - AND final workspace location is resolved and valid
 
 DO:
-  Resolve workspace_config_path:
+  - RUN Resolve workspace_config_path:
     standalone mode -> {project_root}/.studio-workspace.toml
     inline mode    -> {project_root}/config/core.toml
-  SET CF_PHASE_GATE = released_for_orchestrator_write
+  - SET CF_PHASE_GATE = released_for_orchestrator_write
     scope: {workspace_config_path}
-  Invoke CLI:
+  - RUN Invoke CLI:
     Initialize: `{cfs_cmd} --json workspace-init [--root <super-root>] [--output <path>] [--inline] [--force] [--dry-run]`
     Add source:  `{cfs_cmd} --json workspace-add --name <name> (--path <path> | --url <url>) [--branch <branch>] [--role <role>] [--adapter <path>] [--inline]`
-  SET CF_PHASE_GATE = armed
-  IF CLI succeeded:
-    CONTINUE workflows/workspace/phase-4-validate.md
-  ELSE:
-    CONTINUE WorkspaceGenerateFailureMenu
+  - SET CF_PHASE_GATE = armed
+  - REQUIRE CLI succeeded:
+    - CONTINUE workflows/workspace/phase-4-validate.md
+  - RUN otherwise
+    - CONTINUE WorkspaceGenerateFailureMenu
 
 RULES:
-  - MUST check WORKSPACE_ALL_SOURCES_CONFIRMED == true before invoking CLI
-  - MUST check final workspace location is resolved and valid for selected source set before invoking CLI
-  - MUST_NOT attempt Phase 3 with --inline against a Git URL source set
-  - MUST SET CF_PHASE_GATE = released_for_orchestrator_write with named scope before CLI invocation
-  - MUST SET CF_PHASE_GATE = armed immediately after CLI returns (success or failure)
-  - The logical [workspace] TOML section is part of the inline write target; it is NOT a valid gate scope
-  - MUST_NOT infer WORKSPACE_ALL_SOURCES_CONFIRMED from partially edited source proposals
+  - ALWAYS check WORKSPACE_ALL_SOURCES_CONFIRMED == true before invoking CLI
+  - ALWAYS check final workspace location is resolved and valid for selected source set before invoking CLI
+  - NEVER attempt Phase 3 with --inline against a Git URL source set
+  - ALWAYS SET CF_PHASE_GATE = released_for_orchestrator_write with named scope before CLI invocation
+  - ALWAYS SET CF_PHASE_GATE = armed immediately after CLI returns (success or failure)
+  - ALWAYS The logical [workspace] TOML section is part of the inline write target; it is NOT a valid gate scope
+  - NEVER infer WORKSPACE_ALL_SOURCES_CONFIRMED from partially edited source proposals
 ```
 
 ```pdsl
@@ -58,15 +58,15 @@ PURPOSE:
   Fail-stop Phase 3 entry when confirmation gate or location is not satisfied.
 
 WHEN:
-  WORKSPACE_ALL_SOURCES_CONFIRMED != true
-  OR final workspace location is unresolved or invalid
+  - REQUIRE WORKSPACE_ALL_SOURCES_CONFIRMED != true
+  - OR final workspace location is unresolved or invalid
 
 DO:
-  EMIT summary of missing prerequisite
-  CONTINUE workflows/workspace/phase-2-configure.md
+  - EMIT summary of missing prerequisite
+  - CONTINUE workflows/workspace/phase-2-configure.md
 
 RULES:
-  - MUST_NOT proceed to CLI invocation under any prerequisite failure
+  - NEVER proceed to CLI invocation under any prerequisite failure
 ```
 
 ```pdsl
@@ -76,10 +76,10 @@ PURPOSE:
   Offer structured recovery choices after CLI failure.
 
 DO:
-  Report CLI exit code and error message
-  EMIT_MENU GenerateFailureMenu
-  WAIT user.reply
-  STOP_TURN
+  - RUN Report CLI exit code and error message
+  - EMIT_MENU GenerateFailureMenu
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU GenerateFailureMenu:
   TITLE: |

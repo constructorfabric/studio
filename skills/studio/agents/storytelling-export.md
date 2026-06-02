@@ -44,9 +44,9 @@ PURPOSE:
   Enforce the path prefix constraint for all file writes.
 
 INVARIANTS:
-  - MUST write files only under:
+  - ALWAYS write files only under:
       `{cf-studio-path}/.cache/explain/packages/<slug>-<timestamp>/`
-  - MUST normalize the computed path (resolve any `..` segments) and verify
+  - ALWAYS normalize the computed path (resolve any `..` segments) and verify
     the result is strictly prefixed by `{cf-studio-path}/.cache/explain/packages/`
 
 ON_ERROR:
@@ -99,9 +99,9 @@ ON_ERROR:
 UNIT InputConstraints
 
 RULES:
-  - MUST treat all fields as required
-  - MUST treat `e2_segments` as non-empty
-  - MUST default `export_format` to "markdown" when omitted
+  - ALWAYS treat all fields as required
+  - ALWAYS treat `e2_segments` as non-empty
+  - ALWAYS default `export_format` to "markdown" when omitted
 ```
 
 ## Methodology
@@ -113,14 +113,14 @@ PURPOSE:
   Execute the eight steps in order to produce the export package.
 
 DO:
-  CONTINUE Step1_ComputeAndGuard
-  CONTINUE Step2_CreateDirectory
-  CONTINUE Step3_WriteIndex
-  CONTINUE Step4_WritePortions
-  CONTINUE Step5_WriteNavigation
-  CONTINUE Step6_ModeExtras
-  CONTINUE Step7_FormatHandling
-  CONTINUE Step8_BuildManifest
+  - CONTINUE Step1_ComputeAndGuard
+  - CONTINUE Step2_CreateDirectory
+  - CONTINUE Step3_WriteIndex
+  - CONTINUE Step4_WritePortions
+  - CONTINUE Step5_WriteNavigation
+  - CONTINUE Step6_ModeExtras
+  - CONTINUE Step7_FormatHandling
+  - CONTINUE Step8_BuildManifest
 ```
 
 ### Step 1 — Compute package_dir and guard socratic mode
@@ -129,7 +129,7 @@ DO:
 UNIT Step1_ComputeAndGuard
 
 DO:
-  1. Compute `package_dir`:
+  - RUN Compute `package_dir`:
        {cf-studio-path}/.cache/explain/packages/{slug}-{timestamp}/
      Normalize the path (resolve any `..` segments).
      Verify result is strictly prefixed by `{cf-studio-path}/.cache/explain/packages/`.
@@ -141,9 +141,9 @@ ON_ERROR:
     RETURN output immediately
 
 WHEN:
-  mode == "socratic"
+  - REQUIRE mode == "socratic"
 DO:
-  RETURN immediately:
+  - RETURN immediately:
     {
       "package_path": null,
       "files_written": [],
@@ -152,8 +152,8 @@ DO:
     }
 
 RULES:
-  - MUST use the exact error message above for mode=socratic (AP-#34); do not alter the wording
-  - MUST_NOT write any files when mode=socratic
+  - ALWAYS use the exact error message above for mode=socratic (AP-#34); do not alter the wording
+  - NEVER write any files when mode=socratic
 ```
 
 ### Step 2 — Create package directory
@@ -162,7 +162,7 @@ RULES:
 UNIT Step2_CreateDirectory
 
 DO:
-  Create `package_dir` with mkdir -p semantics (create all intermediate directories as needed).
+  - RUN Create `package_dir` with mkdir -p semantics (create all intermediate directories as needed).
 
 ON_ERROR:
   directory_creation_failed ->
@@ -179,30 +179,30 @@ PURPOSE:
   Write {package_dir}/index.md with all required sections in order.
 
 DO:
-  Write `{package_dir}/index.md` containing, in order:
-    1. YAML front-matter: keys slug, timestamp, mode, audience, format,
+  - RUN Write `{package_dir}/index.md` containing, in order:
+    - RUN YAML front-matter: keys slug, timestamp, mode, audience, format,
        source (relative-from-project-root path from handle.canonical_path —
        strip the cf_studio_path's project-root prefix).
-    2. H1: `# {wrap.header}` verbatim.
-    3. Session block: markdown table or definition list with fields:
+    - H1: `# {wrap.header}` verbatim.
+    - Session block: markdown table or definition list with fields:
          role, audience, input (relative path), progress, diagrams,
          open_questions_count, bookmarks_count, glossary_count.
-    4. H2 `## Key Takeaways`: bullet per wrap.key_takeaways entry as
+    - H2 `## Key Takeaways`: bullet per wrap.key_takeaways entry as
          `- {text} ({source_ref})`.
-    5. H2 `## Open Questions`: present only if wrap.open_questions is non-empty;
+    - H2 `## Open Questions`: present only if wrap.open_questions is non-empty;
          each entry as `- [{id}] {text}`.
-    6. H2 `## Glossary`: present only if wrap.glossary is non-null;
+    - H2 `## Glossary`: present only if wrap.glossary is non-null;
          each entry as `- **{term}**: {definition}`.
-    7. H2 `## Portions`: numbered list linking to each portion file:
+    - H2 `## Portions`: numbered list linking to each portion file:
          `1. [portion-<n>-<slug>.md](portion-<n>-<slug>.md)` (n = 1-based).
-    8. H2 `## Navigation`: fenced `mermaid` block containing navigation_mermaid_source.
-    9. Footer line:
+    - H2 `## Navigation`: fenced `mermaid` block containing navigation_mermaid_source.
+    - Footer line:
          > Paths in this package are relative to the project root. Do not move files
          > outside this package directory without updating cross-references.
-   10. H2 `## Next Steps`: bullet list of wrap.next_steps.
+   - H2 `## Next Steps`: bullet list of wrap.next_steps.
 
 RULES:
-  - MUST use only relative paths inside index.md (AP-#28e); no absolute paths
+  - ALWAYS use only relative paths inside index.md (AP-#28e); no absolute paths
 ```
 
 ### Step 4 — Write per-portion files
@@ -214,10 +214,10 @@ PURPOSE:
   Write one file per e2_segments entry.
 
 DO:
-  FOR each entry in e2_segments (0-based index i):
-    1. portion_filename = "portion-{i+1}-{slug}.md"
-    2. portion_path = "{package_dir}/{portion_filename}"
-    3. Write file containing:
+  - RUN FOR each entry in e2_segments (0-based index i):
+    - portion_filename = "portion-{i+1}-{slug}.md"
+    - portion_path = "{package_dir}/{portion_filename}"
+    - Write file containing:
          - H1: `# {segment.title}`
          - Mode-lens label: `> Mode: {mode} | Audience: {audience}`
          - Body: segment.narrative_text verbatim (do NOT reformat or truncate)
@@ -229,8 +229,8 @@ DO:
              when i < len(e2_segments)-1: `[Next](portion-{i+2}-{slug}.md)`
 
 RULES:
-  - MUST use only relative paths in footer nav (AP-#28e); no absolute paths
-SEE_ALSO: Step3_WriteIndex
+  - ALWAYS use only relative paths in footer nav (AP-#28e); no absolute paths
+- ALWAYS SEE_ALSO: Step3_WriteIndex
 ```
 
 ### Step 5 — Write navigation.mmd
@@ -239,10 +239,10 @@ SEE_ALSO: Step3_WriteIndex
 UNIT Step5_WriteNavigation
 
 DO:
-  Write `{package_dir}/navigation.mmd` with navigation_mermaid_source as the file body verbatim.
+  - RUN Write `{package_dir}/navigation.mmd` with navigation_mermaid_source as the file body verbatim.
 
 RULES:
-  - MUST_NOT add a fenced code block wrapper — write the raw Mermaid source directly
+  - NEVER add a fenced code block wrapper — write the raw Mermaid source directly
 ```
 
 ### Step 6 — Mode-specific extras
@@ -316,19 +316,19 @@ PURPOSE:
   Assemble the output manifest after all writes succeed.
 
 DO:
-  SET package_path = absolute path to package_dir
-  SET files_written = sorted list of all file basenames written (basenames only, relative to package_dir)
-  SET manifest.slug = input slug
-  SET manifest.timestamp = input timestamp
-  SET manifest.format = input export_format
-  SET manifest.mode = input mode
-  SET manifest.audience = input audience
-  SET manifest.source_path = relpath(handle.canonical_path, project_root)
+  - SET package_path = absolute path to package_dir
+  - SET files_written = sorted list of all file basenames written (basenames only, relative to package_dir)
+  - SET manifest.slug = input slug
+  - SET manifest.timestamp = input timestamp
+  - SET manifest.format = input export_format
+  - SET manifest.mode = input mode
+  - SET manifest.audience = input audience
+  - SET manifest.source_path = relpath(handle.canonical_path, project_root)
     — strip project_root absolute prefix to produce relative-from-project-root value (AP-#28e)
-  SET manifest.byte_sizes = dict mapping each written basename to its byte size in bytes
+  - SET manifest.byte_sizes = dict mapping each written basename to its byte size in bytes
     — compute as len(content.encode("utf-8")) at write-time; Bash stat is acceptable fallback
-  SET manifest.file_count = len(files_written)
-  SET errors = list of non-fatal warnings (e.g. "html requires pandoc — stubs written")
+  - SET manifest.file_count = len(files_written)
+  - SET errors = list of non-fatal warnings (e.g. "html requires pandoc — stubs written")
 
 ON_ERROR:
   canonical_path_outside_project_root ->
@@ -370,16 +370,16 @@ NOTES:
 UNIT ResponseCompletionGate
 
 RULES:
-  - MUST return the JSON shape above as the entire output (no chat, no preamble, no markdown wrapping outside the JSON block)
-  - MUST return package_path=null, manifest=null, files_written=[], and errors[0] containing the exact AP-#34 refusal message when mode=socratic
-  - MUST return package_path as an absolute path strictly prefixed by `{cf-studio-path}/.cache/explain/packages/` when mode != "socratic"
-  - MUST list at minimum index.md, navigation.mmd, and one portion-*-*.md in files_written (when not socratic and no fatal error)
-  - MUST use basenames only (no path separators) in files_written
-  - MUST use a relative value (no /Users/, /Volumes/, /home/ prefix) for manifest.source_path
-  - MUST include the mode-specific extra file in files_written when applicable
-  - MUST ensure manifest.file_count equals len(files_written)
-  - MUST ensure manifest.byte_sizes has one entry per file in files_written
-  - MUST satisfy the SKILL.md invariant
-SEE_ALSO: WriteAuthorityBoundary
-SEE_ALSO: Step3_WriteIndex
+  - ALWAYS return the JSON shape above as the entire output (no chat, no preamble, no markdown wrapping outside the JSON block)
+  - ALWAYS return package_path=null, manifest=null, files_written=[], and errors[0] containing the exact AP-#34 refusal message when mode=socratic
+  - ALWAYS return package_path as an absolute path strictly prefixed by `{cf-studio-path}/.cache/explain/packages/` when mode != "socratic"
+  - ALWAYS list at minimum index.md, navigation.mmd, and one portion-*-*.md in files_written (when not socratic and no fatal error)
+  - ALWAYS use basenames only (no path separators) in files_written
+  - ALWAYS use a relative value (no /Users/, /Volumes/, /home/ prefix) for manifest.source_path
+  - ALWAYS include the mode-specific extra file in files_written when applicable
+  - ALWAYS ensure manifest.file_count equals len(files_written)
+  - ALWAYS ensure manifest.byte_sizes has one entry per file in files_written
+  - ALWAYS satisfy the SKILL.md invariant
+- ALWAYS SEE_ALSO: WriteAuthorityBoundary
+- ALWAYS SEE_ALSO: Step3_WriteIndex
 ```

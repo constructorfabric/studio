@@ -45,13 +45,13 @@ NOTES:
 UNIT PrReviewCompletion
 
 RULES:
-  - MUST run analyze workflow through Phase 4 for the PR diff/changes
-  - MUST return structured review report to main conversation
-  - MUST end with Remediation Handoff menu when actionable issues exist
-  - Remediation prompt blocks are emitted only on next turn after the user
+  - ALWAYS run analyze workflow through Phase 4 for the PR diff/changes
+  - ALWAYS return structured review report to main conversation
+  - ALWAYS end with Remediation Handoff menu when actionable issues exist
+  - ALWAYS Remediation prompt blocks are emitted only on next turn after the user
     selects the handoff prompt option
-  - MUST satisfy the `studio_mode_contract` invariant
-  - VALID stopping state: INLINE_FALLBACK was unset at a nested dispatch site and
+  - ALWAYS satisfy the `studio_mode_contract` invariant
+  - ALWAYS VALID stopping state: INLINE_FALLBACK was unset at a nested dispatch site and
     `inline_fallback_probe_contract` was followed as a hard interaction
     boundary pending user 1/2 reply
 ```

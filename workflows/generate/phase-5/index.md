@@ -23,18 +23,18 @@ PURPOSE:
   Phase 5 branch work begins.
 
 DO:
-  REQUIRE one of:
+  - REQUIRE one of:
     - internal generate path with Phase 4 writes/updates complete
     - external entry from analyze→generate remediation handoff option 1 with
       analyze-side accepted payload predicates, payload shaping, and branch
       mapping already resolved
-  IF internal generate path:
-    FORBID loading any Phase 5 branch file before Phase 4 write completion
-  IF external-entry from analyze→generate (option 1):
+  - REQUIRE internal generate path:
+    - NEVER loading any Phase 5 branch file before Phase 4 write completion
+  - REQUIRE external-entry from analyze→generate (option 1):
     TREAT analyze-side remediation adapter checks as eager/nondeferrable
-    REQUIRE accepted external-entry payload already mapped onto the Phase 5
+    - REQUIRE accepted external-entry payload already mapped onto the Phase 5
       contract before this file proceeds
-    MUST NOT re-run adapter acceptance checks or branch mapping inside the
+    - NEVER re-run adapter acceptance checks or branch mapping inside the
       Phase 5 lazy loop body
     CANONICAL external-entry definitions:
       - "analyze-side accepted payload predicates" are the nondeferrable
@@ -48,7 +48,7 @@ DO:
            all_findings, remaining_findings, files_changed,
            validation_result, validator_evidence, semantic_reports,
            max_iter, entry_branch}.
-        remaining_findings MUST equal all_findings on MAX_ITER=0 entry unless
+        remaining_findings ALWAYS equal all_findings on MAX_ITER=0 entry unless
         the analyze adapter supplies a validated narrower remediation set.
       - "branch mapping" sets entry_branch by deterministic algorithm:
         MAX_ITER == 0 -> phase-5.3-findings;
@@ -60,14 +60,14 @@ DO:
         mapping. Phase 5 consumes only the validated, shaped, mapped payload.
 
 RULES:
-  - REQUIRE `{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md` loaded before any cf-* sub-agent
+  - ALWAYS REQUIRE `{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md` loaded before any cf-* sub-agent
     dispatch in this phase or its sub-files
-  - Pre-dispatch fail-stop and Mode B degradation rules defined in
+  - ALWAYS Pre-dispatch fail-stop and Mode B degradation rules defined in
     {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md
-  - Late-phase instructions in this phase and its sub-files come from
-    controller-supplied prompt_context_view slices; MUST NOT reopen prompt
+  - ALWAYS Late-phase instructions in this phase and its sub-files come from
+    controller-supplied prompt_context_view slices; NEVER reopen prompt
     assets from disk
-  - After entry, the Phase 5 loop body stays lazy: phase-5.* branch files load
+  - ALWAYS After entry, the Phase 5 loop body stays lazy: phase-5.* branch files load
     only when the dispatcher branch below requires them
 ```
 
@@ -80,49 +80,49 @@ PURPOSE:
   Resolve MAX_ITER and set INLINE_LOOP_WARNING_THRESHOLD before review work begins.
 
 STATE:
-  MAX_ITER: integer
+  - SET MAX_ITER: integer
     default: 5
     scope: phase_run
-  INLINE_LOOP_WARNING_THRESHOLD: 2
+  - SET INLINE_LOOP_WARNING_THRESHOLD: 2
     constant
 
 DO:
-  IF entering Phase 5 from internal generate path:
-    EMIT exactly:
----
-How many automatic review iterations should run before I check in with you?
+  - REQUIRE entering Phase 5 from internal generate path:
+    - EMIT exactly:
+- RUN ---
+- RUN How many automatic review iterations should run before I check in with you?
 
-Each iteration: validate + review the written files → auto-fix mechanical
-issues → ask you to approve any non-mechanical findings → re-validate.
+- RUN Each iteration: validate + review the written files → auto-fix mechanical
+- RUN issues → ask you to approve any non-mechanical findings → re-validate.
 
-Reply with a number (suggested: 5 — balances fix coverage against context cost; use 2 or less in inline mode), `enter` for 5, or `0` to skip the loop.
----
-    WAIT user.reply
-    STOP_TURN
+- RUN Reply with a number (suggested: 5 — balances fix coverage against context cost; use 2 or less in inline mode), `enter` for 5, or `0` to skip the loop.
+- RUN ---
+    - WAIT user.reply
+    - STOP_TURN
     PARSE reply:
       bare positive integer -> SET MAX_ITER = number
       enter -> SET MAX_ITER = 5
       0 -> SET MAX_ITER = 0 (selects zero-iteration branch)
       otherwise ->
-        EMIT "Reply with a non-negative integer, enter for 5, or 0 to skip."
-        WAIT user.reply
-        STOP_TURN
+        - EMIT "Reply with a non-negative integer, enter for 5, or 0 to skip."
+        - WAIT user.reply
+        - STOP_TURN
 
-  IF entering Phase 5 from external entry (analyze→generate via
+  - REQUIRE entering Phase 5 from external entry (analyze→generate via
      workflows/analyze/phase-4-output/remediation-handoff.md option 1):
     USE MAX_ITER value set by analyze-side handoff; treat as resolved
     SKIP PARSE
     NOTE: re-prompting MAX_ITER here is forbidden; canonical prompt is owned by
           workflows/analyze/phase-4-output/remediation-handoff.md option 1
-          next-turn routing step (b); it MUST wait for user reply before
+          next-turn routing step (b); it ALWAYS wait for user reply before
           handing off here
 
 RULES:
-  - MUST NOT re-prompt MAX_ITER on analyze-side remediation handoff option 1 entry;
+  - NEVER re-prompt MAX_ITER on analyze-side remediation handoff option 1 entry;
     on external-entry, MAX_ITER is already set by the analyze-side handoff and
-    the PARSE block MUST be skipped entirely
-  - MAX_ITER MUST be an integer >= 0; negative values, decimals, ranges, and
-    non-numeric text are invalid and MUST re-prompt without selecting a default
+    the PARSE block ALWAYS be skipped entirely
+  - ALWAYS MAX_ITER ALWAYS be an integer >= 0; negative values, decimals, ranges, and
+    non-numeric text are invalid and ALWAYS re-prompt without selecting a default
 ```
 
 ### Review-Loop Iteration Cap Prompt
@@ -134,43 +134,43 @@ PURPOSE:
   Reusable sub-block emitted by every Phase 5 iteration-end branch when N > MAX_ITER.
 
 DO:
-  EMIT exactly:
----
-Iteration {N} complete; you set MAX_ITER={MAX_ITER}. Continue, accept current state, or stop?
+  - EMIT exactly:
+- RUN ---
+- RUN Iteration {N} complete; you set MAX_ITER={MAX_ITER}. Continue, accept current state, or stop?
 
-`extend: <M>` → raise MAX_ITER to <M> and run another iteration (must be > current MAX_ITER)
-`accept`     → exit the loop now; loop_exit = "max-iter-stopped"; remaining_findings = carry_forward (suggested when current findings look acceptable)
-`stop`       → exit the loop now; loop_exit = "manual-handoff"; remaining_findings = carry_forward (use when you want to inspect / hand off the remaining findings before any more fixes)
+- RUN `extend: <M>` → raise MAX_ITER to <M> and run another iteration (must be > current MAX_ITER)
+- RUN `accept`     → exit the loop now; loop_exit = "max-iter-stopped"; remaining_findings = carry_forward (suggested when current findings look acceptable)
+- RUN `stop`       → exit the loop now; loop_exit = "manual-handoff"; remaining_findings = carry_forward (use when you want to inspect / hand off the remaining findings before any more fixes)
 
-Reply `extend: <M>`, `accept`, or `stop`.
----
-  WAIT user.reply
-  STOP_TURN
+- RUN Reply `extend: <M>`, `accept`, or `stop`.
+- RUN ---
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU IterationCapMenu:
   TITLE: Iteration cap
   OPTIONS:
-    extend: M (M positive integer > current MAX_ITER) ->
+    1 extend: M (M positive integer > current MAX_ITER) ->
       SET MAX_ITER = M
       CONTINUE iteration loop
-    extend: M (invalid — M not positive integer or M <= current MAX_ITER) ->
+    2 extend: M (invalid — M not positive integer or M <= current MAX_ITER) ->
       EMIT "extend: <M> must be a positive integer greater than current MAX_ITER
             ({current_MAX_ITER}); reply again."
       WAIT user.reply
       STOP_TURN
-    accept ->
+    3 accept ->
       SET loop_exit = "max-iter-stopped"
       SET remaining_findings = carry_forward
       CONTINUE workflows/generate/phase-5/phase-5.5-final.md
-    stop ->
+    4 stop ->
       SET loop_exit = "manual-handoff"
       SET remaining_findings = carry_forward
       CONTINUE workflows/generate/phase-6/index.md
 
 RULES:
-  - MUST use same wording at every emission site (canonical wording defined here)
-  - MUST NOT change MAX_ITER until valid extend: M value is provided
-  - workflows/generate/phase-5/phase-5.3-findings.md § External entry reuses
+  - ALWAYS use same wording at every emission site (canonical wording defined here)
+  - NEVER change MAX_ITER until valid extend: M value is provided
+  - ALWAYS workflows/generate/phase-5/phase-5.3-findings.md § External entry reuses
     this sub-block to resolve MAX_ITER at handoff time
 ```
 
@@ -183,30 +183,30 @@ PURPOSE:
   Initialize Phase 5 state and run the bounded review loop or zero-iteration paths.
 
 STATE:
-  N: integer
+  - SET N: integer
     default: 1 (canonical; applies both on normal path and external entry)
-  carry_forward: list
+  - SET carry_forward: list
     default: []
-  phase5_dispatch_evidence: list
+  - SET phase5_dispatch_evidence: list
     default: []
 
 DO:
-  SET N = 1
-  SET carry_forward = []
-  SET phase5_dispatch_evidence = []
+  - SET N = 1
+  - SET carry_forward = []
+  - SET phase5_dispatch_evidence = []
 
-  IF external-entry from analyze→generate (option 1):
-    REQUIRE Phase 5 state includes:
+  - REQUIRE external-entry from analyze→generate (option 1):
+    - REQUIRE Phase 5 state includes:
       handoff_guard.inline_fallback_reprobed = true
       handoff_guard.max_iter_resolved = true
       handoff_guard.dispatch_evidence_required = true
     IF MAX_ITER > 0:
-      MUST enter Phase 5.3 first with carried analyze findings; those findings
+      ALWAYS enter Phase 5.3 first with carried analyze findings; those findings
       were already produced by analyze-side deterministic and semantic review.
-      MUST NOT run Phase 5.1 or Phase 5.2 before the first author dispatch on
+      - NEVER run Phase 5.1 or Phase 5.2 before the first author dispatch on
       external entry merely to refresh already-reviewed findings.
     NOTE: When MAX_ITER > 0 AND INLINE_FALLBACK=false, phase5_dispatch_evidence
-      MUST contain: author dispatch record before the first file edit; validator
+      ALWAYS contain: author dispatch record before the first file edit; validator
       dispatch record per post-author iteration; semantic reviewer dispatch
       record per post-author iteration when reaching Phase 5.2. Each record =
       compact object with iteration, phase, agent_id, target_paths,
@@ -217,27 +217,27 @@ DO:
       the mandatory remediation-handoff.md menu; no validator or reviewer
       dispatch evidence is required.
 
-  IF MAX_ITER == 0 AND internal generate flow:
-    RUN one deterministic validator pass through phase-5.1-det-gate.md
+  - REQUIRE MAX_ITER == 0 AND internal generate flow:
+    - RUN one deterministic validator pass through phase-5.1-det-gate.md
     IF gate PASS or validator-backed SKIPPED:
-      RUN one semantic-reviewer pass through phase-5.2-semantic.md
+      - RUN one semantic-reviewer pass through phase-5.2-semantic.md
     IF gate FAIL:
       SKIP semantic review as phase-5.1 requires
       SURFACE validator findings directly
     HAND findings to phase-5.3-findings.md WITH MAX_ITER == 0 branch
       (renders findings, routes to phase-6 without partition/auto-fix logic)
 
-  IF MAX_ITER >= 1:
-    RUN bounded review loop:
+  - REQUIRE MAX_ITER >= 1:
+    - RUN bounded review loop:
       FIRST external-entry iteration from analyze→generate:
-        LOAD phase-5.3-findings.md directly with carried analyze findings
-        LOAD phase-5.4-approval.md when judgmental is non-empty
+        - LOAD phase-5.3-findings.md directly with carried analyze findings
+        - LOAD phase-5.4-approval.md when judgmental is non-empty
         EXECUTE author dispatch when approved or all-mechanical fast-path applies
         INCREMENT N after author dispatch
       EACH post-author iteration:
-        LOAD phase-5.1-det-gate.md
+        - LOAD phase-5.1-det-gate.md
         ON det PASS or SKIPPED: LOAD phase-5.2-semantic.md
-        LOAD phase-5.3-findings.md
+        - LOAD phase-5.3-findings.md
         IF judgmental non-empty: LOAD phase-5.4-approval.md
         INCREMENT N after every author dispatch
         APPEND author-returned findings_not_fixable to carry_forward
@@ -247,16 +247,16 @@ DO:
         no findings remain (loop_exit = "clean"), OR
         user stops it (loop_exit = "manual-handoff"), OR
         MAX_ITER reached (loop_exit = "max-iter-stopped")
-    LOAD phase-5.5-final.md
+    - LOAD phase-5.5-final.md
 
 RULES:
-  - Iteration cap check N > MAX_ITER fires AFTER an iteration completes
-  - MAX_ITER=5 allows iterations 1..5 to run, then prompts user
-  - Cap enforced uniformly via Phase5IterationCapPrompt (same wording everywhere)
-  - Cap check applies when MAX_ITER >= 1; MAX_ITER=0 branches bypass cap check
-  - MUST NOT substitute own checklist walkthrough for deterministic validator
+  - ALWAYS Iteration cap check N > MAX_ITER fires AFTER an iteration completes
+  - ALWAYS MAX_ITER=5 allows iterations 1..5 to run, then prompts user
+  - ALWAYS Cap enforced uniformly via Phase5IterationCapPrompt (same wording everywhere)
+  - ALWAYS Cap check applies when MAX_ITER >= 1; MAX_ITER=0 branches bypass cap check
+  - NEVER substitute own checklist walkthrough for deterministic validator
     (anti-pattern: SIMULATED_VALIDATION)
-  - The dispatched sub-agents execute the actual resolved validator command
+  - ALWAYS The dispatched sub-agents execute the actual resolved validator command
     from the target bootstrap (e.g. cpt in Studio .bootstrap, cfs in
     Constructor Studio adapter)
 

@@ -24,7 +24,7 @@ PURPOSE:
   Clarify system context and output destination before Phase 0.7 / Phase 1.
 
 DO:
-  IF BRAINSTORM mode is selected AND brainstorm topic is missing:
+  - REQUIRE BRAINSTORM mode is selected AND brainstorm topic is missing:
     DISCOVER saved brainstorm sessions:
       LOOK under {cf-studio-path}/.cache/brainstorm/
       FIND directories containing state.json OR summary.md OR design.md
@@ -38,102 +38,102 @@ DO:
         rounds = len(state.rounds) when state.json exists
 
     IF saved sessions found:
-      EMIT exactly:
----
-[Phase0.5]: Brainstorm selected, but the topic is missing.
+      - EMIT exactly:
+- RUN ---
+- RUN [Phase0.5]: Brainstorm selected, but the topic is missing.
 
-I found saved brainstorm sessions you can continue:
-1. {title} — {session_id}, {status}, {rounds} rounds, updated {updated}
-2. ...
+- RUN I found saved brainstorm sessions you can continue:
+- RUN {title} — {session_id}, {status}, {rounds} rounds, updated {updated}
+- RUN ...
 
-Or start a new brainstorm topic:
-N. A new Constructor Studio feature
-N+1. A workflow or prompt redesign
-N+2. A codebase architecture change
-N+3. A PR/review strategy
-N+4. Another specific problem or decision
+- RUN Or start a new brainstorm topic:
+- RUN N. A new Constructor Studio feature
+- RUN N+1. A workflow or prompt redesign
+- RUN N+2. A codebase architecture change
+- RUN N+3. A PR/review strategy
+- RUN N+4. Another specific problem or decision
 
-Reply with a saved session number to continue it, or reply with a short new
-topic. You can also reply `new: <topic>` to force a new session.
----
-      WAIT user.reply
-      STOP_TURN
+- RUN Reply with a saved session number to continue it, or reply with a short new
+- RUN topic. You can also reply `new: <topic>` to force a new session.
+- RUN ---
+      - WAIT user.reply
+      - STOP_TURN
 
     ELSE:
-      EMIT exactly:
----
-[Phase0.5]: Brainstorm selected, but the topic is missing.
+      - EMIT exactly:
+- RUN ---
+- RUN [Phase0.5]: Brainstorm selected, but the topic is missing.
 
-No saved brainstorm sessions were found under
-`{cf-studio-path}/.cache/brainstorm/`.
+- RUN No saved brainstorm sessions were found under
+- RUN `{cf-studio-path}/.cache/brainstorm/`.
 
-What should we brainstorm?
+- RUN What should we brainstorm?
 
-Reply with a short topic, for example:
+- RUN Reply with a short topic, for example:
 
-1. A new Constructor Studio feature
-2. A workflow or prompt redesign
-3. A codebase architecture change
-4. A PR/review strategy
-5. Another specific problem or decision
----
-      WAIT user.reply
-      STOP_TURN
+- RUN A new Constructor Studio feature
+- RUN A workflow or prompt redesign
+- RUN A codebase architecture change
+- RUN A PR/review strategy
+- RUN Another specific problem or decision
+- RUN ---
+      - WAIT user.reply
+      - STOP_TURN
 
-  IF system context is unclear:
-    EMIT exactly:
----
-Why this input is needed: system selection controls registry placement, ID prefixes, and traceability boundaries.
+  - REQUIRE system context is unclear:
+    - EMIT exactly:
+- RUN ---
+- RUN Why this input is needed: system selection controls registry placement, ID prefixes, and traceability boundaries.
 
-Which system does this artifact/code belong to?
-- {list systems from artifacts.toml}
-- Create new system
-Suggested: the current or nearest registered system when one owns the target path; otherwise `Create new system`.
-Reply with the system name or `Create new system`.
----
-    WAIT user.reply
-    SET selected_system = user.reply
-    STOP_TURN
+- RUN Which system does this artifact/code belong to?
+- RUN {list systems from artifacts.toml}
+- RUN Create new system
+- RUN Suggested: the current or nearest registered system when one owns the target path; otherwise `Create new system`.
+- RUN Reply with the system name or `Create new system`.
+- RUN ---
+    - WAIT user.reply
+    - SET selected_system = user.reply
+    - STOP_TURN
 
-  IF output destination is unclear:
-    EMIT exactly:
----
-Why this input is needed: destination controls whether this workflow writes files, updates the registry, or returns a chat-only preview.
+  - REQUIRE output destination is unclear:
+    - EMIT exactly:
+- RUN ---
+- RUN Why this input is needed: destination controls whether this workflow writes files, updates the registry, or returns a chat-only preview.
 
-Where should the result go?
-- File (will be written to disk and registered)
-- Chat only (preview, no file created)
-- MCP tool / external system (specify as `MCP: <tool>` or `External: <system>`)
-Suggested: File for durable artifacts/code changes; Chat only for previews.
-Reply with `File`, `Chat only`, `MCP: <tool>`, or `External: <system>`.
----
-    WAIT user.reply
-    SET output_destination = user.reply
-    STOP_TURN
+- RUN Where should the result go?
+- RUN File (will be written to disk and registered)
+- RUN Chat only (preview, no file created)
+- RUN MCP tool / external system (specify as `MCP: <tool>` or `External: <system>`)
+- RUN Suggested: File for durable artifacts/code changes; Chat only for previews.
+- RUN Reply with `File`, `Chat only`, `MCP: <tool>`, or `External: <system>`.
+- RUN ---
+    - WAIT user.reply
+    - SET output_destination = user.reply
+    - STOP_TURN
 
-  SET selected_system (store for registry placement)
-  IF file output AND using rules:
+  - SET selected_system (store for registry placement)
+  - REQUIRE file output AND using rules:
     DETERMINE path
     PLAN artifacts.toml entry
     CHECK UPDATE vs CREATE
-  IF artifacts:
+  - REQUIRE artifacts:
     IDENTIFY parent references
-  IF code:
+  - REQUIRE code:
     IDENTIFY design artifacts + requirement IDs + traceability markers
-  FOR new IDs:
+  - RUN FOR new IDs:
     USE cpt-{system}-{kind}-{slug}
     VERIFY uniqueness with `{cfs_cmd} --json list-ids`
 
 RULES:
-  - MUST check for saved brainstorm sessions before asking for a new topic when
+  - ALWAYS check for saved brainstorm sessions before asking for a new topic when
     BRAINSTORM mode is selected and topic is missing
-  - MUST NOT load saved session prompt assets from disk; saved brainstorm
+  - NEVER load saved session prompt assets from disk; saved brainstorm
     sessions are resource/session state, not SHARED_CONTEXT_PACK assets
-  - Continuing a saved session MUST restore state from state.json when present,
+  - ALWAYS Continuing a saved session ALWAYS restore state from state.json when present,
     then proceed to phase-0.7/round-loop.md or wrap-handoff.md based on status
-  - If saved session has only summary.md/design.md and no state.json, offer to
+  - ALWAYS If saved session has only summary.md/design.md and no state.json, offer to
     use it as context for a new brainstorm rather than claiming full resume
-  - MUST clarify system context when unclear before proceeding
-  - MUST clarify output destination when unclear before proceeding
-  - MUST store selected system for registry placement
+  - ALWAYS clarify system context when unclear before proceeding
+  - ALWAYS clarify output destination when unclear before proceeding
+  - ALWAYS store selected system for registry placement
 ```

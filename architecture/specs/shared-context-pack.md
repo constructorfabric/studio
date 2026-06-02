@@ -134,32 +134,32 @@ PURPOSE:
   Define controller-owned load, reuse, refresh, and recovery behavior.
 
 STATE:
-  SHARED_CONTEXT_PACK_STATUS: absent | current | stale
+  - SET SHARED_CONTEXT_PACK_STATUS: absent | current | stale
     default: absent
 
 DO:
-  IF persisted session pack is missing:
-    SET SHARED_CONTEXT_PACK_STATUS = absent
-  ELSE IF any reused asset fails `etag` validation:
-    SET SHARED_CONTEXT_PACK_STATUS = stale
-  ELSE:
-    SET SHARED_CONTEXT_PACK_STATUS = current
+  - REQUIRE persisted session pack is missing:
+    - SET SHARED_CONTEXT_PACK_STATUS = absent
+  - RUN otherwise IF any reused asset fails `etag` validation:
+    - SET SHARED_CONTEXT_PACK_STATUS = stale
+  - RUN otherwise
+    - SET SHARED_CONTEXT_PACK_STATUS = current
 
-  IF SHARED_CONTEXT_PACK_STATUS == absent:
-    REQUIRE controller loads required prompt assets from disk
-    REQUIRE controller persists the resulting pack
-    SET SHARED_CONTEXT_PACK_STATUS = current
+  - REQUIRE SHARED_CONTEXT_PACK_STATUS == absent:
+    - REQUIRE controller loads required prompt assets from disk
+    - REQUIRE controller persists the resulting pack
+    - SET SHARED_CONTEXT_PACK_STATUS = current
 
-  IF SHARED_CONTEXT_PACK_STATUS == stale:
-    REQUIRE controller refreshes only stale or missing assets
-    REQUIRE controller persists the refreshed pack
-    SET SHARED_CONTEXT_PACK_STATUS = current
+  - REQUIRE SHARED_CONTEXT_PACK_STATUS == stale:
+    - REQUIRE controller refreshes only stale or missing assets
+    - REQUIRE controller persists the refreshed pack
+    - SET SHARED_CONTEXT_PACK_STATUS = current
 
 RULES:
-  - MUST keep prompt-asset loading controller-owned
-  - MUST reuse current session-pack assets before loading new ones
-  - MUST_NOT rebuild the entire pack for every workflow run by default
-  - MUST_NOT allow sub-agents to repair missing prompt assets themselves
+  - ALWAYS keep prompt-asset loading controller-owned
+  - ALWAYS reuse current session-pack assets before loading new ones
+  - NEVER rebuild the entire pack for every workflow run by default
+  - NEVER allow sub-agents to repair missing prompt assets themselves
 ```
 
 ```pdsl
@@ -169,24 +169,24 @@ PURPOSE:
   Define how a controller prepares a sub-agent dispatch.
 
 DO:
-  1. Load the agent prompt source file
-  2. Interpret it as orchestration-time guidance/template
-  3. Select only the prompt assets relevant to the current task from SHARED_CONTEXT_PACK
-  4. Combine:
+  - RUN Load the agent prompt source file
+  - RUN Interpret it as orchestration-time guidance/template
+  - RUN Select only the prompt assets relevant to the current task from SHARED_CONTEXT_PACK
+  - RUN Combine:
        - agent prompt source
        - selected prompt assets
        - task state
        - resource handles
        - output expectations
-  5. Use the controller model to synthesize a final dispatch prompt
-  6. Dispatch only that final prompt to the sub-agent
+  - RUN Use the controller model to synthesize a final dispatch prompt
+  - RUN Dispatch only that final prompt to the sub-agent
 
 RULES:
-  - MUST respect the agent prompt source as guidance for prompt synthesis
-  - MUST inject all required instruction context before dispatch
-  - MUST keep non-prompt resource inputs outside SHARED_CONTEXT_PACK
-  - MUST_NOT treat the leaf agent as responsible for prompt discovery
-  - MUST_NOT require deterministic slot-filling semantics
+  - ALWAYS respect the agent prompt source as guidance for prompt synthesis
+  - ALWAYS inject all required instruction context before dispatch
+  - ALWAYS keep non-prompt resource inputs outside SHARED_CONTEXT_PACK
+  - NEVER treat the leaf agent as responsible for prompt discovery
+  - NEVER require deterministic slot-filling semantics
 ```
 
 ```pdsl
@@ -196,11 +196,11 @@ PURPOSE:
   Define the boundary between controller and dispatched sub-agent.
 
 RULES:
-  - A dispatched sub-agent MUST receive a fully materialized final prompt
-  - A dispatched sub-agent MUST_NOT load workflow, skill, requirement, spec,
+  - ALWAYS A dispatched sub-agent ALWAYS receive a fully materialized final prompt
+  - ALWAYS A dispatched sub-agent NEVER load workflow, skill, requirement, spec,
     or AGENTS prompt files from disk
-  - A dispatched sub-agent MUST_NOT discover prompt dependencies at runtime
-  - Missing instruction context is an orchestration failure, not a leaf-agent
+  - ALWAYS A dispatched sub-agent NEVER discover prompt dependencies at runtime
+  - ALWAYS Missing instruction context is an orchestration failure, not a leaf-agent
     recovery path
 ```
 

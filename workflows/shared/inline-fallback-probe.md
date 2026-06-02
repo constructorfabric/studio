@@ -15,74 +15,75 @@ PURPOSE: Apply the canonical sub-agent approval gate and resolve INLINE_FALLBACK
   before any cf-* sub-agent dispatch; native dispatch is the default when supported.
 
 STATE:
-  SUB_AGENT_SESSION_APPROVED: unset | true  default: unset  scope: session
+  - SET SUB_AGENT_SESSION_APPROVED: unset | true  default: unset  scope: session
     reset: external-entry handoff re-probes
-  INLINE_FALLBACK: unset | true | false     default: unset  scope: workflow_run
-  INLINE_FALLBACK_PROBED: false | true      default: false  scope: workflow_run
-  NATIVE_SUBAGENT_POLICY_CONFLICT: false | true  default: false  scope: workflow_run
+  - SET INLINE_FALLBACK: unset | true | false     default: unset  scope: workflow_run
+  - SET INLINE_FALLBACK_PROBED: false | true      default: false  scope: workflow_run
+  - SET NATIVE_SUBAGENT_POLICY_CONFLICT: false | true  default: false  scope: workflow_run
 
-WHEN: any workflow is about to dispatch a cf-* sub-agent
+WHEN:
+  - REQUIRE any workflow is about to dispatch a cf-* sub-agent
 
 DO:
-  REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md § "Session Sub-Agent Approval Gate" is loaded
-  REQUIRE {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md is loaded
-  IF NATIVE_SUBAGENT_POLICY_CONFLICT == false
+  - REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md § "Session Sub-Agent Approval Gate" is loaded
+  - REQUIRE {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md is loaded
+  - REQUIRE NATIVE_SUBAGENT_POLICY_CONFLICT == false
      AND native cf-* sub-agents are discoverable or already selected for this workflow
      AND host/tool policy requires explicit delegation before sub-agent tool use
      AND SUB_AGENT_SESSION_APPROVED == unset
      AND INLINE_FALLBACK == unset:
-    SET NATIVE_SUBAGENT_POLICY_CONFLICT = true
-    EMIT_MENU NativeSubAgentPolicyConflictMenu
-    WAIT user.reply
-    STOP_TURN
-  IF host.supports_native_subagents == true AND SUB_AGENT_SESSION_APPROVED == true:
-    SET INLINE_FALLBACK = false
-    SET INLINE_FALLBACK_PROBED = true
-    RETURN { state: resolved, sub_agent_session_approved: true, inline_fallback: false, resolved_by: "inline-fallback-probe" }
-  IF INLINE_FALLBACK == true:
-    SET INLINE_FALLBACK_PROBED = true
-    RETURN { state: resolved, sub_agent_session_approved: SUB_AGENT_SESSION_APPROVED, inline_fallback: true, resolved_by: "inline-fallback-probe" }
-  IF host.supports_native_subagents == true AND SUB_AGENT_SESSION_APPROVED == unset:
-    EMIT_MENU SubAgentApprovalMenu
-    WAIT user.reply
-    STOP_TURN
-  IF host.supports_native_subagents == false:
-    EMIT_MENU HostNoNativeSubAgentMenu
-    WAIT user.reply
-    STOP_TURN
+    - SET NATIVE_SUBAGENT_POLICY_CONFLICT = true
+    - EMIT_MENU NativeSubAgentPolicyConflictMenu
+    - WAIT user.reply
+    - STOP_TURN
+  - REQUIRE host.supports_native_subagents == true AND SUB_AGENT_SESSION_APPROVED == true:
+    - SET INLINE_FALLBACK = false
+    - SET INLINE_FALLBACK_PROBED = true
+    - RETURN { state: resolved, sub_agent_session_approved: true, inline_fallback: false, resolved_by: "inline-fallback-probe" }
+  - REQUIRE INLINE_FALLBACK == true:
+    - SET INLINE_FALLBACK_PROBED = true
+    - RETURN { state: resolved, sub_agent_session_approved: SUB_AGENT_SESSION_APPROVED, inline_fallback: true, resolved_by: "inline-fallback-probe" }
+  - REQUIRE host.supports_native_subagents == true AND SUB_AGENT_SESSION_APPROVED == unset:
+    - EMIT_MENU SubAgentApprovalMenu
+    - WAIT user.reply
+    - STOP_TURN
+  - REQUIRE host.supports_native_subagents == false:
+    - EMIT_MENU HostNoNativeSubAgentMenu
+    - WAIT user.reply
+    - STOP_TURN
 
 RULES:
-  - MUST apply SKILL.md § "Session Sub-Agent Approval Gate" then sub-agent-dispatch.md, in that order
-  - MUST treat native sub-agent dispatch as the default when the host supports it
-  - MUST treat explicit-delegation host-policy conflict as a distinct approval boundary
-  - MUST_NOT fall through to HostNoNativeSubAgentMenu when native cf-* agents are discoverable but only policy-blocked pending explicit delegation
-  - MUST_NOT let the orchestrator decide to run locally instead of dispatching cf-* sub-agents when native sub-agents are available
-  - MUST set INLINE_FALLBACK = false only after SUB_AGENT_SESSION_APPROVED = true is confirmed; no other path may set INLINE_FALLBACK = false
-  - MUST set INLINE_FALLBACK = true only when user explicitly selected option 2 in SubAgentApprovalMenu or NativeSubAgentPolicyConflictMenu, or option 1 in HostNoNativeSubAgentMenu
-  - MUST_NOT set INLINE_FALLBACK = true from ambiguity, timeout, host UI behavior, or mere absence of reply
-  - MUST NOT treat absence of user reply as option 2
-  - MUST_NOT default INLINE_FALLBACK = true from missing approval
-  - MUST_NOT default INLINE_FALLBACK = false
-  - MUST_NOT set INLINE_FALLBACK = false from host capability, ambiguity, or convenience
-  - MUST set INLINE_FALLBACK_PROBED = true immediately before every RETURN from this unit
-  - MUST_NOT allow any caller to read INLINE_FALLBACK unless this unit returned
+  - ALWAYS apply SKILL.md § "Session Sub-Agent Approval Gate" then sub-agent-dispatch.md, in that order
+  - ALWAYS treat native sub-agent dispatch as the default when the host supports it
+  - ALWAYS treat explicit-delegation host-policy conflict as a distinct approval boundary
+  - NEVER fall through to HostNoNativeSubAgentMenu when native cf-* agents are discoverable but only policy-blocked pending explicit delegation
+  - NEVER let the orchestrator decide to run locally instead of dispatching cf-* sub-agents when native sub-agents are available
+  - ALWAYS set INLINE_FALLBACK = false only after SUB_AGENT_SESSION_APPROVED = true is confirmed; no other path may set INLINE_FALLBACK = false
+  - ALWAYS set INLINE_FALLBACK = true only when user explicitly selected option 2 in SubAgentApprovalMenu or NativeSubAgentPolicyConflictMenu, or option 1 in HostNoNativeSubAgentMenu
+  - NEVER set INLINE_FALLBACK = true from ambiguity, timeout, host UI behavior, or mere absence of reply
+  - NEVER treat absence of user reply as option 2
+  - NEVER default INLINE_FALLBACK = true from missing approval
+  - NEVER default INLINE_FALLBACK = false
+  - NEVER set INLINE_FALLBACK = false from host capability, ambiguity, or convenience
+  - ALWAYS set INLINE_FALLBACK_PROBED = true immediately before every RETURN from this unit
+  - NEVER allow any caller to read INLINE_FALLBACK unless this unit returned
     `state: resolved` for the active workflow run
-  - MUST treat unresolved native dispatch state as fail-closed and observable:
+  - ALWAYS treat unresolved native dispatch state as fail-closed and observable:
     emit the active approval menu or matching `Dispatch blocked: ...` error,
     preserve the dispatch manifest/checkpoint fingerprint when one exists,
     then STOP_TURN
-  - MUST_NOT allow any INLINE_FALLBACK-gated block or SubAgentDecompositionBypass logic to execute unless INLINE_FALLBACK_PROBED == true
-  - MUST emit SubAgentApprovalMenu, NativeSubAgentPolicyConflictMenu, and HostNoNativeSubAgentMenu verbatim as defined in SKILL.md § "Session Sub-Agent Approval Gate"
-  - SubAgentApprovalMenu title begins: "Approve sub-agent use for this session"
-  - SubAgentApprovalMenu keeps Suggested: 1 as the native-dispatch recommendation
-  - MUST_NOT redefine approval-menu title text, options, suggested choices, or option semantics locally
-  - MUST treat the approval menu as a hard interaction boundary: STOP_TURN immediately after emitting — do NOT load agent contracts, inspect diffs, dispatch agents, run inline fallback, or emit a [sub-agent-approval] status line in the same response
-  - MUST_NOT re-emit NativeSubAgentPolicyConflictMenu after option 2 has
+  - NEVER allow any INLINE_FALLBACK-gated block or SubAgentDecompositionBypass logic to execute unless INLINE_FALLBACK_PROBED == true
+  - ALWAYS emit SubAgentApprovalMenu, NativeSubAgentPolicyConflictMenu, and HostNoNativeSubAgentMenu verbatim as defined in SKILL.md § "Session Sub-Agent Approval Gate"
+  - ALWAYS SubAgentApprovalMenu title begins: "Approve sub-agent use for this session"
+  - ALWAYS SubAgentApprovalMenu keeps Suggested: 1 as the native-dispatch recommendation
+  - NEVER redefine approval-menu title text, options, suggested choices, or option semantics locally
+  - ALWAYS treat the approval menu as a hard interaction boundary: STOP_TURN immediately after emitting — do NOT load agent contracts, inspect diffs, dispatch agents, run inline fallback, or emit a [sub-agent-approval] status line in the same response
+  - NEVER re-emit NativeSubAgentPolicyConflictMenu after option 2 has
     resolved INLINE_FALLBACK for the active workflow run
-  - MUST trim reply and accept the active menu's option numbers when embedded in longer phrases (e.g. "option 1 please")
-  - MUST re-probe on external entry from analyze.md into a generate.md phase; SUB_AGENT_SESSION_APPROVED carries across the handoff, INLINE_FALLBACK and INLINE_FALLBACK_PROBED do not
-  - MUST_NOT bypass this probe with local host-capability inference
-  - MUST_NOT prescribe caller-specific continuation, phase routing, or
+  - ALWAYS trim reply and accept the active menu's option numbers when embedded in longer phrases (e.g. "option 1 please")
+  - ALWAYS re-probe on external entry from analyze.md into a generate.md phase; SUB_AGENT_SESSION_APPROVED carries across the handoff, INLINE_FALLBACK and INLINE_FALLBACK_PROBED do not
+  - NEVER bypass this probe with local host-capability inference
+  - NEVER prescribe caller-specific continuation, phase routing, or
     manual-patch handling after resolution; callers own their post-probe flow
 
 ON_ERROR:
@@ -101,14 +102,14 @@ ON_ERROR:
     STOP_TURN
 
 INVARIANTS:
-  - MUST NOT execute any INLINE_FALLBACK-gated logic unless INLINE_FALLBACK_PROBED == true
-  - MUST NOT set INLINE_FALLBACK = false unless SUB_AGENT_SESSION_APPROVED == true
+  - NEVER execute any INLINE_FALLBACK-gated logic unless INLINE_FALLBACK_PROBED == true
+  - NEVER set INLINE_FALLBACK = false unless SUB_AGENT_SESSION_APPROVED == true
 
 NOTES:
   Approval menus are defined canonically in skills/studio/SKILL.md — reference
   them there and do not redefine them locally.
 
-  INLINE_FALLBACK_PROBED guards against race conditions: bypass logic MUST check this flag
+  INLINE_FALLBACK_PROBED guards against race conditions: bypass logic ALWAYS check this flag
   before acting on INLINE_FALLBACK value.
 
   INLINE_FALLBACK-gated dispatch sites:

@@ -19,20 +19,20 @@ PURPOSE:
   Convert one or more existing prose prompt files into PDSL.
 
 STATE:
-  PDSL_MODE: new | transform | review
+  - SET PDSL_MODE: new | transform | review
     scope: inherited_from_parent
 
 WHEN:
-  PDSL_MODE == transform
+  - REQUIRE PDSL_MODE == transform
 
-REQUIRE:
-  target_paths is non-empty
+- REQUIRE:
+  - REQUIRE target_paths is non-empty
 
 DO:
-  EMIT write_summary(target_paths, source_paths)
-  EMIT_MENU WriteConfirmMenu
-  WAIT user.reply
-  STOP_TURN
+  - EMIT write_summary(target_paths, source_paths)
+  - EMIT_MENU WriteConfirmMenu
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU WriteConfirmMenu:
   TITLE: Confirm write to target path(s) listed above
@@ -70,9 +70,9 @@ Dispatch payload:
 }
 ```
 
-Transform mode MUST preserve behavior before compacting wording. If a prompt
+Transform mode preserves behavior before compacting wording. If a prompt
 contains ambiguous behavior that cannot be preserved safely, the transformer
-MUST either keep the original prose in `NOTES` with an `OPEN_QUESTIONS` block
+keeps the original prose in `NOTES` with an `OPEN_QUESTIONS` block
 or return `TRANSFORM_BLOCKED` with the unresolved questions.
 
 Completion: return the `cf-pdsl-transformer` manifest or a

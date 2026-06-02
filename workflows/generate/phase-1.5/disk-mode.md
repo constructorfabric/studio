@@ -21,13 +21,13 @@ PURPOSE:
   partial-write recovery.
 
 WHEN:
-  AUTHOR_PLAN_OFFER_RESOLVED == disk
+  - REQUIRE AUTHOR_PLAN_OFFER_RESOLVED == disk
 
 DO:
-  SET CF_PHASE_GATE = released_for_orchestrator_write
+  - SET CF_PHASE_GATE = released_for_orchestrator_write
     WITH scope = {cf-studio-path}/.cache/generate-plans/{slug}-{ISO}/
 
-  WRITE these cache files:
+  - RUN WRITE these cache files:
     {cf-studio-path}/.cache/generate-plans/{slug}-{ISO}/index.md
       (work_request, summary, risk flags, ordered parallel groups, task table)
     {cf-studio-path}/.cache/generate-plans/{slug}-{ISO}/plan.json
@@ -39,16 +39,16 @@ DO:
       per planned task (task title, work_request, intent, target paths, recommended author,
       dependencies, parallel group, rationale, input keys, acceptance criteria)
 
-  IF all writes succeed:
-    SET AUTHOR_PLAN_CACHE_DIR = directory path
-    EMIT "Author plan saved: {AUTHOR_PLAN_CACHE_DIR}"
-  SET CF_PHASE_GATE = armed  # immediately after named writes complete or fail
+  - REQUIRE all writes succeed:
+    - SET AUTHOR_PLAN_CACHE_DIR = directory path
+    - EMIT "Author plan saved: {AUTHOR_PLAN_CACHE_DIR}"
+  - SET CF_PHASE_GATE = armed  # immediately after named writes complete or fail
 
-  IF any cache file write fails:
-    EMIT structured error block listing written files and failed files
-    EMIT_MENU PartialCacheFailureMenu
-    WAIT user.reply
-    STOP_TURN
+  - REQUIRE any cache file write fails:
+    - EMIT structured error block listing written files and failed files
+    - EMIT_MENU PartialCacheFailureMenu
+    - WAIT user.reply
+    - STOP_TURN
 
 MENU PartialCacheFailureMenu:
   TITLE: Partial cache write failure. Some plan cache files could not be written.
@@ -59,7 +59,7 @@ MENU PartialCacheFailureMenu:
     1 ->
       NOTE: Suggested — retrying only failed files avoids discarding
             already-successful writes and preserves disk plan mode.
-      RE-ATTEMPT only failed writes; MUST NOT re-write already successful files
+      RE-ATTEMPT only failed writes; NEVER re-write already successful files
       IF retry fails: RE-EMIT this menu
     2 ->
       SET AUTHOR_PLAN_OFFER_RESOLVED = memory
@@ -71,8 +71,8 @@ MENU PartialCacheFailureMenu:
       SET AUTHOR_EXECUTION_PLAN = null
       SET CF_PHASE_GATE = armed
       STOP current generate sub-flow
-      FORBID entering Phase 3 or Phase 4
-  stop_token ->
+      NEVER entering Phase 3 or Phase 4
+  4 stop_token ->
     TREAT as option 3
   INVALID:
     EMIT "Reply with 1, 2, or 3."
@@ -80,11 +80,11 @@ MENU PartialCacheFailureMenu:
     STOP_TURN
 
 RULES:
-  - MUST set CF_PHASE_GATE = released_for_orchestrator_write IMMEDIATELY before writing
-  - MUST reset CF_PHASE_GATE = armed IMMEDIATELY after named writes complete or fail
-  - MUST NOT silently proceed with partial cache
-  - MUST emit structured error block listing written and failed files on any failure
-  - MUST NOT re-write already successful files on retry (option 1)
-  - Disk-mode cache files are pre-Phase-4 writes (not target-artifact writes);
-    MUST disclose on failure/abandonment; open and follow {cf-studio-path}/.core/workflows/generate/error-handling.md
+  - ALWAYS set CF_PHASE_GATE = released_for_orchestrator_write IMMEDIATELY before writing
+  - ALWAYS reset CF_PHASE_GATE = armed IMMEDIATELY after named writes complete or fail
+  - NEVER silently proceed with partial cache
+  - ALWAYS emit structured error block listing written and failed files on any failure
+  - NEVER re-write already successful files on retry (option 1)
+  - ALWAYS Disk-mode cache files are pre-Phase-4 writes (not target-artifact writes);
+    ALWAYS disclose on failure/abandonment; open and follow {cf-studio-path}/.core/workflows/generate/error-handling.md
 ```

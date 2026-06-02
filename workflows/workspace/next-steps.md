@@ -20,9 +20,9 @@ PURPOSE:
   Present post-setup next steps after successful workspace setup.
 
 DO:
-  EMIT_MENU NextStepsMenu
-  WAIT user.reply
-  STOP_TURN
+  - EMIT_MENU NextStepsMenu
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU NextStepsMenu:
   TITLE: What would you like to do next? Reply with the option number or a short custom instruction.

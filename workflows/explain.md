@@ -11,21 +11,21 @@ purpose: Standalone explain command; pass-through to analyze.md with EXPLAIN mod
 UNIT RootSkillEntrypointBootstrap
 PURPOSE: Prevent direct workflow entry from bypassing the root cf skill.
 DO:
-  1. REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is loaded completely
+  - REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is loaded completely
      and followed FIRST.
-  2. REQUIRE CfSkillInit, Bootstrap, HardRules, and
+  - REQUIRE CfSkillInit, Bootstrap, HardRules, and
      WorkflowProtocolNonSubstitution from SKILL.md have completed.
-  3. CONTINUE this workflow only after the root cf skill routing/entrypoint
+  - CONTINUE this workflow only after the root cf skill routing/entrypoint
      selects it.
 RULES:
-  - MUST execute before any workflow-specific unit in this file.
-  - MUST_NOT treat protocol.md, routing.md, or a thin proxy skill as a
+  - ALWAYS execute before any workflow-specific unit in this file.
+  - NEVER treat protocol.md, routing.md, or a thin proxy skill as a
     substitute for loading and following SKILL.md.
-  - MUST follow routing.md § CanonicalRoutingPrecedenceState and require
+  - ALWAYS follow routing.md § CanonicalRoutingPrecedenceState and require
     EXPLAIN_MODE=true before entering analyze mode.
-  - If this workflow file is opened directly, STOP workflow phases until
+  - ALWAYS If this workflow file is opened directly, STOP workflow phases until
     SKILL.md has been loaded completely and followed.
-  - This gate applies to the top-level controller only; dispatched sub-agents
+  - ALWAYS This gate applies to the top-level controller only; dispatched sub-agents
     consume the synthesized final prompt and supplied context slices.
 ```
 
@@ -36,19 +36,19 @@ PURPOSE:
   Pass through to analyze.md with EXPLAIN mode active.
 
 DO:
-  REQUIRE EXPLAIN_MODE == true
-  SET analyze.dispatch_state.EXPLAIN_MODE = true
-  LOAD skill `cf` IN ANALYZE + EXPLAIN mode, EXPLAIN_MODE=true
-  The target analyze workflow MUST apply
-  {cf-studio-path}/.core/workflows/shared/explore-brainstorm-gate.md;
-  cf-explore is required when explanation targets are not explicit.
-  Completion signal from the target analyze/storytelling flow MUST include:
+  - REQUIRE EXPLAIN_MODE == true
+  - SET analyze.dispatch_state.EXPLAIN_MODE = true
+  - LOAD skill `cf` IN ANALYZE + EXPLAIN mode, EXPLAIN_MODE=true
+  - RUN The target analyze workflow ALWAYS apply
+  - RUN {cf-studio-path}/.core/workflows/shared/explore-brainstorm-gate.md;
+  - RUN cf-explore is required when explanation targets are not explicit.
+  - RUN Completion signal from the target analyze/storytelling flow ALWAYS include:
     { "type": "EXPLAIN_RESULT", "status": "complete|checkpointed|cancelled", "session_id": "<id|null>", "progress": "<X/N|null>", "resume_path": "<path|null>" }
-  Every complete, checkpointed, cancelled, deterministic-failure, or wrap exit
-  MUST emit this EXPLAIN_RESULT envelope. When EXPLAIN_MODE owns the output,
-  deterministic validation failure is represented as EXPLAIN_RESULT with
-  status="checkpointed" and failure/resume metadata unless analyze.md explicitly
-  overrides EXPLAIN_MODE into remediation output before storytelling begins.
+  - RUN Every complete, checkpointed, cancelled, deterministic-failure, or wrap exit
+  - RUN ALWAYS emit this EXPLAIN_RESULT envelope. When EXPLAIN_MODE owns the output,
+  - RUN deterministic validation failure is represented as EXPLAIN_RESULT with
+  - RUN status="checkpointed" and failure/resume metadata unless analyze.md explicitly
+  - RUN overrides EXPLAIN_MODE into remediation output before storytelling begins.
 
 ON_ERROR:
   load_failed ->

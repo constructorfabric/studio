@@ -47,18 +47,18 @@ NOTES:
 UNIT CodegenCompletion
 
 RULES:
-  - MUST execute Phase 4 and write all target_paths
-  - MUST execute Phase 5.1 deterministic validation with command, exit code,
+  - ALWAYS execute Phase 4 and write all target_paths
+  - ALWAYS execute Phase 5.1 deterministic validation with command, exit code,
     and JSON status/error_count/warning_count recorded
-  - MUST record overall deterministic gate result as PASS, FAIL, or SKIPPED with proof
-  - MUST assemble complete Validation Results body before emitting Phase 6 handoff menus
-  - MUST end with Post-Write Review Handoff menu when files were written
-  - MUST emit Remediation Handoff menu immediately before Post-Write Review Handoff
+  - ALWAYS record overall deterministic gate result as PASS, FAIL, or SKIPPED with proof
+  - ALWAYS assemble complete Validation Results body before emitting Phase 6 handoff menus
+  - ALWAYS end with Post-Write Review Handoff menu when files were written
+  - ALWAYS emit Remediation Handoff menu immediately before Post-Write Review Handoff
     when remaining_findings is non-empty
-  - Prompt blocks are emitted only on next turn after the user selects a
+  - ALWAYS Prompt blocks are emitted only on next turn after the user selects a
     handoff prompt option
-  - MUST satisfy the `studio_mode_contract` invariant
-  - VALID stopping state: INLINE_FALLBACK was unset at a nested dispatch site and
+  - ALWAYS satisfy the `studio_mode_contract` invariant
+  - ALWAYS VALID stopping state: INLINE_FALLBACK was unset at a nested dispatch site and
     `inline_fallback_probe_contract` was followed as a hard interaction
     boundary pending user 1/2 reply
 ```

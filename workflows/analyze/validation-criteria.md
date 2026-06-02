@@ -19,12 +19,12 @@ PURPOSE:
   Post-flight checklist gate verified before ending the response.
 
 DO:
-  Verify ALL items below; MUST_NOT end the response until all applicable items pass.
+  - RUN Verify ALL items below; NEVER end the response until all applicable items pass.
 
 RULES:
-  - MUST verify every applicable item in this checklist before ending the response
-  - MUST_NOT claim PASS for any item that is not verified
-  - MUST_NOT end the response while any applicable item is unchecked
+  - ALWAYS verify every applicable item in this checklist before ending the response
+  - NEVER claim PASS for any item that is not verified
+  - NEVER end the response while any applicable item is unchecked
 ```
 
 ## Validation Criteria

@@ -75,19 +75,19 @@ PURPOSE:
   controller-owned prompt loading.
 
 WHEN:
-  explain-style intent is detected
+  - REQUIRE explain-style intent is detected
 
 DO:
-  REQUIRE this router is active
-  REQUIRE controller has loaded `{cf-studio-path}/.core/requirements/execution-protocol.md`
-  REQUIRE controller has loaded `{cf-studio-path}/.core/requirements/storytelling-shared.md`
-  SET EXPLAIN_MODE = true
+  - REQUIRE this router is active
+  - REQUIRE controller has loaded `{cf-studio-path}/.core/requirements/execution-protocol.md`
+  - REQUIRE controller has loaded `{cf-studio-path}/.core/requirements/storytelling-shared.md`
+  - SET EXPLAIN_MODE = true
 
 RULES:
-  - MUST treat storytelling prompt assets as controller-owned prompt assets
-  - MUST_NOT let prompt-consuming sub-agents reopen storytelling prompt files
+  - ALWAYS treat storytelling prompt assets as controller-owned prompt assets
+  - NEVER let prompt-consuming sub-agents reopen storytelling prompt files
     from disk
-  - MUST deliver storytelling prompt content through `prompt_context_view`
+  - ALWAYS deliver storytelling prompt content through `prompt_context_view`
     whenever a sub-agent participates in the session
 ```
 
@@ -98,27 +98,27 @@ PURPOSE:
   Make the mandatory E0-E5 interaction order explicit.
 
 STATE:
-  STORYTELLING_PHASE: e0 | e1_mode | e1_disposition | e1_audience | e1_plan | e2 | e5 | done
+  - SET STORYTELLING_PHASE: e0 | e1_mode | e1_disposition | e1_audience | e1_plan | e2 | e5 | done
     default: e0
 
 DO:
-  SET STORYTELLING_PHASE = e0
-  REQUIRE Phase E0 pre-flight completes before any answer-style content
-  SET STORYTELLING_PHASE = e1_mode
-  EMIT numbered mode prompt
-  WAIT user.reply
-  STOP_TURN
+  - SET STORYTELLING_PHASE = e0
+  - REQUIRE Phase E0 pre-flight completes before any answer-style content
+  - SET STORYTELLING_PHASE = e1_mode
+  - EMIT numbered mode prompt
+  - WAIT user.reply
+  - STOP_TURN
 
 RULES:
-  - MUST_NOT emit portion content or summary before plan approval resolves
-  - MUST run disposition resolution after mode resolution and before audience
+  - NEVER emit portion content or summary before plan approval resolves
+  - ALWAYS run disposition resolution after mode resolution and before audience
     resolution
-  - MUST run audience resolution before plan approval whenever the audience is
+  - ALWAYS run audience resolution before plan approval whenever the audience is
     not already explicit
-  - MUST enter Phase E2 only after the numbered plan-approval gate resolves
-  - MUST enter Phase E5 only after Phase E2 completes or the user requests wrap
-  - MUST keep the four E1 gates as separate user-interaction boundaries
-  - MUST treat skipped gates as a critical contract failure
+  - ALWAYS enter Phase E2 only after the numbered plan-approval gate resolves
+  - ALWAYS enter Phase E5 only after Phase E2 completes or the user requests wrap
+  - ALWAYS keep the four E1 gates as separate user-interaction boundaries
+  - ALWAYS treat skipped gates as a critical contract failure
 ```
 
 ```pdsl
@@ -128,16 +128,16 @@ PURPOSE:
   Define which storytelling modules the controller loads.
 
 DO:
-  REQUIRE controller loads `{cf-studio-path}/.core/requirements/storytelling-phases.md`
-  REQUIRE controller loads `{cf-studio-path}/.core/requirements/storytelling-modes.md`
-  REQUIRE controller loads `{cf-studio-path}/.core/requirements/storytelling-preferences.md`
-  IF EXPLAIN_EXPORT == true:
-    REQUIRE controller loads `{cf-studio-path}/.core/requirements/storytelling-export.md`
+  - REQUIRE controller loads `{cf-studio-path}/.core/requirements/storytelling-phases.md`
+  - REQUIRE controller loads `{cf-studio-path}/.core/requirements/storytelling-modes.md`
+  - REQUIRE controller loads `{cf-studio-path}/.core/requirements/storytelling-preferences.md`
+  - REQUIRE EXPLAIN_EXPORT == true:
+    - REQUIRE controller loads `{cf-studio-path}/.core/requirements/storytelling-export.md`
 
 RULES:
-  - MUST load only the router-required modules for the active mode
-  - MUST_NOT speculatively load unrelated prompt modules
-  - MUST publish any dispatched subset through `prompt_context_view`
+  - ALWAYS load only the router-required modules for the active mode
+  - NEVER speculatively load unrelated prompt modules
+  - ALWAYS publish any dispatched subset through `prompt_context_view`
 ```
 
 ## Overview

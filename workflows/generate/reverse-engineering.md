@@ -15,22 +15,22 @@ PURPOSE:
   before Phase 0.
 
 DO:
-  IF AUTO_CONFIG == true:
-    CONTINUE AutoConfigFastPath
+  - REQUIRE AUTO_CONFIG == true:
+    - CONTINUE AutoConfigFastPath
 
-  IF project is GREENFIELD:
+  - REQUIRE project is GREENFIELD:
     SKIP this section
     PROCEED to Phase 0
-    RETURN
+    - RETURN
 
-  # BROWNFIELD path:
-  IF project is BROWNFIELD:
+  - RUN # BROWNFIELD path:
+  - REQUIRE project is BROWNFIELD:
     USE Protocol Guard's matched WHEN-clause spec resolution for current request
     TREAT ONLY task-matched, applicable project specs/rules as satisfying
       the brownfield rules gate
 
     IF one or more project-specific specs/rules matched for current request:
-      LOAD and follow them before generating
+      - LOAD and follow them before generating
 
     IF no project-specific specs/rules matched for current brownfield request:
       OFFER auto-config even when unrelated files exist under
@@ -38,7 +38,7 @@ DO:
 
 RULES:
   - ALWAYS SKIP this section WHEN GREENFIELD — nothing to reverse-engineer
-  - MUST NOT treat mere on-disk rules-file presence or any unrelated registered spec
+  - NEVER treat mere on-disk rules-file presence or any unrelated registered spec
     as sufficient to skip auto-config
   - ALWAYS open and follow {cf-studio-path}/.core/requirements/auto-config.md
     WHEN user accepts auto-config
@@ -51,7 +51,7 @@ MENU BrownfieldAutoConfigOffer:
     config/AGENTS.md, navigation rules for existing project guides, and system entries
     in config/artifacts.toml.
   OPTIONS:
-    yes ->
+    1 yes ->
       NOTE: Suggested for first-time setup; run auto-config now, then return to
             generation with task-matched project rules.
       EXECUTE auto-config methodology (Phases 1→6)
@@ -74,22 +74,22 @@ PURPOSE:
   Define AUTO_CONFIG fast path behavior when invoked via Invoke skill `cf-auto-config`.
 
 WHEN:
-  AUTO_CONFIG == true (set by Invoke skill `cf-auto-config` thin entry point at workflows/auto-config.md)
+  - REQUIRE AUTO_CONFIG == true (set by Invoke skill `cf-auto-config` thin entry point at workflows/auto-config.md)
 
 DO:
-  TREAT this branch as higher precedence than normal generate update/refactor
+  - RUN TREAT this branch as higher precedence than normal generate update/refactor
     routing and higher precedence than any `{cfs_cmd} --json info` notice that
     suggests `cfs update`.
-  FORBID satisfying AUTO_CONFIG by running `cfs update`, `make update`,
+  - NEVER satisfying AUTO_CONFIG by running `cfs update`, `make update`,
     bootstrap refresh, kit refresh, cache refresh, or generated-agent refresh
     unless the user explicitly switches from auto-config to those commands.
-  SKIP the yes/no/skip offer prompt above
-  RUN auto-config methodology ({cf-studio-path}/.core/requirements/auto-config.md)
+  - RUN SKIP the yes/no/skip offer prompt above
+  - RUN auto-config methodology ({cf-studio-path}/.core/requirements/auto-config.md)
     Phases 1→6 directly
-  AFTER Phase 6 completes:
-    RETURN to generate ONLY if user explicitly asks to continue
+  - RUN AFTER Phase 6 completes:
+    - RETURN to generate ONLY if user explicitly asks to continue
     OTHERWISE stop after auto-config
-  NOTE: thin entry point's terminal state is auto-config completion, not generation
+  - RUN NOTE: thin entry point's terminal state is auto-config completion, not generation
 
 UNIT StorytellingPackageGate
 
@@ -98,24 +98,24 @@ PURPOSE:
   package write-to-disk requests.
 
 WHEN:
-  user requests explanatory/educational/presentation/guide/README/training-material
-  PACKAGE to be written to disk
-  (intent like: "generate guide for X", "make a README from X",
+  - REQUIRE user requests explanatory/educational/presentation/guide/README/training-material
+  - REQUIRE PACKAGE to be written to disk
+  - REQUIRE (intent like: "generate guide for X", "make a README from X",
    "export explain package", "create training material from X",
    "build onboarding doc set for X", "write a how-to package about X",
    or equivalents in any user language)
 
 DO:
-  ALWAYS open and follow {cf-studio-path}/.core/requirements/storytelling.md
-  SET EXPLAIN_MODE = true
-  SET EXPLAIN_EXPORT = true
-  NOTE: storytelling methodology handles plan + portion construction
-  NOTE: package is written under
+  - RUN ALWAYS open and follow {cf-studio-path}/.core/requirements/storytelling.md
+  - SET EXPLAIN_MODE = true
+  - SET EXPLAIN_EXPORT = true
+  - RUN NOTE: storytelling methodology handles plan + portion construction
+  - RUN NOTE: package is written under
     {cf-studio-path}/.cache/explain/packages/{slug}-{ISO-timestamp}/
-  NOTE: standard generate.md write-permission gates apply
-    (user confirmation before writing files; MUST NOT add --yes/-y to
+  - RUN NOTE: standard generate.md write-permission gates apply
+    (user confirmation before writing files; NEVER add --yes/-y to
      write-capable commands unless user explicitly requested non-interactive)
-  NOTE: hybrid execution from storytelling.md Export Mode:
+  - RUN NOTE: hybrid execution from storytelling.md Export Mode:
     Phases E0/E1 (pre-flight, role/audience confirmation, plan approval) remain interactive
     Portion construction runs in batch after plan approval and writes files directly
     (no per-portion chat navigation prompts)

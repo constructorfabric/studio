@@ -86,35 +86,35 @@ PURPOSE:
   Define how to construct a safe, minimal reviewer execution plan.
 
 STATE:
-  plan_mode: memory | disk
-  mode: review | consistency | prompt | bug | explain | change
+  - SET plan_mode: memory | disk
+  - SET mode: review | consistency | prompt | bug | explain | change
 
 RULES:
-  - WHEN mode=explain:
+  - ALWAYS WHEN mode=explain:
       Treat as informational; bypass methodology-flag requirements
       Output tasks=[] is valid ONLY for mode=explain
-  - WHEN mode=change:
+  - ALWAYS WHEN mode=change:
       SET CHANGE_REVIEW=true
       Infer at least one of CODE_REVIEW / PROMPT_REVIEW / CONSISTENCY_REVIEW
         from the changed-file mix in diff_scope.changed_files
       An empty plan for mode=change is a planner FAIL
-  - MUST keep the plan small; prefer one task per active methodology
+  - ALWAYS keep the plan small; prefer one task per active methodology
     when total estimated size fits safe single-context budget (~2000 lines for analyze)
-  - WHEN size_estimate_lines > 2000
+  - ALWAYS WHEN size_estimate_lines > 2000
     OR len(target_paths) + len(code_targets) + len(prompt_targets) > 6:
       Partition per-methodology tasks by paths: split into groups of up to 4 paths
       so reviewers can run in parallel on disjoint partitions
-  - Each task MUST name exactly one reviewer from available_reviewers
-  - Every plan MUST preserve work_request as the authoritative statement of
+  - ALWAYS Each task ALWAYS name exactly one reviewer from available_reviewers
+  - ALWAYS Every plan ALWAYS preserve work_request as the authoritative statement of
     what must be reviewed/analyzed; task titles, methodology, partitions, and
-    sequencing explain how to execute it but MUST_NOT replace or omit the
+    sequencing explain how to execute it but NEVER replace or omit the
     work_request
-  - Each task MUST name exactly one methodology
-  - Each task MUST have a non-empty path_partition subset of applicable inputs
-  - Tasks for different methodologies MAY run in the same parallel group
+  - ALWAYS Each task ALWAYS name exactly one methodology
+  - ALWAYS Each task ALWAYS have a non-empty path_partition subset of applicable inputs
+  - ALWAYS Tasks for different methodologies may run in the same parallel group
     even when path_partition overlaps (they read the same files but emit
     findings in disjoint namespaces)
-  - MUST use exactly these namespace_prefix values:
+  - ALWAYS use exactly these namespace_prefix values:
       Ra    → artifact (Artifact-checklist semantic review)
       Rc    → code (Code-checklist semantic review)
       Rcb   → code_bug (Code bug-finding)
@@ -122,26 +122,26 @@ RULES:
       Rp    → prompt (Prompt-engineering review)
       Rpb   → prompt_bug (Prompt bug-finding)
       V     → validation (Deterministic-validator tasks)
-  - Consistency review MUST be dispatched once over the full target set;
-    MUST_NOT partition consistency tasks
-  - MUST skip consistency entirely if fewer than two paths qualify
-  - Prompt-methodology tasks MUST operate only on prompt_targets
+  - ALWAYS Consistency review ALWAYS be dispatched once over the full target set;
+    NEVER partition consistency tasks
+  - ALWAYS skip consistency entirely if fewer than two paths qualify
+  - ALWAYS Prompt-methodology tasks ALWAYS operate only on prompt_targets
     (workflows/**, skills/studio/**/*.md, requirements/**/*.md, agent prompt files,
     prompt config files, AGENTS.md, and SKILL.md)
-  - MUST_NOT include non-prompt paths in a prompt task's path_partition
-  - Code-methodology tasks MUST operate only on code_targets
-  - MUST_NOT include non-code paths in a code task's path_partition
-  - Every parallel_groups[].depends_on reference MUST name an earlier group
-  - Every task.parallel_group value MUST be a string group id matching an
+  - NEVER include non-prompt paths in a prompt task's path_partition
+  - ALWAYS Code-methodology tasks ALWAYS operate only on code_targets
+  - NEVER include non-code paths in a code task's path_partition
+  - ALWAYS Every parallel_groups[].depends_on reference ALWAYS name an earlier group
+  - ALWAYS Every task.parallel_group value ALWAYS be a string group id matching an
     existing parallel_groups[].id, using the `G<number>` form (for example
     "G1"). Numeric values such as 1 or 2 are invalid.
-  - Every parallel_groups[] entry MUST include all required fields:
+  - ALWAYS Every parallel_groups[] entry ALWAYS include all required fields:
     id, task_ids, depends_on, execution, and reason.
-  - Every parallel_groups[].execution value MUST be exactly "parallel" or
+  - ALWAYS Every parallel_groups[].execution value ALWAYS be exactly "parallel" or
     "sequential".
-  - MUST_NOT put more than 5 tasks in a single parallel group;
+  - NEVER put more than 5 tasks in a single parallel group;
     spread them across groups to keep host-side dispatch concurrency bounded
-  - In disk mode, produce the same JSON plan as memory mode;
+  - ALWAYS In disk mode, produce the same JSON plan as memory mode;
     the orchestrator renders the Markdown plan pack from the JSON
 ```
 
@@ -154,12 +154,12 @@ PURPOSE:
   Emit a short human-readable plan summary followed by the reviewer_plan JSON block.
 
 DO:
-  EMIT:
+  - EMIT:
     Reviewer plan: <one-line summary>
     Parallel groups: <count>; tasks: <count>
 
-  EMIT exactly the marker line: <!-- reviewer_plan -->
-  EMIT reviewer_plan JSON block:
+  - EMIT exactly the marker line: <!-- reviewer_plan -->
+  - EMIT reviewer_plan JSON block:
     {
       "plan_mode": "memory|disk",
       "work_request": "<preserved original request / what must be done>",
@@ -193,11 +193,11 @@ DO:
     }
 
 RULES:
-  - MUST use exactly the marker <!-- reviewer_plan --> at column 0
-  - Every disk-mode plan MUST preserve work_request in plan.json and Markdown
+  - ALWAYS use exactly the marker <!-- reviewer_plan --> at column 0
+  - ALWAYS Every disk-mode plan ALWAYS preserve work_request in plan.json and Markdown
     cache files so a resumed session can recover what must be reviewed/analyzed
     without inferring it from task sequencing
-  - MUST_NOT emit prose after the JSON block
+  - NEVER emit prose after the JSON block
 ```
 
 ## Response Completion Gate
@@ -209,22 +209,22 @@ PURPOSE:
   Enforce response completeness before output is considered final.
 
 RULES:
-  - An empty tasks array is allowed ONLY when mode=explain;
+  - ALWAYS An empty tasks array is allowed ONLY when mode=explain;
     for any other mode, the gate FAILS on empty tasks
-  - MUST have at least one task per active methodology in methodology_flags
-  - The union of all tasks' path_partition for a methodology MUST cover
+  - ALWAYS have at least one task per active methodology in methodology_flags
+  - ALWAYS The union of all tasks' path_partition for a methodology ALWAYS cover
     every input path that methodology applies to
-  - MUST_NOT have two tasks share (methodology, path); partitions for the same
+  - NEVER have two tasks share (methodology, path); partitions for the same
     methodology must be disjoint
-  - Every reviewer MUST be one of the registered reviewer sub-agents
-    and MUST match the task's methodology
-  - work_request MUST be non-empty and MUST preserve the original requested
+  - ALWAYS Every reviewer ALWAYS be one of the registered reviewer sub-agents
+    and ALWAYS match the task's methodology
+  - ALWAYS work_request ALWAYS be non-empty and ALWAYS preserve the original requested
     review/analyze scope, not only the execution sequence
-  - Every task MUST have at least one acceptance criterion
-  - Every task.parallel_group MUST be a named string group id matching an
+  - ALWAYS Every task ALWAYS have at least one acceptance criterion
+  - ALWAYS Every task.parallel_group ALWAYS be a named string group id matching an
     existing parallel_groups[].id; numeric group values fail the gate
-  - Every parallel_groups[] entry MUST include id, task_ids, depends_on,
+  - ALWAYS Every parallel_groups[] entry ALWAYS include id, task_ids, depends_on,
     execution, and reason
-  - The reviewer_plan JSON block MUST be well-formed and follow the contract
-  - MUST satisfy the SKILL.md invariant
+  - ALWAYS The reviewer_plan JSON block ALWAYS be well-formed and follow the contract
+  - ALWAYS satisfy the SKILL.md invariant
 ```

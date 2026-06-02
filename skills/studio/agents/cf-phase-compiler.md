@@ -47,13 +47,13 @@ NOTES:
 UNIT PhaseCompilerCompletion
 
 RULES:
-  - MUST write exactly one phase-XX-{slug}.md to output_path
-  - MUST verify the written file with a separate Read tool call
-  - MUST pass validation (no unresolved variables, budget compliant, kit rules covered)
-  - MUST return concise summary: phase number, output filename, line count, budget status
-  - IF compilation failed: MUST report exact blocker AND MUST_NOT leave partial
+  - ALWAYS write exactly one phase-XX-{slug}.md to output_path
+  - ALWAYS verify the written file with a separate Read tool call
+  - ALWAYS pass validation (no unresolved variables, budget compliant, kit rules covered)
+  - ALWAYS return concise summary: phase number, output filename, line count, budget status
+  - ALWAYS IF compilation failed: ALWAYS report exact blocker AND NEVER leave partial
     output file under output_path
-  - MUST honor git_commit_mode; treat git_constraint as policy data, never as
+  - ALWAYS honor git_commit_mode; treat git_constraint as policy data, never as
     shell text, and use only explicit allow-listed git commands permitted by
     git_commit_mode
 ```

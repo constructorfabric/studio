@@ -12,12 +12,12 @@ PURPOSE:
   Emit self-contained Fix Prompt as the FINAL section on R2.
 
 RULES:
-  - MUST verify Validation Results body is present and complete before emitting
-  - MUST begin with "Invoke skill `cf`"
-  - MUST embed inline: changed file paths, what changed, kind/target,
+  - ALWAYS verify Validation Results body is present and complete before emitting
+  - ALWAYS begin with "Invoke skill `cf`"
+  - ALWAYS embed inline: changed file paths, what changed, kind/target,
     completed Validation Results body verbatim, full remaining_findings list
-  - MUST NOT reference "previous chat" or content outside the prompt itself
-  - MUST NOT ask next agent to re-discover findings
+  - NEVER reference "previous chat" or content outside the prompt itself
+  - NEVER ask next agent to re-discover findings
 ```
 
 #### `Fix Prompt` template (emitted on `R2`)

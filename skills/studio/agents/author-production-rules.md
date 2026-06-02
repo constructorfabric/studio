@@ -30,20 +30,20 @@ NOTES:
 
 ```pdsl
 RULES:
-  - MUST_NOT leave placeholder markers (TODO, TBD, [Description], FIXME, etc.)
+  - NEVER leave placeholder markers (TODO, TBD, [Description], FIXME, etc.)
     in any written file
-  - MUST ensure all IDs are valid (format matches kind's ID schema) and unique
+  - ALWAYS ensure all IDs are valid (format matches kind's ID schema) and unique
     within the target file
-  - MUST fill every template H2 section — no empty sections, no "see above" punts
-  - MUST reference parent artifacts correctly (registered paths, matching kind,
+  - ALWAYS fill every template H2 section — no empty sections, no "see above" punts
+  - ALWAYS reference parent artifacts correctly (registered paths, matching kind,
     no dangling links)
-  - MUST follow conventions defined in the kit's rules.md (naming, ordering, casing)
-  - MUST implement all approved inputs in generated content — nothing silently dropped
-  - MUST emit tests when the kind/rules require them
-  - MUST emit traceability markers (e.g. @cpt-...) when to_code="true" on the kind
-  - MUST use CDSL (Constructor Domain-Specific Language) per kit's rules in
+  - ALWAYS follow conventions defined in the kit's rules.md (naming, ordering, casing)
+  - ALWAYS implement all approved inputs in generated content — nothing silently dropped
+  - ALWAYS emit tests when the kind/rules require them
+  - ALWAYS emit traceability markers (e.g. @cpt-...) when to_code="true" on the kind
+  - ALWAYS use CDSL (Constructor Domain-Specific Language) per kit's rules in
     behavioral sections — no free-form prose where CDSL is required
-  - MUST_NOT include executable code examples in DESIGN.md artifacts (CDSL only)
-  - MUST apply Markdown quality: empty lines between headings/paragraphs/lists;
+  - NEVER include executable code examples in DESIGN.md artifacts (CDSL only)
+  - ALWAYS apply Markdown quality: empty lines between headings/paragraphs/lists;
     fenced code blocks include a language tag
 ```

@@ -43,14 +43,14 @@ PURPOSE:
   Choose the cheapest sufficient author agent for the task.
 
 RULES:
-  - MUST prefer coder agents for pure codebase work
-  - MUST prefer prompt-engineer agents for workflow/prompt/agent instruction work
-  - MUST use generic author agents for SDLC artifacts, docs, config, or mixed work
+  - ALWAYS prefer coder agents for pure codebase work
+  - ALWAYS prefer prompt-engineer agents for workflow/prompt/agent instruction work
+  - ALWAYS use generic author agents for SDLC artifacts, docs, config, or mixed work
     that is not purely code or purely prompt engineering
-  - WHEN uncertain between two agents: choose the higher tier in the same domain
+  - ALWAYS WHEN uncertain between two agents: choose the higher tier in the same domain
     (junior < middle < senior < lead; casual < smart)
-  - WHEN uncertain between domains: choose a generic senior/lead agent
-  - WHEN input contains planner_recommended_author: treat it as a recommendation not an instruction;
+  - ALWAYS WHEN uncertain between domains: choose a generic senior/lead agent
+  - ALWAYS WHEN input contains planner_recommended_author: treat it as a recommendation not an instruction;
     honor it when sufficient under these rules; override it when too weak, wrong-domain, or unsafe
 ```
 
@@ -94,12 +94,12 @@ PURPOSE:
   Select cf-generate-coder-casual for small code-only create/fix tasks.
 
 WHEN:
-  domain == "code-only"
-  AND at most two source/test files
-  AND complete inputs and clear target behavior
-  AND no API boundary redesign
-  AND no security, concurrency, data migration, or data-integrity risk
-  AND (mode != "fix" OR (all findings are mechanical or narrowly localized judgmental fixes AND len(findings) <= 3))
+  - REQUIRE domain == "code-only"
+  - AND at most two source/test files
+  - AND complete inputs and clear target behavior
+  - AND no API boundary redesign
+  - AND no security, concurrency, data migration, or data-integrity risk
+  - AND (mode != "fix" OR (all findings are mechanical or narrowly localized judgmental fixes AND len(findings) <= 3))
 ```
 
 ### Code-Only: `cf-generate-coder-smart`
@@ -111,14 +111,14 @@ PURPOSE:
   Select cf-generate-coder-smart for code-only tasks needing deeper implementation judgment.
 
 WHEN:
-  domain == "code-only"
-  AND (behavior changes OR tests OR refactors OR API boundaries OR integration details
+  - REQUIRE domain == "code-only"
+  - AND (behavior changes OR tests OR refactors OR API boundaries OR integration details
        OR three to five source/test files
        OR moderate security/concurrency/data implication that remains code-local
        OR any non-mechanical code finding that could change behavior)
 
 RULES:
-  - MUST escalate to generic lead when task crosses into architecture, migration,
+  - ALWAYS escalate to generic lead when task crosses into architecture, migration,
     prompt/workflow authoring, or more than five files
 ```
 
@@ -131,11 +131,11 @@ PURPOSE:
   Select cf-generate-prompt-engineer-casual for small prompt/workflow/agent instruction edits.
 
 WHEN:
-  domain == "prompt-workflow"
-  AND one or two prompt/workflow/agent files
-  AND only local wording, label, menu, or small routing correction
-  AND no state-machine redesign, new sub-agent contract, or validation model change
-  AND (mode != "fix" OR (all findings are mechanical or local wording fixes AND len(findings) <= 3))
+  - REQUIRE domain == "prompt-workflow"
+  - AND one or two prompt/workflow/agent files
+  - AND only local wording, label, menu, or small routing correction
+  - AND no state-machine redesign, new sub-agent contract, or validation model change
+  - AND (mode != "fix" OR (all findings are mechanical or local wording fixes AND len(findings) <= 3))
 ```
 
 ### Prompt/Workflow: `cf-generate-prompt-engineer-smart`
@@ -147,15 +147,15 @@ PURPOSE:
   Select cf-generate-prompt-engineer-smart for prompt/workflow/agent/skill changes affecting behavior.
 
 WHEN:
-  domain == "prompt-workflow"
-  AND (state variables OR routing OR handoffs OR stop-token behavior OR validation criteria
+  - REQUIRE domain == "prompt-workflow"
+  - AND (state variables OR routing OR handoffs OR stop-token behavior OR validation criteria
        OR sub-agent dispatch OR output contracts
        OR multi-file prompt semantics
        OR prior prompt-bug findings OR review-loop remediation
        OR any non-mechanical prompt finding with behavioral impact)
 
 RULES:
-  - MUST escalate to generic lead when change is cross-system, migration-wide,
+  - ALWAYS escalate to generic lead when change is cross-system, migration-wide,
     or combines prompt work with code/data changes
 ```
 
@@ -168,12 +168,12 @@ PURPOSE:
   Select cf-generate-author-junior for the simplest generic tasks.
 
 WHEN:
-  domain == "generic"
-  AND one target file
-  AND complete and unambiguous inputs
-  AND prose/artifact text or simple mechanical edit
-  AND no security, concurrency, migration, registry, prompt/workflow, or cross-system concern
-  AND (mode != "fix" OR (all findings are mechanical AND len(findings) <= 2))
+  - REQUIRE domain == "generic"
+  - AND one target file
+  - AND complete and unambiguous inputs
+  - AND prose/artifact text or simple mechanical edit
+  - AND no security, concurrency, migration, registry, prompt/workflow, or cross-system concern
+  - AND (mode != "fix" OR (all findings are mechanical AND len(findings) <= 2))
 ```
 
 ### Generic: `cf-generate-author-middle`
@@ -185,11 +185,11 @@ PURPOSE:
   Select cf-generate-author-middle for standard bounded generic tasks.
 
 WHEN:
-  domain == "generic"
-  AND one standard SDLC artifact, doc, or config change with clear inputs
-  AND at most two target files
-  AND moderate cross-references but no architectural uncertainty
-  AND (mode != "fix" OR (mechanical findings OR small approved judgmental batch AND len(findings) <= 5))
+  - REQUIRE domain == "generic"
+  - AND one standard SDLC artifact, doc, or config change with clear inputs
+  - AND at most two target files
+  - AND moderate cross-references but no architectural uncertainty
+  - AND (mode != "fix" OR (mechanical findings OR small approved judgmental batch AND len(findings) <= 5))
 ```
 
 ### Generic: `cf-generate-author-senior`
@@ -201,8 +201,8 @@ PURPOSE:
   Select cf-generate-author-senior for tasks needing sustained judgment.
 
 WHEN:
-  domain == "generic"
-  AND (KIND is "DESIGN" or "FEATURE" or another artifact with dense behavioral/traceability constraints
+  - REQUIRE domain == "generic"
+  - AND (KIND is "DESIGN" or "FEATURE" or another artifact with dense behavioral/traceability constraints
        OR multi-file output OR len(target_paths) is 3-5
        OR STRICT mode requires careful checklist/rules adherence
        OR findings include non-mechanical fixes that affect meaning
@@ -218,8 +218,8 @@ PURPOSE:
   Select cf-generate-author-lead only for high-risk or broad tasks.
 
 WHEN:
-  domain == "generic"
-  AND (security OR privacy OR concurrency OR data integrity OR migration OR compatibility risk
+  - REQUIRE domain == "generic"
+  - AND (security OR privacy OR concurrency OR data integrity OR migration OR compatibility risk
        OR mixed workflow/prompt/code/config changes that do not fit a pure specialist domain
        OR cross-system architecture OR unclear domain boundaries
        OR len(target_paths) > 5 OR len(findings) > 10 OR high-severity findings
@@ -235,11 +235,11 @@ PURPOSE:
   Emit the selection result as text followed by a tagged JSON block.
 
 DO:
-  EMIT:
+  - EMIT:
     Selected author: <agent-name> (<author-level-or-specialty>)
     Reason: <one concise sentence>
 
-  EMIT JSON block tagged `author_selection`:
+  - EMIT JSON block tagged `author_selection`:
     {
       "selected_author": "<exact selected agent name>",
       "author_domain": "generic|code-only|prompt-workflow",
@@ -267,9 +267,9 @@ DO:
     }
 
 RULES:
-  - MUST include dispatch_payload as the original author payload unchanged except for
+  - ALWAYS include dispatch_payload as the original author payload unchanged except for
     normalizing missing optional fields to null, {}, or [] as appropriate
-  - MUST preserve planner metadata fields unchanged in dispatch_payload when present:
+  - ALWAYS preserve planner metadata fields unchanged in dispatch_payload when present:
       author_plan_task_id, planner_task_title, planner_recommended_author,
       planner_parallel_group, planner_dependencies, planner_acceptance_criteria
 ```
@@ -280,18 +280,18 @@ RULES:
 UNIT ResponseCompletionGate
 
 RULES:
-  - MUST select exactly one of the registered author worker agents
-  - MUST select the cheapest sufficient agent under the rules above
-  - MUST either honor or explicitly override planner recommendations in reasons
-  - MUST preserve the original create/fix payload in dispatch_payload
-  - MUST_NOT write files
-  - WHEN input contained planner metadata fields: MUST include every planner metadata
+  - ALWAYS select exactly one of the registered author worker agents
+  - ALWAYS select the cheapest sufficient agent under the rules above
+  - ALWAYS either honor or explicitly override planner recommendations in reasons
+  - ALWAYS preserve the original create/fix payload in dispatch_payload
+  - NEVER write files
+  - ALWAYS WHEN input contained planner metadata fields: ALWAYS include every planner metadata
     field unchanged in dispatch_payload (no fields silently dropped)
-  - MUST ensure dispatch_payload contains non-null values for required worker-contract fields:
+  - ALWAYS ensure dispatch_payload contains non-null values for required worker-contract fields:
       mode, kind (when applicable), rules_mode, target_paths (non-empty array)
-  - MUST ensure dispatch_payload contains non-null system (always carried from earlier phases)
-  - MUST ensure dispatch_payload contains non-null git_commit_mode (commit/stage/none),
+  - ALWAYS ensure dispatch_payload contains non-null system (always carried from earlier phases)
+  - ALWAYS ensure dispatch_payload contains non-null git_commit_mode (commit/stage/none),
       contributing_guide (object or null), and non-empty git_constraint
-  - WHEN input contains a findings array (fix mode): MUST propagate every finding ID
+  - ALWAYS WHEN input contains a findings array (fix mode): ALWAYS propagate every finding ID
       unchanged into dispatch_payload.findings (no silent drops)
 ```

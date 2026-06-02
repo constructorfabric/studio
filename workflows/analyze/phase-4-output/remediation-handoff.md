@@ -16,13 +16,13 @@ PURPOSE:
   and route the next turn to the selected remediation path.
 
 WHEN:
-  actionable findings exist
-  AND EXPLAIN_MODE == false
+  - REQUIRE actionable findings exist
+  - AND EXPLAIN_MODE == false
 
 DO:
-  EMIT_MENU RemediationHandoffMenu
-  WAIT user.reply
-  STOP_TURN
+  - EMIT_MENU RemediationHandoffMenu
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU RemediationHandoffMenu:
   TITLE: |
@@ -53,11 +53,11 @@ MENU RemediationHandoffMenu:
              using carried analyze findings as the first iteration's findings
              BEFORE any fresh Phase 5.1 / 5.2 review
              First author dispatch fixes the already-reviewed analyze findings.
-             After author dispatch, every subsequent iteration MUST dispatch
+             After author dispatch, every subsequent iteration ALWAYS dispatch
                cf-deterministic-validator (5.1) and matched semantic reviewer
                sub-agent set (5.2) on the written files before any further
                author dispatch
-             FORBID re-running validator/reviewer before the first author
+             NEVER re-running validator/reviewer before the first author
                dispatch merely to refresh findings already produced by analyze
     2 -> EMIT fix-prompt-template.md as the FINAL section
     3 -> EMIT plan-prompt-template.md as the FINAL section
@@ -67,22 +67,22 @@ MENU RemediationHandoffMenu:
     STOP_TURN
 
 RULES:
-  - MUST emit this menu as the FINAL section of the current response when
+  - ALWAYS emit this menu as the FINAL section of the current response when
     actionable findings exist AND EXPLAIN_MODE=false
-  - MUST_NOT defer the menu to a later user turn
-  - MUST_NOT ask whether the menu should be generated
-  - MUST_NOT replace this menu with a generic next-step menu
-  - MUST_NOT emit Fix Prompt or Plan Prompt unless user picks option 2 or 3
-    in the NEXT turn; both MUST be self-contained with all findings, paths,
+  - NEVER defer the menu to a later user turn
+  - NEVER ask whether the menu should be generated
+  - NEVER replace this menu with a generic next-step menu
+  - NEVER emit Fix Prompt or Plan Prompt unless user picks option 2 or 3
+    in the NEXT turn; both ALWAYS be self-contained with all findings, paths,
     and context embedded inline
-  - MUST re-probe INLINE_FALLBACK before any Phase 5 dispatch after option 1
-  - MUST_NOT shortcut the fix loop with inline review, inline fix, or
+  - ALWAYS re-probe INLINE_FALLBACK before any Phase 5 dispatch after option 1
+  - NEVER shortcut the fix loop with inline review, inline fix, or
     single-pass summary when MAX_ITER > 0
-  - MUST produce phase5_dispatch_evidence for author dispatch before the first
+  - ALWAYS produce phase5_dispatch_evidence for author dispatch before the first
     external-entry edit when MAX_ITER > 0 AND INLINE_FALLBACK=false; validator
     and semantic reviewer dispatch evidence is required for every post-author
     iteration that reaches Phase 5.1 / 5.2
-  - EXPLAIN_MODE=true disables this menu entirely
+  - ALWAYS EXPLAIN_MODE=true disables this menu entirely
 
 NOTES:
   "Actionable findings" = any FAIL, PARTIAL, blocking validator error, or

@@ -76,35 +76,35 @@ PURPOSE:
   Define constraints for constructing a minimal, safe author execution plan.
 
 RULES:
-  - MUST keep the plan small; prefer one task unless splitting enables real
+  - ALWAYS keep the plan small; prefer one task unless splitting enables real
     parallel work, isolates risk, or maps cleanly to specialist authors
-  - Hard limit: maximum 10 tasks per plan
-  - Preferred range: 1–3 tasks unless the work is clearly multi-domain or parallelizable
-  - Every task MUST name one recommended author from available_authors
-  - Every plan MUST preserve work_request as the authoritative statement of
+  - ALWAYS Hard limit: maximum 10 tasks per plan
+  - ALWAYS Preferred range: 1–3 tasks unless the work is clearly multi-domain or parallelizable
+  - ALWAYS Every task ALWAYS name one recommended author from available_authors
+  - ALWAYS Every plan ALWAYS preserve work_request as the authoritative statement of
     what must be done; task titles, intent, sequencing, and acceptance criteria
-    explain how to execute it but MUST_NOT replace or omit the work_request
-  - Every task MUST list its target_paths
-  - Target paths in the same parallel group MUST be disjoint
-  - MUST_NOT put two tasks that update {cf-studio-path}/config/artifacts.toml
+    explain how to execute it but NEVER replace or omit the work_request
+  - ALWAYS Every task ALWAYS list its target_paths
+  - ALWAYS Target paths in the same parallel group ALWAYS be disjoint
+  - NEVER put two tasks that update {cf-studio-path}/config/artifacts.toml
     in the same parallel group
-  - MUST use cf-generate-coder-* ONLY for pure source/test/config code work;
-    MUST_NOT use for prompt/workflow/agent instructions
-  - MUST use cf-generate-prompt-engineer-* for workflow, skill, agent, routing,
+  - ALWAYS use cf-generate-coder-* ONLY for pure source/test/config code work;
+    NEVER use for prompt/workflow/agent instructions
+  - ALWAYS use cf-generate-prompt-engineer-* for workflow, skill, agent, routing,
     state-machine, prompt, or validation instruction changes
-  - MUST use generic author-* agents for SDLC artifacts, prose docs,
+  - ALWAYS use generic author-* agents for SDLC artifacts, prose docs,
     registry work, or mixed tasks that are not pure code or pure prompt engineering
-  - MUST mark dependencies explicitly; a task can be in a later parallel group
+  - ALWAYS mark dependencies explicitly; a task can be in a later parallel group
     when it depends on another task's output or could conflict on the same path
-  - Every task.parallel_group value MUST be a string group id matching an
+  - ALWAYS Every task.parallel_group value ALWAYS be a string group id matching an
     existing parallel_groups[].id, using the `G<number>` form (for example
     "G1"). Numeric values such as 1 or 2 are invalid.
-  - Every parallel_groups[] entry MUST include all required fields:
+  - ALWAYS Every parallel_groups[] entry ALWAYS include all required fields:
     id, task_ids, depends_on, execution, and reason.
-  - Every parallel_groups[].depends_on reference MUST name an earlier group
-  - Every parallel_groups[].execution value MUST be exactly "parallel" or
+  - ALWAYS Every parallel_groups[].depends_on reference ALWAYS name an earlier group
+  - ALWAYS Every parallel_groups[].execution value ALWAYS be exactly "parallel" or
     "sequential".
-  - In disk mode, produce the same JSON plan as memory mode;
+  - ALWAYS In disk mode, produce the same JSON plan as memory mode;
     the orchestrator renders the Markdown plan pack from the JSON,
     including one file per involved author agent and one file per task
 ```
@@ -118,12 +118,12 @@ PURPOSE:
   Emit a short human-readable plan summary followed by the author_plan JSON block.
 
 DO:
-  EMIT:
+  - EMIT:
     Author plan: <one-line summary>
     Parallel groups: <count>; tasks: <count>
 
-  EMIT exactly the marker line: <!-- author_plan -->
-  EMIT author_plan JSON block:
+  - EMIT exactly the marker line: <!-- author_plan -->
+  - EMIT author_plan JSON block:
     {
       "plan_mode": "memory|disk",
       "work_request": "<preserved original request / what must be done>",
@@ -158,11 +158,11 @@ DO:
     }
 
 RULES:
-  - MUST use exactly the marker <!-- author_plan --> at column 0
-  - Every disk-mode plan MUST preserve work_request in plan.json and Markdown
+  - ALWAYS use exactly the marker <!-- author_plan --> at column 0
+  - ALWAYS Every disk-mode plan ALWAYS preserve work_request in plan.json and Markdown
     cache files so a resumed session can recover what must be done without
     inferring it from task sequencing
-  - MUST_NOT emit prose after the JSON block
+  - NEVER emit prose after the JSON block
 ```
 
 ## Response Completion Gate
@@ -174,16 +174,16 @@ PURPOSE:
   Enforce response completeness before output is considered final.
 
 RULES:
-  - Every target_paths entry MUST be covered by at least one task
-  - MUST_NOT have two tasks in the same parallel group share a target path
-  - Every recommended_author MUST be one of the registered author worker agents
-  - work_request MUST be non-empty and MUST preserve the original requested
+  - ALWAYS Every target_paths entry ALWAYS be covered by at least one task
+  - NEVER have two tasks in the same parallel group share a target path
+  - ALWAYS Every recommended_author ALWAYS be one of the registered author worker agents
+  - ALWAYS work_request ALWAYS be non-empty and ALWAYS preserve the original requested
     work scope, not only the execution sequence
-  - Every task MUST have at least one acceptance criterion
-  - Every task.parallel_group MUST be a named string group id matching an
+  - ALWAYS Every task ALWAYS have at least one acceptance criterion
+  - ALWAYS Every task.parallel_group ALWAYS be a named string group id matching an
     existing parallel_groups[].id; numeric group values fail the gate
-  - Every parallel_groups[] entry MUST include id, task_ids, depends_on,
+  - ALWAYS Every parallel_groups[] entry ALWAYS include id, task_ids, depends_on,
     execution, and reason
-  - The author_plan JSON block MUST be well-formed and follow the contract
-  - MUST satisfy the SKILL.md invariant
+  - ALWAYS The author_plan JSON block ALWAYS be well-formed and follow the contract
+  - ALWAYS satisfy the SKILL.md invariant
 ```

@@ -58,17 +58,17 @@ PURPOSE:
   registry work is in scope.
 
 WHEN:
-  artifact-registry intent or `artifacts.toml` work is detected
+  - REQUIRE artifact-registry intent or `artifacts.toml` work is detected
 
 DO:
-  REQUIRE controller loads this specification
-  REQUIRE controller resolves the Studio install path with `{cfs_cmd} info`
-  SET ARTIFACTS_REGISTRY_MODE = true
+  - REQUIRE controller loads this specification
+  - REQUIRE controller resolves the Studio install path with `{cfs_cmd} info`
+  - SET ARTIFACTS_REGISTRY_MODE = true
 
 RULES:
-  - MUST treat this specification as controller-owned prompt context
-  - MUST_NOT let prompt-consuming sub-agents reopen this file from disk
-  - MUST pass any dispatched prompt subset through the
+  - ALWAYS treat this specification as controller-owned prompt context
+  - NEVER let prompt-consuming sub-agents reopen this file from disk
+  - ALWAYS pass any dispatched prompt subset through the
     controller-synthesized final dispatch prompt
 ```
 
@@ -79,15 +79,15 @@ PURPOSE:
   Make registry discovery and mutation boundaries explicit.
 
 DO:
-  REQUIRE registry path is resolved before artifact work begins
-  REQUIRE artifact operations use `{cfs_cmd}` CLI commands
-  REQUIRE direct manual edits to `artifacts.toml` follow the schema and
+  - REQUIRE registry path is resolved before artifact work begins
+  - REQUIRE artifact operations use `{cfs_cmd}` CLI commands
+  - REQUIRE direct manual edits to `artifacts.toml` follow the schema and
     validation rules in this specification
 
 RULES:
-  - MUST use CLI-assisted discovery for registry location
-  - MUST use registered kit metadata from `core.toml` when resolving templates
-  - MUST keep ignored paths globally invisible to artifact and code scanning
+  - ALWAYS use CLI-assisted discovery for registry location
+  - ALWAYS use registered kit metadata from `core.toml` when resolving templates
+  - ALWAYS keep ignored paths globally invisible to artifact and code scanning
 ```
 
 ```pdsl

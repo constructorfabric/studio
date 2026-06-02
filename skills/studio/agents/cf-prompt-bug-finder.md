@@ -53,21 +53,21 @@ PURPOSE:
   Execute ordered inspection steps over all target paths.
 
 DO:
-  1. Load `requirements/prompt-bug-finding.md` via the controller-supplied
+  - RUN Load `requirements/prompt-bug-finding.md` via the controller-supplied
      `prompt_bug_finding_methodology` asset
-  2. Read every target_path in full from the allowed resource context for this
+  - RUN Read every target_path in full from the allowed resource context for this
      turn
      IF any target path cannot be read completely within the declared allowed
      resource scope:
-       EMIT PARTIAL_CHECKPOINT naming the unread paths
-       STOP_TURN
-  2a. Read every cross_ref_path from the allowed resource context when provided;
+       - EMIT PARTIAL_CHECKPOINT naming the unread paths
+       - STOP_TURN
+  - RUN 2a. Read every cross_ref_path from the allowed resource context when provided;
       use them as additional context when probing for instruction-routing and
       handoff defects across sibling agents/workflows
-  3. Map: behavioral hotspots, invariants, branches, handoffs, user-decision
+  - RUN Map: behavioral hotspots, invariants, branches, handoffs, user-decision
      points, state, recovery, and prompt bug-classes
-  4. Build or refute concrete counterexample dialogues / execution traces
-  5. Emit Findings for confirmed or high-confidence behavioral defects
+  - RUN Build or refute concrete counterexample dialogues / execution traces
+  - RUN Emit Findings for confirmed or high-confidence behavioral defects
 ```
 
 ## Output Contract
@@ -108,7 +108,7 @@ After the findings JSON, emit a markdown table listing every hotspot examined:
 
 ```pdsl
 RULES:
-  - MUST use one of: routing-defect | hidden-failure | unsafe-default | handoff-break | state-inconsistency
+  - ALWAYS use one of: routing-defect | hidden-failure | unsafe-default | handoff-break | state-inconsistency
 ```
 
 ### Residual Risk Summary
@@ -127,15 +127,15 @@ PURPOSE:
   are read, rather than risk truncated output.
 
 WHEN:
-  fewer than 20% of estimated remaining context budget remains
-  AND NOT all target_paths have been fully read
+  - REQUIRE fewer than 20% of estimated remaining context budget remains
+  - AND NOT all target_paths have been fully read
 
 DO:
-  EMIT Partial Checkpoint — Prompt Bug Section markdown block
-  EMIT partial-run discriminator JSON (see schema below)
-  EMIT findings JSON containing only findings_so_far
-  FORBID emitting a complete validation report
-  STOP_TURN
+  - EMIT Partial Checkpoint — Prompt Bug Section markdown block
+  - EMIT partial-run discriminator JSON (see schema below)
+  - EMIT findings JSON containing only findings_so_far
+  - NEVER emitting a complete validation report
+  - STOP_TURN
 ```
 
 ```json
@@ -162,23 +162,23 @@ PURPOSE:
   Enforce that the response reaches one of two valid terminal states.
 
 RULES:
-  - MUST reach exactly one terminal state before responding
+  - ALWAYS reach exactly one terminal state before responding
 
 MENU TerminalStates:
   OPTIONS:
-    complete_run ->
+    1 complete_run ->
       REQUIRE hotspot table is present (per Additional Output Sections)
       REQUIRE review_result.type == "VALIDATION_REPORT"
       REQUIRE findings JSON is present
       REQUIRE residual risk summary is present
       REQUIRE AP-001..AP-008 self-check performed after all findings/table/summary
       REQUIRE controller-supplied studio invariants were included in the final
-        dispatch prompt; the dispatched agent MUST_NOT reopen SKILL.md from disk
-    partial_run ->
+        dispatch prompt; the dispatched agent NEVER reopen SKILL.md from disk
+    2 partial_run ->
       REQUIRE checkpoint.type == "PARTIAL_CHECKPOINT"
       REQUIRE checkpoint JSON is present with:
         covered_paths, pending_paths, findings_so_far,
         hotspot_table_so_far, residual_risk_so_far, resume_instructions
       REQUIRE findings JSON is present and matches findings_so_far
-      FORBID PASS claim or complete-run claim for unread or unauthorized paths
+      NEVER PASS claim or complete-run claim for unread or unauthorized paths
 ```

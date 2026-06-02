@@ -16,32 +16,32 @@ PURPOSE:
   approved) or offer plan escalation to the user.
 
 STATE:
-  PLANNER_ESCALATION_RESULT: unset | bypassed | escalated
+  - SET PLANNER_ESCALATION_RESULT: unset | bypassed | escalated
     default: unset
 
 WHEN:
-  After all Phase 0 dependencies are loaded
+  - REQUIRE After all Phase 0 dependencies are loaded
 
 DO:
-  IF raw-input-overflow.md has already fired for direct input over 500 lines:
-    EMIT explicit plan-vs-stop choice from that rule before applying bypass
-  IF INLINE_FALLBACK == unset:
-    RUN workflows/shared/inline-fallback-probe.md
-    CONTINUE AnalyzePlanEscalationGate (re-evaluate after resolution)
-  IF SUB_AGENT_SESSION_APPROVED == true AND INLINE_FALLBACK == false:
-    EMIT "Plan-escalation bypassed: estimate={N} lines, decomposition deferred to Phase 2.5 because native sub-agents are already approved for this run."
-    SET PLANNER_ESCALATION_RESULT = bypassed
-    CONTINUE next phase
-  IF host.supports_native_subagents == true AND SUB_AGENT_SESSION_APPROVED != true AND INLINE_FALLBACK != true:
-    EMIT "Native sub-agents are available but not approved for this analyze run."
-    EMIT "Resolve the Session Sub-Agent Approval Gate or choose inline fallback through workflows/shared/inline-fallback-probe.md before plan escalation."
-    STOP_TURN
-  IF INLINE_FALLBACK == true OR host.supports_native_subagents == false:
+  - REQUIRE raw-input-overflow.md has already fired for direct input over 500 lines:
+    - EMIT explicit plan-vs-stop choice from that rule before applying bypass
+  - REQUIRE INLINE_FALLBACK == unset:
+    - RUN workflows/shared/inline-fallback-probe.md
+    - CONTINUE AnalyzePlanEscalationGate (re-evaluate after resolution)
+  - REQUIRE SUB_AGENT_SESSION_APPROVED == true AND INLINE_FALLBACK == false:
+    - EMIT "Plan-escalation bypassed: estimate={N} lines, decomposition deferred to Phase 2.5 because native sub-agents are already approved for this run."
+    - SET PLANNER_ESCALATION_RESULT = bypassed
+    - CONTINUE next phase
+  - REQUIRE host.supports_native_subagents == true AND SUB_AGENT_SESSION_APPROVED != true AND INLINE_FALLBACK != true:
+    - EMIT "Native sub-agents are available but not approved for this analyze run."
+    - EMIT "Resolve the Session Sub-Agent Approval Gate or choose inline fallback through workflows/shared/inline-fallback-probe.md before plan escalation."
+    - STOP_TURN
+  - REQUIRE INLINE_FALLBACK == true OR host.supports_native_subagents == false:
     Estimate total context: rules.md Validation + checklist.md + artifact +
       related cross-refs + expected analysis output + ~30% reasoning overhead
-    EMIT_MENU PlanEscalationMenu
-    WAIT user.reply
-    STOP_TURN
+    - EMIT_MENU PlanEscalationMenu
+    - WAIT user.reply
+    - STOP_TURN
 
 MENU PlanEscalationMenu:
   TITLE: |
@@ -71,25 +71,25 @@ MENU PlanEscalationMenu:
     STOP_TURN
 
 RULES:
-  - MUST run this gate before any further Phase-0 or Phase-1 work
-  - When CHANGE_REVIEW=true and native-sub-agent approval or inline-fallback
-    resolution is still missing, this gate MUST stay fail-closed: it MUST_NOT
+  - ALWAYS run this gate before any further Phase-0 or Phase-1 work
+  - ALWAYS When CHANGE_REVIEW=true and native-sub-agent approval or inline-fallback
+    resolution is still missing, this gate ALWAYS stay fail-closed: it NEVER
     run or narrate local git status/diff, cfs validate, local semantic
     review, findings, summaries, remediation menus, plan-escalation bypass
-    text, or plan menus; it MAY emit only the missing gate menu or the
-    matching `Dispatch blocked: ...` error, then MUST STOP_TURN
-  - MUST_NOT propose Invoke skill `cf-plan` when SUB_AGENT_SESSION_APPROVED=true AND INLINE_FALLBACK=false
-  - MUST apply raw-input-overflow rule at higher precedence than the bypass
-  - MUST treat an unresolved NativeSubAgentPolicyConflictMenu from
+    text, or plan menus; it may emit only the missing gate menu or the
+    matching `Dispatch blocked: ...` error, then ALWAYS STOP_TURN
+  - NEVER propose Invoke skill `cf-plan` when SUB_AGENT_SESSION_APPROVED=true AND INLINE_FALLBACK=false
+  - ALWAYS apply raw-input-overflow rule at higher precedence than the bypass
+  - ALWAYS treat an unresolved NativeSubAgentPolicyConflictMenu from
     workflows/shared/inline-fallback-probe.md as higher precedence than this
     menu; do not reinterpret that conflict as permission to hand off to Invoke skill `cf-plan`
     or continue locally
-  - MUST run plan-handoff/stop fallback only when INLINE_FALLBACK=true OR
+  - ALWAYS run plan-handoff/stop fallback only when INLINE_FALLBACK=true OR
     host.supports_native_subagents=false
-  - When SUB_AGENT_SESSION_APPROVED=true AND INLINE_FALLBACK=false, MUST treat
+  - ALWAYS When SUB_AGENT_SESSION_APPROVED=true AND INLINE_FALLBACK=false, ALWAYS treat
     the bypass as a resolved state: continue directly to the next phase,
-    MUST_NOT emit the fallback menu, and MUST_NOT imply that user confirmation
+    NEVER emit the fallback menu, and NEVER imply that user confirmation
     is still pending for this run
-  - MUST_NOT continue to the next analyze phase from the fallback branch
-  - MUST_NOT offer a "continue here" or local single-context option
+  - NEVER continue to the next analyze phase from the fallback branch
+  - NEVER offer a "continue here" or local single-context option
 ```

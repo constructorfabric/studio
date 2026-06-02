@@ -31,9 +31,9 @@ ORDER:
      active workflow run.
 
 RULES:
-  - MUST use this unit as the canonical precedence reference in workflow
+  - ALWAYS use this unit as the canonical precedence reference in workflow
     entrypoints and dispatch-state checks.
-  - MUST treat unresolved native dispatch, missing prompt_context_view slices,
+  - ALWAYS treat unresolved native dispatch, missing prompt_context_view slices,
     missing dispatch manifest fields, or unverifiable checkpoint fingerprints
     as fail-closed before sub-agent execution.
 ```
@@ -46,16 +46,16 @@ PURPOSE:
   workflow or agent entry point, in priority order.
 
 RULES:
-  - MUST evaluate entries top-to-bottom and stop at the first match
-  - MUST prefer entry 10 (analyze) over entry 8 (generate) on compound
+  - ALWAYS evaluate entries top-to-bottom and stop at the first match
+  - ALWAYS prefer entry 10 (analyze) over entry 8 (generate) on compound
     find+fix intent (see UNIT CompoundFindFix below)
-  - MUST surface raw-input-overflow rule when raw input exceeds 500 lines
+  - ALWAYS surface raw-input-overflow rule when raw input exceeds 500 lines
     before continuing to generate or analyze
-  - MUST_NOT collapse the three distinct thresholds (500 / 2000 / 2500)
-  - MUST ask for clarification and request exactly one
+  - NEVER collapse the three distinct thresholds (500 / 2000 / 2500)
+  - ALWAYS ask for clarification and request exactly one
     RoutingClarificationMenu option, ordered by user-facing likelihood rather
     than WorkflowRoutingTable entry number, when no entry matches
-  - MUST surface installed-kit shortcut examples when ProtocolGuard loaded
+  - ALWAYS surface installed-kit shortcut examples when ProtocolGuard loaded
     kit skill instructions, without collapsing them into the core routing table
 ```
 
@@ -66,10 +66,10 @@ PURPOSE:
   Define CLI alias and agent-safe invocation rules for routing.
 
 RULES:
-  - MUST treat /cf-studio as identical to /cf (same skill, same behavior)
-  - MUST use {cfs_cmd} --json agents --agent <name> for agent lookup
-  - MUST run init, delegate, and update without --json
-  - MUST obtain write confirmation before any write-capable direct CLI command
+  - ALWAYS treat /cf-studio as identical to /cf (same skill, same behavior)
+  - ALWAYS use {cfs_cmd} --json agents --agent <name> for agent lookup
+  - ALWAYS run init, delegate, and update without --json
+  - ALWAYS obtain write confirmation before any write-capable direct CLI command
 ```
 
 ```pdsl
@@ -80,11 +80,11 @@ PURPOSE:
   loading boundaries.
 
 RULES:
-  - Routed workflow and agent prompt assets are controller-owned runtime loads
-    and MUST use {cf-studio-path}-prefixed runtime paths when mirrors exist
-  - Routing MUST reuse or extend SHARED_CONTEXT_PACK before any downstream
+  - ALWAYS Routed workflow and agent prompt assets are controller-owned runtime loads
+    and ALWAYS use {cf-studio-path}-prefixed runtime paths when mirrors exist
+  - ALWAYS Routing ALWAYS reuse or extend SHARED_CONTEXT_PACK before any downstream
     dispatch that depends on prompt assets
-  - Routing MUST NOT instruct prompt-consuming sub-agents to open workflow,
+  - ALWAYS Routing NEVER instruct prompt-consuming sub-agents to open workflow,
     AGENTS, SKILL, requirement, or spec prompt files directly
 ```
 
@@ -95,25 +95,25 @@ PURPOSE:
   Ordered routing table; first matching entry wins.
 
 DO:
-  0. WHEN request matches any of:
+  - RUN WHEN request matches any of:
        cf help | /cf help | cf-studio help | /cf-studio help | cfs help
        -> open and follow {cf-studio-path}/.core/workflows/help.md
 
-  1. WHEN request matches "delegate"
+  - RUN WHEN request matches "delegate"
        -> open and follow {cf-studio-path}/.core/skills/studio/agents/cf-ralphex.md
 
-  2. WHEN request matches "compile phase"
+  - RUN WHEN request matches "compile phase"
        -> open and follow {cf-studio-path}/.core/skills/studio/agents/cf-phase-compiler.md
 
-  3. WHEN request matches "execute phase"
+  - RUN WHEN request matches "execute phase"
        -> open and follow {cf-studio-path}/.core/skills/studio/agents/cf-phase-runner.md
 
-  4. WHEN request matches any of:
+  - RUN WHEN request matches any of:
        brainstorm | cf-brainstorm | ideate | explore options |
        design exploration | requirements discovery | option mapping
        -> open and follow {cf-studio-path}/.core/workflows/brainstorm.md
 
-  5. WHEN request matches any of:
+  - RUN WHEN request matches any of:
        pdsl | cf-pdsl | prompt dsl | prompt contract |
        new prompt file | generate prompt instructions |
        transform prompts to dsl | convert prompt prose to dsl |
@@ -121,44 +121,44 @@ DO:
        check prompt state machines | instruction dsl
        -> open and follow {cf-studio-path}/.core/workflows/pdsl.md
 
-  6. WHEN request matches "plan" | "decompose" | "break down"
+  - RUN WHEN request matches "plan" | "decompose" | "break down"
        -> open and follow {cf-studio-path}/.core/workflows/plan.md
 
-  7. WHEN request matches any of:
+  - RUN WHEN request matches any of:
        explore | discover context | find relevant context |
        find project context | locate architecture | locate resources |
        context search | resource search
        -> open and follow {cf-studio-path}/.core/workflows/explore.md
 
-  8. WHEN request matches any of:
+  - RUN WHEN request matches any of:
        create | edit | fix | update | implement | refactor | setup | build
        AND CompoundFindFix does NOT apply
        -> open and follow {cf-studio-path}/.core/workflows/generate.md
 
-  9. WHEN request matches any of:
+  - RUN WHEN request matches any of:
        explain | walk through | teach | onboard
        -> SET EXPLAIN_MODE = true
           open and follow {cf-studio-path}/.core/workflows/explain.md
 
-  10. WHEN request matches any of:
+  - RUN WHEN request matches any of:
        analyze | validate | review | check | inspect | audit | compare |
        bug hunt | find bugs | prompt bugs
        OR CompoundFindFix applies
        -> open and follow {cf-studio-path}/.core/workflows/analyze.md
 
-  11. WHEN request matches any of:
+  - RUN WHEN request matches any of:
        workspace | multi-repo | add source | cross-reference
        -> open and follow {cf-studio-path}/.core/workflows/workspace.md
 
-  12. WHEN request matches any of:
+  - RUN WHEN request matches any of:
        map | dependency map | cfs map | visualize dependencies | render graph
        -> open and follow {cf-studio-path}/.core/workflows/map.md
 
-  13. WHEN request matches any of:
+  - RUN WHEN request matches any of:
         auto-config | configure project | scan brownfield | generate rules
         -> open and follow {cf-studio-path}/.core/workflows/auto-config.md
 
-  14. WHEN request matches "migrate from cypilot" | "migrate-from-cypilot"
+  - RUN WHEN request matches "migrate from cypilot" | "migrate-from-cypilot"
         -> open and follow {cf-studio-path}/.core/skills/studio/migrate-from-cypilot.md
 ```
 
@@ -170,12 +170,12 @@ PURPOSE:
   and find-bugs/bug-hunt/audit/review keywords (entry 10) simultaneously.
 
 WHEN:
-  request matches keywords from entry 8 (create | edit | fix | update | implement | refactor | setup | build)
-  AND request matches keywords from entry 10 (find bugs | bug hunt | audit | review)
+  - REQUIRE request matches keywords from entry 8 (create | edit | fix | update | implement | refactor | setup | build)
+  - AND request matches keywords from entry 10 (find bugs | bug hunt | audit | review)
 
 DO:
-  SET routing_winner = analyze
-  CONTINUE WorkflowRoutingTable entry 10
+  - SET routing_winner = analyze
+  - CONTINUE WorkflowRoutingTable entry 10
 
 NOTES:
   Routing both to generate skips the find phase entirely. The analyze run
@@ -190,25 +190,25 @@ PURPOSE:
   Enforce the three distinct input-size thresholds before routing continues.
 
 STATE:
-  raw_input_lines: integer
+  - SET raw_input_lines: integer
     default: 0
 
-  workflow_context_lines: integer
+  - SET workflow_context_lines: integer
     default: 0
 
 WHEN:
-  raw_input_lines > 500
+  - REQUIRE raw_input_lines > 500
 
 DO:
-  REQUIRE surface {cf-studio-path}/.core/requirements/raw-input-overflow.md
-  EMIT_MENU RawInputOverflowMenu
-  WAIT user.reply
-  STOP_TURN
+  - REQUIRE surface {cf-studio-path}/.core/requirements/raw-input-overflow.md
+  - EMIT_MENU RawInputOverflowMenu
+  - WAIT user.reply
+  - STOP_TURN
 
 RULES:
-  - MUST_NOT collapse raw-input threshold (500) with analyze gate (> 2000)
+  - NEVER collapse raw-input threshold (500) with analyze gate (> 2000)
     or generate gate (> 2500)
-  - MUST treat all three thresholds as independent checks
+  - ALWAYS treat all three thresholds as independent checks
 
 NOTES:
   The raw-input threshold (500 lines of pasted text or directly provided files)
@@ -224,15 +224,15 @@ PURPOSE:
   Handle requests that match no routing entry.
 
 WHEN:
-  no WorkflowRoutingTable entry matches
-  OR request is activation-only / no-task intent:
+  - REQUIRE no WorkflowRoutingTable entry matches
+  - OR request is activation-only / no-task intent:
      cf | /cf | cf on | /cf on | cfs on | cf-studio | cf-studio on
 
 DO:
-  EMIT "I need one routing choice. Reply with 1-15, or reply with a direct installed-kit shortcut such as `list PRs`, `review PR 123`, `PR status 123`, or `migrate-openspec` when those kit instructions are loaded."
-  EMIT_MENU RoutingClarificationMenu
-  WAIT user.reply
-  STOP_TURN
+  - EMIT "I need one routing choice. Reply with 1-15, or reply with a direct installed-kit shortcut such as `list PRs`, `review PR 123`, `PR status 123`, or `migrate-openspec` when those kit instructions are loaded."
+  - EMIT_MENU RoutingClarificationMenu
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU RoutingClarificationMenu:
   TITLE: Reply with exactly one option number, or a concrete installed-kit shortcut.

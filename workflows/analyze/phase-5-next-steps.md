@@ -13,17 +13,17 @@ PURPOSE:
   Offer applicable next steps from rules.md after a PASS result.
 
 WHEN:
-  overall result is PASS AND EXPLAIN_MODE == false
+  - REQUIRE overall result is PASS AND EXPLAIN_MODE == false
 
 DO:
-  IF EXPLAIN_MODE == true:
+  - REQUIRE EXPLAIN_MODE == true:
     STOP (skip this phase entirely)
-  IF actionable findings exist:
+  - REQUIRE actionable findings exist:
     STOP (Remediation Handoff menu in Phase 4 is the next-step selector)
-  Read "## Next Steps" from rules.md.
-  EMIT_MENU NextStepsMenu
-  WAIT user.reply
-  STOP_TURN
+  - RUN Read "## Next Steps" from rules.md.
+  - EMIT_MENU NextStepsMenu
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU NextStepsMenu:
   TITLE: "What would you like to do next?"
@@ -44,13 +44,13 @@ MENU NextStepsMenu:
     STOP_TURN
 
 RULES:
-  - MUST skip this phase entirely when EXPLAIN_MODE=true
+  - ALWAYS skip this phase entirely when EXPLAIN_MODE=true
     (Storytelling Output already emits Suggested Next Steps)
-  - MUST_NOT emit a separate menu when actionable findings exist (FAIL path);
+  - NEVER emit a separate menu when actionable findings exist (FAIL path);
     Phase 4 Remediation Handoff IS the next-step selector for failure cases
-  - MUST_NOT duplicate or paraphrase the Remediation Handoff menu here
-  - MUST_NOT ask whether the handoff menu should be generated
-  - MUST_NOT defer the handoff menu to a later user turn
+  - NEVER duplicate or paraphrase the Remediation Handoff menu here
+  - NEVER ask whether the handoff menu should be generated
+  - NEVER defer the handoff menu to a later user turn
 
 NOTES:
   EXPLAIN_MODE was set in preamble.md; no re-load of phase-0-dependencies.md needed.

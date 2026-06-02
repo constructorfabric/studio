@@ -860,7 +860,7 @@ def test_external_fix_handoff_requires_subagent_dispatch_evidence() -> None:
     assert "missing required\n      evidence = protocol violation" in phase5_index
 
     assert "Inline patching permitted ONLY when INLINE_FALLBACK=true OR MAX_ITER=0" in phase53
-    assert "MUST stop before editing files" in phase53
+    assert "ALWAYS stop before editing files" in phase53
     assert "APPEND selected author dispatch evidence to phase5_dispatch_evidence" in phase54
 
 
@@ -926,7 +926,7 @@ def test_phase_5_4_reply_grammar(reply: str, expected: str) -> None:
 #
 # Source of truth: workflows/generate/phase-6/remediation-handoff.md § Combine
 # semantics. Combined Remediation (R*) + Post-Write Review (W*) replies on the
-# same turn MUST be refused with the canonical clarifier.
+# same turn ALWAYS be refused with the canonical clarifier.
 # ---------------------------------------------------------------------------
 COMBINE_REFUSAL_PATTERN = re.compile(
     r"""^\s*
@@ -952,7 +952,7 @@ def _phase_6_route(reply: str) -> str:
 
 
 def test_phase_6_combine_refusal() -> None:
-    """The Phase 6 dispatcher MUST refuse combined Remediation+Post-Write
+    """The Phase 6 dispatcher ALWAYS refuse combined Remediation+Post-Write
     replies and also refuse multi-choice replies within one menu. Single-menu
     single-choice replies are accepted."""
     # Combined R+W must be refused (every separator variant + casing).
@@ -1013,7 +1013,7 @@ def test_skill_completion_invariants_match_handoff_workflows() -> None:
 
     assert "terminal = Post-Write Review Handoff menu" in skill
     assert "terminal = Remediation Handoff menu" in skill
-    assert "Analyze remediation and review handoff prompt blocks MUST be emitted only" in skill
+    assert "Analyze remediation and review handoff prompt blocks ALWAYS be emitted only" in skill
     assert "on the NEXT turn after the user picks the matching handoff option" in skill
     assert "both `Plan Review Prompt` and `Direct Review Prompt` blocks" not in skill
     assert "both `Fix Prompt` and `Plan Prompt` blocks" not in skill
@@ -1026,8 +1026,8 @@ def test_skill_completion_invariants_match_handoff_workflows() -> None:
     assert "emitted only on next turn" in pr_review
     assert "final two sections" not in pr_review
 
-    assert "MUST trigger the `Remediation Handoff` menu" in analyze_overview
-    assert "MUST trigger both remediation prompts in the same response" not in analyze_overview
+    assert "ALWAYS trigger Remediation Handoff" in analyze_overview
+    assert "ALWAYS trigger both remediation prompts in the same response" not in analyze_overview
 
     assert "Continue here in fix mode" in analyze_handoff
     assert 'start with' in analyze_handoff and '"Invoke skill `cf`"' in analyze_handoff
@@ -1052,9 +1052,9 @@ def test_skill_requires_session_approval_before_native_subagent_dispatch() -> No
     assert "Suggested: 1" in skill
     assert "Reply with 1 or 2" in skill
     assert "STOP_TURN) immediately" in skill
-    assert "MUST end the turn (STOP_TURN) immediately" in skill
-    assert "MUST_NOT default INLINE_FALLBACK from host capability or missing approval" in skill
-    assert "MUST_NOT set INLINE_FALLBACK = false unless SUB_AGENT_SESSION_APPROVED == true" in skill
+    assert "ALWAYS end the turn (STOP_TURN) immediately" in skill
+    assert "NEVER default INLINE_FALLBACK from host capability or missing approval" in skill
+    assert "NEVER set INLINE_FALLBACK = false unless SUB_AGENT_SESSION_APPROVED == true" in skill
 
 
 def test_workflow_probe_requires_subagent_approval_gate() -> None:
@@ -1079,9 +1079,9 @@ def test_workflow_probe_requires_subagent_approval_gate() -> None:
     assert "Suggested: 1" in shared_probe
     assert "STOP_TURN immediately after emitting" in shared_probe
     assert "do NOT load agent contracts" in shared_probe
-    assert "MUST NOT treat absence of user reply as option 2" in shared_probe
-    assert "MUST_NOT default INLINE_FALLBACK = true from missing approval" in shared_probe
-    assert "MUST_NOT default INLINE_FALLBACK = false" in shared_probe
+    assert "NEVER treat absence of user reply as option 2" in shared_probe
+    assert "NEVER default INLINE_FALLBACK = true from missing approval" in shared_probe
+    assert "NEVER default INLINE_FALLBACK = false" in shared_probe
     assert "default `false` when ambiguous" not in shared_probe
     assert "workflows/shared/inline-fallback-probe.md" in analyze_phase0
     assert "workflows/shared/inline-fallback-probe.md" in generate_phase0
@@ -1112,7 +1112,7 @@ def test_analyze_change_review_dispatches_diff_scope_resolver() -> None:
 
     assert "CHANGE_REVIEW=true" in overview
     assert "cf-diff-scope-resolver" in change_scope
-    assert "MUST_NOT run git diff" in change_scope
+    assert "NEVER run git diff" in change_scope
     assert "diff_scope" in phase3
     assert "target_paths=prompt_targets" in phase3
     assert "deterministic gate is PASS or SKIPPED (with validator availability proof)" in phase3
@@ -1158,7 +1158,7 @@ def test_analyze_handoff_max_iter_zero_can_reach_phase_6() -> None:
         repo_root / "workflows" / "generate" / "phase-6" / "index.md"
     ).read_text(encoding="utf-8")
 
-    assert "IF MAX_ITER == 0:" in phase53
+    assert "REQUIRE MAX_ITER == 0:" in phase53
     assert "remaining_findings = all_findings" in phase53
     assert "external entry from analyze.md with MAX_ITER=0" in phase6
     assert "accept carried analyze-side deterministic result" in phase6
@@ -1177,7 +1177,7 @@ def test_analyze_external_r1_fixes_carried_findings_before_fresh_review() -> Non
     assert "BEFORE any fresh Phase 5.1 / 5.2 review" in handoff
     assert "First author dispatch fixes the already-reviewed analyze findings." in handoff
     assert "external-entry from analyze" in phase5
-    assert "MUST NOT run Phase 5.1 or Phase 5.2 before the first author dispatch" in phase5
+    assert "NEVER run Phase 5.1 or Phase 5.2 before the first author dispatch" in phase5
 
 
 def test_max_iter_zero_preserves_analyzed_paths_for_followup_fix_loop() -> None:
@@ -1201,8 +1201,8 @@ def test_phase_6_chat_only_suppression_does_not_hide_remaining_findings() -> Non
         repo_root / "workflows" / "generate" / "phase-6" / "index.md"
     ).read_text(encoding="utf-8")
 
-    assert "IF output was chat-only AND no files changed AND remaining_findings is empty" in phase6
-    assert "IF chat-only output with non-empty remaining_findings" in phase6
+    assert "REQUIRE output was chat-only AND no files changed AND remaining_findings is empty" in phase6
+    assert "REQUIRE chat-only output with non-empty remaining_findings" in phase6
 
 
 def test_protocol_references_use_existing_thin_protocol_file() -> None:
@@ -1361,7 +1361,7 @@ def test_phase_3_to_4_checkpoint_has_canonical_reply_menu() -> None:
     assert "1 -> IF PARTIAL == true:" in checkpoint
     assert "2 -> Emit" in checkpoint
     assert "3 -> EMIT" in checkpoint
-    assert "MUST_NOT infer a default when the user replies anything other than 1, 2, or 3" in checkpoint
+    assert "NEVER infer a default when the user replies anything other than 1, 2, or 3" in checkpoint
 
 
 def test_partial_checkpoint_contract_scope_matches_reviewer_support() -> None:
@@ -1374,7 +1374,7 @@ def test_partial_checkpoint_contract_scope_matches_reviewer_support() -> None:
         repo_root / "workflows" / "generate" / "phase-5" / "phase-5.2-semantic.md"
     ).read_text(encoding="utf-8")
 
-    assert "MUST support PARTIAL_CHECKPOINT only for reviewers whose contract declares it" in phase3
+    assert "ALWAYS support PARTIAL_CHECKPOINT only for reviewers whose contract declares it" in phase3
     assert "PARTIAL_CHECKPOINT only supported by reviewers whose contract declares it" in phase52
 
 
@@ -1410,7 +1410,7 @@ def test_phase_5_findings_display_is_bounded_with_full_json_payload() -> None:
     ).read_text(encoding="utf-8")
 
     assert "Render every finding" in phase53
-    assert "MUST NOT collapse, summarize, or truncate" in phase53
+    assert "NEVER collapse, summarize, or truncate" in phase53
     assert "bounded chat-only audit block" not in phase53
 
 
@@ -1451,8 +1451,8 @@ def test_analyze_methodologies_are_lazy_and_one_per_subagent() -> None:
         assert text not in preamble
         assert text not in phase0
 
-    assert "FORBID opening code methodology files in the orchestrator" in phase0
-    assert "FORBID opening prompt methodology files in the orchestrator" in phase0
+    assert "NEVER opening code methodology files in the orchestrator" in phase0
+    assert "NEVER opening prompt methodology files in the orchestrator" in phase0
     assert "cf-code-bug-finder" in phase3
     assert "cf-prompt-bug-finder" in phase3
 
@@ -1541,7 +1541,7 @@ def test_generate_carry_forward_keeps_unapproved_judgmental_findings() -> None:
     ).read_text(encoding="utf-8")
 
     assert "un-approved judgmental findings are carried forward in session state" in approval
-    assert "MUST union every un-approved judgmental finding into carry_forward" in approval
+    assert "ALWAYS union every un-approved judgmental finding into carry_forward" in approval
     assert "reviewers no longer detect after the mechanical fix is effectively dropped" not in approval
 
 
@@ -1712,13 +1712,13 @@ def test_brainstorm_challenge_questions_target_decision_keys() -> None:
 
     assert '"decision_key": "<decision-key>"' in expert
     assert '"id": "<persona.id>Q1"' in expert
-    assert "`questions[].id` values MUST be unique within the response" in expert
-    assert "MUST be unique within this response" in expert
-    assert "MUST_NOT use bare `topic.section` as the whole key" in expert
-    assert "decision_key` MUST name a key present in `challenged_decisions`" in expert
+    assert "`questions[].id` values ALWAYS be unique within the response" in expert
+    assert "ALWAYS be unique within this response" in expert
+    assert "NEVER use bare `topic.section` as the whole key" in expert
+    assert "decision_key` ALWAYS name a key present in `challenged_decisions`" in expert
     assert "update state.decisions[q.decision_key]" in round_loop
     assert "challenge overwrites; skip/keep excluded" in round_loop
-    assert "MUST reject duplicate topic-round decision_key values" in round_loop
+    assert "ALWAYS reject duplicate topic-round decision_key values" in round_loop
     assert '"decision_key": "<section-or-topic>:<expert-id>:<question-key>"' in state_schema
     assert '"decision_key": "<key>"' in state_schema
 
@@ -1733,15 +1733,15 @@ def test_brainstorm_round_prompt_supports_one_by_one_answering() -> None:
 
     assert "UNIT Phase07QuestionQueue" in round_loop
     assert "UNIT Phase07AskCurrentQuestion" in round_loop
-    assert "MUST show exactly one pending question per turn" in round_loop
-    assert "MUST NOT dump the full question_queue to the user" in round_loop
+    assert "ALWAYS show exactly one pending question per turn" in round_loop
+    assert "NEVER dump the full question_queue to the user" in round_loop
     assert "UNIT Phase07PostRoundMenu" in round_loop
-    assert "MUST NOT show this menu before every pending question is resolved" in round_loop
-    assert '  EMIT "custom: <text> — custom next topic"' in round_loop_lines
+    assert "NEVER show this menu before every pending question is resolved" in round_loop
+    assert '  - EMIT "custom: <text> — custom next topic"' in round_loop_lines
     assert "3 skip ->" in round_loop
     assert 'reason = "user_skipped"' in round_loop
     assert 'mark q.status = "open_unanswered"' in round_loop
-    assert "skip MUST NOT update state.decisions" in round_loop
+    assert "skip NEVER update state.decisions" in round_loop
 
 
 _BRAINSTORM_POST_ROUND_REPLY_RULES = (
@@ -1771,10 +1771,10 @@ def test_brainstorm_wrap_menu_distinguishes_session_and_disk_save() -> None:
         repo_root / "workflows" / "generate" / "phase-0.7" / "wrap-handoff.md"
     ).read_text(encoding="utf-8")
 
-    assert "1. Save brainstorm results only (in session)" in wrap
-    assert "2. Save brainstorm results only (to disk)" in wrap
-    assert "Option 1 MUST be session-only and MUST NOT write files" in wrap
-    assert "Option 2 MUST be hidden or rejected" in wrap
+    assert "RUN Save brainstorm results only (in session)" in wrap
+    assert "RUN Save brainstorm results only (to disk)" in wrap
+    assert "Option 1 ALWAYS be session-only and NEVER write files" in wrap
+    assert "Option 2 ALWAYS be hidden or rejected" in wrap
     assert "WRITE state.json" in wrap
     assert "WRITE design.md" in wrap
 
@@ -1785,7 +1785,7 @@ def test_studio_agent_prompts_are_controller_side_generators() -> None:
     agent_dir = repo_root / "skills" / "studio" / "agents"
     forbidden = (
         "self-bootstrap",
-        "The controller MUST load this file",
+        "The controller ALWAYS load this file",
         "dispatched-prompt",
         "return-value contract",
         "ALWAYS open and follow",
@@ -1859,16 +1859,16 @@ def test_cf_help_routes_to_prefilled_explain_preset() -> None:
     assert "SET STORYTELLING_DIAGRAM_FORMAT_PRESET = true" in help_workflow
     assert "Run a normal cf-explain storytelling session" in help_workflow
     assert "LOAD skill `cf` IN ANALYZE + EXPLAIN mode, CF_HELP_PRESET=true" in help_workflow
-    assert "MUST_NOT render custom one-shot help here" in help_workflow
-    assert "MUST_NOT ask the diagram-format lazy prompt in help mode" in help_workflow
-    assert "IF CF_HELP_PRESET == true" in preamble
+    assert "NEVER render custom one-shot help here" in help_workflow
+    assert "NEVER ask the diagram-format lazy prompt in help mode" in help_workflow
+    assert "REQUIRE CF_HELP_PRESET == true" in preamble
     assert "PRESERVE route-supplied preset variables" in preamble
     assert "STORYTELLING_DIAGRAM_FORMAT, STORYTELLING_DIAGRAM_FORMAT_PRESET" in preamble
     assert "do not ask mode, disposition, audience" in preamble
     assert "diagram-format questions" in preamble
     assert "normal Storytelling Protocol E0-E5" in preamble
-    assert "FORBID custom one-shot help rendering" in preamble
-    assert "MUST render diagrams as ASCII" in preamble
+    assert "NEVER custom one-shot help rendering" in preamble
+    assert "ALWAYS render diagrams as ASCII" in preamble
     assert "custom one-shot overview/status summary" in preamble
     assert "STORYTELLING_HELP_OUTPUT_CONTRACT" not in preamble
 
@@ -1884,8 +1884,8 @@ def test_empty_standalone_explore_clarifies_before_dispatch() -> None:
     assert "I need a topic before I search the project" in explore
     assert "What should I explore?" in explore
     assert "MENU ExploreClarifyMenu" in explore
-    assert "MUST_NOT dispatch cf-explorer before this gate resolves" in explore
-    assert "Parent workflows MAY skip this gate only when they supply a non-empty" in explore
+    assert "NEVER dispatch cf-explorer before this gate resolves" in explore
+    assert "Parent workflows may skip this gate only when they supply a non-empty" in explore
 
 
 def test_explore_offers_explicit_save_bundle_after_summary() -> None:
@@ -1903,8 +1903,8 @@ def test_explore_offers_explicit_save_bundle_after_summary() -> None:
     assert "summary.md" in explore
     assert "exact explorer result JSON" in explore
     assert "task summary, exploration status, resource count, and missing-context questions" in explore
-    assert "MUST NOT silently write exploration results from running explore alone" in explore
-    assert "MUST keep explorer output in `resource_context`, not `SHARED_CONTEXT_PACK`" in explore
+    assert "NEVER silently write exploration results from running explore alone" in explore
+    assert "ALWAYS keep explorer output in `resource_context`, not `SHARED_CONTEXT_PACK`" in explore
 
 
 def test_brainstorm_challenge_critique_only_is_not_rendered_as_skipped() -> None:
@@ -1923,7 +1923,7 @@ def test_brainstorm_challenge_critique_only_is_not_rendered_as_skipped() -> None
 
     assert "critique-only challenge" in expert
     assert "relevant: true, empty questions" in expert
-    assert "MUST NOT render critique-only challenge outputs as skipped" in round_loop
+    assert "NEVER render critique-only challenge outputs as skipped" in round_loop
     assert "keep in participating" in round_loop
 
 
@@ -1965,10 +1965,10 @@ def test_brainstorm_facilitator_seed_topic_gate_requires_identity_and_text() -> 
         / "cf-brainstorm-facilitator.md"
     ).read_text(encoding="utf-8")
 
-    assert "MUST have non-empty id in seed_topic" in facilitator
-    assert "MUST have non-empty text in seed_topic" in facilitator
-    assert "MUST have section key in seed_topic" in facilitator
-    assert "MUST have non-empty why_first in seed_topic" in facilitator
+    assert "ALWAYS have non-empty id in seed_topic" in facilitator
+    assert "ALWAYS have non-empty text in seed_topic" in facilitator
+    assert "ALWAYS have section key in seed_topic" in facilitator
+    assert "ALWAYS have non-empty why_first in seed_topic" in facilitator
 
 
 def test_brainstorm_expert_registry_documents_challenge_shape() -> None:
@@ -2003,7 +2003,7 @@ def test_subagent_fallback_never_defaults_from_unapproved_native_support() -> No
     repo_root = Path(__file__).resolve().parents[1]
     skill = (repo_root / "skills" / "studio" / "SKILL.md").read_text(encoding="utf-8")
 
-    assert "MUST_NOT set INLINE_FALLBACK = true from missing approval alone" in skill
+    assert "NEVER set INLINE_FALLBACK = true from missing approval alone" in skill
     assert "Otherwise set `INLINE_FALLBACK=true`" not in skill
 
 
@@ -2132,11 +2132,11 @@ def test_planner_contracts_reject_incomplete_or_numeric_parallel_groups() -> Non
     for planner in (analyze_planner, generate_planner):
         assert "Numeric values such as 1 or 2 are invalid." in planner
         assert (
-            "Every parallel_groups[] entry MUST include all required fields:"
+            "Every parallel_groups[] entry ALWAYS include all required fields:"
             in planner
         )
         assert "id, task_ids, depends_on, execution, and reason" in planner
-        assert 'Every parallel_groups[].execution value MUST be exactly "parallel" or' in planner
+        assert 'Every parallel_groups[].execution value ALWAYS be exactly "parallel" or' in planner
 
 
 def test_reviewer_plan_failure_does_not_use_legacy_single_dispatch_fallback() -> None:
@@ -2152,10 +2152,10 @@ def test_reviewer_plan_failure_does_not_use_legacy_single_dispatch_fallback() ->
     assert "legacy single-dispatch-per-methodology" not in phase25
     assert "checkpoint-only report" not in phase25
     assert "checkpoint.type=PARTIAL_CHECKPOINT" in phase25
-    assert "MUST_NOT set REVIEWER_PLAN_RESOLVED=cancelled_inline_fallback after" in phase25
+    assert "NEVER set REVIEWER_PLAN_RESOLVED=cancelled_inline_fallback after" in phase25
     assert "rerun the planner" in phase25
     assert "Reply `1` to rerun the planner or `2` to stop." in phase25
-    assert "IF re-validation fails" in phase3
+    assert "REQUIRE re-validation fails" in phase3
     assert "every parallel_groups[].task_ids names an existing task" in phase3
     assert "every task.parallel_group is a string id matching an existing parallel_groups[].id" in phase3
     assert "every parallel_groups[].depends_on references an earlier group" in phase3

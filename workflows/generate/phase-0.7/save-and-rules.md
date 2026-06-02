@@ -26,24 +26,24 @@ PURPOSE:
   allows file writes.
 
 DO:
-  REQUIRE output_destination allows file writes
-  REQUIRE offer included the save option OR wrap-handoff option 2 was selected
-  AFTER every round:
+  - REQUIRE output_destination allows file writes
+  - REQUIRE offer included the save option OR wrap-handoff option 2 was selected
+  - RUN AFTER every round:
     WRITE state.json to {cf-studio-path}/.cache/brainstorm/{session_id}/state.json
       (durable across compaction)
-  ON loop exit:
+  - RUN ON loop exit:
     WRITE design.md to {cf-studio-path}/.cache/brainstorm/{session_id}/design.md
       (human-readable: consolidated decisions + open questions + panel transcript)
 
 RULES:
-  - MUST NOT enter persisted save mode for chat-only or no-write destinations
-  - MUST NOT create state.json, design.md, or any brainstorm cache directory
+  - NEVER enter persisted save mode for chat-only or no-write destinations
+  - NEVER create state.json, design.md, or any brainstorm cache directory
     if user replies save to a chat-only offer or free-form message
-  - MUST reject save reply with a one-line explanation and ask for yes or no
+  - ALWAYS reject save reply with a one-line explanation and ask for yes or no
     when destination is chat-only
-  - IF compaction recovery needed in chat-only mode:
+  - ALWAYS IF compaction recovery needed in chat-only mode:
     EMIT in-chat checkpoint instead of writing cache files
-  - Skipped/declined brainstorm leaves no artifacts
+  - ALWAYS Skipped/declined brainstorm leaves no artifacts
 ```
 
 ### Rules respect
@@ -57,19 +57,19 @@ PURPOSE:
 MENU RulesRespectMatrix:
   TITLE: Rules-respect routing (machine reference)
   OPTIONS:
-    STRICT AND KIND mapped to kit ->
+    1 STRICT AND KIND mapped to kit ->
       REQUIRE facilitator and every expert open, load, and follow the resolved kit `rules.md` and template inputs
       REQUIRE all proposed defaults satisfy template constraints and Content Rules
-      FORBID offering non-compliant alternatives
+      NEVER offering non-compliant alternatives
       SELECT personas whose focus covers template's high-leverage sections
-    RELAXED WITH kit_rules_path present ->
+    2 RELAXED WITH kit_rules_path present ->
       LOAD provided rules as guidance
       ALLOW clarifying questions when request intentionally departs from kit form
-    RELAXED WITH kit_rules_path null ->
+    3 RELAXED WITH kit_rules_path null ->
       RUN agents with user-supplied context
       EMIT "⚠ Brainstorm without kit rules (reduced quality assurance)"
         as prefix to consolidated design block
-    non-kit ad-hoc target ->
+    4 non-kit ad-hoc target ->
       RUN agents free-form
       SET rules_loaded = false
       LOAD no rules
@@ -85,9 +85,9 @@ PURPOSE:
   Define invocation path when brainstorm is used outside the generate flow.
 
 DO:
-  WHEN invoked standalone via cf skill router:
+  - RUN WHEN invoked standalone via cf skill router:
     ASK for chat-only vs save
-    RUN same facilitator -> round-loop sequence
+    - RUN same facilitator -> round-loop sequence
     WRITE final design to {cf-studio-path}/.cache/brainstorm/{session_id}/
       only when user explicitly selects save
 ```
@@ -101,9 +101,9 @@ PURPOSE:
   Define retention policy for saved brainstorm caches.
 
 RULES:
-  - MUST retain saved brainstorm caches when:
+  - ALWAYS retain saved brainstorm caches when:
     (newer than 30 days) OR (one of the last 10 sessions)
-  - Retention is advisory; cleanup is manual
+  - ALWAYS Retention is advisory; cleanup is manual
 
 NOTES:
   Delete entries older than the retention window manually.

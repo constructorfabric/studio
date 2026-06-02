@@ -20,17 +20,17 @@ INPUT:
                  when consistency review is in scope
 
 DO:
-  FOR EACH path in {PATHS}:
+  - RUN FOR EACH path in {PATHS}:
     Check path exists AND is readable AND is not empty.
     IF any check fails:
-      EMIT "✗ Target not found: {failing path}"
-      EMIT "→ Invoke skill `cf-generate` to create it (resolve the failing path's kind via {cf-studio-path}/config/artifacts.toml when multiple paths are in scope)"
+      - EMIT "✗ Target not found: {failing path}"
+      - EMIT "→ Invoke skill `cf-generate` to create it (resolve the failing path's kind via {cf-studio-path}/config/artifacts.toml when multiple paths are in scope)"
       STOP analysis
 
 RULES:
-  - MUST check every path in {PATHS}, not just the first
-  - MUST STOP analysis on any failing path check
-  - MUST_NOT proceed to Phase 2 if any path fails
+  - ALWAYS check every path in {PATHS}, not just the first
+  - ALWAYS STOP analysis on any failing path check
+  - NEVER proceed to Phase 2 if any path fails
 ```
 
 ## Phase 1: File Existence Check

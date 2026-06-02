@@ -21,8 +21,8 @@ PURPOSE:
   Skip Phase 2; content production is delegated through Phase 4.
 
 DO:
-  SKIP this phase
-  CONTINUE Phase 4 for content production
+  - RUN SKIP this phase
+  - CONTINUE Phase 4 for content production
 
 NOTES:
   If Phase 1.5 produced an AUTHOR_EXECUTION_PLAN, Phase 4 executes planned
@@ -49,32 +49,32 @@ PURPOSE:
   multiple turns, or resumable section/state bookkeeping must be preserved.
 
 WHEN:
-  artifact has > 10 sections OR generation spans multiple turns OR resumable
-  section/state bookkeeping exists or must be emitted for resume safety
+  - REQUIRE artifact has > 10 sections OR generation spans multiple turns OR resumable
+  - REQUIRE section/state bookkeeping exists or must be emitted for resume safety
 
 DO:
-  IF artifact has > 10 sections OR generation spans multiple turns OR
+  - REQUIRE artifact has > 10 sections OR generation spans multiple turns OR
      resumable section/state bookkeeping exists or must be emitted:
-    EMIT exactly:
----
-### Generation Checkpoint
-**Workflow**: Invoke skill `cf-generate` {KIND}
-**Phase**: 2 complete, ready for Phase 3
-**Inputs collected**: {section summaries}
-**Author plan**: {AUTHOR_PLAN_OFFER_RESOLVED}; {task/group summary or "single author flow"}
-**Content generated**: {line count} lines
-**Pending**: Summary → Confirmation → Write → Analyze
-Resume: Re-read this checkpoint, verify no file changes, continue to Phase 3.
----
+    - EMIT exactly:
+- RUN ---
+- RUN ### Generation Checkpoint
+- RUN **Workflow**: Invoke skill `cf-generate` {KIND}
+- RUN **Phase**: 2 complete, ready for Phase 3
+- RUN **Inputs collected**: {section summaries}
+- RUN **Author plan**: {AUTHOR_PLAN_OFFER_RESOLVED}; {task/group summary or "single author flow"}
+- RUN **Content generated**: {line count} lines
+- RUN **Pending**: Summary → Confirmation → Write → Analyze
+- RUN Resume: Re-read this checkpoint, verify no file changes, continue to Phase 3.
+- RUN ---
 
 RULES:
-  - Default: checkpoint is chat-only
-  - MUST write a checkpoint file ONLY when user explicitly requests/approves it
-  - This fragment is lazy-loaded only when the WHEN predicate is true
-  - On resume after compaction:
+  - ALWAYS Default: checkpoint is chat-only
+  - ALWAYS write a checkpoint file ONLY when user explicitly requests/approves it
+  - ALWAYS This fragment is lazy-loaded only when the WHEN predicate is true
+  - ALWAYS On resume after compaction:
     RE-READ target file if it exists
     RE-LOAD only the controller-supplied prompt_context_view slices required
       for the saved phase and checkpoint bookkeeping
-    MUST NOT reopen prompt assets from disk
+    NEVER reopen prompt assets from disk
     CONTINUE from saved phase
 ```

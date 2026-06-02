@@ -62,11 +62,11 @@ PURPOSE:
   Stop safely when context budget is exhausted; never emit false PASS verdict.
 
 WHEN:
-  context budget is exhausted before all steps complete
+  - REQUIRE context budget is exhausted before all steps complete
 
 DO:
-  STOP at next safe boundary (end of current step or item)
-  EMIT PARTIAL_CHECKPOINT JSON block:
+  - RUN STOP at next safe boundary (end of current step or item)
+  - EMIT PARTIAL_CHECKPOINT JSON block:
     {
       "type": "PARTIAL_CHECKPOINT",
       "agent": "cf-migrate-verifier",
@@ -75,11 +75,11 @@ DO:
       "evidence_collected": ["<verified manifest sections or re-scan buckets>"],
       "resume_inputs": {"<dispatch fields needed to resume>": "<value>"}
     }
-  STOP_TURN
+  - STOP_TURN
 
 RULES:
-  - MUST_NOT emit a final PASS / FAIL verdict on a partial run
-  - MUST list unprocessed items in PARTIAL_CHECKPOINT
+  - NEVER emit a final PASS / FAIL verdict on a partial run
+  - ALWAYS list unprocessed items in PARTIAL_CHECKPOINT
 ```
 
 ## Procedure
@@ -91,12 +91,12 @@ PURPOSE:
   Execute the six verification steps in order and emit the verification result.
 
 DO:
-  CONTINUE StepVerifyAItems
-  CONTINUE StepVerifyBItems
-  CONTINUE StepReScanPatterns
-  CONTINUE StepNoticedButNotInPlan
-  CONTINUE StepCItemsStatus
-  CONTINUE StepVerificationOutput
+  - CONTINUE StepVerifyAItems
+  - CONTINUE StepVerifyBItems
+  - CONTINUE StepReScanPatterns
+  - CONTINUE StepNoticedButNotInPlan
+  - CONTINUE StepCItemsStatus
+  - CONTINUE StepVerificationOutput
 ```
 
 ### Step 1 — Verify A-items per the manifest
@@ -108,18 +108,18 @@ PURPOSE:
   Verify every Category A manifest entry against disk state.
 
 DO:
-  FOR each entry in manifest's Category A → Applied list:
+  - RUN FOR each entry in manifest's Category A → Applied list:
     Read the target file fresh
     Check for new state (to_string substitution) at or near the recorded line
-    Check for old state (from_string) — SHOULD be absent
+    Check for old state (from_string) — ALWAYS be absent
     Categorize:
       confirmed: new state present, old state absent
       regression: old state still present → ADD TO RESIDUE
       unexpected: neither state present → ADD TO RESIDUE with note
-  FOR each entry manifest marked skipped_already_resolved:
+  - RUN FOR each entry manifest marked skipped_already_resolved:
     Verify from_string is genuinely absent
     IF from_string is present → ADD TO RESIDUE (manifest was wrong)
-  FOR each entry manifest marked failed:
+  - RUN FOR each entry manifest marked failed:
     ADD TO RESIDUE with the Migrator's error
 ```
 
@@ -132,7 +132,7 @@ PURPOSE:
   Verify every Category B manifest entry against disk state.
 
 DO:
-  FOR each entry in Category B → Walked list:
+  - RUN FOR each entry in Category B → Walked list:
     IF outcome was applied OR custom:{new}:
       Verify the edit landed on disk
     IF outcome was kept OR deferred_no_interactive:
@@ -150,9 +150,9 @@ PURPOSE:
   regressions without doing a full project re-scan.
 
 DO:
-  REQUIRE changed-files surface from manifest's Files modified list
-  Skip directories the Migrator never touched
-  Re-run only the Scanner-emitted A-pattern subset the Migrator was supposed to handle:
+  - REQUIRE changed-files surface from manifest's Files modified list
+  - RUN Skip directories the Migrator never touched
+  - RUN Re-run only the Scanner-emitted A-pattern subset the Migrator was supposed to handle:
     cypilot_path
     curly_cypilot_path
     github_cyber_pilot
@@ -162,12 +162,12 @@ DO:
     cpt_command_backtick
     cpt_command_spaced
     kit_slug_cypilot_sdlc
-  Flag new matches (not in original Scanner output) as regressed_or_missed
-  Flag matches that WERE in original Scanner output but NOT in Migrator manifest as missed_by_plan
+  - RUN Flag new matches (not in original Scanner output) as regressed_or_missed
+  - RUN Flag matches that WERE in original Scanner output but NOT in Migrator manifest as missed_by_plan
 
 RULES:
-  - Full re-scan is the orchestrator's call only
-SEE_ALSO: MigrateVerifierHardRules
+  - ALWAYS Full re-scan is the orchestrator's call only
+- ALWAYS SEE_ALSO: MigrateVerifierHardRules
 ```
 
 ### Step 4 — Check Migrator's `noticed_but_not_in_plan` items
@@ -179,11 +179,11 @@ PURPOSE:
   Surface items the Migrator spotted but did not fix.
 
 WHEN:
-  Migrator manifest has a noticed_but_not_in_plan section
+  - REQUIRE Migrator manifest has a noticed_but_not_in_plan section
 
 DO:
-  Include those items in residue
-  Annotate each with note: "Migrator spotted but didn't fix — re-run Planner OR add to next Migrator pass"
+  - RUN Include those items in residue
+  - RUN Annotate each with note: "Migrator spotted but didn't fix — re-run Planner OR add to next Migrator pass"
 ```
 
 ### Step 5 — C-items (cascade) status
@@ -195,13 +195,13 @@ PURPOSE:
   Report cascade-item status informally; do not classify as residue.
 
 DO:
-  FOR each C-item:
+  - RUN FOR each C-item:
     Check if the user has run it (best-effort evidence search)
     Report still_pending (most common) OR confirmed_done (when evidence is clear)
 
 RULES:
-  - MUST_NOT mark cascade items as residue — they are for human follow-up
-  - Cascade items are surfaced in the orchestrator's final report only
+  - NEVER mark cascade items as residue — they are for human follow-up
+  - ALWAYS Cascade items are surfaced in the orchestrator's final report only
 ```
 
 ### Step 6 — Output: verification result
@@ -213,53 +213,53 @@ PURPOSE:
   Emit a machine-parseable verification result the orchestrator can consume.
 
 DO:
-  EMIT the following block:
+  - EMIT the following block:
 
-## Verification Result
+- RUN ## Verification Result
 
-Overall status: {clean | residue_found | iteration_blocked}
+- RUN Overall status: {clean | residue_found | iteration_blocked}
 
-### A-items verification
-- Confirmed: {N}
-- Regressions: {M}
-- Unexpected state: {K}
+- RUN ### A-items verification
+- RUN Confirmed: {N}
+- RUN Regressions: {M}
+- RUN Unexpected state: {K}
 
-### B-items verification
-- Consistent: {N}
-- Inconsistencies: {K}
+- RUN ### B-items verification
+- RUN Consistent: {N}
+- RUN Inconsistencies: {K}
 
-### Residue (re-scan)
-- Regressed-or-missed: {M}
-- Missed-by-plan: {K}
-- Noticed-but-not-in-plan (from manifest): {L}
+- RUN ### Residue (re-scan)
+- RUN Regressed-or-missed: {M}
+- RUN Missed-by-plan: {K}
+- RUN Noticed-but-not-in-plan (from manifest): {L}
 
-### Residue items (detailed)
+- RUN ### Residue items (detailed)
 
-#### {file}:{line}: {pattern_key}
-- State: {regression | missed_by_plan | etc.}
-- Matched line: `{content}`
-- Recommended action: {suggested next Migrator action}
+- RUN #### {file}:{line}: {pattern_key}
+- RUN State: {regression | missed_by_plan | etc.}
+- RUN Matched line: `{content}`
+- RUN Recommended action: {suggested next Migrator action}
 
-#### {next item}
-...
+- RUN #### {next item}
+- RUN ...
 
-### C-item status (informational)
-- {command_or_op}: still_pending | confirmed_done | unknown
-  ...
+- RUN ### C-item status (informational)
+- RUN {command_or_op}: still_pending | confirmed_done | unknown
+  - RUN ...
 
-### Recommendation to orchestrator
+- RUN ### Recommendation to orchestrator
 
-{one of:}
-- "Clean — no residue. Orchestrator should proceed to E6 final report."
-- "Residue found — Orchestrator should ask user to dispatch Migrator again
+- RUN {one of:}
+- RUN "Clean — no residue. Orchestrator should proceed to E6 final report."
+- RUN "Residue found — Orchestrator should ask user to dispatch Migrator again
    with the residue items above as the task input."
-- "Iteration cap context: this is verifier iteration {N} of max 3. The
+- RUN "Iteration cap context: this is verifier iteration {N} of max 3. The
    following residue persists; consider stopping the loop and surfacing
    to the user for manual review: {list of persistent items}"
 
 RULES:
-  - Output MUST be machine-parseable by the orchestrator
-  - MUST match the structure shown above
+  - ALWAYS Output ALWAYS be machine-parseable by the orchestrator
+  - ALWAYS match the structure shown above
 ```
 
 ## Hard Rules
@@ -271,23 +271,23 @@ PURPOSE:
   Enforce read-only authority boundary and preservation invariants.
 
 RULES:
-  - MUST_NOT modify any file — read-only
-  - MUST_NOT dispatch the Migrator; orchestrator handles the E5 loop
-  - MUST_NOT re-run the FULL Scanner pattern set on the whole project
-  - IF Migrator manifest is malformed or unparsable:
+  - NEVER modify any file — read-only
+  - NEVER dispatch the Migrator; orchestrator handles the E5 loop
+  - NEVER re-run the FULL Scanner pattern set on the whole project
+  - ALWAYS IF Migrator manifest is malformed or unparsable:
       EMIT unparseable_manifest
       STOP_TURN (orchestrator re-dispatches Migrator with clearer task)
 
 INVARIANTS:
-  - MUST preserve: cpt. / line-start cpt are intentional preserves
-  - MUST preserve: @cpt-* markers in source code are intentional per v4.0.0 design
-  - MUST preserve: studio_proxy package name is preserved
-  - MUST use `cf_studio_path` as the managed-tree boundary input; `{cf_studio_path}/.core/`
+  - ALWAYS preserve: cpt. / line-start cpt are intentional preserves
+  - ALWAYS preserve: @cpt-* markers in source code are intentional per v4.0.0 design
+  - ALWAYS preserve: studio_proxy package name is preserved
+  - ALWAYS use `cf_studio_path` as the managed-tree boundary input; `{cf_studio_path}/.core/`
     is never an editable migration target
-  - MUST verify: format = "Cypilot" inside [kits.<slug>] or [kit.<slug>] TOML tables
-    MUST have been rewritten to format = "CFS" by the Migrator;
+  - ALWAYS verify: format = "Cypilot" inside [kits.<slug>] or [kit.<slug>] TOML tables
+    ALWAYS have been rewritten to format = "CFS" by the Migrator;
     any remaining format = "Cypilot" is a missed_migration regression
-  - MUST_NOT rewrite format = "CFS" — it is the canonical post-migration value
+  - NEVER rewrite format = "CFS" — it is the canonical post-migration value
 ```
 
 ## Response Completion Gate
@@ -299,12 +299,12 @@ PURPOSE:
   Enforce response completeness before output is considered final.
 
 RULES:
-  - MUST verify every A-item and B-item from the Migrator's manifest against disk state
-  - MUST execute the focused re-scan (Step 3) over the changed-files surface
-  - MUST emit a well-formed verification result block:
+  - ALWAYS verify every A-item and B-item from the Migrator's manifest against disk state
+  - ALWAYS execute the focused re-scan (Step 3) over the changed-files surface
+  - ALWAYS emit a well-formed verification result block:
       status + per-category counts + detailed residue + C-item status + recommendation
-  - MUST use exactly one of the three documented recommendation forms:
+  - ALWAYS use exactly one of the three documented recommendation forms:
       clean / residue / iteration-cap
-  - MUST satisfy the SKILL.md invariant when the controller supplied
+  - ALWAYS satisfy the SKILL.md invariant when the controller supplied
     `studio_mode_contract`
 ```

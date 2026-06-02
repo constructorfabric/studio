@@ -53,18 +53,18 @@ PURPOSE:
   Route brownfield setup and rescan requests into the auto-config methodology.
 
 WHEN:
-  auto-config intent or brownfield setup intent is detected
+  - REQUIRE auto-config intent or brownfield setup intent is detected
 
 DO:
-  REQUIRE this methodology is active
-  REQUIRE controller has loaded `{cf-studio-path}/.core/requirements/reverse-engineering.md`
-  REQUIRE controller has loaded `{cf-studio-path}/.core/requirements/prompt-engineering.md`
-  SET AUTO_CONFIG_MODE = true
+  - REQUIRE this methodology is active
+  - REQUIRE controller has loaded `{cf-studio-path}/.core/requirements/reverse-engineering.md`
+  - REQUIRE controller has loaded `{cf-studio-path}/.core/requirements/prompt-engineering.md`
+  - SET AUTO_CONFIG_MODE = true
 
 RULES:
-  - MUST treat upstream methodologies as controller-owned prompt assets
-  - MUST_NOT let prompt-consuming sub-agents reopen those prompt files from disk
-  - MUST provide any dispatched subset through `prompt_context_view`
+  - ALWAYS treat upstream methodologies as controller-owned prompt assets
+  - NEVER let prompt-consuming sub-agents reopen those prompt files from disk
+  - ALWAYS provide any dispatched subset through `prompt_context_view`
 ```
 
 ```pdsl
@@ -74,34 +74,34 @@ PURPOSE:
   Define the required phase order for an auto-config run.
 
 STATE:
-  AUTO_CONFIG_PHASE: phase_1_scan | phase_1_5_docs | phase_2_systems | phase_3_rules | phase_4_agents | phase_5_registry | phase_6_validation | done
+  - SET AUTO_CONFIG_PHASE: phase_1_scan | phase_1_5_docs | phase_2_systems | phase_3_rules | phase_4_agents | phase_5_registry | phase_6_validation | done
     default: phase_1_scan
-  AUTO_CONFIG_RULE_MODE: create | refresh | selective | report_only | cancel
+  - SET AUTO_CONFIG_RULE_MODE: create | refresh | selective | report_only | cancel
     default: create
 
 DO:
-  REQUIRE brownfield prerequisites pass before Phase 1
-  SET AUTO_CONFIG_PHASE = phase_1_scan
-  CONTINUE project scan
-  SET AUTO_CONFIG_PHASE = phase_1_5_docs
-  CONTINUE documentation discovery
-  SET AUTO_CONFIG_PHASE = phase_2_systems
-  CONTINUE system and topic detection
-  SET AUTO_CONFIG_PHASE = phase_3_rules
-  CONTINUE rule generation
-  SET AUTO_CONFIG_PHASE = phase_4_agents
-  CONTINUE AGENTS integration
-  SET AUTO_CONFIG_PHASE = phase_5_registry
-  CONTINUE registry update
-  SET AUTO_CONFIG_PHASE = phase_6_validation
-  CONTINUE validation
-  SET AUTO_CONFIG_PHASE = done
+  - REQUIRE brownfield prerequisites pass before Phase 1
+  - SET AUTO_CONFIG_PHASE = phase_1_scan
+  - CONTINUE project scan
+  - SET AUTO_CONFIG_PHASE = phase_1_5_docs
+  - CONTINUE documentation discovery
+  - SET AUTO_CONFIG_PHASE = phase_2_systems
+  - CONTINUE system and topic detection
+  - SET AUTO_CONFIG_PHASE = phase_3_rules
+  - CONTINUE rule generation
+  - SET AUTO_CONFIG_PHASE = phase_4_agents
+  - CONTINUE AGENTS integration
+  - SET AUTO_CONFIG_PHASE = phase_5_registry
+  - CONTINUE registry update
+  - SET AUTO_CONFIG_PHASE = phase_6_validation
+  - CONTINUE validation
+  - SET AUTO_CONFIG_PHASE = done
 
 RULES:
-  - MUST execute phases in order
-  - MUST checkpoint after each phase
-  - MUST obtain user confirmation at every defined checkpoint before writing
-  - MUST NOT replace this methodology with `cfs update`, `make update`,
+  - ALWAYS execute phases in order
+  - ALWAYS checkpoint after each phase
+  - ALWAYS obtain user confirmation at every defined checkpoint before writing
+  - NEVER replace this methodology with `cfs update`, `make update`,
     bootstrap refresh, kit refresh, cache refresh, or generated-agent refresh
     unless the user explicitly asks to leave auto-config and run those commands
 ```
@@ -113,15 +113,15 @@ PURPOSE:
   Make the phase-specific write surfaces explicit.
 
 RULES:
-  - MUST restrict generated rule files to `{cf-studio-path}/config/rules/`
-  - MUST restrict generated navigation rules to `{cf-studio-path}/config/AGENTS.md`
-  - MUST restrict detected-system registration to `{cf-studio-path}/config/artifacts.toml`
-  - MUST preserve existing project docs except for approved TOC additions
-  - MUST preserve user-authored content outside auto-config managed blocks
-  - WHEN existing generated rule files or auto-config blocks are present:
-      MUST present ExistingRulesRefreshMenu before Phase 3 writes
-      MUST NOT fail closed merely because rules already exist
-      MUST NOT overwrite user-authored rules unless the selected mode explicitly
+  - ALWAYS restrict generated rule files to `{cf-studio-path}/config/rules/`
+  - ALWAYS restrict generated navigation rules to `{cf-studio-path}/config/AGENTS.md`
+  - ALWAYS restrict detected-system registration to `{cf-studio-path}/config/artifacts.toml`
+  - ALWAYS preserve existing project docs except for approved TOC additions
+  - ALWAYS preserve user-authored content outside auto-config managed blocks
+  - ALWAYS WHEN existing generated rule files or auto-config blocks are present:
+      ALWAYS present ExistingRulesRefreshMenu before Phase 3 writes
+      NEVER fail closed merely because rules already exist
+      NEVER overwrite user-authored rules unless the selected mode explicitly
         includes that file and the Phase 3 write preview identifies the change
 
 MENU ExistingRulesRefreshMenu:
