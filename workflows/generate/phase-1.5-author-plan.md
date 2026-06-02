@@ -32,7 +32,7 @@ PURPOSE:
 DO:
   - LOAD {cf-studio-path}/.core/workflows/generate/phase-1.5/state-contract.md FIRST
     (canonical contract for AUTHOR_PLAN_OFFER_RESOLVED values, continuation
-     states, terminal cancellation states, when AUTHOR_EXECUTION_PLAN and
+     states, terminal cancellation states, inline/skip choices, when AUTHOR_EXECUTION_PLAN and
      AUTHOR_PLAN_CACHE_DIR may be non-null, and mandatory offer
      semantics under sub-agent approval)
 ```
@@ -51,7 +51,7 @@ WHEN:
   - AND the current branch is the first post-approval branch that must resolve
     any of:
       * author-plan applicability for instruction-file targets
-      * storage mode choice (memory or disk)
+      * author-plan routing choice (memory, disk, inline, skip, or stop)
       * author-plan-derived dispatch behavior
       * author-plan-derived menu or handoff behavior
   - AND that resolution is required before any disk/write-path selection
@@ -86,9 +86,10 @@ DO:
 NOTES:
   This file is lazy-load only. The eager boundary is the Entry Predicates unit above.
   offer-dispatch.md owns:
-    - mandatory storage-choice prompting when SUB_AGENT_SESSION_APPROVED=true
+    - mandatory author-plan routing prompting when SUB_AGENT_SESSION_APPROVED=true
       AND INLINE_FALLBACK=false
-    - the required storage-choice prompt when native dispatch is not active
+    - the required routing prompt when native dispatch is not active
+    - inline controller-local author-plan construction when selected
     - planner dispatch and validation
     - planner-failure recovery, which may rerun planning or stop but NEVER
       continue to Phase 3 without an AUTHOR_EXECUTION_PLAN
@@ -130,7 +131,8 @@ RULES:
     order to patch files locally.
   - ALWAYS If a manual instruction-file patch attempt was blocked upstream while
     native author dispatch is available, the orchestrator ALWAYS re-enter here,
-    resolve AUTHOR_PLAN_OFFER_RESOLVED, produce AUTHOR_EXECUTION_PLAN, and
+    resolve AUTHOR_PLAN_OFFER_RESOLVED, produce AUTHOR_EXECUTION_PLAN when
+    planning is selected, and
     continue to Phase 4 author dispatch.
   - ALWAYS INLINE_FALLBACK=true still requires planner/author contract execution; it
     is not permission for controller-local edits.

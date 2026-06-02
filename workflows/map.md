@@ -27,6 +27,7 @@ UNIT MapRootSkillEntrypointBootstrap
 PURPOSE: Load the shared root cf skill entrypoint bootstrap.
 DO:
   - LOAD {cf-studio-path}/.core/workflows/shared/root-skill-entrypoint-bootstrap.md
+  - CONTINUE RootSkillEntrypointBootstrap
 ```
 
 ```pdsl

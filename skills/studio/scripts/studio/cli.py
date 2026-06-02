@@ -250,7 +250,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             ("Validation", ["validate", "validate-kits", "validate-toc", "spec-coverage", "check-language"]),
             ("Search & Navigation", ["list-ids", "list-id-kinds", "get-content", "where-defined", "where-used"]),
             ("Kit Management", ["kit"]),
-            ("Utility", ["toc", "chunk-input"]),
+            ("Utility", ["toc", "chunk-input", "pdsl"]),
             ("Workspace", ["workspace-init", "workspace-add", "workspace-info", "workspace-sync"]),
             ("Delegation", ["delegate"]),
             ("Diagnostics", ["doctor"]),

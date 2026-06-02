@@ -75,6 +75,40 @@ def test_validate_all_workflows_have_required_structure():
         pytest.fail(f"Workflow structure validation failed:\n" + "\n".join(errors))
 
 
+def test_workflows_continue_root_skill_entrypoint_bootstrap():
+    """Every top-level workflow must transfer through the root cf bootstrap gate."""
+    workflows_dir = Path(__file__).parent.parent / "workflows"
+    workflow_files = [
+        f for f in workflows_dir.glob("*.md")
+        if f.name not in {"README.md", "AGENTS.md"}
+    ]
+
+    missing = []
+    for workflow_path in workflow_files:
+        content = workflow_path.read_text(encoding="utf-8")
+        if "workflows/shared/root-skill-entrypoint-bootstrap.md" not in content:
+            continue
+        if "CONTINUE RootSkillEntrypointBootstrap" not in content:
+            missing.append(workflow_path.name)
+
+    assert not missing, "Missing RootSkillEntrypointBootstrap transfer: " + ", ".join(missing)
+
+
+def test_root_skill_entrypoint_bootstrap_has_fail_closed_unit():
+    """Direct workflow entry must have an explicit fail-closed terminal path."""
+    bootstrap_path = (
+        Path(__file__).parent.parent
+        / "workflows"
+        / "shared"
+        / "root-skill-entrypoint-bootstrap.md"
+    )
+    content = bootstrap_path.read_text(encoding="utf-8")
+
+    assert "UNIT RootSkillEntrypointBootstrapFailClosed" in content
+    assert "CONTINUE RootSkillEntrypointBootstrapFailClosed" in content
+    assert "STOP_TURN" in content
+
+
 def test_generate_workflow_has_template_resolution():
     """Verify generate.md workflow has template resolution logic."""
     workflows_dir = Path(__file__).parent.parent / "workflows"

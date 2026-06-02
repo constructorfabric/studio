@@ -68,12 +68,14 @@ Most teams should start with the core platform and add a kit later only if they 
 
 ### How teams encounter Constructor Studio
 
-In the current repository-oriented distribution, teams usually encounter and touch Constructor Studio through four main surfaces in the repository and toolchain:
+In the current repository-oriented distribution, teams usually encounter and touch Constructor Studio through five main surfaces in the repository and toolchain:
 
 | Surface | Form | Role |
 |---|---|---|
-| Primary AI surface | `cf <workflow>: <request>` | Main chat entry point for `plan`, `generate`, and `analyze` requests |
-| Deterministic CLI | `cfs <command>` | Setup, validation, updates, and repeatable local or CI checks |
+| Guided chat entry | `cf help` | Fastest way to get oriented inside a repo when you are new to Constructor Studio or unsure which route to use |
+| Core workflow chat surface | `cf plan: ...`, `cf generate: ...`, `cf analyze: ...` | Main chat entry for bounded planning, creation/update work, and validation/review |
+| Specialized chat routes | `cf explore: ...`, `cf brainstorm: ...`, `cf pdsl: ...`, `cf auto-config`, `cf map: ...` | Discovery, ideation, prompt-contract authoring, project inference/setup, and dependency-graph tasks |
+| Deterministic CLI | `cfs <command>` | Setup, validation, health checks, agent regeneration, delegation, map rendering, and repeatable local or CI checks |
 | Generated AI coding tool integration files | generated files in the repository | Connect the repository or workspace to supported tools without manual setup in each host |
 | Optional kit content | installed kit content | Add domain-specific templates, rules, workflows, and validation material |
 
@@ -131,6 +133,16 @@ Constructor Studio makes that repo-attached surface more explicit by controlling
    - templates, rules, and checklists
    - governing the repo-attached workflow, configuration, and validation surface around the work
    - bounding larger tasks into more controllable execution steps
+
+### Multi-subagent operating model where supported
+
+For non-trivial work, Constructor Studio often works best when the host can split the job across specialized subagents or clearly separated passes instead of one long mixed-purpose thread.
+
+Typical roles include a **collector** or **explorer** for context gathering, a **planner** for phase design, an **author** for implementation, a **reviewer** for defect-finding, a **validator** for deterministic checks, and in some workflows a **brainstorm panel** for structured option generation before scope is fixed.
+
+This separation improves context isolation, lets each step use task-matched instructions or configuration, keeps review more independent from authorship, and makes validation a distinct discipline instead of an afterthought.
+
+This is an operating model, not a guarantee. It does not replace human approval, and it does not prove correctness. Where a host lacks native subagent support or strong orchestration control, Constructor Studio degrades gracefully by keeping the same roles as separate chats, passes, or manual checkpoints.
 
  ### Deterministic vs non-deterministic boundary
  
@@ -206,9 +218,11 @@ Constructor Studio makes that repo-attached surface more explicit by controlling
 
  Constructor Studio can surface missing, broken, stale, or inconsistent evidence without proving that the implementation is correct or adequate.
 
- ## Workflow model
+## Workflow model
 
-Constructor Studio has three core workflows. Each has a portable chat form and, in some hosts, a matching slash-command alias.
+Use `cf ...` in AI coding tool chat and `cfs ...` in the terminal.
+
+Constructor Studio has three core workflows, plus specialized chat routes and CLI utilities around them. Each core workflow has a portable chat form and, in some hosts, a matching slash-command alias.
 
 | Workflow | Portable chat form | Matching alias in some hosts | Use it when |
 |---|---|---|---|
@@ -219,6 +233,29 @@ Constructor Studio has three core workflows. Each has a portable chat form and, 
 The portable `cf <workflow>: ...` form is the best default. Slash commands are host-specific aliases, not separate capabilities.
 
 `plan`, `generate`, and `analyze` are reusable workflow modes, not a fixed mandatory sequence. They define how work is framed; the next section shows one common delivery order in which teams often combine them.
+
+Specialized chat routes build on that same model:
+
+| Capability | Portable chat form | Use it when |
+|---|---|---|
+| Help | `cf help` | you want guided onboarding to Constructor Studio itself before picking a workflow |
+| Explore | `cf explore: ...` | you need project or artifact discovery before planning, generating, or reviewing |
+| Brainstorm | `cf brainstorm: ...` | the option space is still open and you want structured ideation before locking scope |
+| Auto-config | `cf auto-config` | you want Constructor Studio to scan a project and infer or refresh rules/config for brownfield work |
+| Explain | `cf analyze: explain <target>` | you want an interactive walkthrough, onboarding session, or teaching flow instead of defect review |
+| PDSL | `cf pdsl: ...` | you are authoring, transforming, or reviewing prompt, workflow, skill, or agent instruction files |
+| Map | `cf map: ...` | you want to render or inspect the dependency graph and route follow-up analysis through the map |
+
+Common `cfs` utilities around those chat workflows:
+
+| Utility surface | Terminal form | Use it when |
+|---|---|---|
+| CLI discovery | `cfs --help`, `cfs info`, `cfs agents` | you need command discovery, project status, or generated-agent inspection |
+| Setup and regeneration | `cfs init`, `cfs generate-agents` | you are bootstrapping a repo or regenerating host integrations |
+| Validation | `cfs validate`, `cfs validate-toc`, `cfs check-language` | you want deterministic checks before or after review |
+| Dependency graph | `cfs map` | you want a rendered map artifact in HTML or JSON |
+| Health and delegation | `cfs doctor`, `cfs delegate <plan-dir>` | you want environment preflight or supervised RalphEx handoff |
+| Large-input packaging | `cfs chunk-input ...` | a large prompt, document, or diff must be chunked before planning or generation |
 
 ### Language complexity (global UX setting)
 
@@ -240,6 +277,8 @@ For default routing priorities and detailed workflow-choice advice, use **[guide
 
 This is one common order for combining the workflows when an early idea or PoC needs to become a production-ready change without losing scope or design intent.
 
+Not every task starts at `plan`. In practice, many teams first use `cf help`, `cf explore: ...`, `cf brainstorm: ...`, or `cf auto-config` to get into the right lane before they plan, generate, or analyze.
+
 In practice, teams usually move through four visible stages:
 
 1. **Approve the requirement and design** so the change starts from explicit scope and constraints.
@@ -251,7 +290,7 @@ In practice, this creates clearer boundaries, earlier drift detection, and more 
 
  ## Supported hosts
  
- Constructor Studio works across multiple AI coding tools through the same portable `cf` workflow model, but some hosts preserve its workflow boundaries more fully than others. The differences are mainly in orchestration control, workflow separation, subagent support, manual discipline burden, and first-run clarity.
+Constructor Studio works across multiple AI coding tools through the same portable `cf` workflow model, but some hosts preserve its workflow boundaries more fully than others. The differences are mainly in orchestration control, workflow separation, subagent support, manual discipline burden, and first-run clarity. When a host cannot support the full multi-subagent model directly, the same separation can still be maintained through narrower prompts, separate chats, and explicit validation or review checkpoints.
  
  | Host | Workflow support profile | Operational tradeoff |
  |---|---|---|
@@ -312,11 +351,11 @@ In practice, this creates clearer boundaries, earlier drift detection, and more 
  
  Choose the path that matches the repository state.
 
- - **If the repository already includes Constructor Studio**
-   - ensure Python 3.11+ is available for the repository-local scripts and CI
-   - clone or open the repository in your supported AI coding tool
-   - activate Constructor Studio in chat with 💬 `cf on`
-   - send one focused request with 💬 `cf analyze: ...` or 💬 `cf plan: ...`
+- **If the repository already includes Constructor Studio**
+  - ensure Python 3.11+ is available for the repository-local scripts and CI
+  - clone or open the repository in your supported AI coding tool
+  - activate Constructor Studio in chat with 💬 `cf on`
+  - send one focused request with 💬 `cf help`, 💬 `cf explore: ...`, 💬 `cf analyze: ...`, or 💬 `cf plan: ...`
 
  - **If the repository does not yet include Constructor Studio**
    - install `cfs` globally if you want to bootstrap the repository yourself
@@ -354,7 +393,7 @@ In practice, this creates clearer boundaries, earlier drift detection, and more 
     cf on
     ```
 
-4. **Run one focused request** with 💬 `cf analyze: ...` or 💬 `cf plan: ...`
+4. **Run one focused request** with 💬 `cf help`, 💬 `cf explore: ...`, 💬 `cf analyze: ...`, or 💬 `cf plan: ...`
 
 For detailed host-specific setup, troubleshooting, and operational walkthroughs, use **[guides/AGENT-TOOLS.md](guides/AGENT-TOOLS.md)** and **[guides/USAGE-GUIDE.md](guides/USAGE-GUIDE.md)**.
 

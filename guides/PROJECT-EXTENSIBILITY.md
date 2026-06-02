@@ -71,7 +71,9 @@ This follows a git/golang-style convention for repo organization:
 Where `{base_dir}` defaults to `~` or `~/code` and is configurable via:
 - Environment variable: `STUDIO_BASE_DIR`
 - Master repo config: `[manifest] base_dir = "~/code"`
-- Explicit flag: `cfs generate-agents --base-dir ~/code`
+
+The current `generate-agents` CLI does not expose a `--base-dir` flag; pass
+`--root` to choose the project being generated.
 
 ---
 
@@ -82,7 +84,7 @@ When `cfs generate-agents` runs, it resolves components from four layers. Innerm
 ```text
 ┌─────────────────────────────────────────────────────────────────┐
 │  4. Repo Layer                                                  │
-│     .bootstrap/config/manifest.toml                             │
+│     .cf-studio/config/manifest.toml                             │
 │     Repo-specific agents, skills, rules                         │
 ├─────────────────────────────────────────────────────────────────┤
 │  3. Master Repo Layer                                           │
@@ -114,7 +116,7 @@ When `cfs generate-agents` runs, it resolves components from four layers. Innerm
         └── git.example.com/
             └── my-project/
                 ├── service-a/          # Layer 4: Repo
-                │   ├── .bootstrap/config/
+                │   ├── .cf-studio/config/
                 │   │   └── manifest.toml
                 │   └── ...
                 └── service-b/
@@ -123,10 +125,10 @@ When `cfs generate-agents` runs, it resolves components from four layers. Innerm
 
 ### Resolution Semantics
 
-**Walk-up discovery**: When `cfs generate-agents` runs inside a repo, it walks up the directory tree looking for the master repo boundary:
+**Walk-up discovery**: When `cfs generate-agents` runs inside a repo, it loads the repo layer from the active setup directory's `config/manifest.toml`, then walks up the directory tree looking for the master repo boundary:
 
-- **Repo**: presence of `.bootstrap/` or `.studio-config.json`
-- **Master repo**: `CLAUDE.md` + `skills/` at same level, or presence of `git/` subdirectory
+- **Repo layer**: `{setup-dir}/config/manifest.toml`; ordinary projects use `.cf-studio/`, while this repository uses `.bootstrap/` as a self-hosted exception
+- **Master repo**: `.git`, or `CLAUDE.md` + `skills/` at the same level
 
 **Merge order**: Innermost scope wins for the same component ID:
 ```text
@@ -209,7 +211,7 @@ description = "Build and deploy Go projects to test stands"
 prompt_file = "agents/go-stand-deployer.md"    # relative to manifest dir
 mode = "readwrite"                              # "readwrite" or "readonly"
 isolation = false                               # worktree isolation (Claude Code)
-model = "sonnet"                                # any string: inherit, fast, sonnet, haiku, opus, etc.
+model = "cf:inherit"                            # cf:inherit, cf:auto, or cf:tier:{cheap,balanced,expensive}
 agents = ["claude", "cursor", "copilot"]        # which tools to generate for
 ```
 
@@ -224,7 +226,7 @@ description = "Build and deploy Go projects to test stands"
 prompt_file = "agents/go-stand-deployer.md"
 mode = "readwrite"
 isolation = false
-model = "sonnet"
+model = "cf:inherit"
 
 # Extended fields
 color = "pink"                                              # Claude Code only
@@ -246,7 +248,7 @@ agents = ["claude", "cursor", "copilot", "openai"]
 | `disallowed_tools` | string[] | Explicit tool denylist | `disallowedTools:` | n/a | n/a | n/a |
 | `color` | string | Agent color | `color:` | n/a | n/a | n/a |
 | `memory_dir` | string | Persistent memory path | prompt body | n/a | n/a | n/a |
-| `model` | string | Model selection (passthrough) | `model:` | `model:` | n/a | `model` |
+| `model` | string | Model tier or inherit policy | `model:` | `model:` | n/a | `model` |
 | `mode` | string | Access level | tools/disallowed | `readonly:` | tools | `sandbox_mode` |
 | `isolation` | bool | Isolated context | `isolation: worktree` | n/a | n/a | n/a |
 
@@ -264,7 +266,7 @@ prompt_file = "skills/standctl/SKILL.md"    # relative to manifest dir
 agents = ["claude", "cursor", "windsurf"]
 ```
 
-Skills generate agent-native skill files. For Claude Code: `.claude/skills/{id}/SKILL.md`. For Cursor: `.cursor/rules/{id}.mdc`. Manifest skills coexist with kit-composed skills (the `@cpt:skill` mechanism) — they use different code paths and output directories.
+Skills generate agent-visible skill files. Claude Code gets native `.claude/skills/{id}/SKILL.md` files. Cursor, Copilot, Codex, and Windsurf currently share `.agents/skills/{id}/SKILL.md`. Manifest skills coexist with kit-composed skills (the `@cpt:skill` mechanism) — they use different code paths and output directories.
 
 ### Workflow Definitions
 
@@ -352,9 +354,9 @@ Each component type maps to agent-native formats. `cfs generate-agents` handles 
 
 | Component | Claude | Cursor | Windsurf | Copilot | Codex |
 |-----------|--------|--------|----------|---------|-------|
-| Skill | `.claude/skills/*/SKILL.md` | `.cursor/rules/*.mdc` | `.windsurf/skills/*/SKILL.md` | `.github/prompts/*.prompt.md` | — |
+| Skill | `.claude/skills/*/SKILL.md` | `.agents/skills/*/SKILL.md` | `.agents/skills/*/SKILL.md` | `.agents/skills/*/SKILL.md` | `.agents/skills/*/SKILL.md` |
 | Workflow | `.claude/commands/*.md` | `.cursor/commands/*.md` | `.windsurf/workflows/*.md` | `.github/prompts/*.prompt.md` | — |
-| Agent | `.claude/agents/*.md` (YAML frontmatter) | `.cursor/agents/*.md` (YAML frontmatter) | — (no subagents) | `.github/agents/*.agent.md` (YAML frontmatter) | `.codex/agents/` (TOML config) |
+| Agent | `.claude/agents/*.md` (YAML frontmatter) | `.cursor/agents/*.mdc` (YAML frontmatter) | — (no subagents) | `.github/agents/*.md` (YAML frontmatter) | `.codex/agents/*.toml` |
 | Hook | `.claude/settings.json` | — | — | — | — |
 | Rule | `CLAUDE.md` managed block | `.cursor/rules/*.mdc` | `.windsurf/rules/*.md` | `.github/copilot-instructions.md` | — |
 
@@ -362,15 +364,30 @@ Where a tool doesn't support a component type natively, Constructor Studio eithe
 
 **Codex agent format**:
 
-Unlike the markdown-based tools, Codex uses TOML configuration:
+Unlike the markdown-based tools, Codex uses TOML configuration. Manifest-defined
+agents inline the prompt body in `developer_instructions`:
 
 ```toml
-[agents.go_stand_deployer]
+name = "go-stand-deployer"
 description = "Build and deploy Go projects to test stands"
 sandbox_mode = "workspace-write"
 model = "gpt-5-codex"
 developer_instructions = """
-ALWAYS open and follow `.bootstrap/config/agents/go-stand-deployer.md`
+You are a deployment specialist for Go services.
+
+Use standctl MCP tools to inspect, deploy, and debug test stand workloads.
+"""
+```
+
+Discovered Constructor Studio proxy agents use the same key, but contain only an
+endpoint pointer because the controller supplies the final prompt at dispatch
+time:
+
+```toml
+name = "cf-codegen"
+description = "Generate code changes for Constructor Studio workflows"
+developer_instructions = """
+Constructor Studio endpoint only. Prompt source: {cf-studio-path}/.core/skills/studio/agents/cf-codegen.md. Final prompt is supplied by the cf controller at dispatch time.
 """
 ```
 
@@ -385,7 +402,7 @@ Key differences: `mode` maps to `sandbox_mode`, per-agent tool restrictions are 
 For repos not inside an orchestrator hierarchy, only Core + Kit + Repo layers apply. Add a `manifest.toml` to your adapter config:
 
 ```toml
-# .bootstrap/config/manifest.toml
+# .cf-studio/config/manifest.toml
 [manifest]
 version = "2.0"
 scope = "repo"
@@ -393,16 +410,16 @@ scope = "repo"
 [[skills]]
 id = "my-custom-skill"
 description = "Project-specific skill"
-prompt_file = ".claude/skills/custom/SKILL.md"
+prompt_file = "../../.claude/skills/custom/SKILL.md"
 agents = ["claude"]
 
 [[agents]]
 id = "test-runner"
 description = "Run and analyze test failures"
-prompt_file = ".claude/agents/test-runner.md"
+prompt_file = "../../.claude/agents/test-runner.md"
 mode = "readwrite"
 isolation = true
-model = "inherit"
+model = "cf:inherit"
 agents = ["claude", "cursor"]
 ```
 
@@ -448,7 +465,7 @@ description = "Build and deploy Go projects to Acronis test stands"
 prompt_file = "agents/go-stand-deployer.md"
 mode = "readwrite"
 isolation = false
-model = "sonnet"
+model = "cf:inherit"
 color = "pink"
 memory_dir = ".claude/agent-memory/go-stand-deployer"
 tools = [
@@ -466,7 +483,7 @@ description = "Analyze logs and debug issues on Acronis test stands"
 prompt_file = "agents/stand-log-investigator.md"
 mode = "readonly"
 isolation = false
-model = "haiku"
+model = "cf:tier:cheap"
 color = "orange"
 memory_dir = ".claude/agent-memory/stand-log-investigator"
 tools = [
@@ -486,7 +503,7 @@ agents = ["claude", "cursor", "windsurf"]
 
 Note: `prompt_file` paths in `standctl/manifest.toml` resolve relative to `orchestrator/standctl/` (the included manifest's directory), not `orchestrator/`.
 
-**Repo** (`my-project/service-a/.bootstrap/config/manifest.toml`):
+**Repo** (`my-project/service-a/.cf-studio/config/manifest.toml`):
 ```toml
 [manifest]
 version = "2.0"
@@ -495,10 +512,10 @@ scope = "repo"
 [[agents]]
 id = "log-investigator"
 description = "Investigate service-a logs for pipeline issues"
-prompt_file = ".claude/agents/log-investigator.md"
+prompt_file = "../../.claude/agents/log-investigator.md"
 mode = "readonly"
 isolation = false
-model = "fast"
+model = "cf:tier:cheap"
 agents = ["claude"]
 ```
 
@@ -551,7 +568,7 @@ Discovery writes found components into the project `manifest.toml`. Subsequent r
 - **`agents.toml` fallback**: `_discover_kit_agents()` checks `manifest.toml` `[[agents]]` first, falls back to `agents.toml` if present
 - **Standalone repos**: without an orchestrator hierarchy, only Core + Kit + Repo layers apply — identical to the previous behavior
 - **No new CLI commands**: everything extends the existing `cfs generate-agents`
-- **Model passthrough**: existing `inherit` and `fast` values continue to work; new model names (e.g., `sonnet`, `haiku`) are accepted as passthrough strings
+- **Model tiers**: use `cf:inherit`, `cf:auto`, or `cf:tier:{cheap,balanced,expensive}` in v2 manifests
 
 ---
 
@@ -599,12 +616,12 @@ A common deployment pattern is a quasi-mono-repo: an orchestration repository th
 orchestrator-repo/                          ← the orchestration repo (has .git/, CLAUDE.md, skills/)
 ├── manifest.toml                           ← master layer: org-wide agents, rules
 ├── .studio-workspace.toml          ← workspace config federating sub-projects
-├── service-a/                              ← sub-project with its own .bootstrap/
-│   └── .bootstrap/config/manifest.toml     ← repo layer for service-a
+├── service-a/                              ← sub-project with its own .cf-studio/
+│   └── .cf-studio/config/manifest.toml     ← repo layer for service-a
 ├── service-b/
-│   └── .bootstrap/config/manifest.toml
+│   └── .cf-studio/config/manifest.toml
 └── infra/
-    └── .bootstrap/config/manifest.toml
+    └── .cf-studio/config/manifest.toml
 ```
 
 This structure supports two distinct working modes, each engaging different combinations of the two features:
@@ -616,7 +633,7 @@ The developer opens or branches the orchestration repo itself — their working 
 **What activates**:
 
 - **Workspace federation**: if the orchestration repo has a `.studio-workspace.toml` (or inline `[workspace]` in `core.toml`), context loading upgrades to `WorkspaceContext`. Each sub-project becomes a named source with its own `SourceContext`, enabling cross-repo traceability — `cfs validate`, `cfs list-ids`, and `cfs where-defined` resolve artifacts across all federated sources.
-- **Layer discovery**: `discover_layers()` runs from the orchestration repo's own `.bootstrap/` root. It finds the orchestration repo's kit layers and repo-layer manifest. Since the orchestration repo *is* the master repo boundary (it has `.git/`), the walk-up stops there — no master layer is added above it.
+- **Layer discovery**: `discover_layers()` runs from the orchestration repo's own setup directory. It finds the orchestration repo's kit layers and repo-layer manifest. Since the orchestration repo *is* the master repo boundary (it has `.git/`), the walk-up stops there — no master layer is added above it.
 
 **Net effect**: traceability spans the full workspace; agent generation uses the orchestration repo's own manifest hierarchy. Sub-project manifests are not merged into the orchestration repo's agent generation — each sub-project's agents are generated independently (see [Current Limitations](#current-limitations)).
 
@@ -626,7 +643,7 @@ The developer's working directory is inside a specific sub-project — e.g., `or
 
 **What activates**:
 
-- **Layer discovery**: `discover_layers()` runs from `service-a/.bootstrap/`. It loads the kit layers and repo-layer manifest from `service-a/.bootstrap/config/manifest.toml`. It then walks up from `service-a/` and finds the orchestration repo as a master repo boundary (via `.git/` or `CLAUDE.md` + `skills/`). If the orchestration repo has a `manifest.toml` at its root, that becomes the **master layer** — its agents, skills, and rules merge into service-a's generation with the repo layer winning on conflicts.
+- **Layer discovery**: `discover_layers()` runs from `service-a/.cf-studio/` in an ordinary project. It loads the kit layers and repo-layer manifest from `service-a/.cf-studio/config/manifest.toml`. It then walks up from `service-a/` and finds the orchestration repo as a master repo boundary (via `.git` or `CLAUDE.md` + `skills/`). If the orchestration repo has a `manifest.toml` at its root, that becomes the **master layer** — its agents, skills, and rules merge into service-a's generation with the repo layer winning on conflicts.
 - **Workspace federation**: if `service-a` has its own workspace config, it activates independently. More commonly, the sub-project has no workspace config and operates in single-repo mode — standalone context without `WorkspaceContext`.
 
 **Net effect**: the sub-project inherits organization-wide agents and rules from the orchestration repo's master-layer manifest, while its own repo-layer manifest can override or extend them. Cross-repo traceability is not active unless the sub-project has its own workspace config.

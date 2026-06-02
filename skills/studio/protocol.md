@@ -37,6 +37,29 @@ RULES:
 ```
 
 ```pdsl
+UNIT ExplainModePreOutputSentinel
+
+PURPOSE:
+  Fail closed when an explain/storytelling run is about to emit ordinary answer
+  content before the Storytelling contract allows it.
+
+WHEN:
+  - REQUIRE EXPLAIN_MODE == true
+  - AND STORYTELLING_PHASE not in [e2, e5, done]
+
+RULES:
+  - NEVER emit answer-style content, help summaries, command lists, findings,
+    remediation menus, or completion envelopes
+  - ALWAYS only these outputs are legal before Storytelling reaches E2/E5:
+      1. E0/E1 opener or preset opener
+      2. required E1 menu
+      3. plan approval menu
+      4. deterministic load/error menu from the active workflow
+  - ALWAYS if the planned response violates this sentinel, discard it and emit
+    the legal Storytelling opener or preset opener instead
+```
+
+```pdsl
 UNIT WorkflowProtocolNonSubstitution
 PURPOSE: Forbid replacing an invoked cf workflow with generic agent execution.
 RULES:

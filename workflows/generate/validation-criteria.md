@@ -56,9 +56,11 @@ INVARIANTS:
   - ALWAYS have identified parent references
   - ALWAYS have verified ID naming is unique
   - ALWAYS have collected and confirmed information
-  - ALWAYS WHEN AUTHOR_PLAN_OFFER_RESOLVED=memory|disk:
+  - ALWAYS WHEN AUTHOR_PLAN_OFFER_RESOLVED=memory|disk|inline:
     ALWAYS have parsed, validated, and used AUTHOR_EXECUTION_PLAN to drive
     Phase 4 task dispatch
+  - ALWAYS WHEN AUTHOR_PLAN_OFFER_RESOLVED=skipped_by_user:
+    ALWAYS have used the single-author flow and NEVER claimed planned parallel dispatch
   - ALWAYS WHEN AUTHOR_PLAN_OFFER_RESOLVED=disk:
     ALWAYS have recorded AUTHOR_PLAN_CACHE_DIR; plan cache ALWAYS contain:
     index.md, plan.json, one agents/{author}.md per involved author,

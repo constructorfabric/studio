@@ -43,7 +43,7 @@ DO:
 - RUN **Path**: {path}
 - RUN **Mode**: {MODE}
 - RUN **Content preview**: {brief overview of what will be created/changed}
-- RUN **Author plan**: {memory/disk/auto-skipped/cancelled}; {task count + parallel group summary OR "single author flow"}
+- RUN **Author plan**: {memory/disk/inline/skipped/auto-skipped/cancelled}; {task count + parallel group summary OR "single author flow"}
 - RUN **Files to write**: `{path}`: {description}; {additional files if any}
 - RUN **Artifacts registry**: `{cf-studio-path}/config/artifacts.toml`: {entry additions/updates, if any}
 - RUN **STRICT self-check**: template loaded = {yes/no}; example referenced = {yes/no}; checklist status = {required-and-complete/deferred-to-phase-5}; placeholders absent = {yes/no}; explicit `yes` received = {yes/no}

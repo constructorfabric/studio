@@ -39,7 +39,7 @@ WHEN:
 
 DO:
   - EMIT "Author plan is mandatory because sub-agents are approved. I will decompose this generate task into author-worker sub-tasks, assign each to a specialist sub-agent, and group them for parallel dispatch in Phase 4."
-  - EMIT "Choose disk for long or context-heavy sessions. Disk saves only the plan pack under `{cf-studio-path}/.cache/generate-plans/`; it does not authorize target file writes."
+  - EMIT "Choose disk for long or context-heavy sessions. Disk saves only the plan pack under `{cf-studio-path}/.cache/generate-plans/`; it does not authorize target file writes. Choose inline to plan without a sub-agent, or skip to continue without planner decomposition."
   - EMIT_MENU MandatoryOfferMenu
   - WAIT user.reply
   - STOP_TURN
@@ -60,8 +60,16 @@ MENU MandatoryOfferMenu:
       LOAD {cf-studio-path}/.core/workflows/shared/stop-token-policy.md
       STOP current generate sub-flow
       NEVER entering Phase 3 or Phase 4
+    4 skip ->
+      SET AUTHOR_PLAN_OFFER_RESOLVED = skipped_by_user
+      SET AUTHOR_EXECUTION_PLAN = null
+      SET AUTHOR_PLAN_APPROVED = false
+      CONTINUE Phase15Handoff
+    5 inline ->
+      SET AUTHOR_PLAN_OFFER_RESOLVED = inline
+      CONTINUE Phase15InlinePlanBuild
   INVALID:
-    EMIT "Reply with 1 for memory, 2 for disk, or 3 to stop. Author planning is mandatory while sub-agents are approved."
+    EMIT "Reply with 1 memory, 2 disk, 3 stop, 4 skip, or 5 inline."
     WAIT user.reply
     STOP_TURN
 ```
@@ -77,8 +85,8 @@ WHEN:
   - AND NOT (invoke_flag == "--no-author-plan" OR kind_rules.author_plan == "disabled")
 
 DO:
-  - EMIT "Author plan is required before the final summary. Native sub-agent dispatch is not active for this run, but the workflow still needs an author plan before Phase 3."
-  - EMIT "Choose disk for long or context-heavy sessions. Disk saves only the plan pack under `{cf-studio-path}/.cache/generate-plans/`; it does not authorize target file writes."
+  - EMIT "Author-plan routing is required before the final summary. Native sub-agent dispatch is not active for this run."
+  - EMIT "Choose disk for long or context-heavy sessions. Disk saves only the plan pack under `{cf-studio-path}/.cache/generate-plans/`; it does not authorize target file writes. Choose inline to plan without a sub-agent, or skip to continue without planner decomposition."
   - EMIT_MENU OptionalOfferMenu
   - WAIT user.reply
   - STOP_TURN
@@ -99,14 +107,53 @@ MENU OptionalOfferMenu:
       LOAD {cf-studio-path}/.core/workflows/shared/stop-token-policy.md
       STOP current generate sub-flow
       NEVER entering Phase 3 or Phase 4
+    4 skip ->
+      SET AUTHOR_PLAN_OFFER_RESOLVED = skipped_by_user
+      SET AUTHOR_EXECUTION_PLAN = null
+      SET AUTHOR_PLAN_APPROVED = false
+      CONTINUE Phase15Handoff
+    5 inline ->
+      SET AUTHOR_PLAN_OFFER_RESOLVED = inline
+      CONTINUE Phase15InlinePlanBuild
   INVALID:
-    EMIT "Reply with 1 for memory, 2 for disk, or 3 to stop. Author planning is required before Phase 3."
+    EMIT "Reply with 1 memory, 2 disk, 3 stop, 4 skip, or 5 inline."
     WAIT user.reply
     STOP_TURN
 
 RULES:
   - NEVER treat disk selection as authorization for target artifact/code writes
   - ALWAYS Phase 3 confirmation still required before Phase 4 even when disk is chosen
+```
+
+```pdsl
+UNIT Phase15InlinePlanBuild
+
+PURPOSE:
+  Build an author execution plan in-controller without dispatching cf-generate-planner.
+
+WHEN:
+  - REQUIRE AUTHOR_PLAN_OFFER_RESOLVED == inline
+
+DO:
+  - RUN SYNTHESIZE AUTHOR_EXECUTION_PLAN directly from approved Phase 1 inputs,
+    target_paths, available author worker agents, dependencies, acceptance
+    criteria, and the same author_plan JSON schema validated by
+    Phase15PlannerDispatch
+  - RUN VALIDATE using the same validation checklist as Phase15PlannerDispatch
+  - REQUIRE validation passes:
+    - SET AUTHOR_PLAN_APPROVED = false
+    - EMIT "Inline author execution plan prepared. Review and approve it before Phase 3 summary or any author-worker dispatch."
+    - EMIT author_plan JSON in full, including tasks, target paths, recommended
+      authors, dependencies, parallel groups, storage mode, and acceptance criteria
+    - EMIT_MENU AuthorPlanApprovalMenu
+    - WAIT user.reply
+    - STOP_TURN
+  - REQUIRE validation fails:
+    - SET LAST_PARSED_AUTHOR_PLAN = synthesized author_plan JSON
+    - SET planner_failure_reason = validation.errors[] joined with "; "
+    - EMIT_MENU PlannerValidationFailureMenu
+    - WAIT user.reply
+    - STOP_TURN
 ```
 
 ```pdsl
@@ -118,6 +165,7 @@ PURPOSE:
 STATE:
   - SET PLANNER_VALIDATION_RETRY_COUNT: integer  default: 0  scope: workflow_run
   - SET PLANNER_VALIDATION_MAX_RETRIES: integer  default: 2  scope: workflow_run
+  - SET LAST_PARSED_AUTHOR_PLAN: parsed author_plan JSON | null  default: null
 
 DO:
   - REQUIRE {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md loaded before dispatch
@@ -148,6 +196,7 @@ DO:
 
   - RUN PARSE marker "<!-- author_plan -->" and following JSON block
   - REQUIRE marker is missing OR JSON parse fails:
+    - SET LAST_PARSED_AUTHOR_PLAN = null
     - SET planner_failure_reason = "missing-or-invalid-author-plan-json"
     - EMIT_MENU PlannerValidationFailureMenu
     - WAIT user.reply
@@ -167,6 +216,7 @@ DO:
 
   - REQUIRE validation passes:
     - SET AUTHOR_EXECUTION_PLAN = parsed author_plan JSON
+    - SET LAST_PARSED_AUTHOR_PLAN = parsed author_plan JSON
     - SET AUTHOR_PLAN_APPROVED = false
     - SET PLANNER_VALIDATION_RETRY_COUNT = 0
     - EMIT "Author execution plan prepared. Review and approve it before Phase 3 summary or any author-worker dispatch."
@@ -177,6 +227,7 @@ DO:
     - STOP_TURN
 
   - REQUIRE validation fails:
+    - SET LAST_PARSED_AUTHOR_PLAN = parsed author_plan JSON
     - SET planner_failure_reason = validation.errors[] joined with "; "
     - EMIT_MENU PlannerValidationFailureMenu
     - WAIT user.reply
@@ -203,6 +254,7 @@ MENU PlannerValidationFailureMenu:
       RE-VALIDATE returned plan
       IF validation passes:
         SET AUTHOR_EXECUTION_PLAN = parsed author_plan JSON
+        SET LAST_PARSED_AUTHOR_PLAN = parsed author_plan JSON
         SET AUTHOR_PLAN_APPROVED = false
         SET PLANNER_VALIDATION_RETRY_COUNT = 0
         EMIT "Author execution plan prepared. Review and approve it before Phase 3 summary or any author-worker dispatch."
@@ -212,6 +264,7 @@ MENU PlannerValidationFailureMenu:
         WAIT user.reply
         STOP_TURN
       IF validation fails again:
+        SET LAST_PARSED_AUTHOR_PLAN = parsed author_plan JSON
         EMIT_MENU PlannerValidationFailureMenu
         WAIT user.reply
         STOP_TURN
@@ -225,14 +278,20 @@ MENU PlannerValidationFailureMenu:
       SET AUTHOR_PLAN_OFFER_RESOLVED = cancelled_planner_failure
       SET AUTHOR_EXECUTION_PLAN = null
       STOP_TURN
-    4 stop_token ->
+    4 accept_anyway ->
+      REQUIRE LAST_PARSED_AUTHOR_PLAN != null
+      SET AUTHOR_EXECUTION_PLAN = LAST_PARSED_AUTHOR_PLAN
+      SET AUTHOR_PLAN_APPROVED = true
+      EMIT "Accepted invalid author execution plan by explicit user choice; continuing with recorded validation errors: {planner_failure_reason}"
+      CONTINUE Phase15Handoff
+    5 stop_token ->
       SET AUTHOR_PLAN_OFFER_RESOLVED = cancelled_planner_failure
       SET AUTHOR_EXECUTION_PLAN = null
       SET CF_PHASE_GATE = armed
       STOP current generate sub-flow
       NEVER entering Phase 3 or Phase 4
   INVALID:
-    EMIT "Reply with 1, 2, or 3."
+    EMIT "Reply with 1 retry, 2 stop_recoverable, 3 stop_hard, 4 accept_anyway, or 5 stop_token. Option 4 requires a parsed author_plan JSON."
     WAIT user.reply
     STOP_TURN
 
@@ -278,14 +337,18 @@ MENU AuthorPlanApprovalMenu:
     STOP_TURN
 
 RULES:
-  - NEVER continue to Phase 3 without a valid AUTHOR_EXECUTION_PLAN
+  - NEVER continue to Phase 3 without a valid AUTHOR_EXECUTION_PLAN unless
+    AUTHOR_PLAN_OFFER_RESOLVED is skipped_by_user or an auto_skipped_* state
   - NEVER continue to Phase 3 or Phase 4 from a planner-produced
     AUTHOR_EXECUTION_PLAN until AuthorPlanApprovalMenu has displayed the full
     plan and the user selected `1 approve`
-  - ALWAYS Planner failure NEVER degrade to no-plan Phase 3 continuation
-  - ALWAYS AUTHOR_EXECUTION_PLAN may be null only for explicit Phase15AutoSkip states;
-    those states use the single-author Phase 4 path and NEVER claim planned
-    parallel dispatch
+  - ALWAYS Planner failure NEVER degrade to no-plan Phase 3 continuation unless
+    the user explicitly selected `skip`
+  - ALWAYS `accept_anyway` may continue with a validation-failed plan only when
+    LAST_PARSED_AUTHOR_PLAN != null and the user explicitly selected option 4
+  - ALWAYS AUTHOR_EXECUTION_PLAN may be null only for explicit Phase15AutoSkip
+    states or skipped_by_user; those states use the single-author Phase 4 path
+    and NEVER claim planned parallel dispatch
   - ALWAYS PlannerValidationFailureMenu option `2 stop_recoverable` cancels and arms
     CF_PHASE_GATE for session-level recovery.
   - ALWAYS PlannerValidationFailureMenu option `3 stop_hard` stops this turn without

@@ -2700,9 +2700,40 @@ def cmd_kit(argv: List[str]) -> int:
     Usage: cfs kit <install|update|validate|migrate> [options]
     """
     # @cpt-begin:cpt-studio-flow-kit-dispatch:p1:inst-parse-subcmd
-    if not argv:
-        ui.result({"status": "ERROR", "message": "Missing kit subcommand", "subcommands": ["install", "update", "validate", "migrate"]})
-        return 1
+    subcommands = ["install", "update", "validate", "migrate"]
+    usage = "cfs kit <install|update|validate|migrate> [options]"
+    descriptions = {
+        "install": [
+            ("<owner/repo[@ref]>", "Install a kit from GitHub"),
+            ("--path <dir>", "Install a kit from a local directory"),
+        ],
+        "update": [("[slug|--path <dir>]", "Update installed kit files")],
+        "validate": [("", "Validate kit structure and examples")],
+        "migrate": [("", "Deprecated; use update")],
+    }
+
+    def human_fn(_d: dict) -> tuple:
+        writes = [
+            sys.stderr.write(f"Usage: {usage}\n\n"),
+            sys.stderr.write("Subcommands:\n"),
+        ]
+        for name in subcommands:
+            for args, description in descriptions.get(name, [("", "")]):
+                command = f"{name} {args}".rstrip()
+                writes.append(sys.stderr.write(f"  {command:<30} {description}\n"))
+        return tuple(writes)
+
+    if not argv or argv[0] in ("-h", "--help"):
+        ui.result(
+            {
+                "status": "PASS" if argv else "ERROR",
+                "message": "Kit management commands" if argv else "Missing kit subcommand",
+                "subcommands": subcommands,
+                "usage": usage,
+            },
+            human_fn=human_fn,
+        )
+        return 0 if argv else 1
 
     subcmd = argv[0]
     rest = argv[1:]
@@ -2719,7 +2750,7 @@ def cmd_kit(argv: List[str]) -> int:
     elif subcmd == "migrate":
         return cmd_kit_migrate(rest)
     else:
-        ui.result({"status": "ERROR", "message": f"Unknown kit subcommand: {subcmd}", "subcommands": ["install", "update", "validate", "migrate"]})
+        ui.result({"status": "ERROR", "message": f"Unknown kit subcommand: {subcmd}", "subcommands": subcommands})
         return 1
     # @cpt-end:cpt-studio-flow-kit-dispatch:p1:inst-route
 

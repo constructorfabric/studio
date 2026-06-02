@@ -59,6 +59,8 @@ STATE:
     default: false
   - SET STORYTELLING_HELP_GOAL: string | null
     default: null
+  - SET STORYTELLING_PHASE: e0 | e1_mode | e1_disposition | e1_audience | e1_plan | e2 | e5 | done
+    default: e0
 
 DO:
   - RUN ALWAYS load {cf-studio-path}/.core/skills/studio/SKILL.md WHEN {cfs_mode} == off
@@ -85,12 +87,15 @@ DO:
     - SET STORYTELLING_PLAN_APPROVED = true
     - SET STORYTELLING_DIAGRAM_FORMAT = "ascii" unless already set
     - SET STORYTELLING_DIAGRAM_FORMAT_PRESET = true
+    - SET STORYTELLING_PHASE = e0
     - SET enforceRemediationPrompts = false
     - NEVER Phase 2 deterministic gate
     - NEVER Phase 3 standard semantic checklist
     - NEVER Phase 5 (Storytelling Output emits Suggested Next Steps)
     - REQUIRE Storytelling Output schema in Phase 4
     - NEVER emitting analyze remediation prompt blocks
+    - REQUIRE HelpPresetStorytellingFirstOutputContract before any
+      user-visible assistant output
     - CONTINUE through the normal Storytelling Protocol E0-E5 using the
     prefilled variables as already-resolved gate answers
     do not ask mode, disposition, audience, context-pack-strategy, export,
@@ -160,9 +165,40 @@ INVARIANTS:
     E0-E5 against EXPLAIN_TARGET={cf-studio-path}; NEVER replace it with a
     custom one-shot overview/status summary; ALWAYS render diagrams as ASCII
     inline in chat unless the user overrides mid-session
+  - ALWAYS WHEN CF_HELP_PRESET=true: preset resolution skips prompts, not phases;
+    Phase E0/E1 state is still represented, E2 portion delivery still uses the
+    Storytelling portion shape, and terminal output still uses the E5 wrap
+    schema
   - ALWAYS set enforceRemediationPrompts=false ONLY when EXPLAIN_MODE=true
   - ALWAYS Each methodology is loaded by exactly one matched sub-agent; the orchestrator
     only routes and merges outputs
+
+```pdsl
+UNIT HelpPresetStorytellingFirstOutputContract
+
+PURPOSE:
+  Make the first legal cf-help explain output explicit and fail-closed.
+
+WHEN:
+  - REQUIRE CF_HELP_PRESET == true
+
+RULES:
+  - ALWAYS IF EXPLAIN_MODE == true:
+      EXPLAIN_MODE first-output contract wins over CF_HELP_PRESET; the next
+      user-visible assistant message MUST be the E0/E1 explain-session opener
+      with preset answers represented, not an E2 portion
+  - ALWAYS the next user-visible assistant message MUST be one of:
+      1. a Storytelling E0/E1 opener for EXPLAIN_TARGET={cf-studio-path}
+      2. a Storytelling E5 wrap after legal portion delivery or user-requested wrap
+      3. a deterministic load/error menu from the active workflow
+  - ALWAYS legal E0/E1 help-preset openers include the input-access log,
+    resolved preset mode/disposition/audience/context, and plan-approval state
+  - NEVER emit a standalone `Constructor Studio Help`, `Common requests`,
+    command-surface summary, generic status overview, or `EXPLAIN_RESULT`
+    completion envelope before the legal Storytelling output above
+  - ALWAYS if the planned response is a summary/help overview instead of a
+    legal Storytelling output, discard it and restart from this contract
+```
 
 NOTES:
   Storytelling mode-coupled review requires explicit storytelling intent:

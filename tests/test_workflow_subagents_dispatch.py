@@ -1461,6 +1461,61 @@ def test_analyze_methodologies_are_lazy_and_one_per_subagent() -> None:
     assert "cf-prompt-bug-finder" in phase3
 
 
+def test_generate_author_plan_menu_supports_skip_inline_and_accept_anyway() -> None:
+    """Phase 1.5 lets users bypass sub-agent planner, plan inline, or accept a parsed invalid plan."""
+    repo_root = Path(__file__).resolve().parents[1]
+    offer = (
+        repo_root / "workflows" / "generate" / "phase-1.5" / "offer-dispatch.md"
+    ).read_text(encoding="utf-8")
+    contract = (
+        repo_root / "workflows" / "generate" / "phase-1.5" / "state-contract.md"
+    ).read_text(encoding="utf-8")
+
+    assert "4 skip" in offer
+    assert "SET AUTHOR_PLAN_OFFER_RESOLVED = skipped_by_user" in offer
+    assert "5 inline" in offer
+    assert "UNIT Phase15InlinePlanBuild" in offer
+    assert "4 accept_anyway" in offer
+    assert "REQUIRE LAST_PARSED_AUTHOR_PLAN != null" in offer
+    assert "| inline" in contract
+    assert "| skipped_by_user" in contract
+
+
+def test_generate_phase4_cannot_skip_planned_author_dispatch() -> None:
+    """Phase 4 must route planned runs through task-level author dispatch before fallback."""
+    repo_root = Path(__file__).resolve().parents[1]
+    phase4 = (
+        repo_root / "workflows" / "generate" / "phase-4-write.md"
+    ).read_text(encoding="utf-8")
+
+    assert "UNIT Phase4DispatchRouter" in phase4
+    assert "CONTINUE § Phase4DispatchRouter" in phase4
+    assert "AUTHOR_PLAN_OFFER_RESOLVED in (memory | disk | inline)" in phase4
+    assert "CONTINUE § Phase4PlannedMultiAuthorDispatch" in phase4
+    assert "NEVER use single-author fallback when AUTHOR_PLAN_OFFER_RESOLVED is memory" in phase4
+    assert "skipped_by_user | auto_skipped_no_author_plan_flag | auto_skipped_rules_disabled" in phase4
+    assert "Phase4AuthorSelectionDispatch is a leaf dispatch step" in phase4
+    assert "AUTHOR_EXECUTION_PLAN != null AND AUTHOR_PLAN_APPROVED != true" in phase4
+    assert "ELSE: CONTINUE § Phase4DispatchRouter" in phase4
+
+
+def test_analyze_phase3_cannot_skip_planned_reviewer_dispatch() -> None:
+    """Analyze Phase 3 must route approved reviewer plans through planned sub-agent dispatch."""
+    repo_root = Path(__file__).resolve().parents[1]
+    phase3 = (
+        repo_root / "workflows" / "analyze" / "phase-3-semantic.md"
+    ).read_text(encoding="utf-8")
+
+    assert "UNIT AnalyzePhase3DispatchRouter" in phase3
+    assert "CONTINUE AnalyzePhase3DispatchRouter" in phase3
+    assert "REVIEWER_EXECUTION_PLAN is non-null" in phase3
+    assert "REVIEWER_PLAN_APPROVED != true" in phase3
+    assert "CONTINUE PlannedMultiReviewerDispatch" in phase3
+    assert "REVIEWER_PLAN_RESOLVED in (memory | disk)" in phase3
+    assert "NEVER enter LegacySingleDispatch when REVIEWER_PLAN_RESOLVED is memory or disk" in phase3
+    assert "LegacySingleDispatch is allowed only for explicit Phase 2.5 auto-skip" in phase3
+
+
 def test_reviewer_agent_prompts_do_not_mix_methodologies() -> None:
     """Code/prompt checklist reviewers and bug finders each load one methodology."""
     repo_root = Path(__file__).resolve().parents[1]
@@ -1863,7 +1918,11 @@ def test_cf_help_routes_to_prefilled_explain_preset() -> None:
     assert "SET STORYTELLING_DIAGRAM_FORMAT_PRESET = true" in help_workflow
     assert "Run a normal cf-explain storytelling session" in help_workflow
     assert "LOAD skill `cf` IN ANALYZE + EXPLAIN mode, CF_HELP_PRESET=true" in help_workflow
+    assert "CONTINUE {cf-studio-path}/.core/workflows/analyze.md WITH" in help_workflow
+    assert "HelpProxy MUST NOT emit user-facing" in help_workflow
     assert "NEVER render custom one-shot help here" in help_workflow
+    assert "NEVER emit command lists" in help_workflow
+    assert "EXPLAIN_RESULT completion envelopes before Storytelling E2/E5" in help_workflow
     assert "NEVER ask the diagram-format lazy prompt in help mode" in help_workflow
     assert "REQUIRE CF_HELP_PRESET == true" in preamble
     assert "PRESERVE route-supplied preset variables" in preamble
@@ -1874,7 +1933,40 @@ def test_cf_help_routes_to_prefilled_explain_preset() -> None:
     assert "NEVER custom one-shot help rendering" in preamble
     assert "ALWAYS render diagrams as ASCII" in preamble
     assert "custom one-shot overview/status summary" in preamble
+    assert "UNIT HelpPresetStorytellingFirstOutputContract" in preamble
+    assert "preset resolution skips prompts, not phases" in preamble
+    assert "Standalone `Constructor Studio Help`" not in preamble
     assert "STORYTELLING_HELP_OUTPUT_CONTRACT" not in preamble
+
+
+def test_explain_mode_fail_closed_against_one_shot_help_summary() -> None:
+    """Explain/help presets should make summary substitution an invalid output."""
+    repo_root = Path(__file__).resolve().parents[1]
+    protocol = (repo_root / "skills" / "studio" / "protocol.md").read_text(
+        encoding="utf-8"
+    )
+    storytelling = (repo_root / "requirements" / "storytelling.md").read_text(
+        encoding="utf-8"
+    )
+    preamble = (
+        repo_root / "workflows" / "analyze" / "preamble.md"
+    ).read_text(encoding="utf-8")
+
+    assert "UNIT ExplainModePreOutputSentinel" in protocol
+    assert "EXPLAIN_MODE == true" in protocol
+    assert "STORYTELLING_PHASE not in [e2, e5, done]" in protocol
+    assert "NEVER emit answer-style content, help summaries, command lists" in protocol
+    assert "completion envelopes" in protocol
+    assert "UNIT StorytellingPresetGateResolution" in storytelling
+    assert "CF_HELP_PRESET == true" in storytelling
+    assert "preset resolution skips prompts, not phases" in storytelling
+    assert "EXPLAIN_MODE=true takes precedence over CF_HELP_PRESET fast-forwarding" in storytelling
+    assert "CONTINUE Phase E0/E1 opener with preset answers represented" in storytelling
+    assert "UNIT HelpPresetStorytellingFirstOutputContract" in preamble
+    assert "EXPLAIN_MODE first-output contract wins over CF_HELP_PRESET" in preamble
+    assert "a Storytelling E0/E1 opener for EXPLAIN_TARGET={cf-studio-path}" in preamble
+    assert "Constructor Studio Help" in preamble
+    assert "Common requests" in preamble
 
 
 def test_empty_standalone_explore_clarifies_before_dispatch() -> None:
