@@ -34,16 +34,6 @@ purpose: Systematic methodology for scanning brownfield projects and generating 
  mode and require an explicit update strategy before overwriting generated
  sections.
  
- ## Agent Instructions
- 
- **ALWAYS open and follow** this file WHEN the user asks to configure Studio for a project or an auto-config workflow is triggered.
- 
- **ALWAYS open and follow** `{cf-studio-path}/.core/requirements/reverse-engineering.md` for scan methodology (`L1-L3`, `L8`).
- 
- **ALWAYS open and follow** `{cf-studio-path}/.core/requirements/prompt-engineering.md` for rule-quality validation.
- 
- **Prerequisites**: confirm the agent has read this methodology, has source access, will follow phases `1 -> 6` in order, will checkpoint after each phase, and will **NOT** write files without user confirmation.
-
 ## Runtime Contract
 
 ```pdsl
@@ -177,6 +167,49 @@ ON_ERROR:
   large_codebase ->
     EMIT "Large codebase detected ({file_count} files)"
     CONTINUE with limited scan depth
+```
+
+```pdsl
+UNIT AutoConfigPreconditions
+
+PURPOSE:
+  Verify the project is set up for auto-config before Phase 1 begins.
+
+WHEN:
+  - REQUIRE AUTO_CONFIG_PHASE == phase_1_scan
+
+DO:
+  - REQUIRE Studio is initialized (studio.py info returns FOUND)
+  - REQUIRE source-code repository is accessible
+  - REQUIRE {cf-studio-path}/config/ exists and is writable
+  - REQUIRE {cf-studio-path}/config/rules/ is empty OR ExistingRulesRefreshMenu
+    has resolved to refresh, selective, or report-only mode
+
+RULES:
+  - NEVER begin Phase 1 until all pre-checks pass
+```
+
+```pdsl
+UNIT AutoConfigQualityRules
+
+PURPOSE:
+  Define quality and validation obligations applied across all auto-config phases.
+
+RULES:
+  - ALWAYS apply prompt-engineering.md Layer 2 and Layer 5 quality gates to
+    every generated rule
+  - ALWAYS include a Critical Files table in exactly one generated topic file
+  - ALWAYS run cfs toc on each generated rule file after writing it
+  - ALWAYS generate only topic files that have at least 3 project-specific rules
+  - NEVER generate topic files exceeding 120 lines
+  - ALWAYS present generated rule files to the user before writing any file
+  - ALWAYS validate that every generated WHEN rule resolves to an accessible
+    file or heading
+  - ALWAYS verify registry entries point to existing directories
+  - ALWAYS validate generated TOML for syntax correctness
+  - ALWAYS use activity-based WHEN conditions, not location-based
+  - NEVER produce rules that overlap across topic files
+  - NEVER include generic boilerplate or language-default rules
 ```
  
  ## Overview
@@ -489,16 +522,10 @@ WHEN {doc-specific-activity}
 
 ## Error Handling
 
-| Condition | Response | Action |
-|---|---|---|
-| No source code found | `No source code detected in project` → use `cf generate` for greenfield work. | **STOP** |
-| Existing rules found | `Existing rules found in {cf-studio-path}/config/rules/` → list files → use `--force` or merge manually. | **STOP** unless `--force` |
-| Scan incomplete | `Project scan incomplete: {reason}` → completed list → skipped list → rules generated from partial scan data. | **WARN** and continue |
-| Large codebase | `Large codebase detected ({file_count} files)` → scan top-level structure only → offer `cf auto-config --system {slug}`. | Limit scan depth |
+Recovery paths for all error conditions are specified in `AutoConfigErrorHandling` above.
 
 ## References
 
 - Reverse Engineering: `{cf-studio-path}/.core/requirements/reverse-engineering.md`
 - Prompt Engineering: `{cf-studio-path}/.core/requirements/prompt-engineering.md`
-- Execution Protocol: `{cf-studio-path}/.core/requirements/execution-protocol.md`
 - Generate Workflow: `{cf-studio-path}/.core/workflows/generate.md` (triggers auto-config in Brownfield prerequisite)

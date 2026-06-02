@@ -68,8 +68,15 @@ Dispatch payload:
 }
 ```
 
-Review mode is read-only. It does not write files.
+```pdsl
+UNIT ReviewPromptCompletion
 
-Completion: return the `cf-pdsl-reviewer` validation report. If the
-reviewer cannot read every requested file, return a partial checkpoint and do
-not claim PASS for unread paths.
+PURPOSE:
+  Define the terminal return contract and invariants for review mode.
+
+RULES:
+  - NEVER write files in review mode
+  - ALWAYS return the cf-pdsl-reviewer validation report
+  - ALWAYS return a partial checkpoint when the reviewer cannot read every requested file
+  - NEVER claim PASS for unread paths
+```

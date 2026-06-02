@@ -37,6 +37,48 @@ Loaded by `{cf-studio-path}/.core/requirements/storytelling.md` (router). Define
 
 ## Phase E0: Pre-flight
 
+```pdsl
+UNIT PhaseE0Preflight
+
+PURPOSE:
+  Resolve invocation intent, input access, prior sessions, and size guards
+  before any user interaction begins.
+
+WHEN:
+  - REQUIRE STORYTELLING_PHASE == e0
+
+DO:
+  - REQUIRE invocation handling runs: determine resume intent, session-discovery
+    mode, or clear target and set {target}
+  - REQUIRE input access resolution runs the full chain for all non-local targets
+  - REQUIRE existing-session scan runs before E1; offer tier-1 and tier-2 matches
+    with Start fresh and Cancel alternatives
+  - REQUIRE input-size guards run; offer narrow-to-section for inputs over 2000 lines
+  - REQUIRE registry resolution runs for recognized artifact IDs
+  - REQUIRE language config from .studio-workspace.toml is applied
+
+RULES:
+  - ALWAYS run the access chain in priority order (MCP → skill → CLI → user fallback)
+    before reporting not-found for any external resource
+  - NEVER execute arbitrary user-supplied shell commands as a fetch fallback
+  - NEVER invoke cf-plan for narrow-to-section; scope-narrowing is a presentation
+    decision only
+  - NEVER auto-offer tier-3 session collisions
+  - ALWAYS record input_path and input_hash for change detection
+
+ON_ERROR:
+  no_target_or_unresolvable_target ->
+    EMIT session-discovery listing (saved sessions newest-first with role /
+      audience / progress / age / input-status)
+    WAIT user.reply
+    STOP_TURN
+
+  external_resource_inaccessible ->
+    EMIT user-fallback prompt (1 paste content / 2 local path / 3 cancel)
+    WAIT user.reply
+    STOP_TURN
+```
+
 Before any user interaction:
 
 - [ ] **Invocation handling** — interpret the user's prompt:
@@ -80,6 +122,79 @@ Before any user interaction:
 - [ ] **Language config**: respect `[validation] allowed_content_languages` from `.studio-workspace.toml` for source quotes.
 
 ## Phase E1: Discovery
+
+```pdsl
+UNIT PhaseE1ModeGate
+
+PURPOSE:
+  Resolve storytelling mode interactively before any other E1 step.
+
+WHEN:
+  - REQUIRE STORYTELLING_PHASE == e1_mode
+
+DO:
+  - RUN parse-intent: extract mode hint, role hint, audience hint, angle, and
+    section focus from the user's prompt
+  - EMIT 6-mode resolution prompt with suggested default derived from intent
+  - WAIT user.reply
+  - STOP_TURN
+
+RULES:
+  - NEVER auto-set {mode} from intent verbs, KIND, or default_mode preference
+  - ALWAYS use intent / KIND / default_mode only to inform the suggested default
+  - ALWAYS require explicit user confirmation before mode resolves
+```
+
+```pdsl
+UNIT PhaseE1DispositionGate
+
+PURPOSE:
+  Resolve artifact disposition immediately after mode, before role or audience.
+
+WHEN:
+  - REQUIRE STORYTELLING_PHASE == e1_mode
+  - REQUIRE mode is resolved
+
+DO:
+  - EMIT artifact-disposition prompt with the mode-appropriate artifact-type list
+  - WAIT user.reply
+  - STOP_TURN
+
+RULES:
+  - ALWAYS emit disposition prompt after mode resolution and before role/audience derivation
+  - NEVER use project artifact_disposition preference to bypass the prompt
+  - ALWAYS use project artifact_disposition preference only to inform the suggested default
+  - ALWAYS include review-comments in the listed artifact types when mode is review
+```
+
+```pdsl
+UNIT PhaseE1AudienceAndPlanGates
+
+PURPOSE:
+  Resolve role, audience, and plan approval to complete E1 Discovery.
+
+WHEN:
+  - REQUIRE STORYTELLING_PHASE == e1_audience OR STORYTELLING_PHASE == e1_plan
+
+DO:
+  - RUN auto-derive-role from artifact KIND per the role table
+  - RUN confidence-routing to determine whether the audience gate fires
+  - REQUIRE audience gate fires when audience is not known with high confidence:
+    - EMIT numbered 7-option audience prompt with suggested default
+    - WAIT user.reply
+    - STOP_TURN
+  - RUN build-plan: construct concrete numbered plan items from actual input headings
+  - EMIT numbered plan with 4-option approval menu (Go / Edit / Pivot / Cancel)
+  - WAIT user.reply
+  - STOP_TURN
+
+RULES:
+  - ALWAYS derive plan items from actual input headings; NEVER use generic
+    labels such as "intro" or "details"
+  - NEVER emit explanatory content before plan approval at gate 4
+  - ALWAYS number every option in audience and plan-approval prompts
+  - ALWAYS include the suggested default with → notation in every prompt
+```
 
 Goal: settle `{mode}`, `{role}`, `{audience}`, `{plan}` before any content delivery.
 
@@ -153,6 +268,47 @@ Approve and proceed?
 User confirms by number / keyword / Enter for the suggestion. Free-text shorthand also accepted: `go`/`yes`/Enter → E2; `edit X` / `swap N and M` → adjust; `pivot to {topic}` → rebuild; `cancel` → exit. Cancel ack: `Explain mode cancelled. Invoke skill `cf-analyze` for standard analysis.`
 
 ## Phase E2: Portion Delivery Loop
+
+```pdsl
+UNIT PhaseE2PortionDelivery
+
+PURPOSE:
+  Deliver content in small source-grounded portions with interactive navigation
+  until the plan is exhausted or the user wraps.
+
+WHEN:
+  - REQUIRE STORYTELLING_PHASE == e2
+
+DO:
+  - REQUIRE each portion is estimated before emission; proactively decompose when
+    estimated body exceeds page_size_soft
+  - EMIT portion with required shape: Opening / Body / Mode lens / Diagram /
+    Source refs / viz-marker / progress marker / Navigation block
+  - WAIT user.reply
+  - STOP_TURN
+  - CONTINUE based on user navigation-slot selection
+
+RULES:
+  - NEVER emit a portion that requires the user to scroll; hard ceiling is page_size_hard
+  - ALWAYS decompose proactively before emitting when estimated body exceeds page_size_soft
+  - ALWAYS include the 7-slot navigation block in Next-first order on every portion
+  - ALWAYS append slot 8 (Send comments — preview (K queued)) when queue has ≥ 1 active item
+  - ALWAYS include the 🎨 visualization: decision marker on every non-socratic portion footer
+  - ALWAYS include a structural overview diagram in Portion 1 for all non-socratic modes
+    by default
+  - ALWAYS fire the lazy-ask diagram-format prompt before Portion 1 body when Portion 1
+    is the first diagram-bearing portion, unless STORYTELLING_DIAGRAM_FORMAT_PRESET is true
+  - NEVER fire the lazy-ask format prompt when STORYTELLING_DIAGRAM_FORMAT_PRESET = true
+  - NEVER execute bare next / deeper / lateral as a direct topic delivery; ALWAYS render
+    a numbered topic menu first and WAIT
+  - ALWAYS include Back and Custom in every Deeper / Lateral topic submenu
+  - NEVER omit Back from the main navigation block
+  - ALWAYS emit open-questions reminder every 3-4 portions when buffer ≥ 2
+  - ALWAYS emit comprehension check every 2-3 portions
+  - NEVER auto-checkpoint during the session
+  - ALWAYS push unanswerable user questions to the open-questions buffer
+  - NEVER push methodology-noticed gaps to the open-questions buffer
+```
 
 ### Portion shape
 
@@ -343,6 +499,29 @@ First mention of a term unfamiliar to the audience: inline parenthetical definit
 
 ## Phase E3: Strict-Context Boundary
 
+```pdsl
+UNIT PhaseE3StrictContextBoundary
+
+PURPOSE:
+  Enforce source-grounding, clickable-reference, and open-questions rules
+  inside every portion.
+
+RULES:
+  - ALWAYS limit information to the target artifact, its registered linked
+    artifacts, and the user's prompt; nothing else
+  - NEVER invent facts or paraphrase domain knowledge as if sourced from the input
+  - ALWAYS omit ungrounded claims; NEVER insert placeholder gap markers
+  - NEVER push to the open-questions buffer on the methodology's own initiative
+  - ALWAYS attach a clickable Markdown link for every non-trivial source reference
+  - NEVER use plain-text refs such as (DESIGN.md §4.2)
+  - ALWAYS use PR-view inline-diff URLs for files in the diff when target is a PR or MR
+  - NEVER use commit-SHA blob URLs for files that appear in the PR diff
+  - ALWAYS include the (analogy — not from artifact) disclaimer on every analogy
+  - NEVER include more than 1 analogy per 3 portions
+  - ALWAYS derive glossary definitions from the input or its registered linked artifacts
+  - NEVER invent or speculate glossary definitions
+```
+
 Hard rules, enforced inside every portion:
 
 1. **Information SHALL come from the input only**: target artifact / codebase region + its registered linked artifacts (parents/children fetched in E0) + the user's prompt. **Nothing else.**
@@ -416,6 +595,28 @@ Hard rules, enforced inside every portion:
 
 ## Phase E4: Visualize-by-Default
 
+```pdsl
+UNIT PhaseE4VisualizeByDefault
+
+PURPOSE:
+  Ensure diagrams are the default disposition and are constructed fresh for
+  the session audience, not transcribed from input artwork.
+
+RULES:
+  - ALWAYS run the two-step visualization decision before writing each portion body
+  - ALWAYS default to text+diagram for multi-entity, multi-step, multi-aspect,
+    comparative, transformational, or decision-bearing content
+  - NEVER accept "I don't feel like it" / "the prose is fine" / "the input is small"
+    as valid reasons for text-only
+  - ALWAYS articulate an explicit, surfaced reason when choosing text-only
+  - ALWAYS construct diagrams from the portion's source-grounded facts;
+    NEVER transcribe input diagrams verbatim
+  - ALWAYS adapt diagram detail to the resolved audience
+  - ALWAYS surface the visualization decision via the 🎨 visualization: marker
+  - NEVER ask the lazy-ask diagram format question more than once per session
+  - ALWAYS emit an ASCII module map on the first code-mode portion without lazy-asking
+```
+
 **Default disposition: visualize**. Aim for a visualization in every portion and every sub-portion. Text-only is the rare exception that requires an explicit, surfaced decision. Two-step decision **before** writing the body, surfaced via the `🎨 visualization:` marker:
 
 **Step 1 — How to represent**:
@@ -454,6 +655,41 @@ Rendering: ASCII → fenced text in chat; Mermaid → open/append the file with 
 
 ## Phase E5: Wrap
 
+```pdsl
+UNIT PhaseE5Wrap
+
+PURPOSE:
+  Deliver wrap output after plan exhaustion or user-triggered stop, with
+  optional checkpoint persistence.
+
+WHEN:
+  - REQUIRE STORYTELLING_PHASE == e5
+
+DO:
+  - REQUIRE plan-complete prompt fires before wrap output when last plan item is
+    delivered; do not auto-finalize
+  - REQUIRE checkpoint-delete check fires when a resume checkpoint exists for this
+    session; offer deletion with suggested yes
+  - REQUIRE checkpoint-and-resume prompt fires before wrap output when user wraps
+    with plan incomplete; write checkpoint only if user accepts
+  - EMIT wrap output with all required sections
+
+RULES:
+  - NEVER auto-finalize after the last plan item; ALWAYS emit the plan-complete
+    prompt first
+  - NEVER auto-write a checkpoint; ALWAYS ask the checkpoint-and-resume prompt first
+  - NEVER auto-checkpoint during the session; persistence is wrap-time only
+  - ALWAYS verify input_hash before resuming from a checkpoint
+  - ALWAYS include Resume this session in Suggested Next Steps ONLY when a checkpoint
+    was written this turn
+  - NEVER re-prompt to save artifacts at wrap when disposition is save-to-file or
+    post-to-resource; those artifacts were already persisted during the session
+  - ALWAYS include Session / Key Takeaways / Open Questions / Glossary /
+    Bookmark Export / Suggested Next Steps in wrap output
+  - ALWAYS use relative paths in all generated artifacts
+  - NEVER write absolute paths into any explain-generated artifact body
+```
+
 Two triggers:
 
 1. **Plan exhausted** (last plan item delivered) → DON'T auto-finalize; methodology asks:
@@ -475,7 +711,7 @@ Two triggers:
 2. **User-triggered** (`stop` / `wrap` / `enough`) any time. Two cases:
    - **Plan complete** (last plan item already delivered) → equivalent to trigger 1 (jump to wrap output, after the optional checkpoint-delete prompt).
    - **Plan NOT complete** → first emit the checkpoint-and-resume prompt:
-     ```pdsl
+     ```text
      Session not complete — at portion {X} of {N}, plan items remaining: {list}.
      Save a checkpoint to resume later? (yes / no)
      - yes → write `{cf-studio-path}/.cache/explain/session-{slug}-{ISO-timestamp}.json`

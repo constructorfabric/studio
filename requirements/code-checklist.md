@@ -30,19 +30,54 @@ purpose: Generic (kit-agnostic) quality checklist for code changes and reviews
 **Companion methodology**: for bug hunting, logic bug review, edge-case search, regression risk analysis, or maximum-recall code review, also use `bug-finding.md` as the search procedure for hotspot mapping, invariant extraction, failure-path exploration, counterexample construction, and dynamic-escalation guidance.
 
 ## Procedure
-- [ ] Identify the code domain and decide applicability per checklist item.
-- [ ] Mark each item `PASS`, `FAIL`, `N/A` with rationale, or `NOT REVIEWED` when excluded by review mode.
-- [ ] Never skip silently; missing rationale for an inapplicable item is a violation.
-- [ ] Report issues only; each issue includes checklist ID, severity, location, evidence, why it matters, and a concrete fix.
+
+```pdsl
+UNIT CodeReviewProcedure
+
+PURPOSE:
+  Define the mandatory steps for applying this checklist to any code review.
+
+WHEN:
+  - REQUIRE a code review begins
+
+DO:
+  - SET code_domain: identify the domain of the code being reviewed
+  - RUN applicability decision per checklist item
+  - SET item_status: PASS, FAIL, N/A with rationale, or NOT REVIEWED when excluded by review mode
+
+RULES:
+  - NEVER skip silently; missing rationale for an inapplicable item is a violation
+  - ALWAYS report issues only; each issue includes checklist ID, severity, location, evidence, why it matters, and a concrete fix
+```
+
 ## Severity
 - CRITICAL: unsafe/broken/security issue; blocks merge.
 - HIGH: major quality issue; fix before merge.
 - MEDIUM: meaningful improvement; fix when feasible.
 - LOW: minor improvement; optional.
+
 ## Review Modes
-- Quick: `<50` LOC, low risk; must check `SEC-CODE-001/002/003`, `SEC-CODE-NO-001/002`, `ERR-CODE-001/003`, `ERR-CODE-NO-001`, `QUAL-CODE-NO-002`; spot-check `ENG-CODE-001`, `QUAL-CODE-001`; mark the rest `NOT REVIEWED`.
-- Standard: `50-200` LOC, medium risk; check all CRITICAL and HIGH items plus all MUST NOT items.
-- Full: `>200` LOC or architectural; check all items; triage order is `SEC`, `ERR`, `QUAL/TEST`, `ENG/QUAL`, `PERF`, `OBS`.
+
+```pdsl
+UNIT CodeReviewModes
+
+PURPOSE:
+  Define which checklist items are required for each review mode based on code size and risk.
+
+WHEN:
+  - REQUIRE review mode is selected
+
+DO:
+  - SET review_mode: Quick when code is fewer than 50 LOC and low risk
+  - SET review_mode: Standard when code is 50-200 LOC and medium risk
+  - SET review_mode: Full when code is more than 200 LOC or architectural
+
+RULES:
+  - ALWAYS check SEC-CODE-001/002/003, SEC-CODE-NO-001/002, ERR-CODE-001/003, ERR-CODE-NO-001, QUAL-CODE-NO-002 in Quick mode; spot-check ENG-CODE-001 and QUAL-CODE-001; mark the rest NOT REVIEWED
+  - ALWAYS check all CRITICAL and HIGH items plus all MUST NOT items in Standard mode
+  - ALWAYS check all items in Full mode; triage order is SEC, ERR, QUAL/TEST, ENG/QUAL, PERF, OBS
+```
+
 # MUST HAVE
 ## Engineering Best Practices (ENG)
 ### ENG-CODE-001: Test-Driven Development (TDD) [HIGH]
@@ -264,27 +299,81 @@ Optional: Quantitative guidance — advisory calibration only, not hard limits. 
 - [ ] `innerHTML` with user input is absent.
 - [ ] SQL string concatenation is absent.
 - [ ] Safe alternatives are used.
+
 ## Validation Summary
-- [ ] All required MUST HAVE items for the selected review mode were checked.
-- [ ] All MUST NOT items in scope were checked.
-- [ ] Build or compilation passes, or exceptions are explicitly justified.
-- [ ] Unit, integration, and E2E test status is verified, or exceptions are explicitly justified.
-- [ ] Linting passes, or exceptions are explicitly justified.
-- [ ] Coverage requirements are met, or exceptions are explicitly justified.
-- [ ] All violations and critical issues are documented with specific feedback.
+
+```pdsl
+UNIT CodeReviewValidationSummary
+
+PURPOSE:
+  Verify all required checklist items and quality gates are complete before finalizing the review.
+
+WHEN:
+  - REQUIRE code review is complete
+
+DO:
+  - REQUIRE all required MUST HAVE items for the selected review mode were checked
+  - REQUIRE all MUST NOT items in scope were checked
+  - REQUIRE build or compilation passes; justify exceptions explicitly
+  - REQUIRE unit, integration, and E2E test status is verified; justify exceptions explicitly
+  - REQUIRE linting passes; justify exceptions explicitly
+  - REQUIRE coverage requirements are met; justify exceptions explicitly
+  - REQUIRE all violations and critical issues are documented with specific feedback
+```
+
 ## Conflict Resolution
-- Priority: `SEC > ERR > QUAL/TEST > ENG/QUAL > PERF > OBS`.
-- Use these defaults: `KISS > DRY` when abstraction is wrong, `YAGNI > OCP` for hypothetical extension points, readability before premature optimization, coverage before speed on critical paths, and detailed logs with friendly user messages.
-- When uncertain, choose the safer failure mode: security/data loss > inconvenience > performance, and document the trade-off.
+
+```pdsl
+UNIT CodeReviewConflictResolution
+
+PURPOSE:
+  Define resolution priority when checklist principles conflict.
+
+RULES:
+  - ALWAYS apply priority order: SEC > ERR > QUAL/TEST > ENG/QUAL > PERF > OBS
+  - ALWAYS prefer KISS over DRY when abstraction adds complexity without benefit
+  - ALWAYS prefer YAGNI over OCP for hypothetical extension points
+  - ALWAYS prefer readability before premature optimization
+  - ALWAYS prefer coverage before speed on critical paths
+  - ALWAYS prefer detailed logs with friendly user messages
+  - ALWAYS choose the safer failure mode when uncertain: security/data loss > inconvenience > performance
+  - ALWAYS document the trade-off when choosing the safer failure mode
+```
+
 ## Reporting
-- Report only problems.
-- Quick: compact table `| # | ID | Sev | Location | Issue | Fix |` plus review-mode note.
-- Standard: compact or full format.
-- Full: for each issue include `Issue`, `Location`, `Evidence`, `Why It Matters`, and `Proposal`.
+
+```pdsl
+UNIT CodeReviewReporting
+
+PURPOSE:
+  Define the required report format for each review mode.
+
+WHEN:
+  - REQUIRE review report is produced
+
+RULES:
+  - ALWAYS report only problems
+  - ALWAYS use compact table format for Quick mode: | # | ID | Sev | Location | Issue | Fix | plus review-mode note
+  - ALWAYS use compact or full format for Standard mode
+  - ALWAYS include Issue, Location, Evidence, Why It Matters, and Proposal for each issue in Full mode
+```
+
 ## Reporting Commitment
-- [ ] Every found issue is reported.
-- [ ] The required report format is used.
-- [ ] Each issue includes evidence and impact.
-- [ ] Each issue includes a concrete fix.
-- [ ] No known problems are hidden or omitted.
-- [ ] The report is ready for iteration and re-review.
+
+```pdsl
+UNIT CodeReviewReportingCommitment
+
+PURPOSE:
+  Enforce completeness and honesty obligations for the final review report.
+
+WHEN:
+  - REQUIRE review report is finalized
+
+RULES:
+  - ALWAYS report every found issue
+  - ALWAYS use the required report format
+  - ALWAYS include evidence and impact for each issue
+  - ALWAYS include a concrete fix for each issue
+  - NEVER hide or omit any known problems from the report
+  - ALWAYS ensure the report is ready for iteration and re-review
+```

@@ -212,5 +212,3 @@ NOTES:
   Plain analyze intent stays in standard analyze: ordinary review/audit/inspection
     NEVER auto-enter EXPLAIN_MODE.
 ```
-
-Implementation note: the `AnalyzePreamble` unit above is authoritative. Keep routing here, defer full methodologies to the matched sub-agents, and enforce the same first-turn storytelling contract: when `EXPLAIN_MODE=true`, the next user-visible message is the E0/E1 opener. For prompt-review routes, compact-prompts optimization stays **HIGH** priority and interaction UX stays **CRITICAL**.

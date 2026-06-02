@@ -11,7 +11,6 @@ purpose: Pedagogical companion methodology for explanatory walkthroughs of artif
 
 <!-- toc -->
 
-- [Execution Protocol (MUST NOT be bypassed)](#execution-protocol-must-not-be-bypassed)
 - [Agent Instructions](#agent-instructions)
 - [Router Contract](#router-contract)
 - [Overview](#overview)
@@ -28,42 +27,52 @@ This file is the **router**. The full methodology is split across five files for
 
 ## Execution Protocol (MUST NOT be bypassed)
 
-**First-turn contract**: once this methodology loads, the next user-visible assistant message is the E0/E1 opener. Run the four E1 user-interaction gates (mode → disposition → audience → plan approval) in order before any explanatory content begins. See Anti-Pattern #0 below.
-
-The mandatory execution sequence — each step MUST emit chat output and WAIT for user response before continuing:
-
-1. **Phase E0** — pre-flight: input access resolution + existing-session scan + size guards
-2. **Phase E1 gate 1** — emit the **6-mode resolution prompt** (numbered) and WAIT for user pick (number / name / Enter for suggested)
-3. **Phase E1 gate 2** — emit the **artifact disposition prompt** (4 numbered options) and WAIT for user pick
-4. **Phase E1 gate 3** — if audience not already explicit, emit the **7-option audience prompt** (numbered) and WAIT
-5. **Phase E1 gate 4** — emit the **numbered plan with the 4-option approval menu** (Go / Edit / Pivot / Cancel) and WAIT for user pick
-6. **Phase E2** — portion-by-portion delivery loop with the 7-slot navigation block; user advances each portion explicitly
-7. **Phase E5** — wrap (plan exhaustion or user `wrap`)
-
-Before gate 4 approval, emit only the E0/E1 setup and the required choice prompts. The four E1 gates remain mandatory even when the user's initial prompt seems "clear" (for example a specific PR URL plus an audience hint). Skipping any gate is a CRITICAL violation.
+The mandatory E0→E5 gate order, first-turn constraint, and gate-skipping prohibition are specified in `StorytellingExecutionSequence` in the Router Contract section below. Anti-Pattern #0 summarises the most common violation of this contract.
 
 ## Agent Instructions
 
-ALWAYS open and follow this file WHEN the user requests explanation, presentation, walkthrough, teaching, onboarding, decision-walk, quiz, change-impact analysis, or an explicitly storytelling-style review/walkthrough of any input.
-MUST_NOT trigger on bare `review`, `validate`, `audit`, or `check` requests; those route to analyze/code-review unless the request also includes explain-style intent such as walkthrough, teach, presentation, or onboarding.
+```pdsl
+UNIT StorytellingAgentRules
 
-ALWAYS open and follow `{cf-studio-path}/.core/requirements/execution-protocol.md` for workflow context.
+PURPOSE:
+  Define activation conditions, mode-flag obligations, conflict resolution,
+  and strict-context constraints for the storytelling methodology.
 
-WHEN this methodology is loaded:
-- Set `EXPLAIN_MODE=true`
-- Skip Phase 2 deterministic gate of `analyze.md`
-- Skip Phase 3 standard semantic checklist of `analyze.md`
-- Skip Phase 5 (Offer Next Steps) of `analyze.md` — Suggested Next Steps already covered by the Storytelling Output schema (running both would duplicate)
-- Use the Storytelling Output schema (see `{cf-studio-path}/.core/requirements/storytelling-phases.md` Phase E5) in `analyze.md` Phase 4 instead of the standard schema
-- Override `enforceRemediationPrompts`: suppress analyze remediation prompt blocks
+WHEN:
+  - REQUIRE explain-style intent is detected
 
-WHEN loaded with `EXPLAIN_EXPORT=true` (via `generate.md` WHEN-rule on guide/README/package-export intent), additionally load `{cf-studio-path}/.core/requirements/storytelling-export.md` and write a Markdown package to disk instead of delivering portions in chat.
+DO:
+  - SET EXPLAIN_MODE = true
+  - SET analyze_phase_2_deterministic_gate = SKIPPED
+  - SET analyze_phase_3_standard_checklist = SKIPPED
+  - SET analyze_phase_5_next_steps = SKIPPED
+  - SET analyze_phase_4_output_schema = storytelling_output_schema
+  - SET enforceRemediationPrompts = false
+  - REQUIRE EXPLAIN_EXPORT == true:
+    - LOAD {cf-studio-path}/.core/requirements/storytelling-export.md
+    - SET output_mode = markdown_package
 
-**MUST** ground every non-trivial claim in the input. **MUST NOT** invent facts beyond the input. Omit ungrounded claims rather than fabricating or inserting placeholder gap markers in the methodology's narrative, and do not push to the open-questions buffer for gaps the methodology itself notices. When the user directly asks for information the input does not cover, say so and create an open-question entry. Open-questions buffer entries are created **only** in response to user-asked questions the input cannot answer.
+RULES:
+  - NEVER trigger on bare review, validate, audit, or check intent without
+    explicit explain-style signal such as walkthrough, teach, presentation,
+    or onboarding
+  - ALWAYS treat intent matching as language-agnostic; recognize semantic
+    equivalents in any user language as the same intent
+  - ALWAYS ground every non-trivial claim in the input artifact
+  - NEVER invent facts beyond the input
+  - ALWAYS omit ungrounded claims rather than fabricating or inserting gap markers
+  - NEVER push entries to the open-questions buffer for gaps the methodology notices
+  - ALWAYS follow phases E0 through E5 in order
+  - NEVER skip Discovery (Phase E1)
+  - NEVER skip the Strict-Context Boundary (Phase E3)
+  - NEVER treat storytelling output as a validation report
 
-**MUST** follow phases E0 → E5 in order. **MUST NOT** skip Discovery. **MUST NOT** skip the Strict-Context Boundary.
-
-**MUST NOT** treat storytelling output as a validation report.
+ON_ERROR:
+  both_explain_and_review_intent_detected ->
+    EMIT disambiguation prompt asking user which methodology to load
+    WAIT user.reply
+    STOP_TURN
+```
 
 ## Router Contract
 
@@ -86,7 +95,6 @@ DO:
 
 RULES:
   - ALWAYS storytelling runtime assets include
-    `{cf-studio-path}/.core/requirements/execution-protocol.md` and
     `{cf-studio-path}/.core/requirements/storytelling-shared.md`
   - ALWAYS deliver storytelling prompt content through `prompt_context_view`
     whenever a sub-agent participates in the session
@@ -197,10 +205,6 @@ Common features: explicit role/audience awareness; **always-ask** mode resolutio
 `EXPLAIN_MODE=true` is set when this file is loaded via the `analyze.md` WHEN-rule on explicit explain-style intent like:
 `explain X`, `tell me about X`, `walk me through X`, `teach me X`, `present X`, `introduce X`, `let's understand X`, `make sense of X`, `walk me through review of {PR / artifact}`, `review {PR / artifact} in walkthrough mode`, `onboard me to X`, `quiz me on X`, `what changed in X`.
 
-Intent matching is **intent-based, not language-specific**. The methodology MUST recognize equivalent phrases in any user language as the same intent.
-
-If both `EXPLAIN_MODE` and (`PROMPT_REVIEW` or `PROMPT_BUG_REVIEW`) intents are detected, ask the user to disambiguate before loading either methodology.
-
 `EXPLAIN_EXPORT=true` is set additionally when loaded via the `generate.md` WHEN-rule on guide/README/package-export intent — see `{cf-studio-path}/.core/requirements/storytelling-export.md`.
 
 ## Module loading
@@ -214,7 +218,7 @@ The router loads modules based on flags. The minimal set is always loaded; condi
 | `storytelling-preferences.md` | always (preferences resolved across phases) | Page Size, Artifact Language, Output Language, Checkpoint and Resume, Bookmark Export, TaskCreate Progress Tracking, Telemetry, Failure Modes |
 | `storytelling-export.md` | only when `EXPLAIN_EXPORT=true` | Output structure, hybrid execution, per-portion file template, index template, mode coverage in export, internal vs external links, refused operations, re-generation |
 
-Concretely: under standard chat-mode `EXPLAIN_MODE=true`, the agent loads three modules + this router (~700 lines total). Under `EXPLAIN_EXPORT=true`, the agent additionally loads `storytelling-export.md` (~150 lines). This is the canonical load order; do NOT speculatively load other modules.
+Concretely: under standard chat-mode `EXPLAIN_MODE=true`, the agent loads three modules + this router (~700 lines total). Under `EXPLAIN_EXPORT=true`, the agent additionally loads `storytelling-export.md` (~150 lines).
 
 ## Anti-Patterns
 

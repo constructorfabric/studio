@@ -69,10 +69,15 @@ Dispatch payload:
 }
 ```
 
-Transform mode preserves behavior before compacting wording. If a prompt
-contains ambiguous behavior that cannot be preserved safely, the transformer
-keeps the original prose in `NOTES` with an `OPEN_QUESTIONS` block
-or return `TRANSFORM_BLOCKED` with the unresolved questions.
+```pdsl
+UNIT TransformPromptCompletion
 
-Completion: return the `cf-pdsl-transformer` manifest or a
-`TRANSFORM_BLOCKED` payload.
+PURPOSE:
+  Define the semantic preservation contract and terminal return for transform mode.
+
+RULES:
+  - ALWAYS preserve behavioral semantics before compacting wording
+  - ALWAYS keep the original prose in NOTES with an OPEN_QUESTIONS block when ambiguous behavior cannot be safely preserved
+  - ALWAYS return TRANSFORM_BLOCKED with unresolved questions when ambiguous behavior cannot be safely preserved
+  - ALWAYS return the cf-pdsl-transformer manifest on successful dispatch
+```

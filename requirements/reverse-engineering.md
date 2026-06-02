@@ -24,7 +24,6 @@ purpose: Technology-agnostic methodology for systematic project analysis
 - [L7: Integration Boundary Scan](#l7-integration-boundary-scan)
 - [L8: Pattern Recognition](#l8-pattern-recognition)
 - [L9: Knowledge Synthesis](#l9-knowledge-synthesis)
-- [Execution Protocol](#execution-protocol)
 - [Error Handling](#error-handling)
 - [Consolidated Validation Checklist](#consolidated-validation-checklist)
 - [References](#references)
@@ -35,11 +34,9 @@ purpose: Technology-agnostic methodology for systematic project analysis
 
 ## Agent Instructions
 
-**ALWAYS open and follow** this file WHEN the user asks to analyze a codebase, search project code or docs, or generate artifacts/code from existing project structure.
-
-**ALWAYS open and follow** `{cf-studio-path}/.core/requirements/execution-protocol.md` for workflow context.
-
-**Prerequisites**: confirm the agent has read this methodology, has repository access, will execute layers `1 -> 9` in order, and will checkpoint after each layer.
+Activation conditions, required prompt assets, and layer-order prerequisites are
+specified in `ReverseEngineeringActivation` and `ReverseEngineeringLayerOrder` in
+the Runtime Contract section below.
 
 ## Runtime Contract
 
@@ -55,7 +52,6 @@ WHEN:
 
 DO:
   - REQUIRE this methodology is active
-  - REQUIRE controller has loaded `{cf-studio-path}/.core/requirements/execution-protocol.md`
   - SET REVERSE_ENGINEERING_MODE = true
 
 RULES:
@@ -259,8 +255,6 @@ Reverse engineering builds a progressive mental model of a system. The rule is: 
 
 **Before starting**: confirm source access, search capability, read permissions, and optionally local-run access or a running instance.
 
-**Order**: execute layers `1 -> 9`, checkpoint after each layer, and carry findings forward.
-
 **Time box by project size**:
 
 | Project Size | L1-L2 | L3-L4 | L5-L7 | L8-L9 |
@@ -269,7 +263,24 @@ Reverse engineering builds a progressive mental model of a system. The rule is: 
 | Medium (`10k-100k`) | 30 min | 1 hr | 1 hr | 30 min |
 | Large (`> 100k`) | 1 hr | 2 hr | 2 hr | 1 hr |
 
-**Required output artifacts**: `System Overview` (max `1` page: purpose, tech stack, architecture style, key components and relationships), `Domain Model`, `Entry Points Catalog`, `Integration Map`, `Conventions Guide`, and `Technical Debt List`.
+```pdsl
+UNIT ReverseEngineeringOutputArtifacts
+
+PURPOSE:
+  Enumerate the six required output artifacts produced at L9 synthesis.
+
+DO:
+  - RETURN System Overview (max 1 page: purpose, tech stack, architecture style,
+    key components and relationships)
+  - RETURN Domain Model
+  - RETURN Entry Points Catalog
+  - RETURN Integration Map
+  - RETURN Conventions Guide
+  - RETURN Technical Debt List
+
+RULES:
+  - ALWAYS produce all six output artifacts
+```
 
 **Applicability**: greenfield validation before implementation; brownfield understanding before modification; acquisitions/transfers for due diligence and onboarding; legacy modernization to find strangler boundaries; documentation generation as input to Studio artifacts.
 
@@ -277,13 +288,7 @@ Reverse engineering builds a progressive mental model of a system. The rule is: 
 
 ## Error Handling
 
-| Condition | Response | Action |
-|---|---|---|
-| Repository access failed | `Repository access failed: {error}`; check file permissions, verify the path exists, confirm VCS access. | **STOP** — source access is required. |
-| Layer incomplete | `Layer {N} incomplete: {reason}`; record completed items, skipped items, and blocker. | Document gaps explicitly and continue with caveat. |
-| External dependencies unavailable | `External dependency unavailable: {service}`; note unverifiable integration patterns, auth, and data formats; mark boundary `UNVERIFIED`. | **WARN** and continue as a knowledge gap. |
-| Large codebase timeout | `Time box exceeded for Layer {N}`; record completion percentage and whether to resume later or proceed with partial findings. | Save a checkpoint, note incompleteness, proceed. |
-| Obfuscated/generated code | `Obfuscated/generated code detected: {location}`; skip generated output and analyze source templates/generators instead. | Analyze generators/templates, not generated output. |
+Recovery paths for all error conditions are specified in `ReverseEngineeringErrorHandling` above.
 
 ## Consolidated Validation Checklist
 
@@ -357,4 +362,3 @@ Reverse engineering builds a progressive mental model of a system. The rule is: 
 ## References
 
 - Generate workflow: `{cf-studio-path}/.core/workflows/generate.md`
-- Execution protocol: `{cf-studio-path}/.core/requirements/execution-protocol.md`

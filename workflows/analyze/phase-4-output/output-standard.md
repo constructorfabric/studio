@@ -86,15 +86,4 @@ Reproduce the canonical `Validation Results` block returned by `cf-deterministic
 - **Low**: {issue with location}
 ```
 
-Use these same six section titles in both STRICT and RELAXED standard analysis output. In STRICT mode the titles must match exactly; in RELAXED mode content may be lighter, but do **not** substitute alternate headings such as `## Analysis` or `### Category Review`.
-
-Do not emit `Fix Prompt` or `Plan Prompt` blocks from this schema. When actionable issues exist, append the terminal `Remediation Handoff` menu from `{cf-studio-path}/.core/workflows/analyze/phase-4-output/remediation-handoff.md`; that file owns the on-demand prompt templates for the next-turn option `2` / `3` emissions.
-
 ### Semantic-Only Output (`cf-analyze semantic`)
-For non-prompt-review semantic-only analysis, reuse the `Standard Analysis Output (non-prompt review)` six-section schema.
-
-Set `### 2. Deterministic Gate` to `Status: SKIPPED`, `Invocation: not run`, and `Notes: semantic-only invocation`.
-
-Do **not** describe semantic-only findings as deterministic, validator-backed, or tool-validated.
-
-If actionable issues exist in semantic-only mode, append the same final `Remediation Handoff` menu defined in `{cf-studio-path}/.core/workflows/analyze/phase-4-output/remediation-handoff.md` (3 options: in-session fix continuation, Fix Prompt on demand, Plan Prompt on demand). The same EXPLAIN_MODE exception applies.

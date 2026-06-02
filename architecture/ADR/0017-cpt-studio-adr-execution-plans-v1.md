@@ -27,7 +27,7 @@ decision-makers: project maintainer
 
 ## Context and Problem Statement
 
-Studio workflows can load 3000+ lines of instructions before an AI agent writes any output (SKILL.md + execution-protocol.md + workflow + rules + template + checklist + example + constraints + project context). This causes context window overflow, leading to attention drift (different parts of instructions "win" on each run), partial completion (agent runs out of context mid-task), and inconsistent results. How should Studio handle large agent tasks that exceed a single context window?
+Studio workflows can load 3000+ lines of instructions before an AI agent writes any output (SKILL.md + protocol.md + workflow + rules + template + checklist + example + constraints + project context). This causes context window overflow, leading to attention drift (different parts of instructions "win" on each run), partial completion (agent runs out of context mid-task), and inconsistent results. How should Studio handle large agent tasks that exceed a single context window?
 
 ## Decision Drivers
 

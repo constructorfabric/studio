@@ -25,13 +25,22 @@ purpose: Define workspace federation for multi-repo traceability
 ## Overview
 Studio workspaces provide an opt-in federation layer for multi-repo projects. Each repo keeps its own adapter; the workspace maps named sources so artifacts, code, and kits can resolve across repos without merging adapters.
 **Project root** = the repository root containing the adapter directory (default `.cf-studio/`; legacy / self-hosted exceptions: `.bootstrap/`, `studio/`).
-| Principle | Requirement |
-|---|---|
-| `cwd determines primary` | The primary source MUST be the repo containing the current working directory; there is no `primary` field. |
-| Remote adapter context | A remote source with its own adapter MUST use that adapter's rules/templates/constraints. |
-| Opt-in | No workspace config MUST preserve exact single-repo behavior. |
-| Local paths first | Inline config supports local paths only; standalone config supports local paths and Git URLs. |
-| Graceful degradation | Missing sources MUST warn but MUST NOT block available sources. |
+
+```pdsl
+UNIT WorkspacePrinciples
+
+PURPOSE:
+  Enforce core behavioral invariants for the Studio workspace federation layer.
+
+RULES:
+  - ALWAYS set the primary source to the repo containing the current working directory; the primary field does not exist
+  - ALWAYS use a remote source's own adapter rules/templates/constraints when the remote source has one
+  - ALWAYS preserve exact single-repo behavior when no workspace config exists
+  - ALWAYS restrict inline workspace config to local paths only; allow local paths and Git URLs only in standalone config
+  - ALWAYS warn when a source is missing
+  - NEVER block available sources due to a missing source
+```
+
 ## Configuration
 Workspaces can be standalone or inline.
 **Standalone** (`.studio-workspace.toml`):
@@ -64,48 +73,68 @@ role = "kits"
 | `adapter` | string | No | auto-discover | Path to adapter directory in the source repo. |
 | `role` | string | No | `full` | Contribution scope. |
 Roles: `artifacts`, `codebase`, `kits`, `full`.
-## Discovery and Path Resolution
-Discovery order:
-1. Check `workspace` in `config/core.toml`.
-   - string → external `.studio-workspace.toml`, resolved relative to project root
-   - table → inline workspace definition, source paths resolved relative to project root
-2. If absent, check for `.studio-workspace.toml` at project root.
-3. If still absent, use single-repo mode.
-No implicit parent traversal is allowed.
 
-Resolution rules:
-- external workspace path in `core.toml` resolves relative to project root
-- standalone source `path` resolves relative to the workspace file's parent
-- inline source `path` resolves relative to project root
-- artifact/codebase/kit entries with `source` resolve relative to the named source root
-- entries without `source` resolve locally for backward compatibility
+## Discovery and Path Resolution
+
+```pdsl
+UNIT WorkspaceDiscovery
+
+PURPOSE:
+  Locate the workspace configuration and resolve all source and artifact paths.
+
+WHEN:
+  - REQUIRE Studio initialization begins
+
+DO:
+  - LOAD workspace config by checking config/core.toml for workspace key first
+  - LOAD external .studio-workspace.toml when config/core.toml workspace value is a string; resolve relative to project root
+  - LOAD inline workspace definition when config/core.toml workspace value is a table; resolve source paths relative to project root
+  - LOAD .studio-workspace.toml at project root when config/core.toml has no workspace key
+  - SET mode: single-repo when no workspace config is found
+
+RULES:
+  - NEVER traverse parent directories implicitly to locate workspace config
+  - ALWAYS resolve external workspace path in core.toml relative to project root
+  - ALWAYS resolve standalone source path relative to the workspace file's parent directory
+  - ALWAYS resolve inline source path relative to project root
+  - ALWAYS resolve artifact/codebase/kit entries with source field relative to the named source root
+  - ALWAYS resolve entries without source field locally for backward compatibility
+```
 
 `artifacts.toml` v1.2 adds optional `source` on artifacts, codebase entries, and kits. When absent, v1.0/v1.1 behavior remains unchanged.
 
 ## Cross-Repo Traceability
-
-When `traceability.cross_repo = true`:
-- `validate` collects IDs from reachable sources and accepts remote `@cpt-*` references
-- `where-defined`, `where-used`, and `list-ids` operate across reachable sources
-- `validate --local-only` restricts validation to the current repo
 
 | Setting | Default | Effect |
 |---|---|---|
 | `cross_repo` | `true` | Enable workspace-aware ID collection and path resolution |
 | `resolve_remote_ids` | `true` | Expand remote IDs into the validation union set |
 
-Both settings must be `true` to include remote IDs.
+```pdsl
+UNIT WorkspaceTraceability
 
-`resolve_artifact_path` contract:
-- no `source` → resolve relative to local project root
-- reachable `source` → resolve relative to named source root
-- missing/unreachable `source` → return `None`; never silently fall back to local
+PURPOSE:
+  Enforce cross-repo ID collection and path resolution when workspace federation is active.
 
-Scan failures MUST emit:
-```text
-Warning: failed to scan IDs from <path>: <reason>
+WHEN:
+  - REQUIRE traceability.cross_repo = true
+  - AND traceability.resolve_remote_ids = true
+
+DO:
+  - RUN validate collecting IDs from all reachable sources; accept remote @cpt-* references
+  - RUN where-defined, where-used, and list-ids across reachable sources
+  - RETURN None for missing or unreachable source in resolve_artifact_path
+
+RULES:
+  - ALWAYS require both cross_repo = true and resolve_remote_ids = true to include remote IDs
+  - ALWAYS restrict validation to the current repo when validate --local-only is used
+  - ALWAYS resolve artifact paths with no source field relative to local project root
+  - ALWAYS resolve artifact paths with reachable source field relative to the named source root
+  - NEVER silently fall back to local when source is missing or unreachable; return None
+
+ON_ERROR:
+  scan failure -> EMIT "Warning: failed to scan IDs from <path>: <reason>" and continue
 ```
-and continue.
 
 ## Operations
 
@@ -120,22 +149,54 @@ and continue.
 | `validate --local-only` | Skip cross-repo ID resolution |
 | `validate --source <name>` / `list-ids --source <name>` | Scope operations to one source |
 
-Sync rules:
-- URL sources clone on first access; later network updates require explicit `workspace-sync`
-- local path sources are skipped during sync
-- `workspace-sync --force` is **DESTRUCTIVE** and may discard uncommitted changes or local commits
+```pdsl
+UNIT WorkspaceSyncAndOperations
 
-There is no `workspace-remove`; edit the config directly, then run `workspace-info`.
-To switch between standalone and inline, delete the current config, rerun `workspace-init` or `workspace-init --inline`, then re-add sources.
+PURPOSE:
+  Define sync behavior and operational constraints for workspace source management.
+
+WHEN:
+  - REQUIRE workspace-sync is invoked
+  - OR workspace source management operations are performed
+
+DO:
+  - LOAD URL source by cloning on first access
+  - CONTINUE with available sources; skip local path sources during sync
+
+RULES:
+  - ALWAYS require explicit workspace-sync for network updates to URL sources after initial clone
+  - NEVER auto-fetch existing clones during ordinary resolution
+  - ALWAYS treat workspace-sync --force as destructive; it may discard uncommitted changes or local commits
+  - ALWAYS skip local path sources during sync
+  - NEVER use workspace-remove command; edit config directly then run workspace-info to reflect changes
+  - ALWAYS switch workspace mode by deleting current config, rerunning workspace-init or workspace-init --inline, then re-adding sources
+```
 
 ## Compatibility and Degradation
 
-- No workspace config means exact current single-repo behavior.
 - Existing v1.0/v1.1 registries without `source` fields remain valid.
 - Workspace imports stay lazy inside functions.
 - Global context may be `StudioContext` or `WorkspaceContext`; `is_workspace()` distinguishes them.
 
-When a source is missing, Studio warns in `workspace-info`, marks `reachable: false`, continues with available sources, skips remote IDs and unresolved explicit-source artifacts, and treats the condition as non-fatal with no error exit caused solely by the missing repo.
+```pdsl
+UNIT WorkspaceDegradation
+
+PURPOSE:
+  Define graceful degradation behavior when workspace sources are unavailable or missing.
+
+WHEN:
+  - REQUIRE a workspace source is missing or unreachable
+
+DO:
+  - EMIT warning in workspace-info output for the missing source
+  - SET source reachability: reachable = false
+  - CONTINUE with available sources
+  - RETURN None for remote IDs and unresolved explicit-source artifacts from the missing source
+
+RULES:
+  - ALWAYS treat missing source as non-fatal; no error exit caused solely by a missing repo
+  - ALWAYS preserve exact single-repo behavior when no workspace config exists
+```
 
 ## Git URL Sources
 
@@ -153,17 +214,41 @@ branch = "main"
 role = "codebase"
 ```
 
-Rules:
-- Git URLs are forbidden in inline workspace config.
-- Namespace rules match exact host names; missing rules fall back to `{org}/{repo}`.
-- Missing `branch` uses the remote default branch.
-- Existing clones MUST NOT fetch during ordinary resolution; only `workspace-sync` may update them.
-- `resolve.workdir` resolves relative to the standalone workspace file's parent.
-- Resolved clone paths MUST pass containment checks and reject traversal/symlink escape.
+```pdsl
+UNIT WorkspaceGitUrlSources
+
+PURPOSE:
+  Enforce rules for Git URL sources in standalone workspace configuration.
+
+WHEN:
+  - REQUIRE a Git URL source is configured or accessed
+
+RULES:
+  - NEVER allow Git URLs in inline workspace config
+  - ALWAYS match namespace rules on exact host names; fall back to {org}/{repo} when no matching rule
+  - ALWAYS use the remote default branch when branch is not specified
+  - NEVER fetch existing clones during ordinary resolution; only workspace-sync may update them
+  - ALWAYS resolve resolve.workdir relative to the standalone workspace file's parent
+  - ALWAYS apply containment checks to resolved clone paths
+  - NEVER allow traversal or symlink escape in resolved clone paths
+```
 
 ## Cross-Repo Editing
 
-Validation and generation targeting a remote source MUST use that source's adapter when present. If the remote source has no adapter, fall back to the primary repo's adapter. The primary repo's adapter remains active for its own files and workspace-level operations.
+```pdsl
+UNIT WorkspaceCrossRepoEditing
+
+PURPOSE:
+  Define adapter selection rules for validation and generation targeting remote sources.
+
+WHEN:
+  - REQUIRE validation or generation targets a remote source
+
+RULES:
+  - ALWAYS use the remote source's adapter for validation and generation when the remote source has one
+  - ALWAYS fall back to the primary repo's adapter when the remote source has no adapter
+  - ALWAYS keep the primary repo's adapter active for its own files and workspace-level operations
+```
 
 ## Examples
 

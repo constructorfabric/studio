@@ -28,7 +28,29 @@ Loaded by `{cf-studio-path}/.core/requirements/storytelling.md` (router) when `E
 
 ## When this loads
 
-`EXPLAIN_EXPORT=true` is set by the `{cf-studio-path}/.core/workflows/generate.md` WHEN-rule on intent like `generate guide for X`, `make a README from X`, `export explain package`, `create training material from X`, `build onboarding doc set` — equivalents in any user language. Standard `{cf-studio-path}/.core/workflows/generate.md` write-permission gates apply (user confirmation before writing files; no auto-approval flags unless explicitly requested).
+`EXPLAIN_EXPORT=true` is set by the `{cf-studio-path}/.core/workflows/generate.md` WHEN-rule on intent like `generate guide for X`, `make a README from X`, `export explain package`, `create training material from X`, `build onboarding doc set` — equivalents in any user language.
+
+```pdsl
+UNIT ExportModeActivation
+
+PURPOSE:
+  Apply file-package output and write-permission gates when EXPLAIN_EXPORT is true.
+
+STATE:
+  - SET EXPLAIN_EXPORT: false | true
+    default: false
+
+WHEN:
+  - REQUIRE EXPLAIN_EXPORT == true
+
+DO:
+  - REQUIRE write-permission gate: user confirmation before writing any files
+  - CONTINUE HybridExecution
+
+RULES:
+  - NEVER auto-approve file writes unless explicitly requested
+  - ALWAYS apply standard generate.md write-permission gates
+```
 
 ## Output structure
 
@@ -46,6 +68,40 @@ Package directory: `{cf-studio-path}/.cache/explain/packages/{slug}-{ISO-timesta
 Phase E0 (pre-flight) and Phase E1 (Discovery) remain **interactive** in chat — invocation handling, mode/role/audience confirmation, plan approval. After plan approval, methodology switches to **batch generation**: portions constructed sequentially per the plan and written directly to files **without** per-portion navigation prompts in chat. Progress indicator emits as each file lands (`Writing portion 3 of 7…`). Final chat message announces package location and file count.
 
 User MAY interrupt mid-batch with `stop` / `abort` — methodology halts, leaves whatever files were already written on disk, reports partial state. No checkpoint prompt — the package files themselves are the persisted state.
+
+```pdsl
+UNIT HybridExecution
+
+PURPOSE:
+  Run E0/E1 interactively in chat then switch to sequential batch file generation after plan approval.
+
+STATE:
+  - SET batch_active: false | true
+    default: false
+
+WHEN:
+  - REQUIRE EXPLAIN_EXPORT == true
+  - AND plan approval received
+
+DO:
+  - SET batch_active = true
+  - RUN portions sequentially per the approved plan
+  - EMIT "Writing portion {N} of {M}…" as each file lands
+  - RETURN final chat message: package location and file count
+
+RULES:
+  - NEVER emit per-portion navigation prompts in chat during batch generation
+  - NEVER prompt for a checkpoint save when the user halts batch
+  - ALWAYS leave already-written files in place when batch is halted
+
+ON_ERROR:
+  user_interrupt ->
+    REQUIRE user sent "stop" or "abort"
+    SET batch_active = false
+    EMIT partial package state report
+    STOP_TURN
+    NOTES: The package files are the persisted state; no checkpoint prompt is needed.
+```
 
 ## Per-portion file template
 
@@ -133,23 +189,81 @@ All non-socratic modes produce the **same uniform package shape** (per-portion f
 - `decision` → same shape + wrap-up extras: Recommendation + Dissenting Opinions + Decision Criteria + Reversibility Note
 - `change-impact` → same shape + wrap-up extras: Impact Map + Risk List + Migration Notes
 - `review` → same shape (per-portion files for the two-portion-per-plan-item rhythm: each plan item produces one presentation file `portion-{NNN}-presentation-{slug}.md` and one challenge file `portion-{NNN}-challenge-{slug}.md`) **PLUS** an additional artifact-disposition file `review-comments-{slug}-{date}.md` with the ready-to-paste line-anchored review notes (per the review-mode artifact-disposition rules in `storytelling-preferences.md`). The comments file is in addition to, not in place of, the per-portion narrative — both are useful: the package is the hand-off-able review story; the comments file is the actionable review feedback.
-- `socratic` → NOT exportable. Methodology MUST refuse with `Socratic mode is interactive (agent quizzes user); export to a static package would lose the quiz dynamic. Pick a different mode for export.` and stop without writing anything.
+- `socratic` → NOT exportable. See rule below.
+
+```pdsl
+UNIT SocraticExportRefusal
+
+PURPOSE:
+  Refuse export when mode is socratic because the quiz dynamic cannot be captured in a static package.
+
+WHEN:
+  - REQUIRE EXPLAIN_EXPORT == true
+  - AND current_mode == socratic
+
+DO:
+  - EMIT "Socratic mode is interactive (agent quizzes user); export to a static package would lose the quiz dynamic. Pick a different mode for export."
+  - STOP_TURN
+
+RULES:
+  - NEVER write any package files when mode is socratic and EXPLAIN_EXPORT is true
+```
 
 ## Internal vs external links
 
 - **External refs** (source input artifact + registered linked artifacts): clickable Markdown links per Phase E3, paths resolved relative to the package directory (e.g. `../../../requirements/auth-prd.md#310-authentication`). PR-target rule applies (PR-view URL for files-in-the-diff).
 - **Internal links** (between portion files in the same package): relative paths within the package (e.g. `portion-002-data-model.md`, `recap-005.md`, `glossary.md`).
 
+```pdsl
+UNIT LinkRules
+
+PURPOSE:
+  Enforce correct link resolution for external source refs and internal package links.
+
+RULES:
+  - ALWAYS resolve external refs as clickable Markdown links relative to the package directory per Phase E3
+  - ALWAYS use PR-view URL for files-in-the-diff in review mode
+  - ALWAYS use relative paths within the package for internal links between portion files
+```
+
 ## Open-questions in export
 
 Per the user-driven rule (Phase E3) the buffer fills only from user-asked questions. In pure-batch generation the user does not ask questions during portion writing, so the buffer typically stays empty and `open-questions.md` is omitted. Entries from interactive E1 Discovery questions persist into the file.
 
-To avoid silently dropping audience-relevant gaps, methodology MAY emit a chat-only suggestion at the start of batch generation: `If you want a "questions reviewers might raise" file in the package, run a follow-up review-mode export against the same target.` Suggestion is informational only — methodology MUST NOT auto-generate gap entries.
+```pdsl
+UNIT OpenQuestionsExportBehavior
+
+PURPOSE:
+  Prevent auto-generation of open-question buffer entries during batch generation.
+
+WHEN:
+  - REQUIRE EXPLAIN_EXPORT == true
+  - AND batch_active == true
+
+DO:
+  - EMIT suggestion (chat-only, once at batch start): "If you want a 'questions reviewers might raise' file in the package, run a follow-up review-mode export against the same target."
+
+RULES:
+  - NEVER auto-generate open-question buffer entries during batch generation
+  - ALWAYS allow entries from interactive E1 Discovery to persist into open-questions.md
+  - ALWAYS emit the suggestion as informational only; do not generate gap entries from it
+```
 
 ## Refused operations during EXPLAIN_EXPORT
 
-- Per-portion chat navigation prompts (the 7-slot Phase E2 nav block) MUST NOT be emitted; navigation lives in file footers
-- Mid-session Wrap (Phase E5 trigger 2) is disabled — `stop` / `abort` halt batch generation and leave a partial package on disk; methodology does NOT prompt to "save a checkpoint" because the package files themselves are the persisted state
+```pdsl
+UNIT RefusedOperationsDuringExport
+
+PURPOSE:
+  Prohibit specific behaviors that conflict with export mode delivery rules.
+
+WHEN:
+  - REQUIRE EXPLAIN_EXPORT == true
+
+RULES:
+  - NEVER emit the 7-slot Phase E2 navigation block in chat; navigation lives in portion file footers
+  - NEVER trigger mid-session Wrap (Phase E5 trigger 2); batch stops on user abort leaving a partial package on disk
+```
 
 ## Re-generation
 

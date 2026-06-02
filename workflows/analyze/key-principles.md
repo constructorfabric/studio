@@ -21,12 +21,3 @@ RULES:
   - ALWAYS emit Remediation Handoff menu when actionable issues exist
   - ALWAYS emit Fix Prompt / Plan Prompt only on demand (user picks option 2 or 3 in the next turn)
 ```
-
-## Key Principles
-
-- Deterministic gate PASS/FAIL is authoritative when it runs.
-- Semantic review is mandatory for any completed analysis; in STRICT mode it also requires evidence-backed verification.
-- If the deterministic gate cannot run, do not label overall PASS; use semantic-only output and disclaim reduced rigor.
-- Output is chat-only; never create `ANALYSIS_REPORT.md`; keep analysis stateless.
-- If deterministic gate fails, STOP and report issues immediately.
-- Remediation Handoff menu emitted when actionable issues exist; Fix Prompt / Plan Prompt are on-demand emissions for the next user turn (options 2 or 3).

@@ -66,16 +66,3 @@ NOTES:
   skips the deterministic gate only; all applicable semantic review still runs.
 ```
 
-Traceability mode: read artifacts.toml. `FULL` checks code markers and
-codebase cross-refs; `DOCS-ONLY` skips codebase traceability checks.
-
-Registry consistency: verify target path exists in artifacts.toml, kind
-matches, and system assignment is correct. If not registered, warn and require
-semantic-only mode unless the user registers it first.
-
-Cross-reference scope: identify parent artifacts, child artifacts, and code
-directories when relevant.
-
-Consistency-path capture: for explicit consistency reviews, collect at least
-two paths into `{PATHS}`. If fewer than two paths are supplied, log
-`consistency-skipped: single-target` and continue other selected reviewers.

@@ -87,5 +87,13 @@ Dispatch payload:
 }
 ```
 
-Completion: return the `cf-pdsl-author` manifest or an
-`AUTHOR_BLOCKED` payload.
+```pdsl
+UNIT NewPromptCompletion
+
+PURPOSE:
+  Define the terminal return contract for new mode.
+
+RULES:
+  - ALWAYS return the cf-pdsl-author manifest on successful dispatch
+  - ALWAYS return AUTHOR_BLOCKED payload when dispatch is blocked
+```
