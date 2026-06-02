@@ -52,7 +52,7 @@ After context compaction, agent may lose active-workflow state, loaded specs, or
 | Detection signals | Recovery protocol |
 |---|---|
 | Conversation starts with "This session is being continued from a previous conversation" | 1. Detect compaction from summary signals |
-| Summary mentions `/cf-generate`, `/cf-analyze`, or other Constructor Studio commands | 2. Re-run: `{cfs_cmd} --json info` + load required specs from `{cf-studio-path}/.gen/AGENTS.md` |
+| Summary mentions Invoke skill `cf-generate`, Invoke skill `cf-analyze`, or other Constructor Studio commands | 2. Re-run: `{cfs_cmd} --json info` + load required specs from `{cf-studio-path}/.gen/AGENTS.md` |
 | Todo list contains Constructor Studio-related tasks in progress | 3. Re-extract `variables` dict from `info` output for template variable resolution in kit files |
 |  | 4. Announce restored context (workflow, target, loaded specs), then continue |
 

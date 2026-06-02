@@ -8,7 +8,7 @@ version: 1.0
 
 # Phase 0.7 — Brainstorm (Dispatcher)
 
-```text
+```pdsl
 UNIT Phase07BrainstormDispatcher
 
 PURPOSE:

@@ -15,7 +15,7 @@ description: Invoke when a tool/dispatch failure, user abandonment, or validatio
 
 ## Error Handling
 
-```text
+```pdsl
 UNIT GenerateErrorHandling
 
 PURPOSE:

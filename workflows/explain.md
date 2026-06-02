@@ -7,7 +7,7 @@ version: 1.0
 purpose: Standalone explain command; pass-through to analyze.md with EXPLAIN mode
 ---
 
-```text
+```pdsl
 UNIT RootSkillEntrypointBootstrap
 PURPOSE: Prevent direct workflow entry from bypassing the root cf skill.
 DO:
@@ -29,7 +29,7 @@ RULES:
     consume the synthesized final prompt and supplied context slices.
 ```
 
-```text
+```pdsl
 UNIT ExplainProxy
 
 PURPOSE:
@@ -44,7 +44,27 @@ DO:
   cf-explore is required when explanation targets are not explicit.
   Completion signal from the target analyze/storytelling flow MUST include:
     { "type": "EXPLAIN_RESULT", "status": "complete|checkpointed|cancelled", "session_id": "<id|null>", "progress": "<X/N|null>", "resume_path": "<path|null>" }
+  Every complete, checkpointed, cancelled, deterministic-failure, or wrap exit
+  MUST emit this EXPLAIN_RESULT envelope. When EXPLAIN_MODE owns the output,
+  deterministic validation failure is represented as EXPLAIN_RESULT with
+  status="checkpointed" and failure/resume metadata unless analyze.md explicitly
+  overrides EXPLAIN_MODE into remediation output before storytelling begins.
 
 ON_ERROR:
-  load_failed -> EMIT "Cannot load target workflow — check that {cf-studio-path} is correctly set." STOP_TURN
+  load_failed ->
+    EMIT "Cannot load target workflow — check that {cf-studio-path} is correctly set."
+    EMIT_MENU ExplainLoadFailureMenu
+    WAIT user.reply
+    STOP_TURN
+
+MENU ExplainLoadFailureMenu:
+  TITLE: "Explain target workflow failed to load."
+  OPTIONS:
+    1 retry -> LOAD {cf-studio-path}/.core/workflows/analyze.md; CONTINUE ExplainProxy
+    2 route -> SET EXPLAIN_MODE = false; CONTINUE {cf-studio-path}/.core/skills/studio/routing.md
+    3 stop -> EMIT { "type": "EXPLAIN_RESULT", "status": "cancelled", "session_id": null, "progress": null, "resume_path": null }; STOP_TURN
+  INVALID:
+    EMIT "Reply `1`, `2`, or `3`."
+    WAIT user.reply
+    STOP_TURN
 ```

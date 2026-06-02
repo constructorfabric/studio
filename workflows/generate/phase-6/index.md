@@ -7,7 +7,7 @@ description: "Invoke when Phase 5 exits and the orchestrator must assemble the P
 
 # Phase 6 — Offer Next Steps (Dispatcher)
 
-```text
+```pdsl
 UNIT Phase6EntryGate
 
 PURPOSE:
@@ -52,7 +52,7 @@ RULES:
     state is unresolved, Phase 6 is required and clean skip is forbidden
 ```
 
-```text
+```pdsl
 UNIT Phase6PrerequisiteGuard
 
 PURPOSE:
@@ -106,7 +106,7 @@ NOTES:
   is performed.
 ```
 
-```text
+```pdsl
 UNIT Phase6NextStepMenu
 
 PURPOSE:
@@ -119,9 +119,11 @@ DO:
     EMIT exactly:
 ---
 What would you like to do next?
-1. {option from rules Next Steps} — Mark as `Suggested` when it is the clearest continuation from the current result; state why and what happens next.
-2. {option from rules Next Steps} — State what this does next.
-3. Other — Say what you want to change or do next.
+1. Review written files — Invoke skill `cf-analyze` on the generated or modified files. Suggested when files changed and confidence matters.
+2. Continue generating — Invoke skill `cf-generate` using the current results as context.
+3. Plan follow-up work — Invoke skill `cf-plan` when remaining work is broad or multi-step.
+4. Done — end the generate session with no further workflow handoff.
+5. Other — say what you want to change or do next.
 Reply with the option number or a short custom instruction.
 ---
 
@@ -129,8 +131,9 @@ Reply with the option number or a short custom instruction.
     EMIT exactly:
 ---
 What would you like to do next?
-1. Run /cf-analyze on the written files — Suggested when files were created; validates the output and surfaces any remaining issues.
-2. Other — Describe next action.
+1. Invoke skill `cf-analyze` on the written files — Suggested when files were created; validates the output and surfaces any remaining issues.
+2. Done — end the generate session with no further workflow handoff.
+3. Other — describe the next action.
 Reply with the option number or a short custom instruction.
 ---
 
@@ -139,7 +142,7 @@ RULES:
   - MUST emit next-step menu before the terminal handoff section
 ```
 
-```text
+```pdsl
 UNIT Phase6TerminalHandoffRouting
 
 PURPOSE:

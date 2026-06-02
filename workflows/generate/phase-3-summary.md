@@ -14,7 +14,7 @@ version: 1.0
 
 ## Phase 3: Summary
 
-```text
+```pdsl
 UNIT Phase3Summary
 
 PURPOSE:

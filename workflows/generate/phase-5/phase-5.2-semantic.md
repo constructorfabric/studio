@@ -7,7 +7,7 @@ description: Invoke when the deterministic gate is PASS (or SKIPPED with proof) 
 
 # Generate Phase 5.2: Semantic Reviewers
 
-```text
+```pdsl
 UNIT Phase52SemanticReviewers
 
 PURPOSE:
@@ -83,7 +83,7 @@ RULES:
   - MUST NOT skip dispatch for registered reviewers when trigger condition matches
 ```
 
-```text
+```pdsl
 UNIT Phase52InlineFallbackWarning
 
 PURPOSE:
@@ -126,7 +126,7 @@ MENU InlineFallbackWarningMenu:
 
 ## Pre-Review Warning Handoff
 
-```text
+```pdsl
 UNIT Phase52PreReviewWarningHandoff
 
 PURPOSE:
@@ -139,8 +139,8 @@ Pre-Review Warning Handoff
 Files were already written, but automatic review did not run because you stopped
 at the inline long-loop warning before any validator, reviewer, or author dispatch.
 
-Suggested next step: run `/cf-analyze` on the written files when you want review coverage.
-You may also resume `/cf-generate(mode=fix)` later if you want to continue the review/fix loop from these files.
+Suggested next step: Invoke skill `cf-analyze` on the written files when you want review coverage.
+You may also resume Invoke skill `cf-generate` with mode=fix later if you want to continue the review/fix loop from these files.
 ---
 
 RULES:
@@ -150,7 +150,7 @@ RULES:
   - This is the canonical source of the Pre-Review Warning Handoff text
 ```
 
-```text
+```pdsl
 UNIT Phase52ReviewerDispatchContracts
 
 PURPOSE:
@@ -201,7 +201,7 @@ NOTES:
     Only dispatched when PROMPT_BUG_REVIEW=true
 ```
 
-```text
+```pdsl
 UNIT Phase52ReviewerReturnHandling
 
 PURPOSE:

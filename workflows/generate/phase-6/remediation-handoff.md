@@ -13,7 +13,7 @@ description: Invoke when `remaining_findings` from Phase 5 is non-empty and the 
 
 ### Remediation Handoff (conditional — only when `remaining_findings` non-empty)
 
-```text
+```pdsl
 UNIT RemediationHandoff
 
 PURPOSE:
@@ -29,13 +29,14 @@ DO:
 ---
 Remaining findings: High {h} / Medium {m} / Low {l}. How do you want to address them?
 
-R1. Continue here in fix mode — invoke `/cf-generate(mode=fix)` in this session on the remaining findings
-R2. Generate a Fix Prompt — emit a self-contained prompt for direct fix via `/cf-generate` in a new chat
-R3. Generate a Plan Prompt — emit a self-contained prompt for phased remediation via `/cf-plan` in a new chat
+R1. Continue here in fix mode — Invoke skill `cf-generate` with mode=fix in this session on the remaining findings
+R2. Generate a Fix Prompt — emit a self-contained prompt for direct fix via Invoke skill `cf-generate` in a new chat
+R3. Generate a Plan Prompt — emit a self-contained prompt for phased remediation via Invoke skill `cf-plan` in a new chat
 
 Suggested: {R1|R2|R3} because {scope/risk reason}.
 
-Reply `R1`, `R2`, or `R3`. The Post-Write Review Handoff menu unlocks only after remediation clears; do NOT combine remediation and review replies (e.g. `R1, W2`) — combined replies are refused with a clarifying prompt. W-only replies are refused while remediation is pending; process an `R*` choice first.
+Reply with exactly one remediation choice: `R1`, `R2`, or `R3`.
+Do not combine remediation and review choices. The `W*` review menu unlocks only after remediation clears.
 ---
   WAIT user.reply (next turn)
 
@@ -94,6 +95,7 @@ Combined R+W replies are not supported (since each `R*` may change `remaining_fi
 RULES:
   - MUST NOT emit post-write-handoff.md while remediation is pending
   - MUST refuse combined R+W replies with the verbatim one-line clarifier
+  - W-only replies are refused while remediation is pending
   - MUST refuse W-only replies while remediation pending
   - MUST refuse multiple-choice replies within one menu with one-line clarifier
 ```

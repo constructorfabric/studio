@@ -9,7 +9,7 @@ purpose: Universal workflow for generating execution plans with phased delivery
 
 # Plan
 
-```text
+```pdsl
 UNIT RootSkillEntrypointBootstrap
 PURPOSE: Prevent direct workflow entry from bypassing the root cf skill.
 DO:
@@ -31,7 +31,7 @@ RULES:
     consume the synthesized final prompt and supplied context slices.
 ```
 
-```text
+```pdsl
 UNIT PlanBootstrap
 
 PURPOSE:
@@ -54,7 +54,7 @@ RULES:
   - MUST load {cf-studio-path}/.core/requirements/prompt-engineering.md WHEN compiling phase files
     (phase files ARE agent instructions)
   - MUST load {cf-studio-path}/.core/requirements/plan-checklist.md WHEN validating plans
-    (Phase 4.1 self-validation or /cf-analyze on plan)
+    (Phase 4.1 self-validation or Invoke skill `cf-analyze` on plan)
 
 NOTES:
   Type: Operation.
@@ -69,7 +69,7 @@ NOTES:
   {cf-studio-path}/.core/skills/studio/protocol.md § Compaction Recovery.
 ```
 
-```text
+```pdsl
 UNIT PlanSharedContextPack
 
 PURPOSE:
@@ -87,7 +87,7 @@ RULES:
 
 ## Overview
 
-```text
+```pdsl
 UNIT PlanOverview
 
 PURPOSE:
@@ -102,7 +102,7 @@ RULES:
 
 ## Context Budget & Overflow Prevention (CRITICAL)
 
-```text
+```pdsl
 UNIT PlanContextBudget
 
 PURPOSE:
@@ -131,7 +131,7 @@ NOTES:
 
 ## Phase 0: Resolve Variables & Discover Tools
 
-```text
+```pdsl
 UNIT PlanPhase0
 
 PURPOSE:
@@ -143,7 +143,7 @@ DO:
 
 ## Phase 0.a: Explore / Brainstorm Applicability
 
-```text
+```pdsl
 UNIT PlanExploreBrainstormGate
 
 PURPOSE:
@@ -166,7 +166,7 @@ RULES:
 
 ## Phase 1: Assess Scope
 
-```text
+```pdsl
 UNIT PlanPhase1
 
 PURPOSE:
@@ -179,7 +179,7 @@ DO:
 
 ## Phase 2: Decompose
 
-```text
+```pdsl
 UNIT PlanPhase2
 
 PURPOSE:
@@ -192,7 +192,7 @@ DO:
 
 ## Phase 3: Compile Phase Files
 
-```text
+```pdsl
 UNIT PlanPhase3
 
 PURPOSE:
@@ -209,11 +209,11 @@ RULES:
 
 ## Phase 4: Finalize Plan
 
-```text
+```pdsl
 UNIT PlanPhase4
 
 PURPOSE:
-  Run self-validation and emit gated next-steps menu after all phase files are produced.
+  Run self-validation and emit the canonical final Phase 4 menu after all phase files are produced.
 
 WHEN:
   user selected option [1] or [3] in Phase 3.2A
@@ -224,13 +224,14 @@ DO:
   REQUIRE {cf-studio-path}/.core/workflows/plan/phase-4-finalize.md is loaded and followed
 
 NOTES:
-  Contains Phase 4.1 self-validation, gated Phase 4.2 next-steps menu
-  (native-execution branch [1]-[5], fallback branch [1]-[4]), and New-Chat Startup Prompt.
+  Contains Phase 4.1 self-validation, gated Phase 4.2 final menu
+  (validation / next task / end), native-execution branch [1]-[5],
+  fallback branch [1]-[4], and New-Chat Startup Prompt.
 ```
 
 ## Plan Lifecycle
 
-```text
+```pdsl
 UNIT PlanLifecycle
 
 PURPOSE:
@@ -245,7 +246,7 @@ DO:
 
 ## Plan Reference
 
-```text
+```pdsl
 UNIT PlanReference
 
 PURPOSE:
@@ -261,17 +262,22 @@ DO:
 
 ## Completion Invariants
 
-```text
+```pdsl
 UNIT PlanCompletionInvariants
 
 PURPOSE:
   Enforce terminal block requirement before ending any plan response.
 
 DO:
-  REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md § Completion Invariants
-    is loaded and followed before ending any response
+  REQUIRE root cf skill Completion Invariants already loaded by
+    RootSkillEntrypointBootstrap are followed before ending any response
+  MUST_NOT make prompt-consuming sub-agents reopen SKILL.md from disk for this
+    terminal check; pass any needed invariant slice through prompt_context_view
 
 INVARIANTS:
-  - MUST end with Phase 4 next-steps menu OR Phase 3 brief-checkpoint menu
-    when a /cf-plan run compiled phase files
+  - MUST end with the Phase 4 final menu when a cf-plan run compiled phase files
+  - MAY end with the Phase 3 brief-checkpoint menu only for briefs_only or
+    incomplete compilation checkpoints before all phase files are produced
+  - Phase 3 brief-checkpoint output MUST still require the Phase 4 final menu
+    after full compilation
 ```

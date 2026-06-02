@@ -9,7 +9,7 @@ purpose: Universal workflow for analysing any Constructor Studio artifact or cod
 
 # Analyze
 
-```text
+```pdsl
 UNIT RootSkillEntrypointBootstrap
 PURPOSE: Prevent direct workflow entry from bypassing the root cf skill.
 DO:
@@ -31,7 +31,7 @@ RULES:
     consume the synthesized final prompt and supplied context slices.
 ```
 
-```text
+```pdsl
 UNIT AnalyzePreamble
 PURPOSE: Load preamble before any other phase.
 DO:
@@ -39,7 +39,7 @@ DO:
 NOTES: Performs route-only methodology selection and storytelling trigger handling; methodology implementations load only inside matched Phase 3 sub-agents.
 ```
 
-```text
+```pdsl
 UNIT AnalyzeRulesMode
 PURPOSE: Load STRICT/RELAXED and stop-token behavior before any phase.
 DO:
@@ -47,7 +47,7 @@ DO:
   CONTINUE {cf-studio-path}/.core/workflows/shared/stop-token-policy.md
 ```
 
-```text
+```pdsl
 UNIT AnalyzeSharedContextPack
 PURPOSE: Keep analyze prompt loading controller-owned and pack-aware.
 RULES:
@@ -56,7 +56,7 @@ RULES:
   - MUST_NOT rely on sub-agents reopening workflow, requirement, spec, or AGENTS prompt files directly
 ```
 
-```text
+```pdsl
 UNIT AnalyzeRules
 PURPOSE: Load completion contract and pre-output self-check.
 DO:
@@ -65,7 +65,7 @@ RULES:
   - MUST load rules.md unconditionally
 ```
 
-```text
+```pdsl
 UNIT AnalyzeChangeReviewFailClosed
 PURPOSE: Keep change-review runs fail-closed until gate states resolve.
 WHEN: CHANGE_REVIEW == true
@@ -75,7 +75,7 @@ RULES:
   - MAY emit only the missing gate menu or matching `Dispatch blocked: ...` error, then MUST STOP_TURN
 ```
 
-```text
+```pdsl
 UNIT AnalyzeOverview
 PURPOSE: Load mode resolution, command surface, prompt-review trigger semantics, and actionable-findings contract.
 DO:
@@ -84,15 +84,7 @@ RULES:
   - MUST load before any phase executes
 ```
 
-```text
-UNIT AnalyzeContextBudget
-PURPOSE: Enforce context budget before loading large documents.
-WHEN: Phase 0 is about to load large documents OR estimated total context > 1200 lines
-DO:
-  CONTINUE {cf-studio-path}/.core/workflows/analyze/context-budget.md
-```
-
-```text
+```pdsl
 UNIT AnalyzePhase0
 PURPOSE: Resolve dependencies and run Mode Detection matrix.
 DO:
@@ -100,7 +92,15 @@ DO:
 NOTES: Phase 0 + 0.5 dependency resolution and Mode Detection matrix fully defined in phase-0-dependencies.md.
 ```
 
-```text
+```pdsl
+UNIT AnalyzeContextBudget
+PURPOSE: Enforce context budget after dependencies are known and before Phase 0.1.
+WHEN: AnalyzePhase0 completed AND (large documents are about to load OR estimated total context > 1200 lines)
+DO:
+  CONTINUE {cf-studio-path}/.core/workflows/analyze/context-budget.md
+```
+
+```pdsl
 UNIT AnalyzeExploreGate
 PURPOSE: Decide whether discovery is needed before target validation and reviewer dispatch.
 WHEN: AnalyzePhase0 completed AND before Phase 0.5 / Phase 1
@@ -113,7 +113,7 @@ RULES:
   - MUST pass RESOURCE_CONTEXT to semantic reviewers as resource context only, not prompt context
 ```
 
-```text
+```pdsl
 UNIT AnalyzePhase05
 PURPOSE: Clarify scope when required by Phase 0 dependency resolution.
 WHEN: phase-0-dependencies.md routes scope clarification
@@ -123,14 +123,14 @@ RULES:
   - MUST NOT load independently; load only when phase-0-dependencies.md triggers it
 ```
 
-```text
+```pdsl
 UNIT AnalyzePhase1
 PURPOSE: Run existence check across {PATHS}.
 DO:
   CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-1-file-check.md
 ```
 
-```text
+```pdsl
 UNIT AnalyzePhase2
 PURPOSE: Dispatch deterministic validators and enforce gate behavior.
 DO:
@@ -139,7 +139,7 @@ RULES:
   - MUST skip when SEMANTIC_ONLY=true (sub-file enforces; router proceeds to Phase 3)
 ```
 
-```text
+```pdsl
 UNIT AnalyzePhase25
 PURPOSE: Produce REVIEWER_EXECUTION_PLAN for parallel dispatch in Phase 3.
 WHEN: SUB_AGENT_SESSION_APPROVED == true AND INLINE_FALLBACK == false
@@ -150,21 +150,21 @@ RULES:
 NOTES: SUB_AGENT_SESSION_APPROVED and INLINE_FALLBACK declared in SKILL.md § Session Sub-Agent Approval Gate.
 ```
 
-```text
+```pdsl
 UNIT AnalyzePhase3
 PURPOSE: Run reviewer dispatch matrix, namespaced finding IDs, rules-mode behavior, and EXPLAIN_MODE boundary.
 DO:
   CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-3-semantic.md
 ```
 
-```text
+```pdsl
 UNIT AnalyzePhase3to4
 PURPOSE: Run context-budget recovery checkpoint between semantic review and output.
 DO:
   CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-3-to-4-checkpoint.md
 ```
 
-```text
+```pdsl
 UNIT AnalyzePhase4
 PURPOSE: Emit output when semantic review or deterministic-gate FAIL is ready.
 WHEN: semantic review is complete OR deterministic gate returned FAIL
@@ -173,7 +173,7 @@ DO:
 NOTES: Dispatcher selects schema sub-file by mode and routes Remediation Handoff menu when actionable findings exist.
 ```
 
-```text
+```pdsl
 UNIT AnalyzePhase5
 PURPOSE: Offer next steps when overall result is PASS and not in EXPLAIN mode.
 WHEN: overall result == PASS AND EXPLAIN_MODE == false
@@ -181,24 +181,34 @@ DO:
   CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-5-next-steps.md
 ```
 
-```text
+```pdsl
 UNIT AnalyzeTerminal
-PURPOSE: Enforce correct terminal block ends every analyze response.
+PURPOSE: Enforce correct terminal block endings for final completion turns while
+  permitting legal intermediate WAIT/STOP menus.
 INVARIANTS:
-  - MUST NOT end response without one of:
-      Remediation Handoff menu (actionable findings exist or deterministic gate FAIL)
-      Phase 5 next-steps menu (PASS path, EXPLAIN_MODE=false)
-  - IF the required terminal file (phase-4-output/index.md for remediation handoff, or phase-5-next-steps.md for PASS path) is not loadable: STOP and surface missing file error before emitting final response.
+  - Final completion turns MUST end with exactly one terminal shape:
+      Remediation Handoff menu (actionable findings exist or deterministic gate FAIL, EXPLAIN_MODE=false)
+      Phase 5 next-steps menu (overall PASS, EXPLAIN_MODE=false, PARTIAL=false)
+      Storytelling output terminal section (EXPLAIN_MODE=true)
+      PARTIAL checkpoint + resume menu (review incomplete or context budget exhausted)
+  - Legal intermediate WAIT/STOP menus are permitted and MUST_NOT be treated as
+    terminal-contract violations. This whitelist includes Phase 0.1
+    plan-escalation, Phase 0.5 scope clarification, Phase 3 dispatch recovery,
+    Phase 3→4 checkpoint/resume, and prompt-review partial-checkpoint menus.
+  - Final completion turns MUST_NOT fall through from PARTIAL or remediation
+    states into Phase 5 in the same turn.
+  - IF the required terminal file for the active end state is not loadable:
+    STOP and surface the missing-file error before emitting that final turn.
 ```
 
-```text
+```pdsl
 UNIT AnalyzeStateSummary
 PURPOSE: Load target-type x template / checklist / design matrix.
 DO:
   CONTINUE {cf-studio-path}/.core/workflows/analyze/state-summary.md
 ```
 
-```text
+```pdsl
 UNIT AnalyzeKeyPrinciples
 PURPOSE: Load key principles when finalizing the response.
 WHEN: finalizing the response
@@ -206,7 +216,7 @@ DO:
   CONTINUE {cf-studio-path}/.core/workflows/analyze/key-principles.md
 ```
 
-```text
+```pdsl
 UNIT AnalyzeSelfTest
 PURPOSE: Answer canonical self-test questions in STRICT mode after completing work.
 WHEN: STRICT mode finalization requires self-test
@@ -215,7 +225,7 @@ DO:
 NOTES: Also referenced from Standard Analysis Output section 4.
 ```
 
-```text
+```pdsl
 UNIT AnalyzeValidation
 PURPOSE: Verify post-flight checklist before ending the response.
 WHEN: post-flight checklist must be verified before ending the response

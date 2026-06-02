@@ -1,7 +1,7 @@
 ---
 cf: true
 type: reference
-description: "Invoke when Phase 2.1 of /cf-plan requires the user to select a plan lifecycle strategy — presents the lifecycle menu, records the selection, and defines normative handling rules for each strategy."
+description: "Invoke when Phase 2.1 of cf-plan requires the user to select a plan lifecycle strategy — presents the lifecycle menu, records the selection, and defines normative handling rules for each strategy."
 loaded_by: workflows/plan.md
 version: 1.0
 ---
@@ -18,7 +18,7 @@ version: 1.0
 
 ## Lifecycle Menu
 
-```text
+```pdsl
 UNIT PlanLifecycleMenu
 
 PURPOSE:
@@ -56,7 +56,7 @@ MENU LifecycleChoiceMenu:
 
 ## Per-Strategy Normative Rules
 
-```text
+```pdsl
 UNIT PlanLifecycleGitignore
 
 PURPOSE:
@@ -78,7 +78,7 @@ RULES:
     (does NOT prohibit pre-execution modification menus like Phase 4.2 [5] Modify plan)
 ```
 
-```text
+```pdsl
 UNIT PlanLifecycleCleanup
 
 PURPOSE:
@@ -114,7 +114,7 @@ RULES:
   - MUST NOT reopen delivery phases or replay Cleanup solely because those files are absent
 ```
 
-```text
+```pdsl
 UNIT PlanLifecycleArchive
 
 PURPOSE:
@@ -143,7 +143,7 @@ RULES:
     (does NOT prohibit pre-execution modification menus like Phase 4.2 [5] Modify plan)
 ```
 
-```text
+```pdsl
 UNIT PlanLifecycleManual
 
 PURPOSE:
@@ -160,7 +160,7 @@ RULES:
 
 ### Interrupted Lifecycle Recovery
 
-```text
+```pdsl
 UNIT PlanLifecycleInterruptedRecovery
 
 PURPOSE:

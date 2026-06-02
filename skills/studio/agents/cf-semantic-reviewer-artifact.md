@@ -43,7 +43,7 @@ rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
 
 ## Methodology
 
-```text
+```pdsl
 UNIT SemanticReviewerMethodology
 
 PURPOSE:
@@ -111,7 +111,7 @@ PARTIAL_CHECKPOINT schema (emit as a `json`-fenced block in place of the Validat
 
 ## Mechanical-vs-judgmental classification
 
-```text
+```pdsl
 UNIT MechanicalClassification
 
 PURPOSE:
@@ -158,7 +158,7 @@ category table and counts, followed by a `findings` JSON block:
 
 ## Response Completion Gate
 
-```text
+```pdsl
 UNIT SemanticReviewerCompletionGate
 
 PURPOSE:

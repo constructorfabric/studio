@@ -8,7 +8,7 @@ version: 1.0
 
 # Phase 0.7: Panel Selection
 
-```text
+```pdsl
 UNIT Phase07PanelSelection
 
 PURPOSE:
@@ -107,7 +107,7 @@ NOTES:
   accept alias exists for backwards compatibility with earlier prompt versions.
 ```
 
-```text
+```pdsl
 UNIT Phase07ExplorePanelContext
 
 PURPOSE:

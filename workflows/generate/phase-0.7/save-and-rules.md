@@ -17,7 +17,7 @@ version: 1.0
 
 ### `save` mode
 
-```text
+```pdsl
 UNIT BrainstormSaveMode
 
 PURPOSE:
@@ -48,7 +48,7 @@ RULES:
 
 ### Rules respect
 
-```text
+```pdsl
 UNIT BrainstormRulesRespect
 
 PURPOSE:
@@ -78,7 +78,7 @@ MENU RulesRespectMatrix:
 
 ### Standalone use
 
-```text
+```pdsl
 UNIT BrainstormStandaloneUse
 
 PURPOSE:
@@ -94,7 +94,7 @@ DO:
 
 ### Cache retention (TTL)
 
-```text
+```pdsl
 UNIT BrainstormCacheRetention
 
 PURPOSE:

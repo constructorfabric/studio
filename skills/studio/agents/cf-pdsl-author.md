@@ -13,6 +13,8 @@ the agent. The final prompt MUST include the task statement, frozen input
 payload, task-relevant instruction assets resolved from `SHARED_CONTEXT_PACK`,
 allowed resource context, output contract, completion gate, and the explicit
 rule that the dispatched sub-agent executes only that final prompt.
+The final prompt MUST also require every generated PDSL instruction block to
+use a `pdsl` Markdown fence, not `text`.
 
 The dispatched sub-agent MUST NOT open prompt assets from disk and MUST NOT
 rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
@@ -42,7 +44,7 @@ rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
 
 ## Response Completion Gate
 
-```text
+```pdsl
 UNIT PdslAuthorCompletion
 
 RULES:

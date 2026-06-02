@@ -79,7 +79,7 @@ NOTES:
 
 ## Planning Rules
 
-```text
+```pdsl
 UNIT AnalyzePlannerRules
 
 PURPOSE:
@@ -132,6 +132,13 @@ RULES:
   - Code-methodology tasks MUST operate only on code_targets
   - MUST_NOT include non-code paths in a code task's path_partition
   - Every parallel_groups[].depends_on reference MUST name an earlier group
+  - Every task.parallel_group value MUST be a string group id matching an
+    existing parallel_groups[].id, using the `G<number>` form (for example
+    "G1"). Numeric values such as 1 or 2 are invalid.
+  - Every parallel_groups[] entry MUST include all required fields:
+    id, task_ids, depends_on, execution, and reason.
+  - Every parallel_groups[].execution value MUST be exactly "parallel" or
+    "sequential".
   - MUST_NOT put more than 5 tasks in a single parallel group;
     spread them across groups to keep host-side dispatch concurrency bounded
   - In disk mode, produce the same JSON plan as memory mode;
@@ -140,7 +147,7 @@ RULES:
 
 ## Output Contract
 
-```text
+```pdsl
 UNIT AnalyzePlannerOutput
 
 PURPOSE:
@@ -195,7 +202,7 @@ RULES:
 
 ## Response Completion Gate
 
-```text
+```pdsl
 UNIT AnalyzePlannerCompletionGate
 
 PURPOSE:
@@ -214,6 +221,10 @@ RULES:
   - work_request MUST be non-empty and MUST preserve the original requested
     review/analyze scope, not only the execution sequence
   - Every task MUST have at least one acceptance criterion
+  - Every task.parallel_group MUST be a named string group id matching an
+    existing parallel_groups[].id; numeric group values fail the gate
+  - Every parallel_groups[] entry MUST include id, task_ids, depends_on,
+    execution, and reason
   - The reviewer_plan JSON block MUST be well-formed and follow the contract
   - MUST satisfy the SKILL.md invariant
 ```

@@ -14,7 +14,7 @@ description: "Invoke when the GIT_COMMIT_MODE session flag is unset and the orch
 
 ## Phase 0.x: GIT_COMMIT_MODE Probe
 
-```text
+```pdsl
 UNIT GitCommitModeProbe
 
 PURPOSE:
@@ -67,7 +67,7 @@ RULES:
   - MUST probe once per chat session
   - MUST skip if GIT_COMMIT_MODE already set from an earlier run in this chat
   - MUST re-probe on external-entry handoffs (briefs_only stop + new chat)
-  - MUST NOT re-probe on subsequent /cf-generate runs within the same chat
+  - MUST NOT re-probe on subsequent cf-generate runs within the same chat
   - MUST end the assistant turn immediately after emitting the prompt
   - MUST NOT treat absence of reply as option 3
   - MUST trim replies of leading/trailing whitespace before matching
@@ -79,7 +79,7 @@ RULES:
 
 ## Mode Semantics
 
-```text
+```pdsl
 UNIT GitCommitModeSemantics
 
 PURPOSE:

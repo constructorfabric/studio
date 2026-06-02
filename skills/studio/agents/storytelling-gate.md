@@ -80,7 +80,7 @@ rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
 }
 ```
 
-```text
+```pdsl
 UNIT InputContract
 
 PURPOSE:
@@ -103,7 +103,7 @@ is `null` for all non-plan gates.
 
 ## Two-phase dispatch model
 
-```text
+```pdsl
 UNIT TwoPhaseDispatch
 
 PURPOSE:
@@ -138,7 +138,7 @@ NOTES:
 
 ### Gate: mode
 
-```text
+```pdsl
 UNIT GateMode
 
 PURPOSE:
@@ -175,7 +175,7 @@ DO:
 
 ### Gate: artifact-disposition
 
-```text
+```pdsl
 UNIT GateArtifactDisposition
 
 PURPOSE:
@@ -251,7 +251,7 @@ NOTES:
 
 ### Gate: generate-routing
 
-```text
+```pdsl
 UNIT GateGenerateRouting
 
 PURPOSE:
@@ -351,7 +351,7 @@ Reply 1 / 2 / 3 / 4. Override the classified intent in the same reply with `1 fi
 
 ### Gate: audience
 
-```text
+```pdsl
 UNIT GateAudience
 
 PURPOSE:
@@ -389,7 +389,7 @@ RULES:
 
 ### Gate: plan
 
-```text
+```pdsl
 UNIT GatePlan
 
 PURPOSE:
@@ -476,7 +476,7 @@ N. <title> — <summary>
 
 ### Gate: context-pack-strategy
 
-```text
+```pdsl
 UNIT GateContextPackStrategy
 
 PURPOSE:
@@ -505,7 +505,7 @@ DO:
 
 ### Gate: export-format
 
-```text
+```pdsl
 UNIT GateExportFormat
 
 PURPOSE:
@@ -537,7 +537,7 @@ DO:
 
 ### Phase 1 — Render
 
-```text
+```pdsl
 UNIT Phase1Render
 
 PURPOSE:
@@ -568,7 +568,7 @@ RULES:
 
 ### Phase 2 — Parse
 
-```text
+```pdsl
 UNIT Phase2Parse
 
 PURPOSE:
@@ -648,7 +648,7 @@ The JSON block is the entire response — no preamble, no trailing commentary.
 
 ## Response Completion Gate
 
-```text
+```pdsl
 UNIT ResponseCompletionGate
 
 PURPOSE:

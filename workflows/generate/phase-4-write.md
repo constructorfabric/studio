@@ -8,7 +8,7 @@ version: 1.0
 
 # Generate Phase 4: Write
 
-```text
+```pdsl
 UNIT Phase4WriteEntry
 PURPOSE: Enforce entry conditions before dispatching write-capable author.
 
@@ -114,6 +114,9 @@ DO:
       - every Phase 4 target_paths entry covered by at least one task
       - tasks in same parallel_group have disjoint target_paths
       - no parallel group has more than one task with updates_artifacts_toml=true
+      - every task.parallel_group is a string id matching an existing parallel_groups[].id
+      - every parallel_groups[] entry includes id, task_ids, depends_on, execution, and reason
+      - every parallel_groups[].execution is "parallel" or "sequential"
       - each parallel_groups[].depends_on group completed before its group runs
     FOR each parallel group in dependency order:
       FOR each task in group:

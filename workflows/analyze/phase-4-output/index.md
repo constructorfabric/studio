@@ -6,7 +6,7 @@ loaded_by: workflows/analyze.md
 version: 1.0
 ---
 
-```text
+```pdsl
 UNIT AnalyzePhase4OutputDispatcher
 
 PURPOSE:
@@ -16,24 +16,32 @@ PURPOSE:
 RULES:
   - MUST print to chat only; MUST_NOT create files
   - MUST load exactly one output sub-file
+  - MUST treat this phase as terminal when it emits either:
+      a PARTIAL checkpoint/resume block
+      a remediation handoff menu
   - MUST append remediation-handoff.md after the selected schema when actionable
     findings exist AND EXPLAIN_MODE=false
   - MUST_NOT emit Fix Prompt or Plan Prompt from this unit (those are emitted by
     remediation-handoff.md on demand)
   - MUST render Prompt Review Partial Checkpoint block (not full schema) when
     PROMPT_REVIEW=true AND checkpoint.type=PARTIAL_CHECKPOINT
-  - MUST return to router after all sub-files emit output; continue with Phase 5,
-    Key Principles, Agent Self-Test, and Validation Criteria as applicable
+  - MUST STOP_TURN after a prompt-review PARTIAL checkpoint block
+  - MUST STOP_TURN after remediation-handoff.md emits its menu
+  - MUST return to router for Phase 5 only when PARTIAL=false, no remediation
+    handoff was emitted, and the selected schema completed a non-EXPLAIN PASS turn
 
 DO:
-  IF EXPLAIN_MODE == false AND PROMPT_REVIEW == false AND PROMPT_BUG_REVIEW == false:
-    LOAD {cf-studio-path}/.core/workflows/analyze/phase-4-output/output-standard.md
-  IF PROMPT_REVIEW == true OR PROMPT_BUG_REVIEW == true:
-    LOAD {cf-studio-path}/.core/workflows/analyze/phase-4-output/output-prompt-review.md
   IF EXPLAIN_MODE == true:
     LOAD {cf-studio-path}/.core/workflows/analyze/phase-4-output/output-storytelling.md
+  ELSE IF PROMPT_REVIEW == true OR PROMPT_BUG_REVIEW == true:
+    LOAD {cf-studio-path}/.core/workflows/analyze/phase-4-output/output-prompt-review.md
+  ELSE:
+    LOAD {cf-studio-path}/.core/workflows/analyze/phase-4-output/output-standard.md
+  IF (PROMPT_REVIEW == true OR PROMPT_BUG_REVIEW == true) AND checkpoint.type == "PARTIAL_CHECKPOINT":
+    STOP_TURN
   IF actionable findings exist AND EXPLAIN_MODE == false:
     LOAD {cf-studio-path}/.core/workflows/analyze/phase-4-output/remediation-handoff.md
+    STOP_TURN
 ```
 
 ## Phase 4: Output
@@ -54,7 +62,7 @@ Review Partial Checkpoint` block from
 `workflows/analyze/phase-4-output/output-prompt-review.md`; do not force the
 full prompt-review schema when `checkpoint.type = "PARTIAL_CHECKPOINT"`.
 
-After all sub-files have emitted their output (selected schema + remediation
-handoff when applicable), the orchestrator returns to the router to continue
-with Phase 5, Key Principles, Agent Self-Test, and Validation Criteria as
-applicable.
+After the selected schema emits output, stop in the same turn whenever the
+result is a prompt-review partial checkpoint or a remediation handoff. Only
+clean, non-partial, non-EXPLAIN PASS output returns to the router for Phase 5,
+Key Principles, Agent Self-Test, and Validation Criteria.

@@ -15,7 +15,7 @@ description: Invoke when the orchestrator enters the Phase 5 review loop after P
 
 <!-- /toc -->
 
-```text
+```pdsl
 UNIT Phase5Entry
 
 PURPOSE:
@@ -73,7 +73,7 @@ RULES:
 
 ## Pre-Phase-Setup (MAX_ITER resolution)
 
-```text
+```pdsl
 UNIT Phase5PreSetup
 
 PURPOSE:
@@ -127,7 +127,7 @@ RULES:
 
 ### Review-Loop Iteration Cap Prompt
 
-```text
+```pdsl
 UNIT Phase5IterationCapPrompt
 
 PURPOSE:
@@ -176,7 +176,7 @@ RULES:
 
 ## Dispatcher
 
-```text
+```pdsl
 UNIT Phase5Dispatcher
 
 PURPOSE:

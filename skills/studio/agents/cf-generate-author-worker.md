@@ -45,7 +45,7 @@ rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
 
 ## Tier Guard
 
-```text
+```pdsl
 UNIT TierGuard
 
 PURPOSE:
@@ -152,7 +152,7 @@ NOTES:
 
 ## Git Constraint (read from dispatch context — MUST obey)
 
-```text
+```pdsl
 UNIT GitConstraint
 
 PURPOSE:
@@ -173,7 +173,7 @@ RULES:
 
 ## Methodology — `mode=create`
 
-```text
+```pdsl
 UNIT CreateMethodology
 
 PURPOSE:
@@ -192,7 +192,7 @@ DO:
 
 ## Methodology — `mode=fix`
 
-```text
+```pdsl
 UNIT FixMethodology
 
 PURPOSE:
@@ -251,7 +251,7 @@ NOTES:
 
 ## Response Completion Gate
 
-```text
+```pdsl
 UNIT AuthorWorkerCompletionGate
 
 RULES:

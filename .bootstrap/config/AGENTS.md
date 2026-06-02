@@ -29,7 +29,9 @@ ALWAYS open and follow `{cf-studio-path}/.core/schemas/artifacts.schema.json` WH
 
 ALWAYS open and follow `{cf-studio-path}/.core/architecture/specs/artifacts-registry.md` WHEN working with artifacts.toml
 
-### Project Rules
+### Project Rules (auto-configured)
+
+<!-- auto-config:rules:start -->
 
 ALWAYS open and follow `{cf-studio-path}/config/rules/tech-stack.md` WHEN writing code, choosing technologies, or adding dependencies
 
@@ -48,6 +50,8 @@ ALWAYS open and follow `{cf-studio-path}/config/rules/architecture.md` WHEN modi
 ALWAYS open and follow `{cf-studio-path}/config/rules/patterns.md` WHEN implementing features or writing business logic
 
 ALWAYS open and follow `{cf-studio-path}/config/rules/anti-patterns.md` WHEN reviewing code or refactoring
+
+<!-- auto-config:rules:end -->
 
 ---
 

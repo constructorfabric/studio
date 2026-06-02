@@ -14,7 +14,7 @@ description: Invoke when Phase 2 (no-op) and Phase 2.5 checkpoint guidance must 
 
 ## Phase 2: Generate (no-op — content production happens in Phase 4)
 
-```text
+```pdsl
 UNIT Phase2NoOp
 
 PURPOSE:
@@ -41,7 +41,7 @@ NOTES:
 
 ## Phase 2.5: Checkpoint (for long artifacts)
 
-```text
+```pdsl
 UNIT Phase25Checkpoint
 
 PURPOSE:
@@ -58,7 +58,7 @@ DO:
     EMIT exactly:
 ---
 ### Generation Checkpoint
-**Workflow**: /cf-generate {KIND}
+**Workflow**: Invoke skill `cf-generate` {KIND}
 **Phase**: 2 complete, ready for Phase 3
 **Inputs collected**: {section summaries}
 **Author plan**: {AUTHOR_PLAN_OFFER_RESOLVED}; {task/group summary or "single author flow"}

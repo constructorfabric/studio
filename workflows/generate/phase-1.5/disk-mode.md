@@ -13,7 +13,7 @@ description: "Invoke when AUTHOR_PLAN_OFFER_RESOLVED=disk to render the author-p
 
 ## Disk Mode Rendering
 
-```text
+```pdsl
 UNIT Phase15DiskModeRendering
 
 PURPOSE:

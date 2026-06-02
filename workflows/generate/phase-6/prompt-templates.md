@@ -13,7 +13,7 @@ description: Invoke when the user picked `R2`/`R3`/`W2`/`W3` and the correspondi
 
 ### Emission targets (templates — emitted on demand only)
 
-```text
+```pdsl
 UNIT Phase6EmissionTargets
 
 PURPOSE:
@@ -25,7 +25,7 @@ RULES:
     (Post-Write Review Handoff) in their next turn
   - Each emitted template MUST be a self-contained final prompt usable in a
     fresh chat without any prior context:
-    MUST explicitly begin with the phrase "Invoke skill cf"
+    MUST explicitly begin with the phrase "Invoke skill `cf`"
     MUST embed inline: changed file paths, what was changed per file (brief summary),
       kind/target, and completed Validation Results body with actual values;
       for R2/R3 also embed full remaining_findings list
@@ -57,9 +57,9 @@ differences (frontmatter description; section heading; opening prompt heading; l
 routing instruction; report-focus / focus-and-output instruction; closing instruction) — well above
 the 3-line collapse threshold. The differences are load-bearing:
 
-  * `W3` template routes the next agent to `/cf-plan` (PHASED review plan) and asks for
+  * `W3` template routes the next agent to Invoke skill `cf-plan` (PHASED review plan) and asks for
     review coverage + risk hotspots + a follow-up first-phase execution prompt.
-  * `W2` template routes the next agent to `/cf-analyze` (IMMEDIATE review) and asks
+  * `W2` template routes the next agent to Invoke skill `cf-analyze` (IMMEDIATE review) and asks
     for findings with severity, evidence, risks, regressions, and recommended fixes.
 
 Collapsing the two into a single template guarded by a `routing_kind` switch would require five

@@ -2,14 +2,14 @@
 cf: true
 type: workflow-phase
 name: plan-phase-0-discover
-description: "Invoke when /cf-plan enters Phase 0 to resolve runtime variables and build a dynamic tool map from the CLISPEC."
+description: "Invoke when cf-plan enters Phase 0 to resolve runtime variables and build a dynamic tool map from the CLISPEC."
 loaded_by: workflows/plan.md
 version: 1.0
 ---
 
 # Phase 0: Resolve Variables & Discover Tools
 
-```text
+```pdsl
 UNIT Phase0ResolveVariables
 
 PURPOSE:
@@ -27,7 +27,7 @@ NOTES:
   written into the [meta] TOML table of plan.toml.
 ```
 
-```text
+```pdsl
 UNIT Phase0VariableCheckpoint
 
 PURPOSE:
@@ -51,7 +51,7 @@ ON_ERROR:
 
 ## 0.1 Discover Available Tools
 
-```text
+```pdsl
 UNIT Phase0DiscoverTools
 
 PURPOSE:

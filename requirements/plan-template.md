@@ -176,7 +176,7 @@ Line count: {actual}/{budget}
 Notes: {any issues or decisions made}
 ```
 
-Then generate a **copy-pasteable prompt** for the next phase inside a single code fence:
+If `Status: PASS`, then generate a **copy-pasteable prompt** for the next phase inside a single code fence:
 
 ```text
 Next phase prompt (copy-paste into new chat if needed):
@@ -193,7 +193,17 @@ It is self-contained — follow its instructions exactly.
 After completion, report results and generate the prompt for the next phase.
 ```
 
-If this is the **last phase**, instead of a next-phase prompt output:
+If `Status: FAIL`, do not generate a next-phase execution prompt. Instead,
+emit a repair prompt that keeps the user in the current phase:
+
+```text
+Phase {N} failed. Do not proceed to Phase {N+1}.
+Fix the failed acceptance criteria in:
+  {cf-studio-path}/.plans/{task-slug}/{current_phase_file}
+Then rerun Phase {N} and report PASS before continuing.
+```
+
+If this is the **last phase** and `Status: PASS`, instead of a next-phase prompt output:
 
 ```text
 ALL PHASES COMPLETE ({M}/{M})
@@ -201,7 +211,16 @@ Plan: {cf-studio-path}/.plans/{task-slug}/plan.toml
 Lifecycle: {lifecycle_strategy}
 ```
 
-Then ask: `Continue in this chat? [y/n]`
+Then ask:
+```text
+Continue in this chat?
+1. Run validation now — review the plan with `cf-analyze` on the plan directory before execution.
+2. Choose the next task or workflow to run in this chat.
+3. No — end the workflow here; the completed plan remains at the path above.
+
+Suggested: 1 until validation has been completed; otherwise 3 when no further work remains.
+Reply `1`, `2`, or `3`.
+```
 ```
 
 ## Compilation Rules

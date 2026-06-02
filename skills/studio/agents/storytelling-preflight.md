@@ -46,7 +46,7 @@ rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
 }
 ```
 
-```text
+```pdsl
 UNIT InputValidation
 
 PURPOSE:
@@ -67,7 +67,7 @@ Execute the six steps below in order. Each step is load-bearing — skipping any
 
 ### Step 1 — Canonicalize path and derive session_id
 
-```text
+```pdsl
 UNIT CanonicalizeAndDeriveSessionId
 
 PURPOSE:
@@ -96,7 +96,7 @@ RULES:
 
 ### Step 2 — Session discovery scan
 
-```text
+```pdsl
 UNIT SessionDiscoveryScan
 
 PURPOSE:
@@ -113,7 +113,7 @@ DO:
 
 ### Step 3 — Determine access_tier
 
-```text
+```pdsl
 UNIT DetermineAccessTier
 
 PURPOSE:
@@ -152,7 +152,7 @@ RULES:
 
 ### Step 3a — Path safety guard
 
-```text
+```pdsl
 UNIT PathSafetyGuard
 
 PURPOSE:
@@ -177,7 +177,7 @@ RULES:
 
 ### Step 4 — Size guards
 
-```text
+```pdsl
 UNIT SizeGuards
 
 PURPOSE:
@@ -224,13 +224,13 @@ DO:
 RULES:
   - MUST run regardless of access_tier
   - MUST_NOT set byte_size = 0 silently for cli tier
-  - MUST_NOT suggest /cf-plan as a workaround when block_too_large (Anti-Pattern #0)
+  - MUST_NOT suggest cf-plan as a workaround when block_too_large (Anti-Pattern #0)
   - MUST_NOT skip measurement for mcp or cli tiers
 ```
 
 ### Step 5 — Detect target_type and primary_language
 
-```text
+```pdsl
 UNIT DetectTargetTypeAndLanguage
 
 PURPOSE:
@@ -274,7 +274,7 @@ DO:
 
 ### Step 5b — Local-editable detection
 
-```text
+```pdsl
 UNIT LocalEditableDetection
 
 PURPOSE:
@@ -340,7 +340,7 @@ NOTES:
 
 ### Step 6 — Load preferences
 
-```text
+```pdsl
 UNIT LoadPreferences
 
 PURPOSE:
@@ -385,7 +385,7 @@ RULES:
 }
 ```
 
-```text
+```pdsl
 UNIT AbortSemantics
 
 PURPOSE:
@@ -396,12 +396,12 @@ RULES:
     OR when path safety guard fires (path outside project_root)
   - MUST set abort = false otherwise
   - MUST set abort_message = null when abort == false
-  - MUST_NOT mention /cf-plan in abort_message
+  - MUST_NOT mention cf-plan in abort_message
 ```
 
 ## Response Completion Gate
 
-```text
+```pdsl
 UNIT ResponseCompletionGate
 
 PURPOSE:
@@ -417,7 +417,7 @@ RULES:
   - MUST have handle.target_type as one of the four enumerated values
   - MUST have handle.size_guard_verdict as one of the three enumerated values
   - MUST have abort_message non-null when abort == true
-  - MUST_NOT include /cf-plan in abort_message
+  - MUST_NOT include cf-plan in abort_message
   - WHEN access_tier == "user_fallback": canonical fallback prompt MUST have been emitted
     (before the JSON, as a user-facing message) AND byte_size MUST be 0
   - MUST have handle.local_editable present as a boolean

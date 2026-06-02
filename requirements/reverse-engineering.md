@@ -43,7 +43,7 @@ purpose: Technology-agnostic methodology for systematic project analysis
 
 ## Runtime Contract
 
-```text
+```pdsl
 UNIT ReverseEngineeringActivation
 
 PURPOSE:
@@ -64,7 +64,7 @@ RULES:
   - MUST_NOT let prompt-consuming sub-agents reopen this file from disk
 ```
 
-```text
+```pdsl
 UNIT ReverseEngineeringLayerOrder
 
 PURPOSE:
@@ -88,7 +88,7 @@ RULES:
   - MUST record explicit gaps instead of inventing missing findings
 ```
 
-```text
+```pdsl
 UNIT ReverseEngineeringErrorHandling
 
 PURPOSE:

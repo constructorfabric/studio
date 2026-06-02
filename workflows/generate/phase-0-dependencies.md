@@ -14,7 +14,7 @@ version: 1.0
 
 ## Phase 0: Ensure Dependencies
 
-```text
+```pdsl
 UNIT GeneratePhase0Dependencies
 
 PURPOSE:
@@ -33,6 +33,10 @@ DO:
 RULES:
   - MUST NOT proceed to Phase 1 until all generation-phase dependencies
     required for the current target are available
+  - MUST distinguish hard dependencies from review-only context before writes:
+    missing template/rules/target/write-scope dependencies block Phase 1 until
+    resolved; optional checklists may be deferred only when current rules permit
+    Phase 5 review discovery
 
 MENU DependencyResolution:
   TITLE: Dependency resolution routing (machine reference)
@@ -44,9 +48,21 @@ MENU DependencyResolution:
       EMIT prompt asking user to provide/specify the generation-phase dependencies needed now
       NOTE: request checklist only when current phase or rules explicitly require it
       WAIT user.reply
-      CONTINUE Phase1
+      RE-RUN dependency availability check for the current target
+      IF required generation-phase dependencies are now available:
+        CONTINUE Phase1
+      ELSE:
+        EMIT "Required generation dependencies are still missing. Provide the missing files/paths or stop."
+        WAIT user.reply
+        STOP_TURN
     code_mode_additional ->
       EMIT prompt asking user to specify the design artifact if missing
+      WAIT user.reply
+      RE-RUN code-mode design artifact availability check
+      IF design artifact is still missing:
+        EMIT "Code generation requires the design/spec artifact before Phase 1. Provide it or stop."
+        WAIT user.reply
+        STOP_TURN
       IF current rules explicitly require implementation-time checklist guidance:
         LOAD {cf-studio-path}/.core/requirements/code-checklist.md
       ELSE:
@@ -56,7 +72,7 @@ MENU DependencyResolution:
 
 ### CONTRIBUTING Guide Discovery (runs unconditionally — every generate run)
 
-```text
+```pdsl
 UNIT ContributingGuideDiscovery
 
 PURPOSE:
@@ -87,7 +103,7 @@ NOTES:
 
 ### Raw-Input Overflow Rule
 
-```text
+```pdsl
 UNIT RawInputOverflowRule
 
 PURPOSE:
@@ -98,19 +114,21 @@ DO:
   LOAD {cf-studio-path}/.core/requirements/raw-input-overflow.md
   IF (user_prompt_lines + all_provided_file_lines) > 500:
     STOP direct generation
-    EMIT offer: /cf-plan vs stop; local continuation is not available unless a
-      downstream workflow explicitly preserves it after this choice
+    EMIT offer: clarify dependencies / continue with explicit assumptions when safe /
+      Invoke skill `cf-plan` / stop. Local continuation is not available for
+      missing hard dependencies unless a downstream workflow explicitly preserves it
+      after this choice.
     WAIT user.reply
     STOP_TURN
 
 RULES:
-  - MUST stop and offer /cf-plan when input exceeds 500 lines
+  - MUST stop and offer Invoke skill `cf-plan` when input exceeds 500 lines
   - MUST follow raw-input-overflow.md exactly as specified in that file
 ```
 
 ### Panel Mode Flags (session-scoped, defaults single-agent)
 
-```text
+```pdsl
 UNIT PanelModeFlags
 
 PURPOSE:

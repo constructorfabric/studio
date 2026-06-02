@@ -8,16 +8,16 @@ description: Invoke when the user picked `W2` (Direct Review Prompt) on the Post
 <!--
 Finding I18 (plan phase 5) — KEEP SEPARATE from `prompt-template-plan-review.md`.
 
-This template routes the next agent to `/cf-analyze` (IMMEDIATE review) and asks for
+This template routes the next agent to Invoke skill `cf-analyze` (IMMEDIATE review) and asks for
 findings with severity, evidence, risks, regressions, and recommended fixes. The Plan-Review
-template routes to `/cf-plan` (PHASED review plan) instead. The two diverge across
+template routes to Invoke skill `cf-plan` (PHASED review plan) instead. The two diverge across
 7 load-bearing lines (heading, routing verb, lead-in, focus, closing) — well above the 3-line
 collapse threshold; collapsing would require inline conditionals that break the "self-contained
 final prompt usable in a fresh chat" contract. Open, load, and follow `{cf-studio-path}/.core/workflows/generate/phase-6/prompt-templates.md`
 for the diff summary.
 -->
 
-```text
+```pdsl
 UNIT DirectReviewPromptEmission
 
 PURPOSE:
@@ -25,7 +25,7 @@ PURPOSE:
 
 RULES:
   - MUST verify Validation Results body is present and complete before emitting
-  - MUST begin with "Invoke skill cf"
+  - MUST begin with "Invoke skill `cf`"
   - MUST embed inline: changed file paths, what changed, kind/target,
     completed Validation Results body, remaining_findings when non-empty
   - MUST NOT reference "previous chat" or content outside the prompt itself
@@ -41,7 +41,9 @@ Direct Review Prompt (copy-paste into new chat if needed):
 ```text
 Invoke skill `cf`.
 
-I just completed `/cf-generate` and want an immediate review of the generated changes.
+I just completed Invoke skill `cf-generate` and want an immediate review of the generated changes.
+
+Invoke skill `cf-analyze`.
 
 Target: {TARGET_TYPE} / {KIND}
 Changed files:
@@ -55,7 +57,7 @@ Remaining findings carried over from generation (review these explicitly):
 1. **[{severity}]** {file}:{line} — {description}. Evidence: "{quote}". Root cause: {expectation}.
 {... all remaining_findings}
 
-Use `/cf-analyze` to review these changes now.
+Review these changes now.
 Report findings with severity, evidence, risks, regressions, and recommended fixes.
 
 Do not regenerate the implementation. Do not ask me to restate the task unless required inputs are missing.

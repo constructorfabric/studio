@@ -9,7 +9,7 @@ purpose: Guide workspace federation setup for cross-repo traceability
 
 # Constructor Studio Workspace Workflow
 
-```text
+```pdsl
 UNIT RootSkillEntrypointBootstrap
 PURPOSE: Prevent direct workflow entry from bypassing the root cf skill.
 DO:
@@ -32,7 +32,7 @@ RULES:
     consume the synthesized final prompt and supplied context slices.
 ```
 
-```text
+```pdsl
 UNIT WorkspaceBootstrap
 
 PURPOSE:
@@ -61,7 +61,7 @@ NOTES:
   Output: .studio-workspace.toml or inline [workspace] in config/core.toml
 ```
 
-```text
+```pdsl
 UNIT WorkspaceSharedContextPack
 
 PURPOSE:
@@ -80,7 +80,7 @@ RULES:
 
 ## Overview
 
-```text
+```pdsl
 UNIT WorkspaceOverview
 
 PURPOSE:
@@ -97,13 +97,13 @@ RULES:
       MUST NOT require {cf-studio-path}/.gen/AGENTS.md load unless the direct
       CLI command itself requires workspace prompt assets
       MUST still require write-confirmation when write-capable
-  - Full /cf workspace setup workflow (Phase 0-4) is unaffected and uses
+  - Full cf workspace setup workflow (Phase 0-4) is unaffected and uses
     standard RootSkillEntrypointBootstrap and Protocol Guard
 ```
 
 ## Phase 0: Router
 
-```text
+```pdsl
 UNIT WorkspaceRouter
 
 PURPOSE:
@@ -141,7 +141,7 @@ RULES:
 
 ## Phase 0.a: Explore / Brainstorm Applicability
 
-```text
+```pdsl
 UNIT WorkspaceExploreBrainstormGate
 
 PURPOSE:
@@ -167,7 +167,7 @@ RULES:
 
 ## Runtime Loading Rule
 
-```text
+```pdsl
 UNIT WorkspaceRuntimeLoading
 
 PURPOSE:

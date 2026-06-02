@@ -8,7 +8,7 @@ version: 1.0
 
 # Phase 2.5: Reviewer Plan
 
-```text
+```pdsl
 UNIT AnalyzeReviewerPlan
 
 PURPOSE: Decompose the analyze task into reviewer sub-agent tasks partitioned by
@@ -17,9 +17,11 @@ PURPOSE: Decompose the analyze task into reviewer sub-agent tasks partitioned by
 STATE:
   PLANNER_RETRY_COUNT: integer  default: 0  scope: entry to this phase
   REVIEWER_PLAN_RESOLVED: unset | memory | disk | cancelled_partial_cache |
-    cancelled_inline_fallback | auto_skipped_no_methodology |
+    cancelled_inline_fallback | cancelled_planner_validation |
+    auto_skipped_no_methodology |
     auto_skipped_explain_mode  default: unset
   REVIEWER_EXECUTION_PLAN: null | parsed reviewer_plan JSON  default: null
+  REVIEWER_PLAN_APPROVED: false | true  default: false  scope: workflow_run
   REVIEWER_PLAN_CACHE_DIR: null | directory path  default: null
   PLANNER_RETRY_MAX: 2
 
@@ -33,7 +35,7 @@ DO:
   IF INLINE_FALLBACK == true:
     SET REVIEWER_PLAN_RESOLVED = cancelled_inline_fallback
     SET REVIEWER_EXECUTION_PLAN = null
-    EMIT "Reviewer decomposition requires native sub-agent dispatch. Inline fallback cannot silently continue to semantic review. Re-run with native sub-agents, switch to /cf-plan, or stop."
+    EMIT "Reviewer decomposition requires native sub-agent dispatch. Inline fallback cannot silently continue to semantic review. Re-run with native sub-agents, switch to Invoke skill `cf-plan`, or stop."
     STOP_TURN
   IF EXPLAIN_MODE == true:
     SET REVIEWER_PLAN_RESOLVED = auto_skipped_explain_mode
@@ -105,7 +107,10 @@ DO:
     - partitions for same methodology are disjoint
     - every reviewer matches task's methodology
     - every parallel_groups[].task_ids names an existing task
+    - every task.parallel_group is a string id matching an existing parallel_groups[].id
     - every parallel_groups[].depends_on references an earlier group
+    - every parallel_groups[] entry includes id, task_ids, depends_on, execution, and reason
+    - every parallel_groups[].execution is "parallel" or "sequential"
   IF validation fails OR planner returns checkpoint.type=PARTIAL_CHECKPOINT:
     INCREMENT PLANNER_RETRY_COUNT
     IF PLANNER_RETRY_COUNT >= PLANNER_RETRY_MAX:
@@ -118,6 +123,46 @@ DO:
     WAIT user.reply
     STOP_TURN
   SET REVIEWER_EXECUTION_PLAN = parsed reviewer_plan JSON
+  SET REVIEWER_PLAN_APPROVED = false
+  EMIT "Reviewer execution plan prepared. Review and approve it before any semantic reviewer dispatch starts."
+  EMIT reviewer_plan JSON in full, including tasks, path partitions, reviewers,
+    dependencies, parallel groups, and storage mode
+  EMIT_MENU ReviewerPlanApprovalMenu
+  WAIT user.reply
+  STOP_TURN
+
+MENU ReviewerPlanApprovalMenu:
+  TITLE: |
+    Approve reviewer execution plan?
+
+    Semantic reviewer sub-agents will not run until you approve this plan.
+    Choose edit/rerun if the task split, reviewers, target paths, or dependency
+    order look wrong.
+  OPTIONS:
+    1 approve ->
+      SET REVIEWER_PLAN_APPROVED = true
+      IF REVIEWER_PLAN_RESOLVED == disk:
+        CONTINUE DiskModeRendering
+      ELSE:
+        CONTINUE workflows/analyze/phase-3-semantic.md
+    2 rerun ->
+      SET REVIEWER_EXECUTION_PLAN = null
+      SET REVIEWER_PLAN_APPROVED = false
+      CONTINUE PlannerDispatch
+    3 stop ->
+      SET REVIEWER_EXECUTION_PLAN = null
+      SET REVIEWER_PLAN_APPROVED = false
+      SET CF_PHASE_GATE = armed
+      STOP_TURN
+  INVALID:
+    EMIT "Reply `1` to approve, `2` to rerun the planner, or `3` to stop."
+    WAIT user.reply
+    STOP_TURN
+
+UNIT ApprovedReviewerPlanContinuation
+PURPOSE: Continue only after the user has approved the reviewer plan.
+DO:
+  REQUIRE REVIEWER_PLAN_APPROVED == true
   IF REVIEWER_PLAN_RESOLVED == disk:
     CONTINUE DiskModeRendering
   CONTINUE workflows/analyze/phase-3-semantic.md
@@ -160,7 +205,14 @@ MENU PartialCacheMenu:
       SET CF_PHASE_GATE = released_for_orchestrator_write
       Re-attempt only the failed writes; do not re-write already successful files.
       SET CF_PHASE_GATE = armed
-      IF retry fails: EMIT_MENU PartialCacheMenu
+      IF retry succeeds:
+        SET REVIEWER_PLAN_CACHE_DIR = directory path
+        EMIT "Reviewer plan saved: {REVIEWER_PLAN_CACHE_DIR}"
+        CONTINUE workflows/analyze/phase-3-semantic.md
+      IF retry fails:
+        EMIT_MENU PartialCacheMenu
+        WAIT user.reply
+        STOP_TURN
     2 ->
       SET REVIEWER_PLAN_RESOLVED = memory
       SET CF_PHASE_GATE = released_for_orchestrator_write
@@ -186,7 +238,7 @@ MENU PlannerRecoveryMenu:
     1 ->
       CONTINUE PlannerDispatch
     2 ->
-      SET REVIEWER_PLAN_RESOLVED = cancelled_partial_cache
+      SET REVIEWER_PLAN_RESOLVED = cancelled_planner_validation
       SET REVIEWER_EXECUTION_PLAN = null
       SET CF_PHASE_GATE = armed
       STOP_TURN
@@ -203,6 +255,9 @@ INVARIANTS:
   - MUST_NOT introduce undeclared reviewer-plan resolution states after planner
     dispatch has already failed validation
   - MUST_NOT clear plan into fallback path after sub-agent decomposition selected
+  - MUST_NOT enter DiskModeRendering or phase-3-semantic.md from a generated
+    reviewer plan until ReviewerPlanApprovalMenu has displayed the full plan
+    and the user selected `1 approve`
   - MUST reset CF_PHASE_GATE=armed after named writes complete or fail
   - MUST_NOT write files while CF_PHASE_GATE == armed
 ```

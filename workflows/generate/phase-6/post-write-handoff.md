@@ -13,7 +13,7 @@ description: Invoke when files were written by Phase 4 (or any review iteration)
 
 ### Post-Write Review Handoff (emitted when files were written and remediation is not pending)
 
-```text
+```pdsl
 UNIT PostWriteHandoff
 
 PURPOSE:
@@ -23,13 +23,13 @@ WHEN:
   files were written AND remaining_findings is empty
 
 DO:
-  EMIT immediately after informational next-step menu:
+  EMIT one terminal post-write handoff block:
 ---
 Changes written: {N} file(s). How do you want to review them?
 
-W1. Review here — load skill `cf` and route to `/cf-analyze` in this session on the written files
-W2. Generate a Direct Review Prompt — emit a self-contained prompt that starts with `Invoke skill cf` and routes to `/cf-analyze` in a new chat
-W3. Generate a Plan Review Prompt — emit a self-contained prompt that starts with `Invoke skill cf` and routes to `/cf-plan` in a new chat (for phased review on broad / multi-file / strict-coverage scope)
+W1. Review here — Invoke skill `cf-analyze` in this session on the written files
+W2. Generate a Direct Review Prompt — emit a self-contained prompt that starts with Invoke skill `cf-analyze` in a new chat
+W3. Generate a Plan Review Prompt — emit a self-contained prompt that starts with Invoke skill `cf-plan` in a new chat (for phased review on broad / multi-file / strict-coverage scope)
 
 Suggested: {W1|W2|W3} because {scope/risk reason}.
 
@@ -41,8 +41,7 @@ MENU PostWriteHandoffMenu:
   TITLE: Post-write review choice (next-turn reply)
   OPTIONS:
     W1 ->
-      LOAD skill cf
-      ROUTE to /cf-analyze in this session
+      Invoke skill `cf-analyze` in this session
       WITH target_paths=manifest.paths_written, target_kinds, rules_mode,
            carried Validation Results, remaining_findings
       NOTE: no prompt block emitted
@@ -64,6 +63,6 @@ RULES:
   - Post-write review remains LOCKED until remediation choice is processed
     and Phase 6 re-enters with no remaining findings
   - Re-emission contract: when Phase 6 R1 fix-loop exits cleanly back to Phase 6
-    with remaining_findings empty, MUST re-emit this menu before ending response;
-    MUST NOT assume user scrolled back to a previous menu
+    with remaining_findings empty, MUST emit this single terminal handoff block
+    before ending response; MUST NOT assume user scrolled back to a previous menu
 ```

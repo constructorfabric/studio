@@ -511,7 +511,13 @@ def _fake_invoke(agent_id: str, payload: dict) -> dict:
                 "methodology": "prompt",
                 "path_partition": payload["target_paths"],
             }],
-            "parallel_groups": [{"id": "G1", "task_ids": ["RTASK-001"], "depends_on": []}],
+            "parallel_groups": [{
+                "id": "G1",
+                "task_ids": ["RTASK-001"],
+                "depends_on": [],
+                "execution": "parallel",
+                "reason": "Fixture group has one read-only reviewer task.",
+            }],
         }
     elif agent_id == "cf-generate-planner":
         response["result"]["author_plan_marker"] = "<!-- author_plan -->"
@@ -521,7 +527,13 @@ def _fake_invoke(agent_id: str, payload: dict) -> dict:
                 "author": "cf-generate-author-middle",
                 "target_paths": payload["target_paths"],
             }],
-            "parallel_groups": [{"id": "G1", "task_ids": ["ATASK-001"], "depends_on": []}],
+            "parallel_groups": [{
+                "id": "G1",
+                "task_ids": ["ATASK-001"],
+                "depends_on": [],
+                "execution": "parallel",
+                "reason": "Fixture group has one author task.",
+            }],
         }
     elif agent_id == "cf-generate-author":
         response["result"]["author_selection"] = {
@@ -1001,7 +1013,8 @@ def test_skill_completion_invariants_match_handoff_workflows() -> None:
 
     assert "terminal = Post-Write Review Handoff menu" in skill
     assert "terminal = Remediation Handoff menu" in skill
-    assert "MUST be emitted only on the NEXT turn" in skill
+    assert "Analyze remediation and review handoff prompt blocks MUST be emitted only" in skill
+    assert "on the NEXT turn after the user picks the matching handoff option" in skill
     assert "both `Plan Review Prompt` and `Direct Review Prompt` blocks" not in skill
     assert "both `Fix Prompt` and `Plan Prompt` blocks" not in skill
 
@@ -1016,10 +1029,10 @@ def test_skill_completion_invariants_match_handoff_workflows() -> None:
     assert "MUST trigger the `Remediation Handoff` menu" in analyze_overview
     assert "MUST trigger both remediation prompts in the same response" not in analyze_overview
 
-    assert "load skill `cf`; enter fix mode" in analyze_handoff
-    assert 'start with' in analyze_handoff and '"Invoke skill cf"' in analyze_handoff
-    assert "load skill `cf` and route to `/cf-analyze`" in post_write_handoff
-    assert "starts with `Invoke skill cf` and routes to `/cf-analyze`" in post_write_handoff
+    assert "Continue here in fix mode" in analyze_handoff
+    assert 'start with' in analyze_handoff and '"Invoke skill `cf`"' in analyze_handoff
+    assert "Invoke skill `cf-analyze` in this session" in post_write_handoff
+    assert "starts with Invoke skill `cf-analyze`" in post_write_handoff
 
 
 def test_skill_requires_session_approval_before_native_subagent_dispatch() -> None:
@@ -1344,10 +1357,11 @@ def test_phase_3_to_4_checkpoint_has_canonical_reply_menu() -> None:
         repo_root / "workflows" / "analyze" / "phase-3-to-4-checkpoint.md"
     ).read_text(encoding="utf-8")
 
-    assert "Reply `1` or `2`." in checkpoint
-    assert "1 -> CONTINUE" in checkpoint
+    assert "Reply `1`, `2`, or `3`." in checkpoint
+    assert "1 -> IF PARTIAL == true:" in checkpoint
     assert "2 -> Emit" in checkpoint
-    assert "MUST_NOT infer a default when the user replies anything other than 1 or 2" in checkpoint
+    assert "3 -> EMIT" in checkpoint
+    assert "MUST_NOT infer a default when the user replies anything other than 1, 2, or 3" in checkpoint
 
 
 def test_partial_checkpoint_contract_scope_matches_reviewer_support() -> None:
@@ -1544,7 +1558,7 @@ def test_remediation_menus_have_one_dynamic_suggestion_slot() -> None:
     assert "Suggested: {1|2|3} because {scope/risk reason}." in analyze_handoff
     assert "Suggested: {R1|R2|R3} because {scope/risk reason}." in generate_handoff
     for option_line in (
-        "load skill `cf`; enter fix mode",
+        "Continue here in fix mode",
         "fix-prompt-template.md",
         "plan-prompt-template.md",
     ):
@@ -2097,6 +2111,34 @@ def test_analyze_planner_prompt_includes_requirements_as_prompt_targets() -> Non
     assert "requirements/**/*.md" in planner
 
 
+def test_planner_contracts_reject_incomplete_or_numeric_parallel_groups() -> None:
+    """Planner prompts must forbid the invalid shape that forces rerun loops."""
+    repo_root = Path(__file__).resolve().parents[1]
+    analyze_planner = (
+        repo_root
+        / "skills"
+        / "studio"
+        / "agents"
+        / "cf-analyze-planner.md"
+    ).read_text(encoding="utf-8")
+    generate_planner = (
+        repo_root
+        / "skills"
+        / "studio"
+        / "agents"
+        / "cf-generate-planner.md"
+    ).read_text(encoding="utf-8")
+
+    for planner in (analyze_planner, generate_planner):
+        assert "Numeric values such as 1 or 2 are invalid." in planner
+        assert (
+            "Every parallel_groups[] entry MUST include all required fields:"
+            in planner
+        )
+        assert "id, task_ids, depends_on, execution, and reason" in planner
+        assert 'Every parallel_groups[].execution value MUST be exactly "parallel" or' in planner
+
+
 def test_reviewer_plan_failure_does_not_use_legacy_single_dispatch_fallback() -> None:
     """Planner failure after sub-agent decomposition must not drop to oversized legacy dispatch."""
     repo_root = Path(__file__).resolve().parents[1]
@@ -2115,7 +2157,9 @@ def test_reviewer_plan_failure_does_not_use_legacy_single_dispatch_fallback() ->
     assert "Reply `1` to rerun the planner or `2` to stop." in phase25
     assert "IF re-validation fails" in phase3
     assert "every parallel_groups[].task_ids names an existing task" in phase3
+    assert "every task.parallel_group is a string id matching an existing parallel_groups[].id" in phase3
     assert "every parallel_groups[].depends_on references an earlier group" in phase3
+    assert "every parallel_groups[] entry includes id, task_ids, depends_on, execution, and reason" in phase3
     assert "Route back to phase-2.5-reviewer-plan.md" in phase3
     assert "REVIEWER_EXECUTION_PLAN is non-null" in phase3
     assert "cancelled_inline_fallback" in phase3
@@ -2191,16 +2235,21 @@ def test_author_worker_escalation_required_response_shape() -> None:
     )
 
 
-def test_skill_entrypoint_has_context_budget_fail_safe() -> None:
-    """The root skill entrypoint should bound mandatory loads before opening files."""
+def test_skill_entrypoint_bootstrap_keeps_mandatory_loads_explicit() -> None:
+    """The root skill entrypoint should keep mandatory bootstrap loads explicit."""
     repo_root = Path(__file__).resolve().parents[1]
     skill = (repo_root / "skills" / "studio" / "SKILL.md").read_text(encoding="utf-8")
 
     bootstrap_idx = skill.index("UNIT Bootstrap")
     hard_rules_idx = skill.index("UNIT HardRules")
     assert hard_rules_idx < bootstrap_idx
-    assert "Estimate file size" in skill
-    assert "STOP with a checkpoint message" in skill
+    for required_path in [
+        "{cf-studio-path}/.core/skills/studio/protocol.md",
+        "{cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md",
+        "{cf-studio-path}/.core/skills/studio/routing.md",
+        "{cf-studio-path}/.core/requirements/pdsl-execution-card.md",
+    ]:
+        assert required_path in skill
 
 
 def test_analyze_artifact_dependencies_do_not_block_code_or_prompt_reviews() -> None:
@@ -2426,7 +2475,7 @@ def test_runtime_instruction_modules_stay_compact() -> None:
     # Tuples of (path, line_budget).  SKILL.md grew with the PDSL GIT_COMMIT_MODE
     # state machine; it gets a higher budget than pure-workflow files.
     compact_files = [
-        (repo_root / "skills" / "studio" / "SKILL.md", 475),
+        (repo_root / "skills" / "studio" / "SKILL.md", 478),
         (repo_root / "workflows" / "analyze" / "phase-0-dependencies.md", 200),
         (repo_root / "workflows" / "analyze" / "phase-4-output" / "remediation-handoff.md", 200),
         (repo_root / "skills" / "studio" / "agents" / "cf-semantic-reviewer-code.md", 200),

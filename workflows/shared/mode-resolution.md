@@ -13,7 +13,7 @@ version: 1.0
 
 <!-- /toc -->
 
-```text
+```pdsl
 UNIT ModeResolution
 
 PURPOSE:
@@ -31,7 +31,7 @@ NOTES:
 
 ## Rules Mode Behavior
 
-```text
+```pdsl
 UNIT StrictMode
 
 PURPOSE:
@@ -44,7 +44,7 @@ RULES:
   - MUST require validation PASS before Phase 6 proceeds
 ```
 
-```text
+```pdsl
 UNIT RelaxedMode
 
 PURPOSE:
@@ -61,7 +61,7 @@ RULES:
 
 ## Warnings
 
-```text
+```pdsl
 UNIT RulesUnavailableWarning
 
 PURPOSE:
@@ -77,7 +77,7 @@ RULES:
   - MUST fire this warning before proceeding when condition is met
 ```
 
-```text
+```pdsl
 UNIT ValidationFailWarning
 
 PURPOSE:

@@ -8,7 +8,7 @@ version: 1.0
 
 # Analyze Phase 0.1 — Plan Escalation Gate
 
-```text
+```pdsl
 UNIT AnalyzePlanEscalationGate
 
 PURPOSE:
@@ -29,9 +29,13 @@ DO:
     RUN workflows/shared/inline-fallback-probe.md
     CONTINUE AnalyzePlanEscalationGate (re-evaluate after resolution)
   IF SUB_AGENT_SESSION_APPROVED == true AND INLINE_FALLBACK == false:
-    EMIT "Plan-escalation: estimate={N} lines, decomposition deferred to Phase 2.5 (sub-agents approved)"
+    EMIT "Plan-escalation bypassed: estimate={N} lines, decomposition deferred to Phase 2.5 because native sub-agents are already approved for this run."
     SET PLANNER_ESCALATION_RESULT = bypassed
     CONTINUE next phase
+  IF host.supports_native_subagents == true AND SUB_AGENT_SESSION_APPROVED != true AND INLINE_FALLBACK != true:
+    EMIT "Native sub-agents are available but not approved for this analyze run."
+    EMIT "Resolve the Session Sub-Agent Approval Gate or choose inline fallback through workflows/shared/inline-fallback-probe.md before plan escalation."
+    STOP_TURN
   IF INLINE_FALLBACK == true OR host.supports_native_subagents == false:
     Estimate total context: rules.md Validation + checklist.md + artifact +
       related cross-refs + expected analysis output + ~30% reasoning overhead
@@ -57,7 +61,7 @@ MENU PlanEscalationMenu:
     sub-agent dispatch is not active.
   OPTIONS:
     1 -> SET PLANNER_ESCALATION_RESULT = escalated
-         EMIT "Switch to /cf-plan analyze {KIND} with the same parameters."
+         EMIT "Switch to Invoke skill `cf-plan` to analyze {KIND} with the same parameters."
          STOP_TURN
     2 -> EMIT "Stopped before local single-context analysis."
          STOP_TURN
@@ -74,14 +78,18 @@ RULES:
     review, findings, summaries, remediation menus, plan-escalation bypass
     text, or plan menus; it MAY emit only the missing gate menu or the
     matching `Dispatch blocked: ...` error, then MUST STOP_TURN
-  - MUST_NOT propose /cf-plan when SUB_AGENT_SESSION_APPROVED=true AND INLINE_FALLBACK=false
+  - MUST_NOT propose Invoke skill `cf-plan` when SUB_AGENT_SESSION_APPROVED=true AND INLINE_FALLBACK=false
   - MUST apply raw-input-overflow rule at higher precedence than the bypass
   - MUST treat an unresolved NativeSubAgentPolicyConflictMenu from
     workflows/shared/inline-fallback-probe.md as higher precedence than this
-    menu; do not reinterpret that conflict as permission to hand off to /cf-plan
+    menu; do not reinterpret that conflict as permission to hand off to Invoke skill `cf-plan`
     or continue locally
   - MUST run plan-handoff/stop fallback only when INLINE_FALLBACK=true OR
     host.supports_native_subagents=false
+  - When SUB_AGENT_SESSION_APPROVED=true AND INLINE_FALLBACK=false, MUST treat
+    the bypass as a resolved state: continue directly to the next phase,
+    MUST_NOT emit the fallback menu, and MUST_NOT imply that user confirmation
+    is still pending for this run
   - MUST_NOT continue to the next analyze phase from the fallback branch
   - MUST_NOT offer a "continue here" or local single-context option
 ```

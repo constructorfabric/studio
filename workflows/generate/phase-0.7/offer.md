@@ -15,7 +15,7 @@ version: 1.1
 
 ## Phase 0.7: Brainstorm (optional)
 
-```text
+```pdsl
 UNIT Phase07BrainstormInvariants
 
 PURPOSE:
@@ -41,7 +41,7 @@ NOTES:
 
 ### Offer
 
-```text
+```pdsl
 UNIT Phase07Offer
 
 PURPOSE:
@@ -132,7 +132,7 @@ RULES:
 
 ### Reply parsing
 
-```text
+```pdsl
 UNIT Phase07OfferReplyParsing
 
 PURPOSE:

@@ -52,7 +52,7 @@ The controller MUST:
 
 ## Discovery Rules
 
-```text
+```pdsl
 UNIT ExplorerDiscoveryRules
 
 PURPOSE:
@@ -145,7 +145,7 @@ RULES:
 
 ## Completion Gate
 
-```text
+```pdsl
 UNIT ExplorerCompletionGate
 
 RULES:

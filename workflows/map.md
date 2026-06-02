@@ -22,7 +22,7 @@ purpose: Guide cfs map workflow from pre-flight through validation
 
 <!-- /toc -->
 
-```text
+```pdsl
 UNIT RootSkillEntrypointBootstrap
 PURPOSE: Prevent direct workflow entry from bypassing the root cf skill.
 DO:
@@ -42,7 +42,7 @@ RULES:
     consume the synthesized final prompt and supplied context slices.
 ```
 
-```text
+```pdsl
 UNIT MapBootstrap
 
 PURPOSE:
@@ -62,7 +62,7 @@ NOTES:
 
 ## Overview
 
-```text
+```pdsl
 UNIT MapOverview
 
 PURPOSE:
@@ -95,7 +95,7 @@ NOTES:
 
 ## Phase 1: Pre-flight
 
-```text
+```pdsl
 UNIT MapPhase1
 
 PURPOSE:
@@ -144,7 +144,7 @@ MENU MapScopeMenu:
 
 ## Phase 2: Configure
 
-```text
+```pdsl
 UNIT MapPhase2
 
 PURPOSE:
@@ -221,7 +221,7 @@ NOTES:
 
 ## Phase 3: Generate
 
-```text
+```pdsl
 UNIT MapPhase3
 
 PURPOSE:
@@ -244,7 +244,7 @@ DO:
 
 ## Phase 4: Validate
 
-```text
+```pdsl
 UNIT MapPhase4
 
 PURPOSE:
@@ -267,7 +267,7 @@ DO:
 
 ## Phase Config-Assist
 
-```text
+```pdsl
 UNIT MapPhaseConfigAssist
 
 PURPOSE:
@@ -482,13 +482,13 @@ MENU ConfigAssistActionMenu:
 | Markdown-only quick map | `cfs map --no-source` |
 | Single-repo map (skip federation) | `cfs map --local-only` |
 | Machine-readable graph | `cfs map --format json --out map.json` |
-| Custom categories | `cfs map --config md-map.toml` (use `/cf-map` → option 4 "Generate or refine md-map.toml config" to scaffold) |
+| Custom categories | `cfs map --config md-map.toml` (use Invoke skill `cf-map` → option 4 "Generate or refine md-map.toml config" to scaffold) |
 | Self-contained HTML (no sidecar) | `cfs map --inline-data` |
 | Debug layout | `cfs map -v` or `cfs map --verbose` |
 
 ## Next Steps
 
-```text
+```pdsl
 UNIT MapNextSteps
 
 PURPOSE:
@@ -505,12 +505,12 @@ MENU MapNextStepsMenu:
     Reply with the option number or a short custom instruction.
   OPTIONS:
     1 ->
-      EMIT "Opening the map in a browser — explore the interactive graph."
+      CONTINUE MapOpenHtmlViewer
       (Suggested default)
     2 ->
-      EMIT "Export JSON and analyze with jq — for programmatic access to nodes/edges."
+      CONTINUE MapExportJson
     3 ->
-      EMIT "Check for dangling cpts — run cfs where-used <cpt-id> to diagnose phantom references."
+      WAIT user cpt-id to diagnose with `cfs where-used <cpt-id>`
     4 ->
       CONTINUE MapPhaseConfigAssist
     5 ->
@@ -527,4 +527,28 @@ NOTES:
   - For dangling cpts, use `cfs where-used <cpt-id>` to find missing definitions
   - Update md-map.toml if categorization needs adjustment (option 4 scaffolds the file)
   - Share the map with team for architecture review
+```
+
+```pdsl
+UNIT MapOpenHtmlViewer
+
+PURPOSE:
+  Continue from the map next-step menu into the existing HTML map artifact.
+
+DO:
+  EMIT "Open the generated HTML map artifact in your browser to explore the interactive graph. Reply `config` to refine categories, `json` to export data, or describe another map action."
+  WAIT user.reply
+  STOP_TURN
+```
+
+```pdsl
+UNIT MapExportJson
+
+PURPOSE:
+  Continue from the map next-step menu into a concrete JSON export path.
+
+DO:
+  EMIT "Generate or use the JSON map artifact, then inspect it with tools such as `jq`. Reply `run json` to generate JSON now, `config` to refine categories, or describe another map action."
+  WAIT user.reply
+  STOP_TURN
 ```

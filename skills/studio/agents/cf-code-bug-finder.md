@@ -44,7 +44,7 @@ rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
 
 ## Methodology
 
-```text
+```pdsl
 UNIT CodeBugFinderMethodology
 
 PURPOSE:
@@ -90,7 +90,7 @@ After the findings JSON, emit a markdown table listing every hotspot examined:
 |---|---|---|
 | `src/auth.py:42` | correctness | `if user == None` equality on object — use `is None` |
 
-```text
+```pdsl
 RULES:
   - MUST use one of: correctness | safety | concurrency | performance | security
 ```
@@ -103,7 +103,7 @@ should reason about remaining exposure.
 
 ## PARTIAL_CHECKPOINT
 
-```text
+```pdsl
 UNIT PartialCheckpoint
 
 PURPOSE:
@@ -135,7 +135,7 @@ DO:
 
 ## Response Completion Gate
 
-```text
+```pdsl
 UNIT CodeBugFinderCompletionGate
 
 PURPOSE:

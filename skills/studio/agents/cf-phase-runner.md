@@ -45,7 +45,7 @@ NOTES:
 
 ## Response Completion Gate
 
-```text
+```pdsl
 UNIT PhaseRunnerCompletion
 
 RULES:

@@ -51,7 +51,7 @@ The Scanner emits findings classified by source-file category and pattern key. T
 
 ### Step 1 — Reclassify Scanner findings
 
-```text
+```pdsl
 UNIT StepReclassifyFindings
 
 PURPOSE:
@@ -121,7 +121,7 @@ RULES:
 
 ### Step 2 — Per-file grouping and ordering
 
-```text
+```pdsl
 UNIT StepGroupAndOrder
 
 PURPOSE:
@@ -145,7 +145,7 @@ DO:
 
 ### Step 3 — Plan output
 
-```text
+```pdsl
 UNIT StepPlanOutput
 
 PURPOSE:
@@ -214,7 +214,7 @@ RULES:
 
 ## Hard Rules
 
-```text
+```pdsl
 UNIT MigratePlannerHardRules
 
 PURPOSE:
@@ -236,7 +236,7 @@ INVARIANTS:
 
 ## Response Completion Gate
 
-```text
+```pdsl
 UNIT MigratePlannerCompletionGate
 
 PURPOSE:

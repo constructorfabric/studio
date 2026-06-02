@@ -80,7 +80,7 @@ Evidence: `.github/workflows/ci.yml`.
 | `make vulture` | Scan for dead code (report only) | — |
 | `make vulture-ci` | Scan for dead code (fails if findings) | Yes |
 | `make install` | Install pytest + pytest-cov via pipx | — |
-| `make install-proxy` | Reinstall `cpt` CLI from local source | — |
+| `make install-proxy` | Reinstall `cfs` / `constructor-studio` CLI proxy from local source | — |
 | `make update` | Sync `.bootstrap/` from local source | — |
 | `make clean` | Remove Python cache files | — |
 
@@ -102,6 +102,6 @@ Required tools: Python 3.11+, pipx, make, Docker, act, actionlint.
 
 - **Threshold**: 90% per file minimum
 - **Report**: HTML report at `htmlcov/index.html`
-- **Check**: `python scripts/check_coverage.py coverage.json --root skills/cypilot/scripts/cypilot --min 90`
+- **Check**: `python scripts/check_coverage.py coverage.json --root skills/studio/scripts/studio --min 90`
 
 Evidence: `Makefile:89-106` (test-coverage target), `scripts/check_coverage.py`.

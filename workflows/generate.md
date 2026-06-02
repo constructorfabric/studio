@@ -9,7 +9,7 @@ purpose: Universal workflow for creating or updating any artifact or code
 
 # Generate
 
-```text
+```pdsl
 UNIT RootSkillEntrypointBootstrap
 PURPOSE: Prevent direct workflow entry from bypassing the root cf skill.
 DO:
@@ -31,7 +31,7 @@ RULES:
     consume the synthesized final prompt and supplied context slices.
 ```
 
-```text
+```pdsl
 UNIT Generate
 
 PURPOSE: Universal create-or-modify workflow for any artifact or code.
@@ -43,7 +43,8 @@ STATE:
   SUB_AGENT_SESSION_APPROVED:  unset | true                  default: unset   scope: session
   INLINE_FALLBACK:             unset | true | false          default: unset   scope: workflow_run
   INLINE_FALLBACK_PROBED:      false | true                  default: false   scope: workflow_run
-  AUTHOR_PLAN_OFFER_RESOLVED:  true | false                  default: false
+  AUTHOR_PLAN_OFFER_RESOLVED:  unresolved | memory | disk | auto_skipped_no_author_plan_flag | auto_skipped_rules_disabled | cancelled_by_stop_token | cancelled_planner_failure
+                               default: unresolved
   RESOURCE_CONTEXT:            present | absent              default: absent
   SHARED_CONTEXT_PACK:         present | absent              default: absent
 
@@ -74,7 +75,7 @@ RULES:
   - MUST use read_file ranges, summarize each chunk, keep only extracted criteria
   - MUST stop and output a checkpoint in chat (do not write files) if required steps cannot fit in context
   - WHEN SUB_AGENT_SESSION_APPROVED=true AND INLINE_FALLBACK=false AND INLINE_FALLBACK_PROBED=true:
-      gate logs estimate and proceeds without proposing /cf-plan;
+      gate logs estimate and proceeds without proposing Invoke skill `cf-plan`;
       decomposition handled in-workflow by Phase 1.5 (mandatory in that branch)
   - WHEN INLINE_FALLBACK_PROBED=false:
       run shared/inline-fallback-probe.md before reading INLINE_FALLBACK or
@@ -82,7 +83,7 @@ RULES:
   - WHEN INLINE_FALLBACK_PROBED=true:
       fallback-gated branches MAY read INLINE_FALLBACK only as resolved by
       shared/inline-fallback-probe.md for the active workflow run
-  - OTHERWISE: plan-escalation gate offers /cf-plan or stop when native
+  - OTHERWISE: plan-escalation gate offers Invoke skill `cf-plan` or stop when native
     sub-agent dispatch is not active; estimate is informational and local
     single-context continuation is not the default fallback
   - Critical anti-pattern failures (STRICT mode): SKIP_TEMPLATE, SKIP_EXAMPLE, SKIP_CHECKLIST,
@@ -154,7 +155,8 @@ DO:
     REQUIRE {cf-studio-path}/.core/workflows/generate/phase-5/index.md
 
   // Phase 6: next-steps and handoff menus
-  IF Phase 5 exit requires validation results, validation/waiver state, files changed, findings, waivers, or unresolved validation state reporting:
+  IF Phase 5 exit requires validation results, validation/waiver state, files changed, findings, waivers, or unresolved validation state reporting
+     OR Phase 5 was entered from external analyze remediation handoff:
     REQUIRE {cf-studio-path}/.core/workflows/generate/phase-6/index.md
 
   // Post-flight validation: lazy-load detailed checklist only when ending the run
@@ -188,7 +190,11 @@ RULES:
   // Phase 6
   - Phase 6 menu loading is lazy; load it only when Phase 5 exit must report
     validation results, validation/waiver state, files changed, findings, waivers,
-    or unresolved validation state
+    or unresolved validation state, OR when Phase 5 was entered from external
+    analyze remediation handoff
+  - External analyze remediation entry MUST end with an explicit Phase 6
+    terminal handoff/return menu even when no files were written and no
+    remaining findings exist
   - Remediation Handoff: conditional on non-empty remaining_findings
   - Post-Write Review Handoff: mandatory when files were written
 

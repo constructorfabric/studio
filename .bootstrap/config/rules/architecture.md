@@ -29,15 +29,15 @@ System design, module boundaries, and key abstractions of the self-hosted Constr
 ## Source Layout
 
 ```
-src/studio_proxy/                  # Global proxy package (5 files)
+src/studio_proxy/                  # Global proxy package
   cli.py                            # Console entry: resolve skill, forward command
   resolve.py                        # Project-vs-cache skill resolution
   cache.py                          # Cache download/copy logic
 
-skills/cypilot/scripts/cypilot/    # Skill engine package
+skills/studio/scripts/studio/      # Studio engine package
   cli.py                            # Main command router
-  commands/                         # 23 command modules
-  utils/                            # 20 shared utility modules
+  commands/                         # Command modules
+  utils/                            # Shared utility modules
 
 .bootstrap/                        # Self-hosted adapter directory
   .core/                            # Read-only mirror of canonical sources
@@ -49,20 +49,20 @@ tests/                              # 44 pytest modules + shared conftest/bootst
 
 ## Two-Package Design
 
-The installed `cpt` entry point loads the proxy in `src/studio_proxy/`. The proxy discovers the active skill engine (project-local or cached) and forwards the command through `subprocess.run`. All deterministic validation, registry loading, kit management, and workflow support live in `skills/cypilot/scripts/cypilot/`.
+The installed `cfs` / `constructor-studio` entry points load the proxy in `src/studio_proxy/`. The proxy discovers the active Studio engine (project-local or cached) and forwards the command through `subprocess.run`. All deterministic validation, registry loading, kit management, and workflow support live in `skills/studio/scripts/studio/`.
 
 The repository is also self-hosted: `.bootstrap/` is a live adapter/config tree for this same project, while the canonical editable sources remain under the repo root.
 
 ## Runtime Context
 
-`Constructor StudioContext.load()` runs at CLI startup in the skill engine, reads `artifacts.toml`, resolves kits and constraints, and stores the loaded context for command handlers. Workspace upgrades are deferred until first access, so lightweight commands do not pay unnecessary startup cost.
+`StudioContext.load()` runs at CLI startup in the Studio engine, reads `artifacts.toml`, resolves kits and constraints, and stores the loaded context for command handlers. Workspace upgrades are deferred until first access, so lightweight commands do not pay unnecessary startup cost.
 
 ## Path Resolution
 
 Two cooperating path-resolution layers exist:
 
 - **Proxy layer**: `src/studio_proxy/resolve.py` walks upward for root `AGENTS.md`, reads the managed TOML block, and resolves `cf-studio-path`
-- **Skill layer**: `skills/cypilot/scripts/cypilot/utils/files.py` resolves project root, adapter root, and `.core` / `.gen` subpaths inside the active adapter
+- **Studio layer**: `skills/studio/scripts/studio/utils/files.py` resolves project root, adapter root, and `.core` / `.gen` subpaths inside the active adapter
 
 This separation keeps the globally installed proxy small while letting the skill engine own project-layout semantics.
 
@@ -85,12 +85,12 @@ Kits provide templates, rules, checklists, workflows, scripts, and constraints a
 
 | File | Why it matters |
 |------|---------------|
-| `skills/cypilot/scripts/cypilot/cli.py` | Command dispatch hub — touch when adding or renaming commands |
-| `skills/cypilot/scripts/cypilot/utils/context.py` | Loads runtime context used by nearly every command |
-| `skills/cypilot/scripts/cypilot/utils/files.py` | Resolves project root, adapter root, and layout helpers |
-| `skills/cypilot/scripts/cypilot/utils/artifacts_meta.py` | Parses and normalizes the artifacts registry |
-| `skills/cypilot/scripts/cypilot/commands/init.py` | Initializes or force-reinitializes adapter/config state |
-| `skills/cypilot/scripts/cypilot/commands/update.py` | Refreshes `.core`, `.gen`, and installed kit outputs |
+| `skills/studio/scripts/studio/cli.py` | Command dispatch hub — touch when adding or renaming commands |
+| `skills/studio/scripts/studio/utils/context.py` | Loads runtime context used by nearly every command |
+| `skills/studio/scripts/studio/utils/files.py` | Resolves project root, adapter root, and layout helpers |
+| `skills/studio/scripts/studio/utils/artifacts_meta.py` | Parses and normalizes the artifacts registry |
+| `skills/studio/scripts/studio/commands/init.py` | Initializes or force-reinitializes adapter/config state |
+| `skills/studio/scripts/studio/commands/update.py` | Refreshes `.core`, `.gen`, and installed kit outputs |
 | `src/studio_proxy/resolve.py` | Determines whether commands use project or cached skill |
 | `src/studio_proxy/cache.py` | Owns GitHub/local cache population semantics |
 | `.bootstrap/config/artifacts.toml` | Source of truth for systems, artifacts, codebases |

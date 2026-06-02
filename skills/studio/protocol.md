@@ -4,7 +4,7 @@ description: "Invoke when loading Constructor Studio Protocol Guard, CLI resolut
 
 # Constructor Studio Protocol
 
-```text
+```pdsl
 UNIT CliResolution
 
 PURPOSE:
@@ -21,7 +21,7 @@ RULES:
   - MUST use {cfs_cmd} for all subsequent CLI invocations in the session
 ```
 
-```text
+```pdsl
 UNIT ExecutionVisibility
 
 PURPOSE:
@@ -35,7 +35,7 @@ RULES:
     when completing any checklist task
 ```
 
-```text
+```pdsl
 UNIT ProtocolGuard
 
 PURPOSE:
@@ -69,7 +69,7 @@ RULES:
     prompt asset from disk; dispatches receive needed text via prompt_context_view
 ```
 
-```text
+```pdsl
 UNIT SharedContextPackProtocol
 
 PURPOSE:
@@ -98,7 +98,7 @@ RULES:
     refreshed, or extended SHARED_CONTEXT_PACK during Protocol Guard
 ```
 
-```text
+```pdsl
 UNIT ConstructorStudioContextBlock
 
 PURPOSE:
@@ -116,7 +116,7 @@ RULES:
   - MUST emit this block before every code edit
 ```
 
-```text
+```pdsl
 UNIT AgentSafeInvocation
 
 PURPOSE:

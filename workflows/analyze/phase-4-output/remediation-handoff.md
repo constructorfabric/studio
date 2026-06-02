@@ -8,7 +8,7 @@ version: 1.0
 
 # Analyze Phase 4 — Remediation Handoff
 
-```text
+```pdsl
 UNIT AnalyzeRemediationHandoff
 
 PURPOSE:
@@ -29,12 +29,12 @@ MENU RemediationHandoffMenu:
     Actionable findings: High {h} / Medium {m} / Low {l}. How do you want to proceed?
     Suggested: {1|2|3} because {scope/risk reason}.
   OPTIONS:
-    1 -> load skill `cf`; enter fix mode:
+    1 -> Continue here in fix mode:
            Re-probe INLINE_FALLBACK via workflows/shared/inline-fallback-probe.md
            EMIT canonical MAX_ITER resolution prompt from
              workflows/generate/phase-5/index.md § Pre-Phase-Setup (default 5; 0 skips loop)
            WAIT user.reply for MAX_ITER
-           Initialize Phase 5 state:
+           Initialize Phase 5 state internally:
              all_findings = merged findings
              analyzed_paths = analyzed paths
              external_target_paths = analyzed_paths
@@ -88,7 +88,7 @@ NOTES:
   "Actionable findings" = any FAIL, PARTIAL, blocking validator error, or
   recommendation requiring artifact, code, or instruction changes.
   Prompt templates are on-demand only: self-contained, start with
-  "Invoke skill cf", include full findings inline, include target path/kind
+  "Invoke skill `cf`", include full findings inline, include target path/kind
   and deterministic gate status, state the route, ask the next agent to
   fix root causes plus tests/validation.
 ```

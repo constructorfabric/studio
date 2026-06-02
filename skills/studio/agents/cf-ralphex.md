@@ -45,7 +45,7 @@ streaming output) is implemented in code modules, not in this prompt. This
 prompt defines the delegation workflow steps; the backing Python modules
 (`ralphex_discover`, `ralphex_export`) provide the executable implementation.
 
-```text
+```pdsl
 UNIT RalphexPromptContext
 
 PURPOSE:
@@ -64,7 +64,7 @@ RULES:
 
 ## CLI Entrypoint
 
-```text
+```pdsl
 UNIT CliEntrypoint
 
 PURPOSE:
@@ -130,7 +130,7 @@ else:
 
 Required parameters: `config`, `plan_dir`, `repo_root`. Common optional parameters: `mode`, `default_branch`, `config_path`, `dry_run` (additional knobs — `worktree`, `serve`, `plans_dir_override`, `stream_output` — exist for advanced cases).
 
-```text
+```pdsl
 UNIT DelegationStatusRouting
 
 PURPOSE:
@@ -171,7 +171,7 @@ ON_ERROR:
 | Worktree | `--worktree` flag | Valid only for full and tasks-only modes |
 | Dashboard | `--serve` flag | Web dashboard monitoring |
 
-```text
+```pdsl
 UNIT ReviewModeGeneration
 
 PURPOSE:
@@ -194,7 +194,7 @@ RULES:
   - MUST_NOT treat ralphex as a host-tool subagent or new public Constructor Studio analyze CLI
 ```
 
-```text
+```pdsl
 UNIT DelegationErrorHandling
 
 PURPOSE:
@@ -263,7 +263,7 @@ MENU RetryOrAbortMenu:
 
 ## Post-Run Handoff
 
-```text
+```pdsl
 UNIT PostRunHandoff
 
 PURPOSE:
@@ -293,7 +293,7 @@ DO:
 
      ### Next Steps
      1. Review output artifacts listed above
-     2. Run `/cf-analyze` on changed files if validation passed
+     2. Invoke skill `cf-analyze` on changed files if validation passed
      3. If failed: inspect error output, fix issues, and re-delegate
 
   STOP_TURN
@@ -303,7 +303,7 @@ NOTES:
   Helper functions are imported from `studio.ralphex_export`:
     `read_handoff_status`, `check_completed_plans`, `run_validation_commands`, `report_handoff`.
 
-```text
+```pdsl
 UNIT BootstrapGate
 
 PURPOSE:
@@ -320,7 +320,7 @@ RULES:
 
 ## Response Completion Gate
 
-```text
+```pdsl
 UNIT RalphexCompletionGate
 
 RULES:

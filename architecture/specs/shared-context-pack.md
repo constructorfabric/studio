@@ -127,7 +127,7 @@ Rules:
 
 ## Operational Model
 
-```text
+```pdsl
 UNIT SharedContextPackLifecycle
 
 PURPOSE:
@@ -162,7 +162,7 @@ RULES:
   - MUST_NOT allow sub-agents to repair missing prompt assets themselves
 ```
 
-```text
+```pdsl
 UNIT FinalPromptSynthesis
 
 PURPOSE:
@@ -189,7 +189,7 @@ RULES:
   - MUST_NOT require deterministic slot-filling semantics
 ```
 
-```text
+```pdsl
 UNIT LeafAgentExecutionBoundary
 
 PURPOSE:

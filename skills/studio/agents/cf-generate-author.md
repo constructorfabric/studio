@@ -36,7 +36,7 @@ rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
 
 ## Selection Principle
 
-```text
+```pdsl
 UNIT SelectionPrinciple
 
 PURPOSE:
@@ -56,7 +56,7 @@ RULES:
 
 ## Domain Detection
 
-```text
+```pdsl
 UNIT DomainDetection
 
 PURPOSE:
@@ -78,7 +78,7 @@ MENU DomainClassification:
 
 ## Selection Rules
 
-```text
+```pdsl
 UNIT SelectionRules
 
 PURPOSE:
@@ -87,7 +87,7 @@ PURPOSE:
 
 ### Code-Only: `cf-generate-coder-casual`
 
-```text
+```pdsl
 UNIT SelectCodeOnlyCasual
 
 PURPOSE:
@@ -104,7 +104,7 @@ WHEN:
 
 ### Code-Only: `cf-generate-coder-smart`
 
-```text
+```pdsl
 UNIT SelectCodeOnlySmart
 
 PURPOSE:
@@ -124,7 +124,7 @@ RULES:
 
 ### Prompt/Workflow: `cf-generate-prompt-engineer-casual`
 
-```text
+```pdsl
 UNIT SelectPromptWorkflowCasual
 
 PURPOSE:
@@ -140,7 +140,7 @@ WHEN:
 
 ### Prompt/Workflow: `cf-generate-prompt-engineer-smart`
 
-```text
+```pdsl
 UNIT SelectPromptWorkflowSmart
 
 PURPOSE:
@@ -161,7 +161,7 @@ RULES:
 
 ### Generic: `cf-generate-author-junior`
 
-```text
+```pdsl
 UNIT SelectGenericJunior
 
 PURPOSE:
@@ -178,7 +178,7 @@ WHEN:
 
 ### Generic: `cf-generate-author-middle`
 
-```text
+```pdsl
 UNIT SelectGenericMiddle
 
 PURPOSE:
@@ -194,7 +194,7 @@ WHEN:
 
 ### Generic: `cf-generate-author-senior`
 
-```text
+```pdsl
 UNIT SelectGenericSenior
 
 PURPOSE:
@@ -211,7 +211,7 @@ WHEN:
 
 ### Generic: `cf-generate-author-lead`
 
-```text
+```pdsl
 UNIT SelectGenericLead
 
 PURPOSE:
@@ -228,7 +228,7 @@ WHEN:
 
 ## Output Contract
 
-```text
+```pdsl
 UNIT OutputContract
 
 PURPOSE:
@@ -276,7 +276,7 @@ RULES:
 
 ## Response Completion Gate
 
-```text
+```pdsl
 UNIT ResponseCompletionGate
 
 RULES:

@@ -13,7 +13,7 @@ description: Invoke when the merged findings list (det + semantic) must be displ
 
 ### Phase 5.3: Findings Display + Auto-Fix-Mechanical Fast Path
 
-```text
+```pdsl
 UNIT Phase53ExternalEntry
 
 PURPOSE:
@@ -82,7 +82,7 @@ RULES:
     FORBID applying patches inline
 ```
 
-```text
+```pdsl
 UNIT Phase53Body
 
 PURPOSE:
@@ -138,7 +138,7 @@ DO:
 
 #### Findings display (ALWAYS rendered — preserves audit history in the chat)
 
-```text
+```pdsl
 UNIT Phase53FindingsDisplay
 
 PURPOSE:
@@ -171,7 +171,7 @@ RULES:
 
 #### Branch — all-mechanical fast path
 
-```text
+```pdsl
 UNIT Phase53MechanicalFastPath
 
 PURPOSE:
@@ -234,7 +234,7 @@ RULES:
 
 #### Branch — mixed or judgmental-only
 
-```text
+```pdsl
 UNIT Phase53MixedBranch
 
 PURPOSE:

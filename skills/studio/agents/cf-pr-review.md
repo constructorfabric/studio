@@ -41,7 +41,7 @@ NOTES:
 
 ## Response Completion Gate
 
-```text
+```pdsl
 UNIT PrReviewCompletion
 
 RULES:

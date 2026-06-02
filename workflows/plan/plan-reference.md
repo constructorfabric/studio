@@ -3,7 +3,7 @@ cf: true
 type: reference
 name: plan-reference
 description: "Invoke when consulting the downstream runtime contract for generated plans (execute-phases, status checks, plan-storage format, execution log)."
-purpose: Reference-only documentation for plan execution downstream from /cf-plan
+purpose: Reference-only documentation for plan execution downstream from cf-plan
 loaded_by: workflows/plan.md
 version: 1.0
 ---
@@ -30,7 +30,7 @@ version: 1.0
 
 This appendix is the downstream runtime contract for generated plans. It is not a plan-creation phase.
 
-```text
+```pdsl
 UNIT PlanExecutePhaseDispatch
 
 PURPOSE:
@@ -62,7 +62,7 @@ RULES:
 
 ### 5.1 Load Phase
 
-```text
+```pdsl
 UNIT PlanLoadPhase
 
 PURPOSE:
@@ -96,7 +96,7 @@ DO:
 
 ### 5.2 Execute
 
-```text
+```pdsl
 UNIT PlanExecute
 
 PURPOSE:
@@ -108,7 +108,7 @@ DO:
 
 ### 5.3 Save Intermediate Results
 
-```text
+```pdsl
 UNIT PlanSaveIntermediateResults
 
 PURPOSE:
@@ -124,7 +124,7 @@ NOTES:
 
 ### 5.4 Report
 
-```text
+```pdsl
 UNIT PlanReport
 
 PURPOSE:
@@ -136,7 +136,7 @@ DO:
 
 ### 5.5 Update Status
 
-```text
+```pdsl
 UNIT PlanUpdateStatus
 
 PURPOSE:
@@ -152,7 +152,7 @@ DO:
 
 ### 5.6 Phase Handoff
 
-```text
+```pdsl
 UNIT PlanPhaseHandoff
 
 PURPOSE:
@@ -184,7 +184,7 @@ DO:
 
 ### 5.7 Abandoned Plan Recovery
 
-```text
+```pdsl
 UNIT PlanAbandonedRecovery
 
 PURPOSE:
@@ -224,7 +224,7 @@ EMIT recovery prompt:
 
 ## Appendix B: Check Status (Reference Only)
 
-```text
+```pdsl
 UNIT PlanCheckStatus
 
 PURPOSE:
@@ -245,7 +245,7 @@ DO:
 
 ## Plan Storage Format
 
-```text
+```pdsl
 NOTES:
   All plan data lives in {cf-studio-path}/.plans/{task-slug}/:
 
@@ -291,7 +291,7 @@ NOTES:
 
 ## Execution Log
 
-```text
+```pdsl
 NOTES:
   Keep a brief plan-generation-only observable log in chat (not on disk).
   Runtime execution/status examples belong to Appendix A and Appendix B only.

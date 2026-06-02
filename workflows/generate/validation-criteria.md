@@ -15,7 +15,7 @@ description: Invoke when the orchestrator needs the canonical generate-workflow 
 
 ## Minimal Validation Manifest
 
-```text
+```pdsl
 UNIT GenerateValidationManifest
 
 PURPOSE:
@@ -42,7 +42,7 @@ INVARIANTS:
 
 ## Detailed Post-Flight Checklist
 
-```text
+```pdsl
 UNIT GenerateValidationCriteria
 
 PURPOSE:
@@ -106,7 +106,7 @@ INVARIANTS:
 
 ## Agent Self-Test (STRICT mode — post-flight lazy)
 
-```text
+```pdsl
 UNIT AgentSelfTestStrict
 
 PURPOSE:

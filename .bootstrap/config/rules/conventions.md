@@ -11,7 +11,7 @@ version: 1.0
 
 <!-- toc -->
 
-- [File & Module Organization](#file-module-organization)
+- [File & Module Organization](#file--module-organization)
   - [CLI Command Modules](#cli-command-modules)
   - [File Naming](#file-naming)
 - [Code Style](#code-style)
@@ -36,7 +36,7 @@ Evidence: `commands/validate.py:14`, `commands/init.py`, `cli.py:34-98`.
 
 Use `snake_case.py` for all Python modules. Use `UPPERCASE.md` for major documentation files (`AGENTS.md`, `README.md`). CLI spec lives at `architecture/specs/CLISPEC.md`. Use kebab-case for non-Python config files (`artifacts.toml`, `core.toml`).
 
-Evidence: `src/studio_proxy/`, `skills/cypilot/scripts/cypilot/utils/`.
+Evidence: `src/studio_proxy/`, `skills/studio/scripts/studio/utils/`.
 
 ## Code Style
 
@@ -48,7 +48,7 @@ Evidence: `resolve.py:13`, `cache.py:17`, `tests/conftest.py:1`.
 
 ### Dataclasses for Domain Objects
 
-Use `@dataclass` for value objects and domain types. Key examples: `Constructor StudioContext`, `LoadedKit`, `ArtifactsMeta`, `SystemNode`, `CodeFile`, `ScopeMarker`.
+Use `@dataclass` for value objects and domain types. Key examples: `StudioContext`, `LoadedKit`, `ArtifactsMeta`, `SystemNode`, `CodeFile`, `ScopeMarker`.
 
 Evidence: `utils/context.py:21-38`, `utils/artifacts_meta.py`, `utils/codebase.py`.
 

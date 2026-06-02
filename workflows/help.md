@@ -7,7 +7,7 @@ version: 1.0
 purpose: Standalone help command; presets cf help storytelling and passes through to analyze.md
 ---
 
-```text
+```pdsl
 UNIT RootSkillEntrypointBootstrap
 PURPOSE: Prevent direct workflow entry from bypassing the root cf skill.
 DO:
@@ -27,7 +27,7 @@ RULES:
     consume the synthesized final prompt and supplied context slices.
 ```
 
-```text
+```pdsl
 UNIT HelpProxy
 
 PURPOSE:

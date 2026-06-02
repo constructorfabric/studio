@@ -9,7 +9,7 @@ purpose: Standalone explore command; discovers resource context and returns a co
 
 # Explore Workflow
 
-```text
+```pdsl
 UNIT RootSkillEntrypointBootstrap
 PURPOSE: Prevent direct workflow entry from bypassing the root cf skill.
 DO:
@@ -29,7 +29,7 @@ RULES:
     consume the synthesized final prompt and supplied context slices.
 ```
 
-```text
+```pdsl
 UNIT ExploreWorkflow
 
 PURPOSE:
@@ -82,7 +82,7 @@ RULES:
     parent workflow task or known_paths
 ```
 
-```text
+```pdsl
 UNIT ExploreSaveOffer
 
 PURPOSE:
@@ -142,7 +142,7 @@ RULES:
   - MUST keep explorer output in `resource_context`, not `SHARED_CONTEXT_PACK`
 ```
 
-```text
+```pdsl
 UNIT ExploreNextActions
 
 PURPOSE:
@@ -185,7 +185,7 @@ RULES:
   - MUST stop cleanly when user replies stop or done
 ```
 
-```text
+```pdsl
 UNIT ExploreClarifyGate
 
 PURPOSE:

@@ -164,7 +164,7 @@ version: 1.1
 }
 ```
 
-```text
+```pdsl
 UNIT BrainstormStateRules
 
 PURPOSE:
@@ -238,7 +238,7 @@ RULES:
 
 #### panel_mode (orchestration strategy)
 
-```text
+```pdsl
 UNIT BrainstormPanelModeField
 
 PURPOSE:
@@ -265,7 +265,7 @@ RULES:
 
 #### protocol (single-agent interaction pattern)
 
-```text
+```pdsl
 UNIT BrainstormProtocolField
 
 PURPOSE:
@@ -288,7 +288,7 @@ RULES:
 
 #### status (round outcome)
 
-```text
+```pdsl
 UNIT BrainstormStatusField
 
 PURPOSE:
@@ -306,7 +306,7 @@ NOTES:
 
 #### health (round resilience tracking)
 
-```text
+```pdsl
 UNIT BrainstormHealthField
 
 PURPOSE:
@@ -327,7 +327,7 @@ NOTES:
 
 #### envelope (wire-level blocks, orchestrator-internal)
 
-```text
+```pdsl
 UNIT BrainstormEnvelopeField
 
 PURPOSE:
@@ -351,7 +351,7 @@ NOTES:
 
 ### Loader Lazy-Normalization Rule
 
-```text
+```pdsl
 UNIT BrainstormLoaderNormalization
 
 PURPOSE:
@@ -379,7 +379,7 @@ RULES:
 
 ### Run Config Sibling Pattern
 
-```text
+```pdsl
 UNIT BrainstormRunConfigPattern
 
 PURPOSE:
@@ -426,7 +426,7 @@ NOTES:
 
 ### Default Location
 
-```text
+```pdsl
 UNIT BrainstormStateLocation
 
 PURPOSE:
