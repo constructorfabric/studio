@@ -46,7 +46,7 @@ Apply category A substitutions mechanically, walk category B items interactively
 
 ## Context Budget & Fail-Safe
 
-```text
+```pdsl
 UNIT ContextBudgetFailSafe
 
 PURPOSE:
@@ -75,7 +75,7 @@ RULES:
 
 ## Procedure
 
-```text
+```pdsl
 UNIT MigrationProcedure
 
 DO:
@@ -88,7 +88,7 @@ DO:
 
 ### Step 1 — Parse the plan
 
-```text
+```pdsl
 UNIT Step1_ParsePlan
 
 DO:
@@ -102,7 +102,7 @@ DO:
 
 ### Step 2 — Apply Category A (if `A` in selection)
 
-```text
+```pdsl
 UNIT Step2_ApplyCategoryA
 
 PURPOSE:
@@ -151,7 +151,7 @@ SEE_ALSO: HardRules
 
 ### Step 3 — Walk Category B (if `B` in selection)
 
-```text
+```pdsl
 UNIT Step3_WalkCategoryB
 
 PURPOSE:
@@ -194,7 +194,7 @@ SEE_ALSO: HardRules
 
 ### Step 4 — Print Category C commands (if `C` in selection)
 
-```text
+```pdsl
 UNIT Step4_PrintCategoryC
 
 PURPOSE:
@@ -245,7 +245,7 @@ RULES:
 
 ### Step 5 — Output: the migration manifest
 
-```text
+```pdsl
 UNIT Step5_OutputManifest
 
 PURPOSE:
@@ -297,7 +297,7 @@ DO:
 
 ## Hard Rules
 
-```text
+```pdsl
 UNIT HardRules
 
 INVARIANTS:
@@ -320,7 +320,7 @@ RULES:
 
 ## Response Completion Gate
 
-```text
+```pdsl
 UNIT ResponseCompletionGate
 
 RULES:

@@ -13,7 +13,7 @@ description: Invoke when the user picked `R2`/`R3`/`W2`/`W3` and the correspondi
 
 ### Emission targets (templates — emitted on demand only)
 
-```text
+```pdsl
 UNIT Phase6EmissionTargets
 
 PURPOSE:

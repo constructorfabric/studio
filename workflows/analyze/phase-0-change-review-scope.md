@@ -8,7 +8,7 @@ version: 1.0
 
 # Change Review Scope Resolver
 
-```text
+```pdsl
 UNIT ChangeReviewScopeResolver
 PURPOSE: Dispatch cf-diff-scope-resolver and derive typed target sets from the
          returned diff_scope before Phase 1 file checks.

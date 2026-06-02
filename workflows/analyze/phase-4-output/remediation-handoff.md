@@ -8,7 +8,7 @@ version: 1.0
 
 # Analyze Phase 4 — Remediation Handoff
 
-```text
+```pdsl
 UNIT AnalyzeRemediationHandoff
 
 PURPOSE:

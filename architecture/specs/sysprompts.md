@@ -58,7 +58,7 @@ Projects extend Constructor Studio behavior by placing **system prompts** in `{c
 
 ## Runtime Contract
 
-```text
+```pdsl
 UNIT SyspromptClassification
 
 PURPOSE:
@@ -78,7 +78,7 @@ RULES:
     directly from disk
 ```
 
-```text
+```pdsl
 UNIT SyspromptLoading
 
 PURPOSE:
@@ -100,7 +100,7 @@ RULES:
     a license for direct file reads
 ```
 
-```text
+```pdsl
 UNIT SyspromptValidationAndErrors
 
 PURPOSE:

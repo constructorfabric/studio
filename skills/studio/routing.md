@@ -4,7 +4,7 @@ description: "Invoke when routing a Constructor Studio command or user request t
 
 # Constructor Studio Routing
 
-```text
+```pdsl
 UNIT CanonicalRoutingPrecedenceState
 
 PURPOSE:
@@ -38,7 +38,7 @@ RULES:
     as fail-closed before sub-agent execution.
 ```
 
-```text
+```pdsl
 UNIT CfsRouting
 
 PURPOSE:
@@ -59,7 +59,7 @@ RULES:
     kit skill instructions, without collapsing them into the core routing table
 ```
 
-```text
+```pdsl
 UNIT CliAliasAndInvocation
 
 PURPOSE:
@@ -72,7 +72,7 @@ RULES:
   - MUST obtain write confirmation before any write-capable direct CLI command
 ```
 
-```text
+```pdsl
 UNIT RoutingSharedContextPack
 
 PURPOSE:
@@ -88,7 +88,7 @@ RULES:
     AGENTS, SKILL, requirement, or spec prompt files directly
 ```
 
-```text
+```pdsl
 UNIT WorkflowRoutingTable
 
 PURPOSE:
@@ -162,15 +162,15 @@ DO:
         -> open and follow {cf-studio-path}/.core/skills/studio/migrate-from-cypilot.md
 ```
 
-```text
+```pdsl
 UNIT CompoundFindFix
 
 PURPOSE:
-  Resolve ambiguous requests that match both fix/update/refactor (entry 8)
-  and find-bugs/bug-hunt/audit/review (entry 10) keywords simultaneously.
+  Resolve ambiguous requests that match both generate/mutate keywords (entry 8)
+  and find-bugs/bug-hunt/audit/review keywords (entry 10) simultaneously.
 
 WHEN:
-  request matches keywords from entry 8 (fix | update | refactor)
+  request matches keywords from entry 8 (create | edit | fix | update | implement | refactor | setup | build)
   AND request matches keywords from entry 10 (find bugs | bug hunt | audit | review)
 
 DO:
@@ -183,7 +183,7 @@ NOTES:
   generate if the user accepts.
 ```
 
-```text
+```pdsl
 UNIT OversizedRawInputGate
 
 PURPOSE:
@@ -217,7 +217,7 @@ NOTES:
   workflows.
 ```
 
-```text
+```pdsl
 UNIT AmbiguousRoutingFallback
 
 PURPOSE:
@@ -229,7 +229,7 @@ WHEN:
      cf | /cf | cf on | /cf on | cfs on | cf-studio | cf-studio on
 
 DO:
-  EMIT "I need one routing choice. Reply with one number from 1-15, or reply with a direct installed-kit shortcut such as `list PRs`, `review PR 123`, `PR status 123`, or `migrate-openspec` when those kit instructions are loaded."
+  EMIT "I need one routing choice. Reply with 1-15, or reply with a direct installed-kit shortcut such as `list PRs`, `review PR 123`, `PR status 123`, or `migrate-openspec` when those kit instructions are loaded."
   EMIT_MENU RoutingClarificationMenu
   WAIT user.reply
   STOP_TURN
@@ -252,8 +252,8 @@ MENU RoutingClarificationMenu:
     13 -> compile phase -- Compile a plan phase brief into an executable phase. CONTINUE WorkflowRoutingTable entry 2
     14 -> execute phase -- Execute the next or specified generated plan phase. CONTINUE WorkflowRoutingTable entry 3
     15 -> migrate-from-cypilot -- Migrate legacy Cypilot setup into Constructor Studio conventions. CONTINUE WorkflowRoutingTable entry 14
-  INVALID:
-    EMIT "Reply with 1-15, or reply with a concrete direct request such as `review PR 123`."
-    WAIT user.reply
-    STOP_TURN
+INVALID:
+  EMIT "Reply with one number from 1-15, or reply with a concrete direct request or installed-kit shortcut such as `list PRs`, `review PR 123`, `PR status 123`, or `migrate-openspec`."
+  WAIT user.reply
+  STOP_TURN
 ```

@@ -13,7 +13,7 @@ description: "Invoke when the workspace workflow enters Phase 3 to write standal
 
 ## Phase 3: Generate
 
-```text
+```pdsl
 UNIT WorkspaceGenerate
 
 PURPOSE:
@@ -51,7 +51,7 @@ RULES:
   - MUST_NOT infer WORKSPACE_ALL_SOURCES_CONFIRMED from partially edited source proposals
 ```
 
-```text
+```pdsl
 UNIT WorkspaceGeneratePrerequisiteCheck
 
 PURPOSE:
@@ -69,7 +69,7 @@ RULES:
   - MUST_NOT proceed to CLI invocation under any prerequisite failure
 ```
 
-```text
+```pdsl
 UNIT WorkspaceGenerateFailureMenu
 
 PURPOSE:

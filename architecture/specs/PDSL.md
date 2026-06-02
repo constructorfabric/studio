@@ -47,7 +47,7 @@ menu choice, or stop condition matters, write it explicitly.
 
 Use uppercase block headers. Each block describes one concern.
 
-```text
+```pdsl
 UNIT <name>
 
 PURPOSE:
@@ -75,6 +75,11 @@ ON_ERROR:
 
 Blocks MAY be omitted when not relevant. `PURPOSE`, `WHEN`, and `DO` are the
 default minimum for executable behavior.
+
+Markdown code fences that contain PDSL instruction blocks MUST use the `pdsl`
+language tag. Use ```` ```pdsl ```` for `UNIT`, `PATTERNS`, `WHEN`, `DO`,
+`MENU`, `RULES`, `ON_ERROR`, `INVARIANTS`, `NOTES`, and other PDSL-shaped
+blocks. MUST_NOT use ```` ```text ```` for PDSL instruction blocks.
 
 ---
 
@@ -111,11 +116,40 @@ Prefer `MUST` and `MUST_NOT` inside `RULES` and `INVARIANTS`.
 
 ---
 
+## Execution Semantics
+
+PDSL blocks are executable instruction contracts for humans and LLMs. A
+controller or sub-agent interpreting PDSL MUST apply these rules:
+
+- `WHEN` is an activation predicate; once true, the owning `DO`, `RULES`,
+  `INVARIANTS`, and matching `ON_ERROR` obligations are active.
+- `DO` actions run in written order unless `CONTINUE`, `RETURN`, `WAIT`, or
+  `STOP_TURN` transfers control earlier.
+- `REQUIRE` is a precondition; if unmet, enter matching `ON_ERROR` when
+  present, otherwise stop and report the missing precondition.
+- `FORBID` is an immediate prohibition in the current scope.
+- `WAIT` plus `STOP_TURN` is a hard assistant-turn boundary.
+- `CONTINUE <unit-or-phase>` transfers control to that target; it is not
+  optional advice.
+- `RETURN` declares the terminal handoff or output shape.
+- `RULES` are mandatory constraints for the owning unit.
+- `INVARIANTS` stay active while the owning unit, workflow, or dispatch
+  contract is active.
+- `NOTES` are explanatory only; they do not create executable obligations
+  unless an active rule references them.
+
+The root `skills/studio/SKILL.md` owns loading the compact runtime card at
+`requirements/pdsl-execution-card.md` once into the shared context pack.
+Workflow and agent prompts SHOULD rely on that root-skill slice instead of
+re-declaring the card path locally.
+
+---
+
 ## Conditions
 
 Conditions use plain expressions, not code syntax.
 
-```text
+```pdsl
 WHEN:
   SUB_AGENT_SESSION_APPROVED == unset
   AND host.supports_native_subagents == true
@@ -141,7 +175,7 @@ in `requirements/pdsl-patterns.md`.
 
 A `PATTERNS:` block declares named patterns for use in `matches()` conditions.
 
-```text
+```pdsl
 PATTERNS:
   slug-format: /^[a-z][a-z0-9-]{0,62}$/
     description: Lowercase kebab-case identifier, 1-63 chars
@@ -166,7 +200,7 @@ Rules:
 
 Actions are imperative and one per line.
 
-```text
+```pdsl
 DO:
   REQUIRE workflow_target is known
   SET INLINE_FALLBACK = true
@@ -184,7 +218,7 @@ UX output. Use `STOP_TURN` whenever the next step must wait for the user.
 
 Menus are first-class behavior, not prose.
 
-```text
+```pdsl
 MENU ApprovalMenu:
   TITLE: Approve sub-agent use for this session
   OPTIONS:
@@ -212,7 +246,7 @@ Menu rules:
 
 State declarations list allowed values and default behavior.
 
-```text
+```pdsl
 STATE:
   CF_PHASE_GATE: armed | released_for_dispatch | released_for_inline_write
     default: armed
@@ -236,7 +270,7 @@ State rules:
 
 Use `INVARIANTS` for always-on rules.
 
-```text
+```pdsl
 INVARIANTS:
   - MUST keep CF_PHASE_GATE = armed outside released write windows
   - MUST reset CF_PHASE_GATE to armed after dispatch returns
@@ -245,7 +279,7 @@ INVARIANTS:
 
 Use `FORBID` inside `DO` when a prohibition is local to that unit.
 
-```text
+```pdsl
 DO:
   FORBID apply_patch while CF_PHASE_GATE == armed
 ```
@@ -256,7 +290,7 @@ DO:
 
 Error handling must be part of the same unit when failure changes control flow.
 
-```text
+```pdsl
 ON_ERROR:
   invalid_menu_reply ->
     EMIT "Reply with 1 or 2."
@@ -279,7 +313,7 @@ PDSL is executable guidance. Prose is explanatory.
 
 Use `NOTES` for explanation that does not create behavior.
 
-```text
+```pdsl
 NOTES:
   Native sub-agents preserve context isolation and parallelism. Inline fallback
   is slower and weaker, but allows the workflow to continue without host
@@ -304,7 +338,7 @@ dispatch. Do not assume inline fallback just because the user did not answer.
 
 PDSL:
 
-```text
+```pdsl
 UNIT SubAgentApprovalGate
 
 PURPOSE:

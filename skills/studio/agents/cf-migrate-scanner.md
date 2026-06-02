@@ -46,7 +46,7 @@ chain. The Scanner, Migrator, and Verifier all use that exact field name.
 
 ## Context Budget & Fail-Safe
 
-```text
+```pdsl
 UNIT ContextBudgetFailSafe
 
 PURPOSE:
@@ -138,7 +138,7 @@ In addition to the project-wide pass, look specifically at these locations:
 
 ### Step 3 — Filter intentional-keep cases
 
-```text
+```pdsl
 UNIT IntentionalKeepFilter
 
 PURPOSE:
@@ -213,7 +213,7 @@ Total findings: {N}
 
 ## Hard Rules
 
-```text
+```pdsl
 UNIT ScannerHardRules
 
 RULES:
@@ -228,7 +228,7 @@ RULES:
 
 ## Response Completion Gate
 
-```text
+```pdsl
 UNIT ScannerCompletionGate
 
 RULES:

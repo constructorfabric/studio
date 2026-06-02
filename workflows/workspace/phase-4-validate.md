@@ -13,7 +13,7 @@ description: "Invoke when the workspace workflow enters Phase 4 to validate work
 
 ## Phase 4: Validate
 
-```text
+```pdsl
 UNIT WorkspaceValidate
 
 PURPOSE:
@@ -43,7 +43,7 @@ NOTES:
   - scan failures warn on stderr without blocking the operation
 ```
 
-```text
+```pdsl
 UNIT WorkspaceValidateFailureMenu
 
 PURPOSE:

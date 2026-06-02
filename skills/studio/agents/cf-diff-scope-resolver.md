@@ -40,7 +40,7 @@ rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
 
 ## Methodology (fast, structural-only)
 
-```text
+```pdsl
 UNIT DiffScopeResolverMethodology
 
 PURPOSE:
@@ -109,7 +109,7 @@ base, counts) followed by the `diff_scope` JSON:
 }
 ```
 
-```text
+```pdsl
 NOTES:
   changed_hunks is always emitted as an empty array in this fast
   scope-resolution mode.
@@ -119,7 +119,7 @@ NOTES:
 
 ## Response Completion Gate
 
-```text
+```pdsl
 UNIT DiffScopeResolverCompletionGate
 
 PURPOSE:

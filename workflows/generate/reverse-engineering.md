@@ -7,7 +7,7 @@ description: Invoke when the project is BROWNFIELD (existing code present) and t
 
 ## Reverse Engineering Prerequisite (BROWNFIELD only)
 
-```text
+```pdsl
 UNIT ReverseEngineeringPrerequisite
 
 PURPOSE:

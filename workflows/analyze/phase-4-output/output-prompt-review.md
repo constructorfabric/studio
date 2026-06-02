@@ -6,7 +6,7 @@ loaded_by: workflows/analyze.md
 version: 1.0
 ---
 
-```text
+```pdsl
 UNIT AnalyzePhase4PromptReview
 
 PURPOSE:
@@ -19,7 +19,7 @@ WHEN:
 DO:
   IF checkpoint.type == "PARTIAL_CHECKPOINT":
     Render Prompt Review Partial Checkpoint block (see below)
-    Append Remediation Handoff menu when checkpoint or findings require follow-up
+    Append Prompt Review Resume menu when checkpoint or findings require follow-up
     STOP (do not render the full prompt-review schema)
   IF PROMPT_REVIEW == true:
     Render cf-semantic-reviewer-prompt report in section order:
@@ -46,9 +46,12 @@ RULES:
     makes them inapplicable; report FAIL or PARTIAL when applicability is unresolved
   - MUST render Partial Checkpoint block (not full schema) when
     checkpoint.type=PARTIAL_CHECKPOINT
-  - MUST append Remediation Handoff when partial checkpoint or findings require follow-up
+  - MUST append a prompt-review resume/checkpoint menu when partial checkpoint
+    or findings require follow-up; MUST_NOT offer fix/plan remediation until
+    the partial review has been resumed/completed or the user explicitly
+    accepts incomplete coverage
 
-NOTES:
+  NOTES:
   Prompt Review Partial Checkpoint block MUST include:
     - checkpoint.type = "PARTIAL_CHECKPOINT"
     - reviewed target paths and covered layers
@@ -56,4 +59,20 @@ NOTES:
     - findings backed by already-covered evidence
     - checkpoint JSON needed to resume the prompt review
   This is a valid partial output, not a clean pass.
+
+MENU PromptReviewResumeMenu:
+  TITLE: "Prompt review is partial. Resume review before remediation?"
+  OPTIONS:
+    1 resume -> Resume the incomplete prompt review in this chat
+    2 fresh -> Emit a fresh-chat resume prompt with checkpoint JSON, evidence anchors,
+               target_paths, completed/partial reviewer status, findings JSON,
+               semantic report inventory, target/methodology fingerprints,
+               dispatch manifest inventory, and a required rehydration-proof
+               checklist before Phase 4/remediation may continue
+    3 accept-partial -> SET PROMPT_REVIEW_PARTIAL_ACCEPTED = true; render prompt-review output with explicit incomplete-coverage warning; then allow remediation handoff only for findings backed by covered evidence
+    4 stop -> Stop at the checkpoint
+  INVALID:
+    EMIT "Reply `1`, `2`, `3`, or `4`."
+    WAIT user.reply
+    STOP_TURN
 ```

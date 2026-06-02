@@ -7,7 +7,7 @@ description: "Invoke when Phase 5 exits and the orchestrator must assemble the P
 
 # Phase 6 — Offer Next Steps (Dispatcher)
 
-```text
+```pdsl
 UNIT Phase6EntryGate
 
 PURPOSE:
@@ -52,7 +52,7 @@ RULES:
     state is unresolved, Phase 6 is required and clean skip is forbidden
 ```
 
-```text
+```pdsl
 UNIT Phase6PrerequisiteGuard
 
 PURPOSE:
@@ -106,7 +106,7 @@ NOTES:
   is performed.
 ```
 
-```text
+```pdsl
 UNIT Phase6NextStepMenu
 
 PURPOSE:
@@ -142,7 +142,7 @@ RULES:
   - MUST emit next-step menu before the terminal handoff section
 ```
 
-```text
+```pdsl
 UNIT Phase6TerminalHandoffRouting
 
 PURPOSE:

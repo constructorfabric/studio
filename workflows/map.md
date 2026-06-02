@@ -22,7 +22,7 @@ purpose: Guide cfs map workflow from pre-flight through validation
 
 <!-- /toc -->
 
-```text
+```pdsl
 UNIT RootSkillEntrypointBootstrap
 PURPOSE: Prevent direct workflow entry from bypassing the root cf skill.
 DO:
@@ -42,7 +42,7 @@ RULES:
     consume the synthesized final prompt and supplied context slices.
 ```
 
-```text
+```pdsl
 UNIT MapBootstrap
 
 PURPOSE:
@@ -62,7 +62,7 @@ NOTES:
 
 ## Overview
 
-```text
+```pdsl
 UNIT MapOverview
 
 PURPOSE:
@@ -95,7 +95,7 @@ NOTES:
 
 ## Phase 1: Pre-flight
 
-```text
+```pdsl
 UNIT MapPhase1
 
 PURPOSE:
@@ -144,7 +144,7 @@ MENU MapScopeMenu:
 
 ## Phase 2: Configure
 
-```text
+```pdsl
 UNIT MapPhase2
 
 PURPOSE:
@@ -221,7 +221,7 @@ NOTES:
 
 ## Phase 3: Generate
 
-```text
+```pdsl
 UNIT MapPhase3
 
 PURPOSE:
@@ -244,7 +244,7 @@ DO:
 
 ## Phase 4: Validate
 
-```text
+```pdsl
 UNIT MapPhase4
 
 PURPOSE:
@@ -267,7 +267,7 @@ DO:
 
 ## Phase Config-Assist
 
-```text
+```pdsl
 UNIT MapPhaseConfigAssist
 
 PURPOSE:
@@ -488,7 +488,7 @@ MENU ConfigAssistActionMenu:
 
 ## Next Steps
 
-```text
+```pdsl
 UNIT MapNextSteps
 
 PURPOSE:
@@ -529,7 +529,7 @@ NOTES:
   - Share the map with team for architecture review
 ```
 
-```text
+```pdsl
 UNIT MapOpenHtmlViewer
 
 PURPOSE:
@@ -541,7 +541,7 @@ DO:
   STOP_TURN
 ```
 
-```text
+```pdsl
 UNIT MapExportJson
 
 PURPOSE:

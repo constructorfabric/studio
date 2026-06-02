@@ -13,7 +13,7 @@ description: "Invoke when the workspace workflow completes Phase 4 validation an
 
 ## Phase 5: Next Steps
 
-```text
+```pdsl
 UNIT WorkspaceNextSteps
 
 PURPOSE:

@@ -41,7 +41,7 @@ The controller MUST:
 
 ## Methodology
 
-```text
+```pdsl
 UNIT FacilitatorMethod
 
 DO:
@@ -96,7 +96,7 @@ RULES:
 
 ## Completion Gate
 
-```text
+```pdsl
 UNIT FacilitatorCompletionGate
 
 RULES:

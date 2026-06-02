@@ -44,7 +44,8 @@ Before gate 4 approval, emit only the E0/E1 setup and the required choice prompt
 
 ## Agent Instructions
 
-ALWAYS open and follow this file WHEN the user requests explanation, presentation, walkthrough, teaching, review, onboarding, decision-walk, quiz, or change-impact analysis of any input.
+ALWAYS open and follow this file WHEN the user requests explanation, presentation, walkthrough, teaching, onboarding, decision-walk, quiz, change-impact analysis, or an explicitly storytelling-style review/walkthrough of any input.
+MUST_NOT trigger on bare `review`, `validate`, `audit`, or `check` requests; those route to analyze/code-review unless the request also includes explain-style intent such as walkthrough, teach, presentation, or onboarding.
 
 ALWAYS open and follow `{cf-studio-path}/.core/requirements/execution-protocol.md` for workflow context.
 
@@ -66,7 +67,7 @@ WHEN loaded with `EXPLAIN_EXPORT=true` (via `generate.md` WHEN-rule on guide/REA
 
 ## Router Contract
 
-```text
+```pdsl
 UNIT StorytellingActivation
 
 PURPOSE:
@@ -90,7 +91,7 @@ RULES:
     whenever a sub-agent participates in the session
 ```
 
-```text
+```pdsl
 UNIT StorytellingExecutionSequence
 
 PURPOSE:
@@ -120,7 +121,7 @@ RULES:
   - MUST treat skipped gates as a critical contract failure
 ```
 
-```text
+```pdsl
 UNIT StorytellingModuleLoading
 
 PURPOSE:
@@ -321,6 +322,10 @@ Concretely: under standard chat-mode `EXPLAIN_MODE=true`, the agent loads three 
 - [ ] Plan-complete Wrap-up: if a resume checkpoint existed from this session, methodology asked whether to delete it (default yes); on `yes`, file was deleted and `Resume this session` was OMITTED from Suggested Next Steps
 - [ ] Persisted artifacts written in the user's **explicitly chosen** artifact language (resolved override → session-choice → `preferences.json` → ask once); no artifact silently inherited chat-prompt language without an explicit choice
 - [ ] Wrap output includes Session, Key Takeaways, Open Questions (with save prompt), Glossary (if any), Bookmark Export prompt (if any), Suggested Next Steps
+- [ ] Every E5 wrap maps its Suggested Next Steps into the required
+  `EXPLAIN_RESULT` envelope: `status` is complete/checkpointed/cancelled,
+  `progress` reflects completed portions or plan items, and `resume_path` is
+  set when resume is offered and null otherwise
 - [ ] Every Comment-slot use (review mode), every push to open-questions buffer, every bookmark took disposition effect **immediately on the create event** (NOT deferred to wrap): `chat-only` surfaced the artifact as a copy-now block in chat; `save-to-file` appended to the file with one-line confirmation `📝 Q-N appended to {path}`; `post-to-resource` triggered the 4-option numbered post-confirmation prompt right then. Session continued normally after each persistence event
 - [ ] When disposition = `post-to-resource`: every individual post was confirmed by the user via the 4-option prompt (Post / Save instead / Discard / Skip rest); post failures fell back to save-to-file for that item; `Skip rest` switched disposition to save-to-file for remaining items
 - [ ] Wrap output for `save-to-file` and `post-to-resource` dispositions did NOT re-prompt to "save?" (artifacts already persisted); wrap merely reported cumulative counts + paths / post URLs

@@ -7,7 +7,7 @@ version: 1.0
 purpose: Standalone brainstorm command; pass-through to generate.md with BRAINSTORM mode
 ---
 
-```text
+```pdsl
 UNIT RootSkillEntrypointBootstrap
 PURPOSE: Prevent direct workflow entry from bypassing the root cf skill.
 DO:
@@ -27,7 +27,7 @@ RULES:
     consume the synthesized final prompt and supplied context slices.
 ```
 
-```text
+```pdsl
 UNIT BrainstormProxy
 
 PURPOSE:
@@ -38,8 +38,26 @@ DO:
   The target generate Phase 0.7 workflow MUST run cf-explore after panel
   selection and pass RESOURCE_CONTEXT into brainstorm agents.
   Completion signal from the target generate flow MUST include:
-    { "type": "BRAINSTORM_RESULT", "status": "wrapped|handoff|cancelled", "decisions_count": <int>, "open_questions_count": <int>, "next_route": "<generate|plan|analyze|null>" }
+    { "type": "BRAINSTORM_RESULT", "status": "wrapped|handoff|checkpointed|cancelled", "decisions_count": <int>, "open_questions_count": <int>, "next_route": "<generate|plan|analyze|null>" }
+  Every clean, cancelled, checkpointed, or handoff terminal exit MUST emit this
+  BRAINSTORM_RESULT envelope; human-facing wrap text is not a substitute for
+  the machine-readable completion signal.
 
 ON_ERROR:
-  load_failed -> EMIT "Cannot load target workflow — check that {cf-studio-path} is correctly set." STOP_TURN
+  load_failed ->
+    EMIT "Cannot load target workflow — check that {cf-studio-path} is correctly set."
+    EMIT_MENU BrainstormLoadFailureMenu
+    WAIT user.reply
+    STOP_TURN
+
+MENU BrainstormLoadFailureMenu:
+  TITLE: "Brainstorm target workflow failed to load."
+  OPTIONS:
+    1 retry -> Retry loading the target generate workflow
+    2 route -> Return to routing and choose another workflow
+    3 stop -> Stop without starting brainstorm
+  INVALID:
+    EMIT "Reply `1`, `2`, or `3`."
+    WAIT user.reply
+    STOP_TURN
 ```

@@ -13,7 +13,7 @@ version: 1.0
 
 <!-- /toc -->
 
-```text
+```pdsl
 UNIT AnalyzePhase4OutputStandard
 
 PURPOSE:

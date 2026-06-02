@@ -8,7 +8,7 @@ version: 1.0
 
 ## Phase 1 Collector Iteration Cap
 
-```text
+```pdsl
 UNIT Phase02ReviewLoopCfg
 
 PURPOSE:

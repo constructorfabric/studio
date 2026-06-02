@@ -34,7 +34,7 @@ ALWAYS open and follow `{cf-studio-path}/.core/skills/studio/SKILL.md` FIRST WHE
 
 ## Goal
 
-```text
+```pdsl
 NOTES:
   After cfs init --migrate-from-cypilot=yes (or cfs update --migrate-from-cypilot=yes)
   runs the deterministic mechanical migration — directory copy, root managed-block swap
@@ -62,7 +62,7 @@ NOTES:
 
 ## Preconditions
 
-```text
+```pdsl
 UNIT PreconditionsCheck
 
 PURPOSE:
@@ -92,7 +92,7 @@ Then re-invoke this skill: cf migrate from cypilot"
 
 ## Hard Rules
 
-```text
+```pdsl
 UNIT HardRules
 
 PURPOSE:
@@ -133,7 +133,7 @@ NOTES:
 
 ### E0: Preconditions check
 
-```text
+```pdsl
 UNIT E0_PreconditionsCheck
 
 PURPOSE:
@@ -153,7 +153,7 @@ DO:
 
 ### E1: Scanner dispatch (user-gated)
 
-```text
+```pdsl
 UNIT E1_ScannerDispatch
 
 PURPOSE:
@@ -194,7 +194,7 @@ NOTES:
 
 ### E2: Planner dispatch (user-gated)
 
-```text
+```pdsl
 UNIT E2_PlannerDispatch
 
 PURPOSE:
@@ -239,7 +239,7 @@ NOTES:
 
 ### E3: Migrator dispatch (user-gated, plan-aware)
 
-```text
+```pdsl
 UNIT E3_MigratorDispatch
 
 PURPOSE:
@@ -284,6 +284,21 @@ UNIT E3_RunMigrator
 PURPOSE:
   Dispatch the Migrator sub-agent with the approved selection.
 
+PRECONDITIONS:
+  GIT_COMMIT_MODE is set by workflows/generate/phase-0-git-commit-mode.md
+    before any write-capable migrator dispatch.
+  CONTRIBUTING_GUIDE is set by workflows/generate/phase-0-dependencies.md
+    ContributingGuideDiscovery before any write-capable migrator dispatch;
+    null is valid only when discovery found no guide.
+
+ON_MISSING_PRECONDITION:
+  GIT_COMMIT_MODE missing ->
+    LOAD {cf-studio-path}/.core/workflows/generate/phase-0-git-commit-mode.md
+    STOP_TURN
+  CONTRIBUTING_GUIDE missing ->
+    LOAD {cf-studio-path}/.core/workflows/generate/phase-0-dependencies.md
+    STOP_TURN
+
 DO:
   DISPATCH cf-migrate-migrator with:
     prompt = content of cf-migrate-migrator.md + ## Task Inputs with:
@@ -311,18 +326,18 @@ RULES:
 
 NOTES:
   Menu options:
-    1. y       — apply category A (auto-fixable) only
-    2. y+B     — apply A AND walk through B interactively
-    3. y+C     — apply A AND walk B AND start C (cascade — prints commands;
+    1. apply category A (auto-fixable) only
+    2. apply A AND walk through B interactively
+    3. apply A AND walk B AND start C (cascade — prints commands;
                   does not auto-execute cross-repo operations)
-    4. select  — interactively pick specific items from A/B/C
+    4. interactively pick specific items from A/B/C
     N          — skip Migrator; plan stays in memory for this session only
   Suggested reply: 1
 ```
 
 ### E4: Verifier dispatch (user-gated)
 
-```text
+```pdsl
 UNIT E4_VerifierDispatch
 
 PURPOSE:
@@ -347,6 +362,7 @@ MENU E4_VerifierMenu:
                    plan: full Planner output
                    migration_manifest: Migrator's output
                    project_root, studio_path
+      INCREMENT verifier_iteration by 1
       SET verification_result = agent output
       CONTINUE E5
     N ->
@@ -364,7 +380,7 @@ NOTES:
 
 ### E5: Migrator ↔ Verifier loop
 
-```text
+```pdsl
 UNIT E5_MigratorVerifierLoop
 
 PURPOSE:
@@ -372,14 +388,13 @@ PURPOSE:
 
 STATE:
   verifier_iteration: number
-    default: 1 (after E4)
+    default: 0 (before the first E4 verifier dispatch)
     reset: never (monotonically increments within a session)
 
 WHEN:
   verification_result reports residue
 
 DO:
-  INCREMENT verifier_iteration by 1
   WHEN verifier_iteration >= 3:
     EMIT "Verifier-loop iteration cap (3) reached"
     EMIT residue list
@@ -419,7 +434,7 @@ INVARIANTS:
 
 ### E6: Final report
 
-```text
+```pdsl
 UNIT E6_FinalReport
 
 PURPOSE:
@@ -445,8 +460,11 @@ DO:
       - {command}
       ...
 
-    Suggested next steps:
-      - {context-appropriate}
+Suggested next steps:
+  - If status is clean, proceed with normal Constructor Studio work on the migrated project.
+  - If status is residue, address the remaining migration findings, then rerun the verifier.
+  - If status is cascade-stop, resolve the blocking upstream issue before resuming downstream migration work.
+  - If status is manual-review, inspect the flagged files and decide whether to patch manually or queue another bounded migration pass.
 
 RULES:
   - MUST emit final report regardless of whether E5 hit clean or cap
@@ -456,7 +474,7 @@ RULES:
 
 ## Sub-agent dispatch contract
 
-```text
+```pdsl
 UNIT SubAgentDispatchContract
 
 PURPOSE:

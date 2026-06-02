@@ -8,7 +8,7 @@ version: 1.4
 
 # Generate Phase 0.7: Round Loop
 
-```text
+```pdsl
 UNIT Phase07RoundLoopPreconditions
 PURPOSE: Enforce pre-loop invariants before any round-level dispatch.
 RULES:
@@ -20,7 +20,7 @@ RULES:
   - MUST_NOT re-probe per-round when INLINE_FALLBACK is already set
 ```
 
-```text
+```pdsl
 UNIT Phase07OrchestrationModes
 PURPOSE: Define the two exclusive orchestration strategies per round.
 STATE:
@@ -30,7 +30,7 @@ NOTES:
   fan-out: dispatch all panel members in parallel via cf-brainstorm-expert; no inter-expert live communication; requires native parallelism or degrades via INLINE_FALLBACK.
 ```
 
-```text
+```pdsl
 UNIT SilentModeDowngradeGuard
 PURPOSE: Prevent dispatch of wrong agent for resolved panel_mode.
 RULES:
@@ -66,7 +66,7 @@ NOTES:
   Recovery is NOT the agent-availability menu. The agent is registered; orchestrator used the wrong one for the resolved mode.
 ```
 
-```text
+```pdsl
 UNIT Phase07RoundLoop
 PURPOSE: Drive topic/challenge rounds: resolve mode, dispatch, validate, ask questions, parse choice, enforce cap.
 STATE:
@@ -124,7 +124,7 @@ RULES:
   - INLINE_FALLBACK_THIS_ROUND is per-round scope; see sub-agent-dispatch.md § Registered native sub-agent set & INLINE_FALLBACK_THIS_ROUND
 ```
 
-```text
+```pdsl
 UNIT Phase07AgentAvailabilityCheck
 PURPOSE: Verify resolved agent is in host's registered native sub-agent set before dispatch.
 DO:
@@ -162,7 +162,7 @@ MENU AgentUnavailableMenu:
     STOP_TURN
 ```
 
-```text
+```pdsl
 UNIT Phase07TopicDispatch
 PURPOSE: Dispatch panel for topic-round based on resolved panel_mode.
 DO:
@@ -184,7 +184,7 @@ DO:
       SET contributions = flatten_envelope(result)
 ```
 
-```text
+```pdsl
 UNIT Phase07ChallengeDispatch
 PURPOSE: Dispatch panel for challenge-round based on resolved panel_mode.
 NOTES: Precondition state.rounds non-empty and rounds[-1].answer_keys non-empty is enforced by Phase07PostRoundChoiceParsing C-guard.
@@ -211,7 +211,7 @@ DO:
       SET contributions = flatten_envelope(result)
 ```
 
-```text
+```pdsl
 UNIT Phase07MidSessionMutationGuard
 PURPOSE: Detect mid-session protocol or panel mutations; set fail-stop skip before dispatch.
 DO:
@@ -230,7 +230,7 @@ RULES:
   - Callers MUST check status != "skipped" before proceeding to dispatch
 ```
 
-```text
+```pdsl
 UNIT Phase07InvariantValidation
 PURPOSE: Validate contributions structure; repair once on content violations; fail-stop on structural violations or second failure.
 STATE:
@@ -276,7 +276,7 @@ DO:
     SET health = { degraded: false, reason: null, attempts_used: attempts_used }
 ```
 
-```text
+```pdsl
 UNIT Phase07PostDispatch
 PURPOSE: Process contributions after validation; build one-question-at-a-time intake queue.
 DO:
@@ -300,7 +300,7 @@ RULES:
   - MUST_NOT ask the user to answer the whole question_queue in one reply
 ```
 
-```text
+```pdsl
 UNIT Phase07QuestionQueue
 PURPOSE: Render one brainstorm question per user turn; collect reaction; show post-round menu only after queue is complete.
 DO:
@@ -345,7 +345,7 @@ RULES:
   - MUST offer numbered answer options for each question
 ```
 
-```text
+```pdsl
 UNIT Phase07AskCurrentQuestion
 PURPOSE: Ask exactly one pending brainstorm question with answer options.
 DO:
@@ -449,7 +449,7 @@ MENU SkippedRoundMenu:
       CONTINUE round loop
 ```
 
-```text
+```pdsl
 UNIT Phase07PostRoundMenu
 PURPOSE: After all questions resolved, offer next topic, challenge, or wrap.
 DO:
@@ -468,7 +468,7 @@ RULES:
   - MUST always show W / wrap as user-facing option
 ```
 
-```text
+```pdsl
 UNIT Phase07PostRoundChoiceParsing
 PURPOSE: Parse post-round next-action reply after all question reactions are recorded.
 DO:
@@ -504,7 +504,7 @@ NOTES:
   The C guard here is the ONLY place that authorises a challenge-round; the loop's challenge branch trusts this guard.
 ```
 
-```text
+```pdsl
 UNIT RoundCapMenu
 PURPOSE: Present cap-reached menu when state.round_count >= state.BRAINSTORM_MAX_ROUNDS.
 MENU RoundCapMenu:
@@ -525,7 +525,7 @@ MENU RoundCapMenu:
     STOP_TURN
 ```
 
-```text
+```pdsl
 UNIT Phase07WrapOptionInvariant
 PURPOSE: Ensure user can exit to wrap/save at every brainstorm interaction point.
 RULES:
@@ -534,7 +534,7 @@ RULES:
   - Wrap MUST_NOT imply discard; wrap-handoff owns save/generate/analyze/continue routing
 ```
 
-```text
+```pdsl
 UNIT Phase07EnvelopeFlattening
 PURPOSE: Flatten cf-brainstorm-panel envelope into contributions[] array.
 DO:
@@ -553,7 +553,7 @@ NOTES:
   Full envelope schema: {cf-studio-path}/.core/workflows/generate/phase-0.7/state-schema.md § envelope
 ```
 
-```text
+```pdsl
 UNIT Phase07ExpertDispatchContracts
 PURPOSE: Define dispatch contract fields for fan-out and single-agent modes.
 RULES:

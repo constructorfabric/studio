@@ -43,7 +43,7 @@ NOTES:
 
 ## Response Completion Gate
 
-```text
+```pdsl
 UNIT PhaseCompilerCompletion
 
 RULES:

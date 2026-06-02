@@ -14,7 +14,7 @@ description: Invoke when Phase 2 (no-op) and Phase 2.5 checkpoint guidance must 
 
 ## Phase 2: Generate (no-op — content production happens in Phase 4)
 
-```text
+```pdsl
 UNIT Phase2NoOp
 
 PURPOSE:
@@ -41,7 +41,7 @@ NOTES:
 
 ## Phase 2.5: Checkpoint (for long artifacts)
 
-```text
+```pdsl
 UNIT Phase25Checkpoint
 
 PURPOSE:

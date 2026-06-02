@@ -19,7 +19,7 @@ version: 1.0
 
 <!-- /toc -->
 
-```text
+```pdsl
 UNIT Phase2Init
 
 PURPOSE:
@@ -44,7 +44,7 @@ NOTES:
 
 ## 2.1 Select Plan Lifecycle (before finalizing phases)
 
-```text
+```pdsl
 UNIT Phase2LifecycleSelection
 
 PURPOSE:
@@ -56,7 +56,7 @@ DO:
   CONTINUE Phase2DecomposeByStrategy
 ```
 
-```text
+```pdsl
 UNIT Phase2DecomposeByStrategy
 
 PURPOSE:
@@ -104,7 +104,7 @@ DO:
 
 ## Intermediate Results Analysis
 
-```text
+```pdsl
 UNIT Phase2IntermediateResultsAnalysis
 
 PURPOSE:
@@ -122,7 +122,7 @@ RULES:
 
 ## Review Phases
 
-```text
+```pdsl
 UNIT Phase2ReviewPhases
 
 PURPOSE:
@@ -142,7 +142,7 @@ RULES:
 
 ## Execution Context Prediction
 
-```text
+```pdsl
 UNIT Phase2ExecutionContextPrediction
 
 PURPOSE:

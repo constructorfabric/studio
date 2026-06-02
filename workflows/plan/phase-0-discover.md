@@ -9,7 +9,7 @@ version: 1.0
 
 # Phase 0: Resolve Variables & Discover Tools
 
-```text
+```pdsl
 UNIT Phase0ResolveVariables
 
 PURPOSE:
@@ -27,7 +27,7 @@ NOTES:
   written into the [meta] TOML table of plan.toml.
 ```
 
-```text
+```pdsl
 UNIT Phase0VariableCheckpoint
 
 PURPOSE:
@@ -51,7 +51,7 @@ ON_ERROR:
 
 ## 0.1 Discover Available Tools
 
-```text
+```pdsl
 UNIT Phase0DiscoverTools
 
 PURPOSE:

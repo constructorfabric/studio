@@ -37,7 +37,7 @@ rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
 
 ## Write authority boundary
 
-```text
+```pdsl
 UNIT WriteAuthorityBoundary
 
 PURPOSE:
@@ -95,7 +95,7 @@ ON_ERROR:
 }
 ```
 
-```text
+```pdsl
 UNIT InputConstraints
 
 RULES:
@@ -106,7 +106,7 @@ RULES:
 
 ## Methodology
 
-```text
+```pdsl
 UNIT ExportMethodology
 
 PURPOSE:
@@ -125,7 +125,7 @@ DO:
 
 ### Step 1 — Compute package_dir and guard socratic mode
 
-```text
+```pdsl
 UNIT Step1_ComputeAndGuard
 
 DO:
@@ -158,7 +158,7 @@ RULES:
 
 ### Step 2 — Create package directory
 
-```text
+```pdsl
 UNIT Step2_CreateDirectory
 
 DO:
@@ -172,7 +172,7 @@ ON_ERROR:
 
 ### Step 3 — Write index.md
 
-```text
+```pdsl
 UNIT Step3_WriteIndex
 
 PURPOSE:
@@ -207,7 +207,7 @@ RULES:
 
 ### Step 4 — Write per-portion files
 
-```text
+```pdsl
 UNIT Step4_WritePortions
 
 PURPOSE:
@@ -235,7 +235,7 @@ SEE_ALSO: Step3_WriteIndex
 
 ### Step 5 — Write navigation.mmd
 
-```text
+```pdsl
 UNIT Step5_WriteNavigation
 
 DO:
@@ -247,7 +247,7 @@ RULES:
 
 ### Step 6 — Mode-specific extras
 
-```text
+```pdsl
 UNIT Step6_ModeExtras
 
 PURPOSE:
@@ -281,7 +281,7 @@ MENU ModeExtrasDispatch:
 
 ### Step 7 — Format handling
 
-```text
+```pdsl
 UNIT Step7_FormatHandling
 
 PURPOSE:
@@ -309,7 +309,7 @@ MENU FormatDispatch:
 
 ### Step 8 — Build manifest
 
-```text
+```pdsl
 UNIT Step8_BuildManifest
 
 PURPOSE:
@@ -356,7 +356,7 @@ ON_ERROR:
 }
 ```
 
-```text
+```pdsl
 NOTES:
   For mode=socratic, package_path and manifest are null, files_written is [],
   and errors contains the required refusal message (AP-#34).
@@ -366,7 +366,7 @@ NOTES:
 
 ## Response Completion Gate
 
-```text
+```pdsl
 UNIT ResponseCompletionGate
 
 RULES:

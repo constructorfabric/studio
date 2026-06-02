@@ -104,7 +104,7 @@ The controller MUST:
 
 ## Mode Rules
 
-```text
+```pdsl
 UNIT ExpertModeRules
 
 RULES:
@@ -214,7 +214,7 @@ or:
 
 ## Completion Gate
 
-```text
+```pdsl
 UNIT ExpertCompletionGate
 
 RULES:

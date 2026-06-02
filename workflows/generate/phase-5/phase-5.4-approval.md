@@ -13,7 +13,7 @@ description: Invoke when the iteration is mixed or judgmental-only (judgmental n
 
 ### Phase 5.4: User-Approval Gate (judgmental findings)
 
-```text
+```pdsl
 UNIT Phase54UserApprovalGate
 
 PURPOSE:
@@ -48,7 +48,7 @@ Reply `1`, `2: <comma-separated judgmental IDs>` (or bare `2:` for mechanical-on
   STOP_TURN
 ```
 
-```text
+```pdsl
 UNIT Phase54ReplyParsing
 
 PURPOSE:
@@ -133,7 +133,7 @@ MENU Phase54ApprovalMenu:
     STOP_TURN
 ```
 
-```text
+```pdsl
 UNIT Phase54SessionCarryForward
 
 PURPOSE:
@@ -157,7 +157,7 @@ RULES:
     (author-rejected and user-unapproved judgmental findings MUST NOT be silently dropped)
 ```
 
-```text
+```pdsl
 UNIT Phase54CapPromptRules
 
 PURPOSE:

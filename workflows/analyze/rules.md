@@ -12,7 +12,7 @@ version: 1.0
 
 <!-- /toc -->
 
-```text
+```pdsl
 UNIT AnalyzeRules
 
 PURPOSE:

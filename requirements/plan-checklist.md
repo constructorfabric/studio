@@ -43,7 +43,8 @@ purpose: Checklist for validating execution plans — used by analyze workflow a
 - [ ] Every phase has valid TOML frontmatter.
 - [ ] `number` matches filename.
 - [ ] `total` matches `total_phases`.
-- [ ] The 9 required sections appear in order: `Preamble`, `What`, `Prior Context`, `User Decisions`, `Rules`, `Input`, `Task`, `Acceptance Criteria`, `Output Format`.
+- [ ] Required sections appear in order: `Preamble`, `What`, `Prior Context`, `Rules`, `Input`, `Task`, `Acceptance Criteria`, `Output Format`.
+- [ ] `User Decisions` appears in the documented position when the phase has interaction points or carried decisions; it is omitted only when `plan-template.md` permits omission for phases with no decisions.
 
 ## 1b. Brief-Phase Integrity
 - [ ] Every brief file is written before phase compilation starts.
@@ -126,9 +127,9 @@ purpose: Checklist for validating execution plans — used by analyze workflow a
 - [ ] User is asked about lifecycle strategy after plan generation.
 - [ ] `plan.toml` sets `lifecycle` to `gitignore`, `cleanup`, `archive`, or `manual`.
 - [ ] The lifecycle action is implemented.
-- [ ] The last phase Output Format includes `ALL PHASES COMPLETE`, the lifecycle strategy reference, and a `Continue in this chat?` menu that states what each reply does.
+- [ ] The last phase Output Format includes `ALL PHASES COMPLETE`, the lifecycle strategy reference, and the canonical 3-option `Continue in this chat?` menu that surfaces validation first, then next-task selection, then end.
 - [ ] Every non-final phase includes a single fenced, copy-pasteable next-phase prompt with both the `plan.toml` path and the next phase file path.
-- [ ] The user is told to validate before execution, given Invoke skill `cf-analyze` on the plan directory, and offered validation as an explicit next step.
+- [ ] The user is told to validate before execution, given Invoke skill `cf-analyze` on the plan directory, and offered validation as the first explicit final-menu step.
 
 ## Validation Procedure
 - [ ] Self-validation runs all categories, reports every FAIL with issue and location, computes `passed_items / total_items`, and requires correction before execution if pass rate is below 100%.

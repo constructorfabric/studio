@@ -8,7 +8,7 @@ version: 1.0
 
 # Analyze Phase 2 — Deterministic Gate
 
-```text
+```pdsl
 UNIT AnalyzePhase2DeterministicGate
 
 PURPOSE:

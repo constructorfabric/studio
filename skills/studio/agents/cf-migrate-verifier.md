@@ -55,7 +55,7 @@ After the Migrator applies changes, verify the migration is complete:
 
 ## Context Budget & Fail-Safe
 
-```text
+```pdsl
 UNIT ContextBudgetFailSafe
 
 PURPOSE:
@@ -84,7 +84,7 @@ RULES:
 
 ## Procedure
 
-```text
+```pdsl
 UNIT MigrateVerifierProcedure
 
 PURPOSE:
@@ -101,7 +101,7 @@ DO:
 
 ### Step 1 — Verify A-items per the manifest
 
-```text
+```pdsl
 UNIT StepVerifyAItems
 
 PURPOSE:
@@ -125,7 +125,7 @@ DO:
 
 ### Step 2 — Verify B-items per the manifest
 
-```text
+```pdsl
 UNIT StepVerifyBItems
 
 PURPOSE:
@@ -142,7 +142,7 @@ DO:
 
 ### Step 3 — Re-run Scanner patterns (focused)
 
-```text
+```pdsl
 UNIT StepReScanPatterns
 
 PURPOSE:
@@ -172,7 +172,7 @@ SEE_ALSO: MigrateVerifierHardRules
 
 ### Step 4 — Check Migrator's `noticed_but_not_in_plan` items
 
-```text
+```pdsl
 UNIT StepNoticedButNotInPlan
 
 PURPOSE:
@@ -188,7 +188,7 @@ DO:
 
 ### Step 5 — C-items (cascade) status
 
-```text
+```pdsl
 UNIT StepCItemsStatus
 
 PURPOSE:
@@ -206,7 +206,7 @@ RULES:
 
 ### Step 6 — Output: verification result
 
-```text
+```pdsl
 UNIT StepVerificationOutput
 
 PURPOSE:
@@ -264,7 +264,7 @@ RULES:
 
 ## Hard Rules
 
-```text
+```pdsl
 UNIT MigrateVerifierHardRules
 
 PURPOSE:
@@ -292,7 +292,7 @@ INVARIANTS:
 
 ## Response Completion Gate
 
-```text
+```pdsl
 UNIT MigrateVerifierCompletionGate
 
 PURPOSE:

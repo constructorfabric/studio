@@ -11,7 +11,7 @@ version: 0.1
 Open, load, and follow this file only when `PDSL_MODE == new` or the
 user intent clearly asks to create a new prompt/workflow/skill instruction file.
 
-```text
+```pdsl
 UNIT NewPromptMode
 
 PURPOSE:

@@ -39,7 +39,7 @@ rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
 
 ## Validator selection
 
-```text
+```pdsl
 UNIT ValidatorSelection
 
 PURPOSE:
@@ -78,7 +78,7 @@ DO:
 
 ## Execution
 
-```text
+```pdsl
 UNIT ValidatorExecution
 
 DO:
@@ -118,7 +118,7 @@ PASS or FAIL.
 ]
 ```
 
-```text
+```pdsl
 UNIT MechanicalClassification
 
 PURPOSE:
@@ -139,7 +139,7 @@ RULES:
 
 ## Response Completion Gate
 
-```text
+```pdsl
 UNIT DeterministicValidatorCompletionGate
 
 PURPOSE:

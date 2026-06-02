@@ -7,7 +7,7 @@ description: Invoke when the deterministic gate is PASS (or SKIPPED with proof) 
 
 # Generate Phase 5.2: Semantic Reviewers
 
-```text
+```pdsl
 UNIT Phase52SemanticReviewers
 
 PURPOSE:
@@ -83,7 +83,7 @@ RULES:
   - MUST NOT skip dispatch for registered reviewers when trigger condition matches
 ```
 
-```text
+```pdsl
 UNIT Phase52InlineFallbackWarning
 
 PURPOSE:
@@ -126,7 +126,7 @@ MENU InlineFallbackWarningMenu:
 
 ## Pre-Review Warning Handoff
 
-```text
+```pdsl
 UNIT Phase52PreReviewWarningHandoff
 
 PURPOSE:
@@ -150,7 +150,7 @@ RULES:
   - This is the canonical source of the Pre-Review Warning Handoff text
 ```
 
-```text
+```pdsl
 UNIT Phase52ReviewerDispatchContracts
 
 PURPOSE:
@@ -201,7 +201,7 @@ NOTES:
     Only dispatched when PROMPT_BUG_REVIEW=true
 ```
 
-```text
+```pdsl
 UNIT Phase52ReviewerReturnHandling
 
 PURPOSE:

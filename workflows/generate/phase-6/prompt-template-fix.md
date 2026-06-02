@@ -5,7 +5,7 @@ parent: workflows/generate.md
 description: Invoke when the user picked `R2` (Fix Prompt) on the Remediation Handoff menu and the self-contained bounded-fix prompt must be emitted verbatim as the FINAL section.
 ---
 
-```text
+```pdsl
 UNIT FixPromptEmission
 
 PURPOSE:

@@ -6,7 +6,7 @@ loaded_by: workflows/analyze/phase-4-output/remediation-handoff.md
 version: 1.0
 ---
 
-```text
+```pdsl
 UNIT AnalyzePlanPromptTemplate
 
 PURPOSE:

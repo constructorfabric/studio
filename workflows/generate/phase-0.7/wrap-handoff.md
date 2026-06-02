@@ -16,7 +16,7 @@ version: 1.1
 
 ### Consolidated design block (loop exit)
 
-```text
+```pdsl
 UNIT BrainstormWrapHandoff
 
 PURPOSE:
@@ -114,7 +114,7 @@ RULES:
 
 ### Contributions shape and orchestration modes
 
-```text
+```pdsl
 UNIT BrainstormWrapContributionsShape
 
 PURPOSE:
@@ -148,7 +148,7 @@ NOTES:
 
 ### Hand-off routing
 
-```text
+```pdsl
 UNIT BrainstormNextStepRouting
 
 PURPOSE:

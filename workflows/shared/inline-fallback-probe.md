@@ -8,7 +8,7 @@ version: 1.0
 
 # Inline Fallback Probe
 
-```text
+```pdsl
 UNIT InlineFallbackProbe
 
 PURPOSE: Apply the canonical sub-agent approval gate and resolve INLINE_FALLBACK

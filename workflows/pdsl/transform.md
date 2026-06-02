@@ -12,7 +12,7 @@ Open, load, and follow this file only when `PDSL_MODE == transform`
 or the user intent clearly asks to convert, rewrite, or migrate existing prompt
 files into PDSL.
 
-```text
+```pdsl
 UNIT TransformPromptMode
 
 PURPOSE:

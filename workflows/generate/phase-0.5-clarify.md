@@ -17,7 +17,7 @@ version: 1.0
 
 ## Phase 0.5: Clarify Output & Context
 
-```text
+```pdsl
 UNIT Phase05ClarifyContext
 
 PURPOSE:

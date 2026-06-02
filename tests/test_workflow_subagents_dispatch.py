@@ -1356,10 +1356,11 @@ def test_phase_3_to_4_checkpoint_has_canonical_reply_menu() -> None:
         repo_root / "workflows" / "analyze" / "phase-3-to-4-checkpoint.md"
     ).read_text(encoding="utf-8")
 
-    assert "Reply `1` or `2`." in checkpoint
-    assert "1 -> CONTINUE" in checkpoint
+    assert "Reply `1`, `2`, or `3`." in checkpoint
+    assert "1 -> IF PARTIAL == true:" in checkpoint
     assert "2 -> Emit" in checkpoint
-    assert "MUST_NOT infer a default when the user replies anything other than 1 or 2" in checkpoint
+    assert "3 -> EMIT" in checkpoint
+    assert "MUST_NOT infer a default when the user replies anything other than 1, 2, or 3" in checkpoint
 
 
 def test_partial_checkpoint_contract_scope_matches_reviewer_support() -> None:

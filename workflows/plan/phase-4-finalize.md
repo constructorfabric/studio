@@ -17,7 +17,7 @@ version: 1.0
 
 <!-- /toc -->
 
-```text
+```pdsl
 UNIT Phase4Init
 
 PURPOSE:
@@ -40,7 +40,7 @@ STATE:
 CONTINUE Phase4StatusMapping
 ```
 
-```text
+```pdsl
 UNIT Phase4StatusMapping
 
 PURPOSE:
@@ -67,7 +67,7 @@ NOTES:
 
 ## 4.1 Validate Plan Before Handoff (MANDATORY)
 
-```text
+```pdsl
 UNIT Phase4SelfValidation
 
 PURPOSE:
@@ -103,7 +103,7 @@ RULES:
 
 ## 4.2 Report Plan & Offer Next Steps
 
-```text
+```pdsl
 UNIT Phase4ReportPlan
 
 PURPOSE:
@@ -199,7 +199,7 @@ MENU Phase4NextStepsFallback:
     STOP_TURN
 ```
 
-```text
+```pdsl
 UNIT Phase4AnalyzePlan
 
 PURPOSE:
@@ -214,7 +214,7 @@ DO:
     work_request = "Validate the completed execution plan before execution."
 ```
 
-```text
+```pdsl
 UNIT Phase4ReviewPlanFiles
 
 PURPOSE:
@@ -226,7 +226,7 @@ DO:
   STOP_TURN
 ```
 
-```text
+```pdsl
 UNIT Phase4ModifyPlan
 
 PURPOSE:
@@ -241,7 +241,7 @@ DO:
 
 ## New-Chat Startup Prompt
 
-```text
+```pdsl
 UNIT Phase4NativePhaseDispatch
 
 PURPOSE:
@@ -279,7 +279,7 @@ RULES:
   - Dispatch payload MUST include plan_dir, target_phase, git_commit_mode, contributing_guide, and git_constraint
 ```
 
-```text
+```pdsl
 UNIT Phase4EmitStartupPrompt
 
 PURPOSE:

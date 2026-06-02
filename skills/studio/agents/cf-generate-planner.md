@@ -69,7 +69,7 @@ and mark which tasks can run in parallel.
 
 ## Planning Rules
 
-```text
+```pdsl
 UNIT GeneratePlannerRules
 
 PURPOSE:
@@ -111,7 +111,7 @@ RULES:
 
 ## Output Contract
 
-```text
+```pdsl
 UNIT GeneratePlannerOutput
 
 PURPOSE:
@@ -167,7 +167,7 @@ RULES:
 
 ## Response Completion Gate
 
-```text
+```pdsl
 UNIT GeneratePlannerCompletionGate
 
 PURPOSE:

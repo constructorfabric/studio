@@ -61,7 +61,7 @@ rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
 }
 ```
 
-```text
+```pdsl
 UNIT InputConstraints
 
 RULES:
@@ -73,7 +73,7 @@ RULES:
 
 ## Methodology
 
-```text
+```pdsl
 UNIT WrapMethodology
 
 PURPOSE:
@@ -91,7 +91,7 @@ DO:
 
 ### Step 1 — Key takeaways
 
-```text
+```pdsl
 UNIT Step1_KeyTakeaways
 
 PURPOSE:
@@ -117,7 +117,7 @@ RULES:
 
 ### Step 2 — Open questions carry-forward
 
-```text
+```pdsl
 UNIT Step2_OpenQuestionsCarryForward
 
 PURPOSE:
@@ -134,7 +134,7 @@ RULES:
 
 ### Step 3 — Glossary emit
 
-```text
+```pdsl
 UNIT Step3_GlossaryEmit
 
 DO:
@@ -144,7 +144,7 @@ DO:
 
 ### Step 4 — Bookmarks export prompt
 
-```text
+```pdsl
 UNIT Step4_BookmarksExportPrompt
 
 DO:
@@ -154,7 +154,7 @@ DO:
 
 ### Step 5 — Next steps
 
-```text
+```pdsl
 UNIT Step5_NextSteps
 
 PURPOSE:
@@ -178,7 +178,7 @@ RULES:
 
 ### Step 6 — Session block
 
-```text
+```pdsl
 UNIT Step6_SessionBlock
 
 PURPOSE:
@@ -200,7 +200,7 @@ DO:
 
 ### Step 7 — Path normalization
 
-```text
+```pdsl
 UNIT Step7_PathNormalization
 
 PURPOSE:
@@ -245,7 +245,7 @@ RULES:
 }
 ```
 
-```text
+```pdsl
 NOTES:
   wrap.header is the literal string "Storytelling Wrap-up" — do not localize or alter it.
   The JSON block is the entire response — no preamble, no trailing commentary.
@@ -254,7 +254,7 @@ NOTES:
 
 ## Response Completion Gate
 
-```text
+```pdsl
 UNIT ResponseCompletionGate
 
 RULES:

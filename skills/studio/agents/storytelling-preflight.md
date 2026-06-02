@@ -46,7 +46,7 @@ rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
 }
 ```
 
-```text
+```pdsl
 UNIT InputValidation
 
 PURPOSE:
@@ -67,7 +67,7 @@ Execute the six steps below in order. Each step is load-bearing — skipping any
 
 ### Step 1 — Canonicalize path and derive session_id
 
-```text
+```pdsl
 UNIT CanonicalizeAndDeriveSessionId
 
 PURPOSE:
@@ -96,7 +96,7 @@ RULES:
 
 ### Step 2 — Session discovery scan
 
-```text
+```pdsl
 UNIT SessionDiscoveryScan
 
 PURPOSE:
@@ -113,7 +113,7 @@ DO:
 
 ### Step 3 — Determine access_tier
 
-```text
+```pdsl
 UNIT DetermineAccessTier
 
 PURPOSE:
@@ -152,7 +152,7 @@ RULES:
 
 ### Step 3a — Path safety guard
 
-```text
+```pdsl
 UNIT PathSafetyGuard
 
 PURPOSE:
@@ -177,7 +177,7 @@ RULES:
 
 ### Step 4 — Size guards
 
-```text
+```pdsl
 UNIT SizeGuards
 
 PURPOSE:
@@ -230,7 +230,7 @@ RULES:
 
 ### Step 5 — Detect target_type and primary_language
 
-```text
+```pdsl
 UNIT DetectTargetTypeAndLanguage
 
 PURPOSE:
@@ -274,7 +274,7 @@ DO:
 
 ### Step 5b — Local-editable detection
 
-```text
+```pdsl
 UNIT LocalEditableDetection
 
 PURPOSE:
@@ -340,7 +340,7 @@ NOTES:
 
 ### Step 6 — Load preferences
 
-```text
+```pdsl
 UNIT LoadPreferences
 
 PURPOSE:
@@ -385,7 +385,7 @@ RULES:
 }
 ```
 
-```text
+```pdsl
 UNIT AbortSemantics
 
 PURPOSE:
@@ -401,7 +401,7 @@ RULES:
 
 ## Response Completion Gate
 
-```text
+```pdsl
 UNIT ResponseCompletionGate
 
 PURPOSE:

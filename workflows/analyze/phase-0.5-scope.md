@@ -6,7 +6,7 @@ loaded_by: workflows/analyze/phase-0-dependencies.md
 version: 1.0
 ---
 
-```text
+```pdsl
 UNIT AnalyzeScope
 
 PURPOSE:
@@ -24,11 +24,11 @@ DO:
 MENU ScopeMenu:
   TITLE: |
     Why this input is needed: analysis rigor depends on whether I should validate
-    the whole target, a bounded slice, or skip deterministic checks.
+    the whole target, a bounded slice, or skip deterministic validation only.
   OPTIONS:
     1 full    -> proceed with full analysis — check the entire artifact/codebase target
-    2 partial -> check specific sections/IDs (user supplies list); semantic review still runs
-    3 semantic -> SET SEMANTIC_ONLY = true; skip deterministic gate; semantic review still runs
+    2 partial -> SET ANALYZE_SCOPE = partial; SET ANALYZE_SCOPE_SELECTORS = user supplied sections/IDs; semantic review still runs
+    3 semantic-only -> SET SEMANTIC_ONLY = true; skip deterministic validation only; semantic review still runs
   INVALID:
     EMIT "Reply `1`, `2: <sections-or-IDs>`, or `3`."
     WAIT user.reply
@@ -62,23 +62,8 @@ RULES:
 
 NOTES:
   Suggested modes: 1 for ordinary review requests; 3 only when the target is
-  unregistered or deterministic validation is not applicable.
-```
-
-If scope is unclear, ask:
-
-```text
-Why this input is needed: analysis rigor depends on whether I should validate
-the whole target, a bounded slice, or skip deterministic checks.
-
-1. Full analysis — check the entire artifact/codebase target.
-2. Partial analysis — check specific sections/IDs; semantic review still runs.
-3. Semantic-only review — skip deterministic gate; semantic review still runs.
-
-Suggested: 1 for ordinary review requests; 3 only when the target is
-unregistered or deterministic validation is not applicable.
-
-Reply `1`, `2: <sections-or-IDs>`, or `3`.
+  unregistered or deterministic validation is not applicable. "semantic-only"
+  skips the deterministic gate only; all applicable semantic review still runs.
 ```
 
 Traceability mode: read artifacts.toml. `FULL` checks code markers and

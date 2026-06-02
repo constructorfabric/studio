@@ -63,7 +63,7 @@ rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
 }
 ```
 
-```text
+```pdsl
 UNIT InputValidation
 
 PURPOSE:
@@ -82,7 +82,7 @@ RULES:
 
 ### Step 1 — Read input
 
-```text
+```pdsl
 UNIT ReadInput
 
 PURPOSE:
@@ -127,7 +127,7 @@ RULES:
 
 ### Step 2 — Build anchor list
 
-```text
+```pdsl
 UNIT BuildAnchorList
 
 PURPOSE:
@@ -174,7 +174,7 @@ RULES:
 
 ### Step 3 — Apply strategy
 
-```text
+```pdsl
 UNIT ApplyStrategy
 
 PURPOSE:
@@ -221,7 +221,7 @@ RULES:
 
 ### Step 4 — Compute depth_mode_flags
 
-```text
+```pdsl
 UNIT ComputeDepthModeFlags
 
 PURPOSE:
@@ -250,7 +250,7 @@ INVARIANTS:
 
 ### Step 5 — Build plan_anchor_map
 
-```text
+```pdsl
 UNIT BuildPlanAnchorMap
 
 PURPOSE:
@@ -293,7 +293,7 @@ RULES:
 
 ### Step 6 — Persist pack (informational)
 
-```text
+```pdsl
 UNIT PersistPack
 
 PURPOSE:
@@ -325,7 +325,7 @@ NOTES:
 
 ### Step 7 — Return content_pack
 
-```text
+```pdsl
 UNIT ReturnContentPack
 
 PURPOSE:
@@ -348,7 +348,7 @@ RULES:
 | β anchors | 1 (structural scan only) | `null` for all anchors | All false | Large inputs (> 200 KB), portion-by-portion narrow Read() calls at delivery |
 | γ hybrid | 1 + narrow re-reads for non-hot (optional) | Populated for hot anchors only | Selective | Medium inputs; overview + diff body always pre-extracted, long tail anchors on-demand |
 
-```text
+```pdsl
 UNIT ConsumerContract
 
 PURPOSE:
@@ -400,7 +400,7 @@ Schema version of the content_pack JSON; consumers MAY refuse a mismatched major
 }
 ```
 
-```text
+```pdsl
 UNIT OverviewConstruction
 
 PURPOSE:
@@ -422,7 +422,7 @@ NOTES:
 
 ## Response Completion Gate
 
-```text
+```pdsl
 UNIT ResponseCompletionGate
 
 PURPOSE:

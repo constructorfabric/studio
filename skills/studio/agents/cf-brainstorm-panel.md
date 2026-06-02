@@ -171,7 +171,7 @@ The controller MUST NOT:
 
 ## Protocol And Render Rules
 
-```text
+```pdsl
 UNIT PanelRenderRules
 
 RULES:
@@ -269,7 +269,7 @@ Error envelope:
 
 ## Invariants
 
-```text
+```pdsl
 UNIT PanelInvariants
 
 I1  envelope_version MUST be string "1"
@@ -295,7 +295,7 @@ I13 when context is insufficient for a persona, its proposed_default MUST be a
 
 ## Completion Gate
 
-```text
+```pdsl
 UNIT PanelCompletionGate
 
 RULES:

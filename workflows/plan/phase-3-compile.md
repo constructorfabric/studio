@@ -9,7 +9,7 @@ version: 1.0
 
 # Plan Phase 3: Compile
 
-```text
+```pdsl
 UNIT Phase3Init
 PURPOSE: Load plan template requirements before compilation.
 DO:
@@ -20,7 +20,7 @@ NOTES:
   Manifest and all brief-* files are mandatory outputs of cf-plan.
 ```
 
-```text
+```pdsl
 UNIT Phase3WriteManifest
 PURPOSE: Write plan.toml before phase compilation begins.
 DO:
@@ -75,7 +75,7 @@ NOTES:
   input_dir, input_manifest, input_signature: omit or set "" when no raw-input package was created.
 ```
 
-```text
+```pdsl
 UNIT Phase3GenerateBriefs
 PURPOSE: Write a compilation brief for each phase (~50-80 lines each).
 DO:
@@ -101,7 +101,7 @@ RULES:
     MUST NOT require it to exist at brief-generation or phase-compilation time
 ```
 
-```text
+```pdsl
 UNIT Phase3BriefCheckpointMenu
 PURPOSE: Pause after briefs are on disk and obtain user choice for phase file production.
 WHEN: plan.toml AND every brief-* file exist on disk
@@ -146,7 +146,7 @@ RULES:
   - MUST NOT emit "Plan created" at this checkpoint
 ```
 
-```text
+```pdsl
 UNIT Phase3ContextBoundary
 PURPOSE: Reset context before reading each brief for phase compilation.
 DO:
@@ -158,7 +158,7 @@ DO:
     ---
 ```
 
-```text
+```pdsl
 UNIT Phase3ProducePhaseFilesInline
 PURPOSE: Compile phase files in the current chat from briefs (option [1]).
 DO:
@@ -178,7 +178,7 @@ RULES:
 CONTINUE Phase3ValidatePhaseFiles
 ```
 
-```text
+```pdsl
 UNIT Phase3ProduceDownstreamPrompts
 PURPOSE: Emit one self-contained downstream prompt per brief (option [2]).
 DO:
@@ -200,7 +200,7 @@ RULES:
   - PHASE_3_4_VALIDATION remains skipped; MUST NOT run Phase3ValidatePhaseFiles
 ```
 
-```text
+```pdsl
 UNIT Phase3ProduceViaSubagents
 PURPOSE: Route phase compilation to cf-phase-compiler subagents (option [3]).
 DO:
@@ -263,7 +263,7 @@ NOTES:
   Planner remains responsible for decomposition, manifest creation, and brief generation.
 ```
 
-```text
+```pdsl
 UNIT Phase3ValidatePhaseFiles
 PURPOSE: Validate all compiled phase files before handoff to Phase 4.
 WHEN: PHASE_3_4_VALIDATION != skipped AND user chose option [1] or [3] AND phase files generated this run

@@ -13,7 +13,7 @@ description: Invoke when files were written by Phase 4 (or any review iteration)
 
 ### Post-Write Review Handoff (emitted when files were written and remediation is not pending)
 
-```text
+```pdsl
 UNIT PostWriteHandoff
 
 PURPOSE:

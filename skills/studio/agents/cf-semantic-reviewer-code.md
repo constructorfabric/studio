@@ -46,7 +46,7 @@ rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
 
 ## Methodology
 
-```text
+```pdsl
 UNIT ContextBudgetFailSafe
 
 PURPOSE:
@@ -88,7 +88,7 @@ RULES:
   - MUST_NOT collapse PARTIAL_CHECKPOINT into a clean validation report
 ```
 
-```text
+```pdsl
 UNIT CodeReviewerProcedure
 
 PURPOSE:
@@ -115,7 +115,7 @@ DO:
 
 ## Output Contract
 
-```text
+```pdsl
 UNIT CodeReviewerOutput
 
 PURPOSE:
@@ -151,7 +151,7 @@ MENU OutputShape:
 
 ## Response Completion Gate
 
-```text
+```pdsl
 UNIT CodeReviewerCompletionGate
 
 PURPOSE:

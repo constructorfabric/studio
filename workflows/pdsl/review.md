@@ -12,7 +12,7 @@ Open, load, and follow this file only when `PDSL_MODE == review` or
 the user intent clearly asks to check PDSL quality, safety, or
 compactness.
 
-```text
+```pdsl
 UNIT ReviewPromptMode
 
 PURPOSE:

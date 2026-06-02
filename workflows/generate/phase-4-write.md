@@ -8,7 +8,7 @@ version: 1.0
 
 # Generate Phase 4: Write
 
-```text
+```pdsl
 UNIT Phase4WriteEntry
 PURPOSE: Enforce entry conditions before dispatching write-capable author.
 

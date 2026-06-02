@@ -6,7 +6,7 @@ loaded_by: workflows/analyze.md
 version: 1.0
 ---
 
-```text
+```pdsl
 UNIT AnalyzePreamble
 
 PURPOSE:

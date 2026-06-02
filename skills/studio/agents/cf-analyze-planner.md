@@ -79,7 +79,7 @@ NOTES:
 
 ## Planning Rules
 
-```text
+```pdsl
 UNIT AnalyzePlannerRules
 
 PURPOSE:
@@ -147,7 +147,7 @@ RULES:
 
 ## Output Contract
 
-```text
+```pdsl
 UNIT AnalyzePlannerOutput
 
 PURPOSE:
@@ -202,7 +202,7 @@ RULES:
 
 ## Response Completion Gate
 
-```text
+```pdsl
 UNIT AnalyzePlannerCompletionGate
 
 PURPOSE:

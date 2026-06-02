@@ -7,7 +7,7 @@ description: Invoke when the Phase 5 review loop exits and the final `Validation
 
 ### Phase 5.5: Final `Validation Results` for Phase 6
 
-```text
+```pdsl
 UNIT Phase55FinalValidationResults
 
 PURPOSE:

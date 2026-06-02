@@ -21,7 +21,7 @@ version: 1.0
 
 ## 1.1 Identify Task Type
 
-```text
+```pdsl
 UNIT Phase1IdentifyTaskType
 
 PURPOSE:
@@ -45,7 +45,7 @@ NOTES:
 
 ## 1.1b Extract Target Workflow Navigation Rules (CRITICAL)
 
-```text
+```pdsl
 UNIT Phase1ExtractNavigationRules
 
 PURPOSE:
@@ -75,7 +75,7 @@ RULES:
 
 ## 1.2 Estimate Compiled Size
 
-```text
+```pdsl
 UNIT Phase1EstimateCompiledSize
 
 PURPOSE:
@@ -95,7 +95,7 @@ DO:
 
 ## 1.3 Identify Target & Resolve Kit Inputs
 
-```text
+```pdsl
 UNIT Phase1IdentifyTarget
 
 PURPOSE:
@@ -144,7 +144,7 @@ NOTES:
 
 ## 1.4 Scan for User Interaction Points (CRITICAL)
 
-```text
+```pdsl
 UNIT Phase1ScanInteractionPoints
 
 PURPOSE:
@@ -189,7 +189,7 @@ RULES:
 CONTINUE Phase1RawInputCheck
 ```
 
-```text
+```pdsl
 UNIT Phase1RawInputCheck
 
 PURPOSE:

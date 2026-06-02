@@ -17,7 +17,7 @@ final prompt usable in a fresh chat" contract. Open, load, and follow `{cf-studi
 for the diff summary.
 -->
 
-```text
+```pdsl
 UNIT DirectReviewPromptEmission
 
 PURPOSE:

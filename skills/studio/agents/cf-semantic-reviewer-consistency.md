@@ -38,7 +38,7 @@ rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
 }
 ```
 
-```text
+```pdsl
 UNIT SingleTargetPreconditionGate
 
 PURPOSE:
@@ -62,7 +62,7 @@ RULES:
 
 ## Methodology
 
-```text
+```pdsl
 UNIT ContextBudgetFailSafe
 
 PURPOSE:
@@ -83,7 +83,7 @@ RULES:
   - MUST_NOT emit a PASS verdict on partial run
 ```
 
-```text
+```pdsl
 UNIT ConsistencyReviewerProcedure
 
 PURPOSE:
@@ -118,7 +118,7 @@ RULES:
 
 ## Mechanical-vs-judgmental classification
 
-```text
+```pdsl
 UNIT MechanicalClassification
 
 PURPOSE:
@@ -150,7 +150,7 @@ RULES:
 
 ## Output Contract
 
-```text
+```pdsl
 UNIT ConsistencyReviewerOutput
 
 PURPOSE:
@@ -186,7 +186,7 @@ RULES:
 
 ## Response Completion Gate
 
-```text
+```pdsl
 UNIT ConsistencyReviewerCompletionGate
 
 PURPOSE:

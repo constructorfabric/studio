@@ -13,7 +13,7 @@ description: "Invoke when the workspace workflow enters Phase 2 to confirm selec
 
 ## Phase 2: Configure
 
-```text
+```pdsl
 UNIT WorkspaceConfigure
 
 PURPOSE:
@@ -72,7 +72,7 @@ RULES:
   - Primary source is always determined by the current working directory; no `primary` field exists
 ```
 
-```text
+```pdsl
 UNIT WorkspaceConfigureLocationUpdate
 
 PURPOSE:
@@ -92,7 +92,7 @@ DO:
     STOP_TURN
 ```
 
-```text
+```pdsl
 UNIT WorkspaceConfigureCompletionGate
 
 PURPOSE:

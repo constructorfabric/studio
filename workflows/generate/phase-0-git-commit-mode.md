@@ -14,7 +14,7 @@ description: "Invoke when the GIT_COMMIT_MODE session flag is unset and the orch
 
 ## Phase 0.x: GIT_COMMIT_MODE Probe
 
-```text
+```pdsl
 UNIT GitCommitModeProbe
 
 PURPOSE:
@@ -79,7 +79,7 @@ RULES:
 
 ## Mode Semantics
 
-```text
+```pdsl
 UNIT GitCommitModeSemantics
 
 PURPOSE:

@@ -8,7 +8,7 @@ version: 1.0
 
 # Phase 0.1: Plan Escalation Gate
 
-```text
+```pdsl
 UNIT PlanEscalationGate
 
 PURPOSE:
@@ -68,7 +68,7 @@ NOTES:
     (generate.md Phase 0).
 ```
 
-```text
+```pdsl
 UNIT SubAgentDecompositionBypass
 
 PURPOSE:
@@ -89,7 +89,7 @@ NOTES:
   Phase 4) regardless of estimated size.
 ```
 
-```text
+```pdsl
 UNIT NoNativeDispatchPlanHandoff
 
 PURPOSE:

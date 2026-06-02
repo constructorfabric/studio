@@ -46,7 +46,7 @@ purpose: Systematic methodology for scanning brownfield projects and generating 
 
 ## Runtime Contract
 
-```text
+```pdsl
 UNIT AutoConfigActivation
 
 PURPOSE:
@@ -67,7 +67,7 @@ RULES:
   - MUST provide any dispatched subset through `prompt_context_view`
 ```
 
-```text
+```pdsl
 UNIT AutoConfigPhaseSequence
 
 PURPOSE:
@@ -106,7 +106,7 @@ RULES:
     unless the user explicitly asks to leave auto-config and run those commands
 ```
 
-```text
+```pdsl
 UNIT AutoConfigWriteBoundaries
 
 PURPOSE:
@@ -152,7 +152,7 @@ MENU ExistingRulesRefreshMenu:
     STOP_TURN
 ```
 
-```text
+```pdsl
 UNIT AutoConfigErrorHandling
 
 PURPOSE:
@@ -470,7 +470,7 @@ version: 1.0
 
 **Valid activity-based conditions**:
 
-```text
+```pdsl
 WHEN writing or reviewing code
 WHEN modifying architecture, adding components, or refactoring module boundaries
 WHEN implementing features or writing business logic

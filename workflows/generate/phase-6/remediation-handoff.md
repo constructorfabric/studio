@@ -13,7 +13,7 @@ description: Invoke when `remaining_findings` from Phase 5 is non-empty and the 
 
 ### Remediation Handoff (conditional — only when `remaining_findings` non-empty)
 
-```text
+```pdsl
 UNIT RemediationHandoff
 
 PURPOSE:

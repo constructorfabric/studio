@@ -7,7 +7,7 @@ description: Invoke when each Phase 5 iteration begins and the deterministic val
 
 # Generate Phase 5.1: Deterministic Gate
 
-```text
+```pdsl
 UNIT Phase51DeterministicGate
 
 PURPOSE:

@@ -15,7 +15,7 @@ PDSL. It is for files such as `skills/**/*.md`, `workflows/**/*.md`,
 
 ## Bootstrap
 
-```text
+```pdsl
 UNIT RootSkillEntrypointBootstrap
 PURPOSE: Prevent direct workflow entry from bypassing the root cf skill.
 DO:
@@ -35,7 +35,7 @@ RULES:
     consume the synthesized final prompt and supplied context slices.
 ```
 
-```text
+```pdsl
 UNIT PdslBootstrap
 
 PURPOSE:
@@ -56,7 +56,7 @@ RULES:
     prompt files from disk
 ```
 
-```text
+```pdsl
 UNIT PdslSharedContextPack
 
 PURPOSE:
@@ -74,7 +74,7 @@ RULES:
 
 ## Intent Routing
 
-```text
+```pdsl
 UNIT PdslModeRouter
 
 PURPOSE:
@@ -91,16 +91,13 @@ WHEN:
 DO:
   IF user intent matches a new alias:
     SET PDSL_MODE = new
-    LOAD {cf-studio-path}/.core/workflows/pdsl/new.md
-    STOP_TURN
+    CONTINUE PdslExploreBrainstormGate
   ELSE IF user intent matches a transform alias:
     SET PDSL_MODE = transform
-    LOAD {cf-studio-path}/.core/workflows/pdsl/transform.md
-    STOP_TURN
+    CONTINUE PdslExploreBrainstormGate
   ELSE IF user intent matches a review alias:
     SET PDSL_MODE = review
-    LOAD {cf-studio-path}/.core/workflows/pdsl/review.md
-    STOP_TURN
+    CONTINUE PdslExploreBrainstormGate
   ELSE:
     EMIT_MENU PdslModeMenu
     WAIT user.reply
@@ -109,15 +106,9 @@ DO:
 MENU PdslModeMenu:
   TITLE: Choose PDSL mode
   OPTIONS:
-    1 new -> SET PDSL_MODE = new
-             LOAD {cf-studio-path}/.core/workflows/pdsl/new.md
-             STOP_TURN
-    2 transform -> SET PDSL_MODE = transform
-                   LOAD {cf-studio-path}/.core/workflows/pdsl/transform.md
-                   STOP_TURN
-    3 review -> SET PDSL_MODE = review
-                LOAD {cf-studio-path}/.core/workflows/pdsl/review.md
-                STOP_TURN
+    1 new -> SET PDSL_MODE = new; CONTINUE PdslExploreBrainstormGate
+    2 transform -> SET PDSL_MODE = transform; CONTINUE PdslExploreBrainstormGate
+    3 review -> SET PDSL_MODE = review; CONTINUE PdslExploreBrainstormGate
   INVALID:
     EMIT "Reply with 1, 2, or 3."
     WAIT user.reply
@@ -135,7 +126,7 @@ NOTES:
 
 ## Explore / Brainstorm Applicability
 
-```text
+```pdsl
 UNIT PdslExploreBrainstormGate
 
 PURPOSE:
@@ -148,6 +139,7 @@ WHEN:
 
 DO:
   REQUIRE {cf-studio-path}/.core/workflows/shared/explore-brainstorm-gate.md is loaded and followed
+  CONTINUE PdslModeDispatch
 
 RULES:
   - SHOULD offer cf-explore for transform/review when source_paths omit related
@@ -156,6 +148,28 @@ RULES:
     dispatch semantics, or cross-agent contract changes
   - MUST NOT require brainstorm for mechanical compacting or direct review when
     target_paths and source_paths are explicit
+```
+
+```pdsl
+UNIT PdslModeDispatch
+
+PURPOSE:
+  Load exactly one mode file after explore/brainstorm applicability has resolved.
+
+DO:
+  IF PDSL_MODE == new:
+    LOAD {cf-studio-path}/.core/workflows/pdsl/new.md
+    STOP_TURN
+  IF PDSL_MODE == transform:
+    LOAD {cf-studio-path}/.core/workflows/pdsl/transform.md
+    STOP_TURN
+  IF PDSL_MODE == review:
+    LOAD {cf-studio-path}/.core/workflows/pdsl/review.md
+    STOP_TURN
+  IF PDSL_MODE == unset:
+    EMIT_MENU PdslModeMenu
+    WAIT user.reply
+    STOP_TURN
 ```
 
 ## Shared Inputs
@@ -178,11 +192,13 @@ Input rules:
 - `target_paths[0]` MUST be explicit for `new` when the workflow writes a file.
 - `source_paths` MAY include related workflows, requirements, existing prompt
   files, specs, or notes.
+- PDSL instruction blocks in generated or transformed Markdown MUST be fenced
+  with `pdsl`, not `text`.
 - Missing required inputs MUST trigger a scoped question and `STOP_TURN`.
 
 ## Dispatch Gate
 
-```text
+```pdsl
 UNIT PdslDispatchGate
 
 PURPOSE:
@@ -232,7 +248,7 @@ NOTES:
 
 ## Completion
 
-```text
+```pdsl
 UNIT PdslCompletion
 
 PURPOSE:
@@ -241,6 +257,9 @@ PURPOSE:
 INVARIANTS:
   - MUST NOT claim completion for new or transform mode until a manifest is returned
   - MUST NOT claim completion for review mode until a validation report is returned
+  - After a successful manifest or validation report, MUST emit
+    PdslCompletionMenu unless the invoked sub-mode has already emitted an
+    equivalent terminal handoff menu
   - MUST NOT claim PASS for any unread target path
   - Review validation report MUST include all six sections:
       1. Summary
@@ -251,4 +270,16 @@ INVARIANTS:
       6. Recommended Fixes
   - If the workflow cannot read all requested files it MUST return a partial
     checkpoint and MUST NOT claim PASS for unread paths
+
+MENU PdslCompletionMenu:
+  TITLE: "PDSL workflow complete. What next?"
+  OPTIONS:
+    1 revise -> Revise the current PDSL output in the same mode
+    2 switch -> SET PDSL_MODE = unset; Return to PdslModeMenu to choose new, transform, or review
+    3 handoff -> Hand off to another cf workflow such as generate, analyze, or plan
+    4 stop -> End the PDSL workflow here
+  INVALID:
+    EMIT "Reply `1`, `2`, `3`, or `4`."
+    WAIT user.reply
+    STOP_TURN
 ```

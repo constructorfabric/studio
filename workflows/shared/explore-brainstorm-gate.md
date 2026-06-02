@@ -8,7 +8,7 @@ version: 0.1
 
 # Explore / Brainstorm Gate
 
-```text
+```pdsl
 UNIT ExploreBrainstormGate
 
 PURPOSE:
@@ -111,7 +111,7 @@ SKIP_BRAINSTORM WHEN:
   - The task is a narrow mechanical edit with explicit target and outcome.
 ```
 
-```text
+```pdsl
 UNIT ExploreBrainstormAction
 
 PURPOSE:
@@ -191,7 +191,7 @@ MENU BrainstormOfferMenu:
     STOP_TURN
 ```
 
-```text
+```pdsl
 UNIT ExploreBrainstormWorkflowMatrix
 
 PURPOSE:

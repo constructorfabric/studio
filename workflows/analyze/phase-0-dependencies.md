@@ -9,7 +9,7 @@ version: 1.0
 <!-- toc -->
 <!-- /toc -->
 
-```text
+```pdsl
 UNIT AnalyzePhase0Dependencies
 
 PURPOSE:

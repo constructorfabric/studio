@@ -16,7 +16,7 @@ inline conditionals that break the "self-contained final prompt usable in a fres
 Open, load, and follow `{cf-studio-path}/.core/workflows/generate/phase-6/prompt-templates.md` for the diff summary.
 -->
 
-```text
+```pdsl
 UNIT PlanReviewPromptEmission
 
 PURPOSE:

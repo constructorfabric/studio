@@ -43,7 +43,7 @@ rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
 
 ## Methodology
 
-```text
+```pdsl
 UNIT GenerateCollectorMethodology
 
 PURPOSE:
@@ -65,7 +65,7 @@ DO:
 
 ## Output Contract
 
-```text
+```pdsl
 UNIT GenerateCollectorOutput
 
 PURPOSE:
@@ -114,7 +114,7 @@ like this (no `text` fence around the marker, no surrounding prose):
 
 ## Response Completion Gate
 
-```text
+```pdsl
 UNIT GenerateCollectorCompletionGate
 
 PURPOSE:

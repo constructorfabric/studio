@@ -50,7 +50,7 @@ ALWAYS open and follow `{cf-studio-path}/.core/requirements/artifacts-registry.m
 
 ## Runtime Contract
 
-```text
+```pdsl
 UNIT ArtifactsRegistryActivation
 
 PURPOSE:
@@ -72,7 +72,7 @@ RULES:
     controller-synthesized final dispatch prompt
 ```
 
-```text
+```pdsl
 UNIT ArtifactsRegistryOperations
 
 PURPOSE:
@@ -90,7 +90,7 @@ RULES:
   - MUST keep ignored paths globally invisible to artifact and code scanning
 ```
 
-```text
+```pdsl
 UNIT ArtifactsRegistryErrors
 
 PURPOSE:

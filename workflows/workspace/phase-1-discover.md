@@ -15,7 +15,7 @@ description: "Invoke when the workspace workflow enters Phase 1 to discover cand
 
 ## Phase 1: Discover
 
-```text
+```pdsl
 UNIT WorkspaceDiscover
 
 PURPOSE:
@@ -33,7 +33,7 @@ DO:
 
 ### Zero Results
 
-```text
+```pdsl
 UNIT WorkspaceDiscoverZeroResults
 
 PURPOSE:
@@ -78,7 +78,7 @@ RULES:
 
 ### Decision Point
 
-```text
+```pdsl
 UNIT WorkspaceDiscoverDecisionPoint
 
 PURPOSE:
@@ -116,7 +116,7 @@ RULES:
   - MUST_NOT carry partial or provisional selection into Phase 2 on stop token
 ```
 
-```text
+```pdsl
 UNIT WorkspaceDiscoverStorageModePrompt
 
 PURPOSE:

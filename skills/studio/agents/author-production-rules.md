@@ -8,7 +8,7 @@ description: Invoke when loading the shared Content Production Rules for Constru
 
 <!-- /toc -->
 
-```text
+```pdsl
 UNIT AuthorProductionRules
 
 PURPOSE:
@@ -28,7 +28,7 @@ NOTES:
 
 ## Content Production Rules
 
-```text
+```pdsl
 RULES:
   - MUST_NOT leave placeholder markers (TODO, TBD, [Description], FIXME, etc.)
     in any written file

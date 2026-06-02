@@ -16,7 +16,7 @@ version: 1.0
 
 ## Stop-Token Policy (canonical)
 
-```text
+```pdsl
 UNIT StopTokenPolicy
 
 PURPOSE:
@@ -40,7 +40,7 @@ RULES:
     (not as substrings of a longer reply)
 ```
 
-```text
+```pdsl
 UNIT StopTokenRouter
 
 PURPOSE:
@@ -116,7 +116,7 @@ DO:
 
 ## Plan Workflow Stop Tokens
 
-```text
+```pdsl
 UNIT PlanStopTokenRouter
 
 PURPOSE:
@@ -156,7 +156,7 @@ ON_ERROR:
 
 ## Workspace Workflow Stop Tokens
 
-```text
+```pdsl
 UNIT WorkspaceStopTokenRouter
 
 PURPOSE:

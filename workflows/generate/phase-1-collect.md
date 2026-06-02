@@ -8,7 +8,7 @@ version: 1.0
 
 # Phase 1: Collect Information
 
-```text
+```pdsl
 UNIT Phase1CollectInformation
 
 PURPOSE:

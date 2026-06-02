@@ -20,7 +20,7 @@ version: 1.0
 
 ## Phase Contract
 
-```text
+```pdsl
 UNIT Phase15AuthorPlanContract
 
 PURPOSE:
@@ -39,7 +39,7 @@ DO:
 
 ## Entry Predicates
 
-```text
+```pdsl
 UNIT Phase15EntryPredicates
 
 PURPOSE:
@@ -71,7 +71,7 @@ RULES:
 
 ## Load Order
 
-```text
+```pdsl
 UNIT Phase15LoadOrder
 
 PURPOSE:
@@ -102,7 +102,7 @@ NOTES:
 
 ## Instruction-File Routing
 
-```text
+```pdsl
 UNIT Phase15InstructionFileRouting
 
 PURPOSE:
@@ -145,7 +145,7 @@ RULES:
 
 ## Handoff
 
-```text
+```pdsl
 UNIT Phase15Handoff
 
 PURPOSE:

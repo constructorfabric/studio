@@ -8,7 +8,7 @@ version: 1.0
 
 # Analyze Phase 3: Semantic Review
 
-```text
+```pdsl
 UNIT AnalyzePhase3Semantic
 PURPOSE: Dispatch selected semantic reviewer sub-agents and merge findings via
   planned execution plan or legacy per-methodology matrix.
@@ -39,16 +39,39 @@ DO:
       REQUIRE {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md
       STOP_TURN
     IF INLINE_FALLBACK == true:
-      EMIT "Reviewer execution plan requires native sub-agent dispatch. Re-run with native sub-agents, switch to Invoke skill `cf-plan`, or stop."
+      EMIT "Reviewer execution plan requires native sub-agent dispatch; semantic review has not started in this branch."
+      EMIT_MENU SemanticDispatchRecoveryMenu
+      WAIT user.reply
       STOP_TURN
     CONTINUE PlannedMultiReviewerDispatch
   IF REVIEWER_PLAN_RESOLVED == auto_skipped_no_methodology OR REVIEWER_PLAN_RESOLVED == auto_skipped_explain_mode:
     CONTINUE LegacySingleDispatch
   IF REVIEWER_PLAN_RESOLVED == cancelled_inline_fallback:
-    EMIT "Reviewer plan was cancelled because INLINE_FALLBACK=true; native sub-agent dispatch is required for semantic reviewer decomposition."
+    EMIT "Reviewer plan was cancelled because INLINE_FALLBACK=true; semantic reviewer decomposition cannot proceed locally."
+    EMIT_MENU SemanticDispatchRecoveryMenu
+    WAIT user.reply
     STOP_TURN
   EMIT "Reviewer plan is in an unexpected state (REVIEWER_PLAN_RESOLVED={value}). Routing back to Phase 2.5 to rebuild the plan."
   CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-2.5-reviewer-plan.md
+
+MENU SemanticDispatchRecoveryMenu:
+  TITLE: |
+    Native sub-agent dispatch is required before semantic review can continue.
+    No semantic findings were completed on this branch.
+
+    Suggested: 1 when you can re-run with native sub-agents; 2 when you want a
+    decomposed fallback plan instead of continuing locally.
+  OPTIONS:
+    1 -> EMIT "Re-run this analyze request with native sub-agents enabled, then resume Phase 3 semantic review."
+         STOP_TURN
+    2 -> EMIT "Switch to Invoke skill `cf-plan` to decompose the remaining review work."
+         STOP_TURN
+    3 -> EMIT "Stopped before semantic review dispatch."
+         STOP_TURN
+  INVALID:
+    EMIT "Reply `1`, `2`, or `3`."
+    WAIT user.reply
+    STOP_TURN
 
 UNIT PlannedMultiReviewerDispatch
 PURPOSE: Execute REVIEWER_EXECUTION_PLAN in dependency order with optional parallelism.
@@ -67,8 +90,7 @@ DO:
     - each depends_on group has completed before its group runs
   IF re-validation fails:
     EMIT failure details
-    EMIT "Route back to phase-2.5-reviewer-plan.md after the user chooses rerun."
-    EMIT "Rerun planner or stop?"
+    EMIT_MENU SemanticPlanRevalidationFailureMenu
     WAIT user.reply
     STOP_TURN
   FOR each parallel group in dependency order:
@@ -82,12 +104,19 @@ DO:
       code / code-bug tasks -> code_paths   = task.path_partition
       prompt / prompt-bug   -> target_paths=prompt_targets scoped to task.path_partition
       consistency tasks     -> target_paths = task.path_partition
-      prompt / prompt-bug   -> include prompt_context_view slices for every
-                               target path and required cross-reference from
-                               SHARED_CONTEXT_PACK; fail before dispatch if any
-                               required slice is unavailable
+      prompt / prompt-bug   -> include prompt_context_view slices only for
+                               methodology/instruction assets from
+                               SHARED_CONTEXT_PACK; include target paths and
+                               cross-reference paths as allowed resources the
+                               reviewer must read directly; fail before dispatch
+                               if any instruction slice is unavailable or any
+                               target/cross-reference resource is not allowed
     IF INLINE_FALLBACK == false: DISPATCH tasks in group in parallel
-    IF INLINE_FALLBACK == true:  DISPATCH tasks sequentially; EMIT one-line parallelism-degraded warning
+    IF INLINE_FALLBACK == true:
+      EMIT "Dispatch blocked: planned reviewer execution requires native sub-agent dispatch."
+      EMIT_MENU SemanticDispatchRecoveryMenu
+      WAIT user.reply
+      STOP_TURN
     Parse each reviewer return into reviewer_return:
       IF reviewer_return.type == "VALIDATION_REPORT":
         REQUIRE matching "Validation Report — <Section>" block and findings JSON
@@ -129,7 +158,8 @@ UNIT LegacySingleDispatch
 PURPOSE: Dispatch one sub-agent per active methodology and merge findings.
 
 DO:
-  IF EXPLAIN_MODE == true: STOP_TURN
+  IF EXPLAIN_MODE == true:
+    CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-4-output/index.md
   IF PROMPT_REVIEW=true AND PROMPT_BUG_REVIEW=true:
     LOAD+USE contracts cf-semantic-reviewer-prompt AND cf-prompt-bug-finder; fail-closed if missing/unread/unused
     DISPATCH cf-semantic-reviewer-prompt AND cf-prompt-bug-finder in parallel
@@ -175,10 +205,23 @@ RULES:
   - MUST_NOT silently degrade a failed plan to REVIEWER_PLAN_RESOLVED=cancelled_inline_fallback
   - MUST_NOT emit or branch on undeclared auto-skip states; unknown
     REVIEWER_PLAN_RESOLVED values route back to Phase 2.5
+  - INLINE_FALLBACK/cancelled_inline_fallback exits MUST use
+    SemanticDispatchRecoveryMenu or an equivalent recovery menu; bare dead-end
+    messages are not sufficient
   - MUST support PARTIAL_CHECKPOINT only for reviewers whose contract declares it
   - MUST_NOT invent a partial shape for artifact or consistency reviewers unless their agent prompt defines it
   - MUST renumber findings within each namespace from 001 after merge
   - MUST_NOT dispatch Phase 3 semantic reviewers when EXPLAIN_MODE=true
+
+MENU SemanticPlanRevalidationFailureMenu:
+  TITLE: "Reviewer execution plan failed Phase 3 re-validation. Route back to phase-2.5-reviewer-plan.md or stop."
+  OPTIONS:
+    1 rerun -> CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-2.5-reviewer-plan.md
+    2 stop -> STOP_TURN
+  INVALID:
+    EMIT "Reply `1` to rerun the planner or `2` to stop."
+    WAIT user.reply
+    STOP_TURN
   - MUST enforce all PlannedMultiReviewerDispatch INVARIANTS (see above) when REVIEWER_EXECUTION_PLAN is non-null and dispatch is active.
 
 ON_ERROR:
