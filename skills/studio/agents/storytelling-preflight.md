@@ -140,8 +140,7 @@ DO:
   - RUN WHEN none of the above succeeded:
     - SET access_tier = "user_fallback"
     - SET input_access_method = "user_fallback"
-    - EMIT "I cannot access the file at the path you provided. Please paste the
-- RUN content directly into the chat so I can proceed."
+    - EMIT "I cannot access the file at the path you provided. Please paste the RUN content directly into the chat so I can proceed."
     - CONTINUE Step3a
 
 RULES:
