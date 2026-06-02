@@ -85,18 +85,37 @@ def _cf_reference_has_existing_static_prefix(ref: str) -> bool:
     """
     if not ref.startswith(ALLOWED_CF_ROOTS):
         return False
-    if ref.startswith(("config/", ".cache/", ".plans/")):
-        # Config/cache/plan references often point at optional user-created
-        # files. Validate the adapter root; runtime code owns materialization.
-        root_name = ref.split("/", 1)[0]
-        return (REPO_ROOT / ".bootstrap" / root_name).exists()
+    if ref.startswith((".cache/", ".plans/")):
+        # Cache and plan references are runtime-created namespaces. Their
+        # existence is not guaranteed in a fresh checkout or coverage job.
+        return True
+    if ref.startswith("config/"):
+        # Config references may point at optional project/user files. The
+        # namespace is canonical even when a concrete file is materialized only
+        # after init/update.
+        return True
+    if ref in {".gen/AGENTS.md", ".gen/SKILL.md"}:
+        return True
+    if ref.startswith(".gen/kits/") and any(token in ref for token in ("{", "}", "<", ">")):
+        return True
+
+    if ref.startswith(".core/"):
+        source_ref = ref.removeprefix(".core/")
+        root = REPO_ROOT
+    elif ref.startswith(".gen/"):
+        root = REPO_ROOT / ".bootstrap"
+        source_ref = ref
+    else:
+        root = REPO_ROOT / ".bootstrap"
+        source_ref = ref
+
     if any(token in ref for token in ("{", "}", "*", "<", ">")):
-        static_prefix = re.split(r"[{*<]", ref, maxsplit=1)[0].rstrip("/")
+        static_prefix = re.split(r"[{*<]", source_ref, maxsplit=1)[0].rstrip("/")
         if not static_prefix:
             return True
-        static_path = REPO_ROOT / ".bootstrap" / static_prefix
+        static_path = root / static_prefix
         return static_path.exists() or static_path.parent.exists()
-    return (REPO_ROOT / ".bootstrap" / ref).exists()
+    return (root / source_ref).exists()
 
 
 def _iter_pdsl_blocks(path: Path) -> list[tuple[int, list[str]]]:

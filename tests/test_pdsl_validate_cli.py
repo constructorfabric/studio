@@ -9,6 +9,17 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from studio.cli import main
+from studio.utils.pdsl import (
+    PdslError,
+    PdslFinding,
+    PdslSource,
+    build_envelope,
+    error_result,
+    exit_code_for_results,
+    read_source_file,
+    scan_blocks,
+    validate_source,
+)
 from studio.utils.ui import set_json_mode
 
 
@@ -150,3 +161,98 @@ def test_cf_pdsl_workflow_reuses_pdsl_validate_command() -> None:
     assert "UNIT PdslCommandValidationReuse" in text
     assert "cfs pdsl validate" in text
     assert "NEVER cf-pdsl modes define separate PDSL parser rules" in text
+
+
+def test_pdsl_result_serialization_verbose_and_error_locations() -> None:
+    finding = PdslFinding(
+        rule_id="PDSL200",
+        severity="error",
+        message="bad starter",
+        source_path="sample.md",
+        block_index=0,
+        line=2,
+        column=3,
+        end_line=2,
+        end_column=12,
+        hint="Use RUN.",
+        context="- BAD action",
+    )
+    error = PdslError("cannot read", "missing.md", line=4, column=5, kind="READ_ERROR")
+    result = error_result("missing.md", error)
+    envelope = build_envelope([result], command="pdsl validate", verbose=True)
+
+    assert "context" not in finding.to_dict()
+    assert finding.to_dict(verbose=True)["context"] == "- BAD action"
+    assert error.to_dict()["line"] == 4
+    assert error.to_dict()["column"] == 5
+    assert result.status == "ERROR"
+    assert envelope["ok"] is False
+    assert envelope["results"][0]["errors"][0]["kind"] == "READ_ERROR"
+    assert exit_code_for_results([result]) == 1
+
+
+def test_pdsl_read_source_file_reports_utf8_decode_error(tmp_path: Path) -> None:
+    bad = tmp_path / "bad.md"
+    bad.write_bytes(b"\xff\xfe")
+
+    text, error = read_source_file(bad)
+
+    assert text is None
+    assert error is not None
+    assert error.kind == "DECODE_ERROR"
+
+
+def test_pdsl_scan_flags_wrong_and_unclosed_fences() -> None:
+    text = """```text
+UNIT WrongFence
+```
+```pdsl
+UNIT OpenFence
+"""
+
+    blocks, findings = scan_blocks("sample.md", text)
+
+    assert blocks == []
+    assert [finding.rule_id for finding in findings] == ["PDSL100", "PDSL100"]
+    assert findings[0].message == "PDSL-shaped instruction block must use a ```pdsl fence"
+    assert findings[1].message == "Unclosed ```pdsl fence"
+
+
+def test_pdsl_validate_source_covers_structural_edge_cases() -> None:
+    text = """MENU Pick
+TITLE:
+  Pick one.
+OPTIONS:
+  - 1 one -> RETURN ok
+  - two -> RETURN bad
+  - 3 three -> RETURN bad
+UNIT Dup
+UNIT Dup
+IGNORED_LABEL:
+  - This is prompt-adjacent metadata
+PATTERNS:
+  known: /ok/
+  known: /again/
+DO:
+      - RUN deeply indented ignored
+  - RUN matches(reply, missing)
+STATE:
+  - LOAD invalid state starter
+WHEN:
+  - SET invalid when starter
+RULES:
+  - RUN invalid rule starter
+"""
+
+    result = validate_source(PdslSource("edge.md", text))
+
+    assert result.status == "FAIL"
+    messages = [finding.message for finding in result.findings]
+    assert "MENU OPTIONS item must start with a decimal number and contain ->" in messages
+    assert "MENU option number must be 2, got 3" in messages
+    assert "Duplicate UNIT name `Dup` in source" in messages
+    assert "Duplicate PATTERNS name `known`" in messages
+    assert "Undefined local matches() pattern `missing`" in messages
+    assert any("STATE item must start with one of: SET; got LOAD" in msg for msg in messages)
+    assert any("WHEN item must start with one of:" in msg and "got SET" in msg for msg in messages)
+    assert any("RULES item must start with one of:" in msg and "got RUN" in msg for msg in messages)
