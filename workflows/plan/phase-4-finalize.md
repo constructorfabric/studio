@@ -207,7 +207,7 @@ PURPOSE:
   validation from the Phase 4 next-steps menu.
 
 DO:
-  - CONTINUE workflows/analyze.md
+  - CONTINUE {cf-studio-path}/.core/workflows/analyze.md
   - RUN WITH:
     target_paths = ["{cf-studio-path}/.plans/{task-slug}/plan.toml"]
     cross_refs = ["{cf-studio-path}/.plans/{task-slug}/phase-*.md"]
@@ -221,9 +221,22 @@ PURPOSE:
   Show the concrete plan files to inspect and wait for the user's next action.
 
 DO:
-  - EMIT "Review plan files at {cf-studio-path}/.plans/{task-slug}/. Reply with `execute`, `handoff`, `validate`, or a specific file/change request."
+  - EMIT "Review plan files at {cf-studio-path}/.plans/{task-slug}/."
+  - EMIT_MENU Phase4ReviewPlanFilesMenu
   - WAIT user.reply
   - STOP_TURN
+
+MENU Phase4ReviewPlanFilesMenu:
+  TITLE: Plan files ready
+  OPTIONS:
+    1 execute -> Continue to plan execution
+    2 handoff -> Generate handoff prompt
+    3 validate -> Validate the completed plan before execution
+    4 modify -> CONTINUE Phase4ModifyPlan
+  INVALID:
+    EMIT "Reply with 1, 2, 3, or 4."
+    WAIT user.reply
+    STOP_TURN
 ```
 
 ```pdsl
@@ -234,9 +247,21 @@ PURPOSE:
   ending after advice text.
 
 DO:
-  - EMIT "Describe the plan change you want: add/remove phases, adjust scope, or update specific phase files."
+  - EMIT_MENU Phase4ModifyPlanMenu
   - WAIT user.reply
   - STOP_TURN
+
+MENU Phase4ModifyPlanMenu:
+  TITLE: Modify plan
+  OPTIONS:
+    1 add phases -> WAIT for user supplied phase additions
+    2 remove phases -> WAIT for user supplied phase removals
+    3 adjust scope -> WAIT for user supplied scope changes
+    4 update files -> WAIT for user supplied specific file changes
+  INVALID:
+    EMIT "Reply with 1: <details>, 2: <details>, 3: <details>, or 4: <details>."
+    WAIT user.reply
+    STOP_TURN
 ```
 
 ## New-Chat Startup Prompt
@@ -268,7 +293,7 @@ DO:
         target_phase = 1
         git_commit_mode = GIT_COMMIT_MODE
         contributing_guide = CONTRIBUTING_GUIDE
-        git_constraint = mode-matched constraint block from workflows/generate/phase-4-write.md § Git constraint blocks
+        git_constraint = mode-matched constraint block from {cf-studio-path}/.core/workflows/generate/phase-4-write.md § Git constraint blocks
     ACCEPT only concise execution summary defined by the agent contract
     - SET CF_PHASE_GATE = armed  (immediately after phase-runner returns — success, error, or no-response)
 

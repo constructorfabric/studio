@@ -15,18 +15,21 @@ PURPOSE: Enforce entry conditions before dispatching write-capable author.
 DO:
   - REQUIRE AUTHOR_PLAN_OFFER_RESOLVED unset:
     - EMIT "No author plan state available. Return to Phase 1.5."
-    ROUTE to workflows/generate/phase-1.5-author-plan.md
+    ROUTE to {cf-studio-path}/.core/workflows/generate/phase-1.5-author-plan.md
     - STOP_TURN
   - REQUIRE {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md loaded before dispatch
   - RUN DEFINE instruction_file_targets as target_paths matching:
-    workflows/** | requirements/** | **/AGENTS.md | AGENTS.md | any skills/**/SKILL.md
-    | any skills/**/agents/*.md | equivalent prompt/agent contract paths named by active workflow
+    {cf-studio-path}/.core/workflows/** | {cf-studio-path}/.core/requirements/**
+    | {cf-studio-path}/.gen/AGENTS.md | {cf-studio-path}/config/AGENTS.md
+    | {cf-studio-path}/.core/skills/**/SKILL.md
+    | {cf-studio-path}/.core/skills/**/agents/*.md
+    | source-equivalent prompt/agent contract paths named by active workflow
   - REQUIRE Phase 3 confirmation (yes) received before author selection
   - NEVER dispatching write-capable author directly from orchestrator
   - NEVER orchestrator-local Edit/Write/MultiEdit/NotebookEdit/apply_patch/shell-write on instruction_file_targets
   - REQUIRE instruction_file_targets non-empty AND AUTHOR_PLAN_OFFER_RESOLVED unset:
     FAIL-STOP
-    ROUTE to workflows/generate/phase-1.5-author-plan.md
+    ROUTE to {cf-studio-path}/.core/workflows/generate/phase-1.5-author-plan.md
   - REQUIRE instruction_file_targets non-empty
      AND host.supports_native_subagents == true
      AND SUB_AGENT_SESSION_APPROVED == true
@@ -35,12 +38,12 @@ DO:
   - REQUIRE instruction_file_targets non-empty AND orchestrator detects manual patch attempt while native author workers registered:
     - SET CF_PHASE_GATE = armed
     FAIL-STOP
-    IF AUTHOR_EXECUTION_PLAN == null: ROUTE to workflows/generate/phase-1.5-author-plan.md
+    IF AUTHOR_EXECUTION_PLAN == null: ROUTE to {cf-studio-path}/.core/workflows/generate/phase-1.5-author-plan.md
     ELSE: CONTINUE § Phase4AuthorSelectionDispatch
-  - REQUIRE AUTHOR_PLAN_OFFER_RESOLVED set by workflows/generate/phase-1.5-author-plan.md
+  - REQUIRE AUTHOR_PLAN_OFFER_RESOLVED set by {cf-studio-path}/.core/workflows/generate/phase-1.5-author-plan.md
   - REQUIRE AUTHOR_PLAN_OFFER_RESOLVED unset:
     FAIL-STOP
-    ROUTE to workflows/generate/phase-1.5-author-plan.md
+    ROUTE to {cf-studio-path}/.core/workflows/generate/phase-1.5-author-plan.md
   - REQUIRE AUTHOR_PLAN_OFFER_RESOLVED in (cancelled_by_stop_token | cancelled_planner_failure | cancelled_partial_write):
     FAIL-STOP
     - NEVER dispatching write-capable author
@@ -85,7 +88,7 @@ DO:
     - WAIT user.reply
     - STOP_TURN
   - REQUIRE selector or selected-author contract missing, unreadable, ambiguous, or not reflected in final prompt:
-    FAIL per sub-agent-dispatch.md § SubAgentContractReadGate
+    FAIL per {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md § SubAgentContractReadGate
     - NEVER dispatch
   - REQUIRE instruction_file_targets non-empty AND selected_author not in (cf-generate-prompt-engineer-casual | cf-generate-prompt-engineer-smart):
     - REQUIRE author_selection.reasons explicitly records why higher-capability non-prompt-engineer author required
@@ -96,7 +99,7 @@ DO:
 
 RULES:
   - NEVER be left CF_PHASE_GATE in released_for_dispatch across turns
-  - ALWAYS apply sub-agent-dispatch.md § SubAgentContractReadGate before selector dispatch and before selected-author dispatch
+  - ALWAYS apply {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md § SubAgentContractReadGate before selector dispatch and before selected-author dispatch
   - ALWAYS treat prompt-engineer-* as default author family for instruction-file targets; only selector may justify escalation
   - ALWAYS reset CF_PHASE_GATE = armed immediately after inline write block on both success and failure
 
@@ -153,7 +156,7 @@ DO:
           - reset_at and completion_status updates ALWAYS use bounded backoff
             with a fixed max retry count after CAS conflicts; after retries are
             exhausted, surface a recoverable error or escalate through
-            workflows/generate/error-handling.md.
+            {cf-studio-path}/.core/workflows/generate/error-handling.md.
           - A reset that cannot prove lease ownership or CAS success NEVER
             clear another owner's released_at or completion_status.
         CF_PHASE_GATE claim conflicts:
@@ -171,7 +174,7 @@ DO:
       STOP remaining groups
       LEAVE already-written files untouched
       SURFACE failing task id and author
-      ROUTE to workflows/generate/error-handling.md
+      ROUTE to {cf-studio-path}/.core/workflows/generate/error-handling.md
   - REQUIRE AUTHOR_EXECUTION_PLAN == null:
     BUILD one Phase4CreatePayload covering all target paths
     EXECUTE § Phase4AuthorSelectionDispatch once
@@ -258,5 +261,5 @@ DO:
 RULES:
   - NEVER dispatch write-capable author before Phase 3 yes
   - ALWAYS reset CF_PHASE_GATE = armed BEFORE surfacing multi-escalation error;
-    gate NEVER remain in released_for_dispatch across turns per SKILL.md § Phase-Skip Gate
+    gate NEVER remain in released_for_dispatch across turns per {cf-studio-path}/.core/skills/studio/protocol.md § Phase-Skip Gate
 ```

@@ -36,7 +36,7 @@ purpose: Define structure and usage of artifacts.toml for agent operations
 
 **Add to config AGENTS.md**:
 ```
-ALWAYS open and follow `{cf-studio-path}/.core/requirements/artifacts-registry.md` WHEN working with artifacts.toml
+ALWAYS open and follow `{cf-studio-path}/.core/architecture/specs/artifacts-registry.md` WHEN working with artifacts.toml
 ```
 
 **ALWAYS use**: `{cfs_cmd} info` to discover the Constructor Studio install location

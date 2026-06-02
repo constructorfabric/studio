@@ -986,15 +986,17 @@ def test_phase_6_r1_routes_existing_findings_to_seeded_findings_path() -> None:
     assert "re-enter `workflows/generate/phase-5/index.md` with `remaining_findings`" not in remediation
 
 
-def test_skill_completion_invariants_match_handoff_workflows() -> None:
-    """SKILL.md must agree with the thin-orchestrator handoff contract.
+def test_protocol_completion_invariants_match_handoff_workflows() -> None:
+    """protocol.md must agree with the thin-orchestrator handoff contract.
 
     Generate and analyze complete by emitting handoff menus. Prompt blocks are
     on-demand next-turn emissions, not mandatory terminal blocks in the same
     response.
     """
     repo_root = Path(__file__).resolve().parents[1]
-    skill = (repo_root / "skills" / "studio" / "SKILL.md").read_text(encoding="utf-8")
+    protocol = (
+        repo_root / "skills" / "studio" / "protocol.md"
+    ).read_text(encoding="utf-8")
     codegen = (
         repo_root / "skills" / "studio" / "agents" / "cf-codegen.md"
     ).read_text(encoding="utf-8")
@@ -1011,12 +1013,12 @@ def test_skill_completion_invariants_match_handoff_workflows() -> None:
         repo_root / "workflows" / "generate" / "phase-6" / "post-write-handoff.md"
     ).read_text(encoding="utf-8")
 
-    assert "terminal = Post-Write Review Handoff menu" in skill
-    assert "terminal = Remediation Handoff menu" in skill
-    assert "Analyze remediation and review handoff prompt blocks ALWAYS be emitted only" in skill
-    assert "on the NEXT turn after the user picks the matching handoff option" in skill
-    assert "both `Plan Review Prompt` and `Direct Review Prompt` blocks" not in skill
-    assert "both `Fix Prompt` and `Plan Prompt` blocks" not in skill
+    assert "terminal = Post-Write Review Handoff menu" in protocol
+    assert "terminal = Remediation Handoff menu" in protocol
+    assert "Analyze remediation and review handoff prompt blocks ALWAYS be emitted only" in protocol
+    assert "on the NEXT turn after the user picks the matching handoff option" in protocol
+    assert "both `Plan Review Prompt` and `Direct Review Prompt` blocks" not in protocol
+    assert "both `Fix Prompt` and `Plan Prompt` blocks" not in protocol
 
     assert "Post-Write Review Handoff" in codegen
     assert "Prompt blocks are emitted only on next turn" in codegen
@@ -1042,23 +1044,25 @@ def test_skill_requires_session_approval_before_native_subagent_dispatch() -> No
     ask before first use and remember approval for the rest of the session.
     """
     repo_root = Path(__file__).resolve().parents[1]
-    skill = (repo_root / "skills" / "studio" / "SKILL.md").read_text(encoding="utf-8")
+    dispatch = (
+        repo_root / "skills" / "studio" / "sub-agent-dispatch.md"
+    ).read_text(encoding="utf-8")
 
-    assert "## Session Sub-Agent Approval Gate" in skill
-    assert "SUB_AGENT_SESSION_APPROVED == true" in skill
-    assert "explicit user approval for native sub-agent dispatch" in skill
-    assert "Use native sub-agents" in skill
-    assert "Use inline fallback for this workflow" in skill
-    assert "Suggested: 1" in skill
-    assert "Reply with 1 or 2" in skill
-    assert "STOP_TURN) immediately" in skill
-    assert "ALWAYS end the turn (STOP_TURN) immediately" in skill
-    assert "NEVER default INLINE_FALLBACK from host capability or missing approval" in skill
-    assert "NEVER set INLINE_FALLBACK = false unless SUB_AGENT_SESSION_APPROVED == true" in skill
+    assert "## Session Sub-Agent Approval Gate" in dispatch
+    assert "SUB_AGENT_SESSION_APPROVED == true" in dispatch
+    assert "explicit user approval for native sub-agent dispatch" in dispatch
+    assert "Use native sub-agents" in dispatch
+    assert "Use inline fallback for this workflow" in dispatch
+    assert "Suggested: 1" in dispatch
+    assert "Reply with 1 or 2" in dispatch
+    assert "STOP_TURN) immediately" in dispatch
+    assert "ALWAYS end the turn (STOP_TURN) immediately" in dispatch
+    assert "NEVER default INLINE_FALLBACK from host capability or missing approval" in dispatch
+    assert "NEVER set INLINE_FALLBACK = false unless SUB_AGENT_SESSION_APPROVED == true" in dispatch
 
 
 def test_workflow_probe_requires_subagent_approval_gate() -> None:
-    """The workflow-level probe must preserve the SKILL.md approval gate.
+    """The workflow-level probe must preserve the sub-agent approval gate.
 
     Root cause guard: if Phase 0 only says "set INLINE_FALLBACK" and defaults to
     native dispatch, orchestrators can skip asking the user before sub-agent use.
@@ -1083,8 +1087,8 @@ def test_workflow_probe_requires_subagent_approval_gate() -> None:
     assert "NEVER default INLINE_FALLBACK = true from missing approval" in shared_probe
     assert "NEVER default INLINE_FALLBACK = false" in shared_probe
     assert "default `false` when ambiguous" not in shared_probe
-    assert "workflows/shared/inline-fallback-probe.md" in analyze_phase0
-    assert "workflows/shared/inline-fallback-probe.md" in generate_phase0
+    assert "{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md" in analyze_phase0
+    assert "{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md" in generate_phase0
 
 
 def test_analyze_change_review_dispatches_diff_scope_resolver() -> None:
@@ -2001,10 +2005,12 @@ def test_brainstorm_saved_discard_and_retention_are_explicit() -> None:
 def test_subagent_fallback_never_defaults_from_unapproved_native_support() -> None:
     """Approval-unset + native-capable hosts must ask, not silently inline."""
     repo_root = Path(__file__).resolve().parents[1]
-    skill = (repo_root / "skills" / "studio" / "SKILL.md").read_text(encoding="utf-8")
+    dispatch = (
+        repo_root / "skills" / "studio" / "sub-agent-dispatch.md"
+    ).read_text(encoding="utf-8")
 
-    assert "NEVER set INLINE_FALLBACK = true from missing approval alone" in skill
-    assert "Otherwise set `INLINE_FALLBACK=true`" not in skill
+    assert "NEVER set INLINE_FALLBACK = true from missing approval alone" in dispatch
+    assert "Otherwise set `INLINE_FALLBACK=true`" not in dispatch
 
 
 def test_analyze_mode_flags_are_reset_per_run() -> None:
@@ -2239,9 +2245,12 @@ def test_skill_entrypoint_bootstrap_keeps_mandatory_loads_explicit() -> None:
     """The root skill entrypoint should keep mandatory bootstrap loads explicit."""
     repo_root = Path(__file__).resolve().parents[1]
     skill = (repo_root / "skills" / "studio" / "SKILL.md").read_text(encoding="utf-8")
+    protocol = (
+        repo_root / "skills" / "studio" / "protocol.md"
+    ).read_text(encoding="utf-8")
 
-    bootstrap_idx = skill.index("UNIT Bootstrap")
-    hard_rules_idx = skill.index("UNIT HardRules")
+    bootstrap_idx = protocol.index("UNIT Bootstrap")
+    hard_rules_idx = protocol.index("UNIT HardRules")
     assert hard_rules_idx < bootstrap_idx
     for required_path in [
         "{cf-studio-path}/.core/skills/studio/protocol.md",
@@ -2250,6 +2259,9 @@ def test_skill_entrypoint_bootstrap_keeps_mandatory_loads_explicit() -> None:
         "{cf-studio-path}/.core/requirements/pdsl-execution-card.md",
     ]:
         assert required_path in skill
+        assert required_path in protocol
+    assert "UNIT HardRules" not in skill
+    assert "UNIT SubAgentApprovalGate" not in skill
 
 
 def test_analyze_artifact_dependencies_do_not_block_code_or_prompt_reviews() -> None:
@@ -2431,7 +2443,7 @@ def test_phase_5_clean_exit_routes_through_final_assembly() -> None:
     ).read_text(encoding="utf-8")
 
     assert 'SET loop_exit = "clean"' in findings
-    assert "CONTINUE workflows/generate/phase-5/phase-5.5-final.md" in findings
+    assert "CONTINUE {cf-studio-path}/.core/workflows/generate/phase-5/phase-5.5-final.md" in findings
     assert "and proceed to `workflows/generate/phase-6/index.md`." not in findings
 
 

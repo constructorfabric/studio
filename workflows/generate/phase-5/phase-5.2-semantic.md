@@ -72,6 +72,16 @@ RULES:
   - ALWAYS Prompt reviewers and prompt bug-finders ALWAYS receive ONLY prompt_targets
   - ALWAYS Code reviewers and code bug-finders ALWAYS receive ONLY code_targets
   - ALWAYS Artifact reviewers ALWAYS receive ONLY artifact_targets
+  - ALWAYS Reviewed files are passed to semantic reviewers only as path fields:
+    `target_paths`, `code_paths`, `prompt_targets`, `cross_ref_paths`,
+    `design_artifact_path`, and `baseline_path`
+  - NEVER inline reviewed file bodies into a semantic reviewer dispatch prompt
+  - ALWAYS "allowed resource context" for semantic reviewers means resource
+    metadata, summaries, and the allowed path list; it NEVER includes the bodies
+    of files under review
+  - ALWAYS Inline dispatch content for semantic reviewers is limited to instruction
+    assets: checklist, template, example, kit rules, methodology, output contract,
+    and required studio invariants
   - ALWAYS Mixed prompt/code/artifact target sets ALWAYS be reviewed by every applicable
     reviewer; PROMPT_REVIEW must not suppress code or artifact review for
     non-prompt targets in the same iteration
@@ -92,14 +102,8 @@ PURPOSE:
 
 DO:
   - REQUIRE INLINE_FALLBACK == true AND MAX_ITER > INLINE_LOOP_WARNING_THRESHOLD (2):
-    - EMIT exactly (before first iteration of this phase runs):
-- RUN ---
-- RUN Inline mode detected with MAX_ITER={MAX_ITER}. Sequential inline review may
-- RUN exhaust context (each iteration loads the full reviewer prompt set + per-target
-- RUN reads in this orchestrator's context window). Recommend reducing MAX_ITER to 2
-- RUN or splitting the run. Reply `reduce: N` (1 <= N <= current MAX_ITER) to lower
-- RUN MAX_ITER, or `continue` to proceed at risk.
-- RUN ---
+    - EMIT "Inline mode detected with MAX_ITER={MAX_ITER}. Sequential inline review may exhaust context because each iteration loads reviewer prompts and target reads in this orchestrator's context window. Recommend reducing MAX_ITER to 2 or splitting the run."
+    - EMIT_MENU InlineFallbackWarningMenu
     - WAIT user.reply
     - STOP_TURN
 
@@ -109,19 +113,19 @@ MENU InlineFallbackWarningMenu:
     1 reduce: N (1 <= N <= current MAX_ITER, valid) ->
       SET MAX_ITER = N
       CONTINUE
-    2 reduce: N (out-of-range) ->
-      EMIT "reduce: N must satisfy 1 <= N <= {current MAX_ITER}; reply again or `continue`."
-      WAIT user.reply
-      STOP_TURN
-    3 continue ->
+    2 continue ->
       CONTINUE with original MAX_ITER
-    4 stop_token ->
+    3 stop ->
       LOAD {cf-studio-path}/.core/workflows/shared/stop-token-policy.md
       CANCEL current Phase 5 entry before any validator/reviewer/author dispatch
       IF manifest.paths_written is non-empty (file-writing generate run with Phase 4 complete):
         EMIT Pre-Review Warning Handoff block (below)
       IF no files written (e.g. analyze→generate external entry):
         RETURN control to user without Phase 6
+  INVALID:
+    EMIT "Reply with 1: <N> where 1 <= N <= current MAX_ITER, 2 to continue, or 3 to stop."
+    WAIT user.reply
+    STOP_TURN
 ```
 
 ## Pre-Review Warning Handoff

@@ -45,11 +45,11 @@ MENU RemediationHandoffMenu:
            SET handoff_guard.max_iter_resolved = true
            SET handoff_guard.dispatch_evidence_required = true
            IF MAX_ITER == 0:
-             CONTINUE workflows/generate/phase-5/phase-5.3-findings.md
+             CONTINUE {cf-studio-path}/.core/workflows/generate/phase-5/phase-5.3-findings.md
                (sets remaining_findings = all_findings; routes to phase-6/index.md
                 with mandatory remediation-handoff.md menu)
            IF MAX_ITER > 0:
-             CONTINUE workflows/generate/phase-5/phase-5.3-findings.md
+             CONTINUE {cf-studio-path}/.core/workflows/generate/phase-5/phase-5.3-findings.md
              using carried analyze findings as the first iteration's findings
              BEFORE any fresh Phase 5.1 / 5.2 review
              First author dispatch fixes the already-reviewed analyze findings.

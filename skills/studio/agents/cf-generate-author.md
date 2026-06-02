@@ -264,7 +264,7 @@ DO:
         "system": "<system name>",
         "git_commit_mode": "commit|stage|none",
         "contributing_guide": "<object {path, directives}> | null",
-        "git_constraint": "<string — the mode-matched constraint block from workflows/generate/phase-4-write.md § Git constraint blocks>"
+        "git_constraint": "<string — the mode-matched constraint block from {cf-studio-path}/.core/workflows/generate/phase-4-write.md § Git constraint blocks>"
       }
     }
 

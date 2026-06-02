@@ -1,7 +1,7 @@
 ---
 name: generate-phase-0.2-review-loop-cfg
 description: "Invoke when the generate workflow reaches Phase 0.2 to configure COLLECTOR_MAX_ITER before Phase 1 input collection begins."
-purpose: Generate Phase 0.2 — configure COLLECTOR_MAX_ITER (Phase 1 collector ↔ user edit cap); MAX_ITER prompt moved to workflows/generate/phase-5/index.md § Pre-Phase-Setup per finding I10.
+purpose: Generate Phase 0.2 — configure COLLECTOR_MAX_ITER (Phase 1 collector ↔ user edit cap); MAX_ITER prompt moved to {cf-studio-path}/.core/workflows/generate/phase-5/index.md § Pre-Phase-Setup per finding I10.
 loaded_by: workflows/generate.md
 version: 1.0
 ---

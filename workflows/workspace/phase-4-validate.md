@@ -28,7 +28,7 @@ DO:
   - REQUIRE critical failures detected:
     - CONTINUE WorkspaceValidateFailureMenu
   - RUN otherwise
-    - CONTINUE workflows/workspace/next-steps.md
+    - CONTINUE {cf-studio-path}/.core/workflows/workspace/next-steps.md
 
 RULES:
   - ALWAYS report all four checks before routing
@@ -62,7 +62,7 @@ MENU ValidationFailureMenu:
     1 -> Diagnose and fix source paths, then re-run validation
          CONTINUE WorkspaceValidate
     2 -> Continue to next-steps despite failures (workspace may behave unexpectedly)
-         CONTINUE workflows/workspace/next-steps.md
+         CONTINUE {cf-studio-path}/.core/workflows/workspace/next-steps.md
     3 -> Stop and preserve the current workspace state
          STOP_TURN
   STOP_TOKEN:

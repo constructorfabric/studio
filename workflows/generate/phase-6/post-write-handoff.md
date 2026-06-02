@@ -23,35 +23,30 @@ WHEN:
   - REQUIRE files were written AND remaining_findings is empty
 
 DO:
-  - EMIT one terminal post-write handoff block:
-- RUN ---
-- RUN Changes written: {N} file(s). How do you want to review them?
-
-- RUN W1. Review here — Invoke skill `cf-analyze` in this session on the written files
-- RUN W2. Generate a Direct Review Prompt — emit a self-contained prompt that starts with Invoke skill `cf-analyze` in a new chat
-- RUN W3. Generate a Plan Review Prompt — emit a self-contained prompt that starts with Invoke skill `cf-plan` in a new chat (for phased review on broad / multi-file / strict-coverage scope)
-
-- RUN Suggested: {W1|W2|W3} because {scope/risk reason}.
-
-- RUN Reply `W1`, `W2`, or `W3`.
-- RUN ---
+  - EMIT "Changes written: {N} file(s). Suggested: {W1|W2|W3} because {scope/risk reason}."
+  - EMIT_MENU PostWriteHandoffMenu
   - WAIT user.reply (next turn)
 
 MENU PostWriteHandoffMenu:
   TITLE: Post-write review choice (next-turn reply)
   OPTIONS:
-    1 W1 ->
+    1 W1 review here ->
       Invoke skill `cf-analyze` in this session
       WITH target_paths=manifest.paths_written, target_kinds, rules_mode,
            carried Validation Results, remaining_findings
       NOTE: no prompt block emitted
-    W2 ->
+    2 W2 direct review prompt ->
       EMIT Direct Review Prompt template from prompt-template-direct-review.md
-        as FINAL section, filled with changed paths, kind/target,
+        as FINAL section that starts with Invoke skill `cf-analyze`,
+        filled with changed paths, kind/target,
         verbatim Validation Results body, remaining_findings (when present)
-    W3 ->
+    3 W3 plan review prompt ->
       EMIT Plan Review Prompt template from prompt-template-plan-review.md
         as FINAL section, filled the same way
+  INVALID:
+    EMIT "Reply with 1 for W1, 2 for W2, or 3 for W3."
+    WAIT user.reply
+    STOP_TURN
 
 RULES:
   - ALWAYS load this file ONLY when files were written AND remaining_findings is empty

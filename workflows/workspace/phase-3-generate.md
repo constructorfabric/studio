@@ -20,7 +20,7 @@ PURPOSE:
   Write the workspace config via CLI after all confirmation gates pass.
 
 NOTES:
-  CF_PHASE_GATE is defined session-scoped in SKILL.md § Phase-Skip Gate; only armed and released_for_orchestrator_write are used here.
+  CF_PHASE_GATE is defined session-scoped in {cf-studio-path}/.core/skills/studio/protocol.md § Phase-Skip Gate; only armed and released_for_orchestrator_write are used here.
 
 WHEN:
   - REQUIRE WORKSPACE_ALL_SOURCES_CONFIRMED == true
@@ -37,7 +37,7 @@ DO:
     Add source:  `{cfs_cmd} --json workspace-add --name <name> (--path <path> | --url <url>) [--branch <branch>] [--role <role>] [--adapter <path>] [--inline]`
   - SET CF_PHASE_GATE = armed
   - REQUIRE CLI succeeded:
-    - CONTINUE workflows/workspace/phase-4-validate.md
+    - CONTINUE {cf-studio-path}/.core/workflows/workspace/phase-4-validate.md
   - RUN otherwise
     - CONTINUE WorkspaceGenerateFailureMenu
 
@@ -63,7 +63,7 @@ WHEN:
 
 DO:
   - EMIT summary of missing prerequisite
-  - CONTINUE workflows/workspace/phase-2-configure.md
+  - CONTINUE {cf-studio-path}/.core/workflows/workspace/phase-2-configure.md
 
 RULES:
   - NEVER proceed to CLI invocation under any prerequisite failure
@@ -90,7 +90,7 @@ MENU GenerateFailureMenu:
     1 -> Retry the workspace generate CLI command
          CONTINUE WorkspaceGenerate
     2 -> Return to Phase 2 to adjust the workspace config
-         CONTINUE workflows/workspace/phase-2-configure.md
+         CONTINUE {cf-studio-path}/.core/workflows/workspace/phase-2-configure.md
     3 -> Stop workspace setup
          STOP_TURN
   STOP_TOKEN:
@@ -101,7 +101,7 @@ MENU GenerateFailureMenu:
     STOP_TURN
 
 NOTES:
-  See workflows/shared/stop-token-policy.md for stop-token routing.
+  See {cf-studio-path}/.core/workflows/shared/stop-token-policy.md for stop-token routing.
   No manual partial-write rollback is needed — the CLI is responsible for atomicity.
   workspace-init writes standalone config by default; --inline writes [workspace] into config/core.toml.
   workspace-add auto-detects workspace type unless --inline forces inline mode.

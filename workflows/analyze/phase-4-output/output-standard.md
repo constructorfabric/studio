@@ -88,7 +88,7 @@ Reproduce the canonical `Validation Results` block returned by `cf-deterministic
 
 Use these same six section titles in both STRICT and RELAXED standard analysis output. In STRICT mode the titles must match exactly; in RELAXED mode content may be lighter, but do **not** substitute alternate headings such as `## Analysis` or `### Category Review`.
 
-Do not emit `Fix Prompt` or `Plan Prompt` blocks from this schema. When actionable issues exist, append the terminal `Remediation Handoff` menu from `workflows/analyze/phase-4-output/remediation-handoff.md`; that file owns the on-demand prompt templates for the next-turn option `2` / `3` emissions.
+Do not emit `Fix Prompt` or `Plan Prompt` blocks from this schema. When actionable issues exist, append the terminal `Remediation Handoff` menu from `{cf-studio-path}/.core/workflows/analyze/phase-4-output/remediation-handoff.md`; that file owns the on-demand prompt templates for the next-turn option `2` / `3` emissions.
 
 ### Semantic-Only Output (`cf-analyze semantic`)
 For non-prompt-review semantic-only analysis, reuse the `Standard Analysis Output (non-prompt review)` six-section schema.

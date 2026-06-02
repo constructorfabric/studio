@@ -69,7 +69,7 @@ MENU WrapHandoffMenu:
     3 ->
       SET PRE_RESOLVED_INPUTS = state.decisions
       SET CARRYOVER_QUESTIONS = state.open_questions
-      CONTINUE workflows/generate/phase-1-collect.md
+      CONTINUE {cf-studio-path}/.core/workflows/generate/phase-1-collect.md
     4 ->
       SET REVIEW_BRAINSTORM_RESULTS = {
         decisions: state.decisions,
@@ -77,7 +77,7 @@ MENU WrapHandoffMenu:
         topic_history: state.topic_history,
         rounds: state.rounds
       }
-      CONTINUE workflows/analyze.md
+      CONTINUE {cf-studio-path}/.core/workflows/analyze.md
       WITH:
         brainstorm_review = true
         brainstorm_results = REVIEW_BRAINSTORM_RESULTS
@@ -163,13 +163,13 @@ DO:
     - STOP_TURN
 
   - RUN WHEN user chose 3:
-    - CONTINUE workflows/generate/phase-1-collect.md
+    - CONTINUE {cf-studio-path}/.core/workflows/generate/phase-1-collect.md
     WITH:
       pre_resolved_inputs = PRE_RESOLVED_INPUTS
       open_questions = CARRYOVER_QUESTIONS
 
   - RUN WHEN user chose 4:
-    - CONTINUE workflows/analyze.md
+    - CONTINUE {cf-studio-path}/.core/workflows/analyze.md
     WITH:
       brainstorm_review = true
       brainstorm_results = REVIEW_BRAINSTORM_RESULTS

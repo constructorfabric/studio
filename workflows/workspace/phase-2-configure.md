@@ -103,7 +103,7 @@ DO:
   - RUN Verify final workspace location is valid for the whole source set
   - REQUIRE valid:
     - SET WORKSPACE_ALL_SOURCES_CONFIRMED = true
-    - CONTINUE workflows/workspace/phase-3-generate.md
+    - CONTINUE {cf-studio-path}/.core/workflows/workspace/phase-3-generate.md
   - RUN otherwise
     - EMIT summary of remaining unconfirmed sources or location conflict
     - CONTINUE WorkspaceConfigure (resume at first unconfirmed source)

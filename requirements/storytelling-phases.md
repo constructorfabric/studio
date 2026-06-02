@@ -324,7 +324,7 @@ Per-class notice templates (one-line each; truncate first sentence with `…` if
 - validation_rejected: `⚠️ Q-3 validation_rejected ({rule-id}) — {first sentence of first issue}; 'edit-draft' / 'inspect Q-3' / 'drop Q-3'` (NO 'retry' in default suggested actions — content will re-fail unchanged)
 - unknown:        `⚠️ Q-3 unknown — {message-head}; 'inspect Q-3' / 'retry Q-3' / 'drop Q-3'`
 
-Full failure payload (all issues, rule context, full message, draft path) is appended to the dispatch-failures NDJSON per `requirements/storytelling-preferences.md` § Dispatch-Failure Audit Log. Notice in chat is the head; NDJSON is the canonical record.
+Full failure payload (all issues, rule context, full message, draft path) is appended to the dispatch-failures NDJSON per `{cf-studio-path}/.core/requirements/storytelling-preferences.md` § Dispatch-Failure Audit Log. Notice in chat is the head; NDJSON is the canonical record.
 
 Cross-reference: the 2-attempts-per-key cap (see Phase E3 buffer entry shape below), two-tier drift check, and mode escalation rules live in the comment buffer schema; this notice section documents the rendering surface only.
 
@@ -412,7 +412,7 @@ Hard rules, enforced inside every portion:
 
    **Idempotence partition**: `session_state.dispatched_keys` is a `Map<canonical_path, Set<dispatch_key>>`. Pivoting target mid-session creates a fresh empty set for the new target only; the old target's dispatched_keys remain scoped to it.
 
-   **Resume reconstruction**: `session_state.pending_retries: Map<dispatch_key, {attempts, first_failed_at, last_class, drift_status?}>` is reconstructed on session resume from the dispatch-failures NDJSON (`requirements/storytelling-preferences.md` § Dispatch-Failure Audit Log). Records with `status="resolved"` are excluded; the 2-attempts-per-key cap survives restarts.
+   **Resume reconstruction**: `session_state.pending_retries: Map<dispatch_key, {attempts, first_failed_at, last_class, drift_status?}>` is reconstructed on session resume from the dispatch-failures NDJSON (`{cf-studio-path}/.core/requirements/storytelling-preferences.md` § Dispatch-Failure Audit Log). Records with `status="resolved"` are excluded; the 2-attempts-per-key cap survives restarts.
 
 ## Phase E4: Visualize-by-Default
 

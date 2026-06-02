@@ -33,7 +33,7 @@ RULES:
     WHEN `{cfs_mode}` == off, and follows it before any workflow-local
     bootstrap or protocol asset
   - ALWAYS The top-level controller loads or reuses `{cf-studio-path}/.core/skills/studio/protocol.md`
-    only after SKILL.md bootstrap/routing has completed
+    only after {cf-studio-path}/.core/skills/studio/SKILL.md bootstrap/routing has completed
   - ALWAYS The top-level controller loads or reuses `{cf-studio-path}/.core/architecture/specs/PDSL.md`
   - ALWAYS The top-level controller loads or reuses `{cf-studio-path}/.core/workflows/shared/stop-token-policy.md`
   - ALWAYS The top-level controller loads `{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md`
@@ -182,6 +182,40 @@ Input rules:
   with `pdsl`, not `text`.
 - Missing required inputs trigger a scoped question and `STOP_TURN`.
 
+## Shared PDSL Validation
+
+```pdsl
+UNIT PdslCommandValidationReuse
+
+PURPOSE:
+  Reuse the deterministic `cfs pdsl validate` command as the shared PDSL
+  quality gate for cf-pdsl modes.
+
+DO:
+  - REQUIRE PDSL_MODE == review AND target_paths is non-empty:
+    - RUN `cfs pdsl validate <target_paths>` as read-only preflight
+    - RUN Attach findings to ReviewPromptInputs without redefining reviewer
+      success semantics
+  - REQUIRE PDSL_MODE == transform AND target_paths is non-empty:
+    - RUN `cfs pdsl validate <target_paths>` as read-only preflight
+    - RUN Attach findings to TransformPromptInputs before transformer dispatch
+  - REQUIRE PDSL_MODE == new OR PDSL_MODE == transform:
+    - RUN After a manifest returns written PDSL paths, run
+      `cfs pdsl validate <written_paths>` as blocking postflight
+    - REQUIRE postflight result is PASS before claiming clean completion
+
+RULES:
+  - ALWAYS `cfs pdsl validate` remains the source of truth for PDSL parsing,
+    rule identifiers, normalized findings, ordering, and PASS/FAIL/ERROR
+    source status
+  - NEVER cf-pdsl modes define separate PDSL parser rules, rule IDs, or
+    success semantics
+  - NEVER validation hints emit scaffold text, autofix patches, or rewrite
+    templates
+  - ALWAYS JSON output is requested only when the orchestrator needs a machine
+    payload; user-facing mode may use human output
+```
+
 ## Dispatch Gate
 
 ```pdsl
@@ -228,7 +262,7 @@ NOTES:
   Full approval gate semantics and the INLINE_FALLBACK_PROBED /
   NativeSubAgentPolicyConflict state machine are defined in
   {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md,
-  {cf-studio-path}/.core/skills/studio/SKILL.md § Session Sub-Agent Approval
+  {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md § Session Sub-Agent Approval
   Gate, and {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md.
 ```
 

@@ -22,7 +22,7 @@ DO:
   - RUN Estimate remaining context budget as percent_remaining =
     floor(remaining_context_tokens / original_context_tokens * 100).
   - REQUIRE percent_remaining >= 30 AND PARTIAL == false:
-    - CONTINUE workflows/analyze/phase-4-output/index.md (no stop)
+    - CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-4-output/index.md (no stop)
   - RUN otherwise
     Emit checkpoint (see required fields below)
     - EMIT_MENU Phase3To4Menu
@@ -44,10 +44,10 @@ MENU Phase3To4Menu:
       Suggested: 1 when enough context remains for Phase 4; 2 when context pressure is high.
   OPTIONS:
     1 -> IF PARTIAL == true:
-           CONTINUE workflows/analyze/phase-3-semantic.md with PARTIAL=true and
+           CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-3-semantic.md with PARTIAL=true and
              the checkpoint resume inputs; rerun AnalyzePhase3To4Checkpoint after completion
          ELSE:
-           CONTINUE workflows/analyze/phase-4-output/index.md
+           CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-4-output/index.md
     2 -> Emit a fresh-chat resume prompt as the final section (must include
          target_paths, deterministic gate summary, methodology dispatch status,
          findings JSON, semantic report inventory, resume fingerprints, and the

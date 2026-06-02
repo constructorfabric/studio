@@ -27,7 +27,7 @@ DO:
   - RUN NOTE: {cfs_cmd}, {cf-studio-path}, {project_root} resolved by `{cf-studio-path}/.core/skills/studio/protocol.md`;
         on context loss re-run `{cfs_cmd} --json info` before any path-dependent step
   - LOAD {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md
-    (evaluates SKILL.md § Session Sub-Agent Approval Gate; assigns INLINE_FALLBACK)
+    (evaluates {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md § Session Sub-Agent Approval Gate; assigns INLINE_FALLBACK)
   - REQUIRE inline-fallback-probe completes before Phase 1 and before any sub-agent dispatch
 
 RULES:
@@ -44,23 +44,23 @@ MENU DependencyResolution:
     1 rules.md loaded ->
       NOTE: Phase-appropriate dependencies already resolved; proceed silently.
       CONTINUE Phase1
-    rules.md not loaded ->
-      EMIT prompt asking user to provide/specify the generation-phase dependencies needed now
+    2 rules.md not loaded ->
+      EMIT_MENU GenerationDependenciesMenu
       NOTE: request checklist only when current phase or rules explicitly require it
       WAIT user.reply
       RE-RUN dependency availability check for the current target
       IF required generation-phase dependencies are now available:
         CONTINUE Phase1
       ELSE:
-        EMIT "Required generation dependencies are still missing. Provide the missing files/paths or stop."
+        EMIT_MENU GenerationDependenciesMenu
         WAIT user.reply
         STOP_TURN
-    code_mode_additional ->
-      EMIT prompt asking user to specify the design artifact if missing
+    3 code_mode_additional ->
+      EMIT_MENU DesignArtifactDependencyMenu
       WAIT user.reply
       RE-RUN code-mode design artifact availability check
       IF design artifact is still missing:
-        EMIT "Code generation requires the design/spec artifact before Phase 1. Provide it or stop."
+        EMIT_MENU DesignArtifactDependencyMenu
         WAIT user.reply
         STOP_TURN
       IF current rules explicitly require implementation-time checklist guidance:
@@ -68,6 +68,26 @@ MENU DependencyResolution:
       ELSE:
         NOTE: defer checklist to Phase 5 review
       CONTINUE Phase1
+
+MENU GenerationDependenciesMenu:
+  TITLE: Missing generation dependencies
+  OPTIONS:
+    1 provide paths -> WAIT for user supplied template/rules/target/write-scope dependency paths
+    2 stop -> STOP_TURN
+  INVALID:
+    EMIT "Reply with 1: <paths/details> or 2 to stop."
+    WAIT user.reply
+    STOP_TURN
+
+MENU DesignArtifactDependencyMenu:
+  TITLE: Missing design artifact
+  OPTIONS:
+    1 provide design artifact -> WAIT for user supplied design/spec artifact path
+    2 stop -> STOP_TURN
+  INVALID:
+    EMIT "Reply with 1: <design/spec path> or 2 to stop."
+    WAIT user.reply
+    STOP_TURN
 ```
 
 ### CONTRIBUTING Guide Discovery (runs unconditionally — every generate run)
@@ -114,12 +134,22 @@ DO:
   - LOAD {cf-studio-path}/.core/requirements/raw-input-overflow.md
   - REQUIRE (user_prompt_lines + all_provided_file_lines) > 500:
     STOP direct generation
-    - EMIT offer: clarify dependencies / continue with explicit assumptions when safe /
-      Invoke skill `cf-plan` / stop. Local continuation is not available for
-      missing hard dependencies unless a downstream workflow explicitly preserves it
-      after this choice.
+    - EMIT "Input exceeds 500 lines. Local continuation is not available for missing hard dependencies unless a downstream workflow explicitly preserves it after this choice."
+    - EMIT_MENU RawInputOverflowMenu
     - WAIT user.reply
     - STOP_TURN
+
+MENU RawInputOverflowMenu:
+  TITLE: Raw input too large
+  OPTIONS:
+    1 clarify dependencies -> Ask for narrower dependencies or missing hard inputs
+    2 continue with assumptions -> Continue only when safe explicit assumptions are available
+    3 invoke cf-plan -> Invoke skill `cf-plan`
+    4 stop -> STOP_TURN
+  INVALID:
+    EMIT "Reply with 1, 2, 3, or 4."
+    WAIT user.reply
+    STOP_TURN
 
 RULES:
   - ALWAYS stop and offer Invoke skill `cf-plan` when input exceeds 500 lines

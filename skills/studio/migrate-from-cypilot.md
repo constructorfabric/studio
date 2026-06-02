@@ -74,10 +74,19 @@ REQUIRE:
 
 DO:
   - RUN WHEN preconditions are unclear:
-    - EMIT "Has the deterministic migration (cfs init --migrate-from-cypilot=yes or equivalent)
-- RUN completed successfully? [y/N]"
+    - EMIT_MENU DeterministicMigrationStatusMenu
     - WAIT user.reply
     - STOP_TURN
+
+MENU DeterministicMigrationStatusMenu:
+  TITLE: Deterministic migration status
+  OPTIONS:
+    1 yes -> Continue; deterministic migration already completed successfully
+    2 no -> CONTINUE preconditions_fail
+  INVALID:
+    EMIT "Reply with 1 for yes or 2 for no."
+    WAIT user.reply
+    STOP_TURN
 
 ON_ERROR:
   preconditions_fail ->
@@ -313,7 +322,7 @@ DO:
       target_kit_sdlc_url: "constructorfabric/studio-kit-sdlc"
       git_commit_mode: GIT_COMMIT_MODE (ALWAYS be included; set from session-scoped flag)
       contributing_guide: CONTRIBUTING_GUIDE (ALWAYS be included; null when not found)
-      git_constraint: mode-matched constraint block from workflows/generate/phase-4-write.md
+      git_constraint: mode-matched constraint block from {cf-studio-path}/.core/workflows/generate/phase-4-write.md
                       Git constraint blocks
   - SET migration_manifest = agent output
   - CONTINUE E4

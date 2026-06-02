@@ -26,7 +26,7 @@ STATE:
   - SET PLANNER_RETRY_MAX: 2
 
 NOTES:
-  CF_PHASE_GATE is defined session-scoped in SKILL.md § Phase-Skip Gate.
+  CF_PHASE_GATE is defined session-scoped in {cf-studio-path}/.core/skills/studio/protocol.md § Phase-Skip Gate.
 
 WHEN:
   - REQUIRE After Phase 2 (Deterministic Gate) and before Phase 3 (Semantic Review)
@@ -41,11 +41,11 @@ DO:
   - REQUIRE EXPLAIN_MODE == true:
     - SET REVIEWER_PLAN_RESOLVED = auto_skipped_explain_mode
     - SET REVIEWER_EXECUTION_PLAN = null
-    - CONTINUE workflows/analyze/phase-3-semantic.md
+    - CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-3-semantic.md
   - REQUIRE no semantic methodology flag is active:
     - SET REVIEWER_PLAN_RESOLVED = auto_skipped_no_methodology
     - SET REVIEWER_EXECUTION_PLAN = null
-    - CONTINUE workflows/analyze/phase-3-semantic.md
+    - CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-3-semantic.md
   - EMIT_MENU StorageChoiceMenu
   - WAIT user.reply
   - STOP_TURN
@@ -57,18 +57,14 @@ MENU StorageChoiceMenu:
       SET REVIEWER_PLAN_RESOLVED = memory
       EMIT "(Note: a memory plan is NOT recoverable if context is compacted before Phase 3 completes — choose disk for long/context-heavy sessions.)"
       CONTINUE PlannerDispatch
-    2 disk|save|2 ->
+    2 disk (save reviewer plan pack) ->
       SET REVIEWER_PLAN_RESOLVED = disk
       CONTINUE PlannerDispatch
-    3 stop_token ->
+    3 stop ->
       LOAD {cf-studio-path}/.core/workflows/shared/stop-token-policy.md
       STOP_TURN
-    4 no|skip|3 ->
-      EMIT "Decomposition is mandatory while sub-agents are approved. Reply enter/memory or disk."
-      WAIT user.reply
-      STOP_TURN
   INVALID:
-    EMIT "Reply not recognized. Expected enter/memory or disk."
+    EMIT "Reply with 1 for memory, 2 for disk, or 3 to stop. Reviewer decomposition is mandatory while sub-agents are approved."
     WAIT user.reply
     STOP_TURN
 
@@ -84,7 +80,7 @@ DO:
     SHARED_CONTEXT_PACK and the payload below
   - REQUIRE planner source contract is not loaded, unreadable, ambiguous, or not
      reflected in the final dispatch prompt:
-    FAIL per sub-agent-dispatch.md § SubAgentContractReadGate
+    FAIL per {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md § SubAgentContractReadGate
     - NEVER dispatch
   - DISPATCH cf-analyze-planner (read-only) with:
     plan_mode             = "memory" or "disk"
@@ -145,7 +141,7 @@ MENU ReviewerPlanApprovalMenu:
       IF REVIEWER_PLAN_RESOLVED == disk:
         CONTINUE DiskModeRendering
       ELSE:
-        CONTINUE workflows/analyze/phase-3-semantic.md
+        CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-3-semantic.md
     2 rerun ->
       SET REVIEWER_EXECUTION_PLAN = null
       SET REVIEWER_PLAN_APPROVED = false
@@ -166,7 +162,7 @@ DO:
   - REQUIRE REVIEWER_PLAN_APPROVED == true
   - REQUIRE REVIEWER_PLAN_RESOLVED == disk:
     - CONTINUE DiskModeRendering
-  - CONTINUE workflows/analyze/phase-3-semantic.md
+  - CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-3-semantic.md
 
 UNIT DiskModeRendering
 
@@ -189,7 +185,7 @@ DO:
     - SET CF_PHASE_GATE = armed
     - SET REVIEWER_PLAN_CACHE_DIR = directory path
     - EMIT "Reviewer plan saved: {REVIEWER_PLAN_CACHE_DIR}"
-    - CONTINUE workflows/analyze/phase-3-semantic.md
+    - CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-3-semantic.md
   - REQUIRE any write fails:
     - EMIT_MENU PartialCacheMenu
     - WAIT user.reply
@@ -209,7 +205,7 @@ MENU PartialCacheMenu:
       IF retry succeeds:
         SET REVIEWER_PLAN_CACHE_DIR = directory path
         EMIT "Reviewer plan saved: {REVIEWER_PLAN_CACHE_DIR}"
-        CONTINUE workflows/analyze/phase-3-semantic.md
+        CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-3-semantic.md
       IF retry fails:
         EMIT_MENU PartialCacheMenu
         WAIT user.reply
@@ -221,7 +217,7 @@ MENU PartialCacheMenu:
         listed in Written above; leave pre-existing files untouched
       SET REVIEWER_PLAN_CACHE_DIR = null
       SET CF_PHASE_GATE = armed
-      CONTINUE workflows/analyze/phase-3-semantic.md
+      CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-3-semantic.md
     3 ->
       SET REVIEWER_PLAN_RESOLVED = cancelled_partial_cache
       SET REVIEWER_PLAN_CACHE_DIR = null
@@ -249,7 +245,7 @@ MENU PlannerRecoveryMenu:
     STOP_TURN
 
 INVARIANTS:
-  - ALWAYS apply sub-agent-dispatch.md § SubAgentContractReadGate before
+  - ALWAYS apply {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md § SubAgentContractReadGate before
     dispatching cf-analyze-planner
   - NEVER set REVIEWER_PLAN_RESOLVED=cancelled_inline_fallback after
     planner dispatch has already failed validation

@@ -145,16 +145,16 @@ MENU ExploreNextActionsMenu:
   TITLE: What would you like to do with this context?
   OPTIONS:
     1 | brainstorm ->
-      CONTINUE workflows/generate.md WITH intent="brainstorm"
+      CONTINUE {cf-studio-path}/.core/workflows/generate.md WITH intent="brainstorm"
         resource_context = state.resource_context
     2 | plan ->
-      CONTINUE workflows/plan.md
+      CONTINUE {cf-studio-path}/.core/workflows/plan.md
         resource_context = state.resource_context
     3 | generate ->
-      CONTINUE workflows/generate.md
+      CONTINUE {cf-studio-path}/.core/workflows/generate.md
         resource_context = state.resource_context
     4 | analyze | review ->
-      CONTINUE workflows/analyze.md
+      CONTINUE {cf-studio-path}/.core/workflows/analyze.md
         resource_context = state.resource_context
     5 | refine | explore again ->
       CONTINUE ExploreWorkflow

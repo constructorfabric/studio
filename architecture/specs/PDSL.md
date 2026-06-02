@@ -170,7 +170,7 @@ controller or sub-agent interpreting PDSL applies these rules:
 - `NOTES` are explanatory only; they do not create executable obligations
   unless an active rule references them.
 
-The root `skills/studio/SKILL.md` owns loading the compact runtime card at
+The root `{cf-studio-path}/.core/skills/studio/SKILL.md` owns loading the compact runtime card at
 `requirements/pdsl-execution-card.md` once into the shared context pack.
 Workflow and agent prompts should rely on that root-skill slice instead of
 re-declaring the card path locally.

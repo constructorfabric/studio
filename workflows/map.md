@@ -523,9 +523,21 @@ PURPOSE:
   Continue from the map next-step menu into the existing HTML map artifact.
 
 DO:
-  - EMIT "Open the generated HTML map artifact in your browser to explore the interactive graph. Reply `config` to refine categories, `json` to export data, or describe another map action."
+  - EMIT "Open the generated HTML map artifact in your browser to explore the interactive graph."
+  - EMIT_MENU MapOpenHtmlViewerMenu
   - WAIT user.reply
   - STOP_TURN
+
+MENU MapOpenHtmlViewerMenu:
+  TITLE: HTML map next action
+  OPTIONS:
+    1 config -> Refine categories
+    2 json -> Export map data as JSON
+    3 custom action -> WAIT for user supplied map action
+  INVALID:
+    EMIT "Reply with 1, 2, or 3: <map action>."
+    WAIT user.reply
+    STOP_TURN
 ```
 
 ```pdsl
@@ -535,7 +547,19 @@ PURPOSE:
   Continue from the map next-step menu into a concrete JSON export path.
 
 DO:
-  - EMIT "Generate or use the JSON map artifact, then inspect it with tools such as `jq`. Reply `run json` to generate JSON now, `config` to refine categories, or describe another map action."
+  - EMIT "Generate or use the JSON map artifact, then inspect it with tools such as `jq`."
+  - EMIT_MENU MapExportJsonMenu
   - WAIT user.reply
   - STOP_TURN
+
+MENU MapExportJsonMenu:
+  TITLE: JSON map next action
+  OPTIONS:
+    1 run json -> Generate JSON now
+    2 config -> Refine categories
+    3 custom action -> WAIT for user supplied map action
+  INVALID:
+    EMIT "Reply with 1, 2, or 3: <map action>."
+    WAIT user.reply
+    STOP_TURN
 ```

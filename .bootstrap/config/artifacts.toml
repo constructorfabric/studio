@@ -70,6 +70,12 @@ path = "architecture/features/ralphex-delegation.md"
 kind = "FEATURE"
 traceability = "DOCS-ONLY"
 
+[[systems.artifacts]]
+name = "PDSL Validation CLI"
+path = "architecture/features/pdsl-validation-cli.md"
+kind = "FEATURE"
+traceability = "FULL"
+
 [[systems.autodetect.codebase]]
 name = "Studio Proxy"
 path = "src/studio_proxy"

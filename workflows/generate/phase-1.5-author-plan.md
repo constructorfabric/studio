@@ -111,12 +111,14 @@ PURPOSE:
 
 STATE:
   - SET instruction_file_targets:
-    any path under workflows/**
-    | any path under requirements/**
-    | any AGENTS.md
-    | any skills/**/SKILL.md
-    | any skills/**/agents/*.md
-    | any equivalent prompt/agent contract path named by the active workflow
+    any path under {cf-studio-path}/.core/workflows/**
+    | any path under {cf-studio-path}/.core/requirements/**
+    | {cf-studio-path}/.gen/AGENTS.md
+    | {cf-studio-path}/config/AGENTS.md
+    | any path under {cf-studio-path}/.core/skills/**/SKILL.md
+    | any path under {cf-studio-path}/.core/skills/**/agents/*.md
+    | any source-equivalent workflow/requirement/AGENTS/skill/agent path named
+      by the active workflow
 
 RULES:
   - ALWAYS When target_paths includes instruction_file_targets and a cf-generate
@@ -154,7 +156,7 @@ PURPOSE:
 DO:
   - REQUIRE AUTHOR_PLAN_OFFER_RESOLVED is a continuation state
     (see {cf-studio-path}/.core/workflows/generate/phase-1.5/state-contract.md):
-    - CONTINUE workflows/generate/phase-3-summary.md
+    - CONTINUE {cf-studio-path}/.core/workflows/generate/phase-3-summary.md
 
   - REQUIRE AUTHOR_PLAN_OFFER_RESOLVED is a terminal cancellation state:
     STOP current generate sub-flow

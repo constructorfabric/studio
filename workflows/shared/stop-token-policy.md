@@ -50,22 +50,22 @@ WHEN:
   - REQUIRE stop_token received
 
 DO:
-  - REQUIRE prompt is from workflows/generate/phase-0.7/round-loop.md
+  - REQUIRE prompt is from {cf-studio-path}/.core/workflows/generate/phase-0.7/round-loop.md
   - RUN OR workflows/generate/phase-0.7/wrap-handoff.md (brainstorm round loop or wrap-up):
     - SET state.topic_current = None
     CARRY current state.decisions forward
     - SET unanswered questions = open_questions
-    - CONTINUE workflows/generate/phase-1-collect.md with whatever was already approved
+    - CONTINUE {cf-studio-path}/.core/workflows/generate/phase-1-collect.md with whatever was already approved
 
-  - REQUIRE prompt is from workflows/generate/phase-5/phase-5.3-findings.md
+  - REQUIRE prompt is from {cf-studio-path}/.core/workflows/generate/phase-5/phase-5.3-findings.md
   - RUN (all-mechanical fast-path announcement, before auto-fix dispatch):
     TREAT AS workflows/generate/phase-5/phase-5.4-approval.md option 4
     SKIP auto-fix dispatch
     - SET remaining_findings = all_findings
     - SET loop_exit = "manual-handoff"
-    - CONTINUE workflows/generate/phase-6/index.md
+    - CONTINUE {cf-studio-path}/.core/workflows/generate/phase-6/index.md
 
-  - REQUIRE prompt is from workflows/generate/phase-5/phase-5.2-semantic.md
+  - REQUIRE prompt is from {cf-studio-path}/.core/workflows/generate/phase-5/phase-5.2-semantic.md
   - RUN (inline-mode reduce: warning prompt):
     CANCEL Phase 5 before any validator/reviewer/author dispatch for that review-loop run
     IF manifest.paths_written is non-empty:
@@ -75,30 +75,30 @@ DO:
     ELSE:
       - RETURN control to user without proceeding to Phase 6
 
-  - REQUIRE prompt is from workflows/generate/phase-1.5/offer-dispatch.md
+  - REQUIRE prompt is from {cf-studio-path}/.core/workflows/generate/phase-1.5/offer-dispatch.md
   - RUN (storage-choice prompts):
     - SET AUTHOR_PLAN_OFFER_RESOLVED = cancelled_by_stop_token
     SKIP Phase 3 / Phase 4
     STOP current generate sub-flow
 
-  - REQUIRE prompt is from workflows/generate/phase-1.5/offer-dispatch.md
+  - REQUIRE prompt is from {cf-studio-path}/.core/workflows/generate/phase-1.5/offer-dispatch.md
   - RUN (planner-validation recovery prompt):
     - SET AUTHOR_PLAN_OFFER_RESOLVED = cancelled_planner_failure
     SKIP Phase 3 / Phase 4
     STOP current generate sub-flow
 
-  - REQUIRE prompt is from workflows/generate/phase-1.5/disk-mode.md
+  - REQUIRE prompt is from {cf-studio-path}/.core/workflows/generate/phase-1.5/disk-mode.md
   - RUN (partial-cache recovery prompt):
     - SET AUTHOR_PLAN_OFFER_RESOLVED = cancelled_partial_write
     SKIP Phase 3 / Phase 4
     STOP current generate sub-flow
 
-  - REQUIRE prompt is from workflows/generate/phase-5/phase-5.4-approval.md
+  - REQUIRE prompt is from {cf-studio-path}/.core/workflows/generate/phase-5/phase-5.4-approval.md
   - RUN (mixed-iteration approval gate):
     TREAT AS option 4
     - SET remaining_findings = all_findings ∪ carry_forward
     - SET loop_exit = "manual-handoff"
-    - CONTINUE workflows/generate/phase-6/index.md
+    - CONTINUE {cf-studio-path}/.core/workflows/generate/phase-6/index.md
 
   - REQUIRE prompt is from any other generate prompt:
     (covers: workflows/generate/phase-0.2-review-loop-cfg.md,
@@ -123,7 +123,7 @@ PURPOSE:
   Route stop tokens received at plan workflow prompts.
 
 WHEN:
-  - REQUIRE stop_token received at a workflows/plan.md prompt
+  - REQUIRE stop_token received at a {cf-studio-path}/.core/workflows/plan.md prompt
 
 DO:
   - REQUIRE prompt is raw-input materialization [y/n]:
@@ -144,7 +144,7 @@ DO:
     LEAVE already-written files untouched
     - RETURN control to user without proceeding further
 
-  - REQUIRE prompt is workflows/plan/plan-lifecycle.md lifecycle selection [1]–[4]:
+  - REQUIRE prompt is {cf-studio-path}/.core/workflows/plan/plan-lifecycle.md lifecycle selection [1]–[4]:
     TREAT AS option [4] (Manual)
     DEFER lifecycle decision to post-execution
 
@@ -163,7 +163,7 @@ PURPOSE:
   Route stop tokens received at workspace workflow prompts.
 
 WHEN:
-  - REQUIRE stop_token received at a workflows/workspace.md prompt
+  - REQUIRE stop_token received at a {cf-studio-path}/.core/workflows/workspace.md prompt
 
 DO:
   - REQUIRE prompt is Phase 1 zero-results menu [1]–[3]

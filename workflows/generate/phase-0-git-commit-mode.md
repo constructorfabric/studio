@@ -29,34 +29,19 @@ WHEN:
   - REQUIRE GIT_COMMIT_MODE == unset
 
 DO:
-  - EMIT exactly:
-- RUN ---
-- RUN Why this input is needed: write-capable sub-agents require an explicit git permission boundary
-- RUN so they cannot accidentally commit or stage changes without your intent.
-
-- RUN How should write-capable sub-agents interact with git in this session?
-
-- RUN | Option | Mode     | Permitted git operations                                                   |
-- RUN |--------|----------|---------------------------------------------------------------------------|
-- RUN | 1      | commit   | git add + git commit (one commit at end, follow CONTRIBUTING guide if found) |
-- RUN | 2      | stage    | git add only — no commit, push, reset, rebase, stash, or checkout --      |
-- RUN | 3      | none     | No git operations at all — working-tree edits only                        |
-
-- RUN Suggested: 3 (safest — no accidental commits; use 1 when a CONTRIBUTING guide exists and you want commits created automatically).
-
-- RUN Reply with 1, 2, or 3.
-- RUN ---
+  - EMIT "Why this input is needed: write-capable sub-agents require an explicit git permission boundary so they cannot accidentally commit or stage changes without your intent."
+  - EMIT_MENU GitCommitModeMenu
   - WAIT user.reply
   - STOP_TURN
 
 MENU GitCommitModeMenu:
   TITLE: Git commit mode selection
   OPTIONS:
-    1 (complete token) -> SET GIT_COMMIT_MODE = commit
-                          CONTINUE CurrentWorkflow
-    2 (complete token) -> SET GIT_COMMIT_MODE = stage
-                          CONTINUE CurrentWorkflow
-    3 (complete token) -> SET GIT_COMMIT_MODE = none
+    1 commit -> SET GIT_COMMIT_MODE = commit
+                CONTINUE CurrentWorkflow
+    2 stage -> SET GIT_COMMIT_MODE = stage
+               CONTINUE CurrentWorkflow
+    3 none (suggested) -> SET GIT_COMMIT_MODE = none
                           CONTINUE CurrentWorkflow
   INVALID:
     EMIT re-emit the prompt

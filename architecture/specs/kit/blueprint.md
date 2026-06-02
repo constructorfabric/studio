@@ -220,7 +220,7 @@ Contains a single ` ```markdown ` block with concise agent directives. Should co
 ````markdown
 `@cpt:system-prompt`
 ```markdown
-ALWAYS load `{cf-studio-path}/.core/requirements/traceability.md` BEFORE generating or validating a PRD
+ALWAYS load `{cf-studio-path}/.core/architecture/specs/traceability.md` BEFORE generating or validating a PRD
 ALWAYS describe WHAT the system does, NEVER HOW — implementation details belong in DESIGN
 ALWAYS use observable behavior language (MUST/MUST NOT/SHOULD) WHEN writing functional requirements
 ```
@@ -796,15 +796,15 @@ The Blueprint Processor parses all markers and invokes output generators. All ou
 
 ### Reference Principle
 
-The **installed kit** in `{cf-studio-path}/kits/{slug}/` serves as the reference for all update operations. When a kit is installed, its source is saved to `{cf-studio-path}/kits/{slug}/` — this is the reference copy. User-editable blueprints live in `{cf-studio-path}/config/kits/{slug}/blueprints/`.
+The **installed kit** in `{cf-studio-path}/config/kits/{slug}/` serves as the reference for all update operations. When a kit is installed, its source is saved to `{cf-studio-path}/config/kits/{slug}/` — this is the reference copy. User-editable blueprints live in `{cf-studio-path}/config/kits/{slug}/blueprints/`.
 
 ### Initial Installation
 
 When a kit is installed (`cfs init` or `cfs kit install`):
 
-1. The tool saves the kit source to `{cf-studio-path}/kits/{slug}/` (reference copy).
-2. Blueprints are copied from `{cf-studio-path}/kits/{slug}/blueprints/` to `{cf-studio-path}/config/kits/{slug}/blueprints/` (user-editable).
-3. SHA-256 hashes are computed for all blueprint files and stored in `{cf-studio-path}/kits/{slug}/conf.toml` as the known-default baseline.
+1. The tool saves the kit source to `{cf-studio-path}/config/kits/{slug}/` (reference copy).
+2. Blueprints are copied from `{cf-studio-path}/config/kits/{slug}/blueprints/` to `{cf-studio-path}/config/kits/{slug}/blueprints/` (user-editable).
+3. SHA-256 hashes are computed for all blueprint files and stored in `{cf-studio-path}/config/kits/{slug}/conf.toml` as the known-default baseline.
 4. All output files are generated from the user blueprints.
 5. The kit is registered in `{cf-studio-path}/config/core.toml` with slug and config output path.
 
@@ -816,8 +816,8 @@ When a kit is installed (`cfs init` or `cfs kit install`):
 
 Overwrites all user blueprints from the reference and regenerates all outputs. User edits are discarded.
 
-1. Update `{cf-studio-path}/kits/{slug}/` with new kit version.
-2. Copy all blueprints from `{cf-studio-path}/kits/{slug}/blueprints/` → `{cf-studio-path}/config/kits/{slug}/blueprints/` (overwrite).
+1. Update `{cf-studio-path}/config/kits/{slug}/` with new kit version.
+2. Copy all blueprints from `{cf-studio-path}/config/kits/{slug}/blueprints/` → `{cf-studio-path}/config/kits/{slug}/blueprints/` (overwrite).
 3. Regenerate all outputs.
 4. Update kit version in `{cf-studio-path}/config/core.toml`.
 
@@ -830,7 +830,7 @@ Use when: starting fresh, after breaking edits, or when you want to fully sync w
 Smart update uses **hash-based customization detection** as a pre-step before three-way merge:
 
 1. Compute SHA-256 of each user blueprint in `config/kits/{slug}/blueprints/`.
-2. Compare against known default hashes stored in `{cf-studio-path}/kits/{slug}/conf.toml`.
+2. Compare against known default hashes stored in `{cf-studio-path}/config/kits/{slug}/conf.toml`.
 3. **If hash matches** known default → blueprint is unmodified, auto-update silently (overwrite from new reference).
 4. **If hash differs** → blueprint has been customized by user, apply three-way merge at marker level.
 5. After all blueprints are processed, update hash registry in `conf.toml` with new defaults.
@@ -840,13 +840,13 @@ Smart update uses **hash-based customization detection** as a pre-step before th
 The three-way merge (step 4) uses stable **identity keys** for marker matching across versions:
 
 ```
-{cf-studio-path}/kits/{slug}/.prev/  ── old reference (saved before update)
+{cf-studio-path}/config/kits/{slug}/.prev/  ── old reference (saved before update)
     ↕ identity-key match
 config/kits/{slug}/blueprints/     ── user's version
 
-{cf-studio-path}/kits/{slug}/        ── new reference (current kit version)
+{cf-studio-path}/config/kits/{slug}/        ── new reference (current kit version)
     ↕ identity-key match
-{cf-studio-path}/kits/{slug}/.prev/  ── old reference
+{cf-studio-path}/config/kits/{slug}/.prev/  ── old reference
 ```
 
 All three versions are parsed into segment lists with stable identity keys (see [Parsing Algorithm](#parsing-algorithm)). Markers are matched across versions by their identity key — named markers (`@cpt:TYPE:ID`) match by `TYPE:ID`; TOML-keyed markers match by derived key; legacy unnamed markers match by positional index fallback. After a successful merge, `.prev/` is cleaned up and the reference is replaced with the new version.

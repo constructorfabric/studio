@@ -37,13 +37,23 @@ DO:
 
 ON_ERROR:
   missing_target_paths ->
-    EMIT "Provide one or more prompt/workflow/skill files to transform."
+    EMIT_MENU TransformMissingTargetsMenu
     WAIT user.reply
     CONTINUE TransformPromptMode
 
   dispatch_failed ->
     SET CF_PHASE_GATE = armed
     EMIT failure_summary
+    STOP_TURN
+
+MENU TransformMissingTargetsMenu:
+  TITLE: PDSL transform targets
+  OPTIONS:
+    1 provide target paths -> SET target_paths = user supplied prompt/workflow/skill paths
+    2 stop -> STOP_TURN
+  INVALID:
+    EMIT "Reply with 1: <paths> or 2 to stop."
+    WAIT user.reply
     STOP_TURN
 ```
 

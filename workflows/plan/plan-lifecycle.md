@@ -171,7 +171,7 @@ WHEN:
   - REQUIRE plan.lifecycle_status == "in_progress" on resume
 
 DO:
-  - RUN SURFACE residual state to user per workflows/plan/plan-reference.md § 5.7 Abandoned Plan Recovery
+  - RUN SURFACE residual state to user per {cf-studio-path}/.core/workflows/plan/plan-reference.md § 5.7 Abandoned Plan Recovery
   - EMIT_MENU InterruptedLifecycleMenu
   - WAIT user.reply
   - STOP_TURN

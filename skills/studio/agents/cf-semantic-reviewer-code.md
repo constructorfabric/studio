@@ -18,11 +18,17 @@ This file is a controller-side prompt generator source, not a runtime prompt for
 The controller MUST use this file to synthesize the final dispatch prompt for
 the agent. The final prompt MUST include the task statement, frozen input
 payload, task-relevant instruction assets resolved from `SHARED_CONTEXT_PACK`,
-allowed resource context, output contract, completion gate, and the explicit
+allowed resource metadata/path list, output contract, completion gate, and the explicit
 rule that the dispatched sub-agent executes only that final prompt.
 
 The dispatched sub-agent MUST NOT open prompt assets from disk and MUST NOT
 rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
+Files listed in `code_paths`, `cross_ref_paths`, or `design_artifact_path` are
+reviewed resources: the controller MUST pass them only as paths plus
+metadata/summaries and MUST NOT inline their file bodies into the dispatch
+prompt. Instruction assets may be inlined from `SHARED_CONTEXT_PACK` only when
+they are checklist, template, example, kit rules, methodology, output contract,
+or required studio invariants.
 
 
 ## Frozen Input Payload
@@ -99,10 +105,11 @@ DO:
      `code_review_checklist` asset as the review methodology
      Load `kit_validation_rules` only when that asset is present
      - REQUIRE CfSemanticReviewerCodeContextBudgetFailSafe is active
-  - RUN Read the design artifact when design_artifact_path is provided
+  - RUN Read the design artifact fresh via tool/disk access when design_artifact_path is provided
   - RUN Estimate cumulative size of design_artifact_path + code_paths + cross_ref_paths
      Use chunked reads for files exceeding ~200 lines
-     Read every code_path completely, in chunks when needed
+     Read every code_path completely and fresh via tool/disk access, in chunks when needed
+     Read every cross_ref_path fresh via tool/disk access when provided
      Use diff_scope.changed_hunks and diff_scope.risk_hotspots to prioritize,
        but verify against full files
      WHEN diff_scope is non-null AND diff_scope.review_targets is non-empty:
@@ -158,6 +165,13 @@ PURPOSE:
   Enforce response completeness before output is considered final.
 
 RULES:
+  - ALWAYS fail closed with review_result status FAIL when authoritative evidence
+    for any reviewed file was supplied inline instead of read fresh from
+    `design_artifact_path` / `code_paths` / `cross_ref_paths`; categorize it as
+    an orchestration contract violation
+  - ALWAYS AP/self-check trailer explicitly state that all
+    `design_artifact_path`, `code_paths`, and `cross_ref_paths` used as
+    authoritative evidence were read fresh via tool/disk access this turn
   - ALWAYS have either:
       review_result.type = "VALIDATION_REPORT" with category evidence
         for every applicable category

@@ -40,13 +40,8 @@ PURPOSE:
   Handle the case where no candidate repos were found; do not proceed to configuration.
 
 DO:
-  - EMIT exactly:
-    No workspace sources were discovered under {root}.
-
-    Reply with one of:
-    - Provide a parent directory to scan.
-    - Add a source manually with name + path or URL. (URL sources force `standalone`; inline config does not support Git URL sources.)
-    - Stop workspace setup.
+  - EMIT "No workspace sources were discovered under {root}."
+  - EMIT_MENU ZeroResultsMenu
   - WAIT user.reply
   - STOP_TURN
 
@@ -85,7 +80,7 @@ PURPOSE:
   Collect repo selection (Prompt 1) and storage mode (Prompt 2) as two sequential hard interaction boundaries.
 
 DO:
-  - EMIT Prompt 1 (repo selection)
+  - EMIT_MENU RepoSelectionPrompt
   - WAIT user.reply
   - STOP_TURN
 
@@ -123,7 +118,7 @@ PURPOSE:
   Collect storage mode (standalone vs inline) as a hard interaction boundary after repo selection.
 
 DO:
-  - EMIT Prompt 2 (storage mode)
+  - EMIT_MENU StorageModePrompt
   - WAIT user.reply
   - STOP_TURN
 
@@ -140,14 +135,14 @@ MENU StorageModePrompt:
 
     Reply `standalone` or `inline`.
   OPTIONS:
-    1 standalone -> CONTINUE workflows/workspace/phase-2-configure.md
+    1 standalone -> CONTINUE {cf-studio-path}/.core/workflows/workspace/phase-2-configure.md
     2 inline ->
       IF any selected repo is a Git URL:
-        EMIT "inline config does not support Git URL sources — reply standalone."
+        EMIT_MENU StorageModePrompt
         WAIT user.reply
         STOP_TURN
       ELSE:
-        CONTINUE workflows/workspace/phase-2-configure.md
+        CONTINUE {cf-studio-path}/.core/workflows/workspace/phase-2-configure.md
   STOP_TOKEN:
     cancel workspace setup; no files written
   INVALID:

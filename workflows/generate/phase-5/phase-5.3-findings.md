@@ -104,7 +104,7 @@ DO:
             surfacing the single-pass findings to workflows/generate/phase-6/index.md."
       USE findings from one fresh validator + semantic-reviewer pass
     - SET remaining_findings = all_findings
-    - CONTINUE workflows/generate/phase-6/index.md
+    - CONTINUE {cf-studio-path}/.core/workflows/generate/phase-6/index.md
     NOTE: Remediation Handoff menu MANDATORY when remaining_findings non-empty
 
   - SET remaining_findings = []  # before any branch executes
@@ -123,7 +123,7 @@ DO:
     - EMIT "Iteration {N}/{MAX_ITER}: clean — exiting review loop."
     - SET loop_exit = "clean"
     - SET remaining_findings = []
-    - CONTINUE workflows/generate/phase-5/phase-5.5-final.md
+    - CONTINUE {cf-studio-path}/.core/workflows/generate/phase-5/phase-5.5-final.md
 
   - REQUIRE all_findings is empty AND carry_forward non-empty:
     NOTE: loop is not clean; NEVER announce clean
@@ -225,7 +225,7 @@ DO:
     - EMIT_MENU Phase5IterationCapPrompt (from phase-5/index.md § Pre-Phase-Setup)
     APPLY cap-reply rules from phase-5.4-approval.md
   - RUN otherwise
-    - CONTINUE workflows/generate/phase-5/phase-5.1-det-gate.md
+    - CONTINUE {cf-studio-path}/.core/workflows/generate/phase-5/phase-5.1-det-gate.md
 
 RULES:
   - ALWAYS set CF_PHASE_GATE = released_for_inline_write IMMEDIATELY before inline write
@@ -244,7 +244,7 @@ WHEN:
   - REQUIRE judgmental is non-empty
 
 DO:
-  - CONTINUE workflows/generate/phase-5/phase-5.4-approval.md
+  - CONTINUE {cf-studio-path}/.core/workflows/generate/phase-5/phase-5.4-approval.md
     WITH mechanical and judgmental lists in scope
   - RUN NOTE: the full findings list above has already been rendered for audit;
         phase-5.4-approval.md menu governs which judgmental findings get
