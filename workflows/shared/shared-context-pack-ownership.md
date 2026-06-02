@@ -18,9 +18,10 @@ PURPOSE:
 RULES:
   - ALWAYS the designated prompt-asset family is controller-owned and loaded by
     the top-level controller only
-  - ALWAYS before any prompt-consuming dispatch, the controller ALWAYS reuse or
-    refresh SHARED_CONTEXT_PACK, load the agent prompt source, and synthesize
-    the final dispatch prompt with only the task-relevant instruction context
+  - ALWAYS before any prompt-consuming dispatch, the controller reuses or
+    refreshes SHARED_CONTEXT_PACK, loads the agent prompt source, and
+    synthesizes the final dispatch prompt with only the task-relevant
+    instruction context
   - ALWAYS prompt-consuming sub-agents ALWAYS receive needed instruction text
     through the controller-synthesized final dispatch prompt or
     prompt_context_view

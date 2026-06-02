@@ -23,7 +23,7 @@ RULES:
   - ALWAYS execute before any workflow-specific unit in this file.
   - NEVER treat protocol.md, routing.md, or a thin proxy skill as a
     substitute for loading and following SKILL.md.
-  - ALWAYS If this workflow file is opened directly, STOP workflow phases until
+  - ALWAYS if this workflow file is opened directly, STOP workflow phases until
     SKILL.md has been loaded completely and followed.
   - ALWAYS This gate applies to the top-level controller only; dispatched sub-agents
     consume the synthesized final prompt and supplied context slices.

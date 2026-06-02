@@ -21,7 +21,7 @@ WHEN:
 DO:
   - EMIT PARTIAL_CHECKPOINT_SECTION markdown block
   - EMIT PARTIAL_CHECKPOINT_JSON payload
-  - RUN emit PARTIAL_CHECKPOINT_FINDINGS payload when the caller requires it
+  - EMIT PARTIAL_CHECKPOINT_FINDINGS payload when the caller requires it
   - NEVER emitting a complete validation report
   - STOP_TURN
 

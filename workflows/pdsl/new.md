@@ -30,6 +30,8 @@ DO:
   - SET PDSL_WRITE_CONFIRM_MODE = new
   - SET PDSL_WRITE_CONFIRM_PRECONDITIONS = satisfied
   - SET PDSL_WRITE_CONFIRM_AGENT = cf-pdsl-author
+  - SET NewPromptInputs = target_paths, source_paths, user intent, source context,
+    constraints, pdsl_spec_path, rules_mode
   - SET PDSL_WRITE_CONFIRM_INPUTS = NewPromptInputs
   - LOAD {cf-studio-path}/.core/workflows/shared/pdsl-write-confirm-menu.md
   - LOAD {cf-studio-path}/.core/workflows/shared/pdsl-write-confirm-gate.md

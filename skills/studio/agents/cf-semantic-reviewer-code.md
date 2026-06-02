@@ -98,7 +98,7 @@ DO:
   - RUN Load only `requirements/code-checklist.md` via the controller-supplied
      `code_review_checklist` asset as the review methodology
      Load `kit_validation_rules` only when that asset is present
-     - REQUIRE ContextBudgetFailSafe is active
+     - REQUIRE CfSemanticReviewerCodeContextBudgetFailSafe is active
   - RUN Read the design artifact when design_artifact_path is provided
   - RUN Estimate cumulative size of design_artifact_path + code_paths + cross_ref_paths
      Use chunked reads for files exceeding ~200 lines
@@ -146,7 +146,7 @@ MENU OutputShape:
         ]
     2 PARTIAL_CHECKPOINT ->
       WHEN context-budget fail-safe triggers
-      CONTINUE ContextBudgetFailSafe
+      CONTINUE CfSemanticReviewerCodeContextBudgetFailSafe
 ```
 
 ## Response Completion Gate
