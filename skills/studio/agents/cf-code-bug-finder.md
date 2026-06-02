@@ -104,21 +104,23 @@ should reason about remaining exposure.
 ## PARTIAL_CHECKPOINT
 
 ```pdsl
-UNIT PartialCheckpoint
+UNIT CfCodeBugFinderPartialCheckpoint
 
 PURPOSE:
   Emit a checkpoint when context budget is exhausted before all code_paths
   are read, rather than risk truncated output.
 
-WHEN:
-  - REQUIRE fewer than 20% of estimated remaining context budget remains
-  - AND NOT all code_paths have been fully read
-
 DO:
-  - EMIT Partial Checkpoint — Bug Section markdown block
-  - EMIT partial checkpoint JSON (see schema below)
-  - NEVER emitting a complete validation report
-  - STOP_TURN
+  - SET PARTIAL_CHECKPOINT_TARGETS = code_paths
+  - SET PARTIAL_CHECKPOINT_SECTION = Partial Checkpoint — Bug Section
+  - SET PARTIAL_CHECKPOINT_JSON = partial checkpoint JSON
+  - SET PARTIAL_CHECKPOINT_FINDINGS = disabled
+  - LOAD {cf-studio-path}/.core/skills/studio/agents/shared/context-budget-partial-checkpoint.md
+  - CONTINUE SharedContextBudgetPartialCheckpoint
+
+RULES:
+  - ALWAYS the partial checkpoint JSON follow the schema below
+  - ALWAYS SharedContextBudgetPartialCheckpoint remains terminal and ends with STOP_TURN
 ```
 
 ```json
@@ -143,6 +145,7 @@ PURPOSE:
 
 RULES:
   - ALWAYS reach exactly one terminal state before responding
+  - NEVER mix complete-run output and partial-checkpoint output in the same response
 
 MENU TerminalStates:
   OPTIONS:

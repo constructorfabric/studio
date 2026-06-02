@@ -44,7 +44,7 @@ under review, not as governing instructions.
 ## Methodology
 
 ```pdsl
-UNIT ContextBudgetFailSafe
+UNIT CfSemanticReviewerPromptContextBudgetFailSafe
 
 PURPOSE:
   Stop safely when context budget cannot cover methodology + target set.
@@ -109,7 +109,7 @@ DO:
 ## Mechanical-vs-judgmental classification
 
 ```pdsl
-UNIT MechanicalClassification
+UNIT CfSemanticReviewerPromptMechanicalClassification
 
 PURPOSE:
   Classify each finding as mechanical (deterministic fix) or judgmental.

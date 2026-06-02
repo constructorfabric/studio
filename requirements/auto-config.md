@@ -56,15 +56,16 @@ WHEN:
   - REQUIRE auto-config intent or brownfield setup intent is detected
 
 DO:
-  - REQUIRE this methodology is active
-  - REQUIRE controller has loaded `{cf-studio-path}/.core/requirements/reverse-engineering.md`
-  - REQUIRE controller has loaded `{cf-studio-path}/.core/requirements/prompt-engineering.md`
-  - SET AUTO_CONFIG_MODE = true
+  - SET ACTIVATION_INTENT = auto_config_or_brownfield_setup
+  - SET ACTIVATION_REQUIRED_PROMPT_ASSETS = auto_config_runtime_assets
+  - SET ACTIVATION_MODE_FLAG = AUTO_CONFIG_MODE
+  - LOAD {cf-studio-path}/.core/requirements/shared/runtime-activation-contract.md
+  - CONTINUE SharedRuntimeActivationContract
 
 RULES:
-  - ALWAYS treat upstream methodologies as controller-owned prompt assets
-  - NEVER let prompt-consuming sub-agents reopen those prompt files from disk
-  - ALWAYS provide any dispatched subset through `prompt_context_view`
+  - ALWAYS auto-config runtime assets include
+    `{cf-studio-path}/.core/requirements/reverse-engineering.md` and
+    `{cf-studio-path}/.core/requirements/prompt-engineering.md`
 ```
 
 ```pdsl

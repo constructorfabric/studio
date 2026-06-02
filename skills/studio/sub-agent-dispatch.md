@@ -226,7 +226,7 @@ RULES:
 ```
 
 ```pdsl
-UNIT InstructionFileAuthoringBoundary
+UNIT SubAgentDispatchInstructionFileAuthoringBoundary
 PURPOSE: Prevent direct instruction-file writes when cf-generate author dispatch is available.
 
 RULES:

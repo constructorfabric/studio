@@ -25,26 +25,15 @@ STATE:
 WHEN:
   - REQUIRE PDSL_MODE == transform
 
-- REQUIRE:
-  - REQUIRE target_paths is non-empty
-
 DO:
-  - EMIT write_summary(target_paths, source_paths)
-  - EMIT_MENU WriteConfirmMenu
-  - WAIT user.reply
-  - STOP_TURN
-
-MENU WriteConfirmMenu:
-  TITLE: Confirm write to target path(s) listed above
-  OPTIONS:
-    1 proceed -> DISPATCH cf-pdsl-transformer WITH TransformPromptInputs
-                 RETURN manifest
-    2 cancel  -> EMIT "Write cancelled. No files written."
-                 STOP_TURN
-  INVALID:
-    EMIT "Reply with 1 (proceed) or 2 (cancel)."
-    WAIT user.reply
-    STOP_TURN
+  - REQUIRE target_paths is non-empty
+  - SET PDSL_WRITE_CONFIRM_MODE = transform
+  - SET PDSL_WRITE_CONFIRM_PRECONDITIONS = satisfied
+  - SET PDSL_WRITE_CONFIRM_AGENT = cf-pdsl-transformer
+  - SET PDSL_WRITE_CONFIRM_INPUTS = TransformPromptInputs
+  - LOAD {cf-studio-path}/.core/workflows/shared/pdsl-write-confirm-menu.md
+  - LOAD {cf-studio-path}/.core/workflows/shared/pdsl-write-confirm-gate.md
+  - CONTINUE SharedPdslWriteConfirmGate
 
 ON_ERROR:
   missing_target_paths ->

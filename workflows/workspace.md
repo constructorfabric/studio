@@ -10,26 +10,14 @@ purpose: Guide workspace federation setup for cross-repo traceability
 # Constructor Studio Workspace Workflow
 
 ```pdsl
-UNIT RootSkillEntrypointBootstrap
-PURPOSE: Prevent direct workflow entry from bypassing the root cf skill.
+UNIT WorkspaceRootSkillEntrypointBootstrap
+PURPOSE: Load the shared root cf skill entrypoint bootstrap and preserve workspace routing invariants.
 DO:
-  - REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is loaded completely
-     and followed FIRST.
-  - REQUIRE CfSkillInit, Bootstrap, HardRules, and
-     WorkflowProtocolNonSubstitution from SKILL.md have completed.
-  - CONTINUE this workflow only after the root cf skill routing/entrypoint
-     selects it.
+  - LOAD {cf-studio-path}/.core/workflows/shared/root-skill-entrypoint-bootstrap.md
 RULES:
-  - ALWAYS execute before any workflow-specific unit in this file.
-  - NEVER treat protocol.md, routing.md, or a thin proxy skill as a
-    substitute for loading and following SKILL.md.
   - ALWAYS follow routing.md § CanonicalRoutingPrecedenceState for workflow
     entry, workspace quick commands, AGENTS prompt-asset order, and
     prompt-context ownership.
-  - ALWAYS If this workflow file is opened directly, STOP workflow phases until
-    SKILL.md has been loaded completely and followed.
-  - ALWAYS This gate applies to the top-level controller only; dispatched sub-agents
-    consume the synthesized final prompt and supplied context slices.
 ```
 
 ```pdsl
@@ -67,15 +55,16 @@ UNIT WorkspaceSharedContextPack
 PURPOSE:
   Keep workspace bootstrap prompt loading controller-owned and pack-aware.
 
+DO:
+  - LOAD {cf-studio-path}/.core/workflows/shared/shared-context-pack-ownership.md
+  - CONTINUE SharedContextPackOwnership
+
 RULES:
-  - ALWAYS {cf-studio-path}/config/AGENTS.md and {cf-studio-path}/.gen/AGENTS.md are
-    controller-owned prompt assets when loaded as instructions and ALWAYS be
-    reused or refreshed in SHARED_CONTEXT_PACK before downstream dispatch
-  - ALWAYS Workspace helpers ALWAYS receive needed instruction text through a
-    controller-synthesized final dispatch prompt rather than reopening AGENTS
-    or workflow prompt files
-  - ALWAYS Workspace router fragments ALWAYS remain compact controller-owned loads from
-    {cf-studio-path}/.core/workflows/workspace/...
+  - ALWAYS {cf-studio-path}/config/AGENTS.md and {cf-studio-path}/.gen/AGENTS.md
+    remain the workspace-specific prompt-asset family for this shared ownership
+    contract
+  - ALWAYS Workspace router fragments ALWAYS remain compact controller-owned
+    loads from {cf-studio-path}/.core/workflows/workspace/...
 ```
 
 ## Overview

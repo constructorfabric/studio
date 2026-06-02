@@ -279,7 +279,7 @@ RULES:
 ## Response Completion Gate
 
 ```pdsl
-UNIT ResponseCompletionGate
+UNIT CfGenerateAuthorResponseCompletionGate
 
 RULES:
   - ALWAYS select exactly one of the registered author worker agents

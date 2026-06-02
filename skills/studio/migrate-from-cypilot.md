@@ -93,7 +93,7 @@ Then re-invoke this skill: cf migrate from cypilot"
 ## Hard Rules
 
 ```pdsl
-UNIT HardRules
+UNIT MigrateFromCypilotHardRules
 
 PURPOSE:
   Define orchestrator-level invariants that apply across all phases.

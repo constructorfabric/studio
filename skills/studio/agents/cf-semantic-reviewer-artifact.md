@@ -112,7 +112,7 @@ PARTIAL_CHECKPOINT schema (emit as a `json`-fenced block in place of the Validat
 ## Mechanical-vs-judgmental classification
 
 ```pdsl
-UNIT MechanicalClassification
+UNIT CfSemanticReviewerArtifactMechanicalClassification
 
 PURPOSE:
   Determine whether a finding is deterministically fixable (mechanical: true)

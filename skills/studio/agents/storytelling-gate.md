@@ -649,7 +649,7 @@ The JSON block is the entire response — no preamble, no trailing commentary.
 ## Response Completion Gate
 
 ```pdsl
-UNIT ResponseCompletionGate
+UNIT StorytellingGateResponseCompletionGate
 
 PURPOSE:
   Enforce that every response satisfies all output invariants.

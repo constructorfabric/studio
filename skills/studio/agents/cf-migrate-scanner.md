@@ -47,7 +47,7 @@ chain. The Scanner, Migrator, and Verifier all use that exact field name.
 ## Context Budget & Fail-Safe
 
 ```pdsl
-UNIT ContextBudgetFailSafe
+UNIT CfMigrateScannerContextBudgetFailSafe
 
 PURPOSE:
   Stop safely when remaining context budget is insufficient to complete the scan.

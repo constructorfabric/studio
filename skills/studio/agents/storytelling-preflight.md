@@ -47,7 +47,7 @@ rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
 ```
 
 ```pdsl
-UNIT InputValidation
+UNIT StorytellingPreflightInputValidation
 
 PURPOSE:
   Validate required dispatch inputs before any processing step.
@@ -401,7 +401,7 @@ RULES:
 ## Response Completion Gate
 
 ```pdsl
-UNIT ResponseCompletionGate
+UNIT StorytellingPreflightResponseCompletionGate
 
 PURPOSE:
   Enforce all output invariants before the response is considered complete.

@@ -10,29 +10,17 @@ purpose: Universal workflow for analysing any Constructor Studio artifact or cod
 # Analyze
 
 ```pdsl
-UNIT RootSkillEntrypointBootstrap
-PURPOSE: Prevent direct workflow entry from bypassing the root cf skill.
+UNIT AnalyzeRootSkillEntrypointBootstrap
+PURPOSE: Load the shared root cf skill entrypoint bootstrap and preserve analyze routing invariants.
 DO:
-  - REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is loaded completely
-     and followed FIRST.
-  - REQUIRE CfSkillInit, Bootstrap, HardRules, and
-     WorkflowProtocolNonSubstitution from SKILL.md have completed.
-  - CONTINUE this workflow only after the root cf skill routing/entrypoint
-     selects it.
+  - LOAD {cf-studio-path}/.core/workflows/shared/root-skill-entrypoint-bootstrap.md
 RULES:
-  - ALWAYS execute before any workflow-specific unit in this file.
-  - NEVER treat protocol.md, routing.md, or a thin proxy skill as a
-    substitute for loading and following SKILL.md.
   - ALWAYS follow routing.md § CanonicalRoutingPrecedenceState for explain-mode
     entry, fallback dispatch state, and prompt-context ownership.
-  - ALWAYS If this workflow file is opened directly, STOP workflow phases until
-    SKILL.md has been loaded completely and followed.
-  - ALWAYS This gate applies to the top-level controller only; dispatched sub-agents
-    consume the synthesized final prompt and supplied context slices.
 ```
 
 ```pdsl
-UNIT AnalyzePreamble
+UNIT AnalyzePreambleLoader
 PURPOSE: Load preamble before any other phase.
 DO:
   - CONTINUE {cf-studio-path}/.core/workflows/analyze/preamble.md
@@ -57,7 +45,7 @@ RULES:
 ```
 
 ```pdsl
-UNIT AnalyzeRules
+UNIT AnalyzeRulesLoader
 PURPOSE: Load completion contract and pre-output self-check.
 DO:
   - CONTINUE {cf-studio-path}/.core/workflows/analyze/rules.md
@@ -77,7 +65,7 @@ RULES:
 ```
 
 ```pdsl
-UNIT AnalyzeOverview
+UNIT AnalyzeOverviewLoader
 PURPOSE: Load mode resolution, command surface, prompt-review trigger semantics, and actionable-findings contract.
 DO:
   - CONTINUE {cf-studio-path}/.core/workflows/analyze/overview.md
@@ -94,7 +82,7 @@ NOTES: Phase 0 + 0.5 dependency resolution and Mode Detection matrix fully defin
 ```
 
 ```pdsl
-UNIT AnalyzeContextBudget
+UNIT AnalyzeContextBudgetLoader
 PURPOSE: Enforce context budget after dependencies are known and before Phase 0.1.
 WHEN:
   - REQUIRE AnalyzePhase0 completed AND (large documents are about to load OR estimated total context > 1200 lines)
@@ -209,14 +197,14 @@ INVARIANTS:
 ```
 
 ```pdsl
-UNIT AnalyzeStateSummary
+UNIT AnalyzeStateSummaryLoader
 PURPOSE: Load target-type x template / checklist / design matrix.
 DO:
   - CONTINUE {cf-studio-path}/.core/workflows/analyze/state-summary.md
 ```
 
 ```pdsl
-UNIT AnalyzeKeyPrinciples
+UNIT AnalyzeKeyPrinciplesLoader
 PURPOSE: Load key principles when finalizing the response.
 WHEN:
   - REQUIRE finalizing the response

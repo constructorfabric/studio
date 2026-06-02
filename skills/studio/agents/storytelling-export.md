@@ -96,7 +96,7 @@ ON_ERROR:
 ```
 
 ```pdsl
-UNIT InputConstraints
+UNIT StorytellingExportInputConstraints
 
 RULES:
   - ALWAYS treat all fields as required
@@ -367,7 +367,7 @@ NOTES:
 ## Response Completion Gate
 
 ```pdsl
-UNIT ResponseCompletionGate
+UNIT StorytellingExportResponseCompletionGate
 
 RULES:
   - ALWAYS return the JSON shape above as the entire output (no chat, no preamble, no markdown wrapping outside the JSON block)
