@@ -116,3 +116,6 @@ md-map.html.js
 md-map.json
 .claude/scheduled_tasks.lock
 .bootstrap/.cache/generate-plans/cf-generate-lazy-loading-*/
+prompt-instruction-deletion-candidates.md
+prompt-instruction-severity-low-med.md
+prompt-instruction-severity-table.md

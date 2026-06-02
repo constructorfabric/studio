@@ -20,32 +20,32 @@ PURPOSE:
   Define emission rules for self-contained prompt templates emitted on R2/R3/W2/W3.
 
 RULES:
-  - MUST NOT emit these templates unconditionally
-  - MUST emit ONLY when user picks R2/R3 (Remediation Handoff) or W2/W3
+  - NEVER emit these templates unconditionally
+  - ALWAYS emit ONLY when user picks R2/R3 (Remediation Handoff) or W2/W3
     (Post-Write Review Handoff) in their next turn
-  - Each emitted template MUST be a self-contained final prompt usable in a
+  - ALWAYS Each emitted template ALWAYS be a self-contained final prompt usable in a
     fresh chat without any prior context:
-    MUST explicitly begin with the phrase "Invoke skill `cf`"
-    MUST embed inline: changed file paths, what was changed per file (brief summary),
+    ALWAYS explicitly begin with the phrase "Invoke skill `cf`"
+    ALWAYS embed inline: changed file paths, what was changed per file (brief summary),
       kind/target, and completed Validation Results body with actual values;
       for R2/R3 also embed full remaining_findings list
-    MUST verify before emitting that Validation Results body is present and complete;
+    ALWAYS verify before emitting that Validation Results body is present and complete;
       if not: STOP with Phase 6 prerequisite error instead of generating partial prompt
-    MUST NOT reference "previous chat", "findings above", or any content outside
+    NEVER reference "previous chat", "findings above", or any content outside
       the prompt itself
-    MUST NOT ask next agent to regenerate or re-implement changes (W*)
-    MUST NOT ask next agent to re-discover findings (R*)
+    NEVER ask next agent to regenerate or re-implement changes (W*)
+    NEVER ask next agent to re-discover findings (R*)
 
 MENU EmissionTargetRouting:
   TITLE: Emission target routing (machine reference)
   OPTIONS:
-    W3 (Plan Review Prompt) ->
+    1 W3 (Plan Review Prompt) ->
       LOAD prompt-template-plan-review.md
-    W2 (Direct Review Prompt) ->
+    2 W2 (Direct Review Prompt) ->
       LOAD prompt-template-direct-review.md
-    R2 (Fix Prompt) ->
+    3 R2 (Fix Prompt) ->
       LOAD prompt-template-fix.md
-    R3 (Plan Prompt) ->
+    4 R3 (Plan Prompt) ->
       LOAD prompt-template-plan.md
 ```
 

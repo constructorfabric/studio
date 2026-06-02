@@ -37,27 +37,27 @@ PURPOSE:
   Gate same-chat native phase execution with a fresh inline-fallback re-probe.
 
 WHEN:
-  User requests same-chat native phase execution
+  - REQUIRE User requests same-chat native phase execution
 
 DO:
-  OPEN {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md
-  RE-RUN inline-fallback-probe.md
+  - RUN OPEN {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md
+  - RUN RE-RUN inline-fallback-probe.md
 
-  IF SUB_AGENT_SESSION_APPROVED == true AND INLINE_FALLBACK == false:
-    SET CF_PHASE_GATE = released_for_dispatch
-    DISPATCH {cf-studio-path}/.core/skills/studio/agents/cf-phase-runner.md
+  - REQUIRE SUB_AGENT_SESSION_APPROVED == true AND INLINE_FALLBACK == false:
+    - SET CF_PHASE_GATE = released_for_dispatch
+    - DISPATCH {cf-studio-path}/.core/skills/studio/agents/cf-phase-runner.md
       with payload:
         plan_dir = {plan_dir}
         target_phase = {target_phase}
         git_commit_mode = GIT_COMMIT_MODE
         contributing_guide = CONTRIBUTING_GUIDE
         git_constraint = mode-matched block from workflows/generate/phase-4-write.md § Git constraint blocks
-    SET CF_PHASE_GATE = armed  (immediately after dispatch returns — success, error, or no-response)
+    - SET CF_PHASE_GATE = armed  (immediately after dispatch returns — success, error, or no-response)
 
 RULES:
-  - MUST set CF_PHASE_GATE = released_for_dispatch immediately before dispatch
-  - MUST reset CF_PHASE_GATE = armed immediately after dispatch returns
-  - Payload MUST carry plan_dir, target_phase, git_commit_mode, contributing_guide, and git_constraint
+  - ALWAYS set CF_PHASE_GATE = released_for_dispatch immediately before dispatch
+  - ALWAYS reset CF_PHASE_GATE = armed immediately after dispatch returns
+  - ALWAYS Payload ALWAYS carry plan_dir, target_phase, git_commit_mode, contributing_guide, and git_constraint
 ```
 
 ### 5.1 Load Phase
@@ -69,29 +69,29 @@ PURPOSE:
   Select the correct phase to execute using plan.toml as source of truth, not chat memory.
 
 DO:
-  READ plan.toml
-  USE manifest state (not chat memory) as source of truth
+  - RUN READ plan.toml
+  - RUN USE manifest state (not chat memory) as source of truth
 
-  IF plan.execution_status == "briefs_only":
+  - REQUIRE plan.execution_status == "briefs_only":
     DO NOT read a phase file yet
-    RETURN to Phase 3.2 post-brief choice set (inline / downstream prompts / cf-phase-compiler)
+    - RETURN to Phase 3.2 post-brief choice set (inline / downstream prompts / cf-phase-compiler)
 
-  IF plan.execution_status == "prompts_emitted":
+  - REQUIRE plan.execution_status == "prompts_emitted":
     DO NOT attempt native phase execution (no phase-* files guaranteed to exist)
-    RETURN to Phase 3.2 post-brief choice set OR instruct operator to use emitted downstream prompts first
+    - RETURN to Phase 3.2 post-brief choice set OR instruct operator to use emitted downstream prompts first
 
-  SELECT earliest executable phase whose dependencies are all done
+  - RUN SELECT earliest executable phase whose dependencies are all done
 
-  AUDIT upstream output_files, declared outputs, and downstream inputs
+  - RUN AUDIT upstream output_files, declared outputs, and downstream inputs
     EXCEPTION: when lifecycle = "cleanup" AND plan.lifecycle_status = "done",
                intentional Cleanup removals of brief-*, phase-*, and out/ are EXEMPT
 
-  IF audit reopens work:
+  - REQUIRE audit reopens work:
     REPAIR lifecycle state before proceeding
 
-  MARK chosen phase in_progress
-  READ only that phase file
-  FOLLOW phase file exactly
+  - RUN MARK chosen phase in_progress
+  - RUN READ only that phase file
+  - RUN FOLLOW phase file exactly
 ```
 
 ### 5.2 Execute
@@ -103,7 +103,7 @@ PURPOSE:
   Execute the phase task exactly as specified.
 
 DO:
-  FOLLOW the phase Task section exactly
+  - RUN FOLLOW the phase Task section exactly
 ```
 
 ### 5.3 Save Intermediate Results
@@ -115,7 +115,7 @@ PURPOSE:
   Verify all intermediate artifacts are written before reporting.
 
 DO:
-  BEFORE reporting:
+  - RUN BEFORE reporting:
     VERIFY every file in the phase outputs list was created or updated
 
 NOTES:
@@ -131,7 +131,7 @@ PURPOSE:
   Emit completion report in the phase file's Output Format.
 
 DO:
-  PRODUCE completion report in the phase file's Output Format
+  - RUN PRODUCE completion report in the phase file's Output Format
 ```
 
 ### 5.5 Update Status
@@ -143,10 +143,10 @@ PURPOSE:
   Set phase status in plan.toml based on acceptance criteria.
 
 DO:
-  IF all acceptance criteria pass:
-    SET phase.status = "done"
-  ELSE:
-    SET phase.status = "failed"
+  - REQUIRE all acceptance criteria pass:
+    - SET phase.status = "done"
+  - RUN otherwise
+    - SET phase.status = "failed"
     RECORD reason in manifest
 ```
 
@@ -159,21 +159,21 @@ PURPOSE:
   Transition to the next phase or complete the plan.
 
 DO:
-  IF phase file already includes a handoff prompt:
+  - REQUIRE phase file already includes a handoff prompt:
     DO NOT duplicate it
-  ELSE:
-    EMIT single fenced next-phase prompt
+  - RUN otherwise
+    - EMIT single fenced next-phase prompt
     OFFER same-chat continuation versus new-chat execution
 
-  IF same-chat continuation chosen:
+  - REQUIRE same-chat continuation chosen:
     RE-ENTER from plan.toml
     RE-AUDIT dependencies
     IGNORE prior chat memory
 
-  IF last phase completes:
+  - REQUIRE last phase completes:
     REPORT all phases complete
-    SET plan.execution_status = "done"
-    RUN lifecycle action exactly once per strategy:
+    - SET plan.execution_status = "done"
+    - RUN lifecycle action exactly once per strategy:
       gitignore -> per PlanLifecycleGitignore
       cleanup   -> per PlanLifecycleCleanup
       archive   -> per PlanLifecycleArchive
@@ -191,35 +191,35 @@ PURPOSE:
   Recover from abandoned or context-lost plan runs using plan.toml as checkpoint.
 
 DO:
-  1. READ plan.toml
-  2. AUDIT every phase marked done in dependency order against:
+  - RUN READ plan.toml
+  - RUN AUDIT every phase marked done in dependency order against:
        - declared output_files
        - declared outputs
        - intermediate artifacts required by downstream inputs
      EXCEPTION: when lifecycle = "cleanup" AND plan.lifecycle_status = "done",
                 intentional Cleanup removals of brief-*, phase-*, and out/ are EXEMPT
-                and MUST NOT count as inconsistency
-  3. IF a completed phase is inconsistent:
+                and NEVER count as inconsistency
+  - REQUIRE a completed phase is inconsistent:
        DOWNGRADE phase.status from done to pending or failed as appropriate
        DOWNGRADE every downstream dependent phase to pending
-  4. IF any phase was reopened:
+  - REQUIRE any phase was reopened:
        REPAIR lifecycle state:
          gitignore:            KEEP plan.lifecycle_status = "done"
          cleanup (in_progress): DO NOT reset to pending
-                                SET plan.lifecycle_status = "partial"
+                                - SET plan.lifecycle_status = "partial"
                                 SURFACE residual file list to user
          otherwise:            SET plan.lifecycle_status = "pending"
                                 CANCEL stale manual_action_required | ready | in_progress
-  5. RECOMPUTE plan.execution_status from the downgraded manifest
-  6. RESUME from the earliest executable phase after the audit
+  - RUN RECOMPUTE plan.execution_status from the downgraded manifest
+  - RUN RESUME from the earliest executable phase after the audit
      (not merely the first phase that was previously pending)
 
-EMIT recovery prompt:
-  I have an incomplete Constructor Studio execution plan at:
+- EMIT recovery prompt:
+  - RUN I have an incomplete Constructor Studio execution plan at:
     {cf-studio-path}/.plans/{task-slug}/plan.toml
-  Please read the plan manifest, audit completed phases against their declared
-  `output_files`, declared `outputs`, and downstream `inputs`, repair stale
-  lifecycle state if work is reopened, and resume from the earliest executable phase.
+  - RUN Please read the plan manifest, audit completed phases against their declared
+  - RUN `output_files`, declared `outputs`, and downstream `inputs`, repair stale
+  - RUN lifecycle state if work is reopened, and resume from the earliest executable phase.
 ```
 
 ## Appendix B: Check Status (Reference Only)
@@ -231,15 +231,15 @@ PURPOSE:
   Report plan status when the user asks.
 
 DO:
-  READ plan.toml
-  REPORT: task, type, target, execution_status, lifecycle_status,
+  - RUN READ plan.toml
+  - RUN REPORT: task, type, target, execution_status, lifecycle_status,
           active_plan_dir, per-phase progress
 
-  IF lifecycle_status == "manual_action_required":
+  - REQUIRE lifecycle_status == "manual_action_required":
     DIRECT operator back to the execution flow that presents the single lifecycle choice
-    FORBID duplicating that menu in a status-only response
+    - NEVER duplicating that menu in a status-only response
 
-  IF lifecycle handling failed OR any phase failed:
+  - REQUIRE lifecycle handling failed OR any phase failed:
     SUGGEST retry, reopen, or manual recovery
 ```
 

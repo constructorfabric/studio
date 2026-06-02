@@ -14,34 +14,34 @@ PURPOSE:
   remediation handoff when applicable.
 
 RULES:
-  - MUST print to chat only; MUST_NOT create files
-  - MUST load exactly one output sub-file
-  - MUST treat this phase as terminal when it emits either:
+  - ALWAYS print to chat only; NEVER create files
+  - ALWAYS load exactly one output sub-file
+  - ALWAYS treat this phase as terminal when it emits either:
       a PARTIAL checkpoint/resume block
       a remediation handoff menu
-  - MUST append remediation-handoff.md after the selected schema when actionable
+  - ALWAYS append remediation-handoff.md after the selected schema when actionable
     findings exist AND EXPLAIN_MODE=false
-  - MUST_NOT emit Fix Prompt or Plan Prompt from this unit (those are emitted by
+  - NEVER emit Fix Prompt or Plan Prompt from this unit (those are emitted by
     remediation-handoff.md on demand)
-  - MUST render Prompt Review Partial Checkpoint block (not full schema) when
+  - ALWAYS render Prompt Review Partial Checkpoint block (not full schema) when
     PROMPT_REVIEW=true AND checkpoint.type=PARTIAL_CHECKPOINT
-  - MUST STOP_TURN after a prompt-review PARTIAL checkpoint block
-  - MUST STOP_TURN after remediation-handoff.md emits its menu
-  - MUST return to router for Phase 5 only when PARTIAL=false, no remediation
+  - ALWAYS STOP_TURN after a prompt-review PARTIAL checkpoint block
+  - ALWAYS STOP_TURN after remediation-handoff.md emits its menu
+  - ALWAYS return to router for Phase 5 only when PARTIAL=false, no remediation
     handoff was emitted, and the selected schema completed a non-EXPLAIN PASS turn
 
 DO:
-  IF EXPLAIN_MODE == true:
-    LOAD {cf-studio-path}/.core/workflows/analyze/phase-4-output/output-storytelling.md
-  ELSE IF PROMPT_REVIEW == true OR PROMPT_BUG_REVIEW == true:
-    LOAD {cf-studio-path}/.core/workflows/analyze/phase-4-output/output-prompt-review.md
-  ELSE:
-    LOAD {cf-studio-path}/.core/workflows/analyze/phase-4-output/output-standard.md
-  IF (PROMPT_REVIEW == true OR PROMPT_BUG_REVIEW == true) AND checkpoint.type == "PARTIAL_CHECKPOINT":
-    STOP_TURN
-  IF actionable findings exist AND EXPLAIN_MODE == false:
-    LOAD {cf-studio-path}/.core/workflows/analyze/phase-4-output/remediation-handoff.md
-    STOP_TURN
+  - REQUIRE EXPLAIN_MODE == true:
+    - LOAD {cf-studio-path}/.core/workflows/analyze/phase-4-output/output-storytelling.md
+  - RUN otherwise IF PROMPT_REVIEW == true OR PROMPT_BUG_REVIEW == true:
+    - LOAD {cf-studio-path}/.core/workflows/analyze/phase-4-output/output-prompt-review.md
+  - RUN otherwise
+    - LOAD {cf-studio-path}/.core/workflows/analyze/phase-4-output/output-standard.md
+  - REQUIRE (PROMPT_REVIEW == true OR PROMPT_BUG_REVIEW == true) AND checkpoint.type == "PARTIAL_CHECKPOINT":
+    - STOP_TURN
+  - REQUIRE actionable findings exist AND EXPLAIN_MODE == false:
+    - LOAD {cf-studio-path}/.core/workflows/analyze/phase-4-output/remediation-handoff.md
+    - STOP_TURN
 ```
 
 ## Phase 4: Output

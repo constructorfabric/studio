@@ -18,21 +18,21 @@ PURPOSE:
   Create one new prompt/workflow/skill instruction file in PDSL.
 
 STATE:
-  PDSL_MODE: new | transform | review
+  - SET PDSL_MODE: new | transform | review
     scope: inherited_from_parent
 
 WHEN:
-  PDSL_MODE == new
+  - REQUIRE PDSL_MODE == new
 
-REQUIRE:
-  target_paths contains exactly one output path
-  user intent or source context is available
+- REQUIRE:
+  - REQUIRE target_paths contains exactly one output path
+  - REQUIRE user intent or source context is available
 
 DO:
-  EMIT write_summary(target_paths, source_paths)
-  EMIT_MENU WriteConfirmMenu
-  WAIT user.reply
-  STOP_TURN
+  - EMIT write_summary(target_paths, source_paths)
+  - EMIT_MENU WriteConfirmMenu
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU WriteConfirmMenu:
   TITLE: Confirm write to target path(s) listed above

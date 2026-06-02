@@ -20,19 +20,19 @@ PURPOSE:
   questions must be answered with evidence before the response ends.
 
 WHEN:
-  STRICT mode AND finalization phase reached
+  - REQUIRE STRICT mode AND finalization phase reached
 
 DO:
-  Answer all questions in the table below with evidence.
-  EMIT self-test results table.
-  IF any answer is NO or lacks evidence:
-    EMIT "Analysis is INVALID, must restart"
-    STOP_TURN
+  - RUN Answer all questions in the table below with evidence.
+  - EMIT self-test results table.
+  - REQUIRE any answer is NO or lacks evidence:
+    - EMIT "Analysis is INVALID, must restart"
+    - STOP_TURN
 
 RULES:
-  - MUST answer AFTER doing the work, not before
-  - MUST include evidence for every answer
-  - MUST_NOT claim YES without supporting evidence
+  - ALWAYS answer AFTER doing the work, not before
+  - ALWAYS include evidence for every answer
+  - NEVER claim YES without supporting evidence
 ```
 
 ## Agent Self-Test (STRICT mode — AFTER completing work)

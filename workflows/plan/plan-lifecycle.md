@@ -25,9 +25,9 @@ PURPOSE:
   Obtain the user's lifecycle strategy choice before phase boundaries are finalized.
 
 DO:
-  EMIT_MENU LifecycleChoiceMenu
-  WAIT user.reply
-  STOP_TURN
+  - EMIT_MENU LifecycleChoiceMenu
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU LifecycleChoiceMenu:
   TITLE: How should completed plans be handled?
@@ -63,18 +63,18 @@ PURPOSE:
   Repository-hygiene lifecycle: ensure .plans/ is gitignored.
 
 DO:
-  INSPECT active repo ignore targets (.gitignore first, then .git/info/exclude)
-  VERIFY whether an existing .plans/ rule already covers the plan directory
-  IF no rule exists:
-    SET CF_PHASE_GATE = released_for_orchestrator_write
+  - RUN INSPECT active repo ignore targets (.gitignore first, then .git/info/exclude)
+  - RUN VERIFY whether an existing .plans/ rule already covers the plan directory
+  - REQUIRE no rule exists:
+    - SET CF_PHASE_GATE = released_for_orchestrator_write
       scope = {project_root}/.gitignore
     ADD narrowest acceptable ignore rule
-    SET CF_PHASE_GATE = armed
-  SET plan.lifecycle_status = "done"
+    - SET CF_PHASE_GATE = armed
+  - SET plan.lifecycle_status = "done"
 
 RULES:
-  - MUST perform gitignore step before or immediately after the first plan file write
-  - MUST_NOT present a post-completion plan-file lifecycle decision prompt
+  - ALWAYS perform gitignore step before or immediately after the first plan file write
+  - NEVER present a post-completion plan-file lifecycle decision prompt
     (does NOT prohibit pre-execution modification menus like Phase 4.2 [5] Modify plan)
 ```
 
@@ -85,33 +85,33 @@ PURPOSE:
   Reserve a Cleanup phase and execute it after all delivery phases complete.
 
 DO:
-  RESERVE a final Cleanup phase now so total_phases, dependencies, briefs, and
-  budget estimates are structurally correct before plan.toml is written
+  - RUN RESERVE a final Cleanup phase now so total_phases, dependencies, briefs, and
+  - RUN budget estimates are structurally correct before plan.toml is written
 
-  AFTER all non-lifecycle phases are done:
-    SET plan.lifecycle_status = "ready"
+  - RUN AFTER all non-lifecycle phases are done:
+    - SET plan.lifecycle_status = "ready"
     EXECUTE Cleanup phase (removes brief-*, phase-*, out/; plan.toml remains as terminal receipt)
 
     IF cleanup succeeds:
-      SET plan.lifecycle_status = "done"
+      - SET plan.lifecycle_status = "done"
 
     IF cleanup fails (file removal error, permission error, unexpected state):
-      SET plan.lifecycle_status = "failed"
-      EMIT specific error and affected paths
+      - SET plan.lifecycle_status = "failed"
+      - EMIT specific error and affected paths
       OFFER manual intervention: list files that could not be removed and ask user to remove manually or retry
 
     IF partial success (some files removed, others not):
-      SET plan.lifecycle_status = "partial"
-      EMIT list of files removed AND list of files that could not be removed
+      - SET plan.lifecycle_status = "partial"
+      - EMIT list of files removed AND list of files that could not be removed
       ASK user to manually remove residual files or retry
 
 RULES:
-  - MUST distinguish "partial" from "failed" (failed = cleanup never attempted)
-  - MUST NOT present a post-completion plan-file lifecycle decision prompt
+  - ALWAYS distinguish "partial" from "failed" (failed = cleanup never attempted)
+  - NEVER present a post-completion plan-file lifecycle decision prompt
     (does NOT prohibit pre-execution modification menus like Phase 4.2 [5] Modify plan)
-  - Cleanup removals of brief-*, phase-*, and out/ are intentional terminal lifecycle cleanup —
-    recovery/audit MUST treat them as exempt when lifecycle = "cleanup" AND plan.lifecycle_status = "done"
-  - MUST NOT reopen delivery phases or replay Cleanup solely because those files are absent
+  - ALWAYS Cleanup removals of brief-*, phase-*, and out/ are intentional terminal lifecycle cleanup —
+    recovery/audit ALWAYS treat them as exempt when lifecycle = "cleanup" AND plan.lifecycle_status = "done"
+  - NEVER reopen delivery phases or replay Cleanup solely because those files are absent
 ```
 
 ```pdsl
@@ -121,25 +121,25 @@ PURPOSE:
   Move the completed plan directory to the archive location.
 
 DO:
-  AFTER all phases are done:
-    SET plan.lifecycle_status = "ready"
+  - RUN AFTER all phases are done:
+    - SET plan.lifecycle_status = "ready"
     MOVE plan directory to {cf-studio-path}/.plans/.archive/{task-slug}/
 
     IF archive move target already exists:
       APPEND numeric suffix to archive directory name (-2, -3, ...) mirroring active-plan collision rule
       COMPLETE the move
 
-    SET plan.active_plan_dir = {final archive path}
-    SET plan.lifecycle_status = "done"  (with final archive path recorded in moved manifest)
+    - SET plan.active_plan_dir = {final archive path}
+    - SET plan.lifecycle_status = "done"  (with final archive path recorded in moved manifest)
 
     IF archive move fails with permission error or disk error:
-      SET plan.lifecycle_status = "failed"
-      EMIT specific error and source path
+      - SET plan.lifecycle_status = "failed"
+      - EMIT specific error and source path
       OFFER manual intervention: ask user to move directory manually or choose a different lifecycle strategy
 
 RULES:
-  - Only permission errors and disk errors set plan.lifecycle_status = "failed"
-  - MUST NOT present a post-completion plan-file lifecycle decision prompt
+  - ALWAYS Only permission errors and disk errors set plan.lifecycle_status = "failed"
+  - NEVER present a post-completion plan-file lifecycle decision prompt
     (does NOT prohibit pre-execution modification menus like Phase 4.2 [5] Modify plan)
 ```
 
@@ -150,12 +150,12 @@ PURPOSE:
   Defer lifecycle decision until after all phases complete.
 
 DO:
-  AFTER all phases are done:
-    SET plan.lifecycle_status = "manual_action_required"
+  - RUN AFTER all phases are done:
+    - SET plan.lifecycle_status = "manual_action_required"
     PRESENT exactly one keep/archive/delete choice
 
 RULES:
-  - This is the ONLY strategy that allows a post-completion plan-file decision prompt
+  - ALWAYS This is the ONLY strategy that allows a post-completion plan-file decision prompt
 ```
 
 ### Interrupted Lifecycle Recovery
@@ -168,13 +168,13 @@ PURPOSE:
   the lifecycle action automatically.
 
 WHEN:
-  plan.lifecycle_status == "in_progress" on resume
+  - REQUIRE plan.lifecycle_status == "in_progress" on resume
 
 DO:
-  SURFACE residual state to user per workflows/plan/plan-reference.md § 5.7 Abandoned Plan Recovery
-  EMIT_MENU InterruptedLifecycleMenu
-  WAIT user.reply
-  STOP_TURN
+  - RUN SURFACE residual state to user per workflows/plan/plan-reference.md § 5.7 Abandoned Plan Recovery
+  - EMIT_MENU InterruptedLifecycleMenu
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU InterruptedLifecycleMenu:
   TITLE: Interrupted lifecycle detected — how to proceed?

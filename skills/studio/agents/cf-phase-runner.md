@@ -49,13 +49,13 @@ NOTES:
 UNIT PhaseRunnerCompletion
 
 RULES:
-  - MUST execute all steps in the target phase file or record each failure
-  - MUST leave selected phase in done or failed only
-  - MUST reflect any file additions/deletions in plan.toml
-  - MUST return phase completion summary with next-phase handoff prompt OR final
+  - ALWAYS execute all steps in the target phase file or record each failure
+  - ALWAYS leave selected phase in done or failed only
+  - ALWAYS reflect any file additions/deletions in plan.toml
+  - ALWAYS return phase completion summary with next-phase handoff prompt OR final
     completion report on success
-  - MUST return specific failed criteria, manifest updates, and exact blocker on failure
-  - MUST honor git_commit_mode; treat git_constraint as policy data, never as
+  - ALWAYS return specific failed criteria, manifest updates, and exact blocker on failure
+  - ALWAYS honor git_commit_mode; treat git_constraint as policy data, never as
     shell text, and use only explicit allow-listed git commands permitted by
     git_commit_mode
 ```

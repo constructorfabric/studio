@@ -22,13 +22,13 @@ PURPOSE:
   Find candidate repos and collect repo selection and storage mode from the user.
 
 DO:
-  Run `{cfs_cmd} --json info` to identify root
-  Run `{cfs_cmd} --json workspace-init --dry-run` to scan nested repos
-  Present results: repo name/path, adapter found or not, and inferred role
-  IF results == zero:
-    CONTINUE WorkspaceDiscoverZeroResults
-  ELSE:
-    CONTINUE WorkspaceDiscoverDecisionPoint
+  - RUN Run `{cfs_cmd} --json info` to identify root
+  - RUN Run `{cfs_cmd} --json workspace-init --dry-run` to scan nested repos
+  - RUN Present results: repo name/path, adapter found or not, and inferred role
+  - REQUIRE results == zero:
+    - CONTINUE WorkspaceDiscoverZeroResults
+  - RUN otherwise
+    - CONTINUE WorkspaceDiscoverDecisionPoint
 ```
 
 ### Zero Results
@@ -40,15 +40,15 @@ PURPOSE:
   Handle the case where no candidate repos were found; do not proceed to configuration.
 
 DO:
-  EMIT exactly:
+  - EMIT exactly:
     No workspace sources were discovered under {root}.
 
     Reply with one of:
-    1. Provide a parent directory to scan.
-    2. Add a source manually with name + path or URL. (URL sources force `standalone`; inline config does not support Git URL sources.)
-    3. Stop workspace setup.
-  WAIT user.reply
-  STOP_TURN
+    - Provide a parent directory to scan.
+    - Add a source manually with name + path or URL. (URL sources force `standalone`; inline config does not support Git URL sources.)
+    - Stop workspace setup.
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU ZeroResultsMenu:
   TITLE: No workspace sources discovered (reply 1, 2, or 3)
@@ -71,9 +71,9 @@ MENU ZeroResultsMenu:
     STOP_TURN
 
 RULES:
-  - MUST_NOT proceed to Phase 2 or write any config when results are zero
-  - MUST_NOT infer sources from unrelated directories
-  - MUST repeat this branch if re-scan also returns zero results
+  - NEVER proceed to Phase 2 or write any config when results are zero
+  - NEVER infer sources from unrelated directories
+  - ALWAYS repeat this branch if re-scan also returns zero results
 ```
 
 ### Decision Point
@@ -85,9 +85,9 @@ PURPOSE:
   Collect repo selection (Prompt 1) and storage mode (Prompt 2) as two sequential hard interaction boundaries.
 
 DO:
-  EMIT Prompt 1 (repo selection)
-  WAIT user.reply
-  STOP_TURN
+  - EMIT Prompt 1 (repo selection)
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU RepoSelectionPrompt:
   TITLE: |
@@ -101,7 +101,7 @@ MENU RepoSelectionPrompt:
 
     Reply with comma- or space-separated numbers, names, or the word `all`.
   OPTIONS:
-    <selection> ->
+    1 <selection> ->
       Parse selection into included repos list
       CONTINUE WorkspaceDiscoverStorageModePrompt
   STOP_TOKEN:
@@ -112,8 +112,8 @@ MENU RepoSelectionPrompt:
     STOP_TURN
 
 RULES:
-  - MUST_NOT proceed to storage mode prompt until user has replied to repo selection
-  - MUST_NOT carry partial or provisional selection into Phase 2 on stop token
+  - NEVER proceed to storage mode prompt until user has replied to repo selection
+  - NEVER carry partial or provisional selection into Phase 2 on stop token
 ```
 
 ```pdsl
@@ -123,9 +123,9 @@ PURPOSE:
   Collect storage mode (standalone vs inline) as a hard interaction boundary after repo selection.
 
 DO:
-  EMIT Prompt 2 (storage mode)
-  WAIT user.reply
-  STOP_TURN
+  - EMIT Prompt 2 (storage mode)
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU StorageModePrompt:
   TITLE: |
@@ -140,8 +140,8 @@ MENU StorageModePrompt:
 
     Reply `standalone` or `inline`.
   OPTIONS:
-    standalone -> CONTINUE workflows/workspace/phase-2-configure.md
-    inline ->
+    1 standalone -> CONTINUE workflows/workspace/phase-2-configure.md
+    2 inline ->
       IF any selected repo is a Git URL:
         EMIT "inline config does not support Git URL sources — reply standalone."
         WAIT user.reply
@@ -157,6 +157,6 @@ MENU StorageModePrompt:
 
 NOTES:
   See workflows/shared/stop-token-policy.md for stop-token routing.
-  Both prompts are hard interaction boundaries; the workflow MUST NOT proceed until each reply is received.
+  Both prompts are hard interaction boundaries; the workflow NEVER proceed until each reply is received.
   Git URL sources always force standalone mode.
 ```

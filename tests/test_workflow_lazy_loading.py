@@ -125,7 +125,8 @@ def test_phase6_clean_chat_skip_is_explicitly_exempt_from_terminal_handoff_and_s
         f"{missing_phase6_tokens}"
     )
 
-    assert "must have emitted terminal handoff menu with exactly the three canonical" in validation
+    assert "terminal handoff emitted?" in validation
+    assert "exactly the three canonical" in validation
     assert "### agent self-test results".lower() in validation
 
     expected_exemption_tokens = (
@@ -202,7 +203,7 @@ def test_generate_phase15_gate_requires_phase3_summary_and_no_deferral_boundary(
     phase15_contract_tokens = (
         "phase 3",
         "write-path selection",
-        "must_not defer",
+        "never defer",
     )
     missing_phase15_tokens = [token for token in phase15_contract_tokens if token not in phase15]
     assert not missing_phase15_tokens, (

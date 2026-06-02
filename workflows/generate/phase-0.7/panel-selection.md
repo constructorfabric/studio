@@ -15,16 +15,16 @@ PURPOSE:
   Dispatch facilitator, render proposed panel, manage panel edits, confirm seed topic.
 
 DO:
-  REQUIRE `{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md` loaded before any cf-* sub-agent dispatch
-  LOAD {cf-studio-path}/.core/skills/studio/agents/cf-brainstorm-facilitator.md
+  - REQUIRE `{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md` loaded before any cf-* sub-agent dispatch
+  - LOAD {cf-studio-path}/.core/skills/studio/agents/cf-brainstorm-facilitator.md
     as the facilitator source contract
-  SYNTHESIZE final dispatch prompt from the loaded facilitator contract plus
+  - RUN SYNTHESIZE final dispatch prompt from the loaded facilitator contract plus
     SHARED_CONTEXT_PACK and the payload below
-  IF facilitator source contract is not loaded, unreadable, ambiguous, or not
+  - REQUIRE facilitator source contract is not loaded, unreadable, ambiguous, or not
      reflected in the final dispatch prompt:
     FAIL per sub-agent-dispatch.md § SubAgentContractReadGate
-    FORBID dispatch
-  DISPATCH cf-brainstorm-facilitator with the synthesized final prompt including:
+    - NEVER dispatch
+  - DISPATCH cf-brainstorm-facilitator with the synthesized final prompt including:
     initial_topic = one-paragraph summary of user's original request
     kind = {KIND}
     rules_loaded = true ONLY when kit rules actually loaded for this brainstorm session,
@@ -38,52 +38,52 @@ DO:
                   KIND and its kit (STRICT + kit-mapped), most-relevant existing
                   artifact paths from Phase 0.5 parent/sibling discovery
 
-  RECEIVE { proposed_panel: [...3..6 entries], seed_topic: {...} }
-  SET confirmed_list = proposed_panel
-  SET confirmed_seed_topic = seed_topic
+  - RUN RECEIVE { proposed_panel: [...3..6 entries], seed_topic: {...} }
+  - SET confirmed_list = proposed_panel
+  - SET confirmed_seed_topic = seed_topic
 
-  EMIT proposed panel display containing:
+  - EMIT proposed panel display containing:
     - header: "Proposed panel for {KIND}: {name}:"
     - E1..E6 entries: persona name, focus, why rationale
     - "Seed topic for round 1:" + seed_topic.text
     - numbered action menu: 1=start, 2=seed:<topic>, 3=drop E{N},
       4=swap E{N}:<persona>(<focus>), 5=add:<persona>(<focus>), W=wrap
     - one-liner: "One reply form per turn. Compound replies refused."
-  WAIT user.reply
+  - WAIT user.reply
 
 MENU PanelEditLoop:
   TITLE: Panel setup loop (reply start to begin, or edit one thing)
   OPTIONS:
-    start ->
+    1 start ->
       SET state.panel = confirmed_list
       SET state.topic_current = confirmed_seed_topic
       CONTINUE Phase07ExplorePanelContext
-    accept ->
+    2 accept ->
       SET state.panel = confirmed_list
       SET state.topic_current = confirmed_seed_topic
       CONTINUE Phase07ExplorePanelContext
-    drop E{N},E{M} ->
+    3 drop E{N},E{M} ->
       REMOVE listed experts from proposed panel
       SET confirmed_list = proposed panel
       REQUIRE min 3 remain
       EMIT re-rendered panel
       WAIT user.reply
-    swap E{N}: <new persona> (<focus>) ->
+    4 swap E{N}: <new persona> (<focus>) ->
       REPLACE E{N} with new persona
       SET confirmed_list = proposed panel
       EMIT re-rendered panel
       WAIT user.reply
-    add: <persona> (<focus>) ->
+    5 add: <persona> (<focus>) ->
       REQUIRE panel size < 6
       ADD new persona to panel
       SET confirmed_list = proposed panel
       EMIT re-rendered panel
       WAIT user.reply
-    seed: <topic> ->
+    6 seed: <topic> ->
       SET confirmed_seed_topic = <topic>
       EMIT re-rendered panel and seed topic with the same action menu
       WAIT user.reply
-    W | wrap | stop | done ->
+    7 W | wrap | stop | done ->
       SET state.panel = confirmed_list
       SET state.topic_current = None
       CONTINUE wrap-handoff.md WITH reason="panel-setup-wrap"
@@ -93,14 +93,14 @@ MENU PanelEditLoop:
     STOP_TURN
 
 RULES:
-  - MUST refuse compound replies with a one-line clarifier
-  - MUST require min 3 panel members; MUST NOT allow more than 6
-  - MUST re-render proposed panel and seed topic after every edit until user
+  - ALWAYS refuse compound replies with a one-line clarifier
+  - ALWAYS require min 3 panel members; NEVER allow more than 6
+  - ALWAYS re-render proposed panel and seed topic after every edit until user
     replies start
-  - MUST treat accept as backwards-compatible alias for start; MUST NOT show
+  - ALWAYS treat accept as backwards-compatible alias for start; NEVER show
     accept in the primary user-facing action list
-  - MUST always show wrap as a user-facing option in the panel setup menu
-  - MUST set state.panel = confirmed_list and state.topic_current before
+  - ALWAYS always show wrap as a user-facing option in the panel setup menu
+  - ALWAYS set state.panel = confirmed_list and state.topic_current before
     entering round loop
 
 NOTES:
@@ -115,21 +115,21 @@ PURPOSE:
   experts need and materialize it before the first round dispatch.
 
 DO:
-  BUILD context_requirements from:
+  - RUN BUILD context_requirements from:
     state.topic_current
     confirmed_list personas, focus, rationale
     KIND, name, system, rules_mode
     known artifact paths from Phase 0.5 parent/sibling discovery
 
-  LOAD {cf-studio-path}/.core/skills/studio/agents/cf-explorer.md
+  - LOAD {cf-studio-path}/.core/skills/studio/agents/cf-explorer.md
     as the explorer source contract
-  SYNTHESIZE final dispatch prompt from the loaded explorer contract plus
+  - RUN SYNTHESIZE final dispatch prompt from the loaded explorer contract plus
     SHARED_CONTEXT_PACK and the payload below
-  IF explorer source contract is not loaded, unreadable, ambiguous, or not
+  - REQUIRE explorer source contract is not loaded, unreadable, ambiguous, or not
      reflected in the final dispatch prompt:
     FAIL per sub-agent-dispatch.md § SubAgentContractReadGate
-    FORBID dispatch
-  DISPATCH cf-explorer with the synthesized final prompt including:
+    - NEVER dispatch
+  - DISPATCH cf-explorer with the synthesized final prompt including:
     task = state.topic_current.text
     intent = "brainstorm"
     panel = state.panel
@@ -138,19 +138,19 @@ DO:
     constraints.kind = {KIND}
     constraints.system = {system or null}
 
-  RECEIVE explorer resource_context
-  SET state.context_requirements = derived context_requirements
-  SET state.resource_context = explorer.resource_context
-  SET state.resource_context.exploration_status = explorer.exploration_status
-  CONTINUE phase-0.7/round-loop.md
+  - RUN RECEIVE explorer resource_context
+  - SET state.context_requirements = derived context_requirements
+  - SET state.resource_context = explorer.resource_context
+  - SET state.resource_context.exploration_status = explorer.exploration_status
+  - CONTINUE phase-0.7/round-loop.md
 
 RULES:
-  - MUST run before the first brainstorm round after panel confirmation
-  - MUST NOT put docs/code/artifacts into SHARED_CONTEXT_PACK
-  - MUST pass resource_context to every brainstorm panel/expert dispatch
-  - MUST apply sub-agent-dispatch.md § SubAgentContractReadGate before
+  - ALWAYS run before the first brainstorm round after panel confirmation
+  - NEVER put docs/code/artifacts into SHARED_CONTEXT_PACK
+  - ALWAYS pass resource_context to every brainstorm panel/expert dispatch
+  - ALWAYS apply sub-agent-dispatch.md § SubAgentContractReadGate before
     facilitator and explorer dispatch
-  - IF cf-explorer returns exploration_status == "insufficient":
-      still enter the round loop, but downstream panel/expert agents MUST ask
+  - ALWAYS IF cf-explorer returns exploration_status == "insufficient":
+      still enter the round loop, but downstream panel/expert agents ALWAYS ask
       for missing context instead of inventing project-specific proposals
 ```

@@ -23,33 +23,33 @@ PURPOSE:
   Emit consolidated design block on loop exit; route based on explicit user choice.
 
 DO:
-  WHEN state.topic_current becomes None:
+  - RUN WHEN state.topic_current becomes None:
     IF rules_mode == RELAXED:
       PREPEND "⚠ Brainstorm without kit rules (reduced quality assurance)"
-    EMIT exactly:
----
-Brainstorm complete after {N} rounds.
-Panel: {personas}
-Topics covered: {topic_history}
+    - EMIT exactly:
+- RUN ---
+- RUN Brainstorm complete after {N} rounds.
+- RUN Panel: {personas}
+- RUN Topics covered: {topic_history}
 
-Decisions:
-- {section_or_key}: {value}
+- RUN Decisions:
+- RUN {section_or_key}: {value}
 
-Open questions (carry into inputs):
-- {open_question}
+- RUN Open questions (carry into inputs):
+- RUN {open_question}
 
-Next-step menu follows immediately:
-1. Save brainstorm results only (in session)
-2. Save brainstorm results only (to disk)
-3. Send results to generate input collection
-4. Send results to review/analyze
-5. Reopen a topic for another brainstorm round
-In `save` mode, the saved brainstorm cache remains on disk and follows manual retention.
-The discard handoff path MUST state whether saved cache artifacts remain.
----
-    EMIT_MENU WrapHandoffMenu
-    WAIT user.reply
-    STOP_TURN
+- RUN Next-step menu follows immediately:
+- RUN Save brainstorm results only (in session)
+- RUN Save brainstorm results only (to disk)
+- RUN Send results to generate input collection
+- RUN Send results to review/analyze
+- RUN Reopen a topic for another brainstorm round
+- RUN In `save` mode, the saved brainstorm cache remains on disk and follows manual retention.
+- RUN The discard handoff path ALWAYS state whether saved cache artifacts remain.
+- RUN ---
+    - EMIT_MENU WrapHandoffMenu
+    - WAIT user.reply
+    - STOP_TURN
 
 MENU WrapHandoffMenu:
   TITLE: Brainstorm complete — choose next step (reply 1, 2, 3, 4, or 5)
@@ -88,7 +88,7 @@ MENU WrapHandoffMenu:
       APPEND as forced topic
       SET pending_round_kind = "topic"
       RESUME round loop (first iteration of resumed loop is always topic-round)
-  stop_token (stop / enough / done) ->
+  6 stop_token (stop / enough / done) ->
     EMIT_MENU WrapHandoffMenu
     WAIT user.reply
     STOP_TURN
@@ -98,17 +98,17 @@ MENU WrapHandoffMenu:
     STOP_TURN
 
 RULES:
-  - MUST prepend RELAXED brainstorm warning when rules_mode == RELAXED
+  - ALWAYS prepend RELAXED brainstorm warning when rules_mode == RELAXED
     per the contract declared in save-and-rules.md § Rules respect
-  - MUST NOT auto-route directly into generate without the wrap-handoff menu
-  - MUST_NOT interpret stop-token as implicit approval for generate
-  - MUST preserve brainstorm decisions/open questions when routing to generate
+  - NEVER auto-route directly into generate without the wrap-handoff menu
+  - NEVER interpret stop-token as implicit approval for generate
+  - ALWAYS preserve brainstorm decisions/open questions when routing to generate
     or analyze
-  - Open questions from skipped brainstorm questions MUST remain unresolved;
-    generate/analyze handoff MUST NOT convert them into implicit decisions
-  - MUST keep saved cache artifacts on disk when session used save
-  - Option 1 MUST be session-only and MUST NOT write files
-  - Option 2 MUST be hidden or rejected with a one-line explanation when
+  - ALWAYS Open questions from skipped brainstorm questions ALWAYS remain unresolved;
+    generate/analyze handoff NEVER convert them into implicit decisions
+  - ALWAYS keep saved cache artifacts on disk when session used save
+  - ALWAYS Option 1 ALWAYS be session-only and NEVER write files
+  - ALWAYS Option 2 ALWAYS be hidden or rejected with a one-line explanation when
     output_destination is chat-only or no-write
 ```
 
@@ -155,21 +155,21 @@ PURPOSE:
   Define the explicit next-step routes after brainstorm wrap-up.
 
 DO:
-  WHEN user chose 2:
-    REQUIRE output_destination allows file writes
+  - RUN WHEN user chose 2:
+    - REQUIRE output_destination allows file writes
     WRITE state.json to {cf-studio-path}/.cache/brainstorm/{session_id}/state.json
     WRITE design.md to {cf-studio-path}/.cache/brainstorm/{session_id}/design.md
-    EMIT "Brainstorm results saved to disk under {cf-studio-path}/.cache/brainstorm/{session_id}/. No workflow handoff started."
-    STOP_TURN
+    - EMIT "Brainstorm results saved to disk under {cf-studio-path}/.cache/brainstorm/{session_id}/. No workflow handoff started."
+    - STOP_TURN
 
-  WHEN user chose 3:
-    CONTINUE workflows/generate/phase-1-collect.md
+  - RUN WHEN user chose 3:
+    - CONTINUE workflows/generate/phase-1-collect.md
     WITH:
       pre_resolved_inputs = PRE_RESOLVED_INPUTS
       open_questions = CARRYOVER_QUESTIONS
 
-  WHEN user chose 4:
-    CONTINUE workflows/analyze.md
+  - RUN WHEN user chose 4:
+    - CONTINUE workflows/analyze.md
     WITH:
       brainstorm_review = true
       brainstorm_results = REVIEW_BRAINSTORM_RESULTS

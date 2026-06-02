@@ -13,22 +13,22 @@ purpose: Guide workspace federation setup for cross-repo traceability
 UNIT RootSkillEntrypointBootstrap
 PURPOSE: Prevent direct workflow entry from bypassing the root cf skill.
 DO:
-  1. REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is loaded completely
+  - REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is loaded completely
      and followed FIRST.
-  2. REQUIRE CfSkillInit, Bootstrap, HardRules, and
+  - REQUIRE CfSkillInit, Bootstrap, HardRules, and
      WorkflowProtocolNonSubstitution from SKILL.md have completed.
-  3. CONTINUE this workflow only after the root cf skill routing/entrypoint
+  - CONTINUE this workflow only after the root cf skill routing/entrypoint
      selects it.
 RULES:
-  - MUST execute before any workflow-specific unit in this file.
-  - MUST_NOT treat protocol.md, routing.md, or a thin proxy skill as a
+  - ALWAYS execute before any workflow-specific unit in this file.
+  - NEVER treat protocol.md, routing.md, or a thin proxy skill as a
     substitute for loading and following SKILL.md.
-  - MUST follow routing.md § CanonicalRoutingPrecedenceState for workflow
+  - ALWAYS follow routing.md § CanonicalRoutingPrecedenceState for workflow
     entry, workspace quick commands, AGENTS prompt-asset order, and
     prompt-context ownership.
-  - If this workflow file is opened directly, STOP workflow phases until
+  - ALWAYS If this workflow file is opened directly, STOP workflow phases until
     SKILL.md has been loaded completely and followed.
-  - This gate applies to the top-level controller only; dispatched sub-agents
+  - ALWAYS This gate applies to the top-level controller only; dispatched sub-agents
     consume the synthesized final prompt and supplied context slices.
 ```
 
@@ -39,22 +39,22 @@ PURPOSE:
   Load required files before any workspace phase work begins.
 
 DO:
-  IF {cfs_mode} == off:
-    REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is loaded and followed FIRST
-    REQUIRE {cf-studio-path}/.gen/AGENTS.md is loaded and followed after SKILL.md
-    REQUIRE {cf-studio-path}/config/AGENTS.md is loaded and followed after .gen/AGENTS.md
-  ELSE:
-    REQUIRE {cf-studio-path}/.gen/AGENTS.md is loaded and followed FIRST
-  REQUIRE {cf-studio-path}/config/AGENTS.md is loaded and followed after .gen/AGENTS.md
-  REQUIRE {cf-studio-path}/.core/workflows/shared/stop-token-policy.md is loaded and followed
+  - REQUIRE {cfs_mode} == off:
+    - REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is loaded and followed FIRST
+    - REQUIRE {cf-studio-path}/.gen/AGENTS.md is loaded and followed after SKILL.md
+    - REQUIRE {cf-studio-path}/config/AGENTS.md is loaded and followed after .gen/AGENTS.md
+  - RUN otherwise
+    - REQUIRE {cf-studio-path}/.gen/AGENTS.md is loaded and followed FIRST
+  - REQUIRE {cf-studio-path}/config/AGENTS.md is loaded and followed after .gen/AGENTS.md
+  - REQUIRE {cf-studio-path}/.core/workflows/shared/stop-token-policy.md is loaded and followed
     WHEN any workspace decision prompt is emitted
 
 RULES:
-  - MUST load {cf-studio-path}/.core/skills/studio/SKILL.md first when cfs_mode is off
-  - MUST load {cf-studio-path}/.gen/AGENTS.md before {cf-studio-path}/config/AGENTS.md
-  - MUST load {cf-studio-path}/config/AGENTS.md after .gen/AGENTS.md
-  - MUST match ProtocolGuard bootstrap order for AGENTS prompt assets
-  - MUST load {cf-studio-path}/.core/workflows/shared/stop-token-policy.md before any workspace decision prompt
+  - ALWAYS load {cf-studio-path}/.core/skills/studio/SKILL.md first when cfs_mode is off
+  - ALWAYS load {cf-studio-path}/.gen/AGENTS.md before {cf-studio-path}/config/AGENTS.md
+  - ALWAYS load {cf-studio-path}/config/AGENTS.md after .gen/AGENTS.md
+  - ALWAYS match ProtocolGuard bootstrap order for AGENTS prompt assets
+  - ALWAYS load {cf-studio-path}/.core/workflows/shared/stop-token-policy.md before any workspace decision prompt
 
 NOTES:
   Type: Operation. Role: Any.
@@ -68,13 +68,13 @@ PURPOSE:
   Keep workspace bootstrap prompt loading controller-owned and pack-aware.
 
 RULES:
-  - {cf-studio-path}/config/AGENTS.md and {cf-studio-path}/.gen/AGENTS.md are
-    controller-owned prompt assets when loaded as instructions and MUST be
+  - ALWAYS {cf-studio-path}/config/AGENTS.md and {cf-studio-path}/.gen/AGENTS.md are
+    controller-owned prompt assets when loaded as instructions and ALWAYS be
     reused or refreshed in SHARED_CONTEXT_PACK before downstream dispatch
-  - Workspace helpers MUST receive needed instruction text through a
+  - ALWAYS Workspace helpers ALWAYS receive needed instruction text through a
     controller-synthesized final dispatch prompt rather than reopening AGENTS
     or workflow prompt files
-  - Workspace router fragments MUST remain compact controller-owned loads from
+  - ALWAYS Workspace router fragments ALWAYS remain compact controller-owned loads from
     {cf-studio-path}/.core/workflows/workspace/...
 ```
 
@@ -88,16 +88,16 @@ PURPOSE:
   and validate cross-repo traceability.
 
 RULES:
-  - Generate map of current project: route generate.md -> workspace.md
-  - Check workspace status: route analyze.md with workspace target
-  - Direct workspace quick commands (workspace-info, workspace-add,
+  - ALWAYS Generate map of current project: route generate.md -> workspace.md
+  - ALWAYS Check workspace status: route analyze.md with workspace target
+  - ALWAYS Direct workspace quick commands (workspace-info, workspace-add,
     workspace-sync) invoked as narrow {cfs_cmd} CLI fast paths for read-only or
     single-source-add use:
-      MUST skip workspace setup phases and this workflow's explore gate
-      MUST NOT require {cf-studio-path}/.gen/AGENTS.md load unless the direct
+      ALWAYS skip workspace setup phases and this workflow's explore gate
+      NEVER require {cf-studio-path}/.gen/AGENTS.md load unless the direct
       CLI command itself requires workspace prompt assets
-      MUST still require write-confirmation when write-capable
-  - Full cf workspace setup workflow (Phase 0-4) is unaffected and uses
+      ALWAYS still require write-confirmation when write-capable
+  - ALWAYS Full cf workspace setup workflow (Phase 0-4) is unaffected and uses
     standard RootSkillEntrypointBootstrap and Protocol Guard
 ```
 
@@ -112,15 +112,15 @@ PURPOSE:
 MENU WorkspacePhaseRouter:
   TITLE: Load phase by current step (machine reference — not a user-facing menu)
   OPTIONS:
-    WS_DISCOVER ->
+    1 WS_DISCOVER ->
       LOAD {cf-studio-path}/.core/workflows/workspace/phase-1-discover.md
-    WS_CONFIGURE ->
+    2 WS_CONFIGURE ->
       LOAD {cf-studio-path}/.core/workflows/workspace/phase-2-configure.md
-    WS_GENERATE ->
+    3 WS_GENERATE ->
       LOAD {cf-studio-path}/.core/workflows/workspace/phase-3-generate.md
-    WS_VALIDATE ->
+    4 WS_VALIDATE ->
       LOAD {cf-studio-path}/.core/workflows/workspace/phase-4-validate.md
-    WS_NEXT_STEPS ->
+    5 WS_NEXT_STEPS ->
       LOAD {cf-studio-path}/.core/workflows/workspace/next-steps.md
 
   INVALID:
@@ -129,10 +129,10 @@ MENU WorkspacePhaseRouter:
     STOP_TURN
 
 RULES:
-  - MUST run phases in order for workspace setup
-  - MUST route to analyze workflow with workspace target for status-only requests
+  - ALWAYS run phases in order for workspace setup
+  - ALWAYS route to analyze workflow with workspace target for status-only requests
     (do NOT load all setup phases)
-  - Each phase fragment MUST emit one of these terminal records before STOP_TURN
+  - ALWAYS Each phase fragment ALWAYS emit one of these terminal records before STOP_TURN
     or continuation:
       { "type": "WORKSPACE_STATUS", "phase": "<id>", "status": "pending|complete|invalid|failed", "next_route": "<WS_*|null>" }
       { "type": "WORKSPACE_VALIDATION", "status": "PASS|FAIL|WARN", "checked_sources": [], "issues": [] }
@@ -149,19 +149,19 @@ PURPOSE:
   federation, and offer brainstorm for policy-heavy choices.
 
 WHEN:
-  full workspace setup or config generation starts
-  AND before workspace Phase 1
+  - REQUIRE full workspace setup or config generation starts
+  - AND before workspace Phase 1
 
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/shared/explore-brainstorm-gate.md is loaded and followed
+  - REQUIRE {cf-studio-path}/.core/workflows/shared/explore-brainstorm-gate.md is loaded and followed
 
 RULES:
-  - MUST delegate explore/brainstorm applicability, replacement, and skip
+  - ALWAYS delegate explore/brainstorm applicability, replacement, and skip
     decisions to shared/explore-brainstorm-gate.md
-  - MUST skip this gate for direct quick commands documented in
+  - ALWAYS skip this gate for direct quick commands documented in
     WorkspaceOverview (`workspace-info`, `workspace-add`, `workspace-sync`);
     write-capable quick commands still require their own write-confirmation
-  - SHOULD offer cf-brainstorm when precedence, ownership, rollout, or conflict
+  - ALWAYS offer cf-brainstorm when precedence, ownership, rollout, or conflict
     resolution policy is ambiguous
 ```
 
@@ -174,7 +174,7 @@ PURPOSE:
   Keep this router compact and prevent phase-body inlining.
 
 RULES:
-  - MUST NOT inline phase bodies in this router file
-  - MUST create or update a {cf-studio-path}/.core/workflows/workspace/phase-*.md fragment for any new phase
+  - NEVER inline phase bodies in this router file
+  - ALWAYS create or update a {cf-studio-path}/.core/workflows/workspace/phase-*.md fragment for any new phase
     and add only a router row in WorkspacePhaseRouter above
 ```

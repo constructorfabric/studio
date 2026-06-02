@@ -13,13 +13,13 @@ PURPOSE:
   Define authority boundaries and output constraints for the analyze workflow.
 
 RULES:
-  - MUST treat deterministic gate PASS/FAIL as authoritative when it runs
-  - MUST run semantic review for any completed analysis; in STRICT mode semantic review also requires evidence-backed verification
-  - MUST_NOT label overall PASS when the deterministic gate cannot run; use semantic-only output and disclaim reduced rigor
-  - MUST output to chat only; MUST_NOT create ANALYSIS_REPORT.md; MUST keep analysis stateless
-  - MUST STOP and report issues immediately when deterministic gate fails
-  - MUST emit Remediation Handoff menu when actionable issues exist
-  - MUST emit Fix Prompt / Plan Prompt only on demand (user picks option 2 or 3 in the next turn)
+  - ALWAYS treat deterministic gate PASS/FAIL as authoritative when it runs
+  - ALWAYS run semantic review for any completed analysis; in STRICT mode semantic review also requires evidence-backed verification
+  - NEVER label overall PASS when the deterministic gate cannot run; use semantic-only output and disclaim reduced rigor
+  - ALWAYS output to chat only; NEVER create ANALYSIS_REPORT.md; ALWAYS keep analysis stateless
+  - ALWAYS STOP and report issues immediately when deterministic gate fails
+  - ALWAYS emit Remediation Handoff menu when actionable issues exist
+  - ALWAYS emit Fix Prompt / Plan Prompt only on demand (user picks option 2 or 3 in the next turn)
 ```
 
 ## Key Principles

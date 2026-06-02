@@ -51,20 +51,20 @@ PURPOSE:
   Execute ordered inspection steps over all code paths.
 
 DO:
-  1. Load `requirements/bug-finding.md` via the controller-supplied
+  - RUN Load `requirements/bug-finding.md` via the controller-supplied
      `bug_finding_methodology` asset
-  2. Read design_artifact_path when provided
-  2a. Read every cross_ref_path when provided; extract interface contracts,
+  - RUN Read design_artifact_path when provided
+  - RUN 2a. Read every cross_ref_path when provided; extract interface contracts,
       invariants, and integration assumptions for the integration-defect sweep
-  3. Read every code_path in full via Read tool
+  - RUN Read every code_path in full via Read tool
      WHEN diff_scope is supplied:
        use diff_scope.review_targets and per-file status/commits metadata
        to prioritize paths
        NOTE: changed_hunks/risk_hotspots are reserved for alternate diff
              sources and may be empty
-  4. Run: hotspot mapping, invariant extraction, failure-path exploration,
+  - RUN Run: hotspot mapping, invariant extraction, failure-path exploration,
      bug-class sweep, counterexample construction, dynamic-escalation review
-  5. Emit Findings for confirmed or high-confidence bugs only
+  - RUN Emit Findings for confirmed or high-confidence bugs only
 ```
 
 ## Output Contract
@@ -92,7 +92,7 @@ After the findings JSON, emit a markdown table listing every hotspot examined:
 
 ```pdsl
 RULES:
-  - MUST use one of: correctness | safety | concurrency | performance | security
+  - ALWAYS use one of: correctness | safety | concurrency | performance | security
 ```
 
 ### Residual Risk Summary
@@ -111,14 +111,14 @@ PURPOSE:
   are read, rather than risk truncated output.
 
 WHEN:
-  fewer than 20% of estimated remaining context budget remains
-  AND NOT all code_paths have been fully read
+  - REQUIRE fewer than 20% of estimated remaining context budget remains
+  - AND NOT all code_paths have been fully read
 
 DO:
-  EMIT Partial Checkpoint — Bug Section markdown block
-  EMIT partial checkpoint JSON (see schema below)
-  FORBID emitting a complete validation report
-  STOP_TURN
+  - EMIT Partial Checkpoint — Bug Section markdown block
+  - EMIT partial checkpoint JSON (see schema below)
+  - NEVER emitting a complete validation report
+  - STOP_TURN
 ```
 
 ```json
@@ -142,19 +142,19 @@ PURPOSE:
   Enforce that the response reaches one of two valid terminal states.
 
 RULES:
-  - MUST reach exactly one terminal state before responding
+  - ALWAYS reach exactly one terminal state before responding
 
 MENU TerminalStates:
   OPTIONS:
-    complete_run ->
+    1 complete_run ->
       REQUIRE hotspot table is present (per Additional Output Sections)
       REQUIRE findings JSON is present
       REQUIRE residual risk summary is present
       REQUIRE AP-001..AP-008 self-check performed after all findings/table/summary
       REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md invariant satisfied
-    partial_run ->
+    2 partial_run ->
       REQUIRE PARTIAL_CHECKPOINT JSON is present with:
         covered_paths, pending_paths, findings_so_far,
         hotspot_table_so_far, residual_risk_so_far, resume_instructions
-      FORBID PASS claim or complete-run claim for uncovered paths
+      NEVER PASS claim or complete-run claim for uncovered paths
 ```

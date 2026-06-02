@@ -26,16 +26,16 @@ PURPOSE:
   Load decomposition requirements and split compilation to minimize context.
 
 STATE:
-  task_type: generate | analyze | implement
+  - SET task_type: generate | analyze | implement
     scope: workflow_run
 
-  lifecycle: gitignore | cleanup | archive | manual
+  - SET lifecycle: gitignore | cleanup | archive | manual
     scope: workflow_run
 
 DO:
-  OPEN {cf-studio-path}/.core/requirements/plan-decomposition.md
-  FOLLOW plan-decomposition.md
-  CONTINUE Phase2LifecycleSelection
+  - RUN OPEN {cf-studio-path}/.core/requirements/plan-decomposition.md
+  - RUN FOLLOW plan-decomposition.md
+  - CONTINUE Phase2LifecycleSelection
 
 NOTES:
   Compilation is split to minimize context: write the manifest, write briefs,
@@ -51,9 +51,9 @@ PURPOSE:
   Select a lifecycle strategy before finalizing phase boundaries.
 
 DO:
-  OPEN {cf-studio-path}/.core/workflows/plan/plan-lifecycle.md
-  FOLLOW plan-lifecycle.md (presents lifecycle menu, records selection, defines normative rules)
-  CONTINUE Phase2DecomposeByStrategy
+  - RUN OPEN {cf-studio-path}/.core/workflows/plan/plan-lifecycle.md
+  - RUN FOLLOW plan-lifecycle.md (presents lifecycle menu, records selection, defines normative rules)
+  - CONTINUE Phase2DecomposeByStrategy
 ```
 
 ```pdsl
@@ -63,30 +63,30 @@ PURPOSE:
   Group work into phases using a task-type-specific strategy.
 
 DO:
-  MATCH task_type:
+  - RUN MATCH task_type:
     generate ->
-      LOAD target template
+      - LOAD target template
       LIST H2 sections
       GROUP into phases of 2-4 sections
       RECORD phase boundaries
     analyze ->
-      LOAD target checklist
+      - LOAD target checklist
       LIST checklist categories
       GROUP by validation pipeline order:
         structural → semantic → cross-ref → traceability → synthesis
       RECORD phase boundaries
     implement ->
-      LOAD FEATURE spec
+      - LOAD FEATURE spec
       LIST CDSL blocks
       ASSIGN one block + tests per phase
       ADD scaffolding and final integration phases
       RECORD boundaries
 
-  IF lifecycle = cleanup:
+  - REQUIRE lifecycle = cleanup:
     APPEND reserved final Cleanup phase after all delivery phases
     MAKE Cleanup phase depend on the last non-cleanup phase
 
-  OUTPUT phase list containing:
+  - RUN OUTPUT phase list containing:
     phase number and title
     covered sections / categories / blocks
     dependencies
@@ -95,11 +95,11 @@ DO:
     assigned interaction points
     intermediate results needed by later phases
 
-  IF input/manifest.json package exists AND its input_signature matches plan.input_signature:
+  - REQUIRE input/manifest.json package exists AND its input_signature matches plan.input_signature:
     ASSIGN relevant input/*.md chunk files into input_files for phases that need them
     IF full raw-input package would overflow one phase:
       ADD dedicated ingestion or consolidation phases
-      FORBID attaching every chunk to every phase
+      - NEVER attaching every chunk to every phase
 ```
 
 ## Intermediate Results Analysis
@@ -111,13 +111,13 @@ PURPOSE:
   Map data flow between phases to define intermediate artifact storage.
 
 RULES:
-  - IF any later phase needs a phase result:
+  - ALWAYS IF any later phase needs a phase result:
       SAVE to {cf-studio-path}/.plans/{task-slug}/out/{filename}
-  - IF only the final artifact depends on a result:
+  - ALWAYS IF only the final artifact depends on a result:
       WRITE directly to the project path
-  - IF the final phase assembles prior outputs:
+  - ALWAYS IF the final phase assembles prior outputs:
       LIST ALL required inputs
-  - MUST use names like out/phase-{NN}-{what}.md
+  - ALWAYS use names like out/phase-{NN}-{what}.md
 ```
 
 ## Review Phases
@@ -129,11 +129,11 @@ PURPOSE:
   Insert review gates when the source workflow requires user approval before writing.
 
 RULES:
-  - IF source workflow requires review before writing:
+  - ALWAYS IF source workflow requires review before writing:
       ADD review gates inside the relevant phase
-      Output Format MUST present content for inspection
-      Acceptance Criteria MUST include user approval
-  - IF source workflow requires a major consolidated review:
+      Output Format ALWAYS present content for inspection
+      Acceptance Criteria ALWAYS include user approval
+  - ALWAYS IF source workflow requires a major consolidated review:
       ADD a dedicated Review phase that:
         loads prior outputs
         asks required review questions
@@ -150,16 +150,16 @@ PURPOSE:
   user confirmation before writing any files.
 
 DO:
-  FOR each phase:
+  - RUN FOR each phase:
     COMPUTE estimated_lines = phase_file_lines + sum(input_files lines) + sum(inputs lines) + estimated_output_lines
     INCLUDE plan raw-input chunks from input/ in sum(input_files lines) exactly as read at runtime
     CLASSIFY:
-      > 2000 -> OVERFLOW (MUST split further)
+      > 2000 -> OVERFLOW (ALWAYS split further)
       1501-2000 -> WARNING
 
-  RE-SPLIT all overflow phases until all are within budget
+  - RUN RE-SPLIT all overflow phases until all are within budget
 
-  EMIT:
+  - EMIT:
     Decomposition ({strategy} strategy):
       Phase 1: {title} — ~{N} lines (phase: {P}, runtime: {R})
       Phase 2: {title} — ~{N} lines (phase: {P}, runtime: {R})
@@ -170,17 +170,17 @@ DO:
       Overflow phases: 0
       Budget: 2000 lines max per phase
 
-  EMIT_MENU DecompositionConfirmMenu
-  WAIT user.reply
-  STOP_TURN
+  - EMIT_MENU DecompositionConfirmMenu
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU DecompositionConfirmMenu:
   TITLE: Explicit confirmation is required before writing `plan.toml` and brief files to disk.
   PREAMBLE:
     Proceed with manifest + brief generation after any required raw-input materialization? [y/n]
   OPTIONS:
-    y -> CONTINUE Phase3Compile
-    n -> EMIT "Decomposition declined — rework the phase boundaries and re-run Invoke skill `cf-plan` when ready."
+    1 y -> CONTINUE Phase3Compile
+    2 n -> EMIT "Decomposition declined — rework the phase boundaries and re-run Invoke skill `cf-plan` when ready."
          STOP_TURN  (valid completion state for cf-plan; no files created)
   INVALID:
     EMIT "Reply with y or n."
@@ -188,6 +188,6 @@ MENU DecompositionConfirmMenu:
     STOP_TURN
 
 RULES:
-  - MUST wait for user confirmation before proceeding to Phase 3
-  - MUST NOT hide raw-input chunk estimates inside vague totals
+  - ALWAYS wait for user confirmation before proceeding to Phase 3
+  - NEVER hide raw-input chunk estimates inside vague totals
 ```

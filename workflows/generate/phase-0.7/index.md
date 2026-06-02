@@ -16,24 +16,24 @@ PURPOSE:
   Sub-files are self-loadable; they cannot assume sibling sub-files are in context.
 
 DO:
-  LOAD offer.md
+  - LOAD offer.md
     WHEN Phase 0.7 fires and orchestrator must offer brainstorm to user
-  LOAD panel-selection.md
+  - LOAD panel-selection.md
     WHEN user accepts brainstorm; session setup begins
-  LOAD state-schema.md
+  - LOAD state-schema.md
     WHEN before the first round; state object must be initialized
-  LOAD round-loop.md
+  - LOAD round-loop.md
     WHEN each brainstorm round (dispatch + INLINE_FALLBACK degradation)
-  LOAD wrap-handoff.md
+  - LOAD wrap-handoff.md
     WHEN all rounds complete; consolidate design and route to the user's chosen next step
-  LOAD save-and-rules.md
+  - LOAD save-and-rules.md
     WHEN mode=save requested OR rules-respect / standalone-use check fires
 
-  AFTER wrap-handoff.md completes:
+  - RUN AFTER wrap-handoff.md completes:
     DO NOT auto-continue to phase-1-collect.md
     wrap-handoff.md owns the next-step route selection
 
-  AFTER save-and-rules.md when that fires last:
+  - RUN AFTER save-and-rules.md when that fires last:
     DO NOT auto-continue to phase-1-collect.md unless wrap-handoff.md selected
     the generate route explicitly
 
@@ -41,5 +41,5 @@ ON_ERROR:
   wrap_handoff_failure ->
     STOP
     EMIT error to user
-    FORBID proceeding to phase-1-collect.md or analyze.md
+    NEVER proceeding to phase-1-collect.md or analyze.md
 ```

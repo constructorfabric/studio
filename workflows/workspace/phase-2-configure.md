@@ -20,21 +20,21 @@ PURPOSE:
   Confirm all selected source settings and workspace location before allowing Phase 3 to proceed.
 
 STATE:
-  WORKSPACE_ALL_SOURCES_CONFIRMED: unset | true
+  - SET WORKSPACE_ALL_SOURCES_CONFIRMED: unset | true
     default: unset
     scope: workflow_run
     reset: any source edit re-requires re-confirmation of that source
 
 RULES:
-  - cross_repo defaults to yes
-  - resolve_remote_ids defaults to yes
-  - MUST have both cross_repo == yes AND resolve_remote_ids == yes to include remote IDs
+  - ALWAYS cross_repo defaults to yes
+  - ALWAYS resolve_remote_ids defaults to yes
+  - ALWAYS have both cross_repo == yes AND resolve_remote_ids == yes to include remote IDs
 
 DO:
-  FOR each selected source (sequentially):
-    EMIT batched confirmation prompt for source
-    WAIT user.reply
-    STOP_TURN
+  - RUN FOR each selected source (sequentially):
+    - EMIT batched confirmation prompt for source
+    - WAIT user.reply
+    - STOP_TURN
 
 MENU SourceConfirmationPrompt:
   TITLE: |
@@ -44,7 +44,7 @@ MENU SourceConfirmationPrompt:
     - `approve` → keep the proposed source settings and continue.
     - field edits → update only the named fields, then re-show the proposal.
   OPTIONS:
-    approve ->
+    1 approve ->
       Mark source as confirmed
       IF more unconfirmed sources remain:
         CONTINUE WorkspaceConfigure (next source)
@@ -66,10 +66,10 @@ MENU SourceConfirmationPrompt:
     STOP_TURN
 
 RULES:
-  - MUST confirm: name, relative path or url, role, adapter, cross_repo, resolve_remote_ids, workspace location
-  - MUST track confirmation per source individually
-  - MUST_NOT enter Phase 3 until every selected source is confirmed and workspace location is final
-  - Primary source is always determined by the current working directory; no `primary` field exists
+  - ALWAYS confirm: name, relative path or url, role, adapter, cross_repo, resolve_remote_ids, workspace location
+  - ALWAYS track confirmation per source individually
+  - NEVER enter Phase 3 until every selected source is confirmed and workspace location is final
+  - ALWAYS Primary source is always determined by the current working directory; no `primary` field exists
 ```
 
 ```pdsl
@@ -79,17 +79,17 @@ PURPOSE:
   Handle workspace location edits and URL constraints when user changes standalone vs inline.
 
 DO:
-  IF reply changes location to inline AND any source uses a URL:
-    EMIT "inline config does not support Git URL sources — a standalone location is required."
+  - REQUIRE reply changes location to inline AND any source uses a URL:
+    - EMIT "inline config does not support Git URL sources — a standalone location is required."
     Reset location to standalone
     Re-show current source proposal
-    WAIT user.reply
-    STOP_TURN
-  ELSE:
+    - WAIT user.reply
+    - STOP_TURN
+  - RUN otherwise
     Update global location choice
     Re-show current source proposal
-    WAIT user.reply
-    STOP_TURN
+    - WAIT user.reply
+    - STOP_TURN
 ```
 
 ```pdsl
@@ -99,14 +99,14 @@ PURPOSE:
   Gate entry to Phase 3 — only pass when all sources confirmed and location valid.
 
 DO:
-  Verify all selected sources are confirmed
-  Verify final workspace location is valid for the whole source set
-  IF valid:
-    SET WORKSPACE_ALL_SOURCES_CONFIRMED = true
-    CONTINUE workflows/workspace/phase-3-generate.md
-  ELSE:
-    EMIT summary of remaining unconfirmed sources or location conflict
-    CONTINUE WorkspaceConfigure (resume at first unconfirmed source)
+  - RUN Verify all selected sources are confirmed
+  - RUN Verify final workspace location is valid for the whole source set
+  - REQUIRE valid:
+    - SET WORKSPACE_ALL_SOURCES_CONFIRMED = true
+    - CONTINUE workflows/workspace/phase-3-generate.md
+  - RUN otherwise
+    - EMIT summary of remaining unconfirmed sources or location conflict
+    - CONTINUE WorkspaceConfigure (resume at first unconfirmed source)
 
 NOTES:
   See workflows/shared/stop-token-policy.md for stop-token routing.

@@ -70,11 +70,11 @@ PURPOSE:
   Validate required dispatch inputs before any processing step.
 
 RULES:
-  - REQUIRE strategy is present
-  - REQUIRE handle.canonical_path is an absolute path
-  - REQUIRE plan.items is non-empty
-  - REQUIRE every plan item has a unique index with values 0..N-1 where N = plan.item_count
-  - WHEN session_id is absent: skip Step 6 persistence and record warning
+  - ALWAYS REQUIRE strategy is present
+  - ALWAYS REQUIRE handle.canonical_path is an absolute path
+  - ALWAYS REQUIRE plan.items is non-empty
+  - ALWAYS REQUIRE every plan item has a unique index with values 0..N-1 where N = plan.item_count
+  - ALWAYS WHEN session_id is absent: skip Step 6 persistence and record warning
     "session_id absent or cf_studio_path unresolvable — pack not persisted"
 ```
 
@@ -89,13 +89,13 @@ PURPOSE:
   Load raw_text and total_lines from the dispatch target.
 
 DO:
-  WHEN handle.target_type == "code" OR handle.target_type == "artifact":
+  - RUN WHEN handle.target_type == "code" OR handle.target_type == "artifact":
     Read file at handle.canonical_path using Read tool with no offset (all lines)
-    SET raw_text = file contents
-    SET total_lines = line count
+    - SET raw_text = file contents
+    - SET total_lines = line count
 
-  WHEN handle.target_type == "directory":
-    REQUIRE Bash tool OR Glob tool is available
+  - RUN WHEN handle.target_type == "directory":
+    - REQUIRE Bash tool OR Glob tool is available
     WHEN Bash tool is available (preferred):
       run ls <canonical_path> to enumerate entries
     WHEN Bash tool is unavailable AND Glob tool is available (fallback):
@@ -104,25 +104,25 @@ DO:
         for sub-directory code files
       skip entries that are sub-directories (retain files only)
     WHEN neither Bash nor Glob is available:
-      SET abort = true
-      EMIT "Cannot enumerate directory: neither Bash nor Glob tool is available in this dispatch context."
-      RETURN
+      - SET abort = true
+      - EMIT "Cannot enumerate directory: neither Bash nor Glob tool is available in this dispatch context."
+      - RETURN
     After listing:
       Read each top-level file (not recursive sub-directories unless Glob enumeration is in use)
       Skip binary files (detected by file -b returning non-text MIME or by extension:
         .png .jpg .gif .pdf .zip .tar .gz .bin .exe .whl .jar)
       Concatenate content with file-boundary markers <<FILE: relative/path>> at each transition
-      SET total_lines = running sum of line counts
+      - SET total_lines = running sum of line counts
 
-  WHEN handle.target_type == "pr":
+  - RUN WHEN handle.target_type == "pr":
     Read file at handle.canonical_path (structured PR descriptor JSON with fields:
       title, body, diff_summary, changed_files, comments)
     Treat as a single logical document
-    SET raw_text = file contents
-    SET total_lines = line count
+    - SET raw_text = file contents
+    - SET total_lines = line count
 
 RULES:
-  - MUST record raw_text and total_lines for use in Steps 2-3
+  - ALWAYS record raw_text and total_lines for use in Steps 2-3
 ```
 
 ### Step 2 — Build anchor list
@@ -134,14 +134,14 @@ PURPOSE:
   Derive a structured anchor index from raw_text using language-appropriate rules.
 
 DO:
-  WHEN handle.primary_language is "markdown" OR anchors cannot be determined by code rules:
+  - RUN WHEN handle.primary_language is "markdown" OR anchors cannot be determined by code rules:
     Derive one anchor per heading matching ^#{1,3} :
       id: h-<slugified-heading> (lowercase, spaces/punctuation to -, truncated at 60 chars)
       title: heading text without leading # characters
       line_range.start: heading line number (1-indexed)
       line_range.end: line before next same-or-higher heading OR total_lines for last anchor
 
-  WHEN handle.primary_language is one of (python, javascript, typescript, go, java, rust,
+  - RUN WHEN handle.primary_language is one of (python, javascript, typescript, go, java, rust,
       c, cpp, ruby, php, swift, kotlin, scala):
     Derive one anchor per top-level function or class boundary:
       Detect with language-appropriate patterns (^def , ^class , ^func , ^function ,
@@ -151,25 +151,25 @@ DO:
       line_range.start: boundary line
       line_range.end: last line of logical block (next same-or-higher boundary, or total_lines)
 
-  WHEN no headings and no top-level code boundaries found (fallback):
+  - RUN WHEN no headings and no top-level code boundaries found (fallback):
     Derive anchors from plan.items directly:
       For each plan item:
         WHEN anchor_hint is non-null: grep raw_text for first line matching anchor_hint
-          SET line_range.start = matched line (1-indexed) OR 1 if not found
+          - SET line_range.start = matched line (1-indexed) OR 1 if not found
         id: plan-item-<index>
         title: plan item title
         line_range.end: start of next anchor OR total_lines
 
-  WHEN derived anchor count < plan.item_count:
+  - RUN WHEN derived anchor count < plan.item_count:
     Append synthetic fallback anchors (one per remaining un-mapped plan item) using fallback rule
     Flag each with synthetic: true
 
-  WHEN anchor slug collides with previously assigned id:
+  - RUN WHEN anchor slug collides with previously assigned id:
     Append -2, -3, etc. to make id stable and unique
 
 RULES:
-  - MUST produce at least plan.item_count anchors (using synthetic anchors if needed)
-  - MUST assign each anchor a unique id within the anchors array
+  - ALWAYS produce at least plan.item_count anchors (using synthetic anchors if needed)
+  - ALWAYS assign each anchor a unique id within the anchors array
 ```
 
 ### Step 3 — Apply strategy
@@ -181,42 +181,42 @@ PURPOSE:
   Resolve hot_threshold_bytes and populate resolved_section_text and is_hot per anchor.
 
 DO:
-  SET hot_threshold_bytes = dispatch value when non-null, else 8192
-  For each anchor:
+  - SET hot_threshold_bytes = dispatch value when non-null, else 8192
+  - RUN For each anchor:
     Compute byte_count = approximate byte length of lines in line_range
       (1 byte per ASCII char, 3 bytes per non-ASCII char)
 
-  WHEN strategy == "snippets":
+  - RUN WHEN strategy == "snippets":
     For every anchor:
       Slice raw_text lines from line_range.start to line_range.end (inclusive, 1-indexed)
       Prefix extracted slice with <<L{line_range.start}>> on its own line before first content line
-      SET is_hot = true
-      SET resolved_section_text = extracted slice
-    SET total_extracted_bytes = sum of all byte_count values
+      - SET is_hot = true
+      - SET resolved_section_text = extracted slice
+    - SET total_extracted_bytes = sum of all byte_count values
 
-  WHEN strategy == "anchors":
+  - RUN WHEN strategy == "anchors":
     For every anchor:
-      SET resolved_section_text = null
-      SET is_hot = false
-    SET total_extracted_bytes = 0
+      - SET resolved_section_text = null
+      - SET is_hot = false
+    - SET total_extracted_bytes = 0
 
-  WHEN strategy == "hybrid":
+  - RUN WHEN strategy == "hybrid":
     For each anchor:
-      SET is_hot = true WHEN ANY of:
-        1. anchor index == 0
-        2. anchor is referenced by >= 2 plan items in plan_anchor_map
-        3. anchor.byte_count > hot_threshold_bytes
-        4. mode == "change-impact" AND depth_mode_flags.diff_summary == true
+      - SET is_hot = true WHEN ANY of:
+        - anchor index == 0
+        - anchor is referenced by >= 2 plan items in plan_anchor_map
+        - anchor.byte_count > hot_threshold_bytes
+        - mode == "change-impact" AND depth_mode_flags.diff_summary == true
            AND anchor is among the first 3 anchors in the diff_summary set
       Otherwise SET is_hot = false
       WHEN is_hot == true:
         Extract resolved_section_text with line markers as in snippets strategy
       WHEN is_hot == false:
-        SET resolved_section_text = null
-    SET total_extracted_bytes = sum of byte_count for hot anchors only
+        - SET resolved_section_text = null
+    - SET total_extracted_bytes = sum of byte_count for hot anchors only
 
 RULES:
-  - MUST echo the input strategy verbatim in content_pack.strategy
+  - ALWAYS echo the input strategy verbatim in content_pack.strategy
 ```
 
 ### Step 4 — Compute depth_mode_flags
@@ -228,22 +228,22 @@ PURPOSE:
   Map mode and audience inputs to boolean flags for downstream consumers.
 
 DO:
-  Initialize all flags to false: surface_only, risk_map, diff_summary, inline_code
+  - RUN Initialize all flags to false: surface_only, risk_map, diff_summary, inline_code
 
-  SET surface_only = true WHEN:
+  - SET surface_only = true WHEN:
     mode == "onboarding" OR audience contains "new-hire" OR audience contains "beginner"
 
-  SET risk_map = true WHEN:
+  - SET risk_map = true WHEN:
     mode == "review" OR mode == "change-impact"
 
-  SET diff_summary = true WHEN:
+  - SET diff_summary = true WHEN:
     mode == "review" OR mode == "change-impact" OR handle.target_type == "pr"
 
-  SET inline_code = true WHEN:
+  - SET inline_code = true WHEN:
     mode == "presentation" OR audience contains "engineer" OR primary_language is non-null
 
 INVARIANTS:
-  - MUST set depth_mode_flags.risk_map = true when mode == "review"; this is a hard
+  - ALWAYS set depth_mode_flags.risk_map = true when mode == "review"; this is a hard
     invariant checked by the orchestrator — apply it even if the table mapping
     above would yield false through some code path
 ```
@@ -257,7 +257,7 @@ PURPOSE:
   Map every plan item index (0..N-1) to exactly one anchor id.
 
 DO:
-  WHEN ALL plan items have anchor_hint == null (all-null edge case):
+  - RUN WHEN ALL plan items have anchor_hint == null (all-null edge case):
     Use distribution strategy:
       WHEN structural anchor count >= plan.item_count (N):
         Map plan item i -> anchor at position i in anchors array (1:1 in index order)
@@ -273,7 +273,7 @@ DO:
         Map plan item i -> chunk-<i>
         Add synthetic anchors to anchors array with synthetic: true
 
-  WHEN at least one anchor_hint is non-null (standard per-item rules):
+  - RUN WHEN at least one anchor_hint is non-null (standard per-item rules):
     For each plan item i:
       WHEN plan.items[i].anchor_hint is non-null:
         Find first anchor whose title contains hint (case-insensitive substring match)
@@ -284,11 +284,11 @@ DO:
         Assign anchor with smallest abs(anchor.line_range.start - expected_line)
         Break ties by lower anchor index
 
-  Emit plan_anchor_map as {"0": "<anchor_id>", "1": "<anchor_id>", ...}
+  - RUN Emit plan_anchor_map as {"0": "<anchor_id>", "1": "<anchor_id>", ...}
 
 RULES:
-  - MUST map every plan item to exactly one anchor
-  - MUST NOT collapse all items onto anchor at line 1 when all-null edge case detected
+  - ALWAYS map every plan item to exactly one anchor
+  - NEVER collapse all items onto anchor at line 1 when all-null edge case detected
 ```
 
 ### Step 6 — Persist pack (informational)
@@ -300,25 +300,25 @@ PURPOSE:
   Write the content_pack JSON to a cache file for consumer re-use.
 
 DO:
-  Construct cache path: {cf-studio-path}/.cache/explain/packs/<session_id>.json
-  Resolve {cf-studio-path} from CLAUDE.md / SKILL.md context (cf_studio_path variable)
-  WHEN resolution fails OR session_id is absent:
-    SET kit_path = null
+  - RUN Construct cache path: {cf-studio-path}/.cache/explain/packs/<session_id>.json
+  - RUN Resolve {cf-studio-path} from CLAUDE.md / SKILL.md context (cf_studio_path variable)
+  - RUN WHEN resolution fails OR session_id is absent:
+    - SET kit_path = null
     Record warning: "session_id absent or cf_studio_path unresolvable — pack not persisted"
-    CONTINUE Step7
-  WHEN both are available:
+    - CONTINUE Step7
+  - RUN WHEN both are available:
     Use Bash to create directory: mkdir -p <cache-dir>
     Write content_pack JSON using Write tool
-    SET kit_path = absolute path of written file
-  Include etag field in persisted JSON:
+    - SET kit_path = absolute path of written file
+  - RUN Include etag field in persisted JSON:
     etag = sha256(canonical_path + ":" + byte_size + ":" + line_count)
 
 RULES:
-  - MUST_NOT abort the agent run on persistence failure
-  - MUST add a warning and continue to Step 7 on any persistence failure
+  - NEVER abort the agent run on persistence failure
+  - ALWAYS add a warning and continue to Step 7 on any persistence failure
 
 NOTES:
-  etag captures source-file identity; consumers MUST re-dispatch this agent on etag
+  etag captures source-file identity; consumers ALWAYS re-dispatch this agent on etag
   mismatch (file moved or changed since pack was written).
   Persistence is informational only.
 ```
@@ -332,12 +332,12 @@ PURPOSE:
   Emit the final content_pack JSON as the entire response.
 
 DO:
-  Build output JSON per the Output contract
-  RETURN content_pack JSON
+  - RUN Build output JSON per the Output contract
+  - RETURN content_pack JSON
 
 RULES:
-  - MUST_NOT emit preamble or trailing commentary
-  - MUST emit the JSON block as the entire response
+  - NEVER emit preamble or trailing commentary
+  - ALWAYS emit the JSON block as the entire response
 ```
 
 ## Strategy Reference
@@ -352,12 +352,12 @@ RULES:
 UNIT ConsumerContract
 
 PURPOSE:
-  Define how downstream agents MUST use the content_pack.
+  Define how downstream agents ALWAYS use the content_pack.
 
 RULES:
-  - MUST_NOT branch reasoning on content_pack.strategy (it is an implementation detail)
-  - MUST use anchors[] array and resolved_section_text field uniformly regardless of strategy
-  - MUST reject (in Response Completion Gate) any reasoning that explicitly cites strategy value
+  - NEVER branch reasoning on content_pack.strategy (it is an implementation detail)
+  - ALWAYS use anchors[] array and resolved_section_text field uniformly regardless of strategy
+  - ALWAYS reject (in Response Completion Gate) any reasoning that explicitly cites strategy value
 
 NOTES:
   The orchestrator selects the strategy before dispatch. The strategy field is an
@@ -407,9 +407,9 @@ PURPOSE:
   Define the required content and constraints for the overview field.
 
 RULES:
-  - MUST be non-empty
-  - MUST NOT exceed three sentences
-  - MUST state: what the input is (file name/type/purpose inferred from first anchor titles
+  - ALWAYS be non-empty
+  - NEVER exceed three sentences
+  - ALWAYS state: what the input is (file name/type/purpose inferred from first anchor titles
     and plan item descriptions), what the plan covers (summary of item titles), and the
     strategy in use (one clause)
 
@@ -429,26 +429,26 @@ PURPOSE:
   Enforce all invariants before the response is considered complete.
 
 RULES:
-  - MUST have anchors array non-empty
-  - MUST have every anchors[].id unique within the array
-  - MUST have every anchors[].line_range non-null with start <= end
-  - MUST have plan_anchor_map containing exactly one key per plan item index (0..N-1
-    where N = plan.item_count); every value MUST resolve to a key in anchors[].id
-  - MUST have overview non-empty
-  - MUST have all anchors[].resolved_section_text non-null for strategy α
-  - MUST have all anchors[].resolved_section_text null for strategy β
-  - MUST have at least the first anchor with resolved_section_text non-null and
+  - ALWAYS have anchors array non-empty
+  - ALWAYS have every anchors[].id unique within the array
+  - ALWAYS have every anchors[].line_range non-null with start <= end
+  - ALWAYS have plan_anchor_map containing exactly one key per plan item index (0..N-1
+    where N = plan.item_count); every value ALWAYS resolve to a key in anchors[].id
+  - ALWAYS have overview non-empty
+  - ALWAYS have all anchors[].resolved_section_text non-null for strategy α
+  - ALWAYS have all anchors[].resolved_section_text null for strategy β
+  - ALWAYS have at least the first anchor with resolved_section_text non-null and
     is_hot: true for strategy γ
-  - MUST have total_extracted_bytes equal to the sum of byte_count for all anchors
+  - ALWAYS have total_extracted_bytes equal to the sum of byte_count for all anchors
     with non-null resolved_section_text
-  - MUST have the SKILL.md invariant satisfied
-SEE_ALSO: ApplyStrategy
-SEE_ALSO: ComputeDepthModeFlags
-SEE_ALSO: ReturnContentPack
+  - ALWAYS have the SKILL.md invariant satisfied
+- ALWAYS SEE_ALSO: ApplyStrategy
+- ALWAYS SEE_ALSO: ComputeDepthModeFlags
+- ALWAYS SEE_ALSO: ReturnContentPack
 
 ON_ERROR:
   mode_review_risk_map_unresolvable ->
-    MUST_NOT emit a partially-valid content_pack
+    NEVER emit a partially-valid content_pack
     RETURN:
       {
         "abort": true,

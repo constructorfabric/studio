@@ -14,16 +14,16 @@ PURPOSE:
   Dispatch cf-deterministic-validator and route based on gate result.
 
 DO:
-  REQUIRE `{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md` loaded before dispatch
-  LOAD {cf-studio-path}/.core/skills/studio/agents/cf-deterministic-validator.md
+  - REQUIRE `{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md` loaded before dispatch
+  - LOAD {cf-studio-path}/.core/skills/studio/agents/cf-deterministic-validator.md
     as the validator source contract
-  SYNTHESIZE final dispatch prompt from the loaded validator contract plus
+  - RUN SYNTHESIZE final dispatch prompt from the loaded validator contract plus
     SHARED_CONTEXT_PACK and the payload below
-  IF validator source contract is not loaded, unreadable, ambiguous, or not
+  - REQUIRE validator source contract is not loaded, unreadable, ambiguous, or not
      reflected in the final dispatch prompt:
     FAIL per sub-agent-dispatch.md § SubAgentContractReadGate
-    FORBID dispatch
-  DISPATCH cf-deterministic-validator with the synthesized final prompt and
+    - NEVER dispatch
+  - DISPATCH cf-deterministic-validator with the synthesized final prompt and
     orchestrator-supplied payload:
     target_paths = Phase 5 target_paths state on external analyze→generate entry;
                    otherwise manifest.paths_written from phase-4-write.md
@@ -31,8 +31,8 @@ DO:
     target_kinds = { "<path>": "{TARGET_TYPE}" } per path
     rules_mode = {STRICT|RELAXED}
     language_check_configured = true|false from .studio-workspace.toml
-  CAPTURE returned Validation Results block and det_findings JSON array
-  APPEND phase5_dispatch_evidence record:
+  - RUN CAPTURE returned Validation Results block and det_findings JSON array
+  - RUN APPEND phase5_dispatch_evidence record:
     phase = "5.1"
     agent_id = "cf-deterministic-validator"
     target_paths = target_paths
@@ -41,25 +41,25 @@ DO:
 MENU Det51Routing:
   TITLE: Deterministic gate routing (machine reference)
   OPTIONS:
-    PASS or SKIPPED (with Validator availability proof) ->
+    1 PASS or SKIPPED (with Validator availability proof) ->
       SET det_gate_result = returned deterministic gate result
       SET det_gate_evidence = returned validator availability proof when SKIPPED,
         otherwise returned Validation Results marker
       SET all_findings = []
       CONTINUE workflows/generate/phase-5/phase-5.2-semantic.md
-    FAIL ->
+    2 FAIL ->
       SET all_findings = det_findings
       SKIP workflows/generate/phase-5/phase-5.2-semantic.md
       CONTINUE workflows/generate/phase-5/phase-5.3-findings.md
 
 RULES:
-  - STRICT mode: gate result is authoritative
-  - PASS and SKIPPED outcomes MUST preserve det_gate_result and
-    det_gate_evidence for Phase 5.3 / Phase 5.5; clearing all_findings MUST
+  - ALWAYS STRICT mode: gate result is authoritative
+  - ALWAYS PASS and SKIPPED outcomes ALWAYS preserve det_gate_result and
+    det_gate_evidence for Phase 5.3 / Phase 5.5; clearing all_findings ALWAYS
     NOT erase validator proof
-  - MUST apply sub-agent-dispatch.md § SubAgentContractReadGate before
+  - ALWAYS apply sub-agent-dispatch.md § SubAgentContractReadGate before
     dispatching cf-deterministic-validator
-  - RELAXED mode: loop may exit via explicitly unvalidated Deterministic gate: SKIPPED
+  - ALWAYS RELAXED mode: loop may exit via explicitly unvalidated Deterministic gate: SKIPPED
     or Deterministic gate: FAIL path on phase-5.4-approval.md § option 4
     manual-handoff branch
 

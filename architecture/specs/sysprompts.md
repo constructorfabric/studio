@@ -66,15 +66,15 @@ PURPOSE:
   loading authority.
 
 RULES:
-  - `{cf-studio-path}/config/AGENTS.md` and
+  - ALWAYS `{cf-studio-path}/config/AGENTS.md` and
     `{cf-studio-path}/config/sysprompts/*.md` are prompt assets when used as
     operating instructions
-  - A dispatching controller MAY load those prompt assets from disk
-  - When loaded into `SHARED_CONTEXT_PACK`, those assets MUST be recorded with
+  - ALWAYS A dispatching controller may load those prompt assets from disk
+  - ALWAYS When loaded into `SHARED_CONTEXT_PACK`, those assets ALWAYS be recorded with
     `origin = "project"`
-  - Prompt-consuming sub-agents MUST receive the selected prompt text through
+  - ALWAYS Prompt-consuming sub-agents ALWAYS receive the selected prompt text through
     the controller-synthesized final dispatch prompt
-  - Prompt-consuming sub-agents MUST_NOT reopen project sysprompt files
+  - ALWAYS Prompt-consuming sub-agents NEVER reopen project sysprompt files
     directly from disk
 ```
 
@@ -85,18 +85,18 @@ PURPOSE:
   Make project sysprompt selection explicit and shared-context-pack aware.
 
 DO:
-  REQUIRE operation context is resolved
-  REQUIRE controller reads `{cf-studio-path}/config/AGENTS.md`
-  REQUIRE controller evaluates action-based `WHEN` rules against the current context
-  REQUIRE controller loads matching system prompt files in declaration order
-  REQUIRE controller publishes matched prompt text into `SHARED_CONTEXT_PACK`
-  REQUIRE controller synthesizes a final dispatch prompt for any
+  - REQUIRE operation context is resolved
+  - REQUIRE controller reads `{cf-studio-path}/config/AGENTS.md`
+  - REQUIRE controller evaluates action-based `WHEN` rules against the current context
+  - REQUIRE controller loads matching system prompt files in declaration order
+  - REQUIRE controller publishes matched prompt text into `SHARED_CONTEXT_PACK`
+  - REQUIRE controller synthesizes a final dispatch prompt for any
     prompt-consuming sub-agent dispatch
 
 RULES:
-  - MUST keep kit prompts and project sysprompts separate prompt-asset families
-  - MUST load only the prompt assets required by the active operation
-  - MUST treat missing required prompt context as a controller error rather than
+  - ALWAYS keep kit prompts and project sysprompts separate prompt-asset families
+  - ALWAYS load only the prompt assets required by the active operation
+  - ALWAYS treat missing required prompt context as a controller error rather than
     a license for direct file reads
 ```
 

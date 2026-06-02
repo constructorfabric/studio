@@ -13,21 +13,21 @@ purpose: Universal workflow for generating execution plans with phased delivery
 UNIT RootSkillEntrypointBootstrap
 PURPOSE: Prevent direct workflow entry from bypassing the root cf skill.
 DO:
-  1. REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is loaded completely
+  - REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is loaded completely
      and followed FIRST.
-  2. REQUIRE CfSkillInit, Bootstrap, HardRules, and
+  - REQUIRE CfSkillInit, Bootstrap, HardRules, and
      WorkflowProtocolNonSubstitution from SKILL.md have completed.
-  3. CONTINUE this workflow only after the root cf skill routing/entrypoint
+  - CONTINUE this workflow only after the root cf skill routing/entrypoint
      selects it.
 RULES:
-  - MUST execute before any workflow-specific unit in this file.
-  - MUST_NOT treat protocol.md, routing.md, or a thin proxy skill as a
+  - ALWAYS execute before any workflow-specific unit in this file.
+  - NEVER treat protocol.md, routing.md, or a thin proxy skill as a
     substitute for loading and following SKILL.md.
-  - MUST follow routing.md § CanonicalRoutingPrecedenceState for workflow
+  - ALWAYS follow routing.md § CanonicalRoutingPrecedenceState for workflow
     entry, fallback dispatch state, and prompt-context ownership.
-  - If this workflow file is opened directly, STOP workflow phases until
+  - ALWAYS If this workflow file is opened directly, STOP workflow phases until
     SKILL.md has been loaded completely and followed.
-  - This gate applies to the top-level controller only; dispatched sub-agents
+  - ALWAYS This gate applies to the top-level controller only; dispatched sub-agents
     consume the synthesized final prompt and supplied context slices.
 ```
 
@@ -38,22 +38,22 @@ PURPOSE:
   Load required files in order before any phase work begins.
 
 DO:
-  IF {cfs_mode} == off:
-    REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is loaded and followed FIRST
-  REQUIRE {cf-studio-path}/.core/skills/studio/protocol.md is loaded and followed
+  - REQUIRE {cfs_mode} == off:
+    - REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is loaded and followed FIRST
+  - REQUIRE {cf-studio-path}/.core/skills/studio/protocol.md is loaded and followed
     before any workflow-local phase work
-  REQUIRE {cf-studio-path}/.core/workflows/shared/stop-token-policy.md is loaded and followed
+  - REQUIRE {cf-studio-path}/.core/workflows/shared/stop-token-policy.md is loaded and followed
     before any prompt that relies on stop-token behavior
 
 RULES:
-  - MUST load {cf-studio-path}/.core/skills/studio/SKILL.md first when cfs_mode is off
-  - MUST load {cf-studio-path}/.core/skills/studio/protocol.md before any phase work
-  - MUST load {cf-studio-path}/.core/workflows/shared/stop-token-policy.md before any stop-token-dependent prompt
-  - MUST load {cf-studio-path}/.core/requirements/plan-template.md WHEN compiling phase files
-  - MUST load {cf-studio-path}/.core/requirements/plan-decomposition.md WHEN decomposing tasks into phases
-  - MUST load {cf-studio-path}/.core/requirements/prompt-engineering.md WHEN compiling phase files
+  - ALWAYS load {cf-studio-path}/.core/skills/studio/SKILL.md first when cfs_mode is off
+  - ALWAYS load {cf-studio-path}/.core/skills/studio/protocol.md before any phase work
+  - ALWAYS load {cf-studio-path}/.core/workflows/shared/stop-token-policy.md before any stop-token-dependent prompt
+  - ALWAYS load {cf-studio-path}/.core/requirements/plan-template.md WHEN compiling phase files
+  - ALWAYS load {cf-studio-path}/.core/requirements/plan-decomposition.md WHEN decomposing tasks into phases
+  - ALWAYS load {cf-studio-path}/.core/requirements/prompt-engineering.md WHEN compiling phase files
     (phase files ARE agent instructions)
-  - MUST load {cf-studio-path}/.core/requirements/plan-checklist.md WHEN validating plans
+  - ALWAYS load {cf-studio-path}/.core/requirements/plan-checklist.md WHEN validating plans
     (Phase 4.1 self-validation or Invoke skill `cf-analyze` on plan)
 
 NOTES:
@@ -76,12 +76,12 @@ PURPOSE:
   Keep plan-phase prompt loading controller-owned and pack-aware.
 
 RULES:
-  - Plan workflow prompt assets are controller-owned runtime loads and MUST use
+  - ALWAYS Plan workflow prompt assets are controller-owned runtime loads and ALWAYS use
     {cf-studio-path}-prefixed runtime paths when mirrors exist
-  - The controller MUST reuse or extend SHARED_CONTEXT_PACK before any
+  - ALWAYS The controller ALWAYS reuse or extend SHARED_CONTEXT_PACK before any
     downstream phase compiler, phase runner, or other prompt-consuming dispatch
     that depends on plan prompt assets
-  - Plan MUST NOT rely on prompt-consuming sub-agents reopening workflow,
+  - ALWAYS Plan NEVER rely on prompt-consuming sub-agents reopening workflow,
     requirement, spec, or AGENTS prompt files directly
 ```
 
@@ -94,10 +94,10 @@ PURPOSE:
   Define when and how to use the plan workflow.
 
 RULES:
-  - MUST use this workflow when work exceeds a single-context window, requires a long
+  - ALWAYS use this workflow when work exceeds a single-context window, requires a long
     checklist, or involves multi-block implementation
-  - MUST NOT use for small edits, direct execution, or work that fits in ~500 compiled lines
-  - Output: plan.toml + N phase files in {cf-studio-path}/.plans/{task-slug}/
+  - NEVER use for small edits, direct execution, or work that fits in ~500 compiled lines
+  - ALWAYS Output: plan.toml + N phase files in {cf-studio-path}/.plans/{task-slug}/
 ```
 
 ## Context Budget & Overflow Prevention (CRITICAL)
@@ -109,13 +109,13 @@ PURPOSE:
   Enforce context budget across all plan phases.
 
 RULES:
-  - MUST open every applicable dependency file to inspect required sections,
-    but MUST NOT retain full file bodies once needed slices are extracted
-  - MUST NOT load all kit dependencies at once; load incrementally per phase
-  - MUST NOT hold all phase files in context simultaneously; compile and write one at a time
-  - MUST checkpoint and use Compaction Recovery if a phase compilation would exceed context budget
-  - MUST write plan.toml (recovery checkpoint) before compilation
-  - IF raw task input > 500 lines:
+  - ALWAYS open every applicable dependency file to inspect required sections,
+    but NEVER retain full file bodies once needed slices are extracted
+  - NEVER load all kit dependencies at once; load incrementally per phase
+  - NEVER hold all phase files in context simultaneously; compile and write one at a time
+  - ALWAYS checkpoint and use Compaction Recovery if a phase compilation would exceed context budget
+  - ALWAYS write plan.toml (recovery checkpoint) before compilation
+  - ALWAYS IF raw task input > 500 lines:
       materialize under {cf-studio-path}/.plans/{task-slug}/input/
       chunk to <= 300 lines per file
       treat resulting chunk files as authoritative raw-input package
@@ -138,7 +138,7 @@ PURPOSE:
   Resolve runtime variables and build the dynamic tool map from the CLISPEC.
 
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/plan/phase-0-discover.md is loaded and followed
+  - REQUIRE {cf-studio-path}/.core/workflows/plan/phase-0-discover.md is loaded and followed
 ```
 
 ## Phase 0.a: Explore / Brainstorm Applicability
@@ -151,16 +151,16 @@ PURPOSE:
   before scope assessment and decomposition.
 
 WHEN:
-  PlanPhase0 completed
-  AND before PlanPhase1
+  - REQUIRE PlanPhase0 completed
+  - AND before PlanPhase1
 
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/shared/explore-brainstorm-gate.md is loaded and followed
+  - REQUIRE {cf-studio-path}/.core/workflows/shared/explore-brainstorm-gate.md is loaded and followed
 
 RULES:
-  - MUST delegate explore/brainstorm applicability, replacement, and skip
+  - ALWAYS delegate explore/brainstorm applicability, replacement, and skip
     decisions to shared/explore-brainstorm-gate.md
-  - MUST include RESOURCE_CONTEXT and BRAINSTORM_CONTEXT in Phase 1 assessment
+  - ALWAYS include RESOURCE_CONTEXT and BRAINSTORM_CONTEXT in Phase 1 assessment
     when either exists
 ```
 
@@ -174,7 +174,7 @@ PURPOSE:
   size, scan for all user interaction points, and identify the target artifact and slug.
 
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/plan/phase-1-assess.md is loaded and followed
+  - REQUIRE {cf-studio-path}/.core/workflows/plan/phase-1-assess.md is loaded and followed
 ```
 
 ## Phase 2: Decompose
@@ -187,7 +187,7 @@ PURPOSE:
   and predict execution-context budget per phase.
 
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/plan/phase-2-decompose.md is loaded and followed
+  - REQUIRE {cf-studio-path}/.core/workflows/plan/phase-2-decompose.md is loaded and followed
 ```
 
 ## Phase 3: Compile Phase Files
@@ -200,10 +200,10 @@ PURPOSE:
   produce phase files or phase-generation prompts, and validate compiled phase files.
 
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/plan/phase-3-compile.md is loaded and followed
+  - REQUIRE {cf-studio-path}/.core/workflows/plan/phase-3-compile.md is loaded and followed
 
 RULES:
-  - Phase 3.3 dispatch payload MUST include git_commit_mode, contributing_guide,
+  - ALWAYS Phase 3.3 dispatch payload ALWAYS include git_commit_mode, contributing_guide,
     and git_constraint as specified in phase-3-compile.md § 3.3
 ```
 
@@ -216,12 +216,12 @@ PURPOSE:
   Run self-validation and emit the canonical final Phase 4 menu after all phase files are produced.
 
 WHEN:
-  user selected option [1] or [3] in Phase 3.2A
-  AND all phase-* files were produced
-  AND plan.execution_status != "prompts_emitted"
+  - REQUIRE user selected option [1] or [3] in Phase 3.2A
+  - AND all phase-* files were produced
+  - AND plan.execution_status != "prompts_emitted"
 
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/plan/phase-4-finalize.md is loaded and followed
+  - REQUIRE {cf-studio-path}/.core/workflows/plan/phase-4-finalize.md is loaded and followed
 
 NOTES:
   Contains Phase 4.1 self-validation, gated Phase 4.2 final menu
@@ -238,10 +238,10 @@ PURPOSE:
   Load lifecycle strategy when Phase 2.1 requires user selection.
 
 WHEN:
-  Phase 2.1 requires the user to select a plan lifecycle strategy
+  - REQUIRE Phase 2.1 requires the user to select a plan lifecycle strategy
 
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/plan/plan-lifecycle.md is loaded and followed
+  - REQUIRE {cf-studio-path}/.core/workflows/plan/plan-lifecycle.md is loaded and followed
 ```
 
 ## Plan Reference
@@ -253,11 +253,11 @@ PURPOSE:
   Load execution, status, storage format, or execution log reference on demand.
 
 WHEN:
-  user asks about plan execution, status, storage format, or the execution log
-  (post-plan-creation reference)
+  - REQUIRE user asks about plan execution, status, storage format, or the execution log
+  - REQUIRE (post-plan-creation reference)
 
 DO:
-  REQUIRE {cf-studio-path}/.core/workflows/plan/plan-reference.md is loaded and followed
+  - REQUIRE {cf-studio-path}/.core/workflows/plan/plan-reference.md is loaded and followed
 ```
 
 ## Completion Invariants
@@ -269,15 +269,15 @@ PURPOSE:
   Enforce terminal block requirement before ending any plan response.
 
 DO:
-  REQUIRE root cf skill Completion Invariants already loaded by
+  - REQUIRE root cf skill Completion Invariants already loaded by
     RootSkillEntrypointBootstrap are followed before ending any response
-  MUST_NOT make prompt-consuming sub-agents reopen SKILL.md from disk for this
+  - NEVER make prompt-consuming sub-agents reopen SKILL.md from disk for this
     terminal check; pass any needed invariant slice through prompt_context_view
 
 INVARIANTS:
-  - MUST end with the Phase 4 final menu when a cf-plan run compiled phase files
-  - MAY end with the Phase 3 brief-checkpoint menu only for briefs_only or
+  - ALWAYS end with the Phase 4 final menu when a cf-plan run compiled phase files
+  - ALWAYS may end with the Phase 3 brief-checkpoint menu only for briefs_only or
     incomplete compilation checkpoints before all phase files are produced
-  - Phase 3 brief-checkpoint output MUST still require the Phase 4 final menu
+  - ALWAYS Phase 3 brief-checkpoint output ALWAYS still require the Phase 4 final menu
     after full compilation
 ```

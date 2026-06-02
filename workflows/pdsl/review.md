@@ -19,21 +19,21 @@ PURPOSE:
   Review prompt files for PDSL quality and behavioral safety.
 
 STATE:
-  PDSL_MODE: new | transform | review
+  - SET PDSL_MODE: new | transform | review
     scope: inherited_from_parent
 
 WHEN:
-  PDSL_MODE == review
+  - REQUIRE PDSL_MODE == review
 
-REQUIRE:
-  target_paths is non-empty
-  SUB_AGENT_SESSION_APPROVED == true OR INLINE_FALLBACK == true
+- REQUIRE:
+  - REQUIRE target_paths is non-empty
+  - REQUIRE SUB_AGENT_SESSION_APPROVED == true OR INLINE_FALLBACK == true
 
 DO:
-  IF SUB_AGENT_SESSION_APPROVED == unset AND INLINE_FALLBACK == unset:
-    CONTINUE PdslDispatchGate
-  DISPATCH cf-pdsl-reviewer WITH ReviewPromptInputs
-  RETURN validation_report
+  - REQUIRE SUB_AGENT_SESSION_APPROVED == unset AND INLINE_FALLBACK == unset:
+    - CONTINUE PdslDispatchGate
+  - DISPATCH cf-pdsl-reviewer WITH ReviewPromptInputs
+  - RETURN validation_report
 
 ON_ERROR:
   missing_target_paths ->
@@ -58,7 +58,7 @@ Dispatch payload:
 }
 ```
 
-Review mode is read-only. It MUST NOT write files.
+Review mode is read-only. It does not write files.
 
 Completion: return the `cf-pdsl-reviewer` validation report. If the
 reviewer cannot read every requested file, return a partial checkpoint and do

@@ -45,32 +45,32 @@ The controller MUST:
 UNIT FacilitatorMethod
 
 DO:
-  WHEN rules_loaded == true AND kit_rules_path != null:
+  - RUN WHEN rules_loaded == true AND kit_rules_path != null:
     Read kit_rules_path
-  WHEN rules_loaded == true AND template_path != null:
+  - RUN WHEN rules_loaded == true AND template_path != null:
     Read template_path
     Use its high-leverage sections to shape persona selection
-  WHEN example_path != null:
+  - RUN WHEN example_path != null:
     Read example_path
     Use its structure/tone/domain emphasis to refine panel and seed topic
-    MUST_NOT copy example content unless already inside the user's topic
+    - NEVER copy example content unless already inside the user's topic
 
-  Build proposed_panel with 3-6 personas:
+  - RUN Build proposed_panel with 3-6 personas:
     id        = unique E1..En
     persona   = short role name
     focus     = 2-3 topic-specific areas
     rationale = one sentence explaining why this persona is needed here
 
-  Build seed_topic:
+  - RUN Build seed_topic:
     id        = "T1"
     text      = single most load-bearing round-1 question
     section   = most relevant template section or null
     why_first = one sentence explaining why this should be first
 
 RULES:
-  - MUST_NOT create two personas with overlapping focus lists
-  - SHOULD prefer template high-leverage sections when rules are loaded
-  - MUST keep panel diverse rather than redundant
+  - NEVER create two personas with overlapping focus lists
+  - ALWAYS prefer template high-leverage sections when rules are loaded
+  - ALWAYS keep panel diverse rather than redundant
 ```
 
 ## Output Contract
@@ -100,13 +100,13 @@ RULES:
 UNIT FacilitatorCompletionGate
 
 RULES:
-  - MUST emit exactly the output JSON object above and nothing else
-  - proposed_panel length MUST be 3..6
-  - proposed_panel[*].id values MUST be unique
-  - proposed_panel[*].focus lists MUST NOT overlap materially
-  - MUST have non-empty id in seed_topic
-  - MUST have non-empty text in seed_topic
-  - MUST have section key in seed_topic (string or null)
-  - MUST have non-empty why_first in seed_topic
-  - MUST satisfy the SKILL.md invariant
+  - ALWAYS emit exactly the output JSON object above and nothing else
+  - ALWAYS proposed_panel length ALWAYS be 3..6
+  - ALWAYS proposed_panel[*].id values ALWAYS be unique
+  - ALWAYS proposed_panel[*].focus lists NEVER overlap materially
+  - ALWAYS have non-empty id in seed_topic
+  - ALWAYS have non-empty text in seed_topic
+  - ALWAYS have section key in seed_topic (string or null)
+  - ALWAYS have non-empty why_first in seed_topic
+  - ALWAYS satisfy the SKILL.md invariant
 ```

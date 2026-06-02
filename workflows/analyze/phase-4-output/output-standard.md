@@ -21,26 +21,26 @@ PURPOSE:
   and enforce the remediation-prompt policy.
 
 WHEN:
-  EXPLAIN_MODE == false AND PROMPT_REVIEW == false AND PROMPT_BUG_REVIEW == false
+  - REQUIRE EXPLAIN_MODE == false AND PROMPT_REVIEW == false AND PROMPT_BUG_REVIEW == false
 
 DO:
-  Render the six sections below (both STRICT and RELAXED modes use the same titles).
-  IF SEMANTIC_ONLY == true:
-    SET section 2 Deterministic Gate: Status=SKIPPED, Invocation=not run,
+  - RUN Render the six sections below (both STRICT and RELAXED modes use the same titles).
+  - REQUIRE SEMANTIC_ONLY == true:
+    - SET section 2 Deterministic Gate: Status=SKIPPED, Invocation=not run,
       Notes=semantic-only invocation
-    FORBID describing semantic-only findings as deterministic, validator-backed,
+    - NEVER describing semantic-only findings as deterministic, validator-backed,
       or tool-validated
-  IF actionable issues exist:
-    FORBID emitting Fix Prompt or Plan Prompt here
-    REQUIRE `{cf-studio-path}/.core/workflows/analyze/phase-4-output/remediation-handoff.md` to be appended
+  - REQUIRE actionable issues exist:
+    - NEVER emitting Fix Prompt or Plan Prompt here
+    - REQUIRE `{cf-studio-path}/.core/workflows/analyze/phase-4-output/remediation-handoff.md` to be appended
 
 RULES:
-  - MUST use the same six section titles in both STRICT and RELAXED modes
-  - In STRICT mode: section titles MUST match exactly
-  - In RELAXED mode: content may be lighter but MUST_NOT substitute alternate
+  - ALWAYS use the same six section titles in both STRICT and RELAXED modes
+  - ALWAYS In STRICT mode: section titles ALWAYS match exactly
+  - ALWAYS In RELAXED mode: content may be lighter but NEVER substitute alternate
     headings (e.g. "## Analysis" or "### Category Review")
-  - MUST_NOT emit Fix Prompt or Plan Prompt from this schema
-  - MUST append remediation-handoff.md when actionable issues exist
+  - NEVER emit Fix Prompt or Plan Prompt from this schema
+  - ALWAYS append remediation-handoff.md when actionable issues exist
 ```
 
 ### Standard Analysis Output (non-prompt review)

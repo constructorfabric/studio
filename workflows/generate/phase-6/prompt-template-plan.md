@@ -12,12 +12,12 @@ PURPOSE:
   Emit self-contained Plan Prompt as the FINAL section on R3.
 
 RULES:
-  - MUST verify Validation Results body is present and complete before emitting
-  - MUST begin with "Invoke skill `cf`"
-  - MUST embed inline: changed file paths, what changed, kind/target,
+  - ALWAYS verify Validation Results body is present and complete before emitting
+  - ALWAYS begin with "Invoke skill `cf`"
+  - ALWAYS embed inline: changed file paths, what changed, kind/target,
     completed Validation Results body verbatim, full remaining_findings list
-  - MUST NOT reference "previous chat" or content outside the prompt itself
-  - MUST NOT ask next agent to restate task unless required inputs missing
+  - NEVER reference "previous chat" or content outside the prompt itself
+  - NEVER ask next agent to restate task unless required inputs missing
 ```
 
 #### `Plan Prompt` template (emitted on `R3`)

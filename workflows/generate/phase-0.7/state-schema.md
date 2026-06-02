@@ -171,65 +171,65 @@ PURPOSE:
   Define canonical rules for state field semantics and update behavior.
 
 RULES:
-  round_count:
-    - MUST be incremented by orchestrator after every completed round
+  - ALWAYS round_count:
+    - ALWAYS be incremented by orchestrator after every completed round
       (both kind="topic" and kind="challenge")
-  BRAINSTORM_MAX_ROUNDS:
-    - default: 10
-    - configurable: SET to N when user replies yes:N to offer
-  rules_loaded:
-    - MUST be set true ONLY when kit_rules_path was resolved and loaded
-    - MUST be false for RELAXED/no-kit sessions or chat-only exploratory runs
-    - MUST include kit_rules_path alongside rules_loaded in every brainstorm
+  - ALWAYS BRAINSTORM_MAX_ROUNDS:
+    - ALWAYS default: 10
+    - ALWAYS configurable: SET to N when user replies yes:N to offer
+  - ALWAYS rules_loaded:
+    - ALWAYS be set true ONLY when kit_rules_path was resolved and loaded
+    - ALWAYS be false for RELAXED/no-kit sessions or chat-only exploratory runs
+    - ALWAYS include kit_rules_path alongside rules_loaded in every brainstorm
       facilitator or expert dispatch
-  context_requirements:
-    - set after the panel is confirmed and before the first round dispatch
-    - captures what each persona needs to know to contribute high-quality
+  - ALWAYS context_requirements:
+    - ALWAYS set after the panel is confirmed and before the first round dispatch
+    - ALWAYS captures what each persona needs to know to contribute high-quality
       questions/proposals
-  resource_context:
-    - set by cf-explorer after panel confirmation
-    - stores non-prompt project resources only; MUST NOT be copied into
+  - ALWAYS resource_context:
+    - ALWAYS set by cf-explorer after panel confirmation
+    - ALWAYS stores non-prompt project resources only; NEVER be copied into
       SHARED_CONTEXT_PACK
-    - MUST be included in every cf-brainstorm-panel and cf-brainstorm-expert
+    - ALWAYS be included in every cf-brainstorm-panel and cf-brainstorm-expert
       dispatch
-  topic_current:
-    - MUST store full topic object {id, text, section}; MUST NOT store only id
-    - topic_history stores id-only history
-    - null before first topic is chosen
-  rounds[].kind:
-    - "topic": normal exploratory; appends to topic_history;
+  - ALWAYS topic_current:
+    - ALWAYS store full topic object {id, text, section}; NEVER store only id
+    - ALWAYS topic_history stores id-only history
+    - ALWAYS null before first topic is chosen
+  - ALWAYS rounds[].kind:
+    - ALWAYS "topic": normal exploratory; appends to topic_history;
       refreshes next_topic_proposals
-    - "challenge": re-opens preceding round's decisions; reuses same topic;
+    - ALWAYS "challenge": re-opens preceding round's decisions; reuses same topic;
       does NOT append to topic_history; does NOT refresh next_topic_proposals
-  rounds[].answer_keys:
-    - topic-rounds: lists decisions keys written (skip answers excluded)
-    - challenge-rounds: lists ONLY keys overwritten by accept/<custom>;
+  - ALWAYS rounds[].answer_keys:
+    - ALWAYS topic-rounds: lists decisions keys written (skip answers excluded)
+    - ALWAYS challenge-rounds: lists ONLY keys overwritten by accept/<custom>;
       keep/skip excluded; empty list when user skipped/kept every question
       (suppresses option C on next post-round menu)
-  rounds[].question_queue:
-    - flattened queue of rendered questions for the round
-    - orchestrator asks exactly one pending question per user turn
-    - queue order follows panel order, then question order inside each
+  - ALWAYS rounds[].question_queue:
+    - ALWAYS flattened queue of rendered questions for the round
+    - ALWAYS orchestrator asks exactly one pending question per user turn
+    - ALWAYS queue order follows panel order, then question order inside each
       contribution
-    - post-round topic/challenge/wrap menu is emitted only after every queue
+    - ALWAYS post-round topic/challenge/wrap menu is emitted only after every queue
       item is answered, accepted, kept, or marked open_unanswered
-  open_questions:
-    - stores intentionally unanswered brainstorm questions
-    - these are valid downstream inputs for PRD, DESIGN, ADR, and FEATURE docs
-    - MUST preserve question text and decision_key so generated artifacts can
+  - ALWAYS open_questions:
+    - ALWAYS stores intentionally unanswered brainstorm questions
+    - ALWAYS these are valid downstream inputs for PRD, DESIGN, ADR, and FEATURE docs
+    - ALWAYS preserve question text and decision_key so generated artifacts can
       carry them as open questions instead of inventing answers
-  rounds[].challenged_decisions:
-    - set ONLY on kind="challenge" rounds
-    - snapshot of {key: value} at challenge start, scoped to
+  - ALWAYS rounds[].challenged_decisions:
+    - ALWAYS set ONLY on kind="challenge" rounds
+    - ALWAYS snapshot of {key: value} at challenge start, scoped to
       state.rounds[-1].answer_keys (the preceding answer-writing round)
-    - later overwrites do NOT retro-edit it
-  next_topic_proposals:
-    - deduped/merged list from most recent kind="topic" round
-    - survives subsequent kind="challenge" rounds
-  decisions overwrite semantics:
-    - challenge-round accept/custom OVERWRITES state.decisions[key] in place
-    - prior values not versioned at decisions level
-    - rounds[] array preserves audit trail
+    - ALWAYS later overwrites do NOT retro-edit it
+  - ALWAYS next_topic_proposals:
+    - ALWAYS deduped/merged list from most recent kind="topic" round
+    - ALWAYS survives subsequent kind="challenge" rounds
+  - ALWAYS decisions overwrite semantics:
+    - ALWAYS challenge-round accept/custom OVERWRITES state.decisions[key] in place
+    - ALWAYS prior values not versioned at decisions level
+    - ALWAYS rounds[] array preserves audit trail
 ```
 
 ---
@@ -245,22 +245,22 @@ PURPOSE:
   Define rounds[].panel_mode field semantics.
 
 STATE:
-  rounds[].panel_mode: fan-out | single-agent
+  - SET rounds[].panel_mode: fan-out | single-agent
     default: single-agent
 
 RULES:
-  single-agent:
-    - MUST dispatch cf-brainstorm-panel once per round (not per expert)
-    - One expert is primary; secondary experts deliberate inside same agent
-    - One cohesive sub-agent context per round; host-independent; INLINE_FALLBACK is a no-op
-    - protocol field MUST be non-null
-  fan-out:
-    - MUST dispatch all relevant panel members in parallel via cf-brainstorm-expert
-    - No inter-expert live communication
-    - Requires host with native sub-agent parallelism
-    - protocol field MUST be null
+  - ALWAYS single-agent:
+    - ALWAYS dispatch cf-brainstorm-panel once per round (not per expert)
+    - ALWAYS One expert is primary; secondary experts deliberate inside same agent
+    - ALWAYS One cohesive sub-agent context per round; host-independent; INLINE_FALLBACK is a no-op
+    - ALWAYS protocol field ALWAYS be non-null
+  - ALWAYS fan-out:
+    - ALWAYS dispatch all relevant panel members in parallel via cf-brainstorm-expert
+    - ALWAYS No inter-expert live communication
+    - ALWAYS Requires host with native sub-agent parallelism
+    - ALWAYS protocol field ALWAYS be null
   INVARIANTS:
-    - MUST NOT mix strategies within a single round
+    - NEVER mix strategies within a single round
 ```
 
 #### protocol (single-agent interaction pattern)
@@ -272,18 +272,18 @@ PURPOSE:
   Define rounds[].protocol field semantics.
 
 STATE:
-  rounds[].protocol: independent-then-critique | single-pass | null
+  - SET rounds[].protocol: independent-then-critique | single-pass | null
 
 RULES:
-  - Non-null ONLY when panel_mode == "single-agent"
-  - null ONLY when panel_mode == "fan-out"
-  independent-then-critique:
-    - Primary expert produces questions independently
-    - Secondary members review primary output and provide structured critique
-  single-pass:
-    - Primary expert produces full round output
-    - Secondary members have read-only visibility; do not produce critique
-    - Minimal latency; suitable for time-sensitive scenarios
+  - ALWAYS Non-null ONLY when panel_mode == "single-agent"
+  - ALWAYS null ONLY when panel_mode == "fan-out"
+  - ALWAYS independent-then-critique:
+    - ALWAYS Primary expert produces questions independently
+    - ALWAYS Secondary members review primary output and provide structured critique
+  - ALWAYS single-pass:
+    - ALWAYS Primary expert produces full round output
+    - ALWAYS Secondary members have read-only visibility; do not produce critique
+    - ALWAYS Minimal latency; suitable for time-sensitive scenarios
 ```
 
 #### status (round outcome)
@@ -295,7 +295,7 @@ PURPOSE:
   Define rounds[].status field semantics.
 
 STATE:
-  rounds[].status: ok | degraded | skipped
+  - SET rounds[].status: ok | degraded | skipped
 
 NOTES:
   ok: all experts completed within SLA; no fallback needed
@@ -313,7 +313,7 @@ PURPOSE:
   Define rounds[].health field semantics for troubleshooting and retry logic.
 
 STATE:
-  rounds[].health:
+  - SET rounds[].health:
     degraded: bool
     reason: string or null
     attempts_used: positive integer
@@ -334,8 +334,8 @@ PURPOSE:
   Define the transient envelope wire structure used during agent dispatch.
 
 RULES:
-  - MUST NOT persist envelope in rounds[] — transient wire-level only
-  - Orchestrator canonicalizes block order before flattening
+  - NEVER persist envelope in rounds[] — transient wire-level only
+  - ALWAYS Orchestrator canonicalizes block order before flattening
 
 NOTES:
   Envelope schema:
@@ -358,21 +358,21 @@ PURPOSE:
   Normalize missing fields in loaded state.json on next save (backward compatibility).
 
 DO:
-  IF rounds[].panel_mode is missing (pre-1.1 state files):
-    SET rounds[].panel_mode = "fan-out"
-    SET rounds[].protocol = null
+  - REQUIRE rounds[].panel_mode is missing (pre-1.1 state files):
+    - SET rounds[].panel_mode = "fan-out"
+    - SET rounds[].protocol = null
 
-  IF rounds[].health is missing:
-    SET rounds[].health = { degraded: false, reason: null, attempts_used: 1 }
+  - REQUIRE rounds[].health is missing:
+    - SET rounds[].health = { degraded: false, reason: null, attempts_used: 1 }
 
-  IF rounds[].status is missing:
+  - REQUIRE rounds[].status is missing:
     IF round_count > n: SET status = "ok"
     ELIF round_count == n AND contributions.length > 0: SET status = "ok"
     ELIF contributions.length == 0: SET status = "skipped"
 
 RULES:
-  - MUST apply normalization before state is operational
-  - MUST NOT load state with missing required fields without normalizing first
+  - ALWAYS apply normalization before state is operational
+  - NEVER load state with missing required fields without normalizing first
 ```
 
 ---
@@ -433,10 +433,10 @@ PURPOSE:
   Define where brainstorm state is kept and when it is persisted.
 
 RULES:
-  - MUST keep state in-memory by orchestrator across rounds
-  - MUST persist to {cf-studio-path}/.cache/brainstorm/{session_id}/state.json
+  - ALWAYS keep state in-memory by orchestrator across rounds
+  - ALWAYS persist to {cf-studio-path}/.cache/brainstorm/{session_id}/state.json
     ONLY when user picked explicit save mode AND current output destination
     allows file writes
-  - MUST NOT write cache artifacts for chat-only/no-write sessions
-  - MUST use in-chat checkpoint for compaction recovery in chat-only mode
+  - NEVER write cache artifacts for chat-only/no-write sessions
+  - ALWAYS use in-chat checkpoint for compaction recovery in chat-only mode
 ```

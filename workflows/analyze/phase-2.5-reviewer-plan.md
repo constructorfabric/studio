@@ -15,54 +15,55 @@ PURPOSE: Decompose the analyze task into reviewer sub-agent tasks partitioned by
   methodology and path so Phase 3 can dispatch them in parallel.
 
 STATE:
-  PLANNER_RETRY_COUNT: integer  default: 0  scope: entry to this phase
-  REVIEWER_PLAN_RESOLVED: unset | memory | disk | cancelled_partial_cache |
+  - SET PLANNER_RETRY_COUNT: integer  default: 0  scope: entry to this phase
+  - SET REVIEWER_PLAN_RESOLVED: unset | memory | disk | cancelled_partial_cache |
     cancelled_inline_fallback | cancelled_planner_validation |
     auto_skipped_no_methodology |
     auto_skipped_explain_mode  default: unset
-  REVIEWER_EXECUTION_PLAN: null | parsed reviewer_plan JSON  default: null
-  REVIEWER_PLAN_APPROVED: false | true  default: false  scope: workflow_run
-  REVIEWER_PLAN_CACHE_DIR: null | directory path  default: null
-  PLANNER_RETRY_MAX: 2
+  - SET REVIEWER_EXECUTION_PLAN: null | parsed reviewer_plan JSON  default: null
+  - SET REVIEWER_PLAN_APPROVED: false | true  default: false  scope: workflow_run
+  - SET REVIEWER_PLAN_CACHE_DIR: null | directory path  default: null
+  - SET PLANNER_RETRY_MAX: 2
 
 NOTES:
   CF_PHASE_GATE is defined session-scoped in SKILL.md § Phase-Skip Gate.
 
-WHEN: After Phase 2 (Deterministic Gate) and before Phase 3 (Semantic Review)
+WHEN:
+  - REQUIRE After Phase 2 (Deterministic Gate) and before Phase 3 (Semantic Review)
 
 DO:
-  SET PLANNER_RETRY_COUNT = 0
-  IF INLINE_FALLBACK == true:
-    SET REVIEWER_PLAN_RESOLVED = cancelled_inline_fallback
-    SET REVIEWER_EXECUTION_PLAN = null
-    EMIT "Reviewer decomposition requires native sub-agent dispatch. Inline fallback cannot silently continue to semantic review. Re-run with native sub-agents, switch to Invoke skill `cf-plan`, or stop."
-    STOP_TURN
-  IF EXPLAIN_MODE == true:
-    SET REVIEWER_PLAN_RESOLVED = auto_skipped_explain_mode
-    SET REVIEWER_EXECUTION_PLAN = null
-    CONTINUE workflows/analyze/phase-3-semantic.md
-  IF no semantic methodology flag is active:
-    SET REVIEWER_PLAN_RESOLVED = auto_skipped_no_methodology
-    SET REVIEWER_EXECUTION_PLAN = null
-    CONTINUE workflows/analyze/phase-3-semantic.md
-  EMIT_MENU StorageChoiceMenu
-  WAIT user.reply
-  STOP_TURN
+  - SET PLANNER_RETRY_COUNT = 0
+  - REQUIRE INLINE_FALLBACK == true:
+    - SET REVIEWER_PLAN_RESOLVED = cancelled_inline_fallback
+    - SET REVIEWER_EXECUTION_PLAN = null
+    - EMIT "Reviewer decomposition requires native sub-agent dispatch. Inline fallback cannot silently continue to semantic review. Re-run with native sub-agents, switch to Invoke skill `cf-plan`, or stop."
+    - STOP_TURN
+  - REQUIRE EXPLAIN_MODE == true:
+    - SET REVIEWER_PLAN_RESOLVED = auto_skipped_explain_mode
+    - SET REVIEWER_EXECUTION_PLAN = null
+    - CONTINUE workflows/analyze/phase-3-semantic.md
+  - REQUIRE no semantic methodology flag is active:
+    - SET REVIEWER_PLAN_RESOLVED = auto_skipped_no_methodology
+    - SET REVIEWER_EXECUTION_PLAN = null
+    - CONTINUE workflows/analyze/phase-3-semantic.md
+  - EMIT_MENU StorageChoiceMenu
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU StorageChoiceMenu:
   TITLE: "Reviewer plan storage (disk = resumable after compaction; memory = in-context only):"
   OPTIONS:
-    empty|enter|memory|1 ->
+    1 empty|enter|memory|1 ->
       SET REVIEWER_PLAN_RESOLVED = memory
       EMIT "(Note: a memory plan is NOT recoverable if context is compacted before Phase 3 completes — choose disk for long/context-heavy sessions.)"
       CONTINUE PlannerDispatch
-    disk|save|2 ->
+    2 disk|save|2 ->
       SET REVIEWER_PLAN_RESOLVED = disk
       CONTINUE PlannerDispatch
-    stop_token ->
+    3 stop_token ->
       LOAD {cf-studio-path}/.core/workflows/shared/stop-token-policy.md
       STOP_TURN
-    no|skip|3 ->
+    4 no|skip|3 ->
       EMIT "Decomposition is mandatory while sub-agents are approved. Reply enter/memory or disk."
       WAIT user.reply
       STOP_TURN
@@ -76,16 +77,16 @@ UNIT PlannerDispatch
 PURPOSE: Dispatch cf-analyze-planner and validate the returned reviewer execution plan.
 
 DO:
-  REQUIRE `{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md` has run
-  LOAD {cf-studio-path}/.core/skills/studio/agents/cf-analyze-planner.md
+  - REQUIRE `{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md` has run
+  - LOAD {cf-studio-path}/.core/skills/studio/agents/cf-analyze-planner.md
     as the analyze-planner source contract
-  SYNTHESIZE final dispatch prompt from the loaded planner contract plus
+  - RUN SYNTHESIZE final dispatch prompt from the loaded planner contract plus
     SHARED_CONTEXT_PACK and the payload below
-  IF planner source contract is not loaded, unreadable, ambiguous, or not
+  - REQUIRE planner source contract is not loaded, unreadable, ambiguous, or not
      reflected in the final dispatch prompt:
     FAIL per sub-agent-dispatch.md § SubAgentContractReadGate
-    FORBID dispatch
-  DISPATCH cf-analyze-planner (read-only) with:
+    - NEVER dispatch
+  - DISPATCH cf-analyze-planner (read-only) with:
     plan_mode             = "memory" or "disk"
     work_request          = original analyze request / approved statement of what must be reviewed or analyzed
     target_type, mode, kind, rules_mode, system
@@ -99,8 +100,8 @@ DO:
                             CODE_BUG_REVIEW, CONSISTENCY_REVIEW, ARTIFACT_REVIEW, CODE_REVIEW
     available_reviewers   = reviewer sub-agents from phase-3-semantic.md
     size_estimate_lines   = Phase 0.1 estimate
-  Parse marker <!-- reviewer_plan --> and following JSON block.
-  Validate:
+  - RUN Parse marker <!-- reviewer_plan --> and following JSON block.
+  - RUN Validate:
     - every active methodology has at least one task
     - work_request is present, non-empty, and preserves what the user asked to analyze
     - union of path_partition per methodology covers every applicable input path
@@ -111,25 +112,25 @@ DO:
     - every parallel_groups[].depends_on references an earlier group
     - every parallel_groups[] entry includes id, task_ids, depends_on, execution, and reason
     - every parallel_groups[].execution is "parallel" or "sequential"
-  IF validation fails OR planner returns checkpoint.type=PARTIAL_CHECKPOINT:
+  - REQUIRE validation fails OR planner returns checkpoint.type=PARTIAL_CHECKPOINT:
     INCREMENT PLANNER_RETRY_COUNT
     IF PLANNER_RETRY_COUNT >= PLANNER_RETRY_MAX:
-      EMIT "Planner returned PARTIAL_CHECKPOINT twice in this run — manual intervention required. Stopping."
-      EMIT_MENU PlannerRecoveryMenu
-      WAIT user.reply
-      STOP_TURN
-    EMIT validation errors
-    EMIT_MENU PlannerRecoveryMenu
-    WAIT user.reply
-    STOP_TURN
-  SET REVIEWER_EXECUTION_PLAN = parsed reviewer_plan JSON
-  SET REVIEWER_PLAN_APPROVED = false
-  EMIT "Reviewer execution plan prepared. Review and approve it before any semantic reviewer dispatch starts."
-  EMIT reviewer_plan JSON in full, including tasks, path partitions, reviewers,
+      - EMIT "Planner returned PARTIAL_CHECKPOINT twice in this run — manual intervention required. Stopping."
+      - EMIT_MENU PlannerRecoveryMenu
+      - WAIT user.reply
+      - STOP_TURN
+    - EMIT validation errors
+    - EMIT_MENU PlannerRecoveryMenu
+    - WAIT user.reply
+    - STOP_TURN
+  - SET REVIEWER_EXECUTION_PLAN = parsed reviewer_plan JSON
+  - SET REVIEWER_PLAN_APPROVED = false
+  - EMIT "Reviewer execution plan prepared. Review and approve it before any semantic reviewer dispatch starts."
+  - EMIT reviewer_plan JSON in full, including tasks, path partitions, reviewers,
     dependencies, parallel groups, and storage mode
-  EMIT_MENU ReviewerPlanApprovalMenu
-  WAIT user.reply
-  STOP_TURN
+  - EMIT_MENU ReviewerPlanApprovalMenu
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU ReviewerPlanApprovalMenu:
   TITLE: |
@@ -162,19 +163,19 @@ MENU ReviewerPlanApprovalMenu:
 UNIT ApprovedReviewerPlanContinuation
 PURPOSE: Continue only after the user has approved the reviewer plan.
 DO:
-  REQUIRE REVIEWER_PLAN_APPROVED == true
-  IF REVIEWER_PLAN_RESOLVED == disk:
-    CONTINUE DiskModeRendering
-  CONTINUE workflows/analyze/phase-3-semantic.md
+  - REQUIRE REVIEWER_PLAN_APPROVED == true
+  - REQUIRE REVIEWER_PLAN_RESOLVED == disk:
+    - CONTINUE DiskModeRendering
+  - CONTINUE workflows/analyze/phase-3-semantic.md
 
 UNIT DiskModeRendering
 
 PURPOSE: Write validated REVIEWER_EXECUTION_PLAN to cache files when disk mode selected.
 
 DO:
-  SET CF_PHASE_GATE = released_for_orchestrator_write
+  - SET CF_PHASE_GATE = released_for_orchestrator_write
     scope: {cf-studio-path}/.cache/analyze-plans/{slug}-{ISO}/**
-  Write cache files:
+  - RUN Write cache files:
     {cf-studio-path}/.cache/analyze-plans/{slug}-{ISO}/index.md
       (work_request, summary, risk flags, ordered parallel groups, task table)
     {cf-studio-path}/.cache/analyze-plans/{slug}-{ISO}/plan.json
@@ -184,15 +185,15 @@ DO:
     {cf-studio-path}/.cache/analyze-plans/{slug}-{ISO}/tasks/{task_id}.md
       (task title, work_request, methodology, reviewer, path partition,
        dependencies, parallel group, rationale, acceptance criteria)
-  IF all writes succeed:
-    SET CF_PHASE_GATE = armed
-    SET REVIEWER_PLAN_CACHE_DIR = directory path
-    EMIT "Reviewer plan saved: {REVIEWER_PLAN_CACHE_DIR}"
-    CONTINUE workflows/analyze/phase-3-semantic.md
-  IF any write fails:
-    EMIT_MENU PartialCacheMenu
-    WAIT user.reply
-    STOP_TURN
+  - REQUIRE all writes succeed:
+    - SET CF_PHASE_GATE = armed
+    - SET REVIEWER_PLAN_CACHE_DIR = directory path
+    - EMIT "Reviewer plan saved: {REVIEWER_PLAN_CACHE_DIR}"
+    - CONTINUE workflows/analyze/phase-3-semantic.md
+  - REQUIRE any write fails:
+    - EMIT_MENU PartialCacheMenu
+    - WAIT user.reply
+    - STOP_TURN
 
 MENU PartialCacheMenu:
   TITLE: |
@@ -226,7 +227,7 @@ MENU PartialCacheMenu:
       SET REVIEWER_PLAN_CACHE_DIR = null
       SET CF_PHASE_GATE = armed
       STOP_TURN
-    stop_token -> treat as 3
+    4 stop_token -> treat as 3
   INVALID:
     EMIT "Reply `1`, `2`, or `3`."
     WAIT user.reply
@@ -248,16 +249,16 @@ MENU PlannerRecoveryMenu:
     STOP_TURN
 
 INVARIANTS:
-  - MUST apply sub-agent-dispatch.md § SubAgentContractReadGate before
+  - ALWAYS apply sub-agent-dispatch.md § SubAgentContractReadGate before
     dispatching cf-analyze-planner
-  - MUST_NOT set REVIEWER_PLAN_RESOLVED=cancelled_inline_fallback after
+  - NEVER set REVIEWER_PLAN_RESOLVED=cancelled_inline_fallback after
     planner dispatch has already failed validation
-  - MUST_NOT introduce undeclared reviewer-plan resolution states after planner
+  - NEVER introduce undeclared reviewer-plan resolution states after planner
     dispatch has already failed validation
-  - MUST_NOT clear plan into fallback path after sub-agent decomposition selected
-  - MUST_NOT enter DiskModeRendering or phase-3-semantic.md from a generated
+  - NEVER clear plan into fallback path after sub-agent decomposition selected
+  - NEVER enter DiskModeRendering or phase-3-semantic.md from a generated
     reviewer plan until ReviewerPlanApprovalMenu has displayed the full plan
     and the user selected `1 approve`
-  - MUST reset CF_PHASE_GATE=armed after named writes complete or fail
-  - MUST_NOT write files while CF_PHASE_GATE == armed
+  - ALWAYS reset CF_PHASE_GATE=armed after named writes complete or fail
+  - NEVER write files while CF_PHASE_GATE == armed
 ```

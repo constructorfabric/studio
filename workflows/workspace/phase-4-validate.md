@@ -20,22 +20,22 @@ PURPOSE:
   Verify reachability, adapters, and cross-repo behavior after workspace config is written.
 
 DO:
-  Run `{cfs_cmd} --json workspace-info`      (workspace status)
-  Run path-exists check + adapter check + artifacts.toml check per source (source health)
-  Run `{cfs_cmd} --json list-ids`            (cross-repo IDs)
-  Run `{cfs_cmd} --json validate`            (cross-repo validation)
-  Report: total sources, reachable sources, sources with adapters, available cross-repo IDs
-  IF critical failures detected:
-    CONTINUE WorkspaceValidateFailureMenu
-  ELSE:
-    CONTINUE workflows/workspace/next-steps.md
+  - RUN Run `{cfs_cmd} --json workspace-info`      (workspace status)
+  - RUN Run path-exists check + adapter check + artifacts.toml check per source (source health)
+  - RUN Run `{cfs_cmd} --json list-ids`            (cross-repo IDs)
+  - RUN Run `{cfs_cmd} --json validate`            (cross-repo validation)
+  - RUN Report: total sources, reachable sources, sources with adapters, available cross-repo IDs
+  - REQUIRE critical failures detected:
+    - CONTINUE WorkspaceValidateFailureMenu
+  - RUN otherwise
+    - CONTINUE workflows/workspace/next-steps.md
 
 RULES:
-  - MUST report all four checks before routing
-  - Source health check: path exists; adapter found if expected; artifacts.toml valid when adapter exists; at least one system if adapter exists
+  - ALWAYS report all four checks before routing
+  - ALWAYS Source health check: path exists; adapter found if expected; artifacts.toml valid when adapter exists; at least one system if adapter exists
 
 INVARIANTS:
-  - MUST apply graceful degradation: missing repos emit warnings not errors; available sources continue working
+  - ALWAYS apply graceful degradation: missing repos emit warnings not errors; available sources continue working
 
 NOTES:
   - remote IDs from missing sources are unavailable
@@ -50,9 +50,9 @@ PURPOSE:
   Offer structured recovery choices when critical validation failures are found.
 
 DO:
-  EMIT_MENU ValidationFailureMenu
-  WAIT user.reply
-  STOP_TURN
+  - EMIT_MENU ValidationFailureMenu
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU ValidationFailureMenu:
   TITLE: |

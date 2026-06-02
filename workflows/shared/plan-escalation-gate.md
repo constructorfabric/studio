@@ -17,49 +17,49 @@ PURPOSE:
   informational for this gate.
 
 STATE:
-  SUB_AGENT_SESSION_APPROVED: unset | true
+  - SET SUB_AGENT_SESSION_APPROVED: unset | true
     scope: session
-  INLINE_FALLBACK: unset | true | false
+  - SET INLINE_FALLBACK: unset | true | false
     scope: workflow_run
-  INLINE_FALLBACK_PROBED: false | true
+  - SET INLINE_FALLBACK_PROBED: false | true
     default: false
     scope: workflow_run
-  ESCALATION_ESTIMATE: integer (lines)
+  - SET ESCALATION_ESTIMATE: integer (lines)
     scope: workflow_run
 
 WHEN:
-  entering Phase 0.1 of generate workflow
+  - REQUIRE entering Phase 0.1 of generate workflow
 
 DO:
-  SET ESCALATION_ESTIMATE = computed line count
+  - SET ESCALATION_ESTIMATE = computed line count
 
-  IF raw-input-overflow rule has already fired for direct prompt/provided-file
-  input over 500 lines:
-    EMIT raw-input-overflow plan-vs-stop choice (higher precedence — resolve first)
-    STOP_TURN
+  - REQUIRE raw-input-overflow rule has already fired for direct prompt/provided-file
+  - RUN input over 500 lines:
+    - EMIT raw-input-overflow plan-vs-stop choice (higher precedence — resolve first)
+    - STOP_TURN
 
-  IF INLINE_FALLBACK_PROBED != true:
-    RUN workflows/shared/inline-fallback-probe.md
-    CONTINUE PlanEscalationGate (re-evaluate after resolution)
+  - REQUIRE INLINE_FALLBACK_PROBED != true:
+    - RUN workflows/shared/inline-fallback-probe.md
+    - CONTINUE PlanEscalationGate (re-evaluate after resolution)
 
-  IF INLINE_FALLBACK_PROBED == true
+  - REQUIRE INLINE_FALLBACK_PROBED == true
      AND INLINE_FALLBACK == false
      AND SUB_AGENT_SESSION_APPROVED != true:
     FAIL_FAST invariant violation:
       INLINE_FALLBACK=false is allowed only when INLINE_FALLBACK_PROBED=true
-      and SUB_AGENT_SESSION_APPROVED=true; the inline-fallback probe MUST NOT
+      and SUB_AGENT_SESSION_APPROVED=true; the inline-fallback probe NEVER
       leave or flip to SUB_AGENT_SESSION_APPROVED!=true with INLINE_FALLBACK=false.
     SURFACE invalid state and STOP before retrying plan escalation.
 
-  IF SUB_AGENT_SESSION_APPROVED == true AND INLINE_FALLBACK == false:
-    CONTINUE SubAgentDecompositionBypass
+  - REQUIRE SUB_AGENT_SESSION_APPROVED == true AND INLINE_FALLBACK == false:
+    - CONTINUE SubAgentDecompositionBypass
 
-  IF INLINE_FALLBACK == unset:
+  - REQUIRE INLINE_FALLBACK == unset:
     STOP and surface unresolved INLINE_FALLBACK after inline-fallback-probe.md;
     do not enter NoNativeDispatchPlanHandoff or SubAgentDecompositionBypass.
 
-  IF INLINE_FALLBACK == true OR host.supports_native_subagents == false:
-    CONTINUE NoNativeDispatchPlanHandoff
+  - REQUIRE INLINE_FALLBACK == true OR host.supports_native_subagents == false:
+    - CONTINUE NoNativeDispatchPlanHandoff
 
 NOTES:
   ESCALATION_ESTIMATE: estimated line count of the current task, derived from
@@ -76,12 +76,12 @@ PURPOSE:
   to Phase 1.5.
 
 RULES:
-  - MUST NOT propose Invoke skill `cf-plan` when SUB_AGENT_SESSION_APPROVED == true
+  - NEVER propose Invoke skill `cf-plan` when SUB_AGENT_SESSION_APPROVED == true
     AND INLINE_FALLBACK == false
-  - MUST compute and log estimate for telemetry:
+  - ALWAYS compute and log estimate for telemetry:
     "Plan-escalation: estimate={ESCALATION_ESTIMATE} lines, decomposition deferred to Phase 1.5 (sub-agents approved)"
-  - MUST NOT emit any user-facing escalation menu
-  - MUST proceed to the next phase
+  - NEVER emit any user-facing escalation menu
+  - ALWAYS proceed to the next phase
 
 NOTES:
   Decomposition is handled in-workflow by workflows/generate/phase-1.5-author-plan.md,
@@ -97,11 +97,11 @@ PURPOSE:
   unavailable, unset, or explicitly bypassed; route to plan handoff or stop.
 
 WHEN:
-  INLINE_FALLBACK == true
-  OR host.supports_native_subagents == false
+  - REQUIRE INLINE_FALLBACK == true
+  - OR host.supports_native_subagents == false
 
 DO:
-  REQUIRE estimate of total context from:
+  - REQUIRE estimate of total context from:
     rules.md
     generation-phase dependencies needed for this run
       (e.g. template.md, example.md, checklist.md only when explicitly required before writing)
@@ -109,9 +109,9 @@ DO:
     project context
     ~30% reasoning overhead
 
-  EMIT_MENU PlanEscalationMenu
-  WAIT user.reply
-  STOP_TURN
+  - EMIT_MENU PlanEscalationMenu
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU PlanEscalationMenu:
   TITLE: |
@@ -142,11 +142,11 @@ MENU PlanEscalationMenu:
     STOP_TURN
 
 RULES:
-  - MUST_NOT continue to the next generate phase from this branch
-  - MUST treat an unresolved NativeSubAgentPolicyConflictMenu from
+  - NEVER continue to the next generate phase from this branch
+  - ALWAYS treat an unresolved NativeSubAgentPolicyConflictMenu from
     workflows/shared/inline-fallback-probe.md as higher precedence than this
     menu; do not reinterpret that conflict as permission to hand off to Invoke skill `cf-plan`
     or continue locally
-  - MUST_NOT offer a "continue here" or local single-context option
-  - MUST route to Invoke skill `cf-plan` handoff or stop
+  - NEVER offer a "continue here" or local single-context option
+  - ALWAYS route to Invoke skill `cf-plan` handoff or stop
 ```

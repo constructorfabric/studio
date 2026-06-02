@@ -14,12 +14,12 @@ PURPOSE:
   targets before Phase 1 file checks.
 
 WHEN:
-  scope is unclear
+  - REQUIRE scope is unclear
 
 DO:
-  EMIT_MENU ScopeMenu
-  WAIT user.reply
-  STOP_TURN
+  - EMIT_MENU ScopeMenu
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU ScopeMenu:
   TITLE: |
@@ -55,10 +55,10 @@ DO (consistency-path capture):
     CONTINUE other selected reviewers
 
 RULES:
-  - MUST check artifacts.toml for registry consistency when ARTIFACT_REVIEW=true
-  - MUST warn and require semantic-only mode when target is not registered,
+  - ALWAYS check artifacts.toml for registry consistency when ARTIFACT_REVIEW=true
+  - ALWAYS warn and require semantic-only mode when target is not registered,
     unless user registers it first
-  - MUST_NOT proceed with consistency review when fewer than two paths are available
+  - NEVER proceed with consistency review when fewer than two paths are available
 
 NOTES:
   Suggested modes: 1 for ordinary review requests; 3 only when the target is

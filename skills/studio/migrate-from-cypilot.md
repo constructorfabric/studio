@@ -73,11 +73,11 @@ REQUIRE:
   - {cf-studio-path}/config/core.toml exists
 
 DO:
-  WHEN preconditions are unclear:
-    EMIT "Has the deterministic migration (cfs init --migrate-from-cypilot=yes or equivalent)
-completed successfully? [y/N]"
-    WAIT user.reply
-    STOP_TURN
+  - RUN WHEN preconditions are unclear:
+    - EMIT "Has the deterministic migration (cfs init --migrate-from-cypilot=yes or equivalent)
+- RUN completed successfully? [y/N]"
+    - WAIT user.reply
+    - STOP_TURN
 
 ON_ERROR:
   preconditions_fail ->
@@ -99,24 +99,24 @@ PURPOSE:
   Define orchestrator-level invariants that apply across all phases.
 
 INVARIANTS:
-  - MUST ask the user before EACH sub-agent dispatch (E1, E2, E3, E4, and each E5 loop iteration)
-  - MUST_NOT dispatch any sub-agent silently
-  - MUST_NOT dispatch the Migrator (write-capable) without explicit user approval AND a Plan
+  - ALWAYS ask the user before EACH sub-agent dispatch (E1, E2, E3, E4, and each E5 loop iteration)
+  - NEVER dispatch any sub-agent silently
+  - NEVER dispatch the Migrator (write-capable) without explicit user approval AND a Plan
     from the Planner — skipping straight from Scanner to Migrator is forbidden
-  - MUST present the Planner's plan to the user IN FULL before asking for Migrator approval
-  - MUST cap the migrator <-> verifier loop at 3 verifier iterations; after that, halt and
+  - ALWAYS present the Planner's plan to the user IN FULL before asking for Migrator approval
+  - ALWAYS cap the migrator <-> verifier loop at 3 verifier iterations; after that, halt and
     surface remaining issues for human review
-  - MUST_NOT modify files outside the project root
-  - MUST_NOT modify files inside {cf-studio-path}/.core/ (kit-managed; cfs update owns them)
-  - MUST respect project memories:
+  - NEVER modify files outside the project root
+  - NEVER modify files inside {cf-studio-path}/.core/ (kit-managed; cfs update owns them)
+  - ALWAYS respect project memories:
     project_markdown_rewriter_conservative.md (preserve cpt. / line-start cpt in
       constructor-studio source — conservative rewriter strictness is input-side logic,
       not target-identifier logic)
     project_cypilot_lifecycle.md (cypilot EOL at 3.10.0; frozen support set is final)
     project_json_mode_fixture.md (existing fixture is correct)
-  - MUST treat @cpt-* / @cpt:* markers in source code as needs-review by default
+  - ALWAYS treat @cpt-* / @cpt:* markers in source code as needs-review by default
     (per v1.0.0 design they're intentionally preserved in constructor-studio's own source code)
-  - MUST rewrite format = "Cypilot" inside [kits.<slug>] (or [kit.<slug>]) TOML tables
+  - ALWAYS rewrite format = "Cypilot" inside [kits.<slug>] (or [kit.<slug>]) TOML tables
     to format = "CFS" — this is a targeted kit-format identifier rename and part of the
     mechanical migration; format = "CFS" is the canonical post-migration value
 
@@ -140,15 +140,15 @@ PURPOSE:
   Gate entry to the migration workflow on verified deterministic migration completion.
 
 DO:
-  Read root AGENTS.md
-  Confirm <!-- @cf:root-agents --> is present (not <!-- @cpt:root-agents -->)
-  Confirm {cf-studio-path}/config/core.toml exists
-  WHEN both pass:
-    EMIT "- [migrate-from-cypilot]: E0 preconditions PASS"
-    CONTINUE E1
-  WHEN either fails:
-    EMIT preconditions_fail message (see HardRules ON_ERROR)
-    STOP_TURN
+  - RUN Read root AGENTS.md
+  - RUN Confirm <!-- @cf:root-agents --> is present (not <!-- @cpt:root-agents -->)
+  - RUN Confirm {cf-studio-path}/config/core.toml exists
+  - RUN WHEN both pass:
+    - EMIT "- [migrate-from-cypilot]: E0 preconditions PASS"
+    - CONTINUE E1
+  - RUN WHEN either fails:
+    - EMIT preconditions_fail message (see HardRules ON_ERROR)
+    - STOP_TURN
 ```
 
 ### E1: Scanner dispatch (user-gated)
@@ -160,14 +160,14 @@ PURPOSE:
   Obtain a structured findings list of residual cypilot references via read-only scan.
 
 DO:
-  EMIT_MENU E1_ScannerMenu
-  WAIT user.reply
-  STOP_TURN
+  - EMIT_MENU E1_ScannerMenu
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU E1_ScannerMenu:
   TITLE: Phase E1 — Scanner
   OPTIONS:
-    y ->
+    1 y ->
       DISPATCH cf-migrate-scanner with:
         prompt = content of {cf-studio-path}/.core/skills/studio/agents/cf-migrate-scanner.md
                  + ## Task Inputs section with:
@@ -176,7 +176,7 @@ MENU E1_ScannerMenu:
                    exclude_dirs: [".git", "{cf-studio-path}", ".studio-workspace", build caches]
       SET scan_findings = agent output
       CONTINUE E2
-    N ->
+    2 N ->
       EMIT "E1 declined. Re-invoke when you want to scan."
       STOP_TURN
   INVALID:
@@ -204,22 +204,22 @@ REQUIRE:
   scan_findings is set (E1 completed)
 
 DO:
-  EMIT_MENU E2_PlannerMenu
-  WAIT user.reply
-  STOP_TURN
+  - EMIT_MENU E2_PlannerMenu
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU E2_PlannerMenu:
   TITLE: Phase E2 — Planner
     (Scanner returned {scan_findings.count} findings. Planner is read-only.
      Produces structured plan grouped by A/B/C. No files modified.)
   OPTIONS:
-    y ->
+    1 y ->
       DISPATCH cf-migrate-planner with:
         prompt = content of cf-migrate-planner.md + ## Task Inputs with:
                    scan_findings: full output of Scanner phase
       SET plan = agent output
       CONTINUE E3
-    N ->
+    2 N ->
       EMIT "E2 declined. Re-invoke to run Planner."
       STOP_TURN
   INVALID:
@@ -249,10 +249,10 @@ REQUIRE:
   plan is set (E2 completed)
 
 DO:
-  EMIT plan IN FULL (the entire output from Planner)
-  EMIT_MENU E3_MigratorMenu
-  WAIT user.reply
-  STOP_TURN
+  - EMIT plan IN FULL (the entire output from Planner)
+  - EMIT_MENU E3_MigratorMenu
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU E3_MigratorMenu:
   TITLE: Phase E3 — Migrator
@@ -271,7 +271,7 @@ MENU E3_MigratorMenu:
     4 ->
       SET selection = "select"
       CONTINUE E3_RunMigrator
-    N ->
+    5 N ->
       EMIT "E3 skipped. Plan remains in memory for this session only (re-invoke E2 to regenerate)."
       STOP_TURN
   INVALID:
@@ -300,7 +300,7 @@ ON_MISSING_PRECONDITION:
     STOP_TURN
 
 DO:
-  DISPATCH cf-migrate-migrator with:
+  - DISPATCH cf-migrate-migrator with:
     prompt = content of cf-migrate-migrator.md + ## Task Inputs with:
       plan: full Planner output
       selection: which categories/items the user approved (A / AB / ABC / explicit list)
@@ -311,18 +311,18 @@ DO:
       target_cache_dir: "~/.cf-studio/cache/"
       target_registry_url: "constructorfabric/studio"
       target_kit_sdlc_url: "constructorfabric/studio-kit-sdlc"
-      git_commit_mode: GIT_COMMIT_MODE (MUST be included; set from session-scoped flag)
-      contributing_guide: CONTRIBUTING_GUIDE (MUST be included; null when not found)
+      git_commit_mode: GIT_COMMIT_MODE (ALWAYS be included; set from session-scoped flag)
+      contributing_guide: CONTRIBUTING_GUIDE (ALWAYS be included; null when not found)
       git_constraint: mode-matched constraint block from workflows/generate/phase-4-write.md
                       Git constraint blocks
-  SET migration_manifest = agent output
-  CONTINUE E4
+  - SET migration_manifest = agent output
+  - CONTINUE E4
 
 RULES:
-  - MUST_NOT dispatch Migrator without explicit user approval from E3_MigratorMenu
-  - MUST_NOT dispatch Migrator without plan set from E2
-  - MUST include git_commit_mode in dispatch inputs
-  - MUST include contributing_guide in dispatch inputs
+  - NEVER dispatch Migrator without explicit user approval from E3_MigratorMenu
+  - NEVER dispatch Migrator without plan set from E2
+  - ALWAYS include git_commit_mode in dispatch inputs
+  - ALWAYS include contributing_guide in dispatch inputs
 
 NOTES:
   Menu options:
@@ -347,16 +347,16 @@ REQUIRE:
   migration_manifest is set (E3 completed)
 
 DO:
-  EMIT_MENU E4_VerifierMenu
-  WAIT user.reply
-  STOP_TURN
+  - EMIT_MENU E4_VerifierMenu
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU E4_VerifierMenu:
   TITLE: Phase E4 — Verifier
     (Migrator applied {migration_manifest.count} changes. Verifier is read-only.
      Re-runs Scanner patterns and diffs against migration manifest.)
   OPTIONS:
-    y ->
+    1 y ->
       DISPATCH cf-migrate-verifier with:
         prompt = content of cf-migrate-verifier.md + ## Task Inputs with:
                    plan: full Planner output
@@ -365,7 +365,7 @@ MENU E4_VerifierMenu:
       INCREMENT verifier_iteration by 1
       SET verification_result = agent output
       CONTINUE E5
-    N ->
+    2 N ->
       EMIT "E4 declined. Continuing to final report without verification."
       CONTINUE E6
   INVALID:
@@ -387,33 +387,33 @@ PURPOSE:
   Iterate Migrator and Verifier until clean or until the iteration cap is hit.
 
 STATE:
-  verifier_iteration: number
+  - SET verifier_iteration: number
     default: 0 (before the first E4 verifier dispatch)
     reset: never (monotonically increments within a session)
 
 WHEN:
-  verification_result reports residue
+  - REQUIRE verification_result reports residue
 
 DO:
-  WHEN verifier_iteration >= 3:
-    EMIT "Verifier-loop iteration cap (3) reached"
-    EMIT residue list
-    CONTINUE E6
+  - RUN WHEN verifier_iteration >= 3:
+    - EMIT "Verifier-loop iteration cap (3) reached"
+    - EMIT residue list
+    - CONTINUE E6
 
-  EMIT_MENU E5_MigratorMenu
-  WAIT user.reply
-  STOP_TURN
+  - EMIT_MENU E5_MigratorMenu
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU E5_MigratorMenu:
   TITLE: Phase E5 — Migrator (iteration {verifier_iteration})
     (Verifier found {verification_result.residue_count} unresolved issues:
      <truncated preview, max 10 items>)
   OPTIONS:
-    y ->
+    1 y ->
       DISPATCH cf-migrate-migrator with verifier's residue as new task
       SET migration_manifest = agent output
       CONTINUE E4
-    N ->
+    2 N ->
       EMIT residue list
       CONTINUE E6
   INVALID:
@@ -422,14 +422,14 @@ MENU E5_MigratorMenu:
     STOP_TURN
 
 WHEN:
-  verification_result reports all clean
+  - REQUIRE verification_result reports all clean
 
 DO:
-  CONTINUE E6
+  - CONTINUE E6
 
 INVARIANTS:
-  - MUST_NOT exceed 3 verifier iterations
-  - MUST continue to E6 after hitting iteration cap
+  - NEVER exceed 3 verifier iterations
+  - ALWAYS continue to E6 after hitting iteration cap
 ```
 
 ### E6: Final report
@@ -441,7 +441,7 @@ PURPOSE:
   Emit a structured migration summary regardless of E5 outcome.
 
 DO:
-  EMIT:
+  - EMIT:
     ## Migrate from Cypilot — Final Report
 
     Phases run:
@@ -460,16 +460,16 @@ DO:
       - {command}
       ...
 
-Suggested next steps:
-  - If status is clean, proceed with normal Constructor Studio work on the migrated project.
-  - If status is residue, address the remaining migration findings, then rerun the verifier.
-  - If status is cascade-stop, resolve the blocking upstream issue before resuming downstream migration work.
-  - If status is manual-review, inspect the flagged files and decide whether to patch manually or queue another bounded migration pass.
+- RUN Suggested next steps:
+  - RUN If status is clean, proceed with normal Constructor Studio work on the migrated project.
+  - RUN If status is residue, address the remaining migration findings, then rerun the verifier.
+  - RUN If status is cascade-stop, resolve the blocking upstream issue before resuming downstream migration work.
+  - RUN If status is manual-review, inspect the flagged files and decide whether to patch manually or queue another bounded migration pass.
 
 RULES:
-  - MUST emit final report regardless of whether E5 hit clean or cap
-  - MUST list outstanding work when residue remains
-  - MUST list cascade operations when any C-category items were not applied
+  - ALWAYS emit final report regardless of whether E5 hit clean or cap
+  - ALWAYS list outstanding work when residue remains
+  - ALWAYS list cascade operations when any C-category items were not applied
 ```
 
 ## Sub-agent dispatch contract
@@ -481,15 +481,15 @@ PURPOSE:
   Define the standard dispatch mechanism for all four sub-agents.
 
 RULES:
-  - MUST use Agent tool for all sub-agent dispatches
-  - MUST use subagent_type matching the phase:
+  - ALWAYS use Agent tool for all sub-agent dispatches
+  - ALWAYS use subagent_type matching the phase:
       E1: "cf-migrate-scanner"
       E2: "cf-migrate-planner"
       E3: "cf-migrate-migrator"
       E4/E5: "cf-migrate-verifier" / "cf-migrate-migrator"
     (use the dedicated registered type; each is registered in agents.toml with role-scoped prompts)
-  - MUST construct prompt as: {role-file-content} + \n\n## Task Inputs\n\n{role-specific JSON}
-  - MUST run in foreground (default) so orchestrator can chain to next phase
+  - ALWAYS construct prompt as: {role-file-content} + \n\n## Task Inputs\n\n{role-specific JSON}
+  - ALWAYS run in foreground (default) so orchestrator can chain to next phase
 
 NOTES:
   Each role file is self-contained: it declares purpose, expected inputs, procedure,

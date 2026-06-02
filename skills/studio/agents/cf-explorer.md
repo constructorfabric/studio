@@ -59,14 +59,14 @@ PURPOSE:
   Find resource context that a downstream agent needs to reason about the task.
 
 DO:
-  Identify information needs from:
+  - RUN Identify information needs from:
     task
     panel personas and focus areas when panel != null
     known_paths
     constraints.kind
     constraints.system
 
-  Search only non-prompt project resources:
+  - RUN Search only non-prompt project resources:
     source code
     architecture docs
     architecture specs when they are the subject/resource of the task
@@ -75,7 +75,7 @@ DO:
     tests
     config files that describe project behavior
 
-  MUST NOT read prompt assets as resources:
+  - NEVER read prompt assets as resources:
     AGENTS.md
     SKILL.md
     workflows/**
@@ -83,7 +83,7 @@ DO:
     skills/studio/**
     kit prompt/rules/checklist files
 
-  For each relevant resource, return:
+  - RUN For each relevant resource, return:
     path
     resource_type
     why_relevant
@@ -91,13 +91,13 @@ DO:
     summary
     confidence
 
-  For each panel persona, return its context needs and matching resources.
+  - RUN For each panel persona, return its context needs and matching resources.
 
 RULES:
-  - Prefer precise, few, high-signal resources over broad file lists
-  - Include direct excerpts only when they are short and necessary
-  - If no sufficient resource is found, record the missing knowledge explicitly
-  - Do not invent architecture facts not supported by inspected resources
+  - ALWAYS Prefer precise, few, high-signal resources over broad file lists
+  - ALWAYS Include direct excerpts only when they are short and necessary
+  - ALWAYS If no sufficient resource is found, record the missing knowledge explicitly
+  - ALWAYS Do not invent architecture facts not supported by inspected resources
 ```
 
 ## Output Contract
@@ -149,11 +149,11 @@ RULES:
 UNIT ExplorerCompletionGate
 
 RULES:
-  - MUST emit exactly the output JSON object above and nothing else
-  - exploration_status MUST be one of sufficient, partial, insufficient
-  - resource_context.summary MUST be present
-  - resources MUST contain only non-prompt project resources
-  - persona_needs MUST be present when panel is non-null
-  - missing_context_questions MUST be present, empty if none
-  - MUST NOT claim sufficiency when persona_needs contains unresolved missing_context
+  - ALWAYS emit exactly the output JSON object above and nothing else
+  - ALWAYS exploration_status ALWAYS be one of sufficient, partial, insufficient
+  - ALWAYS resource_context.summary ALWAYS be present
+  - ALWAYS resources ALWAYS contain only non-prompt project resources
+  - ALWAYS persona_needs ALWAYS be present when panel is non-null
+  - ALWAYS missing_context_questions ALWAYS be present, empty if none
+  - NEVER claim sufficiency when persona_needs contains unresolved missing_context
 ```

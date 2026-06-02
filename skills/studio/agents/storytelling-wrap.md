@@ -65,10 +65,10 @@ rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
 UNIT InputConstraints
 
 RULES:
-  - MUST treat all fields except session_ended_early and handle as required
-  - MUST accept empty arrays for open_questions_buffer, glossary_buffer, and bookmarked_takeaways
-  - MUST default session_ended_early to false when absent
-  - MUST set session.input to "(path not provided)" when handle is absent
+  - ALWAYS treat all fields except session_ended_early and handle as required
+  - ALWAYS accept empty arrays for open_questions_buffer, glossary_buffer, and bookmarked_takeaways
+  - ALWAYS default session_ended_early to false when absent
+  - ALWAYS set session.input to "(path not provided)" when handle is absent
 ```
 
 ## Methodology
@@ -80,13 +80,13 @@ PURPOSE:
   Execute the seven steps in order to produce the wrap output.
 
 DO:
-  CONTINUE Step1_KeyTakeaways
-  CONTINUE Step2_OpenQuestionsCarryForward
-  CONTINUE Step3_GlossaryEmit
-  CONTINUE Step4_BookmarksExportPrompt
-  CONTINUE Step5_NextSteps
-  CONTINUE Step6_SessionBlock
-  CONTINUE Step7_PathNormalization
+  - CONTINUE Step1_KeyTakeaways
+  - CONTINUE Step2_OpenQuestionsCarryForward
+  - CONTINUE Step3_GlossaryEmit
+  - CONTINUE Step4_BookmarksExportPrompt
+  - CONTINUE Step5_NextSteps
+  - CONTINUE Step6_SessionBlock
+  - CONTINUE Step7_PathNormalization
 ```
 
 ### Step 1 — Key takeaways
@@ -98,8 +98,8 @@ PURPOSE:
   Produce 3-5 key_takeaways grounded exclusively in e2_segments or bookmarked_takeaways.
 
 DO:
-  Produce 3-5 key_takeaways bullets. For each:
-    - Write a concise one-sentence `text` field capturing the insight.
+  - RUN Produce 3-5 key_takeaways bullets. For each:
+    - RUN Write a concise one-sentence `text` field capturing the insight.
     - Set `source_ref` to a clickable markdown link:
         if takeaway originates from e2_segments: use first non-empty entry in
           source_refs as link URL and segment title as link text.
@@ -110,9 +110,9 @@ DO:
           Format: `[<title>](#plan-item-<index>)`
 
 RULES:
-  - MUST_NOT invent takeaways from general knowledge; only e2_segments or bookmarked_takeaways
-  - MUST_NOT produce two takeaways that paraphrase the same e2_segments entry
-  - MUST prefer takeaways that span multiple segments when the narrative supports it
+  - NEVER invent takeaways from general knowledge; only e2_segments or bookmarked_takeaways
+  - NEVER produce two takeaways that paraphrase the same e2_segments entry
+  - ALWAYS prefer takeaways that span multiple segments when the narrative supports it
 ```
 
 ### Step 2 — Open questions carry-forward
@@ -124,12 +124,12 @@ PURPOSE:
   Copy open_questions_buffer into open_questions verbatim.
 
 DO:
-  SET open_questions = open_questions_buffer verbatim
-  WHEN open_questions_buffer is empty: SET open_questions = []
+  - SET open_questions = open_questions_buffer verbatim
+  - RUN WHEN open_questions_buffer is empty: SET open_questions = []
 
 RULES:
-  - MUST_NOT add, remove, reorder, rephrase, auto-fill, or resolve any item (AP-#21)
-  - MUST_NOT generate agent-generated entries (AP-#21)
+  - NEVER add, remove, reorder, rephrase, auto-fill, or resolve any item (AP-#21)
+  - NEVER generate agent-generated entries (AP-#21)
 ```
 
 ### Step 3 — Glossary emit
@@ -138,8 +138,8 @@ RULES:
 UNIT Step3_GlossaryEmit
 
 DO:
-  WHEN glossary_buffer is non-empty: SET glossary = glossary_buffer verbatim
-  WHEN glossary_buffer is empty:     SET glossary = null
+  - RUN WHEN glossary_buffer is non-empty: SET glossary = glossary_buffer verbatim
+  - RUN WHEN glossary_buffer is empty:     SET glossary = null
 ```
 
 ### Step 4 — Bookmarks export prompt
@@ -148,8 +148,8 @@ DO:
 UNIT Step4_BookmarksExportPrompt
 
 DO:
-  WHEN bookmarked_takeaways is non-empty: SET bookmarks_export_prompt = true
-  WHEN bookmarked_takeaways is empty:     SET bookmarks_export_prompt = false
+  - RUN WHEN bookmarked_takeaways is non-empty: SET bookmarks_export_prompt = true
+  - RUN WHEN bookmarked_takeaways is empty:     SET bookmarks_export_prompt = false
 ```
 
 ### Step 5 — Next steps
@@ -161,18 +161,18 @@ PURPOSE:
   Suggest 2-3 contextual next_steps as plain strings.
 
 DO:
-  WHEN session_ended_early == true:
+  - RUN WHEN session_ended_early == true:
     Prepend one entry:
       "Resume this session from plan item <N> — <title of first unprocessed plan item>"
     where N is the index of the first plan item with no corresponding e2_segment.
     This resumption entry counts toward the 2-3 total.
-  SELECT 2-3 contextually most-relevant next steps derived from session content,
+  - RUN SELECT 2-3 contextually most-relevant next steps derived from session content,
     mode, audience, or unresolved open questions.
 
 RULES:
-  - MUST produce 2-3 entries total; MUST_NOT exceed 3 entries regardless of session_ended_early
-  - MUST_NOT enumerate all four possible candidate categories mechanically
-  - MUST_NOT propose steps that contradict mode
+  - ALWAYS produce 2-3 entries total; NEVER exceed 3 entries regardless of session_ended_early
+  - NEVER enumerate all four possible candidate categories mechanically
+  - NEVER propose steps that contradict mode
     (e.g. do not propose a decision record step when mode is onboarding)
 ```
 
@@ -185,17 +185,17 @@ PURPOSE:
   Populate the session object.
 
 DO:
-  SET session.role = storytelling role derived from mode
+  - SET session.role = storytelling role derived from mode
     (e.g. "presentation" for mode presentation, "review" for mode review)
-  SET session.audience = input audience
-  SET session.input = handle.canonical_path converted to relative-from-project-root path (AP-#28e)
+  - SET session.audience = input audience
+  - SET session.input = handle.canonical_path converted to relative-from-project-root path (AP-#28e)
     WHEN handle is absent: SET session.input = "(path not provided)"
-  SET session.progress = "{len(e2_segments)}/{plan.item_count} plan items"
-  SET session.diagrams = count of e2_segments entries whose narrative_text contains a
+  - SET session.progress = "{len(e2_segments)}/{plan.item_count} plan items"
+  - SET session.diagrams = count of e2_segments entries whose narrative_text contains a
     fenced Mermaid block (```mermaid); 0 if none
-  SET session.open_questions_count = len(open_questions_buffer)
-  SET session.bookmarks_count = len(bookmarked_takeaways)
-  SET session.glossary_count = len(glossary_buffer)
+  - SET session.open_questions_count = len(open_questions_buffer)
+  - SET session.bookmarks_count = len(bookmarked_takeaways)
+  - SET session.glossary_count = len(glossary_buffer)
 ```
 
 ### Step 7 — Path normalization
@@ -207,14 +207,14 @@ PURPOSE:
   Ensure all file paths in output are relative-from-project-root (AP-#28e).
 
 DO:
-  Audit every string value in the output that contains a file path.
-  Replace any absolute paths beginning with /Users/, /Volumes/, /home/, or any
+  - RUN Audit every string value in the output that contains a file path.
+  - RUN Replace any absolute paths beginning with /Users/, /Volumes/, /home/, or any
     other absolute root with their relative-from-project-root equivalent.
 
 RULES:
-  - MUST ensure save_prompt_default_path is relative
+  - ALWAYS ensure save_prompt_default_path is relative
     (e.g. ".bootstrap/.cache/explain/sessions/<session_id>.json")
-  - MUST_NOT emit absolute paths in any output string value (AP-#28e)
+  - NEVER emit absolute paths in any output string value (AP-#28e)
 ```
 
 ## Output Contract
@@ -258,16 +258,16 @@ NOTES:
 UNIT ResponseCompletionGate
 
 RULES:
-  - MUST return the JSON shape above as the entire output (no chat, no preamble, no markdown wrapping outside the JSON block)
-  - MUST set wrap.header to exactly "Storytelling Wrap-up"
-  - MUST ensure every key_takeaways[].source_ref is a valid clickable markdown link
-  - MUST ensure open_questions is a verbatim copy of open_questions_buffer — no additions, removals, reorderings, or rephrasing (AP-#21)
-  - MUST set glossary to null when glossary_buffer was empty; otherwise verbatim copy
-  - MUST set bookmarks_export_prompt to true if and only if bookmarked_takeaways was non-empty
-  - MUST produce 2-3 next_steps entries; MUST include a "Resume this session" entry as first element if and only if session_ended_early=true
-  - MUST ensure all file paths in output are relative-from-project-root (AP-#28e)
-  - MUST satisfy the SKILL.md invariant
-SEE_ALSO: Step1_KeyTakeaways
-SEE_ALSO: Step5_NextSteps
-SEE_ALSO: Step7_PathNormalization
+  - ALWAYS return the JSON shape above as the entire output (no chat, no preamble, no markdown wrapping outside the JSON block)
+  - ALWAYS set wrap.header to exactly "Storytelling Wrap-up"
+  - ALWAYS ensure every key_takeaways[].source_ref is a valid clickable markdown link
+  - ALWAYS ensure open_questions is a verbatim copy of open_questions_buffer — no additions, removals, reorderings, or rephrasing (AP-#21)
+  - ALWAYS set glossary to null when glossary_buffer was empty; otherwise verbatim copy
+  - ALWAYS set bookmarks_export_prompt to true if and only if bookmarked_takeaways was non-empty
+  - ALWAYS produce 2-3 next_steps entries; ALWAYS include a "Resume this session" entry as first element if and only if session_ended_early=true
+  - ALWAYS ensure all file paths in output are relative-from-project-root (AP-#28e)
+  - ALWAYS satisfy the SKILL.md invariant
+- ALWAYS SEE_ALSO: Step1_KeyTakeaways
+- ALWAYS SEE_ALSO: Step5_NextSteps
+- ALWAYS SEE_ALSO: Step7_PathNormalization
 ```

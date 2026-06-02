@@ -30,7 +30,7 @@ Keep prose for context and rationale. Use PDSL for behavior.
 
 ## Design Goals
 
-PDSL MUST be:
+PDSL is:
 
 - compact enough to replace repetitive prose
 - readable by humans without a parser
@@ -38,7 +38,7 @@ PDSL MUST be:
 - easy for an LLM to follow as an execution contract
 - stable under copy, review, and partial editing
 
-PDSL MUST NOT depend on hidden semantics. If a state change,
+PDSL does not depend on hidden semantics. If a state change,
 menu choice, or stop condition matters, write it explicitly.
 
 ---
@@ -54,32 +54,38 @@ PURPOSE:
   <one sentence>
 
 STATE:
-  <name>: <allowed values>
+  - SET <name>: <allowed values>
 
 WHEN:
-  <condition>
+  - REQUIRE <condition>
 
 DO:
-  <ordered actions>
+  - RUN <ordered actions>
 
 MENU <name>:
-  <choice> -> <actions>
+  TITLE: <menu title>
+  OPTIONS:
+    1 <choice> -> <actions>
+  INVALID:
+    EMIT <retry instruction>
+    WAIT user.reply
+    STOP_TURN
 
 RULES:
-  - MUST <rule>
-  - MUST_NOT <rule>
+  - ALWAYS <rule>
+  - NEVER <rule>
 
 ON_ERROR:
   <error> -> <actions>
 ```
 
-Blocks MAY be omitted when not relevant. `PURPOSE`, `WHEN`, and `DO` are the
+Blocks can be omitted when not relevant. `PURPOSE`, `WHEN`, and `DO` are the
 default minimum for executable behavior.
 
-Markdown code fences that contain PDSL instruction blocks MUST use the `pdsl`
+Markdown code fences that contain PDSL instruction blocks use the `pdsl`
 language tag. Use ```` ```pdsl ```` for `UNIT`, `PATTERNS`, `WHEN`, `DO`,
 `MENU`, `RULES`, `ON_ERROR`, `INVARIANTS`, `NOTES`, and other PDSL-shaped
-blocks. MUST_NOT use ```` ```text ```` for PDSL instruction blocks.
+blocks. Do not use ```` ```text ```` for PDSL instruction blocks.
 
 ---
 
@@ -97,29 +103,49 @@ Use this small keyword set before inventing new words.
 | `WHEN` | Entry condition |
 | `DO` | Ordered required actions |
 | `SET` | Assign state |
+| `LOAD` | Load or reuse a referenced prompt asset or context slice |
+| `RUN` | Execute a named local unit, probe, check, or workflow step |
 | `EMIT` | Show user-facing text |
 | `EMIT_MENU` | Show a named `MENU` block |
 | `MENU` | User choice surface |
+| `TITLE` | User-facing menu title |
+| `OPTIONS` | Valid menu choices and their actions |
+| `INVALID` | Invalid menu input handling |
 | `WAIT` | Stop for user input |
 | `STOP_TURN` | End assistant turn immediately |
 | `CONTINUE` | Move to named unit or phase |
 | `DISPATCH` | Invoke a named sub-agent or worker contract |
 | `RETURN` | Return a manifest, report, checkpoint, or handoff |
-| `FORBID` | Disallowed action |
 | `REQUIRE` | Required precondition |
 | `RULES` | Mandatory constraints |
 | `ON_ERROR` | Error recovery |
 | `INVARIANTS` | Conditions that must always hold |
+| `ALWAYS` | Absolute positive rule inside `RULES` or `INVARIANTS` |
+| `NEVER` | Absolute prohibition inside `DO`, `RULES`, or `INVARIANTS` |
 | `NOTES` | Non-executable explanation |
 
-Prefer `MUST` and `MUST_NOT` inside `RULES` and `INVARIANTS`.
+Use `ALWAYS` inside `RULES` and `INVARIANTS`. Use `NEVER` inside `DO`,
+`RULES`, or `INVARIANTS` for absolute prohibitions.
+
+Structured execution sections use list items. Each top-level item starts with
+one of the section's allowed starter keywords:
+
+- `STATE`: `SET`
+- `WHEN`: `REQUIRE`, `AND`, `OR`, `NOT`
+- `DO`: `SET`, `LOAD`, `RUN`, `EMIT`, `EMIT_MENU`, `WAIT`, `STOP_TURN`,
+  `CONTINUE`, `DISPATCH`, `RETURN`, `REQUIRE`, `NEVER`
+- `RULES` and `INVARIANTS`: `ALWAYS`, `NEVER`
+- `OPTIONS`: a decimal number such as `1`, `2`, `3`
+
+Continuation lines and nested explanatory bullets may appear under a list item,
+but they do not introduce new PDSL actions or rules.
 
 ---
 
 ## Execution Semantics
 
 PDSL blocks are executable instruction contracts for humans and LLMs. A
-controller or sub-agent interpreting PDSL MUST apply these rules:
+controller or sub-agent interpreting PDSL applies these rules:
 
 - `WHEN` is an activation predicate; once true, the owning `DO`, `RULES`,
   `INVARIANTS`, and matching `ON_ERROR` obligations are active.
@@ -127,10 +153,16 @@ controller or sub-agent interpreting PDSL MUST apply these rules:
   `STOP_TURN` transfers control earlier.
 - `REQUIRE` is a precondition; if unmet, enter matching `ON_ERROR` when
   present, otherwise stop and report the missing precondition.
-- `FORBID` is an immediate prohibition in the current scope.
+- `NEVER` is an absolute prohibition in the current scope.
+- `LOAD` makes a referenced prompt asset or context slice available before
+  later actions depend on it.
+- `RUN` executes a named local unit, probe, check, or workflow step.
 - `WAIT` plus `STOP_TURN` is a hard assistant-turn boundary.
 - `CONTINUE <unit-or-phase>` transfers control to that target; it is not
   optional advice.
+- `DISPATCH` invokes a named sub-agent or worker contract. Concurrency,
+  isolation, and join behavior belong in explicit dispatch options or
+  surrounding rules, not in separate dispatch keywords.
 - `RETURN` declares the terminal handoff or output shape.
 - `RULES` are mandatory constraints for the owning unit.
 - `INVARIANTS` stay active while the owning unit, workflow, or dispatch
@@ -140,7 +172,7 @@ controller or sub-agent interpreting PDSL MUST apply these rules:
 
 The root `skills/studio/SKILL.md` owns loading the compact runtime card at
 `requirements/pdsl-execution-card.md` once into the shared context pack.
-Workflow and agent prompts SHOULD rely on that root-skill slice instead of
+Workflow and agent prompts should rely on that root-skill slice instead of
 re-declaring the card path locally.
 
 ---
@@ -151,8 +183,8 @@ Conditions use plain expressions, not code syntax.
 
 ```pdsl
 WHEN:
-  SUB_AGENT_SESSION_APPROVED == unset
-  AND host.supports_native_subagents == true
+  - REQUIRE SUB_AGENT_SESSION_APPROVED == unset
+  - AND host.supports_native_subagents == true
 ```
 
 Allowed operators:
@@ -163,10 +195,10 @@ Allowed operators:
 - `contains(<value>, <token>)`
 - `matches(<value>, <pattern-name>)`
 
-Pattern names MUST be defined nearby or in a referenced requirement.
+Pattern names are defined nearby or in a referenced requirement.
 
-File-scoped patterns MAY be declared in a local `PATTERNS:` block at the top
-of the PDSL file. Patterns intended for reuse across files MUST be registered
+File-scoped patterns can be declared in a local `PATTERNS:` block at the top
+of the PDSL file. Patterns intended for reuse across files are registered
 in `requirements/pdsl-patterns.md`.
 
 ---
@@ -185,12 +217,12 @@ PATTERNS:
 
 Rules:
 
-- A `PATTERNS:` block is file-scoped. It MUST appear before the first `UNIT`
+- A `PATTERNS:` block is file-scoped. It appears before the first `UNIT`
   that references it.
-- Pattern names MUST be unique within a file.
-- Patterns shared across multiple files MUST be registered in the canonical
+- Pattern names are unique within a file.
+- Patterns shared across multiple files are registered in the canonical
   patterns registry at `requirements/pdsl-patterns.md`.
-- A `matches()` call MUST reference a name defined in the local `PATTERNS:`
+- A `matches()` call references a name defined in the local `PATTERNS:`
   block or in the canonical registry. Undefined names are a PDSL authoring
   error.
 
@@ -202,11 +234,11 @@ Actions are imperative and one per line.
 
 ```pdsl
 DO:
-  REQUIRE workflow_target is known
-  SET INLINE_FALLBACK = true
-  EMIT_MENU ApprovalMenu
-  WAIT user.reply
-  STOP_TURN
+  - REQUIRE workflow_target is known
+  - SET INLINE_FALLBACK = true
+  - EMIT_MENU ApprovalMenu
+  - WAIT user.reply
+  - STOP_TURN
 ```
 
 Use `SET` only for state changes. Use `EMIT` or `EMIT_MENU` only for visible
@@ -235,9 +267,11 @@ MENU ApprovalMenu:
 
 Menu rules:
 
-- Every option MUST have an action.
-- Invalid input MUST be specified.
-- If the menu is a hard interaction boundary, it MUST end with `STOP_TURN`.
+- Every option has an action.
+- Every option starts with a decimal number. Put aliases after the number, for
+  example `1 | save | save default -> ...`.
+- Invalid input is specified.
+- If the menu is a hard interaction boundary, it ends with `STOP_TURN`.
 - Suggested options belong in `TITLE` or `NOTES`, not hidden in prose.
 
 ---
@@ -248,41 +282,36 @@ State declarations list allowed values and default behavior.
 
 ```pdsl
 STATE:
-  CF_PHASE_GATE: armed | released_for_dispatch | released_for_inline_write
+  - SET CF_PHASE_GATE: armed | released_for_dispatch | released_for_inline_write
     default: armed
     reset: start_of_assistant_turn
 
-  INLINE_FALLBACK: unset | true | false
+  - SET INLINE_FALLBACK: unset | true | false
     default: unset
 ```
 
 State rules:
 
-- Every referenced state variable SHOULD be declared in the nearest relevant
+- Every referenced state variable is declared in the nearest relevant
   `STATE` block.
-- Defaults MUST be explicit when missing state changes behavior.
-- Reset rules MUST be explicit when state is scoped to a turn, workflow, or
+- Defaults are explicit when missing state changes behavior.
+- Reset rules are explicit when state is scoped to a turn, workflow, or
   session.
 
 ---
 
-## Invariants And Forbids
+## Invariants And Prohibitions
 
 Use `INVARIANTS` for always-on rules.
 
 ```pdsl
 INVARIANTS:
-  - MUST keep CF_PHASE_GATE = armed outside released write windows
-  - MUST reset CF_PHASE_GATE to armed after dispatch returns
-  - MUST_NOT write files while CF_PHASE_GATE == armed
+  - ALWAYS keep CF_PHASE_GATE = armed outside released write windows
+  - ALWAYS reset CF_PHASE_GATE to armed after dispatch returns
+  - NEVER write files while CF_PHASE_GATE == armed
 ```
 
-Use `FORBID` inside `DO` when a prohibition is local to that unit.
-
-```pdsl
-DO:
-  FORBID apply_patch while CF_PHASE_GATE == armed
-```
+Use `NEVER` in `DO` or `RULES` when a prohibition is local to one unit.
 
 ---
 
@@ -320,7 +349,7 @@ NOTES:
   support.
 ```
 
-LLMs MUST NOT infer extra rules from `NOTES` unless another executable block
+LLMs do not infer extra rules from `NOTES` unless another executable block
 references them.
 
 ---
@@ -345,21 +374,21 @@ PURPOSE:
   Resolve whether this workflow may use native sub-agents.
 
 STATE:
-  SUB_AGENT_SESSION_APPROVED: unset | true
+  - SET SUB_AGENT_SESSION_APPROVED: unset | true
     default: unset
     scope: session
 
-  INLINE_FALLBACK: unset | true | false
+  - SET INLINE_FALLBACK: unset | true | false
     default: unset
     scope: workflow_run
 
 WHEN:
-  SUB_AGENT_SESSION_APPROVED == unset
+  - REQUIRE SUB_AGENT_SESSION_APPROVED == unset
 
 DO:
-  EMIT_MENU SubAgentApprovalMenu
-  WAIT user.reply
-  STOP_TURN
+  - EMIT_MENU SubAgentApprovalMenu
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU SubAgentApprovalMenu:
   OPTIONS:
@@ -374,8 +403,8 @@ MENU SubAgentApprovalMenu:
     STOP_TURN
 
 INVARIANTS:
-  - MUST_NOT set INLINE_FALLBACK = true from missing approval
-  - MUST_NOT set INLINE_FALLBACK = false unless SUB_AGENT_SESSION_APPROVED == true
+  - NEVER set INLINE_FALLBACK = true from missing approval
+  - NEVER set INLINE_FALLBACK = false unless SUB_AGENT_SESSION_APPROVED == true
 ```
 
 ---

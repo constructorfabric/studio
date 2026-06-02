@@ -11,19 +11,19 @@ purpose: Standalone brainstorm command; pass-through to generate.md with BRAINST
 UNIT RootSkillEntrypointBootstrap
 PURPOSE: Prevent direct workflow entry from bypassing the root cf skill.
 DO:
-  1. REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is loaded completely
+  - REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is loaded completely
      and followed FIRST.
-  2. REQUIRE CfSkillInit, Bootstrap, HardRules, and
+  - REQUIRE CfSkillInit, Bootstrap, HardRules, and
      WorkflowProtocolNonSubstitution from SKILL.md have completed.
-  3. CONTINUE this workflow only after the root cf skill routing/entrypoint
+  - CONTINUE this workflow only after the root cf skill routing/entrypoint
      selects it.
 RULES:
-  - MUST execute before any workflow-specific unit in this file.
-  - MUST_NOT treat protocol.md, routing.md, or a thin proxy skill as a
+  - ALWAYS execute before any workflow-specific unit in this file.
+  - NEVER treat protocol.md, routing.md, or a thin proxy skill as a
     substitute for loading and following SKILL.md.
-  - If this workflow file is opened directly, STOP workflow phases until
+  - ALWAYS If this workflow file is opened directly, STOP workflow phases until
     SKILL.md has been loaded completely and followed.
-  - This gate applies to the top-level controller only; dispatched sub-agents
+  - ALWAYS This gate applies to the top-level controller only; dispatched sub-agents
     consume the synthesized final prompt and supplied context slices.
 ```
 
@@ -34,14 +34,14 @@ PURPOSE:
   Pass through to generate.md with BRAINSTORM mode active.
 
 DO:
-  LOAD skill `cf` IN GENERATE + BRAINSTORM mode
-  The target generate Phase 0.7 workflow MUST run cf-explore after panel
-  selection and pass RESOURCE_CONTEXT into brainstorm agents.
-  Completion signal from the target generate flow MUST include:
+  - LOAD skill `cf` IN GENERATE + BRAINSTORM mode
+  - RUN The target generate Phase 0.7 workflow ALWAYS run cf-explore after panel
+  - RUN selection and pass RESOURCE_CONTEXT into brainstorm agents.
+  - RUN Completion signal from the target generate flow ALWAYS include:
     { "type": "BRAINSTORM_RESULT", "status": "wrapped|handoff|checkpointed|cancelled", "decisions_count": <int>, "open_questions_count": <int>, "next_route": "<generate|plan|analyze|null>" }
-  Every clean, cancelled, checkpointed, or handoff terminal exit MUST emit this
-  BRAINSTORM_RESULT envelope; human-facing wrap text is not a substitute for
-  the machine-readable completion signal.
+  - RUN Every clean, cancelled, checkpointed, or handoff terminal exit ALWAYS emit this
+  - RUN BRAINSTORM_RESULT envelope; human-facing wrap text is not a substitute for
+  - RUN the machine-readable completion signal.
 
 ON_ERROR:
   load_failed ->

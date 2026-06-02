@@ -47,43 +47,43 @@ PURPOSE:
   Execute structural-only scope resolution steps.
 
 DO:
-  1. Resolve worktree_path: record HEAD, branch, dirty count from
+  - RUN Resolve worktree_path: record HEAD, branch, dirty count from
      git status --short (line count, no per-file inspection)
      and git branch --show-current
-  2. WHEN commit_sha is present:
+  - RUN WHEN commit_sha is present:
        Compute base = base_ref OR <commit_sha>^
        List committed changes via git diff --name-status <base>..<commit_sha>
-  3. WHEN include_uncommitted == true:
+  - RUN WHEN include_uncommitted == true:
        List working-tree changes via git diff --name-status HEAD
        Append untracked from git status --short ?? lines
-  4. Merge into changed_files:
+  - RUN Merge into changed_files:
        {path, old_path (renames only), status, source}
-  5. Hunks: FORBID extraction
-       SET changed_hunks = []
-       NOTES: Downstream reviewers read full files themselves
-  6. Risk hotspots: FORBID semantic risk analysis
+  - RUN Hunks: no extraction
+       - SET changed_hunks = []
+       note: Downstream reviewers read full files themselves
+  - RUN Risk hotspots: no semantic risk analysis
        SET risk_hotspots = []
        EXCEPTION: WHEN direct_targets are named:
          Copy them in as structural review-priority hints only:
            {path, risk: "user-named direct target", evidence: "direct_targets"}
-  7. Compute binary_paths first:
+  - RUN Compute binary_paths first:
        paths reported by git diff --numstat with -\t- markers
        Allowed probes:
          git -C <worktree> diff --numstat <base>..<head>
          git -C <worktree> diff --numstat HEAD
-  8. Compute review_targets:
+  - RUN Compute review_targets:
        direct_targets UNION {changed_files.path | status in {M,A,R,U,?}}
        deduped, sorted
        EXCLUDE status == D (deleted)
        EXCLUDE path in binary_paths
-  9. Compute omissions:
+  - RUN Compute omissions:
        files filtered out from the review_targets candidate set with a one-word reason:
          "deleted" — status D
          "binary"  — git diff --numstat shows -\t- markers
-       A path omitted as "binary" MUST_NOT remain in review_targets even when it
+       A path omitted as "binary" NEVER remain in review_targets even when it
        was also named in direct_targets
 
-FORBID: hunk extraction and risk synthesis
+NEVER: hunk extraction and risk synthesis
 ```
 
 NOTES:
@@ -127,12 +127,12 @@ PURPOSE:
   is complete.
 
 RULES:
-  - MUST have compact Diff Scope Package summary
-  - MUST have diff_scope JSON
-  - MUST classify every changed file into changed_files + review_targets
+  - ALWAYS have compact Diff Scope Package summary
+  - ALWAYS have diff_scope JSON
+  - ALWAYS classify every changed file into changed_files + review_targets
     or omissions
-  - MUST_NOT have read any changed-file or user-artifact contents or
+  - NEVER have read any changed-file or user-artifact contents or
     performed risk scoring
     (SKILL.md / protocol.md / Protocol Guard loads are exempt)
-  - MUST satisfy the SKILL.md invariant
+  - ALWAYS satisfy the SKILL.md invariant
 ```

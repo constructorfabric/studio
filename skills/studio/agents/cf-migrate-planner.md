@@ -58,12 +58,12 @@ PURPOSE:
   Reclassify every Scanner finding into category A, B, C, or intentional-keep.
 
 DO:
-  Apply Scanner's "Suggested auto-classify hints" as defaults
-  Override using the rules below
+  - RUN Apply Scanner's "Suggested auto-classify hints" as defaults
+  - RUN Override using the rules below
 
 MENU FindingClassification:
   OPTIONS:
-    always_A (auto-fixable) ->
+    1 always_A (auto-fixable) ->
       IF pattern is cypilot_path (legacy key / variable):
         Apply: cypilot_path → cf-studio-path
       IF pattern is curly_cypilot_path ({cypilot_path}):
@@ -82,7 +82,7 @@ MENU FindingClassification:
         Apply:  cpt  →  cfs 
       IF pattern is kit_slug_cypilot_sdlc IN TOML/YAML config:
         Apply: cypilot-sdlc → sdlc
-    always_B (needs-review) ->
+    2 always_B (needs-review) ->
       IF pattern is cpt_other (cpt not in command-form):
         Classify B — could be a variable name, filename, or false positive
       IF pattern is cypilot_standalone:
@@ -93,7 +93,7 @@ MENU FindingClassification:
         Classify B — context-sensitive
       IF pattern is cyber_pilot_kebab outside well-known URL contexts:
         Classify B — disambiguate
-    cascade_C ->
+    3 cascade_C ->
       IF workspace_file match:
         One C-item per workspace file: manual rename only; any content rewrites
         must remain separate A/B items sourced from concrete Scanner findings
@@ -101,22 +101,22 @@ MENU FindingClassification:
         One C-item per dir: "run `cfs generate-agents` after Migrator finishes"
       IF workspace member listed in .studio-workspace.toml (or legacy) with local path:
         One C-item with resolved values: "cascade `cfs init --migrate-from-cypilot=yes` inside member <resolved-member-name> at <resolved-member-path>"
-    intentional_keep ->
+    4 intentional_keep ->
       IF inside src/studio_proxy/ (package name preserved by v4.0.0 design):
         SKIP — do not include in plan
       IF @cpt-* markers in source *.py / *.ts / etc. files (per v4.0.0 design):
         SKIP — Scanner already filters; if any leak through, drop them
       IF format = "Cypilot" inside [kits.<slug>] or [kit.<slug>] TOML table:
         Schedule as A-item: apply format = "Cypilot" → format = "CFS"
-        MUST_NOT schedule format = "CFS" for further rewriting
+        NEVER schedule format = "CFS" for further rewriting
       IF lines explicitly marked with # pyright: ignore or # noqa referencing cypilot:
         Classify B with low-priority note
 
 RULES:
-  - MUST classify every Scanner finding into A, B, C, or intentional-keep
-  - MUST_NOT invent substitutions outside the table above
-  - MUST_NOT promote a B-item to A unless Scanner classified it A AND substitution rule table has an entry
-  - MUST treat @cpt-* markers as B by default (per v4.0.0 design)
+  - ALWAYS classify every Scanner finding into A, B, C, or intentional-keep
+  - NEVER invent substitutions outside the table above
+  - NEVER promote a B-item to A unless Scanner classified it A AND substitution rule table has an entry
+  - ALWAYS treat @cpt-* markers as B by default (per v4.0.0 design)
 ```
 
 ### Step 2 — Per-file grouping and ordering
@@ -128,19 +128,19 @@ PURPOSE:
   Group and order classified findings by category and file for the plan output.
 
 DO:
-  FOR A-items:
+  - RUN FOR A-items:
     Group by file
     Each file: list of (line, pattern, substitution-rule)
     Order files: config → build → ci → code → doc → script
-  FOR B-items:
+  - RUN FOR B-items:
     Group by file
     Each file: list of (line, pattern, context, suggested-action)
     Order: HIGH-PRIORITY first (hotspots, root-legacy-marker), then by file path
-  FOR C-items:
+  - RUN FOR C-items:
     Order by dependency:
-      1. Rename workspace files (creates right file name for subsequent member ops)
-      2. Cascade into workspace members (each member's deterministic migration)
-      3. Run `cfs generate-agents` (regenerates IDE configs from migrated state)
+      - Rename workspace files (creates right file name for subsequent member ops)
+      - Cascade into workspace members (each member's deterministic migration)
+      - Run `cfs generate-agents` (regenerates IDE configs from migrated state)
 ```
 
 ### Step 3 — Plan output
@@ -152,8 +152,8 @@ PURPOSE:
   Emit a single Markdown plan the orchestrator can present to the user verbatim.
 
 DO:
-  IF Scanner returned 0 actionable items:
-    EMIT:
+  - REQUIRE Scanner returned 0 actionable items:
+    - EMIT:
       ## Migration Plan
 
       No findings to plan. Scanner returned 0 actionable items.
@@ -163,8 +163,8 @@ DO:
       - The project has no source / CI / docs (e.g. fresh init, no user code yet).
       - Scanner's pattern set may need extension; consider re-running Scanner
         on a specific subdirectory if you suspect missed items.
-  ELSE:
-    EMIT:
+  - RUN otherwise
+    - EMIT:
       ## Migration Plan
 
       Summary: {A_count} auto-fixable / {B_count} needs-review / {C_count} cascade
@@ -190,11 +190,11 @@ DO:
 
       ### Category C — Cascade operations ({C_count})
 
-      1. Rename `<resolved-old-workspace-file>` → `.studio-workspace.toml` in project root
-      2. Cascade migration into member `<resolved-member-name>` at `<resolved-member-path>`:
+      - Rename `<resolved-old-workspace-file>` → `.studio-workspace.toml` in project root
+      - Cascade migration into member `<resolved-member-name>` at `<resolved-member-path>`:
            cd <resolved-member-path>
            cfs init --migrate-from-cypilot=yes
-      3. Regenerate IDE agent configs from migrated state:
+      - Regenerate IDE agent configs from migrated state:
            cfs generate-agents
       ... (in dependency order)
 
@@ -207,8 +207,8 @@ DO:
       - Cascade operations: {C_count}
 
 RULES:
-  - Output MUST be presentable to the user verbatim
-  - MUST_NOT include internal codegen variables or unresolved placeholder strings
+  - ALWAYS Output ALWAYS be presentable to the user verbatim
+  - NEVER include internal codegen variables or unresolved placeholder strings
     except where they are user-visible commands like `cfs init`
 ```
 
@@ -221,16 +221,16 @@ PURPOSE:
   Enforce read-only authority boundary and plan quality invariants.
 
 RULES:
-  - MUST_NOT modify any file — read-only
-  - MUST_NOT invent substitutions outside the classified pattern table
-  - MUST_NOT promote a B-item to A unless Scanner classified it A AND the
+  - NEVER modify any file — read-only
+  - NEVER invent substitutions outside the classified pattern table
+  - NEVER promote a B-item to A unless Scanner classified it A AND the
     substitution rule table has an entry for the pattern
-  - MUST_NOT propose regex word-boundary rewrites for conservative markdown rewriter
+  - NEVER propose regex word-boundary rewrites for conservative markdown rewriter
     (cpt. and line-start cpt are intentional per project_markdown_rewriter_conservative.md)
 
 INVARIANTS:
-  - MUST treat @cpt-* markers as B by default (per v4.0.0 design)
-  - Output MUST be presentable to the user verbatim (no internal codegen variables
+  - ALWAYS treat @cpt-* markers as B by default (per v4.0.0 design)
+  - ALWAYS Output ALWAYS be presentable to the user verbatim (no internal codegen variables
     outside user-visible commands)
 ```
 
@@ -243,10 +243,10 @@ PURPOSE:
   Enforce response completeness before output is considered final.
 
 RULES:
-  - MUST classify every Scanner finding into A, B, C, or explicitly drop as intentional-keep
-  - MUST group the plan by category and file per the rules above
-  - A-items MUST reference one of the listed substitution rules (no invented substitutions)
-  - MUST be presentable to the user verbatim (no internal codegen variables outside user-visible commands)
-  - MUST satisfy the SKILL.md invariant when the controller supplied
+  - ALWAYS classify every Scanner finding into A, B, C, or explicitly drop as intentional-keep
+  - ALWAYS group the plan by category and file per the rules above
+  - ALWAYS A-items ALWAYS reference one of the listed substitution rules (no invented substitutions)
+  - ALWAYS be presentable to the user verbatim (no internal codegen variables outside user-visible commands)
+  - ALWAYS satisfy the SKILL.md invariant when the controller supplied
     `studio_mode_contract`
 ```

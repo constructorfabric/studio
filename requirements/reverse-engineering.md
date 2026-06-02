@@ -51,17 +51,17 @@ PURPOSE:
   analysis and generation work.
 
 WHEN:
-  analyze-codebase or brownfield-generation intent is detected
+  - REQUIRE analyze-codebase or brownfield-generation intent is detected
 
 DO:
-  REQUIRE this methodology is active
-  REQUIRE controller has loaded `{cf-studio-path}/.core/requirements/execution-protocol.md`
-  SET REVERSE_ENGINEERING_MODE = true
+  - REQUIRE this methodology is active
+  - REQUIRE controller has loaded `{cf-studio-path}/.core/requirements/execution-protocol.md`
+  - SET REVERSE_ENGINEERING_MODE = true
 
 RULES:
-  - MUST treat this methodology as controller-owned prompt context
-  - MUST deliver any dispatched prompt subset through `prompt_context_view`
-  - MUST_NOT let prompt-consuming sub-agents reopen this file from disk
+  - ALWAYS treat this methodology as controller-owned prompt context
+  - ALWAYS deliver any dispatched prompt subset through `prompt_context_view`
+  - NEVER let prompt-consuming sub-agents reopen this file from disk
 ```
 
 ```pdsl
@@ -71,21 +71,21 @@ PURPOSE:
   Make the layer-by-layer execution order explicit.
 
 STATE:
-  RE_LAYER: l1 | l2 | l3 | l4 | l5 | l6 | l7 | l8 | l9 | done
+  - SET RE_LAYER: l1 | l2 | l3 | l4 | l5 | l6 | l7 | l8 | l9 | done
     default: l1
 
 DO:
-  REQUIRE repository access before L1
-  SET RE_LAYER = l1
-  REQUIRE layers progress in order through l2, l3, l4, l5, l6, l7, l8, and l9
-  REQUIRE prior-layer findings are carried forward at every transition
-  EMIT checkpoint after completing each layer
-  SET RE_LAYER = done
+  - REQUIRE repository access before L1
+  - SET RE_LAYER = l1
+  - REQUIRE layers progress in order through l2, l3, l4, l5, l6, l7, l8, and l9
+  - REQUIRE prior-layer findings are carried forward at every transition
+  - EMIT checkpoint after completing each layer
+  - SET RE_LAYER = done
 
 RULES:
-  - MUST execute layers in order
-  - MUST checkpoint after each layer
-  - MUST record explicit gaps instead of inventing missing findings
+  - ALWAYS execute layers in order
+  - ALWAYS checkpoint after each layer
+  - ALWAYS record explicit gaps instead of inventing missing findings
 ```
 
 ```pdsl

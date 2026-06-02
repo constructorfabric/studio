@@ -11,14 +11,14 @@ PURPOSE:
   Resolve the CLI command reference before any workflow work begins.
 
 DO:
-  1. WHEN cfs is available on PATH
-       SET {cfs_cmd} = cfs
-  2. WHEN cfs is NOT available
-       SET {cfs_cmd} = python3 {cf-studio-path}/.core/skills/studio/scripts/studio.py
+  - RUN WHEN cfs is available on PATH
+       - SET {cfs_cmd} = cfs
+  - RUN WHEN cfs is NOT available
+       - SET {cfs_cmd} = python3 {cf-studio-path}/.core/skills/studio/scripts/studio.py
 
 RULES:
-  - MUST resolve {cfs_cmd} before any CLI invocation
-  - MUST use {cfs_cmd} for all subsequent CLI invocations in the session
+  - ALWAYS resolve {cfs_cmd} before any CLI invocation
+  - ALWAYS use {cfs_cmd} for all subsequent CLI invocations in the session
 ```
 
 ```pdsl
@@ -29,9 +29,9 @@ PURPOSE:
   Constructor Studio prompt sections or completing checklist tasks.
 
 RULES:
-  - MUST emit a log line in the format:  - [CONTEXT]: MESSAGE
+  - ALWAYS emit a log line in the format:  - [CONTEXT]: MESSAGE
     when entering any Constructor Studio prompt section
-  - MUST emit a log line in the format:  - [CONTEXT]: MESSAGE
+  - ALWAYS emit a log line in the format:  - [CONTEXT]: MESSAGE
     when completing any checklist task
 ```
 
@@ -43,29 +43,29 @@ PURPOSE:
   workflow work begins.
 
 DO:
-  1. Run {cfs_cmd} --json info
-  2. Store the returned variables map
-  3. WHEN {cf-studio-path}/.gen/AGENTS.md exists
+  - RUN Run {cfs_cmd} --json info
+  - RUN Store the returned variables map
+  - RUN WHEN {cf-studio-path}/.gen/AGENTS.md exists
        load or reuse it as a controller-owned SHARED_CONTEXT_PACK asset, then
        follow only the instruction slice selected for the top-level controller
-  4. WHEN {cf-studio-path}/config/AGENTS.md exists
+  - RUN WHEN {cf-studio-path}/config/AGENTS.md exists
        load or reuse it as a controller-owned SHARED_CONTEXT_PACK asset, then
        follow only the instruction slice selected for the top-level controller
-  5. WHEN {cf-studio-path}/.gen/SKILL.md exists
+  - RUN WHEN {cf-studio-path}/.gen/SKILL.md exists
        load or reuse it as a controller-owned SHARED_CONTEXT_PACK asset, then
        follow only the instruction slice selected for the top-level controller
-  6. WHEN {cf-studio-path}/config/SKILL.md exists
+  - RUN WHEN {cf-studio-path}/config/SKILL.md exists
        load or reuse it as a controller-owned SHARED_CONTEXT_PACK asset, then
        follow only the instruction slice selected for the top-level controller
-  7. Resolve registry, intent, target, rules, and matched WHEN-clause specs
-  8. Load or reuse {cf-studio-path}/.core/requirements/language-complexity.md
+  - RUN Resolve registry, intent, target, rules, and matched WHEN-clause specs
+  - RUN Load or reuse {cf-studio-path}/.core/requirements/language-complexity.md
      as a controller-owned SHARED_CONTEXT_PACK asset and follow the selected
      top-level controller slice
 
 RULES:
-  - MUST execute steps 1-8 in order before any workflow work
-  - MUST store the variables map returned by step 1 for later substitution
-  - MUST_NOT instruct prompt-consuming sub-agents to reopen any ProtocolGuard
+  - ALWAYS execute steps 1-8 in order before any workflow work
+  - ALWAYS store the variables map returned by step 1 for later substitution
+  - NEVER instruct prompt-consuming sub-agents to reopen any ProtocolGuard
     prompt asset from disk; dispatches receive needed text via prompt_context_view
 ```
 
@@ -78,23 +78,23 @@ PURPOSE:
   pack before any downstream dispatch.
 
 RULES:
-  - ProtocolGuard resolves {cf-studio-path}/.gen/AGENTS.md,
+  - ALWAYS ProtocolGuard resolves {cf-studio-path}/.gen/AGENTS.md,
     {cf-studio-path}/config/AGENTS.md, {cf-studio-path}/.gen/SKILL.md,
     {cf-studio-path}/config/SKILL.md, and
     {cf-studio-path}/.core/requirements/language-complexity.md on behalf of
     the top-level runtime controller only
-  - The controller MUST reuse matching SHARED_CONTEXT_PACK assets before
+  - ALWAYS The controller ALWAYS reuse matching SHARED_CONTEXT_PACK assets before
     re-reading disk, revalidate reused assets by etag, and refresh or replace
     stale assets before reuse
-  - Mixed-content runtime assets loaded here MUST contribute only their
+  - ALWAYS Mixed-content runtime assets loaded here ALWAYS contribute only their
     instruction-bearing sections to SHARED_CONTEXT_PACK
-  - Prompt-consuming sub-agents MUST receive a controller-synthesized final
+  - ALWAYS Prompt-consuming sub-agents ALWAYS receive a controller-synthesized final
     dispatch prompt that already includes the needed instruction text from
     SHARED_CONTEXT_PACK
-  - Prompt-consuming sub-agents MUST_NOT reopen these files directly
-  - Missing or stale prompt assets that cannot be refreshed MUST surface a
+  - ALWAYS Prompt-consuming sub-agents NEVER reopen these files directly
+  - ALWAYS Missing or stale prompt assets that cannot be refreshed ALWAYS surface a
     deterministic controller-owned error before downstream dispatch
-  - ExecutionVisibility logging MUST include whether the controller reused,
+  - ALWAYS ExecutionVisibility logging ALWAYS include whether the controller reused,
     refreshed, or extended SHARED_CONTEXT_PACK during Protocol Guard
 ```
 
@@ -105,15 +105,15 @@ PURPOSE:
   Emit the required context header before any code edit.
 
 DO:
-  REQUIRE ProtocolGuard has completed
-  EMIT:
+  - REQUIRE ProtocolGuard has completed
+  - EMIT:
     Constructor Studio Context:
     - Constructor Studio: {path}
     - Target: {artifact|codebase}
     - Specs loaded: {list paths or "none required"}
 
 RULES:
-  - MUST emit this block before every code edit
+  - ALWAYS emit this block before every code edit
 ```
 
 ```pdsl
@@ -124,7 +124,7 @@ PURPOSE:
   dual write-confirmation + phase-gate requirement.
 
 STATE:
-  CF_PHASE_GATE:
+  - SET CF_PHASE_GATE:
     armed
     | released_for_dispatch
     | released_for_orchestrator_write
@@ -133,40 +133,40 @@ STATE:
     default: armed
     reset: per canonical PhaseSkipGate rules in SKILL.md
 
-  write_confirmation_obtained: unset | true
+  - SET write_confirmation_obtained: unset | true
     default: unset
     scope: per_write_command
 
-  write_command:
+  - SET write_command:
     exact command or file-write operation being approved
 
-  write_target:
+  - SET write_target:
     exact target path, resource, or configuration key being changed
 
-  write_effect:
+  - SET write_effect:
     concrete side effect, including created/modified files or external writes
 
 RULES:
-  - MUST preserve the canonical CF_PHASE_GATE model and reset semantics from
+  - ALWAYS preserve the canonical CF_PHASE_GATE model and reset semantics from
     {cf-studio-path}/.core/skills/studio/SKILL.md
-  - MUST use {cfs_cmd} --json <subcommand> for all CLI invocations
+  - ALWAYS use {cfs_cmd} --json <subcommand> for all CLI invocations
     EXCEPT init, delegate, and update (run those without --json)
-  - MUST obtain explicit user confirmation before any write-capable command
-  - MUST populate write_command, write_target, and write_effect before emitting
+  - ALWAYS obtain explicit user confirmation before any write-capable command
+  - ALWAYS populate write_command, write_target, and write_effect before emitting
     WriteConfirmationMenu
-  - MUST_NOT add --yes, -y, or --force to any command
+  - NEVER add --yes, -y, or --force to any command
     unless the user explicitly requested it
-  - MUST_NOT execute a write-capable command unless BOTH conditions hold:
+  - NEVER execute a write-capable command unless BOTH conditions hold:
       CF_PHASE_GATE is in a released_for_* state
       AND write_confirmation_obtained == true
-  - MUST_NOT treat gate-release as a substitute for write confirmation;
+  - NEVER treat gate-release as a substitute for write confirmation;
     both are independently required
 
 INVARIANTS:
-  - MUST keep this unit aligned with the canonical Phase-Skip Gate model in
-    SKILL.md and MUST treat only released_for_* states as write-eligible here
-  - MUST_NOT write files while CF_PHASE_GATE == armed
-  - MUST_NOT write files while write_confirmation_obtained != true
+  - ALWAYS keep this unit aligned with the canonical Phase-Skip Gate model in
+    SKILL.md and ALWAYS treat only released_for_* states as write-eligible here
+  - NEVER write files while CF_PHASE_GATE == armed
+  - NEVER write files while write_confirmation_obtained != true
 
 ON_ERROR:
   write_attempted_while_gate_armed ->

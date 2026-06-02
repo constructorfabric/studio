@@ -15,21 +15,21 @@ PURPOSE:
   Resolve COLLECTOR_MAX_ITER before Phase 1 input collection begins.
 
 STATE:
-  COLLECTOR_MAX_ITER: integer
+  - SET COLLECTOR_MAX_ITER: integer
     default: 5
     scope: workflow_run
 
 DO:
-  IF user supplied collector=<m> in invocation:
-    SET COLLECTOR_MAX_ITER = m
-  ELSE:
-    SET COLLECTOR_MAX_ITER = 5
+  - REQUIRE user supplied collector=<m> in invocation:
+    - SET COLLECTOR_MAX_ITER = m
+  - RUN otherwise
+    - SET COLLECTOR_MAX_ITER = 5
     ASK only when user explicitly wants collector-loop control
 
 RULES:
-  - MUST resolve COLLECTOR_MAX_ITER before Phase 1
-  - COLLECTOR_MAX_ITER=0 disables iteration: collector returns once;
-    on any edit reply the orchestrator MUST stop with BLOCKED
-  - Phase 5 MAX_ITER prompts MUST NOT change COLLECTOR_MAX_ITER;
+  - ALWAYS resolve COLLECTOR_MAX_ITER before Phase 1
+  - ALWAYS COLLECTOR_MAX_ITER=0 disables iteration: collector returns once;
+    on any edit reply the orchestrator ALWAYS stop with BLOCKED
+  - ALWAYS Phase 5 MAX_ITER prompts NEVER change COLLECTOR_MAX_ITER;
     by then Phase 1 is complete
 ```

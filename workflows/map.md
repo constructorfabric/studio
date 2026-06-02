@@ -26,19 +26,19 @@ purpose: Guide cfs map workflow from pre-flight through validation
 UNIT RootSkillEntrypointBootstrap
 PURPOSE: Prevent direct workflow entry from bypassing the root cf skill.
 DO:
-  1. REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is loaded completely
+  - REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is loaded completely
      and followed FIRST.
-  2. REQUIRE CfSkillInit, Bootstrap, HardRules, and
+  - REQUIRE CfSkillInit, Bootstrap, HardRules, and
      WorkflowProtocolNonSubstitution from SKILL.md have completed.
-  3. CONTINUE this workflow only after the root cf skill routing/entrypoint
+  - CONTINUE this workflow only after the root cf skill routing/entrypoint
      selects it.
 RULES:
-  - MUST execute before any workflow-specific unit in this file.
-  - MUST_NOT treat protocol.md, routing.md, or a thin proxy skill as a
+  - ALWAYS execute before any workflow-specific unit in this file.
+  - NEVER treat protocol.md, routing.md, or a thin proxy skill as a
     substitute for loading and following SKILL.md.
-  - If this workflow file is opened directly, STOP workflow phases until
+  - ALWAYS If this workflow file is opened directly, STOP workflow phases until
     SKILL.md has been loaded completely and followed.
-  - This gate applies to the top-level controller only; dispatched sub-agents
+  - ALWAYS This gate applies to the top-level controller only; dispatched sub-agents
     consume the synthesized final prompt and supplied context slices.
 ```
 
@@ -49,12 +49,12 @@ PURPOSE:
   Load required agent context before any map phase work begins.
 
 DO:
-  REQUIRE {cf-studio-path}/.gen/AGENTS.md is loaded and followed FIRST
-  REQUIRE {cf-studio-path}/config/AGENTS.md is loaded and followed after .gen/AGENTS.md
-  REQUIRE bootstrap order matches ProtocolGuard for AGENTS prompt assets
-  EMIT_MENU MapIntentRouter
-  WAIT user.reply
-  STOP_TURN
+  - REQUIRE {cf-studio-path}/.gen/AGENTS.md is loaded and followed FIRST
+  - REQUIRE {cf-studio-path}/config/AGENTS.md is loaded and followed after .gen/AGENTS.md
+  - REQUIRE bootstrap order matches ProtocolGuard for AGENTS prompt assets
+  - EMIT_MENU MapIntentRouter
+  - WAIT user.reply
+  - STOP_TURN
 
 NOTES:
   Type: Operation. Role: Any. Output: Interactive HTML map or JSON graph export.
@@ -102,18 +102,18 @@ PURPOSE:
   Detect what will be scanned before generating the map.
 
 DO:
-  RUN python3 {cf-studio-path}/.core/skills/studio/scripts/studio.py --json info
+  - RUN python3 {cf-studio-path}/.core/skills/studio/scripts/studio.py --json info
     (look for [[systems.codebase]] or [[systems.autodetect.codebase]] entries in artifacts.toml)
-  CHECK for .studio-workspace.toml in project root (federation axis)
-  CHECK for [[systems.codebase]] or [[systems.autodetect.codebase]] entries in
+  - RUN CHECK for .studio-workspace.toml in project root (federation axis)
+  - RUN CHECK for [[systems.codebase]] or [[systems.autodetect.codebase]] entries in
     {cf-studio-path}/config/artifacts.toml or <project_root>/artifacts.toml (source-scanning axis)
-  EMIT discovered state:
+  - EMIT discovered state:
     Federation: ".studio-workspace.toml present" OR "no workspace config — federation unavailable"
     Source scanning: list [[systems.codebase]] / [[systems.autodetect.codebase]] entries found,
       OR "no codebase entries found — source scanning unavailable"
-  EMIT_MENU MapScopeMenu
-  WAIT user.reply
-  STOP_TURN
+  - EMIT_MENU MapScopeMenu
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU MapScopeMenu:
   TITLE: >
@@ -151,14 +151,14 @@ PURPOSE:
   Confirm map settings before scanning.
 
 DO:
-  EMIT proposed settings:
+  - EMIT proposed settings:
     Output format: html (interactive viewer) or json (machine-readable)
     Output file: ./md-map.html or ./md-map.json (use --out PATH to override)
     Category config: auto-detect or provide md-map.toml for custom categorization
     Inline data: for HTML, embed JSON into file (no .js sidecar) or keep separate
-  EMIT_MENU MapConfigMenu
-  WAIT user.reply
-  STOP_TURN
+  - EMIT_MENU MapConfigMenu
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU MapConfigMenu:
   TITLE: >
@@ -168,7 +168,7 @@ MENU MapConfigMenu:
   OPTIONS:
     1 approve ->
       RUN test -f <project_root>/md-map.toml  (deterministic existence check; use absolute path)
-        # MUST execute this shell check before deciding — do NOT infer from PWD or assume
+        # ALWAYS execute this shell check before deciding — do NOT infer from PWD or assume
       SET map.config_exists = (exit_code == 0)
       WHEN map.scope != markdown-only AND map.config_exists == false:
         EMIT "No md-map.toml detected at <project_root>. Want help generating one before scanning?"
@@ -228,18 +228,18 @@ PURPOSE:
   Invoke cfs map and produce output.
 
 DO:
-  WHEN map.scope == single-repo:
-    RUN python3 {cf-studio-path}/.core/skills/studio/scripts/studio.py --json map --local-only [--out PATH] [--format html|json] [--config PATH] [--inline-data when format=html AND inline_data=true]
-  WHEN map.scope == with-workspace:
-    RUN python3 {cf-studio-path}/.core/skills/studio/scripts/studio.py --json map [--out PATH] [--format html|json] [--config PATH] [--inline-data when format=html AND inline_data=true]
-  WHEN map.scope == markdown-only:
-    RUN python3 {cf-studio-path}/.core/skills/studio/scripts/studio.py --json map --no-source [--out PATH] [--format html|json] [--config PATH] [--inline-data when format=html AND inline_data=true]
-  VERIFY output file exists and size is reasonable
-  IF format == html:
-    EMIT file path; note that it opens in a browser
-  IF format == json:
-    EMIT note that it can be piped to other tools (e.g., jq)
-  CONTINUE MapPhase4
+  - RUN WHEN map.scope == single-repo:
+    - RUN python3 {cf-studio-path}/.core/skills/studio/scripts/studio.py --json map --local-only [--out PATH] [--format html|json] [--config PATH] [--inline-data when format=html AND inline_data=true]
+  - RUN WHEN map.scope == with-workspace:
+    - RUN python3 {cf-studio-path}/.core/skills/studio/scripts/studio.py --json map [--out PATH] [--format html|json] [--config PATH] [--inline-data when format=html AND inline_data=true]
+  - RUN WHEN map.scope == markdown-only:
+    - RUN python3 {cf-studio-path}/.core/skills/studio/scripts/studio.py --json map --no-source [--out PATH] [--format html|json] [--config PATH] [--inline-data when format=html AND inline_data=true]
+  - RUN VERIFY output file exists and size is reasonable
+  - REQUIRE format == html:
+    - EMIT file path; note that it opens in a browser
+  - REQUIRE format == json:
+    - EMIT note that it can be piped to other tools (e.g., jq)
+  - CONTINUE MapPhase4
 ```
 
 ## Phase 4: Validate
@@ -251,18 +251,18 @@ PURPOSE:
   Inspect the map for completeness and phantom references.
 
 DO:
-  IF format == html:
+  - REQUIRE format == html:
     CHECK: Open generated .html in a browser; verify vis-network graph renders without errors
     COUNT: nodes/edges via embedded JSON, .html.js sidecar, or browser DevTools
       (markdown nodes, source nodes, cross-repo edges)
-  IF format == json:
+  - REQUIRE format == json:
     CHECK: Parse generated JSON; verify top-level nodes/edges arrays exist
     COUNT: nodes/edges directly from JSON
-  CHECK: Search JSON for phantom:<cpt-id> nodes or dangling_cpt_uses array (dangling references)
-  VERIFY: nodes are color-coded by category; check if md-map.toml override helped
-  IF dangling cpts found:
+  - RUN CHECK: Search JSON for phantom:<cpt-id> nodes or dangling_cpt_uses array (dangling references)
+  - RUN VERIFY: nodes are color-coded by category; check if md-map.toml override helped
+  - REQUIRE dangling cpts found:
     SUGGEST `cfs where-used <cpt-id>` or `cfs list-ids` for cross-repo IDs
-  CONTINUE MapNextSteps
+  - CONTINUE MapNextSteps
 ```
 
 ## Phase Config-Assist
@@ -279,20 +279,20 @@ PREREQUISITES:
   (or read the existing ./md-map.html.js sidecar — same JSON shape).
 
 DO:
-  1. LOCATE the JSON payload:
+  - RUN LOCATE the JSON payload:
        - prefer ./md-map.json if it exists,
        - else ./md-map.html.js (strip the leading `window.MAP_DATA = ` if present
          and trailing `;`).
        - If neither exists:
-           EMIT "No JSON map artifact found. Running MapPhase3 with --format json first."
-           CONTINUE MapPhase3 with --format json
+           - EMIT "No JSON map artifact found. Running MapPhase3 with --format json first."
+           - CONTINUE MapPhase3 with --format json
            (after MapPhase3 completes, resume from step 2 here)
-  2. PARSE nodes; collect candidates: nodes where category_origin == "parent-dir".
-  3. GROUP candidates by top-2 path segments (e.g. `src/studio`, `docs/architecture`).
+  - RUN PARSE nodes; collect candidates: nodes where category_origin == "parent-dir".
+  - RUN GROUP candidates by top-2 path segments (e.g. `src/studio`, `docs/architecture`).
      For each group capture: prefix, node_count, sample 3 rel_paths.
-  4. FILTER groups: keep only those with node_count >= 5.
-  5. SORT by node_count descending; take top 10.
-  6. DERIVE category names deterministically from the group's path prefix using:
+  - RUN FILTER groups: keep only those with node_count >= 5.
+  - RUN SORT by node_count descending; take top 10.
+  - RUN DERIVE category names deterministically from the group's path prefix using:
        - Lowercase the entire prefix
        - Replace `/`, `.`, and `_` with `-`
        - Strip leading `-` characters
@@ -313,40 +313,40 @@ DO:
      | `.claude/agents` | → | `claude-agents` |
      | `architecture/ADR` | → | `architecture-adr` |
      | `examples/overwork_alert` | → | `examples-overwork-alert` |
-  7. EMIT_MENU PaletteMenu
-     WAIT user.reply
-     STOP_TURN
-  8. After palette chosen, EMIT_MENU UncategorizedBucketMenu
-     WAIT user.reply
-     STOP_TURN
-  9. After uncategorized bucket choice, emit the full proposed TOML block in chat with:
+  - EMIT_MENU PaletteMenu
+     - WAIT user.reply
+     - STOP_TURN
+  - RUN After palette chosen, EMIT_MENU UncategorizedBucketMenu
+     - WAIT user.reply
+     - STOP_TURN
+  - RUN After uncategorized bucket choice, emit the full proposed TOML block in chat with:
      - Top-level field: show_uncategorized = {true|false} (based on step 8 choice)
      - Derived category names populated in the `name = "..."` field for each category
      Include a note: "Names are derived from path prefixes. Use 2 edit-names if you want to
      refine them, or 1 approve to accept. Toggle `show_uncategorized` directly in the TOML
      if you change your mind before approve."
-  10. EMIT_MENU ConfigAssistActionMenu
-      WAIT user.reply
-      STOP_TURN
-  11. On 1 approve:
+  - EMIT_MENU ConfigAssistActionMenu
+      - WAIT user.reply
+      - STOP_TURN
+  - RUN On 1 approve:
         a. EMIT "About to write ./md-map.toml ({N} categories). Reply `yes` to confirm."
         b. WAIT user.reply
-           STOP_TURN
+           - STOP_TURN
         c. If reply == "yes":
              write ./md-map.toml (orchestrator-write, gate released_for_orchestrator_write)
         d. After write:
-             EMIT "Re-running map with new config..."
-             CONTINUE MapPhase3 with `--config ./md-map.toml` appended to the RUN line
-  12. On 2 edit-names:
-        WAIT user.reply with renames
-        STOP_TURN
+             - EMIT "Re-running map with new config..."
+             - CONTINUE MapPhase3 with `--config ./md-map.toml` appended to the RUN line
+  - RUN On 2 edit-names:
+        - WAIT user.reply with renames
+        - STOP_TURN
         RE-EMIT updated TOML; loop back to step 10
-  13. On 3 add-manual:
-        WAIT user.reply for one or more manual {name, paths, style?} entries
-        STOP_TURN
+  - RUN On 3 add-manual:
+        - WAIT user.reply for one or more manual {name, paths, style?} entries
+        - STOP_TURN
         APPEND to proposed config; loop back to step 10
-  14. On 4 skip:
-        CONTINUE MapNextSteps
+  - RUN On 4 skip:
+        - CONTINUE MapNextSteps
 
 MENU PaletteMenu:
   TITLE: >
@@ -495,9 +495,9 @@ PURPOSE:
   Present post-generation next steps with a suggested default and explicit reply contract.
 
 DO:
-  EMIT_MENU MapNextStepsMenu
-  WAIT user.reply
-  STOP_TURN
+  - EMIT_MENU MapNextStepsMenu
+  - WAIT user.reply
+  - STOP_TURN
 
 MENU MapNextStepsMenu:
   TITLE: >
@@ -536,9 +536,9 @@ PURPOSE:
   Continue from the map next-step menu into the existing HTML map artifact.
 
 DO:
-  EMIT "Open the generated HTML map artifact in your browser to explore the interactive graph. Reply `config` to refine categories, `json` to export data, or describe another map action."
-  WAIT user.reply
-  STOP_TURN
+  - EMIT "Open the generated HTML map artifact in your browser to explore the interactive graph. Reply `config` to refine categories, `json` to export data, or describe another map action."
+  - WAIT user.reply
+  - STOP_TURN
 ```
 
 ```pdsl
@@ -548,7 +548,7 @@ PURPOSE:
   Continue from the map next-step menu into a concrete JSON export path.
 
 DO:
-  EMIT "Generate or use the JSON map artifact, then inspect it with tools such as `jq`. Reply `run json` to generate JSON now, `config` to refine categories, or describe another map action."
-  WAIT user.reply
-  STOP_TURN
+  - EMIT "Generate or use the JSON map artifact, then inspect it with tools such as `jq`. Reply `run json` to generate JSON now, `config` to refine categories, or describe another map action."
+  - WAIT user.reply
+  - STOP_TURN
 ```
