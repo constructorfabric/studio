@@ -63,16 +63,18 @@ PURPOSE:
   Classify the payload before selecting capability.
 
 MENU DomainClassification:
-  code-only ->
+  TITLE: Domain classification
+  OPTIONS:
+    1 code-only -> SET domain = code-only
     codebase implementation, tests, refactors, source/config files,
     design_artifact_path present, target=codebase, or source/test file paths
 
-  prompt-workflow ->
+    2 prompt-workflow -> SET domain = prompt-workflow
     paths or findings under workflows/, agents/, skills/, AGENTS.md,
     .github/prompts, .cursor/agents, .codex/agents, or prompt/instruction text
     where routing, state, handoff, or agent behavior changes
 
-  generic ->
+    3 generic -> SET domain = generic
     SDLC artifacts, prose/docs, registry/config, or mixed domain work
 ```
 

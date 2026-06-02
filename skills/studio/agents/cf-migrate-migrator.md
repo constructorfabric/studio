@@ -120,25 +120,31 @@ DO:
     - Record `applied` in manifest with file path, line number (post-edit), and substitution rule key.
 
 MENU SpecialCaseAItems:
-  TOML key rewrites (cypilot_path -> cf-studio-path) ->
+  TITLE: Special A-item rewrite handling
+  OPTIONS:
+    1 TOML key rewrites -> RUN apply TOML key rewrite handling
     Prefer key-level substitution (replace whole line `cypilot_path = "..."` with `cf-studio-path = "..."` preserving value).
     Fall back to substring substitution if line layout is unusual.
 
-  URL rewrites (`github.com/cyberfabric/cyber-pilot` -> `github.com/constructorfabric/studio`,
-                `github.com/cyberfabric/cyber-pilot-kit-sdlc` -> `github.com/constructorfabric/studio-kit-sdlc`) ->
+    2 URL rewrites -> RUN apply URL rewrite handling
+    Patterns: `github.com/cyberfabric/cyber-pilot` to `github.com/constructorfabric/studio`,
+    and `github.com/cyberfabric/cyber-pilot-kit-sdlc` to `github.com/constructorfabric/studio-kit-sdlc`.
     Apply as substring; the URL form is well-defined.
 
-  Proper-noun rewrites (`Cypilot` / `Cyber Pilot` -> `Constructor Studio`) ->
+    3 Proper-noun rewrites -> RUN apply proper-noun rewrite handling
+    Pattern: `Cypilot` / `Cyber Pilot` to `Constructor Studio`.
     Apply as substring with replace_all=true per file.
     Verify nothing breaks (e.g. table column alignment, code-block indentation).
 
-  Command-form rewrites (`cpt ` -> `cfs ` AND ` cpt ` -> ` cfs `) ->
+    4 Command-form rewrites -> RUN apply command-form rewrite handling
+    Patterns: `cpt ` to `cfs ` and ` cpt ` to ` cfs `.
     Apply BOTH substring forms in order (backtick form first, then space-padded).
     NEVER rewrite anything that doesn't match the well-defined patterns.
     Per project_markdown_rewriter_conservative.md: cpt. / line-start cpt / cpt! etc. stay as-is
       (those are needs-review B-items).
 
-  Kit slug rewrite (cypilot-sdlc -> sdlc) ->
+    5 Kit slug rewrite -> RUN apply kit slug rewrite handling
+    Pattern: cypilot-sdlc to sdlc.
     Apply only in TOML / YAML / JSON files where slug appears in a `kit = ...` / `slug = ...` context.
     WHEN slug appears in code (variable name, etc.): treat as B (skip in this step).
 

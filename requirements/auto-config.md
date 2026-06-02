@@ -470,7 +470,7 @@ version: 1.0
 
 **Valid activity-based conditions**:
 
-```pdsl
+```text
 WHEN writing or reviewing code
 WHEN modifying architecture, adding components, or refactoring module boundaries
 WHEN implementing features or writing business logic

@@ -63,7 +63,13 @@ DO:
   - RUN <ordered actions>
 
 MENU <name>:
-  <choice> -> <actions>
+  TITLE: <menu title>
+  OPTIONS:
+    1 <choice> -> <actions>
+  INVALID:
+    EMIT <retry instruction>
+    WAIT user.reply
+    STOP_TURN
 
 RULES:
   - ALWAYS <rule>

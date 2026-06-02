@@ -272,25 +272,27 @@ Error envelope:
 ```pdsl
 UNIT PanelInvariants
 
-I1  envelope_version ALWAYS be string "1"
-I2  protocol ALWAYS be "independent-then-critique" or "single-pass"
-I3  round_index ALWAYS be integer >= 0
-I4  attempt ALWAYS be integer >= 1
-I5  panel_mode ALWAYS be boolean true
-I6  blocks ALWAYS be:
-      exactly 2 for independent-then-critique
-      exactly 1 for single-pass
-I7  each block.row_count ALWAYS equal len(block.rows)
-    each block.kind ALWAYS be "independent" or "critique"
-I8  topic-mode independent rows ALWAYS have stance "none" or omit stance
-I9  challenge-mode independent rows ALWAYS use stance in {agree, partial, reject}
-    delta ALWAYS be present and non-empty only when stance == "partial"
-I10 topic-mode independent decision_key values ALWAYS be unique across the independent block
-I11 challenge-mode independent decision_key values ALWAYS be keys from challenged_decisions
-I12 every persona_id referenced in the envelope ALWAYS exist in panel
-I13 when context is insufficient for a persona, its proposed_default ALWAYS be a
-    concrete "Please provide: ..." request for missing context, not an invented
-    project-specific decision
+INVARIANTS:
+  - ALWAYS I1: envelope_version is string "1"
+  - ALWAYS I2: protocol is "independent-then-critique" or "single-pass"
+  - ALWAYS I3: round_index is integer >= 0
+  - ALWAYS I4: attempt is integer >= 1
+  - ALWAYS I5: panel_mode is boolean true
+  - ALWAYS I6: blocks is exactly 2 for independent-then-critique and exactly
+    1 for single-pass
+  - ALWAYS I7: each block.row_count equals len(block.rows), and each
+    block.kind is "independent" or "critique"
+  - ALWAYS I8: topic-mode independent rows have stance "none" or omit stance
+  - ALWAYS I9: challenge-mode independent rows use stance in {agree, partial,
+    reject}, and delta is present and non-empty only when stance == "partial"
+  - ALWAYS I10: topic-mode independent decision_key values are unique across
+    the independent block
+  - ALWAYS I11: challenge-mode independent decision_key values are keys from
+    challenged_decisions
+  - ALWAYS I12: every persona_id referenced in the envelope exists in panel
+  - ALWAYS I13: when context is insufficient for a persona, its proposed_default
+    is a concrete "Please provide: ..." request for missing context, not an
+    invented project-specific decision
 ```
 
 ## Completion Gate

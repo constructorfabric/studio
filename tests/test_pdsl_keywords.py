@@ -189,6 +189,8 @@ def _candidate_tokens(
 
     if section in {"STATE", "DO", "RULES", "INVARIANTS"}:
         return section, candidates, section, False
+    if section is None:
+        return section, candidates, "UNIT", False
     return section, candidates, None, False
 
 
