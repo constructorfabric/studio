@@ -72,7 +72,7 @@ Instead, it projects its workflows and instructions into the host tool you use.
 In practice, `cfs generate-agents --agent <tool>` generates some combination of:
 
 - **workflow commands**
-  - entry points for `plan`, `generate`, `analyze`, workspace flows, and kit workflows
+  - entry points for `plan`, `generate`, `analyze`, and, where the host format can surface them cleanly, more specialized routes such as `help`, `explore`, `brainstorm`, `pdsl`, `map`, and `auto-config`, alongside workspace flows and kit workflows
 
 - **skill outputs**
   - host-tool-visible Constructor Studio skill entry points that route into the core instructions

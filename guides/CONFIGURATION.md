@@ -19,6 +19,9 @@
   - [Codebase entries](#codebase-entries)
 - [8b. Language Policy (`cfs check-language`, `LANG001`)](#8b-language-policy-cfs-check-language-lang001)
 - [9. Dependency Map (`cfs map` / `/cf-map`)](#9-dependency-map-cfs-map--cf-map)
+  - [CLI](#cli)
+  - [Chat workflow (`/cf-map`)](#chat-workflow-cf-map)
+  - [`md-map.toml` — categories and styling](#md-maptoml--categories-and-styling)
 - [10. Mirror Overrides (`cfs mirror`)](#10-mirror-overrides-cfs-mirror)
 - [Further Reading](#further-reading)
 
@@ -542,6 +545,7 @@ cfs mirror clear --yes
 | Update core + kits | `cfs update` |
 | Validate artifacts + code | `cfs validate` |
 | Validate kit config | `cfs validate-kits` |
+| Validate kit structure/examples | `cfs kit validate` |
 | ID coverage in code | `cfs spec-coverage` |
 | Language script policy check | `cfs check-language` |
 | List all IDs | `cfs list-ids` |
@@ -553,8 +557,12 @@ cfs mirror clear --yes
 | See current config | `cfs info` |
 | Resolve resource paths | `cfs resolve-vars --flat` |
 | Generate agent files | `cfs generate-agents --agent windsurf` |
+| Inspect generated agent status | `cfs agents --agent windsurf` |
+| Generate or refresh a Markdown TOC | `cfs toc <file>.md` |
+| Validate Markdown TOC markers/anchors | `cfs validate-toc <file>.md` |
 | Build dependency map | `cfs map` |
 | Export map as JSON | `cfs map --format json` |
+| Validate a PDSL prompt/workflow file | `cfs pdsl validate <path>` |
 | Register a URL mirror | `cfs mirror override <from> <to>` |
 | List mirror overrides | `cfs mirror list` |
 | Clear all mirrors | `cfs mirror clear --yes` |

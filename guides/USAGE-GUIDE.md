@@ -22,6 +22,9 @@
   - [What counts as a large task](#what-counts-as-a-large-task)
   - [Quick check: should you use `plan` first?](#quick-check-should-you-use-plan-first)
   - [Best chat form](#best-chat-form)
+  - [Use `help` when](#use-help-when)
+  - [Use `explore` when](#use-explore-when)
+  - [Use `auto-config` when](#use-auto-config-when)
   - [Use `generate` when](#use-generate-when)
   - [Use `analyze` when](#use-analyze-when)
   - [What `analyze` is for in practice](#what-analyze-is-for-in-practice)
@@ -43,10 +46,12 @@
   - [Context hygiene](#context-hygiene)
 - [10. Prompt patterns that usually work well](#10-prompt-patterns-that-usually-work-well)
   - [Structured generation](#structured-generation)
+  - [Orientation and discovery](#orientation-and-discovery)
   - [Structured analysis](#structured-analysis)
   - [Planning](#planning)
   - [Context-bounded execution](#context-bounded-execution)
   - [Brownfield understanding](#brownfield-understanding)
+  - [Storytelling / explain mode (interactive pedagogical engagement)](#storytelling--explain-mode-interactive-pedagogical-engagement)
   - [Marker recovery](#marker-recovery)
 - [11. Prompt patterns that usually go wrong](#11-prompt-patterns-that-usually-go-wrong)
 - [12. Using Constructor Studio across multiple repositories](#12-using-constructor-studio-across-multiple-repositories)
@@ -67,6 +72,10 @@
 - [15. Quick decision checklist](#15-quick-decision-checklist)
 - [16. Mirror overrides](#16-mirror-overrides)
 - [17. Dependency map (`cfs map` / `/cf-map`)](#17-dependency-map-cfs-map--cf-map)
+  - [Why use it](#why-use-it)
+  - [When to use it](#when-to-use-it)
+  - [Typical commands](#typical-commands-1)
+  - [Chat workflow](#chat-workflow)
 - [Further reading](#further-reading)
 
 <!-- /toc -->
@@ -84,7 +93,7 @@ This guide is for the practical questions that come up after onboarding:
 
 - **What should I do in this situation?**
 - **What should I avoid?**
-- **When should I use `plan`, `generate`, or `analyze`?**
+- **When should I use `help`, `explore`, `auto-config`, `plan`, `generate`, or `analyze`?**
 - **When is Constructor Studio useful, and when is it just overhead?**
 - **How do I get the benefits without using the product badly?**
 
@@ -103,9 +112,9 @@ For the short version, use the setup section in **[README](../README.md)** first
 ### One easy operating rule
 
 - use `cfs` in your terminal for setup, validation, updates, and workspace commands
-- use `cf ...` in your AI coding tool chat for `plan`, `generate`, and `analyze`
+- use `cf ...` in your AI coding tool chat for `help`, `explore`, `auto-config`, `plan`, `generate`, `analyze`, and specialized routes such as `brainstorm`, `pdsl`, and `map`
 - do **not** run `cf ...` in the terminal
-- the portable `cf <workflow>: ...` form is the best default; host-specific slash commands are aliases when a host exposes them
+- the portable `cf <workflow>: ...` form is the best default when a workflow takes a request payload; some chat routes are command-like prompts such as `cf help` and `cf auto-config`
 
 ### Prerequisites
 
@@ -124,7 +133,7 @@ In that case:
 - ensure Python 3.11+ is available for the repository-local scripts and CI
 - open the repository in your supported AI coding tool
 - activate Constructor Studio in chat with 💬 `cf on`
-- start with one focused request such as 💬 `cf analyze: ...` or 💬 `cf plan: ...`
+- start with one focused request such as 💬 `cf help`, 💬 `cf explore: ...`, 💬 `cf analyze: ...`, or 💬 `cf plan: ...`
 
 Use the CLI install path below when you need to bootstrap the repository yourself, run terminal commands directly, or manage setup across multiple repositories.
 
@@ -248,7 +257,9 @@ Some hosts may also show the resolved Constructor Studio path or loaded context.
 
 ### 4. Pick the right first move
 
+- **New to Constructor Studio in this repo**: start with `cf help`
 - **First 5-minute trial**: start with `cf analyze: ...` or `cf plan: ...`, not `generate`
+- **Need context before editing**: start with `cf explore: ...`
 - **New project or already-structured work**: start with `cf generate: ...` or `cf plan: ...`
 - **Existing codebase with weak or missing conventions**: run 💬 `cf auto-config`, inspect what it inferred, and then refine the generated rules before large changes
 - **After changing workflows, kits, or host integrations**: rerun `cfs generate-agents` or `cfs generate-agents --agent <tool>`
@@ -379,6 +390,15 @@ For these cases, lighter approaches or direct prompting can be a better starting
 
 ## 6. Choosing the right workflow
 
+If you only need the short router:
+
+- need product or workflow orientation first -> use `cf help`
+- need project or artifact discovery first -> use `cf explore: ...`
+- need inferred repo rules or setup help for brownfield work -> use `cf auto-config`
+- need open-ended option mapping first -> use [`brainstorm`](#use-brainstorm-when)
+- need prompt / workflow / agent contract work -> use [`pdsl`](#use-pdsl-when)
+- need a rendered graph of docs, links, and code references -> use [`cfs map` / `cf map`](#17-dependency-map-cfs-map--cf-map)
+
 ### Use `plan` when
 
 - the task is large
@@ -428,9 +448,15 @@ Why this matters:
 
 Use the portable workflow form by default:
 
+- 💬 `cf help`
+- 💬 `cf explore: ...`
+- 💬 `cf auto-config`
 - 💬 `cf plan: ...`
 - 💬 `cf generate: ...`
 - 💬 `cf analyze: ...`
+- 💬 `cf brainstorm: ...`
+- 💬 `cf pdsl: ...`
+- 💬 `cf map: ...`
 
 Some hosts also expose slash-command aliases such as `/cf-plan`, `/cf-generate`, or `/cf-analyze`.
 
@@ -439,6 +465,43 @@ Treat those as host-specific aliases, not separate capabilities.
 **Good prompt shape**:
 
 - 💬 `cf plan: break this auth migration into safe implementation phases`
+
+### Use `help` when
+
+Use `help` when you need **guided orientation to Constructor Studio itself** before choosing a workflow or command.
+
+- 💬 `cf help`
+
+Use it when:
+
+- you are new to Constructor Studio in this repo
+- you do not yet know whether the job should start with `explore`, `plan`, `generate`, or `analyze`
+- you want a guided walkthrough of the current product surface instead of a one-shot command list
+
+### Use `explore` when
+
+Use `explore` for **project and artifact discovery before editing**. It is the right first move when the main problem is "find the relevant context" rather than "write the change now".
+
+- 💬 `cf explore: trace where auth configuration is defined and loaded`
+- 💬 `cf explore: find the files that define billing validation rules`
+- 💬 `cf explore: gather the main artifacts and code paths for the deployment story`
+
+Use `explore` before `plan`, `generate`, or `analyze` when the codebase is unfamiliar or the relevant surfaces are not yet clear.
+
+### Use `auto-config` when
+
+Use `auto-config` when you need Constructor Studio to **scan a project and infer or refresh rules/config** for a brownfield repository.
+
+- 💬 `cf auto-config`
+- 💬 `cf generate: refine the inferred rules after auto-config for this project`
+
+Use it when:
+
+- the repo has weak or missing conventions captured in Constructor Studio
+- you want a fast first pass over current project structure, patterns, and likely rules
+- you are setting up a brownfield repo before larger `plan` or `generate` work
+
+Do not treat auto-config output as final truth. Inspect and refine what it inferred before relying on it for large changes.
 
 ### Use `generate` when
 
@@ -636,6 +699,7 @@ Use narrower checks while iterating and broader checks before merge. Let humans 
 
 **Do**:
 
+- 💬 `cf explore: find the main code and artifact surfaces if the repo is unfamiliar`
 - 💬 `cf auto-config`
 - inspect generated rules and config
 - refine what auto-config inferred
@@ -728,6 +792,12 @@ Examples that reference `PRD`, `DESIGN`, `DECOMPOSITION`, or `FEATURE` assume th
 - 💬 `cf generate: create a DESIGN from architecture/PRD.md for the billing service`
 - 💬 `cf generate: implement the approved FEATURE for rate limiting in the auth service and preserve required @cpt-* code markers`
 
+### Orientation and discovery
+
+- 💬 `cf help`
+- 💬 `cf explore: trace the main files and artifacts behind the auth flow`
+- 💬 `cf auto-config`
+
 ### Structured analysis
 
 - 💬 `cf analyze: validate architecture/FEATURE-login.md`
@@ -745,6 +815,7 @@ Examples that reference `PRD`, `DESIGN`, `DECOMPOSITION`, or `FEATURE` assume th
 
 ### Brownfield understanding
 
+- 💬 `cf explore: gather the likely architecture boundaries and entry points for this repo`
 - 💬 `cf auto-config`
 - 💬 `cf analyze: explain the current project conventions and likely architecture boundaries`
 
