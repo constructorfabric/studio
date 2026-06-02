@@ -31,6 +31,7 @@
   - [Use `brainstorm` when](#use-brainstorm-when)
   - [Use `pdsl` when](#use-pdsl-when)
   - [Default routing rule](#default-routing-rule)
+  - [When to expect or ask for subagent delegation](#when-to-expect-or-ask-for-subagent-delegation)
   - [Recommended execution loop for artifacts and code](#recommended-execution-loop-for-artifacts-and-code)
 - [7. Practical usage habits](#7-practical-usage-habits)
   - [CI with `cfs` tools](#ci-with-cfs-tools)
@@ -587,6 +588,19 @@ If a request is both **large** and **generative**, prefer:
 - **analyze throughout**
 
 A large request should usually become a plan first instead of being forced through one overloaded `generate` call.
+
+### When to expect or ask for subagent delegation
+
+Expect or ask for subagent delegation when the work has different jobs that should stay separated: context collection, planning, authorship, review, validation, or structured brainstorming.
+
+Common examples:
+
+- a brownfield change where one pass should map the area before another pass edits it
+- a larger implementation where planning and authorship should not share one overloaded context
+- review-sensitive work where analysis should be separated from the original generation pass
+- validation-heavy work where deterministic checks should be run and interpreted as a distinct step
+
+If the host supports subagents well, Constructor Studio may split those roles across specialized helpers such as explorer, planner, author, reviewer, validator, or a brainstorm panel. If the host does not, ask for the same separation manually through separate chats or explicit phased passes. In both cases, delegation improves task fit and discipline; it does not replace human approval or prove correctness.
 
 ### Recommended execution loop for artifacts and code
 

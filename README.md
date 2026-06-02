@@ -134,6 +134,16 @@ Constructor Studio makes that repo-attached surface more explicit by controlling
    - governing the repo-attached workflow, configuration, and validation surface around the work
    - bounding larger tasks into more controllable execution steps
 
+### Multi-subagent operating model where supported
+
+For non-trivial work, Constructor Studio often works best when the host can split the job across specialized subagents or clearly separated passes instead of one long mixed-purpose thread.
+
+Typical roles include a **collector** or **explorer** for context gathering, a **planner** for phase design, an **author** for implementation, a **reviewer** for defect-finding, a **validator** for deterministic checks, and in some workflows a **brainstorm panel** for structured option generation before scope is fixed.
+
+This separation improves context isolation, lets each step use task-matched instructions or configuration, keeps review more independent from authorship, and makes validation a distinct discipline instead of an afterthought.
+
+This is an operating model, not a guarantee. It does not replace human approval, and it does not prove correctness. Where a host lacks native subagent support or strong orchestration control, Constructor Studio degrades gracefully by keeping the same roles as separate chats, passes, or manual checkpoints.
+
  ### Deterministic vs non-deterministic boundary
  
  For the same configured project surface and the same command or request shape, Constructor Studio should make the same routing, context-loading, and check-execution decisions.
@@ -280,7 +290,7 @@ In practice, this creates clearer boundaries, earlier drift detection, and more 
 
  ## Supported hosts
  
- Constructor Studio works across multiple AI coding tools through the same portable `cf` workflow model, but some hosts preserve its workflow boundaries more fully than others. The differences are mainly in orchestration control, workflow separation, subagent support, manual discipline burden, and first-run clarity.
+Constructor Studio works across multiple AI coding tools through the same portable `cf` workflow model, but some hosts preserve its workflow boundaries more fully than others. The differences are mainly in orchestration control, workflow separation, subagent support, manual discipline burden, and first-run clarity. When a host cannot support the full multi-subagent model directly, the same separation can still be maintained through narrower prompts, separate chats, and explicit validation or review checkpoints.
  
  | Host | Workflow support profile | Operational tradeoff |
  |---|---|---|

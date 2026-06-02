@@ -1495,6 +1495,8 @@ def test_generate_phase4_cannot_skip_planned_author_dispatch() -> None:
     assert "NEVER use single-author fallback when AUTHOR_PLAN_OFFER_RESOLVED is memory" in phase4
     assert "skipped_by_user | auto_skipped_no_author_plan_flag | auto_skipped_rules_disabled" in phase4
     assert "Phase4AuthorSelectionDispatch is a leaf dispatch step" in phase4
+    assert "AUTHOR_EXECUTION_PLAN != null AND AUTHOR_PLAN_APPROVED != true" in phase4
+    assert "ELSE: CONTINUE § Phase4DispatchRouter" in phase4
 
 
 def test_analyze_phase3_cannot_skip_planned_reviewer_dispatch() -> None:
@@ -1958,8 +1960,11 @@ def test_explain_mode_fail_closed_against_one_shot_help_summary() -> None:
     assert "UNIT StorytellingPresetGateResolution" in storytelling
     assert "CF_HELP_PRESET == true" in storytelling
     assert "preset resolution skips prompts, not phases" in storytelling
-    assert "CONTINUE Phase E2 portion delivery" in storytelling
+    assert "EXPLAIN_MODE=true takes precedence over CF_HELP_PRESET fast-forwarding" in storytelling
+    assert "CONTINUE Phase E0/E1 opener with preset answers represented" in storytelling
     assert "UNIT HelpPresetStorytellingFirstOutputContract" in preamble
+    assert "EXPLAIN_MODE first-output contract wins over CF_HELP_PRESET" in preamble
+    assert "a Storytelling E0/E1 opener for EXPLAIN_TARGET={cf-studio-path}" in preamble
     assert "Constructor Studio Help" in preamble
     assert "Common requests" in preamble
 

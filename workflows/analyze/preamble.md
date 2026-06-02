@@ -183,13 +183,16 @@ WHEN:
   - REQUIRE CF_HELP_PRESET == true
 
 RULES:
+  - ALWAYS IF EXPLAIN_MODE == true:
+      EXPLAIN_MODE first-output contract wins over CF_HELP_PRESET; the next
+      user-visible assistant message MUST be the E0/E1 explain-session opener
+      with preset answers represented, not an E2 portion
   - ALWAYS the next user-visible assistant message MUST be one of:
-      1. a Storytelling E2 portion for EXPLAIN_TARGET={cf-studio-path}
+      1. a Storytelling E0/E1 opener for EXPLAIN_TARGET={cf-studio-path}
       2. a Storytelling E5 wrap after legal portion delivery or user-requested wrap
       3. a deterministic load/error menu from the active workflow
-  - ALWAYS legal E2 help-preset portions include source-grounded content,
-    an ASCII diagram when visualization is useful, a progress marker, and the
-    7-slot Storytelling navigation block
+  - ALWAYS legal E0/E1 help-preset openers include the input-access log,
+    resolved preset mode/disposition/audience/context, and plan-approval state
   - NEVER emit a standalone `Constructor Studio Help`, `Common requests`,
     command-surface summary, generic status overview, or `EXPLAIN_RESULT`
     completion envelope before the legal Storytelling output above

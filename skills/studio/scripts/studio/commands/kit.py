@@ -2701,23 +2701,37 @@ def cmd_kit(argv: List[str]) -> int:
     """
     # @cpt-begin:cpt-studio-flow-kit-dispatch:p1:inst-parse-subcmd
     subcommands = ["install", "update", "validate", "migrate"]
+    usage = "cfs kit <install|update|validate|migrate> [options]"
+    descriptions = {
+        "install": [
+            ("<owner/repo[@ref]>", "Install a kit from GitHub"),
+            ("--path <dir>", "Install a kit from a local directory"),
+        ],
+        "update": [("[slug|--path <dir>]", "Update installed kit files")],
+        "validate": [("", "Validate kit structure and examples")],
+        "migrate": [("", "Deprecated; use update")],
+    }
+
+    def human_fn(_d: dict) -> tuple:
+        writes = [
+            sys.stderr.write(f"Usage: {usage}\n\n"),
+            sys.stderr.write("Subcommands:\n"),
+        ]
+        for name in subcommands:
+            for args, description in descriptions.get(name, [("", "")]):
+                command = f"{name} {args}".rstrip()
+                writes.append(sys.stderr.write(f"  {command:<30} {description}\n"))
+        return tuple(writes)
+
     if not argv or argv[0] in ("-h", "--help"):
         ui.result(
             {
                 "status": "PASS" if argv else "ERROR",
                 "message": "Kit management commands" if argv else "Missing kit subcommand",
                 "subcommands": subcommands,
-                "usage": "cfs kit <install|update|validate|migrate> [options]",
+                "usage": usage,
             },
-            human_fn=lambda _d: (
-                sys.stderr.write("Usage: cfs kit <install|update|validate|migrate> [options]\n\n"),
-                sys.stderr.write("Subcommands:\n"),
-                sys.stderr.write("  install <owner/repo[@ref]>   Install a kit from GitHub\n"),
-                sys.stderr.write("  install --path <dir>         Install a kit from a local directory\n"),
-                sys.stderr.write("  update [slug|--path <dir>]   Update installed kit files\n"),
-                sys.stderr.write("  validate                     Validate kit structure and examples\n"),
-                sys.stderr.write("  migrate                      Deprecated; use update\n"),
-            ),
+            human_fn=human_fn,
         )
         return 0 if argv else 1
 

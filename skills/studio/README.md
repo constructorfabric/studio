@@ -44,7 +44,7 @@ Public CLI entrypoints: `cfs` and `constructor-studio`. Both route through the s
 |---------|-------------|
 | `kit install <owner/repo[@ref]>` | Install a kit from GitHub |
 | `kit install --path <dir>` | Install a kit from a local directory |
-| `kit update [slug|--path <dir>]` | Update registered kit files from their source or from a local directory |
+| `kit update [slug\|--path <dir>]` | Update registered kit files from their source or from a local directory |
 | `kit validate` | Validate kit structure and examples |
 | `kit migrate` | Deprecated alias; the public CLI warns and fails, and `kit update` is the supported replacement |
 | `generate-resources` | Deprecated failing stub retained for compatibility; use `kit update` |

@@ -364,15 +364,30 @@ Where a tool doesn't support a component type natively, Constructor Studio eithe
 
 **Codex agent format**:
 
-Unlike the markdown-based tools, Codex uses TOML configuration:
+Unlike the markdown-based tools, Codex uses TOML configuration. Manifest-defined
+agents inline the prompt body in `developer_instructions`:
 
 ```toml
-[agents.go_stand_deployer]
+name = "go-stand-deployer"
 description = "Build and deploy Go projects to test stands"
 sandbox_mode = "workspace-write"
 model = "gpt-5-codex"
 developer_instructions = """
-ALWAYS open and follow `.cf-studio/config/agents/go-stand-deployer.md`
+You are a deployment specialist for Go services.
+
+Use standctl MCP tools to inspect, deploy, and debug test stand workloads.
+"""
+```
+
+Discovered Constructor Studio proxy agents use the same key, but contain only an
+endpoint pointer because the controller supplies the final prompt at dispatch
+time:
+
+```toml
+name = "cf-codegen"
+description = "Generate code changes for Constructor Studio workflows"
+developer_instructions = """
+Constructor Studio endpoint only. Prompt source: {cf-studio-path}/.core/skills/studio/agents/cf-codegen.md. Final prompt is supplied by the cf controller at dispatch time.
 """
 ```
 
@@ -395,13 +410,13 @@ scope = "repo"
 [[skills]]
 id = "my-custom-skill"
 description = "Project-specific skill"
-prompt_file = ".claude/skills/custom/SKILL.md"
+prompt_file = "../../.claude/skills/custom/SKILL.md"
 agents = ["claude"]
 
 [[agents]]
 id = "test-runner"
 description = "Run and analyze test failures"
-prompt_file = ".claude/agents/test-runner.md"
+prompt_file = "../../.claude/agents/test-runner.md"
 mode = "readwrite"
 isolation = true
 model = "cf:inherit"
@@ -497,7 +512,7 @@ scope = "repo"
 [[agents]]
 id = "log-investigator"
 description = "Investigate service-a logs for pipeline issues"
-prompt_file = ".claude/agents/log-investigator.md"
+prompt_file = "../../.claude/agents/log-investigator.md"
 mode = "readonly"
 isolation = false
 model = "cf:tier:cheap"

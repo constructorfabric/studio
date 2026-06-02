@@ -38,8 +38,13 @@ DO:
   - REQUIRE instruction_file_targets non-empty AND orchestrator detects manual patch attempt while native author workers registered:
     - SET CF_PHASE_GATE = armed
     FAIL-STOP
-    IF AUTHOR_EXECUTION_PLAN == null: ROUTE to {cf-studio-path}/.core/workflows/generate/phase-1.5-author-plan.md
-    ELSE: CONTINUE § Phase4PlannedMultiAuthorDispatch
+    IF AUTHOR_EXECUTION_PLAN == null:
+      ROUTE to {cf-studio-path}/.core/workflows/generate/phase-1.5-author-plan.md
+      STOP_TURN
+    IF AUTHOR_EXECUTION_PLAN != null AND AUTHOR_PLAN_APPROVED != true:
+      ROUTE to {cf-studio-path}/.core/workflows/generate/phase-1.5-author-plan.md
+      STOP_TURN
+    ELSE: CONTINUE § Phase4DispatchRouter
   - REQUIRE AUTHOR_PLAN_OFFER_RESOLVED set by {cf-studio-path}/.core/workflows/generate/phase-1.5-author-plan.md
   - REQUIRE AUTHOR_PLAN_OFFER_RESOLVED unset:
     FAIL-STOP

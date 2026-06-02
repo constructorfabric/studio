@@ -138,13 +138,20 @@ DO:
   - SET e1_audience = resolved from STORYTELLING_AUDIENCE
   - SET e1_plan = resolved from STORYTELLING_PLAN_APPROVED and the generated
     help plan for EXPLAIN_TARGET
-  - SET STORYTELLING_PHASE = e2
-  - CONTINUE Phase E2 portion delivery
+  - REQUIRE EXPLAIN_MODE == true:
+    - SET STORYTELLING_PHASE = e0_e1
+    - CONTINUE Phase E0/E1 opener with preset answers represented
+  - REQUIRE EXPLAIN_MODE != true:
+    - SET STORYTELLING_PHASE = e2
+    - CONTINUE Phase E2 portion delivery
 
 RULES:
+  - ALWAYS EXPLAIN_MODE=true takes precedence over CF_HELP_PRESET fast-forwarding
+    and forbids an E2 first output
   - ALWAYS preset resolution skips prompts, not phases
-  - ALWAYS the run still performs Phase E0 target/input handling, enters E2
-    portion delivery, and uses E5 wrap semantics
+  - ALWAYS the run still performs Phase E0 target/input handling, represents
+    E1 preset answers, enters E2 only after the legal opener, and uses E5 wrap
+    semantics
   - NEVER treat preset resolution as permission to emit a one-shot overview,
     command list, status summary, or completion envelope
   - NEVER ask preset-resolved gates again unless the user explicitly overrides a
