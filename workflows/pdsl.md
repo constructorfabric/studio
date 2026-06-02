@@ -24,6 +24,19 @@ DO:
 ```
 
 ```pdsl
+UNIT PdslModeDirective
+PURPOSE: Set cf skill mode and capture original intent before any phase work begins.
+DO:
+  - SET CF_MODE = "cf-pdsl"
+  - SET ORIGINAL_INTENT = user's triggering request (verbatim or shortest faithful summary)
+RULES:
+  - ALWAYS SET CF_MODE = "cf-pdsl" as the first action after bootstrap
+  - ALWAYS capture ORIGINAL_INTENT from the user's triggering message before PdslModeRouter evaluates intent
+  - ALWAYS carry ORIGINAL_INTENT into PdslModeDispatch and every cf-pdsl-* dispatch payload as task context
+  - NEVER leave CF_MODE unset when entering this workflow
+```
+
+```pdsl
 UNIT PdslBootstrap
 
 PURPOSE:

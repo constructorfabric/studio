@@ -31,6 +31,19 @@ DO:
 ```
 
 ```pdsl
+UNIT MapModeDirective
+PURPOSE: Set cf skill mode and capture original intent before any phase work begins.
+DO:
+  - SET CF_MODE = "cf-map"
+  - SET ORIGINAL_INTENT = user's triggering request (verbatim or shortest faithful summary)
+RULES:
+  - ALWAYS SET CF_MODE = "cf-map" as the first action after bootstrap
+  - ALWAYS capture ORIGINAL_INTENT from the user's triggering message before MapBootstrap runs MapIntentRouter
+  - ALWAYS carry ORIGINAL_INTENT into MapPhase1 and subsequent phases as the task context
+  - NEVER leave CF_MODE unset when entering this workflow
+```
+
+```pdsl
 UNIT MapBootstrap
 
 PURPOSE:

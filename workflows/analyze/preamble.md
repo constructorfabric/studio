@@ -49,6 +49,8 @@ STATE:
     default: null
   - SET STORYTELLING_AUDIENCE: string | null
     default: null
+  - SET STORYTELLING_ARTIFACT_LANGUAGE: string | null
+    default: null
   - SET STORYTELLING_CONTEXT_PACK_STRATEGY: string | null
     default: null
   - SET STORYTELLING_PLAN_APPROVED: false | true
@@ -134,7 +136,7 @@ DO:
     - NEVER Phase 5 (Storytelling Output emits Suggested Next Steps)
     - SET enforceRemediationPrompts = false
     - NEVER emitting analyze remediation prompt blocks
-  - REQUIRE EXPLAIN_MODE == true AND PROMPT_REVIEW intent also detected:
+  - REQUIRE EXPLAIN_MODE == true AND (PROMPT_REVIEW == true OR PROMPT_BUG_REVIEW == true):
     - EMIT_MENU StorytellingVsPromptReviewMenu
     - WAIT user.reply
     - STOP_TURN
@@ -143,7 +145,7 @@ MENU StorytellingVsPromptReviewMenu:
   TITLE: "Your request combines storytelling and prompt-review intent. Which should I run?"
   OPTIONS:
     1 -> SET EXPLAIN_MODE = true; proceed with storytelling walkthrough
-    2 -> SET PROMPT_REVIEW = true; SET EXPLAIN_MODE = false; proceed with prompt engineering review
+    2 -> SET PROMPT_REVIEW = true; SET PROMPT_BUG_REVIEW = true; SET EXPLAIN_MODE = false; proceed with prompt engineering review
   INVALID:
     EMIT "Reply `1` or `2`."
     WAIT user.reply
