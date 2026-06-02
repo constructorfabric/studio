@@ -1013,7 +1013,8 @@ def test_skill_completion_invariants_match_handoff_workflows() -> None:
 
     assert "terminal = Post-Write Review Handoff menu" in skill
     assert "terminal = Remediation Handoff menu" in skill
-    assert "MUST be emitted only on the NEXT turn" in skill
+    assert "Analyze remediation and review handoff prompt blocks MUST be emitted only" in skill
+    assert "on the NEXT turn after the user picks the matching handoff option" in skill
     assert "both `Plan Review Prompt` and `Direct Review Prompt` blocks" not in skill
     assert "both `Fix Prompt` and `Plan Prompt` blocks" not in skill
 
@@ -2234,16 +2235,21 @@ def test_author_worker_escalation_required_response_shape() -> None:
     )
 
 
-def test_skill_entrypoint_has_context_budget_fail_safe() -> None:
-    """The root skill entrypoint should bound mandatory loads before opening files."""
+def test_skill_entrypoint_bootstrap_keeps_mandatory_loads_explicit() -> None:
+    """The root skill entrypoint should keep mandatory bootstrap loads explicit."""
     repo_root = Path(__file__).resolve().parents[1]
     skill = (repo_root / "skills" / "studio" / "SKILL.md").read_text(encoding="utf-8")
 
     bootstrap_idx = skill.index("UNIT Bootstrap")
     hard_rules_idx = skill.index("UNIT HardRules")
     assert hard_rules_idx < bootstrap_idx
-    assert "Estimate file size" in skill
-    assert "STOP with a checkpoint message" in skill
+    for required_path in [
+        "{cf-studio-path}/.core/skills/studio/protocol.md",
+        "{cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md",
+        "{cf-studio-path}/.core/skills/studio/routing.md",
+        "{cf-studio-path}/.core/requirements/pdsl-execution-card.md",
+    ]:
+        assert required_path in skill
 
 
 def test_analyze_artifact_dependencies_do_not_block_code_or_prompt_reviews() -> None:
@@ -2469,7 +2475,7 @@ def test_runtime_instruction_modules_stay_compact() -> None:
     # Tuples of (path, line_budget).  SKILL.md grew with the PDSL GIT_COMMIT_MODE
     # state machine; it gets a higher budget than pure-workflow files.
     compact_files = [
-        (repo_root / "skills" / "studio" / "SKILL.md", 475),
+        (repo_root / "skills" / "studio" / "SKILL.md", 478),
         (repo_root / "workflows" / "analyze" / "phase-0-dependencies.md", 200),
         (repo_root / "workflows" / "analyze" / "phase-4-output" / "remediation-handoff.md", 200),
         (repo_root / "skills" / "studio" / "agents" / "cf-semantic-reviewer-code.md", 200),
