@@ -48,7 +48,7 @@ DO:
     - ALWAYS open and follow {cf-studio-path}/.core/skills/studio/SKILL.md
   - RUN WHEN WorkspaceOverview quick-command skip-rule applies:
     - SKIP AGENTS.md loads
-  - OTHERWISE:
+  - RUN WHEN WorkspaceOverview quick-command skip-rule does not apply:
     - REQUIRE {cf-studio-path}/.gen/AGENTS.md is loaded and followed
     - REQUIRE {cf-studio-path}/config/AGENTS.md is loaded and followed after .gen/AGENTS.md
   - REQUIRE {cf-studio-path}/.core/workflows/shared/stop-token-policy.md is loaded and followed

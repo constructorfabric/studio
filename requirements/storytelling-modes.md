@@ -39,7 +39,7 @@ Loaded by `{cf-studio-path}/.core/requirements/storytelling.md` (router). Define
 The methodology **always asks** the user explicitly before role and audience derivation. The signals in the modes table (trigger verbs, KIND defaults) only inform the **suggested default**; they never set the mode on their own.
 
 ```pdsl
-UNIT ModeResolution
+UNIT StorytellingModeResolution
 
 PURPOSE:
   Always ask the user to select a storytelling mode before role and audience derivation; never derive it silently.

@@ -69,6 +69,8 @@ RULES:
   - ALWAYS open the Next topics menu when user inputs bare next
 ```
 
+bare `Next` / `Deeper` / `Lateral` opens a numbered topic-pick menu; a shortcut like `Next 2` executes immediately without a menu.
+
 When slot 1, 2, or 3 is selected, render the matching topic menu then STOP_TURN before delivering a new portion:
 
 ```pdsl

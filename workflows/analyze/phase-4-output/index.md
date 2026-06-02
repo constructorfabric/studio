@@ -44,6 +44,14 @@ DO:
     - STOP_TURN
 
 NOTES:
+  Output sub-file selection:
+  - `PROMPT_REVIEW=true` or `PROMPT_BUG_REVIEW=true` → output-prompt-review.md
+  - `PROMPT_REVIEW=false`, `PROMPT_BUG_REVIEW=false` and EXPLAIN_MODE=false → output-standard.md
+  - EXPLAIN_MODE=true → output-storytelling.md
+
+  prompt-review partial checkpoints satisfy Phase 4 terminal requirements;
+  no remediation handoff is appended after a PARTIAL_CHECKPOINT stop.
+
   enforceRemediationPrompts policy and the EXPLAIN_MODE override live in the
   standard output sub-file and the remediation-handoff sub-file; load both
   together when the active mode requires the handoff menu.

@@ -62,6 +62,7 @@ NOTES:
   Change-review triggers: "review commit <sha>", "review this diff",
     "review my changes", "review branch <name>", "review the <worktree> worktree",
     or any request combining a Git object/worktree with review intent.
+    Set CHANGE_REVIEW=true when any change-review trigger is matched.
     Phase 0 dispatches cf-diff-scope-resolver before deterministic or semantic
     review in change-review mode; the orchestrator may resolve the named
     repository/worktree path but all git analysis belongs to the resolver.
