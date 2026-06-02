@@ -123,6 +123,35 @@ RULES:
 ```
 
 ```pdsl
+UNIT StorytellingPresetGateResolution
+
+PURPOSE:
+  Define how route presets, especially cf-help, resolve E1 gates without
+  skipping Storytelling phases.
+
+WHEN:
+  - REQUIRE CF_HELP_PRESET == true
+
+DO:
+  - SET e1_mode = resolved from STORYTELLING_MODE
+  - SET e1_disposition = resolved from STORYTELLING_ARTIFACT_DISPOSITION
+  - SET e1_audience = resolved from STORYTELLING_AUDIENCE
+  - SET e1_plan = resolved from STORYTELLING_PLAN_APPROVED and the generated
+    help plan for EXPLAIN_TARGET
+  - SET STORYTELLING_PHASE = e2
+  - CONTINUE Phase E2 portion delivery
+
+RULES:
+  - ALWAYS preset resolution skips prompts, not phases
+  - ALWAYS the run still performs Phase E0 target/input handling, enters E2
+    portion delivery, and uses E5 wrap semantics
+  - NEVER treat preset resolution as permission to emit a one-shot overview,
+    command list, status summary, or completion envelope
+  - NEVER ask preset-resolved gates again unless the user explicitly overrides a
+    preset value mid-session
+```
+
+```pdsl
 UNIT StorytellingModuleLoading
 
 PURPOSE:

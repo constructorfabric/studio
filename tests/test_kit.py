@@ -113,6 +113,16 @@ class TestCmdKitDispatcher(unittest.TestCase):
         out = json.loads(buf.getvalue())
         self.assertIn("Unknown", out["message"])
 
+    def test_help_subcommand(self):
+        from studio.commands.kit import cmd_kit
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = cmd_kit(["--help"])
+        self.assertEqual(rc, 0)
+        out = json.loads(buf.getvalue())
+        self.assertEqual(out["status"], "PASS")
+        self.assertIn("usage", out)
+
 
 class TestCmdKitUpdate(unittest.TestCase):
     """CLI kit update command scenarios."""

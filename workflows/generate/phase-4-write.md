@@ -39,7 +39,7 @@ DO:
     - SET CF_PHASE_GATE = armed
     FAIL-STOP
     IF AUTHOR_EXECUTION_PLAN == null: ROUTE to {cf-studio-path}/.core/workflows/generate/phase-1.5-author-plan.md
-    ELSE: CONTINUE § Phase4AuthorSelectionDispatch
+    ELSE: CONTINUE § Phase4PlannedMultiAuthorDispatch
   - REQUIRE AUTHOR_PLAN_OFFER_RESOLVED set by {cf-studio-path}/.core/workflows/generate/phase-1.5-author-plan.md
   - REQUIRE AUTHOR_PLAN_OFFER_RESOLVED unset:
     FAIL-STOP
@@ -49,11 +49,14 @@ DO:
     - NEVER dispatching write-capable author
     - NEVER synthesizing single-author fallback payload
     LEAVE target files untouched
+  - CONTINUE § Phase4DispatchRouter
 
 RULES:
   - NEVER dispatch write-capable author before Phase 3 yes
   - NEVER create files before confirmation
   - NEVER create incomplete or placeholder files
+  - ALWAYS after Phase4WriteEntry pass through Phase4DispatchRouter before
+    Phase4AuthorSelectionDispatch; never call selector/author dispatch directly
   - ALWAYS route instruction-file writes through selector + selected-author dispatch;
     controller-local patching forbidden unless emergency fallback explicitly selected by user
   - ALWAYS load and follow {cf-studio-path}/.core/skills/studio/protocol.md § Agent-safe invocation
@@ -61,6 +64,53 @@ RULES:
 
 NOTES: Pre-dispatch fail-stop and Mode B degradation rules in
   {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md
+
+
+UNIT Phase4DispatchRouter
+PURPOSE: Select planned multi-author execution or explicit single-author fallback.
+
+DO:
+  - REQUIRE AUTHOR_PLAN_OFFER_RESOLVED in (memory | disk | inline):
+    - REQUIRE AUTHOR_EXECUTION_PLAN == null:
+      FAIL-STOP
+      EMIT "Planned author execution was selected, but AUTHOR_EXECUTION_PLAN is missing. Return to Phase 1.5 before Phase 4."
+      ROUTE to {cf-studio-path}/.core/workflows/generate/phase-1.5-author-plan.md
+      STOP_TURN
+    - REQUIRE AUTHOR_PLAN_APPROVED != true:
+      FAIL-STOP
+      EMIT "Author execution plan is not approved. Return to Phase 1.5 approval before Phase 4."
+      ROUTE to {cf-studio-path}/.core/workflows/generate/phase-1.5-author-plan.md
+      STOP_TURN
+    - CONTINUE § Phase4PlannedMultiAuthorDispatch
+    - RETURN
+
+  - REQUIRE AUTHOR_EXECUTION_PLAN != null:
+    - REQUIRE AUTHOR_PLAN_APPROVED != true:
+      FAIL-STOP
+      EMIT "AUTHOR_EXECUTION_PLAN exists but is not approved. Return to Phase 1.5 approval before Phase 4."
+      ROUTE to {cf-studio-path}/.core/workflows/generate/phase-1.5-author-plan.md
+      STOP_TURN
+    - CONTINUE § Phase4PlannedMultiAuthorDispatch
+    - RETURN
+
+  - REQUIRE AUTHOR_PLAN_OFFER_RESOLVED in (skipped_by_user | auto_skipped_no_author_plan_flag | auto_skipped_rules_disabled):
+    - BUILD one Phase4CreatePayload covering all target paths
+    - EXECUTE § Phase4AuthorSelectionDispatch once
+    - RETURN
+
+  - REQUIRE AUTHOR_EXECUTION_PLAN == null:
+    FAIL-STOP
+    EMIT "No valid Phase 4 dispatch path: planning was not skipped and no AUTHOR_EXECUTION_PLAN is available."
+    ROUTE to {cf-studio-path}/.core/workflows/generate/phase-1.5-author-plan.md
+    STOP_TURN
+
+RULES:
+  - NEVER use single-author fallback when AUTHOR_PLAN_OFFER_RESOLVED is memory,
+    disk, inline, or any state with AUTHOR_EXECUTION_PLAN != null
+  - ALWAYS run every task in AUTHOR_EXECUTION_PLAN through
+    Phase4PlannedMultiAuthorDispatch before reporting Phase 4 complete
+  - ALWAYS Phase4AuthorSelectionDispatch is a leaf dispatch step; it is entered
+    only from Phase4DispatchRouter or Phase4PlannedMultiAuthorDispatch
 
 
 UNIT Phase4AuthorSelectionDispatch
@@ -176,6 +226,7 @@ DO:
       SURFACE failing task id and author
       ROUTE to {cf-studio-path}/.core/workflows/generate/error-handling.md
   - REQUIRE AUTHOR_EXECUTION_PLAN == null:
+    - REQUIRE AUTHOR_PLAN_OFFER_RESOLVED in (skipped_by_user | auto_skipped_no_author_plan_flag | auto_skipped_rules_disabled)
     BUILD one Phase4CreatePayload covering all target paths
     EXECUTE § Phase4AuthorSelectionDispatch once
 

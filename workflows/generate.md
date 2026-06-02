@@ -14,6 +14,7 @@ UNIT GenerateRootSkillEntrypointBootstrap
 PURPOSE: Load the shared root cf skill entrypoint bootstrap and preserve generate routing invariants.
 DO:
   - LOAD {cf-studio-path}/.core/workflows/shared/root-skill-entrypoint-bootstrap.md
+  - CONTINUE RootSkillEntrypointBootstrap
 RULES:
   - ALWAYS follow routing.md § CanonicalRoutingPrecedenceState for workflow
     entry, fallback dispatch state, and prompt-context ownership.
@@ -31,7 +32,7 @@ STATE:
   - SET SUB_AGENT_SESSION_APPROVED:  unset | true                  default: unset   scope: session
   - SET INLINE_FALLBACK:             unset | true | false          default: unset   scope: workflow_run
   - SET INLINE_FALLBACK_PROBED:      false | true                  default: false   scope: workflow_run
-  - SET AUTHOR_PLAN_OFFER_RESOLVED:  unresolved | memory | disk | auto_skipped_no_author_plan_flag | auto_skipped_rules_disabled | cancelled_by_stop_token | cancelled_planner_failure
+  - SET AUTHOR_PLAN_OFFER_RESOLVED:  unresolved | memory | disk | inline | skipped_by_user | auto_skipped_no_author_plan_flag | auto_skipped_rules_disabled | cancelled_by_stop_token | cancelled_planner_failure | cancelled_partial_write
                                default: unresolved
   - SET RESOURCE_CONTEXT:            present | absent              default: absent
   - SET SHARED_CONTEXT_PACK:         present | absent              default: absent
@@ -163,8 +164,8 @@ RULES:
   // Phase 0.x
   - ALWAYS skip GIT_COMMIT_MODE probe if already set from an earlier run in this session
   // Phase 1.5
-  - ALWAYS Author plan is mandatory unless an explicit auto-skip condition applies
-  - ALWAYS User chooses storage mode (memory or disk), not whether planning runs
+  - ALWAYS Author-plan routing is mandatory unless an explicit auto-skip condition applies
+  - ALWAYS User may choose memory, disk, inline planning, skip planner decomposition, or stop
   - ALWAYS Phase 1.5 entry predicates are evaluated eagerly after Phase 1 inputs approved,
     but the full phase body is lazy-loaded only at the first post-approval branch
     that needs author-plan resolution before Phase 3 summary or disk/write-path

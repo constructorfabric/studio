@@ -19,6 +19,8 @@ STATE:
     unresolved
     | memory
     | disk
+    | inline
+    | skipped_by_user
     | auto_skipped_no_author_plan_flag
     | auto_skipped_rules_disabled
     | cancelled_by_stop_token
@@ -35,8 +37,8 @@ STATE:
 
 RULES:
   - ALWAYS Continuation states:
-    memory | disk | auto_skipped_no_author_plan_flag |
-    auto_skipped_rules_disabled
+    memory | disk | inline | skipped_by_user |
+    auto_skipped_no_author_plan_flag | auto_skipped_rules_disabled
 
   - ALWAYS Terminal cancellation states:
     cancelled_by_stop_token | cancelled_planner_failure | cancelled_partial_write
@@ -47,7 +49,7 @@ RULES:
 
   - ALWAYS AUTHOR_EXECUTION_PLAN:
     - ALWAYS be set to parsed author_plan JSON ONLY when
-      AUTHOR_PLAN_OFFER_RESOLVED is memory or disk
+      AUTHOR_PLAN_OFFER_RESOLVED is memory, disk, or inline
     - ALWAYS be null otherwise
 
   - ALWAYS AUTHOR_PLAN_APPROVED:
@@ -82,10 +84,13 @@ WHEN:
   - AND auto_skip_condition == false
 
 RULES:
-  - ALWAYS Initial user choice is ONLY plan storage (memory vs disk)
-  - NEVER direct user-decline from the offer itself
+  - ALWAYS Initial user choice resolves planning mode: memory, disk, inline, skip, or stop
+  - ALWAYS `skip` is an explicit user-decline of planner decomposition and continues
+    through the single-author flow
   - ALWAYS auto_skipped_* states are unreachable in this branch
-  - ALWAYS Planner dispatch is unconditional
+  - ALWAYS Planner dispatch is required only for memory/disk choices
+  - ALWAYS Inline choice builds the same AUTHOR_EXECUTION_PLAN in-controller without
+    dispatching cf-generate-planner
   - ALWAYS AUTHOR_EXECUTION_PLAN is expected non-null on successful planner exit, but
     NEVER be executed until the user approves the displayed plan
   - ALWAYS Planner-failure recovery NEVER continue to Phase 3 without a valid
@@ -103,8 +108,8 @@ PURPOSE:
 RULES:
   - ALWAYS Phase 3 and Phase 4 ALWAYS only run when AUTHOR_PLAN_OFFER_RESOLVED
     is a continuation state
-  - ALWAYS When AUTHOR_EXECUTION_PLAN is non-null from planner dispatch, Phase 3 and
-    Phase 4 additionally require AUTHOR_PLAN_APPROVED == true
+  - ALWAYS When AUTHOR_EXECUTION_PLAN is non-null from planner dispatch or inline
+    planning, Phase 3 and Phase 4 additionally require AUTHOR_PLAN_APPROVED == true
   - ALWAYS When target_paths includes instruction-file targets
     (`workflows/**`, `requirements/**`, any `AGENTS.md`,
     `skills/**/SKILL.md`, `skills/**/agents/*.md`, and equivalent

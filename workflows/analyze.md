@@ -14,6 +14,7 @@ UNIT AnalyzeRootSkillEntrypointBootstrap
 PURPOSE: Load the shared root cf skill entrypoint bootstrap and preserve analyze routing invariants.
 DO:
   - LOAD {cf-studio-path}/.core/workflows/shared/root-skill-entrypoint-bootstrap.md
+  - CONTINUE RootSkillEntrypointBootstrap
 RULES:
   - ALWAYS follow {cf-studio-path}/.core/skills/studio/routing.md § CanonicalRoutingPrecedenceState for explain-mode
     entry, fallback dispatch state, and prompt-context ownership.

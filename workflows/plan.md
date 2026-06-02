@@ -14,6 +14,7 @@ UNIT PlanRootSkillEntrypointBootstrap
 PURPOSE: Load the shared root cf skill entrypoint bootstrap and preserve plan routing invariants.
 DO:
   - LOAD {cf-studio-path}/.core/workflows/shared/root-skill-entrypoint-bootstrap.md
+  - CONTINUE RootSkillEntrypointBootstrap
 RULES:
   - ALWAYS follow routing.md § CanonicalRoutingPrecedenceState for workflow
     entry, fallback dispatch state, and prompt-context ownership.

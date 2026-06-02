@@ -403,9 +403,10 @@ Each codebase entry tells Constructor Studio where source code lives and how to 
 
 🖥️ **Terminal only**:
 ```bash
-cfs kit install /path/to/my-kit    # install a kit
-cfs kit update                      # update kit files (interactive diff)
-cfs update                          # update Constructor Studio core + all kits
+cfs kit install owner/repo[@ref]     # install a GitHub kit
+cfs kit install --path /path/to/my-kit # install a local kit directory
+cfs kit update                       # update kit files (interactive diff)
+cfs update                           # update Constructor Studio core + all kits
 ```
 
 ---
@@ -535,7 +536,8 @@ cfs mirror clear --yes
  
  | What you want | Command |
  |---|---|
-| Install a kit | `cfs kit install <path>` |
+| Install a GitHub kit | `cfs kit install <owner/repo[@ref]>` |
+| Install a local kit | `cfs kit install --path <path>` |
 | Update kit files | `cfs kit update` |
 | Update core + kits | `cfs update` |
 | Validate artifacts + code | `cfs validate` |

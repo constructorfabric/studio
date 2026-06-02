@@ -12,6 +12,7 @@ UNIT HelpRootSkillEntrypointBootstrap
 PURPOSE: Load the shared root cf skill entrypoint bootstrap.
 DO:
   - LOAD {cf-studio-path}/.core/workflows/shared/root-skill-entrypoint-bootstrap.md
+  - CONTINUE RootSkillEntrypointBootstrap
 ```
 
 ```pdsl
@@ -33,9 +34,20 @@ DO:
   - SET STORYTELLING_DIAGRAM_FORMAT_PRESET = true
   - SET STORYTELLING_HELP_GOAL = "Run a normal cf-explain storytelling session about Constructor Studio itself: target {cf-studio-path}, presentation mode, chat-only, newcomers audience, source-grounded portions, normal navigation."
   - LOAD skill `cf` IN ANALYZE + EXPLAIN mode, CF_HELP_PRESET=true
+  - CONTINUE {cf-studio-path}/.core/workflows/analyze.md WITH
+    CF_HELP_PRESET=true,
+    EXPLAIN_MODE=true,
+    EXPLAIN_TARGET="{cf-studio-path}"
 
 RULES:
+  - ALWAYS the CONTINUE above is terminal; HelpProxy MUST NOT emit user-facing
+    content after transferring to analyze/storytelling
+  - ALWAYS the first user-visible content after HelpProxy MUST be produced by
+    the Storytelling Protocol, not by a local help renderer
   - NEVER render custom one-shot help here
+  - NEVER emit command lists, quick-start summaries, generic cf status, or
+    EXPLAIN_RESULT completion envelopes before Storytelling E2/E5 has produced
+    its legal output
   - NEVER ask the diagram-format lazy prompt in help mode
   - ALWAYS render help-mode diagrams as ASCII inline in chat unless the user overrides mid-session
   - ALWAYS preserve the preset variables for analyze.md preamble

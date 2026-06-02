@@ -13,6 +13,7 @@ purpose: Prevent direct workflow entry from bypassing the root cf skill.
 UNIT RootSkillEntrypointBootstrap
 PURPOSE: Prevent direct workflow entry from bypassing the root cf skill.
 DO:
+  - CONTINUE RootSkillEntrypointBootstrapFailClosed WHEN root cf bootstrap is incomplete.
   - REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is loaded and followed FIRST.
   - REQUIRE {cf-studio-path}/.core/skills/studio/protocol.md is loaded.
   - REQUIRE CfSkillInit from {cf-studio-path}/.core/skills/studio/SKILL.md has completed.
@@ -31,4 +32,21 @@ RULES:
     {cf-studio-path}/.core/skills/studio/protocol.md have been loaded and followed.
   - ALWAYS This gate applies to the top-level controller only; dispatched sub-agents
     consume the synthesized final prompt and supplied context slices.
+```
+
+```pdsl
+UNIT RootSkillEntrypointBootstrapFailClosed
+PURPOSE: Stop direct workflow execution when the root cf bootstrap is incomplete.
+WHEN:
+  - REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is not loaded and followed FIRST
+    OR {cf-studio-path}/.core/skills/studio/protocol.md is not loaded
+    OR CfSkillInit from {cf-studio-path}/.core/skills/studio/SKILL.md has not completed
+    OR Bootstrap, HardRules, and WorkflowProtocolNonSubstitution from
+       {cf-studio-path}/.core/skills/studio/protocol.md have not completed
+DO:
+  - EMIT "Root cf bootstrap incomplete: load and follow {cf-studio-path}/.core/skills/studio/SKILL.md and {cf-studio-path}/.core/skills/studio/protocol.md before continuing this workflow."
+  - STOP_TURN
+RULES:
+  - ALWAYS evaluate before any workflow-specific unit executes.
+  - NEVER continue workflow phases from a direct workflow entry while this condition is true.
 ```

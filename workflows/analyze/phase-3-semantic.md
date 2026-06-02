@@ -35,7 +35,18 @@ DO:
   - REQUIRE PARTIAL != true:
     - SET PARTIAL = false
   - REQUIRE {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md has run before any cf-* dispatch
+  - CONTINUE AnalyzePhase3DispatchRouter
+
+UNIT AnalyzePhase3DispatchRouter
+PURPOSE: Select planned reviewer execution or explicit legacy auto-skip dispatch.
+
+DO:
   - REQUIRE REVIEWER_EXECUTION_PLAN is non-null:
+    - REQUIRE REVIEWER_PLAN_APPROVED != true:
+      FAIL-STOP
+      EMIT "Reviewer execution plan exists but is not approved. Return to Phase 2.5 approval before Phase 3 dispatch."
+      CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-2.5-reviewer-plan.md
+      STOP_TURN
     IF INLINE_FALLBACK == unset:
       - REQUIRE {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md
       - STOP_TURN
@@ -45,8 +56,15 @@ DO:
       - WAIT user.reply
       - STOP_TURN
     - CONTINUE PlannedMultiReviewerDispatch
+    - RETURN
+  - REQUIRE REVIEWER_PLAN_RESOLVED in (memory | disk):
+    FAIL-STOP
+    EMIT "Reviewer planning was selected, but REVIEWER_EXECUTION_PLAN is missing. Return to Phase 2.5 before Phase 3 dispatch."
+    CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-2.5-reviewer-plan.md
+    STOP_TURN
   - REQUIRE REVIEWER_PLAN_RESOLVED == auto_skipped_no_methodology OR REVIEWER_PLAN_RESOLVED == auto_skipped_explain_mode:
     - CONTINUE LegacySingleDispatch
+    - RETURN
   - REQUIRE REVIEWER_PLAN_RESOLVED == cancelled_inline_fallback:
     - EMIT "Reviewer plan was cancelled because INLINE_FALLBACK=true; semantic reviewer decomposition cannot proceed locally."
     - EMIT_MENU SemanticDispatchRecoveryMenu
@@ -54,6 +72,16 @@ DO:
     - STOP_TURN
   - EMIT "Reviewer plan is in an unexpected state (REVIEWER_PLAN_RESOLVED={value}). Routing back to Phase 2.5 to rebuild the plan."
   - CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-2.5-reviewer-plan.md
+
+RULES:
+  - NEVER enter LegacySingleDispatch when REVIEWER_PLAN_RESOLVED is memory or disk
+  - NEVER enter LegacySingleDispatch when REVIEWER_EXECUTION_PLAN is non-null
+  - NEVER emit semantic findings from local/controller analysis when planned
+    reviewer dispatch is available, missing, stale, or unapproved
+  - ALWAYS PlannedMultiReviewerDispatch is the only Phase 3 path for approved
+    REVIEWER_EXECUTION_PLAN
+  - ALWAYS LegacySingleDispatch is allowed only for explicit Phase 2.5 auto-skip
+    states: auto_skipped_no_methodology or auto_skipped_explain_mode
 
 MENU SemanticDispatchRecoveryMenu:
   TITLE: |
