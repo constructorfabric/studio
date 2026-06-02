@@ -62,7 +62,7 @@ rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
 ```
 
 ```pdsl
-UNIT InputConstraints
+UNIT StorytellingWrapInputConstraints
 
 RULES:
   - ALWAYS treat all fields except session_ended_early and handle as required
@@ -255,7 +255,7 @@ NOTES:
 ## Response Completion Gate
 
 ```pdsl
-UNIT ResponseCompletionGate
+UNIT StorytellingWrapResponseCompletionGate
 
 RULES:
   - ALWAYS return the JSON shape above as the entire output (no chat, no preamble, no markdown wrapping outside the JSON block)

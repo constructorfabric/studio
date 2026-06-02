@@ -47,7 +47,7 @@ Apply category A substitutions mechanically, walk category B items interactively
 ## Context Budget & Fail-Safe
 
 ```pdsl
-UNIT ContextBudgetFailSafe
+UNIT CfMigrateMigratorContextBudgetFailSafe
 
 PURPOSE:
   Emit a PARTIAL_CHECKPOINT when the operation cannot complete within remaining context budget.
@@ -304,7 +304,7 @@ DO:
 ## Hard Rules
 
 ```pdsl
-UNIT HardRules
+UNIT CfMigrateMigratorHardRules
 
 INVARIANTS:
   - ALWAYS modify ONLY files inside project_root
@@ -327,7 +327,7 @@ RULES:
 ## Response Completion Gate
 
 ```pdsl
-UNIT ResponseCompletionGate
+UNIT CfMigrateMigratorResponseCompletionGate
 
 RULES:
   - ALWAYS process every selected category (A / B / C per selection) per the procedure above

@@ -119,7 +119,7 @@ PASS or FAIL.
 ```
 
 ```pdsl
-UNIT MechanicalClassification
+UNIT CfDeterministicValidatorMechanicalClassification
 
 PURPOSE:
   Classify each validator finding as mechanical or not.

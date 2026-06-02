@@ -104,7 +104,7 @@ should reason about remaining exposure.
 ## PARTIAL_CHECKPOINT
 
 ```pdsl
-UNIT PartialCheckpoint
+UNIT CfCodeBugFinderPartialCheckpoint
 
 PURPOSE:
   Emit a checkpoint when context budget is exhausted before all code_paths

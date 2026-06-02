@@ -56,7 +56,7 @@ After the Migrator applies changes, verify the migration is complete:
 ## Context Budget & Fail-Safe
 
 ```pdsl
-UNIT ContextBudgetFailSafe
+UNIT CfMigrateVerifierContextBudgetFailSafe
 
 PURPOSE:
   Stop safely when context budget is exhausted; never emit false PASS verdict.

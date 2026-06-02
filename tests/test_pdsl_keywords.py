@@ -232,3 +232,48 @@ def test_pdsl_blocks_use_known_keywords() -> None:
         for section, locations in sorted(invalid_structure.items())
     )
     assert not failures, "\n".join(failures)
+
+
+def test_named_pdsl_units_and_menus_are_not_exact_duplicates() -> None:
+    """Exact duplicate named PDSL blocks should be defined once and loaded."""
+    blocks_by_body: dict[str, list[str]] = defaultdict(list)
+
+    for root in PROMPT_ROOTS:
+        for path in sorted(root.rglob("*.md")):
+            rel = path.relative_to(REPO_ROOT)
+            for block_start, block in _iter_pdsl_blocks(path):
+                body = "\n".join(line.rstrip() for line in block).strip()
+                if not re.search(r"^(UNIT|MENU)\s+\S+", body, re.MULTILINE):
+                    continue
+                blocks_by_body[body].append(f"{rel}:{block_start}")
+
+    duplicates = [
+        f"{locations[0]} duplicated at {', '.join(locations[1:])}"
+        for locations in blocks_by_body.values()
+        if len(locations) > 1
+    ]
+    assert not duplicates, "\n".join(sorted(duplicates))
+
+
+def test_pdsl_unit_and_menu_names_are_unique() -> None:
+    """PDSL UNIT/MENU names should have a single authoritative definition."""
+    definitions: dict[tuple[str, str], list[str]] = defaultdict(list)
+
+    for root in PROMPT_ROOTS:
+        for path in sorted(root.rglob("*.md")):
+            rel = path.relative_to(REPO_ROOT)
+            for block_start, block in _iter_pdsl_blocks(path):
+                body = "\n".join(block)
+                match = re.search(r"^(UNIT|MENU)\s+([^:\n]+):?", body, re.MULTILINE)
+                if not match:
+                    continue
+                definitions[(match.group(1), match.group(2).strip())].append(
+                    f"{rel}:{block_start}"
+                )
+
+    duplicates = [
+        f"{kind} {name}: {', '.join(locations)}"
+        for (kind, name), locations in definitions.items()
+        if len(locations) > 1
+    ]
+    assert not duplicates, "\n".join(sorted(duplicates))

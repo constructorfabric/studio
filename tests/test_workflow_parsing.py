@@ -27,9 +27,9 @@ def test_parse_workflow_extracts_all_sections():
 
     content = workflow_path.read_text(encoding='utf-8')
 
-    # generate.md now uses PDSL-style UNIT blocks while retaining explicit
-    # bootstrap prerequisites and phase-fragment loading in the DO section.
-    has_prerequisites = 'UNIT RootSkillEntrypointBootstrap' in content
+    # generate.md now loads the shared root bootstrap while retaining
+    # phase-fragment loading in the DO section.
+    has_prerequisites = 'workflows/shared/root-skill-entrypoint-bootstrap.md' in content
     has_phases = '// Phase ' in content and 'REQUIRE {cf-studio-path}/.core/workflows/generate/phase-' in content
 
     assert has_prerequisites, f"{workflow_path.name}: Bootstrap prerequisite unit not found"

@@ -368,7 +368,7 @@ dispatch. Do not assume inline fallback just because the user did not answer.
 PDSL:
 
 ```pdsl
-UNIT SubAgentApprovalGate
+UNIT ExampleSubAgentApprovalGate
 
 PURPOSE:
   Resolve whether this workflow may use native sub-agents.

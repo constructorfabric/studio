@@ -47,7 +47,7 @@ rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
 ## Methodology
 
 ```pdsl
-UNIT ContextBudgetFailSafe
+UNIT CfSemanticReviewerCodeContextBudgetFailSafe
 
 PURPOSE:
   Stop safely when context budget is exhausted; never emit PASS on partial coverage.

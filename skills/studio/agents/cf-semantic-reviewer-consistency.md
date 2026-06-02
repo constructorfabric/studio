@@ -63,7 +63,7 @@ RULES:
 ## Methodology
 
 ```pdsl
-UNIT ContextBudgetFailSafe
+UNIT CfSemanticReviewerConsistencyContextBudgetFailSafe
 
 PURPOSE:
   Stop safely when context budget is exhausted before all targets are read;
@@ -119,7 +119,7 @@ RULES:
 ## Mechanical-vs-judgmental classification
 
 ```pdsl
-UNIT MechanicalClassification
+UNIT CfSemanticReviewerConsistencyMechanicalClassification
 
 PURPOSE:
   Classify each finding as mechanical (deterministic fix) or judgmental.
