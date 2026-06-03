@@ -27,6 +27,8 @@ RULES:
   - ALWAYS declare name, regex or matcher specification, and description of usage per entry
   - NEVER register a pattern until a PDSL UNIT requires it
 NOTES:
+  registry is the initial state (empty at startup); it is populated incrementally as
+  PDSL UNITs declare required patterns — it is NOT reset to empty at runtime.
   Local PATTERNS: blocks in individual PDSL files may declare file-scoped patterns
   without registering them here, per {cf-studio-path}/.core/architecture/specs/PDSL.md §PATTERNS Block.
 ```

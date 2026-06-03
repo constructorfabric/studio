@@ -48,6 +48,7 @@ DO:
   - RUN (write-capable, after approval):
       {cfs_cmd} --json chunk-input [<path> ...] --output-dir {plan_input_dir} [--include-stdin] [--stdin-label <label>] --max-lines 300 --threshold-lines 500
   - LOAD resulting chunk files as the authoritative raw-input package for the plan
+  - REQUIRE chunk file count > 0; if zero chunks produced, EMIT warning to user and route to ON_ERROR no_chunks_produced before any write-capable action
   - DISPATCH to plan decomposition with original request scope preserved
 RULES:
   - NEVER create plan_input_dir or execute the write-capable chunk-input command without explicit user approval
@@ -57,6 +58,7 @@ RULES:
 ON_ERROR:
   approval_denied -> STOP_TURN
   chunk_command_fails -> STOP_TURN
+  no_chunks_produced -> EMIT "chunking produced no output files; original request scope preserved" and STOP_TURN
 ```
 
 Canonical write-capable invocation (executed only after explicit approval):

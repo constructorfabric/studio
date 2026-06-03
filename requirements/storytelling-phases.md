@@ -711,6 +711,7 @@ Two triggers:
 2. **User-triggered** (`stop` / `wrap` / `enough`) any time. Two cases:
    - **Plan complete** (last plan item already delivered) → equivalent to trigger 1 (jump to wrap output, after the optional checkpoint-delete prompt).
    - **Plan NOT complete** → first emit the checkpoint-and-resume prompt:
+
      ```text
      Session not complete — at portion {X} of {N}, plan items remaining: {list}.
      Save a checkpoint to resume later? (yes / no)

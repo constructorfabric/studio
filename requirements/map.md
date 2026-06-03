@@ -55,6 +55,7 @@ ON_ERROR:
 ```
 
 ## Output Format: HTML
+
 Self-contained `.html` (plus optional `.js` sidecar) with vis-network viewer.
 JSON payload accessible as `window.MAP_DATA` for downstream tooling.
 
@@ -62,11 +63,14 @@ JSON payload accessible as `window.MAP_DATA` for downstream tooling.
 
 ```pdsl
 UNIT json_output
-PURPOSE: Emit a validated, byte-stable JSON map payload.
+PURPOSE: Emit a validated, stable-ordered JSON map payload.
 RULES:
   - ALWAYS validate output against schemas/map.schema.json
   - ALWAYS include top-level keys: version, generated_at, workspace, scan, nodes, edges, dangling_cpt_uses, categories
-  - ALWAYS sort nodes and edges by id ascending for byte-stable output
+  - ALWAYS sort nodes and edges by id ascending for stable output ordering
+NOTES:
+  generated_at reflects actual run time and varies per invocation; "stable" means
+  deterministic node/edge ordering, not byte-identical output across runs
 ```
 
 ## Categorization

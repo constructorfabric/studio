@@ -77,10 +77,11 @@ DO:
       SET session_override = {level}
       EMIT confirmation of new level; note that project config is NOT updated
   - DISPATCH "remember new language complexity":
-      LOAD current session_override value
+      REQUIRE session_override is set; if absent, LOAD resolved_level via LANGUAGE_COMPLEXITY_RESOLVE as fallback
+      SET current_override = session_override if set; otherwise SET current_override = resolved_level
       LOAD [language] table from config_path (create table if absent; preserve all unrelated keys)
       SET [language] complexity = current_override in config_path
-      EMIT confirmation of persisted value
+      EMIT confirmation of persisted value only after successful write
   - DISPATCH "show language complexity":
       LOAD resolved_level and its source via LANGUAGE_COMPLEXITY_RESOLVE
       EMIT resolved_level and source (override / config / default)

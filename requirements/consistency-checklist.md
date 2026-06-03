@@ -149,9 +149,11 @@ DO:
 - [ ] No contradiction is claimed without quoting both sides.
 
 ### DOC-NO-003: "Bulk PASS" language without evidence [HIGH]
+
 - [ ] No broad pass claim is made without inventory and evidence.
 
 ### DOC-NO-004: Multiple competing "sources of truth" without precedence [MEDIUM]
+
 - [ ] No concept has multiple sources of truth unless explicit precedence is documented.
 
 ```pdsl

@@ -267,19 +267,20 @@ Reverse engineering builds a progressive mental model of a system. The rule is: 
 UNIT ReverseEngineeringOutputArtifacts
 
 PURPOSE:
-  Enumerate the six required output artifacts produced at L9 synthesis.
+  Enumerate the six required output artifacts produced at L9 synthesis, aligned
+  with the L9 consolidated validation checklist (L9.1-L9.6).
 
 DO:
-  - RETURN System Overview (max 1 page: purpose, tech stack, architecture style,
+  - RETURN System Overview (L9.1 — max 1 page: purpose, tech stack, architecture style,
     key components and relationships)
-  - RETURN Domain Model
-  - RETURN Entry Points Catalog
-  - RETURN Integration Map
-  - RETURN Conventions Guide
-  - RETURN Technical Debt List
+  - RETURN Component Map (L9.2 — visual or textual map of components)
+  - RETURN Domain Model (L9.3 — entities and relationships)
+  - RETURN Technical Debt (L9.4 — issues and risks documented)
+  - RETURN Knowledge Gaps (L9.5 — unclear areas explicitly noted)
+  - RETURN Entry Points Summary (L9.6 — where to start reading, for developers)
 
 RULES:
-  - ALWAYS produce all six output artifacts
+  - ALWAYS produce all L9-checklist artifacts (L9.1-L9.6)
 ```
 
 **Applicability**: greenfield validation before implementation; brownfield understanding before modification; acquisitions/transfers for due diligence and onboarding; legacy modernization to find strangler boundaries; documentation generation as input to Studio artifacts.

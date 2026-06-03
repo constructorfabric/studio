@@ -199,7 +199,7 @@ RULES:
   - ALWAYS apply prompt-engineering.md Layer 2 and Layer 5 quality gates to
     every generated rule
   - ALWAYS include a Critical Files table in exactly one generated topic file
-  - ALWAYS run cfs toc on each generated rule file after writing it
+  - ALWAYS run {cfs_cmd} --json toc <file> on each generated rule file after writing it
   - ALWAYS generate only topic files that have at least 3 project-specific rules
   - NEVER generate topic files exceeding 120 lines
   - ALWAYS present generated rule files to the user before writing any file

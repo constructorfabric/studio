@@ -76,7 +76,7 @@ RULES:
   - ALWAYS make number 1-indexed, sequential, and unique
   - ALWAYS set total equal to total phase count
   - ALWAYS set type to generate, analyze, or implement
-  - ALWAYS set depends_on to [] or integer phase numbers only
+  - ALWAYS set depends_on to an array of integers: [] when no dependencies, or [n, …] listing phase numbers (never a bare scalar integer)
   - ALWAYS set input_manifest and input_signature to empty strings when no raw-input package is assigned; otherwise point to the authoritative input/manifest.json and its matching signature
   - ALWAYS provide matching Task read steps for every input_files and inputs entry
   - ALWAYS use output_files for created or modified project files and outputs for intermediate files in out/

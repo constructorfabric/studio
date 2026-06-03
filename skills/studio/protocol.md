@@ -504,9 +504,9 @@ PURPOSE:
   Handle studio execution errors with user-facing messages and recovery actions.
 
 ON_ERROR:
-  Constructor Studio Not Found -> EMIT "⚠️ Constructor Studio not configured → Run cf init to initialize" and STOP_TURN
+  Constructor Studio Not Found -> EMIT "⚠️ Constructor Studio not configured → Invoke `cf`: fix configuration" and STOP_TURN
   artifacts.toml Parse Error -> EMIT "⚠️ Cannot parse artifacts.toml: {parse error} → Fix TOML syntax errors in {cf-studio-path}/config/artifacts.toml → Validate with: python3 -c 'import tomllib; tomllib.load(open(\"artifacts.toml\", \"rb\"))'" and STOP_TURN
-  rules.md Not Found -> EMIT "⚠️ Rules file not found: {KITS_PATH} → verify kit exists at {KIT_BASE} → check artifacts.toml kits path → run cf init --force to regenerate" and STOP_TURN
+  rules.md Not Found -> EMIT "⚠️ Rules file not found: {KITS_PATH} → verify kit exists at {KIT_BASE} → check {cf-studio-path}/config/artifacts.toml kits path → Invoke `cf`: fix configuration" and STOP_TURN
   Template/Checklist Not Found -> EMIT "⚠️ Dependency not found: {dependency_path} → referenced in {KITS_PATH} → expected at {resolved_path} → verify kit package is complete" and STOP_TURN
   System Not Registered -> EMIT "⚠️ System not found: {system_name} → show registered systems" then EMIT_MENU SystemNotRegistered
   Artifact Kind Not Supported -> EMIT "⚠️ Unsupported artifact kind: {KIND} → show available kinds in {KIT_BASE}" then EMIT_MENU ArtifactKindNotSupported

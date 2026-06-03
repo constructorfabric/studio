@@ -51,6 +51,7 @@ RULES:
 ```
 
 ## Severity
+
 - CRITICAL: unsafe/broken/security issue; blocks merge.
 - HIGH: major quality issue; fix before merge.
 - MEDIUM: meaningful improvement; fix when feasible.

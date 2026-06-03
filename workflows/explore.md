@@ -49,7 +49,7 @@ DO:
     FAIL per sub-agent-dispatch.md § SubAgentContractReadGate
     - NEVER dispatch
   - DISPATCH cf-explorer with the synthesized final prompt including:
-    task = user's explore request or parent workflow task
+    task = ORIGINAL_INTENT
     intent = "standalone" | "brainstorm" | "generate" | "analyze" | "plan" | "workspace" | "PDSL"
     panel = null unless called from brainstorm after panel selection
     known_paths = paths already resolved by parent workflow
