@@ -42,15 +42,19 @@ Prefer `pytest` for direct test execution. Use `make test` / `make test-coverage
 
 ## Test Layout
 
-The repo currently has `44` `test_*.py` modules under `tests/` plus shared helpers:
+The repo has `99` `test_*.py` modules under `tests/` plus shared helpers:
 
-- CLI and integration coverage: `test_cli_integration.py`, `test_ui_human_mode.py`, `test_adapter_info.py`
-- Core parsing and validation: `test_artifacts_meta.py`, `test_constraints_utils.py`, `test_validate.py`, `test_spec_coverage.py`, `test_toc.py`
-- Kit lifecycle: `test_kit.py`, `test_kit_manifest_*.py`, `test_update.py`, `test_migrate.py`
-- Workspace and agents: `test_workspace.py`, `test_subagent_registration.py`, `test_agents_coverage.py`
-- Example coverage: `test_overwork_alert_*.py`
+- CLI and integration: `test_cli_integration.py`, `test_cli_helpers.py`, `test_studio_proxy_cli.py`, `test_ui_human_mode.py`, `test_adapter_info.py`
+- Core parsing and validation: `test_artifacts_meta.py`, `test_constraints_utils.py`, `test_validate.py`, `test_spec_coverage.py`, `test_toc.py`, `test_context.py`, `test_parsing_utils.py`
+- Kit lifecycle: `test_kit.py`, `test_kit_manifest_*.py`, `test_update.py`, `test_migrate_from_cypilot.py`
+- Workspace and agents: `test_workspace.py`, `test_subagent_registration.py`, `test_agents_coverage.py`, `test_agents_model_matrix.py`
+- Map (19 modules): `test_map_cli.py`, `test_map_scan.py`, `test_map_render_html.py`, `test_map_render_json.py`, and 15 more `test_map_*.py`
+- PDSL validation: `test_pdsl_keywords.py`, `test_pdsl_transform_equivalence.py`, `test_pdsl_validate_cli.py`
+- Ralphex delegation: `test_ralphex_delegation.py`, `test_ralphex_discover.py`, and 3 more `test_ralphex_*.py`
+- Utility and helpers: `test_files_utils.py`, `test_diff_engine.py`, `test_fixing.py`, `test_manifest.py`, and others
+- Example coverage: `test_overwork_alert_*.py` (4 modules)
 
-Keep new tests in `tests/`, named `test_<subject>.py`, and align them with the subsystem they verify.
+Keep new tests in `tests/`, named `test_<subject>.py`, aligned with the subsystem they verify.
 
 ## Common Test Patterns
 

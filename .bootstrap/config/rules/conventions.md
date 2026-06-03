@@ -18,7 +18,6 @@ version: 1.0
   - [Type Hints](#type-hints)
   - [Dataclasses for Domain Objects](#dataclasses-for-domain-objects)
   - [Traceability Markers](#traceability-markers)
-- [Testing Conventions](#testing-conventions)
 
 <!-- /toc -->
 
@@ -58,11 +57,4 @@ Production code uses `@cpt-{kind}:{id}:p{N}` scope markers and `@cpt-begin`/`@cp
 
 Evidence: `src/studio_proxy/cli.py:7-11` (scope), `src/studio_proxy/cli.py:54-56` (begin/end).
 
-## Testing Conventions
 
-- Test files mirror source structure in `tests/`
-- Test classes named `Test{ClassName}` or `Test{SpecName}`
-- Test methods named `test_{behavior_being_tested}`
-- Use `TemporaryDirectory` for file system tests
-
-Evidence: `tests/test_validate.py`, `tests/test_cli_integration.py`.

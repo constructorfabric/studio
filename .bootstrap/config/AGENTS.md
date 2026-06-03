@@ -107,4 +107,8 @@ ALWAYS open and follow `CONTRIBUTING.md#pull-request-process` WHEN creating or r
 
 ALWAYS open and follow `CONTRIBUTING.md#code-style-and-conventions` WHEN writing or reviewing code
 
+ALWAYS open and follow `{cf-studio-path}/.core/architecture/specs/CDSL.md` WHEN writing, validating, or reviewing cpt traceability markers or Constructor Studio IDs
+
+ALWAYS open and follow `{cf-studio-path}/.core/architecture/specs/PDSL.md` WHEN writing, reviewing, or validating PDSL prompt contracts or workflow instruction files
+
 <!-- auto-config:docs:end -->

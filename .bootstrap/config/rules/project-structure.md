@@ -42,7 +42,7 @@ skills/studio/scripts/studio/        # Studio engine package
 architecture/                        # PRD, DESIGN, ADRs, specs, features
 requirements/                        # Methodologies and validation guidance
 schemas/                             # JSON schemas
-tests/                               # 44 pytest modules + shared helpers
+tests/                               # 99 test modules + shared helpers
 scripts/                             # Maintenance/check scripts
 ```
 

@@ -69,7 +69,7 @@ Evidence: `cli.py:18-111` (all `_cmd_*` functions use local imports).
 
 Every CLI invocation (except `init`) silently verifies and re-injects the root `AGENTS.md` managed block. This ensures the navigation hub stays in sync even if a user edits the file.
 
-Evidence: `cli.py:192-206`.
+Evidence: `cli.py:295-310`.
 
 ## Testing
 
