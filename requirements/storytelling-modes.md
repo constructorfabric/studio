@@ -144,7 +144,7 @@ Review is **storytelling + Q&A interleaved as separate portions**, not "presenta
 
 1. **Presentation portion** — Body presents the chunk (source-grounded, audience-adapted, ≤ resolved page-size, with diagram per Phase E4). Identical shape to a presentation-mode portion. Progress marker: `📍 {idx}/{N} • phase: presentation • topic: "{plan-item}"`. The Next topics menu includes **"Challenge: panel reactions for {plan-item}"** as the suggested continue candidate (intra-item, not next plan item).
 
-2. **Challenge portion** — emitted only after user advances. Body: a 1-2 sentence recap of what was just presented + numbered panel reactions `Q1` / `Q2` / … from each panellist (1-2 critical questions / concerns per panellist, anchored to lines/sections where possible). Diagram per Phase E4 if relevant (panel-topology, gap diagram). Progress marker: `📍 {idx}/{N} • phase: challenge • topic: "{plan-item}"`. The Next topics menu includes **"Presentation: {next-plan-item}"** as the suggested continue candidate (or Wrap if last). **Comment slot** is most useful here — picking it asks `Which panel question to draft as a review comment? [Q1 / Q2 / Q3 / your own wording]`.
+2. **Challenge portion** — emitted only after user advances. Instead of a flat panel Q-list, the challenge portion **delegates to a single `cf-brainstorm` topic round**: the agent synthesizes reviewer roles from the topic and artifact content, invokes the skill, and walks questions one by one using the standard brainstorm per-question mechanics. Progress marker: `── Challenge Round ──` then `📍 {idx}/{N} • phase: challenge • topic: "{plan-item}"`. After the round, storytelling reclaims navigation and offers: `[Post comment | Save | Next: {next-plan-item} | Wrap]`. See `UNIT ChallengePortion` below for the full lifecycle spec.
 
 ```pdsl
 UNIT ReviewModeRhythm
@@ -174,6 +174,185 @@ RULES:
   - ALWAYS emit ChallengePortion only after user advances from PresentationPortion
   - NEVER increment plan-item index between presentation and challenge for the same item
   - ALWAYS allow sub-portion decomposition to compose: oversized item may split into sub-portions (3a, 3b) for presentation, then one challenge for the whole item
+```
+
+```pdsl
+UNIT ChallengePortion
+
+PURPOSE:
+  Run an interactive per-question challenge round. Synthesize a reviewer panel,
+  dispatch cf-brainstorm-panel to collect questions, then walk each question
+  one at a time via ChallengeQuestionLoop. NEVER emit a flat Q-list.
+
+STATE:
+  - SET challenge_label: string
+    default: "challenge:round-{idx}:{plan-item-slug}"
+  - SET question_queue: list
+    default: []
+  - SET drafted_comments: list
+    default: []
+  - SET scorer_triggered: bool
+    default: false
+
+WHEN:
+  - REQUIRE current_mode == review
+  - AND user selects "Challenge" from post-PresentationPortion menu
+
+DO:
+  # Context Collection
+  - RUN ContextSliceExtraction
+    NOTES: Collect from current presentation portion:
+           heading, opening (1-2 sentences), bullets (2-3 key points),
+           source_refs, artifact_kind, topic (plan-item label).
+  - RUN Scorer
+    NOTES: IF context.sub_items > 5 OR context.word_count > 500:
+             SET scorer_triggered = true;
+             DISPATCH cf-explorer to enrich context (at most once);
+             IF cf-explorer empty: proceed with available context.
+
+  # Panel Synthesis
+  - RUN PanelSynthesis
+    NOTES: Derive reviewer roles from topic + artifact content. No static KIND table.
+  - REQUIRE panel.roles.count >= 2
+    NOTES: Violation -> HALT.
+
+  # Entry
+  - EMIT ── Challenge Round ──
+  - EMIT 📍 {idx}/{N} • phase: challenge • topic: "{plan-item}"
+
+  # Panel dispatch — build question_queue
+  - LOAD {cf-studio-path}/.core/skills/studio/agents/cf-brainstorm-panel.md
+    NOTES: Open, load, and strictly follow the agent contract from that file.
+           Payload (match the agent's frozen input contract):
+             panel=synthesized_roles,
+             topic={ id, text: "{plan-item}", section },
+             state (kind, rules_loaded, panel, decisions, rounds, round_count, ...),
+             round_number,
+             resource_context=context_slice,
+             mode="challenge",
+             protocol="independent-then-critique".
+           Transform the returned envelope (blocks[]) into question_queue:
+             take ONLY blocks[].kind=="independent" rows
+               ({persona_id, question_id, decision_key, text, proposed_default,
+                 rationale, stance}); ignore critique blocks.
+             Map each independent row to a question_queue item
+               { queue_index, persona: persona_id, text, rationale, status="pending" },
+               with queue_index ordered by panel order then question order.
+           ON empty question_queue:
+             EMIT "No questions generated for this topic.";
+             EMIT_MENU ChallengePostRoundMenu; WAIT user.reply; STOP_TURN.
+
+  # Question loop — one question per turn
+  - CONTINUE ChallengeQuestionLoop
+
+RULES:
+  - ALWAYS load cf-brainstorm-panel.md explicitly; NEVER synthesize questions inline without it
+  - NEVER emit more than one question before STOP_TURN
+  - NEVER show a storytelling navigation menu (Next/Deeper/Lateral) during the question loop
+  - ALWAYS use ChallengeQuestionLoop for every question; NEVER walk questions inline in DO
+  - ALWAYS return to ReviewModeRhythm after ChallengePostRoundMenu resolves
+  - NEVER increment plan-item index during ChallengePortion
+```
+
+```pdsl
+UNIT ChallengeQuestionLoop
+
+PURPOSE:
+  Ask exactly one pending question per turn. After user reacts, loop back.
+  When queue is empty, continue to post-round menu.
+
+DO:
+  - SET q = first question_queue item with status == "pending"
+
+  - REQUIRE q is not null:
+    - EMIT Q{q.queue_index}/{total} — {q.persona}
+    - EMIT "{q.text}"
+    - EMIT "Why it matters: {q.rationale}"
+    - EMIT_MENU ChallengeReactionMenu
+    - WAIT user.reply
+    - STOP_TURN
+
+  - EMIT "Challenge complete. Returning to {plan-item}..."
+  - EMIT_MENU ChallengePostRoundMenu
+  - WAIT user.reply
+  - STOP_TURN
+
+RULES:
+  - ALWAYS emit exactly ONE question per turn
+  - ALWAYS STOP_TURN immediately after ChallengeReactionMenu
+  - NEVER continue to the next question in the same turn
+  - NEVER emit a storytelling navigation menu here
+
+MENU ChallengeReactionMenu:
+  TITLE: Reply with a number, or write a counter-argument.
+  OPTIONS:
+    1 agree         -> SET q.status = "agreed"
+                       CONTINUE ChallengeQuestionLoop
+    2 push back     -> IF no free text: EMIT "Write your counter-argument.", WAIT user.reply, STOP_TURN
+                       SET q.status = "pushed_back"; SET q.counter = user_text
+                       CONTINUE ChallengeQuestionLoop
+    3 draft comment -> SET q.status = "queued_as_comment"
+                       APPEND q to drafted_comments
+                       CONTINUE ChallengeQuestionLoop
+    4 defer         -> SET q.status = "deferred"
+                       CONTINUE ChallengeQuestionLoop
+    5 skip          -> SET q.status = "skipped"
+                       CONTINUE ChallengeQuestionLoop
+    6 wrap          -> EMIT "Challenge complete. Returning to {plan-item}..."
+                       EMIT_MENU ChallengePostRoundMenu
+                       WAIT user.reply
+                       STOP_TURN
+  INVALID:
+    IF reply is non-empty free text: treat as option 2 push-back
+    ELSE:
+      EMIT "Reply with 1 agree, 2 push back, 3 draft comment, 4 defer, 5 skip, 6 wrap."
+      WAIT user.reply
+      STOP_TURN
+
+MENU ChallengePostRoundMenu:
+  TITLE: Challenge round complete for "{plan-item}". What next?
+  OPTIONS:
+    1 Post comment  -> RUN CommentClassification
+    2 Save          -> RUN PersistRoundOutput
+    3 Next          -> SET review_phase = presentation
+                       CONTINUE ReviewModeRhythm
+    4 Wrap          -> CONTINUE WrapPhase
+  INVALID:
+    EMIT "Reply with 1–4."
+    WAIT user.reply
+    STOP_TURN
+```
+
+**ChallengePortion handoff object.** Returned to `ReviewModeRhythm` on exit:
+
+```yaml
+round_output: <cf-brainstorm round result>    # full brainstorm output
+panel_decisions: []                           # accepted decisions from round
+drafted_comments: []                          # comments drafted during round
+timestamp: <ISO 8601>
+merge_strategy: success | error
+challenge_label: "challenge:round-{N}:{slug}"
+parent_round_id: null                         # null if first round
+validation_status: passed | <error_code>
+scorer_triggered: false                       # true if cf-explorer was invoked
+summary_mode: false                           # true if payload was compressed
+recovery_action: null                         # null on success
+```
+
+```json
+{
+  "round_output": "...",
+  "panel_decisions": [],
+  "drafted_comments": [],
+  "timestamp": "...",
+  "merge_strategy": "success",
+  "challenge_label": "challenge:round-1:plan-item-slug",
+  "parent_round_id": null,
+  "validation_status": "passed",
+  "scorer_triggered": false,
+  "summary_mode": false,
+  "recovery_action": null
+}
 ```
 
 **classified_mode label.** Every comment drafted in review mode is automatically classified by intent into one of `generate` / `fix` / `brainstorm`, using a tiered heuristic (Tier 1: prefix tokens like `fix:`, `add:`, `idea:`; Tier 2: signals like imperative on a code line ⇒ `fix`, question form on an artifact ⇒ `brainstorm`; Tier 3: defaults — code-mode ⇒ `fix`, artifact-mode ⇒ `brainstorm`). The classified mode appears as a label on the comment (e.g. `Q-3 [fix]`) and is stored as `intent_initial` plus `intent_initial_tier ∈ {1,2,3}` on the buffer entry (see `{cf-studio-path}/.core/requirements/storytelling-phases.md` § Open-question buffer entry shape). The label is informational; the user may override it via `change to {mode}` or via the inline shorthand `1 fix` / `2 brainstorm` at the generate-routing sub-prompt.
@@ -274,9 +453,10 @@ This module specifies the table-row level deltas per mode. Strict vs underspecif
 - Per-portion rhythm — number of portions per plan item, presence of Body before lens, mid-section vs separate-portion placement
 - Slot-name deltas — Ask → Comment (review); Lateral → Context (onboarding); Deeper → Pros/Cons (decision); Deeper → Why + Lateral → Affected (change-impact); 7-slot count, Back availability, and Next-first ordering invariant
 - Source-grounding, page-size invariant, no-scroll rule, clickable Markdown refs, audience adaptation, visualize-by-default — all unchanged
+- ChallengePortion lifecycle — entry/exit conditions, pre-flight validation, cf-brainstorm INVOKE semantics, panel synthesis, post-round menu, handoff object, error states (see `UNIT ChallengePortion`)
 
 **Underspecified** (best-effort with required inline fallback ack):
-- Panel composition algorithm — exact role set per artifact KIND beyond table examples
+- Panel composition algorithm — role synthesis heuristic beyond examples given in `UNIT ChallengePortion`
 - Comment / answer / hint buffer file formats and on-disk layout
 - Wrap-output mode-specific extras' precise field schema
 - Scoring heuristics for socratic

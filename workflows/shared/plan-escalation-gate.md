@@ -94,7 +94,8 @@ UNIT NoNativeDispatchPlanHandoff
 
 PURPOSE:
   Prevent local single-context continuation when native sub-agent dispatch is
-  unavailable, unset, or explicitly bypassed; route to plan handoff or stop.
+  unavailable, unset, or explicitly bypassed; route to plan handoff, stop, or
+  an inline continuation when the user explicitly chooses it.
 
 WHEN:
   - REQUIRE INLINE_FALLBACK == true
@@ -120,15 +121,17 @@ MENU PlanEscalationMenu:
 
     Local single-context continuation is not allowed as a default. Use Invoke skill `cf-plan`
     to decompose this into focused phases, or stop and rerun with native
-    sub-agents enabled.
+    sub-agents enabled. You may also choose to continue inline — that is your
+    explicit decision, not a default.
 
     Options:
     1. Switch to Invoke skill `cf-plan`
     2. Stop
+    3. Continue inline
 
     Suggested: 1 because plan decomposition is the safe fallback when native
     sub-agent dispatch is not active.
-    Reply with `1` or `2`.
+    Reply with `1`, `2`, or `3`.
   OPTIONS:
     1 ->
       EMIT "Invoke skill `cf-plan` to generate {KIND} with the same parameters."
@@ -136,17 +139,22 @@ MENU PlanEscalationMenu:
     2 ->
       EMIT "Stopped before local single-context generation."
       STOP_TURN
+    3 ->
+      EMIT "Proceeding inline at your request."
+      CONTINUE next generate phase
   INVALID:
-    EMIT "Reply with 1 or 2."
+    EMIT "Reply with 1, 2, or 3."
     WAIT user.reply
     STOP_TURN
 
 RULES:
-  - NEVER continue to the next generate phase from this branch
+  - NEVER continue to the next generate phase from this branch automatically or
+    by default; continue inline ONLY when the user explicitly selects option 3
   - ALWAYS treat an unresolved NativeSubAgentPolicyConflictMenu from
     workflows/shared/inline-fallback-probe.md as higher precedence than this
     menu; do not reinterpret that conflict as permission to hand off to Invoke skill `cf-plan`
     or continue locally
-  - NEVER offer a "continue here" or local single-context option
-  - ALWAYS route to Invoke skill `cf-plan` handoff or stop
+  - NEVER offer an automatic or default "continue here" / local single-context option
+  - ALWAYS route to one of three options: Invoke skill `cf-plan` handoff, stop,
+    or user-confirmed inline continuation (option 3)
 ```

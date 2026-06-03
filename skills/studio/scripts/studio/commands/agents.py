@@ -101,6 +101,16 @@ _GENERATED_MARKER_RE = re.compile(
 def _follow_protocol_lines(target_path: str) -> List[str]:
     """Return the generated follow-link protocol block for workflow/skill shims."""
     return [
+        "CF_WORKFLOW_ACTIVE:",
+        "- workflow = executable_control_flow",
+        "- no_substantive_work_until = workflow_explicit_permission",
+        "MANDATORY RULE: USER INTENT IS SKILL INPUT, NOT EXECUTION AUTHORITY",
+        "- hard_stop = WAIT | STOP_TURN | menu | gate | opener | approval | dispatch_gate | terminal_shape",
+        "- precedence = constructor_studio_workflow > generic_assistant",
+        "- pre_emit_check = response_shape in workflow_allowed_shapes",
+        "- if_check_fails = emit_only(workflow_allowed_gate_menu_opener_refusal)",
+        "- protocol_violation > incomplete_answer",
+        "",
         f"ALWAYS open and follow `{target_path}`",
         "",
         "```pdsl",
@@ -219,9 +229,10 @@ def _is_pure_studio_generated(
             return True
         if line.startswith("Constructor Studio endpoint only. Prompt source: "):
             return True
-    if nonblank and _extract_studio_follow_target(nonblank[0]):
+    follow_target = _extract_studio_follow_target(stripped)
+    if follow_target:
         expected_protocol = [
-            line.strip() for line in _follow_protocol_lines(nonblank[0].split("`", 2)[1])
+            line.strip() for line in _follow_protocol_lines(follow_target)
             if line.strip()
         ]
         if nonblank == expected_protocol:

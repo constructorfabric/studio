@@ -671,12 +671,20 @@ class TestLegacyStubClassification(unittest.TestCase):
             + "\n"
         )
 
-        self.assertIn("ALWAYS open and follow `{cf-studio-path}/.core/workflows/analyze.md`", block)
-        self.assertIn("UNIT GeneratedFollowProtocol", "\n".join(block))
-        self.assertIn("ALWAYS treat target as controlling protocol", "\n".join(block))
-        self.assertIn("ALWAYS traverse declared steps/units in order", "\n".join(block))
-        self.assertIn("ALWAYS load every required unconditional LOAD/CONTINUE", "\n".join(block))
-        self.assertIn("NEVER skip, summarize, or defer required instructions", "\n".join(block))
+        joined = "\n".join(block)
+        self.assertEqual(block[0], "CF_WORKFLOW_ACTIVE:")
+        self.assertLess(
+            block.index("- workflow = executable_control_flow"),
+            block.index("ALWAYS open and follow `{cf-studio-path}/.core/workflows/analyze.md`"),
+        )
+        self.assertIn("- no_substantive_work_until = workflow_explicit_permission", block)
+        self.assertIn("- precedence = constructor_studio_workflow > generic_assistant", block)
+        self.assertIn("- pre_emit_check = response_shape in workflow_allowed_shapes", block)
+        self.assertIn("UNIT GeneratedFollowProtocol", joined)
+        self.assertIn("ALWAYS treat target as controlling protocol", joined)
+        self.assertIn("ALWAYS traverse declared steps/units in order", joined)
+        self.assertIn("ALWAYS load every required unconditional LOAD/CONTINUE", joined)
+        self.assertIn("NEVER skip, summarize, or defer required instructions", joined)
         self.assertTrue(_is_pure_studio_generated(content, expected_name="cf-analyze"))
 
 
