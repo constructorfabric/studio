@@ -36,23 +36,83 @@ Loaded by `{cf-studio-path}/.core/requirements/storytelling.md` (router). Define
 
 ## Mode resolution (always-ask)
 
-The methodology **always asks** the user explicitly. Mode MUST NEVER be silently set from intent verbs / artifact KIND / project preference — those signals only inform the **suggested default**.
+The methodology **always asks** the user explicitly before role and audience derivation. The signals in the modes table (trigger verbs, KIND defaults) only inform the **suggested default**; they never set the mode on their own.
 
-Prompt template (emitted at the start of every session, before role/audience derivation):
-```text
-Which storytelling mode for this session?
-  1. presentation — explain & teach (single role+audience)
-  2. review       — panel critiques the artifact; line-anchored comments
-  3. onboarding   — integrate new joiner with broader project context
-  4. decision     — walk alternatives; recommend + dissenting opinions
-  5. socratic     — agent quizzes you; you answer
-  6. change-impact — analyze diff + downstream effects
-→ suggested: {S} ({why-suggested})
+```pdsl
+UNIT StorytellingModeResolution
+
+PURPOSE:
+  Always ask the user to select a storytelling mode before role and audience derivation; never derive it silently.
+
+STATE:
+  - SET current_mode: unset | presentation | review | onboarding | decision | socratic | change-impact
+    default: unset
+  - SET suggested_mode: presentation | review | onboarding | decision | socratic | change-impact
+    default: presentation
+
+WHEN:
+  - REQUIRE EXPLAIN_MODE == active
+  - AND current_mode == unset
+
+DO:
+  - SET suggested_mode = first match: explicit intent verbs → KIND defaults → preferences.json default_mode → fallback presentation
+  - EMIT_MENU ModeSelectionMenu
+  - WAIT user.reply
+  - STOP_TURN
+
+MENU ModeSelectionMenu:
+  TITLE: Which storytelling mode for this session? → suggested: {suggested_mode} ({why-suggested})
+  OPTIONS:
+    1 presentation  -> SET current_mode = presentation
+                       CONTINUE RoleAudienceDerivation
+    2 review        -> SET current_mode = review
+                       CONTINUE RoleAudienceDerivation
+    3 onboarding    -> SET current_mode = onboarding
+                       CONTINUE RoleAudienceDerivation
+    4 decision      -> SET current_mode = decision
+                       CONTINUE RoleAudienceDerivation
+    5 socratic      -> SET current_mode = socratic
+                       CONTINUE RoleAudienceDerivation
+    6 change-impact -> SET current_mode = change-impact
+                       CONTINUE RoleAudienceDerivation
+  INVALID:
+    EMIT "Reply with 1–6 or the mode name. Press Enter to accept the suggestion."
+    WAIT user.reply
+    STOP_TURN
+
+RULES:
+  - NEVER set current_mode from intent verbs, artifact KIND, or project preference without user confirmation
+  - NEVER proceed past ModeSelectionMenu without an explicit user response
+  - ALWAYS use priority order for suggested_mode: explicit intent verbs → KIND defaults → preferences.json default_mode → fallback presentation
+  - ALWAYS include a one-line why-suggested note with the suggestion
+
+NOTES:
+  {why-suggested} examples: "you said 'review this PR'" / "KIND=PRD typically presentation" /
+  "project default per preferences.json" / "fallback default".
+  User confirms by number, name, or Enter for the suggestion.
 ```
 
-`{S}` is computed in priority order: explicit intent verbs → KIND defaults → `default_mode` from `{cf-studio-path}/.cache/explain/preferences.json` → fallback `presentation`. `{why-suggested}` is a one-line note (`you said "review this PR"` / `KIND=PRD typically presentation` / `project default per preferences.json` / `fallback default`). User confirms by number / name / Enter for the suggestion. Methodology MUST NOT proceed past this prompt without an explicit user response.
+```pdsl
+UNIT ModeOverrideMidSession
 
-**Override mid-session**: `change mode to {X}` rebuilds audience and resumes the plan with the new slot semantics and body style; plan items unchanged. `remember new mode` persists `default_mode` (future sessions still always ask; the suggested default updates).
+PURPOSE:
+  Rebuild audience and resume plan with new slot semantics when the user changes mode mid-session.
+
+WHEN:
+  - REQUIRE user.message contains "change mode to"
+
+DO:
+  - SET current_mode = X
+  - RUN RoleAudienceDerivation
+  - CONTINUE plan at current item with new slot semantics and body style
+
+RULES:
+  - ALWAYS preserve existing plan items unchanged on mode change
+  - ALWAYS persist default_mode to preferences.json when user says "remember new mode"
+
+NOTES:
+  "remember new mode" updates the suggested default for future sessions; future sessions still always ask.
+```
 
 ## Per-portion rhythm by mode
 
@@ -67,7 +127,16 @@ Every portion preserves the core structure (Opening → Body → Mode-lens → D
 | socratic | one portion per plan item, INVERTED | Body replaced by a **question** the agent poses; user picks Answer / Skip / Hint slots; "presentation" appears only when user picks Hint or after answering |
 | change-impact | one portion per plan item | **Why + Affected block** mid-section: short "why this changed" + "what depends on it" subsections |
 
-For all non-socratic modes: Body is always present; lens annotates what was just presented. Lens-only output (pros-only / context-only / why-only / questions-only) is forbidden.
+```pdsl
+UNIT PortionLensInvariants
+
+PURPOSE:
+  Prohibit lens-only output in all non-socratic portions.
+
+RULES:
+  - NEVER emit lens-only output (pros-only, context-only, why-only, questions-only) in non-socratic modes
+  - ALWAYS emit Body before lens annotation in every non-socratic portion
+```
 
 ## Review mode rhythm (two portions per plan item)
 
@@ -77,9 +146,92 @@ Review is **storytelling + Q&A interleaved as separate portions**, not "presenta
 
 2. **Challenge portion** — emitted only after user advances. Body: a 1-2 sentence recap of what was just presented + numbered panel reactions `Q1` / `Q2` / … from each panellist (1-2 critical questions / concerns per panellist, anchored to lines/sections where possible). Diagram per Phase E4 if relevant (panel-topology, gap diagram). Progress marker: `📍 {idx}/{N} • phase: challenge • topic: "{plan-item}"`. The Next topics menu includes **"Presentation: {next-plan-item}"** as the suggested continue candidate (or Wrap if last). **Comment slot** is most useful here — picking it asks `Which panel question to draft as a review comment? [Q1 / Q2 / Q3 / your own wording]`.
 
+```pdsl
+UNIT ReviewModeRhythm
+
+PURPOSE:
+  Enforce the two-portion-per-plan-item sequence (presentation → challenge) in review mode.
+
+STATE:
+  - SET review_phase: presentation | challenge
+    default: presentation
+
+WHEN:
+  - REQUIRE current_mode == review
+
+DO:
+  - RUN PresentationPortion
+    NOTES: Progress marker: 📍 {idx}/{N} • phase: presentation • topic: "{plan-item}".
+           Next menu includes "Challenge: panel reactions for {plan-item}" as suggested continue candidate.
+  - WAIT user.advance
+  - RUN ChallengePortion
+    NOTES: Progress marker: 📍 {idx}/{N} • phase: challenge • topic: "{plan-item}".
+           Next menu includes "Presentation: {next-plan-item}" (or Wrap if last).
+           Comment slot prompts: "Which panel question to draft as a review comment? [Q1 / Q2 / Q3 / your own wording]"
+
+RULES:
+  - ALWAYS share the same plan-item index between presentation and challenge portions of the same item
+  - ALWAYS emit ChallengePortion only after user advances from PresentationPortion
+  - NEVER increment plan-item index between presentation and challenge for the same item
+  - ALWAYS allow sub-portion decomposition to compose: oversized item may split into sub-portions (3a, 3b) for presentation, then one challenge for the whole item
+```
+
 **classified_mode label.** Every comment drafted in review mode is automatically classified by intent into one of `generate` / `fix` / `brainstorm`, using a tiered heuristic (Tier 1: prefix tokens like `fix:`, `add:`, `idea:`; Tier 2: signals like imperative on a code line ⇒ `fix`, question form on an artifact ⇒ `brainstorm`; Tier 3: defaults — code-mode ⇒ `fix`, artifact-mode ⇒ `brainstorm`). The classified mode appears as a label on the comment (e.g. `Q-3 [fix]`) and is stored as `intent_initial` plus `intent_initial_tier ∈ {1,2,3}` on the buffer entry (see `{cf-studio-path}/.core/requirements/storytelling-phases.md` § Open-question buffer entry shape). The label is informational; the user may override it via `change to {mode}` or via the inline shorthand `1 fix` / `2 brainstorm` at the generate-routing sub-prompt.
 
+```pdsl
+UNIT CommentClassification
+
+PURPOSE:
+  Classify every review-mode drafted comment by intent using a three-tier heuristic.
+
+STATE:
+  - SET intent_initial: generate | fix | brainstorm
+  - SET intent_initial_tier: 1 | 2 | 3
+
+WHEN:
+  - REQUIRE current_mode == review
+  - AND a comment is being drafted
+
+DO:
+  - RUN Tier1Classification
+    NOTES: Prefix tokens — "fix:" → fix; "add:" → generate; "idea:" → brainstorm
+  - RUN Tier2Classification if Tier 1 yields no match
+    NOTES: Signals — imperative on a code line → fix; question form on an artifact → brainstorm
+  - RUN Tier3Classification if Tier 2 yields no match
+    NOTES: Defaults — code-mode → fix; artifact-mode → brainstorm
+  - SET intent_initial = classification result
+  - SET intent_initial_tier = resolving tier
+  - EMIT comment with label "Q-{N} [{intent_initial}]"
+
+RULES:
+  - ALWAYS display intent_initial as a label on the comment
+  - ALWAYS store intent_initial and intent_initial_tier on the buffer entry
+  - ALWAYS allow user override via "change to {mode}" or inline shorthand "1 fix" / "2 brainstorm"
+```
+
 **generate-routing sub-prompt visibility.** When the session is local-editable (`handle.local_editable == true`) AND generate-skill dispatch is available (`handle.generate_route_available == true`), each drafted comment surfaces a secondary generate-routing sub-prompt AFTER the per-item disposition (Post / Save / Discard / Skip-rest) resolves. The sub-prompt offers four options: Route now / Queue / No / Never-ask-again-this-session (default: No). See `{cf-studio-path}/.core/skills/studio/agents/storytelling-gate.md` § Gate: generate-routing for the full menu and parse rules. When either flag is false, the sub-prompt is suppressed entirely (no flicker, no "unavailable" message) and the comment is recorded per the chosen disposition only.
+
+```pdsl
+UNIT GenerateRoutingSubPrompt
+
+PURPOSE:
+  Surface the generate-routing sub-prompt after per-item disposition resolves in local-editable sessions.
+
+WHEN:
+  - REQUIRE handle.local_editable == true
+  - AND handle.generate_route_available == true
+  - AND per-item disposition has resolved
+
+DO:
+  - DISPATCH storytelling-gate.md Gate:generate-routing
+  - WAIT user.reply
+  - STOP_TURN
+
+RULES:
+  - NEVER emit the generate-routing sub-prompt when handle.local_editable == false
+  - NEVER emit the generate-routing sub-prompt when handle.generate_route_available == false
+  - NEVER show an "unavailable" message when the sub-prompt is suppressed
+```
 
 **See also:**
 - `{cf-studio-path}/.core/skills/studio/agents/storytelling-preflight.md` § Step 5b — Local-editable detection (defines `local_editable` / `generate_route_available`)
@@ -130,4 +282,23 @@ This module specifies the table-row level deltas per mode. Strict vs underspecif
 - Scoring heuristics for socratic
 - Impact-map structure for change-impact
 
-When the agent enters an underspecified region: (a) apply best-effort interpretation grounded in the spec's spirit, (b) emit a one-line fallback acknowledgement inside the affected portion (e.g. `(review-mode v1: comment-buffer file format not yet specified — using ad-hoc Markdown bullet list)`). This makes the v1 gap explicit and sidesteps false-success on the validation checklist.
+```pdsl
+UNIT UnderspecifiedRegionFallback
+
+PURPOSE:
+  Emit a visible fallback acknowledgement whenever the agent processes an underspecified region.
+
+WHEN:
+  - REQUIRE agent enters an underspecified region (see underspecified list above)
+
+DO:
+  - RUN best-effort interpretation grounded in the spec's spirit
+  - EMIT one-line fallback acknowledgement inline in the affected portion
+    NOTES: Format: "(review-mode v1: {topic} not yet specified — using ad-hoc {approach})"
+  - CONTINUE normal portion output
+
+RULES:
+  - ALWAYS apply best-effort interpretation grounded in the spec's spirit
+  - ALWAYS emit the fallback acknowledgement in the affected portion
+  - NEVER silently apply an interpretation in an underspecified region without the acknowledgement
+```

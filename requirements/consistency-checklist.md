@@ -28,12 +28,20 @@ purpose: Technology-agnostic methodology for semantic consistency and contradict
 
 ## Procedure
 
-- [ ] Define in-scope roots and explicit exclusions.
-- [ ] List exclusions in the report header.
-- [ ] Run a deterministic scan before deep reading.
-- [ ] Build a dependency graph before making consistency claims.
-- [ ] Validate each document, then each dependency edge, with evidence.
-- [ ] Report issues only; each issue includes checklist ID, severity, locations, evidence, why it matters, and a concrete fix.
+```pdsl
+UNIT ConsistencyCheckProcedure
+
+PURPOSE:
+  Execute the documentation consistency review in the required order before making any consistency claims.
+
+DO:
+  - SET scope: define in-scope roots and explicit exclusions
+  - EMIT exclusion list in report header
+  - RUN deterministic scan before any deep reading
+  - RUN dependency graph build before making consistency claims
+  - RUN per-document validation then per-dependency-edge validation, both with evidence
+  - RETURN issues report: each issue includes checklist ID, severity, locations, evidence, why it matters, and a concrete fix
+```
 
 ## Scope Notes
 
@@ -110,7 +118,7 @@ purpose: Technology-agnostic methodology for semantic consistency and contradict
 ## Staleness & Drift (STALE)
 
 ### STALE-DOC-001: Stale statements are flagged [HIGH]
-- [ ] “Coming soon” or TODO-like promises are removed or tracked.
+- [ ] "Coming soon" or TODO-like promises are removed or tracked.
 - [ ] Old version requirements match current declared requirements.
 - [ ] Deprecated workflows and commands are labeled.
 - [ ] Deprecated workflows and commands link to replacements.
@@ -140,23 +148,56 @@ purpose: Technology-agnostic methodology for semantic consistency and contradict
 ### DOC-NO-002: Uncited contradictions [HIGH]
 - [ ] No contradiction is claimed without quoting both sides.
 
-### DOC-NO-003: “Bulk PASS” language without evidence [HIGH]
+### DOC-NO-003: "Bulk PASS" language without evidence [HIGH]
+
 - [ ] No broad pass claim is made without inventory and evidence.
 
-### DOC-NO-004: Multiple competing “sources of truth” without precedence [MEDIUM]
+### DOC-NO-004: Multiple competing "sources of truth" without precedence [MEDIUM]
+
 - [ ] No concept has multiple sources of truth unless explicit precedence is documented.
+
+```pdsl
+UNIT ProhibitedPatterns
+
+PURPOSE:
+  Prohibit output patterns that invalidate the consistency review.
+
+RULES:
+  - NEVER skip an in-scope file without an explicit exclusion rationale (DOC-NO-001)
+  - NEVER claim a contradiction without quoting the exact conflicting statements from both locations (DOC-NO-002)
+  - NEVER make a broad pass claim without per-file inventory and evidence (DOC-NO-003)
+  - NEVER allow multiple competing sources of truth for a concept without explicit precedence documentation (DOC-NO-004)
+```
 
 ## Validation Summary
 
-- [ ] Inventory table with exclusions is produced.
-- [ ] Dependency graph is produced.
-- [ ] Every in-scope file is reviewed in order or explicitly excluded with rationale.
-- [ ] Every reported issue includes evidence.
-- [ ] Every reported issue includes a fix.
+```pdsl
+UNIT ValidationSummaryDeliverables
+
+PURPOSE:
+  Require a complete validation summary with all required deliverables at the end of the review.
+
+DO:
+  - RETURN inventory table with explicit exclusions
+  - RETURN dependency graph
+  - RETURN review record: every in-scope file reviewed in order or explicitly excluded with rationale
+  - RETURN issues list: every issue includes evidence and a concrete fix
+
+RULES:
+  - ALWAYS include all four recommended deliverables: inventory table, dependency adjacency list, canonical-source list, top-term list
+  - NEVER omit evidence or a fix for any reported issue
+```
 
 ## Reporting
 
-- Use issues-only table: `| Severity | Checklist ID | Location(s) | Evidence | Problem | Fix |`.
-- For contradictions, quote the exact conflicting statements from 2+ locations.
-- For link issues, include the broken path or anchor and the intended target.
-- Recommended deliverables: inventory table, dependency adjacency list, canonical-source list, and top-term list.
+```pdsl
+UNIT ReportingRules
+
+PURPOSE:
+  Enforce required format for the issues table and evidence standards in the final report.
+
+RULES:
+  - ALWAYS use issues-only table format: Severity | Checklist ID | Location(s) | Evidence | Problem | Fix
+  - ALWAYS quote exact conflicting statements from 2+ locations for contradiction issues
+  - ALWAYS include the broken path or anchor and the intended target for link issues
+```

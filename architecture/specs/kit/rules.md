@@ -533,6 +533,6 @@ For a PRD artifact, `{cf-studio-path}/config/kits/sdlc/artifacts/PRD/rules.md`:
 ## References
 
 - **Kit specification**: `{cf-studio-path}/.core/architecture/specs/kit/kit.md` — kit structure, installation, update model
-- **Execution protocol**: `{cf-studio-path}/.core/requirements/execution-protocol.md` — workflow execution rules
+- **Studio protocol**: `{cf-studio-path}/.core/skills/studio/protocol.md` — workflow execution rules (ProtocolGuard, PhaseSkipGate, AgentSafeInvocation)
 - **Identifiers & Traceability**: `{cf-studio-path}/.core/architecture/specs/traceability.md` — ID formats, naming, code traceability
 - **CLI**: `{cf-studio-path}/.core/architecture/specs/cli.md` — `generate`, `validate` commands

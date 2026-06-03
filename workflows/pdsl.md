@@ -24,6 +24,19 @@ DO:
 ```
 
 ```pdsl
+UNIT PdslModeDirective
+PURPOSE: Set cf skill mode and capture original intent before any phase work begins.
+DO:
+  - SET CF_MODE = "cf-pdsl"
+  - SET ORIGINAL_INTENT = user's triggering request (verbatim or shortest faithful summary)
+RULES:
+  - ALWAYS SET CF_MODE = "cf-pdsl" as the first action after bootstrap
+  - ALWAYS capture ORIGINAL_INTENT from the user's triggering message before PdslModeRouter evaluates intent
+  - ALWAYS carry ORIGINAL_INTENT into PdslModeDispatch and every cf-pdsl-* dispatch payload as task context
+  - NEVER leave CF_MODE unset when entering this workflow
+```
+
+```pdsl
 UNIT PdslBootstrap
 
 PURPOSE:
@@ -173,15 +186,21 @@ All modes use this shared context.
 }
 ```
 
-Input rules:
+```pdsl
+UNIT PdslSharedInputRules
 
-- `target_paths` are required for `transform` and `review`.
-- `target_paths[0]` is required for `new` when the workflow writes a file.
-- `source_paths` may include related workflows, requirements, existing prompt
-  files, specs, or notes.
-- PDSL instruction blocks in generated or transformed Markdown are fenced
-  with `pdsl`, not `text`.
-- Missing required inputs trigger a scoped question and `STOP_TURN`.
+PURPOSE:
+  Define shared input constraints for all PDSL modes.
+
+RULES:
+  - ALWAYS require target_paths for transform and review modes
+  - ALWAYS require target_paths[0] for new mode when the workflow writes a file
+  - ALWAYS fence PDSL instruction blocks in generated or transformed Markdown with `pdsl`, not `text`
+  - ALWAYS emit a scoped question and STOP_TURN when required inputs are missing
+
+NOTES:
+  source_paths may include related workflows, requirements, existing prompt files, specs, or notes.
+```
 
 ## Shared PDSL Validation
 

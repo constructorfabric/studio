@@ -46,7 +46,7 @@ Execution Plans decompose large agent tasks (artifact generation, validation, co
 
 ### 1.2 Purpose
 
-Context window overflow is the primary source of non-deterministic results in Studio workflows. A single generate or analyze invocation can load 3000+ lines of instructions (SKILL.md + execution-protocol.md + workflow + rules + template + checklist + example + constraints + project context) before the agent writes any output. This causes:
+Context window overflow is the primary source of non-deterministic results in Studio workflows. A single generate or analyze invocation can load 3000+ lines of instructions (SKILL.md + protocol.md + workflow + rules + template + checklist + example + constraints + project context) before the agent writes any output. This causes:
 
 - **Attention drift**: different parts of instructions "win" attention on each run, producing inconsistent results
 - **Partial completion**: agent runs out of context mid-task, requiring manual re-scoping

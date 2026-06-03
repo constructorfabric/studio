@@ -18,6 +18,20 @@ DO:
 ```
 
 ```pdsl
+UNIT ExploreModeDirective
+PURPOSE: Set cf skill mode and capture original intent before any phase work begins.
+DO:
+  - SET CF_MODE = "cf-explore"
+  - SET ORIGINAL_INTENT = user's triggering request (verbatim or shortest faithful summary)
+RULES:
+  - ALWAYS SET CF_MODE = "cf-explore" as the first action after bootstrap
+  - ALWAYS capture ORIGINAL_INTENT from the user's triggering message before any cf-explorer dispatch
+  - ALWAYS carry ORIGINAL_INTENT as the task field in the explorer dispatch payload
+  - ALWAYS include ORIGINAL_INTENT in the ExploreNextActions context for downstream workflow handoffs
+  - NEVER leave CF_MODE unset when entering this workflow
+```
+
+```pdsl
 UNIT ExploreWorkflow
 
 PURPOSE:
@@ -31,12 +45,11 @@ DO:
     as the explorer source contract
   - RUN SYNTHESIZE final dispatch prompt from the loaded explorer contract plus
     SHARED_CONTEXT_PACK and the payload below
-  - REQUIRE explorer source contract is not loaded, unreadable, ambiguous, or not
-     reflected in the final dispatch prompt:
+  - REQUIRE explorer source contract is loaded, readable, and reflected in the final dispatch prompt:
     FAIL per sub-agent-dispatch.md § SubAgentContractReadGate
     - NEVER dispatch
   - DISPATCH cf-explorer with the synthesized final prompt including:
-    task = user's explore request or parent workflow task
+    task = ORIGINAL_INTENT
     intent = "standalone" | "brainstorm" | "generate" | "analyze" | "plan" | "workspace" | "PDSL"
     panel = null unless called from brainstorm after panel selection
     known_paths = paths already resolved by parent workflow
@@ -55,7 +68,7 @@ DO:
       }
     }
   - EMIT resource map and context summary
-  - RUN ExploreSaveOffer
+  - RUN ExploreSaveOffer UNLESS state.refine == true
 
 RULES:
   - NEVER put source code, docs, artifacts, diffs, or architecture files into
@@ -158,6 +171,7 @@ MENU ExploreNextActionsMenu:
       CONTINUE {cf-studio-path}/.core/workflows/analyze.md
         resource_context = state.resource_context
     5 | refine | explore again ->
+      SET state.refine = true
       CONTINUE ExploreWorkflow
     6 | stop | done ->
       EMIT "Exploration complete."

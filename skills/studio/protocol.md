@@ -438,3 +438,98 @@ RULES:
     in the same turn as the handoff menu
   - ALWAYS be emitted only on the NEXT turn
 ```
+
+```pdsl
+UNIT DeterministicOperations
+
+PURPOSE:
+  Enforce deterministic tool usage for Table of Contents generation.
+
+RULES:
+  - ALWAYS run {cfs_cmd} --json toc <file> for ANY Table of Contents generation or update in Markdown files
+  - NEVER write TOC manually; agent-generated anchors are unreliable and manually written TOC is INVALID output
+```
+
+```pdsl
+UNIT BootstrapModeRequirements
+
+PURPOSE:
+  Handle new project setup when Constructor Studio is installed but no artifacts are registered.
+
+STATE:
+  - SET project_type: GREENFIELD | BROWNFIELD
+    default: GREENFIELD
+
+WHEN:
+  - REQUIRE rules_mode = BOOTSTRAP
+
+DO:
+  - LOAD kits section from artifacts.toml
+  - LOAD artifact kinds by scanning {kit.path}/artifacts/ directories
+  - SET project_type: GREENFIELD when codebase directories are empty or contain only config files
+  - SET project_type: BROWNFIELD when codebase directories contain source code files
+  - EMIT welcome message with project type and available kits
+  - CONTINUE with generate workflow without blocking when user requests artifact generation
+
+RULES:
+  - ALWAYS detect BOOTSTRAP mode when Constructor Studio install is found AND artifacts.toml has empty systems[].artifacts array
+  - ALWAYS read kits section from artifacts.toml when BOOTSTRAP mode detected
+  - ALWAYS scan {kit.path}/artifacts/ directories when listing available artifact kinds
+  - ALWAYS detect GREENFIELD when codebase directories are empty or contain only config files (no .py, .ts, .js, .go, .rs, .java etc.)
+  - ALWAYS detect BROWNFIELD when codebase directories contain source code files
+  - ALWAYS show welcome message with project type when BOOTSTRAP mode
+  - ALWAYS offer reverse-engineering when BROWNFIELD AND config has no specs
+  - NEVER trigger reverse-engineering when GREENFIELD; there is no code to analyze
+  - NEVER offer reverse-engineering when config already has specs
+  - NEVER show warnings or reduced-rigor messages when in BOOTSTRAP mode
+
+NOTES:
+  Welcome message format:
+  "🚀 New Project Detected ({GREENFIELD|BROWNFIELD})
+  Available kits:
+  • {kit_name} ({kit.path})
+    Artifacts: {kinds from kit.path/artifacts/}
+  → `cf generate <KIND>` to create your first artifact"
+```
+
+| Project type | Condition | Reverse-engineering |
+|---|---|---|
+| **GREENFIELD** | No source code in codebase dirs | ✗ Skip — nothing to analyze |
+| **BROWNFIELD** | Source code exists | ✓ Offer — code informs design |
+
+```pdsl
+UNIT ExecutionErrorHandling
+
+PURPOSE:
+  Handle studio execution errors with user-facing messages and recovery actions.
+
+ON_ERROR:
+  Constructor Studio Not Found -> EMIT "⚠️ Constructor Studio not configured → Invoke `cf`: fix configuration" and STOP_TURN
+  artifacts.toml Parse Error -> EMIT "⚠️ Cannot parse artifacts.toml: {parse error} → Fix TOML syntax errors in {cf-studio-path}/config/artifacts.toml → Validate with: python3 -c 'import tomllib; tomllib.load(open(\"artifacts.toml\", \"rb\"))'" and STOP_TURN
+  rules.md Not Found -> EMIT "⚠️ Rules file not found: {KITS_PATH} → verify kit exists at {KIT_BASE} → check {cf-studio-path}/config/artifacts.toml kits path → Invoke `cf`: fix configuration" and STOP_TURN
+  Template/Checklist Not Found -> EMIT "⚠️ Dependency not found: {dependency_path} → referenced in {KITS_PATH} → expected at {resolved_path} → verify kit package is complete" and STOP_TURN
+  System Not Registered -> EMIT "⚠️ System not found: {system_name} → show registered systems" then EMIT_MENU SystemNotRegistered
+  Artifact Kind Not Supported -> EMIT "⚠️ Unsupported artifact kind: {KIND} → show available kinds in {KIT_BASE}" then EMIT_MENU ArtifactKindNotSupported
+
+MENU SystemNotRegistered:
+  TITLE: System not registered — choose an option
+  OPTIONS:
+    1 Register system via cf init -> RUN cf init
+    2 Use existing system -> SET system to existing
+    3 Continue in RELAXED mode -> SET rules_mode: RELAXED
+  INVALID:
+    EMIT "Reply with 1, 2, or 3."
+    WAIT user.reply
+    STOP_TURN
+
+MENU ArtifactKindNotSupported:
+  TITLE: Artifact kind not supported — choose an option
+  OPTIONS:
+    1 Use supported kind -> SET ARTIFACT_TYPE to supported kind
+    2 Create custom templates for {KIND} -> DISPATCH template creation
+    3 Continue in RELAXED mode -> SET rules_mode: RELAXED
+  INVALID:
+    EMIT "Reply with 1, 2, or 3."
+    WAIT user.reply
+    STOP_TURN
+```

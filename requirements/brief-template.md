@@ -127,8 +127,22 @@ When a prior output under `out/` is not yet present, describe it as a runtime de
 
 ## Fill Rules
 
-1. Include only what the phase needs.
-2. Provide line counts via `wc -l` or a reasonable estimate.
-3. Generate one brief per phase and apply the context boundary between briefs.
-4. Name files `brief-{NN}-{slug}.md`.
-5. If inline content exceeds ~500 lines, narrow load scope or move items to runtime reads.
+```pdsl
+UNIT BriefFillRules
+
+PURPOSE:
+  Enforce required constraints when generating phase compilation briefs.
+
+DO:
+  - REQUIRE each brief includes only what the phase needs
+  - REQUIRE line counts are provided via wc -l or a reasonable estimate
+  - RUN one brief per phase with context boundary applied between briefs
+  - SET brief_filename = "brief-{NN}-{slug}.md"
+  - REQUIRE inline content does not exceed ~500 lines; if so, narrow load scope or move items to runtime reads
+
+RULES:
+  - ALWAYS generate exactly one brief per phase
+  - ALWAYS apply the context boundary between briefs
+  - NEVER drop rules even when the Rules section exceeds 300 lines; narrow scope instead
+  - NEVER inline content exceeding ~500 lines without first narrowing load scope or moving items to runtime reads
+```

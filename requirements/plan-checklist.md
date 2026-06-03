@@ -26,8 +26,25 @@ purpose: Checklist for validating execution plans — used by analyze workflow a
 <!-- /toc -->
 
 ## Procedure
-- [ ] Use this checklist after plan generation, during Invoke skill `cf-analyze` on a plan, or when debugging failing phases.
-- [ ] Verify interactive questions, rules coverage, lifecycle handoff, and validation next-step behavior explicitly.
+
+```pdsl
+UNIT PlanChecklistProcedure
+
+PURPOSE:
+  Apply the plan checklist to validate plans after generation, during analysis, or when debugging failing phases.
+
+WHEN:
+  - REQUIRE plan generation is complete
+  - OR cf-analyze is invoked on a plan
+  - OR a failing phase is being debugged
+
+DO:
+  - RUN all checklist categories (Structural, Interactive Questions, Rules Coverage, Context Completeness, Phase Independence, Budget Compliance, Lifecycle & Handoff)
+  - REQUIRE interactive questions verified explicitly
+  - REQUIRE rules coverage verified explicitly
+  - REQUIRE lifecycle handoff verified explicitly
+  - REQUIRE validation next-step behavior verified explicitly
+```
 
 ## 1. Structural Validation
 - [ ] `plan.toml` exists at `.plans/{task-slug}/`.
@@ -132,9 +149,25 @@ purpose: Checklist for validating execution plans — used by analyze workflow a
 - [ ] The user is told to validate before execution, given Invoke skill `cf-analyze` on the plan directory, and offered validation as the first explicit final-menu step.
 
 ## Validation Procedure
-- [ ] Self-validation runs all categories, reports every FAIL with issue and location, computes `passed_items / total_items`, and requires correction before execution if pass rate is below 100%.
-- [ ] Plan analysis loads `plan.toml`, all phase files, and source rules/checklist/template for the target kind.
-- [ ] Automated checks cover structure, variable resolution, and budget compliance; manual checks cover interaction completeness, verbatim rules coverage, and navigation/context completeness.
+
+```pdsl
+UNIT PlanValidationProcedure
+
+PURPOSE:
+  Execute plan self-validation or plan analysis and produce a pass/fail result with issue reporting.
+
+WHEN:
+  - REQUIRE plan validation is invoked
+
+DO:
+  - RUN all checklist categories
+  - EMIT every FAIL item with issue description and source location
+  - SET pass_rate: passed_items / total_items
+  - REQUIRE pass_rate equals 100% before execution proceeds; require correction otherwise
+  - LOAD plan.toml, all phase files, and source rules/checklist/template for the target artifact kind
+  - RUN automated checks: structure, variable resolution, budget compliance
+  - RUN manual checks: interaction completeness, verbatim rules coverage, navigation/context completeness
+```
 
 ## Output Format
 ```text

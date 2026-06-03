@@ -20,7 +20,22 @@ purpose: Configurable language-complexity level for all Studio user-facing outpu
 
 ## Rule
 
-All Studio user-facing output — chat messages from any workflow / methodology / skill, AND any user-facing artifact body (explain portions, review comments, open questions, key takeaways, generated guides, READMEs, validation reports, summaries) — MUST respect the project's `language_complexity` setting. Default is `middle`. Source quotes from input artifacts are exempt (quoted verbatim per existing strict-context rules); spec/normative files (workflows, requirements, kits, agent definitions) are exempt (those are agent-facing instructions, not user-facing prose).
+```pdsl
+UNIT LANGUAGE_COMPLEXITY_APPLY
+PURPOSE: Enforce the resolved language_complexity level on every piece of user-facing Studio output.
+WHEN:
+  - REQUIRE output target is user-facing (chat message or artifact body)
+DO:
+  - LOAD resolved_level from LANGUAGE_COMPLEXITY_RESOLVE
+  - RUN self-check on every draft sentence against resolved_level
+  - EMIT rewritten sentence if self-check detects a breach; never emit the breaching draft
+RULES:
+  - ALWAYS apply to all chat messages from any workflow, methodology, or skill
+  - ALWAYS apply to all user-facing artifact bodies (explain portions, review comments, open questions, key takeaways, generated guides, READMEs, validation reports, summaries)
+  - NEVER apply to source quotes from input artifacts (quoted verbatim per strict-context rules)
+  - NEVER apply to spec/normative files (workflows, requirements, kits, agent definitions — agent-facing instructions, not user-facing prose)
+  - ALWAYS treat the self-check as an active routine, not best-effort
+```
 
 ## Levels
 
@@ -30,21 +45,53 @@ All Studio user-facing output — chat messages from any workflow / methodology 
 | `middle` (default) | short-to-medium, 15-25 words avg | everyday vocabulary; technical terms allowed with brief gloss on first mention; simple compound sentences OK; light passive voice OK; no archaic / rare / academic register | non-native B2 / intermediate; broad mixed audiences |
 | `high` | any length OK | full register: technical jargon assumed; idioms / metaphors / academic vocabulary fine | native or C1+; specialist audiences |
 
-Methodology MUST self-check the resolved level on every chat message and every artifact write — if a draft sentence would breach the level (long sentence at `low` / rare word at `middle` / etc.), rewrite before emitting. The check is an active routine, not best-effort.
-
 ## Resolution
 
-Priority order:
-1. **Mid-session override**: `change language complexity to {low|middle|high}` (in chat) — session-only
-2. **Project config**: `[language] complexity = "{level}"` in `{cf-studio-path}/config/core.toml`
-3. **Default**: `middle`
-
-`remember new language complexity` persists the current value to `core.toml` (writes the `[language]` table if absent; preserves unrelated keys).
+```pdsl
+UNIT LANGUAGE_COMPLEXITY_RESOLVE
+PURPOSE: Determine the active language_complexity level using priority-ordered sources.
+STATE:
+  - SET levels: [low, middle, high]
+  - SET default_level: middle
+  - SET config_path: {cf-studio-path}/config/core.toml
+DO:
+  - LOAD session_override if set by the user this session
+  - LOAD config_level from config_path [language] complexity if session_override is absent
+  - SET resolved_level = first of: session_override, config_level, default_level
+  - RETURN resolved_level
+RULES:
+  - ALWAYS apply priority order: session override > project config > default
+NOTES:
+  Session override is session-only and does not update project config.
+```
 
 ## Override commands
 
-| Command | Effect |
-|---|---|
-| `change language complexity to {low|middle|high}` | Session-level override; applies to subsequent chat output and artifact writes; project config NOT updated |
-| `remember new language complexity` | Persist current session value to `core.toml` `[language] complexity = "{value}"` |
-| `show language complexity` | Display the resolved level + source (override / config / default) |
+```pdsl
+UNIT LANGUAGE_COMPLEXITY_OVERRIDE
+PURPOSE: Process user commands that change or persist the active language_complexity level.
+WHEN:
+  - REQUIRE user issues a registered language-complexity command
+DO:
+  - DISPATCH "change language complexity to {low|middle|high}":
+      SET session_override = {level}
+      EMIT confirmation of new level; note that project config is NOT updated
+  - DISPATCH "remember new language complexity":
+      RUN WHEN session_override is set:
+        SET current_override = session_override
+      RUN WHEN session_override is not set:
+        LOAD resolved_level via LANGUAGE_COMPLEXITY_RESOLVE
+        SET current_override = resolved_level
+      REQUIRE current_override in [low, middle, high]
+      LOAD [language] table from config_path (create table if absent; preserve all unrelated keys)
+      SET [language] complexity = current_override in config_path
+      EMIT confirmation of persisted value
+  - DISPATCH "show language complexity":
+      LOAD resolved_level and its source via LANGUAGE_COMPLEXITY_RESOLVE
+      EMIT resolved_level and source (override / config / default)
+RULES:
+  - NEVER update project config when processing "change language complexity to {level}"
+  - ALWAYS preserve unrelated keys in core.toml when writing [language] complexity
+ON_ERROR:
+  config_write_fails -> RETURN error; NEVER emit success confirmation
+```

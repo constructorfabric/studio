@@ -27,11 +27,19 @@ Phase files are stored in `{cf-studio-path}/.plans/{task-slug}/phase-{NN}-{slug}
 
 **A phase file MUST be executable by any AI agent without Studio context.**
 
-- Zero unresolved `{variable}` references.
-- Zero undefined Studio jargon.
-- All assigned kit content inlined verbatim.
-- All project content read at runtime via explicit Task steps.
-- Acceptance criteria are binary pass/fail.
+```pdsl
+UNIT PhaseFileKeyInvariant
+
+PURPOSE:
+  Enforce the self-containment invariant for all phase files.
+
+INVARIANTS:
+  - ALWAYS resolve all {variable} references before writing a phase file; zero unresolved references are permitted
+  - ALWAYS inline all assigned kit content verbatim
+  - ALWAYS provide explicit Task steps for all project content to be read at runtime
+  - ALWAYS make acceptance criteria binary pass/fail with no subjective language
+  - NEVER leave undefined Studio jargon in a phase file
+```
 
 ## Template Structure
 
@@ -57,17 +65,23 @@ outputs = []
 inputs = []
 ```
 
-Field rules:
+```pdsl
+UNIT PhaseFileFrontmatterRules
 
-- `plan` MUST match the parent `.plans/` directory name.
-- `number` MUST be 1-indexed, sequential, and unique.
-- `total` MUST equal total phase count.
-- `type` MUST be `generate`, `analyze`, or `implement`.
-- `depends_on` MUST be `[]` or integer phase numbers.
-- `input_manifest` and `input_signature` MUST be empty strings when no raw-input package is assigned to the phase; otherwise they MUST point to the authoritative `input/manifest.json` and its matching signature.
-- `input_files` and `inputs` are runtime-read items and MUST have matching Task read steps.
-- `output_files` are created or modified project files; `outputs` are intermediate files in `out/`.
-- `inputs` entries that point into `out/` are runtime artifacts from earlier phases. They MUST remain declared in frontmatter and Task steps, but their non-existence MUST NOT invalidate phase compilation.
+PURPOSE:
+  Enforce TOML frontmatter field rules for phase files.
+
+RULES:
+  - ALWAYS match plan field to the parent .plans/ directory name
+  - ALWAYS make number 1-indexed, sequential, and unique
+  - ALWAYS set total equal to total phase count
+  - ALWAYS set type to generate, analyze, or implement
+  - ALWAYS set depends_on to an array of integers: [] when no dependencies, or [n, …] listing phase numbers (never a bare scalar integer)
+  - ALWAYS set input_manifest and input_signature to empty strings when no raw-input package is assigned; otherwise point to the authoritative input/manifest.json and its matching signature
+  - ALWAYS provide matching Task read steps for every input_files and inputs entry
+  - ALWAYS use output_files for created or modified project files and outputs for intermediate files in out/
+  - ALWAYS declare inputs entries pointing into out/ in frontmatter and Task steps; their non-existence must NOT invalidate phase compilation
+```
 
 ### Section 2: Preamble
 
@@ -84,15 +98,31 @@ written, and report results against the acceptance criteria at the end.
 
 ### Section 3: What
 
-- One paragraph, 2-5 sentences.
-- MUST state the concrete deliverable and scope boundary.
+```pdsl
+UNIT PhaseFileWhatRules
+
+PURPOSE:
+  Enforce content rules for the What section of a phase file.
+
+RULES:
+  - ALWAYS write one paragraph of 2-5 sentences in the What section
+  - ALWAYS state the concrete deliverable and scope boundary in the What section
+```
 
 ### Section 4: Prior Context
 
-- Maximum 20 lines.
-- Facts only.
-- Reference prior `output_files` when relevant.
-- Phase 1 may use project context; later phases summarize earlier outputs.
+```pdsl
+UNIT PhaseFilePriorContextRules
+
+PURPOSE:
+  Enforce content rules for the Prior Context section of a phase file.
+
+RULES:
+  - ALWAYS limit Prior Context to a maximum of 20 lines
+  - ALWAYS write facts only in Prior Context; no questions or speculation
+  - ALWAYS reference prior output_files when relevant
+  - ALWAYS summarize earlier outputs in later phases instead of referencing them
+```
 
 ### Section 4b: User Decisions (optional but CRITICAL when applicable)
 
@@ -113,47 +143,87 @@ Use this structure:
 - [ ] **{Input needed}** — ask user for specific info
 ```
 
-Rules:
+```pdsl
+UNIT PhaseFileUserDecisionsRules
 
-- Pre-resolved decisions MUST be facts, not questions.
-- Every checkbox MUST map to a Task step.
-- If no interaction points exist, omit this section entirely.
-- Maximum 40 lines.
+PURPOSE:
+  Enforce content rules for the User Decisions section when interaction points exist.
+
+RULES:
+  - ALWAYS include User Decisions section when plan generation detected any interaction points for the phase
+  - NEVER omit User Decisions when interaction points exist; omission makes the phase file INVALID
+  - ALWAYS write pre-resolved decisions as facts, not questions
+  - ALWAYS map every checkbox to a Task step
+  - ALWAYS omit User Decisions section entirely when no interaction points exist
+  - ALWAYS limit User Decisions to a maximum of 40 lines
+```
 
 ### Section 5: Rules
 
-- Inline every applicable MUST/MUST NOT rule from `rules.md`.
-- For analyze tasks, inline applicable `checklist.md` criteria.
-- Rules are NEVER summarized, trimmed, or selectively excerpted.
-- Group by category and use MUST/MUST NOT language.
-- If rules exceed 300 lines, split the phase into narrower sub-phases.
-- The union of all phase Rules sections MUST cover 100% of `rules.md`.
+```pdsl
+UNIT PhaseFileRulesSection
+
+PURPOSE:
+  Enforce content rules for the Rules section of a phase file.
+
+RULES:
+  - ALWAYS inline every applicable MUST/MUST NOT rule from rules.md
+  - ALWAYS inline applicable checklist.md criteria for analyze tasks
+  - NEVER summarize, trim, or selectively excerpt rules
+  - ALWAYS group rules by category and use MUST/MUST NOT language
+  - ALWAYS split the phase into narrower sub-phases when rules exceed 300 lines
+  - ALWAYS ensure the union of all phase Rules sections covers 100% of rules.md
+```
 
 ### Section 6: Input
 
-- Inline stable reference content only.
-- Assigned kit content MUST be inlined.
-- Project content is NOT inlined — Task contains runtime read steps.
-- Template variables MUST be pre-resolved before inlining.
-- Inline template sections, checklist criteria, example excerpts, and file-pattern metadata.
-- Do NOT inline project artifacts, source code, or prior intermediate outputs.
-- When the plan carries raw-input chunk files under `input/`, keep them in `input_files` and read them at runtime from Task only from the package identified by `input_manifest` + `input_signature`; do NOT inline those chunks into the phase body.
+```pdsl
+UNIT PhaseFileInputSection
+
+PURPOSE:
+  Enforce content rules for the Input section of a phase file.
+
+RULES:
+  - ALWAYS inline stable reference content only
+  - ALWAYS inline assigned kit content
+  - NEVER inline project content; project content goes in Task runtime read steps
+  - ALWAYS pre-resolve template variables before inlining
+  - ALWAYS inline template sections, checklist criteria, example excerpts, and file-pattern metadata
+  - NEVER inline project artifacts, source code, or prior intermediate outputs
+  - ALWAYS keep raw-input chunk files from input/ in input_files and read them at runtime from Task only; never inline them into the phase body
+```
 
 ### Section 7: Task
 
-- 3-10 steps per phase.
-- Each step MUST produce a visible result.
-- No conditional branching.
-- Final step MUST self-verify against the acceptance criteria.
-- When `input_manifest` is non-empty, Task MUST read `input/manifest.json` before reading any assigned `input/*.md` chunks so the worker verifies it is using the matching authoritative package.
+```pdsl
+UNIT PhaseFileTaskSection
+
+PURPOSE:
+  Enforce content rules for the Task section of a phase file.
+
+RULES:
+  - ALWAYS include 3-10 steps per phase
+  - ALWAYS make each step produce a visible result
+  - NEVER include conditional branching in Task steps
+  - ALWAYS make the final step self-verify against the acceptance criteria
+  - ALWAYS read input/manifest.json before reading any assigned input/*.md chunks when input_manifest is non-empty
+```
 
 ### Section 8: Acceptance Criteria
 
-- 3-10 criteria per phase.
-- Each criterion MUST be objectively verifiable.
-- No subjective criteria.
-- MUST include a line-count check when budget applies.
-- MUST include a `no unresolved variables` check.
+```pdsl
+UNIT PhaseFileAcceptanceCriteria
+
+PURPOSE:
+  Enforce content rules for the Acceptance Criteria section of a phase file.
+
+RULES:
+  - ALWAYS include 3-10 criteria per phase
+  - ALWAYS make each criterion objectively verifiable
+  - NEVER include subjective criteria
+  - ALWAYS include a line-count check criterion when budget applies
+  - ALWAYS include a "no unresolved variables" check criterion
+```
 
 ### Section 9: Output Format
 
@@ -221,22 +291,66 @@ Continue in this chat?
 Suggested: 1 until validation has been completed; otherwise 3 when no further work remains.
 Reply `1`, `2`, or `3`.
 ```
-```
+````
 
 ## Compilation Rules
 
-- Brief generation: fill `brief-template.md` once per phase using `plan.toml` plus kit metadata; briefs contain a context boundary, phase metadata, load instructions, structure guide, and context budget; they do NOT copy kit content.
-- Phase compilation: apply the boundary, read the brief, read kit files per Load Instructions, write the phase file, report compilation, then reapply the boundary.
-- Post-compilation validation: zero unresolved `{...}` variables outside code fences; all MUST/MUST NOT rules present with `Prerequisites` and `Tasks` stripped; `phase_file + runtime files <= 2000` lines.
+```pdsl
+UNIT PhaseFileCompilationRules
+
+PURPOSE:
+  Enforce the brief-generation and phase-compilation procedure.
+
+DO:
+  - RUN brief generation: fill brief-template.md once per phase using plan.toml plus kit metadata; briefs contain context boundary, phase metadata, load instructions, structure guide, and context budget; do NOT copy kit content into briefs
+  - RUN phase compilation: apply boundary, read the brief, read kit files per Load Instructions, write the phase file, report compilation, then reapply the boundary
+  - RUN post-compilation validation: zero unresolved {...} variables outside code fences; all MUST/MUST NOT rules present with Prerequisites and Tasks stripped; phase_file + runtime files <= 2000 lines
+
+RULES:
+  - ALWAYS validate zero unresolved {variable} references outside code fences after compilation
+  - ALWAYS verify all MUST/MUST NOT rules are present with Prerequisites and Tasks stripped
+  - ALWAYS verify phase_file + runtime files <= 2000 lines after compilation
+  - ALWAYS split any compiled phase exceeding 1000 lines into sub-phases automatically
+```
 
 ## Budget Enforcement
 
-- Total phase lines `≤ 500/≤ 1000` → split; Rules `≤ 200/≤ 300` → narrow scope; Input `≤ 300/≤ 500` → split input; Task `3-7/10` → split; Acceptance `3-7/10` → merge.
-- If a compiled phase exceeds 1000 lines, the plan workflow MUST split it into sub-phases automatically.
+```pdsl
+UNIT PhaseFileBudgetEnforcement
+
+PURPOSE:
+  Enforce line-count budgets for phase files and their sections.
+
+RULES:
+  - ALWAYS split phase into sub-phases when total phase lines exceed 1000
+  - ALWAYS target total phase lines <= 500
+  - ALWAYS narrow phase scope when Rules section exceeds 300 lines
+  - ALWAYS target Rules section <= 200 lines
+  - ALWAYS split input when Input section exceeds 500 lines
+  - ALWAYS target Input section <= 300 lines
+  - ALWAYS split task when Task section exceeds 10 steps
+  - ALWAYS target Task section 3-7 steps
+  - ALWAYS target Acceptance Criteria 3-7 items
+```
 
 ## Anti-Patterns
 
-- Kit content referenced by path → inline it; project content inlined → move to Task runtime reads; missing read instructions → add `Read {file}` steps; unresolved variable → resolve it; subjective criterion → make it objective; branching, scope creep, or context overflow → split; missing preamble → include it; unexplained jargon → expand it.
+```pdsl
+UNIT PhaseFileAntiPatterns
+
+PURPOSE:
+  Enumerate forbidden patterns and their required corrections in phase files.
+
+RULES:
+  - NEVER reference kit content by path; always inline it
+  - NEVER inline project content; always move it to Task runtime reads
+  - NEVER omit read instructions for input_files and inputs entries; always add Read {file} steps
+  - NEVER leave unresolved variables; always resolve them before writing
+  - NEVER write subjective acceptance criteria; always make them objective
+  - NEVER allow scope creep, conditional branching, or context overflow; always split
+  - NEVER omit the Preamble section; always include it verbatim
+  - NEVER use undefined Studio jargon without expansion
+```
 
 ## Example Phase File
 

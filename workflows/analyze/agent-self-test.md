@@ -35,9 +35,20 @@ RULES:
   - NEVER claim YES without supporting evidence
 ```
 
-## Agent Self-Test (STRICT mode — AFTER completing work)
+```pdsl
+UNIT AnalyzeAgentSelfTestRelaxed
 
-Answer these AFTER doing the work and include evidence in the output.
+PURPOSE:
+  Emit the RELAXED-mode disclaimer when self-test is skipped.
+
+WHEN:
+  - REQUIRE RELAXED mode
+
+DO:
+  - EMIT "⚠️ Self-test skipped (RELAXED mode — no Constructor Studio rules)"
+```
+
+## Agent Self-Test (STRICT mode — AFTER completing work)
 
 | Question | Evidence required |
 |----------|-------------------|
@@ -55,7 +66,7 @@ Sample:
 ### Agent Self-Test Results
 | Question | Answer | Evidence |
 |----------|--------|----------|
-| Read execution-protocol? | YES | Loaded cf-sdlc rules, checklist.md |
+| Protocol Guard completed? | YES | Loaded cf-sdlc rules, checklist.md |
 | Read artifact via Read tool? | YES | Read DESIGN.md: 742 lines |
 | Checked every category? | YES | 12 categories in table above |
 | Evidence for each status? | YES | Quotes included per category |
@@ -63,10 +74,4 @@ Sample:
 | Based on fresh read? | YES | Read tool called this turn |
 | Remediation Handoff menu emitted? | YES | Final section is the 3-option menu with actual finding counts (N/A when EXPLAIN_MODE=true) |
 | EXPLAIN_MODE Storytelling schema used? | N/A | EXPLAIN_MODE=false (this run is standard analyze) |
-```
-**If ANY answer is NO or lacks evidence → Analysis is INVALID, must restart**
-
-RELAXED mode disclaimer:
-```text
-⚠️ Self-test skipped (RELAXED mode — no Constructor Studio rules)
 ```

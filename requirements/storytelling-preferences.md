@@ -27,11 +27,21 @@ purpose: Page size, artifact language, checkpoint, telemetry, failure modes for 
 
 <!-- /toc -->
 
-Loaded by `requirements/storytelling.md` (router) for preference resolution and runtime state behavior. Project preferences live in `{cf-studio-path}/.cache/explain/preferences.json` with keys: `default_mode`, `artifact_language`, `artifact_disposition`, `page_size_soft`, `page_size_hard`. Methodology MUST preserve unrelated keys when writing this file.
+Loaded by `requirements/storytelling.md` (router) for preference resolution and runtime state behavior. Project preferences live in `{cf-studio-path}/.cache/explain/preferences.json` with keys: `default_mode`, `artifact_language`, `artifact_disposition`, `page_size_soft`, `page_size_hard`.
+
+```pdsl
+UNIT StorytellingPreferencesFile
+
+PURPOSE:
+  Enforce safe read/write behavior for the preferences.json file.
+
+RULES:
+  - ALWAYS preserve unrelated keys when writing preferences.json
+```
 
 ## Host Capability Matrix
 
-The methodology assumes some host-runtime tools that may not be present in every Studio host. Methodology MUST probe for each capability at session start (Phase E0), record availability in working memory, and fall back gracefully — silent failure is forbidden.
+The methodology assumes some host-runtime tools that may not be present in every Studio host.
 
 | Capability | Used for | Probe | Fallback when absent |
 |---|---|---|---|
@@ -47,7 +57,26 @@ The methodology assumes some host-runtime tools that may not be present in every
 
 Cross-reference: the preflight Step 5b sub-rule (see `{cf-studio-path}/.core/skills/studio/agents/storytelling-preflight.md` § Step 5b).
 
-At Phase E0 entry, methodology probes each capability (cheap probes only — `command -v X`, tool-list scan, no network calls during the probe). The result is held in working memory as `{capability_map}` and consulted whenever an input access tier is selected (Phase E0), an artifact disposition is offered (Artifact Disposition section above — the `post-to-resource` availability-status is computed from this map), or a progress-tracking decision is made (TaskCreate Progress Tracking below). The capability matrix is NOT user-visible by default; it surfaces in chat only when (a) the user-fallback prompt fires (showing what was tried and what's missing), or (b) the disposition prompt's `post-to-resource` availability-status is shown.
+```pdsl
+UNIT HostCapabilityProbe
+
+PURPOSE:
+  Probe for host capabilities at session start and record availability for runtime decisions.
+
+WHEN:
+  - REQUIRE Phase E0 entry
+
+DO:
+  - RUN cheap probes for each capability: command -v X, tool-list scan; no network calls during probe
+  - SET capability_map: record availability of each capability in working memory
+  - CONTINUE with capability_map consulted for input access tier selection, artifact disposition post-to-resource availability, and progress-tracking decisions
+
+RULES:
+  - ALWAYS probe each capability at session start (Phase E0)
+  - NEVER silently fail when a capability is absent; fall back gracefully
+  - NEVER surface capability_map to the user by default; only surface when user-fallback prompt fires or disposition prompt post-to-resource availability-status is shown
+  - NEVER run without basic file IO (Read/Write/Edit); abort with explicit error if absent
+```
 
 ### Context-pack reuse for generate routing
 
@@ -60,11 +89,25 @@ pack_handle = {
 }
 ```
 
-On the receiving side, the consumer loads the persisted `content_pack` from `kit_path` and verifies the `etag` field (added per `{cf-studio-path}/.core/skills/studio/agents/storytelling-context-pack.md`). On etag mismatch, unreadable `kit_path`, or `kit_path == null`, the consumer MUST re-dispatch `storytelling-context-pack` rather than fail silently.
+```pdsl
+UNIT ContextPackReuse
 
-Consumers MUST NOT branch their reasoning on `content_pack.strategy`. When the target anchor has `resolved_section_text != null`, the consumer uses it verbatim; otherwise it issues a narrow Read against `canonical_path` for the anchor's `line_range`.
+PURPOSE:
+  Define how consumers load and verify context packs passed by the generate-routing orchestrator.
 
-**Mode B threshold.** Mode B inline dispatch is selected when the target file is `< 50 KB`; above that, Mode C paste-handoff fires. (The 50 KB boundary mirrors the snippets-strategy threshold in `storytelling-context-pack.md` § Strategy Reference.)
+WHEN:
+  - REQUIRE generate-routing dispatch occurs (Mode A / B / C)
+
+DO:
+  - LOAD persisted content_pack from kit_path
+  - REQUIRE etag field matches; re-dispatch storytelling-context-pack on etag mismatch, unreadable kit_path, or kit_path == null
+
+RULES:
+  - NEVER branch reasoning on content_pack.strategy
+  - ALWAYS use resolved_section_text verbatim when target anchor has resolved_section_text != null
+  - ALWAYS issue a narrow Read against canonical_path for the anchor's line_range when resolved_section_text is null
+  - ALWAYS select Mode B inline dispatch when target file is < 50 KB; use Mode C paste-handoff above that
+```
 
 ## Page Size
 
@@ -73,9 +116,33 @@ Resolution at every portion-emission decision (priority order):
 2. **Project preference**: `page_size_soft` / `page_size_hard` from `preferences.json`
 3. **Defaults**: soft 200, hard 350
 
-The resolved values feed: Phase E2 portion-shape size invariant, proactive sub-portion decomposition trigger, hard-cap recovery, first-portion shape, Recap sub-portion size budget. Methodology never auto-asks for page size — defaults cover most users.
+```pdsl
+UNIT PageSizeResolution
 
-`remember new page size` persists current values to `preferences.json`.
+PURPOSE:
+  Resolve page size at every portion-emission decision.
+
+STATE:
+  - SET page_size_soft: integer
+    default: 200
+  - SET page_size_hard: integer
+    default: 350
+
+WHEN:
+  - REQUIRE portion-emission decision occurs
+
+DO:
+  - SET page_size_soft: mid-session override value when provided
+  - SET page_size_hard: round(soft × 1.75) when only soft is overridden; explicit value when provided
+  - SET page_size_soft: preferences.json page_size_soft when no mid-session override
+  - SET page_size_hard: preferences.json page_size_hard when no mid-session override
+  - SET page_size_soft: 200 when no preference and no override
+  - SET page_size_hard: 350 when no preference and no override
+
+RULES:
+  - NEVER auto-ask for page size; defaults cover most users
+  - ALWAYS persist current values to preferences.json when user says remember new page size
+```
 
 ## Artifact Language
 
@@ -85,30 +152,44 @@ Resolution at every artifact-write event (priority order):
 1. **Mid-session override**: `change artifact language to {X}` / `set artifact language to {X}`
 2. **Session choice**: if asked this session and user picked but chose NOT to remember, use that value
 3. **Project preference**: `artifact_language` from `preferences.json`
-4. **Ask** — at the first artifact-write event of the session (Phase E4 Mermaid creation, Phase E5 open-questions save, or Phase E5 key-takeaways save):
-   ```text
-   I'm about to save artifacts in this session. What language for saved files
-   (open questions, diagrams, key takeaways)?
-     1. English (most portable)
-     2. {detected-chat-language} — your prompt language
-     3. Other — specify in your reply
-   ```
-   After you reply with a language, methodology asks a separate prompt:
-   ```text
-   Remember this choice for all future explain sessions in this project? (yes / no)
-   → suggested: yes
-   ```
-   On `remember=yes` write `{"artifact_language": "{value}"}` to `preferences.json` (mkdir -p if missing). On `remember=no` hold value in working memory for the rest of the session only.
+4. **Ask** — at the first artifact-write event of the session
 
-**Scope**: artifact language affects free-prose surfaces (file headers, section titles, question text, takeaway text, captions). Does NOT change technical surfaces (IDs, Mermaid node identifiers, code snippets). Source quotes are NOT translated — they stay in the artifact's original language.
+```pdsl
+UNIT ArtifactLanguageResolution
 
-**Buffer translation at save time**: methodology MAY hold buffer entries (open-questions / takeaways / glossary) in chat language during the session; at save time, translate prose surfaces to chosen artifact language before writing. Source quotes never translated.
+PURPOSE:
+  Resolve artifact language at every artifact-write event using explicit user choice, never inference.
 
-`change artifact language to {X}` switches subsequent writes; `remember new language` persists.
+STATE:
+  - SET artifact_language: string
+    default: unset
+
+WHEN:
+  - REQUIRE an artifact-write event occurs (Phase E4 Mermaid creation, Phase E5 open-questions save, or Phase E5 key-takeaways save)
+
+DO:
+  - SET artifact_language: mid-session override value when provided
+  - SET artifact_language: session choice when user chose this session without remembering
+  - SET artifact_language: preferences.json artifact_language when no session override
+  - EMIT language choice prompt at the first artifact-write event of the session when no preference or session choice exists:
+    "I'm about to save artifacts in this session. What language for saved files (open questions, diagrams, key takeaways)? 1. English (most portable) 2. {detected-chat-language} — your prompt language 3. Other — specify in your reply"
+  - WAIT user.reply for language choice
+  - EMIT "Remember this choice for all future explain sessions in this project? (yes / no) → suggested: yes"
+  - WAIT user.reply for persistence decision
+  - SET artifact_language in preferences.json with mkdir -p when remember = yes
+
+RULES:
+  - NEVER infer artifact language from chat language
+  - ALWAYS apply artifact language to free-prose surfaces: file headers, section titles, question text, takeaway text, captions
+  - NEVER change technical surfaces: IDs, Mermaid node identifiers, code snippets
+  - NEVER translate source quotes; keep them in the artifact's original language
+  - ALWAYS hold buffer entries in chat language during session; translate prose surfaces to chosen artifact language at save time
+  - ALWAYS persist to preferences.json when user says remember new language
+```
 
 ## Artifact Disposition
 
-Some artifacts accumulate during a session and need an explicit handling decision: where the user wants the methodology to put each accumulated artifact at the end. Affected artifact types:
+Some artifacts accumulate during a session and need an explicit handling decision. Affected artifact types:
 
 - **Review comments** (review mode only — line-anchored review notes drafted via the Comment slot in challenge portions)
 - **Open questions** (any mode — entries pushed when the user asks a question the input cannot answer)
@@ -117,93 +198,79 @@ Some artifacts accumulate during a session and need an explicit handling decisio
 Other artifacts have their own dispositions or are inline-only:
 - Diagrams → format chosen via Phase E4 lazy-ask (ASCII / Mermaid file / Both)
 - Glossary → always inline in the wrap output (no separate disposition)
-- Mode-specific extras (decision recommendation, change-impact map, onboarding reading roadmap, socratic scorecard) → follow the disposition picked for the session's primary artifact (`save-to-file` writes them as additional sections in the wrap file; `chat-only` shows them in the wrap response; `post-to-resource` posts them as a summary comment when supported)
+- Mode-specific extras → follow the disposition picked for the session's primary artifact
 
-All three disposition options take effect **immediately on each artifact-create event** (Comment-slot use in review, push to the open-questions buffer, bookmark mark) — NOT deferred to wrap. This matters because wrap ends the session: deferring to wrap would force the user to choose between continuing the review and saving comments, which is broken UX. The session continues normally after each artifact is persisted.
+**Option 1 — `chat-only` (draft)**: methodology surfaces the artifact right now in chat as a ready-to-copy fenced block with a one-line note. Artifact is held in working memory only; the wrap output re-shows all `chat-only` drafts as a final consolidated block for last-chance copy.
 
-1. **`chat-only` (draft)** — methodology surfaces the artifact **right now in chat** as a ready-to-copy fenced block, with a one-line note like `📋 drafted comment Q-3 (chat-only — copy this now or it's gone at session end)`. Artifact is held in working memory only; the wrap output re-shows all `chat-only` drafts as a final consolidated block for last-chance copy. The user copies, pastes, or discards manually.
+**Option 2 — `save-to-file`**: methodology appends the artifact to its file immediately on the create event (with mkdir -p on first append):
+- `{cf-studio-path}/.cache/explain/review-comments-{slug}-{date}.md` (review mode only)
+- `{cf-studio-path}/.cache/explain/open-questions-{slug}-{date}.md`
+- `{cf-studio-path}/.cache/explain/key-takeaways-{slug}-{date}.md`
 
-2. **`save-to-file`** — methodology **appends** the artifact to its file **immediately** on the create event (with mkdir -p on first append):
-   - `{cf-studio-path}/.cache/explain/review-comments-{slug}-{date}.md` (review mode only)
-   - `{cf-studio-path}/.cache/explain/open-questions-{slug}-{date}.md`
-   - `{cf-studio-path}/.cache/explain/key-takeaways-{slug}-{date}.md`
+On first append in a session, methodology writes a session header (`## Session {ISO-timestamp} — {role} for {audience}, mode={mode}`).
 
-   On first append in a session, methodology writes a session header (`## Session {ISO-timestamp} — {role} for {audience}, mode={mode}`) so multiple intra-day sessions on the same target accumulate without overwriting. Each artifact entry is appended under that header. Methodology emits a one-line confirmation in chat per append: `📝 Q-3 appended to {path} (line 42)`. The session continues immediately — wrap does NOT re-prompt for save (already saved). Wrap output reports the cumulative path + entry count.
+**Option 3 — `post-to-resource`**: methodology posts or routes the artifact to the resolved target right now via the same access tier that fetched the input (MCP / skill / CLI), or via generate-routing for a local editable file. Branch priority: GitHub PR → GitLab MR → Notion page → Jira ticket → Local file (when `handle.local_editable == true` AND `handle.generate_route_available == true`) → fallback to `save-to-file`.
 
-3. **`post-to-resource`** — methodology **posts or routes** the artifact to the resolved target **right now** via the same access tier that fetched the input (MCP / skill / CLI), or via generate-routing for a local editable file. Availability check at session start, in priority order (first matching branch defines the handler):
-   - GitHub PR (target_is_pr=true) — review comments via `gh pr review {N} --comment-file ...` or `mcp__github__create_review_comment`; open-questions / takeaways as a single summary comment via `gh pr comment` or equivalent
-   - GitLab MR — `glab mr note` or MCP equivalent
-   - Notion page — MCP `mcp__plugin_Notion_notion__*` comment-create
-   - Jira ticket — MCP Jira add-comment
-   - **Local file** (`handle.local_editable == true` AND `handle.generate_route_available == true` AND none of the above) — there is no external resource to post to; instead, each artifact-create event is routed through the **generate-routing** handler (see `{cf-studio-path}/.core/skills/studio/agents/storytelling-gate.md` § Gate: generate-routing), which dispatches the `cf-generate` skill against the local file in the mode classified for that artifact (`fix` / `brainstorm` / `generate` — see `{cf-studio-path}/.core/requirements/storytelling-modes.md` § classified_mode label). The per-comment generate-routing 4-option consent menu (Route now / Queue / No / Never-ask-again-this-session, default = Route now under this disposition) is the post-confirmation prompt; selecting Queue defers to the batch `send comments` verb. The save-to-file path is still used as the auto-save fallback when a generate dispatch fails — see § Dispatch-Failure Audit Log.
-   - Otherwise (no PR, no MCP/CLI resource handler, AND `local_editable == false` OR `generate_route_available == false`) — post unavailable; methodology MUST tell the user during the disposition prompt with the concrete reason (e.g. `directory target`, `remote access tier`, `generate-route handler unavailable`) and fall back to `save-to-file`. Picking option 3 under this branch produces a one-line ack `⚠️ post-to-resource unavailable — switched to save-to-file` and proceeds.
+```pdsl
+UNIT ArtifactDisposition
 
-   Each post or route action is **confirmed immediately on the artifact-create event**, not at wrap. Methodology shows the exact payload (file:line + comment body for review comments; question text + author tag for open-questions), the resolved target, and the fallback path when relevant, then asks:
-   ```text
-   Confirm what to do with this draft.
+PURPOSE:
+  Define timing, resolution, and persistence rules for artifact disposition.
 
-   Action: {post_action_label}
-   Target: {target}
-   Effect:
-     - Reply 1: {post_action_effect}
-     - Reply 2: append this item to {save-to-file path} and do not post or route it
-     - Reply 3: discard this item and persist nothing
-     - Reply 4: switch all remaining items in this session to save-to-file
+STATE:
+  - SET disposition: chat-only | save-to-file | post-to-resource | mixed
+    default: save-to-file
 
-   Reply with exactly one number from 1-4.
-     1. {post_action_label}
-     2. Save this item to {save-to-file path}
-     3. Discard this item
-     4. Switch remaining items to save-to-file
-   → suggested: 1
-   ```
-   `{post_action_label}` and `{post_action_effect}` MUST be branch-specific:
-   - PR / GitLab / Notion / Jira branch: name the exact post action and handler, e.g. `Post to PR #25 via gh pr comment`; effect states that the draft will be sent to that external resource now
-   - Local-file generate-routing branch: name the exact route action and classified mode, e.g. `Route to cf-generate on requirements/auth.md in fix mode`; effect states that the draft will dispatch generate-routing against that file now
-   - Unavailable branch: option 1 MUST_NOT appear; the disposition prompt must already have converted this branch to `save-to-file`
+WHEN:
+  - REQUIRE Phase E1 begins, after mode resolution and before role/audience confirmation
 
-   On reply `1`, methodology calls the resolved handler; on success, emits a one-line confirmation that names the exact target and result (`📤 Q-3 posted to PR #25 ({URL})` or equivalent routed-action confirmation). On failure (network / permissions / rate limit), methodology reports the exact error AND falls back to save-to-file for that item with `📝 Q-3 post failed ({error}) — saved to {path} instead`. The session continues immediately. Wrap output reports cumulative post count + any failures.
+DO:
+  - EMIT disposition prompt with conditional artifact list per mode and four options
+  - WAIT user.reply for disposition choice
+  - EMIT "Remember this choice for all future explain sessions in this project? Reply yes or no."
+  - WAIT user.reply for persistence decision
+  - SET disposition in preferences.json when remember = yes
+  - CONTINUE with resolved disposition applied immediately on each artifact-create event
 
-**Crucial: deferring artifact persistence to wrap is FORBIDDEN** for `save-to-file` and `post-to-resource` dispositions. Saying "I'll save this at wrap" when the user picked save-to-file is broken UX (wrap ends the session, so user can't both continue and save). Persistence happens immediately; the session continues uninterrupted; wrap merely reports the cumulative results. See Anti-Pattern #28d.
+RULES:
+  - ALWAYS emit disposition prompt at session start; preferences.json informs suggested default but does NOT bypass the prompt
+  - NEVER proceed past the disposition prompt without an explicit user response to both the disposition prompt and the persistence prompt
+  - ALWAYS apply chosen disposition immediately on each artifact-create event; never defer to wrap
+  - ALWAYS emit one-line note in chat for every artifact draft (e.g. "📋 drafted comment Q-3 (chat-only — copy from chat; wrap will repeat drafts)" / "📝 appended Q-3 to {path} (save-to-file; persisted now)" / "📤 posting comment Q-3 to PR... [yes / no / skip-rest]?")
+  - NEVER silently draft an artifact; every artifact creation must produce a chat notification
+  - ALWAYS compute {S} suggested option: project preference -> save-to-file (default)
+  - ALWAYS fall back to save-to-file when post-to-resource is unavailable; tell user the concrete reason
+  - NEVER show the legacy "posting NOT available — falls back to save-to-file" line when the local-file branch applies
+  - ALWAYS allow mid-session override: change disposition to {X} switches subsequent artifact handling
+  - ALWAYS persist on remember new disposition
 
-**Resolution at session start** (Phase E1, after mode resolution and before role/audience confirmation):
-
-```text
-This {mode} session may produce accumulating artifacts:
-{conditional list per mode — review comments / open questions / bookmarks}
-
-How should each artifact be handled when it is created?
-  1. chat-only — draft in chat, you copy/paste manually
-  2. save-to-file — append immediately to {cf-studio-path}/.cache/explain/{...}-{slug}-{date}.md
-  3. {post_option_label} — {post_option_effect}
-  4. mixed — pick per artifact type (secondary prompt)
-
-→ suggested: {S} ({why-suggested})
-
-Reply with exactly one number from 1-4. After you choose, I will ask separately whether
-to remember the choice for future explain sessions in this project.
+NOTES:
+  post-to-resource confirmation prompt shape:
+  "Confirm what to do with this draft.
+  Action: {post_action_label}
+  Target: {target}
+  Effect:
+    - Reply 1: {post_action_effect}
+    - Reply 2: append this item to {save-to-file path} and do not post or route it
+    - Reply 3: discard this item and persist nothing
+    - Reply 4: switch all remaining items in this session to save-to-file
+  Reply with exactly one number from 1-4."
+  post_action_label and post_action_effect MUST be branch-specific (see Artifact Disposition section prose).
 ```
 
-`{S}` is computed in priority order: project preference (`artifact_disposition` from `preferences.json`) → `save-to-file` (default; preserves history; reliable). `{post_option_label}` and `{post_option_effect}` MUST render the exact branch-specific action, target, and consequence for option 3:
-- PR / Notion / Jira / GitLab branch: name the exact resource and handler, and state that each artifact will be posted there immediately after per-item confirmation
-- Local-file branch: name the exact local file target plus `cf-generate` classified mode, and state that each artifact will be routed there immediately after per-item confirmation
-- Unavailable branch: state that posting is unavailable for the named reason and that choosing option 3 switches this session to `save-to-file`
+```pdsl
+UNIT ArtifactPersistenceRules
 
-The legacy line `posting NOT available — falls back to save-to-file` is reserved for the unavailable branch only — it MUST NOT appear when the local-file branch applies.
+PURPOSE:
+  Prohibit deferred artifact persistence and enforce immediate-on-create behavior.
 
-After a valid 1-4 disposition reply, emit a separate persistence prompt:
-`Remember this choice for all future explain sessions in this project? Reply yes or no.`
-On `yes`, write `{"artifact_disposition": "{value}"}` to `preferences.json`.
-The disposition prompt always emits at session start (like the mode prompt) — preferences.json informs the suggested default but does NOT bypass the prompt. Methodology MUST NOT proceed past the prompt without an explicit user response to both the disposition prompt and the persistence prompt.
-
-**Override mid-session**: `change disposition to {X}` switches subsequent artifact handling. `remember new disposition` persists. `mixed` mode triggers a per-type prompt (review-comments? open-questions? bookmarks?) at first use of each artifact type.
-
-**Explicit drafting requirement** (applies to all dispositions): every time the methodology drafts an artifact (Comment slot in review, push to open-questions, bookmark), it MUST surface a one-line note in chat indicating disposition status, e.g.:
-- `📋 drafted comment Q-3 (chat-only — copy from chat; wrap will repeat drafts)` /
-- `📝 appended Q-3 to {path} (save-to-file; persisted now)` /
-- `📤 posting comment Q-3 to PR... [yes / no / skip-rest]?`
-
-Silent drafting (artifact created but nothing emitted in chat) is forbidden — see Anti-Patterns.
+RULES:
+  - NEVER defer artifact persistence to wrap for save-to-file or post-to-resource dispositions
+  - ALWAYS persist immediately when save-to-file disposition is active; wrap reports cumulative results only
+  - ALWAYS confirm each post or route action immediately on the artifact-create event; show exact payload, resolved target, and fallback path
+  - ALWAYS fall back to save-to-file on post failure; report the exact error
+  - ALWAYS emit one-line confirmation per append for save-to-file: "📝 Q-3 appended to {path} (line 42)"
+```
 
 ## Dispatch-Failure Audit Log
 
@@ -213,14 +280,12 @@ When a generate-routing dispatch fails (any of the five locked failure classes `
 {cf-studio-path}/.cache/explain/dispatch-failures-{slug}-{ISO-date}.jsonl
 ```
 
-Append-only; never truncated; never deleted in-session. One record per failure, one record per resolved retry. No hidden subdirectories.
-
 Per-failure record schema:
 ```json
 {
-  "dispatch_key": "<sha1 — see {cf-studio-path}/.core/requirements/storytelling-phases.md § Open-question buffer entry shape>",
+  "dispatch_key": "<sha1>",
   "class": "write_conflict | transient_io | cfc_invocation_error | validation_rejected | unknown",
-  "attempt": <int, 1 or 2>,
+  "attempt": "<int, 1 or 2>",
   "ts": "<ISO timestamp>",
   "etag_at_dispatch": "<sha or null>",
   "line_range_hash_at_dispatch": "<sha or null>",
@@ -238,83 +303,157 @@ Per-retry-success record schema (appended when a retry of `dispatch_key` complet
 }
 ```
 
-Resume semantics: on session resume, methodology reads this file and reconstructs `session_state.pending_retries: Map<dispatch_key, {attempts, first_failed_at, last_class, drift_status?}>` from the records (skipping any `dispatch_key` whose latest record is `status=resolved`). This makes the 2-attempts-per-key cap survive session restarts.
+```pdsl
+UNIT DispatchFailureLog
+
+PURPOSE:
+  Record generate-routing dispatch failures and successes for session-restart resilience.
+
+WHEN:
+  - REQUIRE a generate-routing dispatch fails
+
+DO:
+  - EMIT one NDJSON record to {cf-studio-path}/.cache/explain/dispatch-failures-{slug}-{ISO-date}.jsonl
+
+RULES:
+  - ALWAYS append-only; never truncate or delete in-session
+  - ALWAYS write one record per failure, one record per resolved retry
+  - ALWAYS reconstruct session_state.pending_retries from NDJSON records on session resume (skipping any dispatch_key whose latest record is status=resolved)
+  - NEVER use subdirectories; write directly to the flat NDJSON file
+```
 
 ## Path Conventions (Portability)
 
-All explain-generated artifacts and references **inside** them MUST use **relative paths**, never absolute paths. This makes the artifacts portable across machines, repo clones, container mounts, and CI workspaces. Hardcoding `/Users/viator/...` or `/Volumes/...` into a comments file or a checkpoint breaks immediately when the file is shared or the project is cloned to a different location.
-
-**Scope** (covers every artifact the methodology can write to disk):
+All explain-generated artifacts and references **inside** them MUST use **relative paths**, never absolute paths.
 
 | Artifact / surface | Relative-path requirement |
 |---|---|
-| Per-portion files inside an export package | Internal links to other portion files: relative within the package (`portion-002-data-model.md`). External refs to source artifacts: relative from the package directory (e.g. `../../../requirements/auth-prd.md#anchor`) — NEVER absolute |
-| `index.md` in an export package | All file refs in plan list, navigation graph, and wrap-up: relative (same rules as above). Mermaid graph node hrefs: relative |
-| `review-comments-{slug}-{date}.md` (loose artifact under `{cf-studio-path}/.cache/explain/`) | File:line references inside comments: relative path from project root (e.g. `requirements/auth.md:42`), NEVER absolute. When `target_is_pr`: PR-view URL form per Phase E3 (those URLs are already canonical/portable) |
-| `open-questions-{slug}-{date}.md` | Same as comments file — source-path refs are relative-from-project-root or PR-view URLs |
+| Per-portion files inside an export package | Internal links: relative within the package. External refs to source artifacts: relative from the package directory — NEVER absolute |
+| `index.md` in an export package | All file refs: relative. Mermaid graph node hrefs: relative |
+| `review-comments-{slug}-{date}.md` | File:line references: relative path from project root (e.g. `requirements/auth.md:42`), NEVER absolute |
+| `open-questions-{slug}-{date}.md` | Same as comments file |
 | `key-takeaways-{slug}-{date}.md` | Same |
-| `diagrams-{slug}-{date}.md` (Mermaid file) | Diagram body uses identifiers (no paths). Source-ref captions use relative paths |
-| `session-{slug}-{ISO-timestamp}.json` (checkpoint) | `input_path` field: relative from project root (so a resumed session works after `git clone` to a different directory). `path` fields in any buffer entry: relative |
-| Chat-displayed paths (artifact-create confirmations, wrap output Session block, save-to-file confirmations) | Display as relative from project root when emitting in chat (e.g. `📝 Q-3 appended to {cf-studio-path}/.cache/explain/review-comments-...md`); the underlying filesystem call MAY use the absolute resolved form, but the user-visible string is relative |
+| `diagrams-{slug}-{date}.md` | Source-ref captions use relative paths |
+| `session-{slug}-{ISO-timestamp}.json` | `input_path` field: relative from project root |
+| Chat-displayed paths | Display as relative from project root when emitting in chat |
 
-**Resolution rule**: convert `{cf-studio-path}` and `{project_root}` template variables to relative-from-project-root form before writing to artifact content or displaying in chat. The resolved-absolute form is held in working memory only for filesystem syscalls; never persisted into artifact bytes.
+```pdsl
+UNIT PathConventions
 
-**`{project_root}` reference rule**: when a path goes outside the package or cache directory (e.g. an export package's portion file refs the source `requirements/auth-prd.md`), express it relative-from-project-root with explicit `../` prefixes so the package can be opened from any location and a Markdown renderer resolves the link correctly. Example: from `{cf-studio-path}/.cache/explain/packages/{slug}/portion-002-data-model.md`, the relative ref to `requirements/auth-prd.md` is `../../../../requirements/auth-prd.md` (three `../` to escape `.cache/explain/packages/{slug}/` plus one to escape `{cf-studio-path}` if studio_path is one level deep like `.bootstrap`). Compute the depth from the actual artifact location, not a hardcoded count.
+PURPOSE:
+  Enforce relative-path usage in all explain-generated artifacts.
 
-**Anti-pattern** (also see router Anti-Patterns): writing `/Users/...` or `/Volumes/...` or `/home/...` into any explain-generated artifact body. The methodology MUST detect such absolute paths in any string about to be written and convert them to relative form first.
+RULES:
+  - ALWAYS use relative paths in all explain-generated artifact content; never use absolute paths
+  - ALWAYS convert {cf-studio-path} and {project_root} template variables to relative-from-project-root form before writing to artifact content or displaying in chat
+  - ALWAYS hold the resolved-absolute form in working memory only for filesystem syscalls; never persist absolute paths into artifact bytes
+  - ALWAYS compute relative depth from the actual artifact location when using ../ prefixes in cross-directory references; never hardcode a count
+  - NEVER write /Users/..., /Volumes/..., or /home/... absolute paths into any explain-generated artifact body; detect and convert to relative form before writing
+```
 
 ## Output Language (chat)
 
-Chat output (the live narrative) follows different rules from artifact language:
-- **Match user prompt language** (auto-detected on first user message)
-- **Source quotes** remain in the **original artifact language** (never translated)
-- If audience and source language differ, methodology MAY add parenthesised translation when audience-helpful (e.g. RU artifact + EN audience: `"{quote ru}" (≈ "{translation en}")`)
+Chat output (the live narrative) follows different rules from artifact language.
 
-**Language complexity** (global Studio rule): both chat output and persisted artifacts also respect the project's resolved `language_complexity` level (`low` / `middle` / `high`, default `middle`) per `{cf-studio-path}/.core/requirements/language-complexity.md`. The methodology MUST self-check every chat message and every artifact write against the resolved level — no rare/archaic words at `middle`, no long sentences at `low`, etc. Override commands (`change language complexity to {X}` / `remember new language complexity` / `show language complexity`) work mid-session. Source quotes are exempt (quoted verbatim).
+```pdsl
+UNIT OutputLanguage
+
+PURPOSE:
+  Define language rules for chat output and language complexity enforcement.
+
+RULES:
+  - ALWAYS match chat output language to the user prompt language (auto-detected on first user message)
+  - ALWAYS keep source quotes in the original artifact language; never translate them
+  - ALWAYS respect the project's resolved language_complexity level (low/middle/high, default middle) per {cf-studio-path}/.core/requirements/language-complexity.md for both chat output and persisted artifacts
+  - ALWAYS self-check every chat message and every artifact write against the resolved language_complexity level
+  - ALWAYS allow mid-session override: change language complexity to {X} / remember new language complexity / show language complexity
+  - NEVER apply language complexity rules to source quotes; quoted verbatim
+```
 
 ## Checkpoint and Resume
 
-- **File**: `{cf-studio-path}/.cache/explain/session-{slug}-{ISO-timestamp}.json` (resolves `{cf-studio-path}` from project config; do NOT hardcode `.cf-studio/`)
-- **Directory**: if `{cf-studio-path}/.cache/explain/` does not exist, methodology MUST create it (mkdir -p) at the moment of the wrap-time write. Same applies to diagrams / open-questions / key-takeaways files.
-- **`{slug}` derivation**: basename without extension, lowercased, non-alphanumeric → hyphens. `requirements/my-prd.md` → `my-prd`. External resources: `gh-{owner}-{repo}-pr-{N}`, `jira-{key}`, `notion-{slugified-title}`, `url-{domain}-{path}`. Same `{slug}` flows through `session-`, `diagrams-`, `open-questions-`, `key-takeaways-`, package-directory.
-- **Trigger** (the ONLY trigger): user accepts the checkpoint prompt during a mid-session Wrap (Phase E5 trigger 2, plan-not-complete branch). Auto-checkpointing during the session is **forbidden** — no periodic writes, no Phase-transition writes, no pivot writes. State is held in working memory and persisted only at the natural stopping point if the user opts in.
-- **State persisted**: `mode, role, audience, plan, current_position, open_questions_buffer, takeaways_buffer, diagram_format, glossary_buffer, telemetry_log, input_hash, target_is_pr`; additionally:
-  - `handle.local_editable: boolean`
-  - `handle.local_editable_reason: string` (closed enum, see preflight § Step 5b)
-  - `handle.generate_route_available: boolean`
-  - `session_state.generate_route_never_ask: boolean` (set when user picked option 4 in the generate-routing sub-prompt)
-  - `session_state.dispatched_keys: Map<canonical_path, Set<dispatch_key>>` (partitioned by canonical_path; survives session for idempotence within a target scope; cleared on target-pivot for the NEW target only)
-    > Keys in `dispatched_keys` use `failure_class = ""` (empty string sentinel) for the initial dispatch; retry keys use the actual `failure_class` recorded in the dispatch-failures NDJSON. Resume reconstruction MUST apply the same sentinel convention to match keys against the NDJSON records. See `storytelling-phases.md` § Open-question buffer entry shape for the canonical dispatch_key formula and initial-dispatch sentinel definition.
-  - `session_state.pending_retries: Map<dispatch_key, {attempts, first_failed_at, last_class, drift_status?}>` (reconstructed from dispatch-failures NDJSON on resume; see Dispatch-Failure Audit Log)
-  - For each open-questions buffer entry, the new fields listed in `storytelling-phases.md` § Open-question buffer entry shape: `dispatch_state, intent_initial, intent_initial_tier, intent_final, intent_override_reason, dispatch_key, dispatched_at, result_received_at, cfc_session_id, result_summary, paused_at, context_fingerprint, last_failure`
+```pdsl
+UNIT CheckpointAndResume
 
-  Persistence happens at session wrap per the existing wrap-time checkpoint rule (Anti-Pattern #29 forbids auto-checkpoint). The NDJSON is the ONLY surface that writes on every failure event (it is an append-only audit log, not a checkpoint).
-- **Resume invocation**: write `explain --resume {session-id}` (or `resume explain session {session-id}`) in any chat where `{session-id}` is the ISO-timestamp suffix. The `analyze.md` WHEN-rule recognises the resume intent verb and routes here; the methodology then loads the checkpoint at Phase E0 invocation handling. There is no dedicated `cf explain` CLI subcommand — resume is a methodology-level intent-routed action, not a CLI entrypoint
-- **On resume**:
-  - Load state from JSON
-  - If the input file at the stored path is missing or unreadable, abort with `Input '{path}' no longer exists or is unreadable; cannot resume session.` and do NOT proceed
-  - Re-read input; verify unchanged via stored `input_hash`; warn if changed and require user confirmation to continue
-  - Print 1-line resume header: `Resuming session {id}, role={role}, audience={audience}, mode={mode}, at portion {X}/{N}`
-  - Continue from `current_position`
+PURPOSE:
+  Define checkpoint trigger, state persistence, and resume behavior for storytelling sessions.
 
-**Cleanup at completion**: when user picks Wrap-up at plan exhaustion AND a resume checkpoint exists for THIS session, methodology asks `Delete it? (yes / no)` with default `yes`. On `yes` → delete file, log telemetry, omit `Resume this session` from Suggested Next Steps. On `no` → keep file; entry MAY appear as a courtesy reference.
+STATE:
+  - SET checkpoint_path: {cf-studio-path}/.cache/explain/session-{slug}-{ISO-timestamp}.json
+
+WHEN:
+  - REQUIRE user accepts the checkpoint prompt during a mid-session Wrap (Phase E5 trigger 2, plan-not-complete branch)
+
+DO:
+  - SET slug: basename without extension, lowercased, non-alphanumeric -> hyphens
+  - RUN mkdir -p {cf-studio-path}/.cache/explain/ if it does not exist
+  - SET checkpoint_state: mode, role, audience, plan, current_position, open_questions_buffer, takeaways_buffer, diagram_format, glossary_buffer, telemetry_log, input_hash, target_is_pr, handle fields, session_state fields
+  - EMIT checkpoint saved confirmation
+
+RULES:
+  - NEVER auto-checkpoint during the session; never use periodic writes, phase-transition writes, or pivot writes
+  - ALWAYS write state only at the natural stopping point when user opts in via checkpoint prompt
+  - ALWAYS make the NDJSON dispatch-failures file the ONLY surface that writes on every failure event (append-only audit log, not a checkpoint)
+  - ALWAYS resolve {cf-studio-path} from project config; do NOT hardcode .cf-studio/
+  - ALWAYS use resume intent verb explain --resume {session-id} or resume explain session {session-id}; no dedicated CLI subcommand
+
+ON_ERROR:
+  input file missing or unreadable on resume -> EMIT "Input '{path}' no longer exists or is unreadable; cannot resume session." and STOP_TURN
+  input hash changed on resume -> EMIT warning and require user confirmation to continue
+
+NOTES:
+  On resume:
+  1. Load state from JSON
+  2. Re-read input; verify unchanged via input_hash; warn if changed and require user confirmation
+  3. Print 1-line resume header: "Resuming session {id}, role={role}, audience={audience}, mode={mode}, at portion {X}/{N}"
+  4. Continue from current_position
+
+  Cleanup at completion: when user picks Wrap-up at plan exhaustion AND resume checkpoint exists for THIS session, ask "Delete it? (yes / no)" default yes. On yes -> delete file, log telemetry. On no -> keep file.
+
+  Slug derivation: basename without extension, lowercased, non-alphanumeric -> hyphens. External resources: gh-{owner}-{repo}-pr-{N}, jira-{key}, notion-{slugified-title}, url-{domain}-{path}.
+```
 
 ## Bookmark Export
 
-On wrap, after open-questions save prompt:
-```text
-Save bookmarks ({B} items) to {cf-studio-path}/.cache/explain/key-takeaways-{slug}-{YYYY-MM-DD}.md? (yes / no / path)
+```pdsl
+UNIT BookmarkExport
+
+PURPOSE:
+  Define bookmark export prompt and file structure at session wrap.
+
+WHEN:
+  - REQUIRE session wrap occurs and bookmarks exist
+
+DO:
+  - EMIT "Save bookmarks ({B} items) to {cf-studio-path}/.cache/explain/key-takeaways-{slug}-{YYYY-MM-DD}.md? (yes / no / path)"
+  - WAIT user.reply
+
+RULES:
+  - ALWAYS write bookmark file in resolved artifact language
+  - ALWAYS include in bookmark file: header (input, role, audience, mode, date), numbered takeaways with clickable source refs, glossary section if non-empty
 ```
-File contains: header (input, role, audience, mode, date), numbered takeaways with clickable source refs, glossary section if non-empty. Written in resolved artifact language.
 
 ## TaskCreate Progress Tracking
 
-For plans with `N > 5` portions (note: review-mode `2 × N` may push this), after E1 plan approval:
-- Call `TaskCreate` once with one task per plan item
-- Mark each task `in_progress` when entering its portion (presentation portion in review)
-- Mark `completed` after navigation block emitted (challenge portion in review)
+```pdsl
+UNIT TaskCreateTracking
 
-For `N ≤ 5`, no TaskCreate (overhead not justified).
+PURPOSE:
+  Define when and how to use TaskCreate for plan progress tracking.
+
+WHEN:
+  - REQUIRE plan has more than 5 portions
+  - AND Phase E1 plan approval is received
+
+DO:
+  - RUN TaskCreate once with one task per plan item
+  - SET task status: in_progress when entering a portion (presentation portion in review)
+  - SET task status: completed after navigation block is emitted (challenge portion in review)
+
+RULES:
+  - NEVER call TaskCreate for plans with 5 or fewer portions; overhead not justified
+  - ALWAYS emit progress as inline telemetry log lines when TaskCreate is unavailable: "- [storytelling]: Portion 3/5 emitted"
+```
 
 ## Telemetry / Execution Logging
 
@@ -330,16 +469,22 @@ Inherits studio-skill execution logging style:
 
 ## Failure Modes
 
-| Condition | Behavior |
-|---|---|
-| Input not readable | Stop with suggestion (inherit `analyze.md` Phase 1) |
-| External resource — all fetch tiers (MCP / skill / CLI) failed or unavailable | User-fallback prompt with paste / local-path / cancel options (NO arbitrary shell-command option) |
-| Input registered, parent ID broken in registry | Warn, continue without that lateral candidate |
-| User asks question requiring external knowledge | Polite refuse + push to open-questions: `this requires knowledge beyond `{path}`, added to open questions` |
-| Methodology output exceeds soft cap (default 200 words) | Auto-trim with ack `trimmed to keep within format`; exceeds hard cap (default 350) → split into two portions sharing the plan-item index with letter suffixes (`3a`, `3b`) |
-| All forward nav slots vacuous | Mark End-of-thread; offer Wrap, Back, or Invoke skill `cf-analyze` as next step |
-| Diagram opportunity check fires but content has ≤2 entities and no structural relationships | Decline diagram in the `🎨 visualization:` marker with reason; continue with prose |
-| Glossary term has no clear definition in input | **Skip the inline gloss silently**. Do NOT invent a definition; do NOT push to open-questions on methodology's own initiative — open-questions are user-driven only. The first-mention term is used as-is without a parenthetical |
-| Wrap-time checkpoint write fails (permission, disk full) | Warn with the exact filesystem error; emit wrap output normally but flag in the Session block that checkpoint was NOT persisted; do NOT include `Resume this session` in Suggested Next Steps |
-| User mid-portion override (role / audience / format / mode / page-size / artifact-language) | Acknowledge, finish current portion under old settings, apply new from next portion |
-| Both `EXPLAIN_MODE` and `PROMPT_REVIEW` intent detected | Ask user to disambiguate before loading either methodology |
+```pdsl
+UNIT StorytellingFailureModes
+
+PURPOSE:
+  Define behavior for each known failure condition in the storytelling methodology.
+
+ON_ERROR:
+  input not readable -> EMIT stop with suggestion (inherit analyze.md Phase 1)
+  all fetch tiers failed or unavailable -> EMIT user-fallback prompt with paste / local-path / cancel options; NEVER include arbitrary shell-command option
+  input registered but parent ID broken in registry -> EMIT warning; continue without that lateral candidate
+  user asks question requiring external knowledge -> EMIT "this requires knowledge beyond {path}, added to open questions" and push to open-questions
+  output exceeds soft cap (default 200 words) -> auto-trim with EMIT "trimmed to keep within format"
+  output exceeds hard cap (default 350 words) -> split into two portions sharing the plan-item index with letter suffixes (3a, 3b)
+  all forward nav slots vacuous -> mark End-of-thread; EMIT_MENU offering Wrap / Back / Invoke skill cf-analyze
+  diagram opportunity fires but content has <=2 entities and no structural relationships -> decline diagram in visualization marker with reason; continue with prose
+  glossary term has no clear definition in input -> skip inline gloss silently; NEVER invent a definition; NEVER push to open-questions on methodology's own initiative
+  wrap-time checkpoint write fails -> EMIT warning with exact filesystem error; emit wrap output normally; flag in Session block that checkpoint was NOT persisted; NEVER include Resume this session in Suggested Next Steps
+  user mid-portion override -> acknowledge; finish current portion under old settings; apply new settings from next portion
+```

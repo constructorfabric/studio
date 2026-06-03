@@ -23,7 +23,7 @@ purpose: Enforcement protocol for AI agents executing Studio workflows (STRICT m
 <!-- /toc -->
 
 **Type**: Requirement
-**Applies**: Only when Rules Mode = STRICT (see `{cf-studio-path}/.core/requirements/execution-protocol.md`)
+**Applies**: Only when Rules Mode = STRICT (see `{cf-studio-path}/.core/skills/studio/protocol.md` § `ProtocolGuard`)
 
 ## Overview
 This protocol defines mandatory behaviors for AI agents executing Studio workflows when Studio rules are enabled. It prevents common agent failure modes through structural enforcement.
@@ -44,16 +44,17 @@ Known failure modes to actively avoid:
 | AP-007 | TEDIUM_AVOIDANCE | Skip thorough checklist review because it's "tedious" | Missing categories in validation output |
 | AP-008 | CONTEXT_ASSUMPTION | Assume file contents from previous context | System message says "file truncated" or "content summarized" + no fresh Read tool call in current turn |
 
-If agent exhibits any anti-pattern, workflow output is **INVALID**.
+```pdsl
+UNIT AntiPatternEnforcement
+
+PURPOSE:
+  Invalidate workflow output whenever any known anti-pattern is exhibited.
+
+RULES:
+  - ALWAYS invalidate workflow output when any AP-001 through AP-008 anti-pattern is detected
+```
 
 ## Mandatory Behaviors (STRICT mode)
-
-| Area | MUST | MUST NOT |
-|---|---|---|
-| **Reading Artifacts** | Use `Read` tool for every artifact being validated or referenced; output `Read {path}: {line_count} lines`; re-read files if context was compacted (check for "too large to include" warnings) | Rely on context summaries for validation decisions; assume file contents from previous turns; skip reading because "I already read it earlier" |
-| **Checklist Execution** | Use a todo tracking tool to track checklist progress category by category; process each checklist category individually; output PASS/FAIL/N/A for each category; provide evidence for each status claim | Batch all categories into single "PASS"; skip categories without explicit N/A justification; report completion without per-category breakdown |
-| **Evidence Standards** | For PASS: quote specific text (2-5 sentences) and include line numbers or section headers; for N/A: quote explicit "Not applicable because..." statement; for FAIL: state what is missing/incorrect and where it should be | For N/A, agent CANNOT decide N/A on behalf of document author; if no explicit N/A statement exists, report VIOLATION, not N/A |
-| **Self-Test Enforcement** | Self-test questions MUST be answered AFTER validation work, not before | If ANY self-test answer is NO or unverifiable, validation is INVALID and must restart |
 
 Evidence examples:
 
@@ -80,57 +81,170 @@ Agent self-test questions:
 5. Did I verify N/A claims have explicit document statements?
 6. Am I reporting based on actual file content, not memory/summary?
 
+```pdsl
+UNIT StrictModeCompliance
+
+PURPOSE:
+  Enforce mandatory reading, tracking, evidence, and self-test behaviors when Rules Mode is STRICT.
+
+WHEN:
+  - REQUIRE Rules Mode == STRICT
+
+DO:
+  - LOAD artifact under validation via Read tool
+  - EMIT "Read {path}: {line_count} lines"
+  - LOAD checklist for the artifact type via Read tool
+  - EMIT "Read {path}: {line_count} lines"
+  - RUN ChecklistExecution
+    NOTES: Use todo tracking tool; process each category individually; output PASS/FAIL/N/A per category with evidence.
+  - RUN ValidationOutput
+  - RUN SelfTest
+    NOTES: Self-test questions MUST be answered AFTER validation work is complete, not before.
+
+RULES:
+  - ALWAYS use the Read tool for every artifact being validated or referenced
+  - ALWAYS re-read files if context was compacted (check for "too large to include" or "content summarized" warnings)
+  - ALWAYS track checklist progress category by category using a todo tracking tool
+  - ALWAYS output PASS, FAIL, or N/A for each checklist category with evidence
+  - ALWAYS answer self-test questions after validation work is complete
+  - NEVER rely on context summaries for validation decisions
+  - NEVER assume file contents from previous turns
+  - NEVER skip a checklist category without an explicit N/A justification
+  - NEVER batch all checklist categories into a single PASS claim
+  - NEVER mark a category N/A unless the document contains an explicit statement confirming it
+  - NEVER report completion without a per-category breakdown
+
+NOTES:
+  Evidence standards:
+  - PASS: quote specific text (2-5 sentences) and include line numbers or section headers
+  - N/A: quote explicit "Not applicable because..." statement from the document; agent CANNOT decide N/A on behalf of document author — if no explicit statement exists, report VIOLATION
+  - FAIL: state what is missing/incorrect and where it should be
+```
+
 ## Validation Output Schema (STRICT mode)
 
-Agent MUST structure validation output with these six sections:
+```pdsl
+UNIT ValidationOutputSchema
 
-| Section | Required content |
-|---|---|
-| **1. Protocol Compliance** | Rules Mode: STRICT (`studio-sdlc`); Artifact Read: `{path}` (`{N}` lines); Checklist Loaded: `{path}` (`{N}` lines) |
-| **2. Deterministic Gate** | Status: PASS/FAIL; Errors: `{list if any}` |
-| **3. Semantic Review (MANDATORY)** | `Checklist Progress` table with `{ID} \| PASS/FAIL/N/A \| {quote or violation description}` for each category; `Categories Summary` with Total, PASS, FAIL, N/A (explicit), N/A (missing statement) → VIOLATIONS |
-| **4. Agent Self-Test** | Answers to all 6 self-test questions with evidence |
-| **5. Final Status** | Deterministic: PASS/FAIL; Semantic: PASS/FAIL (`{N}` issues); Overall: PASS/FAIL |
-| **6. Issues (if any)** | Detailed issue descriptions |
+PURPOSE:
+  Require the six-section structured output format for all STRICT mode validation reports.
 
-Free-form `PASS` or `looks good` without this structure is **INVALID** in STRICT mode.
+WHEN:
+  - REQUIRE Rules Mode == STRICT
+
+RULES:
+  - ALWAYS structure validation output with all six sections in order:
+      1. Protocol Compliance — Rules Mode: STRICT; Artifact Read: {path} ({N} lines); Checklist Loaded: {path} ({N} lines)
+      2. Deterministic Gate — Status: PASS/FAIL; Errors: {list if any}
+      3. Semantic Review (MANDATORY) — Checklist Progress table with {ID} | PASS/FAIL/N/A | {quote or violation description} per category; Categories Summary with Total, PASS, FAIL, N/A (explicit), N/A (missing statement) → VIOLATIONS
+      4. Agent Self-Test — answers to all 6 self-test questions with evidence
+      5. Final Status — Deterministic: PASS/FAIL; Semantic: PASS/FAIL ({N} issues); Overall: PASS/FAIL
+      6. Issues (if any) — detailed issue descriptions
+  - NEVER accept free-form "PASS" or "looks good" as valid output in STRICT mode
+  - NEVER omit the Semantic Review section when Deterministic Gate passes
+```
 
 ## Error Handling
 
-| Error | Required response | Action |
-|---|---|---|
-| Read tool fails | `⚠️ Cannot read artifact: {error}` → validation cannot proceed without artifact access → fix path/file/retry | STOP — validation requires artifact content |
-| Context compaction during validation | `⚠️ Context compacted during validation` → previous Read outputs may be summarized/truncated → MUST re-read all artifacts before continuing | Re-execute Read tool for all artifacts, then continue from current checkpoint |
-| Checklist file not found | `⚠️ Checklist not found: {path}` → cannot perform semantic validation without criteria → fix rules path / `artifacts.toml` configuration | STOP — semantic validation requires checklist |
+```pdsl
+UNIT ErrorHandling
+
+PURPOSE:
+  Define required responses and recovery actions for validation errors.
+
+WHEN:
+  - REQUIRE Rules Mode == STRICT
+
+ON_ERROR:
+  read_tool_fails ->
+    EMIT "⚠️ Cannot read artifact: {error}"
+    STOP_TURN
+    NOTES: Validation cannot proceed without artifact content; fix path/file and retry.
+
+  context_compacted_during_validation ->
+    EMIT "⚠️ Context compacted during validation"
+    NOTES: Previous Read outputs may be summarized or truncated.
+    RUN re-read all artifacts via Read tool
+    CONTINUE from current checkpoint
+
+  checklist_not_found ->
+    EMIT "⚠️ Checklist not found: {path}"
+    STOP_TURN
+    NOTES: Semantic validation requires checklist; fix rules path or artifacts.toml configuration.
+```
 
 ## Checkpoint Guidance
 
 When validating artifacts `>500` lines OR checklist has `>15` categories:
 
-| Situation | Required behavior |
-|---|---|
-| After each category group (3-5 categories) | Persist a durable progress checkpoint (to the agent's todo tracking tool or to a JSON file/DB — not solely conversation output) with `completedCategoryIDs`, `statuses`, `remainingCategoryIDs`, `artifactPath`, `artifactLineCount`, and `timestamp` |
-| Context runs low | Before any context compaction, write the same structured JSON checkpoint (`completedCategoryIDs`, `statuses`, `remainingCategoryIDs`, `artifactPath`, `artifactLineCount`, `timestamp`, plus resume instructions) to durable storage so it survives pruning |
-| Resume after compaction | Re-read the artifact, verify the current line count matches the saved `artifactLineCount`. If they differ → error path: log the discrepancy with details (saved vs current line count, artifact path, timestamps), mark the checkpoint as inconsistent, STOP automated resume, and surface an investigation/retry instruction to the user. Saved checkpoint metadata MUST include retry/backoff options and a manual-override flag so resumption logic can handle divergence safely. Only when line counts match → continue from the recorded position |
+```pdsl
+UNIT CheckpointGuidance
+
+PURPOSE:
+  Persist durable progress checkpoints during large artifact or long checklist validation.
+
+WHEN:
+  - REQUIRE artifact line count > 500
+  - OR checklist category count > 15
+
+DO:
+  - REQUIRE checkpoint is persisted after each group of 3-5 categories
+    NOTES: Checkpoint fields: completedCategoryIDs, statuses, remainingCategoryIDs, artifactPath, artifactLineCount, timestamp.
+           Target: todo tracking tool or JSON file/DB — not solely conversation output.
+  - REQUIRE checkpoint is written to durable storage before any context compaction
+    NOTES: Pre-compaction checkpoint adds: resume instructions, retry/backoff options, manual-override flag.
+
+ON_ERROR:
+  resume_after_compaction ->
+    LOAD artifact via Read tool
+    REQUIRE current line count == saved artifactLineCount
+    NOTES: On mismatch: EMIT discrepancy details (saved vs current line count, artifact path,
+           timestamps); SET checkpoint status = inconsistent; STOP_TURN.
+           Surface investigation/retry instruction to user; do not auto-resume on divergence.
+           Checkpoint metadata MUST include retry/backoff options and a manual-override flag.
+    CONTINUE from recorded checkpoint position
+```
 
 ## Recovery from Anti-Pattern Detection
 
-If agent or user detects anti-pattern violation:
+```pdsl
+UNIT AntiPatternRecovery
 
-1. **Acknowledge** — `I exhibited anti-pattern {ID}: {description}`
-2. **Explain** — `This happened because {honest reason}`
-3. **Discard** — `Previous validation output is INVALID`
-4. **Restart** — Execute full protocol from beginning
-5. **Prove** — Include compliance evidence in new output
+PURPOSE:
+  Execute the five-step recovery sequence whenever an anti-pattern violation is detected.
+
+WHEN:
+  - REQUIRE anti-pattern violation is detected by agent or user
+
+DO:
+  - EMIT "I exhibited anti-pattern {ID}: {description}"
+  - EMIT "This happened because {honest reason}"
+  - EMIT "Previous validation output is INVALID"
+  - RUN full compliance protocol from beginning
+  - EMIT compliance evidence in new output
+
+RULES:
+  - ALWAYS complete all five recovery steps in order
+  - NEVER resume from or append to prior invalid validation output after detection
+```
 
 ## Relaxed Mode Behavior
 
-When Rules Mode = RELAXED (no Studio rules):
+```pdsl
+UNIT RelaxedModeBehavior
 
-- This compliance protocol does NOT apply
-- Agent uses best judgment
-- Output includes disclaimer: `⚠️ Validated without Studio rules (reduced rigor)`
-- User accepts reduced confidence in results
+PURPOSE:
+  Apply no compliance enforcement and emit a reduced-rigor disclaimer when Rules Mode is RELAXED.
+
+WHEN:
+  - REQUIRE Rules Mode == RELAXED
+
+DO:
+  - EMIT "⚠️ Validated without Studio rules (reduced rigor)"
+
+RULES:
+  - NEVER apply the STRICT compliance protocol when Rules Mode == RELAXED
+```
 
 ## Consolidated Validation Checklist
 

@@ -33,13 +33,3 @@ RULES:
   - NEVER proceed to Phase 2 if any path fails
 ```
 
-## Phase 1: File Existence Check
-
-Check every path in `{PATHS}` (defaults to `[{PATH}]`; expanded by `workflows/analyze/phase-0.5-scope.md` § Consistency-path capture when consistency review is in scope) exists, is readable, and is not empty.
-
-If any check fails for any path in `{PATHS}`:
-```
-✗ Target not found: {failing path}
-→ Invoke skill `cf-generate` to create it (resolve the failing path's kind via {cf-studio-path}/config/artifacts.toml when multiple paths are in scope)
-```
-STOP analysis.

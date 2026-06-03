@@ -49,6 +49,8 @@ STATE:
     default: null
   - SET STORYTELLING_AUDIENCE: string | null
     default: null
+  - SET STORYTELLING_ARTIFACT_LANGUAGE: string | null
+    default: null
   - SET STORYTELLING_CONTEXT_PACK_STRATEGY: string | null
     default: null
   - SET STORYTELLING_PLAN_APPROVED: false | true
@@ -73,7 +75,8 @@ DO:
   - RUN PRESERVE route-supplied preset variables if already set by routing:
     CF_HELP_PRESET, EXPLAIN_TARGET, STORYTELLING_MODE,
     STORYTELLING_ARTIFACT_DISPOSITION, STORYTELLING_AUDIENCE,
-    STORYTELLING_CONTEXT_PACK_STRATEGY, STORYTELLING_PLAN_APPROVED,
+    STORYTELLING_ARTIFACT_LANGUAGE, STORYTELLING_CONTEXT_PACK_STRATEGY,
+    STORYTELLING_PLAN_APPROVED,
     STORYTELLING_DIAGRAM_FORMAT, STORYTELLING_DIAGRAM_FORMAT_PRESET,
     STORYTELLING_HELP_GOAL
   - REQUIRE CF_HELP_PRESET == true:
@@ -134,7 +137,7 @@ DO:
     - NEVER Phase 5 (Storytelling Output emits Suggested Next Steps)
     - SET enforceRemediationPrompts = false
     - NEVER emitting analyze remediation prompt blocks
-  - REQUIRE EXPLAIN_MODE == true AND PROMPT_REVIEW intent also detected:
+  - REQUIRE EXPLAIN_MODE == true AND (PROMPT_REVIEW == true OR PROMPT_BUG_REVIEW == true):
     - EMIT_MENU StorytellingVsPromptReviewMenu
     - WAIT user.reply
     - STOP_TURN
@@ -143,7 +146,7 @@ MENU StorytellingVsPromptReviewMenu:
   TITLE: "Your request combines storytelling and prompt-review intent. Which should I run?"
   OPTIONS:
     1 -> SET EXPLAIN_MODE = true; proceed with storytelling walkthrough
-    2 -> SET PROMPT_REVIEW = true; SET EXPLAIN_MODE = false; proceed with prompt engineering review
+    2 -> SET PROMPT_REVIEW = true; SET PROMPT_BUG_REVIEW = true; SET EXPLAIN_MODE = false; proceed with prompt engineering review
   INVALID:
     EMIT "Reply `1` or `2`."
     WAIT user.reply
@@ -210,5 +213,3 @@ NOTES:
   Plain analyze intent stays in standard analyze: ordinary review/audit/inspection
     NEVER auto-enter EXPLAIN_MODE.
 ```
-
-Implementation note: the `AnalyzePreamble` unit above is authoritative. Keep routing here, defer full methodologies to the matched sub-agents, and enforce the same first-turn storytelling contract: when `EXPLAIN_MODE=true`, the next user-visible message is the E0/E1 opener. For prompt-review routes, compact-prompts optimization stays **HIGH** priority and interaction UX stays **CRITICAL**.

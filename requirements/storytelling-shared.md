@@ -23,90 +23,136 @@ description: "Cross-cutting storytelling rules — portion shape (Body + Mode-le
 
 Non-socratic modes deliver:
 
-1. Opening paragraph
-2. **Body** (text, ≤ resolved `page_size_soft` words, default 200)
-3. Mode-lens mid-section (per-mode rhythm per `storytelling-modes.md`)
-4. **Navigation topic candidates**: maintain Next, Deeper, and Lateral candidate lists. Next candidates include upcoming plan items plus completed topics that can be revisited. Deeper/Lateral candidates each have a short label + 1-line preview. Do not dump candidate lists inside every portion; bare `Next` / `Deeper` / `Lateral` opens a numbered topic-pick menu. Direct shortcuts `Next N` / `Deeper N` / `Lateral N` may execute a candidate immediately.
-5. Source refs (clickable Markdown links)
-6. `🎨 visualization:` decision marker
-7. Progress marker (`📍 {idx}/{N}`)
-8. 7-slot navigation block — Next / Deeper / Lateral / Recap / Ask / Wrap / Back, Next-first order (see §7-Slot Navigation Block below)
+```pdsl
+UNIT portion_shape_e2
+PURPOSE: Define the mandatory output shape for every non-socratic mode portion.
+DO:
+  - EMIT opening_paragraph
+  - EMIT body: text ≤ resolved page_size_soft words (default 200)
+  - EMIT mode_lens_section: per-mode rhythm per storytelling-modes.md
+  - EMIT next_candidates: upcoming plan items plus completed/revisitable topics; each with short label + 1-line preview
+  - EMIT deeper_candidates: drill-down candidates for current topic; each with short label + 1-line preview
+  - EMIT lateral_candidates: related-topic candidates at same depth; each with short label + 1-line preview
+  - EMIT source_refs: clickable Markdown links
+  - EMIT visualization_marker: 🎨 visualization: decision marker
+  - EMIT progress_marker: 📍 {idx}/{N}
+  - EMIT nav_block: 7-slot navigation block, Next-first order (see §7-Slot Navigation Block)
+RULES:
+  - NEVER dump candidate lists inside the portion body
+  - ALWAYS open a numbered topic-pick menu on bare Next / Deeper / Lateral input
+  - ALWAYS execute a candidate immediately on direct shortcuts Next N / Deeper N / Lateral N
+```
 
 ## 7-Slot Navigation Block
 
 Next-first order (slot 1 always first):
 
-1. **Next** — open a numbered menu of upcoming/revisit plan topics (keyword: `Next`; shortcut: `Next {N}`)
-2. **Deeper** — open a numbered menu of drill-down candidates for the current topic (keyword: `Deeper`; shortcut: `Deeper {N}`)
-3. **Lateral** — open a numbered menu of related-topic candidates at the same depth (keyword: `Lateral`; shortcut: `Lateral {N}`)
-4. **Recap** — summary so far (keyword: `Recap`)
-5. **Ask** — free-form question (keyword: `Ask`)
-6. **Wrap** — end session (keyword: `Wrap`)
-7. **Back** — return to the previous portion or previous menu (keyword: `Back`)
-
-One mandatory `→ suggested: N` line per portion (current best-fit slot). `go` or Enter alone executes suggested slot; bare `next` opens the Next topics menu.
-
-When the user picks slot 1, 2, or 3, render the matching topic menu and STOP_TURN
-before delivering a new portion:
-
-```text
-Next topics:
-  1. Continue — {next plan item label} — {one-line preview}
-  2. Skip ahead — {later plan item label} — {one-line preview}
-  3. Revisit — {completed/current topic label} — {one-line preview}
-  ...
-  N. Custom — tell me which planned topic to jump to or revisit
-  N+1. Back — return to the main navigation
-→ suggested: {S}
+```pdsl
+UNIT seven_slot_nav_block
+PURPOSE: Emit the 7-slot navigation block at the end of every non-socratic portion.
+DO:
+  - EMIT_MENU nav_block:
+      TITLE: navigation
+      OPTIONS:
+        1. Next — open numbered menu of upcoming/revisit plan topics (keyword: Next; shortcut: Next {N})
+        2. Deeper — open numbered menu of drill-down candidates (keyword: Deeper; shortcut: Deeper {N})
+        3. Lateral — open numbered menu of related-topic candidates (keyword: Lateral; shortcut: Lateral {N})
+        4. Recap — summary so far (keyword: Recap)
+        5. Ask — free-form question (keyword: Ask)
+        6. Wrap — end session (keyword: Wrap)
+        7. Back — return to previous portion or previous menu (keyword: Back)
+  - EMIT → suggested: {S}
+RULES:
+  - ALWAYS render slots in Next-first order (1 through 7)
+  - ALWAYS include exactly one → suggested: N line per portion
+  - ALWAYS execute suggested slot when user inputs go or Enter alone
+  - ALWAYS open the Next topics menu when user inputs bare next
 ```
 
-```text
-Deeper topics:
-  1. {candidate label} — {one-line preview}
-  2. {candidate label} — {one-line preview}
-  ...
-  N. Custom — tell me what to drill into
-  N+1. Back — return to the main navigation
-→ suggested: {S}
-```
+bare `Next` / `Deeper` / `Lateral` opens a numbered topic-pick menu; a shortcut like `Next 2` executes immediately without a menu.
 
-```text
-Lateral topics:
-  1. {candidate label} — {one-line preview}
-  2. {candidate label} — {one-line preview}
-  ...
-  N. Custom — tell me where to go sideways
-  N+1. Back — return to the main navigation
-→ suggested: {S}
-```
+When slot 1, 2, or 3 is selected, render the matching topic menu then STOP_TURN before delivering a new portion:
 
-If the user picks `Custom`, ask for one free-text topic. If no candidate list can
-be generated, still render a menu with `1. Custom ...` and `2. Back to the main
-navigation`.
+```pdsl
+UNIT topic_menu_dispatch
+PURPOSE: Render a numbered topic-pick menu and stop the turn when slot 1, 2, or 3 is selected.
+WHEN:
+  - REQUIRE user selects slot 1 (Next), 2 (Deeper), or 3 (Lateral)
+DO:
+  - DISPATCH slot 1 ->
+      EMIT_MENU:
+        TITLE: Next topics
+        OPTIONS:
+          1. Continue — {next plan item label} — {one-line preview}
+          2. Skip ahead — {later plan item label} — {one-line preview}
+          3. Revisit — {completed/current topic label} — {one-line preview}
+          N. Custom — tell me which planned topic to jump to or revisit
+          N+1. Back — return to the main navigation
+  - DISPATCH slot 2 ->
+      EMIT_MENU:
+        TITLE: Deeper topics
+        OPTIONS:
+          1. {candidate label} — {one-line preview}
+          N. Custom — tell me what to drill into
+          N+1. Back — return to the main navigation
+  - DISPATCH slot 3 ->
+      EMIT_MENU:
+        TITLE: Lateral topics
+        OPTIONS:
+          1. {candidate label} — {one-line preview}
+          N. Custom — tell me where to go sideways
+          N+1. Back — return to the main navigation
+  - EMIT → suggested: {S}
+  - STOP_TURN
+RULES:
+  - NEVER deliver a new portion before the user picks from the topic menu
+  - ALWAYS ask for one free-text topic when user picks Custom
+ON_ERROR:
+  no_candidates -> EMIT_MENU with "1. Custom" and "2. Back to the main navigation"
+```
 
 ## Source-Grounding Rules
 
 Per Anti-Patterns #16, #17, #19, #20:
 
-- Every non-trivial claim: **clickable Markdown link** source ref (NOT plain-text `(DESIGN.md §4.2)`)
-- PR/MR analysis: files-in-diff use PR-view inline-diff URLs (`/pull/{N}/files#diff-{hash}R{a}-R{b}`); files NOT in diff use blob/SHA
-- Ungrounded claims: omit rather than fabricate — no `[?]` markers; no
-  agent-initiated open-questions. When the user directly asks for unavailable
-  information, state the input does not cover it and create the user-driven
-  open-question entry.
-- Source quotes: original artifact language; chat replies follow user prompt language
+```pdsl
+UNIT source_grounding
+PURPOSE: Enforce clickable source references and prevent ungrounded claims.
+RULES:
+  - ALWAYS attach a clickable Markdown link source ref to every non-trivial claim
+  - NEVER use plain-text citations (e.g. (DESIGN.md §4.2))
+  - ALWAYS use PR-view inline-diff URLs for files in diff (/pull/{N}/files#diff-{hash}R{a}-R{b}); use blob/SHA for files not in diff
+  - NEVER fabricate ungrounded claims; omit rather than invent; no [?] markers; no agent-initiated open-questions
+  - ALWAYS use original artifact language for source quotes; follow user prompt language for chat replies
+  - ALWAYS create a user-driven open-question entry when the user directly asks for information the input does not cover
+```
 
 ## Path Conventions (Portability)
 
 Per Anti-Pattern #28e; see `{cf-studio-path}/.core/requirements/storytelling-preferences.md` §Path Conventions for full scope.
 
-- ALL written artifacts and internal cross-references: **relative paths** from project root
-- Forbidden absolute prefixes: `/Users/...`, `/Volumes/...`, `/home/...`, `C:\...`
-- Template variables (e.g. `cf-path`, `project_root`): convert to relative-from-project-root before write or chat-display
-- Relative-within-package: `../` prefixes computed per artifact location; same for exports
+```pdsl
+UNIT path_conventions
+PURPOSE: Enforce relative-path portability for all written artifacts and cross-references.
+RULES:
+  - ALWAYS use relative paths from project root in all written artifacts and internal cross-references
+  - NEVER write absolute prefixes: /Users/..., /Volumes/..., /home/..., C:\...
+  - ALWAYS convert template variables (e.g. cf-path, project_root) to relative-from-project-root before write or chat-display
+  - ALWAYS compute ../ prefixes per artifact location for relative-within-package references and exports
+```
 
 ## Language Complexity
 
-Every chat message AND every artifact write self-checks against resolved `language_complexity` (low/middle/high; default middle).
-
-Source quotes exempt (verbatim). See `{cf-studio-path}/.core/requirements/language-complexity.md` for the full rule.
+```pdsl
+UNIT language_complexity_check
+PURPOSE: Self-check every output against the resolved language_complexity setting.
+WHEN:
+  - REQUIRE resolved language_complexity (low / middle / high; default middle)
+DO:
+  - RUN self-check against language_complexity on every chat message
+  - RUN self-check against language_complexity on every artifact write
+RULES:
+  - NEVER apply language_complexity to source quotes (verbatim exempt)
+NOTES:
+  Full rule: {cf-studio-path}/.core/requirements/language-complexity.md
+```

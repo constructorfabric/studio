@@ -21,6 +21,20 @@ RULES:
 ```
 
 ```pdsl
+UNIT AnalyzeModeDirective
+PURPOSE: Set cf skill mode and capture original intent before any phase work begins.
+DO:
+  - SET CF_MODE = "cf-analyze"
+  - SET ORIGINAL_INTENT = user's triggering request (verbatim or shortest faithful summary)
+RULES:
+  - ALWAYS SET CF_MODE = "cf-analyze" as the first action after bootstrap
+  - ALWAYS capture ORIGINAL_INTENT from the user's triggering message before any sub-agent dispatch
+  - ALWAYS carry ORIGINAL_INTENT into Phase 0 dependencies as the task field
+  - ALWAYS include ORIGINAL_INTENT in every reviewer and validator dispatch payload as task context
+  - NEVER leave CF_MODE unset when entering this workflow
+```
+
+```pdsl
 UNIT AnalyzePreambleLoader
 PURPOSE: Load preamble before any other phase.
 DO:

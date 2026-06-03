@@ -12,27 +12,27 @@ UNIT AnalyzeFixPromptTemplate
 PURPOSE:
   Emit the self-contained Fix Prompt when the user selects remediation option 2.
 
+DO:
+  - EMIT fix prompt:
+      Invoke skill `cf`.
+
+      Invoke skill `cf-generate`.
+
+      I need a bounded fix for `{PATH}` ({KIND}).
+
+      Analysis status: {PASS|FAIL|PARTIAL}
+      Deterministic gate: {exit code, errors, warnings — or "skipped"}
+
+      Issues to fix (source of truth — do not re-discover):
+      {numbered full issue list with severity, file, line, evidence, root cause}
+
+      Fix root causes, update tests/validation where needed, and report results.
+      Do not ask me to restate the task unless required inputs are missing.
+
 RULES:
   - ALWAYS emit as the FINAL section of the response
   - ALWAYS start with "Invoke skill `cf`"
   - ALWAYS be self-contained: include PATH, KIND, status, and full numbered issue list
   - ALWAYS embed all findings with severity, file, line, evidence, root cause
   - NEVER omit any actionable finding
-```
-
-```text
-Invoke skill `cf`.
-
-Invoke skill `cf-generate`.
-
-I need a bounded fix for `{PATH}` ({KIND}).
-
-Analysis status: {PASS|FAIL|PARTIAL}
-Deterministic gate: {exit code, errors, warnings — or "skipped"}
-
-Issues to fix (source of truth — do not re-discover):
-{numbered full issue list with severity, file, line, evidence, root cause}
-
-Fix root causes, update tests/validation where needed, and report results.
-Do not ask me to restate the task unless required inputs are missing.
 ```

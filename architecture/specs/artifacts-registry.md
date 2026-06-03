@@ -1015,7 +1015,6 @@ extensions = [".ts"]
 
 **Related**:
 - `sysprompts.md` - Project system prompts (`{cf-studio-path}/config/sysprompts/` + `config/AGENTS.md`)
-- `execution-protocol.md` - Workflow execution protocol
 
 ---
 
