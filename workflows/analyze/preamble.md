@@ -33,6 +33,8 @@ STATE:
     default: false
   - SET ARTIFACT_REVIEW: false | true
     default: false
+  - SET FREEFORM_REVIEW: false | true
+    default: false
   - SET CF_PHASE_GATE: armed
     default: armed
     reset: start of workflow run
@@ -71,7 +73,7 @@ DO:
     SEMANTIC_ONLY=false, CHANGE_REVIEW=false, CODE_REVIEW=false,
     CODE_BUG_REVIEW=false, CONSISTENCY_REVIEW=false, PROMPT_REVIEW=false,
     PROMPT_BUG_REVIEW=false, EXPLAIN_MODE=false, ARTIFACT_REVIEW=false,
-    CF_PHASE_GATE=armed, enforceRemediationPrompts=true
+    FREEFORM_REVIEW=false, CF_PHASE_GATE=armed, enforceRemediationPrompts=true
   - RUN PRESERVE route-supplied preset variables if already set by routing:
     CF_HELP_PRESET, EXPLAIN_TARGET, STORYTELLING_MODE,
     STORYTELLING_ARTIFACT_DISPOSITION, STORYTELLING_AUDIENCE,
@@ -126,6 +128,28 @@ DO:
        routing defects, root-cause search):
       - SET PROMPT_BUG_REVIEW = true
       - NEVER opening prompt-bug-finding.md in the orchestrator
+  - REQUIRE all standard methodology flags are false (CODE_REVIEW=false,
+    CODE_BUG_REVIEW=false, CONSISTENCY_REVIEW=false, PROMPT_REVIEW=false,
+    PROMPT_BUG_REVIEW=false, CHANGE_REVIEW=false, ARTIFACT_REVIEW=false)
+    AND CF_HELP_PRESET=false AND EXPLAIN_MODE=false
+    AND ORIGINAL_INTENT has meaningful task content (user provided a request,
+    question, custom instruction, or custom prompt that did not match any
+    standard methodology — i.e. ORIGINAL_INTENT is NOT a bare /cf-analyze or
+    "cf analyze" invocation with no additional text):
+    - SET FREEFORM_REVIEW = true
+    - NEVER opening any methodology checklist, reviewer file, or bug-finding file
+      in the orchestrator for this path
+  - REQUIRE all methodology flags including FREEFORM_REVIEW are false
+    (CODE_REVIEW=false, CODE_BUG_REVIEW=false, CONSISTENCY_REVIEW=false,
+    PROMPT_REVIEW=false, PROMPT_BUG_REVIEW=false, CHANGE_REVIEW=false,
+    ARTIFACT_REVIEW=false, FREEFORM_REVIEW=false)
+    AND CF_HELP_PRESET=false AND EXPLAIN_MODE=false
+    AND ORIGINAL_INTENT contains no identifiable analysis target
+    (bare skill invocation such as /cf-analyze or cf analyze with no task text):
+    - EMIT "What would you like me to analyze? Describe the target — e.g. a file path, directory, artifact name, PR number, diff, or paste content — and the review type (code review, prompt review, artifact validation, change review, or other)."
+    - WAIT user.reply
+    - STOP_TURN
+    - NEVER route to or invoke AmbiguousRoutingFallback for this case; this is an in-workflow scope prompt, not a routing fallback
   - REQUIRE multiple methodology flags are true:
     Phase 3 dispatches multiple sub-agents
   - REQUIRE explicit pedagogical/storytelling intent:
@@ -175,6 +199,18 @@ INVARIANTS:
   - ALWAYS set enforceRemediationPrompts=false ONLY when EXPLAIN_MODE=true
   - ALWAYS Each methodology is loaded by exactly one matched sub-agent; the orchestrator
     only routes and merges outputs
+  - NEVER apply or invoke AmbiguousRoutingFallback from within the analyze workflow;
+    when the triggering request is a bare skill invocation with no target or methodology
+    (e.g. /cf-analyze, cf analyze alone), ALWAYS ask for the missing target or scope
+    inline using the no-target gate above — never fall back to the routing menu
+  - ALWAYS FREEFORM_REVIEW is mutually exclusive with the no-target state: if
+    FREEFORM_REVIEW=true, ORIGINAL_INTENT always contains a meaningful task/request
+    to use as freeform analysis criteria; NEVER set FREEFORM_REVIEW=true for a bare
+    /cf-analyze invocation with no task text
+  - ALWAYS FREEFORM_REVIEW is set only when no standard methodology flag matched;
+    NEVER set FREEFORM_REVIEW=true when any of CODE_REVIEW, CODE_BUG_REVIEW,
+    CONSISTENCY_REVIEW, PROMPT_REVIEW, PROMPT_BUG_REVIEW, CHANGE_REVIEW,
+    ARTIFACT_REVIEW, CF_HELP_PRESET, or EXPLAIN_MODE is true
 
 ```pdsl
 UNIT HelpPresetStorytellingFirstOutputContract

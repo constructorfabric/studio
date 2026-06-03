@@ -54,10 +54,17 @@ NOTES:
                      a separate code bug-finder against design requirements
     Prompt review  = dispatch prompt-engineering reviewer and, when defect-oriented,
                      a separate prompt-bug-finder for instruction documents
+    Freeform       = user-supplied custom criteria/question; no fixed checklist;
+                     dispatches cf-semantic-reviewer-freeform with freeform_prompt=ORIGINAL_INTENT;
+                     cf-explorer required (REQUIRE_EXPLORE) so RESOURCE_CONTEXT is available
+                     to the reviewer; findings in Rf namespace;
+                     triggered when ORIGINAL_INTENT has meaningful task content and no
+                     standard methodology keyword matches
 
   Skill invocations: cf-analyze, cf-analyze semantic,
                      cf-analyze --artifact <path>,
-                     cf-analyze semantic --artifact <path>
+                     cf-analyze semantic --artifact <path>,
+                     cf-analyze <any custom request or question> (triggers freeform mode)
 
   Change-review triggers: "review commit <sha>", "review this diff",
     "review my changes", "review branch <name>", "review the <worktree> worktree",

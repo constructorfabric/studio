@@ -35,6 +35,8 @@ STATE:
     default: false
   - SET CONSISTENCY_REVIEW: false | true
     default: false
+  - SET FREEFORM_REVIEW: false | true
+    default: false
     scope: workflow_run
 
 DO:
@@ -50,6 +52,12 @@ DO:
                                     - SET CODE_REVIEW = true
     IF CODE_REVIEW AND request contains bug/defect/regression/root cause/crash/broken/hunt:
                                     - SET CODE_BUG_REVIEW = true
+    IF FREEFORM_REVIEW is not yet true AND all standard methodology flags are still
+       false (CODE_REVIEW=false, CODE_BUG_REVIEW=false, CONSISTENCY_REVIEW=false,
+       PROMPT_REVIEW=false, PROMPT_BUG_REVIEW=false, CHANGE_REVIEW=false,
+       ARTIFACT_REVIEW=false) AND EXPLAIN_MODE=false AND ORIGINAL_INTENT has
+       meaningful task content:
+                                    - SET FREEFORM_REVIEW = true
   - NEVER opening code methodology files in the orchestrator
   - NEVER opening prompt methodology files in the orchestrator
   - LOAD {cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md
