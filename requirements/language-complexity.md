@@ -77,15 +77,21 @@ DO:
       SET session_override = {level}
       EMIT confirmation of new level; note that project config is NOT updated
   - DISPATCH "remember new language complexity":
-      REQUIRE session_override is set; if absent, LOAD resolved_level via LANGUAGE_COMPLEXITY_RESOLVE as fallback
-      SET current_override = session_override if set; otherwise SET current_override = resolved_level
+      RUN WHEN session_override is set:
+        SET current_override = session_override
+      RUN WHEN session_override is not set:
+        LOAD resolved_level via LANGUAGE_COMPLEXITY_RESOLVE
+        SET current_override = resolved_level
+      REQUIRE current_override in [low, middle, high]
       LOAD [language] table from config_path (create table if absent; preserve all unrelated keys)
       SET [language] complexity = current_override in config_path
-      EMIT confirmation of persisted value only after successful write
+      EMIT confirmation of persisted value
   - DISPATCH "show language complexity":
       LOAD resolved_level and its source via LANGUAGE_COMPLEXITY_RESOLVE
       EMIT resolved_level and source (override / config / default)
 RULES:
   - NEVER update project config when processing "change language complexity to {level}"
   - ALWAYS preserve unrelated keys in core.toml when writing [language] complexity
+ON_ERROR:
+  config_write_fails -> RETURN error; NEVER emit success confirmation
 ```
