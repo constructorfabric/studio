@@ -223,12 +223,21 @@ DO:
   # Panel dispatch — build question_queue
   - LOAD {cf-studio-path}/.core/skills/studio/agents/cf-brainstorm-panel.md
     NOTES: Open, load, and strictly follow the agent contract from that file.
-           Payload: panel=synthesized_roles, topic="{plan-item}: challenge",
-                    resource_context=context_slice, mode="topic",
-                    protocol="independent-then-critique".
-           From the result: flatten contributions into question_queue
-             ordered by panel order then question order within each contribution.
-           Each item: { queue_index, persona, text, rationale, status="pending" }.
+           Payload (match the agent's frozen input contract):
+             panel=synthesized_roles,
+             topic={ id, text: "{plan-item}", section },
+             state (kind, rules_loaded, panel, decisions, rounds, round_count, ...),
+             round_number,
+             resource_context=context_slice,
+             mode="challenge",
+             protocol="independent-then-critique".
+           Transform the returned envelope (blocks[]) into question_queue:
+             take ONLY blocks[].kind=="independent" rows
+               ({persona_id, question_id, decision_key, text, proposed_default,
+                 rationale, stance}); ignore critique blocks.
+             Map each independent row to a question_queue item
+               { queue_index, persona: persona_id, text, rationale, status="pending" },
+               with queue_index ordered by panel order then question order.
            ON empty question_queue:
              EMIT "No questions generated for this topic.";
              EMIT_MENU ChallengePostRoundMenu; WAIT user.reply; STOP_TURN.
@@ -255,16 +264,16 @@ PURPOSE:
 DO:
   - SET q = first question_queue item with status == "pending"
 
-  - REQUIRE q is null:
-    - EMIT "Challenge complete. Returning to {plan-item}..."
-    - EMIT_MENU ChallengePostRoundMenu
+  - REQUIRE q is not null:
+    - EMIT Q{q.queue_index}/{total} — {q.persona}
+    - EMIT "{q.text}"
+    - EMIT "Why it matters: {q.rationale}"
+    - EMIT_MENU ChallengeReactionMenu
     - WAIT user.reply
     - STOP_TURN
 
-  - EMIT Q{q.queue_index}/{total} — {q.persona}
-  - EMIT "{q.text}"
-  - EMIT "Why it matters: {q.rationale}"
-  - EMIT_MENU ChallengeReactionMenu
+  - EMIT "Challenge complete. Returning to {plan-item}..."
+  - EMIT_MENU ChallengePostRoundMenu
   - WAIT user.reply
   - STOP_TURN
 
