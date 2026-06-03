@@ -44,7 +44,7 @@ skills/studio/scripts/studio/      # Studio engine package
   .gen/                             # Generated aggregates
   config/                           # User-editable config + auto-config outputs
 
-tests/                              # 44 pytest modules + shared conftest/bootstrap
+tests/                              # 99 test modules + shared conftest/bootstrap
 ```
 
 ## Two-Package Design
@@ -95,3 +95,4 @@ Kits provide templates, rules, checklists, workflows, scripts, and constraints a
 | `src/studio_proxy/cache.py` | Owns GitHub/local cache population semantics |
 | `.bootstrap/config/artifacts.toml` | Source of truth for systems, artifacts, codebases |
 | `tests/conftest.py` | sys.path setup — must include all source roots |
+| `skills/studio/scripts/studio/utils/workspace.py` | Workspace config loading, source discovery, and sync helpers |

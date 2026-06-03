@@ -131,6 +131,9 @@ DO:
     Build reviewer dispatch payload per task:
       artifact tasks        -> target_paths = task.path_partition
       code / code-bug tasks -> code_paths   = task.path_partition
+      freeform tasks        -> target_paths = task.path_partition,
+                               freeform_prompt = task.freeform_prompt (= work_request),
+                               resource_context = RESOURCE_CONTEXT (verbatim JSON or null)
       prompt / prompt-bug   -> target_paths=prompt_targets scoped to task.path_partition
       consistency tasks     -> target_paths = task.path_partition
       prompt / prompt-bug   -> include prompt_context_view slices only for
@@ -161,17 +164,17 @@ DO:
       INVARIANT: unblocked groups that do not transitively depend on the failed group ALWAYS still be dispatched via cf-* sub-agent dispatch — local analysis NEVER substitute for them even after a sibling group fails.
       Before each later group: mark BLOCKED_BY_FAILED_DEP any group whose transitive depends_on set contains a failed group
       When all unblocked groups complete:
-        Merge findings per namespace: V, Ra, Rc, Rcb, Rp, Rpb, Rcons
+        Merge findings per namespace: V, Ra, Rc, Rcb, Rp, Rpb, Rcons, Rf
         Renumber within each namespace from 001
         - SET PARTIAL = true
         - CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-3-to-4-checkpoint.md with PARTIAL=true
     IF any task returned PARTIAL_CHECKPOINT:
       Finish independent unblocked groups
-      Merge findings per namespace: V, Ra, Rc, Rcb, Rp, Rpb, Rcons
+      Merge findings per namespace: V, Ra, Rc, Rcb, Rp, Rpb, Rcons, Rf
       Renumber within each namespace from 001
       - CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-3-to-4-checkpoint.md with PARTIAL=true
         carry semantic_partial_checkpoints, completed findings, dispatch statuses, resume inputs
-  - RUN Merge findings per namespace: V, Ra, Rc, Rcb, Rp, Rpb, Rcons
+  - RUN Merge findings per namespace: V, Ra, Rc, Rcb, Rp, Rpb, Rcons, Rf
   - RUN Renumber within each namespace from 001
   - CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-3-to-4-checkpoint.md
 
@@ -213,14 +216,24 @@ DO:
     - DISPATCH cf-semantic-reviewer-consistency
   - REQUIRE CONSISTENCY_REVIEW=true AND len(target_paths) < 2:
     - EMIT "consistency-skipped: single-target"
+  - REQUIRE FREEFORM_REVIEW=true:
+    - LOAD+USE contract cf-semantic-reviewer-freeform; fail-closed if missing/unread/unused
+    - DISPATCH cf-semantic-reviewer-freeform with:
+        freeform_prompt = ORIGINAL_INTENT
+        target_paths    = target_paths
+        resource_context = RESOURCE_CONTEXT (pass verbatim JSON, or null if explore was skipped)
+        kit_rules_path  = kit_rules_path
+        rules_mode      = rules_mode
+        cross_ref_paths = cross_refs
+    findings under Rf namespace
   - RUN For PARTIAL_CHECKPOINT returns:
     - SET PARTIAL = true
     Store in semantic_partial_checkpoints; merge supported findings
-    Merge findings per namespace: V, Ra, Rc, Rcb, Rp, Rpb, Rcons
+    Merge findings per namespace: V, Ra, Rc, Rcb, Rp, Rpb, Rcons, Rf
     Renumber within each namespace from 001
     - CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-3-to-4-checkpoint.md with PARTIAL=true
     - NEVER claiming clean semantic coverage until checkpoint resumed and completed
-  - RUN Merge findings per namespace: V, Ra, Rc, Rcb, Rp, Rpb, Rcons
+  - RUN Merge findings per namespace: V, Ra, Rc, Rcb, Rp, Rpb, Rcons, Rf
   - RUN Renumber within each namespace from 001
   - CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-3-to-4-checkpoint.md
 
@@ -264,6 +277,7 @@ NOTES:
   - Prompt reviewer inputs: target_paths, kit_rules_path, rules_mode, cross refs
   - Prompt bug finder inputs: same as prompt reviewer
   - Consistency reviewer inputs: target_paths, baseline_path, kit_rules_path, rules_mode, namespace_prefix="Rcons"
+  - Freeform reviewer inputs: freeform_prompt (=ORIGINAL_INTENT/work_request), target_paths, resource_context (RESOURCE_CONTEXT JSON from cf-explorer or null), kit_rules_path, rules_mode, cross_ref_paths; namespace_prefix="Rf"
   - Change-review code dispatch: code_paths = diff_scope.review_targets filtered to code-only
   - Change-review prompt dispatch: filter diff_scope.review_targets to prompt-typed targets
   - Direct multi-target prompt dispatch: target_paths=prompt_targets

@@ -42,7 +42,9 @@ DO:
     - SET REVIEWER_PLAN_RESOLVED = auto_skipped_explain_mode
     - SET REVIEWER_EXECUTION_PLAN = null
     - CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-3-semantic.md
-  - REQUIRE no semantic methodology flag is active:
+  - REQUIRE no semantic methodology flag is active (CODE_REVIEW=false,
+    CODE_BUG_REVIEW=false, CONSISTENCY_REVIEW=false, PROMPT_REVIEW=false,
+    PROMPT_BUG_REVIEW=false, ARTIFACT_REVIEW=false, FREEFORM_REVIEW=false):
     - SET REVIEWER_PLAN_RESOLVED = auto_skipped_no_methodology
     - SET REVIEWER_EXECUTION_PLAN = null
     - CONTINUE {cf-studio-path}/.core/workflows/analyze/phase-3-semantic.md
@@ -93,7 +95,9 @@ DO:
     cross_refs            = related cross-reference paths
     diff_scope            = Phase 0 diff scope or null
     methodology_flags     = current values of PROMPT_REVIEW, PROMPT_BUG_REVIEW,
-                            CODE_BUG_REVIEW, CONSISTENCY_REVIEW, ARTIFACT_REVIEW, CODE_REVIEW
+                            CODE_BUG_REVIEW, CONSISTENCY_REVIEW, ARTIFACT_REVIEW,
+                            CODE_REVIEW, FREEFORM_REVIEW
+    freeform_prompt       = ORIGINAL_INTENT verbatim when FREEFORM_REVIEW=true, otherwise null
     available_reviewers   = reviewer sub-agents from phase-3-semantic.md
     size_estimate_lines   = Phase 0.1 estimate
   - RUN Parse marker <!-- reviewer_plan --> and following JSON block.

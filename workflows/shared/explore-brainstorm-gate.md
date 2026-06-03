@@ -66,6 +66,10 @@ STATE:
   - SET Active workflow is cf-analyze or cf-explain and the user did not provide
     explicit target paths, asks about project/architecture behavior, asks "where",
     "impact", "consistency", "what uses", or requests cross-file reasoning.
+  - SET Active workflow is cf-analyze AND FREEFORM_REVIEW=true AND RESOURCE_CONTEXT
+    is not already complete: freeform custom-criteria review always requires
+    project context discovery so the reviewer can interpret findings against the
+    broader codebase without loading everything into the orchestrator context.
 
 - SET SUGGEST_EXPLORE WHEN:
   - SET Active workflow is cf-generate for a small isolated edit but neighboring
@@ -211,7 +215,7 @@ MATRIX:
     explore: required for brownfield/architecture/multi-file/unclear/search/discovery
     brainstorm: required for unresolved strategy; suggested for multiple valid decompositions
   cf-analyze:
-    explore: required for missing targets, search/discovery, or cross-file/project questions; suggested for explicit targets with likely cross-refs
+    explore: required for missing targets, search/discovery, cross-file/project questions, or FREEFORM_REVIEW=true; suggested for explicit targets with likely cross-refs
     brainstorm: never before findings; offer only as remediation strategy next-step
   cf-explain:
     explore: required when target is unspecified; otherwise inherited from analyze

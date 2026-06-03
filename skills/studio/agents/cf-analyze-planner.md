@@ -53,13 +53,15 @@ path-partition, identify dependencies, and mark which tasks can run in parallel.
   "prompt_targets": ["<path>", "..."],
   "cross_refs": ["<path>", "..."],
   "diff_scope": null,
+  "freeform_prompt": "<ORIGINAL_INTENT verbatim when FREEFORM_REVIEW=true, otherwise null>",
   "methodology_flags": {
     "PROMPT_REVIEW": false,
     "PROMPT_BUG_REVIEW": false,
     "CODE_BUG_REVIEW": false,
     "CONSISTENCY_REVIEW": false,
     "ARTIFACT_REVIEW": true,
-    "CODE_REVIEW": false
+    "CODE_REVIEW": false,
+    "FREEFORM_REVIEW": false
   },
   "available_reviewers": [
     "cf-semantic-reviewer-artifact",
@@ -67,7 +69,8 @@ path-partition, identify dependencies, and mark which tasks can run in parallel.
     "cf-semantic-reviewer-prompt",
     "cf-semantic-reviewer-consistency",
     "cf-prompt-bug-finder",
-    "cf-code-bug-finder"
+    "cf-code-bug-finder",
+    "cf-semantic-reviewer-freeform"
   ],
   "size_estimate_lines": 0
 }
@@ -121,6 +124,7 @@ RULES:
       Rcons → consistency (Cross-document consistency review)
       Rp    → prompt (Prompt-engineering review)
       Rpb   → prompt_bug (Prompt bug-finding)
+      Rf    → freeform (Freeform custom-criteria review)
       V     → validation (Deterministic-validator tasks)
   - ALWAYS Consistency review ALWAYS be dispatched once over the full target set;
     NEVER partition consistency tasks
@@ -131,6 +135,25 @@ RULES:
   - NEVER include non-prompt paths in a prompt task's path_partition
   - ALWAYS Code-methodology tasks ALWAYS operate only on code_targets
   - NEVER include non-code paths in a code task's path_partition
+  - ALWAYS WHEN FREEFORM_REVIEW=true:
+      Assign methodology="freeform" and reviewer="cf-semantic-reviewer-freeform"
+      Set namespace_prefix="Rf"
+      path_partition covers all target_paths (freeform reviewer operates on the
+        full target set; partition when total estimate exceeds 2000 lines, same
+        as other methodologies)
+      freeform tasks carry freeform_prompt=work_request in their task payload
+        so the reviewer receives the original user request verbatim
+      resource_context from cf-explorer ALWAYS be included in the dispatch
+        payload when non-null; it is NOT a path_partition entry — pass it as a
+        separate payload field
+      An empty freeform task set when FREEFORM_REVIEW=true is a planner FAIL
+  - ALWAYS set task.freeform_prompt = work_request (verbatim) for every task where
+    methodology="freeform"; NEVER leave task.freeform_prompt null or empty for those tasks
+  - ALWAYS set task.freeform_prompt = null for every task where methodology != "freeform"
+  - NEVER dispatch a freeform task to cf-semantic-reviewer-freeform when
+    task.freeform_prompt is null, empty, or omitted; this fails the pre-dispatch gate
+  - NEVER assign a freeform task to any reviewer other than cf-semantic-reviewer-freeform
+  - NEVER set methodology="freeform" when FREEFORM_REVIEW=false
   - ALWAYS Every parallel_groups[].depends_on reference ALWAYS name an earlier group
   - ALWAYS Every task.parallel_group value ALWAYS be a string group id matching an
     existing parallel_groups[].id, using the `G<number>` form (for example
@@ -168,10 +191,11 @@ DO:
         {
           "id": "RTASK-001",
           "title": "<short task title>",
-          "methodology": "artifact|code|prompt|prompt_bug|code_bug|consistency",
+          "methodology": "artifact|code|prompt|prompt_bug|code_bug|consistency|freeform",
           "reviewer": "<exact reviewer sub-agent name>",
+          "freeform_prompt": "<work_request verbatim when methodology=freeform, otherwise null>",
           "path_partition": ["<path>", "..."],
-          "namespace_prefix": "Ra|Rc|Rcb|Rp|Rpb|Rcons|V",
+          "namespace_prefix": "Ra|Rc|Rcb|Rp|Rpb|Rcons|Rf|V",
           "dependencies": [],
           "parallel_group": "G1",
           "can_run_parallel": true,
@@ -212,6 +236,12 @@ RULES:
   - ALWAYS An empty tasks array is allowed ONLY when mode=explain;
     for any other mode, the gate FAILS on empty tasks
   - ALWAYS have at least one task per active methodology in methodology_flags
+  - ALWAYS WHEN FREEFORM_REVIEW=true: at least one task with methodology=freeform
+    and reviewer=cf-semantic-reviewer-freeform ALWAYS be present; an empty freeform
+    task set fails the gate
+  - ALWAYS every task with methodology=freeform ALWAYS have a non-null, non-empty
+    freeform_prompt field equal to work_request; a freeform task with null or missing
+    freeform_prompt fails the gate and NEVER be dispatched
   - ALWAYS The union of all tasks' path_partition for a methodology ALWAYS cover
     every input path that methodology applies to
   - NEVER have two tasks share (methodology, path); partitions for the same

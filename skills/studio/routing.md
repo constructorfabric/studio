@@ -67,6 +67,13 @@ PURPOSE:
 
 RULES:
   - ALWAYS treat /cf-studio as identical to /cf (same skill, same behavior)
+  - ALWAYS treat /cf-help, cf-help, /cf-studio-help, cf-studio-help, and cfs-help
+    as identical to "cf help" (routes to help.md, same behavior as /cf help)
+  - ALWAYS treat any /cf-<name> or cf-<name> bare skill invocation as equivalent
+    to "cf <name>" for routing purposes — e.g. /cf-brainstorm → brainstorm,
+    /cf-analyze → analyze, /cf-generate → generate, /cf-explain → explain,
+    /cf-explore → explore, /cf-plan → plan, /cf-pdsl → pdsl,
+    /cf-workspace → workspace, /cf-map → map, /cf-auto-config → auto-config
   - ALWAYS use {cfs_cmd} --json agents --agent <name> for agent lookup
   - ALWAYS run init, delegate, and update without --json
   - ALWAYS obtain write confirmation before any write-capable direct CLI command
@@ -96,7 +103,8 @@ PURPOSE:
 
 DO:
   - RUN WHEN request matches any of:
-       cf help | /cf help | cf-studio help | /cf-studio help | cfs help
+       cf help | /cf help | cf-studio help | /cf-studio help | cfs help |
+       cf-help | /cf-help | cf-studio-help | /cf-studio-help | cfs-help
        -> open and follow {cf-studio-path}/.core/workflows/help.md
 
   - RUN WHEN request matches "delegate"
@@ -109,53 +117,56 @@ DO:
        -> open and follow {cf-studio-path}/.core/skills/studio/agents/cf-phase-runner.md
 
   - RUN WHEN request matches any of:
-       brainstorm | cf-brainstorm | ideate | explore options |
+       brainstorm | cf-brainstorm | /cf-brainstorm | ideate | explore options |
        design exploration | requirements discovery | option mapping
        -> open and follow {cf-studio-path}/.core/workflows/brainstorm.md
 
   - RUN WHEN request matches any of:
-       pdsl | cf-pdsl | prompt dsl | prompt contract |
+       pdsl | cf-pdsl | /cf-pdsl | prompt dsl | prompt contract |
        new prompt file | generate prompt instructions |
        transform prompts to dsl | convert prompt prose to dsl |
        compact prompt instructions | review prompt dsl |
        check prompt state machines | instruction dsl
        -> open and follow {cf-studio-path}/.core/workflows/pdsl.md
 
-  - RUN WHEN request matches "plan" | "decompose" | "break down"
+  - RUN WHEN request matches any of:
+       plan | cf-plan | /cf-plan | decompose | break down
        -> open and follow {cf-studio-path}/.core/workflows/plan.md
 
   - RUN WHEN request matches any of:
-       explore | discover context | find relevant context |
+       explore | cf-explore | /cf-explore | discover context | find relevant context |
        find project context | locate architecture | locate resources |
        context search | resource search
        -> open and follow {cf-studio-path}/.core/workflows/explore.md
 
   - RUN WHEN request matches any of:
-       create | edit | fix | update | implement | refactor | setup | build
+       create | edit | fix | update | implement | refactor | setup | build |
+       generate | cf-generate | /cf-generate
        AND CompoundFindFix does NOT apply
        -> open and follow {cf-studio-path}/.core/workflows/generate.md
 
   - RUN WHEN request matches any of:
-       explain | walk through | teach | onboard
+       explain | cf-explain | /cf-explain | walk through | teach | onboard
        -> SET EXPLAIN_MODE = true
           open and follow {cf-studio-path}/.core/workflows/explain.md
 
   - RUN WHEN request matches any of:
-       analyze | validate | review | check | inspect | audit | compare |
-       bug hunt | find bugs | prompt bugs
+       analyze | cf-analyze | /cf-analyze | validate | review | check | inspect |
+       audit | compare | bug hunt | find bugs | prompt bugs
        OR CompoundFindFix applies
        -> open and follow {cf-studio-path}/.core/workflows/analyze.md
 
   - RUN WHEN request matches any of:
-       workspace | multi-repo | add source | cross-reference
+       workspace | cf-workspace | /cf-workspace | multi-repo | add source | cross-reference
        -> open and follow {cf-studio-path}/.core/workflows/workspace.md
 
   - RUN WHEN request matches any of:
-       map | dependency map | cfs map | visualize dependencies | render graph
+       map | cf-map | /cf-map | dependency map | cfs map | visualize dependencies | render graph
        -> open and follow {cf-studio-path}/.core/workflows/map.md
 
   - RUN WHEN request matches any of:
-        auto-config | configure project | scan brownfield | generate rules
+        auto-config | cf-auto-config | /cf-auto-config |
+        configure project | scan brownfield | generate rules
         -> open and follow {cf-studio-path}/.core/workflows/auto-config.md
 
   - RUN WHEN request matches "migrate from cypilot" | "migrate-from-cypilot"
@@ -225,7 +236,9 @@ PURPOSE:
 
 WHEN:
   - REQUIRE no WorkflowRoutingTable entry matches
-  - OR request is activation-only / no-task intent:
+  - AND request is activation-only / no-task intent — EXACTLY one of this
+    CLOSED, EXHAUSTIVE list (not a /cf-<name> skill invocation, not a bare
+    cf command with a name):
      cf | /cf | cf on | /cf on | cfs on | cf-studio | cf-studio on
 
 DO:
@@ -233,6 +246,17 @@ DO:
   - EMIT_MENU RoutingClarificationMenu
   - WAIT user.reply
   - STOP_TURN
+
+RULES:
+  - ALWAYS evaluate WorkflowRoutingTable FIRST; if any entry matches, NEVER enter
+    AmbiguousRoutingFallback — proceed with the matched entry immediately
+  - NEVER treat a bare /cf-<name> or cf-<name> skill invocation as activation-only
+    or no-task intent; these are valid workflow entry points and ALWAYS match the
+    corresponding WorkflowRoutingTable entry (see CliAliasAndInvocation)
+  - ALWAYS the activation-only list is CLOSED and EXHAUSTIVE; NEVER generalize it
+    to other invocations, bare commands, or invocations without a task description
+  - NEVER use "no task text present" or "bare invocation" as a reason to trigger
+    AmbiguousRoutingFallback when a WorkflowRoutingTable entry matches
 
 MENU RoutingClarificationMenu:
   TITLE: Reply with exactly one option number, or a concrete installed-kit shortcut.
