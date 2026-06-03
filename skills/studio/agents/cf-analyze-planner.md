@@ -147,6 +147,11 @@ RULES:
         payload when non-null; it is NOT a path_partition entry — pass it as a
         separate payload field
       An empty freeform task set when FREEFORM_REVIEW=true is a planner FAIL
+  - ALWAYS set task.freeform_prompt = work_request (verbatim) for every task where
+    methodology="freeform"; NEVER leave task.freeform_prompt null or empty for those tasks
+  - ALWAYS set task.freeform_prompt = null for every task where methodology != "freeform"
+  - NEVER dispatch a freeform task to cf-semantic-reviewer-freeform when
+    task.freeform_prompt is null, empty, or omitted; this fails the pre-dispatch gate
   - NEVER assign a freeform task to any reviewer other than cf-semantic-reviewer-freeform
   - NEVER set methodology="freeform" when FREEFORM_REVIEW=false
   - ALWAYS Every parallel_groups[].depends_on reference ALWAYS name an earlier group
@@ -188,6 +193,7 @@ DO:
           "title": "<short task title>",
           "methodology": "artifact|code|prompt|prompt_bug|code_bug|consistency|freeform",
           "reviewer": "<exact reviewer sub-agent name>",
+          "freeform_prompt": "<work_request verbatim when methodology=freeform, otherwise null>",
           "path_partition": ["<path>", "..."],
           "namespace_prefix": "Ra|Rc|Rcb|Rp|Rpb|Rcons|Rf|V",
           "dependencies": [],
@@ -233,6 +239,9 @@ RULES:
   - ALWAYS WHEN FREEFORM_REVIEW=true: at least one task with methodology=freeform
     and reviewer=cf-semantic-reviewer-freeform ALWAYS be present; an empty freeform
     task set fails the gate
+  - ALWAYS every task with methodology=freeform ALWAYS have a non-null, non-empty
+    freeform_prompt field equal to work_request; a freeform task with null or missing
+    freeform_prompt fails the gate and NEVER be dispatched
   - ALWAYS The union of all tasks' path_partition for a methodology ALWAYS cover
     every input path that methodology applies to
   - NEVER have two tasks share (methodology, path); partitions for the same

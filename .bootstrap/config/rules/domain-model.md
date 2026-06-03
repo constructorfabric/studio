@@ -34,25 +34,30 @@ Constructor Studio is a workflow-centered methodology framework for AI-assisted 
 A **kit** is a direct file package with templates, rules, checklists, examples, and workflows. Installed to `config/kits/{kit-id}/`.
 
 ### Adapter
+
 A **project-specific configuration** in `{cf-studio-path}/config/`: `AGENTS.md`, `artifacts.toml`, `rules/*.md`, `core.toml`.
 
 ### Artifact
+
 A **design document** (PRD, DESIGN, DECOMPOSITION, FEATURE, ADR) with a `kind`, `path`, and `traceability` level (`FULL` or `DOCS-ONLY`).
 
 ### Constructor Studio ID
+
 Format: `cpt-{hierarchy-prefix}-{kind}-{slug}`, e.g. `cpt-studio-fr-must-authenticate`.
 
 ### Constructor Studio Marker
+
 - Scope: `@cpt-{kind}:{cpt-id}:p{N}`
 - Block: `@cpt-begin:{cpt-id}:p{N}:inst-{local}` / `@cpt-end:{cpt-id}:p{N}:inst-{local}`
 
 ### Traceability Levels
+
 - **FULL** — code markers allowed and validated
 - **DOCS-ONLY** — documentation traceability only, no code markers
 
 ## System Hierarchy
 
-```
+```text
 artifacts.toml
 └── systems[]
     ├── name / slug / kit

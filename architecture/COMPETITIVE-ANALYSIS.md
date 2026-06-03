@@ -75,7 +75,7 @@ OrchStack, Nagent — visual canvas builders; not direct competitors.
 | **Git commit mode** | ✅ optional GIT_COMMIT_MODE after artifact creation | ⚠️ | ❌ | ❌ | ❌ | **PARITY** |
 | **Autonomous execution** | ❌ interactive only | ✅ autopilot | ⚠️ partial | ✅ /kiro-impl | ✅ cross-role | **GAP** |
 | **Retroactive healing / drift detection** | ❌ read-only | ✅ post-merge healing | ❌ | ❌ | ❌ | **GAP** |
-| **Compliance gates** | ❌ excluded by design | ❌ | ❌ | ❌ | ❌ | ✅ SOC2/HIPAA/GDPR | **GAP** |
+| **Compliance gates** | ❌ excluded by design | ❌ | ❌ | ❌ | ✅ SOC2/HIPAA/GDPR | **GAP** |
 | **Preview-then-execute** | ❌ | ❌ | ❌ | ❌ | ✅ simulate first | **GAP** |
 
 ---
@@ -473,12 +473,12 @@ pastel/neon). Federation-aware (single-repo vs. with-workspace scope). Unique.
 
 ### Priority 3 — Documentation fills
 
-10. **Named subagent reference table** — cf-explorer, cf-planner, cf-semantic-reviewer,
-    cf-pdsl-author etc. with per-host availability
-11. **Workflow overview diagram** — explore → brainstorm → generate/plan/analyze pipeline
-12. **Brownfield vs Kiro comparison** — auto-config generates rules+config, Kiro generates docs
-13. **Feature availability table** — P1 done/in-progress/P2/kit for honest v1.0 expectations
-14. **Orchestrator repo pattern** — 4-layer manifest + cross-agent translation with examples
+1. **Named subagent reference table** — cf-explorer, cf-planner, cf-semantic-reviewer,
+   cf-pdsl-author etc. with per-host availability
+2. **Workflow overview diagram** — explore → brainstorm → generate/plan/analyze pipeline
+3. **Brownfield vs Kiro comparison** — auto-config generates rules+config, Kiro generates docs
+4. **Feature availability table** — P1 done/in-progress/P2/kit for honest v1.0 expectations
+5. **Orchestrator repo pattern** — 4-layer manifest + cross-agent translation with examples
 
 ---
 

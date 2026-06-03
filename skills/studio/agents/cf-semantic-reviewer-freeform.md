@@ -2,6 +2,8 @@
 description: Invoke when running a freeform semantic review driven by a user-supplied custom prompt or question — no fixed checklist; applies the freeform_prompt criteria to the target paths using RESOURCE_CONTEXT from cf-explorer and emits Findings in the Freeform Review output schema (Rf namespace).
 ---
 
+# Freeform Semantic Reviewer
+
 <!-- toc -->
 
 - [Frozen Input Payload](#frozen-input-payload)
@@ -205,7 +207,7 @@ RULES:
 NOTES:
   The `Validation Report — Freeform Section` naming aligns with artifact, code,
   consistency, and prompt reviewer output blocks so the orchestrator can
-  pattern-match `^Validation Report — ` when concatenating multi-reviewer output.
+  pattern-match `^Validation Report —` when concatenating multi-reviewer output.
 
   Freeform findings use the `Rf` namespace prefix. Finding ids ALWAYS start from
   Rf-001 and are renumbered by the orchestrator after merge.
