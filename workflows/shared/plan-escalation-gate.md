@@ -94,7 +94,8 @@ UNIT NoNativeDispatchPlanHandoff
 
 PURPOSE:
   Prevent local single-context continuation when native sub-agent dispatch is
-  unavailable, unset, or explicitly bypassed; route to plan handoff or stop.
+  unavailable, unset, or explicitly bypassed; route to plan handoff, stop, or
+  a narrowly gated inline continuation by user confirmation.
 
 WHEN:
   - REQUIRE INLINE_FALLBACK == true
@@ -125,10 +126,11 @@ MENU PlanEscalationMenu:
     Options:
     1. Switch to Invoke skill `cf-plan`
     2. Stop
+    3. Continue inline
 
     Suggested: 1 because plan decomposition is the safe fallback when native
     sub-agent dispatch is not active.
-    Reply with `1` or `2`.
+    Reply with `1`, `2`, or `3`.
   OPTIONS:
     1 ->
       EMIT "Invoke skill `cf-plan` to generate {KIND} with the same parameters."
@@ -136,8 +138,11 @@ MENU PlanEscalationMenu:
     2 ->
       EMIT "Stopped before local single-context generation."
       STOP_TURN
+    3 ->
+      EMIT "Proceeding inline."
+      CONTINUE next generate phase
   INVALID:
-    EMIT "Reply with 1 or 2."
+    EMIT "Reply with 1, 2, or 3."
     WAIT user.reply
     STOP_TURN
 
