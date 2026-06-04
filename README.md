@@ -133,9 +133,14 @@ Use Constructor Studio if you already work with an AI coding tool and the cost o
 
 Constructor Studio is best understood as the **workflow, context, and validation layer around your AI coding tool**.
 
-Four actors shape the operating model: the **AI coding tool** provides the environment, chat interface, and model access, the **agent** performs the reasoning and writing inside that environment, **Constructor Studio** governs the repo-attached workflow, configuration, and validation surface around the work, and the **human** decides approval, adequacy, risk acceptance, and whether the result is acceptable to merge or ship.
+Four actors shape the operating model:
 
-Constructor Studio makes that repo-attached surface more explicit by controlling what context and rules are loaded, what structured artifacts or checkpoints the task is expected to use, and what deterministic checks can later be run with `cfs`. It does not supply the underlying intelligence of the model, and it does not decide whether the final implementation is correct, well-designed, or acceptable to merge.
+- **AI coding tool** — provides the environment, chat interface, and model access.
+- **Agent** — performs the reasoning and writing inside that environment.
+- **Constructor Studio** — governs the repo-attached workflow, configuration, and validation surface.
+- **Human** — decides approval, adequacy, risk acceptance, and merge readiness.
+
+Constructor Studio makes that surface explicit. It controls what context and rules load, what artifacts or checkpoints the task uses, and what deterministic checks `cfs` can run later. It does not supply the model's intelligence. It does not decide whether the final implementation is correct, well-designed, or ready to merge.
 
 ```mermaid
 flowchart LR
@@ -175,7 +180,7 @@ Constructor Studio owns the repeatable workflow and validation boundary. The age
 
 For non-trivial work, Constructor Studio often works best when the host can split the job across specialized subagents or clearly separated passes instead of one long mixed-purpose thread.
 
-Typical roles include a **collector** or **explorer** for context gathering, a **planner** for phase design, an **author** for implementation, a **reviewer** for defect-finding, a **validator** for deterministic checks, and in some workflows a **brainstorm panel** for structured option generation before scope is fixed.
+The roles cover context gathering, planning, authoring, review, validation, and — in some workflows — a brainstorm panel for early options. The diagram below shows how they hand off.
 
 ```mermaid
 flowchart LR
@@ -187,7 +192,7 @@ flowchart LR
     VA --> HU["human<br/>approval"]
 ```
 
-This separation improves context isolation, lets each step use task-matched instructions or configuration, keeps review more independent from authorship, and makes validation a distinct discipline instead of an afterthought.
+This separation improves context isolation. Each step can use task-matched instructions, review stays independent from authorship, and validation becomes its own discipline.
 
 This is an operating model, not a guarantee. It does not replace human approval, and it does not prove correctness. Where a host lacks native subagent support or strong orchestration control, Constructor Studio degrades gracefully by keeping the same roles as separate chats, passes, or manual checkpoints.
 
@@ -334,11 +339,20 @@ Set the level in `{cf-studio-path}/config/core.toml` under `[language] complexit
 
 ### Explain mode (storytelling companion)
 
-`analyze` has an interactive **storytelling** companion that teaches you about an artifact, PR, or codebase region at a pace you control. Start it with **`cf analyze: explain <target>`** — any explain-style verb works (`walk me through`, `teach me`, `present`, `onboard me to`, `quiz me on`, `explain --resume {session-id}`).
+`analyze` has an interactive **storytelling** companion that teaches you about an artifact, PR, or codebase region at a pace you control. Start it with **`cf analyze: explain <target>`**. Any explain-style verb works: `walk me through`, `teach me`, `present`, `onboard me to`, `quiz me on`, or `explain --resume {session-id}`.
 
-It first asks you to pick one of six modes: `presentation` (explain and teach), `review` (a panel critiques the artifact with comments tied to specific lines), `onboarding`, `decision` (alternatives plus a recommendation), `socratic` (the agent quizzes you), or `change-impact`. It then delivers the content in small, no-scroll portions with simple navigation (Next / Deeper / Lateral / Recap / Ask / Wrap), audience-adapted diagrams, clickable source links, and a choice of where each output goes (chat-only, save-to-file, or post-to-resource).
+It first asks you to pick one of six modes:
 
-To produce a hand-off-able **package** (READMEs, training material, guides) instead of a chat session: **`cf generate: explain package for <target>`** / `cf generate: make a README from <target>` / `cf generate: build onboarding doc set for <target>`. Writes a navigable folder of Markdown files under `{cf-studio-path}/.cache/explain/packages/`.
+- `presentation` — explain and teach
+- `review` — a panel critiques the artifact with comments tied to specific lines
+- `onboarding` — orient a new joiner
+- `decision` — alternatives plus a recommendation
+- `socratic` — the agent quizzes you
+- `change-impact` — what changed and what it affects
+
+It then delivers the content in small, no-scroll portions. Navigation is simple (Next / Deeper / Lateral / Recap / Ask / Wrap), with audience-adapted diagrams and clickable source links. You choose where each output goes: chat-only, save-to-file, or post-to-resource.
+
+You can also produce a hand-off-able **package** (READMEs, training material, guides) instead of a chat session. Use `cf generate: explain package for <target>`, `cf generate: make a README from <target>`, or `cf generate: build onboarding doc set for <target>`. It writes a navigable folder of Markdown files under `{cf-studio-path}/.cache/explain/packages/`.
 
 Plain `cf analyze: review my changes` keeps the standard analyze contract (defect-finding with `Fix Prompt` / `Plan Prompt`); explain mode requires explicit explain-family verbs.
 
