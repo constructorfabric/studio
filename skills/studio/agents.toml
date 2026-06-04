@@ -398,6 +398,20 @@ target = "any"
 reasoning_effort = "medium"
 context_window = "high"
 
+[agents.cf-semantic-reviewer-freeform]
+description = """\
+Invoke when running a freeform semantic review driven by a user-supplied \
+custom prompt or question — no fixed checklist; applies the freeform_prompt \
+criteria to the target paths and emits Findings in the Freeform Review \
+output schema (Rf namespace)."""
+mode = "readonly"
+isolation = false
+model = "cf:tier:balanced"
+role = "analyze"
+target = "any"
+reasoning_effort = "medium"
+context_window = "high"
+
 [agents.cf-brainstorm-facilitator]
 description = """\
 Invoke when opening a brainstorm session — one-shot per session. Given the \

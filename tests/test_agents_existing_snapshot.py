@@ -904,6 +904,7 @@ class TestExistingAgentsSnapshot(unittest.TestCase):
             "cf-pdsl-transformer":  ("generate", "any",      "high",   "high"),
             "cf-pdsl-reviewer":     ("analyze",  "any",      "high",   "high"),
             "cf-semantic-reviewer-consistency": ("analyze","any",      "medium", "high"),
+            "cf-semantic-reviewer-freeform":  ("analyze",  "any",      "medium", "high"),
             "cf-brainstorm-facilitator":      ("planning", "any",      "medium", "medium"),
             "cf-brainstorm-expert":           ("planning", "any",      "medium", "medium"),
             "cf-brainstorm-panel":            ("planning", "any",      "medium", "high"),
