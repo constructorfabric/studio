@@ -40,7 +40,7 @@ MENU LoadCfSkillConfirm
 TITLE: The cf skill is not loaded. It is the Constructor Studio core that loads the shared rules and routes to cf-* skills, so explain cannot run without it. Load it now to continue?
 OPTIONS:
   1 load -> INVOKE skill `cf` and CONTINUE ExplainBootstrap
-  2 stop -> STOP_TURN
+  2 stop -> RETURN an EXPLAIN_RESULT envelope with status="cancelled" and STOP_TURN
   INVALID -> EMIT_MENU LoadCfSkillConfirm
 ```
 ```pdsl

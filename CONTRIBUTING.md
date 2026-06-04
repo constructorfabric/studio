@@ -267,7 +267,7 @@ All CI is driven through `make`. No virtual environment required — tools run v
 | `make self-check` | Validate SDLC kit examples against their own templates | Yes |
 | `make validate-kits` | Validate all registered kits | Yes |
 | `make check-versions` | Check version consistency across components | Yes |
-| `make spec-coverage` | Check spec coverage (≥80% overall, ≥70% per file) | Yes |
+| `make spec-coverage` | Check spec coverage (≥90% overall, ≥60% per file) | Yes |
 | `make pylint` | Pylint static analysis (staged rollout) | Yes |
 | `make vulture` | Dead code scan (report only) | — |
 | `make vulture-ci` | Dead code scan (fails on findings) | Yes |
@@ -289,7 +289,7 @@ CI runs on every push to `main` and every PR targeting `main`. Nine parallel job
 4. **Pylint** — `make pylint` static analysis (staged rollout — currently 12 checks enabled)
 5. **Vulture** — `make vulture-ci` dead code scan
 6. **Versions** — `make check-versions` (proxy sync, bootstrap sync)
-7. **Spec Coverage** — `make spec-coverage` (≥80% overall, ≥70% per file)
+7. **Spec Coverage** — `make spec-coverage` (≥90% overall, ≥60% per file)
 8. **Validate** — `make validate` + `make self-check` on Python 3.11–3.14
 9. **Validate Kits** — `make validate-kits` on Python 3.11–3.14
 

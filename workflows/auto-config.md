@@ -20,7 +20,7 @@ DO:
   EMIT_MENU LoadCfSkillConfirm WHEN CFS_INIT != true
   STOP_TURN WHEN CFS_INIT != true
   LOAD {cf-studio-path}/.core/requirements/auto-config.md as the phase-by-phase methodology reference
-  RUN verify the methodology loaded; EMIT "Auto-config methodology not found at {cf-studio-path}/.core/requirements/auto-config.md — cannot proceed; reinstall or sync the studio kit, then retry." and STOP_TURN WHEN the load fails
+  RUN verify the methodology loaded; RETURN a failed AUTO_CONFIG_RESULT with reason="Auto-config methodology not found at {cf-studio-path}/.core/requirements/auto-config.md" and recovery="reinstall or sync the studio kit, then retry auto-config" and STOP_TURN WHEN the load fails
 RULES:
   ALWAYS verify the cf skill is loaded, CFS_INIT == true, before any auto-config work
   ALWAYS treat CFS_INIT as false when its value is unknown, ambiguous, or unset
@@ -41,7 +41,7 @@ WHEN:
   REQUIRE entering auto-config
 DO:
   RUN the canonical pre-checks defined by AutoConfigPreconditions in {cf-studio-path}/.core/requirements/auto-config.md — Studio initialized (RUN `{cfs_cmd} info` and expect FOUND), source code accessible, and {cf-studio-path}/config/ writable; RETURN a blocked AUTO_CONFIG_RESULT with reason="Studio not initialized" and next_action="run `cfs init`, then retry auto-config" and STOP_TURN WHEN the `{cfs_cmd} info` check errors or does not report FOUND
-  RETURN a blocked AUTO_CONFIG_RESULT and STOP_TURN WHEN no source code is found or the project is greenfield
+  RETURN a blocked AUTO_CONFIG_RESULT with reason="No source code found; the project appears greenfield" and next_action="add source code or run auto-config on a brownfield project, then retry" and STOP_TURN WHEN no source code is found or the project is greenfield
   EMIT_MENU ExistingRulesRefreshMenu WHEN existing generated rule files or auto-config managed blocks are present
   CONTINUE AutoConfigScan WHEN no existing generated rules or managed blocks are present
 RULES:
@@ -54,7 +54,7 @@ OPTIONS:
   1 refresh -> regenerate generated rules + auto-config AGENTS blocks from a new scan, then CONTINUE AutoConfigScan
   2 selective | select -> choose files/sections to refresh after the scan, then CONTINUE AutoConfigScan
   3 report-only | report -> scan and report findings with writes to existing rule files disabled, then CONTINUE AutoConfigScan
-  4 cancel -> RETURN a blocked AUTO_CONFIG_RESULT and STOP_TURN
+  4 cancel -> RETURN a blocked AUTO_CONFIG_RESULT with reason="auto-config cancelled at the existing-rules refresh prompt" and next_action="re-run auto-config and choose a refresh mode to continue" and STOP_TURN
   INVALID -> EMIT_MENU ExistingRulesRefreshMenu
 ```
 ```pdsl
@@ -79,7 +79,7 @@ TITLE: Scan summary — proceed to documentation discovery?
 OPTIONS:
   1 proceed -> CONTINUE AutoConfigDocs
   2 adjust -> re-run the scan or re-emit the summary, then EMIT_MENU ScanConfirmMenu
-  3 cancel -> RETURN a blocked AUTO_CONFIG_RESULT and STOP_TURN
+  3 cancel -> RETURN a blocked AUTO_CONFIG_RESULT with reason="auto-config cancelled at the scan summary checkpoint" and next_action="re-run auto-config to restart the scan" and STOP_TURN
   INVALID -> EMIT_MENU ScanConfirmMenu
 ```
 ```pdsl
@@ -102,7 +102,7 @@ TITLE: Documentation map — proceed to system and topic detection?
 OPTIONS:
   1 proceed -> CONTINUE AutoConfigDetect
   2 adjust -> re-emit the documentation map, then EMIT_MENU DocsConfirmMenu
-  3 cancel -> RETURN a blocked AUTO_CONFIG_RESULT and STOP_TURN
+  3 cancel -> RETURN a blocked AUTO_CONFIG_RESULT with reason="auto-config cancelled at the documentation map checkpoint" and next_action="re-run auto-config to continue from the scan" and STOP_TURN
   INVALID -> EMIT_MENU DocsConfirmMenu
 ```
 ```pdsl
@@ -125,7 +125,7 @@ TITLE: System and topic map — proceed to rule generation?
 OPTIONS:
   1 proceed -> CONTINUE AutoConfigGenerate
   2 adjust -> revise systems/topics per user feedback and EMIT_MENU DetectConfirmMenu
-  3 cancel -> RETURN a blocked AUTO_CONFIG_RESULT and STOP_TURN
+  3 cancel -> RETURN a blocked AUTO_CONFIG_RESULT with reason="auto-config cancelled at the system/topic map checkpoint" and next_action="re-run auto-config to continue" and STOP_TURN
   INVALID -> EMIT_MENU DetectConfirmMenu
 ```
 ```pdsl
@@ -148,7 +148,7 @@ TITLE: Generated rule files — write them and proceed to integration?
 OPTIONS:
   1 proceed -> WRITE the rule files to {cf-studio-path}/config/rules/{topic}.md, RUN `{cfs_cmd} toc` on each, then CONTINUE AutoConfigIntegrate
   2 adjust -> revise the rule files per feedback and EMIT_MENU GenerateConfirmMenu
-  3 cancel -> RETURN a blocked AUTO_CONFIG_RESULT and STOP_TURN
+  3 cancel -> RETURN a blocked AUTO_CONFIG_RESULT with reason="auto-config cancelled at the rule-file review checkpoint; no files written" and next_action="re-run auto-config to regenerate and review the rule files" and STOP_TURN
   INVALID -> EMIT_MENU GenerateConfirmMenu
 ```
 ```pdsl
@@ -172,7 +172,7 @@ TITLE: AGENTS.md and registry changes — write them and proceed to validation?
 OPTIONS:
   1 proceed -> WRITE to {cf-studio-path}/config/AGENTS.md and {cf-studio-path}/config/artifacts.toml, then CONTINUE AutoConfigValidate
   2 adjust -> revise the navigation rules / registry entries and EMIT_MENU IntegrateConfirmMenu
-  3 cancel -> RETURN a blocked AUTO_CONFIG_RESULT and STOP_TURN
+  3 cancel -> RETURN a blocked AUTO_CONFIG_RESULT with reason="auto-config cancelled at the AGENTS.md/registry review checkpoint; no integration written" and next_action="re-run auto-config to continue from rule generation" and STOP_TURN
   INVALID -> EMIT_MENU IntegrateConfirmMenu
 ```
 ```pdsl

@@ -16,9 +16,9 @@ STATE:
 WHEN:
   REQUIRE activation of cf OR activation of cf-studio
 DO:
+  RESOLVE {cf-studio-path} from the in-context `@cf:root-agents` rule (fallback: its block in the project-root `AGENTS.md`); never via {cfs_cmd}
+  REQUIRE {cf-studio-path} is resolved before CommandResolution and before any LOAD below, since CommandResolution's fallback path depends on {cf-studio-path}
   RUN CommandResolution to resolve {cfs_cmd}
-  RUN TemplateVarResolution to resolve {cf-studio-path}
-  REQUIRE {cf-studio-path} is resolved before any LOAD below
   LOAD and REMEMBER rules from {cf-studio-path}/.gen/AGENTS.md
   LOAD and REMEMBER rules from {cf-studio-path}/.gen/SKILL.md
   LOAD and REMEMBER rules from {cf-studio-path}/config/AGENTS.md WHEN that file exists; SKIP it without error WHEN it is absent
@@ -76,7 +76,7 @@ DO:
   RUN enumeration of core workflows at {cf-studio-path}/.core/workflows/*.md
   RUN enumeration of kit workflows from `{cfs_cmd} info --json` at kit_details.<kit>.workflows
   RUN mapping of each discovered workflow to its cf-* skill name: a core workflow file <name>.md maps to cf-<name>; a kit workflow <base> under kit <kit> maps to cf-<kit>-<base>
-  REQUIRE at least one cf-* skill was discovered
+  ALLOW zero-or-more cf-* skills to be discovered
   EMIT a one-line empty-discovery note WHEN no cf-* skill was discovered
   STOP_TURN WHEN no cf-* skill was discovered
 RULES:
