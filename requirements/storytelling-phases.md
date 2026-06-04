@@ -24,9 +24,11 @@ purpose: Phase-by-phase protocol for the storytelling methodology
   - [First-portion special shape (portion 1)](#first-portion-special-shape-portion-1)
   - [Navigation block (7 fixed slots, Next-first; conditional 8th)](#navigation-block-7-fixed-slots-next-first-conditional-8th)
   - [User input handling](#user-input-handling)
+  - [Dispatch-failure notices (generate routing)](#dispatch-failure-notices-generate-routing)
   - [Periodic gates](#periodic-gates)
   - [Glossary buffer](#glossary-buffer)
 - [Phase E3: Strict-Context Boundary](#phase-e3-strict-context-boundary)
+  - [Open-question buffer entry shape](#open-question-buffer-entry-shape)
 - [Phase E4: Visualize-by-Default](#phase-e4-visualize-by-default)
 - [Phase E5: Wrap](#phase-e5-wrap)
   - [Wrap output (final response — replaces analyze.md Phase 4 schema)](#wrap-output-final-response--replaces-analyzemd-phase-4-schema)
@@ -594,6 +596,8 @@ Hard rules, enforced inside every portion:
    **Resume reconstruction**: `session_state.pending_retries: Map<dispatch_key, {attempts, first_failed_at, last_class, drift_status?}>` is reconstructed on session resume from the dispatch-failures NDJSON (`{cf-studio-path}/.core/requirements/storytelling-preferences.md` § Dispatch-Failure Audit Log). Records with `status="resolved"` are excluded; the 2-attempts-per-key cap survives restarts.
 
 ## Phase E4: Visualize-by-Default
+
+The flow-neutral diagram criteria (when a visualization is warranted, construct-don't-transcribe, audience adaptation) and the text-only legitimacy rule are owned by `{cf-studio-path}/.core/requirements/storytelling-dimensions.md` § Diagram Dimension. This phase owns storytelling's delivery mechanics for that dimension: the two-step decision timing, the `🎨 visualization:` marker, the one-time lazy-ask format prompt, the Portion-1 overview default, and the code-mode ASCII module map.
 
 ```pdsl
 UNIT PhaseE4VisualizeByDefault

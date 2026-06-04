@@ -2,285 +2,196 @@
 cf: true
 type: workflow
 name: cf-plan
-description: Invoke when the user asks to plan, create a plan, decompose, break down, or organize a large or multi-step task into phases — produces self-contained phase files with brief + compiled forms.
-version: 1.0
-purpose: Universal workflow for generating execution plans with phased delivery
+description: "Invoke when the user asks to plan, create a plan, decompose, break down, or organize a large or multi-step task into phases — produces self-contained phase files with brief + compiled forms."
+version: 0.1
+purpose: Drive a phased planning workflow that assesses scope, decomposes a large task into self-contained phase files, and hands off to execution — only planning, never implementing, and confirming before every write.
 ---
 
-# Plan
+# cf-plan
 
-```pdsl
-UNIT PlanRootSkillEntrypointBootstrap
-PURPOSE: Load the shared root cf skill entrypoint bootstrap and preserve plan routing invariants.
-DO:
-  - LOAD {cf-studio-path}/.core/workflows/shared/root-skill-entrypoint-bootstrap.md
-  - CONTINUE RootSkillEntrypointBootstrap
-RULES:
-  - ALWAYS follow routing.md § CanonicalRoutingPrecedenceState for workflow
-    entry, fallback dispatch state, and prompt-context ownership.
-```
-
-```pdsl
-UNIT PlanModeDirective
-PURPOSE: Set cf skill mode and capture original intent before any phase work begins.
-DO:
-  - SET CF_MODE = "cf-plan"
-  - SET ORIGINAL_INTENT = user's triggering request (verbatim or shortest faithful summary)
-RULES:
-  - ALWAYS SET CF_MODE = "cf-plan" as the first action after bootstrap
-  - ALWAYS capture ORIGINAL_INTENT from the user's triggering message before any sub-agent dispatch
-  - ALWAYS carry ORIGINAL_INTENT into Phase 0 discovery and Phase 1 assessment as the task field
-  - ALWAYS include ORIGINAL_INTENT in every phase-compiler dispatch payload as task context
-  - NEVER leave CF_MODE unset when entering this workflow
-```
+This skill drives a phased planning workflow that assesses scope, decomposes a large or multi-step task into self-contained phase files (plan.toml + briefs + phase files under {cf-studio-path}/.plans/{task-slug}/), and hands off to execution. It only PLANS (never implements), confirms before writing anything, and compiles one phase at a time to stay within context budget.
 
 ```pdsl
 UNIT PlanBootstrap
-
-PURPOSE:
-  Load required files in order before any phase work begins.
-
+PURPOSE: Ensure the cf skill is loaded before any plan work begins.
+STATE:
+  SET CFS_INIT: true | false (default false, scope session)
 DO:
-  - REQUIRE {cfs_mode} == off:
-    - REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is loaded and followed FIRST
-  - REQUIRE {cf-studio-path}/.core/skills/studio/protocol.md is loaded and followed
-    before any workflow-local phase work
-  - REQUIRE {cf-studio-path}/.core/workflows/shared/stop-token-policy.md is loaded and followed
-    before any prompt that relies on stop-token behavior
-
+  EMIT_MENU LoadCfSkillConfirm WHEN CFS_INIT != true
+  STOP_TURN WHEN CFS_INIT != true
+  CONTINUE PlanPhase0Discover WHEN CFS_INIT == true
 RULES:
-  - ALWAYS load {cf-studio-path}/.core/skills/studio/SKILL.md first when cfs_mode is off
-  - ALWAYS load {cf-studio-path}/.core/skills/studio/protocol.md before any phase work
-  - ALWAYS load {cf-studio-path}/.core/workflows/shared/stop-token-policy.md before any stop-token-dependent prompt
-  - ALWAYS load {cf-studio-path}/.core/requirements/plan-template.md WHEN compiling phase files
-  - ALWAYS load {cf-studio-path}/.core/requirements/plan-decomposition.md WHEN decomposing tasks into phases
-  - ALWAYS load {cf-studio-path}/.core/requirements/prompt-engineering.md WHEN compiling phase files
-    (phase files ARE agent instructions)
-  - ALWAYS load {cf-studio-path}/.core/requirements/plan-checklist.md WHEN validating plans
-    (Phase 4.1 self-validation or Invoke skill `cf-analyze` on plan)
-
-NOTES:
-  Type: Operation.
-  Constraint summary (authoritative sources in phase sub-files):
-    This workflow ONLY generates execution plans (does not implement) — phase-2-decompose.md
-    Complete coverage, compact loading — phase-1-assess.md
-    Kit rules are law — phase-1-assess.md
-    Gate order: explore/brainstorm (Phase 0.a) → assess (Phase 1) → decompose (Phase 2) → compile (Phase 3) — see phase sub-files
-    Interactive questions completeness — phase-1-assess.md
-    Brief before compile — phase-3-compile.md
-  For context compaction recovery during multi-phase workflows, follow
-  {cf-studio-path}/.core/skills/studio/protocol.md § Compaction Recovery.
+  ALWAYS verify the cf skill is loaded, CFS_INIT == true, before any plan work
+  ALWAYS treat CFS_INIT as false when its value is unknown, ambiguous, or unset
+  NEVER proceed past PlanBootstrap unless CFS_INIT == true is positively confirmed
+  ALWAYS only generate execution plans here, never implement, and ALWAYS LOAD the relevant requirement doc per phase rather than all docs upfront
+  NEVER hold all phase files in context at once — compile one at a time
+  ALWAYS write plan.toml before compiling phase files
+MENU LoadCfSkillConfirm
+TITLE: The cf skill is not loaded. Load it now to continue?
+OPTIONS:
+  1 load -> INVOKE skill `cf` and CONTINUE PlanBootstrap
+  2 stop -> STOP_TURN
+  INVALID -> EMIT_MENU LoadCfSkillConfirm
 ```
-
 ```pdsl
-UNIT PlanSharedContextPack
-
-PURPOSE:
-  Keep plan-phase prompt loading controller-owned and pack-aware.
-
-RULES:
-  - ALWAYS Plan workflow prompt assets are controller-owned runtime loads and ALWAYS use
-    {cf-studio-path}-prefixed runtime paths when mirrors exist
-  - ALWAYS The controller ALWAYS reuse or extend SHARED_CONTEXT_PACK before any
-    downstream phase compiler, phase runner, or other prompt-consuming dispatch
-    that depends on plan prompt assets
-  - ALWAYS Plan NEVER rely on prompt-consuming sub-agents reopening workflow,
-    requirement, spec, or AGENTS prompt files directly
-```
-
-## Overview
-
-```pdsl
-UNIT PlanOverview
-
-PURPOSE:
-  Define when and how to use the plan workflow.
-
-RULES:
-  - ALWAYS use this workflow when work exceeds a single-context window, requires a long
-    checklist, or involves multi-block implementation
-  - NEVER use for small edits, direct execution, or work that fits in ~500 compiled lines
-  - ALWAYS Output: plan.toml + N phase files in {cf-studio-path}/.plans/{task-slug}/
-```
-
-## Context Budget & Overflow Prevention (CRITICAL)
-
-```pdsl
-UNIT PlanContextBudget
-
-PURPOSE:
-  Enforce context budget across all plan phases.
-
-RULES:
-  - ALWAYS open every applicable dependency file to inspect required sections,
-    but NEVER retain full file bodies once needed slices are extracted
-  - NEVER load all kit dependencies at once; load incrementally per phase
-  - NEVER hold all phase files in context simultaneously; compile and write one at a time
-  - ALWAYS checkpoint and use Compaction Recovery if a phase compilation would exceed context budget
-  - ALWAYS write plan.toml (recovery checkpoint) before compilation
-  - ALWAYS IF raw task input > 500 lines:
-      materialize under {cf-studio-path}/.plans/{task-slug}/input/
-      chunk to <= 300 lines per file
-      treat resulting chunk files as authoritative raw-input package
-      IF source includes direct prompt text:
-        preserve raw prompt as input/direct-prompt.md before chunking
-      REQUIRE {cf-studio-path}/.core/requirements/raw-input-overflow.md is loaded and followed
-
-NOTES:
-  Budget targets: Phase 0-1 ~200 lines, Phase 2 ~300, Phase 3 ~500 per phase file, Phase 4 ~50.
-  Reference appendices below are runtime guidance only and do not consume plan-generation
-  budget unless the user explicitly asks about execution behavior.
-```
-
-## Phase 0: Resolve Variables & Discover Tools
-
-```pdsl
-UNIT PlanPhase0
-
-PURPOSE:
-  Resolve runtime variables and build the dynamic tool map from the CLISPEC.
-
+UNIT PlanPhase0Discover
+PURPOSE: Resolve runtime variables and build a dynamic tool map before any path-dependent step (Phase 0).
 DO:
-  - REQUIRE {cf-studio-path}/.core/workflows/plan/phase-0-discover.md is loaded and followed
+  RUN `{cfs_cmd} --json info`
+  SET {cf-studio-path}, {project_root}, and the variables dict from the result
+  RUN build a tool map from {cf-studio-path}/.core/skills/studio/studio.clispec (one entry per command) plus any kit scripts
+  CONTINUE PlanExploreBrainstormGate
+ON_ERROR:
+  `{cfs_cmd} --json info` failure -> EMIT "Could not read studio info (`{cfs_cmd} --json info` failed) — ensure Studio is initialized with `cfs init`, then retry." and STOP_TURN
+RULES:
+  ALWAYS carry {cfs_cmd}, {cf-studio-path}, and {project_root} into the plan.toml [meta] table at Phase 3
+  ALWAYS re-run `{cfs_cmd} --json info` on resume or context loss before any path-dependent step
 ```
-
-## Phase 0.a: Explore / Brainstorm Applicability
-
 ```pdsl
 UNIT PlanExploreBrainstormGate
-
-PURPOSE:
-  Decide whether planning needs resource discovery or decision exploration
-  before scope assessment and decomposition.
-
-WHEN:
-  - REQUIRE PlanPhase0 completed
-  - AND before PlanPhase1
-
+PURPOSE: Offer resource discovery or decision exploration before scope assessment (Phase 0.a).
 DO:
-  - REQUIRE {cf-studio-path}/.core/workflows/shared/explore-brainstorm-gate.md is loaded and followed
-
+  EMIT_MENU PlanGateMenu
+  WAIT user.reply
+  STOP_TURN
 RULES:
-  - ALWAYS delegate explore/brainstorm applicability, replacement, and skip
-    decisions to shared/explore-brainstorm-gate.md
-  - ALWAYS include RESOURCE_CONTEXT and BRAINSTORM_CONTEXT in Phase 1 assessment
-    when either exists
+  ALWAYS carry any resource_context / brainstorm decisions into Phase 1 assessment, and ALWAYS let the user skip the gate
+MENU PlanGateMenu
+TITLE: Before assessing scope, explore project resources or brainstorm decisions — or skip straight to assessment? Skip is the default when the task is already well-defined; explore for unfamiliar projects, brainstorm for ambiguous requirements. Reply with a number.
+OPTIONS:
+  1 explore -> INVOKE skill `cf-explore` with intent=plan and return_context=true, then CONTINUE PlanPhase1Assess
+  2 brainstorm -> INVOKE skill `cf-brainstorm`, then CONTINUE PlanPhase1Assess
+  3 skip -> CONTINUE PlanPhase1Assess
+  INVALID -> EMIT_MENU PlanGateMenu
 ```
-
-## Phase 1: Assess Scope
-
 ```pdsl
-UNIT PlanPhase1
-
-PURPOSE:
-  Identify task type, extract target-workflow navigation rules, estimate compiled
-  size, scan for all user interaction points, and identify the target artifact and slug.
-
+UNIT PlanPhase1Assess
+PURPOSE: Identify task type, extract target-workflow rules, estimate size, and scan every interaction point (Phase 1).
+STATE:
+  SET task_type: generate | analyze | implement (default unset, scope workflow_run)
 DO:
-  - REQUIRE {cf-studio-path}/.core/workflows/plan/phase-1-assess.md is loaded and followed
-```
-
-## Phase 2: Decompose
-
-```pdsl
-UNIT PlanPhase2
-
-PURPOSE:
-  Select plan lifecycle, run intermediate-results analysis, add review gates,
-  and predict execution-context budget per phase.
-
-DO:
-  - REQUIRE {cf-studio-path}/.core/workflows/plan/phase-2-decompose.md is loaded and followed
-```
-
-## Phase 3: Compile Phase Files
-
-```pdsl
-UNIT PlanPhase3
-
-PURPOSE:
-  Write plan manifest, generate compilation briefs, present post-brief choice menu,
-  produce phase files or phase-generation prompts, and validate compiled phase files.
-
-DO:
-  - REQUIRE {cf-studio-path}/.core/workflows/plan/phase-3-compile.md is loaded and followed
-
+  RUN map the request to a task_type and its target workflow (generate -> generate.md, analyze -> analyze.md, implement -> generate.md code mode)
+  RUN extract the target workflow's navigation rules, estimate compiled size, and scan for every user interaction point (questions, confirmations, decisions, reviews, required inputs) so phases assign them
+  RUN resolve the target artifact, {task-slug}, target_key, and input_signature; SET plan_dir = {cf-studio-path}/.plans/{task-slug}/
+  LOAD {cf-studio-path}/.core/requirements/raw-input-overflow.md and chunk raw input under {cf-studio-path}/.plans/{task-slug}/input/ WHEN the raw task input exceeds 500 lines
+  CONTINUE PlanPhase2Decompose
 RULES:
-  - ALWAYS Phase 3.3 dispatch payload ALWAYS include git_commit_mode, contributing_guide,
-    and git_constraint as specified in phase-3-compile.md § 3.3
+  ALWAYS treat kit rules as law, and ALWAYS capture every interaction point so phases assign them
 ```
-
-## Phase 4: Finalize Plan
-
 ```pdsl
-UNIT PlanPhase4
-
-PURPOSE:
-  Run self-validation and emit the canonical final Phase 4 menu after all phase files are produced.
-
-WHEN:
-  - REQUIRE user selected option [1] or [3] in Phase 3.2A
-  - AND all phase-* files were produced
-  - AND plan.execution_status != "prompts_emitted"
-
+UNIT PlanPhase2Decompose
+PURPOSE: Choose a lifecycle, decompose into phases, predict per-phase budget, and confirm before any write (Phase 2).
+STATE:
+  SET lifecycle: gitignore | cleanup | archive | manual (default unset, scope workflow_run)
 DO:
-  - REQUIRE {cf-studio-path}/.core/workflows/plan/phase-4-finalize.md is loaded and followed
-
-NOTES:
-  Contains Phase 4.1 self-validation, gated Phase 4.2 final menu
-  (validation / next task / end), native-execution branch [1]-[5],
-  fallback branch [1]-[4], and New-Chat Startup Prompt.
+  LOAD {cf-studio-path}/.core/requirements/plan-decomposition.md and follow it
+  RUN select a lifecycle from the STATE lifecycle options (gitignore | cleanup | archive | manual)
+  RUN decompose by task-type strategy into phases (sections/categories/CDSL blocks), map intermediate results to out/ artifacts, insert review gates where the target workflow requires approval, and predict per-phase context budget — split any phase over 2000 lines
+  EMIT the decomposition summary — phases, est. lines, budget
+  EMIT_MENU DecompositionConfirmMenu
+  WAIT user.reply
+  STOP_TURN
+RULES:
+  NEVER write any file before this confirmation, and NEVER hide raw-input chunk estimates in vague totals
+MENU DecompositionConfirmMenu
+TITLE: Explicit confirmation required before writing plan.toml + briefs. This writes plan.toml + N brief files under .plans/{task-slug}/; after confirming you choose how to produce phase files. Proceed with this decomposition?
+OPTIONS:
+  1 y | yes -> CONTINUE PlanPhase3Compile
+  2 n | no -> EMIT "Decomposition declined — rework boundaries and re-run cf-plan when ready." and STOP_TURN
+  INVALID -> EMIT_MENU DecompositionConfirmMenu
 ```
-
-## Plan Lifecycle
-
 ```pdsl
-UNIT PlanLifecycle
-
-PURPOSE:
-  Load lifecycle strategy when Phase 2.1 requires user selection.
-
-WHEN:
-  - REQUIRE Phase 2.1 requires the user to select a plan lifecycle strategy
-
+UNIT PlanPhase3Compile
+PURPOSE: Write plan.toml and one brief per phase, then choose how to produce phase files (Phase 3).
 DO:
-  - REQUIRE {cf-studio-path}/.core/workflows/plan/plan-lifecycle.md is loaded and followed
+  LOAD {cf-studio-path}/.core/requirements/plan-template.md and {cf-studio-path}/.core/requirements/brief-template.md and follow them
+  SET CF_PHASE_GATE = released_for_orchestrator_write (scope plan.toml), WRITE {cf-studio-path}/.plans/{task-slug}/plan.toml ([meta] + [plan] + [[phases]] per the template), SET CF_PHASE_GATE = armed
+  SET CF_PHASE_GATE = released_for_orchestrator_write (scope brief-*.md), WRITE one brief-{NN}-{slug}.md per phase (~50-80 lines; context boundary, metadata, load instructions, budget; never copy kit content), SET CF_PHASE_GATE = armed
+  EMIT_MENU BriefCheckpointMenu
+  WAIT user.reply
+  STOP_TURN
+RULES:
+  ALWAYS write plan.toml before any brief or phase file
+  ALWAYS reopen CF_PHASE_GATE released_for_orchestrator_write (scoped) before each write and reset to armed immediately after
+  ALWAYS read each brief FROM DISK before compiling
+  NEVER emit "Plan created" at this checkpoint
+MENU BriefCheckpointMenu
+TITLE: Brief package prepared (plan.toml + N briefs, 0/N phase files) — choose how to produce phase files: 1 inline (uses this chat's budget); 2 prompts (skips validation); 3 subagents (needs sub-agent approval); 4 stop (keep briefs). Reply with a number.
+OPTIONS:
+  1 inline -> compile each phase file inline from its on-disk brief (apply a context boundary, read brief from disk, WRITE phase-NN-*.md with CF_PHASE_GATE released/armed), then CONTINUE PlanPhase3Validate
+  2 prompts -> emit one self-contained downstream compilation prompt per brief (no phase files written), SET plan.execution_status="prompts_emitted", and STOP_TURN (Phase 3.4 validation skipped in this mode)
+  3 subagents -> DISPATCH cf-phase-compiler per brief (gated), WAIT until every dispatched compiler has signalled completion and its phase-NN-*.md output exists on disk, then CONTINUE PlanPhase3Validate
+  4 stop -> SET plan.execution_status="briefs_only" and STOP_TURN
+  INVALID -> EMIT_MENU BriefCheckpointMenu
 ```
-
-## Plan Reference
-
+```pdsl
+UNIT PlanPhase3Validate
+PURPOSE: Verify produced phase files match their briefs and cover all rules (Phase 3.4).
+WHEN:
+  REQUIRE phase files were produced this run (option 1 or 3)
+DO:
+  RUN verify every brief exists, each phase file matches its brief's load instructions, no unresolved {...} vars outside code fences, each phase file <= 1000 lines (split if oversized), and the union of all phase Rules sections covers 100% of applicable rules (re-split rather than drop rules)
+  CONTINUE PlanPhase4Finalize
+ON_ERROR:
+  each phase file <= 1000 lines (split if oversized) check fails -> RUN auto-split the oversized phase file into ordered phase-NN-*.md parts (re-split rather than drop rules), update plan.toml [[phases]], then re-run the verify step; EMIT the oversized file path with explicit split instructions and STOP_TURN WHEN it still exceeds 1000 lines after the auto-split
+RULES:
+  NEVER drop rules to meet budget
+```
+```pdsl
+UNIT PlanPhase4Finalize
+PURPOSE: Self-validate the plan against the checklist and offer next steps (Phase 4).
+WHEN:
+  REQUIRE phase files were produced this run (brief-checkpoint option 1 or 3)
+DO:
+  LOAD {cf-studio-path}/.core/requirements/plan-checklist.md
+  RUN self-validate against the 7 checklist categories (structural, interactive questions, rules coverage, context completeness, phase independence, budget, lifecycle & handoff) and update plan.toml status fields
+  EMIT the self-validation table and offer to fix any FAIL
+  EMIT "Plan created: {cf-studio-path}/.plans/{task-slug}/ (phases, files, lifecycle)" WHEN all categories PASS
+  EMIT_MENU Phase4NextStepsMenu
+  WAIT user.reply
+  STOP_TURN
+RULES:
+  ALWAYS run self-validation before any handoff or startup prompt
+  ALWAYS emit "Plan created" only after validation PASS confirms plan.toml + every brief + every phase file exist on disk
+  ALWAYS wrap the startup prompt in a single fenced code block with no other text
+  ALWAYS keep option 2 execute safe — when sub-agents are unavailable it falls back to the handoff prompt rather than failing
+MENU Phase4NextStepsMenu
+TITLE: Plan passed self-validation — what next? Option 1 (analyze) is the suggested default before execution. Reply with a number.
+OPTIONS:
+  1 analyze -> CONTINUE {cf-studio-path}/.core/workflows/analyze.md with target_paths=[plan.toml], cross_refs=[phase-*.md] to validate the plan
+  2 execute -> CONTINUE PlanNativeExecute (native same-chat execution; if sub-agents are unavailable it falls back to the handoff prompt)
+  3 handoff -> EMIT the new-chat startup prompt in a single fenced code block (read plan.toml, execute Phase 1, then report and prompt for Phase 2), then STOP_TURN
+  4 review -> EMIT the plan file paths to inspect, then STOP_TURN
+  5 modify -> WAIT the user's plan changes (add/remove phases, adjust scope, update files), then STOP_TURN
+  INVALID -> EMIT_MENU Phase4NextStepsMenu
+```
+```pdsl
+UNIT PlanNativeExecute
+PURPOSE: Run native same-chat phase execution via the phase runner when sub-agents are approved.
+DO:
+  RUN re-probe sub-agent approval + inline-fallback
+  SET CF_PHASE_GATE = released_for_dispatch, DISPATCH cf-phase-runner with plan_dir, target_phase=1, git_commit_mode, contributing_guide, and git_constraint, SET CF_PHASE_GATE = armed, then STOP_TURN WHEN approved AND not inline-fallback
+  EMIT "Native same-chat execution is unavailable (sub-agents not approved or inline fallback active) — use the handoff prompt instead." then EMIT the new-chat startup prompt in a single fenced code block and STOP_TURN WHEN not approved OR inline-fallback active
+RULES:
+  NEVER dispatch without a successful sub-agent / inline-fallback re-probe — fall back to the handoff prompt instead
+  ALWAYS set CF_PHASE_GATE released_for_dispatch before dispatch and armed immediately after, and ALWAYS include plan_dir, target_phase, git_commit_mode, contributing_guide, and git_constraint
+```
 ```pdsl
 UNIT PlanReference
-
-PURPOSE:
-  Load execution, status, storage format, or execution log reference on demand.
-
+PURPOSE: Load execution, status, storage-format, or execution-log reference on demand (post-creation).
 WHEN:
-  - REQUIRE user asks about plan execution, status, storage format, or the execution log
-  - REQUIRE (post-plan-creation reference)
-
+  REQUIRE the user asks about plan execution, status, storage format, or the execution log
 DO:
-  - REQUIRE {cf-studio-path}/.core/workflows/plan/plan-reference.md is loaded and followed
+  LOAD {cf-studio-path}/.core/requirements/plan-template.md and follow it for plan.toml storage format, status fields, and the execution/handoff prompt
 ```
-
-## Completion Invariants
-
 ```pdsl
-UNIT PlanCompletionInvariants
-
-PURPOSE:
-  Enforce terminal block requirement before ending any plan response.
-
-DO:
-  - REQUIRE root cf skill Completion Invariants already loaded by
-    RootSkillEntrypointBootstrap are followed before ending any response
-  - NEVER make prompt-consuming sub-agents reopen SKILL.md from disk for this
-    terminal check; pass any needed invariant slice through prompt_context_view
-
-INVARIANTS:
-  - ALWAYS end with the Phase 4 final menu when a cf-plan run compiled phase files
-  - ALWAYS may end with the Phase 3 brief-checkpoint menu only for briefs_only or
-    incomplete compilation checkpoints before all phase files are produced
-  - ALWAYS Phase 3 brief-checkpoint output ALWAYS still require the Phase 4 final menu
-    after full compilation
+UNIT PlanDispatch
+PURPOSE: Name the sub-agents used and guard the plan safety rails.
+RULES:
+  ALWAYS dispatch cf-phase-compiler from {cf-studio-path}/.core/skills/studio/agents/cf-phase-compiler.md to compile phase files (brief-checkpoint option 3), and cf-phase-runner from {cf-studio-path}/.core/skills/studio/agents/cf-phase-runner.md for native same-chat execution
+  NEVER dispatch either without the sub-agent approval + inline-fallback re-probe resolving to approved-and-not-fallback
+  ALWAYS synthesize each dispatch from the agent contract plus the needed slices and ALWAYS include git_commit_mode, contributing_guide, git_constraint, and (for the compiler) the {cf-studio-path}/.core/requirements/prompt-engineering.md slice
+  NEVER let a sub-agent reopen prompt or instruction files from disk
+  ALWAYS offer cf-explore / cf-brainstorm via PlanExploreBrainstormGate before assessment
 ```

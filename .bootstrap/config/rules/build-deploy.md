@@ -44,23 +44,25 @@ make ci
 make ci ACT_FLAGS="--container-architecture linux/amd64"
 ```
 
-Jobs run sequentially and stop on first failure. On Apple Silicon, containers run natively as arm64. Matrix jobs limited to Python 3.13 by default to avoid Docker resource exhaustion.
+Jobs run sequentially and stop on first failure. On Apple Silicon, containers run natively as arm64.
 
 Evidence: `Makefile:4-13` (arch detection), `Makefile:174-183` (ci target).
 
 ### GitHub Actions
 
-CI runs on every push to `main` and every PR targeting `main`. Seven parallel jobs:
+CI runs on every push to `main` and every PR targeting `main`. Nine parallel jobs:
 
 1. **Test** — `make test` on Python 3.11, 3.12, 3.13, 3.14
 2. **Coverage** — `make test-coverage` on Python 3.14 (≥90% gate)
-3. **Vulture** — `make vulture-ci` dead code scan
-4. **Versions** — `make check-versions` consistency check
-5. **Spec Coverage** — `make spec-coverage` (≥80% overall, ≥70% per file)
-6. **Validate** — `make validate` + `make self-check` on Python 3.11–3.14
-7. **Validate Kits** — `make validate-kits` on Python 3.11–3.14
+3. **SonarQube** — SonarCloud scan with coverage reporting (needs `SONAR_TOKEN`)
+4. **Pylint** — `make pylint` static analysis (staged rollout — 12 checks enabled)
+5. **Vulture** — `make vulture-ci` dead code scan
+6. **Versions** — `make check-versions` consistency check
+7. **Spec Coverage** — `make spec-coverage` (≥90% overall, ≥60% per file)
+8. **Validate** — `make validate` + `make self-check` on Python 3.11–3.14
+9. **Validate Kits** — `make validate-kits` on Python 3.11–3.14
 
-Evidence: `.github/workflows/ci.yml`.
+Evidence: `.github/workflows/ci.yml:15-176`, `CONTRIBUTING.md#github-actions`.
 
 ## Make Targets
 
@@ -76,7 +78,8 @@ Evidence: `.github/workflows/ci.yml`.
 | `make self-check` | Validate SDLC examples against templates | Yes |
 | `make validate-kits` | Validate kit structure and example/template integrity | Yes |
 | `make check-versions` | Check version consistency across components | Yes |
-| `make spec-coverage` | Check spec coverage (≥80% overall, ≥70% per file) | Yes |
+| `make pylint` | Run pylint static analysis (12 checks enabled) | Yes |
+| `make spec-coverage` | Check spec coverage (≥90% overall, ≥60% per file) | Yes |
 | `make vulture` | Scan for dead code (report only) | — |
 | `make vulture-ci` | Scan for dead code (fails if findings) | Yes |
 | `make install` | Install pytest + pytest-cov via pipx | — |

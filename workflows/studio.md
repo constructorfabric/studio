@@ -2,30 +2,21 @@
 cf: true
 type: workflow
 name: cf-studio
-description: "Thin alias for the cf skill. /cf-studio behaves identically to /cf — same skill, same routing, same gates (per routing.md CliAliasAndInvocation)."
-version: 1.0
-purpose: Standalone cf-studio command; pass-through alias to the cf skill
+version: 0.1
+description: "Thin alias for the cf skill — /cf-studio, cf-studio help, and cfs studio behave identically to /cf (same skill, same routing, same gates)."
+purpose: Pass-through alias that delegates to the cf skill
 ---
 
-```pdsl
-UNIT StudioRootSkillEntrypointBootstrap
-PURPOSE: Load the shared root cf skill entrypoint bootstrap.
-DO:
-  - RUN ALWAYS open and follow {cf-studio-path}/.core/skills/studio/SKILL.md
-  - LOAD {cf-studio-path}/.core/workflows/shared/root-skill-entrypoint-bootstrap.md
-  - CONTINUE RootSkillEntrypointBootstrap
-```
+# cf-studio
+
+This is a thin alias: `cf-studio` behaves identically to `cf` — same skill, same routing, same gates. It performs no work of its own; it simply delegates to the `cf` skill, which initializes the session, loads the core rules, and routes to the matching cf-* skill.
 
 ```pdsl
-UNIT CfStudioAlias
-
-PURPOSE:
-  Pass-through alias to the cf skill. /cf-studio behaves identically to /cf
-  per routing.md's CliAliasAndInvocation rule.
-
+UNIT StudioAlias
+PURPOSE: Delegate cf-studio to the cf skill — they are the same skill.
 DO:
-  - CONTINUE CfSkillInit from {cf-studio-path}/.core/skills/studio/SKILL.md
-
-ON_ERROR:
-  load_failed -> EMIT "Cannot load cf skill — check that {cf-studio-path} is correctly set." STOP_TURN
+  INVOKE skill `cf` to initialize the session and route the request, then STOP_TURN
+RULES:
+  ALWAYS treat cf-studio as an exact alias of cf — same skill, same routing, same gates
+  NEVER perform any work, render any output, or apply any gate here beyond delegating to the cf skill
 ```

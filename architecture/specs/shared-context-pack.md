@@ -386,6 +386,4 @@ To migrate existing Studio prompts to this model:
 
 ## References
 
-- `{cf-studio-path}/.core/skills/studio/SKILL.md`
-- `{cf-studio-path}/.core/skills/studio/protocol.md`
-- `{cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md`
+- `{cf-studio-path}/.core/skills/studio/SKILL.md` (consolidated studio protocol and SubAgentDispatch contract)

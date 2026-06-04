@@ -277,7 +277,10 @@ class TestWorkflowStructure:
     def test_workflow_next_steps(self):
         """Workflow should have Next Steps or similar conclusion."""
         wf_dir = PROJECT_ROOT / "workflows"
-        wf_files = [f for f in wf_dir.glob("*.md") if f.name not in ("README.md", "AGENTS.md", "explain.md", "auto-config.md", "brainstorm.md", "pdsl.md", "studio.md", "help.md")]
+        # analyze.md and generate.md are thin routers (routing is the terminal
+        # behavior); like the other router/meta workflows they have no
+        # "next steps" conclusion section.
+        wf_files = [f for f in wf_dir.glob("*.md") if f.name not in ("README.md", "AGENTS.md", "explain.md", "auto-config.md", "brainstorm.md", "pdsl.md", "studio.md", "help.md", "analyze.md", "generate.md")]
         for f in wf_files:
             text = f.read_text(encoding="utf-8").lower()
             has_conclusion = "next" in text or "after" in text or "complete" in text or "done" in text

@@ -1,17 +1,186 @@
-"""Round-trip dispatch fixtures for the workflow sub-agents that the thin-
-orchestrator refactor exercises, plus the Phase 5.4 reply-grammar parser and
-the Phase 6 combine-refusal contract.
+"""Round-trip dispatch fixtures for the sub-agents that the Constructor Studio
+workflows dispatch, plus structural checks that the post-refactor architecture
+(thin routers + single-file workflows + consolidated studio skill) wires those
+sub-agents correctly.
 
-Resolves PROMPT_REVIEW findings I16 (snapshot-only test coverage for sub-agent
-dispatch wiring) and I21 (no parser-grammar test for Phase 5.4 reply table /
-no Phase 6 R+W combine-refusal test). All fixtures are pure shape checks — they
-do NOT invoke a real LLM. The point is to lock the dispatch JSON contract +
-expected response shape so future workflow edits cannot silently drift.
+The "Removed legacy multi-phase workflows and updated routing" refactor retired
+the entire `workflows/generate/phase-*`, `workflows/analyze/phase-*`,
+`workflows/shared/*`, `skills/studio/protocol.md`, `skills/studio/routing.md`,
+and `skills/studio/sub-agent-dispatch.md` tree. `workflows/generate.md` and
+`workflows/analyze.md` are now thin routers; `workflows/coding.md` (and the
+other `workflows/<verb>.md` files) are single-file workflows; and the sub-agent
+approval gate + dispatch contract now live in `skills/studio/SKILL.md`
+(UNIT SubAgentDispatch). The canonical sub-agent inventory is
+`skills/studio/agents.toml` with per-agent contracts under
+`skills/studio/agents/<name>.md`.
 
-Test count contract (per plan phase 5 acceptance criterion): ≥ 11 cases:
-  * 12 × per-sub-agent dispatch round-trip
-  * 1 × Phase 5.4 reply-grammar parser table (parametrised across every regex row)
-  * 1 × Phase 6 R+W combine-refusal
+All dispatch/shape fixtures here are pure shape checks — they do NOT invoke a
+real LLM. The point is to lock the dispatch JSON contract + expected response
+shape, plus assert the new routing/dispatch structure, so future workflow edits
+cannot silently drift.
+
+-----------------------------------------------------------------------------
+Migration note (audit trail for the post-refactor rewrite of this file)
+-----------------------------------------------------------------------------
+REWRITTEN (re-grounded on the new architecture):
+  * test_skill_requires_session_approval_before_native_subagent_dispatch —
+    the session approval gate moved from the deleted
+    skills/studio/sub-agent-dispatch.md to UNIT SubAgentDispatch in
+    skills/studio/SKILL.md; re-grounded there.
+  * test_subagent_fallback_never_defaults_from_unapproved_native_support —
+    same move; now asserts the SubAgentFallbackRequest deny/inline path in
+    SKILL.md instead of the deleted dispatch file.
+  * test_runtime_instruction_modules_stay_compact — dropped the deleted
+    phase-0-dependencies.md / remediation-handoff.md budget rows; kept the
+    line budgets for files that still exist (SKILL.md, the code reviewer
+    contract) and added the new router/coding workflow files.
+
+ADDED (new coverage for the new architecture):
+  * test_generate_and_analyze_are_thin_routers_forbidding_legacy_phases
+  * test_coding_dispatch_names_reviewers_and_valid_coder
+  * test_workflow_agent_references_resolve_and_coding_agents_registered
+
+DELETED (retired multi-phase / removed-file structure with NO new equivalent):
+  * test_review_finding_workflow_contract_regressions — pinned
+    workflows/generate/error-handling.md + analyze/generate phase handoff files
+    (all deleted).
+  * test_external_fix_handoff_requires_subagent_dispatch_evidence — pinned
+    phase-5 dispatch-evidence guards in deleted phase-5 files.
+  * test_phase_5_4_reply_grammar (+ PHASE_5_4_RULES/_parse_phase_5_4_reply) —
+    pure parser mirroring deleted phase-5/phase-5.4-approval.md reply table.
+  * test_phase_6_combine_refusal (+ COMBINE_REFUSAL_PATTERN/_phase_6_route) —
+    pure parser mirroring deleted phase-6 R+W combine-refusal contract.
+  * test_phase_6_r1_routes_existing_findings_to_seeded_findings_path — deleted
+    phase-6/remediation-handoff.md.
+  * test_protocol_completion_invariants_match_handoff_workflows — deleted
+    skills/studio/protocol.md + phase-6 handoff files.
+  * test_workflow_probe_requires_subagent_approval_gate — deleted
+    workflows/shared/inline-fallback-probe.md (probe folded into SKILL.md gate).
+  * test_analyze_change_review_dispatches_diff_scope_resolver — deleted
+    analyze/overview.md + analyze/phase-0* change-review files.
+  * test_analyze_handoff_max_iter_zero_can_reach_phase_6 — deleted phase-5/6.
+  * test_analyze_external_r1_fixes_carried_findings_before_fresh_review —
+    deleted phase-5 index + analyze phase-4-output handoff.
+  * test_max_iter_zero_preserves_analyzed_paths_for_followup_fix_loop — deleted
+    phase-5/phase-6 files.
+  * test_phase_6_chat_only_suppression_does_not_hide_remaining_findings —
+    deleted phase-6/index.md.
+  * test_protocol_references_use_existing_thin_protocol_file — asserted the now
+    deleted skills/studio/protocol.md path.
+  * test_prompt_bug_only_analyze_is_mutually_exclusive_prompt_branch — deleted
+    analyze/phase-4-output + phase-3-semantic.
+  * test_generate_prompt_review_detects_cypilot_instruction_docs — deleted
+    phase-5/phase-5.2-semantic.md.
+  * test_max_iter_zero_has_single_external_entry_semantics — deleted phase-5.
+  * test_storytelling_route_does_not_reference_removed_trigger_file — deleted
+    analyze/phase-0-dependencies.md + analyze/preamble.md.
+  * test_deterministic_validator_uses_resolved_validator_command — pinned
+    deleted analyze/generate phase det-gate files.
+  * test_phase_6_blocks_post_write_choices_while_remediation_pending — deleted
+    phase-6 handoff files.
+  * test_prompt_review_partial_checkpoint_has_phase_4_output_contract — deleted
+    analyze/phase-4-output files.
+  * test_phase_3_to_4_checkpoint_has_canonical_reply_menu — deleted
+    analyze/phase-3-to-4-checkpoint.md.
+  * test_partial_checkpoint_contract_scope_matches_reviewer_support — deleted
+    analyze/phase-3-semantic.md + phase-5/phase-5.2-semantic.md.
+  * test_analyze_antipattern_summary_does_not_mislabel_canonical_ap005 —
+    deleted analyze/rules.md.
+  * test_phase_5_findings_display_is_bounded_with_full_json_payload — deleted
+    phase-5/phase-5.3-findings.md.
+  * test_generate_clarification_prompts_explain_why_and_suggest_default —
+    deleted generate/phase-0.5-clarify.md.
+  * test_analyze_methodologies_are_lazy_and_one_per_subagent — deleted
+    analyze/preamble.md + phase-0-dependencies.md.
+  * test_generate_author_plan_menu_supports_skip_inline_and_accept_anyway —
+    deleted generate/phase-1.5/* files.
+  * test_generate_phase4_cannot_skip_planned_author_dispatch — deleted
+    generate/phase-4-write.md.
+  * test_analyze_phase3_cannot_skip_planned_reviewer_dispatch — deleted
+    analyze/phase-3-semantic.md.
+  * test_subagent_dispatch_sites_have_pre_dispatch_gate — per-phase dispatch
+    sites no longer exist (single gate in SKILL.md).
+  * test_artifact_review_dispatch_uses_registered_example_path_shape — deleted
+    analyze/phase-3-semantic.md + phase-5/phase-5.2-semantic.md.
+  * test_generate_carry_forward_keeps_unapproved_judgmental_findings — deleted
+    phase-5/phase-5.4-approval.md.
+  * test_remediation_menus_have_one_dynamic_suggestion_slot — deleted analyze
+    phase-4-output + phase-6 handoff files.
+  * test_analyze_standard_output_does_not_own_prompt_templates — deleted
+    analyze/phase-4-output files.
+  * test_brainstorm_challenge_flow_matches_user_facing_contract — deleted
+    generate/phase-0.7/* files.
+  * test_brainstorm_challenge_questions_target_decision_keys — deleted
+    generate/phase-0.7/round-loop.md + state-schema.md.
+  * test_brainstorm_round_prompt_supports_one_by_one_answering — deleted
+    generate/phase-0.7/round-loop.md.
+  * test_brainstorm_post_round_custom_reply_grammar (+ rules helper) — pure
+    parser mirroring deleted generate/phase-0.7/round-loop.md.
+  * test_brainstorm_wrap_menu_distinguishes_session_and_disk_save — deleted
+    generate/phase-0.7/wrap-handoff.md.
+  * test_brainstorm_missing_topic_offers_saved_sessions_first — deleted
+    generate/phase-0.5-clarify.md.
+  * test_brainstorm_saved_discard_and_retention_are_explicit — deleted
+    generate/phase-0.7/offer.md + wrap-handoff.md.
+  * test_cf_on_uses_ambiguous_routing_menu — deleted skills/studio/routing.md.
+  * test_cf_help_routes_to_prefilled_explain_preset — deleted routing.md +
+    analyze/preamble.md.
+  * test_explain_mode_fail_closed_against_one_shot_help_summary — deleted
+    skills/studio/protocol.md + analyze/preamble.md.
+  * test_empty_standalone_explore_clarifies_before_dispatch — explore.md
+    rewritten; old ExploreClarifyGate UNIT text gone (no equivalent anchors).
+  * test_explore_offers_explicit_save_bundle_after_summary — same: explore.md
+    save-bundle text replaced.
+  * test_brainstorm_challenge_critique_only_is_not_rendered_as_skipped —
+    deleted generate/phase-0.7/round-loop.md.
+  * test_analyze_mode_flags_are_reset_per_run — deleted analyze/preamble.md.
+  * test_analyze_prompt_review_uses_paths_for_direct_multi_target_scope —
+    deleted analyze/phase-3-semantic.md.
+  * test_prompt_bug_only_uses_prompt_output_schema — deleted
+    analyze/phase-4-output files.
+  * test_analyze_handoff_preserves_analyzed_paths_separate_from_written_manifest
+    — deleted analyze/phase-4-output/remediation-handoff.md.
+  * test_change_review_derives_prompt_flags_after_diff_scope — deleted
+    analyze/phase-0-change-review-scope.md.
+  * test_reviewer_plan_failure_does_not_use_legacy_single_dispatch_fallback —
+    deleted analyze/phase-2.5-reviewer-plan.md + phase-3-semantic.md.
+  * test_skill_entrypoint_bootstrap_keeps_mandatory_loads_explicit — pinned the
+    deleted protocol.md / sub-agent-dispatch.md / routing.md mandatory loads;
+    SKILL.md is now consolidated (no separate UNIT Bootstrap/HardRules).
+  * test_analyze_artifact_dependencies_do_not_block_code_or_prompt_reviews —
+    deleted analyze/phase-0-dependencies.md.
+  * test_legacy_analyze_dispatch_keeps_code_and_prompt_review_independent —
+    deleted analyze/phase-3-semantic.md.
+  * test_analyze_routing_includes_storytelling_and_bug_hunt_intents — deleted
+    skills/studio/routing.md.
+  * test_storytelling_navigation_slots_are_topic_picker_menus — pinned deleted
+    analyze/validation-criteria.md handoff anchors.
+  * test_ambiguous_routing_fallback_lists_full_route_family — deleted
+    skills/studio/routing.md fixed route table.
+  * test_root_cf_skill_metadata_advertises_broad_routes — SKILL.md description
+    is now a narrow session-initiator string; broad-route metadata retired in
+    favor of dynamic cf-* skill discovery.
+  * test_artifact_review_flag_is_initialized_and_set — deleted
+    analyze/phase-0-dependencies.md + phase-2.5-reviewer-plan.md.
+  * test_analyze_to_generate_handoff_reprobes_before_max_iter_prompt — deleted
+    analyze/phase-4-output/remediation-handoff.md.
+  * test_phase_5_clean_exit_routes_through_final_assembly — deleted
+    phase-5/phase-5.3-findings.md / phase-5.5-final.md.
+  * test_phase_5_cap_accept_after_write_requires_validation — deleted
+    phase-5/phase-5.4-approval.md.
+  * test_phase_5_approval_cap_prompt_handles_all_replies — deleted
+    phase-5/phase-5.4-approval.md.
+  * test_post_write_handoff_has_dynamic_suggested_choice — deleted
+    phase-6/post-write-handoff.md.
+
+UNSURE / flagged for maintainer:
+  * cf-semantic-reviewer-freeform is dispatched by workflows/write-docs.md but
+    is NOT a key in skills/studio/agents.toml. The new
+    test_workflow_agent_references_resolve_and_coding_agents_registered checks
+    that referenced agent CONTRACT FILES exist on disk (freeform.md does), and
+    only asserts agents.toml registration for the coding-workflow dispatch set
+    — so it does not encode that gap. Confirm whether freeform should be
+    registered in agents.toml.
 """
 from __future__ import annotations
 
@@ -22,11 +191,12 @@ import pytest
 
 
 # ---------------------------------------------------------------------------
-# The sub-agents the thin-orchestrator workflows dispatch.
+# The sub-agents the workflows dispatch.
 #
 # Source of truth: skills/studio/agents.toml. We deliberately pin the
 # canonical names so a rename in agents.toml without an accompanying workflow
-# update breaks this test.
+# update breaks this test. Every name here is verified registered by
+# test_workflow_subagents_are_registered.
 # ---------------------------------------------------------------------------
 WORKFLOW_SUBAGENTS: tuple[str, ...] = (
     "cf-diff-scope-resolver",
@@ -66,13 +236,13 @@ FINDING_EMITTING_SUBAGENTS = {
 
 
 # Minimal dispatch contracts per agent (orchestrator-supplied JSON fields the
-# workflows promise to pass). Sourced verbatim from:
-#   * workflows/generate/phase-5/phase-5.1-det-gate.md (validator)
-#   * workflows/generate/phase-5/phase-5.2-semantic.md (reviewers)
-#   * workflows/generate/phase-0.7/panel-selection.md (brainstorm-facilitator)
-#   * workflows/generate/phase-0.7/round-loop.md       (brainstorm-expert)
-#   * workflows/generate/phase-1-collect.md            (collector)
-#   * workflows/generate/phase-4-write.md              (author)
+# workflows promise to pass). The shapes are grounded in the per-agent contract
+# files under skills/studio/agents/<name>.md (e.g. the validator/reviewer
+# contracts, the brainstorm facilitator/expert contracts, the collector and
+# author contracts) plus the dispatch RULES in the single-file workflows
+# (workflows/coding.md CodingDispatch, workflows/brainstorm.md, etc.). These
+# are pure shape fixtures and do NOT read those files; they lock the JSON
+# contract the dispatcher must honour.
 DISPATCH_PAYLOADS: dict[str, dict] = {
     "cf-diff-scope-resolver": {
         "worktree_path": "/repo/worktrees/feature",
@@ -134,8 +304,7 @@ DISPATCH_PAYLOADS: dict[str, dict] = {
         "cross_ref_paths": [],
     },
     "cf-semantic-reviewer-consistency": {
-        # len(target_paths) >= 2 — see Consistency precondition in
-        # workflows/generate/phase-5/phase-5.2-semantic.md
+        # len(target_paths) >= 2 — consistency cross-checks at least two targets
         "target_paths": ["fixture/a.md", "fixture/b.md"],
         "baseline_path": None,
         "kit_rules_path": None,
@@ -370,21 +539,8 @@ def _fake_invoke(agent_id: str, payload: dict) -> dict:
     """Pure-Python dispatcher stub. Mirrors the response shape that real
     sub-agents are contractually required to return.
 
-    Returns:
-      {
-        "agent_id": <echoed agent id>,
-        "result": {
-            # Reviewers / validator: a Validation Report markdown block stub +
-            # findings array.
-            # Author: a manifest stub.
-            # Collector: a proposed_inputs dict stub.
-            # Brainstorm: a state-mutation stub.
-            ...
-        },
-      }
-
     We do NOT call any real LLM here; this is a contract / shape harness so the
-    Phase 5 / Phase 6 dispatchers can be unit-tested without network access.
+    dispatcher can be unit-tested without network access.
     """
     if agent_id not in WORKFLOW_SUBAGENTS:
         raise ValueError(f"Unknown sub-agent: {agent_id!r}")
@@ -552,7 +708,7 @@ def _fake_invoke(agent_id: str, payload: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# 12 × dispatch round-trip cases
+# Per-sub-agent dispatch round-trip cases
 # ---------------------------------------------------------------------------
 @pytest.mark.parametrize("agent_id", WORKFLOW_SUBAGENTS)
 def test_dispatch_round_trip(agent_id: str) -> None:
@@ -731,8 +887,6 @@ class TestSubagentDispatch:
         exactly one of review_result / checkpoint present, and checkpoint carries
         type=PARTIAL_CHECKPOINT.
         """
-        # Build a fake checkpoint response by hand (simulates what a sub-agent
-        # would return when it has only partially reviewed the target files).
         agent_id = "cf-semantic-reviewer-artifact"
         assert agent_id in FINDING_EMITTING_SUBAGENTS
 
@@ -763,19 +917,16 @@ class TestSubagentDispatch:
         has_review_result = "review_result" in fake_response["result"]
         has_checkpoint = "checkpoint" in fake_response["result"]
 
-        # The discriminator invariant: exactly one of the two keys is present.
         assert has_review_result != has_checkpoint, (
             "finding-emitting workflow sub-agent responses must carry exactly "
             "one review_result/checkpoint discriminator"
         )
-        # This branch exercises the checkpoint path specifically.
         assert not has_review_result
         assert has_checkpoint
         assert fake_response["result"]["checkpoint"]["type"] == "PARTIAL_CHECKPOINT"
         assert fake_response["result"]["checkpoint"]["unread_files"]
         assert fake_response["result"]["checkpoint"]["uncovered_categories"]
 
-        # Findings must still be present even in checkpoint responses.
         findings = fake_response["result"].get("findings")
         assert isinstance(findings, list) and findings
         for finding in findings:
@@ -784,344 +935,124 @@ class TestSubagentDispatch:
             )
 
 
-def test_review_finding_workflow_contract_regressions() -> None:
-    """Review-loop handoff text must not regress on approved review findings."""
-    repo_root = Path(__file__).resolve().parents[1]
-    error_handling = (
-        repo_root / "workflows" / "generate" / "error-handling.md"
-    ).read_text(encoding="utf-8")
-    shared_plan_gate = (
-        repo_root / "workflows" / "shared" / "plan-escalation-gate.md"
-    ).read_text(encoding="utf-8")
-    analyze_plan_gate = (
-        repo_root / "workflows" / "analyze" / "phase-0.1-plan-escalation-gate.md"
-    ).read_text(encoding="utf-8")
-    reviewer_plan = (
-        repo_root / "workflows" / "analyze" / "phase-2.5-reviewer-plan.md"
-    ).read_text(encoding="utf-8")
-    validation_criteria = (
-        repo_root / "workflows" / "analyze" / "validation-criteria.md"
-    ).read_text(encoding="utf-8")
-    clarify = (
-        repo_root / "workflows" / "generate" / "phase-0.5-clarify.md"
-    ).read_text(encoding="utf-8")
-    analyze_handoff = (
-        repo_root / "workflows" / "analyze" / "phase-4-output" / "remediation-handoff.md"
-    ).read_text(encoding="utf-8")
+# ---------------------------------------------------------------------------
+# New architecture: thin routers, single-file coding workflow, the consolidated
+# studio skill's sub-agent approval gate, and inventory consistency.
+# ---------------------------------------------------------------------------
+def test_generate_and_analyze_are_thin_routers_forbidding_legacy_phases() -> None:
+    """generate.md and analyze.md are thin routers that forbid legacy phase logic.
 
-    assert "`{cfs_cmd} update`" in error_handling
-    assert "`{cfs_cmd} --json update`" not in error_handling
-
-    assert "higher precedence — resolve first" in shared_plan_gate
-    assert "higher precedence than the bypass" in analyze_plan_gate
-
-    assert "empty|enter|memory|1" in reviewer_plan
-
-    assert "Dependencies loaded when required for the active methodology" in validation_criteria
-    assert "prompt-bug-only output uses the prompt-bug-finder block" in validation_criteria
-
-    assert "Reply with `File`, `Chat only`, `MCP: <tool>`, or `External: <system>`" in clarify
-
-    assert "manifest.paths_written = []" in analyze_handoff
-    assert "target_paths = analyzed_paths" in analyze_handoff
-
-
-def test_external_fix_handoff_requires_subagent_dispatch_evidence() -> None:
-    """Analyze→generate fix mode must fail closed instead of patching inline.
-
-    The handoff carries SUB_AGENT_SESSION_APPROVED but deliberately does not
-    carry INLINE_FALLBACK. A future orchestrator must therefore re-probe and
-    record per-iteration dispatch evidence before applying fixes when native
-    sub-agents are active.
+    The multi-phase generate/analyze workflows were retired. The routers must
+    declare their routing UNITs and explicitly forbid loading/running any legacy
+    phase logic.
     """
     repo_root = Path(__file__).resolve().parents[1]
-    analyze_handoff = (
-        repo_root / "workflows" / "analyze" / "phase-4-output" / "remediation-handoff.md"
-    ).read_text(encoding="utf-8")
-    phase5_index = (
-        repo_root / "workflows" / "generate" / "phase-5" / "index.md"
-    ).read_text(encoding="utf-8")
-    phase53 = (
-        repo_root / "workflows" / "generate" / "phase-5" / "phase-5.3-findings.md"
-    ).read_text(encoding="utf-8")
-    phase54 = (
-        repo_root / "workflows" / "generate" / "phase-5" / "phase-5.4-approval.md"
-    ).read_text(encoding="utf-8")
+    generate = (repo_root / "workflows" / "generate.md").read_text(encoding="utf-8")
+    analyze = (repo_root / "workflows" / "analyze.md").read_text(encoding="utf-8")
 
-    for text in (analyze_handoff, phase5_index, phase53):
-        assert "handoff_guard.inline_fallback_reprobed = true" in text
-        assert "handoff_guard.max_iter_resolved = true" in text
-        assert "handoff_guard.dispatch_evidence_required = true" in text
+    # Routing UNITs exist on each router.
+    assert "UNIT GenerateBootstrap" in generate
+    assert "UNIT GenerateRoute" in generate
+    assert "UNIT GenerateNoMatch" in generate
+    assert "UNIT AnalyzeBootstrap" in analyze
+    assert "UNIT AnalyzeRoute" in analyze
+    assert "UNIT AnalyzeNoMatch" in analyze
 
-    assert "phase5_dispatch_evidence" in phase5_index
-    assert "validator\n      dispatch record per post-author iteration" in phase5_index
-    assert "semantic reviewer dispatch\n      record per post-author iteration" in phase5_index
-    assert "author dispatch record before the first file edit" in phase5_index
-    assert "missing required\n      evidence = protocol violation" in phase5_index
+    # Routing is resolved via the shared WorkflowResolution rule, not phases.
+    assert "WorkflowResolution" in generate
+    assert "WorkflowResolution" in analyze
 
-    assert "Inline patching permitted ONLY when INLINE_FALLBACK=true OR MAX_ITER=0" in phase53
-    assert "ALWAYS stop before editing files" in phase53
-    assert "APPEND selected author dispatch evidence to phase5_dispatch_evidence" in phase54
+    # Legacy multi-phase logic is explicitly forbidden. (The retirement note in
+    # analyze.md wraps "legacy" onto the previous line, so normalize whitespace.)
+    generate_flat = " ".join(generate.split())
+    analyze_flat = " ".join(analyze.split())
+    assert "legacy multi-phase generate workflow has been retired" in generate_flat
+    assert "NEVER load or run any legacy generate phase logic; routing is the only behavior" in generate
+    assert "NEVER fall back to legacy generate phases when nothing matches" in generate
+    assert "legacy multi-phase analyze workflow has been retired" in analyze_flat
+    assert "NEVER load or run any legacy analyze phase logic; routing is the only behavior" in analyze
+    assert "NEVER fall back to legacy analyze phases when nothing matches" in analyze
 
 
-# ---------------------------------------------------------------------------
-# Phase 5.4 reply-grammar parser table
-#
-# Mirrors the regex map in
-#   workflows/generate/phase-5/phase-5.4-approval.md § Reply parsing rules
-# verbatim. If that table grows or shrinks, this test breaks.
-# ---------------------------------------------------------------------------
-PHASE_5_4_RULES = (
-    (re.compile(r"^1$", re.IGNORECASE),               "option_1"),
-    (re.compile(r"^2$", re.IGNORECASE),               "reject_bare_2_no_colon"),
-    (re.compile(r"^2:\s*$", re.IGNORECASE),           "option_2_mechanical_only"),
-    (re.compile(
-        r"^2:\s*[A-Za-z][A-Za-z0-9_-]*(\s*,\s*[A-Za-z][A-Za-z0-9_-]*)*\s*$",
-        re.IGNORECASE,
-    ),                                                "option_2_with_ids"),
-    (re.compile(r"^3$", re.IGNORECASE),               "option_3"),
-    (re.compile(r"^4$", re.IGNORECASE),               "option_4"),
-    (re.compile(r"^(stop|enough|done)$", re.IGNORECASE), "stop_token_as_4"),
-)
+def test_coding_dispatch_names_reviewers_and_valid_coder() -> None:
+    """workflows/coding.md CodingDispatch names the correct reviewer sub-agents
+    and a valid coder agent, all registered in agents.toml."""
+    import tomllib
 
-
-def _parse_phase_5_4_reply(raw: str) -> str:
-    user_input = raw.strip()
-    for pattern, outcome in PHASE_5_4_RULES:
-        if pattern.match(user_input):
-            return outcome
-    return "reject_unrecognized"
-
-
-PHASE_5_4_CASES = (
-    # Each (reply, expected outcome) — exercises every row in the regex table.
-    ("1",                  "option_1"),
-    ("2",                  "reject_bare_2_no_colon"),
-    ("2:",                 "option_2_mechanical_only"),
-    ("2: V-001",           "option_2_with_ids"),
-    ("2: V-001, Rp-007",   "option_2_with_ids"),
-    ("3",                  "option_3"),
-    ("4",                  "option_4"),
-    ("STOP",               "stop_token_as_4"),
-    ("Enough",             "stop_token_as_4"),
-    ("done",               "stop_token_as_4"),
-    ("garbage",            "reject_unrecognized"),
-    ("",                   "reject_unrecognized"),
-    ("  1  ",              "option_1"),         # whitespace-tolerant
-    ("2: 001",             "reject_unrecognized"),  # finding id starts with digit
-    ("2: V 001",           "reject_unrecognized"),  # finding id contains space
-)
-
-
-@pytest.mark.parametrize("reply,expected", PHASE_5_4_CASES)
-def test_phase_5_4_reply_grammar(reply: str, expected: str) -> None:
-    """Parametrised case exercising the full Phase 5.4 reply-grammar
-    table. Resolves PROMPT_REVIEW finding I16 + I21 (no parser test)."""
-    got = _parse_phase_5_4_reply(reply)
-    assert got == expected, f"reply {reply!r} → {got!r}, expected {expected!r}"
-
-
-# ---------------------------------------------------------------------------
-# Phase 6 combine-refusal
-#
-# Source of truth: workflows/generate/phase-6/remediation-handoff.md § Combine
-# semantics. Combined Remediation (R*) + Post-Write Review (W*) replies on the
-# same turn ALWAYS be refused with the canonical clarifier.
-# ---------------------------------------------------------------------------
-COMBINE_REFUSAL_PATTERN = re.compile(
-    r"""^\s*
-        (?:R[123]|W[123])           # one menu choice
-        \s*[,+]\s*                  # comma or plus separator (whitespace ok)
-        (?:R[123]|W[123])           # another menu choice
-        (?:\s*[,+]\s*(?:R[123]|W[123]))*   # zero or more additional choices
-        \s*$
-    """,
-    re.IGNORECASE | re.VERBOSE,
-)
-
-
-def _phase_6_route(reply: str) -> str:
-    user_input = reply.strip()
-    if COMBINE_REFUSAL_PATTERN.match(user_input):
-        return "refuse_combined_rw"
-    if re.match(r"^R[123]$", user_input, re.IGNORECASE):
-        return "accept_remediation"
-    if re.match(r"^W[123]$", user_input, re.IGNORECASE):
-        return "accept_post_write"
-    return "reject_unrecognized"
-
-
-def test_phase_6_combine_refusal() -> None:
-    """The Phase 6 dispatcher ALWAYS refuse combined Remediation+Post-Write
-    replies and also refuse multi-choice replies within one menu. Single-menu
-    single-choice replies are accepted."""
-    # Combined R+W must be refused (every separator variant + casing).
-    for combo in ("R1, W2", "R2 + W3", "W2, R1", "r1,w2", "R1+W3", "R1 ,  W2"):
-        assert _phase_6_route(combo) == "refuse_combined_rw", combo
-    # Multi-choice within one menu also refused.
-    for same_menu in ("R1, R2", "W1, W2", "R2 + R3", "  R1, W2  ", "R1+R2+R3"):
-        assert _phase_6_route(same_menu) == "refuse_combined_rw", same_menu
-    # Single valid choice accepted.
-    for ok_r in ("R1", "R2", "R3", "  r1 "):
-        assert _phase_6_route(ok_r) == "accept_remediation", ok_r
-    for ok_w in ("W1", "W2", "W3"):
-        assert _phase_6_route(ok_w) == "accept_post_write", ok_w
-
-
-def test_phase_6_r1_routes_existing_findings_to_seeded_findings_path() -> None:
-    """R1 must fix the known remaining findings instead of starting a fresh review.
-
-    R1 enters the Phase 5 dispatcher in fix mode; iteration 1 starts at
-    `phase-5.1-det-gate.md` per the dispatcher contract. `all_findings` is
-    seeded from `remaining_findings` at the dispatcher boundary.
-    """
     repo_root = Path(__file__).resolve().parents[1]
-    remediation = (
-        repo_root / "workflows" / "generate" / "phase-6" / "remediation-handoff.md"
-    ).read_text(encoding="utf-8")
+    coding = (repo_root / "workflows" / "coding.md").read_text(encoding="utf-8")
+    with open(repo_root / "skills" / "studio" / "agents.toml", "rb") as fh:
+        registered = set(tomllib.load(fh)["agents"].keys())
 
-    assert "ENTER phase-5/index.md § Dispatcher in fix mode" in remediation
-    assert "phase-5.1-det-gate.md" in remediation
-    assert "all_findings = remaining_findings" in remediation
-    assert "re-enter `workflows/generate/phase-5/index.md` with `remaining_findings`" not in remediation
+    assert "UNIT CodingDispatch" in coding
 
+    # The three semantic reviewers the coding loop dispatches.
+    coding_reviewers = (
+        "cf-semantic-reviewer-code",
+        "cf-code-bug-finder",
+        "cf-semantic-reviewer-consistency",
+    )
+    for reviewer in coding_reviewers:
+        assert reviewer in coding, f"CodingDispatch must name {reviewer}"
+        assert reviewer in registered, f"{reviewer} must be registered in agents.toml"
 
-def test_protocol_completion_invariants_match_handoff_workflows() -> None:
-    """protocol.md must agree with the thin-orchestrator handoff contract.
+    # The deterministic gate validator.
+    assert "cf-deterministic-validator" in coding
+    assert "cf-deterministic-validator" in registered
 
-    Generate and analyze complete by emitting handoff menus. Prompt blocks are
-    on-demand next-turn emissions, not mandatory terminal blocks in the same
-    response.
-    """
-    repo_root = Path(__file__).resolve().parents[1]
-    protocol = (
-        repo_root / "skills" / "studio" / "protocol.md"
-    ).read_text(encoding="utf-8")
-    codegen = (
-        repo_root / "skills" / "studio" / "agents" / "cf-codegen.md"
-    ).read_text(encoding="utf-8")
-    pr_review = (
-        repo_root / "skills" / "studio" / "agents" / "cf-pr-review.md"
-    ).read_text(encoding="utf-8")
-    analyze_overview = (
-        repo_root / "workflows" / "analyze" / "overview.md"
-    ).read_text(encoding="utf-8")
-    analyze_handoff = (
-        repo_root / "workflows" / "analyze" / "phase-4-output" / "remediation-handoff.md"
-    ).read_text(encoding="utf-8")
-    post_write_handoff = (
-        repo_root / "workflows" / "generate" / "phase-6" / "post-write-handoff.md"
-    ).read_text(encoding="utf-8")
-
-    assert "terminal = Post-Write Review Handoff menu" in protocol
-    assert "terminal = Remediation Handoff menu" in protocol
-    assert "Analyze remediation and review handoff prompt blocks ALWAYS be emitted only" in protocol
-    assert "on the NEXT turn after the user picks the matching handoff option" in protocol
-    assert "both `Plan Review Prompt` and `Direct Review Prompt` blocks" not in protocol
-    assert "both `Fix Prompt` and `Plan Prompt` blocks" not in protocol
-
-    assert "Post-Write Review Handoff" in codegen
-    assert "Prompt blocks are emitted only on next turn" in codegen
-    assert "Review Prompts` section" not in codegen
-
-    assert "Remediation Handoff" in pr_review
-    assert "emitted only on next turn" in pr_review
-    assert "final two sections" not in pr_review
-
-    assert "ALWAYS trigger Remediation Handoff" in analyze_overview
-    assert "ALWAYS trigger both remediation prompts in the same response" not in analyze_overview
-
-    assert "Continue here in fix mode" in analyze_handoff
-    assert 'start with' in analyze_handoff and '"Invoke skill `cf`"' in analyze_handoff
-    assert "Invoke skill `cf-analyze` in this session" in post_write_handoff
-    assert "starts with Invoke skill `cf-analyze`" in post_write_handoff
+    # The coder priority order: cf-codegen, else cf-generate-coder-smart, else
+    # cf-generate-coder-casual. Every named coder must be registered.
+    coder_priority = ("cf-codegen", "cf-generate-coder-smart", "cf-generate-coder-casual")
+    for coder in coder_priority:
+        assert coder in coding, f"CodingDispatch must reference coder {coder}"
+        assert coder in registered, f"{coder} must be registered in agents.toml"
+    # At least one named coder is a valid (registered) coder agent.
+    assert any(coder in registered for coder in coder_priority)
 
 
 def test_skill_requires_session_approval_before_native_subagent_dispatch() -> None:
     """Native sub-agent dispatch requires explicit user approval once per session.
 
-    The platform may expose sub-agent tools, but Constructor Studio must still
-    ask before first use and remember approval for the rest of the session.
+    The approval gate moved into UNIT SubAgentDispatch in skills/studio/SKILL.md.
+    Dispatch is gated on SUB_AGENTS_APPROVED == true, asked once per session via
+    MENU SubAgentApprovalRequest, and remembered for the rest of the session.
     """
     repo_root = Path(__file__).resolve().parents[1]
-    dispatch = (
-        repo_root / "skills" / "studio" / "sub-agent-dispatch.md"
-    ).read_text(encoding="utf-8")
+    skill = (repo_root / "skills" / "studio" / "SKILL.md").read_text(encoding="utf-8")
 
-    assert "## Session Sub-Agent Approval Gate" in dispatch
-    assert "SUB_AGENT_SESSION_APPROVED == true" in dispatch
-    assert "explicit user approval for native sub-agent dispatch" in dispatch
-    assert "Use native sub-agents" in dispatch
-    assert "Use inline fallback for this workflow" in dispatch
-    assert "Suggested: 1" in dispatch
-    assert "Reply with 1 or 2" in dispatch
-    assert "STOP_TURN) immediately" in dispatch
-    assert "ALWAYS end the turn (STOP_TURN) immediately" in dispatch
-    assert "NEVER default INLINE_FALLBACK from host capability or missing approval" in dispatch
-    assert "NEVER set INLINE_FALLBACK = false unless SUB_AGENT_SESSION_APPROVED == true" in dispatch
-
-
-def test_workflow_probe_requires_subagent_approval_gate() -> None:
-    """The workflow-level probe must preserve the sub-agent approval gate.
-
-    Root cause guard: if Phase 0 only says "set INLINE_FALLBACK" and defaults to
-    native dispatch, orchestrators can skip asking the user before sub-agent use.
-    """
-    repo_root = Path(__file__).resolve().parents[1]
-    shared_probe = (
-        repo_root / "workflows" / "shared" / "inline-fallback-probe.md"
-    ).read_text(encoding="utf-8")
-    analyze_phase0 = (
-        repo_root / "workflows" / "analyze" / "phase-0-dependencies.md"
-    ).read_text(encoding="utf-8")
-    generate_phase0 = (
-        repo_root / "workflows" / "generate" / "phase-0-dependencies.md"
-    ).read_text(encoding="utf-8")
-
-    assert "Session Sub-Agent Approval Gate" in shared_probe
-    assert "Approve sub-agent use for this session" in shared_probe
-    assert "Suggested: 1" in shared_probe
-    assert "STOP_TURN immediately after emitting" in shared_probe
-    assert "do NOT load agent contracts" in shared_probe
-    assert "NEVER treat absence of user reply as option 2" in shared_probe
-    assert "NEVER default INLINE_FALLBACK = true from missing approval" in shared_probe
-    assert "NEVER default INLINE_FALLBACK = false" in shared_probe
-    assert "default `false` when ambiguous" not in shared_probe
-    assert "{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md" in analyze_phase0
-    assert "{cf-studio-path}/.core/workflows/shared/inline-fallback-probe.md" in generate_phase0
-
-
-def test_analyze_change_review_dispatches_diff_scope_resolver() -> None:
-    """Review-commit/worktree requests must not leave git diff scanning to the orchestrator."""
-    repo_root = Path(__file__).resolve().parents[1]
-    overview = (repo_root / "workflows" / "analyze" / "overview.md").read_text(
-        encoding="utf-8"
+    assert "UNIT SubAgentDispatch" in skill
+    assert "MENU SubAgentApprovalRequest" in skill
+    assert "SET SUB_AGENTS_APPROVED: unset | true | false" in skill
+    # Gate: never dispatch without approval; ask when unset.
+    assert "NEVER dispatch a sub-agent unless SUB_AGENTS_APPROVED == true" in skill
+    assert "REQUIRE SUB_AGENTS_APPROVED == true" in skill
+    assert "EMIT_MENU SubAgentApprovalRequest WHEN SUB_AGENTS_APPROVED == unset" in skill
+    assert "WAIT user.reply WHEN SUB_AGENTS_APPROVED == unset" in skill
+    # Approval is session-wide and revocable.
+    assert (
+        "ALWAYS treat SUB_AGENTS_APPROVED as a session-wide approval that applies "
+        "to every later dispatch until StudioShutdown" in skill
     )
-    phase0 = (
-        repo_root / "workflows" / "analyze" / "phase-0-dependencies.md"
-    ).read_text(encoding="utf-8")
-    change_scope = (
-        repo_root / "workflows" / "analyze" / "phase-0-change-review-scope.md"
-    ).read_text(encoding="utf-8")
-    phase3 = (
-        repo_root / "workflows" / "analyze" / "phase-3-semantic.md"
-    ).read_text(encoding="utf-8")
-    code_reviewer = (
-        repo_root
-        / "skills"
-        / "studio"
-        / "agents"
-        / "cf-semantic-reviewer-code.md"
-    ).read_text(encoding="utf-8")
+    # The approve option flips the gate and continues dispatch.
+    assert "1 approve -> SET SUB_AGENTS_APPROVED = true; CONTINUE dispatch" in skill
 
-    assert "CHANGE_REVIEW=true" in overview
-    assert "cf-diff-scope-resolver" in change_scope
-    assert "NEVER run git diff" in change_scope
-    assert "diff_scope" in phase3
-    assert "target_paths=prompt_targets" in phase3
-    assert "deterministic gate is PASS or SKIPPED (with validator availability proof)" in phase3
-    assert '"diff_scope":' in code_reviewer
-    assert "changed_hunks" in code_reviewer
+
+def test_subagent_fallback_never_defaults_from_unapproved_native_support() -> None:
+    """Denying native dispatch routes to an explicit inline fallback menu.
+
+    A host exposing native sub-agent tools does not silently inline: denial sets
+    SUB_AGENTS_APPROVED=false and offers MENU SubAgentFallbackRequest, where the
+    user explicitly picks inline / retry / stop.
+    """
+    repo_root = Path(__file__).resolve().parents[1]
+    skill = (repo_root / "skills" / "studio" / "SKILL.md").read_text(encoding="utf-8")
+
+    assert "MENU SubAgentFallbackRequest" in skill
+    assert "EMIT_MENU SubAgentFallbackRequest WHEN SUB_AGENTS_APPROVED == false OR native dispatch fails" in skill
+    assert "2 deny -> SET SUB_AGENTS_APPROVED = false; EMIT_MENU SubAgentFallbackRequest" in skill
+    assert "1 inline -> SET SUB_AGENTS_INLINE = true; RUN the contract inline" in skill
+    # The inline path is opt-in, never an automatic default.
+    assert "SET SUB_AGENTS_INLINE: unset | true (default unset, scope session)" in skill
 
 
 def test_diff_scope_resolver_agent_registered_and_prompt_contract() -> None:
@@ -1152,82 +1083,6 @@ def test_diff_scope_resolver_agent_registered_and_prompt_contract() -> None:
     assert "review_targets" in prompt
 
 
-def test_analyze_handoff_max_iter_zero_can_reach_phase_6() -> None:
-    """Analyze option 1 with MAX_ITER=0 must surface carried findings, not dead-end."""
-    repo_root = Path(__file__).resolve().parents[1]
-    phase53 = (
-        repo_root / "workflows" / "generate" / "phase-5" / "phase-5.3-findings.md"
-    ).read_text(encoding="utf-8")
-    phase6 = (
-        repo_root / "workflows" / "generate" / "phase-6" / "index.md"
-    ).read_text(encoding="utf-8")
-
-    assert "REQUIRE MAX_ITER == 0:" in phase53
-    assert "remaining_findings = all_findings" in phase53
-    assert "external entry from analyze.md with MAX_ITER=0" in phase6
-    assert "accept carried analyze-side deterministic result" in phase6
-
-
-def test_analyze_external_r1_fixes_carried_findings_before_fresh_review() -> None:
-    """Analyze-originated R1 fixes carried findings, then fresh review verifies."""
-    repo_root = Path(__file__).resolve().parents[1]
-    handoff = (
-        repo_root / "workflows" / "analyze" / "phase-4-output" / "remediation-handoff.md"
-    ).read_text(encoding="utf-8")
-    phase5 = (
-        repo_root / "workflows" / "generate" / "phase-5" / "index.md"
-    ).read_text(encoding="utf-8")
-
-    assert "BEFORE any fresh Phase 5.1 / 5.2 review" in handoff
-    assert "First author dispatch fixes the already-reviewed analyze findings." in handoff
-    assert "external-entry from analyze" in phase5
-    assert "NEVER run Phase 5.1 or Phase 5.2 before the first author dispatch" in phase5
-
-
-def test_max_iter_zero_preserves_analyzed_paths_for_followup_fix_loop() -> None:
-    """Zero-iteration analyze handoff keeps analyzed paths until a write manifest exists."""
-    repo_root = Path(__file__).resolve().parents[1]
-    phase53 = (
-        repo_root / "workflows" / "generate" / "phase-5" / "phase-5.3-findings.md"
-    ).read_text(encoding="utf-8")
-    remediation = (
-        repo_root / "workflows" / "generate" / "phase-6" / "remediation-handoff.md"
-    ).read_text(encoding="utf-8")
-
-    assert "external_target_paths = analyzed_paths" in phase53
-    assert "prefer external_target_paths when manifest.paths_written is empty" in remediation
-
-
-def test_phase_6_chat_only_suppression_does_not_hide_remaining_findings() -> None:
-    """Chat-only outputs still emit remediation when actionable findings remain."""
-    repo_root = Path(__file__).resolve().parents[1]
-    phase6 = (
-        repo_root / "workflows" / "generate" / "phase-6" / "index.md"
-    ).read_text(encoding="utf-8")
-
-    assert "REQUIRE output was chat-only AND no files changed AND remaining_findings is empty" in phase6
-    assert "REQUIRE chat-only output with non-empty remaining_findings" in phase6
-
-
-def test_protocol_references_use_existing_thin_protocol_file() -> None:
-    """Thin orchestrator workflows must not reference removed execution-protocol paths."""
-    repo_root = Path(__file__).resolve().parents[1]
-    protocol = repo_root / "skills" / "studio" / "protocol.md"
-    assert protocol.is_file()
-
-    checked_files = [
-        "workflows/analyze/preamble.md",
-        "workflows/analyze/validation-criteria.md",
-        "workflows/plan.md",
-        "workflows/generate.md",
-        "workflows/generate/validation-criteria.md",
-    ]
-    for rel_path in checked_files:
-        content = (repo_root / rel_path).read_text(encoding="utf-8")
-        assert "execution-protocol.md" not in content, rel_path
-        assert "skills/studio/protocol.md" in content, rel_path
-
-
 def test_bootstrap_sdlc_resources_resolve_to_installed_config_kit() -> None:
     """Bootstrap core bindings must point at files that exist under .bootstrap."""
     import tomllib
@@ -1246,142 +1101,6 @@ def test_bootstrap_sdlc_resources_resolve_to_installed_config_kit() -> None:
         assert (bootstrap / resource["path"]).exists(), resource["path"]
 
 
-def test_prompt_bug_only_analyze_is_mutually_exclusive_prompt_branch() -> None:
-    """Prompt-bug-only mode uses prompt output without suppressing other active flags."""
-    repo_root = Path(__file__).resolve().parents[1]
-    output_index = (
-        repo_root / "workflows" / "analyze" / "phase-4-output" / "index.md"
-    ).read_text(encoding="utf-8")
-    phase3 = (
-        repo_root / "workflows" / "analyze" / "phase-3-semantic.md"
-    ).read_text(encoding="utf-8")
-
-    assert "PROMPT_REVIEW=false`, `PROMPT_BUG_REVIEW=false" in output_index
-    assert "PROMPT_BUG_REVIEW=true" in phase3
-    assert "ARTIFACT_REVIEW=true" in phase3
-    assert "TARGET_TYPE == code OR CODE_REVIEW=true" in phase3
-
-
-def test_generate_prompt_review_detects_cypilot_instruction_docs() -> None:
-    """Generate-side review must include thin protocol instruction docs."""
-    repo_root = Path(__file__).resolve().parents[1]
-    phase52 = (
-        repo_root / "workflows" / "generate" / "phase-5" / "phase-5.2-semantic.md"
-    ).read_text(encoding="utf-8")
-
-    assert "skills/studio/**/*.md" in phase52
-
-
-def test_max_iter_zero_has_single_external_entry_semantics() -> None:
-    """MAX_ITER=0 should consistently mean surface carried findings, not fresh review."""
-    repo_root = Path(__file__).resolve().parents[1]
-    phase5 = (
-        repo_root / "workflows" / "generate" / "phase-5" / "index.md"
-    ).read_text(encoding="utf-8")
-    phase53 = (
-        repo_root / "workflows" / "generate" / "phase-5" / "phase-5.3-findings.md"
-    ).read_text(encoding="utf-8")
-
-    assert "MAX_ITER=0" in phase5
-    assert "single validator pass + one semantic-reviewer pass" not in phase5
-    assert "SKIP fresh Phase 5.1 / Phase 5.2 before this first Phase 5.3 pass" in phase53
-    assert "IF gate FAIL" in phase5 and "SKIP semantic review" in phase5
-    assert "zero-iteration external entry" in phase53
-    assert "zero-iteration internal entry" in phase53
-
-
-def test_storytelling_route_does_not_reference_removed_trigger_file() -> None:
-    """Analyze EXPLAIN_MODE routing must not dead-end on a removed sub-file."""
-    repo_root = Path(__file__).resolve().parents[1]
-    phase0 = (
-        repo_root / "workflows" / "analyze" / "phase-0-dependencies.md"
-    ).read_text(encoding="utf-8")
-    preamble = (
-        repo_root / "workflows" / "analyze" / "preamble.md"
-    ).read_text(encoding="utf-8")
-
-    assert "workflows/analyze/storytelling-trigger.md" not in phase0
-    assert "storytelling.md" in preamble
-
-
-def test_deterministic_validator_uses_resolved_validator_command() -> None:
-    """Self-hosted bootstrap validation must not hard-code cfc over cpt."""
-    repo_root = Path(__file__).resolve().parents[1]
-    checked_files = [
-        "workflows/analyze/phase-2-det-gate.md",
-        "workflows/generate/phase-5/index.md",
-        "skills/studio/agents/cf-deterministic-validator.md",
-    ]
-
-    for rel_path in checked_files:
-        content = (repo_root / rel_path).read_text(encoding="utf-8")
-        assert "resolved validator command" in content, rel_path
-        assert "actual `cfc --json" not in content, rel_path
-        assert "executes `cfc --json" not in content, rel_path
-
-
-def test_phase_6_blocks_post_write_choices_while_remediation_pending() -> None:
-    """W-only replies must be refused until remediation choice is processed."""
-    repo_root = Path(__file__).resolve().parents[1]
-    remediation = (
-        repo_root / "workflows" / "generate" / "phase-6" / "remediation-handoff.md"
-    ).read_text(encoding="utf-8")
-    post_write = (
-        repo_root / "workflows" / "generate" / "phase-6" / "post-write-handoff.md"
-    ).read_text(encoding="utf-8")
-
-    assert "W-only replies are refused while remediation is pending" in remediation
-    assert "remaining_findings is non-empty" in post_write
-    assert "REJECT W1, W2, W3" in post_write
-
-
-def test_prompt_review_partial_checkpoint_has_phase_4_output_contract() -> None:
-    """Prompt-review partial checkpoints must be renderable or explicitly blocked."""
-    repo_root = Path(__file__).resolve().parents[1]
-    output_index = (
-        repo_root / "workflows" / "analyze" / "phase-4-output" / "index.md"
-    ).read_text(encoding="utf-8")
-    prompt_output = (
-        repo_root / "workflows" / "analyze" / "phase-4-output" / "output-prompt-review.md"
-    ).read_text(encoding="utf-8")
-    validation = (
-        repo_root / "workflows" / "analyze" / "validation-criteria.md"
-    ).read_text(encoding="utf-8")
-
-    assert "Prompt Review Partial Checkpoint" in prompt_output
-    assert "checkpoint.type = \"PARTIAL_CHECKPOINT\"" in prompt_output
-    assert "prompt-review partial checkpoints satisfy Phase 4" in output_index
-    assert "Prompt Review Partial Checkpoint" in validation
-
-
-def test_phase_3_to_4_checkpoint_has_canonical_reply_menu() -> None:
-    """Context recovery checkpoint must define exact replies and parser behavior."""
-    repo_root = Path(__file__).resolve().parents[1]
-    checkpoint = (
-        repo_root / "workflows" / "analyze" / "phase-3-to-4-checkpoint.md"
-    ).read_text(encoding="utf-8")
-
-    assert "Reply `1`, `2`, or `3`." in checkpoint
-    assert "1 -> IF PARTIAL == true:" in checkpoint
-    assert "2 -> Emit" in checkpoint
-    assert "3 -> EMIT" in checkpoint
-    assert "NEVER infer a default when the user replies anything other than 1, 2, or 3" in checkpoint
-
-
-def test_partial_checkpoint_contract_scope_matches_reviewer_support() -> None:
-    """Dispatchers must not promise checkpoints for reviewers that lack the contract."""
-    repo_root = Path(__file__).resolve().parents[1]
-    phase3 = (
-        repo_root / "workflows" / "analyze" / "phase-3-semantic.md"
-    ).read_text(encoding="utf-8")
-    phase52 = (
-        repo_root / "workflows" / "generate" / "phase-5" / "phase-5.2-semantic.md"
-    ).read_text(encoding="utf-8")
-
-    assert "ALWAYS support PARTIAL_CHECKPOINT only for reviewers whose contract declares it" in phase3
-    assert "PARTIAL_CHECKPOINT only supported by reviewers whose contract declares it" in phase52
-
-
 def test_prompt_reviewer_methodology_only_wording_preserves_compliance_invariants() -> None:
     """Prompt reviewer must not contradict required SKILL/compliance loads."""
     repo_root = Path(__file__).resolve().parents[1]
@@ -1395,125 +1114,6 @@ def test_prompt_reviewer_methodology_only_wording_preserves_compliance_invariant
 
     assert "controller-supplied prompt-engineering methodology" in prompt_reviewer
     assert "Load only `prompt-engineering.md`.\n" not in prompt_reviewer
-
-
-def test_analyze_antipattern_summary_does_not_mislabel_canonical_ap005() -> None:
-    """Analyze rules must not reuse AP-005 for a noncanonical anti-pattern."""
-    repo_root = Path(__file__).resolve().parents[1]
-    rules = (repo_root / "workflows" / "analyze" / "rules.md").read_text(encoding="utf-8")
-
-    assert "AP-005 SELF_TEST_LIE" in rules
-    assert "AP-005 SIMULATED_VALIDATION" not in rules
-
-
-def test_phase_5_findings_display_is_bounded_with_full_json_payload() -> None:
-    """The chat audit trail must show every finding before approval."""
-    repo_root = Path(__file__).resolve().parents[1]
-    phase53 = (
-        repo_root / "workflows" / "generate" / "phase-5" / "phase-5.3-findings.md"
-    ).read_text(encoding="utf-8")
-
-    assert "Render every finding" in phase53
-    assert "NEVER collapse, summarize, or truncate" in phase53
-    assert "bounded chat-only audit block" not in phase53
-
-
-def test_generate_clarification_prompts_explain_why_and_suggest_default() -> None:
-    """Phase 0.5 user questions need rationale and a suggested/default path."""
-    repo_root = Path(__file__).resolve().parents[1]
-    clarify = (
-        repo_root / "workflows" / "generate" / "phase-0.5-clarify.md"
-    ).read_text(encoding="utf-8")
-
-    assert "Why this input is needed:" in clarify
-    assert "Suggested:" in clarify
-    assert "Reply with" in clarify
-
-
-def test_analyze_methodologies_are_lazy_and_one_per_subagent() -> None:
-    """The orchestrator must route methodology work, not preload it."""
-    repo_root = Path(__file__).resolve().parents[1]
-    preamble = (repo_root / "workflows" / "analyze" / "preamble.md").read_text(
-        encoding="utf-8"
-    )
-    phase0 = (
-        repo_root / "workflows" / "analyze" / "phase-0-dependencies.md"
-    ).read_text(encoding="utf-8")
-    phase3 = (
-        repo_root / "workflows" / "analyze" / "phase-3-semantic.md"
-    ).read_text(encoding="utf-8")
-
-    forbidden = [
-        "ALWAYS open and follow `{cf-studio-path}/.core/requirements/code-checklist.md`",
-        "ALWAYS open and follow `{cf-studio-path}/.core/requirements/bug-finding.md`",
-        "ALWAYS open and follow `{cf-studio-path}/.core/requirements/prompt-engineering.md`",
-        "ALWAYS open and follow `{cf-studio-path}/.core/requirements/prompt-bug-finding.md`",
-        "open `prompt-engineering.md` and `prompt-bug-finding.md`",
-        "load `{cf-studio-path}/.core/requirements/code-checklist.md`",
-    ]
-    for text in forbidden:
-        assert text not in preamble
-        assert text not in phase0
-
-    assert "NEVER opening code methodology files in the orchestrator" in phase0
-    assert "NEVER opening prompt methodology files in the orchestrator" in phase0
-    assert "cf-code-bug-finder" in phase3
-    assert "cf-prompt-bug-finder" in phase3
-
-
-def test_generate_author_plan_menu_supports_skip_inline_and_accept_anyway() -> None:
-    """Phase 1.5 lets users bypass sub-agent planner, plan inline, or accept a parsed invalid plan."""
-    repo_root = Path(__file__).resolve().parents[1]
-    offer = (
-        repo_root / "workflows" / "generate" / "phase-1.5" / "offer-dispatch.md"
-    ).read_text(encoding="utf-8")
-    contract = (
-        repo_root / "workflows" / "generate" / "phase-1.5" / "state-contract.md"
-    ).read_text(encoding="utf-8")
-
-    assert "4 skip" in offer
-    assert "SET AUTHOR_PLAN_OFFER_RESOLVED = skipped_by_user" in offer
-    assert "5 inline" in offer
-    assert "UNIT Phase15InlinePlanBuild" in offer
-    assert "4 accept_anyway" in offer
-    assert "REQUIRE LAST_PARSED_AUTHOR_PLAN != null" in offer
-    assert "| inline" in contract
-    assert "| skipped_by_user" in contract
-
-
-def test_generate_phase4_cannot_skip_planned_author_dispatch() -> None:
-    """Phase 4 must route planned runs through task-level author dispatch before fallback."""
-    repo_root = Path(__file__).resolve().parents[1]
-    phase4 = (
-        repo_root / "workflows" / "generate" / "phase-4-write.md"
-    ).read_text(encoding="utf-8")
-
-    assert "UNIT Phase4DispatchRouter" in phase4
-    assert "CONTINUE § Phase4DispatchRouter" in phase4
-    assert "AUTHOR_PLAN_OFFER_RESOLVED in (memory | disk | inline)" in phase4
-    assert "CONTINUE § Phase4PlannedMultiAuthorDispatch" in phase4
-    assert "NEVER use single-author fallback when AUTHOR_PLAN_OFFER_RESOLVED is memory" in phase4
-    assert "skipped_by_user | auto_skipped_no_author_plan_flag | auto_skipped_rules_disabled" in phase4
-    assert "Phase4AuthorSelectionDispatch is a leaf dispatch step" in phase4
-    assert "AUTHOR_EXECUTION_PLAN != null AND AUTHOR_PLAN_APPROVED != true" in phase4
-    assert "ELSE: CONTINUE § Phase4DispatchRouter" in phase4
-
-
-def test_analyze_phase3_cannot_skip_planned_reviewer_dispatch() -> None:
-    """Analyze Phase 3 must route approved reviewer plans through planned sub-agent dispatch."""
-    repo_root = Path(__file__).resolve().parents[1]
-    phase3 = (
-        repo_root / "workflows" / "analyze" / "phase-3-semantic.md"
-    ).read_text(encoding="utf-8")
-
-    assert "UNIT AnalyzePhase3DispatchRouter" in phase3
-    assert "CONTINUE AnalyzePhase3DispatchRouter" in phase3
-    assert "REVIEWER_EXECUTION_PLAN is non-null" in phase3
-    assert "REVIEWER_PLAN_APPROVED != true" in phase3
-    assert "CONTINUE PlannedMultiReviewerDispatch" in phase3
-    assert "REVIEWER_PLAN_RESOLVED in (memory | disk)" in phase3
-    assert "NEVER enter LegacySingleDispatch when REVIEWER_PLAN_RESOLVED is memory or disk" in phase3
-    assert "LegacySingleDispatch is allowed only for explicit Phase 2.5 auto-skip" in phase3
 
 
 def test_reviewer_agent_prompts_do_not_mix_methodologies() -> None:
@@ -1544,113 +1144,10 @@ def test_reviewer_agent_prompts_do_not_mix_methodologies() -> None:
     assert "requirements/prompt-engineering.md" not in prompt_bug
 
 
-def test_subagent_dispatch_sites_have_pre_dispatch_gate() -> None:
-    """Every workflow file that dispatches cf-constructor sub-agents needs a guard.
-
-    Phase 0 is easy for an orchestrator to skip during handoffs or resumed paths;
-    each dispatch site therefore carries a local fail-stop reference to the
-    shared approval/probe block.
-    """
-    repo_root = Path(__file__).resolve().parents[1]
-    dispatch_files = [
-        "workflows/analyze/phase-0-dependencies.md",
-        "workflows/analyze/phase-2-det-gate.md",
-        "workflows/analyze/phase-3-semantic.md",
-        "workflows/generate/phase-0.7/panel-selection.md",
-        "workflows/generate/phase-0.7/round-loop.md",
-        "workflows/generate/phase-1-collect.md",
-        "workflows/generate/phase-4-write.md",
-        "workflows/generate/phase-5/phase-5.1-det-gate.md",
-        "workflows/generate/phase-5/phase-5.2-semantic.md",
-        "workflows/generate/phase-5/phase-5.3-findings.md",
-        "workflows/generate/phase-5/phase-5.4-approval.md",
-    ]
-
-    for rel_path in dispatch_files:
-        content = (repo_root / rel_path).read_text(encoding="utf-8")
-        assert "inline-fallback-probe.md" in content, rel_path
-        assert "before dispatching any `cf-*` sub-agent from this sub-file" not in content, rel_path
-
-
-def test_artifact_review_dispatch_uses_registered_example_path_shape() -> None:
-    """Artifact reviewer dispatches must use the kit's examples/example.md layout.
-
-    SDLC kit resources register example files under `examples/example.md`;
-    `{KIND}/example.md` is not a valid path and makes artifact reviewers lose
-    their style/reference example.
-    """
-    repo_root = Path(__file__).resolve().parents[1]
-    analyze_semantic = (
-        repo_root / "workflows" / "analyze" / "phase-3-semantic.md"
-    ).read_text(encoding="utf-8")
-    generate_semantic = (
-        repo_root / "workflows" / "generate" / "phase-5" / "phase-5.2-semantic.md"
-    ).read_text(encoding="utf-8")
-
-    for content in (analyze_semantic, generate_semantic):
-        assert "examples/example.md" in content
-        assert "{KIND}/example.md" not in content
-
-
-def test_generate_carry_forward_keeps_unapproved_judgmental_findings() -> None:
-    """Subset approval must not drop judgmental findings that the user declined."""
-    repo_root = Path(__file__).resolve().parents[1]
-    approval = (
-        repo_root / "workflows" / "generate" / "phase-5" / "phase-5.4-approval.md"
-    ).read_text(encoding="utf-8")
-
-    assert "un-approved judgmental findings are carried forward in session state" in approval
-    assert "ALWAYS union every un-approved judgmental finding into carry_forward" in approval
-    assert "reviewers no longer detect after the mechanical fix is effectively dropped" not in approval
-
-
-def test_remediation_menus_have_one_dynamic_suggestion_slot() -> None:
-    """Menus should not mark several options as suggested at once."""
-    repo_root = Path(__file__).resolve().parents[1]
-    analyze_handoff = (
-        repo_root / "workflows" / "analyze" / "phase-4-output" / "remediation-handoff.md"
-    ).read_text(encoding="utf-8")
-    generate_handoff = (
-        repo_root / "workflows" / "generate" / "phase-6" / "remediation-handoff.md"
-    ).read_text(encoding="utf-8")
-
-    assert "Suggested: {1|2|3} because {scope/risk reason}." in analyze_handoff
-    assert "Suggested: {R1|R2|R3} because {scope/risk reason}." in generate_handoff
-    for option_line in (
-        "Continue here in fix mode",
-        "fix-prompt-template.md",
-        "plan-prompt-template.md",
-    ):
-        assert option_line in analyze_handoff
-    assert "(suggested when" not in analyze_handoff
-    assert "(suggested when" not in generate_handoff
-
-
-def test_analyze_standard_output_does_not_own_prompt_templates() -> None:
-    """Fix/Plan prompt bodies are on-demand remediation emissions.
-
-    The standard analyze output schema should end in the Remediation Handoff
-    menu when issues exist; it must not also carry prompt-template sections that
-    look mandatory in the same response.
-    """
-    repo_root = Path(__file__).resolve().parents[1]
-    output_standard = (
-        repo_root / "workflows" / "analyze" / "phase-4-output" / "output-standard.md"
-    ).read_text(encoding="utf-8")
-    remediation = (
-        repo_root / "workflows" / "analyze" / "phase-4-output" / "remediation-handoff.md"
-    ).read_text(encoding="utf-8")
-
-    assert "### Fix Prompt\n" not in output_standard
-    assert "### Plan Prompt\n" not in output_standard
-    assert "fix-prompt-template" in remediation
-    assert "plan-prompt-template" in remediation
-
-
 # ---------------------------------------------------------------------------
 # Wiring sanity: every WORKFLOW_SUBAGENT must be declared in skills/studio/
-# agents.toml. Catches accidental rename drift between the workflow router
-# and the registry.
+# agents.toml. Catches accidental rename drift between the workflows and the
+# registry.
 # ---------------------------------------------------------------------------
 def test_workflow_subagents_are_registered() -> None:
     import tomllib
@@ -1664,6 +1161,50 @@ def test_workflow_subagents_are_registered() -> None:
         assert name in registered, (
             f"{name} is dispatched by the workflows but not registered in "
             f"{agents_toml.relative_to(repo_root)}"
+        )
+
+
+def test_workflow_agent_references_resolve_and_coding_agents_registered() -> None:
+    """Inventory consistency for the single-file workflows.
+
+    (1) Every `agents/<name>.md` contract path referenced by a workflow file
+        must resolve to a real file under skills/studio/agents/.
+    (2) The coding workflow's dispatch set (reviewers + validator + the coder
+        priority order) must be registered in agents.toml.
+    """
+    import tomllib
+
+    repo_root = Path(__file__).resolve().parents[1]
+    workflows_dir = repo_root / "workflows"
+    agents_dir = repo_root / "skills" / "studio" / "agents"
+    with open(repo_root / "skills" / "studio" / "agents.toml", "rb") as fh:
+        registered = set(tomllib.load(fh)["agents"].keys())
+
+    ref_re = re.compile(r"agents/(cf-[a-z0-9-]+)\.md")
+    referenced: set[str] = set()
+    for path in sorted(workflows_dir.glob("*.md")):
+        for match in ref_re.findall(path.read_text(encoding="utf-8")):
+            referenced.add(match)
+
+    assert referenced, "expected at least one agents/<name>.md reference in the workflows"
+    for name in sorted(referenced):
+        assert (agents_dir / f"{name}.md").is_file(), (
+            f"workflow references agents/{name}.md but the contract file is missing"
+        )
+
+    # Coding workflow dispatch set must be registered in agents.toml.
+    coding_dispatch_set = {
+        "cf-semantic-reviewer-code",
+        "cf-code-bug-finder",
+        "cf-semantic-reviewer-consistency",
+        "cf-deterministic-validator",
+        "cf-codegen",
+        "cf-generate-coder-smart",
+        "cf-generate-coder-casual",
+    }
+    for name in sorted(coding_dispatch_set):
+        assert name in registered, (
+            f"{name} is dispatched by workflows/coding.md but not registered in agents.toml"
         )
 
 
@@ -1731,113 +1272,6 @@ def test_brainstorm_expert_is_context_isolated() -> None:
     assert agents["cf-brainstorm-expert"]["isolation"] is True
 
 
-def test_brainstorm_challenge_flow_matches_user_facing_contract() -> None:
-    """The challenge option must challenge the decisions the user just made."""
-    repo_root = Path(__file__).resolve().parents[1]
-    offer = (repo_root / "workflows" / "generate" / "phase-0.7" / "offer.md").read_text(
-        encoding="utf-8"
-    )
-    round_loop = (
-        repo_root / "workflows" / "generate" / "phase-0.7" / "round-loop.md"
-    ).read_text(encoding="utf-8")
-    state_schema = (
-        repo_root / "workflows" / "generate" / "phase-0.7" / "state-schema.md"
-    ).read_text(encoding="utf-8")
-
-    assert "challenge decisions" in offer
-    assert "challenge_source_round = state.rounds[-1]" in round_loop
-    assert "parse-side guard" in round_loop
-    assert "last round with kind == \"topic\"" not in round_loop
-    assert "preceding answer-writing round" in state_schema
-    assert "immediately-preceding topic-round" not in state_schema
-
-
-def test_brainstorm_challenge_questions_target_decision_keys() -> None:
-    """Challenge counter-proposals must name the exact decision key to overwrite."""
-    repo_root = Path(__file__).resolve().parents[1]
-    expert = (
-        repo_root
-        / "skills"
-        / "studio"
-        / "agents"
-        / "cf-brainstorm-expert.md"
-    ).read_text(encoding="utf-8")
-    round_loop = (
-        repo_root / "workflows" / "generate" / "phase-0.7" / "round-loop.md"
-    ).read_text(encoding="utf-8")
-    state_schema = (
-        repo_root / "workflows" / "generate" / "phase-0.7" / "state-schema.md"
-    ).read_text(encoding="utf-8")
-
-    assert '"decision_key": "<decision-key>"' in expert
-    assert '"id": "<persona.id>Q1"' in expert
-    assert "`questions[].id` values ALWAYS be unique within the response" in expert
-    assert "ALWAYS be unique within this response" in expert
-    assert "NEVER use bare `topic.section` as the whole key" in expert
-    assert "decision_key` ALWAYS name a key present in `challenged_decisions`" in expert
-    assert "update state.decisions[q.decision_key]" in round_loop
-    assert "challenge overwrites; skip/keep excluded" in round_loop
-    assert "ALWAYS reject duplicate topic-round decision_key values" in round_loop
-    assert '"decision_key": "<section-or-topic>:<expert-id>:<question-key>"' in state_schema
-    assert '"decision_key": "<key>"' in state_schema
-
-
-def test_brainstorm_round_prompt_supports_one_by_one_answering() -> None:
-    """Users should answer brainstorm questions one at a time, then choose next action."""
-    repo_root = Path(__file__).resolve().parents[1]
-    round_loop = (
-        repo_root / "workflows" / "generate" / "phase-0.7" / "round-loop.md"
-    ).read_text(encoding="utf-8")
-    round_loop_lines = round_loop.splitlines()
-
-    assert "UNIT Phase07QuestionQueue" in round_loop
-    assert "UNIT Phase07AskCurrentQuestion" in round_loop
-    assert "ALWAYS show exactly one pending question per turn" in round_loop
-    assert "NEVER dump the full question_queue to the user" in round_loop
-    assert "UNIT Phase07PostRoundMenu" in round_loop
-    assert "NEVER show this menu before every pending question is resolved" in round_loop
-    assert '  - EMIT "custom: <text> — custom next topic"' in round_loop_lines
-    assert "3 skip ->" in round_loop
-    assert 'reason = "user_skipped"' in round_loop
-    assert 'mark q.status = "open_unanswered"' in round_loop
-    assert "skip NEVER update state.decisions" in round_loop
-
-
-_BRAINSTORM_POST_ROUND_REPLY_RULES = (
-    (re.compile(r"^custom:\s*<text>$", re.IGNORECASE), "custom_topic"),
-    (re.compile(r"^(?:1|2|C|W)$", re.IGNORECASE), "topic_choice"),
-)
-
-
-def _parse_brainstorm_post_round_reply(raw: str) -> str:
-    user_input = raw.strip()
-    for pattern, outcome in _BRAINSTORM_POST_ROUND_REPLY_RULES:
-        if pattern.match(user_input):
-            return outcome
-    return "reject_unrecognized"
-
-
-def test_brainstorm_post_round_custom_reply_grammar() -> None:
-    """Post-round choices parse directly after the one-by-one question queue."""
-    assert _parse_brainstorm_post_round_reply("custom: <text>") == "custom_topic"
-    assert _parse_brainstorm_post_round_reply("then: custom: <text>") == "reject_unrecognized"
-
-
-def test_brainstorm_wrap_menu_distinguishes_session_and_disk_save() -> None:
-    """Wrap handoff must separate session-only preservation from disk persistence."""
-    repo_root = Path(__file__).resolve().parents[1]
-    wrap = (
-        repo_root / "workflows" / "generate" / "phase-0.7" / "wrap-handoff.md"
-    ).read_text(encoding="utf-8")
-
-    assert "RUN Save brainstorm results only (in session)" in wrap
-    assert "RUN Save brainstorm results only (to disk)" in wrap
-    assert "Option 1 ALWAYS be session-only and NEVER write files" in wrap
-    assert "Option 2 ALWAYS be hidden or rejected" in wrap
-    assert "WRITE state.json" in wrap
-    assert "WRITE design.md" in wrap
-
-
 def test_studio_agent_prompts_are_controller_side_generators() -> None:
     """Sub-agent prompt sources must not regress to self-loading runtime contracts."""
     repo_root = Path(__file__).resolve().parents[1]
@@ -1861,166 +1295,6 @@ def test_studio_agent_prompts_are_controller_side_generators() -> None:
         ), path
         for phrase in forbidden:
             assert phrase not in text, f"{path}: {phrase}"
-
-
-def test_brainstorm_missing_topic_offers_saved_sessions_first() -> None:
-    """Missing brainstorm topic should offer saved sessions before fresh topics."""
-    repo_root = Path(__file__).resolve().parents[1]
-    clarify = (
-        repo_root / "workflows" / "generate" / "phase-0.5-clarify.md"
-    ).read_text(encoding="utf-8")
-
-    assert "BRAINSTORM mode is selected AND brainstorm topic is missing" in clarify
-    assert "DISCOVER saved brainstorm sessions" in clarify
-    assert "{cf-studio-path}/.cache/brainstorm/" in clarify
-    assert "I found saved brainstorm sessions you can continue" in clarify
-    assert "Reply with a saved session number to continue it" in clarify
-    assert "No saved brainstorm sessions were found" in clarify
-
-
-def test_cf_on_uses_ambiguous_routing_menu() -> None:
-    """Activation-only cf requests should use the same menu as unclear intent."""
-    repo_root = Path(__file__).resolve().parents[1]
-    skill = (repo_root / "skills" / "studio" / "SKILL.md").read_text(encoding="utf-8")
-    routing = (repo_root / "skills" / "studio" / "routing.md").read_text(encoding="utf-8")
-
-    assert "CfOnActivationMenu" not in skill
-    assert "activation-only / no-task intent" in routing
-    assert "cf on" in routing
-    assert "MENU RoutingClarificationMenu" in routing
-    assert "1 -> help" in routing
-    assert "2 -> brainstorm" in routing
-    assert "CONTINUE WorkflowRoutingTable entry 0" in routing
-
-
-def test_cf_help_routes_to_prefilled_explain_preset() -> None:
-    """cf help should run explain on Studio itself without asking setup gates."""
-    repo_root = Path(__file__).resolve().parents[1]
-    routing = (repo_root / "skills" / "studio" / "routing.md").read_text(
-        encoding="utf-8"
-    )
-    help_workflow = (repo_root / "workflows" / "help.md").read_text(
-        encoding="utf-8"
-    )
-    preamble = (
-        repo_root / "workflows" / "analyze" / "preamble.md"
-    ).read_text(encoding="utf-8")
-
-    assert "cf help | /cf help | cf-studio help | /cf-studio help | cfs help" in routing
-    assert "open and follow {cf-studio-path}/.core/workflows/help.md" in routing
-    assert "name: cf-help" in help_workflow
-    assert "SET CF_HELP_PRESET = true" in help_workflow
-    assert 'SET EXPLAIN_TARGET = "{cf-studio-path}"' in help_workflow
-    assert 'SET STORYTELLING_MODE = "presentation"' in help_workflow
-    assert 'SET STORYTELLING_ARTIFACT_DISPOSITION = "chat-only"' in help_workflow
-    assert 'SET STORYTELLING_AUDIENCE = "Constructor Studio newcomers"' in help_workflow
-    assert 'SET STORYTELLING_DIAGRAM_FORMAT = "ascii"' in help_workflow
-    assert "SET STORYTELLING_DIAGRAM_FORMAT_PRESET = true" in help_workflow
-    assert "Run a normal cf-explain storytelling session" in help_workflow
-    assert "LOAD skill `cf` IN ANALYZE + EXPLAIN mode, CF_HELP_PRESET=true" in help_workflow
-    assert "CONTINUE {cf-studio-path}/.core/workflows/analyze.md WITH" in help_workflow
-    assert "HelpProxy MUST NOT emit user-facing" in help_workflow
-    assert "NEVER render custom one-shot help here" in help_workflow
-    assert "NEVER emit command lists" in help_workflow
-    assert "EXPLAIN_RESULT completion envelopes before Storytelling E2/E5" in help_workflow
-    assert "NEVER ask the diagram-format lazy prompt in help mode" in help_workflow
-    assert "REQUIRE CF_HELP_PRESET == true" in preamble
-    assert "PRESERVE route-supplied preset variables" in preamble
-    assert "STORYTELLING_DIAGRAM_FORMAT, STORYTELLING_DIAGRAM_FORMAT_PRESET" in preamble
-    assert "do not ask mode, disposition, audience" in preamble
-    assert "diagram-format questions" in preamble
-    assert "normal Storytelling Protocol E0-E5" in preamble
-    assert "NEVER custom one-shot help rendering" in preamble
-    assert "ALWAYS render diagrams as ASCII" in preamble
-    assert "custom one-shot overview/status summary" in preamble
-    assert "UNIT HelpPresetStorytellingFirstOutputContract" in preamble
-    assert "preset resolution skips prompts, not phases" in preamble
-    assert "Standalone `Constructor Studio Help`" not in preamble
-    assert "STORYTELLING_HELP_OUTPUT_CONTRACT" not in preamble
-
-
-def test_explain_mode_fail_closed_against_one_shot_help_summary() -> None:
-    """Explain/help presets should make summary substitution an invalid output."""
-    repo_root = Path(__file__).resolve().parents[1]
-    protocol = (repo_root / "skills" / "studio" / "protocol.md").read_text(
-        encoding="utf-8"
-    )
-    storytelling = (repo_root / "requirements" / "storytelling.md").read_text(
-        encoding="utf-8"
-    )
-    preamble = (
-        repo_root / "workflows" / "analyze" / "preamble.md"
-    ).read_text(encoding="utf-8")
-
-    assert "UNIT ExplainModePreOutputSentinel" in protocol
-    assert "EXPLAIN_MODE == true" in protocol
-    assert "STORYTELLING_PHASE not in [e2, e5, done]" in protocol
-    assert "NEVER emit answer-style content, help summaries, command lists" in protocol
-    assert "completion envelopes" in protocol
-    assert "UNIT StorytellingPresetGateResolution" in storytelling
-    assert "CF_HELP_PRESET == true" in storytelling
-    assert "preset resolution skips prompts, not phases" in storytelling
-    assert "EXPLAIN_MODE=true takes precedence over CF_HELP_PRESET fast-forwarding" in storytelling
-    assert "CONTINUE Phase E0/E1 opener with preset answers represented" in storytelling
-    assert "UNIT HelpPresetStorytellingFirstOutputContract" in preamble
-    assert "EXPLAIN_MODE first-output contract wins over CF_HELP_PRESET" in preamble
-    assert "a Storytelling E0/E1 opener for EXPLAIN_TARGET={cf-studio-path}" in preamble
-    assert "Constructor Studio Help" in preamble
-    assert "Common requests" in preamble
-
-
-def test_empty_standalone_explore_clarifies_before_dispatch() -> None:
-    """Bare cf-explore should ask for a topic before launching cf-explorer."""
-    repo_root = Path(__file__).resolve().parents[1]
-    explore = (repo_root / "workflows" / "explore.md").read_text(encoding="utf-8")
-
-    assert "UNIT ExploreClarifyGate" in explore
-    assert "request is activation-only / no-task explore intent" in explore
-    assert "skill explorer" in explore
-    assert "I need a topic before I search the project" in explore
-    assert "What should I explore?" in explore
-    assert "MENU ExploreClarifyMenu" in explore
-    assert "NEVER dispatch cf-explorer before this gate resolves" in explore
-    assert "Parent workflows may skip this gate only when they supply a non-empty" in explore
-
-
-def test_explore_offers_explicit_save_bundle_after_summary() -> None:
-    """Explore should offer an explicit save bundle without silently writing."""
-    repo_root = Path(__file__).resolve().parents[1]
-    explore = (repo_root / "workflows" / "explore.md").read_text(encoding="utf-8")
-
-    assert "EMIT resource map and context summary" in explore
-    assert "RUN ExploreSaveOffer" in explore
-    assert "UNIT ExploreSaveOffer" in explore
-    assert "{cf-studio-path}/.cache/explore/{slug}-{ISO}/" in explore
-    assert "folder: <path>" in explore
-    assert "result.json" in explore
-    assert "resource-map.md" in explore
-    assert "summary.md" in explore
-    assert "exact explorer result JSON" in explore
-    assert "task summary, exploration status, resource count, and missing-context questions" in explore
-    assert "NEVER silently write exploration results from running explore alone" in explore
-    assert "ALWAYS keep explorer output in `resource_context`, not `SHARED_CONTEXT_PACK`" in explore
-
-
-def test_brainstorm_challenge_critique_only_is_not_rendered_as_skipped() -> None:
-    """Challenge pushback without an override should still render as critique."""
-    repo_root = Path(__file__).resolve().parents[1]
-    expert = (
-        repo_root
-        / "skills"
-        / "studio"
-        / "agents"
-        / "cf-brainstorm-expert.md"
-    ).read_text(encoding="utf-8")
-    round_loop = (
-        repo_root / "workflows" / "generate" / "phase-0.7" / "round-loop.md"
-    ).read_text(encoding="utf-8")
-
-    assert "critique-only challenge" in expert
-    assert "relevant: true, empty questions" in expert
-    assert "NEVER render critique-only challenge outputs as skipped" in round_loop
-    assert "keep in participating" in round_loop
 
 
 def test_brainstorm_prompts_handle_nullable_rules_and_template_paths() -> None:
@@ -2079,81 +1353,6 @@ def test_brainstorm_expert_registry_documents_challenge_shape() -> None:
     assert "`next_topic_proposal = null`" in agents_toml
 
 
-def test_brainstorm_saved_discard_and_retention_are_explicit() -> None:
-    """Saved-session discard must say whether cache artifacts remain."""
-    repo_root = Path(__file__).resolve().parents[1]
-    offer = (repo_root / "workflows" / "generate" / "phase-0.7" / "offer.md").read_text(
-        encoding="utf-8"
-    )
-    wrap = (
-        repo_root / "workflows" / "generate" / "phase-0.7" / "wrap-handoff.md"
-    ).read_text(encoding="utf-8")
-
-    assert "manual cache retention" in offer
-    assert "discard handoff" in wrap
-    assert "saved brainstorm cache remains on disk" in wrap
-
-
-def test_subagent_fallback_never_defaults_from_unapproved_native_support() -> None:
-    """Approval-unset + native-capable hosts must ask, not silently inline."""
-    repo_root = Path(__file__).resolve().parents[1]
-    dispatch = (
-        repo_root / "skills" / "studio" / "sub-agent-dispatch.md"
-    ).read_text(encoding="utf-8")
-
-    assert "NEVER set INLINE_FALLBACK = true from missing approval alone" in dispatch
-    assert "Otherwise set `INLINE_FALLBACK=true`" not in dispatch
-
-
-def test_analyze_mode_flags_are_reset_per_run() -> None:
-    """Mode flags from a previous analyze request must not leak into a new one."""
-    repo_root = Path(__file__).resolve().parents[1]
-    preamble = (repo_root / "workflows" / "analyze" / "preamble.md").read_text(
-        encoding="utf-8"
-    )
-
-    reset_idx = preamble.index("Initialize workflow-owned analysis flags to their defaults")
-    code_idx = preamble.index("IF code/codebase/implementation analysis")
-    prompt_idx = preamble.index("IF instruction targets")
-    assert reset_idx < code_idx
-    assert reset_idx < prompt_idx
-    for flag in (
-        "CODE_REVIEW=false",
-        "CODE_BUG_REVIEW=false",
-        "CONSISTENCY_REVIEW=false",
-        "PROMPT_REVIEW=false",
-        "PROMPT_BUG_REVIEW=false",
-        "EXPLAIN_MODE=false",
-    ):
-        assert flag in preamble
-
-
-def test_analyze_prompt_review_uses_paths_for_direct_multi_target_scope() -> None:
-    """Direct multi-target prompt reviews must pass every explicit target."""
-    repo_root = Path(__file__).resolve().parents[1]
-    phase3 = (
-        repo_root / "workflows" / "analyze" / "phase-3-semantic.md"
-    ).read_text(encoding="utf-8")
-
-    assert "target_paths=prompt_targets" in phase3
-    assert "filter diff_scope.review_targets to prompt-typed targets" in phase3
-    assert 'otherwise ["{PATH}"]' not in phase3
-
-
-def test_prompt_bug_only_uses_prompt_output_schema() -> None:
-    """Prompt-bug-only reviews must not fall through to standard output."""
-    repo_root = Path(__file__).resolve().parents[1]
-    index = (
-        repo_root / "workflows" / "analyze" / "phase-4-output" / "index.md"
-    ).read_text(encoding="utf-8")
-    prompt_output = (
-        repo_root / "workflows" / "analyze" / "phase-4-output" / "output-prompt-review.md"
-    ).read_text(encoding="utf-8")
-
-    assert "`PROMPT_REVIEW=true` or `PROMPT_BUG_REVIEW=true`" in index
-    assert "IF PROMPT_REVIEW == false" in prompt_output and "Render only the prompt-bug-finder report" in prompt_output
-
-
 def test_prompt_bug_finder_runs_in_place_like_other_read_only_reviewers() -> None:
     """Prompt bug-finder is a read-only semantic reviewer; the pool convention
     is `isolation = false` for non-brainstorm reviewers (see the pool comment
@@ -2167,32 +1366,6 @@ def test_prompt_bug_finder_runs_in_place_like_other_read_only_reviewers() -> Non
         agents = tomllib.load(fh)["agents"]
 
     assert agents["cf-prompt-bug-finder"]["isolation"] is False
-
-
-def test_analyze_handoff_preserves_analyzed_paths_separate_from_written_manifest() -> None:
-    """Analyze R1 must preserve fix targets without faking written files."""
-    repo_root = Path(__file__).resolve().parents[1]
-    remediation = (
-        repo_root / "workflows" / "analyze" / "phase-4-output" / "remediation-handoff.md"
-    ).read_text(encoding="utf-8")
-
-    assert "analyzed_paths = analyzed paths" in remediation
-    assert "target_paths = analyzed_paths" in remediation
-    assert "manifest.paths_written = []" in remediation
-    assert "manifest.paths_written = analyzed_paths" not in remediation
-
-
-def test_change_review_derives_prompt_flags_after_diff_scope() -> None:
-    """Prompt/instruction diffs must dispatch prompt reviewers in change reviews."""
-    repo_root = Path(__file__).resolve().parents[1]
-    change_scope = (
-        repo_root / "workflows" / "analyze" / "phase-0-change-review-scope.md"
-    ).read_text(encoding="utf-8")
-
-    assert "prompt_targets" in change_scope
-    assert "PROMPT_REVIEW = true" in change_scope
-    assert "PROMPT_BUG_REVIEW = true" in change_scope
-    assert "workflows/**" in change_scope and "skills/studio/**/*.md" in change_scope
 
 
 def test_analyze_planner_prompt_includes_requirements_as_prompt_targets() -> None:
@@ -2235,34 +1408,6 @@ def test_planner_contracts_reject_incomplete_or_numeric_parallel_groups() -> Non
         )
         assert "id, task_ids, depends_on, execution, and reason" in planner
         assert 'Every parallel_groups[].execution value ALWAYS be exactly "parallel" or' in planner
-
-
-def test_reviewer_plan_failure_does_not_use_legacy_single_dispatch_fallback() -> None:
-    """Planner failure after sub-agent decomposition must not drop to oversized legacy dispatch."""
-    repo_root = Path(__file__).resolve().parents[1]
-    phase25 = (
-        repo_root / "workflows" / "analyze" / "phase-2.5-reviewer-plan.md"
-    ).read_text(encoding="utf-8")
-    phase3 = (
-        repo_root / "workflows" / "analyze" / "phase-3-semantic.md"
-    ).read_text(encoding="utf-8")
-
-    assert "legacy single-dispatch-per-methodology" not in phase25
-    assert "checkpoint-only report" not in phase25
-    assert "checkpoint.type=PARTIAL_CHECKPOINT" in phase25
-    assert "NEVER set REVIEWER_PLAN_RESOLVED=cancelled_inline_fallback after" in phase25
-    assert "rerun the planner" in phase25
-    assert "Reply `1` to rerun the planner or `2` to stop." in phase25
-    assert "REQUIRE re-validation fails" in phase3
-    assert "every parallel_groups[].task_ids names an existing task" in phase3
-    assert "every task.parallel_group is a string id matching an existing parallel_groups[].id" in phase3
-    assert "every parallel_groups[].depends_on references an earlier group" in phase3
-    assert "every parallel_groups[] entry includes id, task_ids, depends_on, execution, and reason" in phase3
-    assert "Route back to phase-2.5-reviewer-plan.md" in phase3
-    assert "REVIEWER_EXECUTION_PLAN is non-null" in phase3
-    assert "cancelled_inline_fallback" in phase3
-    assert "starts with `auto_skipped_`" not in phase3
-    assert "When `REVIEWER_EXECUTION_PLAN` is null (Phase 2.5 auto-skipped)" not in phase3
 
 
 # ---------------------------------------------------------------------------
@@ -2333,255 +1478,24 @@ def test_author_worker_escalation_required_response_shape() -> None:
     )
 
 
-def test_skill_entrypoint_bootstrap_keeps_mandatory_loads_explicit() -> None:
-    """The root skill entrypoint should keep mandatory bootstrap loads explicit."""
-    repo_root = Path(__file__).resolve().parents[1]
-    skill = (repo_root / "skills" / "studio" / "SKILL.md").read_text(encoding="utf-8")
-    protocol = (
-        repo_root / "skills" / "studio" / "protocol.md"
-    ).read_text(encoding="utf-8")
-
-    bootstrap_idx = protocol.index("UNIT Bootstrap")
-    hard_rules_idx = protocol.index("UNIT HardRules")
-    assert hard_rules_idx < bootstrap_idx
-    for required_path in [
-        "{cf-studio-path}/.core/skills/studio/protocol.md",
-        "{cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md",
-        "{cf-studio-path}/.core/skills/studio/routing.md",
-        "{cf-studio-path}/.core/requirements/pdsl-execution-card.md",
-    ]:
-        assert required_path in skill
-        assert required_path in protocol
-    assert "UNIT HardRules" not in skill
-    assert "UNIT SubAgentApprovalGate" not in skill
-
-
-def test_analyze_artifact_dependencies_do_not_block_code_or_prompt_reviews() -> None:
-    """Artifact-only dependency recovery must not block code/prompt reviewers."""
-    repo_root = Path(__file__).resolve().parents[1]
-    phase0 = (
-        repo_root / "workflows" / "analyze" / "phase-0-dependencies.md"
-    ).read_text(encoding="utf-8")
-
-    assert "artifact review dependencies are missing" in phase0
-    assert "only when ARTIFACT_REVIEW == true" in phase0
-    assert "Code and prompt methodologies do not require artifact" in phase0
-
-
-def test_legacy_analyze_dispatch_keeps_code_and_prompt_review_independent() -> None:
-    """Inline fallback must not drop code review on mixed code+prompt diffs."""
-    repo_root = Path(__file__).resolve().parents[1]
-    phase3 = (
-        repo_root / "workflows" / "analyze" / "phase-3-semantic.md"
-    ).read_text(encoding="utf-8")
-
-    assert "TARGET_TYPE == code OR CODE_REVIEW=true" in phase3
-    assert "CODE_BUG_REVIEW=true" in phase3 and "cf-code-bug-finder" in phase3
-    assert "not `PROMPT_REVIEW` and not `PROMPT_BUG_REVIEW`" not in phase3
-
-
-def test_analyze_routing_includes_storytelling_and_bug_hunt_intents() -> None:
-    """Routing must reach analyze for branches owned by the analyze preamble."""
-    repo_root = Path(__file__).resolve().parents[1]
-    routing = (repo_root / "skills" / "studio" / "routing.md").read_text(
-        encoding="utf-8"
-    )
-
-    assert "explain | walk through | teach | onboard" in routing
-    assert "bug hunt | find bugs | prompt bugs" in routing
-
-
-def test_storytelling_navigation_slots_are_topic_picker_menus() -> None:
-    """Next/Deeper/Lateral should offer choices before jumping away."""
-    repo_root = Path(__file__).resolve().parents[1]
-    shared = (
-        repo_root / "requirements" / "storytelling-shared.md"
-    ).read_text(encoding="utf-8")
-    phases = (
-        repo_root / "requirements" / "storytelling-phases.md"
-    ).read_text(encoding="utf-8")
-    methodology = (
-        repo_root / "requirements" / "storytelling.md"
-    ).read_text(encoding="utf-8")
-    validation = (
-        repo_root / "workflows" / "analyze" / "validation-criteria.md"
-    ).read_text(encoding="utf-8")
-
-    assert "choose next / skip-ahead / revisit topic" in phases
-    assert "choose from drill-down topics for the current topic" in phases
-    assert "choose from related topics / linked artifacts" in phases
-    assert "Next topics:" in phases
-    assert "Deeper topics:" in phases
-    assert "Lateral topics:" in phases
-    assert "Skip ahead" in phases
-    assert "Revisit" in phases
-    assert "Custom — tell me which planned topic to jump to or revisit" in phases
-    assert "Custom — tell me what to drill into" in phases
-    assert "Custom — tell me where to go sideways" in phases
-    assert "Back — return to the main navigation" in phases
-    assert "7. Back" in phases
-    assert "8. Send comments — preview" in phases
-    assert "WAIT user.reply and STOP_TURN" in phases
-    assert "bare `Next` / `Deeper` / `Lateral` opens a numbered topic-pick menu" in shared
-    assert "Making the main `Next` nav slot execute one preselected next topic directly" in methodology
-    assert "Making the main `Deeper` or `Lateral` nav slot execute one preselected topic directly" in methodology
-    assert "Omitting `Back` from the main storytelling navigation" in methodology
-    assert "Next nav slots offered topic-pick menus" in validation
-    assert "Deeper/Lateral nav slots offered topic-pick menus" in validation
-    assert "Next / Deeper / Lateral / Recap / Ask / Wrap / Back" in validation
-
-
-def test_ambiguous_routing_fallback_lists_full_route_family() -> None:
-    """The root /cf fallback menu must not hide available routes or modes."""
-    repo_root = Path(__file__).resolve().parents[1]
-    routing = (repo_root / "skills" / "studio" / "routing.md").read_text(
-        encoding="utf-8"
-    )
-
-    expected_routes = [
-        "1 -> help -- Show a polished beginner-friendly cf overview",
-        "2 -> brainstorm -- Explore options, decisions, requirements, or tradeoffs",
-        "3 -> explain -- Get a source-grounded walkthrough",
-        "4 -> explore -- Find relevant project context",
-        "5 -> generate -- Create, edit, implement",
-        "6 -> analyze -- Review, audit, validate",
-        "7 -> plan -- Break a large task into executable phases",
-        "8 -> pdsl -- Author, compact, transform",
-        "9 -> map -- Build dependency, traceability",
-        "10 -> workspace -- Configure or inspect multi-repo workspace",
-        "11 -> auto-config -- Discover project setup",
-        "12 -> delegate -- Delegate an approved generated plan",
-        "13 -> compile phase -- Compile a plan phase brief",
-        "14 -> execute phase -- Execute the next or specified generated plan phase",
-        "15 -> migrate-from-cypilot -- Migrate legacy Cypilot setup",
-    ]
-    for route in expected_routes:
-        assert route in routing
-
-    assert "list PRs" in routing
-    assert "review PR 123" in routing
-    assert "PR status 123" in routing
-    assert "migrate-openspec" in routing
-    assert "Reply with 1-15" in routing
-    assert "Reply with 1, 2, 3, 4, 5, or 6." not in routing
-
-
-def test_root_cf_skill_metadata_advertises_broad_routes() -> None:
-    """Generated root skill metadata depends on the source skill description."""
-    repo_root = Path(__file__).resolve().parents[1]
-    skill = (repo_root / "skills" / "studio" / "SKILL.md").read_text(
-        encoding="utf-8"
-    )
-
-    for route in [
-        "PDSL prompt work",
-        "mapping",
-        "auto-config",
-        "migration",
-        "delegation",
-        "phase compile/execute",
-    ]:
-        assert route in skill
-
-
-def test_diff_scope_binary_omission_probe_is_allowed() -> None:
-    """Resolver may only require probes it is authorized to run."""
-    repo_root = Path(__file__).resolve().parents[1]
-    resolver = (
-        repo_root
-        / "skills"
-        / "studio"
-        / "agents"
-        / "cf-diff-scope-resolver.md"
-    ).read_text(encoding="utf-8")
-
-    assert "git -C <worktree> diff --numstat <base>..<head>" in resolver
-    assert "git -C <worktree> diff --numstat HEAD" in resolver
-    assert '"binary"  — git diff --numstat' in resolver
-
-
-def test_artifact_review_flag_is_initialized_and_set() -> None:
-    """Reviewer planning must not depend on an unset ARTIFACT_REVIEW bit."""
-    repo_root = Path(__file__).resolve().parents[1]
-    phase0 = (
-        repo_root / "workflows" / "analyze" / "phase-0-dependencies.md"
-    ).read_text(encoding="utf-8")
-    planner = (
-        repo_root / "workflows" / "analyze" / "phase-2.5-reviewer-plan.md"
-    ).read_text(encoding="utf-8")
-
-    assert "ARTIFACT_REVIEW=false" in phase0
-    assert "SET ARTIFACT_REVIEW = true" in phase0
-    assert "ARTIFACT_REVIEW" in planner
-
-
-def test_analyze_to_generate_handoff_reprobes_before_max_iter_prompt() -> None:
-    """External fix-mode entry must resolve INLINE_FALLBACK before MAX_ITER."""
-    repo_root = Path(__file__).resolve().parents[1]
-    remediation = (
-        repo_root / "workflows" / "analyze" / "phase-4-output" / "remediation-handoff.md"
-    ).read_text(encoding="utf-8")
-
-    reprobe_idx = remediation.index("Re-probe INLINE_FALLBACK")
-    max_iter_idx = remediation.index("EMIT canonical MAX_ITER")
-    assert reprobe_idx < max_iter_idx
-
-
-def test_phase_5_clean_exit_routes_through_final_assembly() -> None:
-    """Clean review-loop exits still need Phase 5.5 before Phase 6."""
-    repo_root = Path(__file__).resolve().parents[1]
-    findings = (
-        repo_root / "workflows" / "generate" / "phase-5" / "phase-5.3-findings.md"
-    ).read_text(encoding="utf-8")
-
-    assert 'SET loop_exit = "clean"' in findings
-    assert "CONTINUE {cf-studio-path}/.core/workflows/generate/phase-5/phase-5.5-final.md" in findings
-    assert "and proceed to `workflows/generate/phase-6/index.md`." not in findings
-
-
-def test_phase_5_cap_accept_after_write_requires_validation() -> None:
-    """Accepting a max-iteration stop after a fix write must not claim stale PASS."""
-    repo_root = Path(__file__).resolve().parents[1]
-    approval = (
-        repo_root / "workflows" / "generate" / "phase-5" / "phase-5.4-approval.md"
-    ).read_text(encoding="utf-8")
-
-    assert "post-fix deterministic gate" in approval
-    assert "RUN post-fix deterministic gate FIRST" in approval
-
-
-def test_phase_5_approval_cap_prompt_handles_all_replies() -> None:
-    """Phase 5.4 must implement the same cap prompt replies it advertises."""
-    repo_root = Path(__file__).resolve().parents[1]
-    approval = (
-        repo_root / "workflows" / "generate" / "phase-5" / "phase-5.4-approval.md"
-    ).read_text(encoding="utf-8")
-
-    assert "extend: M ->" in approval
-    assert "accept ->" in approval
-    assert "stop ->" in approval
-
-
-def test_post_write_handoff_has_dynamic_suggested_choice() -> None:
-    """Post-write review menu should expose exactly one filled suggestion slot."""
-    repo_root = Path(__file__).resolve().parents[1]
-    handoff = (
-        repo_root / "workflows" / "generate" / "phase-6" / "post-write-handoff.md"
-    ).read_text(encoding="utf-8")
-
-    assert "Suggested: {W1|W2|W3} because {scope/risk reason}." in handoff
-    assert "(suggested when" not in handoff
-
-
 def test_runtime_instruction_modules_stay_compact() -> None:
-    """High-traffic instruction resources should stay below the compact budget."""
+    """High-traffic instruction resources should stay below the compact budget.
+
+    Re-grounded after the refactor: the deleted phase files
+    (phase-0-dependencies.md, analyze remediation-handoff.md) are dropped; the
+    budgets now cover the files that still carry the hot path — the
+    consolidated studio SKILL, the thin routers, the single-file coding
+    workflow, and the code reviewer contract.
+    """
     repo_root = Path(__file__).resolve().parents[1]
-    # Tuples of (path, line_budget).  SKILL.md grew with the PDSL GIT_COMMIT_MODE
-    # state machine; it gets a higher budget than pure-workflow files.
+    # Tuples of (path, line_budget).  SKILL.md carries the consolidated UNIT
+    # rules (incl. the GIT_COMMIT_MODE / SubAgentDispatch state machines); it
+    # gets a higher budget than the pure-routing workflow files.
     compact_files = [
         (repo_root / "skills" / "studio" / "SKILL.md", 478),
-        (repo_root / "workflows" / "analyze" / "phase-0-dependencies.md", 200),
-        (repo_root / "workflows" / "analyze" / "phase-4-output" / "remediation-handoff.md", 200),
+        (repo_root / "workflows" / "generate.md", 150),
+        (repo_root / "workflows" / "analyze.md", 150),
+        (repo_root / "workflows" / "coding.md", 150),
         (repo_root / "skills" / "studio" / "agents" / "cf-semantic-reviewer-code.md", 200),
     ]
 

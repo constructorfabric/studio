@@ -298,7 +298,7 @@ DO:
   - RUN this methodology to treat compaction that removes required triggers, guardrails, or recovery paths as a prompt bug; treat safe compaction that merely improves efficiency as quality work only
 
 RULES:
-  - ALWAYS align with prompt-engineering.md v1.5 rules for positive action framing, instruction-density thresholds, negative-constraint handling, self-check, and long-context placement
+  - ALWAYS align with prompt-engineering.md v1.6 rules for positive action framing, instruction-density thresholds, negative-constraint handling, self-check, and long-context placement
 ```
 
 ## References

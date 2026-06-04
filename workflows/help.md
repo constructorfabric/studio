@@ -2,56 +2,53 @@
 cf: true
 type: workflow
 name: cf-help
-description: "Thin help router for Constructor Studio. Use for cf help, /cf help, cf-studio help, /cf-studio help, or cfs help; it presets the normal cf-explain storytelling help session and delegates to analyze.md."
-version: 1.0
-purpose: Standalone help command; presets cf help storytelling and passes through to analyze.md
+version: 0.1
+description: "Invoke for cf help, /cf help, cf-studio help, /cf-studio help, or cfs help — presets a cf-explain storytelling walkthrough of Constructor Studio itself."
+purpose: Thin help router that presets the cf-explain storytelling help session and delegates to cf-explain
 ---
 
-```pdsl
-UNIT HelpRootSkillEntrypointBootstrap
-PURPOSE: Load the shared root cf skill entrypoint bootstrap.
-DO:
-  - LOAD {cf-studio-path}/.core/workflows/shared/root-skill-entrypoint-bootstrap.md
-  - CONTINUE RootSkillEntrypointBootstrap
-```
+# cf-help
+
+This skill answers help requests by presetting a `cf-explain` storytelling walkthrough of Constructor Studio itself — presentation mode, chat-only, newcomers audience, source-grounded portions with normal navigation — and delegating to the `cf-explain` skill. It never renders a custom one-shot help blurb or command list.
 
 ```pdsl
-UNIT HelpProxy
-
-PURPOSE:
-  Pass through to analyze.md with the cf help preset active.
-
+UNIT HelpBootstrap
+PURPOSE: Ensure the cf skill is loaded before presetting the help session.
+STATE:
+  SET CFS_INIT: true | false (default false, scope session)
 DO:
-  - SET CF_HELP_PRESET = true
-  - SET EXPLAIN_MODE = true
-  - SET EXPLAIN_TARGET = "{cf-studio-path}"
-  - SET STORYTELLING_MODE = "presentation"
-  - SET STORYTELLING_ARTIFACT_DISPOSITION = "chat-only"
-  - SET STORYTELLING_AUDIENCE = "Constructor Studio newcomers"
-  - SET STORYTELLING_CONTEXT_PACK_STRATEGY = "hybrid"
-  - SET STORYTELLING_PLAN_APPROVED = true
-  - SET STORYTELLING_DIAGRAM_FORMAT = "ascii"
-  - SET STORYTELLING_DIAGRAM_FORMAT_PRESET = true
-  - SET STORYTELLING_HELP_GOAL = "Run a normal cf-explain storytelling session about Constructor Studio itself: target {cf-studio-path}, presentation mode, chat-only, newcomers audience, source-grounded portions, normal navigation."
-  - LOAD skill `cf` IN ANALYZE + EXPLAIN mode, CF_HELP_PRESET=true
-  - CONTINUE {cf-studio-path}/.core/workflows/analyze.md WITH
-    CF_HELP_PRESET=true,
-    EXPLAIN_MODE=true,
-    EXPLAIN_TARGET="{cf-studio-path}"
-
+  EMIT_MENU LoadCfSkillConfirm WHEN CFS_INIT != true
+  STOP_TURN WHEN CFS_INIT != true
+  CONTINUE HelpPreset WHEN CFS_INIT == true
 RULES:
-  - ALWAYS the CONTINUE above is terminal; HelpProxy MUST NOT emit user-facing
-    content after transferring to analyze/storytelling
-  - ALWAYS the first user-visible content after HelpProxy MUST be produced by
-    the Storytelling Protocol, not by a local help renderer
-  - NEVER render custom one-shot help here
-  - NEVER emit command lists, quick-start summaries, generic cf status, or
-    EXPLAIN_RESULT completion envelopes before Storytelling E2/E5 has produced
-    its legal output
-  - NEVER ask the diagram-format lazy prompt in help mode
-  - ALWAYS render help-mode diagrams as ASCII inline in chat unless the user overrides mid-session
-  - ALWAYS preserve the preset variables for analyze.md preamble
-
-ON_ERROR:
-  load_failed -> EMIT "Cannot load target workflow — check that {cf-studio-path} is correctly set." STOP_TURN
+  ALWAYS verify the cf skill is loaded, CFS_INIT == true, before presetting the help session
+  ALWAYS treat CFS_INIT as false when its value is unknown, ambiguous, or unset
+  NEVER proceed past HelpBootstrap unless CFS_INIT == true is positively confirmed
+MENU LoadCfSkillConfirm
+TITLE: The cf skill is not loaded. It is the Constructor Studio core that loads the shared rules and routes to cf-* skills, so help cannot run without it. Load it now to continue?
+OPTIONS:
+  1 load -> INVOKE skill `cf` and CONTINUE HelpBootstrap
+  2 stop -> STOP_TURN
+  INVALID -> EMIT_MENU LoadCfSkillConfirm
+```
+```pdsl
+UNIT HelpPreset
+PURPOSE: Preset the storytelling help session about Constructor Studio and delegate to cf-explain.
+DO:
+  SET CF_HELP_PRESET = true
+  SET EXPLAIN_MODE = true
+  SET EXPLAIN_TARGET = {cf-studio-path}
+  SET STORYTELLING_MODE = presentation
+  SET STORYTELLING_ARTIFACT_DISPOSITION = chat-only
+  SET STORYTELLING_AUDIENCE = Constructor Studio newcomers
+  SET STORYTELLING_CONTEXT_PACK_STRATEGY = hybrid
+  SET STORYTELLING_PLAN_APPROVED = true
+  SET STORYTELLING_DIAGRAM_FORMAT = ascii
+  SET STORYTELLING_DIAGRAM_FORMAT_PRESET = true
+  SET STORYTELLING_HELP_GOAL = "Run a normal cf-explain storytelling session about Constructor Studio itself: target {cf-studio-path}, presentation mode, chat-only, newcomers audience, source-grounded portions, normal navigation."
+  INVOKE skill `cf-explain` to run the preset storytelling session, then STOP_TURN
+RULES:
+  NEVER render custom one-shot help, a command list, or a status summary here
+  ALWAYS let the preset values resolve cf-explain's four E1 gates (mode/disposition/audience/plan) instead of prompting — preset resolution skips the prompts, not the phases
+  ALWAYS keep the next user-visible output to the storytelling E0/E1 opener, then E2 portion delivery
 ```

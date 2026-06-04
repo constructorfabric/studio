@@ -1,9 +1,50 @@
 # Using Constructor Studio — A Real Conversation (Story)
 
-> **Historical walkthrough**
+
+<!-- toc -->
+
+- [Part 1 — Getting Started (0000–0200)](#part-1--getting-started-00000200)
+  - [0000 — Enable Cypilot mode](#0000--enable-cypilot-mode)
+  - [0100 — Ask “how can you help me?”](#0100--ask-how-can-you-help-me)
+  - [0200 — Ask “what can I generate?”](#0200--ask-what-can-i-generate)
+- [Part 2 — Understand analyze vs generate (0300–0500)](#part-2--understand-analyze-vs-generate-03000500)
+  - [Analyze workflow tour (0300–0310)](#analyze-workflow-tour-03000310)
+  - [Terminology tour (0400–0500)](#terminology-tour-04000500)
+- [Part 3 — Turn an idea into a scoped plan (0600–0801)](#part-3--turn-an-idea-into-a-scoped-plan-06000801)
+  - [Idea + clarification (0600–0601)](#idea--clarification-06000601)
+  - [Scope decision + write gate (0700–0701)](#scope-decision--write-gate-07000701)
+  - [Compare options (0800–0801)](#compare-options-08000801)
+- [Part 4 — Draft the PRD (0900–0904)](#part-4--draft-the-prd-09000904)
+  - [PRD drafting (0900–0904)](#prd-drafting-09000904)
+- [Part 5 — Write PRD and move into design (1000–1201)](#part-5--write-prd-and-move-into-design-10001201)
+  - [Write to disk + validate (1000–1100)](#write-to-disk--validate-10001100)
+  - [Design inputs (1101–1201)](#design-inputs-11011201)
+- [Part 6 — ADR + DESIGN + DECOMPOSITION + SPEC (1300–1309)](#part-6--adr--design--decomposition--spec-13001309)
+  - [ADR creation + validation loop (1300–1302)](#adr-creation--validation-loop-13001302)
+  - [DESIGN creation + template compliance (1303–1304)](#design-creation--template-compliance-13031304)
+  - [DECOMPOSITION + SPEC set + validation (1305–1309)](#decomposition--spec-set--validation-13051309)
+- [Part 7 — Review SPECs (plain-language + expert issues-only) (1400–1503)](#part-7--review-specs-plain-language--expert-issues-only-14001503)
+  - [Plain-language SPEC walkthrough (1400–1403)](#plain-language-spec-walkthrough-14001403)
+  - [Expert issues-only review (1500–1503)](#expert-issues-only-review-15001503)
+- [Part 8 — Apply SPEC gap fixes (Option A) (1600–1604)](#part-8--apply-spec-gap-fixes-option-a-16001604)
+  - [Option A: apply SPEC gap fixes (1600–1601)](#option-a-apply-spec-gap-fixes-16001601)
+  - [Validation loop until PASS (1602–1604)](#validation-loop-until-pass-16021604)
+- [Result: SPEC gap fixes applied + deterministic validation PASS](#result-spec-gap-fixes-applied--deterministic-validation-pass)
+- [Part 9 — Implement the tool + tests (1700–1901)](#part-9--implement-the-tool--tests-17001901)
+  - [Implementation kickoff + codebase layout (1700–1702)](#implementation-kickoff--codebase-layout-17001702)
+  - [Create code skeleton + core modules (1800–1803)](#create-code-skeleton--core-modules-18001803)
+  - [Deterministic validation + tests (1804–1805)](#deterministic-validation--tests-18041805)
+  - [Install pytest + run tests + semantic validate (1806–1807)](#install-pytest--run-tests--semantic-validate-18061807)
+  - [Manual macOS smoke test instructions (1808–1809)](#manual-macos-smoke-test-instructions-18081809)
+  - [Smoke test results + final confirmation (1900–1901)](#smoke-test-results--final-confirmation-19001901)
+
+<!-- /toc -->
+
+> **HISTORICAL DOCUMENT — NOT THE CURRENT PRODUCT**
 >
-> This document is a real transcript from an earlier Constructor Studio setup and command model.
-> Keep it as a historical example, not as the canonical guide to the current product surface.
+> This is a real transcript from an **earlier** Constructor Studio setup and command model. It still uses the old **"Cypilot"** product name and command shape throughout, so the commands, directory names, and workflow framing below differ from the current product.
+>
+> Keep it only as a historical example. **Do not follow it as a guide to current Constructor Studio.**
 > For the current model, start with **[README.md](../README.md)**, then continue with **[USAGE-GUIDE.md](USAGE-GUIDE.md)** and **[AGENT-TOOLS.md](AGENT-TOOLS.md)**.
 
 This is a real IDE conversation with an agent running in **Constructor Studio mode**.
@@ -22,20 +63,6 @@ Links:
 
 - Example app: [examples/overwork_alert/](../examples/overwork_alert/)
 - Tests: [tests/](../tests/)
-
-## Table of Contents
-
-- [Part 1 — Getting Started (0000–0200)](#part-1-getting-started)
-- [Part 2 — Understand analyze vs generate (0300–0500)](#part-2-analyze-vs-generate)
-- [Part 3 — Turn an idea into a scoped plan (0600–0801)](#part-3-scope-and-plan)
-- [Part 4 — Draft the PRD (0900–0904)](#part-4-prd-drafting)
-- [Part 5 — Write PRD and move into design (1000–1201)](#part-5-write-prd-into-design)
-- [Part 6 — ADR + DESIGN + DECOMPOSITION + SPEC (1300–1309)](#part-6-adr-design-decomposition-spec)
-- [Part 7 — Review SPECs (plain-language + expert issues-only) (1400–1503)](#part-7-review-specs)
-- [Part 8 — Apply SPEC gap fixes (Option A) (1600–1604)](#part-8-spec-gap-fixes)
-- [Part 9 — Implement the tool + tests (1700–1901)](#part-9-implementation)
-
-<a id="part-1-getting-started"></a>
 ## Part 1 — Getting Started (0000–0200)
 
 ### 0000 — Enable Cypilot mode

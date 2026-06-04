@@ -139,7 +139,7 @@ The controller MUST NOT:
     "protocol": "independent-then-critique|single-pass|null",
     "violations": [
       {
-        "invariant_id": "I3..I12 or G1..G5",
+        "invariant_id": "I3..I14 or G1..G5",
         "error_code": "E_*",
         "detail": "..."
       }
@@ -224,6 +224,11 @@ RULES:
   - ALWAYS critique row:
       persona_id
       critique
+  - ALWAYS NEXT-TOPIC PROPOSALS:
+    - ALWAYS emit next_topic_proposals as a JSON array at the envelope top level, aggregated across the panel in panel order with duplicates removed by exact match of the text field (keeping the first occurrence)
+    - ALWAYS WHEN mode == "topic": next_topic_proposals contains 1 or more items, each with non-empty text and why
+    - ALWAYS WHEN mode == "challenge": next_topic_proposals is an empty array
+    - ALWAYS each next_topic_proposals item has exactly the fields text and why
 ```
 
 ## Output Contract
@@ -248,6 +253,12 @@ Success envelope:
   ],
   "challenged_decisions": null,
   "envelope_version": "1",
+  "next_topic_proposals": [
+    {
+      "text": "...",
+      "why": "..."
+    }
+  ],
   "panel_mode": true,
   "protocol": "independent-then-critique",
   "round_index": 1
@@ -261,7 +272,7 @@ Error envelope:
   "error": "<ERROR_CODE>",
   "reason": "<one-sentence explanation>",
   "guard": "<G3-G5 or none>",
-  "invariant": "<I1-I13 or none>",
+  "invariant": "<I1-I14 or none>",
   "attempt": 1,
   "round_index": 1
 }
@@ -293,6 +304,7 @@ INVARIANTS:
   - ALWAYS I13: when context is insufficient for a persona, its proposed_default
     is a concrete "Please provide: ..." request for missing context, not an
     invented project-specific decision
+  - ALWAYS I14: next_topic_proposals is an array; it is non-empty with text and why on every item in topic mode and an empty array in challenge mode
 ```
 
 ## Completion Gate
@@ -302,7 +314,7 @@ UNIT PanelCompletionGate
 
 RULES:
   - ALWAYS satisfy the protocol/render rules above
-  - ALWAYS satisfy invariants I1-I13 above
+  - ALWAYS satisfy invariants I1-I14 above
   - ALWAYS render deterministic JSON only
   - ALWAYS use sorted keys and LF line endings
   - ALWAYS emit no markdown, no prose, no commentary outside the JSON object

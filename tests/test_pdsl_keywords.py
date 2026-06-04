@@ -49,7 +49,21 @@ ALLOWED_CF_ROOTS = (
     "config/",
     ".cache/",
     ".plans/",
+    ".debug-skill/",
 )
+
+# Runtime-created adapter namespaces. Concrete files inside these directories
+# are materialized only at runtime (cache dumps, generated plans, debug-skill
+# dumps), so their existence is not guaranteed in a fresh checkout.
+RUNTIME_CREATED_CF_ROOTS = (
+    ".cache/",
+    ".plans/",
+    ".debug-skill/",
+)
+
+# Bare allowed-root tokens name a canonical adapter *directory* (not a file),
+# e.g. a prose mention like "methodology under {cf-studio-path}/.core".
+BARE_ALLOWED_CF_ROOTS = frozenset(root.rstrip("/") for root in ALLOWED_CF_ROOTS)
 
 FENCE_RE = re.compile(r"^```(?P<lang>[A-Za-z0-9_-]+)?\s*$")
 
@@ -83,11 +97,16 @@ def _cf_reference_has_existing_static_prefix(ref: str) -> bool:
     their static prefix because the concrete runtime path is intentionally
     variable.
     """
+    if ref in BARE_ALLOWED_CF_ROOTS:
+        # A bare allowed-root token (e.g. `.core`, `config`) names a canonical
+        # adapter directory rather than a file, so it is always valid.
+        return True
     if not ref.startswith(ALLOWED_CF_ROOTS):
         return False
-    if ref.startswith((".cache/", ".plans/")):
-        # Cache and plan references are runtime-created namespaces. Their
-        # existence is not guaranteed in a fresh checkout or coverage job.
+    if ref.startswith(RUNTIME_CREATED_CF_ROOTS):
+        # Cache, plan, and debug-skill references are runtime-created
+        # namespaces. Their existence is not guaranteed in a fresh checkout or
+        # coverage job.
         return True
     if ref.startswith("config/"):
         # Config references may point at optional project/user files. The

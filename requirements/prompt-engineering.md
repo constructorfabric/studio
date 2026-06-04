@@ -2,7 +2,7 @@
 cf: true
 type: requirement
 name: Prompt Engineering Review Methodology
-version: 1.5
+version: 1.7
 purpose: Systematic methodology for reviewing and improving agent instructions with evidence-backed constraint framing, compact-prompts optimization, interaction UX quality, and router-based decomposition
 ---
 
@@ -173,9 +173,9 @@ Anti-pattern codes are reference labels. All detected codes MUST be reported wit
 | `AP-IMPOSSIBLE` | Not all requirements can be satisfied simultaneously. |
 | `AP-NEGATIVE-ONLY` | A prohibition says what not to do without stating the required alternative behavior. |
 | `AP-FORBIDDEN-PRIMING` | A prompt repeatedly names exact blocked tokens or labels when category-level wording would preserve the rule. |
-| `AP-INSTRUCTION-DENSITY` | More than `7` active requirements compete in one response surface, or more than `10` are present without decomposition or validation. |
+| `AP-INSTRUCTION-DENSITY` | More than `7` active requirements compete in one response surface, or more than `10` are present without decomposition or validation. Mitigation: per-constraint self-check loop (decompose → critique → refine each constraint separately) significantly improves compliance under high density. |
 | `AP-NO-ROUTER` | Multi-step or branching instructions lack a compact router/index that says what may load next and when. |
-| `AP-OVERSIZED-RESOURCE` | A loadable instruction resource, module, or deliberate slice exceeds `200` lines. |
+| `AP-OVERSIZED-RESOURCE` | A loadable instruction resource, module, or deliberate slice exceeds the `500`-line acceptable size (warning: decompose the skill, compact it, and lazy-load instructions) or the `1000`-line critical ceiling (FAIL). |
 | `AP-MONOLITHIC-STEP` | Multiple steps, branches, or modes are bundled into one loadable unit instead of decomposed into routeable modules. |
 
 ### Context & Memory
@@ -183,11 +183,11 @@ Anti-pattern codes are reference labels. All detected codes MUST be reported wit
 | Code | Detect when |
 |---|---|
 | `AP-CONTEXT-BLOAT` | Excessive context dilutes priorities. |
-| `AP-SYSTEM-PROMPT-BLOAT` | A system prompt violates the compact-prompt always-on budget rule: always-on text is `> 200` lines or embeds conditional blocks that should be modular. |
+| `AP-SYSTEM-PROMPT-BLOAT` | A system prompt violates the compact-prompt always-on budget rule: always-on text exceeds the `500`-line acceptable size (warning: decompose, compact, and lazy-load) or the `1000`-line critical ceiling, or embeds conditional blocks that should be modular. |
 | `AP-CONTEXT-STARVATION` | Critical context is missing. |
 | `AP-CONTEXT-DRIFT` | Required context may be lost through compaction or long sessions. |
 | `AP-BURIED-PRIORITY` | Critical rules are hidden instead of surfaced early and scannably. |
-| `AP-LOST-MIDDLE` | Critical instructions or references sit in the middle of a long prompt where attention may degrade. |
+| `AP-LOST-MIDDLE` | Critical instructions or references sit in the middle of a long prompt where attention may degrade. Note: the U-shaped attention effect (primacy + recency bias) is significantly reduced in large frontier models but remains substantial in smaller models; apply this check conservatively for GPT-4-class targets and strictly for smaller models. |
 | `AP-VAGUE-REFERENCE` | References such as `the above` or `this` have no clear antecedent. |
 | `AP-ASSUMES-MEMORY` | The document assumes the agent will remember earlier turns. |
 | `AP-NO-CHECKPOINT` | Long workflows lack state checkpoints. |
@@ -247,11 +247,11 @@ RULES:
 
 A **loadable instruction resource** is any file, module, or deliberate contiguous slice that the agent is expected to load as one active execution unit at runtime. Concrete test: a unit qualifies as a loadable instruction resource only when the agent must ingest it whole at runtime — invoked as a single programmatic load or import (for example a `Read` of the whole file, an `ALWAYS open and follow {path}` directive, a workflow `WHEN`-clause spec load, or a router pointing at the file as the next-load target). Examples that ARE loadable instruction resources: a workflow phase file, a skill `SKILL.md` actively loaded by the protocol guard, a router-referenced module, a checklist file ingested whole during a phase, an agent prompt opened in full.
 
-**Exemptions**: methodology documents, reference guides, multi-chapter specifications, ADRs, design documents, and other non-runtime documentation are exempt from the `<= 200` line cap UNLESS they contain runtime execution sequences or agent-loadable instruction blocks (e.g., `WHEN`-clause specs, `ALWAYS open and follow` directives, or router targets). When such a document carries runtime instructions inline, the runtime block itself is the loadable resource and MUST be either (a) `<= 200` lines, or (b) extracted into its own routeable module so the runtime slice satisfies the cap.
+**Exemptions**: methodology documents, reference guides, multi-chapter specifications, ADRs, design documents, and other non-runtime documentation are exempt from the `<= 500` line acceptable-size guidance UNLESS they contain runtime execution sequences or agent-loadable instruction blocks (e.g., `WHEN`-clause specs, `ALWAYS open and follow` directives, or router targets). When such a document carries runtime instructions inline, the runtime block itself is the loadable resource and SHOULD be either (a) within the `<= 500`-line acceptable size, or (b) extracted into its own routeable module; it MUST never exceed the `1000`-line critical ceiling.
 
-**Measurement rule**: count headings, blank lines, lists, and examples within the runtime-loadable unit (do not count surrounding non-runtime prose in an exempted document). PASS only if every runtime-loadable unit is `<= 200`; FAIL if any runtime unit exceeds `200`.
+**Measurement rule**: count headings, blank lines, lists, and examples within the runtime-loadable unit (do not count surrounding non-runtime prose in an exempted document). PASS when every runtime-loadable unit is `<= 500` lines (acceptable). WARN when a unit is `501`–`1000` lines: recommend decomposing the skill, compacting it, and lazy-loading instructions. FAIL (critical) when any runtime unit exceeds `1000` lines.
 
-**Migration rule**: during brownfield review or refactor, an oversized legacy prompt may be inspected only through bounded slices `<= 200` lines each to plan decomposition. That temporary inspection does not make the legacy prompt compliant; the legacy document remains non-compliant until decomposed, and the compliant target state is routeable resources `<= 200` lines each.
+**Migration rule**: during brownfield review or refactor, an oversized legacy prompt may be inspected through bounded slices to plan decomposition. That temporary inspection does not make the legacy prompt compliant; a prompt over the `1000`-line critical ceiling remains non-compliant until decomposed, and the compliant target state is routeable resources `<= 500` lines each.
 
 **Router / module type reference**:
 
@@ -279,10 +279,10 @@ PURPOSE:
 RULES:
   - ALWAYS identify compressible, redundant, and conditional sections with approximate size
   - ALWAYS confirm most critical instructions appear in the first 20% of the document
-  - NEVER allow the always-on portion of a System Prompt to exceed 200 lines (CRIT); count headings, blank lines, and lists; PASS if <= 200; FAIL if > 200
+  - ALWAYS keep the always-on portion of a System Prompt within the 500-line acceptable size; count headings, blank lines, and lists; PASS if <= 500; WARN at 501-1000 and recommend decomposing the skill, compacting it, and lazy-loading instructions; NEVER allow it to exceed 1000 lines (CRIT, FAIL)
   - ALWAYS require that any document telling the agent to load more files defines budget, gating, chunking, summarization, and a fail-safe (CRIT)
   - ALWAYS require minimum overflow controls: max files / max total lines or mandatory summarize-and-drop policy; rules for when a dependency should load; partial loading by TOC/section/range; conversion of loaded text into operational summary; stop / checkpoint / ask-user fallback when budget would be exceeded
-  - NEVER allow any loadable instruction resource to exceed 200 lines (CRIT); PASS only if every runtime-loadable unit is <= 200; FAIL if any exceeds 200
+  - ALWAYS keep any loadable instruction resource within the 500-line acceptable size; PASS if every runtime-loadable unit is <= 500; WARN at 501-1000 and recommend decomposing the skill, compacting it, and lazy-loading instructions; NEVER allow any unit to exceed 1000 lines (CRIT, FAIL)
   - ALWAYS require that behavior spanning multiple steps, branches, modes, or recovery paths is decomposed into a compact router plus on-demand modules (CRIT); NEVER inline full instructions for sibling branches or later steps that are not yet active
   - ALWAYS apply the preferred representation: use compact tables for router/index data and short ordered lists for execution steps
   - ALWAYS check: safe reductions found, content kept intentionally, deferred or blocked opportunities, and behavior-preservation confirming MUST, MUST NOT, triggers, thresholds, output rules, and fail-safes remain intact
@@ -301,7 +301,7 @@ PURPOSE:
 RULES:
   - ALWAYS load the router or entry module first
   - ALWAYS resolve the active branch, mode, or step from explicit triggers before loading any downstream module
-  - ALWAYS load exactly one downstream module at a time unless two modules are both mandatory for the same immediate action and still respect the <= 200-line rule
+  - ALWAYS load exactly one downstream module at a time unless two modules are both mandatory for the same immediate action and still respect the <= 500-line acceptable-size rule
   - ALWAYS retain only a short operational summary plus required state after each module; drop unrelated raw text
   - ALWAYS load the next module only from an explicit next, when, if, or decision mapping
   - NEVER keep recovery, review, and completion modules always-on by default; load them only when their trigger fires
@@ -361,7 +361,7 @@ PURPOSE:
   Verify that instructions align with LLM capabilities, training alignment, and graceful degradation patterns.
 
 RULES:
-  - ALWAYS verify instructions do not ask impossible things, break complex reasoning into steps, and request output formats the model handles well (JSON, Markdown, etc.)
+  - ALWAYS verify instructions do not ask impossible things, break complex reasoning into steps when beneficial (see CoT caveat below), and request output formats the model handles well (JSON, Markdown, etc.)
   - ALWAYS verify familiar prompt patterns, an appropriate role/persona, and a style consistent with effective prompting are used
   - ALWAYS rewrite vague or negative rules into direct actions; prefer Do X when Y over Do not forget X; prefer If data is missing, say UNKNOWN over Do not hallucinate
   - ALWAYS treat exact word counts, exact token counts, exact character limits, and long simultaneous rule sets as high-risk unless automated validation or post-processing is available
@@ -370,6 +370,10 @@ RULES:
   - ALWAYS verify iterative improvement is supported, feedback incorporation is defined, and partial success is actionable
   - ALWAYS verify multi-turn use, clarification requests, and mid-task scope changes are supported
   - ALWAYS prefer one compact positive example over several overlapping prose rules when format, tone, or structure matters; remove any example that no longer changes behavior
+  - ALWAYS order multiple constraints from most specific / hardest to satisfy first to least specific / easiest last — LLMs show higher compliance with hard-to-easy ordering than easy-to-hard or random ordering regardless of model architecture and size
+  - ALWAYS flag chain-of-thought decomposition as potentially harmful for tasks involving implicit pattern recognition, intuitive judgment, or face/signal recognition — CoT can reduce performance on tasks where deliberate verbalization hurts human performance too; do not apply CoT unconditionally
+  - ALWAYS note that prompt format sensitivity (Markdown vs JSON vs plain text) is strongly model-size dependent: smaller models vary up to ±40% by format for the same task; larger frontier models are substantially more robust — flag format choice as a calibration concern when the target model is not known or may vary
+  - ALWAYS recommend per-constraint self-check (decompose, critique, refine each constraint independently) when AP-INSTRUCTION-DENSITY is detected; per-constraint loops significantly outperform single-pass self-refinement under high constraint counts
 ```
 
 ## L10: Improvement Synthesis
@@ -465,6 +469,14 @@ This document is the authoritative working method. External sources inform its d
 - `FollowBench`: incrementally adding constraints exposes weaknesses in fine-grained constraint following. https://arxiv.org/abs/2310.20410
 - `Lost in the Middle`: long-context models may underuse information placed in the middle of long inputs; critical rules should not be buried there. https://arxiv.org/abs/2307.03172
 - `What Prompts Don't Say`: simply adding more requirements does not reliably improve performance because instruction-following capacity is limited and requirements may conflict. https://arxiv.org/abs/2505.13360
+- `When Instructions Multiply` (2025): quantifies the degradation law — prompt-level accuracy(n) = instruction-level accuracy^n; experiments across GPT-4o, Claude-3.5, Gemini-1.5, Gemma2, Llama3.1 confirm constant per-instruction degradation. https://arxiv.org/abs/2509.21051
+- `How Many Instructions Can LLMs Follow at Once?` (2025): ManyIFEval benchmark with up to ten verifiable instructions; performance degrades consistently and gradually as instruction count rises across all tested frontier models. https://arxiv.org/abs/2507.11538
+- `Order Matters: Position Bias in Multi-constraint Instruction Following` (ACL Findings 2025): LLMs perform significantly better when constraints are ordered hard-to-easy; the effect is consistent across architectures and parameter sizes. https://arxiv.org/abs/2502.17204
+- `Mind Your Step (by Step): Chain-of-Thought can Reduce Performance` (2024): CoT degrades performance on tasks where deliberate reasoning harms human performance (implicit patterns, intuitive recognition); do not apply CoT unconditionally. https://arxiv.org/abs/2410.21333
+- `The Curse of CoT: Limitations in In-Context Learning` (2025): long-CoT reasoning models fail to overcome fundamental limitations in planning tasks despite higher computational cost. https://arxiv.org/abs/2504.05081
+- `Does Prompt Formatting Have Any Impact on LLM Performance?` (2024): prompt format (CSV, JSON, Markdown, YAML) causes up to ±40% accuracy swings in smaller models; larger models are substantially more robust — format sensitivity is a model-size property. https://arxiv.org/abs/2411.10541
+- `LLM Self-Correction with DeCRIM` (2024): decompose-critique-refine per-constraint self-check significantly outperforms single-pass self-refinement when multiple constraints are active; recommended mitigation for AP-INSTRUCTION-DENSITY. https://arxiv.org/abs/2410.06458
+- `Lost in the Middle: An Emergent Property` (2025): reframes the lost-in-the-middle effect as emergent from information-retrieval demands during pretraining; larger models show substantially reduced or eliminated U-shaped attention curves. https://arxiv.org/abs/2510.10276
 
 ## Validation
 

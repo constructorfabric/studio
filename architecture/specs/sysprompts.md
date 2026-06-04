@@ -66,8 +66,8 @@ PURPOSE:
   loading authority.
 
 DO:
-  - LOAD {cf-studio-path}/.core/workflows/shared/shared-context-pack-ownership.md
-  - CONTINUE SharedContextPackOwnership
+  - LOAD {cf-studio-path}/.core/architecture/specs/shared-context-pack.md
+  - CONTINUE SharedContextPackLifecycle
 
 RULES:
   - ALWAYS `{cf-studio-path}/config/AGENTS.md` and
