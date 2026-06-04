@@ -3,6 +3,26 @@ Test workflow file parsing and structure validation.
 
 Tests REAL workflow files from workflows/ directory.
 
+Migration note (legacy multi-phase workflow removal + routing update):
+- test_parse_workflow_extracts_all_sections: REWRITTEN. Previously asserted
+  generate.md loaded workflows/shared/root-skill-entrypoint-bootstrap.md (deleted)
+  and REQUIREd workflows/generate/phase-* fragments (deleted). generate.md is now
+  a thin router; re-grounded on its GenerateBootstrap/GenerateRoute/GenerateNoMatch
+  UNITs and the "NEVER load or run any legacy generate phase logic" rule.
+- test_workflows_continue_root_skill_entrypoint_bootstrap: REWRITTEN. The shared
+  root-skill-entrypoint-bootstrap.md was deleted, so the old check passed vacuously
+  (masking). Re-grounded on the per-router Bootstrap UNITs (GenerateBootstrap /
+  AnalyzeBootstrap) that fail-closed until the cf skill is loaded (CFS_INIT == true).
+- test_root_skill_entrypoint_bootstrap_has_fail_closed_unit: REWRITTEN. The shared
+  bootstrap file was deleted; the fail-closed entrypoint gate now lives in
+  skills/studio/SKILL.md UNIT SessionInit (REQUIRE {cf-studio-path} resolved before
+  any LOAD) and the routers' LoadCfSkillConfirm menu (2 stop -> STOP_TURN).
+- test_generate_workflow_has_template_resolution: REWRITTEN to
+  test_root_skill_has_template_var_resolution. generate.md no longer does
+  template/artifact resolution; that behavior moved to skills/studio/SKILL.md
+  UNIT TemplateVarResolution (+ CommandResolution / resolve-vars).
+- test_validate_all_workflows_have_required_structure: KEPT; removed the deleted
+  pdsl.md from the no-steps exemption set.
 """
 try:
     import pytest  # type: ignore
@@ -17,23 +37,25 @@ from pathlib import Path
 
 
 def test_parse_workflow_extracts_all_sections():
-    """Parse REAL workflow files and verify structure."""
+    """Parse the REAL generate.md thin router and verify its structure."""
     workflows_dir = Path(__file__).parent.parent / "workflows"
     assert workflows_dir.exists(), "workflows/ directory not found"
 
-    # Test generate.md workflow (main generation workflow with phases)
+    # generate.md is now a thin router (the legacy multi-phase workflow was retired).
     workflow_path = workflows_dir / "generate.md"
     assert workflow_path.exists(), f"{workflow_path} not found"
 
-    content = workflow_path.read_text(encoding='utf-8')
+    content = workflow_path.read_text(encoding="utf-8")
 
-    # generate.md now loads the shared root bootstrap while retaining
-    # phase-fragment loading in the DO section.
-    has_prerequisites = 'workflows/shared/root-skill-entrypoint-bootstrap.md' in content
-    has_phases = '// Phase ' in content and 'REQUIRE {cf-studio-path}/.core/workflows/generate/phase-' in content
+    # It uses PDSL fenced blocks with the router UNITs.
+    assert "```pdsl" in content, "generate.md should use ```pdsl fenced blocks"
+    for unit in ("UNIT GenerateBootstrap", "UNIT GenerateRoute", "UNIT GenerateNoMatch"):
+        assert unit in content, f"generate.md: missing {unit}"
 
-    assert has_prerequisites, f"{workflow_path.name}: Bootstrap prerequisite unit not found"
-    assert has_phases, f"{workflow_path.name}: Phase fragment load section not found"
+    # And it must explicitly forbid the deleted legacy phase logic.
+    assert "NEVER load or run any legacy generate phase logic" in content, (
+        "generate.md must forbid legacy multi-phase logic"
+    )
 
 
 def test_validate_all_workflows_have_required_structure():
@@ -49,7 +71,7 @@ def test_validate_all_workflows_have_required_structure():
     assert len(workflow_files) > 0, "No workflow files found"
 
     # Thin pass-through workflows have no numbered steps structure
-    no_steps_allowed = {'explain.md', 'auto-config.md', 'brainstorm.md', 'pdsl.md', 'studio.md'}
+    no_steps_allowed = {'explain.md', 'auto-config.md', 'brainstorm.md', 'studio.md'}
 
     errors = []
 
@@ -76,50 +98,62 @@ def test_validate_all_workflows_have_required_structure():
 
 
 def test_workflows_continue_root_skill_entrypoint_bootstrap():
-    """Every top-level workflow must transfer through the root cf bootstrap gate."""
+    """Top-level routers must fail closed until the cf skill is loaded.
+
+    The shared root-skill-entrypoint-bootstrap.md was removed; the equivalent
+    behavior is now a per-router Bootstrap UNIT that requires CFS_INIT == true
+    before any routing work.
+    """
     workflows_dir = Path(__file__).parent.parent / "workflows"
-    workflow_files = [
-        f for f in workflows_dir.glob("*.md")
-        if f.name not in {"README.md", "AGENTS.md"}
-    ]
+
+    routers = {
+        "generate.md": ("UNIT GenerateBootstrap", "CONTINUE GenerateRoute"),
+        "analyze.md": ("UNIT AnalyzeBootstrap", "CONTINUE AnalyzeRoute"),
+    }
 
     missing = []
-    for workflow_path in workflow_files:
-        content = workflow_path.read_text(encoding="utf-8")
-        if "workflows/shared/root-skill-entrypoint-bootstrap.md" not in content:
-            continue
-        if "CONTINUE RootSkillEntrypointBootstrap" not in content:
-            missing.append(workflow_path.name)
+    for name, (bootstrap_unit, continue_route) in routers.items():
+        content = (workflows_dir / name).read_text(encoding="utf-8")
+        if bootstrap_unit not in content:
+            missing.append(f"{name}: {bootstrap_unit}")
+        if "CFS_INIT == true" not in content:
+            missing.append(f"{name}: CFS_INIT gate")
+        if continue_route not in content:
+            missing.append(f"{name}: {continue_route}")
 
-    assert not missing, "Missing RootSkillEntrypointBootstrap transfer: " + ", ".join(missing)
+    assert not missing, "Router bootstrap gate missing: " + ", ".join(missing)
 
 
 def test_root_skill_entrypoint_bootstrap_has_fail_closed_unit():
-    """Direct workflow entry must have an explicit fail-closed terminal path."""
-    bootstrap_path = (
-        Path(__file__).parent.parent
-        / "workflows"
-        / "shared"
-        / "root-skill-entrypoint-bootstrap.md"
-    )
-    content = bootstrap_path.read_text(encoding="utf-8")
+    """The session entrypoint must fail closed before doing any work.
 
-    assert "UNIT RootSkillEntrypointBootstrapFailClosed" in content
-    assert "CONTINUE RootSkillEntrypointBootstrapFailClosed" in content
-    assert "STOP_TURN" in content
+    Re-grounded from the deleted workflows/shared/root-skill-entrypoint-bootstrap.md
+    onto skills/studio/SKILL.md UNIT SessionInit, which requires {cf-studio-path}
+    is resolved before any LOAD, and onto the routers' LoadCfSkillConfirm menu
+    which stops the turn when the user declines to load cf.
+    """
+    skill_path = Path(__file__).parent.parent / "skills" / "studio" / "SKILL.md"
+    content = skill_path.read_text(encoding="utf-8")
+
+    assert "UNIT SessionInit" in content
+    assert "REQUIRE {cf-studio-path} is resolved before any LOAD" in content
+
+    # Routers fail closed when the user declines to load cf.
+    generate = (Path(__file__).parent.parent / "workflows" / "generate.md").read_text(encoding="utf-8")
+    assert "MENU LoadCfSkillConfirm" in generate
+    assert "2 stop -> STOP_TURN" in generate
 
 
-def test_generate_workflow_has_template_resolution():
-    """Verify generate.md workflow has template resolution logic."""
-    workflows_dir = Path(__file__).parent.parent / "workflows"
-    workflow_path = workflows_dir / "generate.md"
-    assert workflow_path.exists(), f"{workflow_path} not found"
+def test_root_skill_has_template_var_resolution():
+    """Template-variable resolution now lives in the consolidated root studio skill.
 
-    content = workflow_path.read_text(encoding="utf-8")
+    Re-grounded from the deleted multi-phase generate template-resolution logic
+    onto skills/studio/SKILL.md UNIT TemplateVarResolution.
+    """
+    skill_path = Path(__file__).parent.parent / "skills" / "studio" / "SKILL.md"
+    content = skill_path.read_text(encoding="utf-8")
 
-    # generate.md should have template-related content
-    assert "template" in content.lower(), "generate.md should reference templates"
-    assert "artifact" in content.lower(), "generate.md should reference artifacts"
-    # generate.md uses PDSL UNIT structure and loads phase fragments explicitly.
-    assert "UNIT Generate" in content, "generate.md should use UNIT structure"
-    assert "// Phase 1: collect inputs" in content, "generate.md should load phase fragments"
+    assert "UNIT TemplateVarResolution" in content, "SKILL.md should define TemplateVarResolution"
+    assert "UNIT CommandResolution" in content, "SKILL.md should define CommandResolution"
+    assert "resolve-vars" in content, "TemplateVarResolution should use {cfs_cmd} resolve-vars"
+    assert "template variable" in content.lower(), "SKILL.md should reference template variables"
