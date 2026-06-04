@@ -324,11 +324,19 @@ Common `cfs` utilities around those chat workflows:
 
 ### Language complexity (global UX setting)
 
-All Constructor Studio user-facing output (chat + artifacts/documentation) respects a configurable `language_complexity` level: **`low`** (short sentences, common words only — for non-native A2-B1 readers), **`middle`** (everyday vocabulary, ≤25-word sentences, technical terms with brief gloss — default; for non-native B2 / mixed audiences), **`high`** (full register, idioms / academic vocabulary fine — for native or specialist audiences). Set in `{cf-studio-path}/config/core.toml` under `[language] complexity = "middle"`. Mid-session override: `change language complexity to {low|middle|high}`; `remember new language complexity` persists. Source quotes from input artifacts are exempt (verbatim). See [`requirements/language-complexity.md`](requirements/language-complexity.md) for the full spec.
+All Constructor Studio output (chat and artifacts) respects a configurable `language_complexity` level:
+
+- **`low`** — short sentences, common words only; for non-native A2-B1 readers.
+- **`middle`** (default) — everyday vocabulary, ≤25-word sentences, technical terms with a brief gloss; for non-native B2 and mixed audiences.
+- **`high`** — full register, idioms and academic vocabulary allowed; for native or specialist audiences.
+
+Set the level in `{cf-studio-path}/config/core.toml` under `[language] complexity = "middle"`. To change it mid-session, say `change language complexity to {low|middle|high}`; `remember new language complexity` persists it. Source quotes from input artifacts stay verbatim. See [`requirements/language-complexity.md`](requirements/language-complexity.md) for the full spec.
 
 ### Explain mode (storytelling companion)
 
-`analyze` has an interactive **storytelling** companion for pedagogically-paced engagement with an artifact / PR / codebase region. Canonical invocation: **`cf analyze: explain <target>`** (any explain-style verb works — `walk me through`, `teach me`, `present`, `onboard me to`, `quiz me on`, `explain --resume {session-id}`). The methodology activates `EXPLAIN_MODE`, asks the user to pick one of six modes — `presentation` (default; explain & teach), `review` (panel critiques the artifact with line-anchored comments), `onboarding`, `decision` (alternatives + recommendation), `socratic` (agent quizzes you), `change-impact` — then delivers the input in small no-scroll portions with 6-slot navigation (Next / Deeper / Lateral / Recap / Ask / Wrap), audience-adapted diagrams, clickable source refs, and immediate-effect artifact handling (chat-only / save-to-file / post-to-resource).
+`analyze` has an interactive **storytelling** companion that teaches you about an artifact, PR, or codebase region at a pace you control. Start it with **`cf analyze: explain <target>`** — any explain-style verb works (`walk me through`, `teach me`, `present`, `onboard me to`, `quiz me on`, `explain --resume {session-id}`).
+
+It first asks you to pick one of six modes: `presentation` (explain and teach), `review` (a panel critiques the artifact with comments tied to specific lines), `onboarding`, `decision` (alternatives plus a recommendation), `socratic` (the agent quizzes you), or `change-impact`. It then delivers the content in small, no-scroll portions with simple navigation (Next / Deeper / Lateral / Recap / Ask / Wrap), audience-adapted diagrams, clickable source links, and a choice of where each output goes (chat-only, save-to-file, or post-to-resource).
 
 To produce a hand-off-able **package** (READMEs, training material, guides) instead of a chat session: **`cf generate: explain package for <target>`** / `cf generate: make a README from <target>` / `cf generate: build onboarding doc set for <target>`. Writes a navigable folder of Markdown files under `{cf-studio-path}/.cache/explain/packages/`.
 
