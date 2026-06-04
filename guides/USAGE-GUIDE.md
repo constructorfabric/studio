@@ -4,15 +4,15 @@
 <!-- toc -->
 
 - [1. What this guide is for](#1-what-this-guide-is-for)
-- [2. Installation and first-time setup](#2-installation-and-first-time-setup)
+- [2. Installation and setup reference](#2-installation-and-setup-reference)
   - [One easy operating rule](#one-easy-operating-rule)
   - [Prerequisites](#prerequisites)
   - [If the repository already includes Constructor Studio](#if-the-repository-already-includes-constructor-studio)
-  - [1. Install the CLI](#1-install-the-cli)
-  - [2. Initialize the repository](#2-initialize-the-repository)
-  - [3. Turn Constructor Studio on in chat](#3-turn-constructor-studio-on-in-chat)
+  - [Install the CLI](#install-the-cli)
+  - [Initialize the repository](#initialize-the-repository)
+  - [Turn Constructor Studio on in chat](#turn-constructor-studio-on-in-chat)
   - [Common install/setup failures](#common-installsetup-failures)
-  - [4. Pick the right first move](#4-pick-the-right-first-move)
+  - [Pick the right first move](#pick-the-right-first-move)
   - [What success looks like after the first few minutes](#what-success-looks-like-after-the-first-few-minutes)
 - [3. The shortest mental model](#3-the-shortest-mental-model)
 - [4. When Constructor Studio is a good fit](#4-when-constructor-studio-is-a-good-fit)
@@ -46,6 +46,8 @@
   - [Situation: implementing code from an approved artifact](#situation-implementing-code-from-an-approved-artifact)
   - [Situation: code review or design review](#situation-code-review-or-design-review)
   - [Situation: small low-risk fix](#situation-small-low-risk-fix)
+  - [Situation: code-centric implementation or refactoring](#situation-code-centric-implementation-or-refactoring)
+  - [Situation: writing or revising a human-facing document](#situation-writing-or-revising-a-human-facing-document)
   - [Context hygiene](#context-hygiene)
 - [10. Prompt patterns that usually work well](#10-prompt-patterns-that-usually-work-well)
   - [Structured generation](#structured-generation)
@@ -54,7 +56,7 @@
   - [Planning](#planning)
   - [Context-bounded execution](#context-bounded-execution)
   - [Brownfield understanding](#brownfield-understanding)
-  - [Storytelling / explain mode (interactive pedagogical engagement)](#storytelling--explain-mode-interactive-pedagogical-engagement)
+  - [Storytelling / explain mode](#storytelling--explain-mode)
   - [Marker recovery](#marker-recovery)
 - [11. Prompt patterns that usually go wrong](#11-prompt-patterns-that-usually-go-wrong)
 - [12. Using Constructor Studio across multiple repositories](#12-using-constructor-studio-across-multiple-repositories)
@@ -66,10 +68,9 @@
   - [Bad approach](#bad-approach)
   - [Good sequence](#good-sequence)
 - [14. Delegation and autonomous execution](#14-delegation-and-autonomous-execution)
-  - [Good use](#good-use)
-  - [Risk](#risk)
-  - [Mitigation](#mitigation)
-  - [Delegation preflight](#delegation-preflight)
+  - [When delegation is a good fit](#when-delegation-is-a-good-fit)
+  - [How to reduce delegation risk](#how-to-reduce-delegation-risk)
+  - [Running a delegation preflight](#running-a-delegation-preflight)
   - [`cfs delegate` CLI options](#cfs-delegate-cli-options)
   - [Managing large inputs (`cfs chunk-input`)](#managing-large-inputs-cfs-chunk-input)
 - [15. Quick decision checklist](#15-quick-decision-checklist)
@@ -88,7 +89,6 @@ How to use **Constructor Studio** well in common real-world situations: when to 
 > **Convention**: 💬 = paste into AI coding tool chat. 🖥 = run in terminal.
 
 ---
----
 
 ## 1. What this guide is for
 
@@ -106,7 +106,9 @@ The focus is not abstract theory.
 
 The focus is operational behavior: how to use Constructor Studio well in real projects.
 
-## 2. Installation and first-time setup
+## 2. Installation and setup reference
+
+> **Canonical source**: The core install sequence (`pipx install`, `cfs init`, `cfs generate-agents`, activation) is maintained in **[README §Installation and setup reference](../README.md#installation-and-setup-reference)**. This section is the detailed operating path and adds platform-specific troubleshooting, failure modes, and first-move guidance not covered in the README overview.
 
 If you need the exact setup path, complete this once before the rest of the guide.
 
@@ -117,14 +119,14 @@ For the short version, use the setup section in **[README](../README.md)** first
 - use `cfs` in your terminal for setup, validation, updates, and workspace commands
 - use `cf ...` in your AI coding tool chat for `help`, `explore`, `auto-config`, `plan`, `generate`, `analyze`, and specialized routes such as `brainstorm` and `map`
 - do **not** run `cf ...` in the terminal
-- the portable `cf <workflow>: ...` form is the best default when a workflow takes a request payload; some chat routes are command-like prompts such as `cf help` and `cf auto-config`
+- use the portable `cf <workflow>: ...` form as your default when a workflow takes a request payload; some chat routes are command-like prompts such as `cf help` and `cf auto-config`
 
 ### Prerequisites
 
 - Python 3.11+
 - Git
 - one supported AI coding tool
-- `pipx` for a global CLI install
+- `pipx` — only needed if you are bootstrapping the repository yourself (see the CLI install path below)
 - `gh` if you want PR review or PR status workflows
 
 ### If the repository already includes Constructor Studio
@@ -140,13 +142,15 @@ In that case:
 
 Use the CLI install path below when you need to bootstrap the repository yourself, run terminal commands directly, or manage setup across multiple repositories.
 
-### 1. Install the CLI
+### Install the CLI
 
 🖥 **Terminal**:
 ```bash
 pipx install git+https://github.com/constructorfabric/studio.git
 cfs --version
 ```
+
+A PyPI release (`pipx install constructor-studio`) is planned; check [README](../README.md#installation-and-setup-reference) for the current install method if this changes.
 
 If `cfs --version` prints a version, the CLI install worked.
 
@@ -183,7 +187,7 @@ pipx ensurepath
 
 Then open a new terminal so the updated `PATH` is picked up.
 
-### 2. Initialize the repository
+### Initialize the repository
 
 From your repository root, run:
 
@@ -211,7 +215,7 @@ For a first trial, you do not need to open or edit those generated files manuall
 
 If your AI coding tool is already open on the repository, reload or reopen the repository after this step so the generated integration files are picked up.
 
-### 3. Turn Constructor Studio on in chat
+### Turn Constructor Studio on in chat
 
 In the AI coding tool chat attached to the same repository or workspace you just initialized, run:
 
@@ -258,7 +262,7 @@ Some hosts may also show the resolved Constructor Studio path or loaded context.
 - **Workspace-aware validation feels noisy on a first trial**
   - Start with `cfs validate --local-only`.
 
-### 4. Pick the right first move
+### Pick the right first move
 
 - **New to Constructor Studio in this repo**: start with `cf help`
 - **First 5-minute trial**: start with `cf analyze: ...` or `cf plan: ...`, not `generate`
@@ -358,9 +362,9 @@ Constructor Studio is often not the best first move when:
   
   Example: a one-file typo fix or a very small local change.
 
-- **You are still doing open-ended discovery**
+- **You want maximum free-form exploration with no structured output**
   
-  Example: "let's brainstorm five different product directions."
+  Example: purely visual direction-finding, throwaway speculation, or loose ideation where a structured panel output is not the goal. For option mapping and structured ideation, `cf brainstorm` is the right route — see [When Constructor Studio is a good fit](#4-when-constructor-studio-is-a-good-fit).
 
 - **You want maximum first-draft speed with minimum ceremony**
   
@@ -393,7 +397,24 @@ For these cases, lighter approaches or direct prompting can be a better starting
 
 ## 6. Choosing the right workflow
 
-If you only need the short router:
+`plan`, `generate`, and `analyze` are the three core workflows. Specialized routes (`explore`, `brainstorm`, `coding`, `write-docs`, and others) build on or precede them.
+
+```mermaid
+flowchart TD
+    Start["What do you need to do?"] --> Q1{"Is the scope clear\nand the task structured?"}
+    Q1 -->|No — explore first| Explore["`cf explore: ...`\nor cf auto-config"]
+    Q1 -->|Options still open| Brainstorm["`cf brainstorm: ...`"]
+    Q1 -->|Yes| Q2{"Is the task large,\nrisky, or multi-step?"}
+    Q2 -->|Yes| Plan["`cf plan: ...`"]
+    Q2 -->|No| Q3{"What is the main job?"}
+    Q3 -->|Create or update something| Q4{"Target type?"}
+    Q3 -->|Validate, review, or audit| Analyze["`cf analyze: ...`"]
+    Q4 -->|SDLC artifact| Generate["`cf generate: ...`"]
+    Q4 -->|Source code| Coding["`cf coding: ...`"]
+    Q4 -->|Human-facing document| WriteDocs["`cf write-docs: ...`"]
+```
+
+If you only need a quick route for the less-obvious cases (plan, generate, and analyze are covered in depth below):
 
 - need product or workflow orientation first -> use `cf help`
 - need project or artifact discovery first -> use `cf explore: ...`
@@ -574,7 +595,9 @@ Use `brainstorm` **before** `plan` when scope itself is the open question. Skip 
 
 ### Use `write-skills` when
 
-Use `write-skills` for authoring, transforming, or reviewing **prompt / workflow / skill / agent instruction files** as compact state-machine-like contracts. PDSL (Prompt DSL) is the format used internally by Constructor Studio's own workflow files: explicit `UNIT`, `DO`, `MENU`, `STATE`, and `STOP_TURN` blocks instead of free-form prose.
+Use `write-skills` for authoring, transforming, or reviewing **prompt / workflow / skill / agent instruction files** as compact, explicit contracts.
+
+The internal format is PDSL (Prompt DSL): structured `UNIT`, `DO`, `MENU`, `STATE`, and `STOP_TURN` blocks instead of free-form prose.
 
 Use `write-skills` when:
 - you need to write a new prompt / workflow / skill / agent instruction file from scratch as a precise contract
@@ -642,7 +665,7 @@ For most non-trivial work on artifacts or code, the safest default loop is:
 - **review**
 - **fix errors and gaps**
 - **validate again**
-- **repeat until known issues are found and addressed**
+- **repeat until no remaining known issues are outstanding**
 
 This applies both to:
 
@@ -758,14 +781,16 @@ Use narrower checks while iterating and broader checks before merge. Let humans 
 
 **Do**:
 
-- use `generate`
-- point at the source artifact explicitly
-- state the exact target artifact
+- use `generate` when the target is a structured SDLC artifact such as PRD, DESIGN, DECOMPOSITION, or FEATURE
+- use `write-docs` when the target is a human-facing document such as a guide, README, or report (see [Use `write-docs` when](#use-write-docs-when))
+- point at the source artifact or input explicitly
+- state the exact target artifact or document
 
 **Do not**:
 
-- ask for “a better spec” without naming the current source
+- ask for "a better spec" without naming the current source
 - mix five unrelated artifact changes into one prompt
+- use `generate` for human-facing documents when `write-docs` provides documentation-quality checks
 
 ### Situation: large implementation request
 
@@ -820,6 +845,29 @@ Use narrower checks while iterating and broader checks before merge. Let humans 
 
 - force a full structured process onto trivial edits
 
+### Situation: code-centric implementation or refactoring
+
+**Do**:
+
+- use `coding` for authoring, implementing, refactoring, fixing, or reviewing source code
+- let `coding` run code-quality and bug-finding checks in the same flow
+
+**Do not**:
+
+- use `generate` when you want code-quality checks built into the workflow
+- skip validation after implementation
+
+### Situation: writing or revising a human-facing document
+
+**Do**:
+
+- use `write-docs` for guides, READMEs, reports, or other project documents
+- let `write-docs` run documentation-quality checks, consistency review, and the deterministic gate
+
+**Do not**:
+
+- use `generate` for human-facing documents when `write-docs` provides the right review and gate checks
+
 ### Context hygiene
 
 - 💬 start a new chat before a new generation or review task
@@ -864,9 +912,9 @@ Examples that reference `PRD`, `DESIGN`, `DECOMPOSITION`, or `FEATURE` assume th
 - 💬 `cf auto-config`
 - 💬 `cf analyze: explain the current project conventions and likely architecture boundaries`
 
-### Storytelling / explain mode (interactive pedagogical engagement)
+### Storytelling / explain mode
 
-`cf analyze: explain ...` is the **canonical invocation** for the storytelling companion. The methodology activates EXPLAIN_MODE, asks you to pick one of six modes at session start (presentation / review / onboarding / decision / socratic / change-impact), and delivers the target in small no-scroll portions with 6-slot navigation (Next / Deeper / Lateral / Recap / Ask / Wrap). Mode resolution is **always interactive** — the agent will NEVER auto-pick a mode; intent verbs / artifact KIND only feed the suggested default in the prompt.
+`cf analyze: explain ...` is the entry point for the storytelling companion. It asks you to pick one of six modes at session start (presentation / review / onboarding / decision / socratic / change-impact), then delivers the content in small portions you navigate at your own pace. The mode is always your choice — the agent never picks one for you; your intent only pre-selects the suggested default.
 
 Canonical prompts:
 
@@ -1027,7 +1075,7 @@ A delegated loop often looks like:
 - validate again
 - repeat while the loop still seems trustworthy
 
-### Good use
+### When delegation is a good fit
 
 - bounded plan already exists
 - validation loop is well understood
@@ -1035,11 +1083,9 @@ A delegated loop often looks like:
 - rollback points exist
 - final human review is still planned before acceptance
 
-### Risk
+### How to reduce delegation risk
 
-If validation produces a false positive, an autonomous loop can optimize for the wrong signal.
-
-### Mitigation
+> **Risk**: if validation produces a false positive, an autonomous loop can optimize for the wrong signal.
 
 - prefer delegated flows that keep changes granular and preserve rollback points
 - inspect status, outputs, and validation results while the loop is running
@@ -1047,9 +1093,9 @@ If validation produces a false positive, an autonomous loop can optimize for the
 - stop or roll back to a known-good point if the loop goes off track
 - require human review before treating the delegated result as done
 
-### Delegation preflight
+### Running a delegation preflight
 
-If your setup uses RalphEx-backed delegation, run a quick environment check before you rely on it:
+If your setup uses RalphEx-backed delegation (RalphEx is Constructor Studio's autonomous execution agent for supervised handoff), run a quick environment check before you rely on it:
 
 - 🖥 `cfs doctor`
 
@@ -1071,19 +1117,19 @@ A final **human review remains mandatory**.
 
 Useful flags:
 
-- 🖥 `cfs delegate .bootstrap/.plans/my-plan --dry-run` — assemble and print the ralphex command without invoking it (recommended **before** every first real delegation)
+- 🖥 `cfs delegate {cf-studio-path}/.plans/my-plan --dry-run` — assemble and print the ralphex command without invoking it (recommended **before** every first real delegation)
 - 🖥 `cfs delegate <plan-dir> --worktree` — request worktree isolation so RalphEx works on a copy (only valid for `execute` / `tasks-only`)
 - 🖥 `cfs delegate <plan-dir> --no-serve` — skip the dashboard
 - 🖥 `cfs delegate <plan-dir> --mode review --default-branch main` — review-mode against a non-default branch
 - 🖥 `cfs delegate <plan-dir> --plans-dir custom/plans` — override the plans directory lookup
 
-> **Start with `--dry-run`.** Inspect the assembled command and confirm the plan directory, mode, and worktree choice match your intent before letting RalphEx start.
+**Start with `--dry-run` before every first real delegation.** Inspect the assembled command and confirm the plan directory, mode, and worktree choice match your intent before letting RalphEx start.
 
 ### Managing large inputs (`cfs chunk-input`)
 
 When a request brings a large external input — a long requirement doc, a wide PR diff, several files — the workflow may hit the raw-input overflow threshold. `cfs chunk-input` is a deterministic, idempotent way to **package** that input into line-bounded chunks the plan/generate workflows can consume cleanly:
 
-- 🖥 `cfs chunk-input docs/big-spec.md --output-dir .bootstrap/.cache/chunks/` — chunk one file (default 300 lines / chunk)
+- 🖥 `cfs chunk-input docs/big-spec.md --output-dir {cf-studio-path}/.cache/chunks/` — chunk one file (default 300 lines / chunk)
 - 🖥 `cfs chunk-input --max-lines 500 path1.md path2.md --output-dir <dir>` — multiple files, larger chunk size
 - 🖥 `echo "prompt text" | cfs chunk-input --include-stdin docs/spec.md --output-dir <dir>` — combine pasted prompt with file inputs
 - 🖥 `cfs chunk-input ... --dry-run` — show what would be written, write nothing
@@ -1112,10 +1158,7 @@ Be cautious if most answers are **yes** here instead:
 - **Would a lightweight direct prompt be enough?**
 - **Would the workflow overhead exceed the task value?**
 
-If the left-hand answers are mostly yes, Constructor Studio is probably a good fit. If the right-hand answers dominate, use a lighter workflow or your AI coding tool directly.
-
----
-
+If the "Use Constructor Studio" answers are mostly yes, Constructor Studio is probably a good fit. If the "Be cautious" answers dominate, use a lighter workflow or your AI coding tool directly.
 
 ---
 

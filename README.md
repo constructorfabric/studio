@@ -1,7 +1,7 @@
 # <p align="center"><img src="images/constructor.png" alt="Constructor Studio Banner" width="100%" /></p>
  
  [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-  ![Version](https://img.shields.io/badge/version-1.0.0-green.svg)
+  ![Version](https://img.shields.io/github/v/release/constructorfabric/studio?label=version)
   
 **Version**: 1.0.0
 
@@ -467,7 +467,7 @@ Constructor Studio works across multiple AI coding tools through the same portab
     cfs --version
     ```
 
-    A PyPI release (`pipx install constructor-studio`) is planned; for now, install from GitHub using the command above.
+    A PyPI release (`pipx install constructor-studio`) is planned; for now, install from GitHub using the command above. Track progress in the [issues list](https://github.com/constructorfabric/studio/issues).
 
     After install, you have two binaries: `cfs` (short) and `constructor-studio` (long). Examples below use `cfs`.
 
@@ -616,6 +616,8 @@ If you want to contribute, start with **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 | CPT | Canonical Provenance Trace | Identifier scheme `cpt-{system}-{kind}-{slug}-v{N}`; tag scheme `cpt-{role}-{...}-v{N}`. |
 | CDSL | Constructor DSL | Structured language used in FEATURE behavioral specs and traceability-linked implementation flows. See `architecture/specs/CDSL.md`. |
 | CFS | Constructor Studio CLI surface | The CLI binary is `cfs`. Prefer the short form in commands and examples. |
+| PDSL | Prompt DSL | Structured format used in Constructor Studio workflow and skill files: explicit `UNIT`, `DO`, `MENU`, `STATE`, and `STOP_TURN` blocks instead of free-form prose. See `architecture/specs/PDSL.md`. |
+| SDLC | Software Development Lifecycle | The optional SDLC kit provides domain-specific templates for PRD → DESIGN → DECOMPOSITION → FEATURE delivery. |
 
 Key terms used throughout this README:
 
