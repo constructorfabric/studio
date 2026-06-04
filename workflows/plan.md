@@ -42,7 +42,7 @@ DO:
 ON_ERROR:
   `{cfs_cmd} --json info` failure -> EMIT "Could not read studio info (`{cfs_cmd} --json info` failed) — ensure Studio is initialized with `cfs init`, then retry." and STOP_TURN
 RULES:
-  ALWAYS carry {cfs_cmd}/{cf-studio-path}/{project_root} into the plan.toml [meta] table at Phase 3
+  ALWAYS carry {cfs_cmd}, {cf-studio-path}, and {project_root} into the plan.toml [meta] table at Phase 3
   ALWAYS re-run `{cfs_cmd} --json info` on resume or context loss before any path-dependent step
 ```
 ```pdsl
@@ -83,7 +83,7 @@ STATE:
   SET lifecycle: gitignore | cleanup | archive | manual (default unset, scope workflow_run)
 DO:
   LOAD {cf-studio-path}/.core/requirements/plan-decomposition.md and follow it
-  LOAD {cf-studio-path}/.core/workflows/plan/plan-lifecycle.md and follow it to select a lifecycle
+  RUN select a lifecycle from the STATE lifecycle options (gitignore | cleanup | archive | manual)
   RUN decompose by task-type strategy into phases (sections/categories/CDSL blocks), map intermediate results to out/ artifacts, insert review gates where the target workflow requires approval, and predict per-phase context budget — split any phase over 2000 lines
   EMIT the decomposition summary — phases, est. lines, budget
   EMIT_MENU DecompositionConfirmMenu
@@ -178,7 +178,7 @@ PURPOSE: Load execution, status, storage-format, or execution-log reference on d
 WHEN:
   REQUIRE the user asks about plan execution, status, storage format, or the execution log
 DO:
-  LOAD {cf-studio-path}/.core/workflows/plan/plan-reference.md and follow it
+  LOAD {cf-studio-path}/.core/requirements/plan-template.md and follow it for plan.toml storage format, status fields, and the execution/handoff prompt
 ```
 ```pdsl
 UNIT PlanDispatch

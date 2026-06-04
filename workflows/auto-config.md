@@ -32,17 +32,17 @@ OPTIONS:
   INVALID -> EMIT_MENU LoadCfSkillConfirm
 ```
 ```pdsl
-UNIT AutoConfigPreconditions
-PURPOSE: Verify the project is ready for auto-config and choose a refresh mode when rules already exist.
+UNIT AutoConfigPrecheckGate
+PURPOSE: Apply the canonical auto-config preconditions, then route into the scan (or a refresh-mode menu).
 WHEN:
   REQUIRE entering auto-config
 DO:
-  REQUIRE Studio is initialized — RUN `{cfs_cmd} info` and expect FOUND; RETURN a blocked AUTO_CONFIG_RESULT with reason="Studio not initialized" and next_action="run `cfs init`, then retry auto-config" and STOP_TURN WHEN the command errors or does not report FOUND
-  REQUIRE source code is accessible and {cf-studio-path}/config/ is writable
+  RUN the canonical pre-checks defined by AutoConfigPreconditions in {cf-studio-path}/.core/requirements/auto-config.md — Studio initialized (RUN `{cfs_cmd} info` and expect FOUND), source code accessible, and {cf-studio-path}/config/ writable; RETURN a blocked AUTO_CONFIG_RESULT with reason="Studio not initialized" and next_action="run `cfs init`, then retry auto-config" and STOP_TURN WHEN the `{cfs_cmd} info` check errors or does not report FOUND
   RETURN a blocked AUTO_CONFIG_RESULT and STOP_TURN WHEN no source code is found or the project is greenfield
   EMIT_MENU ExistingRulesRefreshMenu WHEN existing generated rule files or auto-config managed blocks are present
   CONTINUE AutoConfigScan WHEN no existing generated rules or managed blocks are present
 RULES:
+  ALWAYS treat AutoConfigPreconditions in {cf-studio-path}/.core/requirements/auto-config.md as the authoritative pre-check definition; this gate only runs it and routes on the result
   NEVER begin the scan until pre-checks pass and, when rules already exist, a refresh mode is chosen
   NEVER overwrite user-authored rules
 MENU ExistingRulesRefreshMenu

@@ -241,8 +241,8 @@ RULES:
     with observable missing-input details
   - ALWAYS every finding object in the findings JSON ALWAYS have a non-empty `mechanical_rationale`
     string (advisory — when missing, the orchestrator substitutes
-    `<no rationale provided by {agent_name}>` and continues; fallback behavior is defined in
-    `{cf-studio-path}/.core/workflows/generate/phase-5/phase-5.3-findings.md`)
+    `<no rationale provided by {agent_name}>` and continues; fallback behavior is defined by
+    ReviewFindingContract in `{cf-studio-path}/.core/skills/studio/SKILL.md`)
   - ALWAYS perform AP-001..AP-008 self-check before output (state results in a short trailer block)
   - ALWAYS verify that the final dispatch prompt includes the required
     controller-supplied studio invariants; the dispatched reviewer NEVER

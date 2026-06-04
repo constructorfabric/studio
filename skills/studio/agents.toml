@@ -224,7 +224,7 @@ context_window = "high"
 #
 # Defined by the thin-orchestrator dispatch contract (see
 # {cf-studio-path}/.core/skills/studio/SKILL.md "Session Sub-Agent Approval Gate"
-# and {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md).
+# and the SubAgentDispatch UNIT in {cf-studio-path}/.core/skills/studio/SKILL.md).
 # The diff-scope resolver is analyze-only. The validator and semantic reviewers
 # are reusable across analyze and generate's Phase 5 review loop; brainstorm
 # agents drive generate's Phase 0.7 panel session; collector + planner + author

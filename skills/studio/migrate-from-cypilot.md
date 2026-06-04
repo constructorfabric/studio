@@ -294,18 +294,18 @@ PURPOSE:
   Dispatch the Migrator sub-agent with the approved selection.
 
 PRECONDITIONS:
-  GIT_COMMIT_MODE is set by workflows/generate/phase-0-git-commit-mode.md
+  GIT_COMMIT_MODE is set by GitCommitModeGate in {cf-studio-path}/.core/skills/studio/SKILL.md
     before any write-capable migrator dispatch.
-  CONTRIBUTING_GUIDE is set by workflows/generate/phase-0-dependencies.md
-    ContributingGuideDiscovery before any write-capable migrator dispatch;
+  CONTRIBUTING_GUIDE is set by GitCommitModeGate in {cf-studio-path}/.core/skills/studio/SKILL.md
+    before any write-capable migrator dispatch;
     null is valid only when discovery found no guide.
 
 ON_MISSING_PRECONDITION:
   GIT_COMMIT_MODE missing ->
-    LOAD {cf-studio-path}/.core/workflows/generate/phase-0-git-commit-mode.md
+    LOAD {cf-studio-path}/.core/skills/studio/SKILL.md and CONTINUE GitCommitModeGate
     STOP_TURN
   CONTRIBUTING_GUIDE missing ->
-    LOAD {cf-studio-path}/.core/workflows/generate/phase-0-dependencies.md
+    LOAD {cf-studio-path}/.core/skills/studio/SKILL.md and CONTINUE GitCommitModeGate
     STOP_TURN
 
 DO:
