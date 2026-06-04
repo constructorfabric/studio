@@ -23,6 +23,8 @@ purpose: Mode-specific deltas (audience, slot semantics, per-portion rhythm) for
 
 Loaded by `{cf-studio-path}/.core/requirements/storytelling.md` (router). Defines what changes per `{mode}` ∈ {`presentation`, `review`, `onboarding`, `decision`, `socratic`, `change-impact`}. The E0-E5 scaffolding (plan, page-size invariant, no-scroll, navigator, checkpoint) is shared across modes — see `{cf-studio-path}/.core/requirements/storytelling-phases.md`.
 
+The flow-neutral definitions of the **audience** and **narrator/role** dimensions (and their cross-flow resolution rules and anti-contracts) are owned by `{cf-studio-path}/.core/requirements/storytelling-dimensions.md` (§ Audience Dimension, § Narrator / Role Dimension). This module holds storytelling's delivery-time specifics: the per-mode audience character and role panels in the Modes table, and the full adaptation heuristics below.
+
 ## Modes table
 
 | Mode | Suggested-default trigger verbs (used ONLY to populate the default in the always-ask mode prompt **after** EXPLAIN_MODE is already active — these verbs do NOT activate EXPLAIN_MODE on their own; activation requires explain-family verbs per `analyze.md` WHEN-rule) | Default for KIND (used ONLY to populate suggested default after EXPLAIN_MODE is already active) | Audience character | Slot semantic deltas (vs presentation) | Wrap-output deltas |
@@ -421,6 +423,8 @@ RULES:
 The same plan-item index is shared between the pair; `{N}` (total plan items) is unchanged. Total portion count up to `2 × N`. The split is NOT proactive sub-portion decomposition (which uses letter suffixes `3a`, `3b` for oversized items) — it's a fixed two-phase rhythm specific to review. The mechanisms compose: an oversized plan item could yield `3a-presentation` → `3b-presentation` → `3-challenge` (one challenge for the whole item, summarising panel reactions across sub-portions).
 
 ## Audience adaptation heuristics
+
+Neutral definition of the audience dimension: `{cf-studio-path}/.core/requirements/storytelling-dimensions.md` § Audience Dimension. The table below is storytelling's delivery-time adaptation of that dimension.
 
 Adapt content style based on `{audience}`:
 

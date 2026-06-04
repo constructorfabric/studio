@@ -15,8 +15,7 @@ skills available to the current session (via the shared WorkflowResolution rule)
 user's analyze intent against them, and offers the most relevant skill for
 invocation — passing the user's intent into it. When no intent is present it
 lists the available cf-* skills and loads the one the user picks. The legacy
-multi-phase analyze workflow lives under `workflows-old/analyze.md` for
-reference only and is never loaded here.
+multi-phase analyze workflow has been retired; routing is the only behavior here.
 
 ```pdsl
 UNIT AnalyzeBootstrap

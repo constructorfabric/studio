@@ -322,8 +322,8 @@ DO:
       target_kit_sdlc_url: "constructorfabric/studio-kit-sdlc"
       git_commit_mode: GIT_COMMIT_MODE (ALWAYS be included; set from session-scoped flag)
       contributing_guide: CONTRIBUTING_GUIDE (ALWAYS be included; null when not found)
-      git_constraint: mode-matched constraint block from {cf-studio-path}/.core/workflows/generate/phase-4-write.md
-                      Git constraint blocks
+      git_constraint: mode-matched constraint block from {cf-studio-path}/.core/skills/studio/SKILL.md
+                      § GitCommitModeGate
   - SET migration_manifest = agent output
   - CONTINUE E4
 

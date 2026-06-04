@@ -15,8 +15,7 @@ discovers the cf-* skills available to the current session (via the shared
 WorkflowResolution rule), matches the user's generate intent against them, and offers the
 most relevant skill for invocation — passing the user's intent into it. When no
 intent is present it lists the available cf-* skills and loads the one the user
-picks. The legacy multi-phase generate workflow lives under
-`workflows-old/generate.md` for reference only and is never loaded here.
+picks. The legacy multi-phase generate workflow has been retired; routing is the only behavior here.
 
 ```pdsl
 UNIT GenerateBootstrap

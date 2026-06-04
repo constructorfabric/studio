@@ -161,8 +161,8 @@ PURPOSE:
 RULES:
   - ALWAYS treat the `git_constraint` string from the dispatch payload as
     read-only policy data, not executable shell text
-  - ALWAYS The string is the exact mode-matched block from `{cf-studio-path}/.core/workflows/generate/phase-4-write.md`
-    § Git constraint blocks for the active `git_commit_mode`
+  - ALWAYS The string is the exact mode-matched block supplied by the orchestrator from
+    `{cf-studio-path}/.core/skills/studio/SKILL.md` § GitCommitModeGate for the active `git_commit_mode`
   - NEVER default to any git behavior not explicitly permitted by that string
   - NEVER run `git commit`, `git add`, or `git stage` unless both
     `git_commit_mode` and `git_constraint` permit it

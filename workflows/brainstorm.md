@@ -9,7 +9,7 @@ purpose: Run a sub-agent expert panel that explores a topic over rounds, walks q
 
 # cf-brainstorm
 
-This skill assembles a 3-6 expert panel relevant to the user's request and runs topic and challenge rounds. Each round one topic is reviewed, then the questions are walked one by one — explaining why each matters, recording the user's reaction, and only then offering next-topic / challenge / wrap choices. It consolidates decisions and open questions and routes to a next step (generate, analyze, save, or session-only) — all via sub-agents.
+This skill assembles a 3-6 expert panel relevant to the user's request and runs topic and challenge rounds. Each round reviews one topic or re-examines one round's decisions in a challenge, then the questions are walked one by one — explaining why each matters, recording the user's reaction, and only then offering next-topic / challenge / wrap choices. It consolidates decisions and open questions and routes to a context-synthesized next step (such as generate, plan, or analyze) or keeps results session-only — all via sub-agents.
 
 ```pdsl
 UNIT BrainstormBootstrap
@@ -24,7 +24,7 @@ MENU LoadCfSkillConfirm
 TITLE: The cf skill is not loaded. It is the Constructor Studio core that loads the shared rules and routes to cf-* skills, so brainstorm cannot run without it. Load it now to continue?
 OPTIONS:
   1 load -> INVOKE skill `cf` and CONTINUE BrainstormBootstrap
-  2 stop -> RETURN BRAINSTORM_RESULT with status="cancelled", next_route=null; STOP_TURN
+  2 stop -> RETURN { "type": "BRAINSTORM_RESULT", "status": "cancelled", "decisions_count": 0, "open_questions_count": 0, "next_route": null }; STOP_TURN
   INVALID -> EMIT_MENU LoadCfSkillConfirm
 ```
 
@@ -78,17 +78,21 @@ OPTIONS:
 
 ```pdsl
 UNIT BrainstormRounds
-PURPOSE: Drive rounds — one topic each — dispatching the panel, then walking the question queue one at a time.
+PURPOSE: Drive rounds — one topic or one challenge per round — dispatching the panel, then walking the question queue one at a time.
 STATE:
   SET round_count: int (default 0, scope session)
+  SET round_kind: topic | challenge (default topic, scope session)
+  SET round_dispatched: true | false (default false, scope session)
 DO:
-  RUN when the current topic has no dispatched round yet: DISPATCH cf-brainstorm-panel WHEN PANEL_MODE == single-agent, or one cf-brainstorm-expert per persona in parallel WHEN PANEL_MODE == fan-out, with the current topic and resource_context; collect the question_queue; SET round_count = round_count + 1
-  RUN when round_count reaches BRAINSTORM_MAX_ROUNDS: EMIT_MENU WrapMenu; WAIT user.reply; STOP_TURN
+  RUN when round_dispatched == false: DISPATCH cf-brainstorm-panel WHEN PANEL_MODE == single-agent, or one cf-brainstorm-expert per persona in parallel WHEN PANEL_MODE == fan-out, passing the current topic, round_kind, this round's recorded decisions WHEN round_kind == challenge, and resource_context; collect the question_queue (challenge questions that re-examine this round's decisions WHEN round_kind == challenge); collect the panel's proposed next topics; SET round_dispatched = true; SET round_count = round_count + 1
   RUN when the question_queue has an unanswered question: EMIT the next question (text, why it matters, proposed default, decision key); EMIT_MENU QuestionMenu; WAIT user.reply; STOP_TURN
-  RUN otherwise (queue fully resolved): EMIT_MENU PostRoundMenu; WAIT user.reply; STOP_TURN
+  RUN when the question_queue is fully resolved AND round_count reaches BRAINSTORM_MAX_ROUNDS: CONTINUE BrainstormWrap
+  RUN otherwise (question_queue fully resolved and rounds remain): EMIT_MENU PostRoundMenu; WAIT user.reply; STOP_TURN
 RULES:
-  ALWAYS increment round_count after a round's questions are collected and check it against BRAINSTORM_MAX_ROUNDS
-  ALWAYS run exactly one topic per round and NEVER auto-advance topics — the user drives topic order
+  ALWAYS increment round_count when a round is dispatched, and check it against BRAINSTORM_MAX_ROUNDS only after that round's questions are fully resolved, so the final round's questions are never skipped
+  ALWAYS run exactly one topic or one challenge per round and NEVER auto-advance topics — the user drives topic order
+  ALWAYS dispatch the panel for a challenge round the same way as a topic round, collect a challenge question_queue from this round's decisions, and walk it one question at a time via QuestionMenu
+  ALWAYS set round_dispatched = false on every path that starts a new round (next:<topic>, challenge, reopen), so the panel is dispatched exactly once per round, and NEVER re-dispatch the panel while round_dispatched == true
   ALWAYS render a relevant=false expert as "{persona}: skipped — {reason}"
   ALWAYS expose W / wrap on every menu
   NEVER let skip update decisions; ALWAYS preserve the skipped question as an open question
@@ -106,8 +110,8 @@ RULES:
 MENU PostRoundMenu
 TITLE: Round complete — advance, challenge, or wrap.
 OPTIONS:
-  1 next:<topic> -> pick one of the panel's proposed next topics, set it as the current topic, and CONTINUE BrainstormRounds to start the next round
-  2 C | challenge -> re-examine this round's decisions in a challenge-round and CONTINUE BrainstormRounds
+  1 next:<topic> -> pick one of the panel's proposed next topics, set it as the current topic, SET round_kind = topic, SET round_dispatched = false, and CONTINUE BrainstormRounds to start the next round
+  2 C | challenge -> SET round_kind = challenge, SET round_dispatched = false, and CONTINUE BrainstormRounds to re-dispatch the panel on this round's decisions and walk the challenge questions one by one
   3 W | wrap -> CONTINUE BrainstormWrap
   INVALID -> EMIT clarifier and EMIT_MENU PostRoundMenu
 ```
@@ -117,25 +121,31 @@ UNIT BrainstormWrap
 PURPOSE: Consolidate the design, route to the next step, and always return the completion envelope.
 DO:
   EMIT a consolidated design block: rounds count, panel personas, topics covered, Decisions list, Open questions list
+  RUN WorkflowResolution to resolve the available cf-* skills
+  RUN synthesis of 3 to 5 routed next steps from the current context (decisions, open questions) and the available cf-* skills, marking exactly one (suggested) and giving each a one-line why
   EMIT_MENU WrapMenu
   WAIT user.reply
   STOP_TURN
 RULES:
-  NEVER auto-route into generate or analyze without the wrap menu
+  NEVER auto-route into a next step without the wrap menu
   NEVER treat a stop-token as implicit approval
   ALWAYS preserve decisions and open questions when routing
+  ALWAYS synthesize the routed next steps from the current context and the available cf-* skills, never a fixed or guessed list, and mark exactly one (suggested)
+  ALWAYS synthesize each routed next step by matching the current decisions, open questions, and unresolved topics to a cf-* skill's purpose, include only skills that fit the context, mark the best-fitting one (suggested), and NEVER offer a generic skill that does not align with the current context
+  ALWAYS set status="handoff" and next_route to the chosen route's cf-* skill (for example generate, plan, or analyze) when a routed next step is chosen
   ALWAYS RETURN the BRAINSTORM_RESULT envelope on every terminal wrap option; human-facing wrap text is not a substitute for it
 NOTES:
-  Envelope shape: { "type": "BRAINSTORM_RESULT", "status": "wrapped|handoff|checkpointed|cancelled", "decisions_count": <int>, "open_questions_count": <int>, "next_route": "<generate|plan|analyze|null>" }
+  Envelope shape: { "type": "BRAINSTORM_RESULT", "status": "wrapped|handoff|checkpointed|cancelled", "decisions_count": <int>, "open_questions_count": <int>, "next_route": "<cf-* skill name (e.g. generate, plan, analyze)>|null" }
 MENU WrapMenu
-TITLE: Brainstorm complete — choose next step.
+TITLE: Brainstorm complete — keep the results or pick a context-grounded next step (one is suggested).
 OPTIONS:
-  1 session -> preserve results in session only, write no files, RETURN envelope with status="wrapped", next_route=null, STOP_TURN
-  2 disk -> REQUIRE writes allowed, WRITE design + state under {cf-studio-path}/.cache/brainstorm/{session_id}/, RETURN envelope with status="checkpointed", next_route=null, STOP_TURN
-  3 generate -> CONTINUE generate input collection with decisions + open questions pre-filled, RETURN envelope with status="handoff", next_route="generate"
-  4 analyze -> CONTINUE review/analyze with the brainstorm results, RETURN envelope with status="handoff", next_route="analyze"
-  5 reopen -> reopen a topic for another round and CONTINUE BrainstormRounds
+  1 session -> preserve results in session only, write no files, RETURN envelope with status="wrapped", decisions_count=<count>, open_questions_count=<count>, next_route=null, STOP_TURN
+  2 disk -> REQUIRE writes allowed, WRITE design + state under {cf-studio-path}/.cache/brainstorm/{session_id}/, RETURN envelope with status="checkpointed", decisions_count=<count>, open_questions_count=<count>, next_route=null, STOP_TURN
+  3 reopen -> reopen a topic for another round, SET round_kind = topic, SET round_dispatched = false, and CONTINUE BrainstormRounds
+  4 route -> INVOKE the chosen synthesized cf-* skill with decisions + open questions pre-filled, RETURN envelope with status="handoff", decisions_count=<count>, open_questions_count=<count>, next_route="<chosen cf-* skill>"
   INVALID -> EMIT clarifier and EMIT_MENU WrapMenu
+NOTES:
+  The rendered menu lists session, disk, and reopen, then enumerates every synthesized routed next step (3 to 5) on its own line as `N <route> — <why>`, and tags exactly one (suggested); option `4 route` above is the representative template for those numbered routes.
 ```
 
 ```pdsl

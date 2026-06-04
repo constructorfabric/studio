@@ -19,11 +19,15 @@ DO:
   EMIT_MENU LoadCfSkillConfirm WHEN CFS_INIT != true
   LOAD {cf-studio-path}/.core/requirements/consistency-checklist.md
   LOAD {cf-studio-path}/.core/requirements/language-complexity.md
-  RUN verify both references loaded; EMIT "Required reference not found (consistency-checklist or language-complexity methodology under {cf-studio-path}/.core) — cannot author or review docs; reinstall or sync the studio kit, then retry." and STOP_TURN WHEN either load fails
+  LOAD {cf-studio-path}/.core/requirements/storytelling-dimensions.md
+  RUN verify the references loaded; EMIT "Required reference not found (consistency-checklist, language-complexity, or storytelling-dimensions reference under {cf-studio-path}/.core) — cannot author or review docs; reinstall or sync the studio kit, then retry." and STOP_TURN WHEN any load fails
 RULES:
   ALWAYS verify the cf skill is loaded, CFS_INIT == true, before authoring or reviewing docs
-  ALWAYS load the consistency-checklist and language-complexity methodologies before authoring or reviewing docs
+  ALWAYS load the consistency-checklist and language-complexity methodologies and the storytelling-dimensions reference before authoring or reviewing docs
   ALWAYS apply the resolved language-complexity level to every chat message and document write, rewriting before emitting when a draft breaches it (source quotes verbatim/exempt)
+  ALWAYS resolve and apply the audience dimension per {cf-studio-path}/.core/requirements/storytelling-dimensions.md at Bootstrap — review-class scopes emphasis, authoring-class sets the document level — never as a gate on the verdict
+  ALWAYS resolve and apply the narrator dimension per {cf-studio-path}/.core/requirements/storytelling-dimensions.md at Bootstrap — map it onto the selected reviewer/author sub-agents and the document voice — never overriding the verdict
+  ALWAYS resolve and apply the diagram dimension per {cf-studio-path}/.core/requirements/storytelling-dimensions.md at Bootstrap — review-class flags a missing or unclear diagram, authoring-class embeds a warranted one — never auto-generating outside the authored document
   NEVER author or review docs when a required reference failed to load
 MENU LoadCfSkillConfirm
 TITLE: The cf skill is not loaded. It is the Constructor Studio core that loads the shared rules and routes to cf-* skills, so writing docs cannot run without it. Load it now to continue?
