@@ -21,16 +21,20 @@ DO:
   REQUIRE {cf-studio-path} is resolved before any LOAD below
   LOAD and REMEMBER rules from {cf-studio-path}/.gen/AGENTS.md
   LOAD and REMEMBER rules from {cf-studio-path}/.gen/SKILL.md
+  LOAD and REMEMBER rules from {cf-studio-path}/config/AGENTS.md WHEN that file exists; SKIP it without error WHEN it is absent
+  LOAD and REMEMBER rules from {cf-studio-path}/config/SKILL.md WHEN that file exists; SKIP it without error WHEN it is absent
   LOAD and REMEMBER rules from {cf-studio-path}/.core/requirements/pdsl-execution-card.md
   LOAD and REMEMBER all UNIT rules defined in this file
   SET CFS_INIT = true
   RUN CliCapabilities to discover and remember the available {cfs_cmd} commands
-  EMIT a load report that names each loaded rule source ({cf-studio-path}/.gen/AGENTS.md, {cf-studio-path}/.gen/SKILL.md, {cf-studio-path}/.core/requirements/pdsl-execution-card.md, and the UNIT rules in this file) and confirms cf is ready to follow them
+  EMIT a load report that names each loaded rule source ({cf-studio-path}/.gen/AGENTS.md, {cf-studio-path}/.gen/SKILL.md, {cf-studio-path}/config/AGENTS.md and {cf-studio-path}/config/SKILL.md when present, {cf-studio-path}/.core/requirements/pdsl-execution-card.md, and the UNIT rules in this file) and confirms cf is ready to follow them
   CONTINUE IntentRouting
 RULES:
   ALWAYS treat cf and cf-studio as the same skill, where cf-studio is a proxy alias to cf
   ALWAYS limit cf/cf-studio to initiating the session and loading core rules
   ALWAYS run CommandResolution then CliCapabilities on every cf/cf-studio activation, before routing
+  ALWAYS load the {cf-studio-path}/.gen/AGENTS.md and {cf-studio-path}/.gen/SKILL.md rule sources as mandatory
+  ALWAYS treat the {cf-studio-path}/config/AGENTS.md and {cf-studio-path}/config/SKILL.md rule sources as optional, loading each when it exists and skipping it without error when it is absent
   ALWAYS report the loaded rule sources and confirm readiness to follow them before routing
 NOTES:
   Loading {cf-studio-path}/.core/requirements/pdsl-execution-card.md here is intentional: per the PDSL spec the root studio SKILL owns loading that runtime semantics card once into the shared context pack; the agent already executes PDSL from inherent understanding, and the card reinforces it. This is not a circular dependency.
@@ -38,19 +42,17 @@ NOTES:
 
 ```pdsl
 UNIT IntentRouting
-PURPOSE: After cf loads core rules, query the session for the available cf-* skills and present them as one numbered, directly selectable menu — the matched skill(s) when the prompt has a task intent, or all available skills when it has none.
+PURPOSE: After cf loads core rules, resolve the available cf-* skills via WorkflowResolution and present them as one numbered, directly selectable menu — the matched skill(s) when the prompt has a task intent, or all cf-* skills when it has none.
 WHEN:
   REQUIRE cf has loaded core rules
 DO:
-  RUN discovery of the available cf-* skills by asking the host agentic tool/session
-  EMIT a one-line note and re-ask the host once WHEN the returned skill list is empty or unavailable
-  STOP_TURN and report the missing skill list WHEN it is still empty or unavailable after the single re-ask
-  RUN matching of the intent against the available cf-* skill list to find the relevant skill(s) WHEN the prompt contains a task intent
+  RUN WorkflowResolution to resolve the available cf-* skills
+  RUN matching of the intent against the resolved cf-* skill list to find the relevant skill(s) WHEN the prompt contains a task intent
   EMIT_MENU IntentSkillMenu
   WAIT user.reply
   STOP_TURN
 RULES:
-  ALWAYS discover the available cf-* skill list by asking the host agentic tool/session, never guess it and never via a cfs CLI skills-list command
+  ALWAYS resolve the available cf-* skills via WorkflowResolution before populating IntentSkillMenu
   ALWAYS render IntentSkillMenu with every offered cf-* skill on its own numbered line so the user selects one by replying with the number
   ALWAYS populate IntentSkillMenu with the matched skill(s) when the prompt contains a task intent and with all available cf-* skills when it contains none
   ALWAYS tag exactly one skill (suggested) when the prompt contains a task intent
@@ -63,6 +65,24 @@ OPTIONS:
   INVALID -> EMIT_MENU IntentSkillMenu
 NOTES:
   The rendered menu enumerates every offered cf-* skill on its own line as `N <skill-name> — <why it matches or what it does>`, tags exactly one `(suggested)` when there is a task intent, and appends a final `none` option; option `1 skill` above is the representative template for those numbered skill options.
+```
+
+```pdsl
+UNIT WorkflowResolution
+PURPOSE: Resolve the available cf-* skills deterministically by discovering core and kit workflows, never from the host, for any unit that needs the skill list.
+WHEN:
+  REQUIRE the available cf-* skill list is needed
+DO:
+  RUN enumeration of core workflows at {cf-studio-path}/.core/workflows/*.md
+  RUN enumeration of kit workflows from `{cfs_cmd} info --json` at kit_details.<kit>.workflows
+  RUN mapping of each discovered workflow to its cf-* skill name: a core workflow file <name>.md maps to cf-<name>; a kit workflow <base> under kit <kit> maps to cf-<kit>-<base>
+  REQUIRE at least one cf-* skill was discovered
+  EMIT a one-line empty-discovery note WHEN no cf-* skill was discovered
+  STOP_TURN WHEN no cf-* skill was discovered
+RULES:
+  ALWAYS resolve the cf-* skill list deterministically from the filesystem and kit registry, never from the host and never via a cfs CLI skills-list command
+  ALWAYS map core workflows to cf-<name> and kit workflows to cf-<kit>-<base>
+  NEVER guess the cf-* skill list
 ```
 
 ```pdsl
@@ -296,7 +316,7 @@ PURPOSE: After completing a task or operation, always offer next actions synthes
 WHEN:
   REQUIRE a task or operation has just completed and control is about to return to the user
 DO:
-  RUN discovery of the available cf-* skills by asking the host agentic tool/session
+  RUN WorkflowResolution to resolve the available cf-* skills
   RUN synthesis of 3 to 5 next actions from the current context and the available cf-* skills
   EMIT_MENU NextActionsMenu
   WAIT user.reply

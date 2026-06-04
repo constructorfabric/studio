@@ -11,8 +11,8 @@ purpose: Backwards-compatible entry point that routes a generate intent to the m
 
 This workflow is kept as a stable, backwards-compatible entry point for the
 `generate` verb. It performs no create-or-modify work itself. Instead it
-discovers the cf-* skills available to the current session (via the host
-agentic tool), matches the user's generate intent against them, and offers the
+discovers the cf-* skills available to the current session (via the shared
+WorkflowResolution rule), matches the user's generate intent against them, and offers the
 most relevant skill for invocation — passing the user's intent into it. When no
 intent is present it lists the available cf-* skills and loads the one the user
 picks. The legacy multi-phase generate workflow lives under
@@ -38,7 +38,7 @@ OPTIONS:
 
 ```pdsl
 UNIT GenerateRoute
-PURPOSE: Capture the generate intent, discover session cf-* skills via the host, and route to the chosen skill.
+PURPOSE: Capture the generate intent, resolve cf-* skills via WorkflowResolution, and route to the chosen skill.
 STATE:
   SET ORIGINAL_INTENT: string (default unset, scope workflow_run)
   SET AVAILABLE_SKILLS: list (default unset, scope workflow_run)
@@ -46,7 +46,8 @@ WHEN:
   REQUIRE CFS_INIT == true
 DO:
   SET ORIGINAL_INTENT = the user's triggering generate request (verbatim or shortest faithful summary), or unset when activation-only
-  RUN ask the host agentic tool for the list of cf-* skills available to this session; SET AVAILABLE_SKILLS = the returned skills (name + short description), excluding this router (cf-generate); SET AVAILABLE_SKILLS = empty when the host returns nothing, errors, or is unavailable
+  RUN WorkflowResolution to resolve the available cf-* skills
+  SET AVAILABLE_SKILLS = the resolved cf-* skills (name + its workflow description), excluding this router (cf-generate)
   CONTINUE GenerateNoMatch WHEN AVAILABLE_SKILLS is empty
   RUN matching of ORIGINAL_INTENT against AVAILABLE_SKILLS by semantic relevance — score each skill's name and description against the intent, keep those clearly on-topic, rank them, and mark the top-ranked as suggested — WHEN ORIGINAL_INTENT != unset
   EMIT_MENU GenerateIntentOffer WHEN ORIGINAL_INTENT != unset AND at least one relevant skill matched
@@ -55,11 +56,13 @@ DO:
   WAIT user.reply
   STOP_TURN
 RULES:
-  ALWAYS discover cf-* skills by asking the host agentic tool, never by guessing and never via a CLI skills-list command
+  ALWAYS resolve cf-* skills via WorkflowResolution, never by guessing and never via a CLI skills-list command
   ALWAYS exclude the skill whose name equals this router (cf-generate) from AVAILABLE_SKILLS to prevent self-routing recursion
   ALWAYS pass ORIGINAL_INTENT into the invoked skill when an intent is present
-  ALWAYS render each offered skill as `<skill-name> — <short description>` from the host-provided data
+  ALWAYS render each offered skill as `<skill-name> — <short description>` from AVAILABLE_SKILLS
   NEVER load or run any legacy generate phase logic; routing is the only behavior
+NOTES:
+  Empty-state ownership: WorkflowResolution STOP_TURNs when zero cf-* skills are discovered (a broken install), so that case never reaches this router; the CONTINUE GenerateNoMatch WHEN AVAILABLE_SKILLS is empty branch handles the distinct case where resolution succeeds but excluding this router (cf-generate) leaves no other skill.
 MENU GenerateIntentOffer
 TITLE: Generate intent matched these cf-* skills — pick one to run with your request.
 OPTIONS:
