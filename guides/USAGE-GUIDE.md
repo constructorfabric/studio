@@ -30,6 +30,8 @@
   - [What `analyze` is for in practice](#what-analyze-is-for-in-practice)
   - [Use `brainstorm` when](#use-brainstorm-when)
   - [Use `write-skills` when](#use-write-skills-when)
+  - [Use `coding` when](#use-coding-when)
+  - [Use `write-docs` when](#use-write-docs-when)
   - [Default routing rule](#default-routing-rule)
   - [When to expect or ask for subagent delegation](#when-to-expect-or-ask-for-subagent-delegation)
   - [Recommended execution loop for artifacts and code](#recommended-execution-loop-for-artifacts-and-code)
@@ -457,6 +459,8 @@ Use the portable workflow form by default:
 - 💬 `cf analyze: ...`
 - 💬 `cf brainstorm: ...`
 - 💬 `cf map: ...`
+- 💬 `cf coding: ...`
+- 💬 `cf write-docs: ...`
 
 Advanced maintainer routes exist for prompt, skill, and workflow authors:
 
@@ -587,6 +591,24 @@ Use `debug-prompts` when you need to inspect execution live instead of editing t
 - 💬 `cf debug-prompts: step through cf-write-docs and pause before each instruction`
 
 This is an authoring/operating tool for the people who write Constructor Studio prompts and agents themselves; most end users will never need it.
+
+### Use `coding` when
+
+Use `coding` for **authoring, implementing, refactoring, fixing, or reviewing source code** with code-quality and bug-finding checks built in.
+
+- 💬 `cf coding: refactor the auth module and check for correctness issues`
+- 💬 `cf coding: review the changes in src/billing/ for logic bugs`
+
+Use `coding` instead of `generate` when the work is code-centric and you want code-quality checks as part of the same flow, not as a separate `analyze` step.
+
+### Use `write-docs` when
+
+Use `write-docs` for **writing, revising, or reviewing documentation** — guides, reports, READMEs, or other project documents.
+
+- 💬 `cf write-docs: write a usage guide for the billing API`
+- 💬 `cf write-docs: review README.md for quality and correctness`
+
+Use `write-docs` instead of `generate` when the target is a human-facing document and you want documentation-quality checks, consistency review, and deterministic gate checks as part of the same flow.
 
 ### Default routing rule
 

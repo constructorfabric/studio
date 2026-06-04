@@ -467,7 +467,7 @@ Constructor Studio works across multiple AI coding tools through the same portab
     cfs --version
     ```
 
-    A PyPI release (`pipx install constructor-studio`) will be available once v1.0.0 ships.
+    A PyPI release (`pipx install constructor-studio`) is planned; for now, install from GitHub using the command above.
 
     After install, you have two binaries: `cfs` (short) and `constructor-studio` (long). Examples below use `cfs`.
 
@@ -498,7 +498,7 @@ For detailed host-specific setup, troubleshooting, and operational walkthroughs,
 
  ```bash
  cfs mirror override github.com/constructorfabric/studio github.com/ainetx/studio
- cfs mirror list       # print current overrides with source path
+ cfs mirror list       # print current overrides
  cfs mirror remove github.com/constructorfabric/studio
  cfs mirror clear      # delete all overrides
  ```

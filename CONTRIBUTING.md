@@ -20,6 +20,12 @@
   - [Running CI Locally](#running-ci-locally)
   - [Makefile Targets](#makefile-targets)
   - [GitHub Actions](#github-actions)
+- [Prompt Tests (cf-skill UX)](#prompt-tests-cf-skill-ux)
+  - [Prerequisites](#prerequisites-1)
+  - [Running](#running)
+  - [Tuning](#tuning)
+  - [Adding scenarios](#adding-scenarios)
+  - [What to do when a scenario fails](#what-to-do-when-a-scenario-fails)
 - [Making Changes](#making-changes)
   - [Code Changes](#code-changes)
   - [Architecture / Spec Changes](#architecture--spec-changes)
@@ -30,6 +36,7 @@
 <!-- /toc -->
 
 Thank you for your interest in contributing to Constructor Studio! This guide covers the development workflow, versioning scheme, bootstrap architecture, commit requirements, and CI pipeline.
+
 ---
 
 ## Prerequisites
@@ -250,6 +257,7 @@ All CI is driven through `make`. No virtual environment required — tools run v
 | `make test-coverage` | Tests + coverage report (≥90% required) | Yes |
 | `make validate` | Run `cfs validate` — deterministic artifact validation | Yes |
 | `make self-check` | Validate SDLC kit examples against their own templates | Yes |
+| `make validate-kits` | Validate all registered kits | Yes |
 | `make check-versions` | Check version consistency across components | Yes |
 | `make spec-coverage` | Check spec coverage (≥80% overall, ≥70% per file) | Yes |
 | `make pylint` | Pylint static analysis (staged rollout) | Yes |
@@ -378,7 +386,7 @@ list.
 ### Architecture / Spec Changes
 
 1. Edit files under `architecture/` (PRD, DESIGN, DECOMPOSITION, features)
-2. If adding new CDSL entries, run `cfs toc <file>` to regenerate the table of contents
+2. If adding new CDSL (Constructor DSL) entries, run `cfs toc <file>` to regenerate the table of contents (separate from `cfs validate-toc`, which checks an existing TOC)
 3. If adding `@cpt-*` code markers, run `cfs validate` to verify traceability (138/138 coverage)
 4. Verify: `make validate`
 
