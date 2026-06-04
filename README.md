@@ -10,7 +10,7 @@
 **Audience**: Developers, product managers, architects, technical leads, and teams adopting the current CLI and AI coding tool workflow
 
 > **Convention**: 💬 = paste into AI coding tool chat. 🖥 = run in terminal.
-
+>
 > **Scope**: This README describes the current repository-oriented distribution: the `cfs` CLI, repository-local setup, generated host integrations, and agent-facing workflows and skills. Constructor Studio is also planned for macOS, Windows, and web application experiences; those app surfaces will be documented when available.
 
 ## Overview

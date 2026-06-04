@@ -133,6 +133,8 @@ WHEN:
 DO:
   RUN verify every brief exists, each phase file matches its brief's load instructions, no unresolved {...} vars outside code fences, each phase file <= 1000 lines (split if oversized), and the union of all phase Rules sections covers 100% of applicable rules (re-split rather than drop rules)
   CONTINUE PlanPhase4Finalize
+ON_ERROR:
+  each phase file <= 1000 lines (split if oversized) check fails -> RUN auto-split the oversized phase file into ordered phase-NN-*.md parts (re-split rather than drop rules), update plan.toml [[phases]], then re-run the verify step; EMIT the oversized file path with explicit split instructions and STOP_TURN WHEN it still exceeds 1000 lines after the auto-split
 RULES:
   NEVER drop rules to meet budget
 ```

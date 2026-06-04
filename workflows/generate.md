@@ -11,10 +11,10 @@ purpose: Backwards-compatible entry point that routes a generate intent to the m
 
 This workflow is kept as a stable, backwards-compatible entry point for the
 `generate` verb. It performs no create-or-modify work itself. Instead it
-discovers the cf-* skills available to the current session (via the shared
+discovers the `cf-*` skills available to the current session (via the shared
 WorkflowResolution rule), matches the user's generate intent against them, and offers the
 most relevant skill for invocation — passing the user's intent into it. When no
-intent is present it lists the available cf-* skills and loads the one the user
+intent is present it lists the available `cf-*` skills and loads the one the user
 picks. The legacy multi-phase generate workflow has been retired; routing is the only behavior here.
 
 ```pdsl
