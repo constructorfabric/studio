@@ -17,6 +17,7 @@ STATE:
   SET CFS_INIT: true | false (default false, scope session)
 DO:
   EMIT_MENU LoadCfSkillConfirm WHEN CFS_INIT != true
+  STOP_TURN WHEN CFS_INIT != true
   LOAD {cf-studio-path}/.core/architecture/specs/PDSL.md
   LOAD {cf-studio-path}/.core/requirements/prompt-engineering.md
   RUN verify both references loaded; EMIT "Required reference not found (PDSL spec or prompt-engineering methodology under {cf-studio-path}/.core) — cannot author or review; reinstall or sync the studio kit, then retry." and STOP_TURN WHEN either load fails

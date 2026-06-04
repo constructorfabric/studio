@@ -18,6 +18,7 @@ STATE:
   SET CFS_INIT: true | false (default false, scope session)
 DO:
   EMIT_MENU LoadCfSkillConfirm WHEN CFS_INIT != true
+  STOP_TURN WHEN CFS_INIT != true
   LOAD {cf-studio-path}/.core/requirements/auto-config.md as the phase-by-phase methodology reference
   RUN verify the methodology loaded; EMIT "Auto-config methodology not found at {cf-studio-path}/.core/requirements/auto-config.md — cannot proceed; reinstall or sync the studio kit, then retry." and STOP_TURN WHEN the load fails
 RULES:

@@ -24,6 +24,7 @@ STATE:
   SET CFS_INIT: true | false (default false, scope session)
 DO:
   EMIT_MENU LoadCfSkillConfirm WHEN CFS_INIT != true
+  STOP_TURN WHEN CFS_INIT != true
   CONTINUE AnalyzeRoute WHEN CFS_INIT == true
 RULES:
   ALWAYS verify the cf skill is loaded, CFS_INIT == true, before any routing work

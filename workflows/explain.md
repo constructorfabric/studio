@@ -19,6 +19,7 @@ STATE:
   SET EXPLAIN_EXPORT: true | false (default false, scope workflow_run)
 DO:
   EMIT_MENU LoadCfSkillConfirm WHEN CFS_INIT != true
+  STOP_TURN WHEN CFS_INIT != true
   SET EXPLAIN_MODE = true WHEN CFS_INIT == true
   SET analyze_phase_2_deterministic_gate = SKIPPED WHEN CFS_INIT == true
   SET analyze_phase_3_standard_checklist = SKIPPED WHEN CFS_INIT == true

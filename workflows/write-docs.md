@@ -17,6 +17,7 @@ STATE:
   SET CFS_INIT: true | false (default false, scope session)
 DO:
   EMIT_MENU LoadCfSkillConfirm WHEN CFS_INIT != true
+  STOP_TURN WHEN CFS_INIT != true
   LOAD {cf-studio-path}/.core/requirements/consistency-checklist.md
   LOAD {cf-studio-path}/.core/requirements/language-complexity.md
   LOAD {cf-studio-path}/.core/requirements/storytelling-dimensions.md
