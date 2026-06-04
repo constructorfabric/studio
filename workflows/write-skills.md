@@ -82,6 +82,7 @@ UNIT WriteSkillsDispatch
 PURPOSE: Dispatch the sub-agents that write, fix, and review skills.
 RULES:
   ALWAYS dispatch cf-pdsl-author from {cf-studio-path}/.core/skills/studio/agents/cf-pdsl-author.md to write skills and apply review fixes
+  ALWAYS resolve git_commit_mode (probe once per session), contributing_guide (discover; null when none found), and the mode-matched git_constraint before any write-capable cf-pdsl-author dispatch, and ALWAYS include all three in that dispatch payload
   ALWAYS dispatch cf-pdsl-reviewer from {cf-studio-path}/.core/skills/studio/agents/cf-pdsl-reviewer.md (prompt-engineering + prompt-bug-finding) and cf-semantic-reviewer-consistency from {cf-studio-path}/.core/skills/studio/agents/cf-semantic-reviewer-consistency.md (consistency-checklist) per the chosen REVIEW_GRANULARITY: single-pass = one reviewer over all three methodologies; per-methodology = cf-pdsl-reviewer over its prompt-engineering + prompt-bug-finding layers and cf-semantic-reviewer-consistency over all consistency-checklist categories; per-layer = one reviewer per layer/category for every layer each methodology defines (L1 through its last), never a fixed count
   ALWAYS synthesize into each reviewer instance only its assigned slice for the chosen granularity, never more than its scope
 ```
