@@ -26,55 +26,7 @@ For teams already using an AI coding tool, Constructor Studio provides the opera
 - **deterministic `cfs` validation** to check structure, references, consistency, traceability, and generated integration surfaces locally and in CI
 - **stable identifiers and cross-link validation** to preserve alignment across requirements, design, plans, and code when that enforcement surface is configured
 
-<!-- toc -->
-
-- [Overview](#overview)
-- [Product shape](#product-shape)
-  - [Authoritative delivery artifacts](#authoritative-delivery-artifacts)
-  - [What Constructor Studio adds to a repo](#what-constructor-studio-adds-to-a-repo)
-  - [Core platform and optional kits](#core-platform-and-optional-kits)
-  - [How teams encounter Constructor Studio](#how-teams-encounter-constructor-studio)
-- [Fit and non-fit](#fit-and-non-fit)
-  - [Helps most when you are responsible for](#helps-most-when-you-are-responsible-for)
-  - [Good fit when](#good-fit-when)
-  - [Not the best fit when](#not-the-best-fit-when)
-  - [Where value appears first](#where-value-appears-first)
-- [Operating model](#operating-model)
-  - [System boundary and control model](#system-boundary-and-control-model)
-  - [Multi-subagent operating model where supported](#multi-subagent-operating-model-where-supported)
-  - [Deterministic vs non-deterministic boundary](#deterministic-vs-non-deterministic-boundary)
-- [Traceability and validation model](#traceability-and-validation-model)
-  - [Inspectable delivery surface](#inspectable-delivery-surface)
-  - [Configured enforcement surface](#configured-enforcement-surface)
-  - [Evidence chain across a change](#evidence-chain-across-a-change)
-  - [What `cfs` enforces](#what-cfs-enforces)
-  - [What Constructor Studio cannot prove](#what-constructor-studio-cannot-prove)
-- [Workflow model](#workflow-model)
-  - [Language complexity (global UX setting)](#language-complexity-global-ux-setting)
-  - [Explain mode (storytelling companion)](#explain-mode-storytelling-companion)
-- [Typical delivery sequence](#typical-delivery-sequence)
-- [Supported hosts](#supported-hosts)
-- [Evaluate Constructor Studio](#evaluate-constructor-studio)
-  - [Minimal evaluation path](#minimal-evaluation-path)
-  - [Validation checkpoint](#validation-checkpoint)
-  - [What success looks like](#what-success-looks-like)
-  - [What to inspect after the trial](#what-to-inspect-after-the-trial)
-- [Installation and setup reference](#installation-and-setup-reference)
-  - [Prerequisites](#prerequisites)
-  - [Setup paths and commands](#setup-paths-and-commands)
-- [Mirror overrides](#mirror-overrides)
-- [Configuration files](#configuration-files)
-- [Extended operating modes](#extended-operating-modes)
-  - [Multi-repo workspaces](#multi-repo-workspaces)
-  - [RalphEx delegation](#ralphex-delegation)
-- [Project extensibility](#project-extensibility)
-- [Further reading](#further-reading)
-- [Feedback and issues](#feedback-and-issues)
-- [Contributing](#contributing)
-- [Glossary](#glossary)
-- [License](#license)
-
-<!-- /toc -->
+**Jump to:** [Product shape](#product-shape) | [Fit and non-fit](#fit-and-non-fit) | [Operating model](#operating-model) | [Traceability and validation model](#traceability-and-validation-model) | [Workflow model](#workflow-model) | [Typical delivery sequence](#typical-delivery-sequence) | [Supported hosts](#supported-hosts) | [Evaluate Constructor Studio](#evaluate-constructor-studio) | [Installation and setup reference](#installation-and-setup-reference)
 
 ## Product shape
 
@@ -417,7 +369,7 @@ Constructor Studio works across multiple AI coding tools through the same portab
   - **Signal-to-effort** — whether the trial produced enough useful signal to justify the setup and process overhead.
   - **Trust signal** — whether you would trust the resulting surface enough to continue with a larger change.
  
-  **Continue to:** [Installation and setup reference](#installation-and-setup-reference) | [Configuration files](#configuration-files) | [Extended operating modes](#extended-operating-modes) | [Project extensibility](#project-extensibility) | [Further reading](#further-reading)
+  **Jump to:** [Installation and setup reference](#installation-and-setup-reference) | [Configuration files](#configuration-files) | [Extended operating modes](#extended-operating-modes) | [Project extensibility](#project-extensibility) | [Further reading](#further-reading)
 
 ## Installation and setup reference
 
