@@ -397,17 +397,17 @@ For these cases, lighter approaches or direct prompting can be a better starting
 
 ```mermaid
 flowchart TD
-    Start["What do you need to do?"] --> Q1{"Is the scope clear\nand the task structured?"}
-    Q1 -->|No — explore first| Explore["`cf explore: ...`\nor cf auto-config"]
-    Q1 -->|Options still open| Brainstorm["`cf brainstorm: ...`"]
-    Q1 -->|Yes| Q2{"Is the task large,\nrisky, or multi-step?"}
-    Q2 -->|Yes| Plan["`cf plan: ...`"]
+    Start["What do you need to do?"] --> Q1{"Is the scope clear and the task structured?"}
+    Q1 -->|No - explore first| Explore["cf explore / cf auto-config"]
+    Q1 -->|Options still open| Brainstorm["cf brainstorm: ..."]
+    Q1 -->|Yes| Q2{"Is the task large, risky, or multi-step?"}
+    Q2 -->|Yes| Plan["cf plan: ..."]
     Q2 -->|No| Q3{"What is the main job?"}
     Q3 -->|Create or update something| Q4{"Target type?"}
-    Q3 -->|Validate, review, or audit| Analyze["`cf analyze: ...`"]
-    Q4 -->|SDLC artifact| Generate["`cf generate: ...`"]
-    Q4 -->|Source code| Coding["`cf coding: ...`"]
-    Q4 -->|Human-facing document| WriteDocs["`cf write-docs: ...`"]
+    Q3 -->|Validate, review, or audit| Analyze["cf analyze: ..."]
+    Q4 -->|SDLC artifact| Generate["cf generate: ..."]
+    Q4 -->|Source code| Coding["cf coding: ..."]
+    Q4 -->|Human-facing document| WriteDocs["cf write-docs: ..."]
 ```
 
 If you only need a quick route for the less-obvious cases (plan, generate, and analyze are covered in depth below):
