@@ -136,7 +136,7 @@ def test_root_skill_entrypoint_bootstrap_has_fail_closed_unit():
     content = skill_path.read_text(encoding="utf-8")
 
     assert "UNIT SessionInit" in content
-    assert "REQUIRE {cf-studio-path} is resolved before any LOAD" in content
+    assert "REQUIRE {cf-studio-path} is resolved before CommandResolution and before any LOAD" in content
 
     # Routers fail closed when the user declines to load cf.
     generate = (Path(__file__).parent.parent / "workflows" / "generate.md").read_text(encoding="utf-8")
