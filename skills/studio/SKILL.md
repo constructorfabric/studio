@@ -1,28 +1,301 @@
 ---
 name: cf
-aliases: [cf-studio]
-description: "Invoke for requests to create, edit, fix, update, implement, refactor, set up, build, analyze, validate, review, check, inspect, audit, compare, explain, walk through, teach, onboard, brainstorm, ideate, explore options, discover requirements, mapping, map dependencies, plan, decompose, find context, PDSL prompt work, configure projects, auto-config, scan brownfield projects, manage workspaces, delegation, delegate work, phase compile/execute, compile phases, execute phases, migration, migrate from Cypilot, migrate OpenSpec, review PRs, report PR status, or get help."
+aliases: [cf-studio, cf-init, cf-enable]
+description: Invoke when user asks to initiate a Constructor Studio session and loads the core rules.
 ---
 
-# Constructor Studio Unified Tool
+# cf / cf-studio — Constructor Studio Session Initiator
+
+`cf` (and its proxy alias `cf-studio`, which behaves identically) is the Constructor Studio session initiator. Its sole responsibility is to load the core rules defined in this file at the start of a session. It performs no task work itself — all actual work is governed by the rules below and carried out elsewhere.
 
 ```pdsl
-UNIT CfSkillInit
-PURPOSE: Activate cf skill and delegate runtime rules to canonical protocol files.
+UNIT SessionInit
+PURPOSE: Establish cf/cf-studio as the session initiator that only loads the core rules and does no work itself.
+STATE:
+  SET CFS_INIT: true | false (default false, scope session)
+WHEN:
+  REQUIRE activation of cf OR activation of cf-studio
 DO:
-  - SET {cfs_mode} = on
-  - LOAD {cf-studio-path}/.core/skills/studio/protocol.md
-  - LOAD {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md
-  - LOAD {cf-studio-path}/.core/skills/studio/routing.md
-  - LOAD {cf-studio-path}/.core/requirements/pdsl-execution-card.md
-  - CONTINUE Bootstrap
+  LOAD and REMEMBER rules from {cf-studio-path}/.gen/AGENTS.md
+  LOAD and REMEMBER rules from {cf-studio-path}/.gen/SKILL.md
+  LOAD and REMEMBER all UNIT rules defined in this file
+  SET CFS_INIT = true
+  CONTINUE IntentRouting WHEN the prompt contains a task intent
+  CONTINUE IntentRouting WHEN the prompt contains no task intent
 RULES:
-  - ALWAYS SET {cfs_mode} = on before any other action
-  - ALWAYS {cf-studio-path}/.core/skills/studio/protocol.md owns Bootstrap, HardRules, WorkflowProtocolNonSubstitution,
-    NormativeKeywords, PhaseSkipGate, SharedContextPackAuthority, and
-    CompletionInvariants
-  - ALWAYS {cf-studio-path}/.core/skills/studio/sub-agent-dispatch.md owns SubAgentDefaultPolicy,
-    SubAgentApprovalGate, ChangeReviewFailClosedSentinel, and
-    InstructionFileAuthoringBoundary
-  - ALWAYS {cf-studio-path}/.core/skills/studio/routing.md owns Constructor Studio request routing
+  ALWAYS treat cf and cf-studio as the same skill, where cf-studio is a proxy alias to cf
+  ALWAYS limit cf/cf-studio to initiating the session and loading core rules
+```
+
+```pdsl
+UNIT IntentRouting
+PURPOSE: After cf loads core rules, query the session for available cf-* skills and either offer the relevant one(s) via a menu when there is a task intent or list all available cf-* skills when there is none.
+WHEN:
+  REQUIRE cf has loaded core rules
+DO:
+  RUN {cfs_cmd} skills list to request the session for the list of available cf-* skills
+  RUN matching of the intent against the available cf-* skill list to find the relevant skill(s) WHEN the prompt contains a task intent
+  EMIT_MENU IntentSkillOffer WHEN the prompt contains a task intent
+  EMIT the full list of all available cf-* skills WHEN the prompt contains no task intent
+  WAIT user.reply
+  STOP_TURN
+RULES:
+  ALWAYS query the session for the available cf-* skill list before offering or listing, never guess the list
+  ALWAYS offer the relevant skill(s) through a menu when the prompt contains a task intent
+  ALWAYS list all available cf-* skills when the prompt contains no task intent
+MENU IntentSkillOffer
+PURPOSE: Offer the relevant cf-* skill(s) so the user picks which to route into.
+OPTIONS:
+  1 relevant-skill -> route into the user-selected relevant cf-* skill
+  2 other-skill -> route into another relevant cf-* skill from the offered list
+  3 none -> STOP_TURN
+  INVALID -> EMIT_MENU IntentSkillOffer
+```
+
+```pdsl
+UNIT CreativeIntentBrainstormOffer
+PURPOSE: Always offer cf-brainstorm before any creative task, and respect the user's decline.
+WHEN:
+  REQUIRE the prompt contains a creative intent (brainstorm, ideate, explore options, explore or shape a design, discover requirements, map options, compare decision tradeoffs, or design a new artifact or feature)
+DO:
+  EMIT_MENU CreativeBrainstormOffer
+  WAIT user.reply
+  STOP_TURN
+RULES:
+  ALWAYS offer to Invoke cf-brainstorm before starting any creative task
+  ALWAYS let the user decline the cf-brainstorm offer
+  NEVER load or invoke cf-brainstorm when the user declines; continue with the requested task instead
+MENU CreativeBrainstormOffer
+TITLE: This looks like a creative task — run a cf-brainstorm panel first? (recommended)
+OPTIONS:
+  1 brainstorm -> INVOKE skill `cf-brainstorm`
+  2 skip -> NEVER load cf-brainstorm; CONTINUE the requested task without it
+  INVALID -> EMIT_MENU CreativeBrainstormOffer
+```
+
+```pdsl
+UNIT PlanFirstGate
+PURPOSE: Before any substantive operation, ask whether to plan the work first, and respect the user's decline.
+WHEN:
+  REQUIRE a substantive task is about to start (validation, review, editing, prompts, skills, code, artifacts, analytical tasks, or any other task work)
+DO:
+  EMIT_MENU PlanFirstConfirm
+  WAIT user.reply
+  STOP_TURN
+RULES:
+  ALWAYS ask whether a plan is needed before starting any substantive task
+  ALWAYS let the user decline and proceed without a plan
+  NEVER start the substantive operation before this gate resolves
+MENU PlanFirstConfirm
+TITLE: Plan this work before starting? (recommended for multi-step or sub-agent work)
+OPTIONS:
+  1 plan -> CONTINUE PlanBuild
+  2 no-plan -> proceed without a plan and CONTINUE the requested task
+  INVALID -> EMIT_MENU PlanFirstConfirm
+```
+
+```pdsl
+UNIT PlanBuild
+PURPOSE: Build the execution plan, present it for review, and let the user choose where it is kept.
+WHEN:
+  REQUIRE the user chose to plan in PlanFirstGate
+DO:
+  RUN draft the plan: define the sub-agent intent for each task, group tasks into parallel, sequential, and inline execution, and order them
+  EMIT the drafted plan for user review
+  EMIT_MENU PlanStorageChoice
+  WAIT user.reply
+  STOP_TURN
+RULES:
+  ALWAYS define the sub-agent intent for the planned work before execution
+  ALWAYS classify each task as a parallel sub-agent, a sequential sub-agent, or an inline task
+  ALWAYS present the plan for user review before executing it
+  ALWAYS offer to save the plan to disk or keep it in session memory
+  NEVER execute the planned work before the user has reviewed the plan and chosen its storage
+MENU PlanStorageChoice
+TITLE: Plan ready — review it, then choose how to keep it before I start.
+OPTIONS:
+  1 memory -> keep the plan in session memory and CONTINUE the planned work
+  2 disk -> WRITE the plan to disk, then CONTINUE the planned work
+  3 revise -> revise the plan per user feedback and EMIT_MENU PlanStorageChoice
+  4 stop -> STOP_TURN
+  INVALID -> EMIT_MENU PlanStorageChoice
+```
+
+```pdsl
+UNIT ContextCategories
+PURPOSE: Classify every loaded context as exactly one of two categories.
+RULES:
+  ALWAYS classify every loaded context as either `rules` or `content`, where `rules` = instructions (skills, workflows, methodologies, pipelines, plans, templates, IO contracts, examples, schemas) and `content` = artifacts (checklists, codebase, generation targets, source materials, anything being transformed)
+  NEVER classify a single loaded context as both `rules` and `content`
+```
+
+```pdsl
+UNIT RulesMemory
+PURPOSE: Govern the lifecycle of `rules` assets in the session.
+RULES:
+  ALWAYS load a `rules` asset at most once and then keep it for the entire session
+  NEVER compact, reload, or mutate a `rules` asset once it is loaded
+```
+
+```pdsl
+UNIT ContentMemory
+PURPOSE: Govern the lifecycle of `content` in the session.
+RULES:
+  ALWAYS hold `content` in the session only while it is needed and unload/forget it once it stops being needed
+  ALWAYS treat `content` as mutable and reloadable, tracked by absolute file path or, for web sources, by URL/reference
+  NEVER compact `content`
+```
+
+```pdsl
+UNIT SubAgentDispatch
+PURPOSE: Synthesize and dispatch cf-* sub-agents from `rules` plus a contract while gating on approval and providing a fallback.
+STATE:
+  SET SUB_AGENTS_APPROVED: unset | true | false (default unset, scope session)
+  SET SUB_AGENTS_INLINE: unset | true (default unset, scope session)
+WHEN:
+  REQUIRE a cf-* sub-agent must be launched
+DO:
+  LOAD sub-agent contract from {cf-studio-path}/.core/skills/studio/agents/{sub-agent-name}.md
+  REQUIRE SUB_AGENTS_APPROVED == true
+  EMIT_MENU SubAgentApprovalRequest WHEN SUB_AGENTS_APPROVED == unset
+  RUN synthesis of the initial prompt from the controller-selected `rules` plus the sub-agent contract
+  DISPATCH the sub-agent natively
+RULES:
+  ALWAYS synthesize the initial prompt from `rules` plus the sub-agent contract, with the controller deciding which `rules` the sub-agent needs and which it does not
+  ALWAYS pass any needed `content` to the sub-agent as an absolute path or web reference/link, never inline
+  ALWAYS allow the sub-agent to load any `content` it needs
+  NEVER allow the sub-agent to load any instructions (`rules`)
+  NEVER dispatch a sub-agent unless SUB_AGENTS_APPROVED == true
+ON_ERROR:
+  EMIT_MENU SubAgentFallbackRequest WHEN SUB_AGENTS_APPROVED == false OR native dispatch fails
+MENU SubAgentApprovalRequest
+PURPOSE: Request and remember approval to dispatch sub-agents.
+OPTIONS:
+  1 approve -> SET SUB_AGENTS_APPROVED = true; CONTINUE dispatch
+  2 deny -> SET SUB_AGENTS_APPROVED = false; EMIT_MENU SubAgentFallbackRequest
+  INVALID -> EMIT_MENU SubAgentApprovalRequest
+MENU SubAgentFallbackRequest
+PURPOSE: Offer a fallback when a sub-agent cannot proceed via native dispatch.
+OPTIONS:
+  1 inline -> SET SUB_AGENTS_INLINE = true; RUN the contract inline
+  2 retry -> DISPATCH the sub-agent natively
+  3 stop -> STOP_TURN
+  INVALID -> EMIT_MENU SubAgentFallbackRequest
+```
+
+```pdsl
+UNIT CommandResolution
+PURPOSE: Resolve the {cfs_cmd} command before invoking any cfs command.
+WHEN:
+  REQUIRE a {cfs_cmd} invocation is needed
+DO:
+  SET {cfs_cmd} = cfs WHEN cfs is available on PATH
+  SET {cfs_cmd} = python {cf-studio-path}/.core/skills/studio/scripts/studio.py WHEN cfs is not available on PATH
+RULES:
+  ALWAYS resolve {cfs_cmd} before invoking any cfs command
+```
+
+```pdsl
+UNIT CliCapabilities
+PURPOSE: Discover and remember the tool's available commands and prefer them for relevant tasks.
+DO:
+  RUN {cfs_cmd} --help to obtain the list of available commands and capabilities
+  SET remembered tool commands = the commands returned by {cfs_cmd} --help
+RULES:
+  ALWAYS run {cfs_cmd} --help to discover available commands and remember them for the session
+  ALWAYS prefer a remembered {cfs_cmd} command over an ad-hoc approach when one fits the task
+```
+
+```pdsl
+UNIT TemplateVarResolution
+PURPOSE: Resolve unknown template variables before asking the user.
+WHEN:
+  REQUIRE an unknown `{...}` template variable is encountered
+DO:
+  RUN {cfs_cmd} resolve-vars
+  WAIT for the user to provide the value WHEN the variable still cannot be found
+  CONTINUE once the value is provided
+RULES:
+  ALWAYS try `{cfs_cmd} resolve-vars` before asking the user for a template variable value
+```
+
+```pdsl
+UNIT ReviewFindingContract
+PURPOSE: Define the fields every review finding must report, for all review operations.
+RULES:
+  ALWAYS report each finding of any review operation with SEVERITY, LOCATION (path plus line or range), EVIDENCE, ROOT_CAUSE, IMPACT, SUGGESTED_FIX, VERIFICATION (how to confirm the fix resolves it), and CONFIDENCE
+  ALWAYS apply this finding contract to every review operation, regardless of which skill or workflow runs it
+  NEVER emit a review finding that is missing any of the required fields
+```
+
+```pdsl
+UNIT ReviewFixApprovalGate
+PURPOSE: Gate every review-fix loop on explicit user approval and let the user choose the fix scope.
+WHEN:
+  REQUIRE a review-fix loop has produced findings and is about to apply fixes
+DO:
+  EMIT_MENU ReviewFixScope
+  WAIT user.reply
+  STOP_TURN
+RULES:
+  ALWAYS request user confirmation before applying any fixes in a review-fix loop
+  ALWAYS offer the fix-scope options: only CRITICAL and MAJOR findings, all findings, or a user-selected partial subset
+  NEVER apply review fixes without explicit user approval of the chosen scope
+MENU ReviewFixScope
+TITLE: Review found issues — what should I fix? (nothing is changed until you choose)
+OPTIONS:
+  1 crit-major -> fix only CRITICAL and MAJOR findings, then re-review
+  2 all -> fix all findings, then re-review
+  3 partial -> ask which specific findings to fix, fix only those, then re-review
+  4 none -> STOP_TURN
+  INVALID -> EMIT_MENU ReviewFixScope
+```
+
+```pdsl
+UNIT NextActionsOffer
+PURPOSE: After completing a task or operation, always offer next actions synthesized from the current context and the available cf-* skills.
+WHEN:
+  REQUIRE a task or operation has just completed and control is about to return to the user
+DO:
+  RUN {cfs_cmd} skills list to obtain the available cf-* skills
+  RUN synthesis of 3 to 5 next actions from the current context and the available cf-* skills
+  EMIT_MENU NextActionsMenu
+  WAIT user.reply
+  STOP_TURN
+RULES:
+  ALWAYS offer next actions when a task or operation completes and control returns to the user
+  ALWAYS synthesize 3 to 5 next actions from the current context and the available cf-* skills, never a fixed or guessed list
+  ALWAYS explain why each offered action is relevant to the current context and mark exactly one as suggested
+  ALWAYS let the user pick an offered action or decline
+  NEVER offer next actions when the operation returns control to a calling skill or workflow rather than the user (for example a skill invoked in return-context mode)
+MENU NextActionsMenu
+TITLE: Next actions for this context — pick a number or reply done. (one action is marked suggested)
+OPTIONS:
+  1 action -> run the chosen synthesized next action; the menu lists each of the 3 to 5 synthesized actions as its own number with its why, and exactly one is tagged (suggested)
+  2 done -> STOP_TURN
+  INVALID -> EMIT_MENU NextActionsMenu
+NOTES:
+  The rendered menu enumerates every synthesized action (3 to 5) on its own line as `N <action> — <why>`, tags exactly one `(suggested)`, and appends a final `done` option; option `1 action` above is the representative template for those numbered actions.
+```
+
+```pdsl
+UNIT StudioShutdown
+PURPOSE: Turn the studio off only after explicit user confirmation, then forget all loaded `content` and `rules` for the session.
+WHEN:
+  REQUIRE the user intent can be interpreted as a request to turn off, disable, or shut down the studio
+DO:
+  EMIT_MENU StudioShutdownConfirm
+  WAIT user.reply
+  STOP_TURN
+RULES:
+  ALWAYS require explicit user confirmation via the menu before turning the studio off
+  ALWAYS set CFS_INIT = false and forget all `content` and all `rules` on confirmation
+  ALWAYS make the user aware that confirming forgets all loaded `content` and `rules`
+  NEVER turn the studio off or forget `content`/`rules` without confirmation
+MENU StudioShutdownConfirm
+TITLE: Confirm: turning the studio off will FORGET all loaded `content` and `rules` for this session.
+OPTIONS:
+  1 confirm -> SET CFS_INIT = false; forget/unload all `content` and all `rules` from the session
+  2 cancel -> STOP_TURN
+  INVALID -> EMIT_MENU StudioShutdownConfirm
 ```

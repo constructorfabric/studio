@@ -1,7 +1,7 @@
 ---
 cf: true
 type: workflow
-name: cf-pdsl
+name: cf-write-skill
 description: "Invoke for requests to author, transform, compress, normalize, or review prompt, workflow, skill, or agent instruction files as compact state-machine-like PDSL contracts."
 version: 0.1
 purpose: Dedicated workflow for authoring, transforming, and auditing compact PDSL prompt contracts

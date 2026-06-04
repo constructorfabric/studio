@@ -1,8 +1,8 @@
 ---
 cf: true
 type: workflow
-name: cf-debug-skill
-description: "Step-through debugger overlay for cf skills and workflows. Invoke to load a breakpoint-style debugger that pauses before each subsequent skill/workflow instruction, explains what it will do and why, and gates every action on your approval until you turn debug off."
+name: cf-debug-prompts
+description: "Invoke when user intent is debugging prompts / skills / workflows in session — e.g. step through a skill, set a breakpoint, pause before each instruction, inspect why a workflow did something, or approve cf actions one at a time. Loads a step-through debugger overlay that pauses before each subsequent skill/workflow instruction, explains what it will do and why, and gates every action on your approval until you turn debug off."
 version: 0.1
 purpose: Session-global step debugger overlay that intercepts and gates PDSL execution across all cf skills and workflows
 ---
@@ -83,6 +83,7 @@ DO:
   - SET DEBUG_GRAIN = instruction
   - SET DEBUG_CURSOR = 0
   - EMIT "Debugger armed. From now on every cf skill/workflow instruction stops at a breakpoint before it runs. Load the skill you want to debug, then drive it from this console."
+  - EMIT "Commands: step=run the pending action · over=skip it · back=re-inspect the previous step · cont=run to the next breakpoint · dump=export trace · off=disable · stop=halt · dbg=full menu. Breakpoints: b <spec>=set · bc <ref>=clear · bl=list · be/bd <id>=enable/disable · run to <loc>."
   - RUN DebugCheatsheet
   - WAIT user.reply
   - STOP_TURN
@@ -134,8 +135,8 @@ DO:
     - "WHERE  : <SOURCE_LOC> > <UNIT> > step <DEBUG_CURSOR>"
     - "TARGET : <TARGET_LOC, or `(no file touched)` when the action reads/writes no file>"
     - "NOW    : <the pending action, verbatim> (<SOURCE_LOC>)"
-    - "WHY    : <one-line rationale: the owning PURPOSE or rule this action serves>"
-    - "NEXT   : <each action that would follow if this one runs, each suffixed with its filename.md:N>"
+    - "WHY    : <one-line rationale: the owning PURPOSE or rule this action serves; condense a multi-sentence PURPOSE to its core reason in one line>"
+    - "NEXT   : <the immediate next action(s) if this one runs; for a branch, the first action of each branch; cap the list at 3 and append `(+N more)` when longer, each suffixed with its filename.md:N>"
     - "BREAKPT: <id+type+spec of the breakpoint that fired, or `(stepping)` when paused by step mode>"
     - "METRICS: this +<this_lines> LoC +<this_chars> chars ~<this_tok_est> tok | total <DEBUG_LOC_TOTAL> LoC <DEBUG_CHARS_TOTAL> chars ~<DEBUG_TOKENS_EST> tok (est)"
     - "STATE  : debug=on mode=<DEBUG_MODE> grain=<DEBUG_GRAIN> cursor=<DEBUG_CURSOR> bps=<count of enabled breakpoints>"

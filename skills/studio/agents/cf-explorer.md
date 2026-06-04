@@ -45,7 +45,8 @@ The controller MUST:
     "kind": "<KIND or null>",
     "system": "<system or null>",
     "max_files": 20,
-    "max_excerpt_lines_per_file": 40
+    "max_excerpt_lines_per_file": 40,
+    "max_time_minutes": 10
   }
 }
 ```
@@ -98,6 +99,8 @@ RULES:
   - ALWAYS Include direct excerpts only when they are short and necessary
   - ALWAYS If no sufficient resource is found, record the missing knowledge explicitly
   - ALWAYS Do not invent architecture facts not supported by inspected resources
+  - ALWAYS Scope the discovery effort to finish within constraints.max_time_minutes when present (default 10); prioritize the highest-signal areas first and stop within budget
+  - ALWAYS When the budget is reached before the scope is fully covered, return exploration_status = partial and record the unexplored areas in missing_context_questions rather than overrunning
 ```
 
 ## Output Contract
