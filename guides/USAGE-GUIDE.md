@@ -150,7 +150,7 @@ pipx install git+https://github.com/constructorfabric/studio.git
 cfs --version
 ```
 
-A PyPI release (`pipx install constructor-studio`) is planned; check [README](../README.md#installation-and-setup-reference) for the current install method if this changes.
+A PyPI release (`pipx install constructor-studio`) is planned; track progress in the [issues list](https://github.com/constructorfabric/studio/issues).
 
 If `cfs --version` prints a version, the CLI install worked.
 
@@ -382,9 +382,9 @@ Constructor Studio is often not the best first move when:
   
   Example: the task is small enough that loading workflow context, rules, and validation logic costs more than it helps.
 
-- **You are exploring many open-ended alternatives**
+- **You want fully unstructured exploration with no structured output**
   
-  Example: visual direction finding, branching into speculative options, or broad product brainstorming.
+  Example: visual direction finding, branching into speculative options, or loose ideation where a structured panel output is not the goal. For option mapping and structured brainstorming, `cf brainstorm` is the right route — see [When Constructor Studio is a good fit](#4-when-constructor-studio-is-a-good-fit).
 
 That is not a bug.
 

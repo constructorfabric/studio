@@ -3,7 +3,7 @@
  [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
   ![Version](https://img.shields.io/github/v/release/constructorfabric/studio?label=version)
   
-**Version**: 1.0.0
+**Version**: see badge above for the current release
 
 **Status**: Active
 
