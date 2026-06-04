@@ -11,7 +11,7 @@
 
 > **Convention**: 💬 = paste into AI coding tool chat. 🖥 = run in terminal.
 
-> **Scope**: This README describes the current repository-oriented distribution: the `cfs` CLI, repository-local setup, generated host integrations, and agent-facing workflows and skills. Constructor Studio is also planned for macOS, Windows, and web application experiences; those app surfaces are not documented here yet.
+> **Scope**: This README describes the current repository-oriented distribution: the `cfs` CLI, repository-local setup, generated host integrations, and agent-facing workflows and skills. Constructor Studio is also planned for macOS, Windows, and web application experiences; those app surfaces will be documented when available.
 
 ## Overview
 
@@ -335,7 +335,7 @@ All Constructor Studio output (chat and artifacts) respects a configurable `lang
 - **`middle`** (default) — everyday vocabulary, ≤25-word sentences, technical terms with a brief gloss; for non-native B2 and mixed audiences.
 - **`high`** — full register, idioms and academic vocabulary allowed; for native or specialist audiences.
 
-Set the level in `{cf-studio-path}/config/core.toml` under `[language] complexity = "middle"`. To change it mid-session, say `change language complexity to {low|middle|high}`; `remember new language complexity` persists it. Source quotes from input artifacts stay verbatim. See [`requirements/language-complexity.md`](requirements/language-complexity.md) for the full spec.
+Set the level in `{cf-studio-path}/config/core.toml` (`{cf-studio-path}` is your setup directory — `.cf-studio/` by default) under `[language] complexity = "middle"`. To change it mid-session, say `change language complexity to {low|middle|high}`; `remember new language complexity` persists it. Source quotes from input artifacts stay verbatim. See [`requirements/language-complexity.md`](requirements/language-complexity.md) for the full spec.
 
 ### Explain mode (storytelling companion)
 
@@ -356,7 +356,7 @@ You can also produce a hand-off-able **package** (READMEs, training material, gu
 
 Plain `cf analyze: review my changes` keeps the standard analyze contract (defect-finding with `Fix Prompt` / `Plan Prompt`); explain mode requires explicit explain-family verbs.
 
-Full methodology spec: [`requirements/storytelling.md`](requirements/storytelling.md) (router) + three always-loaded modules (`storytelling-phases.md`, `storytelling-modes.md`, `storytelling-preferences.md`) + one conditional module (`storytelling-export.md`, loaded only when `EXPLAIN_EXPORT=true`).
+Full methodology spec: [`requirements/storytelling.md`](requirements/storytelling.md) (router) + three always-loaded modules ([`storytelling-phases.md`](requirements/storytelling-phases.md), [`storytelling-modes.md`](requirements/storytelling-modes.md), [`storytelling-preferences.md`](requirements/storytelling-preferences.md)) + one conditional module ([`storytelling-export.md`](requirements/storytelling-export.md), loaded only when `EXPLAIN_EXPORT=true`).
 
 For default routing priorities and detailed workflow-choice advice, use **[guides/USAGE-GUIDE.md](guides/USAGE-GUIDE.md)**.
 
@@ -479,7 +479,7 @@ Constructor Studio works across multiple AI coding tools through the same portab
     cfs generate-agents
     ```
 
-   `cfs init` and `cfs generate-agents` are one-time repository bootstrap steps, not steps every downstream user must repeat.
+   `cfs init` and `cfs generate-agents` are one-time repository bootstrap steps, not steps every downstream user must repeat. (Contributors re-run `make generate-agents` to refresh local integrations after updates; the "one-time" qualifier applies to initial project initialization.)
 
     This creates a default setup directory `.cf-studio/`, generated AI coding tool integration files, and user-editable configuration under `config/` inside that setup directory.
 
@@ -538,7 +538,7 @@ For detailed host-specific setup, troubleshooting, and operational walkthroughs,
 
 Constructor Studio supports **multi-repo workspaces** so related docs, code, and shared kit assets can live in separate repositories and still stay aligned.
 
-Use this when docs, code, or shared kit assets live in separate repos and still need to stay aligned.
+Use this when cross-repo alignment matters for your delivery model — for example, when shared kit assets, documentation, or traceability links must stay consistent across multiple repositories.
 
 Workspaces expand the reachable repository set. They do not replace project-level extensibility inside one repository.
 
@@ -547,6 +547,8 @@ For practical guidance, see **[guides/USAGE-GUIDE.md](guides/USAGE-GUIDE.md)**. 
 ### RalphEx delegation
 
 RalphEx support is optional.
+
+RalphEx is an autonomous execution agent that can take bounded, pre-approved tasks from Constructor Studio and run them under human-supervised handoff.
 
 When available, Constructor Studio can hand off selected execution work to RalphEx under human supervision.
 

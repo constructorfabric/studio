@@ -56,7 +56,7 @@ Thank you for your interest in contributing to Constructor Studio! This guide co
 git clone https://github.com/constructorfabric/studio.git
 cd studio
 
-# Install the cfs/constructor-studio CLI proxy from local source
+# Install the cfs/constructor-studio CLI proxy (referred to as the CLI surface in the README glossary) from local source
 make install-proxy
 
 # Bootstrap: sync .bootstrap/ from local source
@@ -133,10 +133,10 @@ Constructor Studio has **two independent version tracks**.
 
 ### Version Locations
 
-| File | Example | What it versions | When to bump |
-|------|---------|------------------|--------------|
-| `skills/studio/scripts/studio/__init__.py` | `vX.Y.Z-beta` | **Skill engine** — the core validation/generation logic | Any change to skill engine code |
-| `pyproject.toml` (`version`) | `X.Y.Z-beta` | **CLI proxy** — installed via `pipx` | Changes to proxy routing, caching, or resolution |
+| File | Example (pre-release) | Example (stable) | What it versions | When to bump |
+|------|----------------------|------------------|------------------|--------------|
+| `skills/studio/scripts/studio/__init__.py` | `vX.Y.Z-beta` | `vX.Y.Z` | **Skill engine** — the core validation/generation logic | Any change to skill engine code |
+| `pyproject.toml` (`version`) | `X.Y.Z-beta` | `X.Y.Z` | **CLI proxy** — installed via `pipx` | Changes to proxy routing, caching, or resolution |
 
 ### Releasing a New Version
 
@@ -170,10 +170,16 @@ Constructor Studio has **two independent version tracks**.
    ```
 
 6. **Tag and release** after merge to `main`:
-   ```bash
-   git tag vX.Y.Z-beta
-   git push origin vX.Y.Z-beta
-   ```
+   - For a pre-release:
+     ```bash
+     git tag vX.Y.Z-beta
+     git push origin vX.Y.Z-beta
+     ```
+   - For a stable release (drop the `-beta` suffix):
+     ```bash
+     git tag vX.Y.Z
+     git push origin vX.Y.Z
+     ```
 
 ---
 
@@ -181,13 +187,15 @@ Constructor Studio has **two independent version tracks**.
 
 ```
 main                          # Stable, all CI must pass
-└── vX.Y.Z-beta               # Feature/release branch
+├── vX.Y.Z-beta               # Pre-release feature/release branch
+└── vX.Y.Z                    # Stable release branch (no -beta suffix)
 ```
 
 - Branch from `main` for each version
 - All work happens on the version branch
 - Merge to `main` via PR after CI passes
 - Tag `main` after merge
+- Pre-release tags use the `-beta` suffix (e.g. `v1.1.0-beta`); stable releases omit it (e.g. `v1.1.0`)
 
 ---
 
@@ -387,7 +395,7 @@ list.
 
 1. Edit files under `architecture/` (PRD, DESIGN, DECOMPOSITION, features)
 2. If adding new CDSL (Constructor DSL) entries, run `cfs toc <file>` to regenerate the table of contents (separate from `cfs validate-toc`, which checks an existing TOC)
-3. If adding `@cpt-*` code markers, run `cfs validate` to verify traceability (138/138 coverage)
+3. If adding `@cpt-*` (Canonical Provenance Trace) code markers, run `cfs validate` to verify traceability (all coverage checks must pass)
 4. Verify: `make validate`
 
 ---
