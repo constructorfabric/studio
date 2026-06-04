@@ -25,9 +25,9 @@ RULES:
   ALWAYS verify the cf skill is loaded, CFS_INIT == true, before authoring or reviewing docs
   ALWAYS load the consistency-checklist and language-complexity methodologies and the storytelling-dimensions reference before authoring or reviewing docs
   ALWAYS apply the resolved language-complexity level to every chat message and document write, rewriting before emitting when a draft breaches it (source quotes verbatim/exempt)
-  ALWAYS resolve and apply the audience dimension per {cf-studio-path}/.core/requirements/storytelling-dimensions.md at Bootstrap — review-class scopes emphasis, authoring-class sets the document level — never as a gate on the verdict
+  ALWAYS resolve and apply the audience dimension per {cf-studio-path}/.core/requirements/storytelling-dimensions.md at Bootstrap — the review flow class scopes emphasis, the authoring flow class sets the document level — never as a gate on the verdict
   ALWAYS resolve and apply the narrator dimension per {cf-studio-path}/.core/requirements/storytelling-dimensions.md at Bootstrap — map it onto the selected reviewer/author sub-agents and the document voice — never overriding the verdict
-  ALWAYS resolve and apply the diagram dimension per {cf-studio-path}/.core/requirements/storytelling-dimensions.md at Bootstrap — review-class flags a missing or unclear diagram, authoring-class embeds a warranted one — never auto-generating outside the authored document
+  ALWAYS resolve and apply the diagram dimension per {cf-studio-path}/.core/requirements/storytelling-dimensions.md at Bootstrap — the review flow class flags a missing or unclear diagram, the authoring flow class embeds a warranted one — never auto-generating outside the authored document
   NEVER author or review docs when a required reference failed to load
 MENU LoadCfSkillConfirm
 TITLE: The cf skill is not loaded. It is the Constructor Studio core that loads the shared rules and routes to cf-* skills, so writing docs cannot run without it. Load it now to continue?
@@ -65,7 +65,7 @@ WHEN:
 DO:
   EMIT_MENU ReviewGranularityMenu WHEN REVIEW_GRANULARITY == unset
   RUN the chosen review at REVIEW_GRANULARITY, dispatching cf-semantic-reviewer-consistency and cf-semantic-reviewer-artifact instances in parallel (and cf-semantic-reviewer-freeform only when the user supplied a custom review prompt)
-  RUN application of the Bootstrap-resolved storytelling dimensions to this dispatch per {cf-studio-path}/.core/requirements/storytelling-dimensions.md review-class rules — scope each reviewer's emphasis by the resolved audience, map the resolved narrator onto the selected reviewer set, and instruct each reviewer to flag a warranted-but-missing or unclear diagram as a finding
+  RUN scoping of this review dispatch by the Bootstrap-resolved storytelling dimensions per {cf-studio-path}/.core/requirements/storytelling-dimensions.md review flow-class rules — scope each reviewer's emphasis by the resolved audience, map the resolved narrator onto the selected reviewer set, and instruct each reviewer to flag a warranted-but-missing or unclear diagram as a finding
   RUN aggregation of every reviewer's findings into one deduplicated review report
   CONTINUE WriteDocsValidate WHEN review fixes were applied this iteration (re-run the deterministic gate before re-reviewing)
   STOP_TURN and report the remaining findings WHEN findings remain but no fixes were applied this iteration (none approved, none applicable, or the ReviewFixApprovalGate resolved to none) — re-reviewing unchanged content cannot change the result
@@ -77,7 +77,7 @@ RULES:
   ALWAYS aggregate and deduplicate all findings into one report before iterating fixes
   NEVER declare a document done until BOTH the deterministic gate passes AND the semantic review has no remaining findings; ALWAYS re-run WriteDocsValidate after any fix before re-reviewing
   NEVER re-loop the review when no fixes were applied this iteration — STOP_TURN reporting the remaining findings so the loop cannot spin on unchanged content; only an applied fix re-runs WriteDocsValidate and re-reviews
-  ALWAYS apply the resolved audience and narrator only to shape reviewer emphasis and reviewer-set mapping per storytelling-dimensions review-class, NEVER to change a finding's severity or the review verdict and NEVER as a separate storytelling reviewer
+  ALWAYS apply the resolved audience and narrator only to scope reviewer emphasis and map the narrator onto the selected reviewer set per storytelling-dimensions review flow-class rules, NEVER to change a finding's severity or the review verdict and NEVER as a separate storytelling reviewer
   ALWAYS have reviewers flag a warranted-but-missing or unclear diagram as a finding, and NEVER auto-generate a diagram in the review loop
 MENU ReviewGranularityMenu
 TITLE: Choose review depth — the suggested level fits the change size.
@@ -96,7 +96,8 @@ PURPOSE: Dispatch the sub-agents that write, fix, review, and gate project docum
 RULES:
   ALWAYS author and apply review fixes via cf-generate-author from {cf-studio-path}/.core/skills/studio/agents/cf-generate-author.md — the read-only selector that classifies task domain and complexity and routes generic artifact/prose work to the cheapest capable tier (cf-generate-author-junior for simple one-file low-risk prose, cf-generate-author-middle for standard artifacts with moderate cross-references, cf-generate-author-senior for complex multi-file or strict-rule docs, cf-generate-author-lead for high-risk or broad cross-system documentation)
   ALWAYS resolve git_commit_mode (probe once per session), contributing_guide (discover; null when none found), and the mode-matched git_constraint before any write-capable author dispatch, and ALWAYS include all three in that dispatch payload
-  ALWAYS include the Bootstrap-resolved audience, narrator, and diagram dimensions in every reviewer and author dispatch payload, scoped per {cf-studio-path}/.core/requirements/storytelling-dimensions.md — review-class (audience scopes emphasis, narrator maps onto the reviewer set, a missing/unclear diagram is flagged not generated) and authoring-class (audience sets the document level, narrator maps onto the author voice, a warranted diagram is embedded) — and NEVER as a gate on any verdict
+  ALWAYS include the Bootstrap-resolved audience, narrator, and diagram dimensions in every reviewer and author dispatch payload as read-only policy data, scoped per {cf-studio-path}/.core/requirements/storytelling-dimensions.md review and authoring flow-class rules
+  NEVER pass any storytelling dimension as a gate on a reviewer or author verdict
   ALWAYS dispatch cf-semantic-reviewer-consistency from {cf-studio-path}/.core/skills/studio/agents/cf-semantic-reviewer-consistency.md (consistency-checklist) and cf-semantic-reviewer-artifact from {cf-studio-path}/.core/skills/studio/agents/cf-semantic-reviewer-artifact.md (kit/artifact checklist) per the chosen REVIEW_GRANULARITY: single-pass = one reviewer covering both methodologies; per-methodology = one reviewer per methodology; per-layer = one reviewer per category for every category each methodology defines, run in parallel, never a fixed count
   ALWAYS dispatch cf-semantic-reviewer-freeform from {cf-studio-path}/.core/skills/studio/agents/cf-semantic-reviewer-freeform.md only when the user supplies a custom review prompt/question
   ALWAYS run the deterministic gate via cf-deterministic-validator from {cf-studio-path}/.core/skills/studio/agents/cf-deterministic-validator.md
