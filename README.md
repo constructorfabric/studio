@@ -36,12 +36,12 @@ The diagram below shows how one request moves through that layer:
 
 ```mermaid
 flowchart TB
-    Req["Your request"] --> Route["cf routing\npicks the task-matched workflow"]
-    Route --> WF["Workflow\nloads rules + context, runs gates"]
-    WF --> Sub["Specialized subagents\nplanner / author / reviewer / validator"]
-    Sub --> Repo["Repository\nartifacts, code, config"]
-    Repo --> Val["cfs validation\ndeterministic checks"]
-    Val --> Human["You\napprove and merge"]
+    Req["Your request"] --> Route["cf routing<br/>picks the task-matched workflow"]
+    Route --> WF["Workflow<br/>loads rules + context, runs gates"]
+    WF --> Sub["Specialized subagents<br/>planner / author / reviewer / validator"]
+    Sub --> Repo["Repository<br/>artifacts, code, config"]
+    Repo --> Val["cfs validation<br/>deterministic checks"]
+    Val --> Human["You<br/>approve and merge"]
 ```
 
 ### Authoritative delivery artifacts
@@ -139,12 +139,12 @@ Constructor Studio makes that repo-attached surface more explicit by controlling
 
 ```mermaid
 flowchart LR
-    Human["Human\napproval, adequacy, risk"]
-    Tool["AI coding tool\nchat, files, model access"]
-    Agent["Agent\nreasoning, writing, judgment"]
-    Studio["Constructor Studio\nworkflow, context, validation"]
-    Repo["Repository\nartifacts, config, code"]
-    CLI["cfs checks\ndeterministic signals"]
+    Human["Human<br/>approval, adequacy, risk"]
+    Tool["AI coding tool<br/>chat, files, model access"]
+    Agent["Agent<br/>reasoning, writing, judgment"]
+    Studio["Constructor Studio<br/>workflow, context, validation"]
+    Repo["Repository<br/>artifacts, config, code"]
+    CLI["cfs checks<br/>deterministic signals"]
 
     Human --> Tool
     Tool --> Agent
@@ -176,6 +176,16 @@ Constructor Studio owns the repeatable workflow and validation boundary. The age
 For non-trivial work, Constructor Studio often works best when the host can split the job across specialized subagents or clearly separated passes instead of one long mixed-purpose thread.
 
 Typical roles include a **collector** or **explorer** for context gathering, a **planner** for phase design, an **author** for implementation, a **reviewer** for defect-finding, a **validator** for deterministic checks, and in some workflows a **brainstorm panel** for structured option generation before scope is fixed.
+
+```mermaid
+flowchart LR
+    BP["brainstorm panel<br/>(optional) shape options"] --> CE["collector / explorer<br/>gather context"]
+    CE --> PL["planner<br/>phase design"]
+    PL --> AU["author<br/>implementation"]
+    AU --> RE["reviewer<br/>defect-finding"]
+    RE --> VA["validator<br/>deterministic checks"]
+    VA --> HU["human<br/>approval"]
+```
 
 This separation improves context isolation, lets each step use task-matched instructions or configuration, keeps review more independent from authorship, and makes validation a distinct discipline instead of an afterthought.
 
@@ -337,10 +347,10 @@ In practice, teams usually move through four visible stages:
 
 ```mermaid
 flowchart LR
-    A["Approve\nrequirement + design"] --> P["plan\nbounded phases"]
-    P --> G["generate\nwithin approved scope"]
-    G --> AN["analyze + cfs checks\nbefore merge"]
-    AN --> M["Merge\nwith evidence"]
+    A["Approve<br/>requirement + design"] --> P["plan<br/>bounded phases"]
+    P --> G["generate<br/>within approved scope"]
+    G --> AN["analyze + cfs checks<br/>before merge"]
+    AN --> M["Merge<br/>with evidence"]
 ```
 
 In practice, this creates clearer boundaries, earlier drift detection, and more reliable review evidence than one long mixed-purpose chat.
@@ -576,6 +586,19 @@ If you want to contribute, start with **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 | CPT | Canonical Provenance Trace | Identifier scheme `cpt-{system}-{kind}-{slug}-v{N}`; tag scheme `cpt-{role}-{...}-v{N}`. |
 | CDSL | Constructor DSL | Structured language used in FEATURE behavioral specs and traceability-linked implementation flows. See `architecture/specs/CDSL.md`. |
 | CFS | Constructor Studio CLI surface | The CLI binary is `cfs`. Prefer the short form in commands and examples. |
+
+Key terms used throughout this README:
+
+| Term | Meaning |
+|---|---|
+| Operating layer | The workflow, context, and validation layer Constructor Studio adds around your AI coding tool; it routes work and loads rules, but does not supply the model's intelligence. |
+| Traceability | The links between requirements, design, plans, and code through stable identifiers, so you can follow a change back to its approved scope. |
+| Artifact-backed delivery | Working through file-backed requirements, design, plans, and checklists instead of only chat, so the work is inspectable and reviewable. |
+| Conformance class | A category of deterministic check `cfs` applies (for example, document structure or reference integrity). |
+| Validator-visible | The subset of repository material the project has configured `cfs` to check; only this subset is deterministically enforced. |
+| Subagent | A specialized, isolated worker (planner, author, reviewer, validator, and others) the studio can dispatch for one part of a task. |
+| Kit | An optional add-on that specializes the delivery model with domain-specific templates, rules, workflows, and validation material. |
+| Workspace | A multi-repo setup that keeps related repositories aligned for cross-repo traceability. |
 
 ---
 
