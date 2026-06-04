@@ -18,9 +18,9 @@
   - [Autodetect patterns](#autodetect-patterns)
   - [Codebase entries](#codebase-entries)
 - [8b. Language Policy (`cfs check-language`, `LANG001`)](#8b-language-policy-cfs-check-language-lang001)
-- [9. Dependency Map (`cfs map` / `/cf-map`)](#9-dependency-map-cfs-map--cf-map)
+- [9. Dependency Map (`cfs map` / `cf map`)](#9-dependency-map-cfs-map--cf-map)
   - [CLI](#cli)
-  - [Chat workflow (`/cf-map`)](#chat-workflow-cf-map)
+  - [Chat workflow (`cf map`)](#chat-workflow-cf-map)
   - [`md-map.toml` — categories and styling](#md-maptoml--categories-and-styling)
 - [10. Mirror Overrides (`cfs mirror`)](#10-mirror-overrides-cfs-mirror)
 - [Further Reading](#further-reading)
@@ -29,13 +29,13 @@
 
 How to customize Constructor Studio through its repository-backed configuration surface: kits, artifacts, rules, workflow resources, and skill instructions.
 
-> **Convention**: 💬 = paste into AI coding tool chat. 🖥️ = run in terminal.
+> **Convention**: 💬 = paste into AI coding tool chat. 🖥 = run in terminal.
 
 This guide assumes you already know the README setup and workflow model.
 
 The canonical operating surface is:
 
-- 🖥️ `cfs ...` in the terminal for setup, validation, kit management, and registry inspection
+- 🖥 `cfs ...` in the terminal for setup, validation, kit management, and registry inspection
 - 💬 `cf plan: ...`, 💬 `cf generate: ...`, and 💬 `cf analyze: ...` in your AI coding tool chat for workflow-driven work
 
 This guide is only about the configuration those workflows use.
@@ -63,6 +63,14 @@ This guide is only about the configuration those workflows use.
 The built-in SDLC kit is optional, but it is a good starting point when you want a ready-made artifact, traceability, and workflow model that you can then customize or use as the basis for your own kit.
 
 Use the README for the quickstart setup path. Use this guide when you want to inspect or change the configuration surface itself.
+
+Constructor Studio configuration has three main jobs. Use this table first, then jump to the detailed section that matches the change you need.
+
+| Configuration job | Main files | What it changes | Details |
+|---|---|---|---|
+| Workflow and context loading | `config/AGENTS.md`, `config/SKILL.md`, `config/rules/` | Which project rules, domain docs, and always-on instructions the agent loads for a task | [Agent Behavior](#2-agent-behavior--navigation-skills-rules) |
+| Validation and enforcement | `config/artifacts.toml`, kit `constraints.toml`, rules, checklists | What `cfs validate`, traceability checks, TOC checks, language checks, and map scans can inspect | [Identifiers & Traceability](#3-identifiers--traceability), [Language Policy](#8b-language-policy-cfs-check-language-lang001), [Dependency Map](#9-dependency-map-cfs-map--cf-map) |
+| Kit and domain surfaces | `config/kits/{slug}/`, templates, workflow resources, kit manifests | Which domain-specific artifacts, workflows, prompts, and validation material extend the base platform | [Artifact Templates](#4-artifact-templates-rules-checklists-constraints), [Code Generation and Review](#5-code-generation-and-review) |
 
  ---
 
@@ -229,17 +237,17 @@ When `to_code = true`, implementation code must contain `@cpt-*` markers linking
 - 💬 `cf generate: implement code from cpt-myapp-feature-auth-flow-login with code traceability markers`
 - 💬 `cf analyze: report which IDs are still missing code markers`
 
-- 🖥️ `cfs validate` — validates artifact IDs, cross-references, and code markers
-- 🖥️ `cfs spec-coverage` — shows which `to_code` IDs have/lack code markers
+- 🖥 `cfs validate` — validates artifact IDs, cross-references, and code markers
+- 🖥 `cfs spec-coverage` — shows which `to_code` IDs have/lack code markers
 
 ### ID search and navigation
 
-- 🖥️ `cfs list-ids` — list all IDs across all artifacts
-- 🖥️ `cfs list-ids --kind fr` — list only functional requirement IDs
-- 🖥️ `cfs list-id-kinds` — list every configured ID kind with counts (useful for discovery before `list-ids --kind`)
-- 🖥️ `cfs where-defined --id cpt-myapp-fr-user-auth` — find where an ID is defined
-- 🖥️ `cfs where-used --id cpt-myapp-fr-user-auth` — find all references to an ID
-- 🖥️ `cfs get-content --id cpt-myapp-fr-user-auth` — print the content block defined under an ID (handy for AI prompts and quick inspection)
+- 🖥 `cfs list-ids` — list all IDs across all artifacts
+- 🖥 `cfs list-ids --kind fr` — list only functional requirement IDs
+- 🖥 `cfs list-id-kinds` — list every configured ID kind with counts (useful for discovery before `list-ids --kind`)
+- 🖥 `cfs where-defined --id cpt-myapp-fr-user-auth` — find where an ID is defined
+- 🖥 `cfs where-used --id cpt-myapp-fr-user-auth` — find all references to an ID
+- 🖥 `cfs get-content --id cpt-myapp-fr-user-auth` — print the content block defined under an ID (handy for AI prompts and quick inspection)
 
 - 💬 `cf analyze: find all IDs of kind flow in the auth feature`
 - 💬 `cf analyze: show which artifacts reference cpt-myapp-fr-user-auth`
@@ -257,7 +265,7 @@ When `to_code = true`, implementation code must contain `@cpt-*` markers linking
 
 Each artifact kind (ADR, PRD, DESIGN, FEATURE, etc.) has resource files. Paths are in `config/core.toml` under `[kits.sdlc.resources]`.
 
-- 🖥️ `cfs resolve-vars --flat | grep adr` — find where ADR resources live
+- 🖥 `cfs resolve-vars --flat | grep adr` — find where ADR resources live
 
  ### Templates — control artifact generation structure
  
@@ -292,8 +300,8 @@ Each artifact kind (ADR, PRD, DESIGN, FEATURE, etc.) has resource files. Paths a
 - 💬 `cf generate: update ADR constraints.toml so a required level-2 heading Migration Plan with id adr-migration-plan is enforced`
 - 💬 `cf generate: update FEATURE constraints.toml so ## Performance Targets is optional instead of required`
 
-- 🖥️ `cfs validate-kits` — validate constraint definitions
-- 🖥️ `cfs validate` — validate artifacts against constraints
+- 🖥 `cfs validate-kits` — validate constraint definitions
+- 🖥 `cfs validate` — validate artifacts against constraints
 
 ---
 
@@ -394,7 +402,7 @@ Each codebase entry tells Constructor Studio where source code lives and how to 
  
 - 💬 `cf generate: update artifacts.toml to ignore tests/test_fixtures/** with reason synthetic test data`
 
-- 🖥️ `cfs validate` — validate registry and all artifacts
+- 🖥 `cfs validate` — validate registry and all artifacts
 
 ---
 
@@ -404,7 +412,7 @@ Each codebase entry tells Constructor Studio where source code lives and how to 
 
  **Why configure this**: keep your artifact standards up to date with the latest kit version; install a custom kit for your organization; start from the SDLC kit and customize it into your own delivery model.
 
-🖥️ **Terminal only**:
+🖥 **Terminal only**:
 ```bash
 cfs kit install owner/repo[@ref]     # install a GitHub kit
 cfs kit install --path /path/to/my-kit # install a local kit directory
@@ -428,36 +436,36 @@ allowed_content_languages = ["en"]    # or ["en", "ru"]
 ignore_paths              = ["translations/**/*.md"]
 ```
 
-- 🖥️ `cfs check-language` — scan default `architecture/` folder using workspace config
-- 🖥️ `cfs check-language --languages en` — override allow-list inline
-- 🖥️ `cfs check-language --languages en,ru architecture/ docs/` — scan custom paths with multi-script allow
-- 🖥️ `cfs check-language --ignore "translations/**/*.md"` — skip a glob
-- 🖥️ `cfs check-language --quiet` — violations only, no summary header
+- 🖥 `cfs check-language` — scan default `architecture/` folder using workspace config
+- 🖥 `cfs check-language --languages en` — override allow-list inline
+- 🖥 `cfs check-language --languages en,ru architecture/ docs/` — scan custom paths with multi-script allow
+- 🖥 `cfs check-language --ignore "translations/**/*.md"` — skip a glob
+- 🖥 `cfs check-language --quiet` — violations only, no summary header
 
 `LANG001` errors include the file, line, and offending character so you can fix or whitelist quickly.
 
 ---
 
-## 9. Dependency Map (`cfs map` / `/cf-map`)
+## 9. Dependency Map (`cfs map` / `cf map`)
 
 `cfs map` builds an interactive **markdown ↔ source dependency map** by scanning links, code references, and `@cpt-*` identifiers across the project. It is the fastest way to see how artifacts, rules, workflows, and code wire together — and where the wiring is broken (phantom IDs, dangling links, uncategorized files).
 
 **Why configure this**: the default scan reads every Markdown file under the project root and tags nodes by path. With a project-local `md-map.toml` you control which directories become named categories, what colors they use in the rendered graph, and whether files outside those categories are still shown.
 
-**What it affects**: `cfs map` output (`md-map.html`, `md-map.json`) and the `/cf-map` slash-command workflow (`cf map: ...`). The map is read-only — it never edits artifacts or code.
+**What it affects**: `cfs map` output (`md-map.html`, `md-map.json`) and the `cf map: ...` chat workflow. Some hosts may also expose `/cf-map` as a slash-command alias. The map is read-only: it never edits artifacts or code.
 
 ### CLI
 
-- 🖥️ `cfs map` — render `md-map.html` + `md-map.json` at the project root (default)
-- 🖥️ `cfs map --format json` — emit only the JSON graph (for CI / tooling)
-- 🖥️ `cfs map --out custom/path.html` — write to a custom location
-- 🖥️ `cfs map --config md-map.toml` — explicitly point at a config file
-- 🖥️ `cfs map --no-source` — markdown-only scan (skip code under registered codebases)
-- 🖥️ `cfs map --local-only` — restrict to current repo (skip workspace sources)
-- 🖥️ `cfs map --inline-data` — embed graph data inside the HTML (self-contained file)
-- 🖥️ `cfs map --include-adapter` — also walk the `{cf-studio-path}/` adapter dir so links to `{cf-studio-path}/...` resolve as nodes
+- 🖥 `cfs map` — render `md-map.html` + `md-map.json` at the project root (default)
+- 🖥 `cfs map --format json` — emit only the JSON graph (for CI / tooling)
+- 🖥 `cfs map --out custom/path.html` — write to a custom location
+- 🖥 `cfs map --config md-map.toml` — explicitly point at a config file
+- 🖥 `cfs map --no-source` — markdown-only scan (skip code under registered codebases)
+- 🖥 `cfs map --local-only` — restrict to current repo (skip workspace sources)
+- 🖥 `cfs map --inline-data` — embed graph data inside the HTML (self-contained file)
+- 🖥 `cfs map --include-adapter` — also walk the `{cf-studio-path}/` adapter dir so links to `{cf-studio-path}/...` resolve as nodes
 
-### Chat workflow (`/cf-map`)
+### Chat workflow (`cf map`)
 
 - 💬 `cf map: render the dependency map` — runs the full four-phase workflow (pre-flight → configure → generate → validate)
 - 💬 `cf map: find dangling references` — routes into `analyze` with the map as input
@@ -516,7 +524,7 @@ When `md-map.toml` is loaded, the renderer hides the synthetic `uncategorized` b
 | `cfs mirror remove <from>` | Delete one override |
 | `cfs mirror clear [--yes]` | Delete all overrides |
 
-🖥️ **Terminal**:
+🖥 **Terminal**:
 ```bash
 # Redirect all official URLs to your fork
 cfs mirror override github.com/constructorfabric/studio github.com/ainetx/studio

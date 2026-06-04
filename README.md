@@ -9,21 +9,22 @@
 
 **Audience**: Developers, product managers, architects, technical leads, and teams adopting the current CLI and AI coding tool workflow
 
-> **Convention**: 💬 = paste into AI coding tool chat. 🖥️ = run in terminal.
+> **Convention**: 💬 = paste into AI coding tool chat. 🖥 = run in terminal.
 
 > **Scope**: This README describes the current repository-oriented distribution: the `cfs` CLI, repository-local setup, generated host integrations, and agent-facing workflows and skills. Constructor Studio is also planned for macOS, Windows, and web application experiences; those app surfaces are not documented here yet.
 
 ## Overview
 
-Constructor Studio is a traceable delivery system for requirements, design, plans, and code.
+Constructor Studio is a workflow, context, and validation layer for AI-assisted software delivery.
 
-Stable identifiers and references connect requirements, design, plans, and implementation so drift is surfaced early instead of being reconstructed ad hoc during review and delivery.
+It turns AI coding work from one long, memory-heavy chat into routed workflows with explicit context loading, approval gates, deterministic checks, and reviewable file-backed evidence. Stable identifiers and references still connect requirements, design, plans, and implementation, but traceability is now one part of a broader operating model.
 
-For teams already using an AI coding tool, Constructor Studio provides the operating controls needed to keep requirements, design, plans, and code traceable, reviewable, and enforceable as artifacts and implementation change:
+For teams already using an AI coding tool, Constructor Studio provides the operating controls needed to keep multi-step work bounded, explainable, reviewable, and enforceable as artifacts and implementation change:
 
-- **stable identifiers and cross-link validation** to prove alignment across requirements, design, plans, and code
-- **deterministic `cfs` validation** to check structure, references, consistency, and traceability locally and in CI
-- **templates, checklists, and staged workflows** to gate generation, review, and validation through explicit stages with defined inputs, outputs, and checks
+- **workflow routing and context loading** so each task starts with the right rules, references, gates, and role separation
+- **templates, checklists, and staged workflows** to gate planning, generation, review, explanation, debugging, and validation through explicit stages
+- **deterministic `cfs` validation** to check structure, references, consistency, traceability, and generated integration surfaces locally and in CI
+- **stable identifiers and cross-link validation** to preserve alignment across requirements, design, plans, and code when that enforcement surface is configured
 
 **Jump to:** [Product shape](#product-shape) | [Fit and non-fit](#fit-and-non-fit) | [Operating model](#operating-model) | [Traceability and validation model](#traceability-and-validation-model) | [Workflow model](#workflow-model) | [Typical delivery sequence](#typical-delivery-sequence) | [Supported hosts](#supported-hosts) | [Evaluate Constructor Studio](#evaluate-constructor-studio) | [Installation and setup reference](#installation-and-setup-reference)
 
@@ -68,13 +69,14 @@ Most teams should start with the core platform and add a kit later only if they 
 
 ### How teams encounter Constructor Studio
 
-In the current repository-oriented distribution, teams usually encounter and touch Constructor Studio through five main surfaces in the repository and toolchain:
+In the current repository-oriented distribution, teams usually encounter and touch Constructor Studio through seven main surfaces in the repository and toolchain:
 
 | Surface | Form | Role |
 |---|---|---|
 | Guided chat entry | `cf help` | Fastest way to get oriented inside a repo when you are new to Constructor Studio or unsure which route to use |
 | Core workflow chat surface | `cf plan: ...`, `cf generate: ...`, `cf analyze: ...` | Main chat entry for bounded planning, creation/update work, and validation/review |
-| Specialized chat routes | `cf explore: ...`, `cf brainstorm: ...`, `cf pdsl: ...`, `cf auto-config`, `cf map: ...` | Discovery, ideation, prompt-contract authoring, project inference/setup, and dependency-graph tasks |
+| Specialized chat routes | `cf explore: ...`, `cf brainstorm: ...`, `cf auto-config`, `cf map: ...` | Discovery, ideation, project inference/setup, and dependency-graph tasks |
+| Advanced maintainer routes | `cf write-skills: ...`, `cf debug-prompts` | Prompt, skill, workflow, and agent-instruction authoring or step-through debugging |
 | Deterministic CLI | `cfs <command>` | Setup, validation, health checks, agent regeneration, delegation, map rendering, and repeatable local or CI checks |
 | Generated AI coding tool integration files | generated files in the repository | Connect the repository or workspace to supported tools without manual setup in each host |
 | Optional kit content | installed kit content | Add domain-specific templates, rules, workflows, and validation material |
@@ -120,6 +122,27 @@ Constructor Studio is best understood as the **workflow, context, and validation
 Four actors shape the operating model: the **AI coding tool** provides the environment, chat interface, and model access, the **agent** performs the reasoning and writing inside that environment, **Constructor Studio** governs the repo-attached workflow, configuration, and validation surface around the work, and the **human** decides approval, adequacy, risk acceptance, and whether the result is acceptable to merge or ship.
 
 Constructor Studio makes that repo-attached surface more explicit by controlling what context and rules are loaded, what structured artifacts or checkpoints the task is expected to use, and what deterministic checks can later be run with `cfs`. It does not supply the underlying intelligence of the model, and it does not decide whether the final implementation is correct, well-designed, or acceptable to merge.
+
+```mermaid
+flowchart LR
+    Human["Human\napproval, adequacy, risk"]
+    Tool["AI coding tool\nchat, files, model access"]
+    Agent["Agent\nreasoning, writing, judgment"]
+    Studio["Constructor Studio\nworkflow, context, validation"]
+    Repo["Repository\nartifacts, config, code"]
+    CLI["cfs checks\ndeterministic signals"]
+
+    Human --> Tool
+    Tool --> Agent
+    Studio --> Agent
+    Studio --> Repo
+    Repo --> CLI
+    CLI --> Human
+    Agent --> Repo
+    Human --> Studio
+```
+
+Constructor Studio owns the repeatable workflow and validation boundary. The agent still owns non-deterministic reasoning and writing, and the human still owns acceptance.
 
  - **Use the agent for**
    - reasoning
@@ -243,8 +266,14 @@ Specialized chat routes build on that same model:
 | Brainstorm | `cf brainstorm: ...` | the option space is still open and you want structured ideation before locking scope |
 | Auto-config | `cf auto-config` | you want Constructor Studio to scan a project and infer or refresh rules/config for brownfield work |
 | Explain | `cf analyze: explain <target>` | you want an interactive walkthrough, onboarding session, or teaching flow instead of defect review |
-| PDSL | `cf pdsl: ...` | you are authoring, transforming, or reviewing prompt, workflow, skill, or agent instruction files |
 | Map | `cf map: ...` | you want to render or inspect the dependency graph and route follow-up analysis through the map |
+
+Advanced maintainer routes:
+
+| Capability | Portable chat form | Use it when |
+|---|---|---|
+| Write skills | `cf write-skills: ...` | you are authoring, transforming, or reviewing prompt, workflow, skill, or agent instruction files |
+| Debug prompts | `cf debug-prompts` | you want to step through a skill, workflow, or prompt execution in-session |
 
 Common `cfs` utilities around those chat workflows:
 
@@ -312,12 +341,12 @@ Constructor Studio works across multiple AI coding tools through the same portab
  
   1. **Pick one real repository and one narrow real input** such as a requirement, design note, or change request that should produce a bounded, reviewable output.
   2. **Complete the one-time setup for that repository** using the installation and setup reference below so the repo is initialized and ready for Constructor Studio.
-  3. **Activate Constructor Studio in chat** with 💬 `cf on` in the AI coding tool attached to that repository.
+  3. **Activate Constructor Studio in chat** with 💬 `cf` in the AI coding tool attached to that repository.
   4. **Run one focused request** with 💬 `cf analyze: ...` when you want an inspectable assessment of the input, or 💬 `cf plan: ...` when you want bounded execution steps before implementation.
  
   ### Validation checkpoint
  
-  - **Run one deterministic check** with 🖥️ `cfs validate --local-only` when you want to verify only the current repository, or 🖥️ `cfs validate` when cross-repo or workspace resolution is part of the trial.
+  - **Run one deterministic check** with 🖥 `cfs validate --local-only` when you want to verify only the current repository, or 🖥 `cfs validate` when cross-repo or workspace resolution is part of the trial.
   - **Use that validation step as the proof surface of the trial**; this is where Constructor Studio shows that it produced deterministic, validator-visible signals instead of only conversational output.
   - **Treat either a clean pass or an actionable failure as useful evidence**; the most useful failures are localized, inspectable, and actionable rather than vague.
  
@@ -354,7 +383,7 @@ Constructor Studio works across multiple AI coding tools through the same portab
 - **If the repository already includes Constructor Studio**
   - ensure Python 3.11+ is available for the repository-local scripts and CI
   - clone or open the repository in your supported AI coding tool
-  - activate Constructor Studio in chat with 💬 `cf on`
+  - activate Constructor Studio in chat with 💬 `cf`
   - send one focused request with 💬 `cf help`, 💬 `cf explore: ...`, 💬 `cf analyze: ...`, or 💬 `cf plan: ...`
 
  - **If the repository does not yet include Constructor Studio**
@@ -366,7 +395,7 @@ Constructor Studio works across multiple AI coding tools through the same portab
  
  1. **Install the CLI**
 
-    🖥️ **Terminal** (pre-release — install from GitHub):
+    🖥 **Terminal** (pre-release — install from GitHub):
     ```bash
     pipx install git+https://github.com/constructorfabric/studio.git
     cfs --version
@@ -378,7 +407,7 @@ Constructor Studio works across multiple AI coding tools through the same portab
 
  2. **Initialize the repository**
 
-    🖥️ **Terminal**:
+    🖥 **Terminal**:
     ```bash
     cfs init
     cfs generate-agents
@@ -390,7 +419,7 @@ Constructor Studio works across multiple AI coding tools through the same portab
 
 3. **Activate Constructor Studio** in the AI coding tool chat:
     ```text
-    cf on
+    cf
     ```
 
 4. **Run one focused request** with 💬 `cf help`, 💬 `cf explore: ...`, 💬 `cf analyze: ...`, or 💬 `cf plan: ...`
@@ -517,8 +546,8 @@ If you want to contribute, start with **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 | Acronym | Expansion | Notes |
 |---|---|---|
 | CPT | Canonical Provenance Trace | Identifier scheme `cpt-{system}-{kind}-{slug}-v{N}`; tag scheme `cpt-{role}-{...}-v{N}`. |
-| CDSL | Constructor DSL | Domain-specific language used inside kit/blueprint authoring (file: `architecture/specs/CDSL.md`). |
-| CFS | Constructor Fabric Studio | The CLI binary (`cfs`). Use the short form `cfs` in code; spell out only in marketing prose. |
+| CDSL | Constructor DSL | Structured language used in FEATURE behavioral specs and traceability-linked implementation flows. See `architecture/specs/CDSL.md`. |
+| CFS | Constructor Studio CLI surface | The CLI binary is `cfs`. Prefer the short form in commands and examples. |
 
 ---
 

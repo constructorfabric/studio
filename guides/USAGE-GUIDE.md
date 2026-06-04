@@ -29,7 +29,7 @@
   - [Use `analyze` when](#use-analyze-when)
   - [What `analyze` is for in practice](#what-analyze-is-for-in-practice)
   - [Use `brainstorm` when](#use-brainstorm-when)
-  - [Use `pdsl` when](#use-pdsl-when)
+  - [Use `write-skills` when](#use-write-skills-when)
   - [Default routing rule](#default-routing-rule)
   - [When to expect or ask for subagent delegation](#when-to-expect-or-ask-for-subagent-delegation)
   - [Recommended execution loop for artifacts and code](#recommended-execution-loop-for-artifacts-and-code)
@@ -72,7 +72,7 @@
   - [Managing large inputs (`cfs chunk-input`)](#managing-large-inputs-cfs-chunk-input)
 - [15. Quick decision checklist](#15-quick-decision-checklist)
 - [16. Mirror overrides](#16-mirror-overrides)
-- [17. Dependency map (`cfs map` / `/cf-map`)](#17-dependency-map-cfs-map--cf-map)
+- [17. Dependency map (`cfs map` / `cf map`)](#17-dependency-map-cfs-map--cf-map)
   - [Why use it](#why-use-it)
   - [When to use it](#when-to-use-it)
   - [Typical commands](#typical-commands-1)
@@ -83,7 +83,7 @@
 
 How to use **Constructor Studio** well in common real-world situations: when to use it, when to skip it, and how to choose the right workflow without unnecessary overhead.
 
-> **Convention**: 💬 = paste into AI coding tool chat. 🖥️ = run in terminal.
+> **Convention**: 💬 = paste into AI coding tool chat. 🖥 = run in terminal.
 
 ---
 ---
@@ -113,7 +113,7 @@ For the short version, use the setup section in **[README](../README.md)** first
 ### One easy operating rule
 
 - use `cfs` in your terminal for setup, validation, updates, and workspace commands
-- use `cf ...` in your AI coding tool chat for `help`, `explore`, `auto-config`, `plan`, `generate`, `analyze`, and specialized routes such as `brainstorm`, `pdsl`, and `map`
+- use `cf ...` in your AI coding tool chat for `help`, `explore`, `auto-config`, `plan`, `generate`, `analyze`, and specialized routes such as `brainstorm` and `map`
 - do **not** run `cf ...` in the terminal
 - the portable `cf <workflow>: ...` form is the best default when a workflow takes a request payload; some chat routes are command-like prompts such as `cf help` and `cf auto-config`
 
@@ -133,14 +133,14 @@ In that case:
 
 - ensure Python 3.11+ is available for the repository-local scripts and CI
 - open the repository in your supported AI coding tool
-- activate Constructor Studio in chat with 💬 `cf on`
+- activate Constructor Studio in chat with 💬 `cf`
 - start with one focused request such as 💬 `cf help`, 💬 `cf explore: ...`, 💬 `cf analyze: ...`, or 💬 `cf plan: ...`
 
 Use the CLI install path below when you need to bootstrap the repository yourself, run terminal commands directly, or manage setup across multiple repositories.
 
 ### 1. Install the CLI
 
-🖥️ **Terminal**:
+🖥 **Terminal**:
 ```bash
 pipx install git+https://github.com/constructorfabric/studio.git
 cfs --version
@@ -154,7 +154,7 @@ If `cfs` is not found, open a new terminal and try again before doing anything e
 
 Install `pipx` with **Homebrew**:
 
-🖥️ **Terminal**:
+🖥 **Terminal**:
 ```bash
 brew install pipx
 pipx ensurepath
@@ -164,7 +164,7 @@ Then open a new terminal, or reload the shell config that `pipx ensurepath` upda
 
 For the default macOS `zsh` setup, that often means:
 
-🖥️ **Terminal**:
+🖥 **Terminal**:
 ```bash
 source ~/.zshrc
 ```
@@ -173,7 +173,7 @@ source ~/.zshrc
 
 Install `pipx` with **Scoop**:
 
-🖥️ **Terminal**:
+🖥 **Terminal**:
 ```bash
 scoop install pipx
 pipx ensurepath
@@ -185,7 +185,7 @@ Then open a new terminal so the updated `PATH` is picked up.
 
 From your repository root, run:
 
-🖥️ **Terminal**:
+🖥 **Terminal**:
 ```bash
 cfs init
 cfs generate-agents
@@ -215,10 +215,10 @@ In the AI coding tool chat attached to the same repository or workspace you just
 
 💬 **AI coding tool chat**:
 ```text
-cf on
+cf
 ```
 
-If setup worked, you should see a clear activation confirmation in chat. If the chat behaves like a normal assistant and does not confirm activation, reopen the repository in the AI coding tool and try again.
+If setup worked, you should see Constructor Studio load and offer a workflow routing menu. If the chat behaves like a normal assistant and does not load the `cf` skill, reopen the repository in the AI coding tool and try again.
 
 Some hosts may also show the resolved Constructor Studio path or loaded context.
 
@@ -245,10 +245,10 @@ Some hosts may also show the resolved Constructor Studio path or loaded context.
 - **Generated files exist, but the AI coding tool still does not pick them up**
   - Reload or reopen the repository in the AI coding tool.
 
-- **`cf on` behaves like a normal assistant reply**
+- **`cf` behaves like a normal assistant reply**
   - Make sure you opened the same repository you initialized.
   - Make sure `cfs generate-agents` already ran.
-  - Then retry `cf on`.
+  - Then retry `cf`.
 
 - **You expected slash commands, but only `cf ...` works**
   - That is normal. `cf <workflow>: ...` is the portable default. Slash commands are host-specific aliases.
@@ -397,7 +397,7 @@ If you only need the short router:
 - need project or artifact discovery first -> use `cf explore: ...`
 - need inferred repo rules or setup help for brownfield work -> use `cf auto-config`
 - need open-ended option mapping first -> use [`brainstorm`](#use-brainstorm-when)
-- need prompt / workflow / agent contract work -> use [`pdsl`](#use-pdsl-when)
+- need prompt / workflow / agent contract work -> use [`write-skills`](#use-write-skills-when)
 - need a rendered graph of docs, links, and code references -> use [`cfs map` / `cf map`](#17-dependency-map-cfs-map--cf-map)
 
 ### Use `plan` when
@@ -456,8 +456,12 @@ Use the portable workflow form by default:
 - 💬 `cf generate: ...`
 - 💬 `cf analyze: ...`
 - 💬 `cf brainstorm: ...`
-- 💬 `cf pdsl: ...`
 - 💬 `cf map: ...`
+
+Advanced maintainer routes exist for prompt, skill, and workflow authors:
+
+- 💬 `cf write-skills: ...`
+- 💬 `cf debug-prompts`
 
 Some hosts also expose slash-command aliases such as `/cf-plan`, `/cf-generate`, or `/cf-analyze`.
 
@@ -564,18 +568,23 @@ Unlike chat brainstorming, the Constructor Studio brainstorm workflow runs a **f
 
 Use `brainstorm` **before** `plan` when scope itself is the open question. Skip it when the change is already well-understood.
 
-### Use `pdsl` when
+### Use `write-skills` when
 
-Use `pdsl` for authoring, transforming, or reviewing **prompt / workflow / skill / agent instruction files** as compact state-machine-like contracts. PDSL (Prompt DSL) is the format used internally by Constructor Studio's own workflow files — explicit `UNIT`, `DO`, `MENU`, `STATE`, `STOP_TURN` blocks instead of free-form prose.
+Use `write-skills` for authoring, transforming, or reviewing **prompt / workflow / skill / agent instruction files** as compact state-machine-like contracts. PDSL (Prompt DSL) is the format used internally by Constructor Studio's own workflow files: explicit `UNIT`, `DO`, `MENU`, `STATE`, and `STOP_TURN` blocks instead of free-form prose.
 
-Use `pdsl` when:
+Use `write-skills` when:
 - you need to write a new prompt / workflow / skill / agent instruction file from scratch as a precise contract
 - you have prose-style instructions and want them converted to compact PDSL (preserving behavior)
 - you want to review existing prompt files for state-machine correctness, missing `STOP_TURN`, hidden prose rules, or handoff bugs
 
-- 💬 `cf pdsl: review .claude/agents/my-agent.md for state-machine correctness`
-- 💬 `cf pdsl: transform this prose workflow into PDSL`
-- 💬 `cf pdsl: author a new agent instruction file for code review`
+- 💬 `cf write-skills: review .claude/agents/my-agent.md for state-machine correctness`
+- 💬 `cf write-skills: transform this prose workflow into PDSL`
+- 💬 `cf write-skills: author a new agent instruction file for code review`
+
+Use `debug-prompts` when you need to inspect execution live instead of editing the prompt file:
+
+- 💬 `cf debug-prompts`
+- 💬 `cf debug-prompts: step through cf-write-docs and pause before each instruction`
 
 This is an authoring/operating tool for the people who write Constructor Studio prompts and agents themselves; most end users will never need it.
 
@@ -700,9 +709,9 @@ Use narrower checks while iterating and broader checks before merge. Let humans 
 
 **Do**:
 
-- 🖥️ `cfs init`
-- 🖥️ `cfs generate-agents`
-- 💬 `cf on`
+- 🖥 `cfs init`
+- 🖥 `cfs generate-agents`
+- 💬 `cf`
 
 **Do not**:
 
@@ -927,7 +936,7 @@ Clone the full heavy setup into every tiny service repo even when those repos mo
 
 ### Typical commands
 
-🖥️ **Terminal**:
+🖥 **Terminal**:
 ```bash
 cfs workspace-init
 cfs workspace-add --name docs --path ../docs-repo --role artifacts
@@ -937,10 +946,10 @@ cfs workspace-info
 
 Useful follow-up commands:
 
-- 🖥️ `cfs validate --local-only` — validate only the current repository when you want to skip cross-repo resolution
-- 🖥️ `cfs where-defined --id <id>` — find where an ID is defined across reachable workspace sources
-- 🖥️ `cfs list-ids --source <name>` — inspect IDs from one specific workspace source
-- 🖥️ `cfs workspace-sync` — refresh Git URL workspace sources when your workspace uses remote sources
+- 🖥 `cfs validate --local-only` — validate only the current repository when you want to skip cross-repo resolution
+- 🖥 `cfs where-defined --id <id>` — find where an ID is defined across reachable workspace sources
+- 🖥 `cfs list-ids --source <name>` — inspect IDs from one specific workspace source
+- 🖥 `cfs workspace-sync` — refresh Git URL workspace sources when your workspace uses remote sources
 
 
 ---
@@ -966,9 +975,9 @@ Brownfield projects are often a strong Constructor Studio use case, but only if 
 
 ### Good sequence
 
-1. 🖥️ `cfs init`
-2. 🖥️ `cfs generate-agents`
-3. 💬 `cf on`
+1. 🖥 `cfs init`
+2. 🖥 `cfs generate-agents`
+3. 💬 `cf`
 4. 💬 `cf auto-config`
 5. 💬 `cf analyze: summarize current conventions and likely architecture boundaries`
 6. 💬 `cf plan: break the requested change into safe brownfield phases`
@@ -1020,7 +1029,7 @@ If validation produces a false positive, an autonomous loop can optimize for the
 
 If your setup uses RalphEx-backed delegation, run a quick environment check before you rely on it:
 
-- 🖥️ `cfs doctor`
+- 🖥 `cfs doctor`
 
 Treat warnings or failures in that preflight as a reason to stay interactive until the delegation path is healthy.
 
@@ -1040,11 +1049,11 @@ A final **human review remains mandatory**.
 
 Useful flags:
 
-- 🖥️ `cfs delegate .bootstrap/.plans/my-plan --dry-run` — assemble and print the ralphex command without invoking it (recommended **before** every first real delegation)
-- 🖥️ `cfs delegate <plan-dir> --worktree` — request worktree isolation so RalphEx works on a copy (only valid for `execute` / `tasks-only`)
-- 🖥️ `cfs delegate <plan-dir> --no-serve` — skip the dashboard
-- 🖥️ `cfs delegate <plan-dir> --mode review --default-branch main` — review-mode against a non-default branch
-- 🖥️ `cfs delegate <plan-dir> --plans-dir custom/plans` — override the plans directory lookup
+- 🖥 `cfs delegate .bootstrap/.plans/my-plan --dry-run` — assemble and print the ralphex command without invoking it (recommended **before** every first real delegation)
+- 🖥 `cfs delegate <plan-dir> --worktree` — request worktree isolation so RalphEx works on a copy (only valid for `execute` / `tasks-only`)
+- 🖥 `cfs delegate <plan-dir> --no-serve` — skip the dashboard
+- 🖥 `cfs delegate <plan-dir> --mode review --default-branch main` — review-mode against a non-default branch
+- 🖥 `cfs delegate <plan-dir> --plans-dir custom/plans` — override the plans directory lookup
 
 > **Start with `--dry-run`.** Inspect the assembled command and confirm the plan directory, mode, and worktree choice match your intent before letting RalphEx start.
 
@@ -1052,10 +1061,10 @@ Useful flags:
 
 When a request brings a large external input — a long requirement doc, a wide PR diff, several files — the workflow may hit the raw-input overflow threshold. `cfs chunk-input` is a deterministic, idempotent way to **package** that input into line-bounded chunks the plan/generate workflows can consume cleanly:
 
-- 🖥️ `cfs chunk-input docs/big-spec.md --output-dir .bootstrap/.cache/chunks/` — chunk one file (default 300 lines / chunk)
-- 🖥️ `cfs chunk-input --max-lines 500 path1.md path2.md --output-dir <dir>` — multiple files, larger chunk size
-- 🖥️ `echo "prompt text" | cfs chunk-input --include-stdin docs/spec.md --output-dir <dir>` — combine pasted prompt with file inputs
-- 🖥️ `cfs chunk-input ... --dry-run` — show what would be written, write nothing
+- 🖥 `cfs chunk-input docs/big-spec.md --output-dir .bootstrap/.cache/chunks/` — chunk one file (default 300 lines / chunk)
+- 🖥 `cfs chunk-input --max-lines 500 path1.md path2.md --output-dir <dir>` — multiple files, larger chunk size
+- 🖥 `echo "prompt text" | cfs chunk-input --include-stdin docs/spec.md --output-dir <dir>` — combine pasted prompt with file inputs
+- 🖥 `cfs chunk-input ... --dry-run` — show what would be written, write nothing
 
 Use this **before** invoking `cf plan: ...` on a large input. The chunked output is reproducible: the same input always yields the same chunk set, so the plan workflow sees stable context across runs.
 
@@ -1103,7 +1112,7 @@ Overrides are stored in `${XDG_CONFIG_HOME:-~/.config}/constructor-studio/mirror
 
 ---
 
-## 17. Dependency map (`cfs map` / `/cf-map`)
+## 17. Dependency map (`cfs map` / `cf map`)
 
 `cfs map` builds an interactive **markdown ↔ source dependency map** of the project — every `@cpt-*` identifier, every cross-file link, every artifact-to-code reference becomes a node and edge in a graph you can open in the browser.
 
@@ -1123,10 +1132,10 @@ Overrides are stored in `${XDG_CONFIG_HOME:-~/.config}/constructor-studio/mirror
 
 ### Typical commands
 
-- 🖥️ `cfs map` — render `md-map.html` + `md-map.json` at the project root (open the HTML file directly)
-- 🖥️ `cfs map --inline-data` — embed graph data inside the HTML so the file is fully self-contained (shareable in chat / PR)
-- 🖥️ `cfs map --format json --local-only` — JSON for CI, no workspace traversal
-- 🖥️ `cfs map --include-adapter` — also walk `{cf-studio-path}/` so `.cf-studio/...` references resolve
+- 🖥 `cfs map` — render `md-map.html` + `md-map.json` at the project root (open the HTML file directly)
+- 🖥 `cfs map --inline-data` — embed graph data inside the HTML so the file is fully self-contained (shareable in chat / PR)
+- 🖥 `cfs map --format json --local-only` — JSON for CI, no workspace traversal
+- 🖥 `cfs map --include-adapter` — also walk `{cf-studio-path}/` so `.cf-studio/...` references resolve
 
 ### Chat workflow
 

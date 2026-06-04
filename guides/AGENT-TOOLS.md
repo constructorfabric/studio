@@ -58,7 +58,7 @@ How to use **Constructor Studio** with different AI agent hosts, what each tool 
 
 For the canonical product model, workflow model, and setup paths, start with **[README](../README.md)**. This guide is specifically about host differences and operational trade-offs.
 
-> **Convention**: 💬 = paste into AI coding tool chat. 🖥️ = run in terminal.
+> **Convention**: 💬 = paste into AI coding tool chat. 🖥 = run in terminal.
 
 ---
 ---
@@ -72,7 +72,8 @@ Instead, it projects its workflows and instructions into the host tool you use.
 In practice, `cfs generate-agents --agent <tool>` generates some combination of:
 
 - **workflow commands**
-  - entry points for `plan`, `generate`, `analyze`, and, where the host format can surface them cleanly, more specialized routes such as `help`, `explore`, `brainstorm`, `pdsl`, `map`, and `auto-config`, alongside workspace flows and kit workflows
+  - entry points for `plan`, `generate`, `analyze`, and, where the host format can surface them cleanly, more specialized routes such as `help`, `explore`, `brainstorm`, `map`, and `auto-config`, alongside workspace flows and kit workflows
+  - advanced maintainer routes such as `write-skills` and `debug-prompts` when the host can expose prompt, skill, workflow, or agent-instruction authoring/debugging surfaces cleanly
 
 - **skill outputs**
   - host-tool-visible Constructor Studio skill entry points that route into the core instructions
@@ -86,7 +87,7 @@ Other tools receive the best adaptation their host format supports, with **grace
 
 Typical setup:
 
-🖥️ **Terminal**:
+🖥 **Terminal**:
 ```bash
 cfs generate-agents --agent claude
 cfs generate-agents --agent cursor
@@ -476,7 +477,7 @@ Its main practical upside is that it can still be valuable as a **multi-model ho
 
 **Fix**:
 
-- rerun `🖥️ cfs generate-agents --agent <tool>`
+- rerun `🖥 cfs generate-agents --agent <tool>`
 - check whether that host actually supports subagents
 - if not, switch to manual chat separation
 
