@@ -47,6 +47,8 @@ RULES:
     handles all unmatched input.
   - ALWAYS require every top-level `OPTIONS` entry to start with a decimal
     number; aliases or patterns follow the number, not replace it.
+  - ALWAYS render every `MENU` with each selectable option on its own numbered
+    line so the user can choose by replying with the number.
   - ALWAYS treat `ON_ERROR` as the named recovery path for matching failures.
   - ALWAYS treat `NOTES` as explanatory only; NOTES do not create executable
     obligations unless an active rule references them.

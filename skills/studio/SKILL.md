@@ -16,40 +16,51 @@ STATE:
 WHEN:
   REQUIRE activation of cf OR activation of cf-studio
 DO:
+  RUN CommandResolution to resolve {cfs_cmd}
+  RUN TemplateVarResolution to resolve {cf-studio-path}
+  REQUIRE {cf-studio-path} is resolved before any LOAD below
   LOAD and REMEMBER rules from {cf-studio-path}/.gen/AGENTS.md
   LOAD and REMEMBER rules from {cf-studio-path}/.gen/SKILL.md
+  LOAD and REMEMBER rules from {cf-studio-path}/.core/requirements/pdsl-execution-card.md
   LOAD and REMEMBER all UNIT rules defined in this file
   SET CFS_INIT = true
-  CONTINUE IntentRouting WHEN the prompt contains a task intent
-  CONTINUE IntentRouting WHEN the prompt contains no task intent
+  EMIT a load report that names each loaded rule source ({cf-studio-path}/.gen/AGENTS.md, {cf-studio-path}/.gen/SKILL.md, {cf-studio-path}/.core/requirements/pdsl-execution-card.md, and the UNIT rules in this file) and confirms cf is ready to follow them
+  CONTINUE IntentRouting
 RULES:
   ALWAYS treat cf and cf-studio as the same skill, where cf-studio is a proxy alias to cf
   ALWAYS limit cf/cf-studio to initiating the session and loading core rules
+  ALWAYS report the loaded rule sources and confirm readiness to follow them before routing
+NOTES:
+  Loading {cf-studio-path}/.core/requirements/pdsl-execution-card.md here is intentional: per the PDSL spec the root studio SKILL owns loading that runtime semantics card once into the shared context pack; the agent already executes PDSL from inherent understanding, and the card reinforces it. This is not a circular dependency.
 ```
 
 ```pdsl
 UNIT IntentRouting
-PURPOSE: After cf loads core rules, query the session for available cf-* skills and either offer the relevant one(s) via a menu when there is a task intent or list all available cf-* skills when there is none.
+PURPOSE: After cf loads core rules, query the session for the available cf-* skills and present them as one numbered, directly selectable menu — the matched skill(s) when the prompt has a task intent, or all available skills when it has none.
 WHEN:
   REQUIRE cf has loaded core rules
 DO:
-  RUN {cfs_cmd} skills list to request the session for the list of available cf-* skills
+  RUN discovery of the available cf-* skills by asking the host agentic tool/session
+  EMIT a one-line note and re-ask the host once WHEN the returned skill list is empty or unavailable
+  STOP_TURN and report the missing skill list WHEN it is still empty or unavailable after the single re-ask
   RUN matching of the intent against the available cf-* skill list to find the relevant skill(s) WHEN the prompt contains a task intent
-  EMIT_MENU IntentSkillOffer WHEN the prompt contains a task intent
-  EMIT the full list of all available cf-* skills WHEN the prompt contains no task intent
+  EMIT_MENU IntentSkillMenu
   WAIT user.reply
   STOP_TURN
 RULES:
-  ALWAYS query the session for the available cf-* skill list before offering or listing, never guess the list
-  ALWAYS offer the relevant skill(s) through a menu when the prompt contains a task intent
-  ALWAYS list all available cf-* skills when the prompt contains no task intent
-MENU IntentSkillOffer
-PURPOSE: Offer the relevant cf-* skill(s) so the user picks which to route into.
+  ALWAYS discover the available cf-* skill list by asking the host agentic tool/session, never guess it and never via a cfs CLI skills-list command
+  ALWAYS render IntentSkillMenu with every offered cf-* skill on its own numbered line so the user selects one by replying with the number
+  ALWAYS populate IntentSkillMenu with the matched skill(s) when the prompt contains a task intent and with all available cf-* skills when it contains none
+  ALWAYS tag exactly one skill (suggested) when the prompt contains a task intent
+  NEVER tag a skill (suggested) when the prompt contains no task intent
+MENU IntentSkillMenu
+TITLE: Pick a cf-* skill by number to run it (when matched to a request, the best match is tagged suggested).
 OPTIONS:
-  1 relevant-skill -> route into the user-selected relevant cf-* skill
-  2 other-skill -> route into another relevant cf-* skill from the offered list
-  3 none -> STOP_TURN
-  INVALID -> EMIT_MENU IntentSkillOffer
+  1 skill -> INVOKE the selected cf-* skill, passing the original intent
+  2 none -> STOP_TURN
+  INVALID -> EMIT_MENU IntentSkillMenu
+NOTES:
+  The rendered menu enumerates every offered cf-* skill on its own line as `N <skill-name> — <why it matches or what it does>`, tags exactly one `(suggested)` when there is a task intent, and appends a final `none` option; option `1 skill` above is the representative template for those numbered skill options.
 ```
 
 ```pdsl
@@ -64,6 +75,7 @@ DO:
 RULES:
   ALWAYS offer to Invoke cf-brainstorm before starting any creative task
   ALWAYS let the user decline the cf-brainstorm offer
+  ALWAYS evaluate this offer after IntentRouting has routed, and before PlanFirstGate when a single request is both creative and substantive
   NEVER load or invoke cf-brainstorm when the user declines; continue with the requested task instead
 MENU CreativeBrainstormOffer
 TITLE: This looks like a creative task — run a cf-brainstorm panel first? (recommended)
@@ -85,6 +97,7 @@ DO:
 RULES:
   ALWAYS ask whether a plan is needed before starting any substantive task
   ALWAYS let the user decline and proceed without a plan
+  ALWAYS resolve a co-triggering CreativeIntentBrainstormOffer before this gate when both apply to the same request
   NEVER start the substantive operation before this gate resolves
 MENU PlanFirstConfirm
 TITLE: Plan this work before starting? (recommended for multi-step or sub-agent work)
@@ -114,8 +127,8 @@ RULES:
 MENU PlanStorageChoice
 TITLE: Plan ready — review it, then choose how to keep it before I start.
 OPTIONS:
-  1 memory -> keep the plan in session memory and CONTINUE the planned work
-  2 disk -> WRITE the plan to disk, then CONTINUE the planned work
+  1 memory -> keep the plan in session memory and CONTINUE the planned work (suggested for quick iteration)
+  2 disk -> WRITE the plan to disk, then CONTINUE the planned work (for persistence)
   3 revise -> revise the plan per user feedback and EMIT_MENU PlanStorageChoice
   4 stop -> STOP_TURN
   INVALID -> EMIT_MENU PlanStorageChoice
@@ -156,29 +169,32 @@ WHEN:
   REQUIRE a cf-* sub-agent must be launched
 DO:
   LOAD sub-agent contract from {cf-studio-path}/.core/skills/studio/agents/{sub-agent-name}.md
-  REQUIRE SUB_AGENTS_APPROVED == true
   EMIT_MENU SubAgentApprovalRequest WHEN SUB_AGENTS_APPROVED == unset
+  WAIT user.reply WHEN SUB_AGENTS_APPROVED == unset
+  REQUIRE SUB_AGENTS_APPROVED == true
   RUN synthesis of the initial prompt from the controller-selected `rules` plus the sub-agent contract
   DISPATCH the sub-agent natively
 RULES:
   ALWAYS synthesize the initial prompt from `rules` plus the sub-agent contract, with the controller deciding which `rules` the sub-agent needs and which it does not
   ALWAYS pass any needed `content` to the sub-agent as an absolute path or web reference/link, never inline
   ALWAYS allow the sub-agent to load any `content` it needs
+  ALWAYS treat SUB_AGENTS_APPROVED as a session-wide approval that applies to every later dispatch until StudioShutdown, and reset it to unset when the user asks to revoke it
   NEVER allow the sub-agent to load any instructions (`rules`)
   NEVER dispatch a sub-agent unless SUB_AGENTS_APPROVED == true
 ON_ERROR:
+  EMIT_MENU SubAgentApprovalRequest WHEN SUB_AGENTS_APPROVED == unset
   EMIT_MENU SubAgentFallbackRequest WHEN SUB_AGENTS_APPROVED == false OR native dispatch fails
 MENU SubAgentApprovalRequest
-PURPOSE: Request and remember approval to dispatch sub-agents.
+TITLE: Approve dispatching cf-* sub-agents this session? Approve runs them natively (parallel, isolated); deny offers an inline fallback. (approve is suggested)
 OPTIONS:
   1 approve -> SET SUB_AGENTS_APPROVED = true; CONTINUE dispatch
   2 deny -> SET SUB_AGENTS_APPROVED = false; EMIT_MENU SubAgentFallbackRequest
   INVALID -> EMIT_MENU SubAgentApprovalRequest
 MENU SubAgentFallbackRequest
-PURPOSE: Offer a fallback when a sub-agent cannot proceed via native dispatch.
+TITLE: The sub-agent could not run natively — how should I proceed? (inline is suggested)
 OPTIONS:
   1 inline -> SET SUB_AGENTS_INLINE = true; RUN the contract inline
-  2 retry -> DISPATCH the sub-agent natively
+  2 retry -> DISPATCH the sub-agent natively, at most 2 retries before this menu re-offers only inline or stop
   3 stop -> STOP_TURN
   INVALID -> EMIT_MENU SubAgentFallbackRequest
 ```
@@ -244,7 +260,7 @@ RULES:
 MENU ReviewFixScope
 TITLE: Review found issues — what should I fix? (nothing is changed until you choose)
 OPTIONS:
-  1 crit-major -> fix only CRITICAL and MAJOR findings, then re-review
+  1 crit-major -> fix only CRITICAL and MAJOR findings, then re-review (suggested)
   2 all -> fix all findings, then re-review
   3 partial -> ask which specific findings to fix, fix only those, then re-review
   4 none -> STOP_TURN
@@ -257,7 +273,7 @@ PURPOSE: After completing a task or operation, always offer next actions synthes
 WHEN:
   REQUIRE a task or operation has just completed and control is about to return to the user
 DO:
-  RUN {cfs_cmd} skills list to obtain the available cf-* skills
+  RUN discovery of the available cf-* skills by asking the host agentic tool/session
   RUN synthesis of 3 to 5 next actions from the current context and the available cf-* skills
   EMIT_MENU NextActionsMenu
   WAIT user.reply
@@ -289,6 +305,7 @@ DO:
   STOP_TURN
 RULES:
   ALWAYS require explicit user confirmation via the menu before turning the studio off
+  ALWAYS give StudioShutdown precedence only when shutdown is the unambiguous intent; otherwise resolve the task intent first and confirm the shutdown separately
   ALWAYS set CFS_INIT = false and forget all `content` and all `rules` on confirmation
   ALWAYS make the user aware that confirming forgets all loaded `content` and `rules`
   NEVER turn the studio off or forget `content`/`rules` without confirmation
