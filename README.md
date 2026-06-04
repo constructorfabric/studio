@@ -35,7 +35,7 @@ At its center, Constructor Studio is an operating layer around your AI coding to
 The diagram below shows how one request moves through that layer:
 
 ```mermaid
-flowchart TB
+flowchart LR
     Req["Your request"] --> Route["cf routing<br/>picks the task-matched workflow"]
     Route --> WF["Workflow<br/>loads rules + context, runs gates"]
     WF --> Sub["Specialized subagents<br/>planner / author / reviewer / validator"]
