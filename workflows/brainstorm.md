@@ -20,6 +20,8 @@ DO:
   EMIT_MENU LoadCfSkillConfirm WHEN CFS_INIT != true
 RULES:
   ALWAYS verify the cf skill is loaded, CFS_INIT == true, before any brainstorm work
+  ALWAYS treat CFS_INIT as false when its value is unknown, ambiguous, or unset
+  NEVER proceed past BrainstormBootstrap unless CFS_INIT == true is positively confirmed
 MENU LoadCfSkillConfirm
 TITLE: The cf skill is not loaded. It is the Constructor Studio core that loads the shared rules and routes to cf-* skills, so brainstorm cannot run without it. Load it now to continue?
 OPTIONS:

@@ -22,6 +22,8 @@ DO:
   RUN verify the methodology loaded; EMIT "Auto-config methodology not found at {cf-studio-path}/.core/requirements/auto-config.md — cannot proceed; reinstall or sync the studio kit, then retry." and STOP_TURN WHEN the load fails
 RULES:
   ALWAYS verify the cf skill is loaded, CFS_INIT == true, before any auto-config work
+  ALWAYS treat CFS_INIT as false when its value is unknown, ambiguous, or unset
+  NEVER proceed past AutoConfigBootstrap unless CFS_INIT == true is positively confirmed
   ALWAYS load and follow the auto-config methodology for phase detail
   NEVER continue past bootstrap when the methodology reference fails to load
 MENU LoadCfSkillConfirm

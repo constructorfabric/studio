@@ -22,6 +22,8 @@ DO:
   RUN verify both references loaded; EMIT "Required reference not found (PDSL spec or prompt-engineering methodology under {cf-studio-path}/.core) — cannot author or review; reinstall or sync the studio kit, then retry." and STOP_TURN WHEN either load fails
 RULES:
   ALWAYS verify the cf skill is loaded, CFS_INIT == true, before authoring or reviewing a skill
+  ALWAYS treat CFS_INIT as false when its value is unknown, ambiguous, or unset
+  NEVER proceed past WriteSkillsBootstrap unless CFS_INIT == true is positively confirmed
   ALWAYS load the PDSL spec and the prompt-engineering requirement before authoring or reviewing a skill
   NEVER author or review a skill when a required reference failed to load
 MENU LoadCfSkillConfirm

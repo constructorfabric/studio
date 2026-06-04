@@ -22,6 +22,8 @@ DO:
   CONTINUE WorkspaceIntentRouter WHEN CFS_INIT == true
 RULES:
   ALWAYS verify the cf skill is loaded, CFS_INIT == true, before any workspace work
+  ALWAYS treat CFS_INIT as false when its value is unknown, ambiguous, or unset
+  NEVER proceed past WorkspaceBootstrap unless CFS_INIT == true is positively confirmed
   ALWAYS load and follow the workspace-setup reference for field lists, decision framing, suggested defaults, and terminal-record shapes
 MENU LoadCfSkillConfirm
 TITLE: The cf skill is not loaded. Load it now to continue?

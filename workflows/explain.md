@@ -30,6 +30,8 @@ DO:
   CONTINUE ExplainE0Preflight WHEN CFS_INIT == true
 RULES:
   ALWAYS verify the cf skill is loaded, CFS_INIT == true, before any explain work
+  ALWAYS treat CFS_INIT as false when its value is unknown, ambiguous, or unset
+  NEVER proceed past ExplainBootstrap unless CFS_INIT == true is positively confirmed
   NEVER emit any answer-style, portion, or summary content before the four E1 gates (mode -> disposition -> audience -> plan approval) resolve — this is the critical AP#0 violation
   ALWAYS follow storytelling phases E0 through E5 in order and NEVER skip Discovery (E1) or the strict-context boundary
   NEVER treat storytelling output as a validation report

@@ -21,6 +21,8 @@ DO:
   CONTINUE HelpPreset WHEN CFS_INIT == true
 RULES:
   ALWAYS verify the cf skill is loaded, CFS_INIT == true, before presetting the help session
+  ALWAYS treat CFS_INIT as false when its value is unknown, ambiguous, or unset
+  NEVER proceed past HelpBootstrap unless CFS_INIT == true is positively confirmed
 MENU LoadCfSkillConfirm
 TITLE: The cf skill is not loaded. It is the Constructor Studio core that loads the shared rules and routes to cf-* skills, so help cannot run without it. Load it now to continue?
 OPTIONS:

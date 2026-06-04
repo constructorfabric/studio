@@ -23,6 +23,8 @@ DO:
   RUN verify the references loaded; EMIT "Required reference not found (code-checklist, bug-finding, or consistency-checklist methodology under {cf-studio-path}/.core) — cannot author or review code; reinstall or sync the studio kit, then retry." and STOP_TURN WHEN any load fails
 RULES:
   ALWAYS verify the cf skill is loaded, CFS_INIT == true, before authoring or reviewing code
+  ALWAYS treat CFS_INIT as false when its value is unknown, ambiguous, or unset
+  NEVER proceed past CodingBootstrap unless CFS_INIT == true is positively confirmed
   ALWAYS load the code-checklist, bug-finding, and consistency-checklist methodologies before authoring or reviewing code
   NEVER author or review code when a required reference failed to load
 MENU LoadCfSkillConfirm

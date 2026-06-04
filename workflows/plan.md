@@ -21,6 +21,8 @@ DO:
   CONTINUE PlanPhase0Discover WHEN CFS_INIT == true
 RULES:
   ALWAYS verify the cf skill is loaded, CFS_INIT == true, before any plan work
+  ALWAYS treat CFS_INIT as false when its value is unknown, ambiguous, or unset
+  NEVER proceed past PlanBootstrap unless CFS_INIT == true is positively confirmed
   ALWAYS only generate execution plans here, never implement, and ALWAYS LOAD the relevant requirement doc per phase rather than all docs upfront
   NEVER hold all phase files in context at once — compile one at a time
   ALWAYS write plan.toml before compiling phase files

@@ -23,6 +23,8 @@ DO:
   RUN verify the references loaded; EMIT "Required reference not found (consistency-checklist, language-complexity, or storytelling-dimensions reference under {cf-studio-path}/.core) — cannot author or review docs; reinstall or sync the studio kit, then retry." and STOP_TURN WHEN any load fails
 RULES:
   ALWAYS verify the cf skill is loaded, CFS_INIT == true, before authoring or reviewing docs
+  ALWAYS treat CFS_INIT as false when its value is unknown, ambiguous, or unset
+  NEVER proceed past WriteDocsBootstrap unless CFS_INIT == true is positively confirmed
   ALWAYS load the consistency-checklist and language-complexity methodologies and the storytelling-dimensions reference before authoring or reviewing docs
   ALWAYS apply the resolved language-complexity level to every chat message and document write, rewriting before emitting when a draft breaches it (source quotes verbatim/exempt)
   ALWAYS resolve and apply the audience dimension per {cf-studio-path}/.core/requirements/storytelling-dimensions.md at Bootstrap — the review flow class scopes emphasis, the authoring flow class sets the document level — never as a gate on the verdict
