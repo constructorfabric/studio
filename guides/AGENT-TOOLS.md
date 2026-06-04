@@ -594,4 +594,4 @@ Whether the host supports subagents or not, the operating model should still be:
 - **[Usage guide](USAGE-GUIDE.md)**
 - **[Configuration guide](CONFIGURATION.md)**
 - **[ADR-0016: Subagent registration](../architecture/ADR/0016-cpt-studio-adr-ai-cli-extensibility-subagents-v1.md)**
-- **[Workspace specification](../requirements/workspace.md)**
+- **[Workspace setup reference](../requirements/workspace-setup.md)**

@@ -1153,5 +1153,5 @@ To control which directories become named categories (and their colors) in the r
 - **[AGENT-TOOLS.md](AGENT-TOOLS.md)** — host-specific setup details and operational differences
 - **[Configuration guide](CONFIGURATION.md)** — tune rules, kits, and behavior
 - **[Project extensibility guide](PROJECT-EXTENSIBILITY.md)** — extend local behavior inside one repository
-- **[Workspace specification](../requirements/workspace.md)** — use this if you are running Constructor Studio across multiple repositories
+- **[Workspace setup reference](../requirements/workspace-setup.md)** — use this if you are running Constructor Studio across multiple repositories
 - **[Historical story-driven walkthrough](STORY.md)** — older transcript, useful as archive rather than canonical guidance

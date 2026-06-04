@@ -1,41 +1,41 @@
 # Project-Level Extensibility Guide
 
+
+<!-- toc -->
+
+- [The Problem](#the-problem)
+- [The Orchestrator Repo Pattern](#the-orchestrator-repo-pattern)
+- [Four-Layer Manifest Hierarchy](#four-layer-manifest-hierarchy)
+  - [Filesystem Layout](#filesystem-layout)
+  - [Resolution Semantics](#resolution-semantics)
+- [Manifest Format](#manifest-format)
+  - [Component Sections](#component-sections)
+  - [Includes Directive](#includes-directive)
+  - [Agent Definitions](#agent-definitions)
+  - [Extended Agent Fields](#extended-agent-fields)
+  - [Skill Definitions](#skill-definitions)
+  - [Workflow Definitions](#workflow-definitions)
+  - [Rule Definitions](#rule-definitions)
+  - [Hook Definitions (Future)](#hook-definitions-future)
+  - [Permissions (Future)](#permissions-future)
+- [Section Appending](#section-appending)
+- [Cross-Agent Translation](#cross-agent-translation)
+- [Examples](#examples)
+  - [Standalone Repo](#standalone-repo)
+  - [Multi-Repo Hierarchy with Includes](#multi-repo-hierarchy-with-includes)
+  - [The standctl Case](#the-standctl-case)
+- [Discovery Mode](#discovery-mode)
+- [Backward Compatibility](#backward-compatibility)
+- [Relationship with Workspace Federation](#relationship-with-workspace-federation)
+  - [How They Compose](#how-they-compose)
+  - [Orchestrator Repo with Sub-Projects](#orchestrator-repo-with-sub-projects)
+  - [Current Limitations](#current-limitations)
+  - [Potential Improvements](#potential-improvements)
+- [Future Work](#future-work)
+
+<!-- /toc -->
+
 This guide explains how Constructor Studio's manifest hierarchy enables projects and orchestrator repos to declare their own skills, agents, workflows, and rules — all discoverable by `cfs generate-agents`.
-
-## Table of Contents
-
-- [Project-Level Extensibility Guide](#project-level-extensibility-guide)
-  - [Table of Contents](#table-of-contents)
-  - [The Problem](#the-problem)
-  - [The Orchestrator Repo Pattern](#the-orchestrator-repo-pattern)
-  - [Four-Layer Manifest Hierarchy](#four-layer-manifest-hierarchy)
-    - [Filesystem Layout](#filesystem-layout)
-    - [Resolution Semantics](#resolution-semantics)
-  - [Manifest Format](#manifest-format)
-    - [Component Sections](#component-sections)
-    - [Includes Directive](#includes-directive)
-    - [Agent Definitions](#agent-definitions)
-    - [Extended Agent Fields](#extended-agent-fields)
-    - [Skill Definitions](#skill-definitions)
-    - [Workflow Definitions](#workflow-definitions)
-    - [Rule Definitions](#rule-definitions)
-    - [Hook Definitions (Future)](#hook-definitions-future)
-    - [Permissions (Future)](#permissions-future)
-  - [Section Appending](#section-appending)
-  - [Cross-Agent Translation](#cross-agent-translation)
-  - [Examples](#examples)
-    - [Standalone Repo](#standalone-repo)
-    - [Multi-Repo Hierarchy with Includes](#multi-repo-hierarchy-with-includes)
-    - [The standctl Case](#the-standctl-case)
-  - [Discovery Mode](#discovery-mode)
-  - [Backward Compatibility](#backward-compatibility)
-  - [Relationship with Workspace Federation](#relationship-with-workspace-federation)
-    - [How They Compose](#how-they-compose)
-    - [Orchestrator Repo with Sub-Projects](#orchestrator-repo-with-sub-projects)
-    - [Current Limitations](#current-limitations)
-    - [Potential Improvements](#potential-improvements)
-  - [Future Work](#future-work)
-
 ---
 
 ## The Problem

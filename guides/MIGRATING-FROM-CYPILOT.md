@@ -2,6 +2,16 @@
 
 A concise, step-by-step guide. Migration runs in **two stages**: a deterministic mechanical step (one CLI call) and a post-deterministic intelligent cleanup orchestrated by `cf migrate from cypilot`.
 
+<!-- toc -->
+
+- [Stage 1 — Deterministic (Mechanical) Migration](#stage-1--deterministic-mechanical-migration)
+- [Stage 2 — Post-Deterministic Cleanup (`cf migrate from cypilot`)](#stage-2--post-deterministic-cleanup-cf-migrate-from-cypilot)
+- [What Is NOT Touched](#what-is-not-touched)
+- [Final Manual Checks](#final-manual-checks)
+- [How to Invoke](#how-to-invoke)
+
+<!-- /toc -->
+
 ---
 
 ## Stage 1 — Deterministic (Mechanical) Migration
@@ -22,11 +32,11 @@ A single CLI call performs the fixed-scope transforms: directory copy, managed-b
 
 ## Stage 2 — Post-Deterministic Cleanup (`cf migrate from cypilot`)
 
-The orchestrator dispatches four sub-agents and **requires explicit user approval before every dispatch**. It cleans up everything the mechanical step does not touch: source code, CI configs, build files, docs outside the fixed list, shell scripts, agent integrations (`.claude/`, `.cursor/`, `.codex/`, `.windsurf/`), and workspaces.
+The orchestrator dispatches four subagents and **requires explicit user approval before every dispatch**. It cleans up everything the mechanical step does not touch: source code, CI configs, build files, docs outside the fixed list, shell scripts, agent integrations (`.claude/`, `.cursor/`, `.codex/`, `.windsurf/`), and workspaces.
 
 **Step 4. E0 — Preconditions.** The orchestrator re-validates the marker and `core.toml`. If it fails, re-run Stage 1.
 
-**Step 5. E1 — Scanner (read-only).** Reply `y`. Sub-agent `cf-migrate-scanner` emits a structured findings list of residual `cypilot / cpt / Cypilot / Cyber Pilot` references. No files are modified.
+**Step 5. E1 — Scanner (read-only).** Reply `y`. Subagent `cf-migrate-scanner` emits a structured findings list of residual `cypilot / cpt / Cypilot / Cyber Pilot` references. No files are modified.
 
 **Step 6. E2 — Planner (read-only).** Reply `y`. `cf-migrate-planner` groups findings into three categories:
 - **A** — auto-fixable (unambiguous string substitutions);
@@ -76,4 +86,4 @@ Inside a chat with the `cf` skill active, type:
 cf migrate from cypilot
 ```
 
-(or `migrate-from-cypilot`). The orchestrator will walk you through phases E0–E6, asking for explicit approval at each sub-agent dispatch.
+(or `migrate-from-cypilot`). The orchestrator will walk you through phases E0–E6, asking for explicit approval at each subagent dispatch.

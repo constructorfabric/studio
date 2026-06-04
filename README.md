@@ -26,9 +26,59 @@ For teams already using an AI coding tool, Constructor Studio provides the opera
 - **deterministic `cfs` validation** to check structure, references, consistency, traceability, and generated integration surfaces locally and in CI
 - **stable identifiers and cross-link validation** to preserve alignment across requirements, design, plans, and code when that enforcement surface is configured
 
-**Jump to:** [Product shape](#product-shape) | [Fit and non-fit](#fit-and-non-fit) | [Operating model](#operating-model) | [Traceability and validation model](#traceability-and-validation-model) | [Workflow model](#workflow-model) | [Typical delivery sequence](#typical-delivery-sequence) | [Supported hosts](#supported-hosts) | [Evaluate Constructor Studio](#evaluate-constructor-studio) | [Installation and setup reference](#installation-and-setup-reference)
+<!-- toc -->
+
+- [Overview](#overview)
+- [Product shape](#product-shape)
+  - [Authoritative delivery artifacts](#authoritative-delivery-artifacts)
+  - [What Constructor Studio adds to a repo](#what-constructor-studio-adds-to-a-repo)
+  - [Core platform and optional kits](#core-platform-and-optional-kits)
+  - [How teams encounter Constructor Studio](#how-teams-encounter-constructor-studio)
+- [Fit and non-fit](#fit-and-non-fit)
+  - [Helps most when you are responsible for](#helps-most-when-you-are-responsible-for)
+  - [Good fit when](#good-fit-when)
+  - [Not the best fit when](#not-the-best-fit-when)
+  - [Where value appears first](#where-value-appears-first)
+- [Operating model](#operating-model)
+  - [System boundary and control model](#system-boundary-and-control-model)
+  - [Multi-subagent operating model where supported](#multi-subagent-operating-model-where-supported)
+  - [Deterministic vs non-deterministic boundary](#deterministic-vs-non-deterministic-boundary)
+- [Traceability and validation model](#traceability-and-validation-model)
+  - [Inspectable delivery surface](#inspectable-delivery-surface)
+  - [Configured enforcement surface](#configured-enforcement-surface)
+  - [Evidence chain across a change](#evidence-chain-across-a-change)
+  - [What `cfs` enforces](#what-cfs-enforces)
+  - [What Constructor Studio cannot prove](#what-constructor-studio-cannot-prove)
+- [Workflow model](#workflow-model)
+  - [Language complexity (global UX setting)](#language-complexity-global-ux-setting)
+  - [Explain mode (storytelling companion)](#explain-mode-storytelling-companion)
+- [Typical delivery sequence](#typical-delivery-sequence)
+- [Supported hosts](#supported-hosts)
+- [Evaluate Constructor Studio](#evaluate-constructor-studio)
+  - [Minimal evaluation path](#minimal-evaluation-path)
+  - [Validation checkpoint](#validation-checkpoint)
+  - [What success looks like](#what-success-looks-like)
+  - [What to inspect after the trial](#what-to-inspect-after-the-trial)
+- [Installation and setup reference](#installation-and-setup-reference)
+  - [Prerequisites](#prerequisites)
+  - [Setup paths and commands](#setup-paths-and-commands)
+- [Mirror overrides](#mirror-overrides)
+- [Configuration files](#configuration-files)
+- [Extended operating modes](#extended-operating-modes)
+  - [Multi-repo workspaces](#multi-repo-workspaces)
+  - [RalphEx delegation](#ralphex-delegation)
+- [Project extensibility](#project-extensibility)
+- [Further reading](#further-reading)
+- [Feedback and issues](#feedback-and-issues)
+- [Contributing](#contributing)
+- [Glossary](#glossary)
+- [License](#license)
+
+<!-- /toc -->
 
 ## Product shape
+
+At its center, Constructor Studio is an operating layer around your AI coding tool: the same workflow, context, and validation layer described above. It routes each request into a task-matched workflow and loads the right rules and context. For larger work, it can split the job across specialized subagents — planner, author, reviewer, validator — under explicit gates. Artifact-backed delivery and traceability are one supported way of working on top of that layer, not the whole product. The same engine also drives planning, code and document authoring, review, explanation, and validation.
 
 ### Authoritative delivery artifacts
 
@@ -167,7 +217,7 @@ This separation improves context isolation, lets each step use task-matched inst
 
 This is an operating model, not a guarantee. It does not replace human approval, and it does not prove correctness. Where a host lacks native subagent support or strong orchestration control, Constructor Studio degrades gracefully by keeping the same roles as separate chats, passes, or manual checkpoints.
 
- ### Deterministic vs non-deterministic boundary
+### Deterministic vs non-deterministic boundary
  
  For the same configured project surface and the same command or request shape, Constructor Studio should make the same routing, context-loading, and check-execution decisions.
 
@@ -191,13 +241,13 @@ This is an operating model, not a guarantee. It does not replace human approval,
 
  For the full fit / non-fit guidance, practical anti-patterns, planning heuristics, and workflow-choice rules, use **[guides/USAGE-GUIDE.md](guides/USAGE-GUIDE.md)**.
 
- ## Traceability and validation model
+## Traceability and validation model
 
  Constructor Studio is strongest when the delivery surface is explicit and checkable.
 
  The inspectable surface is the file-backed repository material a human can open, diff, review, and compare over time. The configured enforcement surface is the validator-visible subset of that material that the repository has explicitly chosen to subject to deterministic `cfs` checks.
 
- ### Inspectable delivery surface
+### Inspectable delivery surface
 
  - **File-backed artifacts** keep requirements, design, plans, and implementation visible as inspectable delivery inputs and outputs.
  - **Stable identifiers and cross-links** connect those artifacts through one shared traceability surface.
@@ -205,14 +255,14 @@ This is an operating model, not a guarantee. It does not replace human approval,
  - **Validation and review outputs** become visible evidence alongside the work products they refer to.
  - **Drift signals** become operationally visible through broken links, failed checks, and missing required structure instead of being reconstructed ad hoc later.
 
- ### Configured enforcement surface
+### Configured enforcement surface
 
  - **Not every inspectable artifact is automatically enforced**; deterministic enforcement applies only to file-backed, validator-visible material the repository has configured `cfs` to check.
  - **Enforceable means configured + validator-visible + deterministic** rather than inferred from everything a human can see in the repository.
  - **IDs, required links, document structure, plans, and stage completeness** become enforceable when they are part of that configured validation surface.
  - **The same configured surface can be checked locally and in CI** so enforcement is repeatable instead of chat-dependent.
 
- ### Evidence chain across a change
+### Evidence chain across a change
 
  - **Requirement** captures the approved scope.
  - **Design** records the intended structure, constraints, or boundary decisions.
@@ -222,7 +272,7 @@ This is an operating model, not a guarantee. It does not replace human approval,
 
  The chain exists through explicit linked artifacts, stable identifiers or references, file-backed plans or checkpoints, and validation outputs tied to the configured surface. It helps surface drift and broken alignment operationally; it does not prove semantic equivalence between the requirement and the implementation.
 
- ### What `cfs` enforces
+### What `cfs` enforces
 
  These are the main deterministic conformance classes applied to that configured surface.
 
@@ -232,7 +282,7 @@ This is an operating model, not a guarantee. It does not replace human approval,
  - **TOC and document consistency** where those checks are part of the configured validation surface
  - **Plan, checklist, and stage completeness** when those surfaces are file-backed and explicitly configured for checking
 
- ### What Constructor Studio cannot prove
+### What Constructor Studio cannot prove
 
  - **Behavioral correctness, absence of defects, and implementation quality** remain non-deterministic and still require review.
  - **Soundness of design decisions and adequacy of tests** remain judgment-based even when the artifacts, structure, and links are checkable.
@@ -265,6 +315,8 @@ Specialized chat routes build on that same model:
 | Explore | `cf explore: ...` | you need project or artifact discovery before planning, generating, or reviewing |
 | Brainstorm | `cf brainstorm: ...` | the option space is still open and you want structured ideation before locking scope |
 | Auto-config | `cf auto-config` | you want Constructor Studio to scan a project and infer or refresh rules/config for brownfield work |
+| Code | `cf coding: ...` | you are authoring, implementing, refactoring, fixing, or reviewing source code with code-quality and bug-finding checks |
+| Docs | `cf write-docs: ...` | you are writing, revising, or reviewing documentation, guides, reports, READMEs, or other project documents |
 | Explain | `cf analyze: explain <target>` | you want an interactive walkthrough, onboarding session, or teaching flow instead of defect review |
 | Map | `cf map: ...` | you want to render or inspect the dependency graph and route follow-up analysis through the map |
 
@@ -317,7 +369,7 @@ In practice, teams usually move through four visible stages:
 
 In practice, this creates clearer boundaries, earlier drift detection, and more reliable review evidence than one long mixed-purpose chat.
 
- ## Supported hosts
+## Supported hosts
  
 Constructor Studio works across multiple AI coding tools through the same portable `cf` workflow model, but some hosts preserve its workflow boundaries more fully than others. The differences are mainly in orchestration control, workflow separation, subagent support, manual discipline burden, and first-run clarity. When a host cannot support the full multi-subagent model directly, the same separation can still be maintained through narrower prompts, separate chats, and explicit validation or review checkpoints.
  
@@ -333,31 +385,31 @@ Constructor Studio works across multiple AI coding tools through the same portab
  
  For host-specific setup guidance, deeper tradeoffs, and the full support matrix, use **[guides/AGENT-TOOLS.md](guides/AGENT-TOOLS.md)**.
  
- ## Evaluate Constructor Studio
+## Evaluate Constructor Studio
   
   Use this path if you are evaluating Constructor Studio in a real repository and want one concrete result quickly.
  
-  ### Minimal evaluation path
+### Minimal evaluation path
  
   1. **Pick one real repository and one narrow real input** such as a requirement, design note, or change request that should produce a bounded, reviewable output.
   2. **Complete the one-time setup for that repository** using the installation and setup reference below so the repo is initialized and ready for Constructor Studio.
   3. **Activate Constructor Studio in chat** with 💬 `cf` in the AI coding tool attached to that repository.
   4. **Run one focused request** with 💬 `cf analyze: ...` when you want an inspectable assessment of the input, or 💬 `cf plan: ...` when you want bounded execution steps before implementation.
  
-  ### Validation checkpoint
+### Validation checkpoint
  
   - **Run one deterministic check** with 🖥 `cfs validate --local-only` when you want to verify only the current repository, or 🖥 `cfs validate` when cross-repo or workspace resolution is part of the trial.
   - **Use that validation step as the proof surface of the trial**; this is where Constructor Studio shows that it produced deterministic, validator-visible signals instead of only conversational output.
   - **Treat either a clean pass or an actionable failure as useful evidence**; the most useful failures are localized, inspectable, and actionable rather than vague.
  
-  ### What success looks like
+### What success looks like
  
   - **The output stays anchored** to the real requirement, design note, or change request you started from.
   - **One bounded and reviewable output appears** such as a plan, inspectable summary, or validation surface you could act on immediately.
   - **One deterministic validation signal appears** as either a clean local pass or a concrete failure you can inspect and act on.
   - **The next decision is clearer** than it was before the trial, whether that means continue, narrow scope, or stop.
  
-  ### What to inspect after the trial
+### What to inspect after the trial
  
   - **Scope anchoring** — whether the output stayed tied to the real requirement, design note, or change request.
   - **Reviewability** — whether the resulting artifacts, plans, or validation outputs are easier to inspect than one long mixed-purpose chat.
@@ -365,18 +417,18 @@ Constructor Studio works across multiple AI coding tools through the same portab
   - **Signal-to-effort** — whether the trial produced enough useful signal to justify the setup and process overhead.
   - **Trust signal** — whether you would trust the resulting surface enough to continue with a larger change.
  
-  **Jump to:** [Installation and setup reference](#installation-and-setup-reference) | [Configuration files](#configuration-files) | [Extended operating modes](#extended-operating-modes) | [Project extensibility](#project-extensibility) | [Further reading](#further-reading)
+  **Continue to:** [Installation and setup reference](#installation-and-setup-reference) | [Configuration files](#configuration-files) | [Extended operating modes](#extended-operating-modes) | [Project extensibility](#project-extensibility) | [Further reading](#further-reading)
 
- ## Installation and setup reference
+## Installation and setup reference
 
- ### Prerequisites
+### Prerequisites
  For a first trial, you need Python 3.11+, Git, and one supported AI coding tool such as Claude Code, Cursor, Windsurf, GitHub Copilot, or OpenAI Codex.
 
  Python 3.11+ is the runtime for Constructor Studio's repository-local scripts and CI, even when you do not install `cfs` globally yourself.
  
  `pipx` is recommended when you want to install the `cfs` CLI globally and run it yourself. `gh` is optional for PR review and PR status workflows.
  
- ### Setup paths and commands
+### Setup paths and commands
  
  Choose the path that matches the repository state.
 
@@ -426,7 +478,7 @@ Constructor Studio works across multiple AI coding tools through the same portab
 
 For detailed host-specific setup, troubleshooting, and operational walkthroughs, use **[guides/AGENT-TOOLS.md](guides/AGENT-TOOLS.md)** and **[guides/USAGE-GUIDE.md](guides/USAGE-GUIDE.md)**.
 
- ## Mirror overrides
+## Mirror overrides
 
  Constructor Studio lets you globally remap any default URL to a fork using `cfs mirror override`:
 
@@ -439,7 +491,7 @@ For detailed host-specific setup, troubleshooting, and operational walkthroughs,
 
  Overrides are stored in `${XDG_CONFIG_HOME:-~/.config}/constructor-studio/mirrors.toml` (XDG-style primary) with a brand-home fallback at `~/.constructor-studio/mirrors.toml`. The read-merge / write-primary dual-location semantics and full URL matching rules are documented in [ADR-0020](architecture/ADR/0020-cpt-studio-adr-rebrand-and-mirror-override-v1.md).
 
- ## Configuration files
+## Configuration files
  
  The main top-level user-editable configuration lives under `config/` inside your Constructor Studio setup directory. Other parts of the setup directory may contain generated or supporting material, and installed kits can add their own editable surfaces.
  
@@ -464,7 +516,7 @@ For detailed host-specific setup, troubleshooting, and operational walkthroughs,
  
  For full configuration details, advanced surfaces, and editing patterns, see **[Configuration guide](guides/CONFIGURATION.md)**.
  
- ## Extended operating modes
+## Extended operating modes
 
  You do not need these on day one. Add them when your use case justifies the extra surface area.
 
@@ -476,7 +528,7 @@ Use this when docs, code, or shared kit assets live in separate repos and still 
 
 Workspaces expand the reachable repository set. They do not replace project-level extensibility inside one repository.
 
-For practical guidance, see **[guides/USAGE-GUIDE.md](guides/USAGE-GUIDE.md)**. For the full model and configuration rules, see **[requirements/workspace.md](requirements/workspace.md)**.
+For practical guidance, see **[guides/USAGE-GUIDE.md](guides/USAGE-GUIDE.md)**. For the full model and configuration rules, see **[requirements/workspace-setup.md](requirements/workspace-setup.md)**.
 
 ### RalphEx delegation
 
@@ -508,7 +560,7 @@ Recommended reading path: **README -> [Usage guide](guides/USAGE-GUIDE.md) -> [A
   - **[Configuration guide](guides/CONFIGURATION.md)**
 
 - **Deeper reference**
-  - **[Workspace specification](requirements/workspace.md)**
+  - **[Workspace setup reference](requirements/workspace-setup.md)**
   - **[Project extensibility guide](guides/PROJECT-EXTENSIBILITY.md)**
   - **[Migrating from Cypilot](guides/MIGRATING-FROM-CYPILOT.md)**
   - **[Historical story-driven walkthrough](guides/STORY.md)**
