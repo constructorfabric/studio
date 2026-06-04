@@ -2,13 +2,13 @@
 cf: true
 type: workflow
 name: cf-write-skills
-description: "Invoke when user intent is writing or revising skills, prompts, agentic workflows, sub agents, system prompts"
+description: "Invoke when user intent is writing, revising, or reviewing skills, prompts, agentic workflows, sub agents, system prompts"
 version: 0.1
 ---
 
 # cf-write-skills
 
-This skill authors and reviews skill/prompt files written in PDSL. It loads the PDSL spec and prompt-engineering guidance, validates authored files, and runs a semantic review-fix loop at a selectable depth — single-pass, per-methodology, or per-layer (one reviewer sub-agent per layer, every layer each methodology defines, L1 through its last) — driven by author and reviewer sub-agents.
+This skill authors and reviews skill/prompt files written in PDSL. It loads the PDSL spec and prompt-engineering guidance, validates authored files, and runs a semantic review-fix loop at a selectable depth — single-pass, per-methodology, or per-layer (one reviewer sub-agent per layer, every layer each methodology defines, L1 through its last) — over the prompt-engineering, prompt-bug-finding, and consistency-checklist methodologies, driven by author and reviewer sub-agents.
 
 ```pdsl
 UNIT WriteSkillsBootstrap
@@ -54,23 +54,24 @@ WHEN:
   REQUIRE edits have been applied to the skill file
 DO:
   LOAD {cf-studio-path}/.core/requirements/prompt-bug-finding.md
+  LOAD {cf-studio-path}/.core/requirements/consistency-checklist.md
   EMIT_MENU ReviewGranularityMenu WHEN REVIEW_GRANULARITY == unset
-  RUN the chosen review at REVIEW_GRANULARITY, dispatching cf-pdsl-reviewer instances in parallel
+  RUN the chosen review at REVIEW_GRANULARITY, dispatching cf-pdsl-reviewer (prompt-engineering + prompt-bug-finding) and cf-semantic-reviewer-consistency (consistency-checklist) instances in parallel
   RUN aggregation of every reviewer's findings into one deduplicated review report
   CONTINUE WriteSkillsReviewLoop WHEN review findings remain
   STOP_TURN WHEN no review findings remain
 RULES:
   ALWAYS offer the granularity choice with a suggested level by change size: tiny edit (≤10 changed lines) -> single-pass, moderate edit (11–50 changed lines) -> per-methodology, new file or large/structural change (>50 changed lines) -> per-layer
-  ALWAYS read each methodology's current Layer Map to determine its full set of layers before a per-layer or per-methodology dispatch, so added layers are covered automatically and never a fixed count
-  ALWAYS scope each reviewer to only its assigned slice (both methodologies / one methodology / one layer) and run independent reviewers in parallel
+  ALWAYS read each methodology's current Layer Map (prompt-engineering layers, prompt-bug-finding layers, consistency-checklist categories) to determine its full set of layers before a per-layer or per-methodology dispatch, so added layers are covered automatically and never a fixed count
+  ALWAYS scope each reviewer to only its assigned slice (all methodologies / one methodology / one layer) and run independent reviewers in parallel
   ALWAYS aggregate and deduplicate all findings into one report before iterating fixes
   ALWAYS iterate the review-fix loop until no findings remain
 MENU ReviewGranularityMenu
 TITLE: Choose review depth — the suggested level fits the change size.
 OPTIONS:
-  1 single-pass -> SET REVIEW_GRANULARITY = single-pass; one cf-pdsl-reviewer covers both methodologies in a single pass (fastest; suggested for tiny edits)
-  2 per-methodology -> SET REVIEW_GRANULARITY = per-methodology; one cf-pdsl-reviewer for all prompt-engineering layers and one for all prompt-bug-finding layers (balanced; suggested for moderate edits)
-  3 per-layer -> SET REVIEW_GRANULARITY = per-layer; one cf-pdsl-reviewer per layer of each methodology, L1 through each methodology's last, in parallel (most thorough; suggested for new files or structural changes)
+  1 single-pass -> SET REVIEW_GRANULARITY = single-pass; all three methodologies (prompt-engineering, prompt-bug-finding, consistency-checklist) are reviewed in one combined pass (fastest; suggested for tiny edits)
+  2 per-methodology -> SET REVIEW_GRANULARITY = per-methodology; one cf-pdsl-reviewer for all prompt-engineering + prompt-bug-finding layers and one cf-semantic-reviewer-consistency for all consistency-checklist categories (balanced; suggested for moderate edits)
+  3 per-layer -> SET REVIEW_GRANULARITY = per-layer; one reviewer per layer/category of each methodology, L1 through each methodology's last, in parallel (most thorough; suggested for new files or structural changes)
   INVALID -> EMIT_MENU ReviewGranularityMenu
 NOTES:
   Aggregation merges every reviewer's findings into one report, dedupes by (LOCATION, category, ROOT_CAUSE), keeps the highest SEVERITY and CONFIDENCE when collapsing duplicates, and preserves each finding's full ReviewFindingContract fields.
@@ -81,6 +82,6 @@ UNIT WriteSkillsDispatch
 PURPOSE: Dispatch the sub-agents that write, fix, and review skills.
 RULES:
   ALWAYS dispatch cf-pdsl-author from {cf-studio-path}/.core/skills/studio/agents/cf-pdsl-author.md to write skills and apply review fixes
-  ALWAYS dispatch cf-pdsl-reviewer from {cf-studio-path}/.core/skills/studio/agents/cf-pdsl-reviewer.md per the chosen REVIEW_GRANULARITY: single-pass = one reviewer over both methodologies; per-methodology = one reviewer per methodology covering all its layers; per-layer = one reviewer per layer for every layer each methodology defines (L1 through its last), never a fixed count
-  ALWAYS synthesize into each cf-pdsl-reviewer instance only its assigned slice for the chosen granularity, never more than its scope
+  ALWAYS dispatch cf-pdsl-reviewer from {cf-studio-path}/.core/skills/studio/agents/cf-pdsl-reviewer.md (prompt-engineering + prompt-bug-finding) and cf-semantic-reviewer-consistency from {cf-studio-path}/.core/skills/studio/agents/cf-semantic-reviewer-consistency.md (consistency-checklist) per the chosen REVIEW_GRANULARITY: single-pass = one reviewer over all three methodologies; per-methodology = cf-pdsl-reviewer over its prompt-engineering + prompt-bug-finding layers and cf-semantic-reviewer-consistency over all consistency-checklist categories; per-layer = one reviewer per layer/category for every layer each methodology defines (L1 through its last), never a fixed count
+  ALWAYS synthesize into each reviewer instance only its assigned slice for the chosen granularity, never more than its scope
 ```

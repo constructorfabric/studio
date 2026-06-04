@@ -44,6 +44,7 @@ Zero third-party runtime dependencies — stdlib only:
 ## Build & Development
 
 - **Makefile** — Build automation
+- **setuptools + setuptools-scm** — Build backend and version management (`pyproject.toml`)
 - **pipx** — Isolated tool execution (no venv required)
 - **Docker** — Container runtime for local CI
 - **[act](https://github.com/nektos/act)** — Run GitHub Actions locally in Docker
@@ -54,3 +55,6 @@ Zero third-party runtime dependencies — stdlib only:
 - **Coverage threshold**: 90% per file
 - **Type hints**: Used throughout codebase
 - **[vulture](https://github.com/jendrikseipp/vulture)** — Dead code detection (via pipx)
+- **pylint** — Static analysis, 12 checks enabled (via pipx)
+- **SonarQube / SonarCloud** — Code quality + coverage scanning in CI
+- **diff-cover** — Branch-diff coverage vs `main`

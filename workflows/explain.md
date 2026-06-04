@@ -57,12 +57,14 @@ PURPOSE: Resolve the four Discovery gates as separate user-interaction boundarie
 STATE:
   SET E1_GATE: mode | disposition | audience | plan | done (default mode, scope workflow_run)
 DO:
+  RUN resolve mode/disposition/audience/plan from the STORYTELLING_* presets, represent those preset answers in the E0/E1 opener, SET E1_GATE = done, and CONTINUE ExplainE2Deliver WHEN CF_HELP_PRESET == true AND STORYTELLING_PLAN_APPROVED == true
   DISPATCH storytelling-gate gate_id=mode to render the numbered always-ask mode menu, WAIT user.reply, SET E1_GATE = disposition, STOP_TURN WHEN E1_GATE == mode
   DISPATCH storytelling-gate gate_id=artifact-disposition, WAIT user.reply, SET E1_GATE = audience, STOP_TURN WHEN E1_GATE == disposition
   DISPATCH storytelling-gate gate_id=audience, WAIT user.reply, SET E1_GATE = plan, STOP_TURN WHEN E1_GATE == audience
   DISPATCH storytelling-gate gate_id=plan to render the 4-option plan-approval menu (handle Edit/Pivot/Cancel per storytelling-gate), WAIT user.reply, STOP_TURN WHEN E1_GATE == plan AND the plan is NOT yet approved
   CONTINUE ExplainE2Deliver WHEN E1_GATE == plan AND the plan is approved
 RULES:
+  ALWAYS under CF_HELP_PRESET == true, resolve the four gates from the STORYTELLING_* presets instead of prompting (preset resolution skips the prompts, not the phases) and NEVER emit a one-shot overview/command list — the next output is the E0/E1 opener, then E2 delivery
   ALWAYS run the gates in order mode -> disposition -> audience -> plan and keep each a separate user-interaction boundary
   ALWAYS resolve mode always-ask (intent/default only suggest, never auto-select)
   ALWAYS advance E1_GATE only after the current gate's user reply is received; NEVER re-ask an already-resolved gate

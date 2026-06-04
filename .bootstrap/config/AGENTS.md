@@ -111,4 +111,10 @@ ALWAYS open and follow `{cf-studio-path}/.core/architecture/specs/CDSL.md` WHEN 
 
 ALWAYS open and follow `{cf-studio-path}/.core/architecture/specs/PDSL.md` WHEN writing, reviewing, or validating PDSL prompt contracts or workflow instruction files
 
+ALWAYS open and follow `guides/USAGE-GUIDE.md` WHEN choosing a workflow or planning approach
+
+ALWAYS open and follow `README.md#workflow-model` WHEN onboarding or choosing between plan/generate/analyze
+
+ALWAYS open and follow `{cf-studio-path}/.core/architecture/specs/traceability.md` WHEN writing @cpt-* markers or working with artifact IDs and cross-references
+
 <!-- auto-config:docs:end -->
