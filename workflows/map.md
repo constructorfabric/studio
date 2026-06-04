@@ -183,7 +183,7 @@ OPTIONS:
 MENU ConfigAssistActionMenu
 TITLE: Review the proposed TOML above. What would you like to do?
 OPTIONS:
-  1 approve -> EMIT "About to write ./md-map.toml — reply yes to confirm", WAIT user.reply, WRITE ./md-map.toml only on yes (orchestrator write), then CONTINUE MapGenerate with `--config ./md-map.toml`
+  1 approve -> EMIT "About to write <project_root>/md-map.toml — reply yes to confirm", WAIT user.reply, WRITE <project_root>/md-map.toml only on yes (orchestrator write), then CONTINUE MapGenerate with `--config <project_root>/md-map.toml`
   2 edit-names | edit -> WAIT renames as `old-name: new-name`, re-emit the TOML, then EMIT_MENU ConfigAssistActionMenu
   3 add-manual | add -> WAIT entries as `{name, paths:[...], style?}`, append them, re-emit the TOML, then EMIT_MENU ConfigAssistActionMenu
   4 skip -> CONTINUE MapNextSteps
