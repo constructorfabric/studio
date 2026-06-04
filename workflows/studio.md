@@ -11,21 +11,6 @@ purpose: Standalone cf-studio command; pass-through alias to the cf skill
 UNIT StudioRootSkillEntrypointBootstrap
 PURPOSE: Load the shared root cf skill entrypoint bootstrap.
 DO:
-  - RUN ALWAYS open and follow {cf-studio-path}/.core/skills/studio/SKILL.md
-  - LOAD {cf-studio-path}/.core/workflows/shared/root-skill-entrypoint-bootstrap.md
-  - CONTINUE RootSkillEntrypointBootstrap
-```
-
-```pdsl
-UNIT CfStudioAlias
-
-PURPOSE:
-  Pass-through alias to the cf skill. /cf-studio behaves identically to /cf
-  per routing.md's CliAliasAndInvocation rule.
-
-DO:
+  - LOAD {cf-studio-path}/.core/skills/studio/SKILL.md
   - CONTINUE CfSkillInit from {cf-studio-path}/.core/skills/studio/SKILL.md
-
-ON_ERROR:
-  load_failed -> EMIT "Cannot load cf skill — check that {cf-studio-path} is correctly set." STOP_TURN
 ```

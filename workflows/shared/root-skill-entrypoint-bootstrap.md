@@ -13,14 +13,7 @@ purpose: Prevent direct workflow entry from bypassing the root cf skill.
 UNIT RootSkillEntrypointBootstrap
 PURPOSE: Prevent direct workflow entry from bypassing the root cf skill.
 DO:
-  - CONTINUE RootSkillEntrypointBootstrapFailClosed WHEN root cf bootstrap is incomplete.
-  - REQUIRE {cf-studio-path}/.core/skills/studio/SKILL.md is loaded and followed FIRST.
-  - REQUIRE {cf-studio-path}/.core/skills/studio/protocol.md is loaded.
-  - REQUIRE CfSkillInit from {cf-studio-path}/.core/skills/studio/SKILL.md has completed.
-  - REQUIRE Bootstrap, HardRules, and WorkflowProtocolNonSubstitution from
-     {cf-studio-path}/.core/skills/studio/protocol.md have completed.
-  - CONTINUE this workflow only after the root cf skill routing/entrypoint
-     selects it.
+  - LOAD {cf-studio-path}/.core/skills/studio/SKILL.md IF not already loaded
 RULES:
   - ALWAYS execute before any workflow-specific unit in this file.
   - NEVER treat {cf-studio-path}/.core/skills/studio/routing.md or a workflow
