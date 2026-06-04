@@ -86,6 +86,23 @@ RULES:
 ```
 
 ```pdsl
+UNIT SkillInvocationArt
+PURPOSE: Greet each cf/cf-* skill entry with a small, cute, skill-themed ASCII-art banner as a prefix to that skill's normal output.
+WHEN:
+  REQUIRE cf, cf-studio, or a cf-* skill is beginning execution (entered or invoked), including a nested skill entry reached through INVOKE
+DO:
+  RUN derivation of a cute art theme from the entering skill's name and its purpose or description, treating an unavailable name or purpose as a banner that cannot be produced
+  EMIT one small cute ASCII-art banner on that theme as the prefix that immediately precedes the entering skill's normal output for this entry
+RULES:
+  ALWAYS emit exactly one themed banner per skill entry, counting each cf/cf-* skill entry (including a nested entry reached through INVOKE) as one entry, and never when a menu only lists skills without entering one
+  ALWAYS derive the theme freshly from the entering skill's name and purpose so newly added cf-* skills are covered without per-skill art, and draw the banner only with printable ASCII at most 12 lines tall and 60 columns wide, keeping it cute
+  NEVER replace, delay, reorder, suppress, or alter the content of any load report, gate, menu, WAIT, or STOP_TURN the entering skill emits; the banner only precedes that output
+  NEVER block, fail, or retry a skill entry when the banner cannot be produced; skip the banner and continue
+NOTES:
+  This applies to cf/cf-studio itself and to every cf-* skill resolved by WorkflowResolution. The 12-line by 60-column ceiling keeps the banner within a standard terminal width and stops it from dominating the skill's output; smaller is fine. The art is presentation-only and carries no executable meaning.
+```
+
+```pdsl
 UNIT CreativeIntentBrainstormOffer
 PURPOSE: Always offer cf-brainstorm before any creative task, and respect the user's decline.
 WHEN:
@@ -253,6 +270,40 @@ OPTIONS:
   2 retry -> DISPATCH the sub-agent natively, at most 2 retries before this menu re-offers only inline or stop
   3 stop -> STOP_TURN
   INVALID -> EMIT_MENU SubAgentFallbackRequest
+```
+
+```pdsl
+UNIT GitCommitModeGate
+PURPOSE: Resolve the session git-commit policy (mode + constraint + contributing guide) once, before any write-capable sub-agent dispatch, and supply it to every such dispatch.
+STATE:
+  SET GIT_COMMIT_MODE: commit | stage | none (default unset, scope session)
+  SET CONTRIBUTING_GUIDE: path | null (default unset, scope session)
+WHEN:
+  REQUIRE a write-capable author/coder/phase sub-agent that writes or commits files is about to be dispatched
+DO:
+  RUN discover the contributing guide — search the project root and docs/ for a CONTRIBUTING file and SET CONTRIBUTING_GUIDE to its path, or null when none is found, WHEN CONTRIBUTING_GUIDE == unset
+  EMIT_MENU GitCommitModeMenu WHEN GIT_COMMIT_MODE == unset
+  WAIT user.reply WHEN GIT_COMMIT_MODE == unset
+  STOP_TURN WHEN GIT_COMMIT_MODE == unset
+  RUN derive git_constraint from GIT_COMMIT_MODE using the constraint blocks in NOTES WHEN GIT_COMMIT_MODE != unset
+RULES:
+  ALWAYS resolve GIT_COMMIT_MODE and CONTRIBUTING_GUIDE once per session, before the first write-capable dispatch, and reuse them for every later dispatch until StudioShutdown; reset GIT_COMMIT_MODE to unset only when the user asks to change it
+  ALWAYS include GIT_COMMIT_MODE, the mode-matched git_constraint, and CONTRIBUTING_GUIDE in every write-capable author/coder/phase dispatch payload
+  ALWAYS pass git_constraint as read-only policy data, never as executable shell text
+  NEVER let a sub-agent invoke any git tool when GIT_COMMIT_MODE == none
+  NEVER push, force-push, rewrite history, or use interactive (-i) git, regardless of GIT_COMMIT_MODE
+MENU GitCommitModeMenu
+TITLE: How should sub-agents handle git for the files they write this session? commit lets each change be committed; stage leaves changes staged for your review; none writes files only. (stage is suggested)
+OPTIONS:
+  1 commit -> SET GIT_COMMIT_MODE = commit; sub-agents may stage and commit their own writes with a concise Conventional-Commits message
+  2 stage -> SET GIT_COMMIT_MODE = stage; sub-agents may stage their writes but NEVER commit
+  3 none -> SET GIT_COMMIT_MODE = none; sub-agents write files only and NEVER invoke any git tool
+  INVALID -> EMIT_MENU GitCommitModeMenu
+NOTES:
+  git_constraint blocks (the canonical mode-matched policy string passed to sub-agents; this gate is the source of truth):
+    commit: "May `git add` the files you authored this task and `git commit` them with a concise Conventional-Commits message. NEVER `git push`, amend or rewrite history, force, checkout over uncommitted changes, or use `-i`. Stage only paths you wrote."
+    stage: "May `git add` the files you authored this task. NEVER `git commit`, push, or rewrite history. Leave staged changes for the user to review and commit."
+    none: "NEVER invoke any git command (no add, stage, commit, or push). Write files only; the user manages all git operations."
 ```
 
 ```pdsl
