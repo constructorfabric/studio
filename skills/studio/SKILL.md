@@ -24,11 +24,13 @@ DO:
   LOAD and REMEMBER rules from {cf-studio-path}/.core/requirements/pdsl-execution-card.md
   LOAD and REMEMBER all UNIT rules defined in this file
   SET CFS_INIT = true
+  RUN CliCapabilities to discover and remember the available {cfs_cmd} commands
   EMIT a load report that names each loaded rule source ({cf-studio-path}/.gen/AGENTS.md, {cf-studio-path}/.gen/SKILL.md, {cf-studio-path}/.core/requirements/pdsl-execution-card.md, and the UNIT rules in this file) and confirms cf is ready to follow them
   CONTINUE IntentRouting
 RULES:
   ALWAYS treat cf and cf-studio as the same skill, where cf-studio is a proxy alias to cf
   ALWAYS limit cf/cf-studio to initiating the session and loading core rules
+  ALWAYS run CommandResolution then CliCapabilities on every cf/cf-studio activation, before routing
   ALWAYS report the loaded rule sources and confirm readiness to follow them before routing
 NOTES:
   Loading {cf-studio-path}/.core/requirements/pdsl-execution-card.md here is intentional: per the PDSL spec the root studio SKILL owns loading that runtime semantics card once into the shared context pack; the agent already executes PDSL from inherent understanding, and the card reinforces it. This is not a circular dependency.
@@ -83,6 +85,27 @@ OPTIONS:
   1 brainstorm -> INVOKE skill `cf-brainstorm`
   2 skip -> NEVER load cf-brainstorm; CONTINUE the requested task without it
   INVALID -> EMIT_MENU CreativeBrainstormOffer
+```
+
+```pdsl
+UNIT MigrateFromCypilotOffer
+PURPOSE: Offer the migrate-from-cypilot orchestrator when the prompt intent is a cypilot migration, and respect the user's decline.
+WHEN:
+  REQUIRE the prompt intent is migrating from cypilot (migrate from cypilot, migrate-from-cypilot, or cleaning up residual cypilot/cpt/Cypilot/Cyber Pilot references after the deterministic migration)
+DO:
+  EMIT_MENU MigrateFromCypilotConfirm
+  WAIT user.reply
+  STOP_TURN
+RULES:
+  ALWAYS offer the migrate-from-cypilot orchestrator when the prompt intent is a cypilot migration
+  ALWAYS let the user decline the offer
+  NEVER open or run the migrate-from-cypilot orchestrator when the user declines; continue with the requested task instead
+MENU MigrateFromCypilotConfirm
+TITLE: This looks like a cypilot to Constructor Studio migration — run the migrate-from-cypilot cleanup orchestrator? It checks the deterministic-migration preconditions first and gates every sub-agent step.
+OPTIONS:
+  1 migrate -> open and follow {cf-studio-path}/.core/skills/studio/migrate-from-cypilot.md
+  2 skip -> NEVER open the orchestrator; CONTINUE the requested task without it
+  INVALID -> EMIT_MENU MigrateFromCypilotConfirm
 ```
 
 ```pdsl
