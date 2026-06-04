@@ -32,6 +32,18 @@ For teams already using an AI coding tool, Constructor Studio provides the opera
 
 At its center, Constructor Studio is an operating layer around your AI coding tool: the same workflow, context, and validation layer described above. It routes each request into a task-matched workflow and loads the right rules and context. For larger work, it can split the job across specialized subagents — planner, author, reviewer, validator — under explicit gates. Artifact-backed delivery and traceability are one supported way of working on top of that layer, not the whole product. The same engine also drives planning, code and document authoring, review, explanation, and validation.
 
+The diagram below shows how one request moves through that layer:
+
+```mermaid
+flowchart TB
+    Req["Your request"] --> Route["cf routing\npicks the task-matched workflow"]
+    Route --> WF["Workflow\nloads rules + context, runs gates"]
+    WF --> Sub["Specialized subagents\nplanner / author / reviewer / validator"]
+    Sub --> Repo["Repository\nartifacts, code, config"]
+    Repo --> Val["cfs validation\ndeterministic checks"]
+    Val --> Human["You\napprove and merge"]
+```
+
 ### Authoritative delivery artifacts
 
 - **Requirements and design artifacts** become the approved, file-backed source of scope, intent, and constraints for downstream work.
@@ -197,6 +209,8 @@ This is an operating model, not a guarantee. It does not replace human approval,
 
  Constructor Studio is strongest when the delivery surface is explicit and checkable.
 
+ In plain terms: the work leaves a file-backed trail. Both a human and `cfs` can re-check that trail, so drift shows up as a concrete signal instead of lost context.
+
  The inspectable surface is the file-backed repository material a human can open, diff, review, and compare over time. The configured enforcement surface is the validator-visible subset of that material that the repository has explicitly chosen to subject to deterministic `cfs` checks.
 
 ### Inspectable delivery surface
@@ -228,11 +242,13 @@ This is an operating model, not a guarantee. It does not replace human approval,
 
  These are the main deterministic conformance classes applied to that configured surface.
 
- - **Artifact and document structure** such as required shape, expected sections, and validator-visible files
- - **Identifier and reference integrity** across requirements, design, plans, code, and their cross-links
- - **Required links and traceability rules** that keep artifacts aligned through the same stable identifiers
- - **TOC and document consistency** where those checks are part of the configured validation surface
- - **Plan, checklist, and stage completeness** when those surfaces are file-backed and explicitly configured for checking
+ | Conformance class | What `cfs` checks | Why it matters |
+ |---|---|---|
+ | Artifact and document structure | Required shape, expected sections, and validator-visible files | Catches malformed or incomplete artifacts before review |
+ | Identifier and reference integrity | IDs and cross-links across requirements, design, plans, and code | Flags dangling or mismatched references early |
+ | Required links and traceability | Links that keep artifacts aligned through the same stable identifiers | Surfaces missing alignment between approved scope and implementation |
+ | TOC and document consistency | Table-of-contents and document checks where configured | Keeps long documents navigable and in sync with their headings |
+ | Plan, checklist, and stage completeness | File-backed plan, checklist, and stage state when configured | Shows whether bounded work is actually finished, not just claimed |
 
 ### What Constructor Studio cannot prove
 
@@ -318,6 +334,14 @@ In practice, teams usually move through four visible stages:
 2. **Use `plan` to split larger work into bounded phases** before execution sprawls across one long chat.
 3. **Use `generate` within approved scope** so implementation stays tied to the intended change.
 4. **Use `analyze` and deterministic checks before merge** so review sees both the implementation and its validation surface.
+
+```mermaid
+flowchart LR
+    A["Approve\nrequirement + design"] --> P["plan\nbounded phases"]
+    P --> G["generate\nwithin approved scope"]
+    G --> AN["analyze + cfs checks\nbefore merge"]
+    AN --> M["Merge\nwith evidence"]
+```
 
 In practice, this creates clearer boundaries, earlier drift detection, and more reliable review evidence than one long mixed-purpose chat.
 
