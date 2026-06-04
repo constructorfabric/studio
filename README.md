@@ -17,7 +17,7 @@
 
 Constructor Studio is a workflow, context, and validation layer for AI-assisted software delivery.
 
-It turns AI coding work from one long, memory-heavy chat into routed workflows with explicit context loading, approval gates, deterministic checks, and reviewable file-backed evidence. Stable identifiers and references still connect requirements, design, plans, and implementation, but traceability is now one part of a broader operating model.
+It turns AI coding work from one long, memory-heavy chat into routed workflows with explicit context loading, approval gates, deterministic checks, and reviewable file-backed evidence. Traceability is built into that workflow: stable identifiers and references connect requirements, design, plans, and implementation as the work evolves.
 
 For teams already using an AI coding tool, Constructor Studio provides the operating controls needed to keep multi-step work bounded, explainable, reviewable, and enforceable as artifacts and implementation change:
 
