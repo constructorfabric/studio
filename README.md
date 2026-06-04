@@ -225,6 +225,8 @@ This is an operating model, not a guarantee. It does not replace human approval,
 
 ### Inspectable delivery surface
 
+ This is everything a human can open, diff, and review over time:
+
  - **File-backed artifacts** keep requirements, design, plans, and implementation visible as inspectable delivery inputs and outputs.
  - **Stable identifiers and cross-links** connect those artifacts through one shared traceability surface.
  - **Templates, checklists, and file-backed plans** create review surfaces that can be inspected, diffed, and repeated.
@@ -233,12 +235,16 @@ This is an operating model, not a guarantee. It does not replace human approval,
 
 ### Configured enforcement surface
 
+ Only part of that inspectable surface is actually enforced — the part you configure `cfs` to check:
+
  - **Not every inspectable artifact is automatically enforced**; deterministic enforcement applies only to file-backed, validator-visible material the repository has configured `cfs` to check.
  - **Enforceable means configured + validator-visible + deterministic** rather than inferred from everything a human can see in the repository.
  - **IDs, required links, document structure, plans, and stage completeness** become enforceable when they are part of that configured validation surface.
  - **The same configured surface can be checked locally and in CI** so enforcement is repeatable instead of chat-dependent.
 
 ### Evidence chain across a change
+
+ Here is how a single change stays linked from approved scope through to validation:
 
  - **Requirement** captures the approved scope.
  - **Design** records the intended structure, constraints, or boundary decisions.
