@@ -2,7 +2,7 @@
 cf: true
 type: requirement
 name: Prompt Engineering Review Methodology
-version: 1.6
+version: 1.7
 purpose: Systematic methodology for reviewing and improving agent instructions with evidence-backed constraint framing, compact-prompts optimization, interaction UX quality, and router-based decomposition
 ---
 
@@ -173,7 +173,7 @@ Anti-pattern codes are reference labels. All detected codes MUST be reported wit
 | `AP-IMPOSSIBLE` | Not all requirements can be satisfied simultaneously. |
 | `AP-NEGATIVE-ONLY` | A prohibition says what not to do without stating the required alternative behavior. |
 | `AP-FORBIDDEN-PRIMING` | A prompt repeatedly names exact blocked tokens or labels when category-level wording would preserve the rule. |
-| `AP-INSTRUCTION-DENSITY` | More than `7` active requirements compete in one response surface, or more than `10` are present without decomposition or validation. |
+| `AP-INSTRUCTION-DENSITY` | More than `7` active requirements compete in one response surface, or more than `10` are present without decomposition or validation. Mitigation: per-constraint self-check loop (decompose → critique → refine each constraint separately) significantly improves compliance under high density. |
 | `AP-NO-ROUTER` | Multi-step or branching instructions lack a compact router/index that says what may load next and when. |
 | `AP-OVERSIZED-RESOURCE` | A loadable instruction resource, module, or deliberate slice exceeds the `500`-line acceptable size (warning: decompose the skill, compact it, and lazy-load instructions) or the `1000`-line critical ceiling (FAIL). |
 | `AP-MONOLITHIC-STEP` | Multiple steps, branches, or modes are bundled into one loadable unit instead of decomposed into routeable modules. |
@@ -187,7 +187,7 @@ Anti-pattern codes are reference labels. All detected codes MUST be reported wit
 | `AP-CONTEXT-STARVATION` | Critical context is missing. |
 | `AP-CONTEXT-DRIFT` | Required context may be lost through compaction or long sessions. |
 | `AP-BURIED-PRIORITY` | Critical rules are hidden instead of surfaced early and scannably. |
-| `AP-LOST-MIDDLE` | Critical instructions or references sit in the middle of a long prompt where attention may degrade. |
+| `AP-LOST-MIDDLE` | Critical instructions or references sit in the middle of a long prompt where attention may degrade. Note: the U-shaped attention effect (primacy + recency bias) is significantly reduced in large frontier models but remains substantial in smaller models; apply this check conservatively for GPT-4-class targets and strictly for smaller models. |
 | `AP-VAGUE-REFERENCE` | References such as `the above` or `this` have no clear antecedent. |
 | `AP-ASSUMES-MEMORY` | The document assumes the agent will remember earlier turns. |
 | `AP-NO-CHECKPOINT` | Long workflows lack state checkpoints. |
@@ -361,7 +361,7 @@ PURPOSE:
   Verify that instructions align with LLM capabilities, training alignment, and graceful degradation patterns.
 
 RULES:
-  - ALWAYS verify instructions do not ask impossible things, break complex reasoning into steps, and request output formats the model handles well (JSON, Markdown, etc.)
+  - ALWAYS verify instructions do not ask impossible things, break complex reasoning into steps when beneficial (see CoT caveat below), and request output formats the model handles well (JSON, Markdown, etc.)
   - ALWAYS verify familiar prompt patterns, an appropriate role/persona, and a style consistent with effective prompting are used
   - ALWAYS rewrite vague or negative rules into direct actions; prefer Do X when Y over Do not forget X; prefer If data is missing, say UNKNOWN over Do not hallucinate
   - ALWAYS treat exact word counts, exact token counts, exact character limits, and long simultaneous rule sets as high-risk unless automated validation or post-processing is available
@@ -370,6 +370,10 @@ RULES:
   - ALWAYS verify iterative improvement is supported, feedback incorporation is defined, and partial success is actionable
   - ALWAYS verify multi-turn use, clarification requests, and mid-task scope changes are supported
   - ALWAYS prefer one compact positive example over several overlapping prose rules when format, tone, or structure matters; remove any example that no longer changes behavior
+  - ALWAYS order multiple constraints from most specific / hardest to satisfy first to least specific / easiest last — LLMs show higher compliance with hard-to-easy ordering than easy-to-hard or random ordering regardless of model architecture and size
+  - ALWAYS flag chain-of-thought decomposition as potentially harmful for tasks involving implicit pattern recognition, intuitive judgment, or face/signal recognition — CoT can reduce performance on tasks where deliberate verbalization hurts human performance too; do not apply CoT unconditionally
+  - ALWAYS note that prompt format sensitivity (Markdown vs JSON vs plain text) is strongly model-size dependent: smaller models vary up to ±40% by format for the same task; larger frontier models are substantially more robust — flag format choice as a calibration concern when the target model is not known or may vary
+  - ALWAYS recommend per-constraint self-check (decompose, critique, refine each constraint independently) when AP-INSTRUCTION-DENSITY is detected; per-constraint loops significantly outperform single-pass self-refinement under high constraint counts
 ```
 
 ## L10: Improvement Synthesis
@@ -465,6 +469,14 @@ This document is the authoritative working method. External sources inform its d
 - `FollowBench`: incrementally adding constraints exposes weaknesses in fine-grained constraint following. https://arxiv.org/abs/2310.20410
 - `Lost in the Middle`: long-context models may underuse information placed in the middle of long inputs; critical rules should not be buried there. https://arxiv.org/abs/2307.03172
 - `What Prompts Don't Say`: simply adding more requirements does not reliably improve performance because instruction-following capacity is limited and requirements may conflict. https://arxiv.org/abs/2505.13360
+- `When Instructions Multiply` (2025): quantifies the degradation law — prompt-level accuracy(n) = instruction-level accuracy^n; experiments across GPT-4o, Claude-3.5, Gemini-1.5, Gemma2, Llama3.1 confirm constant per-instruction degradation. https://arxiv.org/abs/2509.21051
+- `How Many Instructions Can LLMs Follow at Once?` (2025): ManyIFEval benchmark with up to ten verifiable instructions; performance degrades consistently and gradually as instruction count rises across all tested frontier models. https://arxiv.org/abs/2507.11538
+- `Order Matters: Position Bias in Multi-constraint Instruction Following` (ACL Findings 2025): LLMs perform significantly better when constraints are ordered hard-to-easy; the effect is consistent across architectures and parameter sizes. https://arxiv.org/abs/2502.17204
+- `Mind Your Step (by Step): Chain-of-Thought can Reduce Performance` (2024): CoT degrades performance on tasks where deliberate reasoning harms human performance (implicit patterns, intuitive recognition); do not apply CoT unconditionally. https://arxiv.org/abs/2410.21333
+- `The Curse of CoT: Limitations in In-Context Learning` (2025): long-CoT reasoning models fail to overcome fundamental limitations in planning tasks despite higher computational cost. https://arxiv.org/abs/2504.05081
+- `Does Prompt Formatting Have Any Impact on LLM Performance?` (2024): prompt format (CSV, JSON, Markdown, YAML) causes up to ±40% accuracy swings in smaller models; larger models are substantially more robust — format sensitivity is a model-size property. https://arxiv.org/abs/2411.10541
+- `LLM Self-Correction with DeCRIM` (2024): decompose-critique-refine per-constraint self-check significantly outperforms single-pass self-refinement when multiple constraints are active; recommended mitigation for AP-INSTRUCTION-DENSITY. https://arxiv.org/abs/2410.06458
+- `Lost in the Middle: An Emergent Property` (2025): reframes the lost-in-the-middle effect as emergent from information-retrieval demands during pretraining; larger models show substantially reduced or eliminated U-shaped attention curves. https://arxiv.org/abs/2510.10276
 
 ## Validation
 
