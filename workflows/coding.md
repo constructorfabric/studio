@@ -8,7 +8,7 @@ version: 0.1
 
 # cf-coding
 
-This skill authors and reviews source code using the code-checklist, bug-finding, and consistency-checklist methodologies, runs a deterministic gate (tests, lint, typecheck, build), and runs a semantic review-fix loop at a selectable depth — single-pass, per-methodology, or per-layer — driven by coding and reviewer sub-agents.
+This skill authors and reviews source code using the code-checklist, bug-finding, and consistency-checklist methodologies. After bootstrap it optionally discovers task-relevant project context via cf-explore, runs a deterministic gate (tests, lint, typecheck, build), and runs a semantic review-fix loop at a selectable depth — single-pass, per-methodology, or per-layer — driven by coding and reviewer sub-agents.
 
 ```pdsl
 UNIT CodingBootstrap
@@ -22,6 +22,7 @@ DO:
   LOAD {cf-studio-path}/.core/requirements/bug-finding.md
   LOAD {cf-studio-path}/.core/requirements/consistency-checklist.md
   RUN verify the references loaded; EMIT "Required reference not found (code-checklist, bug-finding, or consistency-checklist methodology under {cf-studio-path}/.core) — cannot author or review code; reinstall or sync the studio kit, then retry." and STOP_TURN WHEN any load fails
+  CONTINUE CodingExploreGate WHEN CFS_INIT == true AND the references loaded
 RULES:
   ALWAYS verify the cf skill is loaded, CFS_INIT == true, before authoring or reviewing code
   ALWAYS treat CFS_INIT as false when its value is unknown, ambiguous, or unset
@@ -34,6 +35,27 @@ OPTIONS:
   1 load -> INVOKE skill `cf` and CONTINUE CodingBootstrap
   2 stop -> STOP_TURN
   INVALID -> EMIT_MENU LoadCfSkillConfirm
+```
+
+```pdsl
+UNIT CodingExploreGate
+PURPOSE: Offer task-relevant context discovery before any code is authored or reviewed, after Bootstrap and before the first edit.
+STATE:
+  SET RESOURCE_CONTEXT: unset | provided (default unset, scope workflow_run)
+DO:
+  EMIT_MENU CodingExploreMenu
+  WAIT user.reply
+  STOP_TURN
+RULES:
+  ALWAYS offer cf-explore context discovery before authoring or reviewing code, and ALWAYS let the user skip it
+  ALWAYS default to skip when the coding target and its surrounding context are already fully specified
+  ALWAYS carry any returned resource_context into every coder and reviewer dispatch payload as read-only context, NEVER as a gate on a verdict
+MENU CodingExploreMenu
+TITLE: Before writing or reviewing code, discover task-relevant project context (existing conventions, related modules, call sites) with cf-explore — or skip? Skip is the default when the target and its context are already clear; explore for unfamiliar or cross-cutting code. Reply with a number.
+OPTIONS:
+  1 explore -> INVOKE skill `cf-explore` with intent=generate and return_context=true, SET RESOURCE_CONTEXT = provided, then CONTINUE CodingDispatch
+  2 skip -> CONTINUE CodingDispatch
+  INVALID -> EMIT_MENU CodingExploreMenu
 ```
 
 ```pdsl
@@ -93,6 +115,7 @@ PURPOSE: Dispatch the sub-agents that write, fix, review, and gate source code.
 RULES:
   ALWAYS select the coding author/fix agent under {cf-studio-path}/.core/skills/studio/agents/ by this priority order (first match wins): (1) cf-codegen.md when the task is fully specified and can be implemented in an isolated context with no clarification; else (2) cf-generate-coder-smart.md when the change involves behavior changes, tests, refactors, API boundaries, or any security/concurrency/data-model implication; else (3) cf-generate-coder-casual.md when it is a small code-only task touching at most two source/test files with no security/concurrency/data-model risk; else cf-generate-coder-smart.md as the default
   ALWAYS resolve git_commit_mode (probe once per session), contributing_guide (discover; null when none found), and the mode-matched git_constraint before any write-capable coder dispatch, and ALWAYS include all three in that dispatch payload
+  ALWAYS include the CodingExploreGate-resolved resource_context (when RESOURCE_CONTEXT == provided) in every coder and reviewer dispatch payload as read-only context (an absolute path or reference, never inline prompt text), NEVER as a gate on a coder or reviewer verdict
   ALWAYS dispatch cf-semantic-reviewer-code (code-checklist), cf-code-bug-finder (bug-finding), and cf-semantic-reviewer-consistency (consistency-checklist) from {cf-studio-path}/.core/skills/studio/agents/ per the chosen REVIEW_GRANULARITY: single-pass = one reviewer covering all three methodologies in a single pass; per-methodology = one cf-semantic-reviewer-code over all code-checklist categories, one cf-code-bug-finder over all bug-finding layers, and one cf-semantic-reviewer-consistency over all consistency-checklist categories; per-layer = one reviewer per category/layer for every category/layer each methodology defines, run in parallel, never a fixed count — read each methodology's current category/layer map before dispatch
   ALWAYS run the deterministic gate via cf-deterministic-validator from {cf-studio-path}/.core/skills/studio/agents/cf-deterministic-validator.md plus the project's test/lint/typecheck/build commands
   ALWAYS synthesize into each reviewer instance only its assigned methodology/category/layer slice, never more than its scope

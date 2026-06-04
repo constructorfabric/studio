@@ -8,7 +8,7 @@ version: 0.1
 
 # cf-write-docs
 
-This skill authors and reviews project documents using the consistency-checklist and language-complexity methodologies, runs a deterministic gate (artifact validation, TOC, language checks), and runs a semantic review-fix loop at a selectable depth — single-pass, per-methodology, or per-layer — driven by author and reviewer sub-agents.
+This skill authors and reviews project documents using the consistency-checklist and language-complexity methodologies. After bootstrap it optionally discovers task-relevant project context via cf-explore, runs a deterministic gate (artifact validation, TOC, language checks), and runs a semantic review-fix loop at a selectable depth — single-pass, per-methodology, or per-layer — driven by author and reviewer sub-agents.
 
 ```pdsl
 UNIT WriteDocsBootstrap
@@ -22,6 +22,7 @@ DO:
   LOAD {cf-studio-path}/.core/requirements/language-complexity.md
   LOAD {cf-studio-path}/.core/requirements/storytelling-dimensions.md
   RUN verify the references loaded; EMIT "Required reference not found (consistency-checklist, language-complexity, or storytelling-dimensions reference under {cf-studio-path}/.core) — cannot author or review docs; reinstall or sync the studio kit, then retry." and STOP_TURN WHEN any load fails
+  CONTINUE WriteDocsExploreGate WHEN CFS_INIT == true AND the references loaded
 RULES:
   ALWAYS verify the cf skill is loaded, CFS_INIT == true, before authoring or reviewing docs
   ALWAYS treat CFS_INIT as false when its value is unknown, ambiguous, or unset
@@ -38,6 +39,27 @@ OPTIONS:
   1 load -> INVOKE skill `cf` and CONTINUE WriteDocsBootstrap
   2 stop -> STOP_TURN
   INVALID -> EMIT_MENU LoadCfSkillConfirm
+```
+
+```pdsl
+UNIT WriteDocsExploreGate
+PURPOSE: Offer task-relevant context discovery before any document is authored or reviewed, after Bootstrap and before the first edit.
+STATE:
+  SET RESOURCE_CONTEXT: unset | provided (default unset, scope workflow_run)
+DO:
+  EMIT_MENU WriteDocsExploreMenu
+  WAIT user.reply
+  STOP_TURN
+RULES:
+  ALWAYS offer cf-explore context discovery before authoring or reviewing docs, and ALWAYS let the user skip it
+  ALWAYS default to skip when the document target and its surrounding context are already fully specified
+  ALWAYS carry any returned resource_context into every author and reviewer dispatch payload as read-only context, NEVER as a gate on a verdict
+MENU WriteDocsExploreMenu
+TITLE: Before writing or reviewing docs, discover task-relevant project context (existing docs, related guides, source material, conventions) with cf-explore — or skip? Skip is the default when the target and its context are already clear; explore for unfamiliar or cross-cutting documentation. Reply with a number.
+OPTIONS:
+  1 explore -> INVOKE skill `cf-explore` with intent=generate and return_context=true, SET RESOURCE_CONTEXT = provided, then CONTINUE WriteDocsDispatch
+  2 skip -> CONTINUE WriteDocsDispatch
+  INVALID -> EMIT_MENU WriteDocsExploreMenu
 ```
 
 ```pdsl
@@ -99,6 +121,7 @@ PURPOSE: Dispatch the sub-agents that write, fix, review, and gate project docum
 RULES:
   ALWAYS author and apply review fixes via cf-generate-author from {cf-studio-path}/.core/skills/studio/agents/cf-generate-author.md — the read-only selector that classifies task domain and complexity and routes generic artifact/prose work to the cheapest capable tier (cf-generate-author-junior for simple one-file low-risk prose, cf-generate-author-middle for standard artifacts with moderate cross-references, cf-generate-author-senior for complex multi-file or strict-rule docs, cf-generate-author-lead for high-risk or broad cross-system documentation)
   ALWAYS resolve git_commit_mode (probe once per session), contributing_guide (discover; null when none found), and the mode-matched git_constraint before any write-capable author dispatch, and ALWAYS include all three in that dispatch payload
+  ALWAYS include the WriteDocsExploreGate-resolved resource_context (when RESOURCE_CONTEXT == provided) in every author and reviewer dispatch payload as read-only context (an absolute path or reference, never inline prompt text), NEVER as a gate on an author or reviewer verdict
   ALWAYS include the Bootstrap-resolved audience, narrator, and diagram dimensions in every reviewer and author dispatch payload as read-only policy data, scoped per {cf-studio-path}/.core/requirements/storytelling-dimensions.md review and authoring flow-class rules
   NEVER pass any storytelling dimension as a gate on a reviewer or author verdict
   ALWAYS dispatch cf-semantic-reviewer-consistency from {cf-studio-path}/.core/skills/studio/agents/cf-semantic-reviewer-consistency.md (consistency-checklist) and cf-semantic-reviewer-artifact from {cf-studio-path}/.core/skills/studio/agents/cf-semantic-reviewer-artifact.md (kit/artifact checklist) per the chosen REVIEW_GRANULARITY: single-pass = one reviewer covering both methodologies; per-methodology = one reviewer per methodology; per-layer = one reviewer per category for every category each methodology defines, run in parallel, never a fixed count

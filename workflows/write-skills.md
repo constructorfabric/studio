@@ -8,7 +8,7 @@ version: 0.1
 
 # cf-write-skills
 
-This skill authors and reviews skill/prompt files written in PDSL. It loads the PDSL spec and prompt-engineering guidance, validates authored files, and runs a semantic review-fix loop at a selectable depth — single-pass, per-methodology, or per-layer (one reviewer sub-agent per layer, every layer each methodology defines, L1 through its last) — over the prompt-engineering, prompt-bug-finding, and consistency-checklist methodologies, driven by author and reviewer sub-agents.
+This skill authors and reviews skill/prompt files written in PDSL. It loads the PDSL spec and prompt-engineering guidance, optionally discovers task-relevant project context via cf-explore after bootstrap, validates authored files, and runs a semantic review-fix loop at a selectable depth — single-pass, per-methodology, or per-layer (one reviewer sub-agent per layer, every layer each methodology defines, L1 through its last) — over the prompt-engineering, prompt-bug-finding, and consistency-checklist methodologies, driven by author and reviewer sub-agents.
 
 ```pdsl
 UNIT WriteSkillsBootstrap
@@ -21,6 +21,7 @@ DO:
   LOAD {cf-studio-path}/.core/architecture/specs/PDSL.md
   LOAD {cf-studio-path}/.core/requirements/prompt-engineering.md
   RUN verify both references loaded; EMIT "Required reference not found (PDSL spec or prompt-engineering methodology under {cf-studio-path}/.core) — cannot author or review; reinstall or sync the studio kit, then retry." and STOP_TURN WHEN either load fails
+  CONTINUE WriteSkillsExploreGate WHEN CFS_INIT == true AND both references loaded
 RULES:
   ALWAYS verify the cf skill is loaded, CFS_INIT == true, before authoring or reviewing a skill
   ALWAYS treat CFS_INIT as false when its value is unknown, ambiguous, or unset
@@ -33,6 +34,27 @@ OPTIONS:
   1 load -> INVOKE skill `cf` and CONTINUE WriteSkillsBootstrap
   2 stop -> STOP_TURN
   INVALID -> EMIT_MENU LoadCfSkillConfirm
+```
+
+```pdsl
+UNIT WriteSkillsExploreGate
+PURPOSE: Offer task-relevant context discovery before any skill file is authored or reviewed, after Bootstrap and before the first edit.
+STATE:
+  SET RESOURCE_CONTEXT: unset | provided (default unset, scope workflow_run)
+DO:
+  EMIT_MENU WriteSkillsExploreMenu
+  WAIT user.reply
+  STOP_TURN
+RULES:
+  ALWAYS offer cf-explore context discovery before authoring or reviewing a skill, and ALWAYS let the user skip it
+  ALWAYS default to skip when the skill target and its surrounding context are already fully specified
+  ALWAYS carry any returned resource_context into every author and reviewer dispatch payload as read-only context, NEVER as a gate on a verdict
+MENU WriteSkillsExploreMenu
+TITLE: Before writing or reviewing a skill, discover task-relevant project context (sibling skills, workflows, agent contracts, referenced requirements, PDSL conventions) with cf-explore — or skip? Skip is the default when the target and its context are already clear; explore for unfamiliar or cross-cutting prompt work. Reply with a number.
+OPTIONS:
+  1 explore -> INVOKE skill `cf-explore` with intent=generate and return_context=true, SET RESOURCE_CONTEXT = provided, then CONTINUE WriteSkillsDispatch
+  2 skip -> CONTINUE WriteSkillsDispatch
+  INVALID -> EMIT_MENU WriteSkillsExploreMenu
 ```
 
 ```pdsl
@@ -86,6 +108,7 @@ PURPOSE: Dispatch the sub-agents that write, fix, and review skills.
 RULES:
   ALWAYS dispatch cf-pdsl-author from {cf-studio-path}/.core/skills/studio/agents/cf-pdsl-author.md to write skills and apply review fixes
   ALWAYS resolve git_commit_mode (probe once per session), contributing_guide (discover; null when none found), and the mode-matched git_constraint before any write-capable cf-pdsl-author dispatch, and ALWAYS include all three in that dispatch payload
+  ALWAYS include the WriteSkillsExploreGate-resolved resource_context (when RESOURCE_CONTEXT == provided) in every cf-pdsl-author and reviewer dispatch payload as read-only context (an absolute path or reference, never inline prompt text), NEVER as a gate on an author or reviewer verdict
   ALWAYS dispatch cf-pdsl-reviewer from {cf-studio-path}/.core/skills/studio/agents/cf-pdsl-reviewer.md (prompt-engineering + prompt-bug-finding) and cf-semantic-reviewer-consistency from {cf-studio-path}/.core/skills/studio/agents/cf-semantic-reviewer-consistency.md (consistency-checklist) per the chosen REVIEW_GRANULARITY: single-pass = one reviewer over all three methodologies; per-methodology = cf-pdsl-reviewer over its prompt-engineering + prompt-bug-finding layers and cf-semantic-reviewer-consistency over all consistency-checklist categories; per-layer = one reviewer per layer/category for every layer each methodology defines (L1 through its last), never a fixed count
   ALWAYS synthesize into each reviewer instance only its assigned slice for the chosen granularity, never more than its scope
 ```
