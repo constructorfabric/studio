@@ -578,7 +578,7 @@ def cmd_init(argv: List[str]) -> int:
                     to_dir=target_rel,
                     dry_run=args.dry_run,
                     force=False,
-                    yes=args.yes,
+                    yes=args.yes or args.migrate_from_cypilot == "yes",
                     skip_update=False,
                 )
                 merge_legacy_preflight_result(result, preflight)
