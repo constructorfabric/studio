@@ -392,7 +392,7 @@ Constructor Studio works across multiple AI coding tools through the same portab
  | Claude Code | Strongest starting point for the full Constructor Studio workflow | Preserves workflow separation, subagent-assisted isolation, and separate generation/review passes with the least manual reconstruction |
  | Cursor | Good editor-first support for everyday Constructor Studio use | Portable workflows still work well, but orchestration boundaries and isolation are less explicit than in stronger workflow-oriented hosts |
  | GitHub Copilot | Usable for structured GitHub-centered Constructor Studio work | The same portable workflow model applies, but phase separation and task orchestration need more manual steering than in Claude Code |
- | OpenAI Codex | Best for bounded, tightly scoped Constructor Studio work | Works best when workflow boundaries are narrow and explicit; less natural for broader multi-stage delivery flow |
+ | OpenAI Codex | Best for bounded, tightly scoped Constructor Studio work | Works best when workflow boundaries are narrow and explicit; less natural for broader multi-stage delivery flow. Defaults to an autonomous mode that skips instructions — turn it off at session start (send `disable autonomous mode`) before using Studio skills |
  | Windsurf | Usable when you enforce workflow discipline manually | Portable workflows still apply, but weaker isolation means generation and review should stay in separate chats by convention |
  
  If you are unsure where to start, **Claude Code** currently gives the clearest first experience for the full Constructor Studio workflow because it best preserves workflow separation, orchestration control, and subagent-assisted isolation.

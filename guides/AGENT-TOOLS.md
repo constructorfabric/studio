@@ -388,12 +388,14 @@ That means you should expect less safety from the host layer itself.
 
 ### Typical problems
 
+- **Codex runs autonomously by default and stops following your instructions** — its built-in developer/system instruction pushes it to act on its own, so it can skip Constructor Studio gates, menus, and steps instead of waiting for your input
 - **You give Codex an oversized or ambiguous task and expect the host to keep it on rails**
 - **You reuse a polluted session for review after generation**
 - **You treat one clean run as sufficient evidence of correctness**
 
 ### How to mitigate
 
+- at the start of a session, turn off the autonomous mode before anything else — for example, send the prompt `disable autonomous mode`, then start working with Constructor Studio skills
 - keep tasks tightly scoped
 - use `plan` before big execution
 - validate after each phase

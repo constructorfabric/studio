@@ -3,382 +3,111 @@
 **Artifact**: PRD
 **Kit**: sdlc
 
-**Dependencies** (lazy-loaded):
-- `{prd_template}` — structural reference (load WHEN validating structure)
-- `{prd_checklist}` — semantic quality criteria (load WHEN checking semantic quality)
-- `{prd_example}` — reference implementation (load WHEN needing content depth reference)
+```pdsl
+UNIT PrdAuthoring
 
-## Table of Contents
+PURPOSE:
+  Author or revise a PRD that follows the template, conventions, and authoring boundaries.
 
-1. [Prerequisites](#prerequisites)
-2. [Requirements](#requirements)
-   - [Structural](#structural)
-   - [Versioning](#versioning)
-   - [Semantic](#semantic)
-   - [Traceability](#traceability)
-   - [Constraints](#constraints)
-   - [Deliberate Omissions (MUST NOT HAVE)](#deliberate-omissions-must-not-have)
-3. [Tasks](#tasks)
-   - [Phase 1: Setup](#phase-1-setup)
-   - [Phase 2: Content Creation](#phase-2-content-creation)
-   - [Phase 3: IDs and Structure](#phase-3-ids-and-structure)
-   - [Phase 4: Quality Check](#phase-4-quality-check)
-   - [Phase 5: Table of Contents](#phase-5-table-of-contents)
-4. [Validation](#validation)
-   - [Phase 1: Structural Validation (Deterministic)](#phase-1-structural-validation-deterministic)
-   - [Phase 2: Semantic Validation (Checklist-based)](#phase-2-semantic-validation-checklist-based)
-   - [Phase 3: Validation Report](#phase-3-validation-report)
-   - [Phase 4: Applicability Context](#phase-4-applicability-context)
-   - [Phase 5: Review Priority](#phase-5-review-priority)
-   - [Phase 6: Report Format](#phase-6-report-format)
-   - [Phase 7: Reporting Commitment](#phase-7-reporting-commitment)
-   - [Phase 8: PR Review Focus (Requirements)](#phase-8-pr-review-focus-requirements)
-   - [Phase 9: Table of Contents Validation](#phase-9-table-of-contents-validation)
-5. [Error Handling](#error-handling)
-   - [Missing Dependencies](#missing-dependencies)
-   - [Missing Adapter](#missing-adapter)
-   - [Escalation](#escalation)
-   - [Missing Config](#missing-config)
-6. [Next Steps](#next-steps)
-   - [Options](#options)
+WHEN:
+  - REQUIRE authoring or revising a PRD
 
----
+DO:
+  - LOAD {prd_template} for structure
+  - RUN read project config for ID prefix and resolve output path from {cf-studio-path}/config/artifacts.toml
+  - LOAD {prd_example} for content-depth reference
+  - RUN author each required section guided by template prompts (Vision, Actors, Capabilities/FRs, Use Cases, NFRs + Exclusions, Non-Goals, Assumptions, Risks)
+  - SET actor IDs = cpt-{hierarchy-prefix}-actor-{slug}; capability/FR IDs = cpt-{hierarchy-prefix}-fr-{slug}; assign priorities p1-p9 by business impact
+  - RUN cfs list-ids to verify ID uniqueness
 
-## Prerequisites
-
-Read project config for ID prefix.
-
----
-
-## Requirements
-
-### Structural
-
-**Load on demand**: `{prd_template}` — WHEN validating structure
-
-- [ ] PRD follows `{prd_template}` structure
-- [ ] Artifact frontmatter (optional): use `cpt:` format for document metadata
-- [ ] All required sections present and non-empty
-- [ ] All IDs follow `cpt-{hierarchy-prefix}-{kind}-{slug}` convention
-- [ ] All capabilities have priority markers (`p1`–`p9`)
-- [ ] No placeholder content (TODO, TBD, FIXME)
-- [ ] No duplicate IDs within document
-
-### Versioning
-
-- [ ] When editing existing PRD: increment version in frontmatter
-- [ ] When changing capability definition: add `-v{N}` suffix to ID or increment existing version
-  - Format: `cpt-{hierarchy-prefix}-cap-{slug}-v2`, `cpt-{hierarchy-prefix}-cap-{slug}-v3`, etc.
-- [ ] Keep changelog of significant changes
-
-### Semantic
-
-**Load on demand**: `{prd_checklist}` — WHEN checking semantic quality
-
-- [ ] Purpose MUST be ≤ 2 paragraphs
-- [ ] Purpose MUST NOT contain implementation details
-- [ ] Vision MUST explain WHY the product exists
-  - VALID: "Enables developers to validate artifacts against templates" (explains purpose)
-  - INVALID: "A tool for Constructor Studio" (doesn't explain why it matters)
-- [ ] Background MUST describe current state and specific pain points
-- [ ] MUST include target users and key problems solved
-- [ ] All goals MUST be measurable with concrete targets
-  - VALID: "Reduce validation time from 15min to <30s" (quantified with baseline)
-  - INVALID: "Improve validation speed" (no baseline, no target)
-- [ ] Success criteria MUST include baseline, target, and timeframe
-- [ ] All actors MUST be identified with specific roles (not just "users")
-  - VALID: "Framework Developer", "Project Maintainer", "CI Pipeline"
-  - INVALID: "Users", "Developers" (too generic)
-- [ ] Each actor MUST have defined capabilities/needs
-- [ ] Actor IDs follow: `cpt-{system}-actor-{slug}`
-- [ ] Non-goals MUST explicitly state what product does NOT do
-- [ ] Every FR MUST use observable behavior language (MUST, MUST NOT, SHOULD)
-- [ ] Every FR MUST have a unique ID: `cpt-{system}-fr-{slug}`
-- [ ] Every FR MUST have a priority marker (`p1`–`p9`)
-- [ ] Every FR MUST have a rationale explaining business value
-- [ ] Every FR MUST reference at least one actor
-- [ ] Capabilities MUST trace to business problems
-- [ ] No placeholder content (TODO, TBD, FIXME)
-- [ ] No duplicate IDs within document
-- [ ] All requirements verified via automated tests (unit, integration, e2e) targeting 90%+ code coverage unless otherwise specified
-- [ ] Document verification method only for non-test approaches (analysis, inspection, demonstration)
-- [ ] NFRs MUST have measurable thresholds with units and conditions
-- [ ] NFR exclusions MUST have explicit reasoning
-- [ ] Intentional exclusions MUST list N/A checklist categories with reasoning
-- [ ] Use cases MUST cover primary user journeys
-- [ ] Use cases MUST include alternative flows for error scenarios
-- [ ] Use case IDs follow: `cpt-{system}-usecase-{slug}`
-- [ ] Key assumptions MUST be explicitly stated
-- [ ] Open questions MUST have owners and target resolution dates
-- [ ] Risks and uncertainties MUST be documented with impact and mitigation
-
-### Traceability
-
-**Load on demand**: `{cf-studio-path}/.core/architecture/specs/traceability.md` — WHEN checking ID formats
-
-- [ ] Capabilities traced through: PRD → DESIGN → DECOMPOSITION → FEATURE → CODE
-- [ ] When capability fully implemented (all specs IMPLEMENTED) → mark capability `[x]`
-- [ ] When all capabilities `[x]` → product version complete
-
-### Constraints
-
-**Load on demand**:
-- `{constraints}` — WHEN validating cross-references
-- `{cf-studio-path}/.core/architecture/specs/kit/constraints.md` — WHEN resolving constraint rules
-
-- [ ] ALWAYS open and follow `{constraints}` (kit root)
-- [ ] Treat `constraints.toml` as primary validator for:
-  - where IDs are defined
-  - where IDs are referenced
-  - which cross-artifact references are required / optional / prohibited
-
-**References**:
-- `{cf-studio-path}/.core/requirements/kit-constraints.md`
-- `{cf-studio-path}/.core/schemas/kit-constraints.schema.json`
-
-**Validation Checks**:
-- `cfs validate` enforces `identifiers[<kind>].references` rules (required / optional / prohibited)
-- `cfs validate` enforces headings scoping for ID definitions and references
-- `cfs validate` enforces "checked ref implies checked def" consistency
-
-### Deliberate Omissions (MUST NOT HAVE)
-
-PRDs must NOT contain the following — report as violation if found:
-
-- **ARCH-PRD-NO-001**: No Technical Implementation Details (CRITICAL) — PRD captures *what*, not *how*
-- **ARCH-PRD-NO-002**: No Architectural Decisions (CRITICAL) — decisions belong in ADR
-- **BIZ-PRD-NO-001**: No Implementation Tasks (HIGH) — tasks belong in DECOMPOSITION
-- **BIZ-PRD-NO-002**: No Spec-Level Design (HIGH) — specs belong in FEATURE
-- **DATA-PRD-NO-001**: No Data Schema Definitions (HIGH) — schemas belong in DESIGN
-- **INT-PRD-NO-001**: No API Specifications (HIGH) — API specs belong in DESIGN/FEATURE
-- **TEST-PRD-NO-001**: No Test Cases (MEDIUM) — tests belong in FEATURE/code
-- **OPS-PRD-NO-001**: No Infrastructure Specifications (MEDIUM) — infra belongs in DESIGN
-- **SEC-PRD-NO-001**: No Security Implementation Details (HIGH) — implementation belongs in DESIGN/code
-- **MAINT-PRD-NO-001**: No Code-Level Documentation (MEDIUM) — code docs belong in code
-
----
-
-## Tasks
-
-### Phase 1: Setup
-
-- [ ] Read project config for ID prefix
-- [ ] Identify artifact output path from `{cf-studio-path}/config/artifacts.toml`
-
-### Phase 2: Content Creation
-
-**Load on demand**:
-- `{prd_template}` — WHEN generating artifact structure
-- `{prd_example}` — WHEN needing reference for content depth
-
-- [ ] Write each section guided by template prompts and examples
-- [ ] Use example as reference for content depth:
-  - Vision → how example explains purpose (BIZ-PRD-001)
-  - Actors → how example defines actors (BIZ-PRD-002)
-  - Capabilities → how example structures caps (BIZ-PRD-003)
-  - Use Cases → how example documents journeys (BIZ-PRD-004)
-  - NFRs + Exclusions → how example handles N/A categories (DOC-PRD-001)
-  - Non-Goals & Risks → how example scopes product (BIZ-PRD-008)
-  - Assumptions → how example states assumptions (BIZ-PRD-007)
-
-### Phase 3: IDs and Structure
-
-- [ ] Generate actor IDs: `cpt-{hierarchy-prefix}-actor-{slug}` (e.g., `cpt-myapp-actor-admin-user`)
-- [ ] Generate capability IDs: `cpt-{hierarchy-prefix}-fr-{slug}` (e.g., `cpt-myapp-fr-user-management`)
-- [ ] Assign priorities based on business impact
-- [ ] Verify uniqueness with `cfs list-ids`
-
-### Phase 4: Quality Check
-
-- [ ] Compare output quality to `{prd_example}`
-- [ ] Self-review against `{prd_checklist}` MUST HAVE items
-- [ ] Ensure no MUST NOT HAVE violations
-
-### Phase 5: Table of Contents
-
-- [ ] Run `cfs toc <artifact-file>` to generate/update Table of Contents
-- [ ] Verify TOC is present and complete with `cfs validate-toc <artifact-file>`
-
----
-
-## Validation
-
-### Phase 1: Structural Validation (Deterministic)
-
-- [ ] Run `cfs validate --artifact <path>` for:
-  - Template structure compliance
-  - ID format validation
-  - Priority markers present
-  - No placeholders
-  - No duplicate IDs
-
-### Phase 2: Semantic Validation (Checklist-based)
-
-**Load on demand**: `{prd_checklist}` — required for this phase
-
-- [ ] Read `{prd_checklist}` in full
-- [ ] For each MUST HAVE item: check if requirement is met
-  - If not met: report as violation with severity
-  - If not applicable: verify explicit "N/A" with reasoning
-- [ ] For each MUST NOT HAVE item: scan document for violations
-- [ ] Compare content depth to `{prd_example}`
-  - Flag significant quality gaps
-
-### Phase 3: Validation Report
-
-```
-PRD Validation Report
-═════════════════════
-
-Structural: PASS/FAIL
-Semantic: PASS/FAIL (N issues)
-
-Issues:
-- [SEVERITY] CHECKLIST-ID: Description
+RULES:
+  - ALWAYS follow {prd_template} structure; all required sections present and non-empty
+  - ALWAYS use ID convention cpt-{hierarchy-prefix}-{kind}-{slug} and priority markers p1-p9 on capabilities/FRs
+  - ALWAYS version on change: increment frontmatter version when editing; when changing a capability definition add -v{N} suffix (e.g. cpt-{hierarchy-prefix}-cap-{slug}-v2) or increment existing version; keep a changelog of significant changes
+  - ALWAYS keep the PRD requirements-only (WHAT not HOW); express every NFR as a business-level quality requirement (user/business outcome, SLA, measurable target), not a technical implementation spec
+  - ALWAYS state authorization as exact per-actor/operation permissions (which actor may perform which action on which resource); NEVER restate the generic "every API/endpoint requires authentication/authorization", which is assumed
+  - ALWAYS treat {prd_checklist} as the single source of semantic quality criteria
+  - NEVER duplicate semantic criteria here; NEVER leave placeholders (TODO, TBD, FIXME); NEVER create duplicate IDs within the document
 ```
 
-### Phase 4: Applicability Context
+```pdsl
+UNIT PrdOmissions
 
-Before evaluating each checklist item, the expert MUST:
+PURPOSE:
+  Enforce PRD scope boundaries — content that MUST NOT appear and the artifact where it belongs. Report as a violation if found.
 
-1. **Understand the product's domain** — What kind of product is this PRD for? (e.g., consumer app, enterprise platform, developer tool, internal system)
-
-2. **Determine applicability for each requirement** — Not all checklist items apply to all PRDs:
-   - An internal tool PRD may not need market positioning analysis
-   - A developer framework PRD may not need end-user personas
-   - A methodology PRD may not need regulatory compliance analysis
-
-3. **Require explicit handling** — For each checklist item:
-   - If applicable: The document MUST address it (present and complete)
-   - If not applicable: The document MUST explicitly state "Not applicable because..." with reasoning
-   - If missing without explanation: Report as violation
-
-4. **Never skip silently** — Either:
-   - The requirement is met (document addresses it), OR
-   - The requirement is explicitly marked not applicable (document explains why), OR
-   - The requirement is violated (report it with applicability justification)
-
-**Key principle**: The reviewer must be able to distinguish "author considered and excluded" from "author forgot"
-
-For each major checklist category (BIZ, ARCH, SEC, TEST, MAINT), confirm:
-
-- [ ] Category is addressed in the document, OR
-- [ ] Category is explicitly marked "Not applicable" with reasoning, OR
-- [ ] Category absence is reported as a violation (with applicability justification)
-
-### Phase 5: Review Priority
-
-**Review Priority**: BIZ → ARCH → SEC → TEST → (others as applicable)
-
-> **New in v1.2**: Safety was added as a distinct quality characteristic in ISO/IEC 25010:2023. Applicable for systems that could cause harm to people, property, or the environment.
-
-### Phase 6: Report Format
-
-Report **only** problems (do not list what is OK).
-
-For each issue include:
-
-- **Why Applicable**: Explain why this requirement applies to this specific PRD's context
-- **Checklist Item**: `{CHECKLIST-ID}` — {Checklist item title}
-- **Severity**: CRITICAL|HIGH|MEDIUM|LOW
-- **Issue**: What is wrong (requirement missing or incomplete)
-- **Evidence**: Quote the exact text or "No mention found"
-- **Why it matters**: Impact (risk, cost, user harm, compliance)
-- **Proposal**: Concrete fix with clear acceptance criteria
-
-```markdown
-## Review Report (Issues Only)
-
-### 1. {Short issue title}
-
-**Checklist Item**: `{CHECKLIST-ID}` — {Checklist item title}
-
-**Severity**: CRITICAL|HIGH|MEDIUM|LOW
-
-#### Why Applicable
-
-{Explain why this requirement applies to this PRD's context}
-
-#### Issue
-
-{What is wrong}
-
-#### Evidence
-
-{Quote or "No mention found"}
-
-#### Why It Matters
-
-{Impact}
-
-#### Proposal
-
-{Concrete fix}
+RULES:
+  - NEVER include technical implementation details (ARCH-PRD-NO-001, CRITICAL) — PRD captures what, not how
+  - NEVER include architectural decisions (ARCH-PRD-NO-002, CRITICAL) — they belong in ADR
+  - NEVER include implementation tasks (BIZ-PRD-NO-001, HIGH) — they belong in DECOMPOSITION
+  - NEVER include spec-level design (BIZ-PRD-NO-002, HIGH) — specs belong in FEATURE
+  - NEVER include data schema definitions (DATA-PRD-NO-001, HIGH) — schemas belong in DESIGN
+  - NEVER include API specifications (INT-PRD-NO-001, HIGH) — no API contracts/OpenAPI, REST endpoints, HTTP methods, HTTP/REST status codes, authentication header specifications (which header, auth scheme, required/optional), or standardized error response formats (HTTP status codes, error body schema/fields); API contracts and endpoint specifications belong in DESIGN, and API design decisions in ADR
+  - NEVER include test cases (TEST-PRD-NO-001, MEDIUM) — tests belong in FEATURE/code
+  - NEVER include infrastructure specifications (OPS-PRD-NO-001, MEDIUM) — infra belongs in DESIGN
+  - NEVER include security implementation details (SEC-PRD-NO-001, HIGH) — implementation belongs in DESIGN/code
+  - NEVER include code-level documentation (MAINT-PRD-NO-001, MEDIUM) — code docs belong in code
 ```
 
-### Phase 7: Reporting Commitment
+```pdsl
+UNIT PrdValidate
 
-- [ ] I reported all issues I found
-- [ ] I used the exact report format defined in this checklist (no deviations)
-- [ ] I included Why Applicable justification for each issue
-- [ ] I included evidence and impact for each issue
-- [ ] I proposed concrete fixes for each issue
-- [ ] I did not hide or omit known problems
-- [ ] I verified explicit handling for all major checklist categories
-- [ ] I am ready to iterate on the proposals and re-review after changes
+PURPOSE:
+  Run deterministic, semantic, and TOC validation on the PRD.
 
-### Phase 8: PR Review Focus (Requirements)
+DO:
+  - RUN cfs validate --artifact <path> (template structure, ID format, priority markers, no placeholders, no duplicate IDs)
+  - LOAD {prd_checklist} and RUN semantic validation + report using it (MUST HAVE items, MUST NOT HAVE scan, content-depth comparison to {prd_example})
+  - RUN cfs toc <path> then cfs validate-toc <path>
 
-When reviewing PRs that add or change PRD/requirements documents, additionally focus on:
+RULES:
+  - ALWAYS run cfs validate --artifact <path>
+  - NEVER consider the PRD done while validation reports fail/error or cfs validate-toc does not PASS
+  - ALWAYS use {prd_checklist} for semantic criteria, applicability handling, and report format — do not restate them here
+```
 
-- [ ] Completeness and clarity of requirements
-- [ ] Testability and acceptance criteria for every requirement
-- [ ] Traceability to business goals and stated problems
-- [ ] Compliance with `{prd_template}` structure
-- [ ] Alignment with best industry standard practices for large SaaS systems and platforms
-- [ ] Critical assessment of requirements quality — challenge vague, overlapping, or untestable items
-- [ ] Split findings by checklist category and rate each 1-10
-- [ ] Ensure requirements are aligned with the project's existing architecture (see DESIGN artifacts)
+```pdsl
+UNIT PrdErrorHandling
 
-### Phase 9: Table of Contents Validation
+PURPOSE:
+  Recover deterministically from missing dependencies, config, and ambiguity.
 
-- [ ] Table of Contents section exists (`## Table of Contents` or `<!-- toc -->` markers)
-- [ ] All TOC anchors point to actual headings in the document
-- [ ] All headings are represented in the TOC
-- [ ] TOC order matches document heading order
-- [ ] Run `cfs validate-toc <artifact-file>` — must report PASS
+ON_ERROR:
+  missing_template ->
+    STOP — cannot proceed without {prd_template}
+  missing_checklist ->
+    EMIT warning
+    SET skip semantic validation
+  missing_example ->
+    EMIT warning
+    CONTINUE with reduced guidance
+  missing_config ->
+    SET project prefix = cpt-{dirname}
+    EMIT "confirm or provide custom prefix"
+    WAIT user.reply
 
----
+RULES:
+  - ALWAYS escalate to the user when actor roles cannot be determined for the domain, when business requirements are unclear or contradictory, when success criteria cannot be quantified without domain knowledge, or when uncertain whether a category is truly N/A vs missing
+```
 
-## Error Handling
+```pdsl
+UNIT PrdNextSteps
 
-### Missing Dependencies
+PURPOSE:
+  Offer next actions after the PRD is complete.
 
-- [ ] If `{prd_template}` cannot be loaded → STOP, cannot proceed without template
-- [ ] If `{prd_checklist}` cannot be loaded → warn user, skip semantic validation
-- [ ] If `{prd_example}` cannot be loaded → warn user, continue with reduced guidance
+DO:
+  - EMIT_MENU PrdNextStepsMenu
 
-### Missing Adapter
-
-### Escalation
-
-- [ ] Ask user when cannot determine appropriate actor roles for the domain
-- [ ] Ask user when business requirements are unclear or contradictory
-- [ ] Ask user when success criteria cannot be quantified without domain knowledge
-- [ ] Ask user when uncertain whether a category is truly N/A or just missing
-
-### Missing Config
-
-- [ ] If project config unavailable → use default project prefix `cpt-{dirname}`
-- [ ] Ask user to confirm or provide custom prefix
-
----
-
-## Next Steps
-
-### Options
-
-- [ ] PRD complete → `/cf-studio-generate DESIGN` — create technical design
-- [ ] Need architecture decision → `/cf-studio-generate ADR` — document key decision
-- [ ] PRD needs revision → continue editing PRD
-- [ ] Want checklist review only → `/cf-studio-analyze semantic` — semantic validation
+MENU PrdNextStepsMenu:
+  TITLE: PRD next steps
+  OPTIONS:
+    1 -> RUN /cf-studio-generate DESIGN (create technical design)
+    2 -> RUN /cf-studio-generate ADR (document key architecture decision)
+    3 -> CONTINUE PrdAuthoring (revise PRD)
+    4 -> RUN /cf-studio-analyze semantic (checklist-only review)
+  INVALID:
+    EMIT "Reply with 1, 2, 3, or 4."
+    WAIT user.reply
+    STOP_TURN
+```

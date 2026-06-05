@@ -1,0 +1,23 @@
+# Constructor Studio SDLC Kit — change-impact-analysis configuration
+# Kit-owned thresholds for the cf-sdlc-change-impact-analysis workflow.
+# This config is kit-owned and user-editable; it is NOT part of the
+# cfs-core-owned constraints.toml schema.
+
+# Days since the change after which an unchanged downstream marker is flagged stale.
+stale_flag_threshold = 30
+
+# Marker coverage (%) below which an affected downstream artifact is reported as a coverage gap.
+marker_coverage_threshold = 80
+
+# Ordered impact severity levels (highest first), used to classify affected artifacts
+# and, in release-readiness-estimation mode, to recommend a version bump.
+impact_severity_levels = ["critical", "high", "medium", "low"]
+
+# Maximum downstream cascade depth to traverse, per upstream artifact type.
+# Upstream artifacts (PRD/ADR) cascade deeper than near-code artifacts (FEATURE).
+[cascade_depth_limit]
+PRD = 5
+ADR = 5
+DESIGN = 4
+DECOMPOSITION = 3
+FEATURE = 2

@@ -2,7 +2,7 @@
 cf-studio: true
 type: workflow
 name: cf-sdlc-pr-status
-description: Generate status reports for GitHub PRs with severity assessment and resolved-comment audit
+description: Invoke when the user asks for the status of a GitHub PR — e.g. "PR status <number>", "status of PR <n>", "check PR status <n>". Fetches the latest PR data and generates a status report with severity assessment and a resolved-comment audit.
 version: 1.0
 purpose: Fetch latest PR data, generate status reports, assess comment severity, audit resolved comments
 ---

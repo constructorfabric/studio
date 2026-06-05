@@ -3,373 +3,115 @@
 **Artifact**: DECOMPOSITION
 **Kit**: sdlc
 
-**Dependencies** (lazy-loaded):
-- `{decomposition_template}` — structural reference (load WHEN validating structure)
-- `{decomposition_checklist}` — decomposition quality criteria (load WHEN checking quality)
-- `{decomposition_example}` — reference implementation (load WHEN needing reference)
+```pdsl
+UNIT DecompositionAuthoring
 
-## Table of Contents
+PURPOSE:
+  Author or revise a DECOMPOSITION that breaks DESIGN into implementable features with full coverage.
 
-1. [Prerequisites](#prerequisites)
-2. [Requirements](#requirements)
-   - [Structural](#structural)
-   - [Decomposition Quality](#decomposition-quality)
-   - [Upstream Traceability](#upstream-traceability)
-   - [Checkbox Management](#checkbox-management)
-   - [Constraints](#constraints)
-3. [Tasks](#tasks)
-   - [Phase 1: Setup](#phase-1-setup)
-   - [Phase 2: Content Creation](#phase-2-content-creation)
-   - [Phase 3: IDs and Structure](#phase-3-ids-and-structure)
-   - [Phase 4: Quality Check](#phase-4-quality-check)
-   - [Phase 5: Checkbox Status Workflow](#phase-5-checkbox-status-workflow)
-   - [Phase 6: Table of Contents](#phase-6-table-of-contents)
-4. [Validation](#validation)
-   - [Phase 1: Structural Validation (Deterministic)](#phase-1-structural-validation-deterministic)
-   - [Phase 2: Decomposition Quality Validation (Checklist-based)](#phase-2-decomposition-quality-validation-checklist-based)
-   - [Phase 3: Validation Report](#phase-3-validation-report)
-   - [Phase 4: Applicability Context](#phase-4-applicability-context)
-   - [Phase 5: Report Format](#phase-5-report-format)
-   - [Phase 6: Domain Disposition](#phase-6-domain-disposition)
-   - [Phase 7: Reporting](#phase-7-reporting)
-   - [Phase 8: Table of Contents Validation](#phase-8-table-of-contents-validation)
-5. [Error Handling](#error-handling)
-   - [Missing Dependencies](#missing-dependencies)
-   - [Quality Issues](#quality-issues)
-   - [Escalation](#escalation)
-6. [Next Steps](#next-steps)
-   - [Options](#options)
+WHEN:
+  - REQUIRE intent == author_or_revise_decomposition
 
----
+DO:
+  - LOAD {decomposition_template}
+  - LOAD DESIGN to identify components, sequences, data entities to decompose
+  - LOAD PRD to identify FR/NFR requirements to cover
+  - LOAD {cf-studio-path}/config/artifacts.toml to determine artifact paths
+  - RUN group related design elements into features (high cohesion, loose coupling)
+  - RUN author FEATURE list with per-feature Purpose, Scope, Out of Scope, Depends On, Requirements Covered, Design Components
+  - RUN assign feature IDs cpt-{hierarchy-prefix}-feature-{slug}; set priority markers p1-p9 by dependency order; set initial status NOT_STARTED
+  - RUN author coverage links back to PRD/DESIGN element IDs and forward to FEATURE
+  - RUN verify ID uniqueness with `cfs list-ids`
+  - LOAD {decomposition_example} to compare content depth
 
-## Prerequisites
-
-- Read DESIGN to identify elements to decompose
-- Read PRD to identify requirements to cover
-- Read `{cf-studio-path}/config/artifacts.toml` to determine artifact paths
-
----
-
-## Requirements
-
-### Structural
-
-**Load on demand**: `{decomposition_template}` — WHEN validating structure
-
-- [ ] DECOMPOSITION follows `{decomposition_template}` structure
-- [ ] All required sections present and non-empty
-- [ ] Each feature has unique ID: `cpt-{hierarchy-prefix}-feature-{slug}`
-- [ ] Each feature has priority marker (`p1`-`p9`)
-- [ ] Each feature has valid status
-- [ ] No placeholder content (TODO, TBD, FIXME)
-- [ ] No duplicate feature IDs
-
-### Decomposition Quality
-
-**Load on demand**: `{decomposition_checklist}` — WHEN checking decomposition quality
-
-**Coverage (100% Rule)**:
-- [ ] ALL components from DESIGN are assigned to at least one feature
-- [ ] ALL sequences from DESIGN are assigned to at least one feature
-- [ ] ALL data entities from DESIGN are assigned to at least one feature
-- [ ] ALL requirements from PRD are covered transitively
-
-**Exclusivity (Mutual Exclusivity)**:
-- [ ] Features do not overlap in scope
-- [ ] Each design element assigned to exactly one feature (or explicit reason for sharing)
-- [ ] Clear boundaries between features
-
-**Entity Attributes (IEEE 1016 §5.4.1)**:
-- [ ] Each feature has identification (unique ID)
-- [ ] Each feature has purpose (why it exists)
-- [ ] Each feature has function (scope bullets)
-- [ ] Each feature has subordinates (phases or "none")
-
-**Dependencies**:
-- [ ] Dependencies are explicit (Depends On field)
-- [ ] No circular dependencies
-- [ ] Foundation features have no dependencies
-
-### Upstream Traceability
-
-- [ ] When feature status → IMPLEMENTED, mark `[x]` on feature ID
-- [ ] When all features for a component IMPLEMENTED → mark component `[x]` in DESIGN
-- [ ] When all features for a capability IMPLEMENTED → mark capability `[x]` in PRD
-
-### Checkbox Management
-
-**Defined IDs (from `constraints.toml`)**:
-- **Kind**: `status` — `[ ] p1 - **ID**: cpt-{hierarchy-prefix}-status-overall` — checked when ALL features checked
-- **Kind**: `feature` — `[ ] p1 - **ID**: cpt-{hierarchy-prefix}-feature-{slug}` — checked when FEATURE spec complete
-
-**References (not ID definitions)**:
-- Any `cpt-...` occurrences outside an `**ID**` definition line are references
-- Common reference kinds: `fr`, `nfr`, `principle`, `constraint`, `component`, `seq`, `dbtable`
-
-**Progress / Cascade Rules**:
-- [ ] A `feature` ID should not be checked until the feature entry is fully implemented
-- [ ] `status-overall` should not be checked until ALL `feature` entries are checked
-
-### Constraints
-
-**Load on demand**:
-- `{constraints}` — WHEN validating cross-references
-- `{cf-studio-path}/.core/architecture/specs/traceability.md` — WHEN checking ID formats
-
-- [ ] ALWAYS open and follow `{constraints}` (kit root)
-- [ ] Treat `constraints.toml` as primary validator for:
-  - where IDs are defined
-  - where IDs are referenced
-  - which cross-artifact references are required / optional / prohibited
-
-**References**:
-- `{cf-studio-path}/.core/requirements/kit-constraints.md`
-- `{cf-studio-path}/.core/schemas/kit-constraints.schema.json`
-
-**Validation Checks**:
-- `cfs validate` enforces `identifiers[<kind>].references` rules (required / optional / prohibited)
-- `cfs validate` enforces headings scoping for ID definitions and references
-- `cfs validate` enforces "checked ref implies checked def" consistency
-
----
-
-## Tasks
-
-### Phase 1: Setup
-
-- [ ] Read DESIGN to identify elements to decompose
-- [ ] Read PRD to identify requirements to cover
-- [ ] Read `{cf-studio-path}/config/artifacts.toml` to determine artifact paths
-
-### Phase 2: Content Creation
-
-**Load on demand**: `{decomposition_template}` — WHEN generating artifact structure
-
-**Decomposition Strategy**:
-1. Identify all components, sequences, data entities from DESIGN
-2. Group related elements into features (high cohesion)
-3. Minimize dependencies between features (loose coupling)
-4. Verify 100% coverage (all elements assigned)
-5. Verify mutual exclusivity (no overlaps)
-
-### Phase 3: IDs and Structure
-
-- [ ] Generate feature IDs: `cpt-{hierarchy-prefix}-feature-{slug}` (e.g., `cpt-myapp-feature-user-auth`)
-- [ ] Assign priorities based on dependency order
-- [ ] Set initial status to NOT_STARTED
-- [ ] Link to DESIGN elements being implemented
-- [ ] Verify uniqueness with `cfs list-ids`
-
-### Phase 4: Quality Check
-
-**Load on demand**: `{decomposition_example}` — WHEN comparing output
-
-- [ ] Compare output to `{decomposition_example}`
-- [ ] Self-review against `{decomposition_checklist}` COV, EXC, ATTR, TRC, DEP sections
-- [ ] Verify 100% design element coverage
-- [ ] Verify no scope overlaps between features
-- [ ] Verify dependency graph is valid DAG
-
-### Phase 5: Checkbox Status Workflow
-
-**Initial Creation (New Feature)**:
-1. Create feature entry with `[ ]` unchecked on the feature ID
-2. Add all reference blocks with `[ ]` unchecked on each referenced ID
-3. Overall `status-overall` remains `[ ]` unchecked
-
-**During Implementation (Marking Progress)**:
-1. When a specific requirement is implemented: find the referenced ID entry, change `[ ]` to `[x]`
-2. When a component is integrated: find the referenced component entry, change `[ ]` to `[x]`
-3. Continue for all reference types as work progresses
-
-**Feature Completion (Marking Feature Done)**:
-1. Verify ALL referenced IDs within the feature entry have `[x]`
-2. Run `cfs validate` to confirm no checkbox inconsistencies
-3. Change the feature ID line from `[ ]` to `[x]`
-4. Update feature status emoji (e.g., ⏳ → ✅)
-
-**Manifest Completion (Marking Overall Done)**:
-1. Verify ALL feature entries have `[x]`
-2. Run `cfs validate` to confirm cascade consistency
-3. Change the `status-overall` line from `[ ]` to `[x]`
-
-### Phase 6: Table of Contents
-
-- [ ] Run `cfs toc <artifact-file>` to generate/update Table of Contents
-- [ ] Verify TOC is present and complete with `cfs validate-toc <artifact-file>`
-
----
-
-## Validation
-
-### Phase 1: Structural Validation (Deterministic)
-
-- [ ] Run `cfs validate --artifact <path>` for:
-  - Template structure compliance
-  - ID format validation
-  - Priority markers present
-  - Valid status values
-  - No placeholders
-
-### Phase 2: Decomposition Quality Validation (Checklist-based)
-
-**Load on demand**: `{decomposition_checklist}` — required for this phase
-
-Apply `{decomposition_checklist}` systematically:
-1. **COV (Coverage)**: Verify 100% design element coverage
-2. **EXC (Exclusivity)**: Verify no scope overlaps
-3. **ATTR (Attributes)**: Verify each feature has all required attributes
-4. **TRC (Traceability)**: Verify bidirectional traceability
-5. **DEP (Dependencies)**: Verify valid dependency graph
-
-### Phase 3: Validation Report
-
-```
-DECOMPOSITION Validation Report
-═════════════════════════════════════
-
-Structural: PASS/FAIL
-Semantic: PASS/FAIL (N issues)
-
-Issues:
-- [SEVERITY] CHECKLIST-ID: Description
+RULES:
+  - ALWAYS follow {decomposition_template} structure with all required sections present and non-empty
+  - ALWAYS give each feature a unique ID cpt-{hierarchy-prefix}-feature-{slug}, a priority marker p1-p9, and a valid status
+  - ALWAYS define checkbox IDs per {constraints}: kind `status` (cpt-{hierarchy-prefix}-status-overall, checked when ALL features checked) and kind `feature` (cpt-{hierarchy-prefix}-feature-{slug}, checked when FEATURE spec complete)
+  - ALWAYS treat cpt-... occurrences outside an **ID** definition line as references (kinds: fr, nfr, principle, constraint, component, seq, dbtable)
+  - ALWAYS achieve 100% coverage: every DESIGN component, sequence, data entity, principle, constraint assigned to >=1 feature; all PRD FR/NFR covered transitively
+  - ALWAYS keep features mutually exclusive with clear boundaries (each design element in exactly one feature, or explicit documented reason for sharing)
+  - ALWAYS make dependencies explicit (Depends On), acyclic (valid DAG); foundation features have no dependencies
+  - ALWAYS apply ID versioning per traceability spec; IDs are stable and won't change during implementation
+  - ALWAYS treat {decomposition_checklist} as the source of semantic acceptance criteria
+  - NEVER include placeholder content (TODO, TBD, FIXME)
+  - NEVER create duplicate feature IDs
+  - NEVER duplicate {decomposition_checklist} semantic criteria into this file
 ```
 
-### Phase 4: Applicability Context
+```pdsl
+UNIT DecompositionOmissions
 
-**Purpose of DECOMPOSITION artifact**: Break down the overall DESIGN into implementable work packages (features) that can be assigned, tracked, and implemented independently.
+PURPOSE:
+  Keep DECOMPOSITION scoped; forbidden content belongs in other artifacts.
 
-**What this checklist tests**: Quality of the decomposition itself — not the quality of requirements, design decisions, security, performance, or other concerns. Those belong in PRD and DESIGN checklists.
-
-**Key principle**: A perfect decomposition has:
-1. **100% coverage** — every design element appears in at least one feature
-2. **No overlap** — no design element appears in multiple features without clear reason
-3. **Complete attributes** — every feature has identification, purpose, scope, dependencies
-4. **Consistent granularity** — features are at similar abstraction levels
-5. **Bidirectional traceability** — can trace both ways between design and features
-
-### Phase 5: Report Format
-
-Report **only** problems (do not list what is OK).
-
-For each issue include:
-
-- **Checklist Item**: `{CHECKLIST-ID}` — {Checklist item title}
-- **Severity**: CRITICAL|HIGH|MEDIUM|LOW
-- **Issue**: What is wrong
-- **Evidence**: Quote or location in artifact
-- **Why it matters**: Impact on decomposition quality
-- **Proposal**: Concrete fix
-
-```markdown
-## Review Report (Issues Only)
-
-### 1. {Short issue title}
-
-**Checklist Item**: `{CHECKLIST-ID}` — {Checklist item title}
-
-**Severity**: CRITICAL|HIGH|MEDIUM|LOW
-
-#### Issue
-
-{What is wrong}
-
-#### Evidence
-
-{Quote or "No mention found"}
-
-#### Why It Matters
-
-{Impact on decomposition quality}
-
-#### Proposal
-
-{Concrete fix}
+RULES:
+  - NEVER include implementation details — code snippets, algorithms, technical specs, user flows, state machines, API request/response schemas (DECOMP-NO-001, CRITICAL) -> belongs in FEATURE artifact
+  - NEVER define requirements — FR-xxx, NFR-xxx, use cases, actors (DECOMP-NO-002, HIGH) -> belongs in PRD artifact
+  - NEVER include architecture decisions — "why we chose X", technology rationales, pros/cons analysis (DECOMP-NO-003, HIGH) -> belongs in ADR artifact
+  - NEVER leave silent omissions — if a design element is intentionally not covered or features intentionally overlap, state it explicitly with reasoning (DOC-001, CRITICAL)
 ```
 
-### Phase 6: Domain Disposition
+```pdsl
+UNIT DecompositionValidate
 
-For each major checklist category, confirm:
+PURPOSE:
+  Gate the DECOMPOSITION through deterministic and semantic validation.
 
-- [ ] COV (Coverage): Addressed or violation reported
-- [ ] EXC (Exclusivity): Addressed or violation reported
-- [ ] ATTR (Attributes): Addressed or violation reported
-- [ ] TRC (Traceability): Addressed or violation reported
-- [ ] DEP (Dependencies): Addressed or violation reported
+DO:
+  - RUN `cfs validate --artifact <path>` for template structure, ID format, priority markers, valid status, no placeholders
+  - RUN `cfs toc <artifact-file>` to generate/update Table of Contents
+  - RUN `cfs validate-toc <artifact-file>` — must report PASS
+  - LOAD {decomposition_checklist} and apply systematically (COV, EXC, ATTR, LEV, CFG, TRC, DEP, CHK, DOC)
 
-### Phase 7: Reporting
-
-Report **only** problems (do not list what is OK).
-
-For each issue include:
-
-- **Issue**: What is wrong
-- **Evidence**: Quote or location in artifact
-- **Why it matters**: Impact on decomposition quality
-- **Proposal**: Concrete fix
-
-```markdown
-## Review Report (Issues Only)
-
-### 1. {Short issue title}
-
-**Checklist Item**: `{CHECKLIST-ID}` — {Checklist item title}
-
-**Severity**: CRITICAL|HIGH|MEDIUM|LOW
-
-#### Issue
-
-{What is wrong}
-
-#### Evidence
-
-{Quote or "No mention found"}
-
-#### Why It Matters
-
-{Impact on decomposition quality}
-
-#### Proposal
-
-{Concrete fix}
+RULES:
+  - ALWAYS use {decomposition_checklist} as the source for semantic criteria, severity, domain disposition, and the issues-only report format
+  - NEVER consider the artifact done while any cfs validate check fails or errors
+  - NEVER consider semantic validation done while any checklist domain is unaddressed and not explicitly dispositioned
+  - ALWAYS maintain progress/cascade rules — a `feature` ID is not checked until that feature is fully implemented; `status-overall` is not checked until ALL `feature` entries are checked
 ```
 
-### Phase 8: Table of Contents Validation
+```pdsl
+UNIT DecompositionErrorHandling
 
-- [ ] Table of Contents section exists (`## Table of Contents` or `<!-- toc -->` markers)
-- [ ] All TOC anchors point to actual headings in the document
-- [ ] All headings are represented in the TOC
-- [ ] TOC order matches document heading order
-- [ ] Run `cfs validate-toc <artifact-file>` — must report PASS
+PURPOSE:
+  Recover from missing inputs and ambiguity.
 
----
+ON_ERROR:
+  design_not_accessible ->
+    EMIT "DESIGN not accessible"
+    REQUIRE user provides DESIGN location
+  template_not_found ->
+    EMIT "Template not found — cannot proceed"
+    STOP_TURN
+  coverage_gap ->
+    RUN add design element to appropriate feature or document exclusion with reasoning
+  scope_overlap ->
+    RUN assign to single feature or document sharing with reasoning
 
-## Error Handling
+RULES:
+  - ALWAYS escalate to the user when design elements are ambiguous, decomposition granularity is unclear, or dependency ordering is unclear
+```
 
-### Missing Dependencies
+```pdsl
+UNIT DecompositionNextSteps
 
-- [ ] If DESIGN not accessible: ask user for DESIGN location
-- [ ] If template not found: STOP — cannot proceed without template
+PURPOSE:
+  Offer follow-on actions after a valid DECOMPOSITION.
 
-### Quality Issues
+DO:
+  - EMIT_MENU DecompositionNextStepsMenu
 
-- [ ] Coverage gap: add design element to appropriate feature or document exclusion
-- [ ] Scope overlap: assign to single feature or document sharing with reasoning
-
-### Escalation
-
-- [ ] Ask user when design elements are ambiguous
-- [ ] Ask user when decomposition granularity unclear
-- [ ] Ask user when dependency ordering unclear
-
----
-
-## Next Steps
-
-### Options
-
-- [ ] Features defined → `/cf-studio-generate FEATURE` — design first/next feature
-- [ ] Feature IMPLEMENTED → update feature status in decomposition
-- [ ] All features IMPLEMENTED → `/cf-studio-analyze DESIGN` — validate design completion
-- [ ] New feature needed → add to decomposition, then `/cf-studio-generate FEATURE`
-- [ ] Want checklist review only → `/cf-studio-analyze semantic` — decomposition quality validation
+MENU DecompositionNextStepsMenu:
+  TITLE: DECOMPOSITION next steps
+  OPTIONS:
+    1 -> CONTINUE /cf-studio-generate FEATURE (design first/next feature)
+    2 -> RUN update feature status in decomposition (feature IMPLEMENTED)
+    3 -> CONTINUE /cf-studio-analyze DESIGN (all features IMPLEMENTED — validate design completion)
+    4 -> RUN add new feature to decomposition, then CONTINUE /cf-studio-generate FEATURE
+    5 -> CONTINUE /cf-studio-analyze semantic (checklist review only — decomposition quality)
+  INVALID:
+    EMIT "Reply with 1, 2, 3, 4, or 5."
+    WAIT user.reply
+    STOP_TURN
+```

@@ -1,11 +1,59 @@
 ---
 name: cf
-description: "Artifacts: ADR, CODEBASE, DECOMPOSITION, DESIGN, FEATURE, PR-CODE-REVIEW-TEMPLATE, PR-REVIEW, PR-STATUS-REPORT-TEMPLATE, PRD; Workflows: migrate-openspec, pr-review, pr-status"
+description: "Invoke when the user asks to author or review any SDLC artifact or run an SDLC kit operation — write/revise a PRD, ADR, DESIGN, DECOMPOSITION, or FEATURE; implement a FEATURE in code; review or report status on a GitHub PR; or migrate OpenSpec artifacts. Kit `sdlc` extensions — artifacts: ADR, CODEBASE, DECOMPOSITION, DESIGN, FEATURE, PRD (+ PR review/status templates); workflows: doc-prd, doc-adr, doc-design, decompose, doc-feature, implement, change-impact-analysis, reverse-engineer, migrate-openspec, pr-review, pr-status."
 ---
 
 # Constructor Studio Skill — Kit `sdlc`
 
 Kit `sdlc` skill extensions.
+
+## Authoring & Implementation Workflows
+
+Each SDLC artifact has a thin preset workflow that delegates to a core engine
+(`cf-write-docs` for documents, `cf-coding` for code) while binding the artifact
+KIND and injecting that artifact's rules, template, checklist, and example.
+
+| Skill | Artifact KIND | Engine | Workflow |
+|-------|---------------|--------|----------|
+| `cf-sdlc-doc-prd` | PRD | cf-write-docs | `{workflow_doc_prd}` |
+| `cf-sdlc-doc-adr` | ADR | cf-write-docs | `{workflow_doc_adr}` |
+| `cf-sdlc-doc-design` | DESIGN | cf-write-docs | `{workflow_doc_design}` |
+| `cf-sdlc-decompose` | DECOMPOSITION | cf-write-docs | `{workflow_decompose}` |
+| `cf-sdlc-doc-feature` | FEATURE | cf-write-docs | `{workflow_doc_feature}` |
+| `cf-sdlc-implement` | CODE | cf-coding | `{workflow_implement}` |
+
+ALWAYS route to the matching preset workflow WHEN the user intent is authoring,
+revising, or implementing the corresponding artifact:
+
+- `cf-sdlc-doc-prd` — write/revise a PRD (`generate PRD`, `write the PRD`)
+- `cf-sdlc-doc-adr` — write/revise an ADR (`generate ADR`, `record a decision`)
+- `cf-sdlc-doc-design` — write/revise a DESIGN (`generate DESIGN`, `design the system`)
+- `cf-sdlc-decompose` — write/revise a DECOMPOSITION (`decompose`, `break into features`)
+- `cf-sdlc-doc-feature` — write/revise a FEATURE (`generate FEATURE`, `spec the feature`)
+- `cf-sdlc-implement` — implement a FEATURE in code (`implement`, `write the code`)
+
+When routed to a preset workflow:
+1. Read the matched workflow file and follow it.
+2. The preset binds the artifact KIND + references, then delegates the full
+   author/coder -> deterministic-gate -> semantic-review loop to its core engine.
+
+## Analysis & Reconstruction Workflows (Phase-1)
+
+| Skill | Engine | Workflow | Output |
+|-------|--------|----------|--------|
+| `cf-sdlc-change-impact-analysis` | cf-analyze | `{workflow_change_impact_analysis}` | `.change-impact/{id}/report.md` |
+| `cf-sdlc-reverse-engineer` | cf-write-docs | `{workflow_reverse_engineer}` | `docs/sdlc/{kind}/` |
+
+ALWAYS route to the matching workflow WHEN the user intent matches:
+
+- `cf-sdlc-change-impact-analysis` — analyze the downstream impact of an
+  upstream artifact change (`impact of changing PRD-001`, `what breaks if I
+  change this DESIGN`). Read-only; modes `cascade-tracking` and
+  `release-readiness-estimation`; thresholds in `{change_impact_config}`.
+- `cf-sdlc-reverse-engineer` — reconstruct SDLC artifacts from existing code via
+  `@cpt-*` markers (`reverse engineer FEATURE from this module`,
+  `rebuild the DESIGN from code`). Distinct from `cf-sdlc-migrate-openspec`,
+  which converts from the OpenSpec format.
 
 ## ADR
 

@@ -7,7 +7,7 @@ project_root = ".."
 [kits.sdlc]
 format = "CFS"
 path = "config/kits/sdlc"
-version = "1.0.0"
+version = "v1.1.0"
 source = "github:constructorfabric/studio-kit-sdlc"
 
 [kits.sdlc.resources]
@@ -104,19 +104,48 @@ path = "config/kits/sdlc/AGENTS.md"
 [kits.sdlc.resources.workflow_migrate_openspec]
 path = "config/kits/sdlc/workflows/migrate-openspec.md"
 
+[kits.sdlc.resources.workflow_doc_prd]
+path = "config/kits/sdlc/workflows/doc-prd.md"
+
+[kits.sdlc.resources.workflow_doc_adr]
+path = "config/kits/sdlc/workflows/doc-adr.md"
+
+[kits.sdlc.resources.workflow_doc_design]
+path = "config/kits/sdlc/workflows/doc-design.md"
+
+[kits.sdlc.resources.workflow_decompose]
+path = "config/kits/sdlc/workflows/decompose.md"
+
+[kits.sdlc.resources.workflow_doc_feature]
+path = "config/kits/sdlc/workflows/doc-feature.md"
+
+[kits.sdlc.resources.workflow_implement]
+path = "config/kits/sdlc/workflows/implement.md"
+
+[kits.sdlc.resources.workflow_change_impact_analysis]
+path = "config/kits/sdlc/workflows/change-impact-analysis.md"
+
+[kits.sdlc.resources.workflow_reverse_engineer]
+path = "config/kits/sdlc/workflows/reverse-engineer.md"
+
+[kits.sdlc.resources.change_impact_config]
+path = "config/kits/sdlc/scripts/change-impact-analysis.toml"
+
 [kits.sdlc.source_provenance]
 source_type = "github"
-resolver_mode = "default_branch"
-resolution_basis = "github_default_branch"
+resolver_mode = "latest_release"
+resolution_basis = "github_release"
 requested_ref = "latest"
+resolved_ref = "v1.1.0"
 canonical_source = "github:constructorfabric/studio-kit-sdlc"
 effective_source = "github:constructorfabric/studio-kit-sdlc"
 verified = "verified"
 freshness = "fresh"
 
 [kits.sdlc.content_identity]
-commit_sha = "78b02ac"
-identity = "constructorfabric/studio-kit-sdlc@#78b02ac"
+commit_sha = "e596f2f"
+resolved_ref = "v1.1.0"
+identity = "constructorfabric/studio-kit-sdlc@v1.1.0#e596f2f"
 
 [kits.sdlc.local_metadata]
 conf_version = "1.0.0"

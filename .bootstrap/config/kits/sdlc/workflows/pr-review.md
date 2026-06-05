@@ -2,7 +2,7 @@
 cf-studio: true
 type: workflow
 name: cf-sdlc-pr-review
-description: Review GitHub PRs using LLM-powered analysis with configurable prompts and checklists
+description: Invoke when the user asks to review a GitHub PR or do a code review — e.g. "review PR <number>", "review PR #<n>", "review PR <url>", "code review PR <n>", "check PR <n>". Read-only: fetches diffs/metadata from GitHub and analyzes them against configurable prompts and checklists to produce a structured review report.
 version: 1.0
 purpose: Read-only PR review — fetch diffs/metadata from GitHub, analyze against checklists, produce structured review reports
 ---

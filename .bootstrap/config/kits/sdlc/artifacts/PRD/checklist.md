@@ -316,8 +316,11 @@ Mark review as "PARTIAL" if not all domains completed.
 **Severity**: CRITICAL
 **Ref**: OWASP ASVS V4 (Access Control), NIST 800-53 AC family, ISO 27001 A.9
 
+> **Note**: That every protected capability requires authentication and authorization is assumed and need not be restated per requirement. Instead, specify the **exact permissions** — which actor may perform which operation on which resource.
+
 - [ ] Role-based access clearly defined through actors
 - [ ] Permission levels distinguished between actors
+- [ ] Exact permissions specified per actor and operation (which actor may perform which action on which resource), rather than a blanket "all endpoints require authentication/authorization"
 - [ ] Data access boundaries specified per actor
 - [ ] Administrative vs user roles separated
 - [ ] Delegation/impersonation needs captured
@@ -382,6 +385,8 @@ Mark review as "PARTIAL" if not all domains completed.
 - [ ] Human override capabilities defined where needed
 
 ---
+
+> **NFR framing (applies to all quality-attribute / NFR sections below — PERFORMANCE, RELIABILITY, USABILITY, and the other non-functional sections)**: State NFRs as business-level quality expectations — user/business outcomes, SLAs, and measurable targets (e.g., "checkout completes in <2s at p95 for 10k concurrent users"). Do NOT specify technical implementation (technology stack, infrastructure sizing, caching strategy, component tuning); those belong in DESIGN/ADR.
 
 ## ⚡ PERFORMANCE Expertise (PERF)
 
@@ -767,10 +772,12 @@ Mark review as "PARTIAL" if not all domains completed.
 - [ ] No REST endpoint definitions
 - [ ] No request/response schemas
 - [ ] No HTTP method specifications
+- [ ] No HTTP/REST status code specifications (e.g., 200/201/400/401/403/404/409/500)
+- [ ] No API contract / OpenAPI / Swagger definitions
 - [ ] No authentication header specifications
 - [ ] No error response formats
 
-**Where it belongs**: API contract documentation (e.g., OpenAPI) or architecture and design documentation
+**Where it belongs**: `DESIGN` (including API contract specs, e.g., OpenAPI/Swagger); API design decisions belong in `ADR`
 
 ### TEST-PRD-NO-001: No Test Cases
 **Severity**: MEDIUM

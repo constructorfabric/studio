@@ -2,7 +2,7 @@
 cf-studio: true
 type: workflow
 name: cf-sdlc-migrate-openspec
-description: Migrate OpenSpec artifacts to Constructor Studio SDLC documents with code-verified traceability
+description: Invoke when the user asks to migrate or convert OpenSpec artifacts to Constructor Studio SDLC documents — e.g. "migrate openspec", "migrate from openspec", "convert openspec", "openspec to Constructor Studio". Converts OpenSpec proposals/specs/designs/tasks into PRD, DESIGN, ADR, FEATURE, and DECOMPOSITION with code-verified ID traceability.
 version: 1.0
 purpose: Convert any project's OpenSpec artifacts (proposals, specs, designs, tasks) into Constructor Studio SDLC documents (PRD, DESIGN, ADR, FEATURE, DECOMPOSITION) with full ID-based traceability verified against the actual codebase
 ---
