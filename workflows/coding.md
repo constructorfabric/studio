@@ -53,9 +53,28 @@ RULES:
 MENU CodingExploreMenu
 TITLE: Before writing or reviewing code, discover task-relevant project context (existing conventions, related modules, call sites) with cf-explore — or skip? Skip is the default when the target and its context are already clear; explore for unfamiliar or cross-cutting code. Reply with a number.
 OPTIONS:
-  1 explore -> INVOKE skill `cf-explore` with intent=generate and return_context=true, SET RESOURCE_CONTEXT = provided, then CONTINUE CodingDispatch
-  2 skip -> CONTINUE CodingDispatch
+  1 explore -> INVOKE skill `cf-explore` with intent=generate and return_context=true, SET RESOURCE_CONTEXT = provided, then CONTINUE CodingBrainstormGate
+  2 skip -> CONTINUE CodingBrainstormGate
   INVALID -> EMIT_MENU CodingExploreMenu
+```
+
+```pdsl
+UNIT CodingBrainstormGate
+PURPOSE: Offer decision/design exploration via cf-brainstorm as the next step after the explore gate, before any code is authored or reviewed.
+DO:
+  EMIT_MENU CodingBrainstormMenu
+  WAIT user.reply
+  STOP_TURN
+RULES:
+  ALWAYS offer cf-brainstorm decision exploration after the explore gate and before authoring or reviewing code, and ALWAYS let the user skip it
+  ALWAYS default to skip when the coding approach and its decisions are already clear and unambiguous
+  ALWAYS carry any brainstorm decisions into every coder and reviewer dispatch payload as read-only context, NEVER as a gate on a verdict
+MENU CodingBrainstormMenu
+TITLE: Before writing or reviewing code, brainstorm ambiguous decisions or design options with cf-brainstorm — or skip? Skip is the default when the approach is already clear; brainstorm for ambiguous requirements or open design questions. Reply with a number.
+OPTIONS:
+  1 brainstorm -> INVOKE skill `cf-brainstorm`, then CONTINUE CodingDispatch
+  2 skip -> CONTINUE CodingDispatch
+  INVALID -> EMIT_MENU CodingBrainstormMenu
 ```
 
 ```pdsl
