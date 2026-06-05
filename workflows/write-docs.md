@@ -57,9 +57,28 @@ RULES:
 MENU WriteDocsExploreMenu
 TITLE: Before writing or reviewing docs, discover task-relevant project context (existing docs, related guides, source material, conventions) with cf-explore — or skip? Skip is the default when the target and its context are already clear; explore for unfamiliar or cross-cutting documentation. Reply with a number.
 OPTIONS:
-  1 explore -> INVOKE skill `cf-explore` with intent=generate and return_context=true, SET RESOURCE_CONTEXT = provided, then CONTINUE WriteDocsDispatch
-  2 skip -> CONTINUE WriteDocsDispatch
+  1 explore -> INVOKE skill `cf-explore` with intent=generate and return_context=true, SET RESOURCE_CONTEXT = provided, then CONTINUE WriteDocsBrainstormGate
+  2 skip -> CONTINUE WriteDocsBrainstormGate
   INVALID -> EMIT_MENU WriteDocsExploreMenu
+```
+
+```pdsl
+UNIT WriteDocsBrainstormGate
+PURPOSE: Offer decision/design exploration via cf-brainstorm as the next step after the explore gate, before any document is authored or reviewed.
+DO:
+  EMIT_MENU WriteDocsBrainstormMenu
+  WAIT user.reply
+  STOP_TURN
+RULES:
+  ALWAYS offer cf-brainstorm decision exploration after the explore gate and before authoring or reviewing docs, and ALWAYS let the user skip it
+  ALWAYS default to skip when the document approach and its decisions are already clear and unambiguous
+  ALWAYS carry any brainstorm decisions into every author and reviewer dispatch payload as read-only context, NEVER as a gate on a verdict
+MENU WriteDocsBrainstormMenu
+TITLE: Before writing or reviewing docs, brainstorm ambiguous decisions or framing options with cf-brainstorm — or skip? Skip is the default when the approach is already clear; brainstorm for ambiguous requirements or open framing questions. Reply with a number.
+OPTIONS:
+  1 brainstorm -> INVOKE skill `cf-brainstorm`, then CONTINUE WriteDocsDispatch
+  2 skip -> CONTINUE WriteDocsDispatch
+  INVALID -> EMIT_MENU WriteDocsBrainstormMenu
 ```
 
 ```pdsl
