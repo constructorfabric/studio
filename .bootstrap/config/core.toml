@@ -7,7 +7,7 @@ project_root = ".."
 [kits.sdlc]
 format = "CFS"
 path = "config/kits/sdlc"
-version = "v1.1.0"
+version = "v1.1.1"
 source = "github:constructorfabric/studio-kit-sdlc"
 
 [kits.sdlc.resources]
@@ -136,16 +136,16 @@ source_type = "github"
 resolver_mode = "latest_release"
 resolution_basis = "github_release"
 requested_ref = "latest"
-resolved_ref = "v1.1.0"
+resolved_ref = "v1.1.1"
 canonical_source = "github:constructorfabric/studio-kit-sdlc"
 effective_source = "github:constructorfabric/studio-kit-sdlc"
 verified = "verified"
 freshness = "fresh"
 
 [kits.sdlc.content_identity]
-commit_sha = "e596f2f"
-resolved_ref = "v1.1.0"
-identity = "constructorfabric/studio-kit-sdlc@v1.1.0#e596f2f"
+commit_sha = "eec9788"
+resolved_ref = "v1.1.1"
+identity = "constructorfabric/studio-kit-sdlc@v1.1.1#eec9788"
 
 [kits.sdlc.local_metadata]
 conf_version = "1.0.0"

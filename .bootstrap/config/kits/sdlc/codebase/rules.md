@@ -3,203 +3,75 @@
 **Artifact**: CODEBASE
 **Kit**: sdlc
 
-**Dependencies** (lazy-loaded):
-- `{codebase_checklist}` — semantic quality criteria (load WHEN checking code quality)
-
-## Table of Contents
-
-1. [Prerequisites](#prerequisites)
-2. [Requirements](#requirements)
-   - [Structural](#structural)
-   - [Traceability](#traceability)
-   - [Checkbox Cascade](#checkbox-cascade)
-   - [Versioning](#versioning)
-   - [Engineering](#engineering)
-   - [Quality](#quality)
-3. [Tasks](#tasks)
-   - [Phase 1: Setup](#phase-1-setup)
-   - [Phase 2: Implementation (Work Packages)](#phase-2-implementation-work-packages)
-   - [Phase 3: Constructor Studio Markers (Traceability Mode ON only)](#phase-3-constructor-studio-markers-traceability-mode-on-only)
-   - [Phase 4: Sync FEATURE (Traceability Mode ON only)](#phase-4-sync-feature-traceability-mode-on-only)
-   - [Phase 5: Quality Check](#phase-5-quality-check)
-   - [Phase 6: Tag Verification (Traceability Mode ON only)](#phase-6-tag-verification-traceability-mode-on-only)
-4. [Validation](#validation)
-   - [Phase 1: Implementation Coverage](#phase-1-implementation-coverage)
-   - [Phase 2: Traceability Validation (Mode ON only)](#phase-2-traceability-validation-mode-on-only)
-   - [Phase 3: Test Scenarios Validation](#phase-3-test-scenarios-validation)
-   - [Phase 4: Build and Lint Validation](#phase-4-build-and-lint-validation)
-   - [Phase 5: Test Execution](#phase-5-test-execution)
-   - [Phase 6: Code Quality Validation](#phase-6-code-quality-validation)
-   - [Phase 7: Code Logic Consistency with Design](#phase-7-code-logic-consistency-with-design)
-   - [Phase 8: Semantic Expert Review (Always)](#phase-8-semantic-expert-review-always)
-5. [Next Steps](#next-steps)
-   - [After Success](#after-success)
-   - [After Issues](#after-issues)
-   - [No Design](#no-design)
+**Dependencies** (lazy-loaded): `{codebase_checklist}` (kit-specific semantic alignment), `{cf-studio-path}/.core/requirements/code-checklist.md` (generic code quality).
 
 ---
 
-## Prerequisites
+```pdsl
+UNIT CodebaseImplementation
 
-- Read project `AGENTS.md` for code conventions
-- Load source artifact/description (FEATURE preferred)
-- If FEATURE source: identify all IDs with `to_code="true"` attribute
-- Determine Traceability Mode (FULL vs DOCS-ONLY)
+PURPOSE:
+  Implement code from a resolved design source, in work packages, under the
+  correct traceability mode.
 
-**Source** (one of, in priority order):
-1. FEATURE design — registered artifact with `to_code="true"` IDs
-2. Other Constructor Studio artifact — PRD, DESIGN, ADR, DECOMPOSITION
-3. Similar content — user-provided description, feature, or requirements
-4. Prompt only — direct user instructions
+STATE:
+  - SET TRACEABILITY_MODE: FULL | DOCS-ONLY
+    default: DOCS-ONLY
 
-**ALWAYS read** the FEATURE artifact being implemented (the source of `to_code="true"` IDs). The FEATURE contains flows, algorithms, states, and definition-of-done tasks that define what code must do.
+DO:
+  - RUN resolve source in priority order:
+      1 FEATURE design (registered, has `to_code="true"` IDs) -> FULL possible
+      2 Other Constructor Studio artifact (PRD / DESIGN / ADR / DECOMPOSITION) -> DOCS-ONLY
+      3 User-provided description / requirements -> DOCS-ONLY
+      4 Prompt only -> DOCS-ONLY
+  - REQUIRE if no source -> suggest `/cf-studio-generate FEATURE` first
+  - LOAD project `AGENTS.md` for code conventions
+  - LOAD the FEATURE artifact being implemented (flows, algorithms, states, definition-of-done tasks)
+  - LOAD the system DESIGN artifact if registered in `artifacts.toml` (architecture, components, principles, constraints)
+  - SET TRACEABILITY_MODE: FULL when FEATURE source with `to_code="true"` IDs; else DOCS-ONLY
+  - RUN per work package:
+      1 identify exact design items to code (flows / algos / states / requirements / tests)
+      2 implement per project conventions
+      3 WHEN Mode FULL: add `@cpt-begin`/`@cpt-end` markers per CDSL instruction (see CodebaseMarkers)
+      4 run work-package validation (tests, build, linters per project config)
+      5 WHEN Mode FULL: sync FEATURE / DECOMPOSITION checkboxes (see CodebaseCascade)
+      6 continue to next work package
+  - CONTINUE CodebaseValidate
 
-**ALWAYS read** the system's DESIGN artifact (if registered in `artifacts.toml`) to understand overall architecture, components, principles, and constraints before implementing code.
+RULES:
+  - ALWAYS apply TDD (failing test first, minimal code, then refactor), SOLID, DRY, KISS, YAGNI, explicit error handling, and testability
+  - ALWAYS refactor only after tests pass; keep behavior unchanged
+  - ALWAYS load `{cf-studio-path}/.core/requirements/code-checklist.md` for the full generic code-quality criteria; do not restate them here
 
----
-
-## Requirements
-
-### Structural
-
-- [ ] Code implements FEATURE design requirements
-- [ ] Code follows project conventions from config
-
-### Traceability
-
-**Load on demand**: `{cf-studio-path}/.core/architecture/specs/traceability.md` — WHEN Traceability Mode FULL
-
-- [ ] Traceability Mode determined per feature (FULL vs DOCS-ONLY)
-- [ ] If Mode ON: markers follow feature syntax (`@cpt-*`, `@cpt-begin`/`@cpt-end`)
-- [ ] If Mode ON: all `to_code="true"` IDs have markers
-- [ ] If Mode ON: every implemented CDSL instruction (`[x] ... \`inst-*\``) has a paired `@cpt-begin/.../@cpt-end` block marker in code
-- [ ] If Mode ON: no orphaned/stale markers
-- [ ] If Mode ON: design checkboxes synced with code
-- [ ] If Mode OFF: no Constructor Studio markers in code
-
-### Checkbox Cascade
-
-CODE implementation triggers upstream checkbox updates through markers:
-
-| Code Marker | FEATURE ID | Upstream Effect |
-|-------------|-----------|-----------------|
-| `@cpt-flow:{cpt-id}:p{N}` | kind: `flow` | When all pN markers exist → check `flow` ID in FEATURE |
-| `@cpt-algo:{cpt-id}:p{N}` | kind: `algo` | When all pN markers exist → check `algo` ID in FEATURE |
-| `@cpt-state:{cpt-id}:p{N}` | kind: `state` | When all pN markers exist → check `state` ID in FEATURE |
-| `@cpt-dod:{cpt-id}:p{N}` | kind: `dod` | When all pN markers exist + evidence complete → check `dod` ID in FEATURE |
-
-**Full Cascade Chain**:
-```
-CODE markers exist
-    ↓
-FEATURE: flow/algo/state/dod IDs → [x]
-    ↓
-DECOMPOSITION: feature entry [x]
-    ↓
-PRD/DESIGN: referenced IDs [x] when ALL downstream refs [x]
+NOTES:
+  Mode FULL requires the traceability spec `{cf-studio-path}/.core/architecture/specs/traceability.md`.
+  Mode determination also follows `{codebase_checklist}` Traceability Preconditions.
 ```
 
-**When to Update Upstream Checkboxes**:
-1. **After implementing CDSL instruction**: add block markers, mark step `[x]` in FEATURE
-2. **After completing flow/algo/state/dod**: all steps `[x]` → mark ID `[x]` in FEATURE
-3. **After completing FEATURE**: all IDs `[x]` → mark feature entry `[x]` in DECOMPOSITION
-4. **After DECOMPOSITION updated**: check if all referenced IDs are `[x]` → mark in PRD/DESIGN
+```pdsl
+UNIT CodebaseMarkers
 
-**Consistency rules (MANDATORY)**:
-- [ ] Never mark CDSL instruction `[x]` unless corresponding code block markers exist and wrap non-empty implementation code
-- [ ] Never add code block marker pair unless corresponding CDSL instruction exists in design (add it first if missing)
-- [ ] Parent ID checkbox state MUST be consistent with all nested task-tracked items within its scope (as determined by heading boundaries)
-- [ ] Task-tracked items include:
-  - ID definitions with a task checkbox (e.g. `- [ ] p1 - **ID**: cpt-...`)
-  - Task-checkbox references inside content (e.g. `- [ ] p1 - cpt-...`)
-- [ ] If parent ID is `[x]` then ALL nested task-tracked items within its scope MUST be `[x]`
-- [ ] If ALL nested task-tracked items within its scope are `[x]` then parent ID MUST be `[x]`
-- [ ] Never mark a reference as `[x]` if its definition is still `[ ]` (cross-artifact consistency is validated)
+PURPOSE:
+  Define @cpt marker syntax and granularity (Traceability Mode FULL only).
 
-**Validation Checks**:
-- `cfs validate` will warn if code marker exists but FEATURE checkbox is `[ ]`
-- `cfs validate` will warn if FEATURE checkbox is `[x]` but code marker is missing
-- `cfs validate` will report coverage: N% of FEATURE IDs have code markers
+WHEN:
+  - REQUIRE TRACEABILITY_MODE == FULL
 
-### Versioning
+DO:
+  - EMIT scope markers: `@cpt-{kind}:{cpt-id}:p{N}` — single-line, at function/class entry point (kind: flow | algo | state | dod)
+  - EMIT paired block markers: `@cpt-begin:{cpt-id}:p{N}:inst-{local}` / `@cpt-end:{cpt-id}:p{N}:inst-{local}`
 
-- [ ] When design ID versioned (`-v2`): update code markers to match
-- [ ] Marker format with version: `@cpt-flow:{cpt-id}-v2:p{N}`
-- [ ] Migration: update all markers when design version increments
-- [ ] Keep old markers commented during transition (optional)
+RULES:
+  - ALWAYS wrap the SMALLEST code fragment implementing one CDSL instruction in each begin/end pair
+  - ALWAYS place a separate begin/end pair per instruction when a function implements multiple instructions
+  - ALWAYS place markers as close to the implementing code as possible
+  - ALWAYS ensure every `to_code="true"` ID has markers and every implemented CDSL instruction (`[x] ... inst-*`) has a paired begin/end block wrapping non-empty code
+  - NEVER wrap a whole multi-instruction function body in a single begin/end pair (loses per-instruction traceability)
+  - NEVER leave orphaned or stale markers
+```
 
-### Engineering
+Correct — each instruction wrapped individually:
 
-- [ ] **TDD**: Write failing test first, implement minimal code to pass, then refactor
-- [ ] **SOLID**:
-  - Single Responsibility: Each module/function focused on one reason to change
-  - Open/Closed: Extend behavior via composition/configuration, not editing unrelated logic
-  - Liskov Substitution: Implementations honor interface contract and invariants
-  - Interface Segregation: Prefer small, purpose-driven interfaces over broad ones
-  - Dependency Inversion: Depend on abstractions; inject dependencies for testability
-- [ ] **DRY**: Remove duplication by extracting shared logic with clear ownership
-- [ ] **KISS**: Prefer simplest correct solution matching design and project conventions
-- [ ] **YAGNI**: No specs/abstractions not required by current design scope
-- [ ] **Refactoring discipline**: Refactor only after tests pass; keep behavior unchanged
-- [ ] **Testability**: Structure code so core logic is testable without heavy integration
-- [ ] **Error handling**: Fail explicitly with clear errors; never silently ignore failures
-- [ ] **Observability**: Log meaningful events at integration boundaries (no secrets)
-
-### Quality
-
-**Load on demand**:
-- `{codebase_checklist}` — WHEN checking code quality
-- `{cf-studio-path}/.core/requirements/code-checklist.md` — WHEN checking generic code quality
-
-- [ ] Code passes quality checklist
-- [ ] Functions/methods are appropriately sized
-- [ ] Error handling is consistent
-- [ ] Tests cover implemented requirements
-
----
-
-## Tasks
-
-### Phase 1: Setup
-
-**Resolve Source** (priority order):
-1. FEATURE design (registered) — Traceability FULL possible
-2. Other Constructor Studio artifact (PRD/DESIGN/ADR) — DOCS-ONLY
-3. User-provided description — DOCS-ONLY
-4. Prompt only — DOCS-ONLY
-5. None — suggest `/cf-studio-generate FEATURE` first
-
-**Load Context**:
-- [ ] Read project `AGENTS.md` for code conventions
-- [ ] Load source artifact/description
-- [ ] Determine Traceability Mode
-- [ ] Plan implementation order
-
-### Phase 2: Implementation (Work Packages)
-
-**For each work package:**
-1. Identify exact design items to code (flows/algos/states/requirements/tests)
-2. Implement according to project conventions
-3. If Traceability Mode ON: add `@cpt-begin`/`@cpt-end` markers **per CDSL instruction** while implementing — wrap only the specific lines that implement each instruction, not entire functions
-4. Run work package validation (tests, build, linters per project config)
-5. If Traceability Mode ON: update FEATURE.md checkboxes
-6. Proceed to next work package
-
-### Phase 3: Constructor Studio Markers (Traceability Mode ON only)
-
-**Traceability Mode ON only.**
-
-Apply markers per feature:
-- **Scope markers**: `@cpt-{kind}:{cpt-id}:p{N}` — single-line, at function/class entry point
-- **Block markers**: `@cpt-begin:{cpt-id}:p{N}:inst-{local}` / `@cpt-end:...` — paired, wrapping **only the specific lines** that implement one CDSL instruction
-
-**Granularity rules (MANDATORY)**:
-1. Each `@cpt-begin`/`@cpt-end` pair wraps the **smallest code fragment** that implements its CDSL instruction
-2. When a function implements multiple CDSL instructions, place **separate** begin/end pairs for each instruction inside the function body
-3. Place markers as **close to the implementing code as possible** — directly above/below the relevant lines
-4. Do NOT wrap an entire function body with a single begin/end pair when the function implements multiple instructions
-
-**Correct** — each instruction wrapped individually:
 ```python
 # @cpt-algo:cpt-system-algo-process:p1
 def process_data(items):
@@ -217,194 +89,92 @@ def process_data(items):
     # @cpt-end:cpt-system-algo-process:p1:inst-return-result
 ```
 
-**WRONG** — entire function wrapped with one pair (loses per-instruction traceability):
-```python
-# @cpt-begin:cpt-system-algo-process:p1:inst-validate
-def process_data(items):
-    if not items:
-        raise ValueError("Empty input")
-    result = [transform(item) for item in items]
-    return result
-# @cpt-end:cpt-system-algo-process:p1:inst-validate
+Anti-pattern: a single `@cpt-begin/.../@cpt-end` pair wrapping the entire multi-instruction function body.
+
+```pdsl
+UNIT CodebaseCascade
+
+PURPOSE:
+  Cascade code markers up through FEATURE / DECOMPOSITION / PRD-DESIGN checkboxes, consistently and versioned.
+
+WHEN:
+  - REQUIRE TRACEABILITY_MODE == FULL
+
+DO:
+  - RUN cascade chain:
+      CODE markers exist
+        -> FEATURE: flow/algo/state/dod IDs [x] (dod also requires evidence complete)
+        -> DECOMPOSITION: feature entry [x]
+        -> PRD/DESIGN: referenced IDs [x] when ALL downstream refs [x]
+  - RUN update order:
+      1 after implementing a CDSL instruction: add block markers, mark step [x] in FEATURE
+      2 after all steps of a flow/algo/state/dod [x]: mark that ID [x] in FEATURE
+      3 after all FEATURE IDs [x]: mark feature entry [x] in DECOMPOSITION; status `⏳ PLANNED` -> `🔄 IN_PROGRESS` -> `✅ IMPLEMENTED`
+      4 after DECOMPOSITION updated: mark referenced IDs [x] in PRD/DESIGN when all downstream refs [x]
+  - RUN marker versioning on design ID bump:
+      WHEN design ID versioned (`-v2`) -> update markers to `@cpt-flow:{cpt-id}-v2:p{N}`; migrate ALL markers; old markers may stay commented during transition
+
+RULES:
+  - NEVER mark a CDSL instruction [x] unless code block markers exist and wrap non-empty implementation code
+  - NEVER add a code block marker pair unless the CDSL instruction exists in design (add it first if missing)
+  - ALWAYS keep a parent ID checkbox consistent with all nested task-tracked items in its scope (heading boundaries): parent [x] IFF all nested task-tracked items [x]
+  - NEVER mark a reference [x] while its definition is still [ ]
+
+NOTES:
+  `cfs validate` warns if a code marker exists but the FEATURE checkbox is [ ],
+  warns if a FEATURE checkbox is [x] but the code marker is missing,
+  and reports coverage: N% of FEATURE IDs have code markers.
 ```
 
-### Phase 4: Sync FEATURE (Traceability Mode ON only)
+```pdsl
+UNIT CodebaseValidate
 
-**Traceability Mode ON only.**
+PURPOSE:
+  Deterministic gates, then one delegated semantic review; decide PASS/FAIL.
 
-After each work package, sync checkboxes:
-1. Mark implemented CDSL steps `[x]` in FEATURE
-2. When all steps done → mark flow/algo/state/dod `[x]` in FEATURE
-3. When all IDs done → mark feature entry `[x]` in DECOMPOSITION
-4. Update feature status: `⏳ PLANNED` → `🔄 IN_PROGRESS` → `✅ IMPLEMENTED`
+DO:
+  - REQUIRE no placeholder/stub code (no TODO / FIXME / XXX / HACK / unimplemented! / todo! in business logic; no bare unwrap()/panic in production)
+  - RUN `cfs validate` (Mode FULL): valid marker format, all begin/end pairs matched, no empty blocks, all `to_code="true"` IDs have markers, no orphaned/stale markers, design checkboxes synced, coverage %
+  - REQUIRE test scenarios exist and are traceable: a test file per design scenario, scenario ID in a comment, not ignored without justification, actually validates behavior
+  - RUN build -> REQUIRE succeeds, no compilation errors
+  - RUN lint -> REQUIRE passes, no linter errors
+  - RUN tests -> REQUIRE unit + integration + e2e (if applicable) pass AND coverage meets project requirements
+  - RUN semantic expert review per `{codebase_checklist}` (SEM-CODE-001..007) + `{cf-studio-path}/.core/requirements/code-checklist.md` (generic quality + design-to-code logic consistency)
+  - RETURN PASS only if: build/lint/tests pass; coverage met; no CRITICAL design divergences; AND (Mode FULL) required markers present and properly paired
 
-### Phase 5: Quality Check
+RULES:
+  - ALWAYS delegate generic code-quality criteria to `{cf-studio-path}/.core/requirements/code-checklist.md`
+  - ALWAYS delegate semantic alignment and logic-consistency checks to `{codebase_checklist}`
+  - NEVER restate the generic or semantic checklists inline
 
-**Load on demand**: `{codebase_checklist}` — WHEN self-reviewing code quality
-
-- [ ] Self-review against `{codebase_checklist}`
-- [ ] If Traceability Mode ON: verify all `to_code="true"` IDs have markers
-- [ ] If Traceability Mode ON: ensure no orphaned markers
-- [ ] Run tests to verify implementation
-- [ ] Verify engineering best practices followed
-
-### Phase 6: Tag Verification (Traceability Mode ON only)
-
-**Traceability Mode ON only.**
-
-- [ ] Search codebase for ALL IDs from FEATURE (flow/algo/state/dod)
-- [ ] Confirm tags exist in files that implement corresponding logic/tests
-- [ ] If any FEATURE ID has no code tag → report as gap and/or add tag
-
----
-
-## Validation
-
-### Phase 1: Implementation Coverage
-
-- [ ] Code files exist and contain implementation
-- [ ] Code is not placeholder/stub (no TODO/FIXME/unimplemented!)
-
-### Phase 2: Traceability Validation (Mode ON only)
-
-**Load on demand**: `{cf-studio-path}/.core/architecture/specs/traceability.md` — required for this phase (Mode ON only)
-
-- [ ] Marker format valid
-- [ ] All begin/end pairs matched
-- [ ] No empty blocks
-- [ ] All `to_code="true"` IDs have markers
-- [ ] No orphaned/stale markers
-- [ ] Design checkboxes synced with code markers
-
-### Phase 3: Test Scenarios Validation
-
-- [ ] Test file exists for each test scenario from design
-- [ ] Test contains scenario ID in comment for traceability
-- [ ] Test is NOT ignored without justification
-- [ ] Test actually validates scenario behavior
-
-### Phase 4: Build and Lint Validation
-
-- [ ] Build succeeds, no compilation errors
-- [ ] Linter passes, no linter errors
-
-**Report format**:
-```
-Code Quality Report
-═══════════════════
-Build: PASS/FAIL
-Lint: PASS/FAIL
-Tests: X/Y passed
-Coverage: N%
-Checklist: PASS/FAIL (N issues)
-Issues:
-- [SEVERITY] CHECKLIST-ID: Description
-Logic Consistency: PASS/FAIL
-- CRITICAL divergences: [...]
-- MINOR divergences: [...]
+NOTES:
+  Report shape: Build PASS/FAIL, Lint PASS/FAIL, Tests X/Y, Coverage N%,
+  Checklist PASS/FAIL (issues), Logic Consistency PASS/FAIL (CRITICAL/MINOR divergences).
 ```
 
-### Phase 5: Test Execution
+```pdsl
+UNIT CodebaseNextSteps
 
-- [ ] All unit tests pass
-- [ ] All integration tests pass
-- [ ] All e2e tests pass (if applicable)
-- [ ] Coverage meets project requirements
+PURPOSE:
+  Offer next actions after validation.
 
-### Phase 6: Code Quality Validation
+DO:
+  - EMIT_MENU NextStepsMenu
 
-- [ ] No TODO/FIXME/XXX/HACK in domain/service layers
-- [ ] No unimplemented!/todo! in business logic
-- [ ] No bare unwrap() or panic in production code
-- [ ] TDD: New/changed behavior covered by tests
-- [ ] SOLID: Responsibilities separated; dependencies injectable
-- [ ] DRY: No copy-paste duplication
-- [ ] KISS: No unnecessary complexity
-- [ ] YAGNI: No speculative abstractions
-
-### Phase 7: Code Logic Consistency with Design
-
-**For each requirement marked IMPLEMENTED:**
-- [ ] Read requirement specification
-- [ ] Locate implementing code via @cpt-dod tags
-- [ ] Verify code logic matches requirement (no contradictions)
-- [ ] Verify no skipped mandatory steps
-- [ ] Verify error handling matches design error specifications
-
-**For each flow marked implemented:**
-- [ ] All flow steps executed in correct order
-- [ ] No steps bypassed that would change behavior
-- [ ] Conditional logic matches design conditions
-- [ ] Error paths match design error handling
-
-**For each algorithm marked implemented:**
-- [ ] Performance characteristics match design (O(n), O(1), etc.)
-- [ ] Edge cases handled as designed
-- [ ] No logic shortcuts that violate design constraints
-
-### Phase 8: Semantic Expert Review (Always)
-
-Run expert panel review after producing validation output.
-
-**Review Scope Selection**:
-
-| Change Size | Review Mode | Experts |
-|-------------|-------------|--------|
-| <50 LOC, single concern | Abbreviated | Developer + 1 relevant expert |
-| 50-200 LOC, multiple concerns | Standard | Developer, QA, Security, Architect |
-| >200 LOC or architectural | Full | All 8 experts |
-
-**Abbreviated Review** (for small, focused changes):
-1. Developer reviews code quality and design alignment
-2. Select ONE additional expert based on change type
-3. Skip remaining experts with note: `Abbreviated review: {N} LOC, single concern`
-
-**Full Expert Panel**: Developer, QA Engineer, Security Expert, Performance Engineer, DevOps Engineer, Architect, Monitoring Engineer, Database Architect/Data Engineer
-
-**For EACH expert:**
-1. Adopt role (write: `Role assumed: {expert}`)
-2. Review actual code and tests in validation scope
-3. If design artifact available: evaluate design-to-code alignment
-4. Identify issues (contradictions, missing behavior, unclear intent, unnecessary complexity, missing non-functional concerns)
-5. Provide concrete proposals (what to remove, add, rewrite)
-6. Propose corrective workflow: `feature`, `design`, or `code`
-
-**Expert review output format:**
+MENU NextStepsMenu:
+  TITLE: CODE — next steps
+  OPTIONS:
+    1 after success / feature complete -> update feature status to IMPLEMENTED in DECOMPOSITION
+    2 after success / all features done -> `/cf-studio-analyze DESIGN` (validate overall design completion)
+    3 after success / new feature needed -> `/cf-studio-generate FEATURE`
+    4 after success / expert review only -> `/cf-studio-analyze semantic`
+    5 after issues / design mismatch -> `/cf-studio-generate FEATURE` (update feature design)
+    6 after issues / missing tests or quality -> continue `/cf-studio-generate CODE`
+    7 no design / new feature -> `/cf-studio-generate FEATURE` first
+    8 no design / from PRD -> `/cf-studio-generate DESIGN` then DECOMPOSITION
+    9 no design / quick prototype -> proceed without traceability, suggest FEATURE later
+  INVALID:
+    EMIT "Choose a listed option."
+    WAIT user.reply
+    STOP_TURN
 ```
-**Review status**: COMPLETED
-**Reviewed artifact**: Code ({scope})
-- **Role assumed**: {expert}
-- **Checklist completed**: YES
-- **Findings**:
-- **Proposed edits**:
-**Recommended corrective workflow**: {feature | design | code}
-```
-
-**PASS only if:**
-- Build/lint/tests pass per project config
-- Coverage meets project requirements
-- No CRITICAL divergences between code and design
-- If Traceability Mode ON: required tags present and properly paired
-
----
-
-## Next Steps
-
-### After Success
-
-- [ ] Feature complete → update feature status to IMPLEMENTED in DECOMPOSITION
-- [ ] All features done → `/cf-studio-analyze DESIGN` — validate overall design completion
-- [ ] New feature needed → `/cf-studio-generate FEATURE` — design next feature
-- [ ] Want expert review only → `/cf-studio-analyze semantic` — semantic validation
-
-### After Issues
-
-- [ ] Design mismatch → `/cf-studio-generate FEATURE` — update feature design
-- [ ] Missing tests → continue `/cf-studio-generate CODE` — add tests
-- [ ] Code quality issues → continue `/cf-studio-generate CODE` — refactor
-
-### No Design
-
-- [ ] Implementing new feature → `/cf-studio-generate FEATURE` first
-- [ ] Implementing from PRD → `/cf-studio-generate DESIGN` then DECOMPOSITION
-- [ ] Quick prototype → proceed without traceability, suggest FEATURE later
