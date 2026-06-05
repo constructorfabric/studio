@@ -659,6 +659,7 @@ class TestLegacyStubClassification(unittest.TestCase):
             _follow_protocol_lines,
             _is_pure_studio_generated,
         )
+        from studio.constants import ROOT_AGENTS_PIPELINE_INSTRUCTION
 
         block = _follow_protocol_lines("{cf-studio-path}/.core/workflows/analyze.md")
         content = (
@@ -680,6 +681,17 @@ class TestLegacyStubClassification(unittest.TestCase):
         self.assertIn("- no_substantive_work_until = workflow_explicit_permission", block)
         self.assertIn("- precedence = constructor_studio_workflow > generic_assistant", block)
         self.assertIn("- pre_emit_check = response_shape in workflow_allowed_shapes", block)
+        # The pipeline directive is emitted between the mandatory-rule block and
+        # the "ALWAYS open and follow" target line.
+        self.assertIn(ROOT_AGENTS_PIPELINE_INSTRUCTION, block)
+        self.assertLess(
+            block.index("- protocol_violation > incomplete_answer"),
+            block.index(ROOT_AGENTS_PIPELINE_INSTRUCTION),
+        )
+        self.assertLess(
+            block.index(ROOT_AGENTS_PIPELINE_INSTRUCTION),
+            block.index("ALWAYS open and follow `{cf-studio-path}/.core/workflows/analyze.md`"),
+        )
         self.assertIn("UNIT GeneratedFollowProtocol", joined)
         self.assertIn("ALWAYS treat target as controlling protocol", joined)
         self.assertIn("ALWAYS traverse declared steps/units in order", joined)

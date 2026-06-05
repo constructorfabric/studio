@@ -37,6 +37,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from ..constants import ROOT_AGENTS_PIPELINE_INSTRUCTION
 from ..utils._tomllib_compat import tomllib
 from ..utils.files import (
     core_subpath,
@@ -110,6 +111,8 @@ def _follow_protocol_lines(target_path: str) -> List[str]:
         "- pre_emit_check = response_shape in workflow_allowed_shapes",
         "- if_check_fails = emit_only(workflow_allowed_gate_menu_opener_refusal)",
         "- protocol_violation > incomplete_answer",
+        "",
+        ROOT_AGENTS_PIPELINE_INSTRUCTION,
         "",
         f"ALWAYS open and follow `{target_path}`",
         "",
