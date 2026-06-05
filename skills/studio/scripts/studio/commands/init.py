@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from ..constants import ROOT_AGENTS_PIPELINE_INSTRUCTION
 from ..utils._tomllib_compat import tomllib
 from ..utils.artifacts_meta import create_backup, generate_default_registry, generate_slug
 from ..utils import toml_utils
@@ -291,6 +292,8 @@ def _compute_managed_block(install_dir: str) -> str:
         f"```toml\n"
         f'cf-studio-path = "{install_dir}"\n'
         f"```\n"
+        f"\n"
+        f"{ROOT_AGENTS_PIPELINE_INSTRUCTION}\n"
         f"{MARKER_END}"
     )
     # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-compute-block

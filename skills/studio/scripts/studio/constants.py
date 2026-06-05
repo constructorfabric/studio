@@ -16,6 +16,14 @@ import re
 ARTIFACTS_REGISTRY_FILENAME = "artifacts.toml"
 WORKSPACE_CONFIG_FILENAME = ".cf-workspace.toml"
 
+# Pipeline directive emitted into generated entrypoints (root @cf:root-agents
+# managed block and per-skill/workflow follow-protocol preamble) so every agent
+# resolves and enforces instruction prerequisites before applying user intent.
+ROOT_AGENTS_PIPELINE_INSTRUCTION = (
+    "ALWAYS resolve and enforce prerequisites of skills/workflows/commands "
+    "BEFORE applying user intent."
+)
+
 # === ARTIFACT STRUCTURE PATTERNS ===
 
 SECTION_RE = re.compile(r"^###\s+Section\s+([A-Z0-9]+):\s+(.+?)\s*$")

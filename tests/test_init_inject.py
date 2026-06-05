@@ -97,6 +97,18 @@ class TestInjectRootWrappers(unittest.TestCase):
             self.assertTrue(agents.is_file())
             self.assertIn('cf-studio-path = "cypilot"', agents.read_text())
 
+    def test_managed_block_emits_pipeline_instruction(self):
+        """The managed block carries the pipeline directive, outside the TOML
+        fence, so it cannot silently regress."""
+        from studio.commands.init import _compute_managed_block, MARKER_END
+        from studio.constants import ROOT_AGENTS_PIPELINE_INSTRUCTION
+        block = _compute_managed_block("cypilot")
+        self.assertIn(ROOT_AGENTS_PIPELINE_INSTRUCTION, block)
+        # The directive sits after the closing toml fence and before MARKER_END,
+        # i.e. it is plain markdown, never parsed as TOML.
+        self.assertLess(block.index("```\n"), block.index(ROOT_AGENTS_PIPELINE_INSTRUCTION))
+        self.assertLess(block.index(ROOT_AGENTS_PIPELINE_INSTRUCTION), block.index(MARKER_END))
+
     def test_inject_root_agents_updates(self):
         from studio.commands.init import _inject_root_agents, MARKER_START, MARKER_END
         with TemporaryDirectory() as td:
