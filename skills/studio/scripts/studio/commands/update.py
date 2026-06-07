@@ -41,6 +41,7 @@ from .init import (
     _copy_from_cache,
     _core_readme,
     _persist_install_metadata,
+    _read_install_tracking,
     _read_kit_tracking,
     _read_kit_tracking_state,
     _inject_root_agents,
@@ -321,19 +322,44 @@ def cmd_update(argv: List[str]) -> int:
     # ── Step 1b1: Remove leftover blueprints/ from config kits (ADR-0001) ──
     if not args.dry_run:
         _cleanup_legacy_blueprint_dirs(config_dir)
+        runtime_tracking = _read_install_tracking(
+            core_toml_path,
+            "runtime_tracking",
+            default="ignored",
+        )
+        agent_tracking = _read_install_tracking(
+            core_toml_path,
+            "agent_tracking",
+            default="ignored",
+        )
         actions["core_toml_metadata"] = _persist_install_metadata(
             core_toml_path,
             kit_tracking,
+            runtime_tracking=runtime_tracking,
+            agent_tracking=agent_tracking,
             dry_run=False,
         )
         # @cpt-begin:cpt-studio-flow-core-infra-project-update:p1:inst-update-gitignore
-        actions["gitignore"] = _write_gitignore_block(
-            project_root,
-            install_rel,
-            core_toml_path,
-            kit_tracking,
-            dry_run=False,
-        )
+        try:
+            actions["gitignore"] = _write_gitignore_block(
+                project_root,
+                install_rel,
+                core_toml_path,
+                kit_tracking,
+                dry_run=False,
+            )
+        except (OSError, ValueError) as exc:
+            errors.append({"path": ".gitignore", "error": str(exc)})
+            update_result = {
+                "status": "ERROR",
+                "project_root": project_root.as_posix(),
+                "studio_dir": studio_dir.as_posix(),
+                "dry_run": bool(args.dry_run),
+                "actions": actions,
+                "errors": errors,
+            }
+            ui.result(update_result, human_fn=_human_update_ok)
+            return 1
         # @cpt-end:cpt-studio-flow-core-infra-project-update:p1:inst-update-gitignore
     else:
         actions["core_toml_metadata"] = "dry_run"

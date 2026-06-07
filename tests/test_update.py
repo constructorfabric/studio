@@ -260,6 +260,95 @@ class TestCmdUpdateErrors(unittest.TestCase):
             finally:
                 os.chdir(cwd)
 
+    def test_malformed_gitignore_returns_controlled_error(self):
+        from studio.commands.update import cmd_update
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            cache = root / "cache"
+            _make_cache(cache)
+            (root / ".git").mkdir()
+            (root / "AGENTS.md").write_text(
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".cf-studio"\n```\n<!-- /@cf:root-agents -->\n',
+                encoding="utf-8",
+            )
+            (root / ".gitignore").write_text(
+                "# existing\n# BEGIN Constructor Studio\n",
+                encoding="utf-8",
+            )
+            studio_dir = root / ".cf-studio"
+            config_dir = studio_dir / "config"
+            config_dir.mkdir(parents=True)
+            _write_toml(config_dir / "core.toml", {
+                "version": "1.0",
+                "project_root": "..",
+                "install": {
+                    "kit_tracking": "tracked",
+                    "runtime_tracking": "ignored",
+                    "agent_tracking": "ignored",
+                },
+                "kits": {},
+            })
+
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                with patch("studio.commands.update.CACHE_DIR", cache):
+                    buf = io.StringIO()
+                    err = io.StringIO()
+                    with redirect_stdout(buf), redirect_stderr(err):
+                        rc = cmd_update(["-y"])
+                self.assertEqual(rc, 1)
+                result = json.loads(buf.getvalue())
+                self.assertEqual(result["status"], "ERROR")
+                self.assertEqual(result["errors"][0]["path"], ".gitignore")
+                self.assertIn("malformed", result["errors"][0]["error"])
+            finally:
+                os.chdir(cwd)
+
+    def test_update_preserves_runtime_and_agent_tracking(self):
+        from studio.commands.update import cmd_update
+        from studio.utils import toml_utils
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            cache = root / "cache"
+            _make_cache(cache)
+            (root / ".git").mkdir()
+            (root / "AGENTS.md").write_text(
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".cf-studio"\n```\n<!-- /@cf:root-agents -->\n',
+                encoding="utf-8",
+            )
+            studio_dir = root / ".cf-studio"
+            config_dir = studio_dir / "config"
+            config_dir.mkdir(parents=True)
+            core_toml = config_dir / "core.toml"
+            _write_toml(core_toml, {
+                "version": "1.0",
+                "project_root": "..",
+                "install": {
+                    "kit_tracking": "tracked",
+                    "runtime_tracking": "tracked",
+                    "agent_tracking": "tracked",
+                },
+                "kits": {},
+            })
+
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                with patch("studio.commands.update.CACHE_DIR", cache):
+                    buf = io.StringIO()
+                    err = io.StringIO()
+                    with redirect_stdout(buf), redirect_stderr(err):
+                        rc = cmd_update(["-y"])
+                self.assertEqual(rc, 0, buf.getvalue())
+                install = toml_utils.load(core_toml)["install"]
+                self.assertEqual(install["runtime_tracking"], "tracked")
+                self.assertEqual(install["agent_tracking"], "tracked")
+            finally:
+                os.chdir(cwd)
+
     def test_cmd_update_handles_unexpected_exception_type(self):
         """Regression: update_kit raising TypeError must not surface as UnboundLocalError.
 

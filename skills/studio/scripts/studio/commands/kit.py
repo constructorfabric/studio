@@ -5,6 +5,8 @@ Provides CLI handlers for kit install and kit update.
 Kits are direct file packages — no blueprint processing or generation.
 """
 
+from __future__ import annotations
+
 # @cpt-algo:cpt-studio-algo-kit-github-helpers:p1
 # @cpt-begin:cpt-studio-algo-kit-github-helpers:p1:inst-kit-imports
 import argparse
@@ -18,12 +20,15 @@ import tempfile
 import urllib.error
 import urllib.request
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from ..utils._tomllib_compat import tomllib
 from ..utils.ui import ui
 from ..utils.whatsnew import show_kit_whatsnew
 # @cpt-end:cpt-studio-algo-kit-github-helpers:p1:inst-kit-imports
+
+if TYPE_CHECKING:
+    from ..utils.manifest import Manifest, ManifestResource
 
 
 # ---------------------------------------------------------------------------
@@ -952,7 +957,7 @@ def _resolve_manifest_user_path(base: Path, raw_path: str) -> Path:
 
 def _manifest_resource_target(
     kit_root: Path,
-    res: "ManifestResource",
+    res: ManifestResource,
     resource_overrides: Dict[str, Path],
 ) -> Path:
     if res.id in resource_overrides:
@@ -963,7 +968,7 @@ def _manifest_resource_target(
 def _manifest_resource_bindings(
     studio_dir: Path,
     kit_root: Path,
-    resources: List["ManifestResource"],
+    resources: List[ManifestResource],
     resource_overrides: Dict[str, Path],
 ) -> Dict[str, Dict[str, str]]:
     return {
@@ -980,7 +985,7 @@ def _manifest_resource_bindings(
 def _emit_manifest_install_plan(
     kit_slug: str,
     kit_root: Path,
-    resources: List["ManifestResource"],
+    resources: List[ManifestResource],
     resource_overrides: Dict[str, Path],
 ) -> None:
     sys.stderr.write("\n")
@@ -1004,7 +1009,7 @@ def _prompt_manifest_install_plan(
     kit_slug: str,
     studio_dir: Path,
     kit_root: Path,
-    manifest: "Manifest",
+    manifest: Manifest,
     *,
     registered_kit_root_rel: Optional[str] = None,
     interactive: bool,
@@ -1048,7 +1053,7 @@ def _prompt_manifest_install_plan(
 
         sys.stderr.write("\n")
         sys.stderr.write("  Select path to change\n")
-        menu: List[tuple[str, str, Optional["ManifestResource"]]] = []
+        menu: List[tuple[str, str, Optional[ManifestResource]]] = []
         if manifest.user_modifiable:
             menu.append(("root", f"Kit root -> {kit_root}", None))
         for res in resources:
@@ -1235,7 +1240,7 @@ def install_kit_with_manifest(
     studio_dir: Path,
     kit_slug: str,
     kit_version: str,
-    manifest: "Manifest",
+    manifest: Manifest,
     *,
     interactive: bool = True,
     source: str = "",
@@ -1376,7 +1381,7 @@ def install_kit_with_manifest(
 # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-copy-manifest-resource
 def _copy_manifest_resource(
     kit_source: Path,
-    res: "ManifestResource",
+    res: ManifestResource,
     target_abs: Path,
 ) -> None:
     """Copy a single manifest resource from kit source to target path.

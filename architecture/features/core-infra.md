@@ -157,17 +157,17 @@ Enables users to install Studio globally, initialize it in any project with sens
 9. [x] - `p1` - Prompt user: `Install SDLC kit? [a]ccept [d]ecline` - `inst-prompt-kit`
 10. [x] - `p1` - **IF** user accepts: delegate kit installation from GitHub to Kit Manager (Feature 2 boundary) - `inst-install-kit-accepted`
 11. [x] - `p1` - **ELSE**: skip kit installation, display install command for later use - `inst-skip-kit-declined`
-11. [x] - `p1` - Algorithm: inject root AGENTS.md using `cpt-studio-algo-core-infra-inject-root-agents` - `inst-inject-agents`
-12. [x] - `p1` - Algorithm: create config/AGENTS.md using `cpt-studio-algo-core-infra-create-config-agents` - `inst-create-config-agents`
-13. [x] - `p1` - **RETURN** JSON: `{status, install_dir, kits_installed, agents_configured, systems}` (exit 0) - `inst-return-init-ok`
-14. [x] - `p1` - Helper functions: copy from cache, generate READMEs for .core/.gen/config dirs, default core.toml, path prompting, slug-to-PascalCase - `inst-init-helpers`
-15. [x] - `p1` - Detect existing Studio installation by reading AGENTS.md TOML block with `cf-studio-path` variable - `inst-init-detect-existing`
-16. [x] - `p1` - Inject/update CLAUDE.md managed block for Claude agent integration - `inst-init-inject-claude`
-17. [x] - `p1` - Human-friendly formatters for init success and error output - `inst-init-format-output`
-18. [x] - `p1` - Parse `--kit-tracking tracked|ignored` with default `tracked`, plus repeatable per-kit overrides as `--kit-tracking <kit>=tracked|ignored` (`untracked` alias maps to `ignored`) - `inst-kit-tracking-policy`
-19. [x] - `p1` - Persist default kit tracking policy and per-kit `kits.<slug>.tracking` so later repair and update commands know which kit files are user-owned source or generated/ephemeral content - `inst-persist-kit-tracking`
-20. [x] - `p1` - Write or replace the Constructor Studio managed `.gitignore` block via `cpt-studio-algo-core-infra-gitignore-footprint` - `inst-write-gitignore-footprint`
-21. [ ] - `p1` - **IF** existing initialization is detected and `--force` is absent: validate install-dir compatibility before repair - `inst-existing-repair-mode`
+12. [x] - `p1` - Algorithm: inject root AGENTS.md using `cpt-studio-algo-core-infra-inject-root-agents` - `inst-inject-agents`
+13. [x] - `p1` - Algorithm: create config/AGENTS.md using `cpt-studio-algo-core-infra-create-config-agents` - `inst-create-config-agents`
+14. [x] - `p1` - **RETURN** JSON: `{status, install_dir, kits_installed, agents_configured, systems}` (exit 0) - `inst-return-init-ok`
+15. [x] - `p1` - Helper functions: copy from cache, generate READMEs for .core/.gen/config dirs, default core.toml, path prompting, slug-to-PascalCase - `inst-init-helpers`
+16. [x] - `p1` - Detect existing Studio installation by reading AGENTS.md TOML block with `cf-studio-path` variable - `inst-init-detect-existing`
+17. [x] - `p1` - Inject/update CLAUDE.md managed block for Claude agent integration - `inst-init-inject-claude`
+18. [x] - `p1` - Human-friendly formatters for init success and error output - `inst-init-format-output`
+19. [x] - `p1` - Parse `--kit-tracking tracked|ignored` with default `tracked`, plus repeatable per-kit overrides as `--kit-tracking <kit>=tracked|ignored` (`untracked` alias maps to `ignored`) - `inst-kit-tracking-policy`
+20. [x] - `p1` - Persist default kit tracking policy and per-kit `kits.<slug>.tracking` so later repair and update commands know which kit files are user-owned source or generated/ephemeral content - `inst-persist-kit-tracking`
+21. [x] - `p1` - Write or replace the Constructor Studio managed `.gitignore` block via `cpt-studio-algo-core-infra-gitignore-footprint` - `inst-write-gitignore-footprint`
+22. [ ] - `p1` - **IF** existing initialization is detected and `--force` is absent: validate install-dir compatibility before repair - `inst-existing-repair-mode`
 
 ### Project Init Repair
 

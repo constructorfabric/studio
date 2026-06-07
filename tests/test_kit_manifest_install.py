@@ -235,6 +235,8 @@ class TestInstallKitWithManifest(unittest.TestCase):
 
     def test_user_modifiable_false_non_tty_no_prompt(self):
         """Non-TTY installs use defaults without prompting."""
+        import builtins
+
         from studio.commands.kit import install_kit_with_manifest
 
         with TemporaryDirectory() as td:
@@ -249,12 +251,25 @@ class TestInstallKitWithManifest(unittest.TestCase):
                 "version": "1.0", "project_root": "..", "kits": {},
             }, config / "core.toml")
 
-            manifest = load_manifest(kit_src)
-            # interactive=True but stdin is not a TTY, so no prompts
-            result = install_kit_with_manifest(
-                kit_src, adapter, "mykit", "2.0", manifest,
-                interactive=True,
-            )
+            monkeypatch_input_called = False
+
+            def fail_input(*_args, **_kwargs):
+                nonlocal monkeypatch_input_called
+                monkeypatch_input_called = True
+                raise AssertionError("input() must not be called for non-TTY manifest install")
+
+            self.assertTrue(hasattr(sys.stdin, "isatty"))
+            from unittest.mock import patch
+
+            with patch.object(sys.stdin, "isatty", lambda: False), patch.object(builtins, "input", fail_input):
+                manifest = load_manifest(kit_src)
+                # interactive=True but stdin is not a TTY, so no prompts
+                result = install_kit_with_manifest(
+                    kit_src, adapter, "mykit", "2.0", manifest,
+                    interactive=True,
+                )
+
+            self.assertFalse(monkeypatch_input_called)
 
             self.assertEqual(result["status"], "PASS")
             self.assertEqual(result["files_copied"], 3)

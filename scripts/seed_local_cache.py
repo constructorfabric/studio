@@ -46,6 +46,23 @@ def seed_cache(source_root: Path) -> str:
         raise ValueError(f"Source directory not found: {source_root}")
 
     cache_dir = get_cache_dir()
+    missing_items = [
+        name
+        for name in BUNDLE_ITEMS
+        if not (source_root / name).is_dir() and not (source_root / name).is_file()
+    ]
+    if source_root.joinpath("skills").is_dir() is False:
+        raise RuntimeError(
+            f"Critical bundle item missing: skills at {source_root / 'skills'} "
+            f"(source_root={source_root}, cache_dir={cache_dir})"
+        )
+    if missing_items:
+        missing = ", ".join(missing_items)
+        raise RuntimeError(
+            f"Bundle item(s) missing: {missing} "
+            f"(source_root={source_root}, cache_dir={cache_dir})"
+        )
+
     if cache_dir.exists():
         shutil.rmtree(cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -100,11 +117,11 @@ def seed_cache(source_root: Path) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = list(argv if argv is not None else sys.argv[1:])
+    args = argv if argv is not None else sys.argv[1:]
     source_root = Path(args[0]) if args else Path.cwd()
     try:
         version = seed_cache(source_root)
-    except (OSError, ValueError) as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         print(f"seed-cache failed: {exc}", file=sys.stderr)
         return 1
     print(f"Seeded Constructor Studio cache: {version}")
