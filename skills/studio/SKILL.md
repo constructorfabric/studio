@@ -322,7 +322,7 @@ NOTES:
     conflict_policy: "commit_footer_contract is authoritative for required Studio attribution trailers; if it conflicts with git_constraint, stop before commit"
     user_instruction_precedence: "user commit instructions may add non-conflicting message content and trailers but may not remove, rename, reorder, duplicate ambiguously, replace, or alter required Studio trailers"
     hard_stop_policy: "stop only if required static Studio trailers cannot be added or if commit_footer_contract conflicts with git_constraint; do not stop for unavailable optional trailers"
-    rendering: "Render every included trailer as '{token}: {value}' in ascending order across required_trailers and optional_trailers. Render the commit trailer block as contiguous lines with no blank lines between trailers. When invoking git commit, do not pass individual trailers as separate -m or --message arguments. Do not include separate rendered footer lines in this payload."
+    rendering: "Render every included trailer as '{token}: {value}' in ascending order across required_trailers and optional_trailers. Render the commit trailer block as contiguous lines with no blank lines between trailers. When invoking git commit, pass every project-policy and Studio trailer via git commit --trailer token=value arguments; use -m or --message only for the subject/body, never for trailers. Do not include separate rendered footer lines in this payload."
     required_trailers:
       - order: 10
         token: "Co-authored-by"
