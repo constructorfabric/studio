@@ -303,9 +303,10 @@ COMMIT_FOOTER_CONTRACT = {
         "Render every included trailer as '{token}: {value}' in ascending order "
         "across required_trailers and optional_trailers. Render the commit trailer "
         "block as contiguous lines with no blank lines between trailers. When "
-        "invoking git commit, do not pass individual trailers as separate -m or "
-        "--message arguments. Do not include separate rendered footer lines in "
-        "this payload."
+        "invoking git commit, pass every project-policy and Studio trailer via "
+        "git commit --trailer token=value arguments; use -m or --message only "
+        "for the subject/body, never for trailers. Do not include separate "
+        "rendered footer lines in this payload."
     ),
 }
 
@@ -674,7 +675,8 @@ def _assert_commit_footer_contract_shape(contract: dict) -> None:
     assert "skill=1.0.1, cli=0.2.0" in version["value_policy"]
     assert "contiguous lines" in contract["rendering"]
     assert "no blank lines between trailers" in contract["rendering"]
-    assert "do not pass individual trailers as separate -m" in contract["rendering"]
+    assert "git commit --trailer token=value" in contract["rendering"]
+    assert "use -m or --message only for the subject/body" in contract["rendering"]
 
     orders = [entry["order"] for entry in required + optional]
     assert orders == sorted(orders), "trailers must use one total canonical order"
@@ -740,7 +742,7 @@ def test_git_commit_mode_gate_declares_studio_footer_contract_without_prompt_sna
         "Co-authored-by",
         "Constructor Studio <291158726+constructor-studio[bot]@users.noreply.github.com>",
         "contiguous lines with no blank lines between trailers",
-        "do not pass individual trailers as separate -m",
+        "git commit --trailer token=value",
         "Studio-Source-Repo",
         "Constructor-Fabric",
         "semver tokens extracted from cfs --version",
@@ -762,6 +764,7 @@ def test_contributing_dco_is_required_commit_policy_not_studio_footer_contract()
     assert "CONTRIBUTING_GUIDE commit requirements" in GIT_CONSTRAINTS["commit"]
     assert "CONTRIBUTING_GUIDE commit requirements" in skill_text
     assert "DCO/Signed-off-by trailers" in worker_text
+    assert "git commit --trailer token=value" in worker_text
 
     contract_text = repr(COMMIT_FOOTER_CONTRACT).lower()
     assert "signed-off-by" not in contract_text
