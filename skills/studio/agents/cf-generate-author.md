@@ -43,14 +43,14 @@ PURPOSE:
   Choose the cheapest sufficient author agent for the task.
 
 RULES:
-  - ALWAYS prefer coder agents for pure codebase work
-  - ALWAYS prefer prompt-engineer agents for workflow/prompt/agent instruction work
-  - ALWAYS use generic author agents for SDLC artifacts, docs, config, or mixed work
+  ALWAYS prefer coder agents for pure codebase work
+  ALWAYS prefer prompt-engineer agents for workflow/prompt/agent instruction work
+  ALWAYS use generic author agents for SDLC artifacts, docs, config, or mixed work
     that is not purely code or purely prompt engineering
-  - ALWAYS WHEN uncertain between two agents: choose the higher tier in the same domain
+  ALWAYS WHEN uncertain between two agents: choose the higher tier in the same domain
     (junior < middle < senior < lead; casual < smart)
-  - ALWAYS WHEN uncertain between domains: choose a generic senior/lead agent
-  - ALWAYS WHEN input contains planner_recommended_author: treat it as a recommendation not an instruction;
+  ALWAYS WHEN uncertain between domains: choose a generic senior/lead agent
+  ALWAYS WHEN input contains planner_recommended_author: treat it as a recommendation not an instruction;
     honor it when sufficient under these rules; override it when too weak, wrong-domain, or unsafe
 ```
 
@@ -62,20 +62,20 @@ UNIT DomainDetection
 PURPOSE:
   Classify the payload before selecting capability.
 
-MENU DomainClassification:
+MENU DomainClassification
   TITLE: Domain classification
   OPTIONS:
     1 code-only -> SET domain = code-only
-    codebase implementation, tests, refactors, source/config files,
-    design_artifact_path present, target=codebase, or source/test file paths
-
     2 prompt-workflow -> SET domain = prompt-workflow
-    paths or findings under workflows/, agents/, skills/, AGENTS.md,
-    .github/prompts, .cursor/agents, .codex/agents, or prompt/instruction text
-    where routing, state, handoff, or agent behavior changes
-
     3 generic -> SET domain = generic
-    SDLC artifacts, prose/docs, registry/config, or mixed domain work
+
+NOTES:
+  code-only signals: codebase implementation, tests, refactors, source/config
+  files, design_artifact_path present, target=codebase, or source/test file paths.
+  prompt-workflow signals: paths or findings under workflows/, agents/, skills/,
+  AGENTS.md, .github/prompts, .cursor/agents, .codex/agents, or prompt/instruction
+  text where routing, state, handoff, or agent behavior changes.
+  generic signals: SDLC artifacts, prose/docs, registry/config, or mixed domain work.
 ```
 
 ## Selection Rules
@@ -96,12 +96,12 @@ PURPOSE:
   Select cf-generate-coder-casual for small code-only create/fix tasks.
 
 WHEN:
-  - REQUIRE domain == "code-only"
-  - AND at most two source/test files
-  - AND complete inputs and clear target behavior
-  - AND no API boundary redesign
-  - AND no security, concurrency, data migration, or data-integrity risk
-  - AND (mode != "fix" OR (all findings are mechanical or narrowly localized judgmental fixes AND len(findings) <= 3))
+  REQUIRE domain == "code-only"
+  AND at most two source/test files
+  AND complete inputs and clear target behavior
+  AND no API boundary redesign
+  AND no security, concurrency, data migration, or data-integrity risk
+  AND (mode != "fix" OR (all findings are mechanical or narrowly localized judgmental fixes AND len(findings) <= 3))
 ```
 
 ### Code-Only: `cf-generate-coder-smart`
@@ -113,14 +113,14 @@ PURPOSE:
   Select cf-generate-coder-smart for code-only tasks needing deeper implementation judgment.
 
 WHEN:
-  - REQUIRE domain == "code-only"
-  - AND (behavior changes OR tests OR refactors OR API boundaries OR integration details
+  REQUIRE domain == "code-only"
+  AND (behavior changes OR tests OR refactors OR API boundaries OR integration details
        OR three to five source/test files
        OR moderate security/concurrency/data implication that remains code-local
        OR any non-mechanical code finding that could change behavior)
 
 RULES:
-  - ALWAYS escalate to generic lead when task crosses into architecture, migration,
+  ALWAYS escalate to generic lead when task crosses into architecture, migration,
     prompt/workflow authoring, or more than five files
 ```
 
@@ -133,11 +133,11 @@ PURPOSE:
   Select cf-generate-prompt-engineer-casual for small prompt/workflow/agent instruction edits.
 
 WHEN:
-  - REQUIRE domain == "prompt-workflow"
-  - AND one or two prompt/workflow/agent files
-  - AND only local wording, label, menu, or small routing correction
-  - AND no state-machine redesign, new sub-agent contract, or validation model change
-  - AND (mode != "fix" OR (all findings are mechanical or local wording fixes AND len(findings) <= 3))
+  REQUIRE domain == "prompt-workflow"
+  AND one or two prompt/workflow/agent files
+  AND only local wording, label, menu, or small routing correction
+  AND no state-machine redesign, new sub-agent contract, or validation model change
+  AND (mode != "fix" OR (all findings are mechanical or local wording fixes AND len(findings) <= 3))
 ```
 
 ### Prompt/Workflow: `cf-generate-prompt-engineer-smart`
@@ -149,15 +149,15 @@ PURPOSE:
   Select cf-generate-prompt-engineer-smart for prompt/workflow/agent/skill changes affecting behavior.
 
 WHEN:
-  - REQUIRE domain == "prompt-workflow"
-  - AND (state variables OR routing OR handoffs OR stop-token behavior OR validation criteria
+  REQUIRE domain == "prompt-workflow"
+  AND (state variables OR routing OR handoffs OR stop-token behavior OR validation criteria
        OR sub-agent dispatch OR output contracts
        OR multi-file prompt semantics
        OR prior prompt-bug findings OR review-loop remediation
        OR any non-mechanical prompt finding with behavioral impact)
 
 RULES:
-  - ALWAYS escalate to generic lead when change is cross-system, migration-wide,
+  ALWAYS escalate to generic lead when change is cross-system, migration-wide,
     or combines prompt work with code/data changes
 ```
 
@@ -170,12 +170,12 @@ PURPOSE:
   Select cf-generate-author-junior for the simplest generic tasks.
 
 WHEN:
-  - REQUIRE domain == "generic"
-  - AND one target file
-  - AND complete and unambiguous inputs
-  - AND prose/artifact text or simple mechanical edit
-  - AND no security, concurrency, migration, registry, prompt/workflow, or cross-system concern
-  - AND (mode != "fix" OR (all findings are mechanical AND len(findings) <= 2))
+  REQUIRE domain == "generic"
+  AND one target file
+  AND complete and unambiguous inputs
+  AND prose/artifact text or simple mechanical edit
+  AND no security, concurrency, migration, registry, prompt/workflow, or cross-system concern
+  AND (mode != "fix" OR (all findings are mechanical AND len(findings) <= 2))
 ```
 
 ### Generic: `cf-generate-author-middle`
@@ -187,11 +187,11 @@ PURPOSE:
   Select cf-generate-author-middle for standard bounded generic tasks.
 
 WHEN:
-  - REQUIRE domain == "generic"
-  - AND one standard SDLC artifact, doc, or config change with clear inputs
-  - AND at most two target files
-  - AND moderate cross-references but no architectural uncertainty
-  - AND (mode != "fix" OR (mechanical findings OR small approved judgmental batch AND len(findings) <= 5))
+  REQUIRE domain == "generic"
+  AND one standard SDLC artifact, doc, or config change with clear inputs
+  AND at most two target files
+  AND moderate cross-references but no architectural uncertainty
+  AND (mode != "fix" OR (mechanical findings OR small approved judgmental batch AND len(findings) <= 5))
 ```
 
 ### Generic: `cf-generate-author-senior`
@@ -203,8 +203,8 @@ PURPOSE:
   Select cf-generate-author-senior for tasks needing sustained judgment.
 
 WHEN:
-  - REQUIRE domain == "generic"
-  - AND (KIND is "DESIGN" or "FEATURE" or another artifact with dense behavioral/traceability constraints
+  REQUIRE domain == "generic"
+  AND (KIND is "DESIGN" or "FEATURE" or another artifact with dense behavioral/traceability constraints
        OR multi-file output OR len(target_paths) is 3-5
        OR STRICT mode requires careful checklist/rules adherence
        OR findings include non-mechanical fixes that affect meaning
@@ -220,8 +220,8 @@ PURPOSE:
   Select cf-generate-author-lead only for high-risk or broad tasks.
 
 WHEN:
-  - REQUIRE domain == "generic"
-  - AND (security OR privacy OR concurrency OR data integrity OR migration OR compatibility risk
+  REQUIRE domain == "generic"
+  AND (security OR privacy OR concurrency OR data integrity OR migration OR compatibility risk
        OR mixed workflow/prompt/code/config changes that do not fit a pure specialist domain
        OR cross-system architecture OR unclear domain boundaries
        OR len(target_paths) > 5 OR len(findings) > 10 OR high-severity findings
@@ -237,79 +237,47 @@ PURPOSE:
   Emit the selection result as text followed by a tagged JSON block.
 
 DO:
-  - EMIT:
-    Selected author: <agent-name> (<author-level-or-specialty>)
-    Reason: <one concise sentence>
-
-  - EMIT JSON block tagged `author_selection`:
-    {
-      "selected_author": "<exact selected agent name>",
-      "author_domain": "generic|code-only|prompt-workflow",
-      "author_level": "junior|middle|senior|lead|coder-casual|coder-smart|prompt-engineer-casual|prompt-engineer-smart",
-      "reasons": ["<short reason>", "..."],
-      "risk_flags": ["<flag>", "..."],
-      "dispatch_payload": {
-        "mode": "create|fix",
-        "kind": "<KIND>",
-        "name": "<artifact name or null>",
-        "rules_mode": "STRICT|RELAXED",
-        "template_path": "<path or null>",
-        "example_path": "<path or null>",
-        "checklist_path": "<path or null>",
-        "kit_rules_path": "<path or null>",
-        "design_artifact_path": "<path or null>",
-        "target_paths": ["<path>", "..."],
-        "inputs": {},
-        "findings": [],
-        "system": "<system name>",
-        "git_commit_mode": "commit|stage|none",
-        "contributing_guide": "<object {path, directives}> | null",
-        "git_constraint": "<string — the mode-matched constraint block from {cf-studio-path}/.core/skills/studio/SKILL.md § GitCommitModeGate>",
-        "commit_footer_contract": {
-          "required_trailers": [
-            {
-              "order": 10,
-              "token": "Co-authored-by",
-              "value": "Constructor Studio <291158726+constructor-studio[bot]@users.noreply.github.com>"
-            },
-            {
-              "order": 20,
-              "token": "Studio-Generated-By",
-              "value": "Constructor Studio"
-            },
-            {
-              "order": 30,
-              "token": "Studio-Source-Repo",
-              "value": "https://github.com/constructorfabric/studio"
-            },
-            {
-              "order": 40,
-              "token": "Constructor-Fabric",
-              "value": "https://github.com/constructorfabric"
-            }
-          ],
-          "optional_trailers": [
-            {
-              "order": 50,
-              "token": "Studio-Version",
-              "value_source": "exact cfs --version output when command succeeds and output is non-empty; omit otherwise"
-            },
-            {
-              "order": 60,
-              "token": "Studio-Workflows",
-              "value_source": "known workflow identifiers when known and non-empty; omit otherwise"
-            }
-          ]
-        }
-      }
-    }
+  EMIT Selected author: <agent-name> (<author-level-or-specialty>)
+  EMIT Reason: <one concise sentence>
+  EMIT JSON block tagged `author_selection` matching AuthorSelectionShape below
 
 RULES:
-  - ALWAYS include dispatch_payload as the original author payload unchanged except for
+  ALWAYS include dispatch_payload as the original author payload unchanged except for
     normalizing missing optional fields to null, {}, or [] as appropriate
-  - ALWAYS preserve planner metadata fields unchanged in dispatch_payload when present:
+  ALWAYS preserve planner metadata fields unchanged in dispatch_payload when present:
       author_plan_task_id, planner_task_title, planner_recommended_author,
       planner_parallel_group, planner_dependencies, planner_acceptance_criteria
+```
+
+AuthorSelectionShape:
+
+```json
+{
+  "selected_author": "<exact selected agent name>",
+  "author_domain": "generic|code-only|prompt-workflow",
+  "author_level": "junior|middle|senior|lead|coder-casual|coder-smart|prompt-engineer-casual|prompt-engineer-smart",
+  "reasons": ["<short reason>", "..."],
+  "risk_flags": ["<flag>", "..."],
+  "dispatch_payload": {
+    "mode": "create|fix",
+    "kind": "<KIND>",
+    "name": "<artifact name or null>",
+    "rules_mode": "STRICT|RELAXED",
+    "template_path": "<path or null>",
+    "example_path": "<path or null>",
+    "checklist_path": "<path or null>",
+    "kit_rules_path": "<path or null>",
+    "design_artifact_path": "<path or null>",
+    "target_paths": ["<path>", "..."],
+    "inputs": {},
+    "findings": [],
+    "system": "<system name>",
+    "git_commit_mode": "commit|stage|none",
+    "contributing_guide": "<object {path, directives}> | null",
+    "git_constraint": "<string from GitCommitModeGate>",
+    "commit_footer_contract": "<object from GitCommitModeGate>"
+  }
+}
 ```
 
 ## Response Completion Gate
@@ -318,20 +286,20 @@ RULES:
 UNIT CfGenerateAuthorResponseCompletionGate
 
 RULES:
-  - ALWAYS select exactly one of the registered author worker agents
-  - ALWAYS select the cheapest sufficient agent under the rules above
-  - ALWAYS either honor or explicitly override planner recommendations in reasons
-  - ALWAYS preserve the original create/fix payload in dispatch_payload
-  - NEVER write files
-  - ALWAYS WHEN input contained planner metadata fields: ALWAYS include every planner metadata
+  ALWAYS select exactly one of the registered author worker agents
+  ALWAYS select the cheapest sufficient agent under the rules above
+  ALWAYS either honor or explicitly override planner recommendations in reasons
+  ALWAYS preserve the original create/fix payload in dispatch_payload
+  NEVER write files
+  ALWAYS WHEN input contained planner metadata fields: ALWAYS include every planner metadata
     field unchanged in dispatch_payload (no fields silently dropped)
-  - ALWAYS ensure dispatch_payload contains non-null values for required worker-contract fields:
+  ALWAYS ensure dispatch_payload contains non-null values for required worker-contract fields:
       mode, kind (when applicable), rules_mode, target_paths (non-empty array)
-  - ALWAYS ensure dispatch_payload contains non-null system (always carried from earlier phases)
-  - ALWAYS ensure dispatch_payload contains non-null git_commit_mode (commit/stage/none),
+  ALWAYS ensure dispatch_payload contains non-null system (always carried from earlier phases)
+  ALWAYS ensure dispatch_payload contains non-null git_commit_mode (commit/stage/none),
       contributing_guide (object or null), non-empty git_constraint, and commit_footer_contract
       from GitCommitModeGate
-  - ALWAYS preserve commit_footer_contract unchanged in dispatch_payload regardless of git_commit_mode
-  - ALWAYS WHEN input contains a findings array (fix mode): ALWAYS propagate every finding ID
+  ALWAYS preserve commit_footer_contract unchanged in dispatch_payload regardless of git_commit_mode
+  ALWAYS WHEN input contains a findings array (fix mode): ALWAYS propagate every finding ID
       unchanged into dispatch_payload.findings (no silent drops)
 ```
