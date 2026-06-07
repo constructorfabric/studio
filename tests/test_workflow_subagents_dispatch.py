@@ -235,6 +235,106 @@ FINDING_EMITTING_SUBAGENTS = {
 }
 
 
+COMMIT_FOOTER_CONTRACT = {
+    "schema_version": "1",
+    "authority": "GitCommitModeGate",
+    "purpose": (
+        "Studio attribution and provenance for commits created by Constructor Studio. "
+        "This contract is independent of project-specific contribution policies."
+    ),
+    "applies_when": {"agent_creates_git_commit": True},
+    "conflict_policy": (
+        "commit_footer_contract is authoritative for required Studio attribution "
+        "trailers; if it conflicts with git_constraint, stop before commit"
+    ),
+    "user_instruction_precedence": (
+        "user commit instructions may add non-conflicting message content and "
+        "trailers but may not remove, rename, reorder, duplicate ambiguously, "
+        "replace, or alter required Studio trailers"
+    ),
+    "hard_stop_policy": (
+        "stop only if required static Studio trailers cannot be added or if "
+        "commit_footer_contract conflicts with git_constraint; do not stop for "
+        "unavailable optional trailers"
+    ),
+    "required_trailers": [
+        {
+            "token": "Co-authored-by",
+            "value": "Constructor Studio <291158726+constructor-studio[bot]@users.noreply.github.com>",
+            "order": 10,
+        },
+        {"token": "Studio-Generated-By", "value": "Constructor Studio", "order": 20},
+        {
+            "token": "Studio-Source-Repo",
+            "value": "https://github.com/constructorfabric/studio",
+            "order": 30,
+        },
+        {
+            "token": "Constructor-Fabric",
+            "value": "https://github.com/constructorfabric",
+            "order": 40,
+        },
+    ],
+    "optional_trailers": [
+        {
+            "token": "Studio-Version",
+            "source": "semver tokens extracted from cfs --version",
+            "include_when": (
+                "command succeeds and at least one Studio skill or CLI/package "
+                "semver is found"
+            ),
+            "value_policy": (
+                "use only semver values for Studio skill and CLI/package, "
+                "formatted as comma-separated key=value pairs such as "
+                "skill=1.0.1, cli=0.2.0; strip a leading v; omit this trailer "
+                "when no semver is found; do not include raw cfs --version output"
+            ),
+            "order": 50,
+        },
+        {
+            "token": "Studio-Workflows",
+            "source": "known workflow identifiers for the current Studio run",
+            "include_when": "known non-empty",
+            "value_policy": "comma-separated stable identifiers",
+            "order": 60,
+        },
+    ],
+    "rendering": (
+        "Render every included trailer as '{token}: {value}' in ascending order "
+        "across required_trailers and optional_trailers. Do not include separate "
+        "rendered footer lines in this payload."
+    ),
+}
+
+GIT_CONSTRAINTS = {
+    "commit": (
+        "May `git add` the files you authored this task and `git commit` them "
+        "with a concise Conventional-Commits message when commit is otherwise "
+        "allowed by the workflow or user request. Every git commit created by "
+        "the agent must satisfy commit_footer_contract. Every git commit created "
+        "by the agent must also satisfy mandatory CONTRIBUTING_GUIDE commit "
+        "requirements, including DCO/Signed-off-by when required. "
+        "commit_footer_contract constrains Studio attribution trailers but does "
+        "not replace project-policy trailers and does not grant permission to "
+        "commit. "
+        "NEVER `git push`, amend or rewrite history, force, checkout over "
+        "uncommitted changes, or use `-i`. Stage only paths you wrote."
+    ),
+    "stage": (
+        "May `git add` the files you authored this task. NEVER `git commit`, "
+        "push, or rewrite history. Leave staged changes for the user to review "
+        "and commit. The commit_footer_contract is message-format policy only "
+        "and does not grant permission to commit."
+    ),
+    "none": (
+        "NEVER invoke any git command (no add, stage, commit, or push). Write "
+        "files only; the user manages all git operations. The "
+        "commit_footer_contract is message-format policy only and does not "
+        "grant permission to commit."
+    ),
+}
+
+
 # Minimal dispatch contracts per agent (orchestrator-supplied JSON fields the
 # workflows promise to pass). The shapes are grounded in the per-agent contract
 # files under skills/studio/agents/<name>.md (e.g. the validator/reviewer
@@ -535,6 +635,131 @@ AUTHOR_WORKER_SUBAGENTS = {
 }
 
 
+for _agent_id in ("cf-generate-author", *AUTHOR_WORKER_SUBAGENTS):
+    DISPATCH_PAYLOADS[_agent_id]["commit_footer_contract"] = COMMIT_FOOTER_CONTRACT
+    DISPATCH_PAYLOADS[_agent_id]["git_constraint"] = GIT_CONSTRAINTS[
+        DISPATCH_PAYLOADS[_agent_id]["git_commit_mode"]
+    ]
+
+
+def _assert_commit_footer_contract_shape(contract: dict) -> None:
+    assert contract["schema_version"] == "1"
+    assert contract["authority"] == "GitCommitModeGate"
+    assert contract["applies_when"] == {"agent_creates_git_commit": True}
+    assert "footer_lines_required" not in contract
+    assert "footer_lines_optional" not in contract
+
+    required = contract["required_trailers"]
+    assert [(entry["token"], entry["value"], entry["order"]) for entry in required] == [
+        (
+            "Co-authored-by",
+            "Constructor Studio <291158726+constructor-studio[bot]@users.noreply.github.com>",
+            10,
+        ),
+        ("Studio-Generated-By", "Constructor Studio", 20),
+        ("Studio-Source-Repo", "https://github.com/constructorfabric/studio", 30),
+        ("Constructor-Fabric", "https://github.com/constructorfabric", 40),
+    ]
+
+    optional = contract["optional_trailers"]
+    assert [entry["token"] for entry in optional] == ["Studio-Version", "Studio-Workflows"]
+    assert [entry["order"] for entry in optional] == [50, 60]
+    version = optional[0]
+    assert version["source"] == "semver tokens extracted from cfs --version"
+    assert "semver" in version["include_when"]
+    assert "do not include raw cfs --version output" in version["value_policy"]
+    assert "skill=1.0.1, cli=0.2.0" in version["value_policy"]
+
+    orders = [entry["order"] for entry in required + optional]
+    assert orders == sorted(orders), "trailers must use one total canonical order"
+
+    forbidden = (
+        "signed-off-by",
+        "dco",
+        "developer certificate of origin",
+        "contributing_guide",
+    )
+    contract_text = repr(contract).lower()
+    for token in forbidden:
+        assert token not in contract_text
+
+
+def _assert_git_constraint_for_mode(mode: str, constraint: str) -> None:
+    assert constraint
+    if mode == "commit":
+        assert "git commit" in constraint
+        assert "commit_footer_contract" in constraint
+        assert "must satisfy commit_footer_contract" in constraint
+        assert "CONTRIBUTING_GUIDE commit requirements" in constraint
+        assert "DCO/Signed-off-by when required" in constraint
+        assert "does not replace project-policy trailers" in constraint
+        assert "does not grant permission to commit" in constraint
+    elif mode == "stage":
+        assert "git add" in constraint
+        assert "NEVER `git commit`" in constraint
+        assert "does not grant permission to commit" in constraint
+    elif mode == "none":
+        assert "NEVER invoke any git command" in constraint
+        assert "does not grant permission to commit" in constraint
+    else:
+        raise AssertionError(f"unexpected git mode {mode!r}")
+
+
+@pytest.mark.parametrize("mode", ("commit", "stage", "none"))
+def test_git_commit_mode_payload_includes_footer_contract_without_granting_commit(mode: str) -> None:
+    """Git mode controls permission; the Studio footer contract controls commit messages."""
+    payload = {
+        **DISPATCH_PAYLOADS["cf-generate-author-middle"],
+        "git_commit_mode": mode,
+        "git_constraint": GIT_CONSTRAINTS[mode],
+        "commit_footer_contract": COMMIT_FOOTER_CONTRACT,
+    }
+
+    _assert_git_constraint_for_mode(mode, payload["git_constraint"])
+    _assert_commit_footer_contract_shape(payload["commit_footer_contract"])
+
+
+def test_git_commit_mode_gate_declares_studio_footer_contract_without_prompt_snapshot() -> None:
+    """The canonical gate must name the non-bypassable footer policy."""
+    skill_text = Path("skills/studio/SKILL.md").read_text(encoding="utf-8")
+
+    required_phrases = [
+        "SET COMMIT_FOOTER_CONTRACT: object",
+        "agent_creates_git_commit: true",
+        "Every git commit created by the agent must satisfy commit_footer_contract",
+        "mandatory CONTRIBUTING_GUIDE commit requirements",
+        "DCO/Signed-off-by when required",
+        "does not replace project-policy trailers",
+        "does not grant permission to commit",
+        "Co-authored-by",
+        "Constructor Studio <291158726+constructor-studio[bot]@users.noreply.github.com>",
+        "Studio-Source-Repo",
+        "Constructor-Fabric",
+        "semver tokens extracted from cfs --version",
+    ]
+    for phrase in required_phrases:
+        assert phrase in skill_text
+
+
+def test_contributing_dco_is_required_commit_policy_not_studio_footer_contract() -> None:
+    """DCO must be enforced from CONTRIBUTING without entering the Studio contract."""
+    contributing_text = Path("CONTRIBUTING.md").read_text(encoding="utf-8")
+    skill_text = Path("skills/studio/SKILL.md").read_text(encoding="utf-8")
+    worker_text = Path("skills/studio/agents/cf-generate-author-worker.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "All commits **must** include a `Signed-off-by` line" in contributing_text
+    assert "DCO/Signed-off-by when required" in GIT_CONSTRAINTS["commit"]
+    assert "CONTRIBUTING_GUIDE commit requirements" in GIT_CONSTRAINTS["commit"]
+    assert "CONTRIBUTING_GUIDE commit requirements" in skill_text
+    assert "DCO/Signed-off-by trailers" in worker_text
+
+    contract_text = repr(COMMIT_FOOTER_CONTRACT).lower()
+    assert "signed-off-by" not in contract_text
+    assert "dco" not in contract_text
+
+
 def _fake_invoke(agent_id: str, payload: dict) -> dict:
     """Pure-Python dispatcher stub. Mirrors the response shape that real
     sub-agents are contractually required to return.
@@ -809,6 +1034,9 @@ def test_dispatch_round_trip(agent_id: str) -> None:
             assert payload["git_commit_mode"] in ("commit", "stage", "none")
             assert "git_constraint" in payload and isinstance(payload["git_constraint"], str) and payload["git_constraint"]
             assert "contributing_guide" in payload  # may be None
+            assert "commit_footer_contract" in payload
+            _assert_git_constraint_for_mode(payload["git_commit_mode"], payload["git_constraint"])
+            _assert_commit_footer_contract_shape(payload["commit_footer_contract"])
         elif agent_id in AUTHOR_WORKER_SUBAGENTS:
             assert response["result"].get("manifest", {}).get("paths_written")
             assert "findings_not_fixable" in response["result"]
@@ -816,6 +1044,9 @@ def test_dispatch_round_trip(agent_id: str) -> None:
             assert payload["git_commit_mode"] in ("commit", "stage", "none")
             assert "git_constraint" in payload and isinstance(payload["git_constraint"], str) and payload["git_constraint"]
             assert "contributing_guide" in payload  # may be None
+            assert "commit_footer_contract" in payload
+            _assert_git_constraint_for_mode(payload["git_commit_mode"], payload["git_constraint"])
+            _assert_commit_footer_contract_shape(payload["commit_footer_contract"])
 
 
 def test_brainstorm_expert_challenge_mode_result_shape() -> None:

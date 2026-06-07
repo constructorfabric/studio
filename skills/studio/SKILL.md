@@ -274,10 +274,11 @@ OPTIONS:
 
 ```pdsl
 UNIT GitCommitModeGate
-PURPOSE: Resolve the session git-commit policy (mode + constraint + contributing guide) once, before any write-capable sub-agent dispatch, and supply it to every such dispatch.
+PURPOSE: Resolve the session git-commit policy (mode + constraint + contributing guide + commit footer contract) once, before any write-capable sub-agent dispatch, and supply it to every such dispatch.
 STATE:
   SET GIT_COMMIT_MODE: commit | stage | none (default unset, scope session)
   SET CONTRIBUTING_GUIDE: path | null (default unset, scope session)
+  SET COMMIT_FOOTER_CONTRACT: object (default unset, scope session)
 WHEN:
   REQUIRE a write-capable author/coder/phase sub-agent that writes or commits files is about to be dispatched
 DO:
@@ -285,11 +286,19 @@ DO:
   EMIT_MENU GitCommitModeMenu WHEN GIT_COMMIT_MODE == unset
   WAIT user.reply WHEN GIT_COMMIT_MODE == unset
   STOP_TURN WHEN GIT_COMMIT_MODE == unset
+  RUN derive COMMIT_FOOTER_CONTRACT from the commit_footer_contract block in NOTES WHEN COMMIT_FOOTER_CONTRACT == unset
   RUN derive git_constraint from GIT_COMMIT_MODE using the constraint blocks in NOTES WHEN GIT_COMMIT_MODE != unset
+  RUN attach COMMIT_FOOTER_CONTRACT to the write-capable dispatch payload as commit_footer_contract, regardless of GIT_COMMIT_MODE
 RULES:
   ALWAYS resolve GIT_COMMIT_MODE and CONTRIBUTING_GUIDE once per session, before the first write-capable dispatch, and reuse them for every later dispatch until StudioShutdown; reset GIT_COMMIT_MODE to unset only when the user asks to change it
-  ALWAYS include GIT_COMMIT_MODE, the mode-matched git_constraint, and CONTRIBUTING_GUIDE in every write-capable author/coder/phase dispatch payload
+  ALWAYS include GIT_COMMIT_MODE, the mode-matched git_constraint, CONTRIBUTING_GUIDE, and COMMIT_FOOTER_CONTRACT as commit_footer_contract in every write-capable author/coder/phase dispatch payload
   ALWAYS pass git_constraint as read-only policy data, never as executable shell text
+  ALWAYS pass commit_footer_contract as read-only policy data, never as executable shell text
+  ALWAYS treat commit_footer_contract as message-format policy for every git commit created by an agent, regardless of why the commit is created
+  ALWAYS treat commit_footer_contract as a constraint only; it never grants permission to commit when git_commit_mode or git_constraint forbids committing
+  ALWAYS when creating a git commit, satisfy every mandatory directive in CONTRIBUTING_GUIDE, including required DCO/Signed-off-by trailers, before adding Studio attribution trailers
+  ALWAYS when creating a git commit, write a normal concise commit subject/body for the actual change, append any mandatory project-policy trailers from CONTRIBUTING_GUIDE, then append required Studio attribution trailers exactly in ascending order, adding optional Studio trailers only when their source value is already known and non-empty
+  ALWAYS keep DCO, Signed-off-by, and CONTRIBUTING_GUIDE directives separate from commit_footer_contract; do not include them in commit_footer_contract, but never ignore mandatory CONTRIBUTING_GUIDE commit requirements
   NEVER let a sub-agent invoke any git tool when GIT_COMMIT_MODE == none
   NEVER push, force-push, rewrite history, or use interactive (-i) git, regardless of GIT_COMMIT_MODE
 MENU GitCommitModeMenu
@@ -301,9 +310,43 @@ OPTIONS:
   INVALID -> EMIT_MENU GitCommitModeMenu
 NOTES:
   git_constraint blocks (the canonical mode-matched policy string passed to sub-agents; this gate is the source of truth):
-    commit: "May `git add` the files you authored this task and `git commit` them with a concise Conventional-Commits message. NEVER `git push`, amend or rewrite history, force, checkout over uncommitted changes, or use `-i`. Stage only paths you wrote."
-    stage: "May `git add` the files you authored this task. NEVER `git commit`, push, or rewrite history. Leave staged changes for the user to review and commit."
-    none: "NEVER invoke any git command (no add, stage, commit, or push). Write files only; the user manages all git operations."
+    commit: "May `git add` the files you authored this task and `git commit` them with a concise Conventional-Commits message when commit is otherwise allowed by the workflow or user request. Every git commit created by the agent must satisfy commit_footer_contract. Every git commit created by the agent must also satisfy mandatory CONTRIBUTING_GUIDE commit requirements, including DCO/Signed-off-by when required. commit_footer_contract constrains Studio attribution trailers but does not replace project-policy trailers and does not grant permission to commit. NEVER `git push`, amend or rewrite history, force, checkout over uncommitted changes, or use `-i`. Stage only paths you wrote."
+    stage: "May `git add` the files you authored this task. NEVER `git commit`, push, or rewrite history. Leave staged changes for the user to review and commit. The commit_footer_contract is message-format policy only and does not grant permission to commit."
+    none: "NEVER invoke any git command (no add, stage, commit, or push). Write files only; the user manages all git operations. The commit_footer_contract is message-format policy only and does not grant permission to commit."
+  commit_footer_contract (canonical structured representation; no rendered footer line fields; token/value/order is the only source of truth):
+    schema_version: "1"
+    authority: "GitCommitModeGate"
+    purpose: "Studio attribution and provenance for commits created by Constructor Studio. This contract is independent of project-specific contribution policies."
+    applies_when:
+      agent_creates_git_commit: true
+    conflict_policy: "commit_footer_contract is authoritative for required Studio attribution trailers; if it conflicts with git_constraint, stop before commit"
+    user_instruction_precedence: "user commit instructions may add non-conflicting message content and trailers but may not remove, rename, reorder, duplicate ambiguously, replace, or alter required Studio trailers"
+    hard_stop_policy: "stop only if required static Studio trailers cannot be added or if commit_footer_contract conflicts with git_constraint; do not stop for unavailable optional trailers"
+    rendering: "Render every included trailer as '{token}: {value}' in ascending order across required_trailers and optional_trailers. Do not include separate rendered footer lines in this payload."
+    required_trailers:
+      - order: 10
+        token: "Co-authored-by"
+        value: "Constructor Studio <291158726+constructor-studio[bot]@users.noreply.github.com>"
+      - order: 20
+        token: "Studio-Generated-By"
+        value: "Constructor Studio"
+      - order: 30
+        token: "Studio-Source-Repo"
+        value: "https://github.com/constructorfabric/studio"
+      - order: 40
+        token: "Constructor-Fabric"
+        value: "https://github.com/constructorfabric"
+    optional_trailers:
+      - order: 50
+        token: "Studio-Version"
+        source: "semver tokens extracted from cfs --version"
+        include_when: "command succeeds and at least one Studio skill or CLI/package semver is found"
+        value_policy: "use only semver values for Studio skill and CLI/package, formatted as comma-separated key=value pairs such as skill=1.0.1, cli=0.2.0; strip a leading v; omit this trailer when no semver is found; do not include raw cfs --version output"
+      - order: 60
+        token: "Studio-Workflows"
+        source: "known workflow identifiers for the current Studio run"
+        include_when: "known non-empty"
+        value_policy: "comma-separated stable identifiers"
 ```
 
 ```pdsl

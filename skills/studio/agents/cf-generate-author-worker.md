@@ -52,17 +52,18 @@ PURPOSE:
   Verify the task fits AUTHOR_TIER before writing anything.
 
 STATE:
-  - SET AUTHOR_TIER: junior | middle | senior | lead | coder-casual | coder-smart
+  SET AUTHOR_TIER: junior | middle | senior | lead | coder-casual | coder-smart
                | prompt-engineer-casual | prompt-engineer-smart | unset
     default: unset
 
 WHEN:
-  - REQUIRE AUTHOR_TIER == unset
+  REQUIRE AUTHOR_TIER == unset
 
 DO:
-  - EMIT AUTHOR_ESCALATION_REQUIRED block:
-    {"recommended_author":"cf-generate-author","reason":"AUTHOR_TIER not set — tier stub was not loaded before worker; cannot determine dispatch boundary"}
-  - STOP_TURN
+  EMIT AUTHOR_ESCALATION_REQUIRED block:
+    recommended_author = "cf-generate-author"
+    reason = "AUTHOR_TIER not set — tier stub was not loaded before worker; cannot determine dispatch boundary"
+  STOP_TURN
 
 UNIT TierBoundaryCheck
 
@@ -70,40 +71,41 @@ PURPOSE:
   Escalate when task exceeds AUTHOR_TIER capacity.
 
 WHEN:
-  - REQUIRE AUTHOR_TIER is set
-  - AND task does not fit the tier boundary below
+  REQUIRE AUTHOR_TIER is set
+  AND task does not fit the tier boundary below
 
 DO:
-  - EMIT AUTHOR_ESCALATION_REQUIRED block:
-    {"recommended_author": "<higher-capability-author-agent>", "reason": "<why this tier is insufficient>"}
-  - STOP_TURN
+  EMIT AUTHOR_ESCALATION_REQUIRED block:
+    recommended_author = "<higher-capability-author-agent>"
+    reason = "<why this tier is insufficient>"
+  STOP_TURN
 
 RULES:
-  - ALWAYS write nothing before checking tier boundary
-  - ALWAYS junior:   one file, complete inputs, no code behavior change, no registry /
+  ALWAYS write nothing before checking tier boundary
+  ALWAYS junior:   one file, complete inputs, no code behavior change, no registry /
               workflow / prompt / agent config complexity, at most two mechanical findings
-  - ALWAYS middle:   standard bounded artifact or small code/config task, at most two files,
+  ALWAYS middle:   standard bounded artifact or small code/config task, at most two files,
               no high-risk domain, at most five findings
-  - ALWAYS senior:   complex artifact/code, STRICT rules, CDSL/traceability, registry updates,
+  ALWAYS senior:   complex artifact/code, STRICT rules, CDSL/traceability, registry updates,
               non-mechanical meaning changes, or three to five files
-  - ALWAYS lead:     mixed workflow/prompt/code/config work, security/concurrency/data
+  ALWAYS lead:     mixed workflow/prompt/code/config work, security/concurrency/data
               integrity/migration risk, cross-system architecture, more than five files,
               more than ten findings, or high-severity findings
-  - ALWAYS coder-casual:           code-only work, at most two source/test files, complete
+  ALWAYS coder-casual:           code-only work, at most two source/test files, complete
                             behavior, no API redesign, no prompt/workflow files, no high-risk domain
-  - ALWAYS coder-smart:            code-only work with behavior changes, tests, refactors, API
+  ALWAYS coder-smart:            code-only work with behavior changes, tests, refactors, API
                             boundaries, or moderate code-local risk; no prompt/workflow authoring;
                             no more than five source/test files; no migration-wide changes
-  - ALWAYS prompt-engineer-casual: prompt/workflow/agent wording or local routing edits,
+  ALWAYS prompt-engineer-casual: prompt/workflow/agent wording or local routing edits,
                             one or two files, no state-machine or contract redesign
-  - ALWAYS prompt-engineer-smart:  prompt/workflow/agent/skill behavior changes that affect
+  ALWAYS prompt-engineer-smart:  prompt/workflow/agent/skill behavior changes that affect
                             state, routing, handoffs, validation, sub-agent dispatch,
                             or output contracts; no code/data changes
 ```
 
 ## Frozen Input Payload
 
-```json
+```text
 {
   "mode": "create" | "fix",
   "kind": "<KIND>",
@@ -137,7 +139,55 @@ RULES:
   "planner_acceptance_criteria": ["<criterion>", "..."],
   "git_commit_mode": "commit" | "stage" | "none",
   "contributing_guide": { "path": "<absolute path>", "directives": "<key directives>" } | null,
-  "git_constraint": "<mode-matched constraint string>"
+  "git_constraint": "<mode-matched constraint string>",
+  "commit_footer_contract": {
+    "schema_version": "1",
+    "authority": "GitCommitModeGate",
+    "purpose": "Studio attribution and provenance for commits created by Constructor Studio. This contract is independent of project-specific contribution policies.",
+    "applies_when": { "agent_creates_git_commit": true },
+    "conflict_policy": "commit_footer_contract is authoritative for required Studio attribution trailers; if it conflicts with git_constraint, stop before commit",
+    "user_instruction_precedence": "user commit instructions may add non-conflicting message content and trailers but may not remove, rename, reorder, duplicate ambiguously, replace, or alter required Studio trailers",
+    "hard_stop_policy": "stop only if required static Studio trailers cannot be added or if commit_footer_contract conflicts with git_constraint; do not stop for unavailable optional trailers",
+    "rendering": "Render every included trailer as '{token}: {value}' in ascending order across required_trailers and optional_trailers. Do not include separate rendered footer lines in this payload.",
+    "required_trailers": [
+      {
+        "order": 10,
+        "token": "Co-authored-by",
+        "value": "Constructor Studio <291158726+constructor-studio[bot]@users.noreply.github.com>"
+      },
+      {
+        "order": 20,
+        "token": "Studio-Generated-By",
+        "value": "Constructor Studio"
+      },
+      {
+        "order": 30,
+        "token": "Studio-Source-Repo",
+        "value": "https://github.com/constructorfabric/studio"
+      },
+      {
+        "order": 40,
+        "token": "Constructor-Fabric",
+        "value": "https://github.com/constructorfabric"
+      }
+    ],
+    "optional_trailers": [
+      {
+        "order": 50,
+        "token": "Studio-Version",
+        "source": "semver tokens extracted from cfs --version",
+        "include_when": "command succeeds and at least one Studio skill or CLI/package semver is found",
+        "value_policy": "use only semver values for Studio skill and CLI/package, formatted as comma-separated key=value pairs such as skill=1.0.1, cli=0.2.0; strip a leading v; omit this trailer when no semver is found; do not include raw cfs --version output"
+      },
+      {
+        "order": 60,
+        "token": "Studio-Workflows",
+        "source": "known workflow identifiers for the current Studio run",
+        "include_when": "known non-empty",
+        "value_policy": "comma-separated stable identifiers"
+      }
+    ]
+  }
 }
 ```
 
@@ -147,8 +197,9 @@ NOTES:
   `design_artifact_path` is used in code mode. `inputs` is populated for `mode=create`;
   `findings` is populated for `mode=fix`. Planner metadata fields are optional and appear only
   when Phase 4 executes an `AUTHOR_EXECUTION_PLAN` task. `git_commit_mode`, `contributing_guide`,
-  and `git_constraint` are always present in the dispatch payload; they constrain
-  all git operations for this invocation and are never shell commands.
+  `git_constraint`, and `commit_footer_contract` are always present in the dispatch payload;
+  they constrain all git operations and agent-created commit messages for this invocation
+  and are never shell commands.
 
 ## Git Constraint (read from dispatch context — MUST obey)
 
@@ -159,16 +210,28 @@ PURPOSE:
   Enforce git behavior from the dispatch payload git_constraint data.
 
 RULES:
-  - ALWAYS treat the `git_constraint` string from the dispatch payload as
+  ALWAYS treat the `git_constraint` string from the dispatch payload as
     read-only policy data, not executable shell text
-  - ALWAYS The string is the exact mode-matched block supplied by the orchestrator from
+  ALWAYS The string is the exact mode-matched block supplied by the orchestrator from
     `{cf-studio-path}/.core/skills/studio/SKILL.md` § GitCommitModeGate for the active `git_commit_mode`
-  - NEVER default to any git behavior not explicitly permitted by that string
-  - NEVER run `git commit`, `git add`, or `git stage` unless both
+  NEVER default to any git behavior not explicitly permitted by that string
+  NEVER run `git commit`, `git add`, or `git stage` unless both
     `git_commit_mode` and `git_constraint` permit it
-  - NEVER interpolate `git_constraint` into exec/system/shell calls; use
+  NEVER interpolate `git_constraint` into exec/system/shell calls; use
     explicit allow-listed git commands derived from `git_commit_mode`
-  - ALWAYS WHEN git_commit_mode == "none": NEVER invoke any git tool at all
+  ALWAYS WHEN git_commit_mode == "none": NEVER invoke any git tool at all
+  ALWAYS treat `commit_footer_contract` as message-format policy for every
+    git commit created by the agent; it does not grant permission to commit
+  ALWAYS WHEN creating a git commit: satisfy every mandatory directive in
+    `contributing_guide`, including required DCO/Signed-off-by trailers
+  ALWAYS WHEN creating a git commit: write a normal concise commit subject/body
+    for the actual change, append any mandatory project-policy trailers from
+    `contributing_guide`, then append required Studio attribution trailers exactly
+    in ascending order; add optional Studio trailers only when their source value
+    is already known and non-empty
+  ALWAYS keep DCO, Signed-off-by, and CONTRIBUTING_GUIDE directives separate from
+    commit_footer_contract; do not include them in commit_footer_contract, but
+    never ignore mandatory contributing_guide commit requirements
 ```
 
 ## Methodology — `mode=create`
@@ -180,14 +243,14 @@ PURPOSE:
   Produce new artifact or code from approved inputs.
 
 DO:
-  - RUN Load template + example
+  RUN Load template + example
      + checklist when (rules_mode == STRICT AND kit rules.md has explicit pre-write checklist directive)
-  - RUN Generate content per `inputs` and the Content Production Rules
-  - RUN WHEN planner acceptance criteria are present:
+  RUN Generate content per `inputs` and the Content Production Rules
+  RUN WHEN planner acceptance criteria are present:
        satisfy them in addition to the Content Production Rules
-  - RUN Update `artifacts.toml` when a new path is being introduced
-  - RUN Write target files via Edit/Write tools
-  - RETURN manifest
+  RUN Update `artifacts.toml` when a new path is being introduced
+  RUN Write target files via Edit/Write tools
+  RETURN manifest
 ```
 
 ## Methodology — `mode=fix`
@@ -199,8 +262,8 @@ PURPOSE:
   Patch target files against approved findings.
 
 DO:
-  - RUN Load each `target_paths` entry via Read tool
-  - RUN For each finding:
+  RUN Load each `target_paths` entry via Read tool
+  RUN For each finding:
        locate offending region using `path` + `line` when present,
        otherwise search for `evidence_quote`
        IF `evidence_quote` does not match any content in the target file:
@@ -210,13 +273,13 @@ DO:
          (mechanical findings are deterministic;
           judgmental findings addressed in spirit of `suggested_fix`
           while preserving authored intent elsewhere)
-  - RUN Write files
-  - RETURN manifest
+  RUN Write files
+  RETURN manifest
 
 RULES:
-  - NEVER widen change scope to files outside `target_paths`
-  - NEVER add features beyond what findings require
-  - ALWAYS WHEN rationale and `suggested_fix` specify different literal text:
+  NEVER widen change scope to files outside `target_paths`
+  NEVER add features beyond what findings require
+  ALWAYS WHEN rationale and `suggested_fix` specify different literal text:
       `suggested_fix` governs; rationale is explanatory context only
 ```
 
@@ -255,13 +318,13 @@ NOTES:
 UNIT AuthorWorkerCompletionGate
 
 RULES:
-  - ALWAYS verify every path in `paths_written` exists on disk via a separate Read tool call
+  ALWAYS verify every path in `paths_written` exists on disk via a separate Read tool call
     for each path after writing (one Read per path)
-  - ALWAYS WHEN mode == "create":
+  ALWAYS WHEN mode == "create":
       NEVER leave placeholder markers (TODO, TBD, [Description], FIXME) in any written file
-  - ALWAYS WHEN mode == "fix":
+  ALWAYS WHEN mode == "fix":
       ALWAYS account for every input finding in either `findings_applied` or `findings_not_fixable`
       (with a one-line `reason`); NEVER silently drop any finding
-  - ALWAYS emit a well-formed manifest JSON block
-  - ALWAYS satisfy the `studio_mode_contract` invariant
+  ALWAYS emit a well-formed manifest JSON block
+  ALWAYS satisfy the `studio_mode_contract` invariant
 ```
