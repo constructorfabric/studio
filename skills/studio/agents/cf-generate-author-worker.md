@@ -152,7 +152,7 @@ RULES:
     "required_trailers": [
       {
         "order": 10,
-        "token": "Co-authored-by",
+        "token": "Co-Authored-By",
         "value": "Constructor Studio <291158726+constructor-studio[bot]@users.noreply.github.com>"
       },
       {

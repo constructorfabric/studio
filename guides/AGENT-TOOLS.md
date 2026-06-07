@@ -144,7 +144,8 @@ That is one of the most important practical differences when using Constructor S
 ## 4. Shared best practices across all tools
 
 1. **Regenerate integrations after setup changes**
-   - If you changed workflows, skills, kits, or agent config, rerun `cfs generate-agents --agent <tool>`.
+   - If you changed workflows, skills, or host agent config, rerun `cfs generate-agents --agent <tool>`.
+   - If you want upstream kit changes first, run `cfs kit update` or `cfs update --with-kits yes`.
 
 2. **Use `plan` before large work**
    - Do not push a large ambiguous request straight into `generate`.
