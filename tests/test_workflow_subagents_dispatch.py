@@ -259,7 +259,7 @@ COMMIT_FOOTER_CONTRACT = {
     ),
     "required_trailers": [
         {
-            "token": "Co-Authored-By",
+            "token": "Co-authored-by",
             "value": "Constructor Studio <291158726+constructor-studio[bot]@users.noreply.github.com>",
             "order": 10,
         },
@@ -301,8 +301,9 @@ COMMIT_FOOTER_CONTRACT = {
     ],
     "rendering": (
         "Render every included trailer as '{token}: {value}' in ascending order "
-        "across required_trailers and optional_trailers. Do not include separate "
-        "rendered footer lines in this payload."
+        "across required_trailers and optional_trailers. Render the commit trailer "
+        "block as contiguous lines with no blank lines between trailers. Do not "
+        "include separate rendered footer lines in this payload."
     ),
 }
 
@@ -652,7 +653,7 @@ def _assert_commit_footer_contract_shape(contract: dict) -> None:
     required = contract["required_trailers"]
     assert [(entry["token"], entry["value"], entry["order"]) for entry in required] == [
         (
-            "Co-Authored-By",
+            "Co-authored-by",
             "Constructor Studio <291158726+constructor-studio[bot]@users.noreply.github.com>",
             10,
         ),
@@ -669,6 +670,8 @@ def _assert_commit_footer_contract_shape(contract: dict) -> None:
     assert "semver" in version["include_when"]
     assert "do not include raw cfs --version output" in version["value_policy"]
     assert "skill=1.0.1, cli=0.2.0" in version["value_policy"]
+    assert "contiguous lines" in contract["rendering"]
+    assert "no blank lines between trailers" in contract["rendering"]
 
     orders = [entry["order"] for entry in required + optional]
     assert orders == sorted(orders), "trailers must use one total canonical order"
@@ -731,8 +734,9 @@ def test_git_commit_mode_gate_declares_studio_footer_contract_without_prompt_sna
         "DCO/Signed-off-by when required",
         "does not replace project-policy trailers",
         "does not grant permission to commit",
-        "Co-Authored-By",
+        "Co-authored-by",
         "Constructor Studio <291158726+constructor-studio[bot]@users.noreply.github.com>",
+        "contiguous lines with no blank lines between trailers",
         "Studio-Source-Repo",
         "Constructor-Fabric",
         "semver tokens extracted from cfs --version",
