@@ -11,7 +11,7 @@ import os
 import sys
 import textwrap
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -233,8 +233,8 @@ class TestInstallKitWithManifest(unittest.TestCase):
             # Values are path strings (flattened from {path: ...})
             self.assertIsInstance(bindings["adr_artifacts"], str)
 
-    def test_user_modifiable_false_no_prompt(self):
-        """When user_modifiable=false, paths are taken from defaults — no prompt."""
+    def test_user_modifiable_false_non_tty_no_prompt(self):
+        """Non-TTY installs use defaults without prompting."""
         from studio.commands.kit import install_kit_with_manifest
 
         with TemporaryDirectory() as td:
@@ -250,7 +250,7 @@ class TestInstallKitWithManifest(unittest.TestCase):
             }, config / "core.toml")
 
             manifest = load_manifest(kit_src)
-            # interactive=True but manifest.user_modifiable=false, so no prompts
+            # interactive=True but stdin is not a TTY, so no prompts
             result = install_kit_with_manifest(
                 kit_src, adapter, "mykit", "2.0", manifest,
                 interactive=True,
@@ -258,6 +258,71 @@ class TestInstallKitWithManifest(unittest.TestCase):
 
             self.assertEqual(result["status"], "PASS")
             self.assertEqual(result["files_copied"], 3)
+
+    def test_interactive_prompt_shows_locked_paths_but_edits_only_modifiable_paths(self):
+        """Install plan shows all resources, edit menu contains only editable paths."""
+        from studio.commands.kit import install_kit_with_manifest
+        from unittest.mock import patch
+
+        with TemporaryDirectory() as td:
+            td_path = Path(td)
+            kit_src = td_path / "mixedkit"
+            kit_src.mkdir()
+            (kit_src / "locked.toml").write_text("locked = true\n", encoding="utf-8")
+            (kit_src / "editable.md").write_text("# Editable\n", encoding="utf-8")
+            _write_manifest(kit_src, """\
+                [manifest]
+                version = "1.0"
+                user_modifiable = false
+
+                [[resources]]
+                id = "locked"
+                source = "locked.toml"
+                default_path = "locked.toml"
+                type = "file"
+                user_modifiable = false
+
+                [[resources]]
+                id = "editable"
+                source = "editable.md"
+                default_path = "editable.md"
+                type = "file"
+                user_modifiable = true
+            """)
+
+            adapter = td_path / "adapter"
+            config = adapter / "config"
+            config.mkdir(parents=True)
+            from studio.utils import toml_utils
+            toml_utils.dump({
+                "version": "1.0", "project_root": "..", "kits": {},
+            }, config / "core.toml")
+
+            manifest = load_manifest(kit_src)
+            assert manifest is not None
+
+            custom_editable = "docs/editable.md"
+            inputs = iter(["y", "1", custom_editable, "n"])
+            stderr = io.StringIO()
+            with patch("sys.stdin") as mock_stdin, \
+                 patch("builtins.input", side_effect=lambda prompt: next(inputs)), \
+                 redirect_stderr(stderr):
+                mock_stdin.isatty.return_value = True
+                result = install_kit_with_manifest(
+                    kit_src, adapter, "mixedkit", "2.0", manifest,
+                    interactive=True,
+                )
+
+            self.assertEqual(result["status"], "PASS")
+            self.assertTrue((adapter / "config" / "kits" / "mixedkit" / "locked.toml").is_file())
+            self.assertTrue((adapter / "config" / "kits" / "mixedkit" / custom_editable).is_file())
+            self.assertEqual(result["resource_bindings"]["editable"], f"config/kits/mixedkit/{custom_editable}")
+            prompt_text = stderr.getvalue()
+            self.assertIn("locked (file, locked)", prompt_text)
+            self.assertIn("editable (file, editable)", prompt_text)
+            edit_menu = prompt_text.split("Select path to change", 1)[1].split("Choice:", 1)[0]
+            self.assertNotIn("locked ->", edit_menu)
+            self.assertIn("editable ->", edit_menu)
 
     def test_interactive_prompt_custom_path(self):
         """When user_modifiable=true and user provides a path, resource goes there."""
@@ -295,12 +360,13 @@ class TestInstallKitWithManifest(unittest.TestCase):
             assert manifest is not None
 
             custom_dest = td_path / "custom" / "my_rules.md"
-            # Mock isatty → True, input → returns custom absolute path
-            # First call: root prompt (accept default by returning "")
-            # Second call: resource prompt (return custom path)
-            inputs = iter(["", str(custom_dest)])
+            # Mock isatty → True. New UX shows a full plan, then lets the
+            # user select the resource path by number before accepting it.
+            inputs = iter(["y", "2", str(custom_dest), "n"])
+            stderr = io.StringIO()
             with patch("sys.stdin") as mock_stdin, \
-                 patch("builtins.input", side_effect=lambda prompt: next(inputs)):
+                 patch("builtins.input", side_effect=lambda prompt: next(inputs)), \
+                 redirect_stderr(stderr):
                 mock_stdin.isatty.return_value = True
                 result = install_kit_with_manifest(
                     kit_src, adapter, "ikit", "1.0", manifest,
@@ -314,6 +380,9 @@ class TestInstallKitWithManifest(unittest.TestCase):
             self.assertEqual(custom_dest.read_text(), "# Rules\n")
             # Binding reflects the custom path (absolute, outside cypilot_dir)
             self.assertIn("rules", result["resource_bindings"])
+            self.assertIn("Kit install plan: ikit", stderr.getvalue())
+            self.assertIn("Select path to change", stderr.getvalue())
+            self.assertIn("(file, editable)", stderr.getvalue())
 
     def test_version_read_from_conf_toml(self):
         """If kit_version is empty, version is read from source conf.toml."""

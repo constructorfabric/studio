@@ -2054,6 +2054,31 @@ class TestHumanUpdateOk(unittest.TestCase):
         self.assertIn("sdlc", out)
         self.assertIn("Kits", out)
 
+    def test_with_kits_skipped_tracking_summary(self):
+        from studio.commands.update import _human_update_ok
+        buf = io.StringIO()
+        with redirect_stderr(buf):
+            _human_update_ok({
+                "status": "PASS",
+                "project_root": "/tmp/proj",
+                "studio_dir": "/tmp/proj/.bootstrap",
+                "dry_run": False,
+                "actions": {
+                    "kits": {
+                        "status": "skipped",
+                        "reason": "--with-kits not enabled",
+                        "kit_tracking": {
+                            "default": "tracked",
+                            "kits": {"sdlc": "ignored"},
+                        },
+                    },
+                },
+            })
+        out = buf.getvalue()
+        self.assertIn("Kits: skipped", out)
+        self.assertIn("--with-kits not enabled", out)
+        self.assertIn("kit_tracking=", out)
+
     def test_with_core_update(self):
         from studio.commands.update import _human_update_ok
         buf = io.StringIO()

@@ -213,12 +213,12 @@ check-versions:
 # Initialize .bootstrap from local source. Repeat runs repair generated runtime files.
 bootstrap-init: seed-cache
 	@echo "Initializing .bootstrap from local source..."
-	$(PYTHON) $(SOURCE_STUDIO) init --project-root . --install-dir .bootstrap --kit-tracking tracked --yes
+	$(PYTHON) $(SOURCE_STUDIO) init --project-root . --install-dir .bootstrap --kit-tracking tracked --kit-tracking sdlc=ignored --yes
 
 # Repair generated .bootstrap runtime files without updating tracked kit files.
 bootstrap-repair: seed-cache
 	@echo "Repairing generated .bootstrap runtime files from local source..."
-	$(PYTHON) $(SOURCE_STUDIO) init --project-root . --install-dir .bootstrap --kit-tracking tracked --yes
+	$(PYTHON) $(SOURCE_STUDIO) init --project-root . --install-dir .bootstrap --kit-tracking tracked --kit-tracking sdlc=ignored --yes
 
 # Backward-compatible alias: update means local self-hosted update in this repo.
 update: update-local
@@ -226,21 +226,14 @@ update: update-local
 # Update .bootstrap from local source. Kit files are skipped by default by cfs update.
 update-local: seed-cache
 	@if [ ! -f "$(BOOTSTRAP_STUDIO)" ]; then \
-		$(PYTHON) $(SOURCE_STUDIO) init --project-root . --install-dir .bootstrap --kit-tracking tracked --yes; \
+		$(PYTHON) $(SOURCE_STUDIO) init --project-root . --install-dir .bootstrap --kit-tracking tracked --kit-tracking sdlc=ignored --yes; \
 	else \
 		$(PYTHON) $(SOURCE_STUDIO) update --project-root . -y; \
 	fi
 
 seed-cache:
 	@echo "Seeding Constructor Studio cache from tracked source..."
-	@rm -rf "$$HOME/.cf-studio/cache"
-	@mkdir -p "$$HOME/.cf-studio/cache"
-	@cp -R requirements schemas workflows skills architecture "$$HOME/.cf-studio/cache/"
-	@if [ -d .bootstrap/config/kits ]; then \
-		mkdir -p "$$HOME/.cf-studio/cache/kits"; \
-		cp -R .bootstrap/config/kits/* "$$HOME/.cf-studio/cache/kits/"; \
-		find "$$HOME/.cf-studio/cache/kits" -name whatsnew.toml -type f -delete; \
-	fi
+	PYTHONPATH=src $(PYTHON) scripts/seed_local_cache.py .
 
 ensure-bootstrap:
 	@if [ ! -f "$(BOOTSTRAP_STUDIO)" ]; then \

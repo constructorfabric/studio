@@ -84,6 +84,7 @@ build/
 .windsurf/workflows/studio-*.md
 .windsurf/workflows/cypilot-*.md
 .windsurf/workflows/cf-constructor-*.md
+.bootstrap/config/kits/sdlc/
 # END Constructor Studio
 
 *.backup

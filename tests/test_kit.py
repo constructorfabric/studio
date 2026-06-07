@@ -1182,9 +1182,10 @@ class TestCmdKitInstall(unittest.TestCase):
                 return original_relpath(path, start)
 
             fake_stdin = type("_FakeStdin", (), {"isatty": lambda self: True})()
+            inputs = iter(["y", "1", external_kit_dir.as_posix(), "n"])
 
             with patch.object(kit_module.sys, "stdin", fake_stdin):
-                with patch("builtins.input", return_value=external_kit_dir.as_posix()):
+                with patch("builtins.input", side_effect=lambda prompt: next(inputs)):
                     with patch.object(kit_module.os.path, "relpath", side_effect=_patched_relpath):
                         result = install_kit(kit_src, adapter, "customroot", interactive=True)
 

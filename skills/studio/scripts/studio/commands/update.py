@@ -42,6 +42,7 @@ from .init import (
     _core_readme,
     _persist_install_metadata,
     _read_kit_tracking,
+    _read_kit_tracking_state,
     _inject_root_agents,
     _inject_root_claude,
     _write_gitignore_block,
@@ -325,12 +326,15 @@ def cmd_update(argv: List[str]) -> int:
             kit_tracking,
             dry_run=False,
         )
+        # @cpt-begin:cpt-studio-flow-core-infra-project-update:p1:inst-update-gitignore
         actions["gitignore"] = _write_gitignore_block(
             project_root,
             install_rel,
+            core_toml_path,
             kit_tracking,
             dry_run=False,
         )
+        # @cpt-end:cpt-studio-flow-core-infra-project-update:p1:inst-update-gitignore
     else:
         actions["core_toml_metadata"] = "dry_run"
         actions["gitignore"] = "dry_run"
@@ -378,7 +382,10 @@ def cmd_update(argv: List[str]) -> int:
         actions["kits"] = {
             "status": "skipped",
             "reason": "--with-kits not enabled",
-            "kit_tracking": kit_tracking,
+            "kit_tracking": {
+                "default": kit_tracking,
+                "kits": _read_kit_tracking_state(core_toml_path, default=kit_tracking)[1],
+            },
         }
     else:
         # ── Step 2: Update kits from registered sources ─────────────────────────────

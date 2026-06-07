@@ -33,6 +33,7 @@ CORE_SUBDIR = ".core"
 GEN_SUBDIR = ".gen"
 DEFAULT_INSTALL_DIR = ".cf-studio"
 KIT_TRACKING_POLICIES = ("tracked", "ignored")
+KIT_TRACKING_ALIASES = {"untracked": "ignored"}
 GITIGNORE_MARKER_START = "# BEGIN Constructor Studio"
 GITIGNORE_MARKER_END = "# END Constructor Studio"
 
@@ -201,90 +202,204 @@ def _default_core_toml() -> dict:
         "project_root": "..",
         "install": {
             "version_source": "project_config",
+            "runtime_tracking": "ignored",
+            "agent_tracking": "ignored",
             "kit_tracking": "tracked",
         },
         "kits": {},
     }
 
 
-def _gitignore_patterns(install_dir: str, kit_tracking: str) -> List[str]:
-    install_rel = install_dir.strip().replace("\\", "/").strip("/")
-    patterns = [
-        f"{install_rel}/{CORE_SUBDIR}/",
-        f"{install_rel}/{GEN_SUBDIR}/",
-        ".agents/skills/cf/",
-        ".agents/skills/cf-*/",
-        ".agents/skills/studio-*/",
-        ".agents/skills/cypilot-*/",
-        ".agents/skills/cf-constructor-*/",
-        ".codex/agents/cf*.toml",
-        ".codex/agents/studio-*.toml",
-        ".codex/agents/cypilot-*.toml",
-        ".codex/agents/cf-constructor-*.toml",
-        ".codex/agents/storytelling-*.toml",
-        ".codex/.cf-installed",
-        ".codex/.constructor-studio-installed",
-        ".claude/skills/cf/",
-        ".claude/skills/cf-*/",
-        ".claude/commands/cf*.md",
-        ".claude/commands/studio-*.md",
-        ".claude/commands/cypilot-*.md",
-        ".claude/commands/cf-constructor-*.md",
-        ".claude/agents/cf*.md",
-        ".claude/agents/studio-*.md",
-        ".claude/agents/cypilot-*.md",
-        ".claude/agents/cf-constructor-*.md",
-        ".claude/agents/storytelling-*.md",
-        ".cursor/commands/cf*.md",
-        ".cursor/commands/studio-*.md",
-        ".cursor/commands/cypilot-*.md",
-        ".cursor/commands/cf-constructor-*.md",
-        ".cursor/agents/cf*.md",
-        ".cursor/agents/studio-*.md",
-        ".cursor/agents/cypilot-*.md",
-        ".cursor/agents/cf-constructor-*.md",
-        ".cursor/agents/storytelling-*.md",
-        ".github/prompts/cf*.prompt.md",
-        ".github/prompts/studio-*.prompt.md",
-        ".github/prompts/cypilot-*.prompt.md",
-        ".github/prompts/cf-constructor-*.prompt.md",
-        ".github/agents/cf*.md",
-        ".github/agents/studio-*.md",
-        ".github/agents/cypilot-*.md",
-        ".github/agents/cf-constructor-*.md",
-        ".github/agents/storytelling-*.md",
-        ".github/.cf-installed",
-        ".github/.constructor-studio-installed",
-        ".github/copilot-instructions.md",
-        ".windsurf/workflows/cf*.md",
-        ".windsurf/workflows/studio-*.md",
-        ".windsurf/workflows/cypilot-*.md",
-        ".windsurf/workflows/cf-constructor-*.md",
+def _normalize_kit_tracking(value: object) -> Optional[str]:
+    normalized = str(value).strip().lower()
+    normalized = KIT_TRACKING_ALIASES.get(normalized, normalized)
+    if normalized in KIT_TRACKING_POLICIES:
+        return normalized
+    return None
+
+
+def _parse_kit_tracking_args(values: Optional[List[str]]) -> tuple[str, Dict[str, str]]:
+    default_policy = "tracked"
+    overrides: Dict[str, str] = {}
+    for raw in values or []:
+        if "=" not in raw:
+            policy = _normalize_kit_tracking(raw)
+            if policy is None:
+                raise ValueError(
+                    "--kit-tracking must be tracked, ignored, untracked, or <kit>=tracked|ignored"
+                )
+            default_policy = policy
+            continue
+        slug, policy_raw = raw.split("=", 1)
+        slug = slug.strip()
+        policy = _normalize_kit_tracking(policy_raw)
+        if not slug or policy is None:
+            raise ValueError(
+                "--kit-tracking per-kit values must use <kit>=tracked|ignored"
+            )
+        overrides[slug] = policy
+    return default_policy, overrides
+
+
+def _kit_entry_path(slug: str, entry: object) -> str:
+    if isinstance(entry, dict):
+        raw_path = entry.get("path")
+        if isinstance(raw_path, str) and raw_path.strip():
+            return raw_path.strip()
+    return f"config/kits/{slug}"
+
+
+def _read_kit_tracking_state(
+    core_toml_path: Path,
+    default: str = "tracked",
+) -> tuple[str, Dict[str, str], Dict[str, str]]:
+    try:
+        data = toml_utils.load(core_toml_path)
+    except (OSError, ValueError):
+        return default, {}, {}
+    install_data = data.get("install", {})
+    default_policy = default
+    if isinstance(install_data, dict):
+        value = _normalize_kit_tracking(install_data.get("kit_tracking"))
+        if value is not None:
+            default_policy = value
+    kits_data = data.get("kits")
+    if not isinstance(kits_data, dict):
+        return default_policy, {}, {}
+    kit_tracking: Dict[str, str] = {}
+    kit_paths: Dict[str, str] = {}
+    for slug, entry in kits_data.items():
+        if not isinstance(slug, str):
+            continue
+        tracking = default_policy
+        if isinstance(entry, dict):
+            value = _normalize_kit_tracking(entry.get("tracking"))
+            if value is not None:
+                tracking = value
+        kit_tracking[slug] = tracking
+        kit_paths[slug] = _kit_entry_path(slug, entry)
+    return default_policy, kit_tracking, kit_paths
+
+
+# @cpt-begin:cpt-studio-algo-core-infra-gitignore-footprint:p1:inst-ignore-kits-by-policy
+def _ignored_kit_paths(core_toml_path: Path, default: str = "tracked") -> List[str]:
+    _, kit_tracking, kit_paths = _read_kit_tracking_state(core_toml_path, default=default)
+    return [
+        kit_paths[slug]
+        for slug, tracking in sorted(kit_tracking.items())
+        if tracking == "ignored"
     ]
-    if kit_tracking == "ignored":
-        patterns.append(f"{install_rel}/config/kits/")
+# @cpt-end:cpt-studio-algo-core-infra-gitignore-footprint:p1:inst-ignore-kits-by-policy
+
+
+def _gitignore_patterns(
+    install_dir: str,
+    ignored_kit_paths: List[str],
+    runtime_tracking: str = "ignored",
+    agent_tracking: str = "ignored",
+) -> List[str]:
+    install_rel = install_dir.strip().replace("\\", "/").strip("/")
+    patterns: List[str] = []
+    if runtime_tracking == "ignored":
+        patterns.extend([
+            f"{install_rel}/{CORE_SUBDIR}/",
+            f"{install_rel}/{GEN_SUBDIR}/",
+        ])
+    if agent_tracking == "ignored":
+        patterns.extend([
+            ".agents/skills/cf/",
+            ".agents/skills/cf-*/",
+            ".agents/skills/studio-*/",
+            ".agents/skills/cypilot-*/",
+            ".agents/skills/cf-constructor-*/",
+            ".codex/agents/cf*.toml",
+            ".codex/agents/studio-*.toml",
+            ".codex/agents/cypilot-*.toml",
+            ".codex/agents/cf-constructor-*.toml",
+            ".codex/agents/storytelling-*.toml",
+            ".codex/.cf-installed",
+            ".codex/.constructor-studio-installed",
+            ".claude/skills/cf/",
+            ".claude/skills/cf-*/",
+            ".claude/commands/cf*.md",
+            ".claude/commands/studio-*.md",
+            ".claude/commands/cypilot-*.md",
+            ".claude/commands/cf-constructor-*.md",
+            ".claude/agents/cf*.md",
+            ".claude/agents/studio-*.md",
+            ".claude/agents/cypilot-*.md",
+            ".claude/agents/cf-constructor-*.md",
+            ".claude/agents/storytelling-*.md",
+            ".cursor/commands/cf*.md",
+            ".cursor/commands/studio-*.md",
+            ".cursor/commands/cypilot-*.md",
+            ".cursor/commands/cf-constructor-*.md",
+            ".cursor/agents/cf*.md",
+            ".cursor/agents/studio-*.md",
+            ".cursor/agents/cypilot-*.md",
+            ".cursor/agents/cf-constructor-*.md",
+            ".cursor/agents/storytelling-*.md",
+            ".github/prompts/cf*.prompt.md",
+            ".github/prompts/studio-*.prompt.md",
+            ".github/prompts/cypilot-*.prompt.md",
+            ".github/prompts/cf-constructor-*.prompt.md",
+            ".github/agents/cf*.md",
+            ".github/agents/studio-*.md",
+            ".github/agents/cypilot-*.md",
+            ".github/agents/cf-constructor-*.md",
+            ".github/agents/storytelling-*.md",
+            ".github/.cf-installed",
+            ".github/.constructor-studio-installed",
+            ".github/copilot-instructions.md",
+            ".windsurf/workflows/cf*.md",
+            ".windsurf/workflows/studio-*.md",
+            ".windsurf/workflows/cypilot-*.md",
+            ".windsurf/workflows/cf-constructor-*.md",
+        ])
+    for kit_path in ignored_kit_paths:
+        kit_rel = kit_path.strip().replace("\\", "/").strip("/")
+        if kit_rel:
+            patterns.append(f"{install_rel}/{kit_rel}/")
     return patterns
 
 
-def _compute_gitignore_block(install_dir: str, kit_tracking: str) -> str:
+def _compute_gitignore_block(
+    install_dir: str,
+    ignored_kit_paths: List[str],
+    runtime_tracking: str = "ignored",
+    agent_tracking: str = "ignored",
+) -> str:
+    # @cpt-begin:cpt-studio-algo-core-infra-gitignore-footprint:p1:inst-write-overwrite-warning
     lines = [
         GITIGNORE_MARKER_START,
         "# Generated Constructor Studio runtime and agent integration files.",
         "# Files matched here are owned by Constructor Studio and may be overwritten.",
-        *_gitignore_patterns(install_dir, kit_tracking),
+        *_gitignore_patterns(
+            install_dir,
+            ignored_kit_paths,
+            runtime_tracking=runtime_tracking,
+            agent_tracking=agent_tracking,
+        ),
         GITIGNORE_MARKER_END,
     ]
+    # @cpt-end:cpt-studio-algo-core-infra-gitignore-footprint:p1:inst-write-overwrite-warning
     return "\n".join(lines)
 
 
 def _write_gitignore_block(
     project_root: Path,
     install_dir: str,
-    kit_tracking: str,
+    core_toml_path: Path,
+    default_kit_tracking: str,
     dry_run: bool = False,
 ) -> str:
     gitignore_path = project_root / ".gitignore"
-    expected_block = _compute_gitignore_block(install_dir, kit_tracking)
+    expected_block = _compute_gitignore_block(
+        install_dir,
+        _ignored_kit_paths(core_toml_path, default=default_kit_tracking),
+        runtime_tracking=_read_install_tracking(core_toml_path, "runtime_tracking", default="ignored"),
+        agent_tracking=_read_install_tracking(core_toml_path, "agent_tracking", default="ignored"),
+    )
     if not gitignore_path.is_file():
         if not dry_run:
             gitignore_path.write_text(expected_block + "\n", encoding="utf-8")
@@ -314,7 +429,16 @@ def _write_gitignore_block(
     return "updated"
 
 
-def _persist_install_metadata(core_toml_path: Path, kit_tracking: str, dry_run: bool = False) -> str:
+def _persist_install_metadata(
+    core_toml_path: Path,
+    kit_tracking: str,
+    runtime_tracking: str = "ignored",
+    agent_tracking: str = "ignored",
+    dry_run: bool = False,
+    kit_tracking_overrides: Optional[Dict[str, str]] = None,
+    apply_default_to_missing_kits: bool = False,
+) -> str:
+    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-persist-kit-tracking
     data: Dict[str, Any]
     existed = core_toml_path.is_file()
     if existed:
@@ -328,26 +452,42 @@ def _persist_install_metadata(core_toml_path: Path, kit_tracking: str, dry_run: 
     if not isinstance(install_data, dict):
         install_data = {}
     install_data["version_source"] = "project_config"
+    install_data["runtime_tracking"] = runtime_tracking
+    install_data["agent_tracking"] = agent_tracking
     install_data["kit_tracking"] = kit_tracking
     data["install"] = install_data
     if "kits" not in data or not isinstance(data.get("kits"), dict):
         data["kits"] = {}
+    kits_data = data["kits"]
+    for slug, entry in list(kits_data.items()):
+        if not isinstance(entry, dict):
+            continue
+        if kit_tracking_overrides and slug in kit_tracking_overrides:
+            entry["tracking"] = kit_tracking_overrides[slug]
+        elif apply_default_to_missing_kits and _normalize_kit_tracking(entry.get("tracking")) is None:
+            entry["tracking"] = kit_tracking
     if not dry_run:
         core_toml_path.parent.mkdir(parents=True, exist_ok=True)
         toml_utils.dump(data, core_toml_path, header_comment="Constructor Studio project configuration")
+    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-persist-kit-tracking
     return "updated" if existed else "created"
 
 
 def _read_kit_tracking(core_toml_path: Path, default: str = "tracked") -> str:
+    default_policy, _, _ = _read_kit_tracking_state(core_toml_path, default=default)
+    return default_policy
+
+
+def _read_install_tracking(core_toml_path: Path, key: str, default: str = "ignored") -> str:
     try:
         data = toml_utils.load(core_toml_path)
     except (OSError, ValueError):
         return default
-    install_data = data.get("install", {})
+    install_data = data.get("install")
     if isinstance(install_data, dict):
-        value = install_data.get("kit_tracking")
-        if value in KIT_TRACKING_POLICIES:
-            return str(value)
+        value = _normalize_kit_tracking(install_data.get(key))
+        if value is not None:
+            return value
     return default
 
 def _prompt_path(question: str, default: Optional[str]) -> str:
@@ -364,6 +504,152 @@ def _prompt_path(question: str, default: Optional[str]) -> str:
     if ans:
         return ans
     return default or ""
+
+
+def _emit_install_options(
+    project_root: Path,
+    install_rel: str,
+    project_name: str,
+    runtime_tracking: str,
+    agent_tracking: str,
+    kit_tracking: str,
+    kit_tracking_overrides: Dict[str, str],
+) -> None:
+    sys.stderr.write("\n")
+    sys.stderr.write("  Installation options\n")
+    sys.stderr.write(f"  - Project root: {project_root.as_posix()}\n")
+    sys.stderr.write(f"  - Project name: {project_name}\n")
+    sys.stderr.write(f"  - Constructor Studio directory: {install_rel}/\n")
+    sys.stderr.write(f"  - Runtime files (.core/.gen) git tracking: {runtime_tracking}\n")
+    sys.stderr.write(f"  - Agent integration files git tracking: {agent_tracking}\n")
+    sys.stderr.write(f"  - Default kit git tracking: {kit_tracking}\n")
+    if kit_tracking_overrides:
+        for slug, policy in sorted(kit_tracking_overrides.items()):
+            sys.stderr.write(f"  - Kit {slug} git tracking: {policy}\n")
+    else:
+        sys.stderr.write("  - Per-kit git tracking: ask when installing each kit\n")
+    sys.stderr.write("  - Runtime files: ignored files may be overwritten by repair/update\n")
+    sys.stderr.write("  - Agent integration files: ignored files may be regenerated by Constructor Studio\n")
+    sys.stderr.write("  - Kit files: tracked or ignored per kit; ignored kit files may be overwritten\n")
+    sys.stderr.write("\n")
+
+
+def _prompt_kit_tracking_policy(
+    kit_slug: str,
+    default_policy: str,
+    explicit_policy: Optional[str],
+    interactive: bool,
+) -> str:
+    if explicit_policy is not None:
+        return explicit_policy
+    if interactive and sys.stdin.isatty():
+        if kit_slug == "default":
+            sys.stderr.write("\n  Default git tracking for kits?\n")
+        elif kit_slug in ("runtime files (.core/.gen)", "agent integration files"):
+            sys.stderr.write(f"\n  Git tracking for {kit_slug}?\n")
+        else:
+            sys.stderr.write(f"\n  Git tracking for kit '{kit_slug}'?\n")
+        sys.stderr.write("  `tracked` keeps these files in git so you can review and commit them.\n")
+        sys.stderr.write("  `ignored` keeps these files out of git; Constructor Studio owns and may overwrite them.\n")
+        sys.stderr.write(f"  Press Enter to use default: {default_policy}.\n")
+        sys.stderr.write("  [t]racked / [i]gnored: ")
+        sys.stderr.flush()
+        try:
+            answer = input().strip().lower()
+        except EOFError:
+            answer = ""
+        if answer in ("t", "track", "tracked"):
+            return "tracked"
+        if answer in ("i", "ignore", "ignored", "untracked"):
+            return "ignored"
+    return default_policy
+
+
+def _prompt_install_options(
+    project_root: Path,
+    install_rel: str,
+    project_name: str,
+    runtime_tracking: str,
+    agent_tracking: str,
+    kit_tracking: str,
+    kit_tracking_overrides: Dict[str, str],
+    interactive: bool,
+) -> tuple[str, str, str, str, str, Dict[str, str]]:
+    if not interactive or not sys.stdin.isatty():
+        return install_rel, project_name, runtime_tracking, agent_tracking, kit_tracking, kit_tracking_overrides
+
+    while True:
+        _emit_install_options(
+            project_root,
+            install_rel,
+            project_name,
+            runtime_tracking,
+            agent_tracking,
+            kit_tracking,
+            kit_tracking_overrides,
+        )
+        sys.stderr.write("  Review or change installation options? [y/N]: ")
+        sys.stderr.flush()
+        try:
+            answer = input().strip().lower()
+        except EOFError:
+            answer = ""
+        if answer not in ("y", "yes"):
+            return install_rel, project_name, runtime_tracking, agent_tracking, kit_tracking, kit_tracking_overrides
+
+        sys.stderr.write("\n")
+        sys.stderr.write("  Select installation option\n")
+        sys.stderr.write("  [1] Constructor Studio directory\n")
+        sys.stderr.write("  [2] Project name\n")
+        sys.stderr.write("  [3] Runtime files (.core/.gen) git tracking\n")
+        sys.stderr.write("  [4] Agent integration files git tracking\n")
+        sys.stderr.write("  [5] Default kit git tracking\n")
+        sys.stderr.write("  [6] SDLC kit git tracking\n")
+        sys.stderr.write("  [7] Done\n")
+        sys.stderr.write("  Choice: ")
+        sys.stderr.flush()
+        try:
+            choice = input().strip().lower()
+        except EOFError:
+            choice = ""
+
+        if choice in ("1", "dir", "directory", "install-dir"):
+            install_rel = _prompt_path(
+                "Constructor Studio directory (relative to project root)?",
+                install_rel,
+            ).strip() or install_rel
+        elif choice in ("2", "name", "project-name"):
+            project_name = _prompt_path("Project name?", project_name).strip() or project_name
+        elif choice in ("3", "runtime", "core", "gen", ".core", ".gen"):
+            runtime_tracking = _prompt_kit_tracking_policy(
+                "runtime files (.core/.gen)",
+                runtime_tracking,
+                None,
+                interactive,
+            )
+        elif choice in ("4", "agents", "agent", "agent-integration"):
+            agent_tracking = _prompt_kit_tracking_policy(
+                "agent integration files",
+                agent_tracking,
+                None,
+                interactive,
+            )
+        elif choice in ("5", "default", "tracking", "kit-tracking"):
+            kit_tracking = _prompt_kit_tracking_policy(
+                "default",
+                kit_tracking,
+                None,
+                interactive,
+            )
+        elif choice in ("6", "sdlc"):
+            kit_tracking_overrides["sdlc"] = _prompt_kit_tracking_policy(
+                "sdlc",
+                kit_tracking,
+                None,
+                interactive,
+            )
+        elif choice in ("7", "done", "d", ""):
+            return install_rel, project_name, runtime_tracking, agent_tracking, kit_tracking, kit_tracking_overrides
 
 def _resolve_user_path(raw: str, base: Path) -> Path:
     p = Path(raw)
@@ -626,6 +912,16 @@ def _repair_existing_install(
     errors: List[Dict[str, str]] = []
     core_toml_path = (config_dir / "core.toml").resolve()
     effective_kit_tracking = _read_kit_tracking(core_toml_path, default=kit_tracking)
+    effective_runtime_tracking = _read_install_tracking(
+        core_toml_path,
+        "runtime_tracking",
+        default="ignored",
+    )
+    effective_agent_tracking = _read_install_tracking(
+        core_toml_path,
+        "agent_tracking",
+        default="ignored",
+    )
 
     try:
         from .kit import regenerate_gen_aggregates
@@ -647,6 +943,8 @@ def _repair_existing_install(
         actions["core_toml"] = _persist_install_metadata(
             core_toml_path,
             effective_kit_tracking,
+            runtime_tracking=effective_runtime_tracking,
+            agent_tracking=effective_agent_tracking,
             dry_run=dry_run,
         )
 
@@ -675,12 +973,15 @@ def _repair_existing_install(
 
         actions["root_agents"] = _inject_root_agents(project_root, install_rel, dry_run=dry_run)
         actions["root_claude"] = _inject_root_claude(project_root, install_rel, dry_run=dry_run)
+        # @cpt-begin:cpt-studio-flow-core-infra-init-repair:p1:inst-restore-gitignore
         actions["gitignore"] = _write_gitignore_block(
             project_root,
             install_rel,
+            core_toml_path,
             effective_kit_tracking,
             dry_run=dry_run,
         )
+        # @cpt-end:cpt-studio-flow-core-infra-init-repair:p1:inst-restore-gitignore
     except (OSError, ValueError, RuntimeError) as exc:
         errors.append({"path": install_rel, "error": str(exc)})
 
@@ -709,12 +1010,19 @@ def _repair_existing_install(
             "dry_run": bool(dry_run),
             "version_changed": False,
             "version_source": "project_config",
-            "kit_tracking": effective_kit_tracking,
+            "runtime_tracking": effective_runtime_tracking,
+            "agent_tracking": effective_agent_tracking,
+            "kit_tracking": {
+                "default": effective_kit_tracking,
+                "kits": _read_kit_tracking_state(core_toml_path, default=effective_kit_tracking)[1],
+            },
             "actions": actions,
         },
         human_fn=lambda d: (
             ui.step("Constructor Studio already initialized; repaired generated runtime files."),
             ui.detail("Directory", str(studio_dir)),
+            ui.detail("Runtime tracking", str(d.get("runtime_tracking", "ignored"))),
+            ui.detail("Agent tracking", str(d.get("agent_tracking", "ignored"))),
             ui.detail("Kit tracking", effective_kit_tracking),
             ui.blank(),
         ),
@@ -730,10 +1038,28 @@ def cmd_init(argv: List[str]) -> int:
     p.add_argument("--from-dir", default=None, help="Constructor Studio directory relative to project root when migrating")
     p.add_argument("--project-name", default=None, help="Project name (default: project root folder name)")
     p.add_argument(
+        "--runtime-tracking",
+        default="ignored",
+        metavar="tracked|ignored",
+        help="Git tracking policy for .core/.gen runtime files (default: ignored; alias: untracked)",
+    )
+    p.add_argument(
+        "--agent-tracking",
+        default="ignored",
+        metavar="tracked|ignored",
+        help="Git tracking policy for generated agent integration files (default: ignored; alias: untracked)",
+    )
+    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-kit-tracking-policy
+    p.add_argument(
         "--kit-tracking",
-        choices=KIT_TRACKING_POLICIES,
-        default="tracked",
-        help="Whether project kits are tracked in git or treated as generated files (default: tracked)",
+        action="append",
+        default=None,
+        metavar="tracked|ignored|KIT=tracked|ignored",
+        help=(
+            "Kit git tracking policy. Use tracked/ignored as the default, or "
+            "KIT=tracked|ignored for a specific kit. May be repeated. "
+            "Alias: untracked=ignored."
+        ),
     )
     p.add_argument("--yes", action="store_true", help="Do not prompt; accept defaults")
     p.add_argument("--dry-run", action="store_true", help="Compute changes without writing files")
@@ -753,6 +1079,17 @@ def cmd_init(argv: List[str]) -> int:
         help="Update unsupported Constructor Studio installs to the migration baseline first. Use --update-legacy-studio={ask,yes,no} (default: ask)",
     )
     args = p.parse_args(argv)
+    try:
+        default_kit_tracking, kit_tracking_overrides = _parse_kit_tracking_args(args.kit_tracking)
+        runtime_tracking = _normalize_kit_tracking(args.runtime_tracking)
+        agent_tracking = _normalize_kit_tracking(args.agent_tracking)
+        if runtime_tracking is None:
+            raise ValueError("--runtime-tracking must be tracked, ignored, or untracked")
+        if agent_tracking is None:
+            raise ValueError("--agent-tracking must be tracked, ignored, or untracked")
+    except ValueError as exc:
+        p.error(str(exc))
+    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-kit-tracking-policy
     # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-user-init
 
     cwd = Path.cwd().resolve()
@@ -781,17 +1118,13 @@ def cmd_init(argv: List[str]) -> int:
     existing_install_rel = _read_existing_install(project_root)
     # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-check-existing
 
-    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-if-exists
-    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-return-exists
     if existing_install_rel is not None and not args.force:
         return _repair_existing_install(
             project_root,
             existing_install_rel,
-            str(args.kit_tracking),
+            default_kit_tracking,
             dry_run=args.dry_run,
         )
-    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-return-exists
-    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-if-exists
 
     legacy_migration_declined = False
     legacy_install_rel: Optional[str] = None
@@ -864,14 +1197,32 @@ def cmd_init(argv: List[str]) -> int:
     # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-if-interactive
     # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-prompt-dir
     default_install_dir = existing_install_rel or DEFAULT_INSTALL_DIR
-    if args.install_dir is None and interactive:
-        sys.stderr.write("\n")
-        sys.stderr.write("  \033[2mConstructor Studio stores its files in a subdirectory of your project.\033[0m\n")
-        sys.stderr.write("  \033[2mThis directory will contain .core/, .gen/, and config/ folders.\033[0m\n")
-        install_rel = _prompt_path("Constructor Studio directory (relative to project root)?", default_install_dir)
-    else:
-        install_rel = args.install_dir or default_install_dir
+    install_rel = args.install_dir or default_install_dir
     install_rel = install_rel.strip() or default_install_dir
+
+    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-define-root
+    root_system = _define_root_system(project_root)
+    project_name = str(args.project_name).strip() if args.project_name else root_system["name"]
+    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-define-root
+
+    if interactive:
+        (
+            install_rel,
+            project_name,
+            runtime_tracking,
+            agent_tracking,
+            default_kit_tracking,
+            kit_tracking_overrides,
+        ) = _prompt_install_options(
+            project_root,
+            install_rel,
+            project_name,
+            runtime_tracking,
+            agent_tracking,
+            default_kit_tracking,
+            kit_tracking_overrides,
+            interactive,
+        )
     # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-prompt-dir
     # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-if-interactive
 
@@ -905,11 +1256,6 @@ def cmd_init(argv: List[str]) -> int:
                 ),
             )
             return 1
-
-    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-define-root
-    root_system = _define_root_system(project_root)
-    project_name = str(args.project_name).strip() if args.project_name else root_system["name"]
-    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-define-root
 
     # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-prompt-agents
     # Stub: agent selection not yet needed (single kit); will prompt when multi-kit support lands
@@ -987,14 +1333,18 @@ def cmd_init(argv: List[str]) -> int:
     if core_toml_existed and not args.force:
         actions["core_toml"] = "unchanged"
     else:
-        desired_core["install"]["kit_tracking"] = str(args.kit_tracking)
+        desired_core["install"]["runtime_tracking"] = runtime_tracking
+        desired_core["install"]["agent_tracking"] = agent_tracking
+        desired_core["install"]["kit_tracking"] = default_kit_tracking
         if not args.dry_run:
             toml_utils.dump(desired_core, core_toml_path, header_comment="Constructor Studio project configuration")
         actions["core_toml"] = "updated" if core_toml_existed else "created"
     if core_toml_existed and not args.force:
         actions["core_toml_metadata"] = _persist_install_metadata(
             core_toml_path,
-            str(args.kit_tracking),
+            default_kit_tracking,
+            runtime_tracking=runtime_tracking,
+            agent_tracking=agent_tracking,
             dry_run=args.dry_run,
         )
 
@@ -1045,7 +1395,15 @@ def cmd_init(argv: List[str]) -> int:
 
         # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-install-kit-accepted
         if install_kit_flag:
+            kit_tracking_overrides["sdlc"] = _prompt_kit_tracking_policy(
+                "sdlc",
+                default_kit_tracking,
+                kit_tracking_overrides.get("sdlc"),
+                interactive,
+            )
             kit_results = _install_default_kit(studio_dir, interactive, actions, errors)
+            if "sdlc" in kit_results:
+                kit_results["sdlc"]["tracking"] = kit_tracking_overrides["sdlc"]
             if errors:
                 err_result: Dict[str, object] = {
                     "status": "ERROR",
@@ -1100,6 +1458,15 @@ def cmd_init(argv: List[str]) -> int:
             actions["config_skill"] = "unchanged"
 
     actions["kits"] = json.dumps(kit_results)
+    actions["core_toml_metadata"] = _persist_install_metadata(
+        core_toml_path,
+        default_kit_tracking,
+        runtime_tracking=runtime_tracking,
+        agent_tracking=agent_tracking,
+        dry_run=args.dry_run,
+        kit_tracking_overrides=kit_tracking_overrides,
+        apply_default_to_missing_kits=True,
+    )
     # @cpt-end:cpt-studio-algo-core-infra-create-config:p1:inst-mkdir-kits
 
     # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-delegate-agents
@@ -1111,12 +1478,15 @@ def cmd_init(argv: List[str]) -> int:
     actions["root_agents"] = root_agents_action
     root_claude_action = _inject_root_claude(project_root, install_rel, dry_run=args.dry_run)
     actions["root_claude"] = root_claude_action
+    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-write-gitignore-footprint
     actions["gitignore"] = _write_gitignore_block(
         project_root,
         install_rel,
-        str(args.kit_tracking),
+        core_toml_path,
+        default_kit_tracking,
         dry_run=args.dry_run,
     )
+    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-write-gitignore-footprint
     # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-inject-agents
 
     if errors:
@@ -1143,6 +1513,12 @@ def cmd_init(argv: List[str]) -> int:
         "dry_run": bool(args.dry_run),
         "actions": actions,
         "root_system": root_system,
+        "runtime_tracking": runtime_tracking,
+        "agent_tracking": agent_tracking,
+        "kit_tracking": {
+            "default": default_kit_tracking,
+            "kits": _read_kit_tracking_state(core_toml_path, default=default_kit_tracking)[1],
+        },
     }
     if backups:
         init_result["backups"] = backups
@@ -1170,6 +1546,11 @@ def _human_init_ok(
     ui.detail("Project", project_name)
     ui.detail("Root", project_root.as_posix())
     ui.detail("Constructor dir", f"{install_rel}/")
+    ui.detail("Runtime tracking", str(data.get("runtime_tracking", "ignored")))
+    ui.detail("Agent tracking", str(data.get("agent_tracking", "ignored")))
+    kit_tracking = data.get("kit_tracking")
+    if isinstance(kit_tracking, dict):
+        ui.detail("Default kit tracking", str(kit_tracking.get("default", "tracked")))
     ui.blank()
 
     ui.step("Core files copied to .core/")
@@ -1184,7 +1565,9 @@ def _human_init_ok(
         for slug, kr in kit_results.items():
             n = kr.get("files_written", 0)
             kinds = kr.get("artifact_kinds", [])
-            ui.substep(f"{slug}: {n} files generated ({', '.join(kinds)})")
+            tracking = kr.get("tracking")
+            suffix = f"; git tracking: {tracking}" if tracking else ""
+            ui.substep(f"{slug}: {n} files generated ({', '.join(kinds)}){suffix}")
 
     ui.step("AGENTS.md navigation block injected into project root")
 

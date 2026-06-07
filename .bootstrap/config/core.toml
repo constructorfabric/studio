@@ -9,6 +9,7 @@ format = "CFS"
 path = "config/kits/sdlc"
 version = "v1.1.1"
 source = "github:constructorfabric/studio-kit-sdlc"
+tracking = "ignored"
 
 [kits.sdlc.resources]
 [kits.sdlc.resources.adr_template]
@@ -153,3 +154,9 @@ conf_version = "1.0.0"
 [integrations]
 [integrations.ralphex]
 executable_path = ""
+
+[install]
+version_source = "project_config"
+kit_tracking = "tracked"
+runtime_tracking = "ignored"
+agent_tracking = "ignored"

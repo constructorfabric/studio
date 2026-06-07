@@ -689,6 +689,19 @@ def test_version_output_uses_cache_provenance(monkeypatch, capsys):
     assert "verified: verified" in out
 
 
+def test_local_cache_version_does_not_warn_as_project_update(monkeypatch, capsys, tmp_path):
+    from studio_proxy import cli
+
+    project_skill = tmp_path / "studio.py"
+    project_skill.write_text("", encoding="utf-8")
+    monkeypatch.setattr(cli, "get_cached_version", lambda: "local:v1.0.0")
+    monkeypatch.setattr(cli, "get_project_version", lambda _path: "v1.0.0")
+
+    cli._background_version_check(project_skill)
+
+    assert "update available" not in capsys.readouterr().err
+
+
 def test_version_output_uses_project_provenance(monkeypatch, capsys, tmp_path):
     from studio_proxy import cli
     import studio_proxy.telemetry as telemetry

@@ -11,13 +11,11 @@ This directory contains **user-editable** configuration files.
 
 ## Directories
 
-- `kits/{slug}/` — editable installed kit content: templates, rules,
-  checklists, constraints, workflows, scripts, and skill surfaces.
-  Modify these files directly when you need project-local customization.
+- `kits/{slug}/` — kit files (SKILL.md, AGENTS.md, artifacts/, codebase/, workflows/, scripts/).
+  These are updated via `cfs update` or `cfs kit update`.
 
 ## Tips
 
 - `AGENTS.md` and `SKILL.md` start empty. Add any project-specific rules or
-  skill instructions here — they will be picked up alongside installed kit content.
-- Use `cfs kit update` to update installed kit files from their registered source.
-  Inspect the diff before accepting upstream changes over local customizations.
+  skill instructions here — they will be picked up alongside the kit ones.
+- Kit files can be edited directly; `cfs kit update` shows a diff for changes.
