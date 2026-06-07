@@ -82,15 +82,18 @@ def github_anchor(text: str) -> str:
     - Strip markdown links ``[text](url)`` → keep text
     - Remove inline formatting (bold, italic, code backticks, strikethrough)
     - Lowercase
-    - Keep word chars (unicode), spaces, hyphens
+    - Keep word chars (unicode), underscores, spaces, hyphens
     - Spaces → hyphens (consecutive hyphens preserved, matching GitHub)
     """
     text = text.strip().lower()
     # Remove markdown links but keep link text
     text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
-    # Remove formatting markers: **, __, *, _, `, ~
-    text = re.sub(r"\*\*|__|[*_`~]", "", text)
-    # Keep only word chars, spaces, hyphens
+    # Remove underscore emphasis markers only at delimiter-like boundaries so
+    # literal underscores inside heading text remain part of the anchor.
+    text = re.sub(r"(?<!\w)_{1,2}(?=\S)|(?<=\S)_{1,2}(?!\w)", "", text)
+    # Remove remaining inline formatting markers: bold, italic, code, strike.
+    text = re.sub(r"\*\*|[*`~]", "", text)
+    # Keep only word chars, spaces, hyphens. In Python, \w includes underscore.
     text = re.sub(r"[^\w\s\-]", "", text)
     # Each space → hyphen individually (GitHub preserves consecutive hyphens)
     text = re.sub(r"\s", "-", text)

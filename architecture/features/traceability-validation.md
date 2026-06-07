@@ -386,7 +386,7 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 - [x] - `p1` - Internal helpers: unique slug, next heading finder, manual TOC stripping, TOC section finder, entry extraction, anchor building, heading line finder - `inst-toc-util-helpers`
 - [x] - `p1` - Fence-state update helper used by heading parser and TOC inserters - `inst-toc-util-fence-update`
 - [x] - `p1` - HTML marker constants for `<!-- toc -->` / `<!-- /toc -->` fence detection - `inst-toc-util-markers-constants`
-- [x] - `p1` - GitHub-compatible anchor slug generator: lowercase, strip special chars, replace spaces with hyphens - `inst-toc-util-github-anchor`
+- [x] - `p1` - GitHub-compatible anchor slug generator: lowercase, strip special chars, preserve literal underscores in heading text, replace spaces with hyphens - `inst-toc-util-github-anchor`
 - [x] - `p1` - Unique-slug deduplicator: append `-N` suffix on collision - `inst-toc-util-unique-slug`
 - [x] - `p1` - Manual TOC stripper: remove leading list lines before any heading - `inst-toc-util-strip-manual`
 - [x] - `p1` - Link regex constant for matching `[text](anchor)` TOC entries - `inst-toc-util-link-re`
