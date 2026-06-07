@@ -264,7 +264,43 @@ DO:
         "system": "<system name>",
         "git_commit_mode": "commit|stage|none",
         "contributing_guide": "<object {path, directives}> | null",
-        "git_constraint": "<string — the mode-matched constraint block from {cf-studio-path}/.core/skills/studio/SKILL.md § GitCommitModeGate>"
+        "git_constraint": "<string — the mode-matched constraint block from {cf-studio-path}/.core/skills/studio/SKILL.md § GitCommitModeGate>",
+        "commit_footer_contract": {
+          "required_trailers": [
+            {
+              "order": 10,
+              "token": "Co-authored-by",
+              "value": "Constructor Studio <291158726+constructor-studio[bot]@users.noreply.github.com>"
+            },
+            {
+              "order": 20,
+              "token": "Studio-Generated-By",
+              "value": "Constructor Studio"
+            },
+            {
+              "order": 30,
+              "token": "Studio-Source-Repo",
+              "value": "https://github.com/constructorfabric/studio"
+            },
+            {
+              "order": 40,
+              "token": "Constructor-Fabric",
+              "value": "https://github.com/constructorfabric"
+            }
+          ],
+          "optional_trailers": [
+            {
+              "order": 50,
+              "token": "Studio-Version",
+              "value_source": "exact cfs --version output when command succeeds and output is non-empty; omit otherwise"
+            },
+            {
+              "order": 60,
+              "token": "Studio-Workflows",
+              "value_source": "known workflow identifiers when known and non-empty; omit otherwise"
+            }
+          ]
+        }
       }
     }
 
@@ -293,7 +329,9 @@ RULES:
       mode, kind (when applicable), rules_mode, target_paths (non-empty array)
   - ALWAYS ensure dispatch_payload contains non-null system (always carried from earlier phases)
   - ALWAYS ensure dispatch_payload contains non-null git_commit_mode (commit/stage/none),
-      contributing_guide (object or null), and non-empty git_constraint
+      contributing_guide (object or null), non-empty git_constraint, and commit_footer_contract
+      from GitCommitModeGate
+  - ALWAYS preserve commit_footer_contract unchanged in dispatch_payload regardless of git_commit_mode
   - ALWAYS WHEN input contains a findings array (fix mode): ALWAYS propagate every finding ID
       unchanged into dispatch_payload.findings (no silent drops)
 ```

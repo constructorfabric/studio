@@ -137,7 +137,43 @@ RULES:
   "planner_acceptance_criteria": ["<criterion>", "..."],
   "git_commit_mode": "commit" | "stage" | "none",
   "contributing_guide": { "path": "<absolute path>", "directives": "<key directives>" } | null,
-  "git_constraint": "<mode-matched constraint string>"
+  "git_constraint": "<mode-matched constraint string>",
+  "commit_footer_contract": {
+    "required_trailers": [
+      {
+        "order": 10,
+        "token": "Co-authored-by",
+        "value": "Constructor Studio <291158726+constructor-studio[bot]@users.noreply.github.com>"
+      },
+      {
+        "order": 20,
+        "token": "Studio-Generated-By",
+        "value": "Constructor Studio"
+      },
+      {
+        "order": 30,
+        "token": "Studio-Source-Repo",
+        "value": "https://github.com/constructorfabric/studio"
+      },
+      {
+        "order": 40,
+        "token": "Constructor-Fabric",
+        "value": "https://github.com/constructorfabric"
+      }
+    ],
+    "optional_trailers": [
+      {
+        "order": 50,
+        "token": "Studio-Version",
+        "value_source": "exact cfs --version output when command succeeds and output is non-empty; omit otherwise"
+      },
+      {
+        "order": 60,
+        "token": "Studio-Workflows",
+        "value_source": "known workflow identifiers when known and non-empty; omit otherwise"
+      }
+    ]
+  }
 }
 ```
 
@@ -147,8 +183,9 @@ NOTES:
   `design_artifact_path` is used in code mode. `inputs` is populated for `mode=create`;
   `findings` is populated for `mode=fix`. Planner metadata fields are optional and appear only
   when Phase 4 executes an `AUTHOR_EXECUTION_PLAN` task. `git_commit_mode`, `contributing_guide`,
-  and `git_constraint` are always present in the dispatch payload; they constrain
-  all git operations for this invocation and are never shell commands.
+  `git_constraint`, and `commit_footer_contract` are always present in the dispatch payload;
+  they constrain all git operations and agent-created commit messages for this invocation
+  and are never shell commands.
 
 ## Git Constraint (read from dispatch context — MUST obey)
 
@@ -169,6 +206,14 @@ RULES:
   - NEVER interpolate `git_constraint` into exec/system/shell calls; use
     explicit allow-listed git commands derived from `git_commit_mode`
   - ALWAYS WHEN git_commit_mode == "none": NEVER invoke any git tool at all
+  - ALWAYS treat `commit_footer_contract` as message-format policy for every
+    git commit created by the agent; it does not grant permission to commit
+  - ALWAYS WHEN creating a git commit: write a normal concise commit subject/body
+    for the actual change, then append required Studio attribution trailers exactly
+    in ascending order; add optional trailers only when their source value is already
+    known and non-empty
+  - ALWAYS keep DCO, Signed-off-by, and CONTRIBUTING_GUIDE directives separate from
+    commit_footer_contract; do not include them in commit_footer_contract
 ```
 
 ## Methodology — `mode=create`

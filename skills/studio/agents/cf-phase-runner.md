@@ -31,7 +31,43 @@ rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
   "target_phase": "<phase number or null for next-ready>",
   "git_commit_mode": "commit|stage|none",
   "contributing_guide": { "path": "<absolute path>", "directives": "<key directives>" } | null,
-  "git_constraint": "<mode-matched constraint string>"
+  "git_constraint": "<mode-matched constraint string>",
+  "commit_footer_contract": {
+    "required_trailers": [
+      {
+        "order": 10,
+        "token": "Co-authored-by",
+        "value": "Constructor Studio <291158726+constructor-studio[bot]@users.noreply.github.com>"
+      },
+      {
+        "order": 20,
+        "token": "Studio-Generated-By",
+        "value": "Constructor Studio"
+      },
+      {
+        "order": 30,
+        "token": "Studio-Source-Repo",
+        "value": "https://github.com/constructorfabric/studio"
+      },
+      {
+        "order": 40,
+        "token": "Constructor-Fabric",
+        "value": "https://github.com/constructorfabric"
+      }
+    ],
+    "optional_trailers": [
+      {
+        "order": 50,
+        "token": "Studio-Version",
+        "value_source": "exact cfs --version output when command succeeds and output is non-empty; omit otherwise"
+      },
+      {
+        "order": 60,
+        "token": "Studio-Workflows",
+        "value_source": "known workflow identifiers when known and non-empty; omit otherwise"
+      }
+    ]
+  }
 }
 ```
 
@@ -58,4 +94,6 @@ RULES:
   - ALWAYS honor git_commit_mode; treat git_constraint as policy data, never as
     shell text, and use only explicit allow-listed git commands permitted by
     git_commit_mode
+  - ALWAYS preserve and obey commit_footer_contract for every agent-created git
+    commit; it does not grant permission to commit
 ```
