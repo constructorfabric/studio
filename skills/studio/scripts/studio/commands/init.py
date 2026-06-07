@@ -1126,6 +1126,18 @@ def cmd_init(argv: List[str]) -> int:
             dry_run=args.dry_run,
         )
 
+    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-if-interactive
+    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-prompt-dir
+    default_install_dir = existing_install_rel or DEFAULT_INSTALL_DIR
+    install_rel = args.install_dir or default_install_dir
+    install_rel = install_rel.strip() or default_install_dir
+
+    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-define-root
+    root_system = _define_root_system(project_root)
+    project_name = str(args.project_name).strip() if args.project_name else root_system["name"]
+    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-define-root
+
+    install_options_prompted = False
     legacy_migration_declined = False
     legacy_install_rel: Optional[str] = None
     if existing_install_rel is None:
@@ -1166,24 +1178,31 @@ def cmd_init(argv: List[str]) -> int:
                     and sys.stdin.isatty()
                 )
                 if args.install_dir is None and migration_was_interactive:
-                    default_target = legacy_rel.strip()
-                    sys.stderr.write("\n")
-                    sys.stderr.write(
-                        "  \033[2mPress Enter to migrate in place "
-                        "(recommended), or type a different path to install "
-                        "side-by-side.\033[0m\n"
+                    install_rel = legacy_rel.strip() or install_rel
+                if migration_was_interactive:
+                    (
+                        install_rel,
+                        project_name,
+                        runtime_tracking,
+                        agent_tracking,
+                        default_kit_tracking,
+                        kit_tracking_overrides,
+                    ) = _prompt_install_options(
+                        project_root,
+                        install_rel,
+                        project_name,
+                        runtime_tracking,
+                        agent_tracking,
+                        default_kit_tracking,
+                        kit_tracking_overrides,
+                        interactive,
                     )
-                    target_rel = _prompt_path(
-                        "Constructor Studio directory (relative to project root)?",
-                        default_target,
-                    )
-                    target_rel = target_rel.strip() or default_target
-                else:
-                    target_rel = args.install_dir or DEFAULT_INSTALL_DIR
+                    install_options_prompted = True
+
                 rc, result = migrate_from_cypilot(
                     project_root=project_root,
                     from_dir=legacy_rel,
-                    to_dir=target_rel,
+                    to_dir=install_rel,
                     dry_run=args.dry_run,
                     force=False,
                     yes=args.yes or args.migrate_from_cypilot == "yes",
@@ -1194,18 +1213,7 @@ def cmd_init(argv: List[str]) -> int:
                 return rc
             legacy_migration_declined = True
 
-    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-if-interactive
-    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-prompt-dir
-    default_install_dir = existing_install_rel or DEFAULT_INSTALL_DIR
-    install_rel = args.install_dir or default_install_dir
-    install_rel = install_rel.strip() or default_install_dir
-
-    # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-define-root
-    root_system = _define_root_system(project_root)
-    project_name = str(args.project_name).strip() if args.project_name else root_system["name"]
-    # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-define-root
-
-    if interactive:
+    if interactive and not install_options_prompted:
         (
             install_rel,
             project_name,

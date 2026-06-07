@@ -3661,10 +3661,9 @@ def test_ensure_supported_legacy_version_dry_run_bypass_does_not_trigger_bump(tm
 # ---------------------------------------------------------------------------
 
 
-def test_cmd_init_migration_prompts_for_target_dir_when_no_install_dir_flag(tmp_path, monkeypatch):
-    """When the user accepts migration via the interactive prompt and does
-    NOT pass --install-dir, cmd_init MUST prompt for the target install
-    dir, defaulting to in-place migration (target = legacy dir name)."""
+def test_cmd_init_migration_shows_install_options_before_migration(tmp_path, monkeypatch, capsys):
+    """Interactive migration shows the standard init options menu first,
+    defaulting to in-place migration (target = legacy dir name)."""
     import studio.commands.init as init_module
     import studio.commands.migrate_from_cypilot as migration
 
@@ -3674,8 +3673,10 @@ def test_cmd_init_migration_prompts_for_target_dir_when_no_install_dir_flag(tmp_
 
     # Force the prompt gate to consider stdin interactive (TTY).
     monkeypatch.setattr(init_module.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda: "n")
 
-    # Capture _prompt_path calls; simulate the user pressing Enter (return default).
+    # Capture _prompt_path calls; the options menu is declined, so no target-dir
+    # specific prompt should be needed after the standard menu is shown.
     prompt_calls: list[tuple[str, str]] = []
 
     def fake_prompt_path(prompt, default):
@@ -3716,17 +3717,62 @@ def test_cmd_init_migration_prompts_for_target_dir_when_no_install_dir_flag(tmp_
     ])
 
     assert rc == 0
-    install_dir_prompts = [
-        (p, d) for p, d in prompt_calls
-        if "Constructor Studio directory" in p
-    ]
-    # cmd_init prompted exactly once for the install dir.
-    assert len(install_dir_prompts) == 1
-    # Default offered is the legacy dir name (in-place migration recommended).
-    assert install_dir_prompts[0][1] == ".bootstrap"
+    err = capsys.readouterr().err
+    assert "Installation options" in err
+    assert "Constructor Studio directory: .bootstrap/" in err
+    assert "Review or change installation options?" in err
+    assert prompt_calls == []
     # migrate_from_cypilot was invoked with that default as to_dir.
     assert len(migrate_calls) == 1
     assert migrate_calls[0]["to_dir"] == ".bootstrap"
+    assert migrate_calls[0]["from_dir"] == ".bootstrap"
+
+
+def test_cmd_init_migration_install_options_can_change_target_dir(tmp_path, monkeypatch):
+    """The standard init options menu controls migrate_from_cypilot to_dir."""
+    import studio.commands.init as init_module
+    import studio.commands.migrate_from_cypilot as migration
+
+    _make_legacy_project(tmp_path, legacy_dir=".bootstrap", version="3.9.0")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(init_module.sys.stdin, "isatty", lambda: True)
+
+    answers = iter(["y", "1", "7"])
+    monkeypatch.setattr("builtins.input", lambda: next(answers))
+
+    def fake_prompt_path(prompt, default):
+        assert "Constructor Studio directory" in prompt
+        assert default == ".bootstrap"
+        return ".custom-target"
+
+    monkeypatch.setattr(init_module, "_prompt_path", fake_prompt_path)
+    monkeypatch.setattr(
+        migration,
+        "should_migrate_from_cypilot",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        migration,
+        "ensure_supported_legacy_version",
+        lambda **kwargs: (True, {"status": "PASS"}),
+    )
+
+    migrate_calls: list[dict] = []
+
+    def fake_migrate(**kwargs):
+        migrate_calls.append(kwargs)
+        return (0, {"status": "PASS"})
+
+    monkeypatch.setattr(migration, "migrate_from_cypilot", fake_migrate)
+
+    rc = init_module.cmd_init([
+        "--project-root", str(tmp_path),
+    ])
+
+    assert rc == 0
+    assert len(migrate_calls) == 1
+    assert migrate_calls[0]["to_dir"] == ".custom-target"
     assert migrate_calls[0]["from_dir"] == ".bootstrap"
 
 
