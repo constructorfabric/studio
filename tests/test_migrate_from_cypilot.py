@@ -1343,10 +1343,11 @@ def test_init_yes_does_not_imply_migration(tmp_path, capsys, monkeypatch, follow
     assert "<!-- @cf:root-agents -->" in agents_text
 
 
-def test_existing_constructor_wins_over_legacy_migration(tmp_path, capsys, followup_update_ok):
+def test_existing_constructor_wins_over_legacy_migration(tmp_path, capsys, monkeypatch, followup_update_ok):
     from studio.cli import main
 
     _make_legacy_project(tmp_path)
+    _patch_minimal_constructor_cache(monkeypatch, tmp_path)
     constructor_dir = tmp_path / ".cf-constructor"
     (constructor_dir / "config").mkdir(parents=True)
     sentinel = constructor_dir / "config" / "core.toml"
@@ -1371,10 +1372,12 @@ def test_existing_constructor_wins_over_legacy_migration(tmp_path, capsys, follo
     ])
 
     out = json.loads(capsys.readouterr().out)
-    assert rc == 2
-    assert out["status"] == "FAIL"
-    assert "already initialized" in out["message"]
-    assert sentinel.read_text(encoding="utf-8") == "existing = true\n"
+    assert rc == 0
+    assert out["status"] == "REPAIRED"
+    assert out["studio_dir"] == constructor_dir.as_posix()
+    assert out["version_changed"] is False
+    assert (tmp_path / "cypilot").is_dir()
+    assert "existing = true" in sentinel.read_text(encoding="utf-8")
 
 
 def test_implicit_migration_uses_install_dir_as_target(tmp_path, capsys, followup_update_ok):

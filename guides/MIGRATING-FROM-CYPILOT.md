@@ -63,7 +63,7 @@ A safe starting choice is `1`. The migrator writes using Constructor Studio targ
 ## What Is NOT Touched
 
 - Files outside `project_root`.
-- Anything inside `{cf-studio-path}/.core/` — kit-managed, owned by `cfs update`.
+- Anything inside `{cf-studio-path}/.core/` or `{cf-studio-path}/.gen/` — generated Studio runtime, repaired by `cfs init`/`cfs update`.
 - `@cpt-*` / `@cpt:*` markers inside constructor-studio's own source — by v1.0.0 design these are intentionally preserved and routed to needs-review (B).
 
 ---

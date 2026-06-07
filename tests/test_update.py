@@ -255,8 +255,97 @@ class TestCmdUpdateErrors(unittest.TestCase):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
-                        rc = cmd_update([])
+                        rc = cmd_update(["--with-kits", "yes"])
                 self.assertEqual(rc, 1)
+            finally:
+                os.chdir(cwd)
+
+    def test_malformed_gitignore_returns_controlled_error(self):
+        from studio.commands.update import cmd_update
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            cache = root / "cache"
+            _make_cache(cache)
+            (root / ".git").mkdir()
+            (root / "AGENTS.md").write_text(
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".cf-studio"\n```\n<!-- /@cf:root-agents -->\n',
+                encoding="utf-8",
+            )
+            (root / ".gitignore").write_text(
+                "# existing\n# BEGIN Constructor Studio\n",
+                encoding="utf-8",
+            )
+            studio_dir = root / ".cf-studio"
+            config_dir = studio_dir / "config"
+            config_dir.mkdir(parents=True)
+            _write_toml(config_dir / "core.toml", {
+                "version": "1.0",
+                "project_root": "..",
+                "install": {
+                    "kit_tracking": "tracked",
+                    "runtime_tracking": "ignored",
+                    "agent_tracking": "ignored",
+                },
+                "kits": {},
+            })
+
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                with patch("studio.commands.update.CACHE_DIR", cache):
+                    buf = io.StringIO()
+                    err = io.StringIO()
+                    with redirect_stdout(buf), redirect_stderr(err):
+                        rc = cmd_update(["-y"])
+                self.assertEqual(rc, 1)
+                result = json.loads(buf.getvalue())
+                self.assertEqual(result["status"], "ERROR")
+                self.assertEqual(result["errors"][0]["path"], ".gitignore")
+                self.assertIn("malformed", result["errors"][0]["error"])
+            finally:
+                os.chdir(cwd)
+
+    def test_update_preserves_runtime_and_agent_tracking(self):
+        from studio.commands.update import cmd_update
+        from studio.utils import toml_utils
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            cache = root / "cache"
+            _make_cache(cache)
+            (root / ".git").mkdir()
+            (root / "AGENTS.md").write_text(
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".cf-studio"\n```\n<!-- /@cf:root-agents -->\n',
+                encoding="utf-8",
+            )
+            studio_dir = root / ".cf-studio"
+            config_dir = studio_dir / "config"
+            config_dir.mkdir(parents=True)
+            core_toml = config_dir / "core.toml"
+            _write_toml(core_toml, {
+                "version": "1.0",
+                "project_root": "..",
+                "install": {
+                    "kit_tracking": "tracked",
+                    "runtime_tracking": "tracked",
+                    "agent_tracking": "tracked",
+                },
+                "kits": {},
+            })
+
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                with patch("studio.commands.update.CACHE_DIR", cache):
+                    buf = io.StringIO()
+                    err = io.StringIO()
+                    with redirect_stdout(buf), redirect_stderr(err):
+                        rc = cmd_update(["-y"])
+                self.assertEqual(rc, 0, buf.getvalue())
+                install = toml_utils.load(core_toml)["install"]
+                self.assertEqual(install["runtime_tracking"], "tracked")
+                self.assertEqual(install["agent_tracking"], "tracked")
             finally:
                 os.chdir(cwd)
 
@@ -312,7 +401,7 @@ class TestCmdUpdateErrors(unittest.TestCase):
                     err_buf = io.StringIO()
                     try:
                         with redirect_stdout(buf), redirect_stderr(err_buf):
-                            return_code = cmd_update(["--yes"])
+                            return_code = cmd_update(["--yes", "--with-kits", "yes"])
                     except Exception as exc:
                         raised_exc = exc
             finally:
@@ -387,7 +476,7 @@ class TestCmdUpdatePipeline(unittest.TestCase):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
-                        rc = cmd_update([])
+                        rc = cmd_update(["--with-kits", "yes"])
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
                 self.assertIn(out["status"], ["PASS", "WARN"])
@@ -477,7 +566,7 @@ class TestCmdUpdatePipeline(unittest.TestCase):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
-                        rc = cmd_update([])
+                        rc = cmd_update(["--with-kits", "yes"])
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
                 kits = out["actions"].get("kits", {})
@@ -539,7 +628,7 @@ class TestCmdUpdatePipeline(unittest.TestCase):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
-                        rc = cmd_update(["-y"])
+                        rc = cmd_update(["-y", "--with-kits", "yes"])
                 self.assertEqual(rc, 0)
             finally:
                 os.chdir(cwd)
@@ -609,7 +698,7 @@ class TestCmdUpdatePipeline(unittest.TestCase):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
-                        rc = cmd_update(["-y"])
+                        rc = cmd_update(["-y", "--with-kits", "yes"])
                 self.assertEqual(rc, 0)
             finally:
                 os.chdir(cwd)
@@ -665,7 +754,7 @@ class TestCmdUpdatePipeline(unittest.TestCase):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
-                        rc = cmd_update(["-y"])
+                        rc = cmd_update(["-y", "--with-kits", "yes"])
                 self.assertEqual(rc, 0)
                 output = json.loads(buf.getvalue())
                 self.assertEqual(output["status"], "WARN")
@@ -710,7 +799,7 @@ class TestCmdUpdatePipeline(unittest.TestCase):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
-                        rc = cmd_update([])
+                        rc = cmd_update(["--with-kits", "yes"])
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
                 # Scaffold files should be recreated
@@ -749,7 +838,7 @@ class TestCmdUpdatePipeline(unittest.TestCase):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
-                        rc = cmd_update([])
+                        rc = cmd_update(["--with-kits", "yes"])
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
                 kits = out["actions"].get("kits", {})
@@ -798,7 +887,7 @@ class TestUpdateHelperExceptions(unittest.TestCase):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
-                        rc = cmd_update([])
+                        rc = cmd_update(["--with-kits", "yes"])
                 self.assertEqual(rc, 0)
             finally:
                 os.chdir(cwd)
@@ -1257,7 +1346,7 @@ class TestCmdUpdateWhatsnew(unittest.TestCase):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
-                        rc = cmd_update(["-y"])
+                        rc = cmd_update(["-y", "--with-kits", "yes"])
                 self.assertEqual(rc, 0)
                 stderr_text = err.getvalue()
                 self.assertIn("Test change", stderr_text)
@@ -1305,7 +1394,7 @@ class TestCmdUpdateWhatsnew(unittest.TestCase):
                     buf2 = io.StringIO()
                     err2 = io.StringIO()
                     with redirect_stdout(buf2), redirect_stderr(err2):
-                        rc = cmd_update([])
+                        rc = cmd_update(["--with-kits", "yes"])
                 self.assertEqual(rc, 0)
                 self.assertNotIn("What's new", err2.getvalue())
             finally:
@@ -1406,7 +1495,7 @@ class TestCmdUpdateWhatsnew(unittest.TestCase):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
-                        rc = cmd_update(["-y"])
+                        rc = cmd_update(["-y", "--with-kits", "yes"])
                 self.assertEqual(rc, 0)
                 mock_show.assert_called()
                 mock_update.assert_called()
@@ -2053,6 +2142,31 @@ class TestHumanUpdateOk(unittest.TestCase):
         out = buf.getvalue()
         self.assertIn("sdlc", out)
         self.assertIn("Kits", out)
+
+    def test_with_kits_skipped_tracking_summary(self):
+        from studio.commands.update import _human_update_ok
+        buf = io.StringIO()
+        with redirect_stderr(buf):
+            _human_update_ok({
+                "status": "PASS",
+                "project_root": "/tmp/proj",
+                "studio_dir": "/tmp/proj/.bootstrap",
+                "dry_run": False,
+                "actions": {
+                    "kits": {
+                        "status": "skipped",
+                        "reason": "--with-kits not enabled",
+                        "kit_tracking": {
+                            "default": "tracked",
+                            "kits": {"sdlc": "ignored"},
+                        },
+                    },
+                },
+            })
+        out = buf.getvalue()
+        self.assertIn("Kits: skipped", out)
+        self.assertIn("--with-kits not enabled", out)
+        self.assertIn("kit_tracking=", out)
 
     def test_with_core_update(self):
         from studio.commands.update import _human_update_ok
@@ -2818,7 +2932,7 @@ class TestCmdUpdateManifestMigration(unittest.TestCase):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
-                        rc = cmd_update([])
+                        rc = cmd_update(["--with-kits", "yes"])
                 self.assertEqual(rc, 0)
 
                 # Verify resources were populated in core.toml
@@ -2868,7 +2982,7 @@ class TestCmdUpdateManifestMigration(unittest.TestCase):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
-                        rc = cmd_update(["-y"])
+                        rc = cmd_update(["-y", "--with-kits", "yes"])
 
                 self.assertEqual(rc, 1)
                 out = json.loads(buf.getvalue())

@@ -5,6 +5,8 @@ Provides CLI handlers for kit install and kit update.
 Kits are direct file packages — no blueprint processing or generation.
 """
 
+from __future__ import annotations
+
 # @cpt-algo:cpt-studio-algo-kit-github-helpers:p1
 # @cpt-begin:cpt-studio-algo-kit-github-helpers:p1:inst-kit-imports
 import argparse
@@ -18,12 +20,15 @@ import tempfile
 import urllib.error
 import urllib.request
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from ..utils._tomllib_compat import tomllib
 from ..utils.ui import ui
 from ..utils.whatsnew import show_kit_whatsnew
 # @cpt-end:cpt-studio-algo-kit-github-helpers:p1:inst-kit-imports
+
+if TYPE_CHECKING:
+    from ..utils.manifest import Manifest, ManifestResource
 
 
 # ---------------------------------------------------------------------------
@@ -663,10 +668,14 @@ def _normalize_registered_kit_path(
 
 
 def _serialize_manifest_binding_path(target_path: Any, studio_dir: Path) -> str:
-    target_str = os.fspath(target_path)
+    raw_target = os.fspath(target_path)
+    if os.name != "nt" and _is_windows_absolute_path(raw_target):
+        return _normalize_path_string(raw_target)
+    target_str = os.fspath(Path(raw_target).resolve())
+    studio_str = os.fspath(studio_dir.resolve())
     try:
         return _normalize_path_string(
-            os.path.relpath(target_str, os.fspath(studio_dir))
+            os.path.relpath(target_str, studio_str)
         )
     except ValueError:
         return _normalize_path_string(target_str)
@@ -930,6 +939,160 @@ def _read_project_name_from_registry(config_dir: Path) -> Optional[str]:
 # @cpt-end:cpt-studio-algo-kit-regen-gen:p1:inst-read-project-name-fn
 
 
+def _input_stderr(prompt: str) -> str:
+    sys.stderr.write(prompt)
+    sys.stderr.flush()
+    try:
+        return input("").strip()
+    except EOFError:
+        return ""
+
+
+def _resolve_manifest_user_path(base: Path, raw_path: str) -> Path:
+    user_path = Path(raw_path)
+    if user_path.is_absolute():
+        return user_path.resolve()
+    return (base / user_path).resolve()
+
+
+def _manifest_resource_target(
+    kit_root: Path,
+    res: ManifestResource,
+    resource_overrides: Dict[str, Path],
+) -> Path:
+    if res.id in resource_overrides:
+        return resource_overrides[res.id]
+    return (kit_root / res.default_path).resolve()
+
+
+def _manifest_resource_bindings(
+    studio_dir: Path,
+    kit_root: Path,
+    resources: List[ManifestResource],
+    resource_overrides: Dict[str, Path],
+) -> Dict[str, Dict[str, str]]:
+    return {
+        res.id: {
+            "path": _serialize_manifest_binding_path(
+                _manifest_resource_target(kit_root, res, resource_overrides),
+                studio_dir,
+            )
+        }
+        for res in resources
+    }
+
+
+def _emit_manifest_install_plan(
+    kit_slug: str,
+    kit_root: Path,
+    resources: List[ManifestResource],
+    resource_overrides: Dict[str, Path],
+) -> None:
+    sys.stderr.write("\n")
+    sys.stderr.write(f"  Kit install plan: {kit_slug}\n")
+    sys.stderr.write(f"  - Kit root: {kit_root}\n")
+    if not resources:
+        sys.stderr.write("  - Resources: none declared\n")
+    else:
+        sys.stderr.write("  - Files to write:\n")
+        for idx, res in enumerate(resources, start=1):
+            target = _manifest_resource_target(kit_root, res, resource_overrides)
+            mod = "editable" if res.user_modifiable else "locked"
+            sys.stderr.write(
+                f"    [{idx}] {res.id} ({res.type}, {mod}): "
+                f"{res.source} -> {target}\n"
+            )
+    sys.stderr.write("\n")
+
+
+def _prompt_manifest_install_plan(
+    kit_slug: str,
+    studio_dir: Path,
+    kit_root: Path,
+    manifest: Manifest,
+    *,
+    registered_kit_root_rel: Optional[str] = None,
+    interactive: bool,
+) -> tuple[Path, str, Dict[str, Dict[str, str]]]:
+    resource_overrides: Dict[str, Path] = {}
+    resources = list(manifest.resources)
+    can_edit = manifest.user_modifiable or any(res.user_modifiable for res in resources)
+    root_changed = False
+
+    def _kit_root_rel() -> str:
+        if registered_kit_root_rel is not None and not root_changed:
+            return registered_kit_root_rel
+        return _serialize_manifest_binding_path(kit_root, studio_dir)
+
+    if not interactive or not sys.stdin.isatty():
+        kit_root_rel = _kit_root_rel()
+        return (
+            kit_root,
+            kit_root_rel,
+            _manifest_resource_bindings(studio_dir, kit_root, resources, resource_overrides),
+        )
+
+    # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-prompt-path
+    while True:
+        _emit_manifest_install_plan(kit_slug, kit_root, resources, resource_overrides)
+        if not can_edit:
+            kit_root_rel = _kit_root_rel()
+            return (
+                kit_root,
+                kit_root_rel,
+                _manifest_resource_bindings(studio_dir, kit_root, resources, resource_overrides),
+            )
+        answer = _input_stderr("  Change kit install paths? [y/N]: ").lower()
+        if answer not in ("y", "yes"):
+            kit_root_rel = _kit_root_rel()
+            return (
+                kit_root,
+                kit_root_rel,
+                _manifest_resource_bindings(studio_dir, kit_root, resources, resource_overrides),
+            )
+
+        sys.stderr.write("\n")
+        sys.stderr.write("  Select path to change\n")
+        menu: List[tuple[str, str, Optional[ManifestResource]]] = []
+        if manifest.user_modifiable:
+            menu.append(("root", f"Kit root -> {kit_root}", None))
+        for res in resources:
+            if not res.user_modifiable:
+                continue
+            label = f"{res.id} -> {_manifest_resource_target(kit_root, res, resource_overrides)}"
+            menu.append(("resource", label, res))
+        for idx, (_, label, _res) in enumerate(menu, start=1):
+            sys.stderr.write(f"  [{idx}] {label}\n")
+        done_idx = len(menu) + 1
+        sys.stderr.write(f"  [{done_idx}] Done\n")
+        choice_raw = _input_stderr("  Choice: ").lower()
+        if choice_raw in ("", "d", "done", str(done_idx)):
+            kit_root_rel = _kit_root_rel()
+            return (
+                kit_root,
+                kit_root_rel,
+                _manifest_resource_bindings(studio_dir, kit_root, resources, resource_overrides),
+            )
+        try:
+            choice = int(choice_raw)
+        except ValueError:
+            continue
+        if choice < 1 or choice > len(menu):
+            continue
+        kind, _, res = menu[choice - 1]
+        if kind == "root":
+            new_root = _input_stderr(f"  Kit root directory [{kit_root}]: ")
+            if new_root:
+                kit_root = _resolve_manifest_user_path(studio_dir, new_root)
+                root_changed = True
+        elif res is not None:
+            current_target = _manifest_resource_target(kit_root, res, resource_overrides)
+            new_target = _input_stderr(f"  Resource '{res.id}' path [{current_target}]: ")
+            if new_target:
+                resource_overrides[res.id] = _resolve_manifest_user_path(kit_root, new_target)
+    # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-prompt-path
+
+
 # ---------------------------------------------------------------------------
 # Core kit installation logic (used by both cmd_kit_install and init)
 # ---------------------------------------------------------------------------
@@ -958,7 +1121,7 @@ def install_kit(
         kit_slug: Kit identifier.
         kit_version: Kit version string.
         source: Source identifier for registration (e.g. "github:owner/repo").
-        interactive: If True and stdin is a tty, prompt for user_modifiable paths.
+        interactive: If True and stdin is a tty, show the install plan and allow path edits.
 
     Returns:
         Dict with: status, kit, version, files_copied,
@@ -1077,7 +1240,7 @@ def install_kit_with_manifest(
     studio_dir: Path,
     kit_slug: str,
     kit_version: str,
-    manifest: "Manifest",
+    manifest: Manifest,
     *,
     interactive: bool = True,
     source: str = "",
@@ -1140,59 +1303,23 @@ def install_kit_with_manifest(
             "{slug}", kit_slug
         )
         kit_root = (studio_dir / kit_root_rel).resolve()
-
-        if interactive and manifest.user_modifiable and sys.stdin.isatty():
-            try:
-                user_input = input(
-                    "Why this input is needed: choose where this kit's files should be installed.\n"
-                    "Press Enter to accept the suggested path, or type a different absolute or relative path.\n"
-                    "Suggested: keep the default unless you intentionally want this kit under a custom root.\n"
-                    f"Kit root directory [{kit_root}]: "
-                ).strip()
-                if user_input:
-                    kit_root = Path(user_input).resolve()
-            except (EOFError, KeyboardInterrupt):
-                pass
-
-        kit_root_rel = _serialize_manifest_binding_path(kit_root, studio_dir)
     # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-root-prompt
 
+    kit_root, kit_root_rel, resource_bindings = _prompt_manifest_install_plan(
+        kit_slug,
+        studio_dir,
+        kit_root,
+        manifest,
+        registered_kit_root_rel=kit_root_rel,
+        interactive=interactive,
+    )
     kit_root.mkdir(parents=True, exist_ok=True)
-    resource_bindings: Dict[str, Dict[str, str]] = {}
 
     # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-foreach-resource
     for res in manifest.resources:
-        # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-prompt-path
-        target_rel = res.default_path
-        if interactive and res.user_modifiable and sys.stdin.isatty():
-            try:
-                user_input = input(
-                    "Why this input is needed: choose where this resource should be installed.\n"
-                    "Press Enter to accept the suggested path, or type a different absolute or relative path.\n"
-                    "Suggested: keep the default unless this resource must live somewhere else in your project.\n"
-                    f"Resource '{res.id}' path [{kit_root / res.default_path}]: "
-                ).strip()
-                if user_input:
-                    user_path = Path(user_input)
-                    if user_path.is_absolute():
-                        target_abs = user_path
-                    else:
-                        target_abs = (kit_root / user_path).resolve()
-                    target_rel = _serialize_manifest_binding_path(target_abs, studio_dir)
-                    resource_bindings[res.id] = {"path": target_rel}
-                    # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-copy-resource
-                    _copy_manifest_resource(kit_source, res, target_abs)
-                    # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-copy-resource
-                    files_copied += 1
-                    continue
-            except (EOFError, KeyboardInterrupt):
-                pass
-        # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-prompt-path
-
         # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-default-path
-        target_abs = (kit_root / res.default_path).resolve()
-        binding_path = _serialize_manifest_binding_path(target_abs, studio_dir)
-        resource_bindings[res.id] = {"path": binding_path}
+        binding_path = resource_bindings[res.id]["path"]
+        target_abs = (studio_dir / binding_path).resolve()
         # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-default-path
 
         # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-copy-resource
@@ -1254,7 +1381,7 @@ def install_kit_with_manifest(
 # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-copy-manifest-resource
 def _copy_manifest_resource(
     kit_source: Path,
-    res: "ManifestResource",
+    res: ManifestResource,
     target_abs: Path,
 ) -> None:
     """Copy a single manifest resource from kit source to target path.

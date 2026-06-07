@@ -439,7 +439,7 @@ def _background_version_check(project_skill_path: Path) -> None:
 
         # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-version-mismatch
         # @cpt-begin:cpt-studio-state-core-infra-project-install:p1:inst-version-mismatch
-        if cached_version != project_version:
+        if _normalize_version_for_compare(cached_version) != _normalize_version_for_compare(project_version):
             # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-show-update-notice
             sys.stderr.write(
                 f"cfs: update available ({project_version} → {cached_version}). "
@@ -450,4 +450,11 @@ def _background_version_check(project_skill_path: Path) -> None:
         # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-version-mismatch
     except (OSError, ValueError):
         pass  # Never fail the actual command for a version check
+
+
+def _normalize_version_for_compare(version: str) -> str:
+    """Normalize local cache display versions for project/cache equality checks."""
+    if version.startswith("local:"):
+        return version.removeprefix("local:")
+    return version
 # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers

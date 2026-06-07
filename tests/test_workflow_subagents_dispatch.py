@@ -259,7 +259,7 @@ COMMIT_FOOTER_CONTRACT = {
     ),
     "required_trailers": [
         {
-            "token": "Co-authored-by",
+            "token": "Co-Authored-By",
             "value": "Constructor Studio <291158726+constructor-studio[bot]@users.noreply.github.com>",
             "order": 10,
         },
@@ -652,7 +652,7 @@ def _assert_commit_footer_contract_shape(contract: dict) -> None:
     required = contract["required_trailers"]
     assert [(entry["token"], entry["value"], entry["order"]) for entry in required] == [
         (
-            "Co-authored-by",
+            "Co-Authored-By",
             "Constructor Studio <291158726+constructor-studio[bot]@users.noreply.github.com>",
             10,
         ),
@@ -731,7 +731,7 @@ def test_git_commit_mode_gate_declares_studio_footer_contract_without_prompt_sna
         "DCO/Signed-off-by when required",
         "does not replace project-policy trailers",
         "does not grant permission to commit",
-        "Co-authored-by",
+        "Co-Authored-By",
         "Constructor Studio <291158726+constructor-studio[bot]@users.noreply.github.com>",
         "Studio-Source-Repo",
         "Constructor-Fabric",

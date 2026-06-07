@@ -325,7 +325,7 @@ NOTES:
     rendering: "Render every included trailer as '{token}: {value}' in ascending order across required_trailers and optional_trailers. Do not include separate rendered footer lines in this payload."
     required_trailers:
       - order: 10
-        token: "Co-authored-by"
+        token: "Co-Authored-By"
         value: "Constructor Studio <291158726+constructor-studio[bot]@users.noreply.github.com>"
       - order: 20
         token: "Studio-Generated-By"

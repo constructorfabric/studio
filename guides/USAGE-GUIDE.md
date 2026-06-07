@@ -152,7 +152,7 @@ cfs --version
 
 A PyPI release (`pipx install constructor-studio`) is planned; track progress in the [issues list](https://github.com/constructorfabric/studio/issues).
 
-If `cfs --version` prints a version, the CLI install worked.
+If `cfs --version` prints a version, the CLI install worked. The command also reports the local Studio cache and the project-pinned Studio copy when those are available.
 
 If `cfs` is not found, open a new terminal and try again before doing anything else.
 
@@ -199,15 +199,17 @@ cfs generate-agents
 
 `cfs init` is interactive.
 
-For a first trial, it is usually safe to accept the default project root, keep the default setup directory `.cf-studio/` unless you want a custom one, and accept the default SDLC kit if prompted.
+For a first trial, it is usually safe to accept the default project root, keep the default setup directory `.cf-studio/` unless you want a custom one, keep generated runtime and agent files ignored, and accept the default SDLC kit if prompted.
 
-`cfs init` sets up Constructor Studio in the repository.
+`cfs init` sets up Constructor Studio in the repository. If you run it again in a repository that is already initialized, it repairs generated Studio runtime files and agent integrations using the version already pinned in that project.
 
 `cfs generate-agents` adds the AI coding tool integration files for that repository.
 
 `cfs generate-agents` may preview the files it will create and ask you to confirm before writing them.
 
 In a normal project, this creates a setup directory `.cf-studio/`, generated host integration files, and user-editable configuration under `config/` inside that setup directory.
+
+Generated runtime files such as `.cf-studio/.core/` and `.cf-studio/.gen/` are gitignored by default. Generated host integration files are also gitignored by default. Kit files are tracked or ignored per kit: tracked kits are editable repository content, while ignored kits are generated local content that Studio may repair or overwrite.
 
 You may also see host-specific folders such as `.windsurf/`, `.cursor/`, `.claude/`, `.github/`, `.codex/`, or `.agents/`.
 
@@ -243,7 +245,7 @@ Some hosts may also show the resolved Constructor Studio path or loaded context.
   - Run `cfs init` from the repository root.
 
 - **You are not sure what to choose during `cfs init`**
-  - For a first trial, the default project root, default setup directory, and default SDLC kit are usually fine.
+  - For a first trial, the default project root, default setup directory, ignored generated runtime/agent files, and default SDLC kit are usually fine.
 
 - **`cfs generate-agents` looked like it stalled**
   - It may be previewing generated files or waiting for confirmation before writing them.
@@ -269,7 +271,8 @@ Some hosts may also show the resolved Constructor Studio path or loaded context.
 - **Need context before editing**: start with `cf explore: ...`
 - **New project or already-structured work**: start with `cf generate: ...` or `cf plan: ...`
 - **Existing codebase with weak or missing conventions**: run 💬 `cf auto-config`, inspect what it inferred, and then refine the generated rules before large changes
-- **After changing workflows, kits, or host integrations**: rerun `cfs generate-agents` or `cfs generate-agents --agent <tool>`
+- **After changing workflows or host integrations**: rerun `cfs generate-agents` or `cfs generate-agents --agent <tool>`
+- **When you want upstream kit changes**: run `cfs kit update`, or explicitly opt in during a top-level update with `cfs update --with-kits yes`
 
 For the first trial, use one small real input only: one short requirement, one design note, or one focused change request. Do not start with a repo-wide review or a broad implementation request.
 

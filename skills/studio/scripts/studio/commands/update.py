@@ -4,13 +4,13 @@ Update command — refresh an existing Constructor Studio installation in-place.
 Safety rules for config/:
 - .core/  → full replace from cache (read-only reference)
 - .gen/   → aggregate files only (AGENTS.md, SKILL.md, README.md)
-- config/ → generated kit outputs + user config (NEVER overwrite user files):
+- config/ → kit source files + user config:
   - core.toml, artifacts.toml   → only via migration when version is higher
   - AGENTS.md, SKILL.md, README.md → only create if missing
-  - kits/{slug}/                → generated outputs (artifacts/, workflows/, SKILL.md, scripts/)
+  - kits/{slug}/                → skipped by default; updated only with --with-kits yes|true
 Pipeline:
 1. Replace .core/ from cache
-2. Update kits: file-level diff (cache vs user) with interactive prompts
+2. Update kits only when explicitly requested
 3. Write aggregate .gen/ files
 5. Ensure config/ scaffold files exist (create only if missing)
 6. Run self-check to verify kit integrity
@@ -40,8 +40,13 @@ from .init import (
     DEFAULT_INSTALL_DIR,
     _copy_from_cache,
     _core_readme,
+    _persist_install_metadata,
+    _read_install_tracking,
+    _read_kit_tracking,
+    _read_kit_tracking_state,
     _inject_root_agents,
     _inject_root_claude,
+    _write_gitignore_block,
 )
 from ..utils.ui import ui
 from ..utils.whatsnew import read_whatsnew, show_core_whatsnew, show_kit_whatsnew
@@ -65,6 +70,13 @@ def cmd_update(argv: List[str]) -> int:
                    help="Disable interactive prompts (auto-skip customized markers)")
     p.add_argument("-y", "--yes", action="store_true",
                    help="Auto-approve all prompts (no interaction)")
+    p.add_argument(
+        "--with-kits",
+        choices=("yes", "true", "no", "false"),
+        default="no",
+        metavar="{yes,true,no,false}",
+        help="Update project kit files too. Defaults to no; bare --with-kits is invalid.",
+    )
     p.add_argument(
         "--migrate-from-cypilot",
         choices=("ask", "yes", "no"),
@@ -247,6 +259,9 @@ def cmd_update(argv: List[str]) -> int:
 
     core_dir = studio_dir / CORE_SUBDIR
     config_dir = studio_dir / "config"
+    core_toml_path = config_dir / "core.toml"
+    kit_tracking = _read_kit_tracking(core_toml_path, default="tracked")
+    with_kits = str(args.with_kits).lower() in ("yes", "true")
 
     # ── Show core whatsnew (before .core/ is replaced) ────────────────────
     if not args.dry_run:
@@ -307,6 +322,48 @@ def cmd_update(argv: List[str]) -> int:
     # ── Step 1b1: Remove leftover blueprints/ from config kits (ADR-0001) ──
     if not args.dry_run:
         _cleanup_legacy_blueprint_dirs(config_dir)
+        runtime_tracking = _read_install_tracking(
+            core_toml_path,
+            "runtime_tracking",
+            default="ignored",
+        )
+        agent_tracking = _read_install_tracking(
+            core_toml_path,
+            "agent_tracking",
+            default="ignored",
+        )
+        actions["core_toml_metadata"] = _persist_install_metadata(
+            core_toml_path,
+            kit_tracking,
+            runtime_tracking=runtime_tracking,
+            agent_tracking=agent_tracking,
+            dry_run=False,
+        )
+        # @cpt-begin:cpt-studio-flow-core-infra-project-update:p1:inst-update-gitignore
+        try:
+            actions["gitignore"] = _write_gitignore_block(
+                project_root,
+                install_rel,
+                core_toml_path,
+                kit_tracking,
+                dry_run=False,
+            )
+        except (OSError, ValueError) as exc:
+            errors.append({"path": ".gitignore", "error": str(exc)})
+            update_result = {
+                "status": "ERROR",
+                "project_root": project_root.as_posix(),
+                "studio_dir": studio_dir.as_posix(),
+                "dry_run": bool(args.dry_run),
+                "actions": actions,
+                "errors": errors,
+            }
+            ui.result(update_result, human_fn=_human_update_ok)
+            return 1
+        # @cpt-end:cpt-studio-flow-core-infra-project-update:p1:inst-update-gitignore
+    else:
+        actions["core_toml_metadata"] = "dry_run"
+        actions["gitignore"] = "dry_run"
 
     # @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-migrate-config-algo
     # @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-remove-system-section-algo
@@ -341,215 +398,224 @@ def cmd_update(argv: List[str]) -> int:
     # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-migrate-kit-sources
     # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-migrate-kit-sources-algo
 
-    # ── Step 2: Update kits from registered sources ─────────────────────────────
-    ui.step("Updating kits...")
-    from .kit import (
-        update_kit, regenerate_gen_aggregates,
-        _read_kits_from_core_toml, _parse_github_source,
-        _download_kit_from_github_with_authority,
-        _read_kit_version_from_core,
-    )
+    from .kit import regenerate_gen_aggregates
 
     kit_results: Dict[str, Any] = {}
     interactive = not args.no_interactive and sys.stdin.isatty()
 
-    installed_kits = _read_kits_from_core_toml(config_dir)
-    for kit_slug, kit_data in installed_kits.items():
-        source_str = kit_data.get("source", "")
-        kit_src: Optional[Path] = None
-        tmp_to_clean: Optional[Path] = None
-        authority_metadata: Optional[Dict[str, Any]] = None
+    if not with_kits:
+        ui.step("Skipping kit updates (pass --with-kits yes to update project kit files).")
+        actions["kits"] = {
+            "status": "skipped",
+            "reason": "--with-kits not enabled",
+            "kit_tracking": {
+                "default": kit_tracking,
+                "kits": _read_kit_tracking_state(core_toml_path, default=kit_tracking)[1],
+            },
+        }
+    else:
+        # ── Step 2: Update kits from registered sources ─────────────────────────────
+        ui.step("Updating kits...")
+        from .kit import (
+            update_kit,
+            _read_kits_from_core_toml, _parse_github_source,
+            _download_kit_from_github_with_authority,
+            _read_kit_version_from_core,
+        )
 
-        if source_str.startswith("github:"):
-            if args.dry_run:
-                # In dry-run mode, skip the network download; record the kit
-                # as a planned update and move on without touching any files.
-                kit_results[kit_slug] = {
-                    "kit": kit_slug,
-                    "version": {"status": "dry_run"},
-                    "gen": {"files_written": 0},
-                    "gen_rejected": [],
-                }
-                continue
-            owner_repo = source_str.removeprefix("github:")
-            owner = repo = version = ""
-            try:
-                owner, repo, version = _parse_github_source(owner_repo)
-                kit_src, _resolved_version, authority_metadata = _download_kit_from_github_with_authority(
-                    owner,
-                    repo,
-                    version,
-                    previous_entry=kit_data,
-                )
-                tmp_to_clean = kit_src.parent
-            except (OSError, ValueError, KeyError, RuntimeError) as exc:
+        installed_kits = _read_kits_from_core_toml(config_dir)
+        for kit_slug, kit_data in installed_kits.items():
+            source_str = kit_data.get("source", "")
+            kit_src: Optional[Path] = None
+            tmp_to_clean: Optional[Path] = None
+            authority_metadata: Optional[Dict[str, Any]] = None
+
+            if source_str.startswith("github:"):
+                if args.dry_run:
+                    # In dry-run mode, skip the network download; record the kit
+                    # as a planned update and move on without touching any files.
+                    kit_results[kit_slug] = {
+                        "kit": kit_slug,
+                        "version": {"status": "dry_run"},
+                        "gen": {"files_written": 0},
+                        "gen_rejected": [],
+                    }
+                    continue
+                owner_repo = source_str.removeprefix("github:")
+                owner = repo = version = ""
+                try:
+                    owner, repo, version = _parse_github_source(owner_repo)
+                    kit_src, _resolved_version, authority_metadata = _download_kit_from_github_with_authority(
+                        owner,
+                        repo,
+                        version,
+                        previous_entry=kit_data,
+                    )
+                    tmp_to_clean = kit_src.parent
+                except (OSError, ValueError, KeyError, RuntimeError) as exc:
+                    cache_kit = CACHE_DIR / "kits" / kit_slug
+                    if cache_kit.is_dir():
+                        kit_src = cache_kit
+                        previous_provenance = kit_data.get("source_provenance", {})
+                        previous_identity = kit_data.get("content_identity", {})
+                        if isinstance(previous_provenance, dict):
+                            resolved_ref = str(
+                                previous_provenance.get("resolved_ref")
+                                or kit_data.get("version")
+                                or ""
+                            )
+                            authority_metadata = {
+                                "source_type": "github",
+                                "requested_ref": previous_provenance.get(
+                                    "requested_ref",
+                                    version or "latest",
+                                ),
+                                "resolved_ref": resolved_ref,
+                                "installed_version": resolved_ref,
+                                "canonical_source": previous_provenance.get(
+                                    "canonical_source",
+                                    f"github:{owner}/{repo}" if owner and repo else source_str,
+                                ),
+                                "effective_source": previous_provenance.get(
+                                    "effective_source",
+                                    source_str,
+                                ),
+                                "resolver_mode": "offline_last_known",
+                                "resolution_basis": "last_known_core_toml",
+                                "verified": "stale",
+                                "freshness": "last_known",
+                            }
+                            if isinstance(previous_identity, dict) and previous_identity.get("commit_sha"):
+                                authority_metadata["commit_sha"] = previous_identity["commit_sha"]
+                        ui.warn(f"{kit_slug}: download failed, using cached kit: {exc}")
+                    else:
+                        errors.append({"path": kit_slug, "error": f"Download failed: {exc}"})
+                        ui.warn(f"{kit_slug}: download failed: {exc}")
+                        continue
+            elif not source_str:
+                # No source — check cache fallback
                 cache_kit = CACHE_DIR / "kits" / kit_slug
                 if cache_kit.is_dir():
                     kit_src = cache_kit
-                    previous_provenance = kit_data.get("source_provenance", {})
-                    previous_identity = kit_data.get("content_identity", {})
-                    if isinstance(previous_provenance, dict):
-                        resolved_ref = str(
-                            previous_provenance.get("resolved_ref")
-                            or kit_data.get("version")
-                            or ""
-                        )
-                        authority_metadata = {
-                            "source_type": "github",
-                            "requested_ref": previous_provenance.get(
-                                "requested_ref",
-                                version or "latest",
-                            ),
-                            "resolved_ref": resolved_ref,
-                            "installed_version": resolved_ref,
-                            "canonical_source": previous_provenance.get(
-                                "canonical_source",
-                                f"github:{owner}/{repo}" if owner and repo else source_str,
-                            ),
-                            "effective_source": previous_provenance.get(
-                                "effective_source",
-                                source_str,
-                            ),
-                            "resolver_mode": "offline_last_known",
-                            "resolution_basis": "last_known_core_toml",
-                            "verified": "stale",
-                            "freshness": "last_known",
-                        }
-                        if isinstance(previous_identity, dict) and previous_identity.get("commit_sha"):
-                            authority_metadata["commit_sha"] = previous_identity["commit_sha"]
-                    ui.warn(f"{kit_slug}: download failed, using cached kit: {exc}")
                 else:
-                    errors.append({"path": kit_slug, "error": f"Download failed: {exc}"})
-                    ui.warn(f"{kit_slug}: download failed: {exc}")
-                    continue
-        elif not source_str:
-            # No source — check cache fallback
-            cache_kit = CACHE_DIR / "kits" / kit_slug
-            if cache_kit.is_dir():
-                kit_src = cache_kit
-            else:
-                continue  # No source, no cache — skip
+                    continue  # No source, no cache — skip
 
-        if kit_src is None:
-            continue
-
-        if not args.dry_run:
-            installed_version = _read_kit_version_from_core(config_dir, kit_slug)
-            ack = show_kit_whatsnew(
-                kit_src,
-                installed_version,
-                kit_slug,
-                interactive=interactive and not args.yes,
-            )
-            if not ack:
-                kit_r = {
-                    "kit": kit_slug,
-                    "version": {"status": "aborted"},
-                    "gen": {"files_written": 0},
-                    "gen_rejected": [],
-                }
-                kit_results[kit_slug] = kit_r
+            if kit_src is None:
                 continue
 
-        kit_r: Dict[str, Any] = {}
-        try:
-            kit_r = update_kit(
-                kit_slug, kit_src, studio_dir,
-                dry_run=args.dry_run,
-                interactive=interactive,
-                auto_approve=args.yes,
-                source=source_str,
-                authority_metadata=authority_metadata,
-            )
+            if not args.dry_run:
+                installed_version = _read_kit_version_from_core(config_dir, kit_slug)
+                ack = show_kit_whatsnew(
+                    kit_src,
+                    installed_version,
+                    kit_slug,
+                    interactive=interactive and not args.yes,
+                )
+                if not ack:
+                    kit_r = {
+                        "kit": kit_slug,
+                        "version": {"status": "aborted"},
+                        "gen": {"files_written": 0},
+                        "gen_rejected": [],
+                    }
+                    kit_results[kit_slug] = kit_r
+                    continue
 
-            # @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-manifest-legacy-migration-algo
-            # WP7: Auto-migrate legacy kits to manifest-driven resource bindings.
-            # update_kit() handles migration when it runs fully, but skips it
-            # when versions match (early return).  This catch-all ensures
-            # migration always happens when source has manifest.toml but
-            # core.toml lacks [kits.{slug}.resources].
-            if not args.dry_run and kit_src is not None:
-                try:
-                    _mig = _maybe_migrate_legacy_to_manifest(
-                        kit_slug, kit_src, studio_dir, config_dir, interactive,
-                    )
-                    if _mig is not None:
-                        kit_r["manifest_migration"] = _mig
-                        _mig_status = _mig.get("status", "")
-                        if _mig_status == "PASS":
-                            _m_count = _mig.get("migrated_count", 0)
-                            _n_count = _mig.get("new_count", 0)
-                            ui.substep(
-                                f"{kit_slug}: manifest migration — "
-                                f"{_m_count} existing + {_n_count} new resource(s)"
-                            )
-                        elif _mig_status == "FAIL":
-                            ui.warn(
-                                f"{kit_slug}: manifest migration failed: "
-                                f"{_mig.get('errors', [])}"
-                            )
-                # Intentionally broad: migration helpers may raise any exception type, and a
-                # migration failure must not abort the surrounding kit-update loop.
-                except Exception as e:  # pylint: disable=broad-exception-caught
-                    mig_error = (
-                        "manifest migration raised unexpected exception "
-                        f"(kit update was not aborted): {e}"
-                    )
-                    errors.append({"path": kit_slug, "error": mig_error})
-                    sys.stderr.write(
-                        f"update: warning: {kit_slug}: {mig_error}\n"
-                    )
-            # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-manifest-legacy-migration-algo
+            kit_r: Dict[str, Any] = {}
+            try:
+                kit_r = update_kit(
+                    kit_slug, kit_src, studio_dir,
+                    dry_run=args.dry_run,
+                    interactive=interactive,
+                    auto_approve=args.yes,
+                    source=source_str,
+                    authority_metadata=authority_metadata,
+                )
 
-        except (OSError, ValueError, KeyError, RuntimeError) as exc:
-            kit_r = {
-                "kit": kit_slug,
-                "status": "ERROR",
-                "error": str(exc),
-            }
-            errors.append({"path": kit_slug, "error": str(exc)})
-        finally:
-            if tmp_to_clean:
-                shutil.rmtree(tmp_to_clean, ignore_errors=True)
+                # @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-manifest-legacy-migration-algo
+                # WP7: Auto-migrate legacy kits to manifest-driven resource bindings.
+                if not args.dry_run and kit_src is not None:
+                    try:
+                        _mig = _maybe_migrate_legacy_to_manifest(
+                            kit_slug, kit_src, studio_dir, config_dir, interactive,
+                        )
+                        if _mig is not None:
+                            kit_r["manifest_migration"] = _mig
+                            _mig_status = _mig.get("status", "")
+                            if _mig_status == "PASS":
+                                _m_count = _mig.get("migrated_count", 0)
+                                _n_count = _mig.get("new_count", 0)
+                                ui.substep(
+                                    f"{kit_slug}: manifest migration — "
+                                    f"{_m_count} existing + {_n_count} new resource(s)"
+                                )
+                            elif _mig_status == "FAIL":
+                                ui.warn(
+                                    f"{kit_slug}: manifest migration failed: "
+                                    f"{_mig.get('errors', [])}"
+                                )
+                    # Intentionally broad: migration helpers may raise any exception type, and a
+                    # migration failure must not abort the surrounding kit-update loop.
+                    except Exception as e:  # pylint: disable=broad-exception-caught
+                        mig_error = (
+                            "manifest migration raised unexpected exception "
+                            f"(kit update was not aborted): {e}"
+                        )
+                        errors.append({"path": kit_slug, "error": mig_error})
+                        sys.stderr.write(
+                            f"update: warning: {kit_slug}: {mig_error}\n"
+                        )
+                # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-manifest-legacy-migration-algo
 
-        kit_results[kit_slug] = kit_r
+            except (OSError, ValueError, KeyError, RuntimeError) as exc:
+                kit_r = {
+                    "kit": kit_slug,
+                    "status": "ERROR",
+                    "error": str(exc),
+                }
+                errors.append({"path": kit_slug, "error": str(exc)})
+            finally:
+                if tmp_to_clean:
+                    shutil.rmtree(tmp_to_clean, ignore_errors=True)
 
-        if args.dry_run:
-            continue
+            kit_results[kit_slug] = kit_r
 
-        # Collect gen errors
-        if kit_r.get("gen_errors"):
-            errors.extend(
-                {"path": kit_slug, "error": e} for e in kit_r["gen_errors"]
-            )
+            if args.dry_run:
+                continue
 
-        # Report progress
-        ver = kit_r.get("version", {})
-        ver_status = ver.get("status", "") if isinstance(ver, dict) else ver
-        gen = kit_r.get("gen", {})
-        files_written = gen.get("files_written", 0) if isinstance(gen, dict) else 0
+            # Collect gen errors
+            if kit_r.get("gen_errors"):
+                errors.extend(
+                    {"path": kit_slug, "error": e} for e in kit_r["gen_errors"]
+                )
 
-        if ver_status == "created":
-            ui.substep(f"{kit_slug}: first install, {files_written} files written")
-        elif ver_status == "updated":
-            ui.substep(f"{kit_slug}: updated, {files_written} file(s) accepted")
-            for fp in gen.get("accepted_files", []):
-                ui.substep(f"      ~ {fp}")
-            for fp in kit_r.get("gen_rejected", []):
-                ui.substep(f"      ✗ {fp} (declined)")
-        elif ver_status == "partial":
-            rejected = kit_r.get("gen_rejected", [])
-            ui.substep(f"{kit_slug}: partial, {files_written} accepted, {len(rejected)} declined")
-            for fp in gen.get("accepted_files", []):
-                ui.substep(f"      ~ {fp}")
-            for fp in rejected:
-                ui.substep(f"      ✗ {fp} (declined)")
-        elif ver_status == "aborted":
-            ui.substep(f"{kit_slug}: skipped by user")
-        elif ver_status == "current":
-            ui.substep(f"{kit_slug}: up to date")
+            # Report progress
+            ver = kit_r.get("version", {})
+            ver_status = ver.get("status", "") if isinstance(ver, dict) else ver
+            gen = kit_r.get("gen", {})
+            files_written = gen.get("files_written", 0) if isinstance(gen, dict) else 0
 
-    actions["kits"] = kit_results
+            if ver_status == "created":
+                ui.substep(f"{kit_slug}: first install, {files_written} files written")
+            elif ver_status == "updated":
+                ui.substep(f"{kit_slug}: updated, {files_written} file(s) accepted")
+                for fp in gen.get("accepted_files", []):
+                    ui.substep(f"      ~ {fp}")
+                for fp in kit_r.get("gen_rejected", []):
+                    ui.substep(f"      ✗ {fp} (declined)")
+            elif ver_status == "partial":
+                rejected = kit_r.get("gen_rejected", [])
+                ui.substep(f"{kit_slug}: partial, {files_written} accepted, {len(rejected)} declined")
+                for fp in gen.get("accepted_files", []):
+                    ui.substep(f"      ~ {fp}")
+                for fp in rejected:
+                    ui.substep(f"      ✗ {fp} (declined)")
+            elif ver_status == "aborted":
+                ui.substep(f"{kit_slug}: skipped by user")
+            elif ver_status == "current":
+                ui.substep(f"{kit_slug}: up to date")
+
+        actions["kits"] = kit_results
 
     # ── Step 3: Regenerate .gen/ aggregates ────────────────────────────
     if not args.dry_run:
@@ -1061,31 +1127,40 @@ def _human_update_ok(data: Dict[str, Any]) -> None:
         kits_data = actions.get("kits")
         if isinstance(kits_data, dict):
             ui.blank()
-            ui.step(f"Kits ({len(kits_data)})")
-            for slug, kr in kits_data.items():
-                if not isinstance(kr, dict):
-                    ui.substep(f"  {slug}: {kr}")
-                    continue
-                ver = kr.get("version", {})
-                ver_status = ver.get("status", "") if isinstance(ver, dict) else str(ver)
-                gen = kr.get("gen", {})
-                fw = gen.get("files_written", 0) if isinstance(gen, dict) else 0
-                accepted_files = gen.get("accepted_files", []) if isinstance(gen, dict) else []
-                rejected = kr.get("gen_rejected", [])
+            if kits_data.get("status") == "skipped":
+                ui.step("Kits: skipped")
+                reason = kits_data.get("reason")
+                if reason:
+                    ui.substep(f"  {reason}")
+                tracking = kits_data.get("kit_tracking")
+                if tracking:
+                    ui.substep(f"  kit_tracking={tracking}")
+            else:
+                ui.step(f"Kits ({len(kits_data)})")
+                for slug, kr in kits_data.items():
+                    if not isinstance(kr, dict):
+                        ui.substep(f"  {slug}: {kr}")
+                        continue
+                    ver = kr.get("version", {})
+                    ver_status = ver.get("status", "") if isinstance(ver, dict) else str(ver)
+                    gen = kr.get("gen", {})
+                    fw = gen.get("files_written", 0) if isinstance(gen, dict) else 0
+                    accepted_files = gen.get("accepted_files", []) if isinstance(gen, dict) else []
+                    rejected = kr.get("gen_rejected", [])
 
-                if ver_status == "current":
-                    ui.substep(f"  {slug}: up to date")
-                else:
-                    parts = [f"{slug}: {ver_status}"]
-                    if fw:
-                        parts.append(f"{fw} file(s) accepted")
-                    if rejected:
-                        parts.append(f"{len(rejected)} declined")
-                    ui.substep(f"  {'  '.join(parts)}")
-                    for fp in accepted_files:
-                        ui.substep(f"    ~ {fp}")
-                    for fp in rejected:
-                        ui.substep(f"    ✗ {fp} (declined)")
+                    if ver_status == "current":
+                        ui.substep(f"  {slug}: up to date")
+                    else:
+                        parts = [f"{slug}: {ver_status}"]
+                        if fw:
+                            parts.append(f"{fw} file(s) accepted")
+                        if rejected:
+                            parts.append(f"{len(rejected)} declined")
+                        ui.substep(f"  {'  '.join(parts)}")
+                        for fp in accepted_files:
+                            ui.substep(f"    ~ {fp}")
+                        for fp in rejected:
+                            ui.substep(f"    ✗ {fp} (declined)")
 
         # Remaining dict/list actions (not already handled)
         skip = {"core_update", "kits", "agents_regenerated"}
