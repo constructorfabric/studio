@@ -18,7 +18,7 @@ import tarfile
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -34,6 +34,10 @@ GITHUB_OWNER = "constructorfabric"
 GITHUB_REPO = "studio"
 GITHUB_API_BASE = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}"
 USER_AGENT = "constructor-studio/1.0"
+
+
+class _WhatsnewGenerationError(RuntimeError):
+    """Internal sentinel for optional GitHub whatsnew generation failures."""
 
 
 def _patch_cached_version(cache_dir: Path, version: str) -> None:
@@ -92,6 +96,73 @@ def _github_json(url: str) -> Dict[str, Any]:
     with urlopen(req, timeout=30) as resp:
         data = json.loads(resp.read().decode("utf-8"))
     return data if isinstance(data, dict) else {}
+
+
+def _github_json_list(url: str) -> List[Dict[str, Any]]:
+    req = Request(url, headers=_get_github_headers())
+    try:
+        with urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except (HTTPError, URLError, json.JSONDecodeError, OSError, ValueError) as exc:
+        raise _WhatsnewGenerationError(str(exc)) from exc
+    except AssertionError as exc:
+        raise _WhatsnewGenerationError(str(exc)) from exc
+    if not isinstance(data, list):
+        return []
+    return [item for item in data if isinstance(item, dict)]
+
+
+def _warn_whatsnew_generation_failed(scope: str, exc: BaseException) -> None:
+    sys.stderr.write(
+        f"Warning: unable to generate {scope} whatsnew.toml from GitHub release notes: {exc}\n"
+    )
+
+
+def _toml_string(value: str) -> str:
+    return json.dumps(str(value), ensure_ascii=False)
+
+
+def _release_notes_to_whatsnew_toml(releases: List[Dict[str, Any]]) -> str:
+    lines: List[str] = []
+    for release in releases:
+        tag = str(release.get("tag_name") or "").strip()
+        if not tag:
+            continue
+        name = str(release.get("name") or "").strip()
+        body = str(release.get("body") or "").strip()
+        lines.extend([
+            f'[whatsnew.{_toml_string(tag)}]',
+            f"summary = {_toml_string(name or tag)}",
+            f"details = {_toml_string(body)}",
+            "",
+        ])
+    return "\n".join(lines)
+
+
+def _write_github_whatsnew(cache_dir: Path, api_base: str) -> None:
+    """Generate cache whatsnew.toml only from GitHub release notes."""
+    whatsnew_path = cache_dir / "whatsnew.toml"
+    whatsnew_path.unlink(missing_ok=True)
+    try:
+        from studio_proxy.mirrors import apply_override
+
+        releases = _github_json_list(apply_override(f"{api_base}/releases?per_page=100"))
+        content = _release_notes_to_whatsnew_toml(releases)
+    except _WhatsnewGenerationError as exc:
+        _warn_whatsnew_generation_failed("Studio cache", exc)
+        return
+    if content.strip():
+        whatsnew_path.write_text(content, encoding="utf-8")
+
+
+def _remove_non_github_whatsnew(cache_dir: Path) -> None:
+    """Remove whatsnew files copied from local/source trees."""
+    paths = [cache_dir / "whatsnew.toml"]
+    kits_dir = cache_dir / "kits"
+    if kits_dir.is_dir():
+        paths.extend(kits_dir.glob("*/whatsnew.toml"))
+    for path in paths:
+        path.unlink(missing_ok=True)
 
 
 def _select_release_download_url(release_data: Dict[str, Any]) -> Optional[str]:
@@ -449,6 +520,7 @@ def copy_from_local(
             shutil.copytree(item, dst)
         elif item.is_file():
             shutil.copy2(item, dst)
+    _remove_non_github_whatsnew(cache_dir)
 
     display_version = f"local:{local_version}"
     version_file.write_text(display_version, encoding="utf-8")
@@ -631,6 +703,8 @@ def download_and_cache(
 
     # Patch __version__ in cached skill's __init__.py with resolved version
     _patch_cached_version(cache_dir, resolved_version)
+    _remove_non_github_whatsnew(cache_dir)
+    _write_github_whatsnew(cache_dir, api_base)
 
     # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-write-version
     version_file.write_text(resolved_version, encoding="utf-8")

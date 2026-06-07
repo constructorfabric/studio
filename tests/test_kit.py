@@ -2018,6 +2018,64 @@ class TestDownloadKitFromGithub(unittest.TestCase):
             # Cleanup
             shutil.rmtree(result_dir.parent, ignore_errors=True)
 
+    def test_download_generates_whatsnew_from_github_releases(self):
+        from studio.commands.kit import _download_kit_from_github
+
+        tar_bytes = self._make_tarball_bytes([
+            {"name": "owner-repo-abc123/", "type": tarfile.DIRTYPE},
+            {"name": "owner-repo-abc123/conf.toml", "data": b"version = 1\n"},
+            {
+                "name": "owner-repo-abc123/whatsnew.toml",
+                "data": b'[whatsnew."0.0.0"]\nsummary = "local"\ndetails = ""\n',
+            },
+        ])
+
+        def fake_urlopen(req, **_kwargs):
+            url = req.full_url
+            if url.endswith("/tarball/v1.0"):
+                return self._fake_response(tar_bytes)
+            if url.endswith("/releases?per_page=100"):
+                return self._fake_response(io.BytesIO(json.dumps([
+                    {"tag_name": "v1.0", "name": "Kit release", "body": "- GitHub note"},
+                ]).encode()))
+            raise AssertionError(url)
+
+        with patch("studio.commands.kit.urllib.request.urlopen", side_effect=fake_urlopen):
+            result_dir, ver = _download_kit_from_github("owner", "repo", "v1.0")
+            self.assertEqual(ver, "v1.0")
+            whatsnew = (result_dir / "whatsnew.toml").read_text(encoding="utf-8")
+            self.assertIn('[whatsnew."v1.0"]', whatsnew)
+            self.assertIn('summary = "Kit release"', whatsnew)
+            self.assertIn("GitHub note", whatsnew)
+            self.assertNotIn('summary = "local"', whatsnew)
+            shutil.rmtree(result_dir.parent, ignore_errors=True)
+
+    def test_download_warns_when_github_whatsnew_generation_fails(self):
+        from studio.commands.kit import _download_kit_from_github
+
+        tar_bytes = self._make_tarball_bytes([
+            {"name": "owner-repo-abc123/", "type": tarfile.DIRTYPE},
+            {"name": "owner-repo-abc123/conf.toml", "data": b"version = 1\n"},
+            {
+                "name": "owner-repo-abc123/whatsnew.toml",
+                "data": b'[whatsnew."0.0.0"]\nsummary = "local"\ndetails = ""\n',
+            },
+        ])
+
+        def fake_urlopen(req, **_kwargs):
+            url = req.full_url
+            if url.endswith("/tarball/v1.0"):
+                return self._fake_response(tar_bytes)
+            raise AssertionError(url)
+
+        with patch("studio.commands.kit.urllib.request.urlopen", side_effect=fake_urlopen):
+            with patch("studio.commands.kit.ui.warn") as warn:
+                result_dir, _ver = _download_kit_from_github("owner", "repo", "v1.0")
+        self.assertFalse((result_dir / "whatsnew.toml").exists())
+        warn.assert_called_once()
+        self.assertIn("unable to generate whatsnew.toml", warn.call_args.args[0])
+        shutil.rmtree(result_dir.parent, ignore_errors=True)
+
     def test_with_authority_derives_commit_identity_from_tar_root(self):
         from studio.commands.kit import _download_kit_from_github_with_authority
 

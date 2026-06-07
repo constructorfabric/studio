@@ -128,6 +128,84 @@ def test_download_and_cache_writes_github_provenance(monkeypatch, tmp_path):
     assert '"verified": "verified"' in provenance
 
 
+def test_download_and_cache_generates_whatsnew_from_github_releases(monkeypatch, tmp_path):
+    import studio_proxy.cache as cache
+
+    monkeypatch.setenv("CFS_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setattr(
+        cache,
+        "_resolve_latest_version_with_metadata",
+        lambda api_base=None: ("v9.8.7", "https://downloads.example/studio.tar.gz", {}),
+    )
+
+    class FakeResp:
+        def __init__(self, data):
+            self._data = data
+        def __enter__(self):
+            return self
+        def __exit__(self, *_args):
+            return None
+        def read(self):
+            return self._data
+
+    def fake_urlopen(req, **_kwargs):
+        url = req.full_url
+        if url == "https://downloads.example/studio.tar.gz":
+            return FakeResp(_skill_tarball())
+        if url.endswith("/releases?per_page=100"):
+            return FakeResp(json.dumps([
+                {"tag_name": "v9.8.7", "name": "Release title", "body": "- GitHub-only note"},
+            ]).encode())
+        raise AssertionError(url)
+
+    monkeypatch.setattr(cache, "urlopen", fake_urlopen)
+
+    success, _message = cache.download_and_cache()
+
+    assert success is True
+    whatsnew = (tmp_path / "cache" / "whatsnew.toml").read_text(encoding="utf-8")
+    assert '[whatsnew."v9.8.7"]' in whatsnew
+    assert 'summary = "Release title"' in whatsnew
+    assert "GitHub-only note" in whatsnew
+
+
+def test_download_and_cache_warns_when_github_whatsnew_generation_fails(
+    monkeypatch,
+    tmp_path,
+    capsys,
+):
+    import studio_proxy.cache as cache
+
+    monkeypatch.setenv("CFS_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setattr(
+        cache,
+        "_resolve_latest_version_with_metadata",
+        lambda api_base=None: ("v9.8.7", "https://downloads.example/studio.tar.gz", {}),
+    )
+
+    class FakeResp:
+        def __enter__(self):
+            return self
+        def __exit__(self, *_args):
+            return None
+        def read(self):
+            return _skill_tarball()
+
+    def fake_urlopen(req, **_kwargs):
+        url = req.full_url
+        if url == "https://downloads.example/studio.tar.gz":
+            return FakeResp()
+        raise AssertionError(url)
+
+    monkeypatch.setattr(cache, "urlopen", fake_urlopen)
+
+    success, _message = cache.download_and_cache()
+
+    assert success is True
+    assert not (tmp_path / "cache" / "whatsnew.toml").exists()
+    assert "unable to generate Studio cache whatsnew.toml" in capsys.readouterr().err
+
+
 def test_download_and_cache_no_releases_uses_default_branch_snapshot(monkeypatch, tmp_path):
     import studio_proxy.cache as cache
 
@@ -563,6 +641,15 @@ def test_copy_from_local_writes_non_github_provenance(monkeypatch, tmp_path):
     pkg.mkdir(parents=True)
     (pkg / "__init__.py").write_text('__version__ = "dev-local"\n', encoding="utf-8")
     (source / "skills" / "studio" / "scripts" / "studio.py").write_text("print('ok')\n", encoding="utf-8")
+    (source / "whatsnew.toml").write_text(
+        '[whatsnew."0.0.0"]\nsummary = "local file must not be cached"\ndetails = ""\n',
+        encoding="utf-8",
+    )
+    (source / "kits" / "demo").mkdir(parents=True)
+    (source / "kits" / "demo" / "whatsnew.toml").write_text(
+        '[whatsnew."0.0.0"]\nsummary = "local kit file must not be cached"\ndetails = ""\n',
+        encoding="utf-8",
+    )
 
     success, message = cache.copy_from_local(str(source))
 
@@ -573,6 +660,8 @@ def test_copy_from_local_writes_non_github_provenance(monkeypatch, tmp_path):
     assert '"source_type": "local_path"' in provenance
     assert '"resolver_mode": "local_path"' in provenance
     assert '"verified": "unknown"' in provenance
+    assert not (tmp_path / "cache" / "whatsnew.toml").exists()
+    assert not (tmp_path / "cache" / "kits" / "demo" / "whatsnew.toml").exists()
 
 
 def test_version_output_uses_cache_provenance(monkeypatch, capsys):
