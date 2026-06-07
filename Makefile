@@ -1,5 +1,5 @@
 # @cpt-algo:cpt-studio-spec-init-structure-change-infrastructure:p1
-.PHONY: test test-verbose test-quick test-coverage test-coverage-diff validate validate-examples validate-feature validate-code validate-code-feature self-check validate-kits validate-kits-sdlc vulture vulture-ci pylint install install-pipx install-proxy install-prompt-tests clean help check-pytest check-pytest-cov check-pipx check-vulture check-pylint check-versions check-prompt-tests update seed-cache ensure-bootstrap generate-agents spec-coverage ci lint-ci test-prompts test-prompts-view
+.PHONY: test test-verbose test-quick test-coverage test-coverage-diff validate validate-examples validate-feature validate-code validate-code-feature self-check validate-kits validate-kits-sdlc vulture vulture-ci pylint install install-pipx install-proxy install-prompt-tests clean help check-pytest check-pytest-cov check-pipx check-vulture check-pylint check-versions check-prompt-tests bootstrap-init bootstrap-repair update update-local seed-cache ensure-bootstrap generate-agents spec-coverage ci lint-ci test-prompts test-prompts-view
 
 # Detect container architecture for act (arm64 on Apple Silicon, amd64 otherwise)
 UNAME_M := $(shell uname -m)
@@ -59,7 +59,10 @@ help:
 	@echo "  make install-prompt-tests          - Pre-cache promptfoo for cf-skill UX tests"
 	@echo "  make test-prompts                  - Run cf-skill UX pilot (claude + codex)"
 	@echo "  make test-prompts-view             - Open promptfoo HTML report for last run"
-	@echo "  make update                        - Update .bootstrap from local source"
+	@echo "  make bootstrap-init                - Initialize .bootstrap from local source"
+	@echo "  make bootstrap-repair              - Repair generated .bootstrap runtime files"
+	@echo "  make update-local                  - Update .bootstrap from local source"
+	@echo "  make update                        - Alias for update-local"
 	@echo "  make generate-agents               - Generate all local agent integrations"
 	@echo "  make clean                         - Remove Python cache files"
 	@echo "  make help                          - Show this help message"
@@ -207,17 +210,25 @@ spec-coverage: ensure-bootstrap
 check-versions:
 	@$(PYTHON) scripts/check_versions.py
 
-# Update .bootstrap from local source
-update:
+# Initialize .bootstrap from local source. Repeat runs repair generated runtime files.
+bootstrap-init: seed-cache
+	@echo "Initializing .bootstrap from local source..."
+	$(PYTHON) $(SOURCE_STUDIO) init --project-root . --install-dir .bootstrap --kit-tracking tracked --yes
+
+# Repair generated .bootstrap runtime files without updating tracked kit files.
+bootstrap-repair: seed-cache
+	@echo "Repairing generated .bootstrap runtime files from local source..."
+	$(PYTHON) $(SOURCE_STUDIO) init --project-root . --install-dir .bootstrap --kit-tracking tracked --yes
+
+# Backward-compatible alias: update means local self-hosted update in this repo.
+update: update-local
+
+# Update .bootstrap from local source. Kit files are skipped by default by cfs update.
+update-local: seed-cache
 	@if [ ! -f "$(BOOTSTRAP_STUDIO)" ]; then \
-		$(MAKE) seed-cache; \
-		$(PYTHON) $(SOURCE_STUDIO) update --from-dir . -y; \
-	elif [ "$(CFS)" = "cfs" ] && command -v cfs >/dev/null 2>&1; then \
-		cfs update --source . --force; \
-	elif [ -f "$(BOOTSTRAP_STUDIO)" ]; then \
-		$(PYTHON) $(BOOTSTRAP_STUDIO) update --from-dir . -y; \
+		$(PYTHON) $(SOURCE_STUDIO) init --project-root . --install-dir .bootstrap --kit-tracking tracked --yes; \
 	else \
-		$(PYTHON) $(SOURCE_STUDIO) update --from-dir . -y; \
+		$(PYTHON) $(SOURCE_STUDIO) update --project-root . -y; \
 	fi
 
 seed-cache:
@@ -233,8 +244,8 @@ seed-cache:
 
 ensure-bootstrap:
 	@if [ ! -f "$(BOOTSTRAP_STUDIO)" ]; then \
-		echo "Bootstrap studio entrypoint missing; running make update..."; \
-		$(MAKE) update; \
+		echo "Bootstrap studio entrypoint missing; running make bootstrap-init..."; \
+		$(MAKE) bootstrap-init; \
 	fi
 
 generate-agents: ensure-bootstrap

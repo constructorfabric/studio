@@ -135,6 +135,9 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Repair bootstrap
+        run: make bootstrap-repair
+
       - name: Check spec coverage
         run: make spec-coverage
 
@@ -151,6 +154,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+
+      - name: Repair bootstrap
+        run: make bootstrap-repair
 
       - name: Validate core methodology
         run: make CFS="python3 .bootstrap/.core/skills/studio/scripts/studio.py" validate
@@ -171,6 +177,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+
+      - name: Repair bootstrap
+        run: make bootstrap-repair
 
       - name: Validate all registered kits
         run: make CFS="python3 .bootstrap/.core/skills/studio/scripts/studio.py" validate-kits
