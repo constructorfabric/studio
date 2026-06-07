@@ -82,15 +82,30 @@ def github_anchor(text: str) -> str:
     - Strip markdown links ``[text](url)`` → keep text
     - Remove inline formatting (bold, italic, code backticks, strikethrough)
     - Lowercase
-    - Keep word chars (unicode), spaces, hyphens
+    - Keep word chars (unicode), underscores, spaces, hyphens
     - Spaces → hyphens (consecutive hyphens preserved, matching GitHub)
     """
     text = text.strip().lower()
     # Remove markdown links but keep link text
     text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
-    # Remove formatting markers: **, __, *, _, `, ~
-    text = re.sub(r"\*\*|__|[*_`~]", "", text)
-    # Keep only word chars, spaces, hyphens
+    code_spans: Dict[str, str] = {}
+
+    def _protect_code_span(match: re.Match[str]) -> str:
+        placeholder = f"\x00{len(code_spans)}\x00"
+        code_spans[placeholder] = match.group(1)
+        return placeholder
+
+    # Protect inline code contents before removing formatting delimiters:
+    # underscores in code identifiers are literal heading text.
+    text = re.sub(r"`([^`]*)`", _protect_code_span, text)
+    # Remove underscore emphasis markers only at delimiter-like boundaries so
+    # literal underscores outside emphasis remain part of the anchor.
+    text = re.sub(r"(?<!\w)_{1,2}(?=\S)|(?<=\S)_{1,2}(?!\w)", "", text)
+    # Remove remaining inline formatting markers: bold, italic, code, strike.
+    text = re.sub(r"\*\*|[*`~]", "", text)
+    for placeholder, code_text in code_spans.items():
+        text = text.replace(placeholder, code_text)
+    # Keep only word chars, spaces, hyphens. In Python, \w includes underscore.
     text = re.sub(r"[^\w\s\-]", "", text)
     # Each space → hyphen individually (GitHub preserves consecutive hyphens)
     text = re.sub(r"\s", "-", text)
