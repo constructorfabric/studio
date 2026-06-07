@@ -72,6 +72,10 @@ _GITHUB_TARBALL_MAX_TOTAL_SIZE = 512 * 1024 * 1024
 _GITHUB_TARBALL_MAX_EXPANSION_RATIO = 200
 
 
+class _WhatsnewGenerationError(RuntimeError):
+    """Internal sentinel for optional GitHub whatsnew generation failures."""
+
+
 _SEMVER_TAG_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$")
 
 
@@ -361,6 +365,7 @@ def _download_kit_from_github(
             f"Unexpected archive structure: expected 1 directory, found {len(subdirs)}"
         )
 
+    _try_write_kit_whatsnew_from_github_releases(subdirs[0], owner, repo)
     return subdirs[0], version
 # @cpt-end:cpt-studio-algo-kit-github-helpers:p1:inst-download
 
@@ -422,6 +427,78 @@ def _resolve_latest_github_release(owner: str, repo: str) -> str:
     # No releases found — use the highest semver-like tag if available.
     return _resolve_latest_semver_tag(owner, repo)
 # @cpt-end:cpt-studio-algo-kit-github-helpers:p1:inst-resolve-release
+
+
+def _toml_string(value: str) -> str:
+    return json.dumps(str(value), ensure_ascii=False)
+
+
+def _github_release_notes_to_whatsnew_toml(releases: List[Dict[str, Any]]) -> str:
+    lines: List[str] = []
+    for release in releases:
+        tag = str(release.get("tag_name") or "").strip()
+        if not tag:
+            continue
+        name = str(release.get("name") or "").strip()
+        body = str(release.get("body") or "").strip()
+        lines.extend([
+            f'[whatsnew.{_toml_string(tag)}]',
+            f"summary = {_toml_string(name or tag)}",
+            f"details = {_toml_string(body)}",
+            "",
+        ])
+    return "\n".join(lines)
+
+
+def _warn_kit_whatsnew_generation_failed(owner: str, repo: str, exc: BaseException) -> None:
+    ui.warn(
+        f"{owner}/{repo}: unable to generate whatsnew.toml from GitHub release notes: {exc}"
+    )
+
+
+def _write_kit_whatsnew_from_github_releases(
+    kit_source_dir: Path,
+    owner: str,
+    repo: str,
+) -> None:
+    """Generate kit whatsnew.toml only from GitHub release notes."""
+    whatsnew_path = kit_source_dir / "whatsnew.toml"
+    whatsnew_path.unlink(missing_ok=True)
+    from ..utils.mirrors import apply_override
+
+    url = apply_override(f"https://api.github.com/repos/{owner}/{repo}/releases?per_page=100")
+    req = urllib.request.Request(url, headers=_github_headers())
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read())
+    except (
+        urllib.error.HTTPError,
+        urllib.error.URLError,
+        json.JSONDecodeError,
+        OSError,
+        ValueError,
+    ) as exc:
+        _warn_kit_whatsnew_generation_failed(owner, repo, exc)
+        return
+    except AssertionError as exc:
+        raise _WhatsnewGenerationError(str(exc)) from exc
+    if not isinstance(data, list):
+        return
+    releases = [item for item in data if isinstance(item, dict)]
+    content = _github_release_notes_to_whatsnew_toml(releases)
+    if content.strip():
+        whatsnew_path.write_text(content, encoding="utf-8")
+
+
+def _try_write_kit_whatsnew_from_github_releases(
+    kit_source_dir: Path,
+    owner: str,
+    repo: str,
+) -> None:
+    try:
+        _write_kit_whatsnew_from_github_releases(kit_source_dir, owner, repo)
+    except _WhatsnewGenerationError as exc:
+        _warn_kit_whatsnew_generation_failed(owner, repo, exc)
 
 # ---------------------------------------------------------------------------
 # Config seeding — copy default .toml configs from kit scripts to config/

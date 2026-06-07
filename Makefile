@@ -225,10 +225,10 @@ seed-cache:
 	@rm -rf "$$HOME/.cf-studio/cache"
 	@mkdir -p "$$HOME/.cf-studio/cache"
 	@cp -R requirements schemas workflows skills architecture "$$HOME/.cf-studio/cache/"
-	@if [ -f whatsnew.toml ]; then cp whatsnew.toml "$$HOME/.cf-studio/cache/"; fi
 	@if [ -d .bootstrap/config/kits ]; then \
 		mkdir -p "$$HOME/.cf-studio/cache/kits"; \
 		cp -R .bootstrap/config/kits/* "$$HOME/.cf-studio/cache/kits/"; \
+		find "$$HOME/.cf-studio/cache/kits" -name whatsnew.toml -type f -delete; \
 	fi
 
 ensure-bootstrap:
