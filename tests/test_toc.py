@@ -55,6 +55,11 @@ class TestSlugify:
             == "s5-test_hierarchy_closure_postgresql"
         )
 
+    def test_inline_code_preserves_boundary_underscores(self):
+        assert _slugify("S1: `_private_var`") == "s1-_private_var"
+        assert _slugify("S2: `private_var_`") == "s2-private_var_"
+        assert _slugify("S3: `__dunder__`") == "s3-__dunder__"
+
     def test_ampersand_stripped(self):
         assert _slugify("Scope & Boundaries") == "scope--boundaries"
 
@@ -135,6 +140,11 @@ class TestBuildToc:
             in toc
         )
 
+    def test_inline_code_anchor_preserves_leading_underscore(self):
+        headings = [(3, "S1: `_private_var`")]
+        toc = _build_toc(headings)
+        assert "- [S1: `_private_var`](#s1-_private_var)" in toc
+
 
 # ---------------------------------------------------------------------------
 # _process_file
@@ -213,6 +223,14 @@ class TestProcessFile:
             "- [S5: `test_hierarchy_closure_postgresql`](#s5-test_hierarchy_closure_postgresql)"
             in content
         )
+
+    def test_inserts_inline_code_anchor_with_leading_underscore(self, tmp_path: Path):
+        f = tmp_path / "doc.md"
+        f.write_text("# Title\n\n### S1: `_private_var`\n", encoding="utf-8")
+        result = _process_file(f)
+        assert result["status"] == "UPDATED"
+        content = f.read_text(encoding="utf-8")
+        assert "- [S1: `_private_var`](#s1-_private_var)" in content
 
 
 # ---------------------------------------------------------------------------
@@ -537,6 +555,28 @@ class TestValidateToc:
         )
         result = validate_toc(content)
         assert result["errors"] == []
+
+    def test_valid_marker_based_toc_with_inline_code_leading_underscore_anchor(self):
+        content = (
+            "# Title\n\n"
+            "<!-- toc -->\n\n"
+            "- [S1: `_private_var`](#s1-_private_var)\n\n"
+            "<!-- /toc -->\n\n"
+            "### S1: `_private_var`\n"
+        )
+        result = validate_toc(content)
+        assert result["errors"] == []
+
+    def test_marker_based_toc_rejects_stale_inline_code_leading_underscore_anchor(self):
+        content = (
+            "# Title\n\n"
+            "<!-- toc -->\n\n"
+            "- [S1: `_private_var`](#s1-private_var)\n\n"
+            "<!-- /toc -->\n\n"
+            "### S1: `_private_var`\n"
+        )
+        result = validate_toc(content)
+        assert any(e["code"] == "toc-anchor-broken" for e in result["errors"])
 
     def test_valid_marker_based_toc_with_secondary_h1_sections(self):
         content = (
