@@ -255,7 +255,7 @@ class TestCmdUpdateErrors(unittest.TestCase):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
-                        rc = cmd_update([])
+                        rc = cmd_update(["--with-kits", "yes"])
                 self.assertEqual(rc, 1)
             finally:
                 os.chdir(cwd)
@@ -312,7 +312,7 @@ class TestCmdUpdateErrors(unittest.TestCase):
                     err_buf = io.StringIO()
                     try:
                         with redirect_stdout(buf), redirect_stderr(err_buf):
-                            return_code = cmd_update(["--yes"])
+                            return_code = cmd_update(["--yes", "--with-kits", "yes"])
                     except Exception as exc:
                         raised_exc = exc
             finally:
@@ -387,7 +387,7 @@ class TestCmdUpdatePipeline(unittest.TestCase):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
-                        rc = cmd_update([])
+                        rc = cmd_update(["--with-kits", "yes"])
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
                 self.assertIn(out["status"], ["PASS", "WARN"])
@@ -477,7 +477,7 @@ class TestCmdUpdatePipeline(unittest.TestCase):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
-                        rc = cmd_update([])
+                        rc = cmd_update(["--with-kits", "yes"])
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
                 kits = out["actions"].get("kits", {})
@@ -539,7 +539,7 @@ class TestCmdUpdatePipeline(unittest.TestCase):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
-                        rc = cmd_update(["-y"])
+                        rc = cmd_update(["-y", "--with-kits", "yes"])
                 self.assertEqual(rc, 0)
             finally:
                 os.chdir(cwd)
@@ -609,7 +609,7 @@ class TestCmdUpdatePipeline(unittest.TestCase):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
-                        rc = cmd_update(["-y"])
+                        rc = cmd_update(["-y", "--with-kits", "yes"])
                 self.assertEqual(rc, 0)
             finally:
                 os.chdir(cwd)
@@ -665,7 +665,7 @@ class TestCmdUpdatePipeline(unittest.TestCase):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
-                        rc = cmd_update(["-y"])
+                        rc = cmd_update(["-y", "--with-kits", "yes"])
                 self.assertEqual(rc, 0)
                 output = json.loads(buf.getvalue())
                 self.assertEqual(output["status"], "WARN")
@@ -710,7 +710,7 @@ class TestCmdUpdatePipeline(unittest.TestCase):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
-                        rc = cmd_update([])
+                        rc = cmd_update(["--with-kits", "yes"])
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
                 # Scaffold files should be recreated
@@ -749,7 +749,7 @@ class TestCmdUpdatePipeline(unittest.TestCase):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
-                        rc = cmd_update([])
+                        rc = cmd_update(["--with-kits", "yes"])
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
                 kits = out["actions"].get("kits", {})
@@ -798,7 +798,7 @@ class TestUpdateHelperExceptions(unittest.TestCase):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
-                        rc = cmd_update([])
+                        rc = cmd_update(["--with-kits", "yes"])
                 self.assertEqual(rc, 0)
             finally:
                 os.chdir(cwd)
@@ -1257,7 +1257,7 @@ class TestCmdUpdateWhatsnew(unittest.TestCase):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
-                        rc = cmd_update(["-y"])
+                        rc = cmd_update(["-y", "--with-kits", "yes"])
                 self.assertEqual(rc, 0)
                 stderr_text = err.getvalue()
                 self.assertIn("Test change", stderr_text)
@@ -1305,7 +1305,7 @@ class TestCmdUpdateWhatsnew(unittest.TestCase):
                     buf2 = io.StringIO()
                     err2 = io.StringIO()
                     with redirect_stdout(buf2), redirect_stderr(err2):
-                        rc = cmd_update([])
+                        rc = cmd_update(["--with-kits", "yes"])
                 self.assertEqual(rc, 0)
                 self.assertNotIn("What's new", err2.getvalue())
             finally:
@@ -1406,7 +1406,7 @@ class TestCmdUpdateWhatsnew(unittest.TestCase):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
-                        rc = cmd_update(["-y"])
+                        rc = cmd_update(["-y", "--with-kits", "yes"])
                 self.assertEqual(rc, 0)
                 mock_show.assert_called()
                 mock_update.assert_called()
@@ -2818,7 +2818,7 @@ class TestCmdUpdateManifestMigration(unittest.TestCase):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
-                        rc = cmd_update([])
+                        rc = cmd_update(["--with-kits", "yes"])
                 self.assertEqual(rc, 0)
 
                 # Verify resources were populated in core.toml
@@ -2868,7 +2868,7 @@ class TestCmdUpdateManifestMigration(unittest.TestCase):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
-                        rc = cmd_update(["-y"])
+                        rc = cmd_update(["-y", "--with-kits", "yes"])
 
                 self.assertEqual(rc, 1)
                 out = json.loads(buf.getvalue())

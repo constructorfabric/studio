@@ -654,7 +654,8 @@ target = "any"
 reasoning_effort = "high"
 context_window = "high"
 
-[agents.storytelling-preflight]
+[agents.cf-storytelling-preflight]
+prompt_file = "agents/storytelling-preflight.md"
 description = """\
 Invoke when the orchestrator enters storytelling phase E0 — canonicalize \
 the input_ref, derive session_id, scan for prior session on disk under \
@@ -670,7 +671,8 @@ target = "any"
 reasoning_effort = "low"
 context_window = "medium"
 
-[agents.storytelling-gate]
+[agents.cf-storytelling-gate]
+prompt_file = "agents/storytelling-gate.md"
 description = """\
 Invoke when the orchestrator enters any storytelling E1 or E5 gate \
 (mode / artifact-disposition / audience / plan / context-pack-strategy / \
@@ -687,7 +689,8 @@ target = "any"
 reasoning_effort = "medium"
 context_window = "medium"
 
-[agents.storytelling-context-pack]
+[agents.cf-storytelling-context-pack]
+prompt_file = "agents/storytelling-context-pack.md"
 description = """\
 Invoke when the orchestrator enters storytelling phase E1.5.pack-build — \
 read the whole input once and emit a content_pack JSON parameterized by \
@@ -702,7 +705,8 @@ target = "any"
 reasoning_effort = "medium"
 context_window = "high"
 
-[agents.storytelling-wrap]
+[agents.cf-storytelling-wrap]
+prompt_file = "agents/storytelling-wrap.md"
 description = """\
 Invoke when the orchestrator enters storytelling phase E5.wrap — synthesise \
 the final summary (Key Takeaways with source refs as clickable markdown \
@@ -717,7 +721,8 @@ target = "any"
 reasoning_effort = "medium"
 context_window = "medium"
 
-[agents.storytelling-export]
+[agents.cf-storytelling-export]
+prompt_file = "agents/storytelling-export.md"
 description = """\
 Invoke when the orchestrator enters storytelling phase E5.export-emit — \
 emit the package on disk under {cf-studio-path}/.cache/explain/packages/\

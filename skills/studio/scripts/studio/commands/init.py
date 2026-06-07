@@ -32,6 +32,9 @@ CACHE_DIR = Path.home() / ".cf-studio" / "cache"
 CORE_SUBDIR = ".core"
 GEN_SUBDIR = ".gen"
 DEFAULT_INSTALL_DIR = ".cf-studio"
+KIT_TRACKING_POLICIES = ("tracked", "ignored")
+GITIGNORE_MARKER_START = "# BEGIN Constructor Studio"
+GITIGNORE_MARKER_END = "# END Constructor Studio"
 
 def _copy_from_cache(cache_dir: Path, target_dir: Path, force: bool = False) -> Dict[str, str]:
     """Copy tool directories from cache into project studio/.core/ dir.
@@ -196,8 +199,148 @@ def _default_core_toml() -> dict:
     return {
         "version": "1.0",
         "project_root": "..",
+        "install": {
+            "version_source": "project_config",
+            "kit_tracking": "tracked",
+        },
         "kits": {},
     }
+
+
+def _gitignore_patterns(install_dir: str, kit_tracking: str) -> List[str]:
+    install_rel = install_dir.strip().replace("\\", "/").strip("/")
+    patterns = [
+        f"{install_rel}/{CORE_SUBDIR}/",
+        f"{install_rel}/{GEN_SUBDIR}/",
+        ".agents/skills/cf/",
+        ".agents/skills/cf-*/",
+        ".agents/skills/studio-*/",
+        ".agents/skills/cypilot-*/",
+        ".agents/skills/cf-constructor-*/",
+        ".codex/agents/cf*.toml",
+        ".codex/agents/studio-*.toml",
+        ".codex/agents/cypilot-*.toml",
+        ".codex/agents/cf-constructor-*.toml",
+        ".codex/.constructor-studio-installed",
+        ".claude/skills/cf/",
+        ".claude/skills/cf-*/",
+        ".claude/commands/cf*.md",
+        ".claude/commands/studio-*.md",
+        ".claude/commands/cypilot-*.md",
+        ".claude/commands/cf-constructor-*.md",
+        ".claude/agents/cf*.md",
+        ".claude/agents/studio-*.md",
+        ".claude/agents/cypilot-*.md",
+        ".claude/agents/cf-constructor-*.md",
+        ".cursor/commands/cf*.md",
+        ".cursor/commands/studio-*.md",
+        ".cursor/commands/cypilot-*.md",
+        ".cursor/commands/cf-constructor-*.md",
+        ".cursor/agents/cf*.md",
+        ".cursor/agents/studio-*.md",
+        ".cursor/agents/cypilot-*.md",
+        ".cursor/agents/cf-constructor-*.md",
+        ".github/prompts/cf*.prompt.md",
+        ".github/prompts/studio-*.prompt.md",
+        ".github/prompts/cypilot-*.prompt.md",
+        ".github/prompts/cf-constructor-*.prompt.md",
+        ".github/agents/cf*.md",
+        ".github/agents/studio-*.md",
+        ".github/agents/cypilot-*.md",
+        ".github/agents/cf-constructor-*.md",
+        ".windsurf/workflows/cf*.md",
+        ".windsurf/workflows/studio-*.md",
+        ".windsurf/workflows/cypilot-*.md",
+        ".windsurf/workflows/cf-constructor-*.md",
+    ]
+    if kit_tracking == "ignored":
+        patterns.append(f"{install_rel}/config/kits/")
+    return patterns
+
+
+def _compute_gitignore_block(install_dir: str, kit_tracking: str) -> str:
+    lines = [
+        GITIGNORE_MARKER_START,
+        "# Generated Constructor Studio runtime and agent integration files.",
+        "# Files matched here are owned by Constructor Studio and may be overwritten.",
+        *_gitignore_patterns(install_dir, kit_tracking),
+        GITIGNORE_MARKER_END,
+    ]
+    return "\n".join(lines)
+
+
+def _write_gitignore_block(
+    project_root: Path,
+    install_dir: str,
+    kit_tracking: str,
+    dry_run: bool = False,
+) -> str:
+    gitignore_path = project_root / ".gitignore"
+    expected_block = _compute_gitignore_block(install_dir, kit_tracking)
+    if not gitignore_path.is_file():
+        if not dry_run:
+            gitignore_path.write_text(expected_block + "\n", encoding="utf-8")
+        return "created"
+
+    content = gitignore_path.read_text(encoding="utf-8")
+    has_start = GITIGNORE_MARKER_START in content
+    has_end = GITIGNORE_MARKER_END in content
+    if has_start != has_end:
+        raise ValueError(".gitignore contains a malformed Constructor Studio managed block")
+    if has_start and has_end:
+        start_idx = content.index(GITIGNORE_MARKER_START)
+        end_idx = content.index(GITIGNORE_MARKER_END)
+        if end_idx < start_idx:
+            raise ValueError(".gitignore contains a malformed Constructor Studio managed block")
+        end_idx += len(GITIGNORE_MARKER_END)
+        current_block = content[start_idx:end_idx]
+        if current_block == expected_block:
+            return "unchanged"
+        new_content = content[:start_idx] + expected_block + content[end_idx:]
+    else:
+        prefix = content.rstrip("\n")
+        new_content = (prefix + "\n\n" if prefix else "") + expected_block + "\n"
+
+    if not dry_run:
+        gitignore_path.write_text(new_content, encoding="utf-8")
+    return "updated"
+
+
+def _persist_install_metadata(core_toml_path: Path, kit_tracking: str, dry_run: bool = False) -> str:
+    data: Dict[str, Any]
+    existed = core_toml_path.is_file()
+    if existed:
+        try:
+            data = toml_utils.load(core_toml_path)
+        except (OSError, ValueError):
+            data = _default_core_toml()
+    else:
+        data = _default_core_toml()
+    install_data = data.get("install")
+    if not isinstance(install_data, dict):
+        install_data = {}
+    install_data["version_source"] = "project_config"
+    install_data["kit_tracking"] = kit_tracking
+    data["install"] = install_data
+    if "kits" not in data or not isinstance(data.get("kits"), dict):
+        data["kits"] = {}
+    if not dry_run:
+        core_toml_path.parent.mkdir(parents=True, exist_ok=True)
+        toml_utils.dump(data, core_toml_path, header_comment="Constructor Studio project configuration")
+    return "updated" if existed else "created"
+
+
+def _read_kit_tracking(core_toml_path: Path, default: str = "tracked") -> str:
+    try:
+        data = toml_utils.load(core_toml_path)
+    except (OSError, ValueError):
+        return default
+    install_data = data.get("install", {})
+    if isinstance(install_data, dict):
+        value = install_data.get("kit_tracking")
+        if value in KIT_TRACKING_POLICIES:
+            return str(value)
+    return default
 
 def _prompt_path(question: str, default: Optional[str]) -> str:
     prompt = f"{question}"
@@ -441,6 +584,135 @@ def _inject_root_claude(project_root: Path, install_dir: str, dry_run: bool = Fa
     return _inject_managed_block(project_root / "CLAUDE.md", install_dir, dry_run, project_root=project_root)
 # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-init-inject-claude
 
+
+def _repair_existing_install(
+    project_root: Path,
+    install_rel: str,
+    kit_tracking: str,
+    dry_run: bool = False,
+) -> int:
+    """Restore generated runtime files for an already initialized project."""
+    if not CACHE_DIR.is_dir():
+        ui.result(
+            {
+                "status": "ERROR",
+                "message": f"Constructor Studio cache not found at {CACHE_DIR}. Run 'cfs update' first.",
+                "project_root": project_root.as_posix(),
+                "studio_dir": (project_root / install_rel).as_posix(),
+            },
+            human_fn=lambda d: (
+                ui.error("Constructor Studio cache not found."),
+                ui.detail("Expected at", str(CACHE_DIR)),
+                ui.blank(),
+                ui.hint("Install Constructor Studio first:  pipx install git+https://github.com/constructorfabric/studio.git && cfs update"),
+                ui.blank(),
+            ),
+        )
+        return 1
+
+    studio_dir = (project_root / install_rel).resolve()
+    config_dir = studio_dir / "config"
+    gen_dir = studio_dir / GEN_SUBDIR
+    core_dir = studio_dir / CORE_SUBDIR
+    actions: Dict[str, object] = {}
+    errors: List[Dict[str, str]] = []
+    core_toml_path = (config_dir / "core.toml").resolve()
+    effective_kit_tracking = _read_kit_tracking(core_toml_path, default=kit_tracking)
+
+    try:
+        from .kit import regenerate_gen_aggregates
+
+        if not dry_run:
+            studio_dir.mkdir(parents=True, exist_ok=True)
+            copy_results = _copy_from_cache(CACHE_DIR, studio_dir, force=True)
+            config_dir.mkdir(parents=True, exist_ok=True)
+            gen_dir.mkdir(parents=True, exist_ok=True)
+            (core_dir / _README_FILENAME).write_text(_core_readme(), encoding="utf-8")
+            (gen_dir / _README_FILENAME).write_text(_gen_readme(), encoding="utf-8")
+            (config_dir / _README_FILENAME).write_text(_config_readme(), encoding="utf-8")
+        else:
+            copy_results = {d: "dry_run" for d in COPY_DIRS}
+            for item in COPY_ARCHITECTURE_ITEMS:
+                copy_results[f"architecture/{item}"] = "dry_run"
+        actions["copy"] = copy_results
+        actions["readmes"] = "updated" if not dry_run else "dry_run"
+        actions["core_toml"] = _persist_install_metadata(
+            core_toml_path,
+            effective_kit_tracking,
+            dry_run=dry_run,
+        )
+
+        if not dry_run:
+            actions.update(regenerate_gen_aggregates(studio_dir))
+            config_agents_path = config_dir / _AGENTS_FILENAME
+            if not config_agents_path.is_file():
+                config_agents_path.write_text(
+                    "# Custom Agent Navigation Rules\n\n"
+                    "Add your project-specific WHEN rules here.\n"
+                    "These rules are loaded alongside the generated rules in `{cf-studio-path}/.gen/"
+                    + _AGENTS_FILENAME
+                    + "`.\n",
+                    encoding="utf-8",
+                )
+                actions["config_agents"] = "created"
+            config_skill_path = config_dir / "SKILL.md"
+            if not config_skill_path.is_file():
+                config_skill_path.write_text(
+                    "# Custom Skill Extensions\n\n"
+                    "Add your project-specific skill instructions here.\n"
+                    "These are loaded alongside the generated skills in `{cf-studio-path}/.gen/SKILL.md`.\n",
+                    encoding="utf-8",
+                )
+                actions["config_skill"] = "created"
+
+        actions["root_agents"] = _inject_root_agents(project_root, install_rel, dry_run=dry_run)
+        actions["root_claude"] = _inject_root_claude(project_root, install_rel, dry_run=dry_run)
+        actions["gitignore"] = _write_gitignore_block(
+            project_root,
+            install_rel,
+            effective_kit_tracking,
+            dry_run=dry_run,
+        )
+    except (OSError, ValueError, RuntimeError) as exc:
+        errors.append({"path": install_rel, "error": str(exc)})
+
+    if errors:
+        ui.result(
+            {
+                "status": "ERROR",
+                "message": "Init repair failed",
+                "project_root": project_root.as_posix(),
+                "studio_dir": studio_dir.as_posix(),
+                "dry_run": bool(dry_run),
+                "errors": errors,
+                "actions": actions,
+            },
+            human_fn=lambda d: _human_init_error(d),
+        )
+        return 1
+
+    ui.result(
+        {
+            "status": "REPAIRED",
+            "message": "Constructor Studio already initialized; generated runtime files repaired.",
+            "project_root": project_root.as_posix(),
+            "studio_dir": studio_dir.as_posix(),
+            "core_toml": core_toml_path.as_posix(),
+            "dry_run": bool(dry_run),
+            "version_changed": False,
+            "version_source": "project_config",
+            "kit_tracking": effective_kit_tracking,
+            "actions": actions,
+        },
+        human_fn=lambda d: (
+            ui.step("Constructor Studio already initialized; repaired generated runtime files."),
+            ui.detail("Directory", str(studio_dir)),
+            ui.detail("Kit tracking", effective_kit_tracking),
+            ui.blank(),
+        ),
+    )
+    return 0
+
 def cmd_init(argv: List[str]) -> int:
     # @cpt-dod:cpt-studio-dod-core-infra-init-config:p1
     # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-user-init
@@ -449,6 +721,12 @@ def cmd_init(argv: List[str]) -> int:
     p.add_argument("--install-dir", default=None, help="Constructor Studio directory relative to project root (default: .cf-studio)")
     p.add_argument("--from-dir", default=None, help="Constructor Studio directory relative to project root when migrating")
     p.add_argument("--project-name", default=None, help="Project name (default: project root folder name)")
+    p.add_argument(
+        "--kit-tracking",
+        choices=KIT_TRACKING_POLICIES,
+        default="tracked",
+        help="Whether project kits are tracked in git or treated as generated files (default: tracked)",
+    )
     p.add_argument("--yes", action="store_true", help="Do not prompt; accept defaults")
     p.add_argument("--dry-run", action="store_true", help="Compute changes without writing files")
     p.add_argument("--force", action="store_true", help="Overwrite existing files")
@@ -498,23 +776,12 @@ def cmd_init(argv: List[str]) -> int:
     # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-if-exists
     # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-return-exists
     if existing_install_rel is not None and not args.force:
-        ui.result(
-            {
-                "status": "FAIL",
-                "message": "Constructor Studio already initialized. Use 'cfs update' to upgrade or --force to reinitialize.",
-                "project_root": project_root.as_posix(),
-                "studio_dir": (project_root / existing_install_rel).as_posix(),
-            },
-            human_fn=lambda d: (
-                ui.error("Constructor Studio is already initialized in this project."),
-                ui.detail("Directory", (project_root / existing_install_rel).as_posix()),
-                ui.blank(),
-                ui.hint("To refresh to the latest version:  cfs update"),
-                ui.hint("To reinitialize from scratch:      cfs init --force"),
-                ui.blank(),
-            ),
+        return _repair_existing_install(
+            project_root,
+            existing_install_rel,
+            str(args.kit_tracking),
+            dry_run=args.dry_run,
         )
-        return 2
     # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-return-exists
     # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-if-exists
 
@@ -712,9 +979,16 @@ def cmd_init(argv: List[str]) -> int:
     if core_toml_existed and not args.force:
         actions["core_toml"] = "unchanged"
     else:
+        desired_core["install"]["kit_tracking"] = str(args.kit_tracking)
         if not args.dry_run:
             toml_utils.dump(desired_core, core_toml_path, header_comment="Constructor Studio project configuration")
         actions["core_toml"] = "updated" if core_toml_existed else "created"
+    if core_toml_existed and not args.force:
+        actions["core_toml_metadata"] = _persist_install_metadata(
+            core_toml_path,
+            str(args.kit_tracking),
+            dry_run=args.dry_run,
+        )
 
     # Write user-editable AGENTS.md to config/ (preserve existing)
     # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-create-config-agents
@@ -829,6 +1103,12 @@ def cmd_init(argv: List[str]) -> int:
     actions["root_agents"] = root_agents_action
     root_claude_action = _inject_root_claude(project_root, install_rel, dry_run=args.dry_run)
     actions["root_claude"] = root_claude_action
+    actions["gitignore"] = _write_gitignore_block(
+        project_root,
+        install_rel,
+        str(args.kit_tracking),
+        dry_run=args.dry_run,
+    )
     # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-inject-agents
 
     if errors:

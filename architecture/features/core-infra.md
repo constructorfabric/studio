@@ -10,12 +10,17 @@
 - [2. Actor Flows (CDSL)](#2-actor-flows-cdsl)
   - [Global CLI Invocation](#global-cli-invocation)
   - [Project Initialization](#project-initialization)
+  - [Project Init Repair](#project-init-repair)
+  - [Project Update](#project-update)
   - [Cypilot Migration](#cypilot-migration)
 - [3. Processes / Business Logic (CDSL)](#3-processes--business-logic-cdsl)
   - [Resolve Skill Target](#resolve-skill-target)
   - [Route Command](#route-command)
   - [Define Root System](#define-root-system)
   - [Create Config Directory](#create-config-directory)
+  - [Manage Gitignore Footprint](#manage-gitignore-footprint)
+  - [Resolve Project Version Metadata](#resolve-project-version-metadata)
+  - [Normalize Generated Agent Names](#normalize-generated-agent-names)
   - [Inject Root AGENTS.md](#inject-root-agentsmd)
   - [Cache Skill from GitHub](#cache-skill-from-github)
   - [Create Config AGENTS.md](#create-config-agentsmd)
@@ -34,6 +39,8 @@
   - [Skill Cache Downloads from GitHub](#skill-cache-downloads-from-github)
   - [Init Creates Full Config](#init-creates-full-config)
   - [Root AGENTS.md Integrity](#root-agentsmd-integrity)
+  - [Init Repair Restores Generated Surfaces](#init-repair-restores-generated-surfaces)
+  - [Update Skips Kits Unless Explicit](#update-skips-kits-unless-explicit)
   - [Usage Telemetry](#usage-telemetry)
   - [5.x Mirror Override](#5x-mirror-override)
 - [6. Implementation Modules](#6-implementation-modules)
@@ -118,7 +125,7 @@ Enables users to install Studio globally, initialize it in any project with sens
 
 ### Project Initialization
 
-- [x] `p1` - **ID**: `cpt-studio-flow-core-infra-project-init`
+- [ ] `p1` - **ID**: `cpt-studio-flow-core-infra-project-init`
 
 **Actors**:
 
@@ -128,16 +135,18 @@ Enables users to install Studio globally, initialize it in any project with sens
 **Success Scenarios**:
 - User initializes a fresh project → full config created, root system defined, AGENTS.md injected
 - User initializes with custom directory and agent selection → respects choices
+- User runs `cfs init` in an already-initialized project → generated surfaces are repaired without changing the pinned version
 
 **Error Scenarios**:
-- Studio already initialized → abort with suggestion to use `cfs update`
+- Existing initialization has unreadable version/source metadata → return `NEEDS_UPDATE_METADATA`
+- Requested install-dir conflicts with the existing root managed block → return structured error
 - No cached skill bundle → error with install instructions
 
 **Steps**:
 1. [x] - `p1` - User invokes `cfs init [--project-root ROOT] [--install-dir DIR]` - `inst-user-init`
 2. [x] - `p1` - Check if `{cf-studio-path}/` (or specified dir) already exists - `inst-check-existing`
-3. [x] - `p1` - **IF** already initialized - `inst-if-exists`
-   1. [x] - `p1` - **RETURN** error: "Studio already initialized. Use 'cfs update' to upgrade." (exit 2) - `inst-return-exists`
+3. [ ] - `p1` - **IF** already initialized and `--force` is absent: delegate to `cpt-studio-flow-core-infra-init-repair` - `inst-if-exists`
+   1. [ ] - `p1` - **RETURN** repair result instead of treating existing initialization as an error - `inst-return-repair`
 4. [x] - `p1` - **IF** interactive terminal AND no --dir flag - `inst-if-interactive`
    1. [x] - `p1` - Prompt user for installation directory (default: `studio`) - `inst-prompt-dir`
    2. [x] - `p2` - Prompt user for agent selection (default: all) - `inst-prompt-agents`
@@ -155,6 +164,67 @@ Enables users to install Studio globally, initialize it in any project with sens
 15. [x] - `p1` - Detect existing Studio installation by reading AGENTS.md TOML block with `cf-studio-path` variable - `inst-init-detect-existing`
 16. [x] - `p1` - Inject/update CLAUDE.md managed block for Claude agent integration - `inst-init-inject-claude`
 17. [x] - `p1` - Human-friendly formatters for init success and error output - `inst-init-format-output`
+18. [ ] - `p1` - Parse `--kit-tracking tracked|ignored` with default `tracked`; in interactive mode ask whether editable kit files should be tracked in git - `inst-kit-tracking-policy`
+19. [ ] - `p1` - Persist kit tracking policy in project config so later repair and update commands know whether kit files are user-owned source or generated/ephemeral content - `inst-persist-kit-tracking`
+20. [ ] - `p1` - Write or replace the Constructor Studio managed `.gitignore` block via `cpt-studio-algo-core-infra-gitignore-footprint` - `inst-write-gitignore-footprint`
+21. [ ] - `p1` - **IF** existing initialization is detected and `--force` is absent: validate install-dir compatibility before repair - `inst-existing-repair-mode`
+
+### Project Init Repair
+
+- [ ] `p1` - **ID**: `cpt-studio-flow-core-infra-init-repair`
+
+**Actors**:
+
+- `cpt-studio-actor-user`
+- `cpt-studio-actor-studio-cli`
+
+**Success Scenarios**:
+- User runs `cfs init` in an initialized project after `.core/`, `.gen/`, or generated agent outputs were deleted because they are git-ignored.
+- User runs `cfs init` in a clone where generated surfaces are absent, but tracked config still records the pinned Studio version/source.
+
+**Error Scenarios**:
+- Project config lacks version/source metadata and `.core/` cannot provide a safe migration fallback.
+- The requested `--install-dir` conflicts with the existing root managed block.
+- Tracked kit files are missing; repair reports them as missing user-owned content instead of silently recreating them.
+
+**Steps**:
+1. [ ] - `p1` - Detect existing initialization from root managed block and resolve the existing install directory - `inst-detect-existing-install`
+2. [ ] - `p1` - Load project config and resolve pinned Studio version/source via `cpt-studio-algo-core-infra-version-metadata` - `inst-resolve-pinned-version`
+3. [ ] - `p1` - **IF** version metadata is unavailable and cannot be migrated from existing `.core/`: return `NEEDS_UPDATE_METADATA` with actionable `cfs update` guidance - `inst-needs-update-metadata`
+4. [ ] - `p1` - Restore `.core/` from local cache for the pinned version, or download exactly the pinned version from configured source; never upgrade to latest implicitly - `inst-restore-core-pinned`
+5. [ ] - `p1` - Regenerate `.gen/` aggregates and generated agent outputs for the existing config - `inst-restore-generated-surfaces`
+6. [ ] - `p1` - Rebuild the managed `.gitignore` block from install-dir and kit tracking policy - `inst-restore-gitignore`
+7. [ ] - `p1` - **IF** `kit-tracking = ignored`: restore registered kit files as overwriteable generated/ephemeral content - `inst-restore-ignored-kits`
+8. [ ] - `p1` - **IF** `kit-tracking = tracked` and registered kit files are missing: report warning/error and suggest `cfs kit install` or `cfs update --with-kits yes` - `inst-report-missing-tracked-kits`
+9. [ ] - `p1` - **RETURN** JSON status `REPAIRED` or `ALREADY_INITIALIZED_REPAIRED` with restored surfaces, `version_source = project_config`, and `version_changed = false` - `inst-return-repair-result`
+
+### Project Update
+
+- [ ] `p1` - **ID**: `cpt-studio-flow-core-infra-project-update`
+
+**Actors**:
+
+- `cpt-studio-actor-user`
+- `cpt-studio-actor-studio-cli`
+
+**Success Scenarios**:
+- User runs `cfs update` and only core/config/layout/generated agent surfaces are refreshed.
+- User runs `cfs update --with-kits yes` and explicitly opts into kit file updates.
+
+**Error Scenarios**:
+- User passes bare `--with-kits` without a value.
+- User passes an unsupported `--with-kits` value.
+- A malformed managed `.gitignore` block prevents safe replacement.
+
+**Steps**:
+1. [ ] - `p1` - Parse `--with-kits {yes,true,no,false}` with default `no`; reject bare flags and unsupported values - `inst-parse-with-kits`
+2. [ ] - `p1` - Refresh `.core/`, migrate config/layout metadata, and regenerate `.gen/` and generated agent outputs - `inst-update-core-generated`
+3. [ ] - `p1` - Rewrite the managed `.gitignore` block according to current install-dir and kit tracking policy - `inst-update-gitignore`
+4. [ ] - `p1` - **IF** `--with-kits no|false`: skip kit file updates and leave registered kit content untouched - `inst-skip-kit-files`
+5. [ ] - `p1` - **IF** `--with-kits yes|true` and `kit-tracking = tracked`: run the existing kit update safety pipeline with whatsnew, diff, and interactive/auto-approve behavior matching `cfs kit update` - `inst-update-tracked-kits`
+6. [ ] - `p1` - **IF** `--with-kits yes|true` and `kit-tracking = ignored`: recreate or overwrite registered kit files without per-file prompts because ignored kits are generated/ephemeral by policy - `inst-update-ignored-kits`
+7. [ ] - `p1` - Persist current core version/source metadata in project config for future repair mode - `inst-persist-update-metadata`
+8. [ ] - `p1` - **RETURN** JSON with core actions, generated-surface actions, kit update mode, and whether kit files changed - `inst-return-update-result`
 
 ### Cypilot Migration
 
@@ -295,6 +365,59 @@ Enables users to install Studio globally, initialize it in any project with sens
 4. [x] - `p1` - Write `artifacts.toml` with default registry (systems, autodetect rules, codebase, ignore patterns) - `inst-write-artifacts-toml`
 5. [x] - `p2` - Validate files against schemas before final write - `inst-validate-schemas`
 6. [x] - `p1` - **RETURN** paths to created files - `inst-return-config-paths`
+
+### Manage Gitignore Footprint
+
+- [ ] `p1` - **ID**: `cpt-studio-algo-core-infra-gitignore-footprint`
+
+**Input**: Project root, install-dir, kit tracking policy, generated agent output registry
+
+**Output**: Created or updated project `.gitignore` managed block
+
+**Rules**:
+- Ignored paths in the Constructor Studio managed block are overwriteable generated surfaces.
+- Tracked files outside the managed block keep the normal user-owned safety contract.
+- `config/AGENTS.md`, `config/SKILL.md`, `config/core.toml`, and `config/artifacts.toml` are tracked project configuration and MUST NOT be ignored.
+
+**Steps**:
+1. [ ] - `p1` - Build exact project-relative ignore paths for the current install-dir: `<install-dir>/.core/` and `<install-dir>/.gen/` - `inst-ignore-core-gen`
+2. [ ] - `p1` - Add `config/kits/<slug>/` ignore entries only when `kit-tracking = ignored`; keep kits tracked when policy is `tracked` - `inst-ignore-kits-by-policy`
+3. [ ] - `p1` - Add only generator-owned agent paths and patterns, never broad parent directories such as `.github/`, `.claude/`, `.cursor/`, `.codex/`, or `.agents/` - `inst-ignore-agent-generated-only`
+4. [ ] - `p1` - Include safe shared skill patterns: `.agents/skills/cf/`, `.agents/skills/cf-*/`, and legacy Studio-owned `studio-*`, `cypilot-*`, `cf-constructor-*` skill dirs - `inst-ignore-shared-skills`
+5. [ ] - `p1` - Include safe Codex patterns: `.codex/agents/cf*.toml`, legacy Studio-owned Codex TOML names, and `.codex/.constructor-studio-installed` - `inst-ignore-codex-generated`
+6. [ ] - `p1` - Include safe Claude/Cursor/Copilot/Windsurf generated names with `cf*` patterns and install markers, plus legacy Studio-owned `studio-*`, `cypilot-*`, and `cf-constructor-*` names where generated by prior versions - `inst-ignore-tool-generated`
+7. [ ] - `p1` - Write a warning comment that ignored entries are generated surfaces and may be regenerated or overwritten by `cfs init`, `cfs update`, or `cfs generate-agents`; include the kit overwrite warning only when `kit-tracking = ignored` - `inst-write-overwrite-warning`
+8. [ ] - `p1` - Replace the managed `.gitignore` block only when start/end markers are intact; on malformed, partial, or nested markers, return warning/error without overwriting user content - `inst-gitignore-marker-safety`
+
+### Resolve Project Version Metadata
+
+- [ ] `p1` - **ID**: `cpt-studio-algo-core-infra-version-metadata`
+
+**Input**: Project config, optional existing `.core/` metadata, local cache
+
+**Output**: Pinned Studio version/source metadata for repair and update
+
+**Steps**:
+1. [ ] - `p1` - Read authoritative Studio version/source metadata from project config - `inst-read-config-version`
+2. [ ] - `p1` - Use `.core/` version metadata only as a migration fallback when config metadata is absent and `.core/` is still present - `inst-core-version-fallback`
+3. [ ] - `p1` - Persist migrated metadata into config before relying on ignored `.core/` for future repair operations - `inst-persist-migrated-version`
+4. [ ] - `p1` - **IF** no safe version/source metadata exists: return `NEEDS_UPDATE_METADATA`; never guess latest - `inst-return-needs-metadata`
+5. [ ] - `p1` - Resolve local cache match for the pinned version before attempting network download - `inst-resolve-pinned-cache`
+6. [ ] - `p1` - **IF** network is needed but unavailable: return structured error with install-dir, pinned version, cache path, and remediation guidance - `inst-version-offline-error`
+
+### Normalize Generated Agent Names
+
+- [ ] `p1` - **ID**: `cpt-studio-algo-core-infra-agent-name-normalization`
+
+**Input**: Generated agent registry and on-disk generated agent outputs
+
+**Output**: Generated agent outputs with Studio-owned names that can be safely ignored
+
+**Steps**:
+1. [ ] - `p1` - Require every new Constructor Studio generated agent config, agent, skill, command, prompt, or workflow output to use a `cf-` prefix or a dedicated Studio-owned output path - `inst-require-cf-prefix`
+2. [ ] - `p1` - Detect existing non-prefixed generated storytelling agent outputs and migrate them only when ownership checks prove they are generated - `inst-migrate-storytelling-agents`
+3. [ ] - `p1` - Preserve user-edited non-prefixed files and report them instead of hiding them with `.gitignore` patterns - `inst-preserve-user-edited-agents`
+4. [ ] - `p1` - Avoid adding `.gitignore` patterns for non-prefixed generated files until they have been migrated or ownership is otherwise guaranteed - `inst-no-unowned-ignore`
 
 ### Inject Root AGENTS.md
 
@@ -499,7 +622,7 @@ Enables users to install Studio globally, initialize it in any project with sens
 
 ### Project Installation State
 
-- [x] `p1` - **ID**: `cpt-studio-state-core-infra-project-install`
+- [ ] `p1` - **ID**: `cpt-studio-state-core-infra-project-install`
 
 **States**: UNINITIALIZED, INITIALIZED, STALE
 
@@ -509,6 +632,8 @@ Enables users to install Studio globally, initialize it in any project with sens
 1. [x] - `p1` - **FROM** UNINITIALIZED **TO** INITIALIZED **WHEN** `cfs init` completes successfully - `inst-init-complete`
 2. [x] - `p1` - **FROM** INITIALIZED **TO** STALE **WHEN** cached skill version is newer than project skill version - `inst-version-mismatch`
 3. [x] - `p1` - **FROM** STALE **TO** INITIALIZED **WHEN** `cfs update` completes successfully - `inst-update-complete`
+4. [ ] - `p1` - **FROM** INITIALIZED **TO** INITIALIZED **WHEN** `cfs init` repair restores ignored/generated surfaces without changing pinned version - `inst-init-repair`
+5. [ ] - `p1` - **FROM** INITIALIZED **TO** INITIALIZED **WHEN** `cfs update --with-kits no|false` refreshes core/generated surfaces without changing kit files - `inst-update-without-kits`
 
 ## 5. Definitions of Done
 
@@ -573,14 +698,17 @@ The system **MUST** provide a cache mechanism in the CLI proxy that downloads th
 
 ### Init Creates Full Config
 
-- [x] `p1` - **ID**: `cpt-studio-dod-core-infra-init-config`
+- [ ] `p1` - **ID**: `cpt-studio-dod-core-infra-init-config`
 
 The system **MUST** provide a `cfs init` command that copies skill bundle from cache, defines the root system from the project directory name, creates `{cf-studio-path}/kits/` directory, creates `{cf-studio-path}/config/core.toml` with kit registrations and project root, creates `{cf-studio-path}/config/artifacts.toml` with root system definition and default autodetect rules, injects the root `AGENTS.md` managed block, creates `{cf-studio-path}/config/AGENTS.md` with default WHEN rules, and prompts the user to install the SDLC kit with `[a]ccept / [d]ecline`. If accepted, the kit is downloaded from GitHub and installed inline.
+
+The command **MUST** also write the managed `.gitignore` footprint block. `.core/`, `.gen/`, and generated agent outputs are ignored and overwriteable by default. Kit files are tracked by default under `--kit-tracking tracked`; when `--kit-tracking ignored` is selected, kit files are ignored and treated as generated/ephemeral content that can be overwritten without per-file prompts.
 
 **Implements**:
 - `cpt-studio-flow-core-infra-project-init`
 - `cpt-studio-algo-core-infra-define-root-system`
 - `cpt-studio-algo-core-infra-create-config`
+- `cpt-studio-algo-core-infra-gitignore-footprint`
 - `cpt-studio-algo-core-infra-inject-root-agents`
 - `cpt-studio-algo-core-infra-create-config-agents`
 
@@ -611,6 +739,47 @@ The system **MUST** verify the root `AGENTS.md` managed block on every CLI invoc
 **Covers (DESIGN)**:
 - `cpt-studio-principle-zero-harm`
 - `cpt-studio-component-skill-engine`
+
+### Init Repair Restores Generated Surfaces
+
+- [ ] `p1` - **ID**: `cpt-studio-dod-core-infra-init-repair`
+
+The system **MUST** make repeat `cfs init` behave as repair mode when an existing initialization is detected and `--force` is absent. Repair mode **MUST** restore ignored/generated surfaces (`.core/`, `.gen/`, managed `.gitignore` block, and generated agent outputs) from the pinned project version/source metadata. It **MUST NOT** silently upgrade to latest. It **MUST** return `REPAIRED` or `ALREADY_INITIALIZED_REPAIRED` with `version_changed = false`. When version metadata is missing and cannot be safely migrated, it **MUST** return `NEEDS_UPDATE_METADATA`.
+
+**Implements**:
+- `cpt-studio-flow-core-infra-init-repair`
+- `cpt-studio-algo-core-infra-version-metadata`
+- `cpt-studio-algo-core-infra-gitignore-footprint`
+- `cpt-studio-algo-core-infra-agent-name-normalization`
+
+**Covers (PRD)**:
+- `cpt-studio-fr-core-init`
+- `cpt-studio-fr-core-version`
+
+**Covers (DESIGN)**:
+- `cpt-studio-principle-zero-harm`
+- `cpt-studio-nfr-reliability-recoverability`
+- `cpt-studio-component-config-manager`
+
+### Update Skips Kits Unless Explicit
+
+- [ ] `p1` - **ID**: `cpt-studio-dod-core-infra-update-with-kits`
+
+The system **MUST** make top-level `cfs update` skip kit file updates by default. The command **MUST** accept `--with-kits {yes,true,no,false}` with default `no`; a bare `--with-kits` flag is invalid. When `--with-kits yes|true` is provided, tracked kits use the existing `cfs kit update` safety pipeline, while ignored kits may be recreated or overwritten without per-file prompts because ignored kits are generated/ephemeral by policy.
+
+**Implements**:
+- `cpt-studio-flow-core-infra-project-update`
+- `cpt-studio-algo-core-infra-gitignore-footprint`
+- `cpt-studio-algo-core-infra-version-metadata`
+
+**Covers (PRD)**:
+- `cpt-studio-fr-core-version`
+- `cpt-studio-fr-core-kits`
+
+**Covers (DESIGN)**:
+- `cpt-studio-principle-zero-harm`
+- `cpt-studio-component-config-manager`
+- `cpt-studio-component-kit-manager`
 
 ### Usage Telemetry
 
@@ -677,6 +846,7 @@ See ADR-0020 (`architecture/ADR/0020-cpt-studio-adr-rebrand-and-mirror-override-
 | Telemetry | `src/studio_proxy/telemetry.py` | Non-blocking usage telemetry: local JSONL logs, OTLP HTTP, log rotation |
 | Skill Engine CLI | `skills/.../cli.py` | Skill engine command dispatch |
 | Init Command | `skills/.../commands/init.py` | Project initialization, directory creation |
+| Update Command | `skills/.../commands/update.py` | Project update, repair metadata persistence, kit update gating |
 | Adapter Info | `skills/.../commands/adapter_info.py` | `info` command — display project config |
 | File Utilities | `skills/.../utils/files.py` | Project root discovery, config loading, path resolution |
 | Context | `skills/.../utils/context.py` | Global context management, registry loading |
@@ -688,7 +858,14 @@ See ADR-0020 (`architecture/ADR/0020-cpt-studio-adr-rebrand-and-mirror-override-
 ## 7. Acceptance Criteria
 
 - [x] `cfs init` creates `{cf-studio-path}/config/core.toml` (kit registrations) and `{cf-studio-path}/config/artifacts.toml` with correct root system definition
-- [x] `cfs init` in an already-initialized project returns exit code 2 with helpful message
+- [ ] `cfs init` in an already-initialized project enters repair mode when metadata is readable, restores ignored/generated surfaces, and does not change pinned version
+- [ ] `cfs init` writes a managed `.gitignore` block that ignores `.core/`, `.gen/`, generated agent outputs, and kit paths only when `--kit-tracking ignored`
+- [ ] `cfs init --kit-tracking tracked` keeps kit files tracked and protected by the normal user-editable kit update safety contract
+- [ ] `cfs init --kit-tracking ignored` marks kit files as generated/ephemeral and allows repair/update to overwrite them without per-file prompts
+- [ ] `cfs init` returns `NEEDS_UPDATE_METADATA` instead of guessing latest when an existing project lacks repair-safe version/source metadata
+- [ ] `cfs update` skips kit file updates by default
+- [ ] `cfs update --with-kits yes` runs kit update behavior explicitly; bare `--with-kits` is rejected
+- [ ] Generated agent outputs use `cf-` prefixes or dedicated Studio-owned paths; existing non-prefixed storytelling agents are migrated only when ownership checks prove they are generated
 - [x] `cfs <command>` from inside a project routes to project skill; from outside routes to cache
 - [x] First `studio` invocation after `pipx install` with empty cache automatically downloads skill from GitHub
 - [x] `cfs update [VERSION|BRANCH]` downloads specified version/branch/SHA into cache

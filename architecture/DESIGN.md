@@ -37,7 +37,7 @@ Studio uses a layered architecture with a thin global CLI proxy at the top, a de
 
 The system separates concerns into five layers: Global CLI Proxy (installation, caching, version management), Core Skill Engine (command routing, deterministic execution), Kit System (GitHub-based kit installation, domain-specific file packages: rules, templates, checklists, constraints, workflows), Config Management (structured config directory, schema validation), and Agent Integration (multi-agent entry point generation). Each layer has clear boundaries and communicates through well-defined interfaces.
 
-Each kit is a file package: a collection of artifact definitions (rules, checklists, templates, examples, constraints, workflows, scripts) installable from GitHub repositories and copied into the kit's config directory (default: `{cf-studio-path}/config/kits/<slug>/`) during installation. Kit updates use file-level diff: each file in the new kit version is compared against the user's installed copy, and changed files are presented as unified diffs with interactive accept/decline/modify prompts. All kit files are user-editable and preserved across updates via interactive diff. The core knows about kits through registration in `{cf-studio-path}/config/core.toml` with source provenance, display/backcompat version, content identity, and verification state. Studio core does not bundle any domain-specific kits — all kits are external packages. During `cfs init`, the user is prompted to install the SDLC kit (`constructorfabric/studio-kit-sdlc`) with `[a]ccept / [d]ecline`. A plugin system for custom hooks and CLI subcommands is planned for p2.
+Each kit is a file package: a collection of artifact definitions (rules, checklists, templates, examples, constraints, workflows, scripts) installable from GitHub repositories and copied into the kit's config directory (default: `{cf-studio-path}/config/kits/<slug>/`) during installation. In the default tracked mode, kit updates use file-level diff: each file in the new kit version is compared against the user's installed copy, and changed files are presented as unified diffs with interactive accept/decline/modify prompts. In opt-in ignored mode, kit files are generated/ephemeral and may be overwritten without per-file prompts. The core knows about kits through registration in `{cf-studio-path}/config/core.toml` with source provenance, display/backcompat version, content identity, and verification state. Studio core does not bundle any domain-specific kits — all kits are external packages. During `cfs init`, the user is prompted to install the SDLC kit (`constructorfabric/studio-kit-sdlc`) with `[a]ccept / [d]ecline`. A plugin system for custom hooks and CLI subcommands is planned for p2.
 
 ### 1.2 Architecture Drivers
 
@@ -61,13 +61,13 @@ For GitHub-backed cache sources, GitHub Release/tag resolution is the version au
 
 - [x] `p1` - `cpt-studio-fr-core-init`
 
-**Design Response**: Interactive bootstrapper that copies the skill from cache into the project, creates the `config/` and `.gen/` directory structure, and generates agent entry points. The dialog asks for install directory, agent selection, and per-kit config output directory. Installed kits copy all kit files (rules, templates, checklists, examples, constraints, workflows, scripts) into the kit's config directory.
+**Design Response**: Interactive bootstrapper that copies the skill from cache into the project, creates the `config/` and `.gen/` directory structure, writes a managed `.gitignore` block for generated/runtime surfaces, and generates agent entry points. The dialog asks for install directory, agent selection, and whether editable kit files should be tracked in git (`kit-tracking = tracked`, default) or treated as ignored/generated content (`kit-tracking = ignored`). Installed kits copy all kit files (rules, templates, checklists, examples, constraints, workflows, scripts) into the kit's config directory. A repeat `cfs init` in an initialized project enters repair mode: it restores `.core/`, `.gen/`, managed `.gitignore`, and generated agent outputs from the project-pinned Studio version/source metadata without silently upgrading.
 
 ##### Config Directory
 
 - [x] `p1` - `cpt-studio-fr-core-config`
 
-**Design Response**: The config directory (`{cf-studio-path}/config/`) holds all project configuration. `core.toml` stores the project root and kit registrations, including format, path, version, structured source provenance, content identity, verification state, and resource bindings for manifest-driven kits. `artifacts.toml` stores the artifact registry — including system definitions (name, slug, kit), autodetect rules, ignore patterns, and codebase definitions. System identity is defined exclusively in `artifacts.toml` `[[systems]]` (see `cpt-studio-adr-remove-system-from-core-toml`). `AGENTS.md` and `SKILL.md` are user-editable extension points for agent navigation rules and skill instructions respectively. `{cf-studio-path}/config/kits/<slug>/` directories hold all kit files — artifacts, workflows, per-kit SKILL.md, constraints, and scripts (all user-editable). Kit-specific config files (e.g., `pr-review.toml`) also live in `config/`. `{cf-studio-path}/.gen/` holds only auto-generated aggregate files (`AGENTS.md`, `SKILL.md`, `README.md`) assembled from installed kits. All TOML config files use deterministic serialization. Kit files are user-editable and preserved across updates via interactive diff.
+**Design Response**: The config directory (`{cf-studio-path}/config/`) holds all project configuration. `core.toml` stores the project root, project-pinned Studio version/source metadata for repair mode, kit tracking policy, and kit registrations, including format, path, version, structured source provenance, content identity, verification state, and resource bindings for manifest-driven kits. `artifacts.toml` stores the artifact registry — including system definitions (name, slug, kit), autodetect rules, ignore patterns, and codebase definitions. System identity is defined exclusively in `artifacts.toml` `[[systems]]` (see `cpt-studio-adr-remove-system-from-core-toml`). `AGENTS.md` and `SKILL.md` are user-editable extension points for agent navigation rules and skill instructions respectively. `{cf-studio-path}/config/kits/<slug>/` directories hold all kit files — artifacts, workflows, per-kit SKILL.md, constraints, and scripts. With `kit-tracking = tracked`, kit files are user-editable source and preserved across updates via interactive diff. With `kit-tracking = ignored`, kit files are generated/ephemeral and may be recreated or overwritten without per-file prompts. Kit-specific config files (e.g., `pr-review.toml`) also live in `config/`. `{cf-studio-path}/.gen/` holds only auto-generated aggregate files (`AGENTS.md`, `SKILL.md`, `README.md`) assembled from installed kits. All TOML config files use deterministic serialization.
 
 Source provenance distinguishes requested source from effective source. For mirrored or forked GitHub sources, the effective source after override is the authority used for release/tag lookup, update checks, and reporting. Local/path sources are stored as non-GitHub provenance and are never interpreted as GitHub release-backed installs.
 
@@ -168,7 +168,7 @@ user_modifiable = false
 
 - [ ] `p2` - `cpt-studio-fr-core-version`
 
-**Design Response**: The `update` command copies the cached skill into the project, detects directory layout and automatically restructures if the old layout is detected, migrates `{cf-studio-path}/config/core.toml` (including removal of the legacy `[system]` section per `cpt-studio-adr-remove-system-from-core-toml`), migrates bundled kit references to GitHub sources for projects upgrading from versions < 3.0.8 (see `cpt-studio-adr-extract-sdlc-kit`), and regenerates agent entry points. The update command does NOT update kit files — kit updates are a separate operation via `cfs kit update`. Config migration preserves all user settings. Version information is accessible via `--version`.
+**Design Response**: The `update` command copies the cached skill into the project, detects directory layout and automatically restructures if the old layout is detected, migrates `{cf-studio-path}/config/core.toml` (including removal of the legacy `[system]` section per `cpt-studio-adr-remove-system-from-core-toml`), migrates bundled kit references to GitHub sources for projects upgrading from versions < 3.0.8 (see `cpt-studio-adr-extract-sdlc-kit`), rewrites the managed `.gitignore` block, persists current project-pinned Studio version/source metadata, and regenerates agent entry points. The update command does NOT update kit files by default. Kit updates are a separate operation via `cfs kit update`, or an explicit top-level opt-in via `cfs update --with-kits yes|true`. Config migration preserves all user settings. Version information is accessible via `--version`.
 
 Version output distinguishes package metadata from installed state. `--version` reports the proxy/package version, cache bundle state, and project-installed core state separately. Reported installed-state items include provenance and verification status (`verified`, `unverified`, or `unknown`) when known so users can tell the difference between package metadata, locally installed files, and release/tag-verified content. Per-kit provenance remains stored in `core.toml` and is surfaced through kit update/report paths rather than the proxy-level `--version` output.
 
@@ -194,19 +194,19 @@ Version output distinguishes package metadata from installed state. `--version` 
 
 > **DEPRECATED per `cpt-studio-adr-remove-blueprint-system`**: The Blueprint Processor and blueprint files have been removed. Kits are now direct file packages — all kit resources (per-artifact rules, templates, checklists, examples; kit-wide constraints, conf, SKILL, AGENTS; optional workflows, scripts, codebase) are maintained as ready-to-use files in `{cf-studio-path}/config/kits/<slug>/`. There is no generation step. Kit updates use file-level diff (see `cpt-studio-fr-core-resource-diff`).
 
-**Kit file structure**: Each kit is a directory containing per-artifact subdirectories (`artifacts/<KIND>/rules.md`, `artifacts/<KIND>/template.md`, `artifacts/<KIND>/checklist.md`, `artifacts/<KIND>/examples/example.md`), kit-wide files (`constraints.toml`, `conf.toml`, `SKILL.md`), and optional directories (`workflows/`, `scripts/`, `codebase/`). All files are user-editable and preserved across updates via interactive diff.
+**Kit file structure**: Each kit is a directory containing per-artifact subdirectories (`artifacts/<KIND>/rules.md`, `artifacts/<KIND>/template.md`, `artifacts/<KIND>/checklist.md`, `artifacts/<KIND>/examples/example.md`), kit-wide files (`constraints.toml`, `conf.toml`, `SKILL.md`), and optional directories (`workflows/`, `scripts/`, `codebase/`). In the default `kit-tracking = tracked` mode, all files are user-editable and preserved across updates via interactive diff. In opt-in `kit-tracking = ignored` mode, kit files are treated as generated/ephemeral and may be recreated or overwritten without per-file prompts.
 
 **SKILL extensions**: Kit `SKILL.md` files in `{cf-studio-path}/config/kits/<slug>/SKILL.md` are aggregated into `{cf-studio-path}/config/SKILL.md` during init/kit-install. The main SKILL.md navigates to `{cf-studio-path}/config/SKILL.md`, ensuring AI agents discover kit capabilities.
 
 **System prompt extensions**: Kit `AGENTS.md` content is appended to `{cf-studio-path}/config/AGENTS.md` during init/kit-install. Loaded via Protocol Guard, directives are automatically active.
 
-**Workflow registrations**: Kit workflow files in `{cf-studio-path}/config/kits/<slug>/workflows/{name}.md` are registered with the Agent Generator, which creates entry points in each agent's native format (e.g., `.windsurf/workflows/studio-{name}.md`).
+**Workflow registrations**: Kit workflow files in `{cf-studio-path}/config/kits/<slug>/workflows/{name}.md` are registered with the Agent Generator, which creates entry points in each agent's native format using Studio-owned names (e.g., `.windsurf/workflows/cf-{name}.md`).
 
 ##### Generated Resource Editing & Interactive Diff
 
 - [x] `p1` - `cpt-studio-fr-core-resource-diff`
 
-**Design Response**: The Resource Diff Engine handles interactive conflict resolution for kit file updates and generated resource regeneration. The engine compares source files against the user's installed copies. If content differs, it presents a unified diff (similar to `git diff`) and an interactive CLI prompt with five modes: `[a]ccept` (overwrite with new), `[d]ecline` (keep current), `[A]ccept-all` (overwrite all remaining), `[D]ecline-all` (keep all remaining), `[m]odify` (open the file in the user's editor for manual resolution). Before iterating per-file, the engine displays a summary of all changes (added, removed, modified, unchanged counts). The same engine is used for both kit updates and generated resource regeneration.
+**Design Response**: The Resource Diff Engine handles interactive conflict resolution for tracked kit file updates and user-owned generated resource regeneration. The engine compares source files against the user's installed copies. If content differs, it presents a unified diff (similar to `git diff`) and an interactive CLI prompt with five modes: `[a]ccept` (overwrite with new), `[d]ecline` (keep current), `[A]ccept-all` (overwrite all remaining), `[D]ecline-all` (keep all remaining), `[m]odify` (open the file in the user's editor for manual resolution). Before iterating per-file, the engine displays a summary of all changes (added, removed, modified, unchanged counts). Ignored/generated surfaces, including ignored kits, are outside this safety contract and may be recreated or overwritten without per-file prompts.
 
 ##### Directory Layout Migration
 
@@ -397,7 +397,7 @@ Adopting Studio MUST NOT impose costs on the development workflow. No mandatory 
 
 - [x] `p2` - **ID**: `cpt-studio-principle-no-manual-maintenance`
 
-Nothing that can be automated MUST require manual upkeep. Agent entry points are regenerated on `update`. Kit files are updated via file-level diff. Config migrations run automatically. Shell completions are generated from command definitions. If a human must remember to update something after a version change, that is a bug in the tool.
+Nothing that can be automated MUST require manual upkeep. Agent entry points are regenerated on `update`. Tracked kit files are updated via file-level diff; ignored kit files are regenerated by policy. Config migrations run automatically. Shell completions are generated from command definitions. If a human must remember to update something after a version change, that is a bug in the tool.
 
 ### 2.2 Constraints
 
@@ -720,11 +720,11 @@ Manages the kit lifecycle — installing, registering, and updating kits. Enable
 
 ##### Responsibility scope
 
-- Kit installation from GitHub or local directories: download kit from a GitHub source (`cfs kit install <owner/repo[@version]>`) or install from a local directory (`cfs kit install --path <dir>`), copy all kit files from source into `{cf-studio-path}/config/kits/{slug}/`, register in `core.toml` with source and version metadata, regenerate `.gen/AGENTS.md` and `.gen/SKILL.md` to include the new kit's navigation and skill routing. All files in the kit's config directory are user-editable and preserved across updates via interactive diff
+- Kit installation from GitHub or local directories: download kit from a GitHub source (`cfs kit install <owner/repo[@version]>`) or install from a local directory (`cfs kit install --path <dir>`), copy all kit files from source into `{cf-studio-path}/config/kits/{slug}/`, register in `core.toml` with source and version metadata plus kit tracking policy, regenerate `.gen/AGENTS.md` and `.gen/SKILL.md` to include the new kit's navigation and skill routing. In tracked mode, files in the kit's config directory are user-editable and preserved across updates via interactive diff; in ignored mode, they are generated/ephemeral and overwriteable
 - Manifest-driven installation (see `cpt-studio-fr-core-kit-manifest`): if the kit source contains `manifest.toml`, the Kit Manager validates it against `kit-manifest.schema.json`, reads all declared resources, prompts the user for destination paths on `user_modifiable` resources (offering defaults), copies each resource to its resolved path, resolves template variables (`{identifier}`) in kit files, and registers all resolved paths in `core.toml` under `[kits.{slug}.resources]`. If no `manifest.toml` is present, falls back to the current behavior (copy predefined content directories and files). The kit root directory itself (`{cf-studio-path}/config/kits/{slug}`) may be relocated by the user during manifest-driven installation if the manifest declares `user_modifiable = true`
 - Kit registration: add kit entry to `{cf-studio-path}/config/core.toml` with config output path, source provenance (`github`, `local_path`, or other explicit source type), requested source, effective source after mirror/fork override, version/ref, content identity, verification state, and resolved resource paths (`resources` map)
 - Version tracking: for GitHub-backed kits, resolve versions through the effective GitHub source's releases/tags; for local/path kits, record local provenance and content identity without GitHub update semantics. Kit source, version/ref, identity, and verification state are tracked in `core.toml`; kit-local metadata may also be stored in `{cf-studio-path}/config/kits/{slug}/conf.toml`
-- Update modes: force (`--force`) overwrites all kit files; interactive (default) uses file-level diff — compares each file in the new version against user's installed copy, shows unified diffs, prompts with accept/decline/accept-all/decline-all/modify via Resource Diff Engine. For manifest-driven kits, updates apply diffs to the registered resource paths (not just the kit directory), detect new resources in the updated manifest (prompt user for path and register), and warn about resources removed from the manifest (preserve existing paths in `core.toml`). When updating a legacy-installed kit (no `resources` section in `core.toml`) and the new version introduces a manifest, auto-populate all resource bindings from existing kit root + manifest defaults before applying diffs
+- Update modes: tracked kits use force (`--force`) or interactive file-level diff — compares each file in the new version against user's installed copy, shows unified diffs, prompts with accept/decline/accept-all/decline-all/modify via Resource Diff Engine. Ignored kits are generated/ephemeral and may be overwritten without per-file prompts. For manifest-driven tracked kits, updates apply diffs to the registered resource paths (not just the kit directory), detect new resources in the updated manifest (prompt user for path and register), and warn about resources removed from the manifest (preserve existing paths in `core.toml`). When updating a legacy-installed kit (no `resources` section in `core.toml`) and the new version introduces a manifest, auto-populate all resource bindings from existing kit root + manifest defaults before applying diffs
 - Resource path exposure: resolved resource variables are returned by `cfs info` as part of kit information, enabling agents and scripts to discover resource locations programmatically
 - Layout restructuring: detect old directory layout and automatically restructure (move generated outputs from `.gen/kits/` to `config/kits/`, clean up `.gen/kits/`)
 - Kit structural validation (`validate-kits` command): verify kit directory exists with required files (`conf.toml`, `constraints.toml`, `artifacts/` directory); for manifest-driven kits, additionally verify all registered resource paths exist on disk
@@ -750,12 +750,13 @@ Bridges the gap between Studio's unified skill system and the diverse file forma
 
 ##### Responsibility scope
 
-- Generate workflow entry points in each agent's native format from kit workflow files (e.g., `.windsurf/workflows/studio-{name}.md` → `config/kits/<slug>/workflows/{name}.md`)
+- Generate workflow entry points in each agent's native format from kit workflow files (e.g., `.windsurf/workflows/cf-{name}.md` → `config/kits/<slug>/workflows/{name}.md`)
 - Generate shared skill stubs in `.agents/skills/{id}/SKILL.md` for all non-Claude agents, referencing the core SKILL.md
 - Compose SKILL.md: collect kit SKILL.md extensions and assemble them into the main SKILL.md alongside core commands
 - Generate skill shims that reference the composed SKILL.md
 - Support 5 agents: Windsurf (`.windsurf/workflows/` + `.agents/skills/`), Cursor (`.cursor/commands/` + `.agents/skills/`), Claude (`.claude/commands/` + `.claude/agents/`), Copilot (`.github/prompts/` + `.github/agents/` + `.agents/skills/`), OpenAI (`.agents/skills/` only)
-- Full overwrite on each invocation (no merge with existing files)
+- Full overwrite on each invocation for generator-owned `cf-*` outputs (no merge with existing files)
+- Normalize generated agent output names so new files use a `cf-` prefix or a dedicated Studio-owned path; migrate legacy non-prefixed generated storytelling files only when ownership checks prove they are generated, and preserve user-edited files
 - Support `--agent` flag for single-agent regeneration
 
 ##### Responsibility boundaries
@@ -931,16 +932,25 @@ sequenceDiagram
     CLI Proxy->>Skill Engine: init command
     Skill Engine->>Skill Engine: detect existing Studio install
     alt existing project detected
-        Skill Engine-->>User: "Studio already initialized. Use 'cfs update' to upgrade."
+        Skill Engine->>Config Manager: resolve pinned Studio version/source metadata
+        alt metadata available
+            Skill Engine->>Skill Engine: repair .core/, .gen/, .gitignore, generated agents
+            Skill Engine-->>User: "Constructor Studio repaired; version unchanged"
+        else metadata unavailable
+            Skill Engine-->>User: NEEDS_UPDATE_METADATA
+        end
     else new project
         Skill Engine->>User: "Install directory?" (default: studio)
         User-->>Skill Engine: confirms
         Skill Engine->>User: "Which agents?" (default: all)
         User-->>Skill Engine: selects agents
+        Skill Engine->>User: "Track editable kit files in git?" (default: yes)
+        User-->>Skill Engine: selects kit-tracking policy
         Skill Engine->>Skill Engine: define root system (name/slug from directory)
         Skill Engine->>Config Manager: create config/, .gen/ directories
-        Config Manager->>Config Manager: write core.toml (root system, no kits)
+        Config Manager->>Config Manager: write core.toml (root system, kit tracking, pinned metadata, no kits)
         Config Manager->>Config Manager: write artifacts.toml (root system, autodetect defaults)
+        Config Manager->>Config Manager: write managed .gitignore block
         Skill Engine->>Skill Engine: regenerate .gen/AGENTS.md, .gen/SKILL.md
         Skill Engine->>Agent Generator: generate entry points
         Agent Generator->>Agent Generator: write .windsurf/, .cursor/, etc.
@@ -976,7 +986,7 @@ sequenceDiagram
     end
 ```
 
-**Description**: User initializes Studio in a project. The skill engine asks for install directory and agent selection. It defines a **root system** (name and slug derived from the project directory name), creates core configs (`core.toml` with root system, `artifacts.toml` with default autodetect rules), generates agent entry points, and sets up `{cf-studio-path}/config/AGENTS.md` with default WHEN rules. After core setup, the tool prompts `Install SDLC kit? [a]ccept [d]ecline`. If accepted, the kit is downloaded from GitHub. If the kit source contains `manifest.toml`, the Kit Manager validates the manifest, reads declared resources, prompts the user for destination paths on `user_modifiable` resources, copies each resource to its resolved path, resolves template variables in kit files, and registers all resource bindings in `core.toml`. If no `manifest.toml` is present, files are copied to the default kit config directory. If declined, the user can install kits later via `cfs kit install`.
+**Description**: User initializes Studio in a project. The skill engine asks for install directory, agent selection, and kit tracking policy. It defines a **root system** (name and slug derived from the project directory name), creates core configs (`core.toml` with root system, pinned Studio metadata, and kit tracking policy; `artifacts.toml` with default autodetect rules), writes the managed `.gitignore` block, generates agent entry points, and sets up `{cf-studio-path}/config/AGENTS.md` with default WHEN rules. After core setup, the tool prompts `Install SDLC kit? [a]ccept [d]ecline`. If accepted, the kit is downloaded from GitHub. If the kit source contains `manifest.toml`, the Kit Manager validates the manifest, reads declared resources, prompts the user for destination paths on `user_modifiable` resources, copies each resource to its resolved path, resolves template variables in kit files, and registers all resource bindings in `core.toml`. If no `manifest.toml` is present, files are copied to the default kit config directory. If declined, the user can install kits later via `cfs kit install`. Repeat `cfs init` repairs generated surfaces using the pinned metadata and does not upgrade implicitly.
 
 **Root AGENTS.md / CLAUDE.md injection**: During initialization (and verified on every CLI invocation), the engine ensures the project root `AGENTS.md` and `CLAUDE.md` files contain the same managed block with only the configured adapter path:
 
@@ -1139,12 +1149,19 @@ sequenceDiagram
     Config Manager->>Config Manager: backup + migrate
     Skill Engine->>Kit Manager: migrate bundled kit refs to GitHub sources
     Kit Manager->>Kit Manager: add source field to kits without one
+    Skill Engine->>Config Manager: persist project-pinned Studio version/source metadata
+    Skill Engine->>Config Manager: rewrite managed .gitignore block
     Skill Engine->>Skill Engine: regenerate .gen/AGENTS.md, .gen/SKILL.md
     Skill Engine->>Agent Generator: regenerate entry points
-    Skill Engine-->>User: "Updated to {version}. Run 'cfs kit update' for kit updates."
+    alt --with-kits yes|true
+        Skill Engine->>Kit Manager: update kit files using tracking policy safety contract
+    else --with-kits no|false
+        Skill Engine->>Kit Manager: skip kit file updates
+    end
+    Skill Engine-->>User: "Updated to {version}. Kit files changed: {true|false}."
 ```
 
-**Description**: Update copies the cached skill into the project, detects directory layout (triggering automatic restructuring if old layout detected), migrates config files (with backup), migrates bundled kit references to GitHub sources (for projects upgrading from versions < 3.0.8), and regenerates agent entry points for compatibility. Kit file updates are a separate operation via `cfs kit update`.
+**Description**: Update copies the cached skill into the project, detects directory layout (triggering automatic restructuring if old layout detected), migrates config files (with backup), migrates bundled kit references to GitHub sources (for projects upgrading from versions < 3.0.8), rewrites the managed `.gitignore` block, persists repair metadata, and regenerates agent entry points for compatibility. Kit file updates are skipped by default and run only via `cfs kit update` or `cfs update --with-kits yes|true`.
 
 #### ID Resolution Query
 
@@ -1317,7 +1334,8 @@ Not applicable — Studio does not use a database. All persistent state is store
 
 - **`{cf-studio-path}/config/core.toml`** — core config (system definitions, kit registrations with config paths and resolved resource bindings, ignore lists). For manifest-driven kits, the `[kits.{slug}.resources]` section stores identifier → path mappings (e.g., `adr_artifacts = "architecture/ADR"`)
 - **`{cf-studio-path}/config/artifacts.toml`** — artifact registry (systems, artifacts, codebases)
-- **`{cf-studio-path}/config/kits/<slug>/`** — per-kit files (conf.toml, SKILL.md, constraints.toml, artifacts/, codebase/, workflows/, scripts/) — all user-editable, path configurable per kit, preserved via interactive diff on update
+- **Project `.gitignore` managed block** — exact project-relative ignore entries for `.core/`, `.gen/`, generated agent outputs, and kit paths only when `kit-tracking = ignored`; entries are overwriteable generated surfaces
+- **`{cf-studio-path}/config/kits/<slug>/`** — per-kit files (conf.toml, SKILL.md, constraints.toml, artifacts/, codebase/, workflows/, scripts/) — tracked/user-editable by default and preserved via interactive diff; generated/ephemeral only when `kit-tracking = ignored`
 - **`{cf-studio-path}/.gen/`** — top-level auto-generated files only (AGENTS.md, SKILL.md, README.md)
 - **`~/.cf-studio/cache/`** — global skill bundle cache
 - **Markdown artifacts** — source of truth for design (PRD.md, DESIGN.md, etc.)
