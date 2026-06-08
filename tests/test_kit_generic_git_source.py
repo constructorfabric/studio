@@ -82,6 +82,16 @@ class TestGenericGitKitSourceParser(unittest.TestCase):
         self.assertEqual(parsed.kit_identity, "sdlc")
         self.assertEqual(parsed.canonical_source, f"git:{encoded}//kits/sdlc@sdlc")
 
+    def test_parse_normalizes_standard_url_scheme_host_and_default_port(self):
+        from studio.utils.git_kit_source import parse_git_kit_source
+
+        parsed = parse_git_kit_source("git/" + quote("HTTPS://EXAMPLE.COM:443/Org/Repo.git", safe=""))
+        self.assertEqual(
+            parsed.canonical_source,
+            "git:" + quote("https://example.com/Org/Repo.git", safe=""),
+        )
+        self.assertEqual(parsed.sanitized_url_display, "https://example.com/Org/Repo.git")
+
     def test_rejects_credentials_with_stable_error_code(self):
         from studio.utils.git_kit_source import GitSourceError, parse_git_kit_source
 
@@ -122,10 +132,37 @@ class TestGenericGitKitSourceParser(unittest.TestCase):
         from studio.utils.git_kit_source import parse_git_kit_source
 
         ssh = parse_git_kit_source("git/" + quote("ssh://example.com/org/repo.git", safe=""))
-        scp = parse_git_kit_source("git/" + quote("git@example.com:org/repo.git", safe=""))
+        scp = parse_git_kit_source("git/" + quote("deploy@EXAMPLE.com:org/repo.git", safe=""))
         self.assertEqual(ssh.transport, "ssh")
         self.assertEqual(scp.transport, "scp")
-        self.assertEqual(scp.sanitized_url_display, "git@example.com:org/repo.git")
+        self.assertEqual(scp.sanitized_url_display, "deploy@example.com:org/repo.git")
+        self.assertEqual(scp.canonical_source, "git:" + quote("deploy@example.com:org/repo.git", safe=""))
+
+    def test_rejects_malformed_source_boundaries(self):
+        from studio.utils.git_kit_source import GitSourceError, parse_git_kit_source
+
+        cases = [
+            ("git/", "GIT_SOURCE_INVALID_URL"),
+            ("git/file:///tmp/repo.git", "GIT_SOURCE_INVALID_SUBDIR"),
+            ("git/" + quote("https://example.com/%2Forg/repo.git", safe=""), "GIT_SOURCE_INVALID_URL"),
+            ("git/" + quote("https://example.com/org/repo.git\x00", safe=""), "GIT_SOURCE_INVALID_URL"),
+            ("git/" + quote("https://example.com/org/repo.git", safe="") + "@Bad", "GIT_SOURCE_INVALID_KIT"),
+            ("git/" + quote("git@example.com:/abs.git", safe=""), "GIT_SOURCE_INVALID_URL"),
+            ("git/" + quote("ftp://example.com/org/repo.git", safe=""), "GIT_SOURCE_INVALID_URL"),
+            ("git/" + quote("https:///org/repo.git", safe=""), "GIT_SOURCE_INVALID_URL"),
+            ("github:owner/repo", "GIT_SOURCE_INVALID_PREFIX"),
+        ]
+        for source, code in cases:
+            with self.subTest(source=source):
+                with self.assertRaises(GitSourceError) as ctx:
+                    parse_git_kit_source(source)
+                self.assertEqual(ctx.exception.code, code)
+
+    def test_sanitized_display_preserves_non_default_port(self):
+        from studio.utils.git_kit_source import parse_git_kit_source
+
+        parsed = parse_git_kit_source("git/" + quote("https://example.com:8443/org/repo.git", safe=""))
+        self.assertEqual(parsed.sanitized_url_display, "https://example.com:8443/org/repo.git")
 
 
 class TestGenericGitKitInstallUpdate(unittest.TestCase):
@@ -184,6 +221,52 @@ class TestGenericGitKitInstallUpdate(unittest.TestCase):
             finally:
                 shutil.rmtree(resolution.tmp_dir, ignore_errors=True)
 
+    def test_materialize_accepts_runtime_git_auth_options_without_persisting_them(self):
+        from studio.utils.git_kit_source import materialize_git_kit_source, parse_git_kit_source
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            repo, first_sha = _make_git_kit_repo(root)
+            parsed = parse_git_kit_source("git/" + quote(repo.as_uri(), safe=""))
+            resolution = materialize_git_kit_source(
+                parsed,
+                requested_ref=first_sha,
+                git_auth={
+                    "env": {"GIT_TERMINAL_PROMPT": "0"},
+                    "ssh_command": "ssh -o BatchMode=yes",
+                    "askpass_command": "echo",
+                },
+            )
+            try:
+                authority_json = json.dumps(resolution.authority_metadata)
+                self.assertEqual(resolution.authority_metadata["commit_sha"], first_sha)
+                self.assertNotIn("BatchMode", authority_json)
+                self.assertNotIn("GIT_TERMINAL_PROMPT", authority_json)
+            finally:
+                shutil.rmtree(resolution.tmp_dir, ignore_errors=True)
+
+    def test_materialize_missing_subdirectory_fails_without_offline_match(self):
+        from studio.utils.git_kit_source import materialize_git_kit_source, parse_git_kit_source
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            repo, first_sha = _make_git_kit_repo(root)
+            parsed = parse_git_kit_source("git/" + quote(repo.as_uri(), safe="") + "//missing")
+            with self.assertRaises(RuntimeError):
+                materialize_git_kit_source(
+                    parsed,
+                    requested_ref=first_sha,
+                    previous_metadata={
+                        "source_provenance": {
+                            "decoded_remote_url_hash": "different",
+                            "selected_subdirectory": "missing",
+                            "kit_identity": "",
+                            "requested_ref": first_sha,
+                        },
+                        "content_identity": {"commit_sha": first_sha},
+                    },
+                )
+
     def test_install_from_file_git_source_records_git_provenance(self):
         from studio.commands.kit import cmd_kit_install
 
@@ -210,6 +293,33 @@ class TestGenericGitKitInstallUpdate(unittest.TestCase):
                 self.assertEqual(kit["source_provenance"]["source_type"], "git")
                 self.assertEqual(kit["source_provenance"]["requested_ref"], "v1")
                 self.assertEqual(kit["content_identity"]["vcs"], "git")
+                self.assertEqual(kit["content_identity"]["commit_sha"], first_sha)
+            finally:
+                os.chdir(cwd)
+
+    def test_install_from_file_git_source_uses_default_branch_without_version(self):
+        from studio.commands.kit import cmd_kit_install
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            project = root / "project"
+            adapter = _bootstrap_project(project)
+            repo, first_sha = _make_git_kit_repo(root)
+            source = "git/" + quote(repo.as_uri(), safe="")
+            cwd = os.getcwd()
+            try:
+                os.chdir(project)
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = cmd_kit_install([source])
+                self.assertEqual(rc, 0, buf.getvalue())
+                out = json.loads(buf.getvalue())
+                self.assertEqual(out["status"], "PASS")
+                with open(adapter / "config" / "core.toml", "rb") as f:
+                    core = tomllib.load(f)
+                kit = core["kits"]["gitkit"]
+                self.assertEqual(kit["source_provenance"]["requested_ref"], "HEAD")
+                self.assertEqual(kit["source_provenance"]["resolution_basis"], "default_branch")
                 self.assertEqual(kit["content_identity"]["commit_sha"], first_sha)
             finally:
                 os.chdir(cwd)
@@ -290,6 +400,21 @@ class TestGenericGitKitInstallUpdate(unittest.TestCase):
                 with open(adapter / "config" / "core.toml", "rb") as f:
                     core = tomllib.load(f)
                 self.assertTrue(core["kits"]["gitkit"]["source"].startswith("git:"))
+                self.assertEqual(core["kits"]["gitkit"]["content_identity"]["commit_sha"], first_sha)
+                self.assertEqual(core["kits"]["gitkit"]["source_provenance"]["freshness"], "last_known")
+
+                shutil.move(str(root / "repo-offline"), str(repo))
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = cmd_kit_update(["gitkit", "--no-interactive", "-y"])
+                self.assertEqual(rc, 0, buf.getvalue())
+                out = json.loads(buf.getvalue())
+                self.assertEqual(out["status"], "PASS")
+                self.assertEqual(out["results"][0]["action"], "current")
+                self.assertEqual(out["results"][0]["authority"]["freshness"], "fresh")
+                with open(adapter / "config" / "core.toml", "rb") as f:
+                    core = tomllib.load(f)
+                self.assertEqual(core["kits"]["gitkit"]["source_provenance"]["freshness"], "fresh")
                 self.assertEqual(core["kits"]["gitkit"]["content_identity"]["commit_sha"], first_sha)
             finally:
                 os.chdir(cwd)

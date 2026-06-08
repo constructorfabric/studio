@@ -21,6 +21,7 @@ selected commit into a temporary worktree for the kit installer.
 
 from __future__ import annotations
 
+# @cpt-begin:cpt-studio-state-generic-git-kit-installer-source:p1:inst-git-prov-schema-source
 import hashlib
 import json
 import os
@@ -37,12 +38,14 @@ from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 _KIT_SLUG_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
 _FULL_SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
-_SCP_LIKE_RE = re.compile(r"^[A-Za-z0-9._-]+@([A-Za-z0-9._-]+):(.+)$")
+_SCP_LIKE_RE = re.compile(r"^([A-Za-z0-9._-]+)@([A-Za-z0-9._-]+):(.+)$")
 _HEX_ESCAPE_RE = re.compile(r"%[0-9a-fA-F]{2}")
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 _GIT_TIMEOUT = int(os.environ.get("GIT_TIMEOUT", "300"))
+# @cpt-end:cpt-studio-state-generic-git-kit-installer-source:p1:inst-git-prov-schema-source
 
 
+# @cpt-begin:cpt-studio-algo-generic-git-kit-installer-source-policy:p1:inst-git-policy-safe-diagnostics
 class GitSourceError(ValueError):
     """Stable, redaction-safe generic Git source error."""
 
@@ -74,8 +77,10 @@ class GitSourceError(ValueError):
         if self.sanitized_url_display:
             result["sanitized_url_display"] = self.sanitized_url_display
         return result
+# @cpt-end:cpt-studio-algo-generic-git-kit-installer-source-policy:p1:inst-git-policy-safe-diagnostics
 
 
+# @cpt-begin:cpt-studio-state-generic-git-kit-installer-source:p1:inst-git-prov-schema-source
 @dataclass(frozen=True)
 class GitKitSource:
     original_source: str
@@ -93,27 +98,35 @@ class GitKitResolution:
     kit_source_dir: Path
     tmp_dir: Path
     authority_metadata: Dict[str, Any]
+# @cpt-end:cpt-studio-state-generic-git-kit-installer-source:p1:inst-git-prov-schema-source
 
 
+# @cpt-begin:cpt-studio-algo-generic-git-kit-installer-fetch-cache:p1:inst-git-cache-hash-components
 def _hash_display(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
 
 
 def _hash_key(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+# @cpt-end:cpt-studio-algo-generic-git-kit-installer-fetch-cache:p1:inst-git-cache-hash-components
 
 
+# @cpt-begin:cpt-studio-algo-generic-git-kit-installer-fetch-cache:p1:inst-git-cache-namespace
 def _cache_root() -> Path:
     configured = os.environ.get("CFS_GIT_KIT_CACHE_DIR", "")
     if configured:
         return Path(configured).expanduser()
     return Path.home() / ".cf-studio" / "cache" / "git"
+# @cpt-end:cpt-studio-algo-generic-git-kit-installer-fetch-cache:p1:inst-git-cache-namespace
 
 
+# @cpt-begin:cpt-studio-algo-generic-git-kit-installer-source-parse:p1:inst-git-parse-canonical-source
 def _canonical_encoded_url(decoded_url: str) -> str:
     return quote(decoded_url, safe="")
+# @cpt-end:cpt-studio-algo-generic-git-kit-installer-source-parse:p1:inst-git-parse-canonical-source
 
 
+# @cpt-begin:cpt-studio-algo-generic-git-kit-installer-source-parse:p1:inst-git-parse-decode-once
 def _decode_once(encoded_url: str) -> str:
     if not encoded_url:
         raise GitSourceError("GIT_SOURCE_INVALID_URL", "Git source URL is empty")
@@ -133,8 +146,10 @@ def _decode_once(encoded_url: str) -> str:
     if _CONTROL_RE.search(decoded):
         raise GitSourceError("GIT_SOURCE_INVALID_URL", "Git source URL contains control characters")
     return decoded
+# @cpt-end:cpt-studio-algo-generic-git-kit-installer-source-parse:p1:inst-git-parse-decode-once
 
 
+# @cpt-begin:cpt-studio-algo-generic-git-kit-installer-source-parse:p1:inst-git-parse-subdir
 def _validate_subdir(subdir: str) -> str:
     if not subdir:
         return ""
@@ -147,8 +162,10 @@ def _validate_subdir(subdir: str) -> str:
     ):
         raise GitSourceError("GIT_SOURCE_INVALID_SUBDIR", "Git source subdirectory must be a clean relative path")
     return normalized.as_posix()
+# @cpt-end:cpt-studio-algo-generic-git-kit-installer-source-parse:p1:inst-git-parse-subdir
 
 
+# @cpt-begin:cpt-studio-algo-generic-git-kit-installer-source-parse:p1:inst-git-parse-kit-identity
 def _split_source_body(body: str) -> tuple[str, str, str]:
     kit_identity = ""
     body_without_kit = body
@@ -166,30 +183,40 @@ def _split_source_body(body: str) -> tuple[str, str, str]:
         encoded_url, subdir = body_without_kit.split("//", 1)
         subdir = _validate_subdir(subdir)
     return encoded_url, subdir, kit_identity
+# @cpt-end:cpt-studio-algo-generic-git-kit-installer-source-parse:p1:inst-git-parse-kit-identity
 
 
-def _sanitize_standard_url(parts: Any) -> str:
+# @cpt-begin:cpt-studio-algo-generic-git-kit-installer-url-normalization:p1:inst-git-url-normalize-display
+def _normalize_standard_url(parts: Any) -> str:
     netloc = parts.hostname or ""
-    if parts.port:
+    default_port = (
+        (parts.scheme.lower() == "https" and parts.port == 443)
+        or (parts.scheme.lower() == "ssh" and parts.port == 22)
+    )
+    if parts.port and not default_port:
         netloc += f":{parts.port}"
     return urlunsplit((parts.scheme.lower(), netloc, parts.path, "", ""))
+# @cpt-end:cpt-studio-algo-generic-git-kit-installer-url-normalization:p1:inst-git-url-normalize-display
 
 
+# @cpt-begin:cpt-studio-algo-generic-git-kit-installer-source-policy:p1:inst-git-policy-safe-diagnostics
 def _transport_and_policy(decoded_url: str) -> tuple[str, str, str]:
     scp_match = _SCP_LIKE_RE.match(decoded_url)
     if scp_match:
-        host = scp_match.group(1).lower()
-        path = scp_match.group(2)
+        user = scp_match.group(1)
+        host = scp_match.group(2).lower()
+        path = scp_match.group(3)
         if not path or path.startswith("/") or ".." in PurePosixPath(path).parts:
             raise GitSourceError("GIT_SOURCE_INVALID_URL", "Git scp-like source path is invalid")
-        return "scp", host, f"git@{host}:{path}"
+        return "scp", host, f"{user}@{host}:{path}"
 
     parts = urlsplit(decoded_url)
     scheme = parts.scheme.lower()
     if scheme not in {"https", "ssh", "file"}:
         raise GitSourceError("GIT_SOURCE_INVALID_URL", "Git source transport must be https, ssh, scp-like, or file")
+    sanitized = _normalize_standard_url(parts)
+    # @cpt-begin:cpt-studio-algo-generic-git-kit-installer-source-policy:p1:inst-git-policy-reject-userinfo
     if parts.username or parts.password:
-        sanitized = _sanitize_standard_url(parts)
         raise GitSourceError(
             "GIT_SOURCE_CREDENTIALS_IN_URL",
             "Git source URL must not contain credentials; use Git credential helpers, GIT_ASKPASS, or SSH config",
@@ -198,8 +225,9 @@ def _transport_and_policy(decoded_url: str) -> tuple[str, str, str]:
             host_hash=_hash_display(parts.hostname or ""),
             sanitized_url_display=sanitized,
         )
+    # @cpt-end:cpt-studio-algo-generic-git-kit-installer-source-policy:p1:inst-git-policy-reject-userinfo
+    # @cpt-begin:cpt-studio-algo-generic-git-kit-installer-source-policy:p1:inst-git-policy-reject-query
     if parts.query:
-        sanitized = _sanitize_standard_url(parts)
         raise GitSourceError(
             "GIT_SOURCE_QUERY_UNSUPPORTED",
             "Git source URL query strings are not supported",
@@ -208,8 +236,9 @@ def _transport_and_policy(decoded_url: str) -> tuple[str, str, str]:
             host_hash=_hash_display(parts.hostname or ""),
             sanitized_url_display=sanitized,
         )
+    # @cpt-end:cpt-studio-algo-generic-git-kit-installer-source-policy:p1:inst-git-policy-reject-query
+    # @cpt-begin:cpt-studio-algo-generic-git-kit-installer-source-policy:p1:inst-git-policy-reject-fragment
     if parts.fragment:
-        sanitized = _sanitize_standard_url(parts)
         raise GitSourceError(
             "GIT_SOURCE_FRAGMENT_UNSUPPORTED",
             "Git source URL fragments are not supported",
@@ -218,13 +247,15 @@ def _transport_and_policy(decoded_url: str) -> tuple[str, str, str]:
             host_hash=_hash_display(parts.hostname or ""),
             sanitized_url_display=sanitized,
         )
+    # @cpt-end:cpt-studio-algo-generic-git-kit-installer-source-policy:p1:inst-git-policy-reject-fragment
     if scheme != "file" and not parts.netloc:
         raise GitSourceError("GIT_SOURCE_INVALID_URL", "Git source URL must include a host")
-    sanitized = _sanitize_standard_url(parts)
     host = (parts.hostname or "local").lower()
     return scheme, host, sanitized
+# @cpt-end:cpt-studio-algo-generic-git-kit-installer-source-policy:p1:inst-git-policy-safe-diagnostics
 
 
+# @cpt-begin:cpt-studio-algo-generic-git-kit-installer-source-parse:p1:inst-git-parse-canonical-source
 def parse_git_kit_source(source: str) -> GitKitSource:
     """Parse and validate a generic Git kit source string."""
     if source.startswith("git/"):
@@ -237,7 +268,7 @@ def parse_git_kit_source(source: str) -> GitKitSource:
     encoded_url, subdir, kit_identity = _split_source_body(body)
     decoded_url = _decode_once(encoded_url)
     transport, host, safe_display = _transport_and_policy(decoded_url)
-    canonical = "git:" + _canonical_encoded_url(decoded_url)
+    canonical = "git:" + _canonical_encoded_url(safe_display)
     if subdir:
         canonical += f"//{subdir}"
     if kit_identity:
@@ -252,8 +283,10 @@ def parse_git_kit_source(source: str) -> GitKitSource:
         sanitized_url_display=safe_display,
         remote_hash=_hash_display(f"{transport}:{host}:{safe_display}"),
     )
+# @cpt-end:cpt-studio-algo-generic-git-kit-installer-source-parse:p1:inst-git-parse-canonical-source
 
 
+# @cpt-begin:cpt-studio-algo-generic-git-kit-installer-fetch-cache:p1:inst-git-install-fetch-cache
 def _run_git(args: List[str], *, cwd: Optional[Path] = None, env: Optional[Dict[str, str]] = None) -> str:
     runtime_env = os.environ.copy()
     if env:
@@ -276,20 +309,26 @@ def _run_git(args: List[str], *, cwd: Optional[Path] = None, env: Optional[Dict[
         stderr = (proc.stderr or proc.stdout or "git command failed").strip()
         raise RuntimeError(stderr)
     return proc.stdout.strip()
+# @cpt-end:cpt-studio-algo-generic-git-kit-installer-fetch-cache:p1:inst-git-install-fetch-cache
 
 
+# @cpt-begin:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-version-opaque
 def _selector_classification(requested_ref: str, resolution_basis: str) -> str:
     if requested_ref and _FULL_SHA_RE.fullmatch(requested_ref):
         return "pinned_commit"
     if resolution_basis == "default_branch":
         return "default_branch"
     return "mutable_ref"
+# @cpt-end:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-version-opaque
 
 
+# @cpt-begin:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-store-selector-identity
 def _requested_ref_display(requested_ref: str) -> str:
     return requested_ref or "HEAD"
+# @cpt-end:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-store-selector-identity
 
 
+# @cpt-begin:cpt-studio-algo-generic-git-kit-installer-fetch-cache:p1:inst-git-cache-hash-components
 def _subdir_hash(subdir: str) -> str:
     return _hash_key(subdir or "__root__")
 
@@ -300,11 +339,12 @@ def _kit_hash(kit_identity: str) -> str:
 
 def _ref_hash(requested_ref: str) -> str:
     return _hash_key(_requested_ref_display(requested_ref))
+# @cpt-end:cpt-studio-algo-generic-git-kit-installer-fetch-cache:p1:inst-git-cache-hash-components
 
 
+# @cpt-begin:cpt-studio-algo-generic-git-kit-installer-fetch-cache:p1:inst-git-cache-artifact-layout
 def _cache_artifact_dir(
     parsed: GitKitSource,
-    requested_ref: str,
     commit_sha: str,
 ) -> Path:
     return (
@@ -318,17 +358,23 @@ def _cache_artifact_dir(
         / "kits"
         / _kit_hash(parsed.kit_identity)
     )
+# @cpt-end:cpt-studio-algo-generic-git-kit-installer-fetch-cache:p1:inst-git-cache-artifact-layout
 
 
+# @cpt-begin:cpt-studio-algo-generic-git-kit-installer-fetch-cache:p1:inst-git-cache-ref-layout
 def _cache_ref_manifest_path(parsed: GitKitSource, requested_ref: str) -> Path:
     return _cache_root() / "remotes" / parsed.remote_hash / "refs" / f"{_ref_hash(requested_ref)}.json"
+# @cpt-end:cpt-studio-algo-generic-git-kit-installer-fetch-cache:p1:inst-git-cache-ref-layout
 
 
+# @cpt-begin:cpt-studio-algo-generic-git-kit-installer-fetch-cache:p1:inst-git-cache-manifest
 def _write_json(path: Path, data: Dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+# @cpt-end:cpt-studio-algo-generic-git-kit-installer-fetch-cache:p1:inst-git-cache-manifest
 
 
+# @cpt-begin:cpt-studio-algo-generic-git-kit-installer-fetch-cache:p1:inst-git-cache-manifest
 def _cache_artifact(
     parsed: GitKitSource,
     kit_source_dir: Path,
@@ -336,7 +382,7 @@ def _cache_artifact(
     commit_sha: str,
     resolution_basis: str,
 ) -> Dict[str, str]:
-    artifact_dir = _cache_artifact_dir(parsed, requested_ref, commit_sha)
+    artifact_dir = _cache_artifact_dir(parsed, commit_sha)
     if artifact_dir.exists():
         shutil.rmtree(artifact_dir)
     artifact_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -376,8 +422,10 @@ def _cache_artifact(
         "cache_subdir_hash": _subdir_hash(parsed.selected_subdirectory),
         "cache_kit_hash": _kit_hash(parsed.kit_identity),
     }
+# @cpt-end:cpt-studio-algo-generic-git-kit-installer-fetch-cache:p1:inst-git-cache-manifest
 
 
+# @cpt-begin:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-offline-last-known
 def _metadata_value(metadata: Dict[str, Any], key: str) -> str:
     provenance = metadata.get("source_provenance", {})
     content_identity = metadata.get("content_identity", {})
@@ -386,8 +434,10 @@ def _metadata_value(metadata: Dict[str, Any], key: str) -> str:
     if isinstance(provenance, dict):
         return str(provenance.get(key) or metadata.get(key) or "")
     return str(metadata.get(key) or "")
+# @cpt-end:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-offline-last-known
 
 
+# @cpt-begin:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-offline-last-known
 def _materialize_offline_last_known(
     parsed: GitKitSource,
     requested_ref: str,
@@ -410,7 +460,7 @@ def _materialize_offline_last_known(
         or previous_requested_ref != effective_requested_ref
     ):
         return None
-    artifact_dir = _cache_artifact_dir(parsed, effective_requested_ref, commit_sha)
+    artifact_dir = _cache_artifact_dir(parsed, commit_sha)
     manifest_path = artifact_dir / "artifact-manifest.json"
     if not manifest_path.is_file():
         return None
@@ -463,15 +513,19 @@ def _materialize_offline_last_known(
         },
     }
     return GitKitResolution(kit_source_dir=kit_source_dir, tmp_dir=tmp_dir, authority_metadata=authority)
+# @cpt-end:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-offline-last-known
 
 
+# @cpt-begin:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-checkout
 def _checkout_ref(repo_dir: Path, requested_ref: str) -> str:
     if requested_ref:
         _run_git(["checkout", "--quiet", requested_ref], cwd=repo_dir)
         return "git_ref"
     return "default_branch"
+# @cpt-end:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-checkout
 
 
+# @cpt-begin:cpt-studio-algo-generic-git-kit-installer-fetch-cache:p1:inst-git-install-fetch-cache
 def materialize_git_kit_source(
     parsed: GitKitSource,
     *,
@@ -483,6 +537,7 @@ def materialize_git_kit_source(
     tmp_dir = Path(tempfile.mkdtemp(prefix="studio-git-kit-"))
     repo_dir = tmp_dir / "repo"
     env = {}
+    # @cpt-begin:cpt-studio-algo-generic-git-kit-installer-auth-runtime:p1:inst-git-auth-runtime-object
     if isinstance(git_auth, dict):
         env_data = git_auth.get("env", {})
         if isinstance(env_data, dict):
@@ -493,11 +548,14 @@ def materialize_git_kit_source(
         askpass_command = git_auth.get("askpass_command")
         if isinstance(askpass_command, str) and askpass_command:
             env["GIT_ASKPASS"] = askpass_command
+    # @cpt-end:cpt-studio-algo-generic-git-kit-installer-auth-runtime:p1:inst-git-auth-runtime-object
 
     try:
-        _run_git(["clone", "--quiet", "--no-checkout", parsed.decoded_remote_url, str(repo_dir)], env=env)
+        # @cpt-begin:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-store-selector-identity
+        _run_git(["clone", "--quiet", parsed.decoded_remote_url, str(repo_dir)], env=env)
         resolution_basis = _checkout_ref(repo_dir, requested_ref)
         commit_sha = _run_git(["rev-parse", "HEAD"], cwd=repo_dir, env=env)
+        # @cpt-end:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-store-selector-identity
         kit_source_dir = repo_dir
         if parsed.selected_subdirectory:
             kit_source_dir = repo_dir / parsed.selected_subdirectory
@@ -517,6 +575,7 @@ def materialize_git_kit_source(
     selector = requested_ref or "HEAD"
     identity = f"{parsed.canonical_source}@{selector}#{commit_sha}"
     cache_metadata = _cache_artifact(parsed, kit_source_dir, requested_ref, commit_sha, resolution_basis)
+    # @cpt-begin:cpt-studio-state-generic-git-kit-installer-source:p1:inst-git-prov-schema-content
     authority = {
         "source_type": "git",
         "original_source": parsed.original_source,
@@ -545,12 +604,16 @@ def materialize_git_kit_source(
             "identity": identity,
         },
     }
+    # @cpt-end:cpt-studio-state-generic-git-kit-installer-source:p1:inst-git-prov-schema-content
     return GitKitResolution(
         kit_source_dir=kit_source_dir,
         tmp_dir=tmp_dir,
         authority_metadata=authority,
     )
+# @cpt-end:cpt-studio-algo-generic-git-kit-installer-fetch-cache:p1:inst-git-install-fetch-cache
 
 
+# @cpt-begin:cpt-studio-algo-generic-git-kit-installer-source-parse:p1:inst-git-parse-prefix
 def source_is_generic_git(source: str) -> bool:
     return source.startswith("git/") or source.startswith("git:")
+# @cpt-end:cpt-studio-algo-generic-git-kit-installer-source-parse:p1:inst-git-parse-prefix

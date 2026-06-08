@@ -18,6 +18,16 @@ from tempfile import TemporaryDirectory
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "studio" / "scripts"))
 
 
+class TestStudioEndpointTarget(unittest.TestCase):
+    """Cover endpoint-only prompt source parsing branches in agents.py."""
+
+    def test_endpoint_target_without_final_prompt_marker_returns_none(self):
+        from studio.commands.agents import _extract_studio_endpoint_target
+
+        content = "Constructor Studio endpoint only. Prompt source: {cf-studio-path}/skills/x"
+        self.assertIsNone(_extract_studio_endpoint_target(content))
+
+
 class TestEnsureFrontmatterDescriptionQuoted(unittest.TestCase):
     """Cover lines 440, 455-457 in agents.py."""
 

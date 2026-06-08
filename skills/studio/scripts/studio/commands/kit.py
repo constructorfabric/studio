@@ -2850,9 +2850,29 @@ def update_kit(
         ):
             result["version"] = {"status": "current"}
             result["gen"] = {"files_written": 0}
+            authority_source_type = str(authority_metadata.get("source_type") or "") if authority_metadata else ""
+            authority_freshness = str(authority_metadata.get("freshness") or "") if authority_metadata else ""
+            if (
+                authority_metadata
+                and source
+                and (authority_source_type == "git" or authority_freshness != "last_known")
+            ):
+                _register_kit_in_core_toml(
+                    config_dir,
+                    kit_slug,
+                    source_version,
+                    studio_dir,
+                    source=source,
+                    authority_metadata=authority_metadata,
+                    local_metadata=(
+                        {"conf_version": local_conf_version}
+                        if local_conf_version else None
+                    ),
+                )
             # Still collect metadata for .gen/ aggregation
+            _current_entry = _read_kits_from_core_toml(config_dir).get(kit_slug, installed_kit_entry)
             _current_dir, _current_rel = _resolve_registered_kit_metadata_target(
-                studio_dir, kit_slug, installed_kit_entry,
+                studio_dir, kit_slug, _current_entry,
             )
             meta = _collect_kit_metadata(_current_dir, kit_slug, _current_rel)
             if meta["skill_nav"]:
