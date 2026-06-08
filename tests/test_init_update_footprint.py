@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "studio" / "scripts"))
 
-from studio.commands.init import cmd_init, _prompt_install_options
+from studio.commands.init import cmd_init, _copy_from_cache, _prompt_install_options
 from studio.commands.update import cmd_update
 from studio.utils.ui import set_json_mode
 
@@ -33,6 +33,14 @@ def _make_cache(root: Path) -> Path:
         target = cache / "architecture" / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(f"# {rel}\n", encoding="utf-8")
+    (cache / "whatsnew.toml").write_text(
+        '[whatsnew."v1.0.0"]\nsummary = "Initial"\ndetails = ""\n',
+        encoding="utf-8",
+    )
+    (cache / "version.toml").write_text(
+        '[cfs]\nversion = "v1.0.0"\n',
+        encoding="utf-8",
+    )
     return cache
 
 
@@ -173,12 +181,16 @@ def test_init_writes_minimal_gitignore_and_per_kit_ignored_policy():
         gitignore = (root / ".gitignore").read_text(encoding="utf-8")
         assert ".bootstrap/.core/" in gitignore
         assert ".bootstrap/.gen/" in gitignore
+        assert ".bootstrap/whatsnew.toml" not in gitignore
+        assert ".bootstrap/version.toml" not in gitignore
         assert ".bootstrap/config/kits/sdlc/" in gitignore
         assert ".bootstrap/config/kits/\n" not in gitignore
         assert ".github/\n" not in gitignore
         assert ".github/prompts/cf*.prompt.md" in gitignore
         core = (root / ".bootstrap" / "config" / "core.toml").read_text(encoding="utf-8")
         assert 'tracking = "ignored"' in core
+        assert (root / ".bootstrap" / "whatsnew.toml").is_file()
+        assert (root / ".bootstrap" / "version.toml").is_file()
 
 
 def test_init_tracked_runtime_and_agents_are_not_gitignored():
@@ -287,7 +299,112 @@ def test_init_existing_project_repairs_instead_of_failing():
         assert result["version_changed"] is False
         assert result["version_source"] == "project_config"
         assert (root / ".bootstrap" / ".core" / "README.md").is_file()
+        assert (root / ".bootstrap" / "whatsnew.toml").is_file()
+        assert (root / ".bootstrap" / "version.toml").is_file()
         assert ".bootstrap/.core/" in (root / ".gitignore").read_text(encoding="utf-8")
+
+
+def test_init_dry_run_reports_install_root_metadata_files():
+    with TemporaryDirectory() as td:
+        root = Path(td) / "proj"
+        root.mkdir()
+        cache = _make_cache(Path(td))
+
+        with patch("studio.commands.init.CACHE_DIR", cache):
+            rc, result = _run_json(
+                cmd_init,
+                ["--project-root", str(root), "--install-dir", ".bootstrap", "--dry-run", "--yes"],
+            )
+
+        assert rc == 0
+        copy_actions = json.loads(result["actions"]["copy"])
+        assert copy_actions["whatsnew.toml"] == "dry_run"
+        assert copy_actions["version.toml"] == "dry_run"
+
+
+def test_init_repair_dry_run_reports_install_root_metadata_files():
+    with TemporaryDirectory() as td:
+        root = Path(td) / "proj"
+        root.mkdir()
+        _write_initialized_project(root)
+        cache = _make_cache(Path(td))
+
+        with patch("studio.commands.init.CACHE_DIR", cache):
+            rc, result = _run_json(cmd_init, ["--project-root", str(root), "--dry-run", "--yes"])
+
+        assert rc == 0
+        assert result["actions"]["copy"]["whatsnew.toml"] == "dry_run"
+        assert result["actions"]["copy"]["version.toml"] == "dry_run"
+
+
+def test_force_copy_root_file_unlinks_symlink_destination():
+    with TemporaryDirectory() as td:
+        workspace = Path(td)
+        cache = _make_cache(workspace)
+        target_dir = workspace / "proj" / ".bootstrap"
+        target_dir.mkdir(parents=True)
+        outside = workspace / "outside-version.toml"
+        outside.write_text("outside", encoding="utf-8")
+        link = target_dir / "version.toml"
+        try:
+            link.symlink_to(outside)
+        except OSError:
+            return
+
+        result = _copy_from_cache(cache, target_dir, force=True)
+
+        assert result["version.toml"] == "updated"
+        assert not link.is_symlink()
+        assert '[cfs]' in link.read_text(encoding="utf-8")
+        assert outside.read_text(encoding="utf-8") == "outside"
+
+
+def test_force_copy_root_file_removes_stale_destination_when_missing_in_cache():
+    with TemporaryDirectory() as td:
+        workspace = Path(td)
+        cache = _make_cache(workspace)
+        (cache / "whatsnew.toml").unlink()
+        target_dir = workspace / "proj" / ".bootstrap"
+        target_dir.mkdir(parents=True)
+        stale = target_dir / "whatsnew.toml"
+        stale.write_text("stale", encoding="utf-8")
+
+        result = _copy_from_cache(cache, target_dir, force=True)
+
+        assert result["whatsnew.toml"] == "missing_in_cache"
+        assert not stale.exists()
+
+
+def test_force_copy_root_file_replaces_directory_collision():
+    with TemporaryDirectory() as td:
+        workspace = Path(td)
+        cache = _make_cache(workspace)
+        target_dir = workspace / "proj" / ".bootstrap"
+        collision = target_dir / "version.toml"
+        collision.mkdir(parents=True)
+        (collision / "nested").write_text("stale", encoding="utf-8")
+
+        result = _copy_from_cache(cache, target_dir, force=True)
+
+        assert result["version.toml"] == "updated"
+        assert collision.is_file()
+        assert '[cfs]' in collision.read_text(encoding="utf-8")
+
+
+def test_dry_run_reports_stale_root_file_removal_when_cache_source_missing():
+    with TemporaryDirectory() as td:
+        root = Path(td) / "proj"
+        root.mkdir()
+        studio_dir = _write_initialized_project(root)
+        cache = _make_cache(Path(td))
+        (cache / "whatsnew.toml").unlink()
+        (studio_dir / "whatsnew.toml").write_text("stale", encoding="utf-8")
+
+        with patch("studio.commands.update.CACHE_DIR", cache):
+            rc, result = _run_json(cmd_update, ["--project-root", str(root), "--dry-run"])
+
+        assert rc == 0
+        assert result["actions"]["core_update"]["whatsnew.toml"] == "would_remove"
 
 
 def test_update_skips_kit_updates_by_default():

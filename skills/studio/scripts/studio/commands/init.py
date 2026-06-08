@@ -13,7 +13,7 @@ from ..utils.artifacts_meta import create_backup, generate_default_registry, gen
 from ..utils import toml_utils
 from ..utils.ui import ui
 
-# Directories to copy from cache into project studio/.core/ dir
+# Cache-managed install content: core directories go into .core/, root files go into the install root.
 # Full directories (copied entirely)
 COPY_DIRS = ["requirements", "schemas", "workflows", "skills"]
 # Selective items from architecture/ (only specs needed by agents)
@@ -28,6 +28,7 @@ COPY_ARCHITECTURE_ITEMS = [
     "specs/kit/kit.md",             # Kit structure — referenced by kit/rules.md
 ]
 COPY_ROOT_DIRS: list[str] = []
+COPY_ROOT_FILES = ["whatsnew.toml", "version.toml"]
 CACHE_DIR = Path.home() / ".cf-studio" / "cache"
 CORE_SUBDIR = ".core"
 GEN_SUBDIR = ".gen"
@@ -38,15 +39,17 @@ GITIGNORE_MARKER_START = "# BEGIN Constructor Studio"
 GITIGNORE_MARKER_END = "# END Constructor Studio"
 
 def _copy_from_cache(cache_dir: Path, target_dir: Path, force: bool = False) -> Dict[str, str]:
-    """Copy tool directories from cache into project studio/.core/ dir.
+    """Copy cache content into the project install directory.
 
     Core directories go into .core/ (read-only reference content).
+    Managed metadata files go into the install root.
     User-editable content lives in config/.
 
     When force=True, .core/ is fully cleared before copying to ensure no stale
-    files remain from previous versions. This is the mode used by `cfs update`.
+    core files remain from previous versions. Managed root metadata files are
+    individually replaced or removed when absent from cache.
 
-    Returns dict of {dir_name: action} where action is 'created', 'updated', or 'skipped'.
+    Returns dict of {item_name: action}.
     """
     core_dir = target_dir / CORE_SUBDIR
     results: Dict[str, str] = {}
@@ -59,6 +62,9 @@ def _copy_from_cache(cache_dir: Path, target_dir: Path, force: bool = False) -> 
             if (core_dir / name).exists():
                 pre_force_existed.add(name)
         for name in COPY_ROOT_DIRS:
+            if (target_dir / name).exists():
+                pre_force_existed.add(name)
+        for name in COPY_ROOT_FILES:
             if (target_dir / name).exists():
                 pre_force_existed.add(name)
 
@@ -87,12 +93,25 @@ def _copy_from_cache(cache_dir: Path, target_dir: Path, force: bool = False) -> 
     def _copy_file(src: Path, dst: Path, name: str) -> None:
         """Copy a single file."""
         if not src.is_file():
+            if force and name in COPY_ROOT_FILES and (dst.exists() or dst.is_symlink()):
+                if dst.is_dir() and not dst.is_symlink():
+                    shutil.rmtree(dst)
+                else:
+                    dst.unlink()
             results[name] = "missing_in_cache"
             return
+        if dst.is_symlink():
+            if not force:
+                results[name] = "skipped"
+                return
+            dst.unlink()
+            results[name] = "updated"
         if dst.exists():
             if not force:
                 results[name] = "skipped"
                 return
+            if dst.is_dir():
+                shutil.rmtree(dst)
             results[name] = "updated"
         else:
             results[name] = "updated" if force and name in pre_force_existed else "created"
@@ -119,7 +138,32 @@ def _copy_from_cache(cache_dir: Path, target_dir: Path, force: bool = False) -> 
     for name in COPY_ROOT_DIRS:
         _copy_dir(cache_dir / name, target_dir / name, name)
 
+    for name in COPY_ROOT_FILES:
+        _copy_file(cache_dir / name, target_dir / name, name)
+
     return results
+
+
+def _dry_run_copy_results(
+    cache_dir: Optional[Path] = None,
+    target_dir: Optional[Path] = None,
+    force: bool = False,
+) -> Dict[str, str]:
+    """Return the same copy-result shape as _copy_from_cache without writing."""
+    results = {d: "dry_run" for d in COPY_DIRS}
+    for item in COPY_ARCHITECTURE_ITEMS:
+        results[f"architecture/{item}"] = "dry_run"
+    for name in COPY_ROOT_FILES:
+        if cache_dir is not None and not (cache_dir / name).is_file():
+            dst = target_dir / name if target_dir is not None else None
+            if force and dst is not None and (dst.exists() or dst.is_symlink()):
+                results[name] = "would_remove"
+            else:
+                results[name] = "missing_in_cache"
+            continue
+        results[name] = "dry_run"
+    return results
+
 
 def _core_readme() -> str:
     """README.md content for .core/ directory."""
@@ -935,9 +979,7 @@ def _repair_existing_install(
             (gen_dir / _README_FILENAME).write_text(_gen_readme(), encoding="utf-8")
             (config_dir / _README_FILENAME).write_text(_config_readme(), encoding="utf-8")
         else:
-            copy_results = {d: "dry_run" for d in COPY_DIRS}
-            for item in COPY_ARCHITECTURE_ITEMS:
-                copy_results[f"architecture/{item}"] = "dry_run"
+            copy_results = _dry_run_copy_results(CACHE_DIR, studio_dir, force=True)
         actions["copy"] = copy_results
         actions["readmes"] = "updated" if not dry_run else "dry_run"
         actions["core_toml"] = _persist_install_metadata(
@@ -1306,9 +1348,7 @@ def cmd_init(argv: List[str]) -> int:
         studio_dir.mkdir(parents=True, exist_ok=True)
         copy_results = _copy_from_cache(CACHE_DIR, studio_dir, force=args.force)
     else:
-        copy_results = {d: "dry_run" for d in COPY_DIRS}
-        for item in COPY_ARCHITECTURE_ITEMS:
-            copy_results[f"architecture/{item}"] = "dry_run"
+        copy_results = _dry_run_copy_results(CACHE_DIR, studio_dir, force=args.force)
     actions["copy"] = json.dumps(copy_results)
     # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-copy-skill
 

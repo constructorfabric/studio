@@ -208,6 +208,61 @@ def get_project_provenance(skill_path: Path) -> Optional[Dict[str, Any]]:
             return provenance
     return None
 
+
+DEFAULT_GITHUB_API_BASE = "https://api.github.com/repos/constructorfabric/studio"
+
+
+def _version_toml_data(start_dir: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+    project_root = find_project_root(start_dir)
+    if project_root is None:
+        return None
+    install_dir = read_cf_studio_path(project_root)
+    if install_dir is None:
+        return None
+    version_toml = project_root / install_dir / "version.toml"
+    if not version_toml.is_file():
+        return None
+    try:
+        return tomllib.loads(version_toml.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError, ValueError):
+        return None
+
+
+def _github_pin_from_data(data: Dict[str, Any]) -> Optional[Tuple[str, Optional[str]]]:
+    cfs_data = data.get("cfs")
+    if isinstance(cfs_data, dict):
+        source_type = cfs_data.get("source_type")
+        if isinstance(source_type, str) and source_type.strip() and source_type.strip() != "github":
+            return None
+        value = cfs_data.get("version")
+        if isinstance(value, str) and value.strip():
+            source = cfs_data.get("canonical_source") or cfs_data.get("effective_source")
+            source_url = source.strip() if isinstance(source, str) and source.strip() else None
+            if source_url == DEFAULT_GITHUB_API_BASE:
+                source_url = None
+            return value.strip(), source_url
+    value = data.get("version")
+    if isinstance(value, str) and value.strip():
+        return value.strip(), None
+    return None
+
+
+def get_project_pinned_cache_request(start_dir: Optional[Path] = None) -> Optional[Tuple[str, Optional[str]]]:
+    """Read a github-compatible project pin as (version, source_url), if present."""
+    data = _version_toml_data(start_dir)
+    if data is None:
+        return None
+    return _github_pin_from_data(data)
+
+
+def get_project_pinned_version(start_dir: Optional[Path] = None) -> Optional[str]:
+    """Read a github-compatible pinned cfs version, ignoring local/non-github pins."""
+    request = get_project_pinned_cache_request(start_dir)
+    if request is not None:
+        return request[0]
+    return None
+
+
 def _read_provenance_file(provenance_file: Path) -> Optional[Dict[str, Any]]:
     if not provenance_file.is_file():
         return None

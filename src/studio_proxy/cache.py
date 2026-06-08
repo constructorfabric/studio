@@ -91,6 +91,29 @@ def _write_cache_provenance(metadata: Dict[str, Any]) -> None:
     )
 
 
+def _write_cache_version_toml(cache_dir: Path, version: str, metadata: Dict[str, Any]) -> None:
+    """Persist project-installable cfs version metadata."""
+    lines = [
+        "# Constructor Studio pinned cfs version",
+        "[cfs]",
+        f"version = {_toml_string(version)}",
+    ]
+    requested_ref = metadata.get("requested_ref")
+    if requested_ref:
+        lines.append(f"requested_ref = {_toml_string(requested_ref)}")
+    source_type = metadata.get("source_type")
+    if source_type:
+        lines.append(f"source_type = {_toml_string(source_type)}")
+    canonical_source = metadata.get("canonical_source")
+    if canonical_source:
+        lines.append(f"canonical_source = {_toml_string(canonical_source)}")
+    effective_source = metadata.get("effective_source")
+    if effective_source:
+        lines.append(f"effective_source = {_toml_string(effective_source)}")
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    (cache_dir / "version.toml").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def _github_json(url: str) -> Dict[str, Any]:
     req = Request(url, headers=_get_github_headers())
     with urlopen(req, timeout=30) as resp:
@@ -506,6 +529,10 @@ def copy_from_local(
     if not force and version_file.is_file():
         cached_version = version_file.read_text(encoding="utf-8").strip()
         if cached_version == f"local:{local_version}":
+            _write_cache_version_toml(cache_dir, cached_version, {
+                "source_type": "local_path",
+                "requested_ref": "local",
+            })
             return True, f"Cache already up to date (local:{local_version})"
 
     # Remove old cache and copy
@@ -524,7 +551,7 @@ def copy_from_local(
 
     display_version = f"local:{local_version}"
     version_file.write_text(display_version, encoding="utf-8")
-    _write_cache_provenance({
+    metadata = {
         "source_type": "local_path",
         "installed_version": display_version,
         "requested_ref": "local",
@@ -536,7 +563,9 @@ def copy_from_local(
         "verified": "unknown",
         "freshness": "local",
         "resolved_at": _utc_now_iso(),
-    })
+    }
+    _write_cache_version_toml(cache_dir, display_version, metadata)
+    _write_cache_provenance(metadata)
 
     return True, (
         f"Cached: {display_version}\n"
@@ -582,6 +611,12 @@ def download_and_cache(
             offline = _last_known_offline_metadata(api_base, canonical_source)
             if offline and cache_dir.is_dir() and version_file.is_file():
                 _write_cache_provenance(offline)
+                offline_version = str(
+                    offline.get("installed_version")
+                    or offline.get("resolved_ref")
+                    or version_file.read_text(encoding="utf-8").strip()
+                )
+                _write_cache_version_toml(cache_dir, offline_version, offline)
                 return True, (
                     f"Using last-known cache state (version {offline.get('resolved_ref') or offline.get('installed_version')})\n"
                     "  freshness: offline\n"
@@ -638,6 +673,7 @@ def download_and_cache(
                     "resolved_at": _utc_now_iso(),
                 })
                 _write_cache_provenance(metadata)
+            _write_cache_version_toml(cache_dir, resolved_version, metadata)
             # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-cache-hit
             return True, f"Cache already up to date (version {resolved_version})"
             # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-return-cache-hit
@@ -712,6 +748,7 @@ def download_and_cache(
         "download_url": asset_url,
         "resolved_at": _utc_now_iso(),
     })
+    _write_cache_version_toml(cache_dir, resolved_version, metadata)
     _write_cache_provenance(metadata)
     # @cpt-end:cpt-studio-algo-core-infra-cache-skill:p1:inst-write-version
 

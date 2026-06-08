@@ -120,6 +120,9 @@ def test_download_and_cache_writes_github_provenance(monkeypatch, tmp_path):
 
     assert success is True
     assert "v9.8.7" in message
+    version_toml = (tmp_path / "cache" / "version.toml").read_text(encoding="utf-8")
+    assert '[cfs]' in version_toml
+    assert 'version = "v9.8.7"' in version_toml
     provenance = (tmp_path / "cache" / ".provenance.json").read_text(encoding="utf-8")
     assert '"source_type": "github"' in provenance
     assert '"installed_version": "v9.8.7"' in provenance
@@ -167,6 +170,86 @@ def test_download_and_cache_generates_whatsnew_from_github_releases(monkeypatch,
     assert '[whatsnew."v9.8.7"]' in whatsnew
     assert 'summary = "Release title"' in whatsnew
     assert "GitHub-only note" in whatsnew
+
+
+def test_init_uses_project_pinned_version_for_repair(monkeypatch, tmp_path):
+    from studio_proxy import cli
+    import studio_proxy.cache as cache
+    import studio_proxy.telemetry as telemetry
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "AGENTS.md").write_text(
+        '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".bootstrap"\n```\n<!-- /@cf:root-agents -->\n',
+        encoding="utf-8",
+    )
+    (project / ".bootstrap").mkdir()
+    (project / ".bootstrap" / "version.toml").write_text(
+        '[cfs]\nversion = "v4.5.6"\n',
+        encoding="utf-8",
+    )
+    captured = {}
+
+    def fake_download_and_cache(*, version=None, force=False, url=None):
+        captured["cache"] = {"version": version, "force": force, "url": url}
+        return True, "cached"
+
+    def fake_forward(_skill_path, args):
+        captured["forward_args"] = list(args)
+        return 0
+
+    monkeypatch.chdir(project)
+    monkeypatch.setattr(cache, "download_and_cache", fake_download_and_cache)
+    monkeypatch.setattr(telemetry, "track_invocation", lambda _args: None)
+    monkeypatch.setattr(cli, "find_cached_skill", lambda: Path("/tmp/studio.py"))
+    monkeypatch.setattr(cli, "_forward_to_skill", fake_forward)
+
+    rc = cli.main(["init", "--yes"])
+
+    assert rc == 0
+    assert captured["cache"]["version"] == "v4.5.6"
+    assert captured["forward_args"] == ["init", "--yes"]
+
+
+def test_init_uses_project_root_pinned_version_for_repair(monkeypatch, tmp_path):
+    from studio_proxy import cli
+    import studio_proxy.cache as cache
+    import studio_proxy.telemetry as telemetry
+
+    project = tmp_path / "proj"
+    outside = tmp_path / "outside"
+    project.mkdir()
+    outside.mkdir()
+    (project / "AGENTS.md").write_text(
+        '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".bootstrap"\n```\n<!-- /@cf:root-agents -->\n',
+        encoding="utf-8",
+    )
+    (project / ".bootstrap").mkdir()
+    (project / ".bootstrap" / "version.toml").write_text(
+        '[cfs]\nversion = "v7.8.9"\n',
+        encoding="utf-8",
+    )
+    captured = {}
+
+    def fake_download_and_cache(*, version=None, force=False, url=None):
+        captured["cache"] = {"version": version, "force": force, "url": url}
+        return True, "cached"
+
+    def fake_forward(_skill_path, args):
+        captured["forward_args"] = list(args)
+        return 0
+
+    monkeypatch.chdir(outside)
+    monkeypatch.setattr(cache, "download_and_cache", fake_download_and_cache)
+    monkeypatch.setattr(telemetry, "track_invocation", lambda _args: None)
+    monkeypatch.setattr(cli, "find_cached_skill", lambda: Path("/tmp/studio.py"))
+    monkeypatch.setattr(cli, "_forward_to_skill", fake_forward)
+
+    rc = cli.main(["init", "--project-root", str(project), "--yes"])
+
+    assert rc == 0
+    assert captured["cache"]["version"] == "v7.8.9"
+    assert captured["forward_args"] == ["init", "--project-root", str(project), "--yes"]
 
 
 def test_download_and_cache_warns_when_github_whatsnew_generation_fails(
@@ -316,6 +399,118 @@ def test_download_and_cache_refreshes_default_branch_snapshot_metadata(monkeypat
     metadata = json.loads((cache_dir / ".provenance.json").read_text(encoding="utf-8"))
     assert metadata["default_branch"] == "trunk"
     assert metadata["commit_sha"] == "abc123"
+    version_toml = (cache_dir / "version.toml").read_text(encoding="utf-8")
+    assert '[cfs]' in version_toml
+    assert 'version = "abc123"' in version_toml
+
+
+def test_init_url_override_skips_project_pinned_version(monkeypatch, tmp_path):
+    from studio_proxy import cli
+    import studio_proxy.cache as cache
+    import studio_proxy.telemetry as telemetry
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "AGENTS.md").write_text(
+        '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".bootstrap"\n```\n<!-- /@cf:root-agents -->\n',
+        encoding="utf-8",
+    )
+    (project / ".bootstrap").mkdir()
+    (project / ".bootstrap" / "version.toml").write_text(
+        '[cfs]\nversion = "v4.5.6"\nsource_type = "github"\n',
+        encoding="utf-8",
+    )
+    captured = {}
+
+    def fake_download_and_cache(*, version=None, force=False, url=None):
+        captured["cache"] = {"version": version, "force": force, "url": url}
+        return True, "cached"
+
+    monkeypatch.chdir(project)
+    monkeypatch.setattr(cache, "download_and_cache", fake_download_and_cache)
+    monkeypatch.setattr(telemetry, "track_invocation", lambda _args: None)
+    monkeypatch.setattr(cli, "find_cached_skill", lambda: Path("/tmp/studio.py"))
+    monkeypatch.setattr(cli, "_forward_to_skill", lambda _skill_path, _args: 0)
+
+    rc = cli.main(["init", "--url", "owner/fork", "--yes"])
+
+    assert rc == 0
+    assert captured["cache"] == {"version": None, "force": False, "url": "owner/fork"}
+
+
+def test_init_ignores_local_path_project_pin_with_source_type(monkeypatch, tmp_path):
+    from studio_proxy import cli
+    import studio_proxy.cache as cache
+    import studio_proxy.telemetry as telemetry
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "AGENTS.md").write_text(
+        '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".bootstrap"\n```\n<!-- /@cf:root-agents -->\n',
+        encoding="utf-8",
+    )
+    (project / ".bootstrap").mkdir()
+    (project / ".bootstrap" / "version.toml").write_text(
+        '[cfs]\nversion = "local:v4.5.6"\nsource_type = "local_path"\n',
+        encoding="utf-8",
+    )
+    captured = {}
+
+    def fake_download_and_cache(*, version=None, force=False, url=None):
+        captured["cache"] = {"version": version, "force": force, "url": url}
+        return True, "cached"
+
+    monkeypatch.chdir(project)
+    monkeypatch.setattr(cache, "download_and_cache", fake_download_and_cache)
+    monkeypatch.setattr(telemetry, "track_invocation", lambda _args: None)
+    monkeypatch.setattr(cli, "find_cached_skill", lambda: Path("/tmp/studio.py"))
+    monkeypatch.setattr(cli, "_forward_to_skill", lambda _skill_path, _args: 0)
+
+    rc = cli.main(["init", "--yes"])
+
+    assert rc == 0
+    assert captured["cache"] == {"version": None, "force": False, "url": None}
+
+
+def test_init_replays_project_pinned_github_source(monkeypatch, tmp_path):
+    from studio_proxy import cli
+    import studio_proxy.cache as cache
+    import studio_proxy.telemetry as telemetry
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "AGENTS.md").write_text(
+        '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".bootstrap"\n```\n<!-- /@cf:root-agents -->\n',
+        encoding="utf-8",
+    )
+    (project / ".bootstrap").mkdir()
+    (project / ".bootstrap" / "version.toml").write_text(
+        '[cfs]\n'
+        'version = "feature-x"\n'
+        'source_type = "github"\n'
+        'canonical_source = "https://api.github.com/repos/owner/fork"\n',
+        encoding="utf-8",
+    )
+    captured = {}
+
+    def fake_download_and_cache(*, version=None, force=False, url=None):
+        captured["cache"] = {"version": version, "force": force, "url": url}
+        return True, "cached"
+
+    monkeypatch.chdir(project)
+    monkeypatch.setattr(cache, "download_and_cache", fake_download_and_cache)
+    monkeypatch.setattr(telemetry, "track_invocation", lambda _args: None)
+    monkeypatch.setattr(cli, "find_cached_skill", lambda: Path("/tmp/studio.py"))
+    monkeypatch.setattr(cli, "_forward_to_skill", lambda _skill_path, _args: 0)
+
+    rc = cli.main(["init", "--yes"])
+
+    assert rc == 0
+    assert captured["cache"] == {
+        "version": "feature-x",
+        "force": False,
+        "url": "https://api.github.com/repos/owner/fork",
+    }
 
 
 def test_download_and_cache_explicit_release_uses_release_metadata(monkeypatch, tmp_path):
