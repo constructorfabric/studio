@@ -124,7 +124,7 @@ def _follow_protocol_lines(target_path: str) -> List[str]:
         "  - ALWAYS load every required unconditional LOAD/CONTINUE before task work",
         "  - ALWAYS evaluate conditional gates and load every active branch",
         "  - NEVER skip, summarize, or defer required instructions",
-        "  - STOP if any required fragment or rule cannot be followed",
+        "  - ALWAYS stop if any required fragment or rule cannot be followed",
         "```",
     ]
 
