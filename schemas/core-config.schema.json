@@ -89,7 +89,15 @@
         },
         "source": {
           "type": "string",
-          "description": "Source identifier for the kit (e.g. 'github:owner/repo'). Set during installation."
+          "description": "Source identifier for the kit (e.g. 'github:owner/repo' or 'git:<encoded-url>'). Set during installation."
+        },
+        "source_provenance": {
+          "$ref": "#/$defs/source_provenance",
+          "description": "Optional structured source provenance for remote-backed kit registrations."
+        },
+        "content_identity": {
+          "$ref": "#/$defs/content_identity",
+          "description": "Optional immutable content identity for remote-backed kit registrations."
         },
         "artifacts": {
           "type": "object",
@@ -114,6 +122,38 @@
             "$ref": "#/$defs/resource_binding"
           }
         }
+      }
+    },
+    "source_provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_type": { "type": "string", "enum": ["github", "git", "local", "unknown"] },
+        "resolver_mode": { "type": "string" },
+        "resolution_basis": { "type": "string" },
+        "requested_ref": { "type": "string" },
+        "resolved_ref": { "type": "string" },
+        "canonical_source": { "type": "string" },
+        "effective_source": { "type": "string" },
+        "original_source": { "type": "string" },
+        "decoded_remote_url": { "type": "string" },
+        "decoded_remote_url_hash": { "type": "string" },
+        "selected_subdirectory": { "type": "string" },
+        "kit_identity": { "type": "string" },
+        "transport": { "type": "string" },
+        "verified": { "type": "string" },
+        "freshness": { "type": "string" }
+      }
+    },
+    "content_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "vcs": { "type": "string" },
+        "commit_sha": { "type": "string" },
+        "resolved_ref": { "type": "string" },
+        "subdirectory": { "type": "string" },
+        "identity": { "type": "string" }
       }
     },
     "resource_binding": {

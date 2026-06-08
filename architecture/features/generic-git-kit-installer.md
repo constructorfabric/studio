@@ -272,7 +272,7 @@ Studio kit installation currently supports GitHub repository shorthand and expli
 
 ### Generic Git Source Grammar
 
-- [ ] `p1` - **ID**: `cpt-studio-dod-generic-git-kit-installer-source-grammar`
+- [x] `p1` - **ID**: `cpt-studio-dod-generic-git-kit-installer-source-grammar`
 
 The system **MUST** accept `git/<encoded-url>[//<subdir>][@<kit>]` at the CLI and persist equivalent sources as `git:<encoded-url>[//<subdir>][@<kit>]`.
 
@@ -283,7 +283,7 @@ The system **MUST** accept `git/<encoded-url>[//<subdir>][@<kit>]` at the CLI an
 
 ### Git Ref Resolution via `--version`
 
-- [ ] `p1` - **ID**: `cpt-studio-dod-generic-git-kit-installer-version-ref`
+- [x] `p1` - **ID**: `cpt-studio-dod-generic-git-kit-installer-version-ref`
 
 The system **MUST** resolve `--version` as a Git ref/tag/branch/commit selector for generic Git sources and persist both requested selector and resolved commit SHA.
 
@@ -294,7 +294,7 @@ The system **MUST** resolve `--version` as a Git ref/tag/branch/commit selector 
 
 ### Generic Git Provenance and Schema
 
-- [ ] `p1` - **ID**: `cpt-studio-dod-generic-git-kit-installer-provenance`
+- [x] `p1` - **ID**: `cpt-studio-dod-generic-git-kit-installer-provenance`
 
 The system **MUST** persist generic Git source provenance and content identity without breaking existing GitHub or local/path registrations.
 
@@ -314,7 +314,7 @@ The system **MUST** cache generic Git content by hashed structured identity and 
 
 ### Auth and Redaction
 
-- [ ] `p1` - **ID**: `cpt-studio-dod-generic-git-kit-installer-auth-redaction`
+- [x] `p1` - **ID**: `cpt-studio-dod-generic-git-kit-installer-auth-redaction`
 
 The system **MUST** keep Git credentials outside source grammar, cache identity, provenance, logs, errors, and lock files while still allowing runtime-only Git authentication.
 

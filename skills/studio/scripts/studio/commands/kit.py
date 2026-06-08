@@ -23,6 +23,12 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from ..utils._tomllib_compat import tomllib
+from ..utils.git_kit_source import (
+    GitSourceError,
+    materialize_git_kit_source,
+    parse_git_kit_source,
+    source_is_generic_git,
+)
 from ..utils.ui import ui
 from ..utils.whatsnew import show_kit_whatsnew
 # @cpt-end:cpt-studio-algo-kit-github-helpers:p1:inst-kit-imports
@@ -1618,6 +1624,51 @@ def _resolve_install_source_github(
 # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-resolve-github-source
 
 
+def _resolve_install_source_git(
+    source_arg: str,
+    requested_ref: str = "",
+) -> Optional[Tuple[Path, str, str, str, Optional[Path], Optional[int], Optional[Dict[str, Any]]]]:
+    """Parse and materialize a generic Git kit source for ``cmd_kit_install``."""
+    try:
+        parsed = parse_git_kit_source(source_arg)
+        resolution = materialize_git_kit_source(parsed, requested_ref=requested_ref)
+    except GitSourceError as exc:
+        ui.result({
+            "status": "FAIL",
+            "message": str(exc),
+            **exc.to_result(),
+        })
+        return None
+    except RuntimeError as exc:
+        ui.result({"status": "FAIL", "message": f"Git source resolution failed: {exc}"})
+        return (Path("."), "", "", "", None, 1, None)
+
+    kit_source = resolution.kit_source_dir
+    kit_slug = parsed.kit_identity or _read_kit_slug(kit_source)
+    if not kit_slug:
+        ui.result({"status": "FAIL", "message": f"Kit at {kit_source} is missing conf.toml slug."})
+        shutil.rmtree(resolution.tmp_dir, ignore_errors=True)
+        return (Path("."), "", "", "", None, 1, None)
+    if parsed.kit_identity and _read_kit_slug(kit_source) not in ("", parsed.kit_identity):
+        ui.result({
+            "status": "FAIL",
+            "message": f"Git source selected kit '{parsed.kit_identity}' but package slug is '{_read_kit_slug(kit_source)}'",
+        })
+        shutil.rmtree(resolution.tmp_dir, ignore_errors=True)
+        return (Path("."), "", "", "", None, 1, None)
+    kit_version = str(resolution.authority_metadata.get("installed_version") or "")
+    ui.substep(f"Resolved: {kit_slug}@{kit_version[:12] or '(git)'}")
+    return (
+        kit_source,
+        kit_slug,
+        kit_version,
+        parsed.canonical_source,
+        resolution.tmp_dir,
+        None,
+        resolution.authority_metadata,
+    )
+
+
 # @cpt-flow:cpt-studio-flow-kit-install-cli:p1
 def cmd_kit_install(argv: List[str]) -> int:
     """Install a kit from GitHub or a local path.
@@ -1636,11 +1687,15 @@ def cmd_kit_install(argv: List[str]) -> int:
     )
     p.add_argument(
         "source", nargs="?", default=None,
-        help="GitHub source: owner/repo[@version] (e.g. constructorfabric/studio-kit-sdlc@v2.0.0)",
+        help="GitHub source owner/repo[@version] or generic Git source git/<encoded-url>[//<subdir>][@<kit>]",
     )
     p.add_argument(
         "--path", dest="local_path", default=None,
         help="Install from a local directory instead of GitHub",
+    )
+    p.add_argument(
+        "--version", dest="version", default="",
+        help="For generic Git sources, resolve this tag, branch, ref, or commit",
     )
     p.add_argument("--force", action="store_true", help="Overwrite existing kit")
     p.add_argument("--dry-run", action="store_true", help="Show what would be done")
@@ -1653,7 +1708,7 @@ def cmd_kit_install(argv: List[str]) -> int:
     # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-parse-args
 
     # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-validate-source
-    github_source = ""  # "github:owner/repo" for registration
+    source_registration = ""  # "github:owner/repo" or "git:<encoded-url>" for registration
     authority_metadata: Optional[Dict[str, Any]] = None
     tmp_dir_to_clean: Optional[Path] = None
 
@@ -1674,11 +1729,14 @@ def cmd_kit_install(argv: List[str]) -> int:
         )
         # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-read-slug-version
     else:
-        gh = _resolve_install_source_github(args.source)
-        if gh is None:
+        if source_is_generic_git(args.source):
+            resolved_source = _resolve_install_source_git(args.source, args.version)
+        else:
+            resolved_source = _resolve_install_source_github(args.source)
+        if resolved_source is None:
             return 2
         # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-read-slug-version
-        kit_source, kit_slug, kit_version, github_source, tmp_dir_to_clean, exit_code, authority_metadata = gh
+        kit_source, kit_slug, kit_version, source_registration, tmp_dir_to_clean, exit_code, authority_metadata = resolved_source
         # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-read-slug-version
         if exit_code is not None:
             return exit_code
@@ -1726,7 +1784,7 @@ def cmd_kit_install(argv: List[str]) -> int:
                 "status": "DRY_RUN",
                 "kit": kit_slug,
                 "version": kit_version,
-                "source": github_source or kit_source.as_posix(),
+                "source": source_registration or kit_source.as_posix(),
                 "target": config_kit_dir.as_posix(),
             })
             return 0
@@ -1738,7 +1796,7 @@ def cmd_kit_install(argv: List[str]) -> int:
             studio_dir,
             kit_slug,
             kit_version,
-            source=github_source,
+            source=source_registration,
             interactive=True,
             authority_metadata=authority_metadata,
         )
@@ -1756,8 +1814,10 @@ def cmd_kit_install(argv: List[str]) -> int:
             "version": kit_version,
             "files_written": result.get("files_copied", 0),
         }
-        if github_source:
-            output["source"] = github_source
+        if source_registration:
+            output["source"] = source_registration
+        if authority_metadata:
+            output["authority"] = _authority_result_summary(authority_metadata) or authority_metadata
         if result.get("errors"):
             output["errors"] = result["errors"]
 
@@ -1901,6 +1961,71 @@ def _resolve_github_update_targets(
 # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-resolve-github-targets
 
 
+def _resolve_registered_update_targets(
+    kits_map: Dict[str, Dict[str, Any]],
+    *,
+    requested_ref_override: str = "",
+) -> Tuple[List[Tuple[str, Path, str, Optional[Path], Optional[Dict[str, Any]]]], List[Dict[str, Any]]]:
+    """Resolve registered kit update targets across supported source types."""
+    github_map: Dict[str, Dict[str, Any]] = {}
+    targets: List[Tuple[str, Path, str, Optional[Path], Optional[Dict[str, Any]]]] = []
+    failures: List[Dict[str, Any]] = []
+    for slug, kit_data in kits_map.items():
+        source_str = kit_data.get("source", "")
+        if source_str.startswith("github:"):
+            github_map[slug] = kit_data
+            continue
+        if not source_str.startswith("git:"):
+            if not source_str:
+                msg = f"Kit '{slug}' has no registered source — skipping"
+            else:
+                msg = f"Kit '{slug}': unsupported source type '{source_str}' — skipping"
+            ui.warn(msg)
+            failures.append({"kit": slug, "action": "ERROR", "message": msg, "source": source_str})
+            continue
+
+        try:
+            parsed = parse_git_kit_source(source_str)
+            provenance = kit_data.get("source_provenance", {})
+            requested_ref = requested_ref_override or str(
+                provenance.get("requested_ref")
+                if isinstance(provenance, dict)
+                else ""
+            )
+            if requested_ref == "HEAD":
+                requested_ref = ""
+            resolution = materialize_git_kit_source(parsed, requested_ref=requested_ref)
+        except GitSourceError as exc:
+            msg = f"Kit '{slug}': invalid Git source: {exc}"
+            ui.warn(msg)
+            failures.append({
+                "kit": slug,
+                "action": "ERROR",
+                "message": msg,
+                "source": source_str,
+                **exc.to_result(),
+            })
+            continue
+        except RuntimeError as exc:
+            msg = f"Kit '{slug}': Git source resolution failed: {exc}"
+            ui.warn(msg)
+            failures.append({"kit": slug, "action": "failed", "message": msg, "source": source_str})
+            continue
+        targets.append((
+            slug,
+            resolution.kit_source_dir,
+            parsed.canonical_source,
+            resolution.tmp_dir,
+            resolution.authority_metadata,
+        ))
+
+    if github_map:
+        github_targets, github_failures = _resolve_github_update_targets(github_map)
+        targets.extend(github_targets)
+        failures.extend(github_failures)
+    return targets, failures
+
+
 # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-build-update-result
 def _normalize_kit_update_action(action: Any) -> str:
     normalized = str(action or "").strip().lower()
@@ -1965,6 +2090,10 @@ def cmd_kit_update(argv: List[str]) -> int:
     p.add_argument("--project-root", default=None, help="Project root directory")
     p.add_argument("--force", action="store_true",
                    help="Skip version check and force update")
+    p.add_argument(
+        "--version", dest="version", default="",
+        help="For generic Git sources, resolve this tag, branch, ref, or commit",
+    )
     p.add_argument("--dry-run", action="store_true", help="Show what would be done")
     p.add_argument("--no-interactive", action="store_true",
                    help="Disable interactive prompts (auto-decline changes)")
@@ -2022,7 +2151,10 @@ def cmd_kit_update(argv: List[str]) -> int:
                 return 2
             kits_map = {args.slug: kits_map[args.slug]}
 
-        update_targets, source_failures = _resolve_github_update_targets(kits_map)
+        update_targets, source_failures = _resolve_registered_update_targets(
+            kits_map,
+            requested_ref_override=args.version,
+        )
         if not update_targets:
             source_failure_actions = {
                 _normalize_kit_update_action(sf.get("action"))
@@ -3084,7 +3216,7 @@ def _register_kit_in_core_toml(
     if source:
         existing["source"] = source
     if authority_metadata:
-        source_type = "github" if source.startswith("github:") else "unknown"
+        source_type = "github" if source.startswith("github:") else ("git" if source.startswith("git:") else "unknown")
         source_provenance = {
             "source_type": authority_metadata.get("source_type", source_type),
             "resolver_mode": authority_metadata.get("resolver_mode", ""),
@@ -3093,6 +3225,12 @@ def _register_kit_in_core_toml(
             "resolved_ref": authority_metadata.get("resolved_ref", ""),
             "canonical_source": authority_metadata.get("canonical_source", source),
             "effective_source": authority_metadata.get("effective_source", source),
+            "original_source": authority_metadata.get("original_source", ""),
+            "decoded_remote_url": authority_metadata.get("decoded_remote_url", ""),
+            "decoded_remote_url_hash": authority_metadata.get("decoded_remote_url_hash", ""),
+            "selected_subdirectory": authority_metadata.get("selected_subdirectory", ""),
+            "kit_identity": authority_metadata.get("kit_identity", ""),
+            "transport": authority_metadata.get("transport", ""),
             "verified": authority_metadata.get("verified", "unknown"),
             "freshness": authority_metadata.get("freshness", "unknown"),
         }
@@ -3100,8 +3238,10 @@ def _register_kit_in_core_toml(
             key: value for key, value in source_provenance.items() if value != ""
         }
         content_identity = {
+            "vcs": authority_metadata.get("content_identity", {}).get("vcs", "") if isinstance(authority_metadata.get("content_identity"), dict) else "",
             "commit_sha": authority_metadata.get("commit_sha", ""),
             "resolved_ref": authority_metadata.get("resolved_ref", ""),
+            "subdirectory": authority_metadata.get("selected_subdirectory", ""),
             "identity": authority_metadata.get("identity", ""),
         }
         existing["content_identity"] = {
