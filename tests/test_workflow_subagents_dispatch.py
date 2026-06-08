@@ -746,6 +746,15 @@ def test_git_commit_mode_gate_declares_studio_footer_contract_without_prompt_sna
         "Studio-Source-Repo",
         "Constructor-Fabric",
         "semver tokens extracted from cfs --version",
+        "preflight of the exact planned `git commit` invocation",
+        "STOP_TURN and report missing trailer tokens",
+        "missing trailer tokens",
+        "git commit -m ...",
+        "git commit -s",
+        "never satisfies any Studio trailer requirement",
+        "git log -1 --format=%B",
+        "commit-trailer audit failure",
+        "NEVER invoke `git commit` until the exact planned command passes trailer preflight",
     ]
     for phrase in required_phrases:
         assert phrase in skill_text
