@@ -326,18 +326,17 @@ The system **MUST** keep Git credentials outside source grammar, cache identity,
 
 - `skills/studio/scripts/studio/commands/kit.py` - CLI dispatch for install/update source mode selection
 - `skills/studio/scripts/studio/kit_manager.py` - install/update delegation, kit registration, and manifest-aware content application
-- `skills/studio/scripts/studio/utils/git_source.py` - generic Git source parsing, normalization, ref resolution, and redaction helpers
-- `skills/studio/scripts/studio/utils/kit_cache.py` - generic Git cache namespace, artifact manifest, and offline fallback helpers
-- `schemas/core.schema.json` - optional kit registration schema for `source_provenance` and `content_identity`
+- `skills/studio/scripts/studio/utils/git_kit_source.py` - generic Git source parsing, normalization, ref resolution, cache namespace, artifact manifest, offline fallback, and redaction helpers
+- `schemas/core-config.schema.json` - optional kit registration schema for `source_provenance` and `content_identity`
 - `tests/test_kit_generic_git_source.py` - parser, normalization, policy, dispatch, cache, offline, and auth redaction contract tests
 
 ## 7. Acceptance Criteria
 
-- [ ] `cfs kit install git/<encoded-url> --version <ref>` installs a kit from a non-GitHub remote and records `source_type = "git"`, requested ref, and resolved commit SHA.
-- [ ] `cfs kit update <kit>` for a generic Git registered kit resolves mutable refs by commit SHA and runs the existing file-level diff/update path.
-- [ ] Existing `github:` registrations and GitHub shorthand installs continue to use GitHub release/tag authority and are not migrated to generic Git.
-- [ ] Local/path kits remain valid without `source_provenance` or `content_identity`.
-- [ ] Credentialed URLs, query strings, and fragments are rejected with stable error codes and sanitized diagnostics.
-- [ ] Cache paths contain only stable hashes and never contain decoded remotes, raw refs, usernames, passwords, tokens, query strings, or fragments.
-- [ ] Offline fallback never rewrites source to a local cache path and never converts mutable refs into pinned commits.
-- [ ] Unit tests include fixture repositories with branch, tag, default branch, full commit, SSH/scp-like parsing, `file://`, subdirectory, and kit identity cases.
+- [x] `cfs kit install git/<encoded-url> --version <ref>` installs a kit from a non-GitHub remote and records `source_type = "git"`, requested ref, and resolved commit SHA.
+- [x] `cfs kit update <kit>` for a generic Git registered kit resolves mutable refs by commit SHA and runs the existing file-level diff/update path.
+- [x] Existing `github:` registrations and GitHub shorthand installs continue to use GitHub release/tag authority and are not migrated to generic Git.
+- [x] Local/path kits remain valid without `source_provenance` or `content_identity`.
+- [x] Credentialed URLs, query strings, and fragments are rejected with stable error codes and sanitized diagnostics.
+- [x] Cache paths contain only stable hashes and never contain decoded remotes, raw refs, usernames, passwords, tokens, query strings, or fragments.
+- [x] Offline fallback never rewrites source to a local cache path and never converts mutable refs into pinned commits.
+- [x] Unit tests include fixture repositories with branch, tag, default branch, full commit, SSH/scp-like parsing, `file://`, subdirectory, and kit identity cases.

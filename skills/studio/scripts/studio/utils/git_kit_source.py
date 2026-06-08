@@ -340,7 +340,7 @@ def _cache_artifact(
     if artifact_dir.exists():
         shutil.rmtree(artifact_dir)
     artifact_dir.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(kit_source_dir, artifact_dir)
+    shutil.copytree(kit_source_dir, artifact_dir, ignore=shutil.ignore_patterns(".git"))
     manifest = {
         "schema_version": "1.0",
         "source_type": "git",
