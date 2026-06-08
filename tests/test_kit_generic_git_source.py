@@ -222,6 +222,7 @@ class TestGenericGitKitSourceParser(unittest.TestCase):
         cases = [
             ("git/", "GIT_SOURCE_INVALID_URL"),
             ("git/" + quote("https://example.com/%2Forg/repo.git", safe=""), "GIT_SOURCE_INVALID_URL"),
+            ("git/https%3A%2F%2Fexample.com%2Forg%ZZrepo.git", "GIT_SOURCE_INVALID_URL"),
             ("git/" + quote("https://example.com/org/repo.git\x00", safe=""), "GIT_SOURCE_INVALID_URL"),
             ("git/" + quote("https://example.com/org/repo.git", safe="") + "@Bad", "GIT_SOURCE_INVALID_KIT"),
             ("git/" + quote("git@example.com:/abs.git", safe=""), "GIT_SOURCE_INVALID_URL"),
@@ -415,7 +416,7 @@ class TestGenericGitKitInstallUpdate(unittest.TestCase):
             try:
                 os.chdir(project)
                 with redirect_stdout(io.StringIO()):
-                    self.assertEqual(cmd_kit_install([source, "--version", "master"]), 0)
+                    self.assertEqual(cmd_kit_install([source, "--version", "HEAD"]), 0)
                 _write_git_kit(repo, "gitkit", "# Git Kit\n\nUpdated\n")
                 _run_git(repo, "add", ".")
                 _run_git(repo, "commit", "-q", "-m", "update")
@@ -434,7 +435,7 @@ class TestGenericGitKitInstallUpdate(unittest.TestCase):
                 self.assertNotEqual(first_sha, second_sha)
                 self.assertEqual(kit["content_identity"]["commit_sha"], second_sha)
                 self.assertEqual(kit["source_provenance"]["source_type"], "git")
-                self.assertEqual(kit["source_provenance"]["requested_ref"], "master")
+                self.assertEqual(kit["source_provenance"]["requested_ref"], "HEAD")
             finally:
                 os.chdir(cwd)
 
@@ -454,7 +455,7 @@ class TestGenericGitKitInstallUpdate(unittest.TestCase):
             try:
                 os.chdir(project)
                 with redirect_stdout(io.StringIO()):
-                    self.assertEqual(cmd_kit_install([source, "--version", "master"]), 0)
+                    self.assertEqual(cmd_kit_install([source, "--version", "HEAD"]), 0)
                 self.assertTrue(any(cache_dir.rglob("artifact-manifest.json")))
                 cache_paths = [str(path.relative_to(cache_dir)) for path in cache_dir.rglob("*")]
                 self.assertTrue(cache_paths)

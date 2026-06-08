@@ -60,9 +60,10 @@ def read_cf_studio_path(project_root: Path) -> Optional[str]:
         return None
 
     toml_data = _parse_toml_from_markdown(content)
-    value = toml_data.get("cf-studio-path")
-    if isinstance(value, str) and value.strip():
-        return value.strip()
+    for key in ("cf-studio-path", "cf-path"):
+        value = toml_data.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
     return None
 
 def find_install_dir(project_root: Path) -> Optional[str]:

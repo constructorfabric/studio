@@ -211,6 +211,40 @@ def test_init_uses_project_pinned_version_for_repair(monkeypatch, tmp_path):
     assert captured["forward_args"] == ["init", "--yes"]
 
 
+def test_init_uses_legacy_cf_path_project_pinned_version(monkeypatch, tmp_path):
+    from studio_proxy import cli
+    import studio_proxy.cache as cache
+    import studio_proxy.telemetry as telemetry
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "AGENTS.md").write_text(
+        '<!-- @cf:root-agents -->\n```toml\ncf-path = ".bootstrap"\n```\n<!-- /@cf:root-agents -->\n',
+        encoding="utf-8",
+    )
+    (project / ".bootstrap").mkdir()
+    (project / ".bootstrap" / "version.toml").write_text(
+        '[cfs]\nversion = "v4.5.6"\n',
+        encoding="utf-8",
+    )
+    captured = {}
+
+    def fake_download_and_cache(*, version=None, force=False, url=None):
+        captured["cache"] = {"version": version, "force": force, "url": url}
+        return True, "cached"
+
+    monkeypatch.chdir(project)
+    monkeypatch.setattr(cache, "download_and_cache", fake_download_and_cache)
+    monkeypatch.setattr(telemetry, "track_invocation", lambda _args: None)
+    monkeypatch.setattr(cli, "find_cached_skill", lambda: Path("/tmp/studio.py"))
+    monkeypatch.setattr(cli, "_forward_to_skill", lambda _skill_path, _args: 0)
+
+    rc = cli.main(["init", "--yes"])
+
+    assert rc == 0
+    assert captured["cache"]["version"] == "v4.5.6"
+
+
 def test_init_uses_project_root_pinned_version_for_repair(monkeypatch, tmp_path):
     from studio_proxy import cli
     import studio_proxy.cache as cache

@@ -252,7 +252,7 @@ Studio kit installation currently supports GitHub repository shorthand and expli
 
 - [ ] `p1` - **ID**: `cpt-studio-state-generic-git-kit-installer-source`
 
-```
+```text
 [UNREGISTERED] --install-online--> [REGISTERED_VERIFIED]
 [REGISTERED_VERIFIED] --mutable-ref-same-sha--> [CURRENT_VERIFIED]
 [REGISTERED_VERIFIED] --mutable-ref-new-sha--> [UPDATE_AVAILABLE_VERIFIED]

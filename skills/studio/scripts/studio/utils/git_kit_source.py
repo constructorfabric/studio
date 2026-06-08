@@ -44,6 +44,7 @@ _SSH_SHORTHAND_RE = re.compile(r"^ssh:([A-Za-z0-9._-]+):(.+)$")
 _SSH_SHORTHAND_WITH_PORT_RE = re.compile(r"^ssh:([A-Za-z0-9._-]+):([0-9]+)/(.+)$")
 _SSH_URL_USER_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 _HEX_ESCAPE_RE = re.compile(r"%[0-9a-fA-F]{2}")
+_MALFORMED_PERCENT_ESCAPE_RE = re.compile(r"%(?![0-9a-fA-F]{2})")
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 _GIT_TIMEOUT = int(os.environ.get("GIT_TIMEOUT", "300"))
 # @cpt-end:cpt-studio-state-generic-git-kit-installer-source:p1:inst-git-prov-schema-source
@@ -134,6 +135,11 @@ def _canonical_encoded_url(decoded_url: str) -> str:
 def _decode_once(encoded_url: str) -> str:
     if not encoded_url:
         raise GitSourceError("GIT_SOURCE_INVALID_URL", "Git source URL is empty")
+    if "%" in encoded_url and _MALFORMED_PERCENT_ESCAPE_RE.search(encoded_url):
+        raise GitSourceError(
+            "GIT_SOURCE_INVALID_URL",
+            "Git source URL contains malformed percent-escapes",
+        )
     decoded = unquote(encoded_url)
     if "%" in decoded and _HEX_ESCAPE_RE.search(decoded):
         raise GitSourceError(
@@ -424,10 +430,12 @@ def _cache_artifact(
     resolution_basis: str,
 ) -> Dict[str, str]:
     artifact_dir = _cache_artifact_dir(parsed, commit_sha)
-    if artifact_dir.exists():
-        shutil.rmtree(artifact_dir)
     artifact_dir.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(kit_source_dir, artifact_dir, ignore=shutil.ignore_patterns(".git"))
+    temp_dir = artifact_dir.with_name(artifact_dir.name + ".tmp")
+    backup_dir = artifact_dir.with_name(artifact_dir.name + ".old")
+    shutil.rmtree(temp_dir, ignore_errors=True)
+    shutil.rmtree(backup_dir, ignore_errors=True)
+    shutil.copytree(kit_source_dir, temp_dir, ignore=shutil.ignore_patterns(".git"))
     manifest = {
         "schema_version": "1.0",
         "source_type": "git",
@@ -442,7 +450,23 @@ def _cache_artifact(
         "validation_basis": resolution_basis,
         "remote_display": parsed.sanitized_url_display,
     }
-    _write_json(artifact_dir / "artifact-manifest.json", manifest)
+    try:
+        _write_json(temp_dir / "artifact-manifest.json", manifest)
+        old_artifact_moved = False
+        if artifact_dir.exists():
+            os.replace(artifact_dir, backup_dir)
+            old_artifact_moved = True
+        try:
+            os.replace(temp_dir, artifact_dir)
+        except Exception:
+            if old_artifact_moved and not artifact_dir.exists() and backup_dir.exists():
+                os.replace(backup_dir, artifact_dir)
+            raise
+        if old_artifact_moved:
+            shutil.rmtree(backup_dir, ignore_errors=True)
+    except Exception:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise
     _write_json(
         _cache_ref_manifest_path(parsed, requested_ref),
         {
