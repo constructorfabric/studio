@@ -124,7 +124,7 @@ def _follow_protocol_lines(target_path: str) -> List[str]:
         "  - ALWAYS load every required unconditional LOAD/CONTINUE before task work",
         "  - ALWAYS evaluate conditional gates and load every active branch",
         "  - NEVER skip, summarize, or defer required instructions",
-        "  - STOP if any required fragment or rule cannot be followed",
+        "  - ALWAYS stop if any required fragment or rule cannot be followed",
         "```",
     ]
 
@@ -2406,6 +2406,8 @@ def _cleanup_studio_legacy_subagents(
     agent: str,
     project_root: Path,
     dry_run: bool,
+    *,
+    remove_cypilot: bool = False,
 ) -> List[str]:
     """Delete pre-rebrand studio-*.<ext> sub-agent files for *agent*.
 
@@ -2414,7 +2416,10 @@ def _cleanup_studio_legacy_subagents(
     _is_pure_studio_generated) are skipped, not deleted.
     """
     deleted: List[str] = []
-    globs = _STUDIO_LEGACY_SUBAGENT_GLOBS.get(agent, [])
+    globs = _legacy_cleanup_patterns_for_mode(
+        _STUDIO_LEGACY_SUBAGENT_GLOBS.get(agent, []),
+        remove_cypilot,
+    )
     for glob_pat in globs:
         # Resolve the glob's parent dir; iterdir + name-prefix matches the
         # `studio-*` shape without needing a full glob() implementation
@@ -2505,11 +2510,26 @@ _STUDIO_LEGACY_MARKER_PATHS: Dict[str, List[str]] = {
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-legacy-marker-paths
 
 
+def _is_cypilot_legacy_artifact(rel_path: str) -> bool:
+    """Return True for pre-rebrand Cypilot/Cyber Constructor artifact paths."""
+    normalized = rel_path.replace("\\", "/")
+    return "cypilot" in normalized or "cf-constructor" in normalized
+
+
+def _legacy_cleanup_patterns_for_mode(patterns: List[str], remove_cypilot: bool) -> List[str]:
+    """Filter legacy cleanup patterns unless Cypilot removal was explicitly requested."""
+    if remove_cypilot:
+        return patterns
+    return [pattern for pattern in patterns if not _is_cypilot_legacy_artifact(pattern)]
+
+
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-cleanup-legacy-markers
 def _cleanup_studio_legacy_markers(
     agent: str,
     project_root: Path,
     dry_run: bool,
+    *,
+    remove_cypilot: bool = False,
 ) -> List[str]:
     """Delete pre-rebrand `.studio-installed` integration markers for *agent*.
 
@@ -2518,7 +2538,7 @@ def _cleanup_studio_legacy_markers(
     (user-authored file at the same path) is preserved.
     """
     deleted: List[str] = []
-    for rel in _STUDIO_LEGACY_MARKER_PATHS.get(agent, []):
+    for rel in _legacy_cleanup_patterns_for_mode(_STUDIO_LEGACY_MARKER_PATHS.get(agent, []), remove_cypilot):
         abs_path = project_root / rel
         if not abs_path.is_file():
             continue
@@ -2556,6 +2576,8 @@ def _cleanup_legacy_skill_dirs(
     agent: str,
     project_root: Path,
     dry_run: bool,
+    *,
+    remove_cypilot: bool = False,
 ) -> List[str]:
     """Delete pre-rebrand per-workflow skill directories.
 
@@ -2565,7 +2587,7 @@ def _cleanup_legacy_skill_dirs(
     with user-added content cause the directory to be preserved.
     """
     deleted: List[str] = []
-    for pattern in _LEGACY_SKILL_DIR_GLOBS.get(agent, []):
+    for pattern in _legacy_cleanup_patterns_for_mode(_LEGACY_SKILL_DIR_GLOBS.get(agent, []), remove_cypilot):
         pattern_path = Path(pattern)
         parent_rel = pattern_path.parent
         name_prefix = pattern_path.name.split("*", 1)[0]
@@ -3053,6 +3075,8 @@ def _process_legacy_cleanup(
     cfg: dict,
     _cfg_path: Optional[Path],
     dry_run: bool,
+    *,
+    remove_cypilot: bool = False,
 ) -> Dict[str, Any]:
     """Run the four legacy cleanup passes plus install-marker writes.
 
@@ -3161,7 +3185,11 @@ def _process_legacy_cleanup(
                     skills_result["deleted"].append(rel_path)
 
     # ── Clean up legacy tool-specific skill files now replaced by .agents/skills/ ──
-    for legacy_rel in _LEGACY_TOOL_SKILL_PATHS.get(agent, []):
+    legacy_skill_paths = _legacy_cleanup_patterns_for_mode(
+        _LEGACY_TOOL_SKILL_PATHS.get(agent, []),
+        remove_cypilot,
+    )
+    for legacy_rel in legacy_skill_paths:
         legacy_file = project_root / legacy_rel
         if not legacy_file.is_file():
             continue
@@ -3186,15 +3214,21 @@ def _process_legacy_cleanup(
             skills_result["deleted"].append(rel_path)
 
     # ── Clean up legacy studio-* sub-agent files (per-tool) ────────────────
-    for rel in _cleanup_studio_legacy_subagents(agent, project_root, dry_run):
+    for rel in _cleanup_studio_legacy_subagents(
+        agent, project_root, dry_run, remove_cypilot=remove_cypilot,
+    ):
         skills_result["deleted"].append(rel)
 
     # ── Clean up legacy .studio-installed / .cypilot-installed markers ────
-    for rel in _cleanup_studio_legacy_markers(agent, project_root, dry_run):
+    for rel in _cleanup_studio_legacy_markers(
+        agent, project_root, dry_run, remove_cypilot=remove_cypilot,
+    ):
         skills_result["deleted"].append(rel)
 
     # ── Clean up legacy per-workflow skill directories (cypilot-*, etc.) ──
-    for rel in _cleanup_legacy_skill_dirs(agent, project_root, dry_run):
+    for rel in _cleanup_legacy_skill_dirs(
+        agent, project_root, dry_run, remove_cypilot=remove_cypilot,
+    ):
         skills_result["deleted"].append(rel)
 
     # ── Install markers ───────────────────────────────────────────────────
@@ -3409,6 +3443,8 @@ def _process_single_agent(
     cfg: dict,
     cfg_path: Optional[Path],
     dry_run: bool,
+    *,
+    remove_cypilot: bool = False,
 ) -> Dict[str, Any]:
     """Process a single agent and return its result dict.
 
@@ -3453,6 +3489,7 @@ def _process_single_agent(
         skills_result,
         _process_legacy_cleanup(
             agent, project_root, studio_root, cfg, cfg_path, dry_run,
+            remove_cypilot=remove_cypilot,
         ),
     )
     subagents_result = _process_subagents(
@@ -3603,6 +3640,13 @@ def _resolve_agents_context(argv: List[str], prog: str, description: str, *, all
     p.add_argument("--dry-run", action="store_true", help="Compute changes without writing files")
     p.add_argument("--show-layers", action="store_true", help="Display layer provenance report instead of generating")
     p.add_argument("--discover", action="store_true", help="Scan conventional dirs and populate manifest.toml before generating")
+    if not read_only:
+        p.add_argument(
+            "--remove-cypilot",
+            choices=("yes", "no"),
+            default="no",
+            help="Remove legacy Cypilot/Cyber Constructor agent artifacts while generating (default: no).",
+        )
     if allow_yes:
         p.add_argument("-y", "--yes", action="store_true", help="Skip confirmation prompt")
     args = p.parse_args(argv)
@@ -3808,6 +3852,7 @@ def _run_v2_pipeline(
     cfg_path: Optional[Path],
     _copy_report: dict,
     trusted_roots: Optional[List[Path]] = None,
+    remove_cypilot: bool = False,
 ) -> Tuple[Dict[str, Any], bool]:
     """Run generate_manifest_agents + generate_manifest_skills + legacy pipeline.
 
@@ -3834,7 +3879,15 @@ def _run_v2_pipeline(
         }
 
     for agent in agents_to_process:
-        legacy_result = _process_single_agent(agent, project_root, studio_root, cfg, cfg_path, dry_run=args.dry_run)
+        legacy_result = _process_single_agent(
+            agent,
+            project_root,
+            studio_root,
+            cfg,
+            cfg_path,
+            dry_run=args.dry_run,
+            remove_cypilot=remove_cypilot,
+        )
         if agent in results:
             results[agent]["workflows"] = legacy_result.get("workflows", {})
             results[agent]["subagents"] = legacy_result.get("subagents", {})
@@ -3865,6 +3918,7 @@ def cmd_generate_agents(argv: List[str]) -> int:
     if ctx is None:
         return 1
     args, agents_to_process, project_root, studio_root, copy_report, cfg_path, cfg = ctx
+    remove_cypilot = args.remove_cypilot == "yes"
     # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-user-agents
 
     # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-resolve-project
@@ -3948,7 +4002,15 @@ def cmd_generate_agents(argv: List[str]) -> int:
             preview_v2_update += len(pr_a.get("updated", [])) + len(pr_s.get("updated", []))
             preview_v2_delete += len(pr_a.get("deleted", [])) + len(pr_s.get("deleted", []))
             # Also preview legacy workflow outputs from _process_single_agent
-            lp = _process_single_agent(target, project_root, studio_root, cfg, cfg_path, dry_run=True)
+            lp = _process_single_agent(
+                target,
+                project_root,
+                studio_root,
+                cfg,
+                cfg_path,
+                dry_run=True,
+                remove_cypilot=remove_cypilot,
+            )
             legacy_preview[target] = lp
             for section in ("workflows", "skills", "subagents"):
                 sec = lp.get(section, {})
@@ -3983,7 +4045,17 @@ def cmd_generate_agents(argv: List[str]) -> int:
             return 0
 
         results, has_errors = _run_v2_pipeline(
-            args, merged, agents_to_process, project_root, studio_root, variables, cfg, cfg_path, copy_report, trusted_roots=_trusted_roots,
+            args,
+            merged,
+            agents_to_process,
+            project_root,
+            studio_root,
+            variables,
+            cfg,
+            cfg_path,
+            copy_report,
+            trusted_roots=_trusted_roots,
+            remove_cypilot=remove_cypilot,
         )
         agents_result = _build_result(results, agents_to_process, project_root, studio_root, cfg_path, copy_report, dry_run=args.dry_run)
         agents_result["manifest_v2"] = True
@@ -4017,7 +4089,15 @@ def cmd_generate_agents(argv: List[str]) -> int:
     # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-for-each-agent
     preview_results: Dict[str, Any] = {}
     for agent in agents_to_process:
-        preview_results[agent] = _process_single_agent(agent, project_root, studio_root, cfg, cfg_path, dry_run=True)
+        preview_results[agent] = _process_single_agent(
+            agent,
+            project_root,
+            studio_root,
+            cfg,
+            cfg_path,
+            dry_run=True,
+            remove_cypilot=remove_cypilot,
+        )
     # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-for-each-agent
 
     # Compute total changes
@@ -4088,7 +4168,15 @@ def cmd_generate_agents(argv: List[str]) -> int:
     has_errors = False
     results: Dict[str, Any] = {}
     for agent in agents_to_process:
-        result = _process_single_agent(agent, project_root, studio_root, cfg, cfg_path, dry_run=False)
+        result = _process_single_agent(
+            agent,
+            project_root,
+            studio_root,
+            cfg,
+            cfg_path,
+            dry_run=False,
+            remove_cypilot=remove_cypilot,
+        )
         results[agent] = result
         if result.get("status") != "PASS" and _result_has_fatal_errors(result):
             has_errors = True

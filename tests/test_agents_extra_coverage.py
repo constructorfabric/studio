@@ -320,7 +320,7 @@ class TestCleanupLegacySkillDirs(unittest.TestCase):
             skills_dir.mkdir(parents=True)
             # Create a file (not a directory) with a cypilot prefix
             (skills_dir / "cypilot-readme.md").write_text("# README\n", encoding="utf-8")
-            result = _cleanup_legacy_skill_dirs("claude", root, dry_run=True)
+            result = _cleanup_legacy_skill_dirs("claude", root, dry_run=True, remove_cypilot=True)
         self.assertEqual(result, [])
 
     def test_rglob_os_error_is_skipped(self):
@@ -352,7 +352,7 @@ class TestCleanupLegacySkillDirs(unittest.TestCase):
             skill_dir = skills_dir / "cypilot-analyze"
             skill_dir.mkdir(parents=True)
             # Empty directory: no files, so all_pure = bool([]) = False
-            result = _cleanup_legacy_skill_dirs("claude", root, dry_run=True)
+            result = _cleanup_legacy_skill_dirs("claude", root, dry_run=True, remove_cypilot=True)
         self.assertEqual(result, [])
 
     def test_file_read_error_causes_all_pure_false(self):
@@ -387,7 +387,7 @@ class TestCleanupLegacySkillDirs(unittest.TestCase):
             (skill_dir / "SKILL.md").write_text(
                 self._make_legacy_skill_content("cypilot-analyze"), encoding="utf-8",
             )
-            result = _cleanup_legacy_skill_dirs("claude", root, dry_run=True)
+            result = _cleanup_legacy_skill_dirs("claude", root, dry_run=True, remove_cypilot=True)
         self.assertIn(".claude/skills/cypilot-analyze", result)
 
     def test_legacy_dir_with_user_content_not_deleted(self):
@@ -433,7 +433,7 @@ class TestCleanupLegacySkillDirs(unittest.TestCase):
             (skill_dir / "SKILL.md").write_text(
                 self._make_legacy_skill_content("cypilot-analyze"), encoding="utf-8",
             )
-            result = _cleanup_legacy_skill_dirs("claude", root, dry_run=False)
+            result = _cleanup_legacy_skill_dirs("claude", root, dry_run=False, remove_cypilot=True)
         self.assertIn(".claude/skills/cypilot-analyze", result)
         self.assertFalse(skill_dir.exists())
 
@@ -449,7 +449,7 @@ class TestCleanupLegacySkillDirs(unittest.TestCase):
                 self._make_legacy_skill_content("cypilot-analyze"), encoding="utf-8",
             )
             with patch("shutil.rmtree", side_effect=OSError("permission denied")):
-                result = _cleanup_legacy_skill_dirs("claude", root, dry_run=False)
+                result = _cleanup_legacy_skill_dirs("claude", root, dry_run=False, remove_cypilot=True)
         # OSError is swallowed with a warning — not appended to result
         self.assertEqual(result, [])
 

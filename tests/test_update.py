@@ -48,6 +48,10 @@ def _make_cache(cache_dir: Path, kit_version: int = 1) -> None:
     _write_toml(kit_dir / "conf.toml", {
         "version": kit_version,
     })
+    (cache_dir / "version.toml").write_text(
+        '[cfs]\nversion = "v1.0.0"\n',
+        encoding="utf-8",
+    )
 
 
 def _init_project(root: Path, cache_dir: Path) -> Path:
@@ -510,6 +514,8 @@ class TestCmdUpdatePipeline(unittest.TestCase):
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
                 self.assertTrue(out["dry_run"])
+                self.assertEqual(out["actions"]["core_update"]["whatsnew.toml"], "missing_in_cache")
+                self.assertEqual(out["actions"]["core_update"]["version.toml"], "dry_run")
             finally:
                 os.chdir(cwd)
 
@@ -1319,8 +1325,8 @@ class TestShowCoreWhatsnew(unittest.TestCase):
 class TestCmdUpdateWhatsnew(unittest.TestCase):
     """Integration tests for core whatsnew in cmd_update pipeline."""
 
-    def test_update_shows_whatsnew_and_copies_to_core(self):
-        """Update with new whatsnew entries shows them and copies to .core/."""
+    def test_update_shows_whatsnew_and_copies_to_install_root(self):
+        """Update with new whatsnew entries shows them and copies to install root."""
         from studio.commands.update import cmd_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
@@ -1333,6 +1339,7 @@ class TestCmdUpdateWhatsnew(unittest.TestCase):
                 encoding="utf-8",
             )
             _init_project(root, cache)
+            (root / ".cf-studio" / "whatsnew.toml").unlink(missing_ok=True)
 
             cwd = os.getcwd()
             try:
@@ -1348,16 +1355,60 @@ class TestCmdUpdateWhatsnew(unittest.TestCase):
                     with redirect_stdout(buf), redirect_stderr(err):
                         rc = cmd_update(["-y", "--with-kits", "yes"])
                 self.assertEqual(rc, 0)
+                out = json.loads(buf.getvalue())
                 stderr_text = err.getvalue()
                 self.assertIn("Test change", stderr_text)
-                # whatsnew.toml should be copied to .core/
-                core_wn = root / ".cf-studio" / ".core" / "whatsnew.toml"
-                self.assertTrue(core_wn.is_file())
+                install_wn = root / ".cf-studio" / "whatsnew.toml"
+                self.assertTrue(install_wn.is_file())
+                install_version = root / ".cf-studio" / "version.toml"
+                self.assertTrue(install_version.is_file())
+                self.assertIn('version = "v1.0.0"', install_version.read_text(encoding="utf-8"))
+                self.assertEqual(out["actions"]["core_update"]["version.toml"], "updated")
+                self.assertFalse((root / ".cf-studio" / ".core" / "whatsnew.toml").exists())
+            finally:
+                os.chdir(cwd)
+
+    def test_update_uses_legacy_core_whatsnew_as_seen_state_once(self):
+        """First update after layout change does not re-show already seen core entries."""
+        from studio.commands.update import cmd_update
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            root.mkdir()
+            cache = Path(td) / "cache"
+            _make_cache(cache)
+            (cache / "whatsnew.toml").write_text(
+                '[whatsnew."v3.0.4"]\nsummary = "Test change"\ndetails = ""\n',
+                encoding="utf-8",
+            )
+            _init_project(root, cache)
+            install_wn = root / ".cf-studio" / "whatsnew.toml"
+            legacy_wn = root / ".cf-studio" / ".core" / "whatsnew.toml"
+            install_wn.unlink(missing_ok=True)
+            legacy_wn.write_text(
+                '[whatsnew."v3.0.4"]\nsummary = "Test change"\ndetails = ""\n',
+                encoding="utf-8",
+            )
+
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                with (
+                    patch("studio.commands.update.CACHE_DIR", cache),
+                    patch("studio.commands.update._migrate_kit_sources", return_value={}),
+                ):
+                    buf = io.StringIO()
+                    err = io.StringIO()
+                    with redirect_stdout(buf), redirect_stderr(err):
+                        rc = cmd_update(["-y"])
+                self.assertEqual(rc, 0)
+                self.assertNotIn("Test change", err.getvalue())
+                self.assertTrue(install_wn.is_file())
+                self.assertFalse(legacy_wn.exists())
             finally:
                 os.chdir(cwd)
 
     def test_update_second_run_no_whatsnew(self):
-        """Second update with same cache → no whatsnew shown (already in .core/)."""
+        """Second update with same cache → no whatsnew shown (already in install root)."""
         from studio.commands.update import cmd_update
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
@@ -1369,6 +1420,7 @@ class TestCmdUpdateWhatsnew(unittest.TestCase):
                 encoding="utf-8",
             )
             _init_project(root, cache)
+            (root / ".cf-studio" / "whatsnew.toml").unlink(missing_ok=True)
 
             cwd = os.getcwd()
             try:
@@ -1386,7 +1438,7 @@ class TestCmdUpdateWhatsnew(unittest.TestCase):
                         cmd_update(["-y"])
                 self.assertIn("Test", err.getvalue())
 
-                # Second update — whatsnew already in .core/, nothing to show
+                # Second update — whatsnew already in install root, nothing to show
                 with (
                     patch("studio.commands.update.CACHE_DIR", cache),
                     patch("studio.commands.update._migrate_kit_sources", return_value={}),
@@ -1413,6 +1465,7 @@ class TestCmdUpdateWhatsnew(unittest.TestCase):
                 encoding="utf-8",
             )
             _init_project(root, cache)
+            (root / ".cf-studio" / "whatsnew.toml").unlink(missing_ok=True)
 
             cwd = os.getcwd()
             try:
@@ -1429,7 +1482,9 @@ class TestCmdUpdateWhatsnew(unittest.TestCase):
                 out = json.loads(buf.getvalue())
                 self.assertEqual(out["status"], "ABORTED")
                 # .core/ should NOT have been updated
+                install_wn = root / ".cf-studio" / "whatsnew.toml"
                 core_wn = root / ".cf-studio" / ".core" / "whatsnew.toml"
+                self.assertFalse(install_wn.is_file())
                 self.assertFalse(core_wn.is_file())
             finally:
                 os.chdir(cwd)

@@ -492,7 +492,16 @@ class TestCLIAgentsCommand(unittest.TestCase):
 
             stdout = io.StringIO()
             with redirect_stdout(stdout):
-                exit_code = main(["generate-agents", "--agent", "claude", "--root", str(root), "--cf-constructor-root", str(root)])
+                exit_code = main([
+                    "generate-agents",
+                    "--agent",
+                    "claude",
+                    "--root",
+                    str(root),
+                    "--cf-constructor-root",
+                    str(root),
+                    "--remove-cypilot=yes",
+                ])
             self.assertEqual(exit_code, 0)
             out = json.loads(stdout.getvalue())
 

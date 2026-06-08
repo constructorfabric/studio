@@ -1243,9 +1243,21 @@ def _cleanup_legacy_host_integrations(
     removed_by_agent: Dict[str, List[str]] = {}
     for agent in ("claude", "windsurf", "cursor", "copilot", "openai"):
         removed: List[str] = []
-        removed.extend(_cleanup_studio_legacy_subagents(agent, project_root, dry_run=False))
-        removed.extend(_cleanup_studio_legacy_markers(agent, project_root, dry_run=False))
-        removed.extend(_cleanup_legacy_skill_dirs(agent, project_root, dry_run=False))
+        removed.extend(
+            _cleanup_studio_legacy_subagents(
+                agent, project_root, dry_run=False, remove_cypilot=True,
+            )
+        )
+        removed.extend(
+            _cleanup_studio_legacy_markers(
+                agent, project_root, dry_run=False, remove_cypilot=True,
+            )
+        )
+        removed.extend(
+            _cleanup_legacy_skill_dirs(
+                agent, project_root, dry_run=False, remove_cypilot=True,
+            )
+        )
         # Per-tool single-file legacy skill paths (bare `cypilot.md`,
         # `cypilot.mdc`, etc.) — only delete when the content is a pure
         # legacy generator stub. Files with user-added content are kept.
@@ -1280,7 +1292,13 @@ def _cleanup_legacy_host_integrations(
         for agent in removed_by_agent:
             try:
                 _process_single_agent(
-                    agent, project_root, studio_dir, cfg, None, dry_run=False,
+                    agent,
+                    project_root,
+                    studio_dir,
+                    cfg,
+                    None,
+                    dry_run=False,
+                    remove_cypilot=True,
                 )
                 regenerated.append(agent)
             except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught

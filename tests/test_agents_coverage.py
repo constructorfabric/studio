@@ -18,6 +18,16 @@ from tempfile import TemporaryDirectory
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "studio" / "scripts"))
 
 
+class TestStudioEndpointTarget(unittest.TestCase):
+    """Cover endpoint-only prompt source parsing branches in agents.py."""
+
+    def test_endpoint_target_without_final_prompt_marker_returns_none(self):
+        from studio.commands.agents import _extract_studio_endpoint_target
+
+        content = "Constructor Studio endpoint only. Prompt source: {cf-studio-path}/skills/x"
+        self.assertIsNone(_extract_studio_endpoint_target(content))
+
+
 class TestEnsureFrontmatterDescriptionQuoted(unittest.TestCase):
     """Cover lines 440, 455-457 in agents.py."""
 
@@ -2593,7 +2603,7 @@ class TestCleanupCypilotLegacySubagents(unittest.TestCase):
             root = Path(tmpdir)
             target = root / ".claude" / "agents" / "cypilot-codegen.md"
             self._make_pure_subagent(target, "cypilot-codegen")
-            deleted = _cleanup_studio_legacy_subagents("claude", root, dry_run=False)
+            deleted = _cleanup_studio_legacy_subagents("claude", root, dry_run=False, remove_cypilot=True)
             self.assertIn(".claude/agents/cypilot-codegen.md", deleted)
             self.assertFalse(target.exists())
 
@@ -2603,7 +2613,7 @@ class TestCleanupCypilotLegacySubagents(unittest.TestCase):
             root = Path(tmpdir)
             target = root / ".cursor" / "agents" / "cypilot-pr-review.md"
             self._make_pure_subagent(target, "cypilot-pr-review")
-            deleted = _cleanup_studio_legacy_subagents("cursor", root, dry_run=False)
+            deleted = _cleanup_studio_legacy_subagents("cursor", root, dry_run=False, remove_cypilot=True)
             self.assertIn(".cursor/agents/cypilot-pr-review.md", deleted)
             self.assertFalse(target.exists())
 
@@ -2613,7 +2623,7 @@ class TestCleanupCypilotLegacySubagents(unittest.TestCase):
             root = Path(tmpdir)
             target = root / ".github" / "agents" / "cypilot-phase-runner.agent.md"
             self._make_pure_subagent(target, "cypilot-phase-runner")
-            deleted = _cleanup_studio_legacy_subagents("copilot", root, dry_run=False)
+            deleted = _cleanup_studio_legacy_subagents("copilot", root, dry_run=False, remove_cypilot=True)
             self.assertIn(".github/agents/cypilot-phase-runner.agent.md", deleted)
             self.assertFalse(target.exists())
 
@@ -2636,7 +2646,7 @@ class TestCleanupCypilotLegacySubagents(unittest.TestCase):
             # fails because of that, simplify to a markdown subagent file
             # at .codex/agents/cypilot-ralphex.md instead, or skip openai
             # in this test and document it.
-            deleted = _cleanup_studio_legacy_subagents("openai", root, dry_run=False)
+            deleted = _cleanup_studio_legacy_subagents("openai", root, dry_run=False, remove_cypilot=True)
             # Whichever outcome the content check produces, the test verifies
             # that the function runs without error. If the TOML format is
             # accepted, the file is deleted; if not, it's preserved. Either
@@ -2668,7 +2678,7 @@ class TestCleanupCypilotLegacySubagents(unittest.TestCase):
             root = Path(tmpdir)
             target = root / ".claude" / "agents" / "cypilot-codegen.md"
             self._make_pure_subagent(target, "cypilot-codegen")
-            deleted = _cleanup_studio_legacy_subagents("claude", root, dry_run=True)
+            deleted = _cleanup_studio_legacy_subagents("claude", root, dry_run=True, remove_cypilot=True)
             self.assertIn(".claude/agents/cypilot-codegen.md", deleted)
             self.assertTrue(target.exists())  # dry-run preserved on disk
 
@@ -2685,7 +2695,7 @@ class TestCleanupCypilotLegacyMarkers(unittest.TestCase):
             marker = root / ".github" / ".cypilot-installed"
             marker.parent.mkdir(parents=True)
             marker.write_text("# Cypilot Copilot integration marker\n", encoding="utf-8")
-            deleted = _cleanup_studio_legacy_markers("copilot", root, dry_run=False)
+            deleted = _cleanup_studio_legacy_markers("copilot", root, dry_run=False, remove_cypilot=True)
             self.assertIn(".github/.cypilot-installed", deleted)
             self.assertFalse(marker.exists())
 
@@ -2696,7 +2706,7 @@ class TestCleanupCypilotLegacyMarkers(unittest.TestCase):
             marker = root / ".codex" / ".cypilot-installed"
             marker.parent.mkdir(parents=True)
             marker.write_text("# Cypilot OpenAI/Codex integration marker\n", encoding="utf-8")
-            deleted = _cleanup_studio_legacy_markers("openai", root, dry_run=False)
+            deleted = _cleanup_studio_legacy_markers("openai", root, dry_run=False, remove_cypilot=True)
             self.assertIn(".codex/.cypilot-installed", deleted)
             self.assertFalse(marker.exists())
 

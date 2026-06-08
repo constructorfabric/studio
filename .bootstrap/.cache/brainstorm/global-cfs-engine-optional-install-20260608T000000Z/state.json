@@ -1,0 +1,73 @@
+{
+  "type": "BRAINSTORM_RESULT",
+  "status": "checkpointed",
+  "topic": "Optional global cfs engine installation",
+  "created_at": "2026-06-08T00:00:00Z",
+  "decisions": [
+    {
+      "key": "command_resolution_default_project_first",
+      "value": "Global cfs stays a thin launcher. Normal commands resolve the repo-local .bootstrap engine first using root AGENTS.md and cf-studio-path, then fall back to ~/.cf-studio/cache only when no valid project engine exists."
+    },
+    {
+      "key": "cache_management_exceptions",
+      "value": "init and update intentionally operate on the global cache and must not execute repo-local .bootstrap."
+    },
+    {
+      "key": "command_taxonomy",
+      "value": "Commands are classified as proxy-local, cache management, delegated normal commands, or diagnostics."
+    },
+    {
+      "key": "proxy_diagnostics_surface",
+      "value": "The stable proxy diagnostics command is cfs proxy doctor. Supported forms are --verbose, --json, and --json --verbose."
+    },
+    {
+      "key": "no_permanent_global_proxy_flag",
+      "value": "Do not add a permanent top-level cfs --proxy-diagnostics flag. If it already shipped, support it only as a time-boxed deprecated alias."
+    },
+    {
+      "key": "engine_doctor_preserved",
+      "value": "Bare cfs doctor remains delegated to the selected engine."
+    },
+    {
+      "key": "proxy_doctor_schema",
+      "value": "cfs proxy doctor --json emits schema_version cfs.proxy_doctor.v1 with status, summary, proxy, and checks."
+    },
+    {
+      "key": "proxy_doctor_checks",
+      "value": "V1 checks are proxy_executable, workspace_root, root_agents_marker, cf_studio_path, project_skill, cache_skill, skill_provenance, engine_selection, trust_state, redaction_policy, and project_code_execution_blocked."
+    },
+    {
+      "key": "per_check_shape",
+      "value": "Each check has id, status, summary, evidence, remediation, and details. Details is always an object. Remediation is null only on pass."
+    },
+    {
+      "key": "status_aggregation",
+      "value": "Worst severity wins: fail beats warn, warn beats pass."
+    },
+    {
+      "key": "exit_codes",
+      "value": "Exit 0 for pass or warn, 1 for CLI parse or usage error only, and 2 for diagnostic fail or report/schema contract failure."
+    },
+    {
+      "key": "human_output_layout",
+      "value": "Default human output prints status, selected engine, then actionable warnings/failures. Verbose output expands with resolution trace and fixed-order checks."
+    },
+    {
+      "key": "json_output_rules",
+      "value": "JSON output is one pretty-printed object to stdout. JSON verbose uses the same schema and only enriches details.diagnostics and resolution_trace."
+    },
+    {
+      "key": "safety_contract",
+      "value": "Diagnostics must be no-exec and redacted. Redaction leaks, malformed JSON, report construction failures, or inability to prove no-exec due to internal diagnostic error are fail conditions."
+    }
+  ],
+  "open_questions": [
+    "Freeze golden examples for pass, warn, fail, verbose warn, JSON warn, and JSON verbose fail.",
+    "Define exact per-check details fields for all eleven v1 checks.",
+    "Decide the migration window only if a top-level proxy diagnostics alias already exists in released material."
+  ],
+  "files": {
+    "summary": "summary.md",
+    "state": "state.json"
+  }
+}

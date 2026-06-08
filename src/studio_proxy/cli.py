@@ -23,6 +23,7 @@ from studio_proxy.resolve import (
     find_project_skill,
     get_cache_provenance,
     get_cached_version,
+    get_project_pinned_cache_request,
     get_project_provenance,
     get_project_version,
     resolve_skill,
@@ -54,6 +55,18 @@ def _extract_named_param(args: List[str], name: str) -> Optional[str]:
             value = args[i].split("=", 1)[1]
             del args[i]
             return value
+        i += 1
+    return None
+
+
+def _peek_named_param(args: List[str], name: str) -> Optional[str]:
+    """Read a named parameter without mutating the forwarded args."""
+    i = 0
+    while i < len(args):
+        if args[i] == name and i + 1 < len(args):
+            return args[i + 1]
+        if args[i].startswith(f"{name}="):
+            return args[i].split("=", 1)[1]
         i += 1
     return None
 # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
@@ -232,6 +245,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         target_version = _extract_version_param(args)
         source_dir = _extract_named_param(args, "--source")
         custom_url = _extract_named_param(args, "--url")
+        if args[0] == "init" and target_version is None and source_dir is None and custom_url is None:
+            project_root = _peek_named_param(args, "--project-root")
+            pinned_request = get_project_pinned_cache_request(Path(project_root) if project_root else None)
+            if pinned_request is not None:
+                target_version, custom_url = pinned_request
         if "--force" in args:
             force_update = True
             args.remove("--force")

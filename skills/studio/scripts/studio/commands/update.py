@@ -3,17 +3,18 @@ Update command — refresh an existing Constructor Studio installation in-place.
 
 Safety rules for config/:
 - .core/  → full replace from cache (read-only reference)
+- whatsnew.toml, version.toml → install-root metadata refreshed from cache
 - .gen/   → aggregate files only (AGENTS.md, SKILL.md, README.md)
 - config/ → kit source files + user config:
   - core.toml, artifacts.toml   → only via migration when version is higher
   - AGENTS.md, SKILL.md, README.md → only create if missing
   - kits/{slug}/                → skipped by default; updated only with --with-kits yes|true
 Pipeline:
-1. Replace .core/ from cache
+1. Replace .core/ and install-root metadata from cache
 2. Update kits only when explicitly requested
 3. Write aggregate .gen/ files
-5. Ensure config/ scaffold files exist (create only if missing)
-6. Run self-check to verify kit integrity
+4. Ensure config/ scaffold files exist (create only if missing)
+5. Run self-check to verify kit integrity
 
 @cpt-flow:cpt-studio-flow-version-config-update:p1
 @cpt-algo:cpt-studio-algo-version-config-update-pipeline:p1
@@ -34,12 +35,12 @@ from typing import Any, Dict, List, Optional
 from ..utils._tomllib_compat import tomllib
 from .init import (
     CACHE_DIR,
-    COPY_ARCHITECTURE_ITEMS,
-    COPY_DIRS,
+    COPY_ROOT_FILES,
     CORE_SUBDIR,
     DEFAULT_INSTALL_DIR,
     _copy_from_cache,
     _core_readme,
+    _dry_run_copy_results,
     _persist_install_metadata,
     _read_install_tracking,
     _read_kit_tracking,
@@ -55,7 +56,8 @@ from ..utils.whatsnew import read_whatsnew, show_core_whatsnew, show_kit_whatsne
 def cmd_update(argv: List[str]) -> int:
     """Update an existing Constructor Studio installation.
 
-    Refreshes .core/ from cache, updates kit files, regenerates .gen/ aggregates.
+    Refreshes .core/ and install-root metadata from cache, updates kit files,
+    regenerates .gen/ aggregates.
     Never overwrites user config files.
     """
     # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-user-update
@@ -258,6 +260,7 @@ def cmd_update(argv: List[str]) -> int:
     warnings: List[str] = []
 
     core_dir = studio_dir / CORE_SUBDIR
+    installed_whatsnew_path = studio_dir / "whatsnew.toml"
     config_dir = studio_dir / "config"
     core_toml_path = config_dir / "core.toml"
     kit_tracking = _read_kit_tracking(core_toml_path, default="tracked")
@@ -266,7 +269,9 @@ def cmd_update(argv: List[str]) -> int:
     # ── Show core whatsnew (before .core/ is replaced) ────────────────────
     if not args.dry_run:
         cache_whatsnew = read_whatsnew(CACHE_DIR / "whatsnew.toml")
-        core_whatsnew = read_whatsnew(core_dir / "whatsnew.toml")
+        core_whatsnew = read_whatsnew(installed_whatsnew_path)
+        if not core_whatsnew:
+            core_whatsnew = read_whatsnew(core_dir / "whatsnew.toml")
         if cache_whatsnew:
             ack = show_core_whatsnew(
                 cache_whatsnew, core_whatsnew,
@@ -279,29 +284,29 @@ def cmd_update(argv: List[str]) -> int:
 
     # @cpt-begin:cpt-studio-algo-version-config-update-pipeline:p1:inst-replace-core-algo
     # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-replace-core
-    # ── Step 1: Replace .core/ from cache (always force) ─────────────────
-    ui.step("Updating core files from cache...")
+    # ── Step 1: Replace .core/ and install metadata from cache (always force) ──
+    ui.step("Updating core files and install metadata from cache...")
     if not args.dry_run:
         studio_dir.mkdir(parents=True, exist_ok=True)
         copy_results = _copy_from_cache(CACHE_DIR, studio_dir, force=True)
         core_dir.mkdir(parents=True, exist_ok=True)
         (core_dir / "README.md").write_text(_core_readme(), encoding="utf-8")
-        # Copy whatsnew.toml into .core/ so next update knows what was seen
-        _cache_whatsnew = CACHE_DIR / "whatsnew.toml"
-        if _cache_whatsnew.is_file():
-            shutil.copy2(_cache_whatsnew, core_dir / "whatsnew.toml")
+        legacy_core_whatsnew = core_dir / "whatsnew.toml"
+        if legacy_core_whatsnew.exists():
+            legacy_core_whatsnew.unlink()
         _cache_provenance = CACHE_DIR / ".provenance.json"
         if _cache_provenance.is_file():
             shutil.copy2(_cache_provenance, core_dir / ".provenance.json")
             actions["install_provenance"] = "updated"
     else:
-        copy_results = {d: "dry_run" for d in COPY_DIRS}
-        for item in COPY_ARCHITECTURE_ITEMS:
-            copy_results[f"architecture/{item}"] = "dry_run"
+        copy_results = _dry_run_copy_results(CACHE_DIR, studio_dir, force=True)
         actions["install_provenance"] = "dry_run"
     actions["core_update"] = copy_results
     for name, action in copy_results.items():
-        ui.file_action(f".core/{name}/", action)
+        if name in COPY_ROOT_FILES:
+            ui.file_action(name, action)
+        else:
+            ui.file_action(f".core/{name}/", action)
     # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-replace-core
     # @cpt-end:cpt-studio-algo-version-config-update-pipeline:p1:inst-replace-core-algo
 

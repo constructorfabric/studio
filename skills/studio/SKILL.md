@@ -289,6 +289,8 @@ DO:
   RUN derive COMMIT_FOOTER_CONTRACT from the commit_footer_contract block in NOTES WHEN COMMIT_FOOTER_CONTRACT == unset
   RUN derive git_constraint from GIT_COMMIT_MODE using the constraint blocks in NOTES WHEN GIT_COMMIT_MODE != unset
   RUN attach COMMIT_FOOTER_CONTRACT to the write-capable dispatch payload as commit_footer_contract, regardless of GIT_COMMIT_MODE
+  RUN preflight of the exact planned `git commit` invocation before any agent-created commit, verifying every CONTRIBUTING_GUIDE-required trailer and every required COMMIT_FOOTER_CONTRACT token/value/order is present via `git commit --trailer token=value`; STOP_TURN and report missing trailer tokens when the preflight fails
+  RUN `git log -1 --format=%B` after any agent-created commit and verify every required project-policy and Studio trailer is present and ordered; report commit-trailer audit failure and do not claim completion when the audit fails
 RULES:
   ALWAYS resolve GIT_COMMIT_MODE and CONTRIBUTING_GUIDE once per session, before the first write-capable dispatch, and reuse them for every later dispatch until StudioShutdown; reset GIT_COMMIT_MODE to unset only when the user asks to change it
   ALWAYS include GIT_COMMIT_MODE, the mode-matched git_constraint, CONTRIBUTING_GUIDE, and COMMIT_FOOTER_CONTRACT as commit_footer_contract in every write-capable author/coder/phase dispatch payload
@@ -298,8 +300,11 @@ RULES:
   ALWAYS treat commit_footer_contract as a constraint only; it never grants permission to commit when git_commit_mode or git_constraint forbids committing
   ALWAYS when creating a git commit, satisfy every mandatory directive in CONTRIBUTING_GUIDE, including required DCO/Signed-off-by trailers, before adding Studio attribution trailers
   ALWAYS when creating a git commit, write a normal concise commit subject/body for the actual change, append any mandatory project-policy trailers from CONTRIBUTING_GUIDE, then append required Studio attribution trailers exactly in ascending order, adding optional Studio trailers only when their source value is already known and non-empty
+  ALWAYS treat `git commit -m ...` without the required `--trailer` arguments as incomplete, even when the subject/body is valid
+  ALWAYS treat `git commit -s` as satisfying only a DCO/Signed-off-by project-policy requirement; it never satisfies any Studio trailer requirement
   ALWAYS keep DCO, Signed-off-by, and CONTRIBUTING_GUIDE directives separate from commit_footer_contract; do not include them in commit_footer_contract, but never ignore mandatory CONTRIBUTING_GUIDE commit requirements
   NEVER let a sub-agent invoke any git tool when GIT_COMMIT_MODE == none
+  NEVER invoke `git commit` until the exact planned command passes trailer preflight
   NEVER push, force-push, rewrite history, or use interactive (-i) git, regardless of GIT_COMMIT_MODE
 MENU GitCommitModeMenu
 TITLE: How should sub-agents handle git for the files they write this session? commit lets each change be committed; stage leaves changes staged for your review; none writes files only. (stage is suggested)

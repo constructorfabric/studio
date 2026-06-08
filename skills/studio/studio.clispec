@@ -371,8 +371,8 @@ RELATED:
 ---
 
 COMMAND generate-agents
-SYNOPSIS: cfs generate-agents [--agent <name> | --openai] [--root <path>] [--cf-studio-root <path>] [--config <path>] [--dry-run] [--show-layers] [--discover] [-y]
-DESCRIPTION: Generate or update agent-specific integration files and skill/workflow outputs. Supports windsurf, cursor, claude, copilot, and openai. `--show-layers` prints manifest layer provenance instead of generating. `--discover` scans conventional directories and updates manifest.toml before generation.
+SYNOPSIS: cfs generate-agents [--agent <name> | --openai] [--root <path>] [--cf-studio-root <path>] [--config <path>] [--dry-run] [--show-layers] [--discover] [--remove-cypilot yes|no] [-y]
+DESCRIPTION: Generate or update agent-specific integration files and skill/workflow outputs. Supports windsurf, cursor, claude, copilot, and openai. `--show-layers` prints manifest layer provenance instead of generating. `--discover` scans conventional directories and updates manifest.toml before generation. Legacy Cypilot/Cyber Constructor agent artifacts are preserved by default and removed only with `--remove-cypilot yes`.
 ARGUMENTS:
 
 OPTIONS:
@@ -386,6 +386,7 @@ OPTIONS:
   --dry-run  <boolean>  Compute changes without writing files
   --show-layers  <boolean>  Display layer provenance report instead of generating
   --discover  <boolean>  Scan conventional dirs and populate manifest.toml before generating
+  --remove-cypilot  <yes|no>  Remove legacy Cypilot/Cyber Constructor agent artifacts while generating (default: no)
   -y, --yes  <boolean>  Skip confirmation prompt
 
 EXIT CODES:
