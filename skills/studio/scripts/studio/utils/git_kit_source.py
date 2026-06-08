@@ -1,9 +1,10 @@
 """
 Generic Git kit source resolution.
 
-Parses ``git/<encoded-url>[//<subdir>][@<kit>]`` CLI sources and persisted
+Parses ``git/<url>[//<subdir>][@<kit>]`` CLI sources and persisted
 ``git:<encoded-url>[//<subdir>][@<kit>]`` sources, then materializes the
-selected commit into a temporary worktree for the kit installer.
+selected commit into a temporary worktree for the kit installer. CLI URLs may
+be pasted raw from Git hosts; persisted sources keep the canonical encoded form.
 
 @cpt-algo:cpt-studio-algo-generic-git-kit-installer-source-parse:p1
 @cpt-algo:cpt-studio-algo-generic-git-kit-installer-source-policy:p1
@@ -39,6 +40,9 @@ from urllib.parse import quote, unquote, urlsplit, urlunsplit
 _KIT_SLUG_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
 _FULL_SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 _SCP_LIKE_RE = re.compile(r"^([A-Za-z0-9._-]+)@([A-Za-z0-9._-]+):(.+)$")
+_SSH_SHORTHAND_RE = re.compile(r"^ssh:([A-Za-z0-9._-]+):(.+)$")
+_SSH_SHORTHAND_WITH_PORT_RE = re.compile(r"^ssh:([A-Za-z0-9._-]+):([0-9]+)/(.+)$")
+_SSH_URL_USER_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 _HEX_ESCAPE_RE = re.compile(r"%[0-9a-fA-F]{2}")
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 _GIT_TIMEOUT = int(os.environ.get("GIT_TIMEOUT", "300"))
@@ -131,13 +135,6 @@ def _decode_once(encoded_url: str) -> str:
     if not encoded_url:
         raise GitSourceError("GIT_SOURCE_INVALID_URL", "Git source URL is empty")
     decoded = unquote(encoded_url)
-    if decoded == encoded_url and (
-        "://" in encoded_url or encoded_url.startswith("git@") or encoded_url.startswith("file:")
-    ):
-        raise GitSourceError(
-            "GIT_SOURCE_INVALID_URL",
-            "Git source transport URL must be percent-encoded",
-        )
     if "%" in decoded and _HEX_ESCAPE_RE.search(decoded):
         raise GitSourceError(
             "GIT_SOURCE_INVALID_URL",
@@ -165,6 +162,16 @@ def _validate_subdir(subdir: str) -> str:
 # @cpt-end:cpt-studio-algo-generic-git-kit-installer-source-parse:p1:inst-git-parse-subdir
 
 
+# @cpt-begin:cpt-studio-algo-generic-git-kit-installer-source-parse:p1:inst-git-parse-transports
+def _looks_like_raw_git_url(value: str) -> bool:
+    return bool(
+        _SCP_LIKE_RE.match(value)
+        or _SSH_SHORTHAND_RE.match(value)
+        or re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://", value)
+    )
+# @cpt-end:cpt-studio-algo-generic-git-kit-installer-source-parse:p1:inst-git-parse-transports
+
+
 # @cpt-begin:cpt-studio-algo-generic-git-kit-installer-source-parse:p1:inst-git-parse-kit-identity
 def _split_source_body(body: str) -> tuple[str, str, str]:
     kit_identity = ""
@@ -174,12 +181,16 @@ def _split_source_body(body: str) -> tuple[str, str, str]:
         if _KIT_SLUG_RE.fullmatch(maybe_kit):
             body_without_kit = maybe_body
             kit_identity = maybe_kit
-        else:
+        elif not _looks_like_raw_git_url(body):
             raise GitSourceError("GIT_SOURCE_INVALID_KIT", "Git source kit identity must be a registry-safe slug")
 
     encoded_url = body_without_kit
     subdir = ""
-    if "//" in body_without_kit:
+    if ".git//" in body_without_kit:
+        encoded_url, subdir = body_without_kit.split(".git//", 1)
+        encoded_url += ".git"
+        subdir = _validate_subdir(subdir)
+    elif "//" in body_without_kit and not _looks_like_raw_git_url(body_without_kit):
         encoded_url, subdir = body_without_kit.split("//", 1)
         subdir = _validate_subdir(subdir)
     return encoded_url, subdir, kit_identity
@@ -188,14 +199,42 @@ def _split_source_body(body: str) -> tuple[str, str, str]:
 
 # @cpt-begin:cpt-studio-algo-generic-git-kit-installer-url-normalization:p1:inst-git-url-normalize-display
 def _normalize_standard_url(parts: Any) -> str:
-    netloc = parts.hostname or ""
+    scheme = parts.scheme.lower()
+    userinfo = ""
+    if scheme == "ssh" and parts.username:
+        userinfo = f"{quote(parts.username, safe='._-')}@"
+    netloc = userinfo + (parts.hostname or "")
     default_port = (
-        (parts.scheme.lower() == "https" and parts.port == 443)
-        or (parts.scheme.lower() == "ssh" and parts.port == 22)
+        (scheme == "https" and parts.port == 443)
+        or (scheme == "ssh" and parts.port == 22)
     )
     if parts.port and not default_port:
         netloc += f":{parts.port}"
-    return urlunsplit((parts.scheme.lower(), netloc, parts.path, "", ""))
+    return urlunsplit((scheme, netloc, parts.path, "", ""))
+# @cpt-end:cpt-studio-algo-generic-git-kit-installer-url-normalization:p1:inst-git-url-normalize-display
+
+
+# @cpt-begin:cpt-studio-algo-generic-git-kit-installer-url-normalization:p1:inst-git-url-normalize-display
+def _normalize_raw_input_url(decoded_url: str) -> str:
+    ssh_port_match = _SSH_SHORTHAND_WITH_PORT_RE.match(decoded_url)
+    if ssh_port_match:
+        host = ssh_port_match.group(1).lower()
+        port = int(ssh_port_match.group(2))
+        path = ssh_port_match.group(3)
+        if port < 1 or port > 65535:
+            raise GitSourceError("GIT_SOURCE_INVALID_URL", "Git ssh shorthand port is invalid")
+        if not path or path.startswith("/") or ".." in PurePosixPath(path).parts:
+            raise GitSourceError("GIT_SOURCE_INVALID_URL", "Git ssh shorthand source path is invalid")
+        return f"ssh://git@{host}:{port}/{path}"
+
+    ssh_short_match = _SSH_SHORTHAND_RE.match(decoded_url)
+    if not ssh_short_match:
+        return decoded_url
+    host = ssh_short_match.group(1).lower()
+    path = ssh_short_match.group(2)
+    if not path or path.startswith("/") or ".." in PurePosixPath(path).parts:
+        raise GitSourceError("GIT_SOURCE_INVALID_URL", "Git ssh shorthand source path is invalid")
+    return f"git@{host}:{path}"
 # @cpt-end:cpt-studio-algo-generic-git-kit-installer-url-normalization:p1:inst-git-url-normalize-display
 
 
@@ -216,7 +255,7 @@ def _transport_and_policy(decoded_url: str) -> tuple[str, str, str]:
         raise GitSourceError("GIT_SOURCE_INVALID_URL", "Git source transport must be https, ssh, scp-like, or file")
     sanitized = _normalize_standard_url(parts)
     # @cpt-begin:cpt-studio-algo-generic-git-kit-installer-source-policy:p1:inst-git-policy-reject-userinfo
-    if parts.username or parts.password:
+    if parts.password or (parts.username and scheme != "ssh"):
         raise GitSourceError(
             "GIT_SOURCE_CREDENTIALS_IN_URL",
             "Git source URL must not contain credentials; use Git credential helpers, GIT_ASKPASS, or SSH config",
@@ -225,6 +264,8 @@ def _transport_and_policy(decoded_url: str) -> tuple[str, str, str]:
             host_hash=_hash_display(parts.hostname or ""),
             sanitized_url_display=sanitized,
         )
+    if parts.username and not _SSH_URL_USER_RE.fullmatch(parts.username):
+        raise GitSourceError("GIT_SOURCE_INVALID_URL", "Git ssh source user is invalid")
     # @cpt-end:cpt-studio-algo-generic-git-kit-installer-source-policy:p1:inst-git-policy-reject-userinfo
     # @cpt-begin:cpt-studio-algo-generic-git-kit-installer-source-policy:p1:inst-git-policy-reject-query
     if parts.query:
@@ -266,7 +307,7 @@ def parse_git_kit_source(source: str) -> GitKitSource:
         raise GitSourceError("GIT_SOURCE_INVALID_PREFIX", "Git source must start with git/ or git:")
 
     encoded_url, subdir, kit_identity = _split_source_body(body)
-    decoded_url = _decode_once(encoded_url)
+    decoded_url = _normalize_raw_input_url(_decode_once(encoded_url))
     transport, host, safe_display = _transport_and_policy(decoded_url)
     canonical = "git:" + _canonical_encoded_url(safe_display)
     if subdir:

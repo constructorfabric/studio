@@ -82,6 +82,76 @@ class TestGenericGitKitSourceParser(unittest.TestCase):
         self.assertEqual(parsed.kit_identity, "sdlc")
         self.assertEqual(parsed.canonical_source, f"git:{encoded}//kits/sdlc@sdlc")
 
+    def test_parse_accepts_raw_copy_paste_clone_urls(self):
+        from studio.utils.git_kit_source import parse_git_kit_source
+
+        scp = parse_git_kit_source("git/git@github.com:constructorfabric/studio-kit-sdlc.git")
+        self.assertEqual(scp.transport, "scp")
+        self.assertEqual(scp.decoded_remote_url, "git@github.com:constructorfabric/studio-kit-sdlc.git")
+        self.assertEqual(
+            scp.canonical_source,
+            "git:" + quote("git@github.com:constructorfabric/studio-kit-sdlc.git", safe=""),
+        )
+
+        https = parse_git_kit_source("git/https://github.com/constructorfabric/studio-kit-sdlc.git")
+        self.assertEqual(https.transport, "https")
+        self.assertEqual(
+            https.canonical_source,
+            "git:" + quote("https://github.com/constructorfabric/studio-kit-sdlc.git", safe=""),
+        )
+
+    def test_parse_accepts_raw_ssh_url_with_user_and_port(self):
+        from studio.utils.git_kit_source import parse_git_kit_source
+
+        raw_url = "ssh://git@git.acronis.com:7989/real/cyber-repo.git"
+        parsed = parse_git_kit_source(f"git/{raw_url}")
+        self.assertEqual(parsed.transport, "ssh")
+        self.assertEqual(parsed.decoded_remote_url, raw_url)
+        self.assertEqual(parsed.sanitized_url_display, raw_url)
+        self.assertEqual(parsed.canonical_source, "git:" + quote(raw_url, safe=""))
+
+    def test_parse_raw_clone_url_with_subdir_and_kit_identity(self):
+        from studio.utils.git_kit_source import parse_git_kit_source
+
+        parsed = parse_git_kit_source(
+            "git/https://github.com/constructorfabric/studio-kit-sdlc.git//kits/sdlc@sdlc"
+        )
+        self.assertEqual(parsed.decoded_remote_url, "https://github.com/constructorfabric/studio-kit-sdlc.git")
+        self.assertEqual(parsed.selected_subdirectory, "kits/sdlc")
+        self.assertEqual(parsed.kit_identity, "sdlc")
+        self.assertEqual(
+            parsed.canonical_source,
+            "git:" + quote("https://github.com/constructorfabric/studio-kit-sdlc.git", safe="") + "//kits/sdlc@sdlc",
+        )
+
+    def test_parse_accepts_raw_file_url(self):
+        from studio.utils.git_kit_source import parse_git_kit_source
+
+        parsed = parse_git_kit_source("git/file:///tmp/example.git")
+        self.assertEqual(parsed.transport, "file")
+        self.assertEqual(parsed.decoded_remote_url, "file:///tmp/example.git")
+        self.assertEqual(parsed.canonical_source, "git:" + quote("file:///tmp/example.git", safe=""))
+
+    def test_parse_accepts_ssh_shorthand_clone_url(self):
+        from studio.utils.git_kit_source import parse_git_kit_source
+
+        parsed = parse_git_kit_source("git/ssh:github.com:constructorfabric/studio-kit-sdlc.git")
+        normalized = "git@github.com:constructorfabric/studio-kit-sdlc.git"
+        self.assertEqual(parsed.transport, "scp")
+        self.assertEqual(parsed.decoded_remote_url, normalized)
+        self.assertEqual(parsed.sanitized_url_display, normalized)
+        self.assertEqual(parsed.canonical_source, "git:" + quote(normalized, safe=""))
+
+    def test_parse_accepts_ssh_shorthand_clone_url_with_port(self):
+        from studio.utils.git_kit_source import parse_git_kit_source
+
+        parsed = parse_git_kit_source("git/ssh:git.acronis.com:7989/real/cyber-repo.git")
+        normalized = "ssh://git@git.acronis.com:7989/real/cyber-repo.git"
+        self.assertEqual(parsed.transport, "ssh")
+        self.assertEqual(parsed.decoded_remote_url, normalized)
+        self.assertEqual(parsed.sanitized_url_display, normalized)
+        self.assertEqual(parsed.canonical_source, "git:" + quote(normalized, safe=""))
+
     def test_parse_normalizes_standard_url_scheme_host_and_default_port(self):
         from studio.utils.git_kit_source import parse_git_kit_source
 
@@ -102,6 +172,14 @@ class TestGenericGitKitSourceParser(unittest.TestCase):
         diagnostics = ctx.exception.to_result()
         self.assertNotIn("secret", json.dumps(diagnostics))
         self.assertEqual(diagnostics["component"], "userinfo")
+
+    def test_rejects_ssh_url_password_with_stable_error_code(self):
+        from studio.utils.git_kit_source import GitSourceError, parse_git_kit_source
+
+        with self.assertRaises(GitSourceError) as ctx:
+            parse_git_kit_source("git/ssh://git:secret@example.com/org/repo.git")
+        self.assertEqual(ctx.exception.code, "GIT_SOURCE_CREDENTIALS_IN_URL")
+        self.assertNotIn("secret", json.dumps(ctx.exception.to_result()))
 
     def test_rejects_query_and_fragment_with_stable_error_codes(self):
         from studio.utils.git_kit_source import GitSourceError, parse_git_kit_source
@@ -143,11 +221,11 @@ class TestGenericGitKitSourceParser(unittest.TestCase):
 
         cases = [
             ("git/", "GIT_SOURCE_INVALID_URL"),
-            ("git/file:///tmp/repo.git", "GIT_SOURCE_INVALID_SUBDIR"),
             ("git/" + quote("https://example.com/%2Forg/repo.git", safe=""), "GIT_SOURCE_INVALID_URL"),
             ("git/" + quote("https://example.com/org/repo.git\x00", safe=""), "GIT_SOURCE_INVALID_URL"),
             ("git/" + quote("https://example.com/org/repo.git", safe="") + "@Bad", "GIT_SOURCE_INVALID_KIT"),
             ("git/" + quote("git@example.com:/abs.git", safe=""), "GIT_SOURCE_INVALID_URL"),
+            ("git/ssh:github.com:/abs.git", "GIT_SOURCE_INVALID_URL"),
             ("git/" + quote("ftp://example.com/org/repo.git", safe=""), "GIT_SOURCE_INVALID_URL"),
             ("git/" + quote("https:///org/repo.git", safe=""), "GIT_SOURCE_INVALID_URL"),
             ("github:owner/repo", "GIT_SOURCE_INVALID_PREFIX"),
