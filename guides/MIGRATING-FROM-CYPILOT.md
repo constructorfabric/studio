@@ -54,6 +54,14 @@ A safe starting choice is `1`. The migrator writes using Constructor Studio targ
 
 **Step 8. E4 — Verifier (read-only).** Reply `y`. Re-scans and diffs against the migration manifest. Returns either *All clean* or a residue list.
 
+Normal `cfs generate-agents` now preserves legacy Cypilot / Cyber Constructor artifacts. During migration cleanup, use the explicit cleanup path:
+
+```bash
+cfs generate-agents --remove-cypilot yes
+```
+
+The orchestrated migration invokes the same explicit removal mode for affected host integrations.
+
 **Step 9. E5 — Migrator ↔ Verifier loop.** If residue remains, repeat E3 → E4. **Hard cap: 3 verifier iterations**, after which the orchestrator moves to E6 with remaining items listed for manual review.
 
 **Step 10. E6 — Final Report.** You receive a summary: applied vs. skipped counts, outstanding manual work, cascade commands to run by hand (e.g. `cfs init --migrate-from-cypilot=yes` in each workspace member repo), and suggested next steps.
@@ -73,7 +81,7 @@ A safe starting choice is `1`. The migrator writes using Constructor Studio targ
 1. `git diff` — spot-check identifier substitutions.
 2. Run tests / lint / CI locally.
 3. For multi-repo workspaces — execute the printed C-category commands in each member repo.
-4. Run `cfs generate-agents` if `.claude/`, `.cursor/`, `.codex/`, or `.windsurf/` integrations were modified.
+4. Run `cfs generate-agents --remove-cypilot yes` if `.claude/`, `.cursor/`, `.codex/`, or `.windsurf/` integrations were modified and you want legacy Cypilot artifacts removed. Use plain `cfs generate-agents` only when you want to preserve them.
 5. Commit on a dedicated branch → open a PR labelled "cypilot → constructor-studio migration".
 
 ---

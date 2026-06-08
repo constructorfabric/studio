@@ -29,6 +29,7 @@
   - [Use `analyze` when](#use-analyze-when)
   - [What `analyze` is for in practice](#what-analyze-is-for-in-practice)
   - [Use `brainstorm` when](#use-brainstorm-when)
+  - [Use `brave-new-world` when](#use-brave-new-world-when)
   - [Use `write-skills` when](#use-write-skills-when)
   - [Use `coding` when](#use-coding-when)
   - [Use `write-docs` when](#use-write-docs-when)
@@ -63,6 +64,7 @@
   - [Good pattern](#good-pattern)
   - [Bad pattern](#bad-pattern)
   - [Typical commands](#typical-commands)
+  - [Shared kits from Git remotes](#shared-kits-from-git-remotes)
 - [13. Brownfield projects](#13-brownfield-projects)
   - [Good approach](#good-approach)
   - [Bad approach](#bad-approach)
@@ -120,6 +122,7 @@ For the short version, use the setup section in **[README](../README.md)** first
 - use `cf ...` in your AI coding tool chat for `help`, `explore`, `auto-config`, `plan`, `generate`, `analyze`, and specialized routes such as `brainstorm` and `map`
 - do **not** run `cf ...` in the terminal
 - use the portable `cf <workflow>: ...` form as your default when a workflow takes a request payload; some chat routes are command-like prompts such as `cf help` and `cf auto-config`
+- use `cf brave-new-world` only when you want Studio to auto-select safe, reversible workflow choices during the current session
 
 ### Prerequisites
 
@@ -211,6 +214,8 @@ In a normal project, this creates a setup directory `.cf-studio/`, generated hos
 
 Generated runtime files such as `.cf-studio/.core/` and `.cf-studio/.gen/` are gitignored by default. Generated host integration files are also gitignored by default. Kit files are tracked or ignored per kit: tracked kits are editable repository content, while ignored kits are generated local content that Studio may repair or overwrite.
 
+Studio also writes `.cf-studio/version.toml` and `.cf-studio/whatsnew.toml`. `version.toml` records the pinned Studio engine request used by later repair runs. `whatsnew.toml` records core What's New entries already shown by `cfs update`.
+
 You may also see host-specific folders such as `.windsurf/`, `.cursor/`, `.claude/`, `.github/`, `.codex/`, or `.agents/`.
 
 For a first trial, you do not need to open or edit those generated files manually.
@@ -273,6 +278,7 @@ Some hosts may also show the resolved Constructor Studio path or loaded context.
 - **Existing codebase with weak or missing conventions**: run 💬 `cf auto-config`, inspect what it inferred, and then refine the generated rules before large changes
 - **After changing workflows or host integrations**: rerun `cfs generate-agents` or `cfs generate-agents --agent <tool>`
 - **When you want upstream kit changes**: run `cfs kit update`, or explicitly opt in during a top-level update with `cfs update --with-kits yes`
+- **When you want a kit from a non-GitHub Git remote**: use `cfs kit install git/<url>[//<subdir>][@<kit>] --version <ref>`
 
 For the first trial, use one small real input only: one short requirement, one design note, or one focused change request. Do not start with a repo-wide review or a broad implementation request.
 
@@ -419,6 +425,7 @@ If you only need a quick route for the less-obvious cases (plan, generate, and a
 - need project or artifact discovery first -> use `cf explore: ...`
 - need inferred repo rules or setup help for brownfield work -> use `cf auto-config`
 - need open-ended option mapping first -> use [`brainstorm`](#use-brainstorm-when)
+- want safe low-risk workflow prompts auto-selected this session -> use [`brave-new-world`](#use-brave-new-world-when)
 - need prompt / workflow / agent contract work -> use [`write-skills`](#use-write-skills-when)
 - need a rendered graph of docs, links, and code references -> use [`cfs map` / `cf map`](#17-dependency-map-cfs-map--cf-map)
 
@@ -592,6 +599,19 @@ Unlike chat brainstorming, the Constructor Studio brainstorm workflow runs a **f
 
 Use `brainstorm` **before** `plan` when scope itself is the open question. Skip it when the change is already well-understood.
 
+### Use `brave-new-world` when
+
+Use `brave-new-world` when you want Constructor Studio to move through safe workflow choices without asking every time.
+
+- 💬 `cf brave-new-world`
+- 💬 `turn off Brave New World`
+
+The overlay can pick non-destructive, reversible options such as continuing routing, loading a safe workflow, accepting a default discovery scope, choosing a review scope, or retrying validation.
+
+It cannot approve destructive or irreversible work. It also cannot approve installs, updates, permission escalation, secret handling, deployment, publication, git staging, commits, pushes, or choices that need fresh human judgment.
+
+Use it for faster flow in trusted sessions. Leave it off when you want every workflow menu shown explicitly.
+
 ### Use `write-skills` when
 
 Use `write-skills` for authoring, transforming, or reviewing **prompt / workflow / skill / agent instruction files** as compact, explicit contracts.
@@ -706,6 +726,9 @@ A final **human review is still required** before treating the result as done.
 
 9. **Use a fresh chat for new generation or review work**
    - For substantial `generate` or `analyze` tasks, prefer a new chat. If you stay in the same session, clear context before the next task.
+
+10. **Use autonomous defaults only for low-risk workflow friction**
+   - `cf brave-new-world` is for reversible workflow choices, not for approving edits, installs, git changes, or external actions.
 
 ### CI with `cfs` tools
 
@@ -1019,6 +1042,20 @@ Useful follow-up commands:
 - 🖥 `cfs where-defined --id <id>` — find where an ID is defined across reachable workspace sources
 - 🖥 `cfs list-ids --source <name>` — inspect IDs from one specific workspace source
 - 🖥 `cfs workspace-sync` — refresh Git URL workspace sources when your workspace uses remote sources
+
+### Shared kits from Git remotes
+
+When shared kits live outside the official GitHub shorthand path, install them as generic Git sources:
+
+```bash
+cfs kit install git/https://git.example.com/platform/studio-kit.git --version v1.2.3
+cfs kit install git/git@example.com:platform/studio-kit.git//kits/sdlc@sdlc --version main
+cfs kit update sdlc --version v1.2.4
+```
+
+Studio records both the requested ref and the resolved commit SHA. This lets later updates compare real content identity instead of only a mutable branch or tag name.
+
+Do not put credentials in Git URLs. Use SSH config, Git credential helpers, or runtime Git auth instead. Studio rejects credential-bearing URLs, query strings, and fragments before fetching.
 
 
 ---

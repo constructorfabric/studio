@@ -96,6 +96,14 @@ cfs generate-agents --agent openai
 cfs generate-agents --agent windsurf
 ```
 
+By default, `cfs generate-agents` preserves legacy Cypilot / Cyber Constructor artifacts. This avoids deleting old integration files during ordinary regeneration. Remove those legacy artifacts only when you mean to clean them up:
+
+```bash
+cfs generate-agents --remove-cypilot yes
+```
+
+The dedicated Cypilot migration workflow still uses the explicit cleanup path when you run the migration.
+
 Subagents are not equally supported across all tools.
 
 That is one of the most important practical differences when using Constructor Studio.
@@ -146,6 +154,7 @@ That is one of the most important practical differences when using Constructor S
 1. **Regenerate integrations after setup changes**
    - If you changed workflows, skills, or host agent config, rerun `cfs generate-agents --agent <tool>`.
    - If you want upstream kit changes first, run `cfs kit update` or `cfs update --with-kits yes`.
+   - If you are cleaning up a Cypilot migration, pass `--remove-cypilot yes`; normal regeneration keeps those legacy files.
 
 2. **Use `plan` before large work**
    - Do not push a large ambiguous request straight into `generate`.
