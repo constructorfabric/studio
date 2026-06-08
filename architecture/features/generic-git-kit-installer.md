@@ -303,7 +303,7 @@ The system **MUST** persist generic Git source provenance and content identity w
 
 ### Cache and Offline Fallback
 
-- [ ] `p1` - **ID**: `cpt-studio-dod-generic-git-kit-installer-cache-offline`
+- [x] `p1` - **ID**: `cpt-studio-dod-generic-git-kit-installer-cache-offline`
 
 The system **MUST** cache generic Git content by hashed structured identity and allow offline fallback only when cached content proves the same remote, ref, subdir, kit identity, and resolved commit SHA.
 

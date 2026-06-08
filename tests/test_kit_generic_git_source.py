@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -163,3 +164,42 @@ class TestGenericGitKitInstallUpdate(unittest.TestCase):
                 self.assertEqual(kit["source_provenance"]["requested_ref"], "master")
             finally:
                 os.chdir(cwd)
+
+    def test_update_uses_offline_last_known_cache_when_remote_unavailable(self):
+        from studio.commands.kit import cmd_kit_install, cmd_kit_update
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            project = root / "project"
+            adapter = _bootstrap_project(project)
+            repo, first_sha = _make_git_kit_repo(root)
+            source = "git/" + quote(repo.as_uri(), safe="")
+            cache_dir = root / "git-cache"
+            cwd = os.getcwd()
+            previous_cache_env = os.environ.get("CFS_GIT_KIT_CACHE_DIR")
+            os.environ["CFS_GIT_KIT_CACHE_DIR"] = str(cache_dir)
+            try:
+                os.chdir(project)
+                with redirect_stdout(io.StringIO()):
+                    self.assertEqual(cmd_kit_install([source, "--version", "master"]), 0)
+                self.assertTrue(any(cache_dir.rglob("artifact-manifest.json")))
+                shutil.move(str(repo), str(root / "repo-offline"))
+
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = cmd_kit_update(["gitkit", "--no-interactive", "-y"])
+                self.assertEqual(rc, 0, buf.getvalue())
+                out = json.loads(buf.getvalue())
+                self.assertEqual(out["status"], "PASS")
+                self.assertEqual(out["results"][0]["action"], "current")
+                self.assertEqual(out["results"][0]["authority"]["freshness"], "last_known")
+                self.assertEqual(out["results"][0]["authority"]["resolution_basis"], "offline_last_known")
+                with open(adapter / "config" / "core.toml", "rb") as f:
+                    core = tomllib.load(f)
+                self.assertEqual(core["kits"]["gitkit"]["content_identity"]["commit_sha"], first_sha)
+            finally:
+                os.chdir(cwd)
+                if previous_cache_env is None:
+                    os.environ.pop("CFS_GIT_KIT_CACHE_DIR", None)
+                else:
+                    os.environ["CFS_GIT_KIT_CACHE_DIR"] = previous_cache_env

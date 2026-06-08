@@ -10,19 +10,25 @@ selected commit into a temporary worktree for the kit installer.
 @cpt-algo:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1
 @cpt-algo:cpt-studio-algo-generic-git-kit-installer-url-normalization:p1
 @cpt-algo:cpt-studio-algo-generic-git-kit-installer-auth-runtime:p1
+@cpt-algo:cpt-studio-algo-generic-git-kit-installer-fetch-cache:p1
+@cpt-state:cpt-studio-state-generic-git-kit-installer-source:p1
 @cpt-dod:cpt-studio-dod-generic-git-kit-installer-source-grammar:p1
 @cpt-dod:cpt-studio-dod-generic-git-kit-installer-version-ref:p1
 @cpt-dod:cpt-studio-dod-generic-git-kit-installer-provenance:p1
+@cpt-dod:cpt-studio-dod-generic-git-kit-installer-cache-offline:p1
 @cpt-dod:cpt-studio-dod-generic-git-kit-installer-auth-redaction:p1
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
+import shutil
 import subprocess
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional
@@ -91,6 +97,17 @@ class GitKitResolution:
 
 def _hash_display(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
+
+
+def _hash_key(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _cache_root() -> Path:
+    configured = os.environ.get("CFS_GIT_KIT_CACHE_DIR", "")
+    if configured:
+        return Path(configured).expanduser()
+    return Path.home() / ".cf-studio" / "cache" / "git"
 
 
 def _canonical_encoded_url(decoded_url: str) -> str:
@@ -269,6 +286,185 @@ def _selector_classification(requested_ref: str, resolution_basis: str) -> str:
     return "mutable_ref"
 
 
+def _requested_ref_display(requested_ref: str) -> str:
+    return requested_ref or "HEAD"
+
+
+def _subdir_hash(subdir: str) -> str:
+    return _hash_key(subdir or "__root__")
+
+
+def _kit_hash(kit_identity: str) -> str:
+    return _hash_key(kit_identity or "__default__")
+
+
+def _ref_hash(requested_ref: str) -> str:
+    return _hash_key(_requested_ref_display(requested_ref))
+
+
+def _cache_artifact_dir(
+    parsed: GitKitSource,
+    requested_ref: str,
+    commit_sha: str,
+) -> Path:
+    return (
+        _cache_root()
+        / "remotes"
+        / parsed.remote_hash
+        / "commits"
+        / commit_sha
+        / "subdirs"
+        / _subdir_hash(parsed.selected_subdirectory)
+        / "kits"
+        / _kit_hash(parsed.kit_identity)
+    )
+
+
+def _cache_ref_manifest_path(parsed: GitKitSource, requested_ref: str) -> Path:
+    return _cache_root() / "remotes" / parsed.remote_hash / "refs" / f"{_ref_hash(requested_ref)}.json"
+
+
+def _write_json(path: Path, data: Dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _cache_artifact(
+    parsed: GitKitSource,
+    kit_source_dir: Path,
+    requested_ref: str,
+    commit_sha: str,
+    resolution_basis: str,
+) -> Dict[str, str]:
+    artifact_dir = _cache_artifact_dir(parsed, requested_ref, commit_sha)
+    if artifact_dir.exists():
+        shutil.rmtree(artifact_dir)
+    artifact_dir.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(kit_source_dir, artifact_dir)
+    manifest = {
+        "schema_version": "1.0",
+        "source_type": "git",
+        "decoded_remote_url_hash": parsed.remote_hash,
+        "selected_subdirectory": parsed.selected_subdirectory,
+        "kit_identity": parsed.kit_identity,
+        "requested_ref": _requested_ref_display(requested_ref),
+        "requested_ref_hash": _ref_hash(requested_ref),
+        "resolved_commit_sha": commit_sha,
+        "artifact_kind": "kit",
+        "created_at": int(time.time()),
+        "validation_basis": resolution_basis,
+        "remote_display": parsed.sanitized_url_display,
+    }
+    _write_json(artifact_dir / "artifact-manifest.json", manifest)
+    _write_json(
+        _cache_ref_manifest_path(parsed, requested_ref),
+        {
+            "schema_version": "1.0",
+            "source_type": "git",
+            "decoded_remote_url_hash": parsed.remote_hash,
+            "selected_subdirectory": parsed.selected_subdirectory,
+            "kit_identity": parsed.kit_identity,
+            "requested_ref": _requested_ref_display(requested_ref),
+            "requested_ref_hash": _ref_hash(requested_ref),
+            "resolved_commit_sha": commit_sha,
+            "artifact_path_hash": _hash_key(str(artifact_dir)),
+        },
+    )
+    return {
+        "cache_remote_hash": parsed.remote_hash,
+        "cache_requested_ref_hash": _ref_hash(requested_ref),
+        "cache_subdir_hash": _subdir_hash(parsed.selected_subdirectory),
+        "cache_kit_hash": _kit_hash(parsed.kit_identity),
+    }
+
+
+def _metadata_value(metadata: Dict[str, Any], key: str) -> str:
+    provenance = metadata.get("source_provenance", {})
+    content_identity = metadata.get("content_identity", {})
+    if key == "commit_sha" and isinstance(content_identity, dict):
+        return str(content_identity.get("commit_sha") or metadata.get("commit_sha") or "")
+    if isinstance(provenance, dict):
+        return str(provenance.get(key) or metadata.get(key) or "")
+    return str(metadata.get(key) or "")
+
+
+def _materialize_offline_last_known(
+    parsed: GitKitSource,
+    requested_ref: str,
+    previous_metadata: Dict[str, Any],
+    failure: RuntimeError,
+) -> Optional[GitKitResolution]:
+    commit_sha = _metadata_value(previous_metadata, "commit_sha")
+    previous_remote_hash = _metadata_value(previous_metadata, "decoded_remote_url_hash")
+    previous_subdir = _metadata_value(previous_metadata, "selected_subdirectory")
+    previous_kit = _metadata_value(previous_metadata, "kit_identity")
+    previous_requested_ref = _metadata_value(previous_metadata, "requested_ref")
+    effective_requested_ref = _requested_ref_display(requested_ref)
+    if effective_requested_ref == "HEAD":
+        effective_requested_ref = previous_requested_ref or "HEAD"
+    if (
+        not commit_sha
+        or previous_remote_hash != parsed.remote_hash
+        or previous_subdir != parsed.selected_subdirectory
+        or previous_kit != parsed.kit_identity
+        or previous_requested_ref != effective_requested_ref
+    ):
+        return None
+    artifact_dir = _cache_artifact_dir(parsed, effective_requested_ref, commit_sha)
+    manifest_path = artifact_dir / "artifact-manifest.json"
+    if not manifest_path.is_file():
+        return None
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+    if (
+        manifest.get("decoded_remote_url_hash") != parsed.remote_hash
+        or manifest.get("selected_subdirectory") != parsed.selected_subdirectory
+        or manifest.get("kit_identity") != parsed.kit_identity
+        or manifest.get("requested_ref") != effective_requested_ref
+        or manifest.get("resolved_commit_sha") != commit_sha
+    ):
+        return None
+    tmp_dir = Path(tempfile.mkdtemp(prefix="studio-git-kit-offline-"))
+    kit_source_dir = tmp_dir / "kit"
+    shutil.copytree(artifact_dir, kit_source_dir, ignore=shutil.ignore_patterns("artifact-manifest.json"))
+    identity = f"{parsed.canonical_source}@{effective_requested_ref}#{commit_sha}"
+    authority = {
+        "source_type": "git",
+        "original_source": parsed.original_source,
+        "canonical_source": parsed.canonical_source,
+        "effective_source": parsed.canonical_source,
+        "decoded_remote_url": parsed.decoded_remote_url,
+        "decoded_remote_url_hash": parsed.remote_hash,
+        "requested_ref": effective_requested_ref,
+        "resolved_ref": commit_sha,
+        "commit_sha": commit_sha,
+        "installed_version": commit_sha,
+        "identity": identity,
+        "resolver_mode": _selector_classification("" if effective_requested_ref == "HEAD" else effective_requested_ref, "offline_last_known"),
+        "resolution_basis": "offline_last_known",
+        "offline_reason": str(failure),
+        "verified": "stale",
+        "freshness": "last_known",
+        "selected_subdirectory": parsed.selected_subdirectory,
+        "kit_identity": parsed.kit_identity,
+        "transport": parsed.transport,
+        "sanitized_url_display": parsed.sanitized_url_display,
+        "cache_remote_hash": parsed.remote_hash,
+        "cache_requested_ref_hash": _ref_hash(effective_requested_ref),
+        "cache_subdir_hash": _subdir_hash(parsed.selected_subdirectory),
+        "cache_kit_hash": _kit_hash(parsed.kit_identity),
+        "content_identity": {
+            "vcs": "git",
+            "commit_sha": commit_sha,
+            "subdirectory": parsed.selected_subdirectory,
+            "identity": identity,
+        },
+    }
+    return GitKitResolution(kit_source_dir=kit_source_dir, tmp_dir=tmp_dir, authority_metadata=authority)
+
+
 def _checkout_ref(repo_dir: Path, requested_ref: str) -> str:
     if requested_ref:
         _run_git(["checkout", "--quiet", requested_ref], cwd=repo_dir)
@@ -281,6 +477,7 @@ def materialize_git_kit_source(
     *,
     requested_ref: str = "",
     git_auth: Optional[Dict[str, Any]] = None,
+    previous_metadata: Optional[Dict[str, Any]] = None,
 ) -> GitKitResolution:
     """Clone, checkout, and return a selected generic Git kit source directory."""
     tmp_dir = Path(tempfile.mkdtemp(prefix="studio-git-kit-"))
@@ -306,13 +503,20 @@ def materialize_git_kit_source(
             kit_source_dir = repo_dir / parsed.selected_subdirectory
             if not kit_source_dir.is_dir():
                 raise RuntimeError(f"Git source subdirectory not found: {parsed.selected_subdirectory}")
+    except RuntimeError as exc:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        if previous_metadata:
+            offline = _materialize_offline_last_known(parsed, requested_ref, previous_metadata, exc)
+            if offline is not None:
+                return offline
+        raise
     except Exception:
-        import shutil
         shutil.rmtree(tmp_dir, ignore_errors=True)
         raise
 
     selector = requested_ref or "HEAD"
     identity = f"{parsed.canonical_source}@{selector}#{commit_sha}"
+    cache_metadata = _cache_artifact(parsed, kit_source_dir, requested_ref, commit_sha, resolution_basis)
     authority = {
         "source_type": "git",
         "original_source": parsed.original_source,
@@ -333,6 +537,7 @@ def materialize_git_kit_source(
         "kit_identity": parsed.kit_identity,
         "transport": parsed.transport,
         "sanitized_url_display": parsed.sanitized_url_display,
+        **cache_metadata,
         "content_identity": {
             "vcs": "git",
             "commit_sha": commit_sha,

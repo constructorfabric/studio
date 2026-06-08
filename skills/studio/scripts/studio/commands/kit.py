@@ -1994,7 +1994,11 @@ def _resolve_registered_update_targets(
             )
             if requested_ref == "HEAD":
                 requested_ref = ""
-            resolution = materialize_git_kit_source(parsed, requested_ref=requested_ref)
+            resolution = materialize_git_kit_source(
+                parsed,
+                requested_ref=requested_ref,
+                previous_metadata=kit_data,
+            )
         except GitSourceError as exc:
             msg = f"Kit '{slug}': invalid Git source: {exc}"
             ui.warn(msg)
@@ -3231,6 +3235,10 @@ def _register_kit_in_core_toml(
             "selected_subdirectory": authority_metadata.get("selected_subdirectory", ""),
             "kit_identity": authority_metadata.get("kit_identity", ""),
             "transport": authority_metadata.get("transport", ""),
+            "cache_remote_hash": authority_metadata.get("cache_remote_hash", ""),
+            "cache_requested_ref_hash": authority_metadata.get("cache_requested_ref_hash", ""),
+            "cache_subdir_hash": authority_metadata.get("cache_subdir_hash", ""),
+            "cache_kit_hash": authority_metadata.get("cache_kit_hash", ""),
             "verified": authority_metadata.get("verified", "unknown"),
             "freshness": authority_metadata.get("freshness", "unknown"),
         }

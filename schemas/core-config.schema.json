@@ -141,6 +141,10 @@
         "selected_subdirectory": { "type": "string" },
         "kit_identity": { "type": "string" },
         "transport": { "type": "string" },
+        "cache_remote_hash": { "type": "string" },
+        "cache_requested_ref_hash": { "type": "string" },
+        "cache_subdir_hash": { "type": "string" },
+        "cache_kit_hash": { "type": "string" },
         "verified": { "type": "string" },
         "freshness": { "type": "string" }
       }
