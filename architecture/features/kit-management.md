@@ -615,9 +615,9 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 **Rules**:
 1. [ ] - `p1` - `generate-agents` consumes `KitModel.public_components` where kind is `skill`, `agent`, or `rule` and the component is enabled for the target - `inst-public-generate-from-kitmodel`
-2. [ ] - `p1` - For manifest-backed kits, do not scan workflow directories to infer public commands; generated output is manifest-driven - `inst-public-no-workflow-scan`
-3. [ ] - `p1` - Project-level `.cf-studio-kit.toml` files contribute public components only after explicit install/register; the system must not recursively scan arbitrary manifests - `inst-public-explicit-install`
-4. [ ] - `p1` - Generated public skill and subagent names use `cf-{kit-slug}-{name}` with no double prefixing - `inst-public-prefix`
+2. [x] - `p1` - For manifest-backed kits, do not scan workflow directories to infer public commands; generated output is manifest-driven - `inst-public-no-workflow-scan`
+3. [x] - `p1` - Project-level `.cf-studio-kit.toml` files contribute public components only after explicit install/register; the system must not recursively scan arbitrary manifests - `inst-public-explicit-install`
+4. [x] - `p1` - Generated public skill and subagent names use `cf-{kit-slug}-{name}` with no double prefixing - `inst-public-prefix`
 5. [ ] - `p1` - A legacy workflow source renders as a skill entry point and may retain a compatibility alias only when the target supports it - `inst-public-legacy-workflow-alias`
 
 ### Kit Variable Resolution

@@ -1927,18 +1927,26 @@ def _registered_kit_dirs(project_root: Optional[Path]) -> Optional[Set[str]]:
 # @cpt-end:cpt-studio-algo-agent-integration-discover-agents:p1:inst-resolve-kits
 
 # @cpt-begin:cpt-studio-algo-agent-integration-list-workflows:p1:inst-scan-core-workflows
-def _list_workflow_files(studio_root: Path, project_root: Optional[Path] = None) -> List[Tuple[str, Path, Optional[str]]]:
+KitWorkflowSkill = Tuple[str, Path, Optional[str], Optional[str]]
+
+
+def _list_workflow_files(
+    studio_root: Path,
+    project_root: Optional[Path] = None,
+    *,
+    skip_kit_slugs: Optional[Set[str]] = None,
+) -> List[KitWorkflowSkill]:
     """List workflow files from .core/workflows/ and config/kits/*/workflows/.
 
-    Returns list of ``(filename, full_path, kit_slug)`` tuples. ``kit_slug``
-    is ``None`` for core workflows (``.core/workflows/``) and the kit's
-    directory name (e.g. ``sdlc``) for kit-sourced workflows. Kit slug is
-    used by ``_compute_workflow_skill_id`` to namespace skill / command
-    identifiers as ``cf-{kit-slug}-{workflow}`` so kit-sourced surfaces do
-    not collide with core ones.
+    Returns list of ``(filename, full_path, kit_slug, explicit_skill_id)``
+    tuples. ``kit_slug`` is ``None`` for core workflows
+    (``.core/workflows/``) and the kit's directory name (e.g. ``sdlc``) for
+    kit-sourced workflows. Kit slug is used by ``_compute_workflow_skill_id``
+    to namespace skill / command identifiers as ``cf-{kit-slug}-{workflow}``
+    so kit-sourced surfaces do not collide with core ones.
     """
     seen_names: set = set()
-    out: List[Tuple[str, Path, Optional[str]]] = []
+    out: List[KitWorkflowSkill] = []
 
     def _scan_dir(d: Path, kit_slug: Optional[str]) -> None:
         if not d.is_dir():
@@ -1957,7 +1965,7 @@ def _list_workflow_files(studio_root: Path, project_root: Optional[Path] = None)
                     continue
                 if p.name not in seen_names:
                     seen_names.add(p.name)
-                    out.append((p.name, p.resolve(), kit_slug))
+                    out.append((p.name, p.resolve(), kit_slug, None))
         except OSError:
             pass
 
@@ -1967,11 +1975,14 @@ def _list_workflow_files(studio_root: Path, project_root: Optional[Path] = None)
     # 2. Kit workflows (config/kits/*/workflows/) — kit_slug = directory name
     registered = _registered_kit_dirs(project_root)
     registered_dirs: Set[str] = registered if isinstance(registered, set) else set()
+    skip_slugs = skip_kit_slugs or set()
     config_kits = _resolve_config_kits(studio_root, project_root)
     if config_kits.is_dir():
         try:
             for kit_dir in sorted(config_kits.iterdir()):
                 if registered_dirs and kit_dir.name not in registered_dirs:
+                    continue
+                if kit_dir.name in skip_slugs:
                     continue
                 _scan_dir(kit_dir / "workflows", kit_dir.name)
         except OSError:
@@ -1997,6 +2008,84 @@ def _compute_workflow_skill_id(wf_name: str, kit_slug: Optional[str], prefix: st
         return f"{prefix}{kit_slug}-{wf_name}"
     return f"{prefix}{wf_name}"
 # @cpt-end:cpt-studio-algo-agent-integration-list-workflows:p1:inst-scan-core-workflows
+
+
+def _resolve_registered_kit_path(studio_root: Path, slug: str, kit_entry: object) -> Path:
+    if isinstance(kit_entry, dict):
+        raw_path = kit_entry.get("path")
+        if isinstance(raw_path, str) and raw_path.strip():
+            path = Path(raw_path)
+            return path if path.is_absolute() else studio_root / path
+    return studio_root / "config" / "kits" / slug
+
+
+def _resolve_registered_resource_path(
+    studio_root: Path,
+    kit_root: Path,
+    component: object,
+    kit_entry: object,
+) -> Path:
+    component_id = str(getattr(component, "id", ""))
+    resources = kit_entry.get("resources") if isinstance(kit_entry, dict) else None
+    binding = resources.get(component_id) if isinstance(resources, dict) else None
+    raw_path = binding.get("path") if isinstance(binding, dict) else None
+    if isinstance(raw_path, str) and raw_path.strip():
+        path = Path(raw_path)
+        return path if path.is_absolute() else studio_root / path
+    return kit_root / str(getattr(component, "source", ""))
+
+
+def _component_enabled_for_agent(component: object, agent: str) -> bool:
+    targets = [str(target) for target in (getattr(component, "generated_targets", []) or [])]
+    return not targets or "installed" in targets or "all" in targets or agent in targets
+
+
+def _list_public_component_skills(
+    studio_root: Path,
+    project_root: Optional[Path],
+    agent: str,
+) -> Tuple[List[KitWorkflowSkill], Set[str]]:
+    # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-no-workflow-scan
+    if project_root is None:
+        return [], set()
+    # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-explicit-install
+    cfg = load_project_config(project_root)
+    kits = cfg.get("kits") if isinstance(cfg, dict) else None
+    if not isinstance(kits, dict):
+        return [], set()
+    # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-explicit-install
+
+    try:
+        from ..utils.kit_model import load_kit_model
+    except ImportError:
+        return [], set()
+
+    components: List[KitWorkflowSkill] = []
+    manifest_backed_kits: Set[str] = set()
+    for slug, kit_entry in sorted(kits.items()):
+        kit_slug = str(slug)
+        kit_root = _resolve_registered_kit_path(studio_root, kit_slug, kit_entry)
+        try:
+            model = load_kit_model(kit_root)
+        except (OSError, ValueError):
+            continue
+        if model.manifest_source != "canonical":
+            continue
+        manifest_backed_kits.add(kit_slug)
+        for component in model.public_components:
+            if getattr(component, "kind", "") != "skill":
+                continue
+            if not _component_enabled_for_agent(component, agent):
+                continue
+            source_path = _resolve_registered_resource_path(studio_root, kit_root, component, kit_entry).resolve()
+            if not source_path.is_file():
+                continue
+            generated_name = str(getattr(component, "generated_name", "")).strip()
+            if not generated_name:
+                continue
+            components.append((source_path.name, source_path, kit_slug, generated_name))
+    return components, manifest_backed_kits
+    # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-no-workflow-scan
 
 # ---------------------------------------------------------------------------
 # Kit workflow → skill generation for skill-native tools
@@ -2055,7 +2144,7 @@ def _generate_kit_workflow_skills(
     skill_output_paths: Set[str],
     skills_result: Dict[str, Any],
     dry_run: bool,
-    kit_workflows: Optional[List[Tuple[str, Path, Optional[str]]]] = None,
+    kit_workflows: Optional[List[KitWorkflowSkill]] = None,
 ) -> None:
     """Emit skill entries for kit workflows on skill-native tools.
 
@@ -2071,9 +2160,11 @@ def _generate_kit_workflow_skills(
     if kit_workflows is None:
         kit_workflows = _list_workflow_files(studio_root, project_root)
 
-    for wf_filename, wf_full_path, kit_slug in kit_workflows:
+    for wf_filename, wf_full_path, kit_slug, explicit_skill_id in kit_workflows:
         wf_name = Path(wf_filename).stem
-        skill_id = _compute_workflow_skill_id(wf_name, kit_slug)
+        # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-prefix
+        skill_id = explicit_skill_id or _compute_workflow_skill_id(wf_name, kit_slug)
+        # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-prefix
 
         out_rel = path_pattern.format(skill_id=skill_id)
         out_path = (project_root / out_rel).resolve()
@@ -2728,9 +2819,9 @@ def _process_workflows(
             studio_workflow_entries = _list_workflow_files(studio_root, project_root)
 
             desired: Dict[str, Dict[str, str]] = {}
-            for wf_filename, wf_full_path, kit_slug in studio_workflow_entries:
+            for wf_filename, wf_full_path, kit_slug, explicit_skill_id in studio_workflow_entries:
                 wf_name = Path(wf_filename).stem
-                command = _compute_workflow_skill_id(wf_name, kit_slug, prefix=prefix)
+                command = explicit_skill_id or _compute_workflow_skill_id(wf_name, kit_slug, prefix=prefix)
                 filename = filename_fmt.format(command=command, workflow_name=wf_name)
                 desired_path = (workflow_dir / filename).resolve()
                 target_workflow_path = wf_full_path
@@ -3057,7 +3148,16 @@ def _process_kit_workflow_skills(
     }
 
     # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-kit-workflow-skills
-    cached_kit_workflows = _list_workflow_files(studio_root, project_root)
+    public_component_skills, manifest_backed_kits = _list_public_component_skills(
+        studio_root,
+        project_root,
+        agent,
+    )
+    cached_kit_workflows = public_component_skills + _list_workflow_files(
+        studio_root,
+        project_root,
+        skip_kit_slugs=manifest_backed_kits,
+    )
     _generate_kit_workflow_skills(
         agent, project_root, studio_root, skill_output_paths,
         partial, dry_run,
@@ -3156,9 +3256,9 @@ def _process_legacy_cleanup(
     if agent == "claude" and _cached_kit_workflows is not None:
         legacy_commands_dir = project_root / ".claude" / "commands"
         if legacy_commands_dir.is_dir():
-            for wf_filename, _wf_full_path, kit_slug in _cached_kit_workflows:
+            for wf_filename, _wf_full_path, kit_slug, explicit_skill_id in _cached_kit_workflows:
                 wf_name = Path(wf_filename).stem
-                cmd_name = _compute_workflow_skill_id(wf_name, kit_slug)
+                cmd_name = explicit_skill_id or _compute_workflow_skill_id(wf_name, kit_slug)
                 legacy_file = legacy_commands_dir / f"{cmd_name}.md"
                 if not legacy_file.is_file():
                     continue

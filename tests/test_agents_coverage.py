@@ -1693,8 +1693,14 @@ class TestKitWorkflowSharedSkills(unittest.TestCase):
         root = (Path(td) / "proj").resolve()
         root.mkdir()
         (root / ".git").mkdir()
+        (root / "AGENTS.md").write_text(
+            '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "cypilot"\n```\n<!-- /@cf:root-agents -->\n',
+            encoding="utf-8",
+        )
         cpt = root / "cypilot"
         cpt.mkdir()
+        (cpt / "config").mkdir(parents=True, exist_ok=True)
+        (cpt / "config" / "core.toml").write_text('version = "1.0"\n', encoding="utf-8")
         core_skill = cpt / ".core" / "skills" / "cypilot" / "SKILL.md"
         core_skill.parent.mkdir(parents=True)
         core_skill.write_text("---\nname: cypilot\ndescription: Test\n---\nContent\n")
@@ -1741,6 +1747,65 @@ class TestKitWorkflowSharedSkills(unittest.TestCase):
             shared_skill = root / ".agents" / "skills" / "cf-generate" / "SKILL.md"
             self.assertTrue(shared_skill.exists(),
                 ".agents/skills/cf-generate/SKILL.md must be generated for copilot")
+
+    def test_manifest_public_skill_generates_from_kit_model_without_workflow_scan(self):
+        """Canonical kit public skills are generated from KitModel, not workflow folders."""
+        from studio.commands.agents import _process_single_agent, _default_agents_config
+
+        with TemporaryDirectory() as td:
+            root, cpt = self._make_project(td)
+            kit_dir = cpt / "config" / "kits" / "pub"
+            kit_dir.mkdir(parents=True)
+            (kit_dir / "SKILL.md").write_text(
+                "---\nname: Public Release\ndescription: Release flow\n---\n# Release\n",
+                encoding="utf-8",
+            )
+            workflow_dir = kit_dir / "workflows"
+            workflow_dir.mkdir()
+            (workflow_dir / "legacy.md").write_text(
+                "---\ntype: workflow\nname: Legacy\ndescription: Should not be generated\n---\n# Legacy\n",
+                encoding="utf-8",
+            )
+            (kit_dir / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    "[kit]",
+                    'slug = "pub"',
+                    'name = "Public Kit"',
+                    'version = "1.0"',
+                    "",
+                    "[[resources]]",
+                    'id = "release"',
+                    'kind = "skill"',
+                    'source = "SKILL.md"',
+                    'install_path = "SKILL.md"',
+                    'type = "file"',
+                    "public = true",
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            (cpt / "config" / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    "",
+                    "[kits.pub]",
+                    'format = "CFS"',
+                    'path = "config/kits/pub"',
+                    "",
+                    "[kits.pub.resources.release]",
+                    'path = "config/kits/pub/SKILL.md"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            cfg = _default_agents_config()
+            _process_single_agent("cursor", root, cpt, cfg, None, dry_run=False)
+
+            public_skill = root / ".agents" / "skills" / "cf-pub-release" / "SKILL.md"
+            self.assertTrue(public_skill.exists())
+            content = public_skill.read_text(encoding="utf-8")
+            self.assertIn("name: Public Release", content)
+            self.assertIn("{cf-studio-path}/config/kits/pub/SKILL.md", content)
+            self.assertFalse((root / ".agents" / "skills" / "cf-pub-legacy" / "SKILL.md").exists())
 
 
 class TestIsPureCypilotGenerated(unittest.TestCase):
