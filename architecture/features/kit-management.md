@@ -574,14 +574,14 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 ### Local Path Install Mode
 
-- [ ] `p1` - **ID**: `cpt-studio-algo-kit-local-path-install-mode`
+- [x] `p1` - **ID**: `cpt-studio-algo-kit-local-path-install-mode`
 
 **Input**: `cfs kit install --path <dir>`, project root, manifest root, normalized resources, optional `--install-mode`
 
 **Output**: Install mode decision (`copy` or `register`) plus resolved resource bindings
 
 **Steps**:
-1. [ ] - `p1` - In interactive mode, always ask whether to copy resources into Studio-managed storage or register resources in place; default suggestion is `register` only when containment validation passes - `inst-local-mode-always-ask`
+1. [x] - `p1` - In interactive mode, always ask whether to copy resources into Studio-managed storage or register resources in place; default suggestion is `register` only when containment validation passes - `inst-local-mode-always-ask`
 2. [x] - `p1` - In non-interactive mode, require `--install-mode copy|register`; fail with remediation when omitted - `inst-local-mode-noninteractive-required`
 3. [x] - `p1` - Allow `register` only for local `--path` installs where manifest path, manifest root, and every resource source resolves inside the current project root after symlink resolution - `inst-local-register-containment`
 4. [x] - `p1` - Reject absolute resource source paths and symlink escapes before writing any `core.toml` bindings - `inst-local-register-reject-escape`

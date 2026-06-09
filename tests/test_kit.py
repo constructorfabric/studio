@@ -438,6 +438,61 @@ class TestKitSourceModeValidation(unittest.TestCase):
             finally:
                 os.chdir(cwd)
 
+    def test_interactive_install_mode_defaults_register_when_contained(self):
+        from studio.commands.kit import cmd_kit_install
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            kit_src = _make_canonical_kit_source(root / "local-kits", "prompt-regkit")
+            fake_stdin = type("_FakeStdin", (), {"isatty": lambda self: True})()
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                buf = io.StringIO()
+                with (
+                    patch("sys.stdin", fake_stdin),
+                    patch("builtins.input", side_effect=[""]),
+                    redirect_stdout(buf),
+                ):
+                    rc = cmd_kit_install(["--path", str(kit_src)])
+                self.assertEqual(rc, 0)
+                out = json.loads(buf.getvalue())
+                self.assertEqual(out["install_mode"], "register")
+                self.assertEqual(out["files_registered"], 1)
+                self.assertFalse((adapter / "config" / "kits" / "prompt-regkit" / "SKILL.md").exists())
+            finally:
+                os.chdir(cwd)
+
+    def test_interactive_install_mode_defaults_copy_when_register_unavailable(self):
+        from studio.commands.kit import cmd_kit_install
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            kit_src = _make_canonical_kit_source(Path(td), "prompt-copykit")
+            fake_stdin = type("_FakeStdin", (), {"isatty": lambda self: True})()
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                buf = io.StringIO()
+                with (
+                    patch("sys.stdin", fake_stdin),
+                    patch("builtins.input", side_effect=["", ""]),
+                    redirect_stdout(buf),
+                ):
+                    rc = cmd_kit_install(["--path", str(kit_src)])
+                self.assertEqual(rc, 0)
+                out = json.loads(buf.getvalue())
+                self.assertEqual(out["install_mode"], "copy")
+                self.assertEqual(out["files_written"], 1)
+                self.assertEqual(
+                    (adapter / "config" / "kits" / "prompt-copykit" / "SKILL.md").read_text(encoding="utf-8"),
+                    "# Canonical kit\n",
+                )
+            finally:
+                os.chdir(cwd)
+
     def test_install_mode_register_rejects_symlink_escape(self):
         from studio.commands.kit import cmd_kit_install
 

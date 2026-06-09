@@ -1074,6 +1074,48 @@ def _validate_register_manifest_containment(
     # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-register-containment
 
 
+# @cpt-begin:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-mode-always-ask
+def _prompt_local_manifest_install_mode(
+    project_root: Path,
+    studio_dir: Path,
+    kit_source: Path,
+    kit_slug: str,
+    manifest: Manifest,
+) -> str:
+    """Ask an interactive local manifest install to copy or register resources."""
+    register_errors = _validate_register_manifest_containment(
+        project_root,
+        studio_dir,
+        kit_source,
+        kit_slug,
+        manifest,
+    )
+    register_available = not register_errors
+    default_mode = "register" if register_available else "copy"
+    while True:
+        sys.stderr.write("\n")
+        sys.stderr.write(f"  Local kit install mode: {kit_slug}\n")
+        sys.stderr.write("  - copy: copy resources into Studio-managed storage\n")
+        if register_available:
+            sys.stderr.write("  - register: leave in-project resources in place and bind them\n")
+        else:
+            sys.stderr.write("  - register: unavailable for this source\n")
+        answer = _input_stderr(
+            f"  Install mode [copy/register] (default {default_mode}): "
+        ).lower()
+        if not answer:
+            return default_mode
+        if answer in {"c", "copy"}:
+            return "copy"
+        if answer in {"r", "register"}:
+            if register_available:
+                return "register"
+            sys.stderr.write("  Register mode is unavailable:\n")
+            for error in register_errors:
+                sys.stderr.write(f"  - {error}\n")
+# @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-mode-always-ask
+
+
 def _emit_manifest_install_plan(
     kit_slug: str,
     kit_root: Path,
@@ -2110,6 +2152,21 @@ def cmd_kit_install(argv: List[str]) -> int:
             return 0
         # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-dry-run
 
+        selected_install_mode = args.install_mode or "copy"
+        # @cpt-begin:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-mode-always-ask
+        if args.local_path and not args.install_mode and sys.stdin.isatty():
+            from ..utils.manifest import load_manifest as _load_manifest
+            local_manifest = _load_manifest(kit_source)
+            if local_manifest is not None:
+                selected_install_mode = _prompt_local_manifest_install_mode(
+                    project_root,
+                    studio_dir,
+                    kit_source,
+                    kit_slug,
+                    local_manifest,
+                )
+        # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-mode-always-ask
+
         # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-delegate-install
         result = install_kit(
             kit_source,
@@ -2118,7 +2175,7 @@ def cmd_kit_install(argv: List[str]) -> int:
             kit_version,
             source=source_registration,
             interactive=True,
-            install_mode=args.install_mode or "copy",
+            install_mode=selected_install_mode,
             project_root=project_root,
             authority_metadata=authority_metadata,
             approved_overwrites=args.approve_overwrite,
@@ -2131,7 +2188,7 @@ def cmd_kit_install(argv: List[str]) -> int:
                 "action": result.get("action", "installed"),
                 "kit": kit_slug,
                 "version": kit_version,
-                "install_mode": result.get("install_mode", args.install_mode or "copy"),
+                "install_mode": result.get("install_mode", selected_install_mode),
                 "files_written": result.get("files_copied", 0),
             }
             if result.get("files_registered") is not None:
@@ -2151,7 +2208,7 @@ def cmd_kit_install(argv: List[str]) -> int:
             "action": result.get("action", "installed"),
             "kit": kit_slug,
             "version": kit_version,
-            "install_mode": result.get("install_mode", args.install_mode or "copy"),
+            "install_mode": result.get("install_mode", selected_install_mode),
             "files_written": result.get("files_copied", 0),
         }
         if result.get("files_registered") is not None:
