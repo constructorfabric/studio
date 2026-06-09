@@ -1114,6 +1114,7 @@ def install_kit(
     source: str = "",
     *,
     interactive: bool = False,
+    install_mode: str = "copy",
     authority_metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Install a kit: copy ready files from source into config/kits/{slug}/.
@@ -1159,6 +1160,13 @@ def install_kit(
         }
     # @cpt-end:cpt-studio-algo-kit-install:p1:inst-validate-source
 
+    if install_mode != "copy":
+        return {
+            "status": "FAIL",
+            "kit": kit_slug,
+            "errors": [f"Unsupported install mode: {install_mode}"],
+        }
+
     # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-manifest-install
     # Check for manifest-driven installation
     from ..utils.manifest import load_manifest
@@ -1167,6 +1175,7 @@ def install_kit(
         return install_kit_with_manifest(
             kit_source, studio_dir, kit_slug, kit_version,
             manifest, interactive=interactive, source=source,
+            install_mode=install_mode,
             authority_metadata=authority_metadata,
             kit_path=(
                 kit_entry.get("path", "")
@@ -1209,6 +1218,7 @@ def install_kit(
         kit_version,
         studio_dir,
         source=source,
+        install_mode=install_mode,
         authority_metadata=authority_metadata,
         local_metadata=local_metadata or None,
     )
@@ -1227,6 +1237,7 @@ def install_kit(
         "action": "installed",
         "kit": kit_slug,
         "version": kit_version,
+        "install_mode": install_mode,
         "files_copied": files_copied,
         "errors": errors,
         "skill_nav": meta["skill_nav"],
@@ -1249,6 +1260,7 @@ def install_kit_with_manifest(
     manifest: Manifest,
     *,
     interactive: bool = True,
+    install_mode: str = "copy",
     source: str = "",
     kit_path: str = "",
     authority_metadata: Optional[Dict[str, Any]] = None,
@@ -1311,6 +1323,7 @@ def install_kit_with_manifest(
         kit_root = (studio_dir / kit_root_rel).resolve()
     # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-root-prompt
 
+    # @cpt-begin:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-copy-resources
     kit_root, kit_root_rel, resource_bindings = _prompt_manifest_install_plan(
         kit_slug,
         studio_dir,
@@ -1333,6 +1346,7 @@ def install_kit_with_manifest(
         # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-copy-resource
         files_copied += 1
     # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-foreach-resource
+    # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-copy-resources
 
     # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-resolve-vars
     # Resolve {identifier} template variables in copied kit files
@@ -1359,6 +1373,7 @@ def install_kit_with_manifest(
     _register_kit_in_core_toml(
         config_dir, kit_slug, kit_version, studio_dir,
         source=source, resources=resource_bindings, kit_path=kit_root_rel,
+        install_mode=install_mode,
         authority_metadata=authority_metadata,
         local_metadata=local_metadata or None,
     )
@@ -1375,6 +1390,7 @@ def install_kit_with_manifest(
         "action": "installed",
         "kit": kit_slug,
         "version": kit_version,
+        "install_mode": install_mode,
         "files_copied": files_copied,
         "resource_bindings": {k: v["path"] for k, v in resource_bindings.items()},
         "errors": errors,
@@ -1752,6 +1768,13 @@ def cmd_kit_install(argv: List[str]) -> int:
                 "hint": "Use --install-mode copy to copy resources into Studio storage, or --install-mode register for eligible in-project sources",
             })
             return 2
+        if args.install_mode == "register":
+            ui.result({
+                "status": "FAIL",
+                "message": "--install-mode register is not implemented yet",
+                "hint": "Use --install-mode copy for now; register mode requires containment validation before writing bindings",
+            })
+            return 2
         # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-mode-noninteractive-required
         # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-load-kit-model
         # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-read-slug-version
@@ -1829,6 +1852,7 @@ def cmd_kit_install(argv: List[str]) -> int:
             kit_version,
             source=source_registration,
             interactive=True,
+            install_mode=args.install_mode or "copy",
             authority_metadata=authority_metadata,
         )
         # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-delegate-install
@@ -1843,6 +1867,7 @@ def cmd_kit_install(argv: List[str]) -> int:
             "action": result.get("action", "installed"),
             "kit": kit_slug,
             "version": kit_version,
+            "install_mode": result.get("install_mode", args.install_mode or "copy"),
             "files_written": result.get("files_copied", 0),
         }
         if source_registration:
@@ -3431,6 +3456,7 @@ def _register_kit_in_core_toml(
     source: str = "",
     resources: Optional[Dict[str, Dict[str, str]]] = None,
     kit_path: str = "",
+    install_mode: str = "",
     authority_metadata: Optional[Dict[str, Any]] = None,
     local_metadata: Optional[Dict[str, Any]] = None,
 ) -> None:
@@ -3466,6 +3492,8 @@ def _register_kit_in_core_toml(
         existing["path"] = f"config/kits/{kit_slug}"
     if source:
         existing["source"] = source
+    if install_mode:
+        existing["install_mode"] = install_mode
     if authority_metadata:
         source_type = "github" if source.startswith("github:") else ("git" if source.startswith("git:") else "unknown")
         source_provenance = {

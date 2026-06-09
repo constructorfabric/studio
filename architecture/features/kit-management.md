@@ -586,7 +586,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 3. [ ] - `p1` - Allow `register` only for local `--path` installs where manifest path, manifest root, and every resource source resolves inside the current project root after symlink resolution - `inst-local-register-containment`
 4. [ ] - `p1` - Reject absolute resource source paths and symlink escapes before writing any `core.toml` bindings - `inst-local-register-reject-escape`
 5. [ ] - `p1` - For `register`, leave source files in place and write effective resource bindings, hashes, install mode, and provenance to `core.toml` - `inst-local-register-core-only`
-6. [ ] - `p1` - For `copy`, copy resources to Studio/project-approved destinations, preserving user-selected `install_path` overrides and `user_modifiable` prompts - `inst-local-copy-resources`
+6. [x] - `p1` - For `copy`, copy resources to Studio/project-approved destinations, preserving user-selected `install_path` overrides and `user_modifiable` prompts - `inst-local-copy-resources`
 7. [ ] - `p1` - Never silently overwrite `user_modifiable` resources during copy install or copy update; require interactive acceptance or explicit non-interactive approval for each changed effective path - `inst-local-copy-no-silent-overwrite`
 8. [x] - `p1` - Never use `register` for GitHub or generic Git installs; remote sources use copied/managed artifacts - `inst-local-register-local-only`
 

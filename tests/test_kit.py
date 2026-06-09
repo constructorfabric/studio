@@ -401,6 +401,26 @@ class TestKitSourceModeValidation(unittest.TestCase):
         self.assertIn("--install-mode", out["message"])
         self.assertIn("--path", out["message"])
 
+    def test_install_mode_register_fails_until_supported(self):
+        from studio.commands.kit import cmd_kit_install
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            _bootstrap_project(root)
+            kit_src = _make_kit_source(Path(td), "testkit")
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = cmd_kit_install(["--path", str(kit_src), "--install-mode", "register"])
+                self.assertEqual(rc, 2)
+                out = json.loads(buf.getvalue())
+                self.assertEqual(out["status"], "FAIL")
+                self.assertIn("register", out["message"])
+            finally:
+                os.chdir(cwd)
+
 
 class TestCanonicalKitMetadata(unittest.TestCase):
     """Canonical manifests provide kit metadata without conf.toml."""
@@ -459,6 +479,7 @@ class TestCanonicalKitMetadata(unittest.TestCase):
                 self.assertEqual(out["status"], "PASS")
                 self.assertEqual(out["kit"], "canon-install")
                 self.assertEqual(out["version"], "1.2.3")
+                self.assertEqual(out["install_mode"], "copy")
 
                 installed_skill = adapter / "config" / "kits" / "canon-install" / "SKILL.md"
                 self.assertEqual(installed_skill.read_text(encoding="utf-8"), "# Canonical kit\n")
@@ -467,6 +488,7 @@ class TestCanonicalKitMetadata(unittest.TestCase):
                     core = tomllib.load(f)
                 kit_entry = core["kits"]["canon-install"]
                 self.assertEqual(kit_entry["version"], "1.2.3")
+                self.assertEqual(kit_entry["install_mode"], "copy")
                 self.assertEqual(kit_entry["resources"]["skill"]["path"], "config/kits/canon-install/SKILL.md")
             finally:
                 os.chdir(cwd)
