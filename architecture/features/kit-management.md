@@ -93,7 +93,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 ### Kit Install CLI
 
-- [ ] `p1` - **ID**: `cpt-studio-flow-kit-install-cli`
+- [x] `p1` - **ID**: `cpt-studio-flow-kit-install-cli`
 
 **Actor**: `cpt-studio-actor-user`
 
@@ -102,13 +102,13 @@ Enables users to install, update, and validate kit packages with interactive fil
 **Steps**:
 1. [x] - `p1` - Parse CLI arguments (path, --force, --dry-run) - `inst-parse-args`
 2. [x] - `p1` - Validate kit source directory exists - `inst-validate-source`
-3. [ ] - `p1` - Read kit slug from `.cf-studio-kit.toml` when present; otherwise use legacy metadata (`manifest.toml`, `conf.toml`, or layout adapter) and read `conf.toml version` only as optional local metadata, never as GitHub release authority - `inst-read-slug-version`
+3. [x] - `p1` - Read kit slug from `.cf-studio-kit.toml` when present; otherwise use legacy metadata (`manifest.toml`, `conf.toml`, or layout adapter) and read `conf.toml version` only as optional local metadata, never as GitHub release authority - `inst-read-slug-version`
 3a. [ ] - `p1` - **IF** installing from GitHub: resolve requested GitHub ref to authoritative GitHub metadata via `cpt-studio-algo-kit-github-version-authority`; set `core.toml [kits.<slug>].version` from GitHub release/ref metadata, not from `conf.toml` - `inst-resolve-github-authority`
 3b. [x] - `p1` - **IF** installing from `--path`: mark resolver mode as local/path, do not apply GitHub authority, and reject GitHub selector flags or `owner/repo[@ref]` selectors mixed with local/path mode - `inst-validate-source-mode`
 4. [x] - `p1` - Resolve project root and studio directory via `_resolve_studio_dir` - `inst-resolve-project`
 5. [x] - `p1` - Check if kit already installed; fail if exists without --force - `inst-check-existing`
 6. [x] - `p1` - **IF** --dry-run: return preview and STOP - `inst-dry-run`
-7. [ ] - `p1` - Load the source through `cpt-studio-algo-kit-model-normalize`, with precedence `.cf-studio-kit.toml` > legacy `manifest.toml` v2/v1 > `conf.toml + layout` > `core.toml` resources-only - `inst-load-kit-model`
+7. [x] - `p1` - Load the source through `cpt-studio-algo-kit-model-normalize`, with precedence `.cf-studio-kit.toml` > legacy `manifest.toml` v2/v1 > `conf.toml + layout` > `core.toml` resources-only - `inst-load-kit-model`
 7a. [ ] - `p1` - **IF** installing from `--path`: resolve install mode through `cpt-studio-algo-kit-local-path-install-mode`; interactive mode must ask copy vs register, non-interactive mode requires `--install-mode` - `inst-resolve-local-install-mode`
 7b. [ ] - `p1` - **IF** canonical or legacy manifest input is present: delegate to manifest-driven installation via `cpt-studio-algo-kit-manifest-install` using the normalized `KitModel` - `inst-manifest-install`
 8. [x] - `p1` - **ELSE**: delegate to `install_kit()` for legacy installation - `inst-delegate-install`
@@ -122,7 +122,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 ### Kit Update CLI
 
-- [ ] `p1` - **ID**: `cpt-studio-flow-kit-update-cli`
+- [x] `p1` - **ID**: `cpt-studio-flow-kit-update-cli`
 
 **Actor**: `cpt-studio-actor-user`
 
@@ -132,7 +132,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 1. [x] - `p1` - Parse CLI arguments (path, --force, --dry-run, --no-interactive, -y) - `inst-parse-args`
 2. [x] - `p1` - Validate kit source directory exists - `inst-validate-source`
 2a. [x] - `p1` - Validate source mode: registered GitHub-backed updates use GitHub authority; local `--path` updates are outside GitHub authority and conflict with GitHub selector flags - `inst-validate-source-mode`
-3. [ ] - `p1` - Read slug from canonical `.cf-studio-kit.toml` when present; otherwise use legacy source metadata - `inst-read-slug`
+3. [x] - `p1` - Read slug from canonical `.cf-studio-kit.toml` when present; otherwise use legacy source metadata - `inst-read-slug`
 4. [x] - `p1` - Resolve project root and studio directory - `inst-resolve-project`
 5. [x] - `p1` - **IF** kit source contains `whatsnew.toml`: display whatsnew entries via `cpt-studio-algo-kit-whatsnew-display`; in interactive mode prompt to continue or abort - `inst-show-whatsnew`
 6. [x] - `p1` - **IF** kit source contains canonical `.cf-studio-kit.toml` or legacy `manifest.toml` and existing install has no resource bindings: trigger legacy install migration via `cpt-studio-algo-kit-manifest-legacy-migration` - `inst-legacy-migration`
@@ -271,7 +271,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 ### Kit Installation
 
-- [ ] `p1` - **ID**: `cpt-studio-algo-kit-install`
+- [x] `p1` - **ID**: `cpt-studio-algo-kit-install`
 
 **Input**: Kit source path, studio dir, slug, authority metadata or local metadata
 
@@ -279,7 +279,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 **Steps**:
 1. [x] - `p1` - Validate kit source directory exists - `inst-validate-source`
-2. [ ] - `p1` - **IF** normalized kit model is manifest-backed: delegate to `install_kit_with_manifest` and **RETURN** its result - `inst-manifest-install`
+2. [x] - `p1` - **IF** normalized kit model is manifest-backed: delegate to `install_kit_with_manifest` and **RETURN** its result - `inst-manifest-install`
 3. [x] - `p1` - Copy kit content to `config/kits/{slug}/` via `_copy_kit_content` (legacy path) - `inst-copy-content`
 4. [x] - `p1` - **IF** GitHub authority metadata is absent: read version from source `conf.toml` only as optional local/path metadata; **ELSE** ignore `conf.toml version` for authoritative registration - `inst-read-version`
 5. [x] - `p1` - Seed config files from kit's scripts/ directory - `inst-seed-configs`
@@ -289,7 +289,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 ### Kit Update
 
-- [ ] `p1` - **ID**: `cpt-studio-algo-kit-update`
+- [x] `p1` - **ID**: `cpt-studio-algo-kit-update`
 
 **Input**: Kit slug, source dir, studio dir, flags (dry_run, interactive, auto_approve, force)
 
@@ -300,8 +300,8 @@ Enables users to install, update, and validate kit packages with interactive fil
 2. [x] - `p1` - **IF** dry_run: return early with dry_run status - `inst-dry-run-check`
 3. [x] - `p1` - Resolve source version/currentness input from GitHub authority metadata for GitHub-backed kits; read `conf.toml version` only for local/path metadata - `inst-read-source-version`
 4. [x] - `p1` - **IF** not force and authoritative content identity or resolved display version matches installed GitHub metadata: return "current" status with source/freshness metadata - `inst-version-check`
-5. [ ] - `p1` - **IF** source has canonical or legacy manifest and kit has no `resources` in core.toml: trigger `migrate_legacy_kit_to_manifest` - `inst-legacy-manifest-migration`
-6. [ ] - `p1` - **IF** source has canonical or legacy manifest: build source-path-to-resource-id mapping from normalized manifest resources, resolve resource bindings from `core.toml` via `cpt-studio-algo-kit-manifest-resolve` - `inst-resolve-resource-bindings`
+5. [x] - `p1` - **IF** source has canonical or legacy manifest and kit has no `resources` in core.toml: trigger `migrate_legacy_kit_to_manifest` - `inst-legacy-manifest-migration`
+6. [x] - `p1` - **IF** source has canonical or legacy manifest: build source-path-to-resource-id mapping from normalized manifest resources, resolve resource bindings from `core.toml` via `cpt-studio-algo-kit-manifest-resolve` - `inst-resolve-resource-bindings`
 7. [x] - `p1` - **IF** the authoritative installed root from `config/core.toml` `kits.{slug}.path` does not exist (defaulting to `config/kits/{slug}` when missing): first-install via `_copy_kit_content`, seed configs, register in core.toml - `inst-first-install`
 8. [x] - `p1` - **ELSE**: existing kit — delegate to `file_level_kit_update` for interactive diff, passing `resource_bindings`, `source_to_resource_id`, and `resource_info` for manifest-driven kits - `inst-file-level-diff`
 9. [x] - `p1` - Update `core.toml` version and structured authority metadata from GitHub resolution for GitHub-backed kits; for local/path mode, update only local metadata derived from the provided path - `inst-update-core-toml`
@@ -716,17 +716,17 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 ### Manifest Legacy Migration
 
-- [ ] `p1` - **ID**: `cpt-studio-algo-kit-manifest-legacy-migration`
+- [x] `p1` - **ID**: `cpt-studio-algo-kit-manifest-legacy-migration`
 
 **Input**: Kit source directory containing canonical `.cf-studio-kit.toml` or legacy `manifest.toml`, studio dir, slug, existing kit root from `core.toml`
 
 **Output**: Populated resource bindings in `core.toml`
 
 **Steps**:
-1. [ ] - `p1` - Read canonical manifest or normalize legacy manifest/layout from kit source - `inst-legacy-read-manifest`
+1. [x] - `p1` - Read canonical manifest or normalize legacy manifest/layout from kit source - `inst-legacy-read-manifest`
 2. [x] - `p1` - Read existing kit root path from `core.toml` - `inst-legacy-read-root`
 3. [x] - `p1` - **FOR EACH** resource declared in manifest - `inst-legacy-foreach-resource`
-   1. [ ] - `p1` - Compute expected path from existing kit root plus normalized manifest default `install_path`/legacy `default_path` - `inst-legacy-compute-path`
+   1. [x] - `p1` - Compute expected path from existing kit root plus normalized manifest default `install_path`/legacy `default_path` - `inst-legacy-compute-path`
    2. [x] - `p1` - **IF** file/directory exists at computed path: register silently in `core.toml` - `inst-legacy-register-existing`
    3. [x] - `p1` - **ELSE** (truly new resource not on disk): prompt user for destination path, copy from source, register - `inst-legacy-prompt-new`
 4. [x] - `p1` - Write all resource bindings to `core.toml` under `[kits.{slug}.resources]` - `inst-legacy-write-bindings`
@@ -747,7 +747,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 ### Manifest Source Path Mapping
 
-- [ ] `p1` - **ID**: `cpt-studio-algo-kit-manifest-source-mapping`
+- [x] `p1` - **ID**: `cpt-studio-algo-kit-manifest-source-mapping`
 
 **Input**: Kit source directory plus normalized `KitModel`
 
@@ -756,7 +756,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 - `resource_info`: Dict of `{resource_id: {"type": "file"|"directory", "source_base": str}}` — for directory resources, `source_base` is the directory path in source kit (e.g., `"artifacts/ADR"`)
 
 **Steps**:
-1. [ ] - `p1` - Load `KitModel` from canonical manifest, legacy manifest, or layout adapter - `inst-load-manifest`
+1. [x] - `p1` - Load `KitModel` from canonical manifest, legacy manifest, or layout adapter - `inst-load-manifest`
 2. [x] - `p1` - **FOR EACH** resource in manifest: record resource info (type, source_base) - `inst-record-resource-info`
 3. [x] - `p1` - **FOR EACH** file resource: map `resource.source` → `resource.id` directly - `inst-map-file-resources`
 4. [x] - `p1` - **FOR EACH** directory resource: recursively enumerate all files under `source` path, map each file's full relative path (e.g., `artifacts/ADR/template.md`) to the resource id - `inst-expand-directories`

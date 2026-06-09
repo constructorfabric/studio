@@ -1729,13 +1729,12 @@ def cmd_kit_install(argv: List[str]) -> int:
                 "hint": "Provide a path to a valid kit directory",
             })
             return 2
+        # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-load-kit-model
         # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-read-slug-version
         kit_slug = _read_kit_slug(kit_source) or kit_source.name
-        kit_version = (
-            _read_kit_version(kit_source / _KIT_CONF_FILE)
-            if (kit_source / _KIT_CONF_FILE).is_file() else ""
-        )
+        kit_version = _read_kit_source_version(kit_source)
         # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-read-slug-version
+        # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-load-kit-model
     else:
         if source_is_generic_git(args.source):
             resolved_source = _resolve_install_source_git(args.source, args.version)
@@ -2956,12 +2955,13 @@ def update_kit(
     # Read source version
     src_conf = source_dir / _KIT_CONF_FILE
     local_conf_version = _read_kit_version(src_conf) if src_conf.is_file() else ""
+    local_source_version = _read_kit_source_version(source_dir)
     if authority_metadata and authority_metadata.get("resolved_ref"):
         source_version = str(authority_metadata.get("resolved_ref") or "")
     elif authority_metadata and authority_metadata.get("installed_version"):
         source_version = str(authority_metadata.get("installed_version") or "")
     else:
-        source_version = local_conf_version
+        source_version = local_source_version
     # @cpt-end:cpt-studio-algo-kit-update:p1:inst-read-source-version
 
     # @cpt-begin:cpt-studio-algo-kit-update:p1:inst-version-check
@@ -3295,8 +3295,16 @@ def _validate_kit_source_mode(
 # @cpt-algo:cpt-studio-algo-kit-config-helpers:p1
 # @cpt-begin:cpt-studio-algo-kit-config-helpers:p1:inst-read-slug-fn
 def _read_kit_slug(kit_source: Path) -> str:
-    """Read kit slug from source conf.toml. Returns '' if not found."""
+    """Read kit slug from canonical manifest or source conf.toml."""
     # @cpt-begin:cpt-studio-algo-kit-config-helpers:p1:inst-read-slug
+    try:
+        from ..utils.kit_model import load_canonical_kit_model
+        canonical_model = load_canonical_kit_model(kit_source)
+        if canonical_model is not None and canonical_model.slug:
+            return canonical_model.slug
+    except ValueError as exc:
+        sys.stderr.write(f"kit: warning: cannot read canonical kit metadata from {kit_source}: {exc}\n")
+
     conf_toml = kit_source / "conf.toml"
     if not conf_toml.is_file():
         return ""
@@ -3311,6 +3319,20 @@ def _read_kit_slug(kit_source: Path) -> str:
     return ""
     # @cpt-end:cpt-studio-algo-kit-config-helpers:p1:inst-read-slug
 # @cpt-end:cpt-studio-algo-kit-config-helpers:p1:inst-read-slug-fn
+
+
+def _read_kit_source_version(kit_source: Path) -> str:
+    """Read kit version from canonical manifest or source conf.toml."""
+    try:
+        from ..utils.kit_model import load_canonical_kit_model
+        canonical_model = load_canonical_kit_model(kit_source)
+        if canonical_model is not None and canonical_model.version:
+            return canonical_model.version
+    except ValueError as exc:
+        sys.stderr.write(f"kit: warning: cannot read canonical kit metadata from {kit_source}: {exc}\n")
+
+    conf_toml = kit_source / _KIT_CONF_FILE
+    return _read_kit_version(conf_toml) if conf_toml.is_file() else ""
 
 # @cpt-begin:cpt-studio-algo-kit-config-helpers:p1:inst-read-version-core-fn
 def _read_kit_version_from_core(config_dir: Path, kit_slug: str) -> str:

@@ -83,6 +83,30 @@ def _make_manifest_kit_source(td: Path, slug: str = "testkit") -> Path:
     return kit_src
 
 
+def _make_canonical_kit_source(td: Path, slug: str = "canonicalkit") -> Path:
+    kit_src = td / slug
+    kit_src.mkdir(parents=True, exist_ok=True)
+    (kit_src / "SKILL.md").write_text("# Canonical kit\n", encoding="utf-8")
+    (kit_src / ".cf-studio-kit.toml").write_text(
+        "\n".join([
+            "[kit]",
+            f'slug = "{slug}"',
+            f'name = "{slug}"',
+            'version = "1.2.3"',
+            "",
+            "[[resources]]",
+            'id = "skill"',
+            'kind = "skill"',
+            'source = "SKILL.md"',
+            'install_path = "SKILL.md"',
+            'type = "file"',
+            "public = true",
+        ]) + "\n",
+        encoding="utf-8",
+    )
+    return kit_src
+
+
 class TestCmdKitDispatcher(unittest.TestCase):
     """Kit CLI dispatcher: handles subcommands and errors."""
 
@@ -209,6 +233,76 @@ class TestKitSourceModeValidation(unittest.TestCase):
         self.assertEqual(out["status"], "FAIL")
         self.assertIn("--version", out["message"])
         self.assertIn("--path", out["message"])
+
+
+class TestCanonicalKitMetadata(unittest.TestCase):
+    """Canonical manifests provide kit metadata without conf.toml."""
+
+    def setUp(self):
+        from studio.utils.ui import set_json_mode
+        set_json_mode(True)
+
+    def tearDown(self):
+        from studio.utils.ui import set_json_mode
+        set_json_mode(False)
+
+    def test_read_kit_slug_prefers_canonical_manifest(self):
+        from studio.commands.kit import _read_kit_slug
+
+        with TemporaryDirectory() as td:
+            kit_src = _make_canonical_kit_source(Path(td), "canon-slug")
+            self.assertFalse((kit_src / "conf.toml").exists())
+            self.assertEqual(_read_kit_slug(kit_src), "canon-slug")
+
+    def test_install_dry_run_uses_canonical_slug_without_conf(self):
+        from studio.commands.kit import cmd_kit_install
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            _bootstrap_project(root)
+            kit_src = _make_canonical_kit_source(Path(td), "canon-install")
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = cmd_kit_install(["--path", str(kit_src), "--dry-run"])
+                self.assertEqual(rc, 0)
+                out = json.loads(buf.getvalue())
+                self.assertEqual(out["status"], "DRY_RUN")
+                self.assertEqual(out["kit"], "canon-install")
+            finally:
+                os.chdir(cwd)
+
+    def test_install_uses_canonical_manifest_resources_and_version(self):
+        from studio.commands.kit import cmd_kit_install
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            kit_src = _make_canonical_kit_source(Path(td), "canon-install")
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = cmd_kit_install(["--path", str(kit_src)])
+                self.assertEqual(rc, 0)
+                out = json.loads(buf.getvalue())
+                self.assertEqual(out["status"], "PASS")
+                self.assertEqual(out["kit"], "canon-install")
+                self.assertEqual(out["version"], "1.2.3")
+
+                installed_skill = adapter / "config" / "kits" / "canon-install" / "SKILL.md"
+                self.assertEqual(installed_skill.read_text(encoding="utf-8"), "# Canonical kit\n")
+
+                with open(adapter / "config" / "core.toml", "rb") as f:
+                    core = tomllib.load(f)
+                kit_entry = core["kits"]["canon-install"]
+                self.assertEqual(kit_entry["version"], "1.2.3")
+                self.assertEqual(kit_entry["resources"]["skill"]["path"], "config/kits/canon-install/SKILL.md")
+            finally:
+                os.chdir(cwd)
 
     def test_update_path_rejects_version_selector(self):
         from studio.commands.kit import cmd_kit_update
