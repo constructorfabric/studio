@@ -242,6 +242,98 @@ class TestKitNormalize(unittest.TestCase):
             (kit_src / "artifacts" / "FEATURE" / "second.md").write_text("new\n", encoding="utf-8")
             self.assertNotEqual(load_kit_model(kit_src, "layout").resource_hashes["artifacts"], artifacts_hash)
 
+    def test_kit_model_public_components_use_generated_names_and_targets(self):
+        from studio.utils.kit_model import load_kit_model
+
+        with TemporaryDirectory() as td:
+            kit_src = _make_canonical_kit_source(Path(td), "pubkit")
+            model = load_kit_model(kit_src)
+
+            self.assertEqual([component.id for component in model.public_components], ["skill"])
+            component = model.public_components[0]
+            self.assertEqual(component.generated_name, "cf-pubkit-skill")
+            self.assertEqual(component.generated_targets, ["installed"])
+            self.assertEqual(model.resources[0].id, "skill")
+
+    def test_kit_model_preserves_prefixed_public_name(self):
+        from studio.utils.kit_model import load_kit_model
+
+        with TemporaryDirectory() as td:
+            kit_src = _make_canonical_kit_source(Path(td), "pubkit")
+            manifest = kit_src / ".cf-studio-kit.toml"
+            manifest.write_text(
+                manifest.read_text(encoding="utf-8").replace('id = "skill"', 'id = "cf-pubkit-skill"'),
+                encoding="utf-8",
+            )
+            component = load_kit_model(kit_src).public_components[0]
+            self.assertEqual(component.id, "cf-pubkit-skill")
+            self.assertEqual(component.generated_name, "cf-pubkit-skill")
+
+    def test_kit_model_canonical_workflow_kind_warns_and_normalizes_to_skill(self):
+        from studio.utils.kit_model import load_kit_model
+
+        with TemporaryDirectory() as td:
+            kit_src = _make_canonical_kit_source(Path(td), "workflowkit")
+            manifest = kit_src / ".cf-studio-kit.toml"
+            manifest.write_text(
+                manifest.read_text(encoding="utf-8").replace('kind = "skill"', 'kind = "workflow"'),
+                encoding="utf-8",
+            )
+            model = load_kit_model(kit_src)
+            self.assertEqual(model.resources[0].kind, "skill")
+            self.assertEqual(model.resources[0].origin, "")
+            self.assertIn("normalized to 'skill'", "\n".join(model.warnings))
+
+    def test_kit_model_legacy_v2_workflow_becomes_public_skill(self):
+        from studio.utils.kit_model import load_kit_model
+
+        with TemporaryDirectory() as td:
+            kit_src = Path(td) / "legacyv2"
+            kit_src.mkdir()
+            (kit_src / "release.md").write_text("# Release workflow\n", encoding="utf-8")
+            (kit_src / "manifest.toml").write_text(
+                "\n".join([
+                    "[manifest]",
+                    'version = "2.0"',
+                    "",
+                    "[[workflows]]",
+                    'id = "release"',
+                    'prompt_file = "release.md"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            model = load_kit_model(kit_src)
+            self.assertEqual(model.resources[0].id, "release")
+            self.assertEqual(model.resources[0].kind, "skill")
+            self.assertEqual(model.resources[0].origin, "legacy-workflow")
+            self.assertEqual(model.public_components[0].generated_name, "cf-legacyv2-release")
+            self.assertIn("Legacy workflow 'release'", "\n".join(model.warnings))
+
+    def test_kit_model_warns_on_unknown_canonical_fields_and_rejects_binding_path(self):
+        from studio.utils.kit_model import load_kit_model
+
+        with TemporaryDirectory() as td:
+            kit_src = _make_canonical_kit_source(Path(td), "warnkit")
+            manifest = kit_src / ".cf-studio-kit.toml"
+            manifest.write_text(
+                manifest.read_text(encoding="utf-8")
+                .replace('version = "1.2.3"', 'version = "1.2.3"\nextra_meta = "ignored"')
+                .replace("public = true", 'public = true\nextra_resource = "ignored"'),
+                encoding="utf-8",
+            )
+            model = load_kit_model(kit_src)
+            warnings = "\n".join(model.warnings)
+            self.assertIn("[kit]: unknown optional field 'extra_meta' ignored", warnings)
+            self.assertIn("[[resources]][0]: unknown optional field 'extra_resource' ignored", warnings)
+
+            manifest.write_text(
+                manifest.read_text(encoding="utf-8") + 'binding_path = "config/kits/warnkit/SKILL.md"\n',
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "binding_path"):
+                load_kit_model(kit_src)
+
 
 class TestKitSourceModeValidation(unittest.TestCase):
     """Local path kit commands reject remote source selectors."""

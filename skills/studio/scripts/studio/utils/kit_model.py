@@ -47,6 +47,19 @@ class KitResource:
 
 
 @dataclass(frozen=True)
+class PublicComponent:
+    """A public skill, agent, or rule exposed by a normalized kit."""
+
+    id: str
+    kind: str
+    source: str
+    generated_name: str
+    generated_targets: List[str] = field(default_factory=list)
+    aliases: List[str] = field(default_factory=list)
+    origin: str = ""
+
+
+@dataclass(frozen=True)
 class KitModel:
     """Normalized kit metadata and resources."""
 
@@ -55,6 +68,7 @@ class KitModel:
     version: str
     manifest_source: str
     resources: List[KitResource] = field(default_factory=list)
+    public_components: List[PublicComponent] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     manifest_semantic_hash: str = ""
     manifest_bytes_hash: str = ""
@@ -96,24 +110,45 @@ def _string_list(value: Any, field_name: str) -> List[str]:
 
 def _normalize_kind(kind: str, *, warnings: List[str], resource_id: str) -> str:
     cleaned = kind.strip().lower()
+    # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-workflow-to-skill
     if cleaned in _LEGACY_KIND_ALIASES:
         warnings.append(
             f"Resource '{resource_id}' uses legacy kind '{cleaned}', normalized to 'skill'",
         )
-        return _LEGACY_KIND_ALIASES[cleaned]
+        cleaned = _LEGACY_KIND_ALIASES[cleaned]
+    # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-workflow-to-skill
+    # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-resource-kinds
     valid = _PUBLIC_KINDS | _SUPPORTING_KINDS
     if cleaned not in valid:
         raise ValueError(
             f"Resource '{resource_id}': invalid kind '{kind}', expected one of {sorted(valid | set(_LEGACY_KIND_ALIASES))}",
         )
-    return cleaned
+    normalized = cleaned
+    # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-resource-kinds
+    return normalized
 
 
 def _normalize_public_name(slug: str, resource_id: str) -> str:
+    # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-prefix-public-names
     prefix = f"cf-{slug}-"
     if resource_id == f"cf-{slug}" or resource_id.startswith(prefix):
-        return resource_id
-    return f"{prefix}{resource_id}"
+        generated_name = resource_id
+    else:
+        generated_name = f"{prefix}{resource_id}"
+    # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-prefix-public-names
+    return generated_name
+
+
+def _warn_unknown_keys(
+    data: Dict[str, Any],
+    allowed: set[str],
+    context: str,
+    warnings: List[str],
+) -> None:
+    # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-warnings
+    for key in sorted(set(data) - allowed):
+        warnings.append(f"{context}: unknown optional field '{key}' ignored")
+    # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-warnings
 
 
 def _validate_relative_source(kit_source: Path, resource: KitResource) -> None:
@@ -189,7 +224,8 @@ def _resource_content_hash(kit_source: Path, resource: KitResource) -> str:
 
 
 def _semantic_resource_data(resource: KitResource) -> Dict[str, Any]:
-    return {
+    # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-resource-id-vs-generated-name
+    data = {
         "id": resource.id,
         "kind": resource.kind,
         "source": resource.source,
@@ -203,6 +239,24 @@ def _semantic_resource_data(resource: KitResource) -> Dict[str, Any]:
         "origin": resource.origin,
         "generated_name": resource.generated_name,
     }
+    # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-resource-id-vs-generated-name
+    return data
+
+
+def _public_components(resources: List[KitResource]) -> List[PublicComponent]:
+    return [
+        PublicComponent(
+            id=resource.id,
+            kind=resource.kind,
+            source=resource.source,
+            generated_name=resource.generated_name,
+            generated_targets=resource.generated_targets or ["installed"],
+            aliases=resource.aliases,
+            origin=resource.origin,
+        )
+        for resource in resources
+        if resource.public and resource.kind in _PUBLIC_KINDS
+    ]
 
 
 def _with_hashes(kit_source: Path, model: KitModel) -> KitModel:
@@ -248,6 +302,7 @@ def _with_hashes(kit_source: Path, model: KitModel) -> KitModel:
         version=model.version,
         manifest_source=model.manifest_source,
         resources=resources,
+        public_components=_public_components(resources),
         warnings=model.warnings,
         manifest_semantic_hash=_sha256_bytes(
             json.dumps(semantic_data, sort_keys=True, separators=(",", ":")).encode("utf-8"),
@@ -277,6 +332,12 @@ def load_canonical_kit_model(kit_source: Path) -> Optional[KitModel]:
     meta = data.get("kit")
     if not isinstance(meta, dict):
         raise ValueError(f"{_CANONICAL_MANIFEST}: missing [kit] metadata table")
+    _warn_unknown_keys(
+        meta,
+        {"slug", "name", "version", "description", "source", "targets", "defaults", "compatibility"},
+        "[kit]",
+        warnings,
+    )
     slug = _require_string(meta, "slug", "[kit]")
     name = _optional_string(meta, "name") or slug
     version = _optional_string(meta, "version")
@@ -295,6 +356,22 @@ def load_canonical_kit_model(kit_source: Path) -> Optional[KitModel]:
         if resource_id in seen_ids:
             raise ValueError(f"Duplicate resource id '{resource_id}'")
         seen_ids.add(resource_id)
+        # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-no-binding-path
+        if "binding_path" in raw:
+            raise ValueError(
+                f"Resource '{resource_id}': binding_path is installed state and is not allowed in {_CANONICAL_MANIFEST}",
+            )
+        # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-no-binding-path
+        _warn_unknown_keys(
+            raw,
+            {
+                "id", "kind", "source", "install_path", "type", "public",
+                "description", "user_modifiable", "aliases", "generated_targets",
+                "origin", "agent", "targets", "permissions",
+            },
+            f"[[resources]][{idx}]",
+            warnings,
+        )
         kind = _normalize_kind(
             _require_string(raw, "kind", f"[[resources]][{idx}]"),
             warnings=warnings,
@@ -318,7 +395,9 @@ def load_canonical_kit_model(kit_source: Path) -> Optional[KitModel]:
             description=_optional_string(raw, "description"),
             user_modifiable=bool(raw.get("user_modifiable", True)),
             aliases=_string_list(raw.get("aliases"), "aliases"),
-            generated_targets=_string_list(raw.get("generated_targets"), "generated_targets"),
+            # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-generated-targets
+            generated_targets=_string_list(raw.get("generated_targets"), "generated_targets") or ["installed"],
+            # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-generated-targets
             origin=_optional_string(raw, "origin"),
             generated_name=_normalize_public_name(slug, resource_id) if public else "",
         )
@@ -410,6 +489,7 @@ def _load_legacy_manifest_model(kit_source: Path) -> Optional[KitModel]:
         for workflow in manifest.workflows:
             source = workflow.source or workflow.prompt_file
             if source:
+                # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-workflow-to-skill
                 resources.append(KitResource(
                     id=workflow.id,
                     kind="skill",
@@ -425,6 +505,7 @@ def _load_legacy_manifest_model(kit_source: Path) -> Optional[KitModel]:
                 warnings.append(
                     f"Legacy workflow '{workflow.id}' normalized to public skill resource",
                 )
+                # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-workflow-to-skill
         for skill in manifest.skills:
             source = skill.source or skill.prompt_file
             if source:

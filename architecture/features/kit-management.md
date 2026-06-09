@@ -545,12 +545,12 @@ Enables users to install, update, and validate kit packages with interactive fil
 **Rules**:
 1. [x] - `p1` - Treat `.cf-studio-kit.toml` as the canonical source of truth when present; do not require `conf.toml` and do not read `conf.toml` for fields already declared in the canonical manifest - `inst-kitmodel-canonical-manifest`
 2. [x] - `p1` - Apply source precedence: `.cf-studio-kit.toml` > legacy `manifest.toml` v2/v1 > `conf.toml + layout` > installed `core.toml` resources-only reconstruction - `inst-kitmodel-precedence`
-3. [ ] - `p1` - Normalize legacy `[[workflows]]` entries into public `skill` resources with `origin = "legacy-workflow"`; new author-facing manifests MUST NOT require a `workflow` resource kind - `inst-kitmodel-workflow-to-skill`
-4. [ ] - `p1` - Normalize all public skills and subagents to generated names `cf-{kit-slug}-{name}`; if the name already has that exact prefix, preserve it without double-prefixing - `inst-kitmodel-prefix-public-names`
-5. [ ] - `p1` - Preserve short manifest resource IDs for bindings and variables while exposing generated public names separately for agent-entry-point output - `inst-kitmodel-resource-id-vs-generated-name`
+3. [x] - `p1` - Normalize legacy `[[workflows]]` entries into public `skill` resources with `origin = "legacy-workflow"`; new author-facing manifests MUST NOT require a `workflow` resource kind - `inst-kitmodel-workflow-to-skill`
+4. [x] - `p1` - Normalize all public skills and subagents to generated names `cf-{kit-slug}-{name}`; if the name already has that exact prefix, preserve it without double-prefixing - `inst-kitmodel-prefix-public-names`
+5. [x] - `p1` - Preserve short manifest resource IDs for bindings and variables while exposing generated public names separately for agent-entry-point output - `inst-kitmodel-resource-id-vs-generated-name`
 6. [x] - `p1` - Compute `manifest_semantic_hash`, `manifest_bytes_hash`, per-file resource hashes as `sha256(bytes)`, directory resource hashes, and separate tool-risk fingerprint - `inst-kitmodel-hashes`
 7. [x] - `p1` - Compute directory resource hashes from sorted relative paths plus per-file hashes, excluding VCS directories, cache directories, and configured ignore globs - `inst-kitmodel-directory-hash`
-8. [ ] - `p1` - Return structured warnings for legacy input, workflow normalization, unknown optional fields, unqualified variable conflicts, and risk-confirmation requirements - `inst-kitmodel-warnings`
+8. [x] - `p1` - Return structured warnings for legacy input, workflow normalization, unknown optional fields, unqualified variable conflicts, and risk-confirmation requirements - `inst-kitmodel-warnings`
 9. [ ] - `p1` - Expose a single `KitModel` service boundary used by install, update, info, resolve-vars, validate, and generate-agents; no command may independently scan kit directories except through this service or its legacy adapters - `inst-kitmodel-single-boundary`
 
 ### Canonical `.cf-studio-kit.toml`
@@ -562,15 +562,15 @@ Enables users to install, update, and validate kit packages with interactive fil
 **Output**: Validated canonical manifest model
 
 **Rules**:
-1. [ ] - `p1` - The file is valid at any kit root and may describe any directory structure exclusively by enumerating resources; fixed folders such as `artifacts/`, `workflows/`, or `scripts/` are conventions only, not requirements - `inst-canonical-any-layout`
-2. [ ] - `p1` - Manifest metadata declares at least slug/name/version-compatible display metadata and may declare description, source, targets, defaults, and compatibility fields - `inst-canonical-metadata`
-3. [ ] - `p1` - `[[resources]]` entries require `id`, `kind`, and `source`; optional fields include `install_path`, `type`, `public`, `description`, `user_modifiable`, `aliases`, `generated_targets`, and nested configuration tables - `inst-canonical-resource-shape`
-4. [ ] - `p1` - Public resource kinds are `skill`, `agent`, and `rule`; supporting kinds include `template`, `checklist`, `script`, `directory`, and `other`; `workflow` is accepted only as a legacy alias normalized to `skill` - `inst-canonical-resource-kinds`
+1. [x] - `p1` - The file is valid at any kit root and may describe any directory structure exclusively by enumerating resources; fixed folders such as `artifacts/`, `workflows/`, or `scripts/` are conventions only, not requirements - `inst-canonical-any-layout`
+2. [x] - `p1` - Manifest metadata declares at least slug/name/version-compatible display metadata and may declare description, source, targets, defaults, and compatibility fields - `inst-canonical-metadata`
+3. [x] - `p1` - `[[resources]]` entries require `id`, `kind`, and `source`; optional fields include `install_path`, `type`, `public`, `description`, `user_modifiable`, `aliases`, `generated_targets`, and nested configuration tables - `inst-canonical-resource-shape`
+4. [x] - `p1` - Public resource kinds are `skill`, `agent`, and `rule`; supporting kinds include `template`, `checklist`, `script`, `directory`, and `other`; `workflow` is accepted only as a legacy alias normalized to `skill` - `inst-canonical-resource-kinds`
 5. [ ] - `p1` - Small agent configuration may be inline on the resource; larger configuration may use `[resources.<id>.agent]`, `[resources.<id>.targets.<target>]`, and `[resources.<id>.permissions]` - `inst-canonical-agent-config`
 6. [ ] - `p1` - Agent configuration supports `mode`, `isolation`, `model`, `tools`, `disallowed_tools`, `skills`, `color`, `memory_dir`, `role`, `target`, `provider`, `reasoning_effort`, `context_window`, and nested `subagents` - `inst-canonical-agent-fields`
 7. [ ] - `p1` - Nested `subagents` may declare the same target-specific agent schema as top-level agent resources, including tool permissions, generated targets, prompt/source resources, and model/provider fields - `inst-canonical-subagent-config`
-8. [ ] - `p1` - `generated_targets` defaults to `installed`, accepts an explicit target list or `all`, and controls which agent tools receive public component output - `inst-canonical-generated-targets`
-9. [ ] - `p1` - The manifest MUST NOT expose author-facing `binding_path`; effective paths are installation state recorded in `core.toml` - `inst-canonical-no-binding-path`
+8. [x] - `p1` - `generated_targets` defaults to `installed`, accepts an explicit target list or `all`, and controls which agent tools receive public component output - `inst-canonical-generated-targets`
+9. [x] - `p1` - The manifest MUST NOT expose author-facing `binding_path`; effective paths are installation state recorded in `core.toml` - `inst-canonical-no-binding-path`
 
 ### Local Path Install Mode
 
