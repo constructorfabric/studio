@@ -622,17 +622,17 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 ### Kit Variable Resolution
 
-- [ ] `p1` - **ID**: `cpt-studio-algo-kit-variable-resolution`
+- [x] `p1` - **ID**: `cpt-studio-algo-kit-variable-resolution`
 
 **Input**: Installed kit resource bindings and aliases
 
 **Output**: Deterministic variable map for `cfs resolve-vars`, templates, and generated prompts
 
 **Rules**:
-1. [ ] - `p1` - Always expose canonical `{kit_slug.resource_id}` variables pointing to effective installed or registered resource paths - `inst-vars-qualified`
-2. [ ] - `p1` - Expose unqualified `{resource_id}` variables only when unique across all installed kits; omit conflicts and report warnings - `inst-vars-unqualified-unique`
-3. [ ] - `p1` - Apply explicit aliases using the same uniqueness and warning rules as resource IDs - `inst-vars-aliases`
-4. [ ] - `p1` - Resolve variable values from `core.toml` effective bindings, not from manifest source paths - `inst-vars-effective-bindings`
+1. [x] - `p1` - Always expose canonical `{kit_slug.resource_id}` variables pointing to effective installed or registered resource paths - `inst-vars-qualified`
+2. [x] - `p1` - Expose unqualified `{resource_id}` variables only when unique across all installed kits; omit conflicts and report warnings - `inst-vars-unqualified-unique`
+3. [x] - `p1` - Apply explicit aliases using the same uniqueness and warning rules as resource IDs - `inst-vars-aliases`
+4. [x] - `p1` - Resolve variable values from `core.toml` effective bindings, not from manifest source paths - `inst-vars-effective-bindings`
 
 ### Kit Update, Drift, and Prune
 

@@ -31,15 +31,25 @@ def _merge_with_collision_tracking(
     system_vars: Dict[str, str],
     kit_vars: Dict[str, Dict[str, str]],
 ) -> Tuple[Dict[str, str], List[Dict[str, str]]]:
-    """Merge system and kit variables with first-writer-wins collision tracking.
+    """Merge system and kit variables with qualified names and collision tracking.
 
     Returns (flat_dict, collisions_list).
     """
+    # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-qualified
     flat: Dict[str, str] = dict(system_vars)
-    collisions: List[Dict[str, str]] = []
-    owners: Dict[str, str] = {k: "system" for k in system_vars}
     for slug, kvars in kit_vars.items():
         for var_name, var_path in kvars.items():
+            flat[f"{slug}.{var_name}"] = var_path
+    # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-qualified
+
+    # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-unqualified-unique
+    collisions: List[Dict[str, str]] = []
+    owners: Dict[str, str] = {k: "system" for k in system_vars}
+    omitted: set[str] = set()
+    for slug, kvars in kit_vars.items():
+        for var_name, var_path in kvars.items():
+            if var_name in omitted:
+                continue
             if var_name in flat and flat[var_name] != var_path:
                 collisions.append({
                     "variable": var_name,
@@ -48,9 +58,13 @@ def _merge_with_collision_tracking(
                     "previous_kit": owners[var_name],
                     "previous_path": flat[var_name],
                 })
-                continue  # first-writer-wins; skip collision
+                if owners[var_name] != "system":
+                    flat.pop(var_name, None)
+                omitted.add(var_name)
+                continue
             flat[var_name] = var_path
             owners[var_name] = slug
+    # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-unqualified-unique
     return flat, collisions
 # @cpt-end:cpt-studio-algo-developer-experience-resolve-vars:p1:inst-merge-flat-dict
 
@@ -79,7 +93,17 @@ def _resolve_kit_variables(
             continue
         if not rel_path:
             continue
-        result[identifier] = (adapter_dir / rel_path).resolve().as_posix()
+        # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings
+        resolved_path = (adapter_dir / rel_path).resolve().as_posix()
+        result[identifier] = resolved_path
+        # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings
+        # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-aliases
+        aliases = binding.get("aliases", []) if isinstance(binding, dict) else []
+        if isinstance(aliases, list):
+            for alias in aliases:
+                if isinstance(alias, str) and alias.strip():
+                    result[alias.strip()] = resolved_path
+        # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-aliases
         # @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-resolve-binding
 
     return result
@@ -386,11 +410,17 @@ def cmd_resolve_vars(argv: list[str]) -> int:
         # Rebuild flat with only system + this kit + layer vars (system wins on collision)
         filtered_flat = dict(result["system"])
         for k, v in kit_section.items():
+            filtered_flat[f"{slug}.{k}"] = v
             if k not in filtered_flat:
                 filtered_flat[k] = v
         # Preserve layer variables (base_dir, master_repo, repo) from enriched set —
         # these are in result["variables"] but not in system or any kit's resources.
-        all_kit_var_names = {k for kvars in result["kits"].values() for k in kvars}
+        all_kit_var_names = {
+            name
+            for kit_slug, kvars in result["kits"].items()
+            for key in kvars
+            for name in (key, f"{kit_slug}.{key}")
+        }
         for k, v in result["variables"].items():
             if k not in filtered_flat and k not in all_kit_var_names:
                 filtered_flat[k] = v
