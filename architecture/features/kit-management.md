@@ -543,13 +543,13 @@ Enables users to install, update, and validate kit packages with interactive fil
 **Output**: `KitModel` with canonical metadata, normalized resources, public components, generated names, install mode, provenance, warnings, and legacy compatibility metadata
 
 **Rules**:
-1. [ ] - `p1` - Treat `.cf-studio-kit.toml` as the canonical source of truth when present; do not require `conf.toml` and do not read `conf.toml` for fields already declared in the canonical manifest - `inst-kitmodel-canonical-manifest`
-2. [ ] - `p1` - Apply source precedence: `.cf-studio-kit.toml` > legacy `manifest.toml` v2/v1 > `conf.toml + layout` > installed `core.toml` resources-only reconstruction - `inst-kitmodel-precedence`
+1. [x] - `p1` - Treat `.cf-studio-kit.toml` as the canonical source of truth when present; do not require `conf.toml` and do not read `conf.toml` for fields already declared in the canonical manifest - `inst-kitmodel-canonical-manifest`
+2. [x] - `p1` - Apply source precedence: `.cf-studio-kit.toml` > legacy `manifest.toml` v2/v1 > `conf.toml + layout` > installed `core.toml` resources-only reconstruction - `inst-kitmodel-precedence`
 3. [ ] - `p1` - Normalize legacy `[[workflows]]` entries into public `skill` resources with `origin = "legacy-workflow"`; new author-facing manifests MUST NOT require a `workflow` resource kind - `inst-kitmodel-workflow-to-skill`
 4. [ ] - `p1` - Normalize all public skills and subagents to generated names `cf-{kit-slug}-{name}`; if the name already has that exact prefix, preserve it without double-prefixing - `inst-kitmodel-prefix-public-names`
 5. [ ] - `p1` - Preserve short manifest resource IDs for bindings and variables while exposing generated public names separately for agent-entry-point output - `inst-kitmodel-resource-id-vs-generated-name`
-6. [ ] - `p1` - Compute `manifest_semantic_hash`, `manifest_bytes_hash`, per-file resource hashes as `sha256(bytes)`, directory resource hashes, and separate tool-risk fingerprint - `inst-kitmodel-hashes`
-7. [ ] - `p1` - Compute directory resource hashes from sorted relative paths plus per-file hashes, excluding VCS directories, cache directories, and configured ignore globs - `inst-kitmodel-directory-hash`
+6. [x] - `p1` - Compute `manifest_semantic_hash`, `manifest_bytes_hash`, per-file resource hashes as `sha256(bytes)`, directory resource hashes, and separate tool-risk fingerprint - `inst-kitmodel-hashes`
+7. [x] - `p1` - Compute directory resource hashes from sorted relative paths plus per-file hashes, excluding VCS directories, cache directories, and configured ignore globs - `inst-kitmodel-directory-hash`
 8. [ ] - `p1` - Return structured warnings for legacy input, workflow normalization, unknown optional fields, unqualified variable conflicts, and risk-confirmation requirements - `inst-kitmodel-warnings`
 9. [ ] - `p1` - Expose a single `KitModel` service boundary used by install, update, info, resolve-vars, validate, and generate-agents; no command may independently scan kit directories except through this service or its legacy adapters - `inst-kitmodel-single-boundary`
 

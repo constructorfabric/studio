@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional
@@ -41,6 +43,7 @@ class KitResource:
     generated_targets: List[str] = field(default_factory=list)
     origin: str = ""
     generated_name: str = ""
+    content_hash: str = ""
 
 
 @dataclass(frozen=True)
@@ -53,6 +56,10 @@ class KitModel:
     manifest_source: str
     resources: List[KitResource] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
+    manifest_semantic_hash: str = ""
+    manifest_bytes_hash: str = ""
+    resource_hashes: Dict[str, str] = field(default_factory=dict)
+    tool_risk_fingerprint: str = ""
 # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-datamodel
 
 
@@ -144,6 +151,114 @@ def _validate_install_path(resource: KitResource) -> None:
         )
 
 
+_HASH_EXCLUDED_DIRS = {
+    ".git",
+    ".hg",
+    ".svn",
+    "__pycache__",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+}
+
+
+def _sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _resource_content_hash(kit_source: Path, resource: KitResource) -> str:
+    source_path = kit_source / resource.source
+    if resource.type == "file":
+        return _sha256_bytes(source_path.read_bytes())
+
+    # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-directory-hash
+    entries: List[Dict[str, str]] = []
+    for fpath in sorted(source_path.rglob("*")):
+        rel_parts = fpath.relative_to(source_path).parts
+        if any(part in _HASH_EXCLUDED_DIRS for part in rel_parts):
+            continue
+        if fpath.is_file():
+            entries.append({
+                "path": PurePosixPath(*rel_parts).as_posix(),
+                "sha256": _sha256_bytes(fpath.read_bytes()),
+            })
+    return _sha256_bytes(
+        json.dumps(entries, sort_keys=True, separators=(",", ":")).encode("utf-8"),
+    )
+    # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-directory-hash
+
+
+def _semantic_resource_data(resource: KitResource) -> Dict[str, Any]:
+    return {
+        "id": resource.id,
+        "kind": resource.kind,
+        "source": resource.source,
+        "install_path": resource.install_path,
+        "type": resource.type,
+        "public": resource.public,
+        "description": resource.description,
+        "user_modifiable": resource.user_modifiable,
+        "aliases": resource.aliases,
+        "generated_targets": resource.generated_targets,
+        "origin": resource.origin,
+        "generated_name": resource.generated_name,
+    }
+
+
+def _with_hashes(kit_source: Path, model: KitModel) -> KitModel:
+    # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-hashes
+    resource_hashes = {
+        resource.id: _resource_content_hash(kit_source, resource)
+        for resource in model.resources
+    }
+    resources = [
+        KitResource(
+            id=resource.id,
+            kind=resource.kind,
+            source=resource.source,
+            install_path=resource.install_path,
+            type=resource.type,
+            public=resource.public,
+            description=resource.description,
+            user_modifiable=resource.user_modifiable,
+            aliases=resource.aliases,
+            generated_targets=resource.generated_targets,
+            origin=resource.origin,
+            generated_name=resource.generated_name,
+            content_hash=resource_hashes[resource.id],
+        )
+        for resource in model.resources
+    ]
+    semantic_data = {
+        "slug": model.slug,
+        "name": model.name,
+        "version": model.version,
+        "manifest_source": model.manifest_source,
+        "resources": [_semantic_resource_data(resource) for resource in resources],
+    }
+    manifest_path = kit_source / _CANONICAL_MANIFEST
+    manifest_bytes_hash = (
+        _sha256_bytes(manifest_path.read_bytes())
+        if manifest_path.is_file()
+        else _sha256_bytes(json.dumps(semantic_data, sort_keys=True).encode("utf-8"))
+    )
+    return KitModel(
+        slug=model.slug,
+        name=model.name,
+        version=model.version,
+        manifest_source=model.manifest_source,
+        resources=resources,
+        warnings=model.warnings,
+        manifest_semantic_hash=_sha256_bytes(
+            json.dumps(semantic_data, sort_keys=True, separators=(",", ":")).encode("utf-8"),
+        ),
+        manifest_bytes_hash=manifest_bytes_hash,
+        resource_hashes=resource_hashes,
+        tool_risk_fingerprint=_sha256_bytes(b"{}"),
+    )
+    # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-hashes
+
+
 # @cpt-algo:cpt-studio-algo-kit-canonical-manifest:p1
 def load_canonical_kit_model(kit_source: Path) -> Optional[KitModel]:
     """Load ``.cf-studio-kit.toml`` from *kit_source* when present."""
@@ -212,13 +327,16 @@ def load_canonical_kit_model(kit_source: Path) -> Optional[KitModel]:
         resources.append(resource)
     # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-resource-shape
 
-    return KitModel(
-        slug=slug,
-        name=name,
-        version=version,
-        manifest_source="canonical",
-        resources=resources,
-        warnings=warnings,
+    return _with_hashes(
+        kit_source,
+        KitModel(
+            slug=slug,
+            name=name,
+            version=version,
+            manifest_source="canonical",
+            resources=resources,
+            warnings=warnings,
+        ),
     )
 
 
@@ -327,13 +445,16 @@ def _load_legacy_manifest_model(kit_source: Path) -> Optional[KitModel]:
     for resource in resources:
         _validate_relative_source(kit_source, resource)
         _validate_install_path(resource)
-    return KitModel(
-        slug=slug,
-        name=slug,
-        version=version,
-        manifest_source="legacy_manifest",
-        resources=resources,
-        warnings=warnings,
+    return _with_hashes(
+        kit_source,
+        KitModel(
+            slug=slug,
+            name=slug,
+            version=version,
+            manifest_source="legacy_manifest",
+            resources=resources,
+            warnings=warnings,
+        ),
     )
 
 
@@ -372,13 +493,16 @@ def _load_layout_model(kit_source: Path) -> KitModel:
             ))
     if not resources:
         raise ValueError(f"No kit resources found under {kit_source}")
-    return KitModel(
-        slug=slug,
-        name=slug,
-        version=conf_version,
-        manifest_source="legacy_layout",
-        resources=resources,
-        warnings=["legacy layout normalized to canonical KitModel"],
+    return _with_hashes(
+        kit_source,
+        KitModel(
+            slug=slug,
+            name=slug,
+            version=conf_version,
+            manifest_source="legacy_layout",
+            resources=resources,
+            warnings=["legacy layout normalized to canonical KitModel"],
+        ),
     )
 
 

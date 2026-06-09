@@ -210,6 +210,38 @@ class TestKitNormalize(unittest.TestCase):
             self.assertEqual(out["status"], "PASS")
             self.assertEqual(out["kit"], "routekit")
 
+    def test_kit_model_computes_resource_and_manifest_hashes(self):
+        from studio.utils.kit_model import load_kit_model
+
+        with TemporaryDirectory() as td:
+            kit_src = _make_canonical_kit_source(Path(td), "hashkit")
+            model = load_kit_model(kit_src)
+            self.assertRegex(model.manifest_semantic_hash, r"^[0-9a-f]{64}$")
+            self.assertRegex(model.manifest_bytes_hash, r"^[0-9a-f]{64}$")
+            self.assertRegex(model.tool_risk_fingerprint, r"^[0-9a-f]{64}$")
+            self.assertEqual(model.resources[0].content_hash, model.resource_hashes["skill"])
+
+            first_hash = model.resource_hashes["skill"]
+            (kit_src / "SKILL.md").write_text("# Changed\n", encoding="utf-8")
+            changed = load_kit_model(kit_src)
+            self.assertNotEqual(changed.resource_hashes["skill"], first_hash)
+
+    def test_kit_model_directory_hash_ignores_cache_dirs(self):
+        from studio.utils.kit_model import load_kit_model
+
+        with TemporaryDirectory() as td:
+            kit_src = _make_kit_source(Path(td), "dirhash")
+            model = load_kit_model(kit_src, "layout")
+            artifacts_hash = model.resource_hashes["artifacts"]
+
+            cache_dir = kit_src / "artifacts" / "__pycache__"
+            cache_dir.mkdir()
+            (cache_dir / "ignored.pyc").write_bytes(b"ignored")
+            self.assertEqual(load_kit_model(kit_src, "layout").resource_hashes["artifacts"], artifacts_hash)
+
+            (kit_src / "artifacts" / "FEATURE" / "second.md").write_text("new\n", encoding="utf-8")
+            self.assertNotEqual(load_kit_model(kit_src, "layout").resource_hashes["artifacts"], artifacts_hash)
+
 
 class TestKitSourceModeValidation(unittest.TestCase):
     """Local path kit commands reject remote source selectors."""
