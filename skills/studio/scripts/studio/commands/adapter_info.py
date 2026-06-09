@@ -221,9 +221,14 @@ def _kit_model_to_info(adapter_dir: Path, kit_root: Path, core_kit: dict) -> tup
     # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitmodel-source
 
     # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitmodels-shape
+    drift = _kit_model_drift(adapter_dir, model, core_kit, resource_bindings)
+    # @cpt-begin:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-disable-missing-public
+    disabled_public_components = set(drift.get("disabled_public_components", []))
+    # @cpt-end:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-disable-missing-public
     active_targets = sorted({
         target
         for component in model.public_components
+        if component.id not in disabled_public_components
         for target in component.generated_targets
     })
     model_info = {
@@ -247,6 +252,7 @@ def _kit_model_to_info(adapter_dir: Path, kit_root: Path, core_kit: dict) -> tup
                 "generated_targets": component.generated_targets,
                 "aliases": component.aliases,
                 "origin": component.origin,
+                "disabled": component.id in disabled_public_components,
             }
             for component in model.public_components
         ],
@@ -269,7 +275,7 @@ def _kit_model_to_info(adapter_dir: Path, kit_root: Path, core_kit: dict) -> tup
             "manifest_source": model.manifest_source,
         },
         "warnings": model.warnings,
-        "drift": _kit_model_drift(adapter_dir, model, core_kit, resource_bindings),
+        "drift": drift,
     }
     # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitmodels-shape
 

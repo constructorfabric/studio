@@ -231,6 +231,7 @@ class TestAdapterInfoCommand(unittest.TestCase):
 
             output = json.loads(stdout_capture.getvalue())
             self.assertEqual(exit_code, 0)
+            kit_model = output["kit_models"]["sdlc"]
             drift = output["kit_models"]["sdlc"]["drift"]
             self.assertEqual(drift["status"], "drifted")
             self.assertEqual(drift["install_mode"], "copy")
@@ -238,6 +239,8 @@ class TestAdapterInfoCommand(unittest.TestCase):
             self.assertEqual(drift["missing_resources"], ["skill"])
             self.assertEqual(drift["stale_resources"], ["old"])
             self.assertEqual(drift["disabled_public_components"], ["skill"])
+            self.assertEqual(kit_model["active_targets"], [])
+            self.assertTrue(kit_model["public_components"][0]["disabled"])
             self.assertTrue(drift["manifest_semantic_hash"]["drifted"])
             self.assertTrue(drift["manifest_bytes_hash"]["drifted"])
             self.assertTrue(drift["resource_hashes"]["drifted"])
