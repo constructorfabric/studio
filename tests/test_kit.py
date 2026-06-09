@@ -389,6 +389,18 @@ class TestKitSourceModeValidation(unittest.TestCase):
         self.assertIn("--version", out["message"])
         self.assertIn("--path", out["message"])
 
+    def test_install_mode_is_local_path_only(self):
+        from studio.commands.kit import cmd_kit_install
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = cmd_kit_install(["owner/repo", "--install-mode", "register"])
+        self.assertEqual(rc, 2)
+        out = json.loads(buf.getvalue())
+        self.assertEqual(out["status"], "FAIL")
+        self.assertIn("--install-mode", out["message"])
+        self.assertIn("--path", out["message"])
+
 
 class TestCanonicalKitMetadata(unittest.TestCase):
     """Canonical manifests provide kit metadata without conf.toml."""
@@ -441,7 +453,7 @@ class TestCanonicalKitMetadata(unittest.TestCase):
                 os.chdir(str(root))
                 buf = io.StringIO()
                 with redirect_stdout(buf):
-                    rc = cmd_kit_install(["--path", str(kit_src)])
+                    rc = cmd_kit_install(["--path", str(kit_src), "--install-mode", "copy"])
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
                 self.assertEqual(out["status"], "PASS")
@@ -456,6 +468,26 @@ class TestCanonicalKitMetadata(unittest.TestCase):
                 kit_entry = core["kits"]["canon-install"]
                 self.assertEqual(kit_entry["version"], "1.2.3")
                 self.assertEqual(kit_entry["resources"]["skill"]["path"], "config/kits/canon-install/SKILL.md")
+            finally:
+                os.chdir(cwd)
+
+    def test_install_canonical_manifest_noninteractive_requires_install_mode(self):
+        from studio.commands.kit import cmd_kit_install
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            _bootstrap_project(root)
+            kit_src = _make_canonical_kit_source(Path(td), "canon-install")
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = cmd_kit_install(["--path", str(kit_src)])
+                self.assertEqual(rc, 2)
+                out = json.loads(buf.getvalue())
+                self.assertEqual(out["status"], "FAIL")
+                self.assertIn("--install-mode", out["message"])
             finally:
                 os.chdir(cwd)
 
@@ -1290,7 +1322,7 @@ class TestCmdKitInstall(unittest.TestCase):
                 # Remove .git so no project root is found
                 buf = io.StringIO()
                 with redirect_stdout(buf):
-                    rc = cmd_kit_install(["--path", str(kit_src)])
+                    rc = cmd_kit_install(["--path", str(kit_src), "--install-mode", "copy"])
                 self.assertEqual(rc, 1)
             finally:
                 os.chdir(cwd)
@@ -1308,7 +1340,7 @@ class TestCmdKitInstall(unittest.TestCase):
                 os.chdir(str(root))
                 buf = io.StringIO()
                 with redirect_stdout(buf):
-                    rc = cmd_kit_install(["--path", str(kit_src)])
+                    rc = cmd_kit_install(["--path", str(kit_src), "--install-mode", "copy"])
                 self.assertEqual(rc, 1)
             finally:
                 os.chdir(cwd)
@@ -1325,7 +1357,7 @@ class TestCmdKitInstall(unittest.TestCase):
                 os.chdir(str(root))
                 buf = io.StringIO()
                 with redirect_stdout(buf):
-                    rc = cmd_kit_install(["--path", str(kit_src)])
+                    rc = cmd_kit_install(["--path", str(kit_src), "--install-mode", "copy"])
                 self.assertEqual(rc, 2)
                 out = json.loads(buf.getvalue())
                 self.assertIn("already installed", out["message"])
@@ -1357,7 +1389,7 @@ class TestCmdKitInstall(unittest.TestCase):
                 os.chdir(str(root))
                 buf = io.StringIO()
                 with redirect_stdout(buf):
-                    rc = cmd_kit_install(["--path", str(kit_src)])
+                    rc = cmd_kit_install(["--path", str(kit_src), "--install-mode", "copy"])
                 self.assertEqual(rc, 2)
                 out = json.loads(buf.getvalue())
                 self.assertIn("already installed", out["message"])
@@ -1396,7 +1428,7 @@ class TestCmdKitInstall(unittest.TestCase):
                 os.chdir(str(root))
                 buf = io.StringIO()
                 with redirect_stdout(buf):
-                    rc = cmd_kit_install(["--path", str(kit_src)])
+                    rc = cmd_kit_install(["--path", str(kit_src), "--install-mode", "copy"])
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
                 self.assertEqual(out["status"], "PASS")
@@ -1416,7 +1448,7 @@ class TestCmdKitInstall(unittest.TestCase):
                 os.chdir(str(root))
                 buf = io.StringIO()
                 with redirect_stdout(buf):
-                    rc = cmd_kit_install(["--path", str(kit_src), "--force"])
+                    rc = cmd_kit_install(["--path", str(kit_src), "--force", "--install-mode", "copy"])
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
                 self.assertEqual(out["status"], "PASS")
@@ -1450,7 +1482,7 @@ class TestCmdKitInstall(unittest.TestCase):
                 os.chdir(str(root))
                 buf = io.StringIO()
                 with redirect_stdout(buf):
-                    rc = cmd_kit_install(["--path", str(kit_src), "--force"])
+                    rc = cmd_kit_install(["--path", str(kit_src), "--force", "--install-mode", "copy"])
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
                 self.assertEqual(out["status"], "PASS")
@@ -1489,7 +1521,7 @@ class TestCmdKitInstall(unittest.TestCase):
                 os.chdir(str(root))
                 buf = io.StringIO()
                 with redirect_stdout(buf):
-                    rc = cmd_kit_install(["--path", str(kit_src), "--force"])
+                    rc = cmd_kit_install(["--path", str(kit_src), "--force", "--install-mode", "copy"])
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
                 self.assertEqual(out["status"], "PASS")
@@ -1594,7 +1626,7 @@ class TestCmdKitInstall(unittest.TestCase):
                 ):
                     with patch.object(kit_module.os.path, "relpath", side_effect=_patched_relpath):
                         with redirect_stdout(buf):
-                            rc = cmd_kit_install(["--path", str(kit_src), "--force"])
+                            rc = cmd_kit_install(["--path", str(kit_src), "--force", "--install-mode", "copy"])
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
                 self.assertEqual(out["status"], "PASS")
@@ -1623,7 +1655,7 @@ class TestCmdKitInstall(unittest.TestCase):
                 os.chdir(str(root))
                 buf = io.StringIO()
                 with redirect_stdout(buf):
-                    rc = cmd_kit_install(["--path", str(kit_src)])
+                    rc = cmd_kit_install(["--path", str(kit_src), "--install-mode", "copy"])
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
                 self.assertEqual(out["kit"], "custom-slug")

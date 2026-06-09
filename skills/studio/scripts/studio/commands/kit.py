@@ -1697,6 +1697,12 @@ def cmd_kit_install(argv: List[str]) -> int:
         "--version", dest="version", default="",
         help="For generic Git sources, resolve this tag, branch, ref, or commit",
     )
+    p.add_argument(
+        "--install-mode",
+        choices=("copy", "register"),
+        default="",
+        help="For local manifest installs, choose copy into Studio storage or register in place",
+    )
     p.add_argument("--force", action="store_true", help="Overwrite existing kit")
     p.add_argument("--dry-run", action="store_true", help="Show what would be done")
     args = p.parse_args(argv)
@@ -1705,6 +1711,15 @@ def cmd_kit_install(argv: List[str]) -> int:
         p.error("Provide a GitHub source (owner/repo) or --path for a local directory")
     if args.source and args.local_path:
         p.error("Cannot use both positional source and --path")
+    # @cpt-begin:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-register-local-only
+    if args.install_mode and not args.local_path:
+        ui.result({
+            "status": "FAIL",
+            "message": "--install-mode is only valid with local --path installs",
+            "hint": "Remote GitHub and generic Git installs always copy managed artifacts",
+        })
+        return 2
+    # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-register-local-only
     if args.local_path:
         conflict = _validate_kit_source_mode(
             local_path=args.local_path,
@@ -1729,6 +1744,15 @@ def cmd_kit_install(argv: List[str]) -> int:
                 "hint": "Provide a path to a valid kit directory",
             })
             return 2
+        # @cpt-begin:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-mode-noninteractive-required
+        if not args.dry_run and not args.install_mode and not sys.stdin.isatty():
+            ui.result({
+                "status": "FAIL",
+                "message": "Non-interactive local installs require --install-mode copy|register",
+                "hint": "Use --install-mode copy to copy resources into Studio storage, or --install-mode register for eligible in-project sources",
+            })
+            return 2
+        # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-mode-noninteractive-required
         # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-load-kit-model
         # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-read-slug-version
         kit_slug = _read_kit_slug(kit_source) or kit_source.name
