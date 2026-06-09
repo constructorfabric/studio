@@ -44,6 +44,162 @@ def _read_kit_conf(conf_path: Path) -> dict:
     except (OSError, ValueError):
         return {}
 
+
+def _resolve_info_kit_root(adapter_dir: Path, slug: str, core_kit: dict) -> Path:
+    registered_path = core_kit.get("path") if isinstance(core_kit, dict) else None
+    if isinstance(registered_path, str) and registered_path.strip():
+        path = Path(registered_path)
+        return path if path.is_absolute() else adapter_dir / path
+    return adapter_dir / "config" / "kits" / slug
+
+
+def _kit_resource_to_info(resource: object, binding: object) -> dict:
+    data = {
+        "id": str(getattr(resource, "id", "")),
+        "kind": str(getattr(resource, "kind", "")),
+        "source": str(getattr(resource, "source", "")),
+        "install_path": str(getattr(resource, "install_path", "")),
+        "type": str(getattr(resource, "type", "")),
+        "public": bool(getattr(resource, "public", False)),
+        "generated_name": str(getattr(resource, "generated_name", "")),
+        "generated_targets": list(getattr(resource, "generated_targets", []) or []),
+        "origin": str(getattr(resource, "origin", "")),
+        "content_hash": str(getattr(resource, "content_hash", "")),
+    }
+    if isinstance(binding, dict) and "path" in binding:
+        data["binding_path"] = binding["path"]
+    return data
+
+
+def _kit_model_to_info(kit_root: Path, core_kit: dict) -> tuple[dict, dict]:
+    """Return canonical kit model info plus legacy kit_details compatibility."""
+    # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitmodel-source
+    from ..utils.kit_model import load_kit_model
+
+    resources = core_kit.get("resources") if isinstance(core_kit, dict) else {}
+    resource_bindings = resources if isinstance(resources, dict) else {}
+    model = load_kit_model(kit_root)
+    # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitmodel-source
+
+    # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitmodels-shape
+    active_targets = sorted({
+        target
+        for component in model.public_components
+        for target in component.generated_targets
+    })
+    model_info = {
+        "slug": model.slug,
+        "name": model.name,
+        "version": core_kit.get("version", model.version) if isinstance(core_kit, dict) else model.version,
+        "source_root": kit_root.as_posix(),
+        "manifest_source": model.manifest_source,
+        "install_mode": str(core_kit.get("install_mode", "copy")) if isinstance(core_kit, dict) else "copy",
+        "resource_count": len(model.resources),
+        "resources": {
+            resource.id: _kit_resource_to_info(resource, resource_bindings.get(resource.id))
+            for resource in model.resources
+        },
+        "public_components": [
+            {
+                "id": component.id,
+                "kind": component.kind,
+                "source": component.source,
+                "generated_name": component.generated_name,
+                "generated_targets": component.generated_targets,
+                "aliases": component.aliases,
+                "origin": component.origin,
+            }
+            for component in model.public_components
+        ],
+        "active_targets": active_targets,
+        "risk": {
+            "tool_fingerprint": model.tool_risk_fingerprint,
+        },
+        "provenance": {
+            "source": core_kit.get("source", "") if isinstance(core_kit, dict) else "",
+            "registered_path": core_kit.get("path", "") if isinstance(core_kit, dict) else "",
+        },
+        "content_identity": {
+            "manifest_semantic_hash": model.manifest_semantic_hash,
+            "manifest_bytes_hash": model.manifest_bytes_hash,
+            "resource_hashes": model.resource_hashes,
+            "tool_risk_fingerprint": model.tool_risk_fingerprint,
+        },
+        "legacy_compatibility": {
+            "kit_details": True,
+            "manifest_source": model.manifest_source,
+        },
+        "warnings": model.warnings,
+        "drift": {"status": "unknown"},
+    }
+    # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitmodels-shape
+
+    # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitdetails-derived
+    kit_detail = {
+        "slug": model.slug,
+        "name": model.name,
+        "version": model_info["version"],
+    }
+    content_dirs = sorted({
+        resource.source.split("/", 1)[0]
+        for resource in model.resources
+        if "/" in resource.source
+        and resource.source.split("/", 1)[0] in ("artifacts", "codebase", "scripts", "workflows")
+    })
+    if content_dirs:
+        kit_detail["content_dirs"] = content_dirs
+    artifact_kinds = sorted({
+        parts[1]
+        for resource in model.resources
+        for parts in [resource.source.split("/")]
+        if len(parts) >= 2 and parts[0] == "artifacts"
+    })
+    if artifact_kinds:
+        kit_detail["artifact_kinds"] = artifact_kinds
+    workflows = sorted({
+        Path(component.source).stem
+        for component in model.public_components
+        if component.origin == "legacy-workflow"
+    })
+    # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-workflows-deprecated
+    if workflows:
+        kit_detail["workflows"] = workflows
+        kit_detail["workflows_deprecated"] = True
+    # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-workflows-deprecated
+    if resource_bindings:
+        kit_detail["resources"] = resource_bindings
+    # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitdetails-derived
+
+    return model_info, kit_detail
+
+
+def _legacy_kit_detail(slug: str, kit_root: Path, core_kit: dict) -> dict:
+    kd: dict = {"slug": slug}
+    if "version" in core_kit:
+        kd["version"] = core_kit["version"]
+    kit_conf = kit_root / "conf.toml"
+    if kit_conf.is_file():
+        conf_info = _read_kit_conf(kit_conf)
+        if "name" in conf_info:
+            kd["name"] = conf_info["name"]
+        if "slug" in conf_info and "slug" not in kd:
+            kd["slug"] = conf_info["slug"]
+    content_dirs = sorted(
+        d.name for d in kit_root.iterdir()
+        if d.is_dir() and d.name in ("artifacts", "codebase", "scripts", "workflows")
+    ) if kit_root.is_dir() else []
+    if content_dirs:
+        kd["content_dirs"] = content_dirs
+    art_dir = kit_root / "artifacts"
+    if art_dir.is_dir():
+        kd["artifact_kinds"] = sorted(d.name for d in art_dir.iterdir() if d.is_dir())
+    wf_dir = kit_root / "workflows"
+    if wf_dir.is_dir():
+        kd["workflows"] = sorted(f.stem for f in wf_dir.glob("*.md"))
+    if isinstance(core_kit.get("resources"), dict):
+        kd["resources"] = core_kit["resources"]
+    return kd
+
 def cmd_adapter_info(argv: list[str]) -> int:
     """Discover and display Constructor Studio project configuration."""
     # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-parse-args
@@ -271,51 +427,37 @@ def cmd_adapter_info(argv: list[str]) -> int:
     if core_data and isinstance(core_data.get("version"), str):
         config["config_version"] = core_data["version"]
 
-    # Kit details: versions, content, drift
+    # Kit details: canonical model output plus legacy compatibility.
+    # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitmodel-source
+    kit_models = {}
+    # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitdetails-derived
     kit_details = {}
     config_kits_dir = adapter_dir / "config" / "kits"
+    kit_entries: dict = {}
+    if core_data and isinstance(core_data.get("kits"), dict):
+        kit_entries.update({
+            str(slug): entry if isinstance(entry, dict) else {}
+            for slug, entry in core_data["kits"].items()
+        })
     if config_kits_dir.is_dir():
         for kit_dir in sorted(config_kits_dir.iterdir()):
-            if not kit_dir.is_dir():
-                continue
-            slug = kit_dir.name
-            kd: dict = {"slug": slug}
-            # Resolve core.toml entry for this kit once
-            core_kit: dict = {}
-            if core_data and isinstance(core_data.get("kits"), dict):
-                _ck = core_data["kits"].get(slug, {})
-                if isinstance(_ck, dict):
-                    core_kit = _ck
-            # Version from core.toml (single source of truth)
-            if "version" in core_kit:
-                kd["version"] = core_kit["version"]
-            # Name/slug from kit's conf.toml in source (fallback)
-            kit_conf = kit_dir / "conf.toml"
-            if kit_conf.is_file():
-                conf_info = _read_kit_conf(kit_conf)
-                if "name" in conf_info:
-                    kd["name"] = conf_info["name"]
-                if "slug" in conf_info and "slug" not in kd:
-                    kd["slug"] = conf_info["slug"]
-            # Content directories present
-            content_dirs = sorted(
-                d.name for d in kit_dir.iterdir()
-                if d.is_dir() and d.name in ("artifacts", "codebase", "scripts", "workflows")
-            )
-            if content_dirs:
-                kd["content_dirs"] = content_dirs
-            # Artifact kinds (from config/kits/{slug}/artifacts/)
-            art_dir = kit_dir / "artifacts"
-            if art_dir.is_dir():
-                kd["artifact_kinds"] = sorted(d.name for d in art_dir.iterdir() if d.is_dir())
-            # Workflows (from config/kits/{slug}/workflows/)
-            wf_dir = kit_dir / "workflows"
-            if wf_dir.is_dir():
-                kd["workflows"] = sorted(f.stem for f in wf_dir.glob("*.md"))
-            # Resources (from core.toml [kits.{slug}.resources])
-            if isinstance(core_kit.get("resources"), dict):
-                kd["resources"] = core_kit["resources"]
-            kit_details[slug] = kd
+            if kit_dir.is_dir():
+                kit_entries.setdefault(kit_dir.name, {})
+
+    for slug in sorted(kit_entries):
+        core_kit = kit_entries[slug]
+        kit_dir = _resolve_info_kit_root(adapter_dir, slug, core_kit)
+        try:
+            model_info, kit_detail = _kit_model_to_info(kit_dir, core_kit)
+            kit_models[slug] = model_info
+            kit_details[slug] = kit_detail
+        except (OSError, ValueError) as exc:
+            kit_details[slug] = _legacy_kit_detail(slug, kit_dir, core_kit)
+            if kit_details[slug]:
+                kit_details[slug]["model_error"] = str(exc)
+    # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitdetails-derived
+    # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitmodel-source
+    config["kit_models"] = kit_models
     config["kit_details"] = kit_details
 
     # Agent integrations — detect via shared _is_agent_installed() which checks

@@ -92,6 +92,76 @@ class TestAdapterInfoCommand(unittest.TestCase):
             self.assertIn("artifacts_registry", output)
             self.assertIsNone(output.get("artifacts_registry_error"))
 
+    def test_adapter_info_outputs_kit_models_and_legacy_details(self):
+        """Info exposes canonical kit_models while preserving kit_details."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir) / "project"
+            project_root.mkdir()
+            (project_root / ".git").mkdir()
+            (project_root / "AGENTS.md").write_text(
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".cypilot-adapter"\n```\n<!-- /@cf:root-agents -->\n',
+                encoding="utf-8",
+            )
+            adapter_dir = project_root / ".cypilot-adapter"
+            config_dir = adapter_dir / "config"
+            kit_dir = config_dir / "kits" / "sdlc"
+            kit_dir.mkdir(parents=True)
+            (config_dir / "AGENTS.md").write_text("# Constructor Studio Adapter: TestProject\n", encoding="utf-8")
+            (kit_dir / "SKILL.md").write_text("# SDLC skill\n", encoding="utf-8")
+            (kit_dir / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    "[kit]",
+                    'slug = "sdlc"',
+                    'name = "SDLC Kit"',
+                    'version = "2.0"',
+                    "",
+                    "[[resources]]",
+                    'id = "skill"',
+                    'kind = "skill"',
+                    'source = "SKILL.md"',
+                    'install_path = "SKILL.md"',
+                    'type = "file"',
+                    "public = true",
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            (config_dir / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    'project_root = ".."',
+                    "",
+                    "[kits.sdlc]",
+                    'format = "CFS"',
+                    'path = "config/kits/sdlc"',
+                    'version = "2.0"',
+                    "",
+                    "[kits.sdlc.resources.skill]",
+                    'path = "config/kits/sdlc/SKILL.md"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            stdout_capture = io.StringIO()
+            with redirect_stdout(stdout_capture):
+                exit_code = main(["info", "--root", str(project_root)])
+
+            output = json.loads(stdout_capture.getvalue())
+            self.assertEqual(exit_code, 0)
+            kit_model = output["kit_models"]["sdlc"]
+            self.assertEqual(kit_model["name"], "SDLC Kit")
+            self.assertEqual(kit_model["manifest_source"], "canonical")
+            self.assertEqual(kit_model["resources"]["skill"]["binding_path"], "config/kits/sdlc/SKILL.md")
+            self.assertEqual(kit_model["public_components"][0]["generated_name"], "cf-sdlc-skill")
+            self.assertEqual(kit_model["active_targets"], ["installed"])
+            self.assertEqual(kit_model["provenance"]["registered_path"], "config/kits/sdlc")
+            self.assertIn("tool_fingerprint", kit_model["risk"])
+            self.assertTrue(kit_model["legacy_compatibility"]["kit_details"])
+            self.assertRegex(kit_model["content_identity"]["manifest_semantic_hash"], r"^[0-9a-f]{64}$")
+
+            kit_detail = output["kit_details"]["sdlc"]
+            self.assertEqual(kit_detail["name"], "SDLC Kit")
+            self.assertEqual(kit_detail["resources"]["skill"]["path"], "config/kits/sdlc/SKILL.md")
+
     def test_adapter_info_expands_autodetect_systems(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             project_root = Path(tmp_dir) / "project"

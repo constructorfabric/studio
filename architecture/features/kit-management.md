@@ -599,10 +599,10 @@ Enables users to install, update, and validate kit packages with interactive fil
 **Output**: `cfs info` JSON with canonical `kit_models` plus temporary compatibility fields
 
 **Rules**:
-1. [ ] - `p1` - Build `cfs info` from normalized `KitModel` data, not from independent ad hoc directory scans - `inst-info-kitmodel-source`
-2. [ ] - `p1` - Add top-level `kit_models[slug]` objects containing metadata, manifest source, install mode, drift, resource counts, resources, public components, generated names, active targets, risk, provenance, content identity, legacy compatibility, and warnings - `inst-info-kitmodels-shape`
-3. [ ] - `p1` - Preserve legacy `kit_details` for one minor compatibility cycle, derived from `kit_models` rather than populated separately - `inst-info-kitdetails-derived`
-4. [ ] - `p1` - Expose legacy `kit_details.workflows` only as derived skills where `origin = "legacy-workflow"` and mark the field deprecated - `inst-info-workflows-deprecated`
+1. [x] - `p1` - Build `cfs info` from normalized `KitModel` data, not from independent ad hoc directory scans - `inst-info-kitmodel-source`
+2. [x] - `p1` - Add top-level `kit_models[slug]` objects containing metadata, manifest source, install mode, drift, resource counts, resources, public components, generated names, active targets, risk, provenance, content identity, legacy compatibility, and warnings - `inst-info-kitmodels-shape`
+3. [x] - `p1` - Preserve legacy `kit_details` for one minor compatibility cycle, derived from `kit_models` rather than populated separately - `inst-info-kitdetails-derived`
+4. [x] - `p1` - Expose legacy `kit_details.workflows` only as derived skills where `origin = "legacy-workflow"` and mark the field deprecated - `inst-info-workflows-deprecated`
 5. [ ] - `p1` - Report copy/register mode, containment status, semantic hash drift, byte hash drift, resource hash drift, stale/missing resources, and disabled public components - `inst-info-drift`
 
 ### Public Component Generation
