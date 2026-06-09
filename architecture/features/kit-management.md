@@ -647,7 +647,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 2. [ ] - `p1` - Missing public resources cannot remain active; mark their generated components disabled until the resource is restored or removed - `inst-update-disable-missing-public`
 3. [ ] - `p1` - Deletion requires an explicit prune mode and a prune fingerprint; never delete register-in-place source files - `inst-update-explicit-prune`
 4. [ ] - `p1` - Prompt per path before deleting `user_modifiable` resources or anything outside the copied kit root - `inst-update-prune-path-prompts`
-5. [ ] - `p1` - For register-in-place updates, re-read the manifest in place, revalidate containment, recompute hashes/risk, and update `core.toml` after showing drift - `inst-update-register-reread`
+5. [x] - `p1` - For register-in-place updates, re-read the manifest in place, revalidate containment, recompute hashes/risk, and update `core.toml` after showing drift - `inst-update-register-reread`
 6. [x] - `p1` - For copy updates, use the existing file-level diff path at effective resource destinations and preserve user-chosen install paths - `inst-update-copy-diff`
 
 ### Tool Permission Risk

@@ -2527,7 +2527,7 @@ def cmd_kit_update(argv: List[str]) -> int:
     resolved = _resolve_studio_dir(project_root_arg)
     if resolved is None:
         return 1
-    _, studio_dir = resolved
+    project_root, studio_dir = resolved
     config_dir = studio_dir / "config"
     # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-resolve-project
 
@@ -2668,6 +2668,7 @@ def cmd_kit_update(argv: List[str]) -> int:
                 source=github_source,
                 authority_metadata=authority_metadata,
                 approved_overwrites=args.approve_overwrite,
+                project_root=project_root,
             )
             # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-legacy-migration
         except Exception as exc:  # pylint: disable=broad-exception-caught  # per-kit safety net — must not crash the update loop
@@ -3310,6 +3311,24 @@ def _sync_manifest_resource_bindings(
 # @cpt-end:cpt-studio-algo-kit-update:p1:inst-sync-manifest-bindings
 
 
+def _project_root_from_core_toml(config_dir: Path, studio_dir: Path) -> Optional[Path]:
+    core_toml = config_dir / _KIT_CORE_TOML
+    if not core_toml.is_file():
+        return None
+    try:
+        with open(core_toml, "rb") as f:
+            data = tomllib.load(f)
+    except (OSError, ValueError):
+        return None
+    raw_root = data.get("project_root")
+    if not isinstance(raw_root, str) or not raw_root.strip():
+        return None
+    root_path = Path(raw_root)
+    if root_path.is_absolute():
+        return root_path.resolve()
+    return (studio_dir / root_path).resolve()
+
+
 # @cpt-dod:cpt-studio-dod-kit-update:p1
 # @cpt-algo:cpt-studio-algo-kit-update:p1
 def update_kit(
@@ -3324,6 +3343,7 @@ def update_kit(
     source: str = "",
     authority_metadata: Optional[Dict[str, Any]] = None,
     approved_overwrites: Optional[List[str]] = None,
+    project_root: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """Full update cycle for a single kit.
 
@@ -3393,6 +3413,95 @@ def update_kit(
         source_version = local_source_version
     # @cpt-end:cpt-studio-algo-kit-update:p1:inst-read-source-version
 
+    from ..utils.manifest import load_manifest as _load_manifest
+    _manifest = _load_manifest(source_dir)
+
+    # @cpt-begin:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-register-reread
+    if (
+        _manifest is not None
+        and isinstance(installed_kit_entry, dict)
+        and installed_kit_entry.get("install_mode") == "register"
+    ):
+        effective_project_root = project_root or _project_root_from_core_toml(config_dir, studio_dir)
+        containment_errors = _validate_register_manifest_containment(
+            effective_project_root,
+            studio_dir,
+            source_dir,
+            kit_slug,
+            _manifest,
+        )
+        if containment_errors:
+            result["version"] = {"status": "failed"}
+            result["gen"] = {"files_written": 0}
+            result["errors"] = containment_errors
+            return result
+
+        try:
+            from ..utils.kit_model import load_kit_model
+            kit_model = load_kit_model(source_dir)
+        except (OSError, ValueError) as exc:
+            result["version"] = {"status": "failed"}
+            result["gen"] = {"files_written": 0}
+            result["errors"] = [str(exc)]
+            return result
+
+        new_identity = _kit_model_content_identity(kit_model)
+        previous_identity = (
+            installed_kit_entry.get("content_identity")
+            if isinstance(installed_kit_entry.get("content_identity"), dict)
+            else {}
+        )
+        previous_version = str(installed_kit_entry.get("version") or "")
+        resource_bindings = _manifest_register_resource_bindings(
+            studio_dir,
+            source_dir,
+            list(_manifest.resources),
+        )
+        local_metadata: Dict[str, str] = {}
+        if local_conf_version:
+            local_metadata["conf_version"] = local_conf_version
+        _register_kit_in_core_toml(
+            config_dir,
+            kit_slug,
+            source_version,
+            studio_dir,
+            source=source or str(installed_kit_entry.get("source") or ""),
+            resources=resource_bindings,
+            kit_path=_serialize_manifest_binding_path(source_dir.resolve(), studio_dir),
+            install_mode="register",
+            source_provenance=_local_path_provenance(source_dir, "register"),
+            content_identity=new_identity,
+            authority_metadata=authority_metadata,
+            local_metadata=local_metadata or None,
+        )
+        identity_changed = new_identity != previous_identity
+        version_changed = bool(source_version and source_version != previous_version)
+        result["version"] = {
+            "status": "updated" if identity_changed or version_changed else "current",
+        }
+        result["gen"] = {"files_written": 0}
+        result["drift"] = {
+            "install_mode": "register",
+            "content_identity_changed": identity_changed,
+            "version_changed": version_changed,
+        }
+        result["resource_bindings"] = {
+            key: value["path"] for key, value in resource_bindings.items()
+        }
+        _meta_entry = _read_kits_from_core_toml(config_dir).get(kit_slug, {})
+        _meta_dir, _meta_rel = _resolve_registered_kit_metadata_target(
+            studio_dir,
+            kit_slug,
+            _meta_entry,
+        )
+        meta = _collect_kit_metadata(_meta_dir, kit_slug, _meta_rel)
+        if meta["skill_nav"]:
+            result["skill_nav"] = meta["skill_nav"]
+        if meta["agents_content"]:
+            result["agents_content"] = meta["agents_content"]
+        return result
+    # @cpt-end:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-register-reread
+
     # @cpt-begin:cpt-studio-algo-kit-update:p1:inst-version-check
     # ── Version check (skip update if same version, unless force) ────────
     if not force and source_version and installed_kit_dir.is_dir():
@@ -3438,8 +3547,6 @@ def update_kit(
 
     # @cpt-begin:cpt-studio-algo-kit-update:p1:inst-legacy-manifest-migration
     # Before file-level diff, check for legacy → manifest migration
-    from ..utils.manifest import load_manifest as _load_manifest
-    _manifest = _load_manifest(source_dir)
     if _manifest is not None and installed_kit_dir.is_dir():
         if not installed_kit_entry.get("resources"):
             _mig_result = migrate_legacy_kit_to_manifest(

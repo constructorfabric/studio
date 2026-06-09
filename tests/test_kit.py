@@ -493,6 +493,68 @@ class TestKitSourceModeValidation(unittest.TestCase):
             finally:
                 os.chdir(cwd)
 
+    def test_update_register_mode_refreshes_hashes_without_copying(self):
+        from studio.commands.kit import cmd_kit_install, update_kit
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            kit_src = _make_canonical_kit_source(root / "local-kits", "regupdate")
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                with redirect_stdout(io.StringIO()):
+                    rc = cmd_kit_install(["--path", str(kit_src), "--install-mode", "register"])
+                self.assertEqual(rc, 0)
+                with open(adapter / "config" / "core.toml", "rb") as f:
+                    before = tomllib.load(f)["kits"]["regupdate"]["content_identity"]["resource_hashes"]["skill"]
+
+                (kit_src / "SKILL.md").write_text("# Registered update\n", encoding="utf-8")
+                result = update_kit(
+                    "regupdate",
+                    kit_src,
+                    adapter,
+                    project_root=root,
+                )
+
+                self.assertEqual(result["version"]["status"], "updated")
+                self.assertEqual(result["gen"]["files_written"], 0)
+                self.assertFalse((adapter / "config" / "kits" / "regupdate" / "SKILL.md").exists())
+                with open(adapter / "config" / "core.toml", "rb") as f:
+                    entry = tomllib.load(f)["kits"]["regupdate"]
+                after = entry["content_identity"]["resource_hashes"]["skill"]
+                self.assertNotEqual(after, before)
+                self.assertEqual(entry["install_mode"], "register")
+                self.assertTrue(entry["resources"]["skill"]["path"].endswith("local-kits/regupdate/SKILL.md"))
+            finally:
+                os.chdir(cwd)
+
+    def test_update_register_mode_revalidates_containment(self):
+        from studio.commands.kit import cmd_kit_install, update_kit
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            kit_src = _make_canonical_kit_source(root / "local-kits", "regcontain")
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                with redirect_stdout(io.StringIO()):
+                    rc = cmd_kit_install(["--path", str(kit_src), "--install-mode", "register"])
+                self.assertEqual(rc, 0)
+
+                result = update_kit(
+                    "regcontain",
+                    kit_src,
+                    adapter,
+                    project_root=Path(td) / "other-project",
+                )
+
+                self.assertEqual(result["version"]["status"], "failed")
+                self.assertIn("project root", " ".join(result["errors"]))
+            finally:
+                os.chdir(cwd)
+
     def test_install_mode_register_rejects_symlink_escape(self):
         from studio.commands.kit import cmd_kit_install
 
