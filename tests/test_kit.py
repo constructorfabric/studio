@@ -173,6 +173,7 @@ class TestKitNormalize(unittest.TestCase):
             self.assertTrue(out["dry_run"])
             self.assertEqual(out["kit"], "manifestkit")
             self.assertEqual(out["report"]["manifest_source"], "legacy_manifest")
+            self.assertRegex(out["report"]["content_identity"]["manifest_semantic_hash"], r"^[0-9a-f]{64}$")
             self.assertIn("[kit]", out["manifest"])
             self.assertIn("[[resources]]", out["manifest"])
             self.assertFalse((kit_src / ".cf-studio-kit.toml").exists())
@@ -196,6 +197,36 @@ class TestKitNormalize(unittest.TestCase):
             resource_ids = {r["id"] for r in data["resources"]}
             self.assertIn("artifacts", resource_ids)
             self.assertIn("skill", resource_ids)
+
+    def test_normalize_report_includes_public_component_preview(self):
+        from studio.commands.kit import cmd_kit_normalize
+
+        with TemporaryDirectory() as td:
+            kit_src = _make_manifest_kit_source(Path(td), "previewkit")
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = cmd_kit_normalize([str(kit_src), "--dry-run"])
+            self.assertEqual(rc, 0)
+            out = json.loads(buf.getvalue())
+            components = out["report"]["public_components"]
+            self.assertTrue(any(c["generated_name"] == "cf-previewkit-skill" for c in components))
+            self.assertIn("resource_hashes", out["report"]["content_identity"])
+
+    def test_generated_manifest_can_reload_generated_name_without_warning(self):
+        from studio.utils.kit_model import load_kit_model
+
+        with TemporaryDirectory() as td:
+            kit_src = _make_manifest_kit_source(Path(td), "reloadkit")
+            model = load_kit_model(kit_src)
+            from studio.utils.kit_model import render_canonical_manifest
+
+            (kit_src / ".cf-studio-kit.toml").write_text(
+                render_canonical_manifest(model),
+                encoding="utf-8",
+            )
+            reloaded = load_kit_model(kit_src)
+            warnings = "\n".join(reloaded.warnings)
+            self.assertNotIn("generated_name", warnings)
 
     def test_dispatcher_routes_normalize(self):
         from studio.commands.kit import cmd_kit

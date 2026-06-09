@@ -673,11 +673,12 @@ Enables users to install, update, and validate kit packages with interactive fil
 **Output**: Generated `.cf-studio-kit.toml` plus migration report
 
 **Steps**:
-1. [ ] - `p1` - `cfs kit normalize <path>` loads the source through the same `KitModel` normalization pipeline used by install/update - `inst-normalize-load-kitmodel`
-2. [ ] - `p1` - Convert legacy `manifest.toml` v1/v2, `conf.toml + layout`, or installed `core.toml` resource bindings into canonical `.cf-studio-kit.toml` without changing source files - `inst-normalize-convert`
-3. [ ] - `p1` - Emit public legacy workflows as `kind = "skill"` resources with `origin = "legacy-workflow"` metadata and generated-name preview - `inst-normalize-workflows-to-skills`
-4. [ ] - `p1` - Preserve resource IDs, user-modifiable path defaults, aliases, generated targets, agent configuration, and source provenance wherever they can be inferred deterministically - `inst-normalize-preserve-fields`
-5. [ ] - `p1` - Report fields that require user choice rather than guessing, including ambiguous resource kinds, conflicting aliases, missing source files, or unsafe paths - `inst-normalize-report-ambiguity`
+1. [x] - `p1` - `cfs kit normalize <path>` loads the source through the same `KitModel` normalization pipeline used by install/update - `inst-normalize-load-kitmodel`
+2. [x] - `p1` - Convert legacy `manifest.toml` v1/v2 or `conf.toml + layout` inputs into canonical `.cf-studio-kit.toml` without changing source files - `inst-normalize-convert`
+2a. [ ] - `p1` - Convert installed `core.toml` resource bindings into canonical `.cf-studio-kit.toml` without changing installed resources - `inst-normalize-core-bindings`
+3. [x] - `p1` - Emit public legacy workflows as `kind = "skill"` resources with `origin = "legacy-workflow"` metadata and generated-name preview - `inst-normalize-workflows-to-skills`
+4. [x] - `p1` - Preserve resource IDs, user-modifiable path defaults, aliases, generated targets, agent configuration, and source provenance wherever they can be inferred deterministically - `inst-normalize-preserve-fields`
+5. [x] - `p1` - Report fields that require user choice rather than guessing, including ambiguous resource kinds, conflicting aliases, missing source files, or unsafe paths - `inst-normalize-report-ambiguity`
 6. [ ] - `p1` - Refuse to write a canonical manifest that would reference sources outside the selected kit root unless the user explicitly chooses a safe local registration root and containment passes - `inst-normalize-containment`
 
 **Rollout Phases**:

@@ -367,7 +367,7 @@ def load_canonical_kit_model(kit_source: Path) -> Optional[KitModel]:
             {
                 "id", "kind", "source", "install_path", "type", "public",
                 "description", "user_modifiable", "aliases", "generated_targets",
-                "origin", "agent", "targets", "permissions",
+                "origin", "generated_name", "agent", "targets", "permissions",
             },
             f"[[resources]][{idx}]",
             warnings,
@@ -490,6 +490,7 @@ def _load_legacy_manifest_model(kit_source: Path) -> Optional[KitModel]:
             source = workflow.source or workflow.prompt_file
             if source:
                 # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-workflow-to-skill
+                # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-workflows-to-skills
                 resources.append(KitResource(
                     id=workflow.id,
                     kind="skill",
@@ -505,6 +506,7 @@ def _load_legacy_manifest_model(kit_source: Path) -> Optional[KitModel]:
                 warnings.append(
                     f"Legacy workflow '{workflow.id}' normalized to public skill resource",
                 )
+                # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-workflows-to-skills
                 # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-workflow-to-skill
         for skill in manifest.skills:
             source = skill.source or skill.prompt_file

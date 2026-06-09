@@ -2432,12 +2432,9 @@ def cmd_kit_normalize(argv: List[str]) -> int:
         })
         return 2
 
-    report = {
-        "manifest_source": model.manifest_source,
-        "resources": len(model.resources),
-        "public_resources": len([r for r in model.resources if r.public]),
-        "warnings": list(model.warnings),
-    }
+    # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-report-ambiguity
+    report = _kit_normalize_report(model)
+    # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-report-ambiguity
 
     # @cpt-begin:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-dry-run
     if args.dry_run:
@@ -2466,6 +2463,37 @@ def cmd_kit_normalize(argv: List[str]) -> int:
     }, human_fn=lambda d: _human_kit_normalize(d))
     return 0
     # @cpt-end:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-write-output
+
+
+def _kit_normalize_report(model: Any) -> Dict[str, Any]:
+    """Build the migration report for normalized kit output."""
+    # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-preserve-fields
+    report = {
+        "manifest_source": model.manifest_source,
+        "resources": len(model.resources),
+        "public_resources": len([r for r in model.resources if r.public]),
+        "public_components": [
+            {
+                "id": component.id,
+                "kind": component.kind,
+                "source": component.source,
+                "generated_name": component.generated_name,
+                "generated_targets": component.generated_targets,
+                "aliases": component.aliases,
+                "origin": component.origin,
+            }
+            for component in model.public_components
+        ],
+        "content_identity": {
+            "manifest_semantic_hash": model.manifest_semantic_hash,
+            "manifest_bytes_hash": model.manifest_bytes_hash,
+            "resource_hashes": model.resource_hashes,
+            "tool_risk_fingerprint": model.tool_risk_fingerprint,
+        },
+        "warnings": list(model.warnings),
+    }
+    # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-preserve-fields
+    return report
 
 
 def _human_kit_normalize(data: dict) -> None:
