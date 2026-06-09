@@ -187,6 +187,42 @@ class TestKitNormalize(unittest.TestCase):
             self.assertEqual(out["kit"], "routekit")
 
 
+class TestKitSourceModeValidation(unittest.TestCase):
+    """Local path kit commands reject remote source selectors."""
+
+    def setUp(self):
+        from studio.utils.ui import set_json_mode
+        set_json_mode(True)
+
+    def tearDown(self):
+        from studio.utils.ui import set_json_mode
+        set_json_mode(False)
+
+    def test_install_path_rejects_version_selector(self):
+        from studio.commands.kit import cmd_kit_install
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = cmd_kit_install(["--path", "/tmp/local-kit", "--version", "v1.2.3"])
+        self.assertEqual(rc, 2)
+        out = json.loads(buf.getvalue())
+        self.assertEqual(out["status"], "FAIL")
+        self.assertIn("--version", out["message"])
+        self.assertIn("--path", out["message"])
+
+    def test_update_path_rejects_version_selector(self):
+        from studio.commands.kit import cmd_kit_update
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = cmd_kit_update(["--path", "/tmp/local-kit", "--version", "v1.2.3"])
+        self.assertEqual(rc, 2)
+        out = json.loads(buf.getvalue())
+        self.assertEqual(out["status"], "FAIL")
+        self.assertIn("--version", out["message"])
+        self.assertIn("--path", out["message"])
+
+
 class TestCmdKitUpdate(unittest.TestCase):
     """CLI kit update command scenarios."""
 

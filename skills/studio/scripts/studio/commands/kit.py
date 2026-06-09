@@ -1705,6 +1705,14 @@ def cmd_kit_install(argv: List[str]) -> int:
         p.error("Provide a GitHub source (owner/repo) or --path for a local directory")
     if args.source and args.local_path:
         p.error("Cannot use both positional source and --path")
+    if args.local_path:
+        conflict = _validate_kit_source_mode(
+            local_path=args.local_path,
+            version=args.version,
+        )
+        if conflict:
+            ui.result(conflict)
+            return 2
     # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-parse-args
 
     # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-validate-source
@@ -2024,9 +2032,11 @@ def _resolve_registered_update_targets(
         ))
 
     if github_map:
+        # @cpt-begin:cpt-studio-algo-kit-source-mode-validation:p1:inst-github-mode-authority
         github_targets, github_failures = _resolve_github_update_targets(github_map)
         targets.extend(github_targets)
         failures.extend(github_failures)
+        # @cpt-end:cpt-studio-algo-kit-source-mode-validation:p1:inst-github-mode-authority
     return targets, failures
 
 
@@ -2104,6 +2114,14 @@ def cmd_kit_update(argv: List[str]) -> int:
     p.add_argument("-y", "--yes", action="store_true",
                    help="Auto-approve all prompts (no interaction)")
     args = p.parse_args(argv)
+    if args.local_path:
+        conflict = _validate_kit_source_mode(
+            local_path=args.local_path,
+            version=args.version,
+        )
+        if conflict:
+            ui.result(conflict)
+            return 2
     # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-parse-args
 
     # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-resolve-project
@@ -3247,6 +3265,31 @@ def _read_kits_from_core_toml(config_dir: Path) -> Dict[str, Dict[str, Any]]:
         return {}
     return {k: v for k, v in kits.items() if isinstance(v, dict)}
 # @cpt-end:cpt-studio-algo-kit-config-helpers:p1:inst-read-kits-core
+
+
+# @cpt-algo:cpt-studio-algo-kit-source-mode-validation:p1
+def _validate_kit_source_mode(
+    *,
+    local_path: Optional[str],
+    version: str = "",
+) -> Optional[Dict[str, str]]:
+    """Return a CLI error when source-mode arguments conflict."""
+    # @cpt-begin:cpt-studio-algo-kit-source-mode-validation:p1:inst-classify-source-mode
+    mode = "local_path" if local_path else "github"
+    # @cpt-end:cpt-studio-algo-kit-source-mode-validation:p1:inst-classify-source-mode
+
+    # @cpt-begin:cpt-studio-algo-kit-source-mode-validation:p1:inst-reject-mode-conflicts
+    if mode == "local_path" and version:
+        return {
+            "status": "FAIL",
+            "message": "--version can only be used with Git or GitHub kit sources, not --path",
+            "hint": "For local --path installs or updates, omit --version; conf.toml version is treated as local metadata only.",
+        }
+    # @cpt-end:cpt-studio-algo-kit-source-mode-validation:p1:inst-reject-mode-conflicts
+
+    # @cpt-begin:cpt-studio-algo-kit-source-mode-validation:p1:inst-local-path-outside-authority
+    return None
+    # @cpt-end:cpt-studio-algo-kit-source-mode-validation:p1:inst-local-path-outside-authority
 
 
 # @cpt-algo:cpt-studio-algo-kit-config-helpers:p1
