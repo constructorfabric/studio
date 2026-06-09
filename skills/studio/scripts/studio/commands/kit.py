@@ -2462,6 +2462,8 @@ def _build_kit_update_result(kit_slug: str, kit_r: Dict[str, Any]) -> Dict[str, 
         result["errors"] = list(kit_r.get("errors", []))
     if kit_r.get("authority"):
         result["authority"] = kit_r["authority"]
+    if kit_r.get("prune_required"):
+        result["prune_required"] = list(kit_r.get("prune_required", []))
     return result
 # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-build-update-result
 
@@ -2510,6 +2512,18 @@ def cmd_kit_update(argv: List[str]) -> int:
         default=[],
         metavar="RESOURCE_OR_PATH",
         help="Approve overwriting one changed user-modifiable manifest resource by id or effective path; repeat per resource",
+    )
+    p.add_argument(
+        "--prune",
+        action="store_true",
+        help="Allow explicit pruning of manifest-bound resources removed upstream",
+    )
+    p.add_argument(
+        "--approve-prune",
+        action="append",
+        default=[],
+        metavar="FINGERPRINT",
+        help="Approve one manifest-bound resource deletion by prune fingerprint; repeat per path",
     )
     args = p.parse_args(argv)
     if args.local_path:
@@ -2668,6 +2682,8 @@ def cmd_kit_update(argv: List[str]) -> int:
                 source=github_source,
                 authority_metadata=authority_metadata,
                 approved_overwrites=args.approve_overwrite,
+                prune_mode=args.prune,
+                approved_prunes=args.approve_prune,
                 project_root=project_root,
             )
             # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-legacy-migration
@@ -3343,6 +3359,8 @@ def update_kit(
     source: str = "",
     authority_metadata: Optional[Dict[str, Any]] = None,
     approved_overwrites: Optional[List[str]] = None,
+    prune_mode: bool = False,
+    approved_prunes: Optional[List[str]] = None,
     project_root: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """Full update cycle for a single kit.
@@ -3629,6 +3647,8 @@ def update_kit(
             source_to_resource_id=_source_to_resource_id,
             resource_info=_resource_info,
             approved_overwrites=approved_overwrites,
+            prune_mode=prune_mode,
+            approved_prunes=approved_prunes,
         )
         # @cpt-end:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-copy-diff
         accepted = report.get("accepted", [])
@@ -3649,6 +3669,12 @@ def update_kit(
         }
         if declined:
             result["gen_rejected"] = declined
+        prune_required = [
+            entry for entry in report.get("removed", [])
+            if entry.get("prune_fingerprint") and entry.get("action") == "declined"
+        ]
+        if prune_required:
+            result["prune_required"] = prune_required
         # @cpt-end:cpt-studio-algo-kit-update:p1:inst-file-level-diff
 
         # @cpt-begin:cpt-studio-algo-kit-update:p1:inst-update-core-toml

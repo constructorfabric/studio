@@ -669,6 +669,111 @@ class TestFileLevelKitUpdateResourceBindings(unittest.TestCase):
                 "resource removed upstream; explicit prune mode required",
             )
 
+    def test_prune_bound_resource_file_requires_fingerprint(self):
+        """Non-interactive prune mode still requires the per-path fingerprint."""
+        from studio.utils.diff_engine import file_level_kit_update
+        from studio.utils.manifest import ResourceInfo
+
+        with TemporaryDirectory() as td:
+            src = Path(td) / "src"
+            usr = Path(td) / "usr"
+            redirect_dir = Path(td) / "redirect"
+            src.mkdir()
+            usr.mkdir()
+            redirect_dir.mkdir()
+
+            (redirect_dir / "template.md").write_text("user content\n", encoding="utf-8")
+            result = file_level_kit_update(
+                src, usr,
+                auto_approve=True,
+                prune_mode=True,
+                content_dirs=("artifacts",),
+                resource_bindings={"adr_template": redirect_dir / "template.md"},
+                source_to_resource_id={},
+                resource_info={
+                    "adr_template": ResourceInfo(type="file", source_base="artifacts/template.md"),
+                },
+            )
+
+            self.assertTrue((redirect_dir / "template.md").is_file())
+            self.assertEqual(result["declined"], ["artifacts/template.md"])
+            self.assertRegex(result["removed"][0]["prune_fingerprint"], r"^[0-9a-f]{64}$")
+
+    def test_prune_bound_resource_file_with_fingerprint_deletes(self):
+        """A matching prune fingerprint allows non-interactive deletion."""
+        from studio.utils.diff_engine import file_level_kit_update
+        from studio.utils.manifest import ResourceInfo
+
+        with TemporaryDirectory() as td:
+            src = Path(td) / "src"
+            usr = Path(td) / "usr"
+            redirect_dir = Path(td) / "redirect"
+            src.mkdir()
+            usr.mkdir()
+            redirect_dir.mkdir()
+
+            removed_file = redirect_dir / "template.md"
+            removed_file.write_text("user content\n", encoding="utf-8")
+            resource_info = {
+                "adr_template": ResourceInfo(type="file", source_base="artifacts/template.md"),
+            }
+            first = file_level_kit_update(
+                src, usr,
+                auto_approve=True,
+                prune_mode=True,
+                content_dirs=("artifacts",),
+                resource_bindings={"adr_template": removed_file},
+                source_to_resource_id={},
+                resource_info=resource_info,
+            )
+            fingerprint = first["removed"][0]["prune_fingerprint"]
+
+            result = file_level_kit_update(
+                src, usr,
+                auto_approve=True,
+                prune_mode=True,
+                approved_prunes=[fingerprint],
+                content_dirs=("artifacts",),
+                resource_bindings={"adr_template": removed_file},
+                source_to_resource_id={},
+                resource_info=resource_info,
+            )
+
+            self.assertFalse(removed_file.exists())
+            self.assertEqual(result["accepted"], ["artifacts/template.md"])
+            self.assertEqual(result["removed"][0]["prune_fingerprint"], fingerprint)
+
+    def test_prune_bound_resource_interactive_accept_deletes(self):
+        """Interactive prune mode prompts per removed manifest-bound path."""
+        from studio.utils.diff_engine import file_level_kit_update
+        from studio.utils.manifest import ResourceInfo
+
+        with TemporaryDirectory() as td:
+            src = Path(td) / "src"
+            usr = Path(td) / "usr"
+            redirect_dir = Path(td) / "redirect"
+            src.mkdir()
+            usr.mkdir()
+            redirect_dir.mkdir()
+
+            removed_file = redirect_dir / "template.md"
+            removed_file.write_text("user content\n", encoding="utf-8")
+            with patch("builtins.input", return_value="a"):
+                result = file_level_kit_update(
+                    src, usr,
+                    interactive=True,
+                    prune_mode=True,
+                    content_dirs=("artifacts",),
+                    resource_bindings={"adr_template": removed_file},
+                    source_to_resource_id={},
+                    resource_info={
+                        "adr_template": ResourceInfo(type="file", source_base="artifacts/template.md"),
+                    },
+                )
+
+            self.assertFalse(removed_file.exists())
+            self.assertEqual(result["accepted"], ["artifacts/template.md"])
+
     def test_mixed_bound_and_unbound_files(self):
         """Files without bindings go to user_dir, bound files go to binding path."""
         from studio.utils.diff_engine import file_level_kit_update

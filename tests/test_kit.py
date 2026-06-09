@@ -1306,6 +1306,13 @@ class TestKitHelpers(unittest.TestCase):
             "gen_rejected": ["AGENTS.md"],
             "errors": ["boom"],
             "authority": {"resolved_ref": "v1"},
+            "prune_required": [
+                {
+                    "path": "old.md",
+                    "action": "declined",
+                    "prune_fingerprint": "abc123",
+                },
+            ],
         })
         self.assertEqual(result["action"], "failed")
         self.assertEqual(result["accepted"], [])
@@ -1314,6 +1321,7 @@ class TestKitHelpers(unittest.TestCase):
         self.assertEqual(result["unchanged"], 0)
         self.assertEqual(result["errors"], ["boom"])
         self.assertEqual(result["authority"]["resolved_ref"], "v1")
+        self.assertEqual(result["prune_required"][0]["prune_fingerprint"], "abc123")
 
     def test_resolve_github_update_targets_covers_source_branches(self):
         import studio.commands.kit as kit_module
