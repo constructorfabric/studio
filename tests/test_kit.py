@@ -124,6 +124,69 @@ class TestCmdKitDispatcher(unittest.TestCase):
         self.assertIn("usage", out)
 
 
+class TestKitNormalize(unittest.TestCase):
+    """Kit model normalization and cfs kit normalize command."""
+
+    def setUp(self):
+        from studio.utils.ui import set_json_mode
+        set_json_mode(True)
+
+    def tearDown(self):
+        from studio.utils.ui import set_json_mode
+        set_json_mode(False)
+
+    def test_normalize_legacy_manifest_dry_run(self):
+        from studio.commands.kit import cmd_kit_normalize
+
+        with TemporaryDirectory() as td:
+            kit_src = _make_manifest_kit_source(Path(td), "manifestkit")
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = cmd_kit_normalize([str(kit_src), "--dry-run"])
+            self.assertEqual(rc, 0)
+            out = json.loads(buf.getvalue())
+            self.assertEqual(out["status"], "PASS")
+            self.assertTrue(out["dry_run"])
+            self.assertEqual(out["kit"], "manifestkit")
+            self.assertEqual(out["report"]["manifest_source"], "legacy_manifest")
+            self.assertIn("[kit]", out["manifest"])
+            self.assertIn("[[resources]]", out["manifest"])
+            self.assertFalse((kit_src / ".cf-studio-kit.toml").exists())
+
+    def test_normalize_layout_writes_default_manifest(self):
+        from studio.commands.kit import cmd_kit_normalize
+
+        with TemporaryDirectory() as td:
+            kit_src = _make_kit_source(Path(td), "layoutkit")
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = cmd_kit_normalize([str(kit_src), "--from", "layout"])
+            self.assertEqual(rc, 0)
+            out = json.loads(buf.getvalue())
+            self.assertEqual(out["status"], "PASS")
+            manifest_path = kit_src / ".cf-studio-kit.toml"
+            self.assertEqual(Path(out["output"]).resolve(), manifest_path.resolve())
+            with open(manifest_path, "rb") as f:
+                data = tomllib.load(f)
+            self.assertEqual(data["kit"]["slug"], "layoutkit")
+            resource_ids = {r["id"] for r in data["resources"]}
+            self.assertIn("artifacts", resource_ids)
+            self.assertIn("skill", resource_ids)
+
+    def test_dispatcher_routes_normalize(self):
+        from studio.commands.kit import cmd_kit
+
+        with TemporaryDirectory() as td:
+            kit_src = _make_kit_source(Path(td), "routekit")
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = cmd_kit(["normalize", str(kit_src), "--dry-run"])
+            self.assertEqual(rc, 0)
+            out = json.loads(buf.getvalue())
+            self.assertEqual(out["status"], "PASS")
+            self.assertEqual(out["kit"], "routekit")
+
+
 class TestCmdKitUpdate(unittest.TestCase):
     """CLI kit update command scenarios."""
 

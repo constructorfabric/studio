@@ -2362,6 +2362,113 @@ def _human_kit_update(data: dict) -> None:
 # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-human-output
 
 # ---------------------------------------------------------------------------
+# Kit Normalize
+# ---------------------------------------------------------------------------
+
+# @cpt-flow:cpt-studio-flow-kit-normalize-cli:p1
+def cmd_kit_normalize(argv: List[str]) -> int:
+    """Generate a canonical .cf-studio-kit.toml from a kit source."""
+    # @cpt-begin:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-parse-args
+    p = argparse.ArgumentParser(
+        prog="kit normalize",
+        description="Generate a canonical .cf-studio-kit.toml from a kit source",
+    )
+    p.add_argument("path", help="Kit source directory to normalize")
+    p.add_argument(
+        "--from",
+        dest="source_hint",
+        choices=("manifest", "layout", "core"),
+        default="",
+        help="Limit normalization to a specific legacy source type",
+    )
+    p.add_argument(
+        "--output",
+        default="",
+        help="Output path for .cf-studio-kit.toml (default: <path>/.cf-studio-kit.toml)",
+    )
+    p.add_argument("--dry-run", action="store_true", help="Print the generated manifest without writing it")
+    args = p.parse_args(argv)
+    # @cpt-end:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-parse-args
+
+    # @cpt-begin:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-validate-source
+    kit_source = Path(args.path).resolve()
+    if not kit_source.is_dir():
+        ui.result({
+            "status": "FAIL",
+            "message": f"Kit source directory not found: {kit_source}",
+            "hint": "Provide a path to a valid kit directory",
+        })
+        return 2
+    output_path = Path(args.output).resolve() if args.output else kit_source / ".cf-studio-kit.toml"
+    # @cpt-end:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-validate-source
+
+    try:
+        from ..utils.kit_model import normalize_kit_source
+
+        # @cpt-begin:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-load-source
+        model, manifest_text = normalize_kit_source(kit_source, args.source_hint)
+        # @cpt-end:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-load-source
+    except ValueError as exc:
+        ui.result({
+            "status": "FAIL",
+            "message": str(exc),
+        })
+        return 2
+
+    report = {
+        "manifest_source": model.manifest_source,
+        "resources": len(model.resources),
+        "public_resources": len([r for r in model.resources if r.public]),
+        "warnings": list(model.warnings),
+    }
+
+    # @cpt-begin:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-dry-run
+    if args.dry_run:
+        ui.result({
+            "status": "PASS",
+            "action": "normalized",
+            "dry_run": True,
+            "kit": model.slug,
+            "output": output_path.as_posix(),
+            "report": report,
+            "manifest": manifest_text,
+        }, human_fn=lambda d: _human_kit_normalize(d))
+        return 0
+    # @cpt-end:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-dry-run
+
+    # @cpt-begin:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-write-output
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(manifest_text, encoding="utf-8")
+    ui.result({
+        "status": "PASS",
+        "action": "normalized",
+        "dry_run": False,
+        "kit": model.slug,
+        "output": output_path.as_posix(),
+        "report": report,
+    }, human_fn=lambda d: _human_kit_normalize(d))
+    return 0
+    # @cpt-end:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-write-output
+
+
+def _human_kit_normalize(data: dict) -> None:
+    ui.header("Kit Normalize")
+    ui.detail("Kit", str(data.get("kit", "?")))
+    ui.detail("Output", str(data.get("output", "?")))
+    report = data.get("report", {})
+    if isinstance(report, dict):
+        ui.detail("Source", str(report.get("manifest_source", "?")))
+        ui.detail("Resources", str(report.get("resources", 0)))
+        warnings = report.get("warnings", [])
+        for warning in warnings if isinstance(warnings, list) else []:
+            ui.warn(str(warning))
+    if data.get("dry_run"):
+        ui.success("Dry run - no files written.")
+    else:
+        ui.success("Canonical manifest written.")
+    ui.blank()
+
+# ---------------------------------------------------------------------------
 # Kit Migrate — conf.toml helpers
 # ---------------------------------------------------------------------------
 
@@ -3057,11 +3164,11 @@ def cmd_kit_migrate(_argv: List[str]) -> int:
 def cmd_kit(argv: List[str]) -> int:
     """Kit management command dispatcher.
 
-    Usage: cfs kit <install|update|validate|migrate> [options]
+    Usage: cfs kit <install|update|validate|normalize|migrate> [options]
     """
     # @cpt-begin:cpt-studio-flow-kit-dispatch:p1:inst-parse-subcmd
-    subcommands = ["install", "update", "validate", "migrate"]
-    usage = "cfs kit <install|update|validate|migrate> [options]"
+    subcommands = ["install", "update", "validate", "normalize", "migrate"]
+    usage = "cfs kit <install|update|validate|normalize|migrate> [options]"
     descriptions = {
         "install": [
             ("<owner/repo[@ref]>", "Install a kit from GitHub"),
@@ -3069,6 +3176,7 @@ def cmd_kit(argv: List[str]) -> int:
         ],
         "update": [("[slug|--path <dir>]", "Update installed kit files")],
         "validate": [("", "Validate kit structure and examples")],
+        "normalize": [("<path> [--dry-run]", "Generate .cf-studio-kit.toml from a kit source")],
         "migrate": [("", "Deprecated; use update")],
     }
 
@@ -3107,6 +3215,8 @@ def cmd_kit(argv: List[str]) -> int:
     elif subcmd == "validate":
         from .validate_kits import cmd_validate_kits
         return cmd_validate_kits(rest)
+    elif subcmd == "normalize":
+        return cmd_kit_normalize(rest)
     elif subcmd == "migrate":
         return cmd_kit_migrate(rest)
     else:
