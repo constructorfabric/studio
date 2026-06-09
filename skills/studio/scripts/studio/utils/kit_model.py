@@ -44,6 +44,8 @@ class KitResource:
     origin: str = ""
     generated_name: str = ""
     content_hash: str = ""
+    tools: List[str] = field(default_factory=list)
+    disallowed_tools: List[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -74,6 +76,7 @@ class KitModel:
     manifest_bytes_hash: str = ""
     resource_hashes: Dict[str, str] = field(default_factory=dict)
     tool_risk_fingerprint: str = ""
+    tool_risk_summary: Dict[str, Any] = field(default_factory=dict)
 # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-datamodel
 
 
@@ -238,9 +241,74 @@ def _semantic_resource_data(resource: KitResource) -> Dict[str, Any]:
         "generated_targets": resource.generated_targets,
         "origin": resource.origin,
         "generated_name": resource.generated_name,
+        "tools": resource.tools,
+        "disallowed_tools": resource.disallowed_tools,
     }
     # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-resource-id-vs-generated-name
     return data
+
+
+_KNOWN_TOOLS = {
+    "*",
+    "bash",
+    "edit",
+    "glob",
+    "grep",
+    "multiedit",
+    "read",
+    "search",
+    "shell",
+    "task",
+    "view",
+    "webfetch",
+    "websearch",
+    "write",
+}
+_DANGEROUS_TOOLS = {
+    "*",
+    "bash",
+    "edit",
+    "multiedit",
+    "shell",
+    "task",
+    "webfetch",
+    "websearch",
+    "write",
+}
+
+
+def _tool_key(tool: str) -> str:
+    return tool.strip().lower()
+
+
+# @cpt-begin:cpt-studio-algo-kit-tool-permission-risk:p1:inst-risk-unknown-tools-warn
+# @cpt-begin:cpt-studio-algo-kit-tool-permission-risk:p1:inst-risk-dangerous-summary
+def _tool_risk_summary(resources: List[KitResource], warnings: List[str]) -> Dict[str, Any]:
+    unknown_tools: Dict[str, List[str]] = {}
+    dangerous_tools: Dict[str, List[str]] = {}
+    declared_tools: Dict[str, List[str]] = {}
+    for resource in resources:
+        tools = sorted({tool.strip() for tool in resource.tools if tool.strip()})
+        if not tools:
+            continue
+        declared_tools[resource.id] = tools
+        for tool in tools:
+            key = _tool_key(tool)
+            if key not in _KNOWN_TOOLS and not key.startswith("mcp__"):
+                unknown_tools.setdefault(resource.id, []).append(tool)
+                warnings.append(
+                    f"Resource '{resource.id}' declares unknown tool '{tool}', accepted with warning",
+                )
+            if key in _DANGEROUS_TOOLS or key.startswith("mcp__"):
+                dangerous_tools.setdefault(resource.id, []).append(tool)
+    return {
+        "declared_tools": declared_tools,
+        "dangerous_tools": {key: sorted(value) for key, value in sorted(dangerous_tools.items())},
+        "unknown_tools": {key: sorted(value) for key, value in sorted(unknown_tools.items())},
+        "requires_confirmation": bool(dangerous_tools),
+    }
+# @cpt-end:cpt-studio-algo-kit-tool-permission-risk:p1:inst-risk-dangerous-summary
+# @cpt-end:cpt-studio-algo-kit-tool-permission-risk:p1:inst-risk-unknown-tools-warn
 
 
 def _public_components(resources: List[KitResource]) -> List[PublicComponent]:
@@ -280,9 +348,12 @@ def _with_hashes(kit_source: Path, model: KitModel) -> KitModel:
             origin=resource.origin,
             generated_name=resource.generated_name,
             content_hash=resource_hashes[resource.id],
+            tools=resource.tools,
+            disallowed_tools=resource.disallowed_tools,
         )
         for resource in model.resources
     ]
+    risk_summary = _tool_risk_summary(resources, model.warnings)
     semantic_data = {
         "slug": model.slug,
         "name": model.name,
@@ -309,7 +380,10 @@ def _with_hashes(kit_source: Path, model: KitModel) -> KitModel:
         ),
         manifest_bytes_hash=manifest_bytes_hash,
         resource_hashes=resource_hashes,
-        tool_risk_fingerprint=_sha256_bytes(b"{}"),
+        tool_risk_fingerprint=_sha256_bytes(
+            json.dumps(risk_summary, sort_keys=True, separators=(",", ":")).encode("utf-8"),
+        ),
+        tool_risk_summary=risk_summary,
     )
     # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-hashes
 
@@ -368,10 +442,24 @@ def load_canonical_kit_model(kit_source: Path) -> Optional[KitModel]:
                 "id", "kind", "source", "install_path", "type", "public",
                 "description", "user_modifiable", "aliases", "generated_targets",
                 "origin", "generated_name", "agent", "targets", "permissions",
+                "tools", "disallowed_tools",
             },
             f"[[resources]][{idx}]",
             warnings,
         )
+        agent_config = raw.get("agent") if isinstance(raw.get("agent"), dict) else {}
+        if isinstance(agent_config, dict):
+            _warn_unknown_keys(
+                agent_config,
+                {
+                    "mode", "isolation", "model", "tools", "disallowed_tools",
+                    "skills", "color", "memory_dir", "role", "target",
+                    "provider", "reasoning_effort", "context_window",
+                    "subagents",
+                },
+                f"[[resources]][{idx}].agent",
+                warnings,
+            )
         kind = _normalize_kind(
             _require_string(raw, "kind", f"[[resources]][{idx}]"),
             warnings=warnings,
@@ -400,6 +488,14 @@ def load_canonical_kit_model(kit_source: Path) -> Optional[KitModel]:
             # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-generated-targets
             origin=_optional_string(raw, "origin"),
             generated_name=_normalize_public_name(slug, resource_id) if public else "",
+            tools=_string_list(
+                agent_config.get("tools", raw.get("tools")),
+                f"resources.{resource_id}.tools",
+            ),
+            disallowed_tools=_string_list(
+                agent_config.get("disallowed_tools", raw.get("disallowed_tools")),
+                f"resources.{resource_id}.disallowed_tools",
+            ),
         )
         _validate_relative_source(kit_source, resource)
         _validate_install_path(resource)
@@ -637,6 +733,10 @@ def kit_model_to_toml_data(model: KitModel) -> Dict[str, Any]:
             item["origin"] = resource.origin
         if resource.generated_name:
             item["generated_name"] = resource.generated_name
+        if resource.tools:
+            item["tools"] = resource.tools
+        if resource.disallowed_tools:
+            item["disallowed_tools"] = resource.disallowed_tools
         resources.append(item)
     # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
 

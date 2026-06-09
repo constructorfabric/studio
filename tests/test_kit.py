@@ -286,6 +286,44 @@ class TestKitNormalize(unittest.TestCase):
             self.assertEqual(component.generated_targets, ["installed"])
             self.assertEqual(model.resources[0].id, "skill")
 
+    def test_kit_model_tool_risk_summary_warns_and_fingerprints(self):
+        from studio.utils.kit_model import load_kit_model
+
+        with TemporaryDirectory() as td:
+            kit_src = _make_canonical_kit_source(Path(td), "riskkit")
+            manifest = kit_src / ".cf-studio-kit.toml"
+            manifest.write_text(
+                manifest.read_text(encoding="utf-8")
+                + "\n[resources.agent]\n"
+                + 'tools = ["Bash", "FutureTool"]\n',
+                encoding="utf-8",
+            )
+
+            model = load_kit_model(kit_src)
+
+            self.assertRegex(model.tool_risk_fingerprint, r"^[0-9a-f]{64}$")
+            self.assertTrue(model.tool_risk_summary["requires_confirmation"])
+            self.assertEqual(model.tool_risk_summary["dangerous_tools"]["skill"], ["Bash"])
+            self.assertEqual(model.tool_risk_summary["unknown_tools"]["skill"], ["FutureTool"])
+            self.assertTrue(any("FutureTool" in warning for warning in model.warnings))
+
+    def test_kit_model_render_preserves_tool_declarations(self):
+        from studio.utils.kit_model import load_kit_model, kit_model_to_toml_data
+
+        with TemporaryDirectory() as td:
+            kit_src = _make_canonical_kit_source(Path(td), "riskkit")
+            manifest = kit_src / ".cf-studio-kit.toml"
+            manifest.write_text(
+                manifest.read_text(encoding="utf-8")
+                + "\n[resources.agent]\n"
+                + 'tools = ["Bash"]\n',
+                encoding="utf-8",
+            )
+
+            data = kit_model_to_toml_data(load_kit_model(kit_src))
+
+            self.assertEqual(data["resources"][0]["tools"], ["Bash"])
+
     def test_kit_model_preserves_prefixed_public_name(self):
         from studio.utils.kit_model import load_kit_model
 

@@ -259,6 +259,7 @@ def _kit_model_to_info(adapter_dir: Path, kit_root: Path, core_kit: dict) -> tup
         "active_targets": active_targets,
         "risk": {
             "tool_fingerprint": model.tool_risk_fingerprint,
+            "summary": model.tool_risk_summary,
         },
         "provenance": {
             "source": core_kit.get("source", "") if isinstance(core_kit, dict) else "",
