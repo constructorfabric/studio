@@ -3511,6 +3511,7 @@ def update_kit(
         # @cpt-begin:cpt-studio-algo-kit-update:p1:inst-file-level-diff
         from ..utils.diff_engine import file_level_kit_update
 
+        # @cpt-begin:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-copy-diff
         report = file_level_kit_update(
             source_dir, installed_kit_dir,
             interactive=interactive,
@@ -3522,6 +3523,7 @@ def update_kit(
             resource_info=_resource_info,
             approved_overwrites=approved_overwrites,
         )
+        # @cpt-end:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-copy-diff
         accepted = report.get("accepted", [])
         declined = report.get("declined", [])
 
