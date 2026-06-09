@@ -809,12 +809,21 @@ def file_level_kit_update(
         toc_fmt = toc_formats.get(rel_path, "")
         dest = target_mapping.get(rel_path, user_dir / rel_path)
         res_id = source_to_resource_id.get(rel_path) if source_to_resource_id else None
+        if res_id is None and resource_info:
+            for candidate_id, candidate_info in resource_info.items():
+                source_base = getattr(candidate_info, "source_base", "")
+                if rel_path == source_base or rel_path.startswith(f"{source_base}/"):
+                    res_id = candidate_id
+                    break
         res_info = resource_info.get(res_id) if res_id and resource_info else None
         requires_overwrite_approval = (
             change_type == "modified"
             and bool(res_info)
             and bool(getattr(res_info, "user_modifiable", True))
         )
+        # @cpt-begin:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-no-auto-delete
+        requires_prune_mode = change_type == "removed" and bool(res_info)
+        # @cpt-end:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-no-auto-delete
         has_overwrite_approval = False
         if requires_overwrite_approval:
             approval_tokens = {
@@ -827,10 +836,18 @@ def file_level_kit_update(
         if force or auto_approve:
             action = (
                 "accepted"
-                if not requires_overwrite_approval or interactive or has_overwrite_approval
+                if (
+                    not requires_prune_mode
+                    and (not requires_overwrite_approval or interactive or has_overwrite_approval)
+                )
                 else "declined"
             )
         elif not interactive:
+            action = "declined"
+        elif requires_prune_mode:
+            sys.stderr.write(
+                f"\n    \033[31m- {rel_path}\033[0m  (deleted upstream; prune required)\n"
+            )
             action = "declined"
         else:
             # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-show-change-context
@@ -877,6 +894,8 @@ def file_level_kit_update(
             entry["reason"] = (
                 f"requires --approve-overwrite {res_id} or --approve-overwrite {dest.as_posix()}"
             )
+        if requires_prune_mode and action == "declined":
+            entry["reason"] = "resource removed upstream; explicit prune mode required"
 
         if change_type == "added":
             if action in ("accepted", "modified") and not dry_run:

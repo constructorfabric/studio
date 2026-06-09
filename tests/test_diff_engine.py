@@ -627,6 +627,48 @@ class TestFileLevelKitUpdateResourceBindings(unittest.TestCase):
             # Files should NOT be at default paths
             self.assertFalse((usr / "artifacts" / "ADR" / "template.md").exists())
 
+    def test_removed_bound_resource_file_requires_prune(self):
+        """Manifest-bound resource removals are not deleted by normal update."""
+        from studio.utils.diff_engine import file_level_kit_update
+        from studio.utils.manifest import ResourceInfo
+
+        with TemporaryDirectory() as td:
+            src = Path(td) / "src"
+            usr = Path(td) / "usr"
+            redirect_dir = Path(td) / "redirect"
+            src.mkdir()
+            usr.mkdir()
+            redirect_dir.mkdir()
+
+            (src / "artifacts" / "ADR").mkdir(parents=True)
+            (src / "artifacts" / "ADR" / "kept.md").write_text("kept\n", encoding="utf-8")
+            (redirect_dir / "ADR").mkdir()
+            (redirect_dir / "ADR" / "kept.md").write_text("kept\n", encoding="utf-8")
+            removed_file = redirect_dir / "ADR" / "removed.md"
+            removed_file.write_text("user content\n", encoding="utf-8")
+
+            result = file_level_kit_update(
+                src, usr,
+                auto_approve=True,
+                content_dirs=("artifacts",),
+                resource_bindings={"adr_artifacts": redirect_dir / "ADR"},
+                source_to_resource_id={
+                    "artifacts/ADR/kept.md": "adr_artifacts",
+                },
+                resource_info={
+                    "adr_artifacts": ResourceInfo(type="directory", source_base="artifacts/ADR"),
+                },
+            )
+
+            self.assertEqual(result["status"], "updated")
+            self.assertTrue(removed_file.is_file())
+            self.assertEqual(result["accepted"], [])
+            self.assertEqual(result["declined"], ["artifacts/ADR/removed.md"])
+            self.assertEqual(
+                result["removed"][0]["reason"],
+                "resource removed upstream; explicit prune mode required",
+            )
+
     def test_mixed_bound_and_unbound_files(self):
         """Files without bindings go to user_dir, bound files go to binding path."""
         from studio.utils.diff_engine import file_level_kit_update

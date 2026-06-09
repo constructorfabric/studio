@@ -643,7 +643,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 **Output**: Update plan, applied changes, drift report, optional prune plan
 
 **Rules**:
-1. [ ] - `p1` - Normal update never deletes files solely because a resource disappeared from the new manifest; unregister or mark stale instead - `inst-update-no-auto-delete`
+1. [x] - `p1` - Normal update never deletes files solely because a resource disappeared from the new manifest; unregister or mark stale instead - `inst-update-no-auto-delete`
 2. [ ] - `p1` - Missing public resources cannot remain active; mark their generated components disabled until the resource is restored or removed - `inst-update-disable-missing-public`
 3. [ ] - `p1` - Deletion requires an explicit prune mode and a prune fingerprint; never delete register-in-place source files - `inst-update-explicit-prune`
 4. [ ] - `p1` - Prompt per path before deleting `user_modifiable` resources or anything outside the copied kit root - `inst-update-prune-path-prompts`
