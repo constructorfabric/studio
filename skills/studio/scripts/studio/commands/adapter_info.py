@@ -9,7 +9,8 @@ Shows project root, studio directory, rules, systems, and registry status.
 
 import argparse
 import json
-from pathlib import Path
+import os
+from pathlib import Path, PureWindowsPath
 from typing import Optional
 
 from ..utils._tomllib_compat import tomllib
@@ -71,7 +72,145 @@ def _kit_resource_to_info(resource: object, binding: object) -> dict:
     return data
 
 
-def _kit_model_to_info(kit_root: Path, core_kit: dict) -> tuple[dict, dict]:
+def _resolve_info_binding_path(adapter_dir: Path, raw_path: object) -> Optional[Path]:
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        return None
+    if os.name != "nt" and PureWindowsPath(raw_path).is_absolute():
+        return None
+    path = Path(raw_path)
+    return path if path.is_absolute() else adapter_dir / path
+
+
+def _is_relative_to(path: Path, parent: Path) -> bool:
+    try:
+        path.resolve().relative_to(parent.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def _hash_drift(stored: object, current: object) -> dict:
+    if not isinstance(stored, str) or not stored:
+        return {
+            "stored": None,
+            "current": current if isinstance(current, str) else None,
+            "drifted": None,
+            "reason": "not_recorded",
+        }
+    return {
+        "stored": stored,
+        "current": current if isinstance(current, str) else None,
+        "drifted": stored != current,
+    }
+
+
+def _resource_hash_drift(stored: object, current: dict) -> dict:
+    if not isinstance(stored, dict):
+        return {
+            "drifted": None,
+            "reason": "not_recorded",
+            "changed": {},
+            "missing": [],
+            "stale": [],
+        }
+    changed: dict[str, dict[str, Optional[str]]] = {}
+    missing = sorted(resource_id for resource_id in current if resource_id not in stored)
+    stale = sorted(resource_id for resource_id in stored if resource_id not in current)
+    for resource_id in sorted(set(stored).intersection(current)):
+        stored_hash = stored.get(resource_id)
+        current_hash = current.get(resource_id)
+        if stored_hash != current_hash:
+            changed[str(resource_id)] = {
+                "stored": str(stored_hash) if stored_hash is not None else None,
+                "current": str(current_hash) if current_hash is not None else None,
+            }
+    return {
+        "drifted": bool(changed or missing or stale),
+        "changed": changed,
+        "missing": missing,
+        "stale": stale,
+    }
+
+
+def _kit_model_drift(
+    adapter_dir: Path,
+    model: object,
+    core_kit: dict,
+    resource_bindings: dict,
+) -> dict:
+    # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-drift
+    install_mode = str(core_kit.get("install_mode", "copy")) if isinstance(core_kit, dict) else "copy"
+    model_resource_ids = {str(getattr(resource, "id", "")) for resource in getattr(model, "resources", [])}
+    bound_resource_ids = {str(resource_id) for resource_id in resource_bindings}
+
+    missing_resources = []
+    containment_violations = []
+    for resource_id in sorted(model_resource_ids):
+        binding = resource_bindings.get(resource_id)
+        binding_path = binding.get("path") if isinstance(binding, dict) else None
+        resolved = _resolve_info_binding_path(adapter_dir, binding_path)
+        if resolved is None:
+            continue
+        if not _is_relative_to(resolved, adapter_dir):
+            containment_violations.append(resource_id)
+        if not resolved.exists():
+            missing_resources.append(resource_id)
+
+    stale_resources = sorted(bound_resource_ids - model_resource_ids)
+    disabled_public_components = sorted(
+        str(getattr(component, "id", ""))
+        for component in getattr(model, "public_components", [])
+        if str(getattr(component, "id", "")) in set(missing_resources)
+    )
+    stored_identity = core_kit.get("content_identity") if isinstance(core_kit, dict) else {}
+    if not isinstance(stored_identity, dict):
+        stored_identity = {}
+    semantic_drift = _hash_drift(
+        stored_identity.get("manifest_semantic_hash"),
+        getattr(model, "manifest_semantic_hash", None),
+    )
+    byte_drift = _hash_drift(
+        stored_identity.get("manifest_bytes_hash"),
+        getattr(model, "manifest_bytes_hash", None),
+    )
+    resource_drift = _resource_hash_drift(
+        stored_identity.get("resource_hashes"),
+        getattr(model, "resource_hashes", {}) or {},
+    )
+    drift_flags = [
+        bool(missing_resources),
+        bool(stale_resources),
+        bool(containment_violations),
+        semantic_drift.get("drifted") is True,
+        byte_drift.get("drifted") is True,
+        resource_drift.get("drifted") is True,
+    ]
+    hash_recorded = any(
+        drift.get("drifted") is not None
+        for drift in (semantic_drift, byte_drift, resource_drift)
+    )
+    status = "drifted" if any(drift_flags) else ("current" if hash_recorded else "unknown")
+    containment_status = "contained"
+    if containment_violations:
+        containment_status = "external" if len(containment_violations) == len(model_resource_ids) else "mixed"
+    return {
+        "status": status,
+        "install_mode": install_mode,
+        "containment": {
+            "status": containment_status,
+            "violations": containment_violations,
+        },
+        "manifest_semantic_hash": semantic_drift,
+        "manifest_bytes_hash": byte_drift,
+        "resource_hashes": resource_drift,
+        "missing_resources": missing_resources,
+        "stale_resources": stale_resources,
+        "disabled_public_components": disabled_public_components,
+    }
+    # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-drift
+
+
+def _kit_model_to_info(adapter_dir: Path, kit_root: Path, core_kit: dict) -> tuple[dict, dict]:
     """Return canonical kit model info plus legacy kit_details compatibility."""
     # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitmodel-source
     from ..utils.kit_model import load_kit_model
@@ -130,7 +269,7 @@ def _kit_model_to_info(kit_root: Path, core_kit: dict) -> tuple[dict, dict]:
             "manifest_source": model.manifest_source,
         },
         "warnings": model.warnings,
-        "drift": {"status": "unknown"},
+        "drift": _kit_model_drift(adapter_dir, model, core_kit, resource_bindings),
     }
     # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitmodels-shape
 
@@ -448,7 +587,7 @@ def cmd_adapter_info(argv: list[str]) -> int:
         core_kit = kit_entries[slug]
         kit_dir = _resolve_info_kit_root(adapter_dir, slug, core_kit)
         try:
-            model_info, kit_detail = _kit_model_to_info(kit_dir, core_kit)
+            model_info, kit_detail = _kit_model_to_info(adapter_dir, kit_dir, core_kit)
             kit_models[slug] = model_info
             kit_details[slug] = kit_detail
         except (OSError, ValueError) as exc:

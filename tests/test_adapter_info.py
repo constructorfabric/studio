@@ -9,6 +9,7 @@ import tempfile
 import shutil
 import io
 import sys
+import hashlib
 from pathlib import Path
 from contextlib import redirect_stdout, redirect_stderr
 
@@ -161,6 +162,86 @@ class TestAdapterInfoCommand(unittest.TestCase):
             kit_detail = output["kit_details"]["sdlc"]
             self.assertEqual(kit_detail["name"], "SDLC Kit")
             self.assertEqual(kit_detail["resources"]["skill"]["path"], "config/kits/sdlc/SKILL.md")
+
+    def test_adapter_info_reports_kit_model_drift(self):
+        """Info reports installed resource and hash drift for canonical kits."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir) / "project"
+            project_root.mkdir()
+            (project_root / ".git").mkdir()
+            (project_root / "AGENTS.md").write_text(
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".cypilot-adapter"\n```\n<!-- /@cf:root-agents -->\n',
+                encoding="utf-8",
+            )
+            adapter_dir = project_root / ".cypilot-adapter"
+            config_dir = adapter_dir / "config"
+            kit_dir = config_dir / "kits" / "sdlc"
+            kit_dir.mkdir(parents=True)
+            (config_dir / "AGENTS.md").write_text("# Constructor Studio Adapter: TestProject\n", encoding="utf-8")
+            (kit_dir / "SKILL.md").write_text("# SDLC skill\n", encoding="utf-8")
+            (kit_dir / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    "[kit]",
+                    'slug = "sdlc"',
+                    'name = "SDLC Kit"',
+                    'version = "2.0"',
+                    "",
+                    "[[resources]]",
+                    'id = "skill"',
+                    'kind = "skill"',
+                    'source = "SKILL.md"',
+                    'install_path = "SKILL.md"',
+                    'type = "file"',
+                    "public = true",
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            skill_hash = hashlib.sha256(b"# SDLC skill\n").hexdigest()
+            (config_dir / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    'project_root = ".."',
+                    "",
+                    "[kits.sdlc]",
+                    'format = "CFS"',
+                    'path = "config/kits/sdlc"',
+                    'version = "2.0"',
+                    'install_mode = "copy"',
+                    "",
+                    "[kits.sdlc.content_identity]",
+                    'manifest_semantic_hash = "old-semantic"',
+                    'manifest_bytes_hash = "old-bytes"',
+                    "",
+                    "[kits.sdlc.content_identity.resource_hashes]",
+                    f'skill = "{skill_hash}"',
+                    'old = "stale"',
+                    "",
+                    "[kits.sdlc.resources.skill]",
+                    'path = "config/kits/sdlc/MISSING.md"',
+                    "",
+                    "[kits.sdlc.resources.old]",
+                    'path = "config/kits/sdlc/OLD.md"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            stdout_capture = io.StringIO()
+            with redirect_stdout(stdout_capture):
+                exit_code = main(["info", "--root", str(project_root)])
+
+            output = json.loads(stdout_capture.getvalue())
+            self.assertEqual(exit_code, 0)
+            drift = output["kit_models"]["sdlc"]["drift"]
+            self.assertEqual(drift["status"], "drifted")
+            self.assertEqual(drift["install_mode"], "copy")
+            self.assertEqual(drift["containment"]["status"], "contained")
+            self.assertEqual(drift["missing_resources"], ["skill"])
+            self.assertEqual(drift["stale_resources"], ["old"])
+            self.assertEqual(drift["disabled_public_components"], ["skill"])
+            self.assertTrue(drift["manifest_semantic_hash"]["drifted"])
+            self.assertTrue(drift["manifest_bytes_hash"]["drifted"])
+            self.assertTrue(drift["resource_hashes"]["drifted"])
+            self.assertEqual(drift["resource_hashes"]["stale"], ["old"])
 
     def test_adapter_info_expands_autodetect_systems(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

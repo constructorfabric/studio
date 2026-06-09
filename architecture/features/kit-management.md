@@ -592,7 +592,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 ### Kit Info Model Output
 
-- [ ] `p1` - **ID**: `cpt-studio-algo-kit-info-model-output`
+- [x] `p1` - **ID**: `cpt-studio-algo-kit-info-model-output`
 
 **Input**: Installed kit registrations, normalized `KitModel` objects, drift state
 
@@ -603,7 +603,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 2. [x] - `p1` - Add top-level `kit_models[slug]` objects containing metadata, manifest source, install mode, drift, resource counts, resources, public components, generated names, active targets, risk, provenance, content identity, legacy compatibility, and warnings - `inst-info-kitmodels-shape`
 3. [x] - `p1` - Preserve legacy `kit_details` for one minor compatibility cycle, derived from `kit_models` rather than populated separately - `inst-info-kitdetails-derived`
 4. [x] - `p1` - Expose legacy `kit_details.workflows` only as derived skills where `origin = "legacy-workflow"` and mark the field deprecated - `inst-info-workflows-deprecated`
-5. [ ] - `p1` - Report copy/register mode, containment status, semantic hash drift, byte hash drift, resource hash drift, stale/missing resources, and disabled public components - `inst-info-drift`
+5. [x] - `p1` - Report copy/register mode, containment status, semantic hash drift, byte hash drift, resource hash drift, stale/missing resources, and disabled public components - `inst-info-drift`
 
 ### Public Component Generation
 
