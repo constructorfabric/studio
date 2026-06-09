@@ -1012,6 +1012,26 @@ def _manifest_register_resource_bindings(
     }
 
 
+def _kit_model_content_identity(model: Any) -> Dict[str, Any]:
+    return {
+        "manifest_semantic_hash": getattr(model, "manifest_semantic_hash", ""),
+        "manifest_bytes_hash": getattr(model, "manifest_bytes_hash", ""),
+        "resource_hashes": getattr(model, "resource_hashes", {}) or {},
+        "tool_risk_fingerprint": getattr(model, "tool_risk_fingerprint", ""),
+    }
+
+
+def _local_path_provenance(kit_source: Path, install_mode: str) -> Dict[str, str]:
+    return {
+        "source_type": "local_path",
+        "resolver_mode": install_mode,
+        "resolution_basis": "local_path",
+        "effective_source": kit_source.resolve().as_posix(),
+        "verified": "local",
+        "freshness": "local",
+    }
+
+
 def _validate_register_manifest_containment(
     project_root: Optional[Path],
     studio_dir: Path,
@@ -1369,6 +1389,17 @@ def install_kit_with_manifest(
         }
     # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-read
 
+    try:
+        from ..utils.kit_model import load_kit_model
+        kit_model = load_kit_model(kit_source)
+    except (OSError, ValueError) as exc:
+        return {
+            "status": "FAIL",
+            "kit": kit_slug,
+            "errors": [str(exc)],
+        }
+    model_content_identity = _kit_model_content_identity(kit_model)
+
     if install_mode not in {"copy", "register"}:
         return {
             "status": "FAIL",
@@ -1377,6 +1408,7 @@ def install_kit_with_manifest(
         }
 
     if install_mode == "register":
+        # @cpt-begin:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-register-core-only
         containment_errors = _validate_register_manifest_containment(
             project_root,
             studio_dir,
@@ -1410,6 +1442,8 @@ def install_kit_with_manifest(
             config_dir, kit_slug, kit_version, studio_dir,
             source=source, resources=resource_bindings, kit_path=kit_root_rel,
             install_mode=install_mode,
+            source_provenance=_local_path_provenance(kit_source, install_mode),
+            content_identity=model_content_identity,
             authority_metadata=authority_metadata,
             local_metadata=local_metadata or None,
         )
@@ -1427,6 +1461,7 @@ def install_kit_with_manifest(
             "skill_nav": meta["skill_nav"],
             "agents_content": meta["agents_content"],
         }
+        # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-register-core-only
 
     # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-root-prompt
     # Resolve kit root directory from manifest template
@@ -1502,6 +1537,7 @@ def install_kit_with_manifest(
         config_dir, kit_slug, kit_version, studio_dir,
         source=source, resources=resource_bindings, kit_path=kit_root_rel,
         install_mode=install_mode,
+        content_identity=model_content_identity,
         authority_metadata=authority_metadata,
         local_metadata=local_metadata or None,
     )
@@ -3598,6 +3634,8 @@ def _register_kit_in_core_toml(
     kit_path: str = "",
     install_mode: str = "",
     authority_metadata: Optional[Dict[str, Any]] = None,
+    source_provenance: Optional[Dict[str, Any]] = None,
+    content_identity: Optional[Dict[str, Any]] = None,
     local_metadata: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Register or update a kit entry in config/core.toml."""
@@ -3634,6 +3672,10 @@ def _register_kit_in_core_toml(
         existing["source"] = source
     if install_mode:
         existing["install_mode"] = install_mode
+    if source_provenance:
+        existing["source_provenance"] = {
+            key: value for key, value in source_provenance.items() if value != ""
+        }
     if authority_metadata:
         source_type = "github" if source.startswith("github:") else ("git" if source.startswith("git:") else "unknown")
         source_provenance = {
@@ -3660,7 +3702,7 @@ def _register_kit_in_core_toml(
         existing["source_provenance"] = {
             key: value for key, value in source_provenance.items() if value != ""
         }
-        content_identity = {
+        authority_content_identity = {
             "vcs": authority_metadata.get("content_identity", {}).get("vcs", "") if isinstance(authority_metadata.get("content_identity"), dict) else "",
             "commit_sha": authority_metadata.get("commit_sha", ""),
             "resolved_ref": authority_metadata.get("resolved_ref", ""),
@@ -3668,7 +3710,7 @@ def _register_kit_in_core_toml(
             "identity": authority_metadata.get("identity", ""),
         }
         existing["content_identity"] = {
-            key: value for key, value in content_identity.items() if value != ""
+            key: value for key, value in authority_content_identity.items() if value != ""
         }
         authority_version = (
             authority_metadata.get("installed_version")
@@ -3680,6 +3722,11 @@ def _register_kit_in_core_toml(
             existing["version"] = str(authority_version)
     elif kit_version:
         existing["version"] = kit_version
+    if content_identity:
+        existing["content_identity"] = {
+            **(existing.get("content_identity") if isinstance(existing.get("content_identity"), dict) else {}),
+            **{key: value for key, value in content_identity.items() if value not in ("", None, {})},
+        }
     if local_metadata:
         existing["local_metadata"] = local_metadata
     if resources is not None:

@@ -427,6 +427,13 @@ class TestKitSourceModeValidation(unittest.TestCase):
                 self.assertEqual(entry["install_mode"], "register")
                 self.assertTrue(entry["path"].endswith("local-kits/regkit"))
                 self.assertTrue(entry["resources"]["skill"]["path"].endswith("local-kits/regkit/SKILL.md"))
+                self.assertEqual(entry["source_provenance"]["source_type"], "local_path")
+                self.assertEqual(entry["source_provenance"]["resolver_mode"], "register")
+                self.assertTrue(entry["source_provenance"]["effective_source"].endswith("local-kits/regkit"))
+                self.assertRegex(entry["content_identity"]["manifest_semantic_hash"], r"^[0-9a-f]{64}$")
+                self.assertRegex(entry["content_identity"]["manifest_bytes_hash"], r"^[0-9a-f]{64}$")
+                self.assertRegex(entry["content_identity"]["resource_hashes"]["skill"], r"^[0-9a-f]{64}$")
+                self.assertRegex(entry["content_identity"]["tool_risk_fingerprint"], r"^[0-9a-f]{64}$")
                 self.assertFalse((adapter / "config" / "kits" / "regkit" / "SKILL.md").exists())
             finally:
                 os.chdir(cwd)
