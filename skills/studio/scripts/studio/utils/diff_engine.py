@@ -597,6 +597,7 @@ def file_level_kit_update(
     resource_bindings: Optional[Dict[str, Path]] = None,
     source_to_resource_id: Optional[Dict[str, str]] = None,
     resource_info: Optional[Dict[str, Any]] = None,
+    approved_overwrites: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Compare source kit against user's installed copy and apply updates.
 
@@ -789,6 +790,9 @@ def file_level_kit_update(
     result_modified: List[Dict[str, str]] = []
 
     review_state: Dict[str, bool] = {}
+    overwrite_approvals = {
+        token.strip() for token in (approved_overwrites or []) if token.strip()
+    }
 
     changed = sorted(
         [(p, "added") for p in report.added]
@@ -803,9 +807,29 @@ def file_level_kit_update(
         new_content = source_stripped.get(rel_path, b"")
         raw_new_content = source_files.get(rel_path, b"")
         toc_fmt = toc_formats.get(rel_path, "")
+        dest = target_mapping.get(rel_path, user_dir / rel_path)
+        res_id = source_to_resource_id.get(rel_path) if source_to_resource_id else None
+        res_info = resource_info.get(res_id) if res_id and resource_info else None
+        requires_overwrite_approval = (
+            change_type == "modified"
+            and bool(res_info)
+            and bool(getattr(res_info, "user_modifiable", True))
+        )
+        has_overwrite_approval = False
+        if requires_overwrite_approval:
+            approval_tokens = {
+                str(res_id),
+                rel_path,
+                dest.as_posix(),
+            }
+            has_overwrite_approval = bool(overwrite_approvals.intersection(approval_tokens))
 
         if force or auto_approve:
-            action = "accepted"
+            action = (
+                "accepted"
+                if not requires_overwrite_approval or interactive or has_overwrite_approval
+                else "declined"
+            )
         elif not interactive:
             action = "declined"
         else:
@@ -849,7 +873,10 @@ def file_level_kit_update(
         entry = {"path": rel_path, "action": action}
         wrote_file = False
         wrote_raw = False
-        dest = target_mapping.get(rel_path, user_dir / rel_path)
+        if requires_overwrite_approval and action == "declined" and not interactive and not has_overwrite_approval:
+            entry["reason"] = (
+                f"requires --approve-overwrite {res_id} or --approve-overwrite {dest.as_posix()}"
+            )
 
         if change_type == "added":
             if action in ("accepted", "modified") and not dry_run:

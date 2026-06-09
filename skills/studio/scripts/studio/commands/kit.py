@@ -1203,6 +1203,7 @@ def install_kit(
     install_mode: str = "copy",
     project_root: Optional[Path] = None,
     authority_metadata: Optional[Dict[str, Any]] = None,
+    approved_overwrites: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Install a kit: copy ready files from source into config/kits/{slug}/.
 
@@ -1258,6 +1259,7 @@ def install_kit(
             install_mode=install_mode,
             project_root=project_root,
             authority_metadata=authority_metadata,
+            approved_overwrites=approved_overwrites,
             kit_path=(
                 kit_entry.get("path", "")
                 if has_registered_kit_path and isinstance(kit_entry, dict)
@@ -1353,6 +1355,7 @@ def install_kit_with_manifest(
     source: str = "",
     kit_path: str = "",
     authority_metadata: Optional[Dict[str, Any]] = None,
+    approved_overwrites: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Install a kit using its manifest.toml — manifest-driven installation.
 
@@ -1495,6 +1498,23 @@ def install_kit_with_manifest(
         registered_kit_root_rel=kit_root_rel,
         interactive=interactive,
     )
+    # @cpt-begin:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-copy-no-silent-overwrite
+    overwrite_errors = _preflight_manifest_copy_overwrites(
+        kit_source,
+        studio_dir,
+        list(manifest.resources),
+        resource_bindings,
+        interactive=interactive,
+        approved_overwrites=approved_overwrites or [],
+    )
+    if overwrite_errors:
+        return {
+            "status": "FAIL",
+            "kit": kit_slug,
+            "install_mode": install_mode,
+            "errors": overwrite_errors,
+        }
+    # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-copy-no-silent-overwrite
     kit_root.mkdir(parents=True, exist_ok=True)
 
     # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-foreach-resource
@@ -1586,6 +1606,88 @@ def _copy_manifest_resource(
         target_abs.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, target_abs)
 # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-copy-manifest-resource
+
+
+# @cpt-begin:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-copy-no-silent-overwrite
+def _manifest_resource_changed(
+    kit_source: Path,
+    res: ManifestResource,
+    target_abs: Path,
+) -> bool:
+    """Return True when copying *res* would replace different target content."""
+    source_abs = kit_source / res.source
+    if not target_abs.exists():
+        return False
+    if res.type == "file":
+        if not target_abs.is_file() or not source_abs.is_file():
+            return True
+        try:
+            return source_abs.read_bytes() != target_abs.read_bytes()
+        except OSError:
+            return True
+
+    if not target_abs.is_dir() or not source_abs.is_dir():
+        return True
+    source_files = {
+        path.relative_to(source_abs).as_posix(): path
+        for path in source_abs.rglob("*")
+        if path.is_file()
+    }
+    target_files = {
+        path.relative_to(target_abs).as_posix(): path
+        for path in target_abs.rglob("*")
+        if path.is_file()
+    }
+    if set(source_files) != set(target_files):
+        return True
+    for rel_path, source_file in source_files.items():
+        try:
+            if source_file.read_bytes() != target_files[rel_path].read_bytes():
+                return True
+        except OSError:
+            return True
+    return False
+
+
+def _preflight_manifest_copy_overwrites(
+    kit_source: Path,
+    studio_dir: Path,
+    resources: List[ManifestResource],
+    resource_bindings: Dict[str, Dict[str, str]],
+    *,
+    interactive: bool,
+    approved_overwrites: List[str],
+) -> List[str]:
+    """Require approval before replacing changed user-modifiable resources."""
+    approvals = {token.strip() for token in approved_overwrites if token.strip()}
+    errors: List[str] = []
+    for res in resources:
+        if not res.user_modifiable:
+            continue
+        binding_path = resource_bindings[res.id]["path"]
+        target_abs = (studio_dir / binding_path).resolve()
+        if not _manifest_resource_changed(kit_source, res, target_abs):
+            continue
+        approval_tokens = {
+            res.id,
+            binding_path,
+            target_abs.as_posix(),
+        }
+        if approvals.intersection(approval_tokens):
+            continue
+        if interactive and sys.stdin.isatty():
+            answer = _input_stderr(
+                f"Overwrite changed user-modifiable resource '{res.id}' at {target_abs}? [y/N]: "
+            ).lower()
+            if answer in {"y", "yes"}:
+                continue
+        errors.append(
+            "Refusing to overwrite changed user-modifiable resource "
+            f"'{res.id}' at {binding_path}; rerun with "
+            f"--approve-overwrite {res.id} or --approve-overwrite {binding_path}"
+        )
+    return errors
+# @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-copy-no-silent-overwrite
 
 
 # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-resolve-template-vars
@@ -1883,6 +1985,13 @@ def cmd_kit_install(argv: List[str]) -> int:
         default="",
         help="For local manifest installs, choose copy into Studio storage or register in place",
     )
+    p.add_argument(
+        "--approve-overwrite",
+        action="append",
+        default=[],
+        metavar="RESOURCE_OR_PATH",
+        help="Approve overwriting one changed user-modifiable manifest resource by id or effective path; repeat per resource",
+    )
     p.add_argument("--force", action="store_true", help="Overwrite existing kit")
     p.add_argument("--dry-run", action="store_true", help="Show what would be done")
     args = p.parse_args(argv)
@@ -2012,6 +2121,7 @@ def cmd_kit_install(argv: List[str]) -> int:
             install_mode=args.install_mode or "copy",
             project_root=project_root,
             authority_metadata=authority_metadata,
+            approved_overwrites=args.approve_overwrite,
         )
         # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-delegate-install
 
@@ -2337,6 +2447,13 @@ def cmd_kit_update(argv: List[str]) -> int:
                    help="Disable interactive prompts (auto-decline changes)")
     p.add_argument("-y", "--yes", action="store_true",
                    help="Auto-approve all prompts (no interaction)")
+    p.add_argument(
+        "--approve-overwrite",
+        action="append",
+        default=[],
+        metavar="RESOURCE_OR_PATH",
+        help="Approve overwriting one changed user-modifiable manifest resource by id or effective path; repeat per resource",
+    )
     args = p.parse_args(argv)
     if args.local_path:
         conflict = _validate_kit_source_mode(
@@ -2493,6 +2610,7 @@ def cmd_kit_update(argv: List[str]) -> int:
                 force=args.force,
                 source=github_source,
                 authority_metadata=authority_metadata,
+                approved_overwrites=args.approve_overwrite,
             )
             # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-legacy-migration
         except Exception as exc:  # pylint: disable=broad-exception-caught  # per-kit safety net — must not crash the update loop
@@ -3148,6 +3266,7 @@ def update_kit(
     force: bool = False,
     source: str = "",
     authority_metadata: Optional[Dict[str, Any]] = None,
+    approved_overwrites: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Full update cycle for a single kit.
 
@@ -3308,6 +3427,7 @@ def update_kit(
                 source=source,
                 authority_metadata=authority_metadata,
                 kit_path=registered_kit_path if has_registered_kit_path else "",
+                approved_overwrites=approved_overwrites,
             )
             files_written = _install_result.get("files_copied", 0)
         else:
@@ -3343,6 +3463,7 @@ def update_kit(
             resource_bindings=_resource_bindings,
             source_to_resource_id=_source_to_resource_id,
             resource_info=_resource_info,
+            approved_overwrites=approved_overwrites,
         )
         accepted = report.get("accepted", [])
         declined = report.get("declined", [])

@@ -1304,6 +1304,7 @@ class ResourceInfo:
 
     type: str  # "file" or "directory"
     source_base: str  # source path in manifest (e.g., "artifacts/ADR")
+    user_modifiable: bool = True
 # @cpt-end:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-resource-info
 
 
@@ -1348,6 +1349,7 @@ def build_source_to_resource_mapping(
         resource_info[res.id] = ResourceInfo(
             type=res.type,
             source_base=res.source,
+            user_modifiable=res.user_modifiable,
         )
         if res.type == "file":
             source_to_resource_id[res.source] = res.id

@@ -556,6 +556,129 @@ class TestCanonicalKitMetadata(unittest.TestCase):
             finally:
                 os.chdir(cwd)
 
+    def test_install_refuses_changed_user_modifiable_resource_without_approval(self):
+        from studio.commands.kit import cmd_kit_install
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            kit_src = _make_canonical_kit_source(Path(td), "canon-install")
+            installed_skill = adapter / "config" / "kits" / "canon-install" / "SKILL.md"
+            installed_skill.parent.mkdir(parents=True, exist_ok=True)
+            installed_skill.write_text("# User edit\n", encoding="utf-8")
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = cmd_kit_install([
+                        "--path", str(kit_src),
+                        "--install-mode", "copy",
+                        "--force",
+                    ])
+                self.assertEqual(rc, 2)
+                out = json.loads(buf.getvalue())
+                self.assertEqual(out["status"], "FAIL")
+                self.assertEqual(out["install_mode"], "copy")
+                self.assertIn("--approve-overwrite skill", out["errors"][0])
+                self.assertEqual(installed_skill.read_text(encoding="utf-8"), "# User edit\n")
+            finally:
+                os.chdir(cwd)
+
+    def test_install_approved_changed_user_modifiable_resource_overwrites(self):
+        from studio.commands.kit import cmd_kit_install
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            kit_src = _make_canonical_kit_source(Path(td), "canon-install")
+            installed_skill = adapter / "config" / "kits" / "canon-install" / "SKILL.md"
+            installed_skill.parent.mkdir(parents=True, exist_ok=True)
+            installed_skill.write_text("# User edit\n", encoding="utf-8")
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = cmd_kit_install([
+                        "--path", str(kit_src),
+                        "--install-mode", "copy",
+                        "--force",
+                        "--approve-overwrite", "skill",
+                    ])
+                self.assertEqual(rc, 0)
+                out = json.loads(buf.getvalue())
+                self.assertEqual(out["status"], "PASS")
+                self.assertEqual(installed_skill.read_text(encoding="utf-8"), "# Canonical kit\n")
+            finally:
+                os.chdir(cwd)
+
+    def test_update_auto_approve_declines_user_modifiable_resource_without_approval(self):
+        from studio.commands.kit import cmd_kit_install, update_kit
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            kit_src = _make_canonical_kit_source(Path(td), "canon-install")
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                with redirect_stdout(io.StringIO()):
+                    rc = cmd_kit_install(["--path", str(kit_src), "--install-mode", "copy"])
+                self.assertEqual(rc, 0)
+                installed_skill = adapter / "config" / "kits" / "canon-install" / "SKILL.md"
+                installed_skill.write_text("# User edit\n", encoding="utf-8")
+                (kit_src / "SKILL.md").write_text("# Upstream edit\n", encoding="utf-8")
+
+                result = update_kit(
+                    "canon-install",
+                    kit_src,
+                    adapter,
+                    interactive=False,
+                    auto_approve=True,
+                    force=True,
+                )
+
+                self.assertEqual(result["version"]["status"], "partial")
+                self.assertEqual(result["gen"]["files_written"], 0)
+                self.assertEqual(result["gen_rejected"], ["SKILL.md"])
+                self.assertEqual(installed_skill.read_text(encoding="utf-8"), "# User edit\n")
+            finally:
+                os.chdir(cwd)
+
+    def test_update_approved_user_modifiable_resource_overwrites(self):
+        from studio.commands.kit import cmd_kit_install, update_kit
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            kit_src = _make_canonical_kit_source(Path(td), "canon-install")
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                with redirect_stdout(io.StringIO()):
+                    rc = cmd_kit_install(["--path", str(kit_src), "--install-mode", "copy"])
+                self.assertEqual(rc, 0)
+                installed_skill = adapter / "config" / "kits" / "canon-install" / "SKILL.md"
+                installed_skill.write_text("# User edit\n", encoding="utf-8")
+                (kit_src / "SKILL.md").write_text("# Upstream edit\n", encoding="utf-8")
+
+                result = update_kit(
+                    "canon-install",
+                    kit_src,
+                    adapter,
+                    interactive=False,
+                    auto_approve=True,
+                    force=True,
+                    approved_overwrites=["skill"],
+                )
+
+                self.assertEqual(result["version"]["status"], "updated")
+                self.assertEqual(result["gen"]["files_written"], 1)
+                self.assertEqual(installed_skill.read_text(encoding="utf-8"), "# Upstream edit\n")
+            finally:
+                os.chdir(cwd)
+
     def test_install_canonical_manifest_noninteractive_requires_install_mode(self):
         from studio.commands.kit import cmd_kit_install
 
