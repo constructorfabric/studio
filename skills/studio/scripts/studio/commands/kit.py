@@ -961,6 +961,14 @@ def _resolve_manifest_user_path(base: Path, raw_path: str) -> Path:
     return (base / user_path).resolve()
 
 
+def _path_is_within(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
 def _manifest_resource_target(
     kit_root: Path,
     res: ManifestResource,
@@ -986,6 +994,64 @@ def _manifest_resource_bindings(
         }
         for res in resources
     }
+
+
+def _manifest_register_resource_bindings(
+    studio_dir: Path,
+    kit_source: Path,
+    resources: List[ManifestResource],
+) -> Dict[str, Dict[str, str]]:
+    return {
+        res.id: {
+            "path": _serialize_manifest_binding_path(
+                (kit_source / res.source).resolve(),
+                studio_dir,
+            )
+        }
+        for res in resources
+    }
+
+
+def _validate_register_manifest_containment(
+    project_root: Optional[Path],
+    studio_dir: Path,
+    kit_source: Path,
+    kit_slug: str,
+    manifest: Manifest,
+) -> List[str]:
+    # @cpt-begin:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-register-containment
+    # @cpt-begin:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-register-reject-escape
+    if project_root is None:
+        return ["Register install mode requires a resolved project root"]
+    root = project_root.resolve()
+    errors: List[str] = []
+    source_root = kit_source.resolve()
+    if not _path_is_within(source_root, root):
+        errors.append(f"Kit source '{kit_source}' must be inside project root '{root}' for register mode")
+    manifest_file = kit_source / "manifest.toml"
+    if not manifest_file.is_file():
+        manifest_file = kit_source / ".cf-studio-kit.toml"
+    if not manifest_file.is_file() or not _path_is_within(manifest_file, root):
+        errors.append("Kit manifest must be inside the project root for register mode")
+    manifest_root_value = manifest.root.replace(
+        "{cf-studio-path}", ".",
+    ).replace(
+        "{slug}", kit_slug,
+    )
+    manifest_root = _resolve_registered_kit_dir(studio_dir, manifest_root_value)
+    if manifest_root is None or not _path_is_within(manifest_root, root):
+        errors.append(f"Manifest root '{manifest.root}' must resolve inside project root '{root}' for register mode")
+    for res in manifest.resources:
+        raw_source = Path(res.source)
+        if raw_source.is_absolute():
+            errors.append(f"Resource '{res.id}': source '{res.source}' must be relative for register mode")
+            continue
+        source_path = (kit_source / res.source).resolve()
+        if not _path_is_within(source_path, root):
+            errors.append(f"Resource '{res.id}': source '{res.source}' escapes the project root")
+    return errors
+    # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-register-reject-escape
+    # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-register-containment
 
 
 def _emit_manifest_install_plan(
@@ -1115,6 +1181,7 @@ def install_kit(
     *,
     interactive: bool = False,
     install_mode: str = "copy",
+    project_root: Optional[Path] = None,
     authority_metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Install a kit: copy ready files from source into config/kits/{slug}/.
@@ -1160,13 +1227,6 @@ def install_kit(
         }
     # @cpt-end:cpt-studio-algo-kit-install:p1:inst-validate-source
 
-    if install_mode != "copy":
-        return {
-            "status": "FAIL",
-            "kit": kit_slug,
-            "errors": [f"Unsupported install mode: {install_mode}"],
-        }
-
     # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-manifest-install
     # Check for manifest-driven installation
     from ..utils.manifest import load_manifest
@@ -1176,6 +1236,7 @@ def install_kit(
             kit_source, studio_dir, kit_slug, kit_version,
             manifest, interactive=interactive, source=source,
             install_mode=install_mode,
+            project_root=project_root,
             authority_metadata=authority_metadata,
             kit_path=(
                 kit_entry.get("path", "")
@@ -1184,6 +1245,13 @@ def install_kit(
             ),
         )
     # @cpt-end:cpt-studio-algo-kit-install:p1:inst-manifest-install
+
+    if install_mode != "copy":
+        return {
+            "status": "FAIL",
+            "kit": kit_slug,
+            "errors": [f"Unsupported install mode: {install_mode}"],
+        }
 
     # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-copy-content
     # Copy kit content → config/kits/{slug}/ (legacy path)
@@ -1261,6 +1329,7 @@ def install_kit_with_manifest(
     *,
     interactive: bool = True,
     install_mode: str = "copy",
+    project_root: Optional[Path] = None,
     source: str = "",
     kit_path: str = "",
     authority_metadata: Optional[Dict[str, Any]] = None,
@@ -1299,6 +1368,65 @@ def install_kit_with_manifest(
             "errors": validation_errors,
         }
     # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-read
+
+    if install_mode not in {"copy", "register"}:
+        return {
+            "status": "FAIL",
+            "kit": kit_slug,
+            "errors": [f"Unsupported install mode: {install_mode}"],
+        }
+
+    if install_mode == "register":
+        containment_errors = _validate_register_manifest_containment(
+            project_root,
+            studio_dir,
+            kit_source,
+            kit_slug,
+            manifest,
+        )
+        if containment_errors:
+            return {
+                "status": "FAIL",
+                "kit": kit_slug,
+                "install_mode": install_mode,
+                "errors": containment_errors,
+            }
+        resource_bindings = _manifest_register_resource_bindings(
+            studio_dir,
+            kit_source,
+            list(manifest.resources),
+        )
+        kit_root = kit_source.resolve()
+        kit_root_rel = _serialize_manifest_binding_path(kit_root, studio_dir)
+        local_metadata: Dict[str, str] = {}
+        src_conf = kit_source / _KIT_CONF_FILE
+        if src_conf.is_file():
+            conf_version = _read_kit_version(src_conf)
+            if conf_version:
+                local_metadata["conf_version"] = conf_version
+                if not kit_version:
+                    kit_version = conf_version
+        _register_kit_in_core_toml(
+            config_dir, kit_slug, kit_version, studio_dir,
+            source=source, resources=resource_bindings, kit_path=kit_root_rel,
+            install_mode=install_mode,
+            authority_metadata=authority_metadata,
+            local_metadata=local_metadata or None,
+        )
+        meta = _collect_kit_metadata(kit_root, kit_slug, kit_root_rel)
+        return {
+            "status": "PASS",
+            "action": "installed",
+            "kit": kit_slug,
+            "version": kit_version,
+            "install_mode": install_mode,
+            "files_copied": 0,
+            "files_registered": len(resource_bindings),
+            "resource_bindings": {k: v["path"] for k, v in resource_bindings.items()},
+            "errors": errors,
+            "skill_nav": meta["skill_nav"],
+            "agents_content": meta["agents_content"],
+        }
 
     # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-root-prompt
     # Resolve kit root directory from manifest template
@@ -1768,13 +1896,6 @@ def cmd_kit_install(argv: List[str]) -> int:
                 "hint": "Use --install-mode copy to copy resources into Studio storage, or --install-mode register for eligible in-project sources",
             })
             return 2
-        if args.install_mode == "register":
-            ui.result({
-                "status": "FAIL",
-                "message": "--install-mode register is not implemented yet",
-                "hint": "Use --install-mode copy for now; register mode requires containment validation before writing bindings",
-            })
-            return 2
         # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-mode-noninteractive-required
         # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-load-kit-model
         # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-read-slug-version
@@ -1801,7 +1922,7 @@ def cmd_kit_install(argv: List[str]) -> int:
         resolved = _resolve_studio_dir()
         if resolved is None:
             return 1
-        _, studio_dir = resolved
+        project_root, studio_dir = resolved
         config_dir = studio_dir / "config"
         config_kit_dir, _, _, _ = _resolve_installed_kit_root(
             studio_dir, config_dir, kit_slug,
@@ -1853,9 +1974,26 @@ def cmd_kit_install(argv: List[str]) -> int:
             source=source_registration,
             interactive=True,
             install_mode=args.install_mode or "copy",
+            project_root=project_root,
             authority_metadata=authority_metadata,
         )
         # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-delegate-install
+
+        if str(result.get("status", "")).upper() == "FAIL":
+            output = {
+                "status": result.get("status", "FAIL"),
+                "action": result.get("action", "installed"),
+                "kit": kit_slug,
+                "version": kit_version,
+                "install_mode": result.get("install_mode", args.install_mode or "copy"),
+                "files_written": result.get("files_copied", 0),
+            }
+            if result.get("files_registered") is not None:
+                output["files_registered"] = result.get("files_registered", 0)
+            if result.get("errors"):
+                output["errors"] = result["errors"]
+            ui.result(output, human_fn=lambda d: _human_kit_install(d))
+            return 2
 
         # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-regen-gen
         regenerate_gen_aggregates(studio_dir)
@@ -1870,6 +2008,8 @@ def cmd_kit_install(argv: List[str]) -> int:
             "install_mode": result.get("install_mode", args.install_mode or "copy"),
             "files_written": result.get("files_copied", 0),
         }
+        if result.get("files_registered") is not None:
+            output["files_registered"] = result.get("files_registered", 0)
         if source_registration:
             output["source"] = source_registration
         if authority_metadata:

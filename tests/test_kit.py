@@ -401,13 +401,66 @@ class TestKitSourceModeValidation(unittest.TestCase):
         self.assertIn("--install-mode", out["message"])
         self.assertIn("--path", out["message"])
 
-    def test_install_mode_register_fails_until_supported(self):
+    def test_install_mode_registers_in_project_manifest_resources(self):
         from studio.commands.kit import cmd_kit_install
 
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
-            _bootstrap_project(root)
-            kit_src = _make_kit_source(Path(td), "testkit")
+            adapter = _bootstrap_project(root)
+            kit_src = _make_canonical_kit_source(root / "local-kits", "regkit")
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = cmd_kit_install(["--path", str(kit_src), "--install-mode", "register"])
+                self.assertEqual(rc, 0)
+                out = json.loads(buf.getvalue())
+                self.assertEqual(out["status"], "PASS")
+                self.assertEqual(out["install_mode"], "register")
+                self.assertEqual(out["files_written"], 0)
+                self.assertEqual(out["files_registered"], 1)
+
+                with open(adapter / "config" / "core.toml", "rb") as f:
+                    core = tomllib.load(f)
+                entry = core["kits"]["regkit"]
+                self.assertEqual(entry["install_mode"], "register")
+                self.assertTrue(entry["path"].endswith("local-kits/regkit"))
+                self.assertTrue(entry["resources"]["skill"]["path"].endswith("local-kits/regkit/SKILL.md"))
+                self.assertFalse((adapter / "config" / "kits" / "regkit" / "SKILL.md").exists())
+            finally:
+                os.chdir(cwd)
+
+    def test_install_mode_register_rejects_symlink_escape(self):
+        from studio.commands.kit import cmd_kit_install
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            kit_src = root / "local-kits" / "escapekit"
+            kit_src.mkdir(parents=True)
+            outside = Path(td) / "outside.md"
+            outside.write_text("# Outside\n", encoding="utf-8")
+            try:
+                os.symlink(outside, kit_src / "SKILL.md")
+            except (AttributeError, NotImplementedError, OSError) as exc:
+                self.skipTest(f"symlink unavailable: {exc}")
+            (kit_src / "manifest.toml").write_text(
+                "\n".join([
+                    "[manifest]",
+                    'version = "1"',
+                    'root = "{cf-studio-path}/config/kits/{slug}"',
+                    "user_modifiable = false",
+                    "",
+                    "[[resources]]",
+                    'id = "skill"',
+                    'source = "SKILL.md"',
+                    'default_path = "SKILL.md"',
+                    'type = "file"',
+                    "user_modifiable = false",
+                ]) + "\n",
+                encoding="utf-8",
+            )
             cwd = os.getcwd()
             try:
                 os.chdir(str(root))
@@ -417,7 +470,10 @@ class TestKitSourceModeValidation(unittest.TestCase):
                 self.assertEqual(rc, 2)
                 out = json.loads(buf.getvalue())
                 self.assertEqual(out["status"], "FAIL")
-                self.assertIn("register", out["message"])
+                self.assertIn("escapes", " ".join(out["errors"]))
+                with open(adapter / "config" / "core.toml", "rb") as f:
+                    core = tomllib.load(f)
+                self.assertNotIn("escapekit", core.get("kits", {}))
             finally:
                 os.chdir(cwd)
 
