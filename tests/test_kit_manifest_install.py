@@ -250,7 +250,7 @@ class TestInstallKitWithManifest(unittest.TestCase):
             # Each binding has a "path" key
             self.assertIn("path", resources["adr_artifacts"])
             self.assertIn("path", resources["constraints"])
-            self.assertEqual(resources["constraints"]["kind"], "other")
+            self.assertEqual(resources["constraints"]["kind"], "constraints")
 
     def test_canonical_constraints_resource_kind_is_preserved_in_core_toml(self):
         from studio.commands.kit import install_kit_with_manifest

@@ -808,6 +808,10 @@ def _read_conf_metadata(kit_source: Path) -> tuple[str, str]:
 
 
 def _resource_kind_from_path(source: str, resource_id: str) -> str:
+    source_name = Path(source).name
+    normalized_id = resource_id.strip().lower()
+    if normalized_id == "constraints" or source_name == "constraints.toml":
+        return "constraints"
     if source == "SKILL.md":
         return "skill"
     if source == "AGENTS.md":

@@ -250,6 +250,7 @@ DO:
     - name = explicit kit display name from discovered metadata, else the slug
     - version = explicit semantic-version-compatible metadata, else `0.1.0`
     - each `[[kits.resources]]` includes required `id`, `kind`, and `source`
+    - `constraints.toml`, resource id `constraints`, and TOML files described as structural validation rules / heading outlines / ID kinds / cross-references are classified as `kind = "constraints"`; never classify them as `other`
     - `install_path` is included only when the path can be expressed as a normalized relative path under TARGET_DIR without symlink escape or absolute segments
     - `public = true` is used only for skills, agents, and rules; public resources become agent-facing generated skills/agents/rules, while non-public resources are installed/bound only
     - `prefix_generated_name = false` may be used only for public resources whose generated agent/skill/rule name must be exactly the resource `id`; the default is omitted/true and generates `cf-{kit-slug}-{id}`
@@ -263,6 +264,7 @@ DO:
   STOP_TURN
 RULES:
   ALWAYS classify discovered candidates into the public and supporting groups before proposing a manifest
+  ALWAYS classify structural validation rule files as `kind = "constraints"` when their source path, id, or evidence identifies constraints semantics
   ALWAYS keep the proposal conservative and report ambiguity instead of guessing
   ALWAYS propose a default manifest before any write when no legacy manifest is present
   ALWAYS use top-level `manifest_version = "1.0"` plus `[[kits]]` + `[[kits.resources]]`; never emit `[kit]` or top-level `[[resources]]`

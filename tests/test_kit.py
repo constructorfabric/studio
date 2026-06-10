@@ -222,6 +222,9 @@ class TestKitNormalize(unittest.TestCase):
             self.assertIn('manifest_version = "1.0"', out["manifest"])
             self.assertIn("[[kits]]", out["manifest"])
             self.assertIn("[[kits.resources]]", out["manifest"])
+            manifest_data = tomllib.loads(out["manifest"])
+            resources = {r["id"]: r for r in manifest_data["kits"][0]["resources"]}
+            self.assertEqual(resources["constraints"]["kind"], "constraints")
             self.assertFalse((kit_src / ".cf-studio-kit.toml").exists())
 
     def test_normalize_layout_writes_default_manifest(self):
@@ -247,6 +250,8 @@ class TestKitNormalize(unittest.TestCase):
             resource_ids = {r["id"] for r in data["kits"][0]["resources"]}
             self.assertIn("artifacts", resource_ids)
             self.assertIn("skill", resource_ids)
+            resources = {r["id"]: r for r in data["kits"][0]["resources"]}
+            self.assertEqual(resources["constraints"]["kind"], "constraints")
 
     def test_normalize_dry_run_human_prints_versioned_manifest(self):
         from studio.commands.kit import cmd_kit_normalize
@@ -305,6 +310,7 @@ class TestKitNormalize(unittest.TestCase):
             kit_src = config_dir / "kits" / "sdlc"
             (kit_src / "workflows").mkdir(parents=True)
             (kit_src / "SKILL.md").write_text("# SDLC\n", encoding="utf-8")
+            (kit_src / "constraints.toml").write_text("[PRD.identifiers.fr]\nrequired = true\n", encoding="utf-8")
             (kit_src / "workflows" / "implement.md").write_text(
                 "---\ntype: workflow\n---\n# Implement\n",
                 encoding="utf-8",
@@ -319,6 +325,9 @@ class TestKitNormalize(unittest.TestCase):
                     "",
                     "[kits.sdlc.resources.skill]",
                     'path = "config/kits/sdlc/SKILL.md"',
+                    "",
+                    "[kits.sdlc.resources.constraints]",
+                    'path = "config/kits/sdlc/constraints.toml"',
                     "",
                     "[kits.sdlc.resources.implement]",
                     'path = "config/kits/sdlc/workflows/implement.md"',
@@ -337,6 +346,9 @@ class TestKitNormalize(unittest.TestCase):
             self.assertIn('source = "SKILL.md"', manifest)
             self.assertIn('source = "workflows/implement.md"', manifest)
             self.assertIn('origin = "legacy-workflow"', manifest)
+            manifest_data = tomllib.loads(manifest)
+            resources = {r["id"]: r for r in manifest_data["kits"][0]["resources"]}
+            self.assertEqual(resources["constraints"]["kind"], "constraints")
             self.assertTrue(any(
                 component["generated_name"] == "cf-sdlc-implement"
                 for component in out["report"]["public_components"]
