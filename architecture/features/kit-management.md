@@ -900,7 +900,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 - [x] `p1` - File-level diff correctly handles TOC stripping, conflict merging, and editor integration
 - [x] `p1` - `cfs info` outputs canonical `kit_models` with resource bindings, generated names, install mode, drift, risk, provenance, and legacy `kit_details` derived from the same model
 - [x] `p1` - `cfs resolve-vars` omits `{kit_slug.resource_id}` variables from the flat map, exposes unqualified variables only when unique, and warns on conflicts
-- [ ] `p1` - Install, update, info, resolve-vars, validate, and generate-agents all use the shared `KitModel` service; command-specific ad hoc kit scanning is limited to declared legacy adapters
+- [x] `p1` - Install, update, info, resolve-vars, validate, and generate-agents all use the shared `KitModel` service; command-specific ad hoc kit scanning is limited to declared legacy adapters
 - [x] `p1` - `cfs kit update` displays whatsnew entries from kit's `whatsnew.toml` before file-level diff (versions > installed version)
 - [x] `p1` - All CDSL instructions have corresponding `@cpt-begin`/`@cpt-end` markers in code
 - [x] `p1` - GitHub-backed kit registrations store `version` as GitHub-derived display/backcompat release/ref version plus structured authority metadata: resolver_mode, resolution_basis, requested_ref, resolved_ref, commit_sha/content identity, canonical_source, effective_source, verified, and freshness

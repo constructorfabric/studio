@@ -223,7 +223,7 @@ def cmd_validate_kits(argv: List[str]) -> int:
 def _validate_kit_by_path(kit_path: Path, *, verbose: bool = False) -> Tuple[int, Dict[str, Any]]:
     """Validate a standalone kit directory (not necessarily registered in config)."""
     # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-resolve-dir
-    from ..utils.constraints import load_constraints_toml
+    from ..utils.constraints import load_constraints_files, load_constraints_toml
     from ..utils.artifacts_meta import ArtifactsMeta
 
     kit_dir = Path(kit_path).resolve()
@@ -232,12 +232,40 @@ def _validate_kit_by_path(kit_path: Path, *, verbose: bool = False) -> Tuple[int
 
     # Derive slug from directory name
     slug = kit_dir.name
+    has_model_input = (
+        (kit_dir / ".cf-studio-kit.toml").is_file()
+        or (kit_dir / "manifest.toml").is_file()
+        or (kit_dir / "conf.toml").is_file()
+        or any((kit_dir / dirname).exists() for dirname in ("artifacts", "codebase", "scripts", "workflows"))
+    )
     # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-resolve-dir
 
     # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-structural-check
-    # ── Phase 1: Structural — constraints.toml ────────────────────────
+    # ── Phase 1: Structural — KitModel constraints resources ──────────
     all_errors: List[Dict[str, object]] = []
-    _kc, kc_errs = load_constraints_toml(kit_dir)
+    model = None
+    model_error: Optional[Exception] = None
+    try:
+        from ..utils.kit_model import load_kit_model
+        model = load_kit_model(kit_dir)
+    except ValueError as exc:
+        model_error = exc
+    except (OSError, KeyError) as exc:
+        model_error = exc
+
+    constraint_paths: List[Path] = []
+    if model is not None:
+        constraint_paths = [
+            (kit_dir / str(resource.source)).resolve()
+            for resource in getattr(model, "resources", [])
+            if str(getattr(resource, "kind", "") or "").strip().lower() == "constraints"
+        ]
+    if constraint_paths:
+        _kc, kc_errs = load_constraints_files(constraint_paths)
+        constraints_error_path = constraint_paths[0]
+    else:
+        _kc, kc_errs = load_constraints_toml(kit_dir)
+        constraints_error_path = kit_dir / "constraints.toml"
 
     kit_report: Dict[str, object] = {
         "kit": slug,
@@ -246,7 +274,7 @@ def _validate_kit_by_path(kit_path: Path, *, verbose: bool = False) -> Tuple[int
         "error_count": len(kc_errs),
     }
     if kc_errs:
-        errs = [constraints_error("constraints", "Invalid constraints.toml", path=(kit_dir / "constraints.toml"), line=1, errors=list(kc_errs), kit=slug)]
+        errs = [constraints_error("constraints", "Invalid constraints", path=constraints_error_path, line=1, errors=list(kc_errs), kit=slug)]
         if verbose:
             kit_report["errors"] = errs
         all_errors.extend(errs)
@@ -257,9 +285,7 @@ def _validate_kit_by_path(kit_path: Path, *, verbose: bool = False) -> Tuple[int
 
     # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-verify-resource-paths
     # ── Phase 1b: KitModel resource verification ─────────────────────
-    try:
-        from ..utils.kit_model import load_kit_model
-        model = load_kit_model(kit_dir)
+    if model is not None:
         if verbose:
             kit_report["manifest_source"] = model.manifest_source
             kit_report["resource_count"] = len(model.resources)
@@ -267,16 +293,14 @@ def _validate_kit_by_path(kit_path: Path, *, verbose: bool = False) -> Tuple[int
                 component.generated_name
                 for component in model.public_components
             ]
-    except ValueError as exc:
+    elif isinstance(model_error, ValueError) and has_model_input:
         all_errors.append(constraints_error(
             "resources",
-            str(exc),
+            str(model_error),
             path=kit_dir,
             line=1,
             kit=slug,
         ))
-    except (OSError, KeyError):
-        pass
     # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-verify-resource-paths
 
     # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-build-artifacts-meta

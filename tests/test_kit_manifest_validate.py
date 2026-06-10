@@ -692,6 +692,51 @@ class TestValidateKitByPathManifest(unittest.TestCase):
             ]
             self.assertEqual(len(resource_errors), 0)
 
+    def test_canonical_constraints_kind_resources_with_arbitrary_names(self):
+        """Standalone canonical kit loads constraints by kind, not filename or id."""
+        from studio.commands.validate_kits import _validate_kit_by_path
+
+        with TemporaryDirectory() as td:
+            td_path = Path(td)
+            kit_dir = td_path / "mykit"
+            kit_dir.mkdir()
+            (kit_dir / "base-rules.toml").write_text(
+                "[PRD.identifiers.fr]\nrequired = true\n",
+                encoding="utf-8",
+            )
+            (kit_dir / "extra-rules.toml").write_text(
+                "[DESIGN.identifiers.component]\nrequired = true\n",
+                encoding="utf-8",
+            )
+            (kit_dir / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "mykit"',
+                    'version = "1.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "policy-a"',
+                    'kind = "constraints"',
+                    'source = "base-rules.toml"',
+                    'type = "file"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "policy-b"',
+                    'kind = "constraints"',
+                    'source = "extra-rules.toml"',
+                    'type = "file"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            rc, result = _validate_kit_by_path(kit_dir, verbose=True)
+
+            self.assertEqual(rc, 0)
+            self.assertEqual(result["kits"][0]["manifest_source"], "canonical")
+            self.assertEqual(result["kits"][0]["kinds"], ["DESIGN", "PRD"])
+
     def test_malformed_manifest_produces_error(self):
         """Standalone kit with malformed manifest.toml → resource error reported."""
         from studio.commands.validate_kits import _validate_kit_by_path
