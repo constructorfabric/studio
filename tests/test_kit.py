@@ -1124,6 +1124,34 @@ class TestKitUpdateCheckCoverage(unittest.TestCase):
             warnings = "\n".join(reloaded.warnings)
             self.assertNotIn("generated_name", warnings)
 
+    def test_kit_model_rejects_non_boolean_user_modifiable(self):
+        from studio.utils.kit_model import load_kit_model
+
+        with TemporaryDirectory() as td:
+            kit_src = Path(td) / "badkit"
+            kit_src.mkdir()
+            (kit_src / "skill.md").write_text("# Skill\n", encoding="utf-8")
+            (kit_src / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "badkit"',
+                    'version = "1.0.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "skill"',
+                    'kind = "skill"',
+                    'source = "skill.md"',
+                    'user_modifiable = "false"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(ValueError) as ctx:
+                load_kit_model(kit_src)
+            self.assertIn("user_modifiable", str(ctx.exception))
+
     def test_dispatcher_routes_normalize(self):
         from studio.commands.kit import cmd_kit
 

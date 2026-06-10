@@ -1999,7 +1999,7 @@ def _merge_id_constraint(base: IdConstraint, incoming: IdConstraint) -> IdConstr
         references[name] = _merge_reference_rule(references[name], rule) if name in references else rule
     return IdConstraint(
         kind=incoming.kind or base.kind,
-        required=base.required or incoming.required,
+        required=base.required if base.required == incoming.required else False,
         name=incoming.name if incoming.name is not None else base.name,
         description=incoming.description if incoming.description is not None else base.description,
         template=incoming.template if incoming.template is not None else base.template,
@@ -2040,7 +2040,7 @@ def _merge_artifact_constraints(
         description=incoming.description if incoming.description is not None else base.description,
         defined_id=[by_id_kind[key] for key in order if key in by_id_kind],
         headings=(base.headings or []) + (incoming.headings or []) or None,
-        toc=base.toc or incoming.toc,
+        toc=base.toc if base.toc == incoming.toc else False,
     )
 
 

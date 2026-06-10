@@ -75,13 +75,9 @@ def _resolve_kit_variables(
     kit_slug: str = "",
 ) -> Dict[str, str]:
     """Resolve resource bindings for a single kit to absolute paths."""
-    model_vars = _resolve_kit_variables_from_model(adapter_dir, core_kit, kit_slug)
-    if model_vars:
-        return model_vars
-
     resources = core_kit.get("resources")
     if not isinstance(resources, dict):
-        return {}
+        return _resolve_kit_variables_from_model(adapter_dir, core_kit, kit_slug)
 
     result: Dict[str, str] = {}
     for identifier, binding in resources.items():
@@ -110,6 +106,13 @@ def _resolve_kit_variables(
         # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-aliases
         # @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-resolve-binding
 
+    model_vars = _resolve_kit_variables_from_model(adapter_dir, core_kit, kit_slug)
+    for var_name, var_path in model_vars.items():
+        result.setdefault(var_name, var_path)
+    model_aliases = _resolve_kit_aliases_from_model(adapter_dir, core_kit, kit_slug)
+    for alias, resource_id in model_aliases.items():
+        if resource_id in result:
+            result.setdefault(alias, result[resource_id])
     return result
 # @cpt-end:cpt-studio-algo-developer-experience-resolve-vars:p1:inst-resolve-binding-path
 
@@ -146,6 +149,37 @@ def _resolve_kit_variables_from_model(
             if isinstance(alias, str) and alias.strip():
                 result[alias.strip()] = resolved_path
     return result
+
+
+def _resolve_kit_aliases_from_model(
+    adapter_dir: Path,
+    core_kit: dict,
+    kit_slug: str,
+) -> Dict[str, str]:
+    """Return alias -> resource_id mappings from KitModel metadata."""
+    raw_path = core_kit.get("path") if isinstance(core_kit, dict) else ""
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        if not kit_slug:
+            return {}
+        raw_path = f"config/kits/{kit_slug}"
+    kit_root = (adapter_dir / raw_path.strip()).resolve()
+    if not kit_root.exists():
+        return {}
+    try:
+        from ..utils.kit_model import load_kit_model
+        model = load_kit_model(kit_root, source_hint="core")
+    except (OSError, ValueError, KeyError):
+        return {}
+
+    aliases: Dict[str, str] = {}
+    for resource in getattr(model, "resources", []):
+        resource_id = str(getattr(resource, "id", "") or "").strip()
+        if not resource_id:
+            continue
+        for alias in getattr(resource, "aliases", []) or []:
+            if isinstance(alias, str) and alias.strip():
+                aliases[alias.strip()] = resource_id
+    return aliases
 
 
 def _collect_all_variables(

@@ -115,8 +115,8 @@ class TestCollectAllVariables(unittest.TestCase):
             self.assertIn("sdlc", result["kits"])
             self.assertIn("adr_template", result["kits"]["sdlc"])
 
-    def test_installed_kit_resources_resolved_through_kit_model(self):
-        """Installed core.toml bindings resolve through KitModel without slug-qualified vars."""
+    def test_installed_kit_resources_prefer_effective_bindings_over_kit_model(self):
+        """Installed core.toml bindings win over KitModel source paths."""
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
@@ -157,7 +157,14 @@ class TestCollectAllVariables(unittest.TestCase):
                     "sdlc": {
                         "path": "config/kits/sdlc",
                         "resources": {
-                            "adr_template": {"path": "ignored/fallback.md"},
+                            "adr_template": {
+                                "path": "custom/ADR/template.md",
+                                "aliases": ["adr"],
+                            },
+                            "implement": {
+                                "path": "config/kits/sdlc/workflows/implement.md",
+                                "origin": "legacy-workflow",
+                            },
                         },
                     },
                 },
@@ -168,10 +175,65 @@ class TestCollectAllVariables(unittest.TestCase):
             self.assertIn("implement", result["variables"])
             self.assertNotIn("sdlc.adr_template", result["variables"])
             self.assertTrue(result["variables"]["adr_template"].endswith(
-                "config/kits/sdlc/artifacts/ADR/template.md"
+                "custom/ADR/template.md"
             ))
+            self.assertEqual(result["variables"]["adr"], result["variables"]["adr_template"])
             self.assertTrue(result["variables"]["implement"].endswith(
                 "config/kits/sdlc/workflows/implement.md"
+            ))
+
+    def test_kit_model_aliases_do_not_override_effective_bindings(self):
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            kit_root = adapter / "config" / "kits" / "sdlc"
+            kit_root.mkdir(parents=True)
+            (kit_root / "artifacts" / "ADR").mkdir(parents=True)
+            (kit_root / "artifacts" / "ADR" / "template.md").write_text("# ADR\n", encoding="utf-8")
+            (kit_root / "custom" / "ADR").mkdir(parents=True)
+            (kit_root / "custom" / "ADR" / "template.md").write_text("# Custom ADR\n", encoding="utf-8")
+            (kit_root / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "sdlc"',
+                    'version = "1.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "adr_template"',
+                    'kind = "template"',
+                    'source = "artifacts/ADR/template.md"',
+                    'install_path = "artifacts/ADR/template.md"',
+                    'aliases = ["other_template"]',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "other_template"',
+                    'kind = "template"',
+                    'source = "custom/ADR/template.md"',
+                    'install_path = "custom/ADR/template.md"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            result = _collect_all_variables(
+                root,
+                adapter,
+                {
+                    "kits": {
+                        "sdlc": {
+                            "path": "config/kits/sdlc",
+                            "resources": {
+                                "adr_template": {"path": "config/kits/sdlc/artifacts/ADR/template.md"},
+                                "other_template": {"path": "config/kits/sdlc/custom/ADR/template.md"},
+                            },
+                        },
+                    },
+                },
+            )
+
+            self.assertTrue(result["variables"]["other_template"].endswith(
+                "config/kits/sdlc/custom/ADR/template.md"
             ))
 
     def test_kit_aliases_resolved_with_unqualified_names_only(self):

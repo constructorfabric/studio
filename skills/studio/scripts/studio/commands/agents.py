@@ -2180,11 +2180,20 @@ def _generate_kit_workflow_skills(
     if kit_workflows is None:
         kit_workflows = _list_workflow_files(studio_root, project_root)
 
+    seen_skill_ids: Dict[str, str] = {}
     for wf_filename, wf_full_path, kit_slug, explicit_skill_id in kit_workflows:
         wf_name = Path(wf_filename).stem
         # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-prefix
         skill_id = explicit_skill_id or _compute_workflow_skill_id(wf_name, kit_slug)
         # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-prefix
+        owner = f"{kit_slug or 'core'}:{wf_full_path.as_posix()}"
+        previous_owner = seen_skill_ids.get(skill_id)
+        if previous_owner is not None:
+            skills_result["errors"].append(
+                f"duplicate public skill '{skill_id}' from {owner}; already provided by {previous_owner}",
+            )
+            continue
+        seen_skill_ids[skill_id] = owner
 
         out_rel = path_pattern.format(skill_id=skill_id)
         out_path = (project_root / out_rel).resolve()
@@ -3264,6 +3273,9 @@ def _process_kit_public_agents_and_rules(
     )
     agent_entries: Dict[str, _AgentEntry] = {}
     rule_entries: Dict[str, _RuleEntry] = {}
+    entry_owners: Dict[Tuple[str, str], str] = {}
+    agent_collision_errors: List[str] = []
+    rule_collision_errors: List[str] = []
     trusted_roots: List[Path] = []
 
     # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
@@ -3274,6 +3286,15 @@ def _process_kit_public_agents_and_rules(
         trusted_roots.extend([source_path.parent, kit_root])
         description = str(getattr(component, "description", "") or "").strip()
         if getattr(component, "kind", "") == "agent":
+            identity = ("agent", generated_name)
+            owner = f"{kit_slug}:{source_path.as_posix()}"
+            previous_owner = entry_owners.get(identity)
+            if previous_owner is not None:
+                agent_collision_errors.append(
+                    f"duplicate public agent '{generated_name}' from {owner}; already provided by {previous_owner}",
+                )
+                continue
+            entry_owners[identity] = owner
             target_config = _component_target_config(component, agent)
             agent_entries[generated_name] = _AgentEntry(
                 id=generated_name,
@@ -3314,6 +3335,15 @@ def _process_kit_public_agents_and_rules(
                     subagent_id,
                     prefix_generated_name=nested_prefix,
                 )
+                identity = ("agent", nested_name)
+                owner = f"{kit_slug}:{subagent_source_path.as_posix()}"
+                previous_owner = entry_owners.get(identity)
+                if previous_owner is not None:
+                    agent_collision_errors.append(
+                        f"duplicate public agent '{nested_name}' from {owner}; already provided by {previous_owner}",
+                    )
+                    continue
+                entry_owners[identity] = owner
                 agent_entries[nested_name] = _AgentEntry(
                     id=nested_name,
                     description=str(subagent.get("description", "") or f"Constructor Studio {nested_name} agent"),
@@ -3335,6 +3365,15 @@ def _process_kit_public_agents_and_rules(
                 )
             # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-subagent-config
         elif getattr(component, "kind", "") == "rule":
+            identity = ("rule", generated_name)
+            owner = f"{kit_slug}:{source_path.as_posix()}"
+            previous_owner = entry_owners.get(identity)
+            if previous_owner is not None:
+                rule_collision_errors.append(
+                    f"duplicate public rule '{generated_name}' from {owner}; already provided by {previous_owner}",
+                )
+                continue
+            entry_owners[identity] = owner
             rule_entries[generated_name] = _RuleEntry(
                 id=generated_name,
                 description=description or f"Constructor Studio {generated_name} rule",
@@ -3351,6 +3390,7 @@ def _process_kit_public_agents_and_rules(
         studio_root=studio_root,
         trusted_roots=trusted_roots,
     )
+    public_agents.setdefault("errors", []).extend(agent_collision_errors)
     public_rules = generate_manifest_rules(
         rule_entries,
         agent,
@@ -3359,6 +3399,7 @@ def _process_kit_public_agents_and_rules(
         studio_root=studio_root,
         trusted_roots=trusted_roots,
     )
+    public_rules.setdefault("errors", []).extend(rule_collision_errors)
     return {"agents": public_agents, "rules": public_rules}
 
 

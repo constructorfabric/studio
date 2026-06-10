@@ -6,11 +6,14 @@ from skills.studio.scripts.studio.utils.constraints import (
     ArtifactRecord,
     ArtifactKindConstraints,
     HeadingConstraint,
+    IdConstraint,
+    KitConstraints,
     cross_validate_artifacts,
     heading_constraint_ids_by_line,
     load_constraints_file,
     load_constraints_files,
     load_constraints_toml,
+    merge_kit_constraints_all_of,
     parse_kit_constraints,
     validate_artifact_file,
     validate_headings_contract,
@@ -84,6 +87,38 @@ def test_parse_kit_constraints_valid_happy_path_and_normalizations():
     assert d0.references is not None
     assert set(d0.references.keys()) == {"DESIGN", "SPEC"}
     assert d0.references["DESIGN"].coverage is True
+
+
+def test_merge_all_of_preserves_stricter_false_values():
+    base = KitConstraints(
+        by_kind={
+            "PRD": ArtifactKindConstraints(
+                name=None,
+                description=None,
+                defined_id=[IdConstraint(kind="fr", required=False)],
+                headings=None,
+                toc=False,
+            )
+        }
+    )
+    incoming = KitConstraints(
+        by_kind={
+            "PRD": ArtifactKindConstraints(
+                name=None,
+                description=None,
+                defined_id=[IdConstraint(kind="fr", required=True)],
+                headings=None,
+                toc=True,
+            )
+        }
+    )
+
+    merged = merge_kit_constraints_all_of([base, incoming])
+
+    assert merged is not None
+    prd = merged.by_kind["PRD"]
+    assert prd.defined_id[0].required is False
+    assert prd.toc is False
 
 
 def test_parse_kit_constraints_duplicate_kind_detection():
@@ -470,7 +505,7 @@ def test_load_constraints_files_merges_sequentially(tmp_path: Path):
     assert kc is not None
     assert kc.by_kind["PRD"].name == "Base"
     assert kc.by_kind["PRD"].description == "Extra"
-    assert kc.by_kind["PRD"].toc is True
+    assert kc.by_kind["PRD"].toc is False
     assert [c.kind for c in kc.by_kind["PRD"].defined_id] == ["fr", "actor"]
     assert "DESIGN" in kc.by_kind
 

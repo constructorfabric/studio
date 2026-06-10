@@ -252,6 +252,28 @@ class TestInstallKitWithManifest(unittest.TestCase):
             self.assertIn("path", resources["constraints"])
             self.assertEqual(resources["constraints"]["kind"], "constraints")
 
+    def test_manifest_install_fails_when_core_toml_cannot_be_registered(self):
+        from studio.commands.kit import install_kit_with_manifest
+
+        with TemporaryDirectory() as td:
+            td_path = Path(td)
+            kit_src = _make_kit_with_manifest(td_path, "mykit")
+
+            adapter = td_path / "adapter"
+            (adapter / "config").mkdir(parents=True)
+
+            manifest = load_manifest(kit_src)
+            assert manifest is not None
+
+            result = install_kit_with_manifest(
+                kit_src, adapter, "mykit", "2.0", manifest,
+                interactive=False,
+            )
+
+            self.assertEqual(result["status"], "FAIL")
+            self.assertTrue(result["files_copied"] > 0)
+            self.assertIn("missing", "\n".join(result["errors"]))
+
     def test_canonical_constraints_resource_kind_is_preserved_in_core_toml(self):
         from studio.commands.kit import install_kit_with_manifest
         import tomllib

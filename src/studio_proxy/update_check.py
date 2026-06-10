@@ -131,6 +131,12 @@ def check_skill_engine(skill_path: Optional[Path]) -> Dict[str, Any]:
                 latest, _asset_url, metadata = _resolve_latest_version_with_metadata()
         latest = latest or ""
         result["latest_version"] = latest
+        if not latest:
+            result.update({
+                "action": "unknown",
+                "message": "Latest skill-engine version unavailable",
+            })
+            return result
         if metadata:
             result["authority"] = metadata
         if _is_newer(latest, installed):
@@ -166,6 +172,11 @@ def check_kits(skill_path: Optional[Path], project_root: str = "") -> Dict[str, 
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         result["message"] = str(exc)
+        return result
+    if proc.returncode != 0:
+        message = (proc.stderr or proc.stdout or f"kit check-updates exited {proc.returncode}").strip()
+        result["message"] = message
+        result["returncode"] = proc.returncode
         return result
     try:
         payload = json.loads(proc.stdout or "{}")

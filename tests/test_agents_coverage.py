@@ -200,6 +200,60 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
             self.assertFalse((root / ".cursor" / "agents" / "cf-pubkit-codexonly.mdc").exists())
             self.assertFalse((root / ".cursor" / "agents" / "cf-pubkit-codex-auditor.mdc").exists())
 
+    def test_generate_agents_reports_duplicate_public_agent_names(self):
+        from studio.commands.agents import _default_agents_config, _process_single_agent
+
+        with TemporaryDirectory() as td:
+            root, studio_root = self._make_project(td)
+            kit_root = studio_root / "config" / "kits" / "zdupekit"
+            kit_root.mkdir(parents=True)
+            (kit_root / "agent.md").write_text("# Duplicate\nDuplicate agent.\n", encoding="utf-8")
+            (kit_root / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "zdupekit"',
+                    'name = "Duplicate Kit"',
+                    'version = "1.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "cf-pubkit-reviewer"',
+                    'kind = "agent"',
+                    'source = "agent.md"',
+                    'type = "file"',
+                    "public = true",
+                    "prefix_generated_name = false",
+                    'generated_targets = ["cursor"]',
+                    'description = "Duplicate reviewer"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            core_toml = studio_root / "config" / "core.toml"
+            core_toml.write_text(
+                core_toml.read_text(encoding="utf-8")
+                + "\n[kits.zdupekit]\n"
+                + 'path = "config/kits/zdupekit"\n'
+                + 'version = "1.0"\n',
+                encoding="utf-8",
+            )
+
+            result = _process_single_agent(
+                "cursor",
+                root,
+                studio_root,
+                _default_agents_config(),
+                None,
+                dry_run=False,
+            )
+
+            self.assertEqual(result["status"], "PARTIAL")
+            errors = "\n".join(str(error) for error in result["errors"])
+            self.assertIn("duplicate public agent 'cf-pubkit-reviewer'", errors)
+            agent_path = root / ".cursor" / "agents" / "cf-pubkit-reviewer.mdc"
+            self.assertIn("Review carefully.", agent_path.read_text(encoding="utf-8"))
+            self.assertNotIn("Duplicate agent.", agent_path.read_text(encoding="utf-8"))
+
 
 class TestEnsureFrontmatterDescriptionQuoted(unittest.TestCase):
     """Cover lines 440, 455-457 in agents.py."""

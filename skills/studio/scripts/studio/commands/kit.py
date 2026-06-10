@@ -1512,7 +1512,7 @@ def install_kit(
 
     # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-register-core
     # Register in core.toml
-    _register_kit_in_core_toml(
+    registration_errors = _register_kit_in_core_toml(
         config_dir,
         kit_slug,
         kit_version,
@@ -1522,6 +1522,16 @@ def install_kit(
         authority_metadata=authority_metadata,
         local_metadata=local_metadata or None,
     )
+    if registration_errors:
+        return {
+            "status": "FAIL",
+            "kit": kit_slug,
+            "version": kit_version,
+            "install_mode": install_mode,
+            "files_copied": sum(1 for v in copy_actions.values() if v == "copied"),
+            "errors": registration_errors,
+            "actions": actions,
+        }
     # @cpt-end:cpt-studio-algo-kit-install:p1:inst-register-core
 
     # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-collect-meta
@@ -1679,7 +1689,7 @@ def install_kit_with_manifest(
                 local_metadata["conf_version"] = conf_version
                 if not kit_version:
                     kit_version = conf_version
-        _register_kit_in_core_toml(
+        registration_errors = _register_kit_in_core_toml(
             config_dir, kit_slug, kit_version, studio_dir,
             source=source, resources=resource_bindings, kit_path=kit_root_rel,
             install_mode=install_mode,
@@ -1688,6 +1698,13 @@ def install_kit_with_manifest(
             authority_metadata=authority_metadata,
             local_metadata=local_metadata or None,
         )
+        if registration_errors:
+            return {
+                "status": "FAIL",
+                "kit": kit_slug,
+                "install_mode": install_mode,
+                "errors": registration_errors,
+            }
         meta = _collect_kit_metadata(kit_root, kit_slug, kit_root_rel)
         # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-register-core-only
         # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-register-resource-in-place
@@ -1793,7 +1810,7 @@ def install_kit_with_manifest(
         _seed_kit_config_files(scripts_dir, config_dir, {})
 
     # Register in core.toml with resource bindings
-    _register_kit_in_core_toml(
+    registration_errors = _register_kit_in_core_toml(
         config_dir, kit_slug, kit_version, studio_dir,
         source=source, resources=resource_bindings, kit_path=kit_root_rel,
         install_mode=install_mode,
@@ -1801,6 +1818,14 @@ def install_kit_with_manifest(
         authority_metadata=authority_metadata,
         local_metadata=local_metadata or None,
     )
+    if registration_errors:
+        return {
+            "status": "FAIL",
+            "kit": kit_slug,
+            "install_mode": install_mode,
+            "files_copied": files_copied,
+            "errors": registration_errors,
+        }
     # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-register-bindings
 
     # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-collect-meta
@@ -2113,11 +2138,17 @@ def migrate_legacy_kit_to_manifest(
 
     # @cpt-begin:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-write-bindings
     # Write all resource bindings to core.toml [kits.{slug}.resources]
-    _register_kit_in_core_toml(
+    registration_errors = _register_kit_in_core_toml(
         config_dir, kit_slug, "", studio_dir,
         resources=resource_bindings,
         kit_path=_resolve_manifest_kit_root_rel(manifest, resource_bindings, kit_slug),
     )
+    if registration_errors:
+        return {
+            "status": "FAIL",
+            "kit": kit_slug,
+            "errors": registration_errors,
+        }
     _preserve_template_variables(kit_root, resource_bindings)
     # @cpt-end:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-write-bindings
 
@@ -4134,7 +4165,7 @@ def update_kit(
         local_metadata: Dict[str, str] = {}
         if local_conf_version:
             local_metadata["conf_version"] = local_conf_version
-        _register_kit_in_core_toml(
+        registration_errors = _register_kit_in_core_toml(
             config_dir,
             kit_slug,
             source_version,
@@ -4148,6 +4179,11 @@ def update_kit(
             authority_metadata=authority_metadata,
             local_metadata=local_metadata or None,
         )
+        if registration_errors:
+            result["version"] = {"status": "failed"}
+            result["gen"] = {"files_written": 0}
+            result["errors"] = registration_errors
+            return result
         identity_changed = new_identity != previous_identity
         version_changed = bool(source_version and source_version != previous_version)
         result["version"] = {
@@ -4196,7 +4232,7 @@ def update_kit(
                 and source
                 and (authority_source_type == "git" or authority_freshness != "last_known")
             ):
-                _register_kit_in_core_toml(
+                registration_errors = _register_kit_in_core_toml(
                     config_dir,
                     kit_slug,
                     source_version,
@@ -4208,6 +4244,11 @@ def update_kit(
                         if local_conf_version else None
                     ),
                 )
+                if registration_errors:
+                    result["version"] = {"status": "failed"}
+                    result["gen"] = {"files_written": 0}
+                    result["errors"] = registration_errors
+                    return result
             # Still collect metadata for .gen/ aggregation
             _current_entry = _read_kits_from_core_toml(config_dir).get(kit_slug, installed_kit_entry)
             _current_dir, _current_rel = _resolve_registered_kit_metadata_target(
@@ -4357,7 +4398,7 @@ def update_kit(
                 preserved_version = str(_existing.get("version") or "") or source_version
             else:
                 preserved_version = source_version
-            _register_kit_in_core_toml(
+            registration_errors = _register_kit_in_core_toml(
                 config_dir, kit_slug, preserved_version, studio_dir,
                 source=source, resources=_merged_resources, kit_path=_kit_root_rel,
                 authority_metadata=authority_metadata,
@@ -4367,6 +4408,11 @@ def update_kit(
                     if local_conf_version else None
                 ),
             )
+            if registration_errors:
+                result["version"] = {"status": "failed"}
+                result["gen"] = {"files_written": 0}
+                result["errors"] = registration_errors
+                return result
         # @cpt-end:cpt-studio-algo-kit-update:p1:inst-update-core-toml
 
     # @cpt-begin:cpt-studio-algo-kit-update:p1:inst-collect-metadata
@@ -4714,18 +4760,18 @@ def _register_kit_in_core_toml(
     source_provenance: Optional[Dict[str, Any]] = None,
     content_identity: Optional[Dict[str, Any]] = None,
     local_metadata: Optional[Dict[str, Any]] = None,
-) -> None:
+) -> List[str]:
     """Register or update a kit entry in config/core.toml."""
     # @cpt-begin:cpt-studio-algo-kit-config-helpers:p1:inst-register-core
     core_toml = config_dir / _KIT_CORE_TOML
     if not core_toml.is_file():
-        return
+        return [f"Cannot register kit '{kit_slug}': missing {core_toml}"]
 
     try:
         with open(core_toml, "rb") as f:
             data = tomllib.load(f)
-    except (OSError, ValueError):
-        return
+    except (OSError, ValueError) as exc:
+        return [f"Cannot register kit '{kit_slug}' in {core_toml}: {exc}"]
 
     kits = data.setdefault("kits", {})
     # Merge into existing entry to preserve fields like 'source'
@@ -4817,6 +4863,9 @@ def _register_kit_in_core_toml(
         from ..utils import toml_utils
         toml_utils.dump(data, core_toml, header_comment="Constructor Studio project configuration")
     except (OSError, ValueError) as exc:
-        sys.stderr.write(f"kit: warning: failed to register {kit_slug} in {core_toml}: {exc}\n")
+        message = f"kit: warning: failed to register {kit_slug} in {core_toml}: {exc}"
+        sys.stderr.write(f"{message}\n")
+        return [message]
+    return []
     # @cpt-end:cpt-studio-algo-kit-config-helpers:p1:inst-register-core
 # @cpt-end:cpt-studio-algo-kit-config-helpers:p1:inst-register-core-fn

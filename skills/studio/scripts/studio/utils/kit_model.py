@@ -689,7 +689,7 @@ def _canonical_model_from_entry(
             type=resource_type,
             public=public,
             description=_optional_string(raw, "description"),
-            user_modifiable=bool(raw.get("user_modifiable", True)),
+            user_modifiable=_optional_bool(raw, "user_modifiable", True),
             aliases=_string_list(raw.get("aliases"), "aliases"),
             # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-generated-targets
             generated_targets=generated_targets or (["installed"] if public else []),

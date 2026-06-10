@@ -636,7 +636,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 1. [x] - `p1` - Do not expose `{kit_slug.resource_id}` variables in the flat map; keep kit slug separation only in structured `kits[slug]` output - `inst-vars-no-kit-qualified`
 2. [x] - `p1` - Expose unqualified `{resource_id}` variables only when unique across all installed kits; omit conflicts and report warnings - `inst-vars-unqualified-unique`
 3. [x] - `p1` - Apply explicit aliases using the same uniqueness and warning rules as resource IDs - `inst-vars-aliases`
-4. [x] - `p1` - Resolve variable values from `core.toml` effective bindings, not from manifest source paths - `inst-vars-effective-bindings`
+4. [x] - `p1` - Resolve variable values from `core.toml` effective bindings, not from manifest source paths; `KitModel` may enrich identifiers and aliases, but it never overrides an effective binding - `inst-vars-effective-bindings`
 
 ### Kit Update, Drift, and Prune
 
@@ -708,12 +708,12 @@ Enables users to install, update, and validate kit packages with interactive fil
 4. [x] - `p1` - **FOR EACH** resource declared in `KitModel.resources` - `inst-manifest-foreach-resource`
    1. [x] - `p1` - **IF** `install_path` is user-modifiable in copy mode: prompt user for destination path (offering the manifest default) - `inst-manifest-prompt-path`
    2. [x] - `p1` - Resolve each resource target from its effective default or user-selected path - `inst-manifest-default-path`
-5. [x] - `p1` - Before writing files or registering resources, reject installation when any public component or nested subagent `generated_name` conflicts with another public component in the installing kit or with an already registered kit - `inst-public-name-conflict`
+5. [x] - `p1` - Before writing files, registering resources, or generating public entry points, reject installation/generation when any public component or nested subagent `generated_name` conflicts with another public component in the installing kit, an already registered kit, or another generation input - `inst-public-name-conflict`
 6. [x] - `p1` - Manifest preview and `cf-kit` approval reports show final generated names for public skills, agents, rules, and nested subagents, including whether each name is default-prefixed or `prefix_generated_name = false` as-is - `inst-public-name-preview`
    3. [x] - `p1` - **IF** copy mode: copy resource from source to resolved path, preserving directory structure within directory resources - `inst-manifest-copy-resource`
    4. [x] - `p1` - **IF** register mode: leave files in place and bind the resource to its source path after containment validation - `inst-manifest-register-resource-in-place`
 5. [x] - `p1` - Preserve `{identifier}` template variables in copied kit source files; expose effective bindings for read-time resolution by consumers - `inst-manifest-resolve-vars`
-6. [x] - `p1` - Register effective resource paths, install mode, hashes, generated names, provenance, and warnings in `core.toml`; prefer paths relative to `{cf-studio-path}` or project root when deterministic - `inst-manifest-register-bindings`
+6. [x] - `p1` - Register effective resource paths, install mode, hashes, generated names, provenance, and warnings in `core.toml`; prefer paths relative to `{cf-studio-path}` or project root when deterministic, and fail the operation when registration cannot be persisted - `inst-manifest-register-bindings`
 7. [x] - `p1` - Collect public component metadata for `.gen/` aggregation and target-specific agent generation from `KitModel.public_components` - `inst-manifest-collect-meta`
 8. [x] - `p1` - **RETURN** result with status, install_mode, resource_bindings, files_copied, files_registered, generated_names, warnings, and risk fingerprint - `inst-manifest-return`
 

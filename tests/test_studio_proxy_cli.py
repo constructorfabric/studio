@@ -1,5 +1,6 @@
 from pathlib import Path
 import sys
+import subprocess
 import tarfile
 from io import BytesIO
 import json
@@ -194,10 +195,45 @@ def test_background_update_check_spawns_refresh_when_stale(monkeypatch, tmp_path
     assert "--project-root" in popen_calls[0]
 
 
+def test_check_skill_engine_unknown_when_latest_unavailable(monkeypatch):
+    import studio_proxy.update_check as update_check
+    import studio_proxy.cache as cache
+    import studio_proxy.resolve as resolve
+
+    monkeypatch.setattr(resolve, "get_project_version", lambda _path: "v1.0.0")
+    monkeypatch.setattr(resolve, "get_cached_version", lambda: "")
+    monkeypatch.setattr(
+        cache,
+        "_resolve_latest_version_with_metadata",
+        lambda: (None, None, {}),
+    )
+
+    result = update_check.check_skill_engine(Path("/tmp/studio.py"))
+
+    assert result["action"] == "unknown"
+    assert "unavailable" in result["message"]
+
+
+def test_check_kits_unknown_on_nonzero_subprocess(monkeypatch):
+    import studio_proxy.update_check as update_check
+
+    def fake_run(*_args, **_kwargs):
+        return subprocess.CompletedProcess(_args[0], 1, stdout="", stderr="boom")
+
+    monkeypatch.setattr(update_check.subprocess, "run", fake_run)
+
+    result = update_check.check_kits(Path("/tmp/studio.py"))
+
+    assert result["action"] == "unknown"
+    assert result["returncode"] == 1
+    assert "boom" in result["message"]
+
+
 def test_update_check_kits_parses_skill_engine_json(monkeypatch):
     import studio_proxy.update_check as update_check
 
     class Proc:
+        returncode = 0
         stdout = json.dumps({
             "updates_available": 1,
             "commands": ["cfs kit update sdlc"],
