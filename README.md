@@ -2,6 +2,11 @@
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 ![Version](https://img.shields.io/github/v/release/constructorfabric/studio?label=version)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=constructorfabric_studio&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=constructorfabric_studio)
+<!-- [![Bugs](https://sonarcloud.io/api/project_badges/measure?project=constructorfabric_studio&metric=bugs)](https://sonarcloud.io/summary/new_code?id=constructorfabric_studio) -->
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=constructorfabric_studio&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=constructorfabric_studio)
+<!--[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=constructorfabric_studio&metric=coverage)](https://sonarcloud.io/summary/new_code?id=constructorfabric_studio) -->
+[![Duplicated Lines (%)](https://sonarcloud.io/api/project_badges/measure?project=constructorfabric_studio&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=constructorfabric_studio)
 
 **Status**: Active
 
