@@ -656,7 +656,7 @@ class TestCmdKitInstallManifest(unittest.TestCase):
                 os.chdir(root)
                 buf = io.StringIO()
                 with redirect_stdout(buf):
-                    rc = cmd_kit_install(["--path", str(kit_src)])
+                    rc = cmd_kit_install(["--path", str(kit_src), "--install-mode", "copy"])
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
                 self.assertEqual(out["status"], "PASS")
@@ -684,7 +684,7 @@ class TestCmdKitInstallManifest(unittest.TestCase):
                 os.chdir(root)
                 buf = io.StringIO()
                 with redirect_stdout(buf):
-                    rc = cmd_kit_install(["--path", str(kit_src)])
+                    rc = cmd_kit_install(["--path", str(kit_src), "--install-mode", "copy"])
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
                 self.assertEqual(out["status"], "PASS")

@@ -109,7 +109,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 5. [x] - `p1` - Check if kit already installed; fail if exists without --force - `inst-check-existing`
 6. [x] - `p1` - **IF** --dry-run: return preview and STOP - `inst-dry-run`
 7. [x] - `p1` - Load the source through `cpt-studio-algo-kit-model-normalize`, with precedence `.cf-studio-kit.toml` > legacy `manifest.toml` v2/v1 > `conf.toml + layout` > `core.toml` resources-only - `inst-load-kit-model`
-7a. [ ] - `p1` - **IF** installing from `--path`: resolve install mode through `cpt-studio-algo-kit-local-path-install-mode`; interactive mode must ask copy vs register, non-interactive mode requires `--install-mode` - `inst-resolve-local-install-mode`
+7a. [x] - `p1` - **IF** installing from `--path`: resolve install mode through `cpt-studio-algo-kit-local-path-install-mode`; interactive mode must ask copy vs register, non-interactive mode requires `--install-mode` - `inst-resolve-local-install-mode`
 7b. [ ] - `p1` - **IF** canonical or legacy manifest input is present: delegate to manifest-driven installation via `cpt-studio-algo-kit-manifest-install` using the normalized `KitModel` - `inst-manifest-install`
 8. [x] - `p1` - **ELSE**: delegate to `install_kit()` for legacy installation - `inst-delegate-install`
 9. [x] - `p1` - Regenerate `.gen/` aggregates via `regenerate_gen_aggregates` - `inst-regen-gen`
