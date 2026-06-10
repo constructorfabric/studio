@@ -477,8 +477,8 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 **Steps**:
 1. [x] - `p1` - Get context and initialize validation state - `inst-init-context`
-2. [x] - `p1` - **Phase 1 — Structural**: for each registered Studio-format kit, load and validate `constraints.toml` - `inst-structural-check`
-3. [x] - `p1` - **Phase 1b — Resource paths**: for manifest-driven kits, resolve paths to constraints, templates, and examples from resource bindings in `core.toml` via `cpt-studio-algo-kit-manifest-resolve` instead of assuming default kit directory structure - `inst-resolve-resource-paths`
+2. [x] - `p1` - **Phase 1 — Structural**: for each registered Studio-format kit, load and validate all `kind = "constraints"` resources in manifest order, falling back to legacy `constraints.toml` only for legacy kits without constraints resources - `inst-structural-check`
+3. [x] - `p1` - **Phase 1b — Resource paths**: for manifest-driven kits, resolve paths to constraints resources, templates, and examples from resource bindings in `core.toml` via `cpt-studio-algo-kit-manifest-resolve` instead of assuming default kit directory structure - `inst-resolve-resource-paths`
 4. [x] - `p1` - **Phase 2 — Templates**: load `artifacts_meta`, run `self_check` for template/example consistency - `inst-template-check`
 5. [x] - `p1` - Build result: aggregate errors, set overall PASS/FAIL status - `inst-build-result`
 
@@ -492,7 +492,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 **Steps**:
 1. [x] - `p1` - Resolve kit directory, verify exists - `inst-resolve-dir`
-2. [x] - `p1` - **Phase 1 — Structural**: load and validate `constraints.toml` - `inst-structural-check`
+2. [x] - `p1` - **Phase 1 — Structural**: load and validate all `kind = "constraints"` resources in manifest order, falling back to legacy `constraints.toml` only for legacy path validation - `inst-structural-check`
 3. [x] - `p1` - **Phase 1b — Manifest resources**: **IF** manifest-driven kit, verify all registered resource paths exist on disk - `inst-verify-resource-paths`
 4. [x] - `p1` - Build synthetic `ArtifactsMeta` from kit's artifacts/ directory - `inst-build-artifacts-meta`
 5. [x] - `p1` - **Phase 2 — Templates**: run `self_check` for template/example validation - `inst-template-check`
@@ -859,7 +859,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 - [x] `p1` - **ID**: `cpt-studio-dod-kit-validate`
 
-1. [x] - `p1` - `constraints.toml` is parsed and validated per kit
+1. [x] - `p1` - Canonical `kind = "constraints"` resources are parsed and validated per kit, with multiple files applied together; legacy `constraints.toml` remains supported for legacy kits
 2. [x] - `p1` - Templates and examples are checked against constraints via `self_check`
 3. [x] - `p1` - Both registered and standalone (by-path) kits can be validated
 4. [x] - `p1` - For manifest-driven kits, all registered resource paths verified to exist on disk
