@@ -1928,7 +1928,7 @@ def _registered_kit_dirs(project_root: Optional[Path]) -> Optional[Set[str]]:
 
 # @cpt-begin:cpt-studio-algo-agent-integration-list-workflows:p1:inst-scan-core-workflows
 KitWorkflowSkill = Tuple[str, Path, Optional[str], Optional[str]]
-KitPublicComponent = Tuple[str, object, Path]
+KitPublicComponent = Tuple[str, object, Path, Path]
 
 
 def _list_workflow_files(
@@ -2087,7 +2087,7 @@ def _list_public_components(
             generated_name = str(getattr(component, "generated_name", "")).strip()
             if not generated_name:
                 continue
-            components.append((kit_slug, component, source_path))
+            components.append((kit_slug, component, source_path, kit_root))
     return components, manifest_backed_kits
     # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-no-workflow-scan
     # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
@@ -2100,7 +2100,7 @@ def _list_public_component_skills(
 ) -> Tuple[List[KitWorkflowSkill], Set[str]]:
     components: List[KitWorkflowSkill] = []
     public_components, manifest_backed_kits = _list_public_components(studio_root, project_root, agent)
-    for kit_slug, component, source_path in public_components:
+    for kit_slug, component, source_path, _kit_root in public_components:
         if getattr(component, "kind", "") == "skill":
             generated_name = str(getattr(component, "generated_name", "")).strip()
             components.append((source_path.name, source_path, kit_slug, generated_name))
@@ -3209,6 +3209,39 @@ def _component_config_list(component: object, target_config: Dict[str, Any], key
     return list(value or []) if isinstance(value, list) else []
 
 
+def _public_component_generated_name(kit_slug: str, component_id: str) -> str:
+    prefix = f"cf-{kit_slug}-"
+    return component_id if component_id == f"cf-{kit_slug}" or component_id.startswith(prefix) else f"{prefix}{component_id}"
+
+
+def _nested_subagent_enabled(subagent: Dict[str, Any], agent: str) -> bool:
+    targets = subagent.get("generated_targets", subagent.get("agents", []))
+    targets = [str(target) for target in (targets or [])] if isinstance(targets, list) else []
+    return not targets or "installed" in targets or "all" in targets or agent in targets
+
+
+def _nested_subagent_agents(subagent: Dict[str, Any], target_config: Dict[str, Any]) -> List[str]:
+    targets = _subagent_list(subagent, target_config, "generated_targets")
+    if not targets or "installed" in targets or "all" in targets:
+        return []
+    return targets
+
+
+def _nested_subagent_config(subagent: Dict[str, Any], agent: str) -> Dict[str, Any]:
+    targets = subagent.get("targets", {})
+    config = targets.get(agent, {}) if isinstance(targets, dict) else {}
+    return config if isinstance(config, dict) else {}
+
+
+def _subagent_value(subagent: Dict[str, Any], target_config: Dict[str, Any], key: str, default: Any) -> Any:
+    return target_config.get(key, subagent.get(key, default))
+
+
+def _subagent_list(subagent: Dict[str, Any], target_config: Dict[str, Any], key: str) -> List[str]:
+    value = _subagent_value(subagent, target_config, key, [])
+    return list(value or []) if isinstance(value, list) else []
+
+
 def _process_kit_public_agents_and_rules(
     agent: str,
     project_root: Path,
@@ -3226,11 +3259,11 @@ def _process_kit_public_agents_and_rules(
     trusted_roots: List[Path] = []
 
     # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
-    for _kit_slug, component, source_path in public_components:
+    for kit_slug, component, source_path, kit_root in public_components:
         generated_name = str(getattr(component, "generated_name", "")).strip()
         if not generated_name:
             continue
-        trusted_roots.append(source_path.parent)
+        trusted_roots.extend([source_path.parent, kit_root])
         description = str(getattr(component, "description", "") or "").strip()
         if getattr(component, "kind", "") == "agent":
             target_config = _component_target_config(component, agent)
@@ -3253,6 +3286,41 @@ def _process_kit_public_agents_and_rules(
                 reasoning_effort=_component_config_value(component, target_config, "reasoning_effort", None),
                 context_window=_component_config_value(component, target_config, "context_window", None),
             )
+            # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-subagent-config
+            for subagent in getattr(component, "subagents", []) or []:
+                if not isinstance(subagent, dict) or not _nested_subagent_enabled(subagent, agent):
+                    continue
+                subagent_id = str(subagent.get("id", "")).strip()
+                if not subagent_id:
+                    continue
+                subagent_source = str(subagent.get("source", subagent.get("prompt_file", ""))).strip()
+                if not subagent_source:
+                    continue
+                subagent_source_path = Path(subagent_source)
+                if not subagent_source_path.is_absolute():
+                    subagent_source_path = (kit_root / subagent_source_path).resolve()
+                nested_target = _nested_subagent_config(subagent, agent)
+                nested_name = _public_component_generated_name(kit_slug, subagent_id)
+                agent_entries[nested_name] = _AgentEntry(
+                    id=nested_name,
+                    description=str(subagent.get("description", "") or f"Constructor Studio {nested_name} agent"),
+                    source=subagent_source_path.as_posix(),
+                    agents=_nested_subagent_agents(subagent, nested_target),
+                    tools=_subagent_list(subagent, nested_target, "tools"),
+                    disallowed_tools=_subagent_list(subagent, nested_target, "disallowed_tools"),
+                    mode=str(_subagent_value(subagent, nested_target, "mode", "readwrite") or "readwrite"),
+                    isolation=bool(_subagent_value(subagent, nested_target, "isolation", False)),
+                    model=str(_subagent_value(subagent, nested_target, "model", "") or ""),
+                    skills=_subagent_list(subagent, nested_target, "skills"),
+                    color=str(_subagent_value(subagent, nested_target, "color", "") or ""),
+                    memory_dir=str(_subagent_value(subagent, nested_target, "memory_dir", "") or ""),
+                    role=str(_subagent_value(subagent, nested_target, "role", "any") or "any"),
+                    target=str(_subagent_value(subagent, nested_target, "target", "any") or "any"),
+                    provider=str(_subagent_value(subagent, nested_target, "provider", "anthropic") or "anthropic"),
+                    reasoning_effort=_subagent_value(subagent, nested_target, "reasoning_effort", None),
+                    context_window=_subagent_value(subagent, nested_target, "context_window", None),
+                )
+            # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-subagent-config
         elif getattr(component, "kind", "") == "rule":
             rule_entries[generated_name] = _RuleEntry(
                 id=generated_name,

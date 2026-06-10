@@ -65,6 +65,8 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
             encoding="utf-8",
         )
         (kit_root / "agent.md").write_text("# Reviewer\nReview carefully.\n", encoding="utf-8")
+        (kit_root / "auditor.md").write_text("# Auditor\nAudit nested behavior.\n", encoding="utf-8")
+        (kit_root / "openai-auditor.md").write_text("# OpenAI auditor\n", encoding="utf-8")
         (kit_root / "rule.md").write_text("# Guard\nFollow the guard.\n", encoding="utf-8")
         (kit_root / "openai-agent.md").write_text("# OpenAI only\n", encoding="utf-8")
         (kit_root / ".cf-studio-kit.toml").write_text(
@@ -95,6 +97,19 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
                 "[resources.targets.cursor]",
                 'mode = "readonly"',
                 'reasoning_effort = "high"',
+                "",
+                "[[resources.agent.subagents]]",
+                'id = "auditor"',
+                'source = "auditor.md"',
+                'description = "Nested auditor"',
+                'generated_targets = ["cursor"]',
+                'mode = "readonly"',
+                'tools = ["Read"]',
+                "",
+                "[[resources.agent.subagents]]",
+                'id = "codex-auditor"',
+                'source = "openai-auditor.md"',
+                'generated_targets = ["openai"]',
                 "",
                 "[[resources]]",
                 'id = "guard"',
@@ -135,17 +150,23 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
             self.assertEqual(result["status"], "PASS")
             skill_path = root / ".agents" / "skills" / "cf-pubkit-helper" / "SKILL.md"
             agent_path = root / ".cursor" / "agents" / "cf-pubkit-reviewer.mdc"
+            nested_agent_path = root / ".cursor" / "agents" / "cf-pubkit-auditor.mdc"
             rule_path = root / ".cursor" / "rules" / "cf-pubkit-guard.mdc"
             self.assertTrue(skill_path.is_file())
             self.assertTrue(agent_path.is_file())
+            self.assertTrue(nested_agent_path.is_file())
             self.assertTrue(rule_path.is_file())
             self.assertIn("skill.md", skill_path.read_text(encoding="utf-8"))
             agent_content = agent_path.read_text(encoding="utf-8")
             self.assertIn("Review carefully.", agent_content)
             self.assertIn("readonly: true", agent_content)
             self.assertIn("reasoning_effort=high", agent_content)
+            nested_content = nested_agent_path.read_text(encoding="utf-8")
+            self.assertIn("Audit nested behavior.", nested_content)
+            self.assertIn("readonly: true", nested_content)
             self.assertIn("Follow the guard.", rule_path.read_text(encoding="utf-8"))
             self.assertFalse((root / ".cursor" / "agents" / "cf-pubkit-codexonly.mdc").exists())
+            self.assertFalse((root / ".cursor" / "agents" / "cf-pubkit-codex-auditor.mdc").exists())
 
 
 class TestEnsureFrontmatterDescriptionQuoted(unittest.TestCase):

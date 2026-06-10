@@ -555,7 +555,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 ### Canonical `.cf-studio-kit.toml`
 
-- [ ] `p1` - **ID**: `cpt-studio-algo-kit-canonical-manifest`
+- [x] `p1` - **ID**: `cpt-studio-algo-kit-canonical-manifest`
 
 **Input**: `.cf-studio-kit.toml`
 
@@ -568,7 +568,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 4. [x] - `p1` - Public resource kinds are `skill`, `agent`, and `rule`; supporting kinds include `template`, `checklist`, `script`, `directory`, and `other`; `workflow` is accepted only as a legacy alias normalized to `skill` - `inst-canonical-resource-kinds`
 5. [x] - `p1` - Small agent configuration may be inline on the resource; larger configuration may use `[resources.<id>.agent]`, `[resources.<id>.targets.<target>]`, and `[resources.<id>.permissions]` - `inst-canonical-agent-config`
 6. [x] - `p1` - Agent configuration supports `mode`, `isolation`, `model`, `tools`, `disallowed_tools`, `skills`, `color`, `memory_dir`, `role`, `target`, `provider`, `reasoning_effort`, `context_window`, and nested `subagents` - `inst-canonical-agent-fields`
-7. [ ] - `p1` - Nested `subagents` may declare the same target-specific agent schema as top-level agent resources, including tool permissions, generated targets, prompt/source resources, and model/provider fields - `inst-canonical-subagent-config`
+7. [x] - `p1` - Nested `subagents` may declare the same target-specific agent schema as top-level agent resources, including tool permissions, generated targets, prompt/source resources, and model/provider fields - `inst-canonical-subagent-config`
 8. [x] - `p1` - `generated_targets` defaults to `installed`, accepts an explicit target list or `all`, and controls which agent tools receive public component output - `inst-canonical-generated-targets`
 9. [x] - `p1` - The manifest MUST NOT expose author-facing `binding_path`; effective paths are installation state recorded in `core.toml` - `inst-canonical-no-binding-path`
 
