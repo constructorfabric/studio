@@ -1246,6 +1246,7 @@ def install_kit(
     project_root: Optional[Path] = None,
     authority_metadata: Optional[Dict[str, Any]] = None,
     approved_overwrites: Optional[List[str]] = None,
+    approved_tool_risks: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Install a kit: copy ready files from source into config/kits/{slug}/.
 
@@ -1302,6 +1303,7 @@ def install_kit(
             project_root=project_root,
             authority_metadata=authority_metadata,
             approved_overwrites=approved_overwrites,
+            approved_tool_risks=approved_tool_risks,
             kit_path=(
                 kit_entry.get("path", "")
                 if has_registered_kit_path and isinstance(kit_entry, dict)
@@ -1398,6 +1400,7 @@ def install_kit_with_manifest(
     kit_path: str = "",
     authority_metadata: Optional[Dict[str, Any]] = None,
     approved_overwrites: Optional[List[str]] = None,
+    approved_tool_risks: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Install a kit using its manifest.toml — manifest-driven installation.
 
@@ -1444,6 +1447,18 @@ def install_kit_with_manifest(
             "errors": [str(exc)],
         }
     model_content_identity = _kit_model_content_identity(kit_model)
+    risk_errors = _tool_risk_approval_errors(
+        kit_model,
+        interactive=interactive,
+        approved_tool_risks=approved_tool_risks,
+    )
+    if risk_errors:
+        return {
+            "status": "FAIL",
+            "kit": kit_slug,
+            "install_mode": install_mode,
+            "errors": risk_errors,
+        }
 
     if install_mode not in {"copy", "register"}:
         return {
@@ -1730,6 +1745,50 @@ def _preflight_manifest_copy_overwrites(
         )
     return errors
 # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-copy-no-silent-overwrite
+
+
+# @cpt-begin:cpt-studio-algo-kit-tool-permission-risk:p1:inst-risk-interactive-confirm
+# @cpt-begin:cpt-studio-algo-kit-tool-permission-risk:p1:inst-risk-noninteractive-fingerprint
+def _tool_risk_approval_errors(
+    kit_model: Any,
+    *,
+    installed_kit_entry: Optional[Dict[str, Any]] = None,
+    interactive: bool,
+    approved_tool_risks: Optional[List[str]] = None,
+) -> List[str]:
+    summary = getattr(kit_model, "tool_risk_summary", {}) or {}
+    if not summary.get("requires_confirmation"):
+        return []
+    fingerprint = str(getattr(kit_model, "tool_risk_fingerprint", "") or "")
+    approvals = {token.strip() for token in (approved_tool_risks or []) if token.strip()}
+    previous_identity = (
+        installed_kit_entry.get("content_identity", {})
+        if isinstance(installed_kit_entry, dict)
+        else {}
+    )
+    previous_fingerprint = (
+        str(previous_identity.get("tool_risk_fingerprint") or "")
+        if isinstance(previous_identity, dict)
+        else ""
+    )
+    if previous_fingerprint == fingerprint or fingerprint in approvals:
+        return []
+    dangerous = summary.get("dangerous_tools", {})
+    if interactive and sys.stdin.isatty():
+        sys.stderr.write("\n  Dangerous tool permissions changed:\n")
+        for resource_id, tools in sorted(dangerous.items()):
+            sys.stderr.write(f"  - {resource_id}: {', '.join(tools)}\n")
+        answer = _input_stderr(
+            f"  Approve tool risk fingerprint {fingerprint}? [y/N]: "
+        ).lower()
+        if answer in {"y", "yes"}:
+            return []
+    return [
+        "Dangerous tool permissions require approval; rerun with "
+        f"--approve-tool-risk {fingerprint}",
+    ]
+# @cpt-end:cpt-studio-algo-kit-tool-permission-risk:p1:inst-risk-noninteractive-fingerprint
+# @cpt-end:cpt-studio-algo-kit-tool-permission-risk:p1:inst-risk-interactive-confirm
 
 
 # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-resolve-template-vars
@@ -2034,6 +2093,13 @@ def cmd_kit_install(argv: List[str]) -> int:
         metavar="RESOURCE_OR_PATH",
         help="Approve overwriting one changed user-modifiable manifest resource by id or effective path; repeat per resource",
     )
+    p.add_argument(
+        "--approve-tool-risk",
+        action="append",
+        default=[],
+        metavar="FINGERPRINT",
+        help="Approve one dangerous tool-risk fingerprint; repeat when needed",
+    )
     p.add_argument("--force", action="store_true", help="Overwrite existing kit")
     p.add_argument("--dry-run", action="store_true", help="Show what would be done")
     args = p.parse_args(argv)
@@ -2179,6 +2245,7 @@ def cmd_kit_install(argv: List[str]) -> int:
             project_root=project_root,
             authority_metadata=authority_metadata,
             approved_overwrites=args.approve_overwrite,
+            approved_tool_risks=args.approve_tool_risk,
         )
         # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-delegate-install
 
@@ -2514,6 +2581,13 @@ def cmd_kit_update(argv: List[str]) -> int:
         help="Approve overwriting one changed user-modifiable manifest resource by id or effective path; repeat per resource",
     )
     p.add_argument(
+        "--approve-tool-risk",
+        action="append",
+        default=[],
+        metavar="FINGERPRINT",
+        help="Approve one dangerous tool-risk fingerprint; repeat when needed",
+    )
+    p.add_argument(
         "--prune",
         action="store_true",
         help="Allow explicit pruning of manifest-bound resources removed upstream",
@@ -2682,6 +2756,7 @@ def cmd_kit_update(argv: List[str]) -> int:
                 source=github_source,
                 authority_metadata=authority_metadata,
                 approved_overwrites=args.approve_overwrite,
+                approved_tool_risks=args.approve_tool_risk,
                 prune_mode=args.prune,
                 approved_prunes=args.approve_prune,
                 project_root=project_root,
@@ -3359,6 +3434,7 @@ def update_kit(
     source: str = "",
     authority_metadata: Optional[Dict[str, Any]] = None,
     approved_overwrites: Optional[List[str]] = None,
+    approved_tool_risks: Optional[List[str]] = None,
     prune_mode: bool = False,
     approved_prunes: Optional[List[str]] = None,
     project_root: Optional[Path] = None,
@@ -3433,6 +3509,41 @@ def update_kit(
 
     from ..utils.manifest import load_manifest as _load_manifest
     _manifest = _load_manifest(source_dir)
+    _risk_model = None
+    _risk_changed = False
+    if _manifest is not None:
+        try:
+            from ..utils.kit_model import load_kit_model
+            _risk_model = load_kit_model(source_dir)
+        except (OSError, ValueError) as exc:
+            result["version"] = {"status": "failed"}
+            result["gen"] = {"files_written": 0}
+            result["errors"] = [str(exc)]
+            return result
+        _risk_summary = getattr(_risk_model, "tool_risk_summary", {}) or {}
+        _current_risk = str(getattr(_risk_model, "tool_risk_fingerprint", "") or "")
+        _previous_identity = (
+            installed_kit_entry.get("content_identity", {})
+            if isinstance(installed_kit_entry, dict)
+            else {}
+        )
+        _previous_risk = (
+            str(_previous_identity.get("tool_risk_fingerprint") or "")
+            if isinstance(_previous_identity, dict)
+            else ""
+        )
+        _risk_changed = bool(_risk_summary.get("requires_confirmation")) and _current_risk != _previous_risk
+        risk_errors = _tool_risk_approval_errors(
+            _risk_model,
+            installed_kit_entry=installed_kit_entry,
+            interactive=interactive,
+            approved_tool_risks=approved_tool_risks,
+        )
+        if risk_errors:
+            result["version"] = {"status": "failed"}
+            result["gen"] = {"files_written": 0}
+            result["errors"] = risk_errors
+            return result
 
     # @cpt-begin:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-register-reread
     if (
@@ -3454,14 +3565,16 @@ def update_kit(
             result["errors"] = containment_errors
             return result
 
-        try:
-            from ..utils.kit_model import load_kit_model
-            kit_model = load_kit_model(source_dir)
-        except (OSError, ValueError) as exc:
-            result["version"] = {"status": "failed"}
-            result["gen"] = {"files_written": 0}
-            result["errors"] = [str(exc)]
-            return result
+        kit_model = _risk_model
+        if kit_model is None:
+            try:
+                from ..utils.kit_model import load_kit_model
+                kit_model = load_kit_model(source_dir)
+            except (OSError, ValueError) as exc:
+                result["version"] = {"status": "failed"}
+                result["gen"] = {"files_written": 0}
+                result["errors"] = [str(exc)]
+                return result
 
         new_identity = _kit_model_content_identity(kit_model)
         previous_identity = (
@@ -3528,6 +3641,7 @@ def update_kit(
             installed_version
             and installed_version == source_version
             and not _authority_commit_changed(authority_metadata, installed_kit_entry)
+            and not _risk_changed
         ):
             result["version"] = {"status": "current"}
             result["gen"] = {"files_written": 0}
@@ -3702,6 +3816,7 @@ def update_kit(
                 config_dir, kit_slug, preserved_version, studio_dir,
                 source=source, resources=_merged_resources, kit_path=_kit_root_rel,
                 authority_metadata=authority_metadata,
+                content_identity=_kit_model_content_identity(_risk_model) if _risk_model is not None else None,
                 local_metadata=(
                     {"conf_version": local_conf_version}
                     if local_conf_version else None

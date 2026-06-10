@@ -834,6 +834,94 @@ class TestCanonicalKitMetadata(unittest.TestCase):
             finally:
                 os.chdir(cwd)
 
+    def test_install_dangerous_tool_risk_requires_approval(self):
+        from studio.commands.kit import cmd_kit_install
+        from studio.utils.kit_model import load_kit_model
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            _bootstrap_project(root)
+            kit_src = _make_canonical_kit_source(Path(td), "risk-install")
+            manifest = kit_src / ".cf-studio-kit.toml"
+            manifest.write_text(
+                manifest.read_text(encoding="utf-8")
+                + "\n[resources.agent]\n"
+                + 'tools = ["Bash"]\n',
+                encoding="utf-8",
+            )
+            fingerprint = load_kit_model(kit_src).tool_risk_fingerprint
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = cmd_kit_install([
+                        "--path", str(kit_src),
+                        "--install-mode", "copy",
+                    ])
+                self.assertEqual(rc, 2)
+                out = json.loads(buf.getvalue())
+                self.assertIn(f"--approve-tool-risk {fingerprint}", out["errors"][0])
+
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = cmd_kit_install([
+                        "--path", str(kit_src),
+                        "--install-mode", "copy",
+                        "--approve-tool-risk", fingerprint,
+                    ])
+                self.assertEqual(rc, 0)
+                self.assertEqual(json.loads(buf.getvalue())["status"], "PASS")
+            finally:
+                os.chdir(cwd)
+
+    def test_update_dangerous_tool_risk_requires_approval_and_refreshes_core(self):
+        from studio.commands.kit import cmd_kit_install, update_kit
+        from studio.utils.kit_model import load_kit_model
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            kit_src = _make_canonical_kit_source(Path(td), "risk-update")
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                with redirect_stdout(io.StringIO()):
+                    rc = cmd_kit_install(["--path", str(kit_src), "--install-mode", "copy"])
+                self.assertEqual(rc, 0)
+
+                manifest = kit_src / ".cf-studio-kit.toml"
+                manifest.write_text(
+                    manifest.read_text(encoding="utf-8")
+                    + "\n[resources.agent]\n"
+                    + 'tools = ["Bash"]\n',
+                    encoding="utf-8",
+                )
+                fingerprint = load_kit_model(kit_src).tool_risk_fingerprint
+
+                result = update_kit(
+                    "risk-update",
+                    kit_src,
+                    adapter,
+                    interactive=False,
+                )
+                self.assertEqual(result["version"]["status"], "failed")
+                self.assertIn(f"--approve-tool-risk {fingerprint}", result["errors"][0])
+
+                result = update_kit(
+                    "risk-update",
+                    kit_src,
+                    adapter,
+                    interactive=False,
+                    approved_tool_risks=[fingerprint],
+                )
+                self.assertIn(result["version"]["status"], {"current", "updated"})
+                with open(adapter / "config" / "core.toml", "rb") as f:
+                    entry = tomllib.load(f)["kits"]["risk-update"]
+                self.assertEqual(entry["content_identity"]["tool_risk_fingerprint"], fingerprint)
+            finally:
+                os.chdir(cwd)
+
     def test_install_canonical_manifest_noninteractive_requires_install_mode(self):
         from studio.commands.kit import cmd_kit_install
 

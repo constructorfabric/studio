@@ -652,7 +652,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 ### Tool Permission Risk
 
-- [ ] `p1` - **ID**: `cpt-studio-algo-kit-tool-permission-risk`
+- [x] `p1` - **ID**: `cpt-studio-algo-kit-tool-permission-risk`
 
 **Input**: Resource agent/tool configuration from `KitModel`
 
@@ -661,8 +661,8 @@ Enables users to install, update, and validate kit packages with interactive fil
 **Rules**:
 1. [x] - `p1` - Accept unknown tools with warnings so new host-tool capabilities do not block kit installation by default - `inst-risk-unknown-tools-warn`
 2. [x] - `p1` - Tag dangerous capabilities in a stable risk summary used for user confirmation and non-interactive fingerprints - `inst-risk-dangerous-summary`
-3. [ ] - `p1` - Interactive install/update asks for confirmation when the dangerous tool summary changes - `inst-risk-interactive-confirm`
-4. [ ] - `p1` - Non-interactive install/update requires `--approve-tool-risk <fingerprint>` when dangerous capability risk is present or changed - `inst-risk-noninteractive-fingerprint`
+3. [x] - `p1` - Interactive install/update asks for confirmation when the dangerous tool summary changes - `inst-risk-interactive-confirm`
+4. [x] - `p1` - Non-interactive install/update requires `--approve-tool-risk <fingerprint>` when dangerous capability risk is present or changed - `inst-risk-noninteractive-fingerprint`
 
 ### Kit Manifest Normalization and Migration
 
