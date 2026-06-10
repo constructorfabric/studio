@@ -250,7 +250,7 @@ DO:
     - version = explicit semantic-version-compatible metadata, else `0.1.0`
     - each `[[kits.resources]]` includes required `id`, `kind`, and `source`
     - `install_path` is included only when the path can be expressed as a normalized relative path under TARGET_DIR without symlink escape or absolute segments
-    - `public = true` is used only for skills, agents, and rules
+    - `public = true` is used only for skills, agents, and rules; public resources become agent-facing generated skills/agents/rules, while non-public resources are installed/bound only
     - `prefix_generated_name = false` may be used only for public resources whose generated agent/skill/rule name must be exactly the resource `id`; the default is omitted/true and generates `cf-{kit-slug}-{id}`
     - `generated_targets = ["installed"]` is used only for public resources with no explicit target
     - workflow-like public entry points are normalized to `kind = "skill"` only when file content or discovered metadata identifies them as cf-* entry points
