@@ -607,7 +607,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 ### Public Component Generation
 
-- [ ] `p1` - **ID**: `cpt-studio-algo-kit-public-component-generation`
+- [x] `p1` - **ID**: `cpt-studio-algo-kit-public-component-generation`
 
 **Input**: `KitModel.public_components`, target agent tool, installed resource bindings
 
@@ -618,7 +618,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 2. [x] - `p1` - For manifest-backed kits, do not scan workflow directories to infer public commands; generated output is manifest-driven - `inst-public-no-workflow-scan`
 3. [x] - `p1` - Project-level `.cf-studio-kit.toml` files contribute public components only after explicit install/register; the system must not recursively scan arbitrary manifests - `inst-public-explicit-install`
 4. [x] - `p1` - Generated public skill and subagent names use `cf-{kit-slug}-{name}` with no double prefixing - `inst-public-prefix`
-5. [ ] - `p1` - A legacy workflow source renders as a skill entry point and may retain a compatibility alias only when the target supports it - `inst-public-legacy-workflow-alias`
+5. [x] - `p1` - A legacy workflow source renders as a skill entry point and may retain a compatibility alias only when the target supports it - `inst-public-legacy-workflow-alias`
 
 ### Kit Variable Resolution
 

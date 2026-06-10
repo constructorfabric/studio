@@ -1920,6 +1920,53 @@ class TestKitWorkflowSharedSkills(unittest.TestCase):
             self.assertIn("{cf-studio-path}/config/kits/pub/SKILL.md", content)
             self.assertFalse((root / ".agents" / "skills" / "cf-pub-legacy" / "SKILL.md").exists())
 
+    def test_legacy_manifest_workflow_renders_as_skill_without_alias_artifact(self):
+        """Legacy manifest workflows render as public skills from KitModel."""
+        from studio.commands.agents import _process_single_agent, _default_agents_config
+
+        with TemporaryDirectory() as td:
+            root, cpt = self._make_project(td)
+            kit_dir = cpt / "config" / "kits" / "legacyv2"
+            kit_dir.mkdir(parents=True)
+            (kit_dir / "release.md").write_text(
+                "---\nname: Release Workflow\ndescription: Ship release\n---\n# Release\n",
+                encoding="utf-8",
+            )
+            (kit_dir / "manifest.toml").write_text(
+                "\n".join([
+                    "[manifest]",
+                    'version = "2.0"',
+                    "",
+                    "[[workflows]]",
+                    'id = "release"',
+                    'prompt_file = "release.md"',
+                    'description = "Ship release"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            (cpt / "config" / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    "",
+                    "[kits.legacyv2]",
+                    'format = "CFS"',
+                    'path = "config/kits/legacyv2"',
+                    "",
+                    "[kits.legacyv2.resources.release]",
+                    'path = "config/kits/legacyv2/release.md"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            _process_single_agent("cursor", root, cpt, _default_agents_config(), None, dry_run=False)
+
+            public_skill = root / ".agents" / "skills" / "cf-legacyv2-release" / "SKILL.md"
+            self.assertTrue(public_skill.exists())
+            content = public_skill.read_text(encoding="utf-8")
+            self.assertIn("Release Workflow", content)
+            self.assertIn("{cf-studio-path}/config/kits/legacyv2/release.md", content)
+            self.assertFalse((root / ".agents" / "skills" / "release" / "SKILL.md").exists())
+
 
 class TestIsPureCypilotGenerated(unittest.TestCase):
     """Regression: _is_pure_studio_generated must distinguish pure stubs from customized files."""

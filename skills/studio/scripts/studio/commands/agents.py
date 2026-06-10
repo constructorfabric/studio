@@ -2071,8 +2071,10 @@ def _list_public_components(
             model = load_kit_model(kit_root)
         except (OSError, ValueError):
             continue
-        if model.manifest_source != "canonical":
+        # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-legacy-workflow-alias
+        if model.manifest_source not in {"canonical", "legacy_manifest"}:
             continue
+        # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-legacy-workflow-alias
         manifest_backed_kits.add(kit_slug)
         for component in model.public_components:
             if getattr(component, "kind", "") not in {"skill", "agent", "rule"}:
