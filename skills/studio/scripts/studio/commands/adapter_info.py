@@ -89,6 +89,47 @@ def _is_relative_to(path: Path, parent: Path) -> bool:
         return False
 
 
+def _frontmatter_type(path: Path) -> str:
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return ""
+    if not lines or lines[0].strip() != "---":
+        return ""
+    for line in lines[1:80]:
+        stripped = line.strip()
+        if stripped == "---":
+            return ""
+        if not stripped or stripped.startswith("#") or ":" not in stripped:
+            continue
+        key, value = stripped.split(":", 1)
+        if key.strip() == "type":
+            return value.strip().strip('"\'')
+    return ""
+
+
+def _is_workflow_frontmatter_file(path: Path) -> bool:
+    return path.is_file() and path.suffix.lower() == ".md" and _frontmatter_type(path) == "workflow"
+
+
+def _legacy_workflow_names_from_component(kit_root: Path, component: object) -> list[str]:
+    # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-workflows-deprecated
+    if str(getattr(component, "origin", "")) != "legacy-workflow":
+        return []
+    source = str(getattr(component, "source", ""))
+    if not source:
+        return []
+    path = (kit_root / source).resolve()
+    if not _is_relative_to(path, kit_root):
+        return []
+    if path.is_dir():
+        return sorted(p.stem for p in path.iterdir() if _is_workflow_frontmatter_file(p))
+    if path.is_file() and path.suffix.lower() == ".md":
+        return [path.stem]
+    return []
+    # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-workflows-deprecated
+
+
 def _hash_drift(stored: object, current: object) -> dict:
     if not isinstance(stored, str) or not stored:
         return {
@@ -303,9 +344,9 @@ def _kit_model_to_info(adapter_dir: Path, kit_root: Path, core_kit: dict) -> tup
     if artifact_kinds:
         kit_detail["artifact_kinds"] = artifact_kinds
     workflows = sorted({
-        Path(component.source).stem
+        workflow
         for component in model.public_components
-        if component.origin == "legacy-workflow"
+        for workflow in _legacy_workflow_names_from_component(kit_root, component)
     })
     # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-workflows-deprecated
     if workflows:
@@ -341,7 +382,7 @@ def _legacy_kit_detail(slug: str, kit_root: Path, core_kit: dict) -> dict:
         kd["artifact_kinds"] = sorted(d.name for d in art_dir.iterdir() if d.is_dir())
     wf_dir = kit_root / "workflows"
     if wf_dir.is_dir():
-        kd["workflows"] = sorted(f.stem for f in wf_dir.glob("*.md"))
+        kd["workflows"] = sorted(f.stem for f in wf_dir.iterdir() if _is_workflow_frontmatter_file(f))
     if isinstance(core_kit.get("resources"), dict):
         kd["resources"] = core_kit["resources"]
     return kd

@@ -163,6 +163,49 @@ class TestAdapterInfoCommand(unittest.TestCase):
             self.assertEqual(kit_detail["name"], "SDLC Kit")
             self.assertEqual(kit_detail["resources"]["skill"]["path"], "config/kits/sdlc/SKILL.md")
 
+    def test_adapter_info_lists_workflows_from_frontmatter_directory(self):
+        """Legacy workflow directory resources list workflow files, not the directory."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir) / "project"
+            project_root.mkdir()
+            (project_root / ".git").mkdir()
+            (project_root / "AGENTS.md").write_text(
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".cypilot-adapter"\n```\n<!-- /@cf:root-agents -->\n',
+                encoding="utf-8",
+            )
+            adapter_dir = project_root / ".cypilot-adapter"
+            config_dir = adapter_dir / "config"
+            kit_dir = config_dir / "kits" / "sdlc"
+            workflows_dir = kit_dir / "workflows"
+            workflows_dir.mkdir(parents=True)
+            (config_dir / "AGENTS.md").write_text("# Constructor Studio Adapter: TestProject\n", encoding="utf-8")
+            (workflows_dir / "implement.md").write_text(
+                "---\ntype: workflow\n---\n# Implement\n",
+                encoding="utf-8",
+            )
+            (workflows_dir / "README.md").write_text("# Workflow notes\n", encoding="utf-8")
+            (kit_dir / "SKILL.md").write_text("# SDLC skill\n", encoding="utf-8")
+            (config_dir / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    'project_root = ".."',
+                    "",
+                    "[kits.sdlc]",
+                    'format = "CFS"',
+                    'path = "config/kits/sdlc"',
+                    'version = "1.1.1"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            stdout_capture = io.StringIO()
+            with redirect_stdout(stdout_capture):
+                exit_code = main(["info", "--root", str(project_root)])
+
+            output = json.loads(stdout_capture.getvalue())
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(output["kit_details"]["sdlc"]["workflows"], ["implement"])
+
     def test_adapter_info_reports_kit_model_drift(self):
         """Info reports installed resource and hash drift for canonical kits."""
         with tempfile.TemporaryDirectory() as tmp_dir:

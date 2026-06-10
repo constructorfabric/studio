@@ -212,6 +212,83 @@ class TestKitNormalize(unittest.TestCase):
             self.assertTrue(any(c["generated_name"] == "cf-previewkit-skill" for c in components))
             self.assertIn("resource_hashes", out["report"]["content_identity"])
 
+    def test_normalize_core_bindings_dry_run(self):
+        from studio.commands.kit import cmd_kit_normalize
+
+        with TemporaryDirectory() as td:
+            adapter_dir = Path(td) / ".cypilot-adapter"
+            config_dir = adapter_dir / "config"
+            kit_src = config_dir / "kits" / "sdlc"
+            (kit_src / "workflows").mkdir(parents=True)
+            (kit_src / "SKILL.md").write_text("# SDLC\n", encoding="utf-8")
+            (kit_src / "workflows" / "implement.md").write_text(
+                "---\ntype: workflow\n---\n# Implement\n",
+                encoding="utf-8",
+            )
+            (config_dir / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    "",
+                    "[kits.sdlc]",
+                    'path = "config/kits/sdlc"',
+                    'version = "1.1.1"',
+                    "",
+                    "[kits.sdlc.resources.skill]",
+                    'path = "config/kits/sdlc/SKILL.md"',
+                    "",
+                    "[kits.sdlc.resources.implement]",
+                    'path = "config/kits/sdlc/workflows/implement.md"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = cmd_kit_normalize([str(kit_src), "--from", "core", "--dry-run"])
+
+            self.assertEqual(rc, 0)
+            out = json.loads(buf.getvalue())
+            self.assertEqual(out["report"]["manifest_source"], "core")
+            manifest = out["manifest"]
+            self.assertIn('source = "SKILL.md"', manifest)
+            self.assertIn('source = "workflows/implement.md"', manifest)
+            self.assertIn('origin = "legacy-workflow"', manifest)
+            self.assertTrue(any(
+                component["generated_name"] == "cf-sdlc-implement"
+                for component in out["report"]["public_components"]
+            ))
+
+    def test_normalize_core_rejects_outside_binding(self):
+        from studio.commands.kit import cmd_kit_normalize
+
+        with TemporaryDirectory() as td:
+            adapter_dir = Path(td) / ".cypilot-adapter"
+            config_dir = adapter_dir / "config"
+            kit_src = config_dir / "kits" / "sdlc"
+            kit_src.mkdir(parents=True)
+            (adapter_dir / "shared.md").write_text("# Shared\n", encoding="utf-8")
+            (config_dir / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    "",
+                    "[kits.sdlc]",
+                    'path = "config/kits/sdlc"',
+                    "",
+                    "[kits.sdlc.resources.shared]",
+                    'path = "shared.md"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = cmd_kit_normalize([str(kit_src), "--from", "core", "--dry-run"])
+
+            self.assertEqual(rc, 2)
+            out = json.loads(buf.getvalue())
+            self.assertEqual(out["status"], "FAIL")
+            self.assertIn("outside selected kit root", out["message"])
+
     def test_generated_manifest_can_reload_generated_name_without_warning(self):
         from studio.utils.kit_model import load_kit_model
 

@@ -2,127 +2,76 @@
 
 ## Summary
 
-- **Mode**: cascade-tracking
-- **Upstream artifact**: FEATURE `architecture/features/kit-management.md`
-- **Upstream ID**: `cpt-studio-featstatus-kit-management`
-- **Baseline ref**: `origin/main` (`50559f60b1fe78f46d9017ea44e3b841c5b1343d`)
-- **Current ref**: `HEAD` plus working tree changes
-- **Diff size**: `247` insertions, `44` deletions in `architecture/features/kit-management.md`
-- **Configured thresholds**: `stale_flag_threshold = 30` days; `marker_coverage_threshold = 80`; FEATURE cascade depth limit `2`
+- Mode: `cascade-tracking`
+- Upstream artifact type: `FEATURE`
+- Upstream artifact: `architecture/features/kit-management.md`
+- Upstream ID: `cpt-studio-featstatus-kit-management`
+- Baseline ref: `v1.2.0` (branch `kit-v3` has no configured upstream)
+- Current ref: `HEAD` (`baa066de1639a5f754f22a8308004c3b9036b4ae`, `v1.2.0-28-gbaa066d`)
+- Thresholds: stale flag threshold `30` days, marker coverage threshold `80%`, FEATURE cascade depth `2`
 
-The change expands kit management from legacy manifest/layout behavior toward a canonical `.cf-studio-kit.toml` and shared `KitModel` service boundary. It adds or rewrites requirements for local copy/register install mode, public skill/subagent generation, manifest normalization, drift/prune handling, tool-risk fingerprints, variable resolution, and `cfs info` kit model output.
+Deterministic validation is green, but the feature is not complete by its own artifact status. The implementation is substantially advanced: CLI flows, diff/update behavior, manifest/resource binding support, KitModel normalization, public component generation, resolve-vars integration, and GitHub/local source authority have code and focused test coverage. Remaining work is mostly around closing unchecked CDSL and acceptance criteria, especially manifest install edge steps, explicit state coverage, and final traceability closure.
 
-High-impact cascade findings:
-
-- New or substantially changed feature IDs are mostly self-contained in `architecture/features/kit-management.md`.
-- Downstream artifact references outside the changed feature are limited and do not show stale timestamps beyond the configured 30-day threshold.
-- No `@cpt-*` code markers were found for the changed ID set in `src` or `skills/studio/scripts/studio`.
-- The affected implementation surface has coverage gaps: `skills/studio/scripts/studio/commands/kit.py` is below the configured 80% file threshold, and two newly declared implementation modules do not exist.
-
-## Cascade tree
+## Cascade Tree
 
 ```text
 cpt-studio-featstatus-kit-management
-└── architecture/features/kit-management.md (FEATURE, changed upstream artifact)
-    ├── New / changed algorithm and state IDs
-    │   ├── cpt-studio-algo-kit-model-normalize
-    │   ├── cpt-studio-algo-kit-canonical-manifest
-    │   ├── cpt-studio-algo-kit-local-path-install-mode
-    │   ├── cpt-studio-algo-kit-info-model-output
-    │   ├── cpt-studio-algo-kit-public-component-generation
-    │   ├── cpt-studio-algo-kit-variable-resolution
-    │   ├── cpt-studio-algo-kit-update-drift-prune
-    │   ├── cpt-studio-algo-kit-tool-permission-risk
-    │   ├── cpt-studio-algo-kit-manifest-normalize
-    │   ├── cpt-studio-state-kit-manifest
-    │   └── cpt-studio-state-kit-install-mode
-    ├── Existing IDs with changed semantics/status
-    │   ├── cpt-studio-flow-kit-install-cli
-    │   ├── cpt-studio-flow-kit-update-cli
-    │   ├── cpt-studio-algo-kit-install
-    │   ├── cpt-studio-algo-kit-update
-    │   ├── cpt-studio-algo-kit-manifest-install
-    │   ├── cpt-studio-algo-kit-manifest-legacy-migration
-    │   ├── cpt-studio-algo-kit-manifest-resolve
-    │   └── cpt-studio-algo-kit-manifest-source-mapping
-    ├── Downstream artifact references outside kit-management.md
-    │   ├── architecture/DESIGN.md:298 references cpt-studio-adr-unified-manifest-hierarchy
-    │   ├── architecture/features/project-extensibility.md:120 references cpt-studio-adr-unified-manifest-hierarchy
-    │   ├── architecture/features/version-config.md:87 references cpt-studio-algo-kit-manifest-legacy-migration
-    │   ├── architecture/DECOMPOSITION.md:119 references cpt-studio-adr-remove-blueprint-system
-    │   ├── architecture/DESIGN.md:195 references cpt-studio-adr-remove-blueprint-system
-    │   ├── architecture/DESIGN.md:280 references cpt-studio-adr-remove-blueprint-system
-    │   ├── architecture/DESIGN.md:474 references cpt-studio-adr-remove-blueprint-system
-    │   └── architecture/DESIGN.md:1437 references cpt-studio-adr-remove-blueprint-system
-    └── Declared implementation modules
-        ├── skills/studio/scripts/studio/commands/kit.py (exists; 73% file coverage)
-        ├── skills/studio/scripts/studio/utils/kit_model.py (missing)
-        ├── skills/studio/scripts/studio/utils/manifest.py (exists; 97% file coverage)
-        ├── skills/studio/scripts/studio/commands/info.py (missing)
-        └── skills/studio/scripts/studio/commands/agents.py (exists; 98% file coverage)
+└── architecture/features/kit-management.md
+    ├── skills/studio/scripts/studio/commands/kit.py
+    ├── skills/studio/scripts/studio/utils/kit_model.py
+    ├── skills/studio/scripts/studio/utils/manifest.py
+    ├── skills/studio/scripts/studio/utils/diff_engine.py
+    ├── skills/studio/scripts/studio/commands/validate_kits.py
+    ├── skills/studio/scripts/studio/commands/adapter_info.py
+    ├── skills/studio/scripts/studio/commands/agents.py
+    ├── skills/studio/scripts/studio/commands/resolve_vars.py
+    ├── skills/studio/scripts/studio/utils/whatsnew.py
+    └── tests/test_kit.py, tests/test_adapter_info.py, tests/test_agents_coverage.py,
+        tests/test_diff_engine.py, tests/test_resolve_vars.py
 ```
 
-## Coverage gaps
+## Progress
 
-- **Gap: no code marker evidence for changed IDs**
-  - Evidence: `rg` for the changed ID set under `src` and `skills/studio/scripts/studio` returned no `@cpt-*` matches.
-  - Impact: the new and changed FEATURE requirements currently have no direct code traceability marker evidence.
+- Feature artifact validation: `cfs validate --artifact architecture/features/kit-management.md` passed with `0` errors and `0` warnings.
+- Repository validation: `cfs validate` passed with `47` artifacts, `84` code files, and code coverage `195/195`.
+- Kit validation: `cfs validate-kits` passed for `1` kit and `7` templates.
+- Spec coverage: `cfs spec-coverage` reported `88.2%`, above the configured `80%` threshold.
+- Focused tests passed: `536 passed` across `tests/test_kit.py`, `tests/test_adapter_info.py`, `tests/test_agents_coverage.py`, `tests/test_diff_engine.py`, and `tests/test_resolve_vars.py`.
+- Code delta since `v1.2.0`: `13` files changed, `4498` insertions, `145` deletions. Main touched files are `kit.py`, `kit_model.py`, `adapter_info.py`, `agents.py`, `diff_engine.py`, `resolve_vars.py`, and the focused tests above.
 
-- **Gap: affected file below configured marker coverage threshold**
-  - Evidence: `cfs spec-coverage --system studio --min-coverage 80 --verbose`
-  - Result: overall system coverage passed at `91.1%`, but `skills/studio/scripts/studio/commands/kit.py` is `73%`, below the configured `80%` marker coverage threshold.
+## Coverage Gaps
 
-- **Gap: declared implementation modules missing**
-  - `skills/studio/scripts/studio/utils/kit_model.py` is declared for `cpt-studio-algo-kit-model-normalize`, `cpt-studio-algo-kit-canonical-manifest`, `cpt-studio-algo-kit-public-component-generation`, `cpt-studio-algo-kit-tool-permission-risk`, and `cpt-studio-algo-kit-manifest-normalize`, but the file does not exist.
-  - `skills/studio/scripts/studio/commands/info.py` is declared for `cpt-studio-algo-kit-info-model-output`, but the file does not exist.
+The feature top-level status remains unchecked at `architecture/features/kit-management.md:63` and `architecture/features/kit-management.md:67`.
 
-## Stale flags
+Unchecked major CDSL blocks:
 
-No stale flags exceeded the configured `30` day threshold.
+- `cpt-studio-algo-kit-github-helpers` at `architecture/features/kit-management.md:203`. Code markers exist in `skills/studio/scripts/studio/commands/kit.py:10`, `:44`, `:61`, `:310`, and `:410`, but the artifact still leaves the algorithm unchecked because offline fallback is listed separately as incomplete.
+- `cpt-studio-algo-kit-github-version-authority` at `architecture/features/kit-management.md:221`. Acceptance criteria for GitHub authority are marked done, but the algorithm block itself remains unchecked.
+- `cpt-studio-algo-kit-model-normalize` at `architecture/features/kit-management.md:539`. Code markers exist in `skills/studio/scripts/studio/utils/kit_model.py:840` and related begin/end markers, but the artifact still marks the block incomplete.
+- `cpt-studio-algo-kit-manifest-normalize` at `architecture/features/kit-management.md:669`. Code markers exist in `kit_model.py` and `kit.py`, but the block remains unchecked.
+- `cpt-studio-algo-kit-manifest-install` at `architecture/features/kit-management.md:694`. Code markers exist in `skills/studio/scripts/studio/commands/kit.py:1388` and `skills/studio/scripts/studio/utils/manifest.py:8`, but several individual steps remain unchecked.
+- State blocks `cpt-studio-state-kit-authority`, `cpt-studio-state-kit-manifest`, and `cpt-studio-state-kit-install-mode` at `architecture/features/kit-management.md:774`, `:796`, and `:808` have no downstream artifact references from `cfs where-used`.
 
-Downstream last-update evidence:
+Unchecked acceptance criteria still needing final closure are at `architecture/features/kit-management.md:878` through `:894`, plus `:896` and `:900`. Some are probably stale relative to implemented code, but they need explicit confirmation and checkbox updates rather than inference.
 
-- `architecture/ADR/0012-cpt-studio-adr-git-style-conflict-markers-v1.md`: last commit `2026-05-25`
-- `architecture/ADR/0013-cpt-studio-adr-extract-sdlc-kit-to-github-v1.md`: last commit `2026-05-25`
-- `architecture/ADR/0020-cpt-studio-adr-rebrand-and-mirror-override-v1.md`: last commit `2026-05-26`
-- `architecture/DECOMPOSITION.md`: last commit `2026-06-08`
-- `architecture/DESIGN.md`: last commit `2026-06-07`
-- `architecture/features/project-extensibility.md`: last commit `2026-05-25`
-- `architecture/features/version-config.md`: last commit `2026-06-01`
+## Stale Flags
 
-As of `2026-06-09`, all listed downstream artifacts are within 30 days of last modification.
+- No deterministic validation stale flags were reported by `cfs validate`.
+- No marker coverage threshold breach was reported by `cfs spec-coverage`.
+- Potential stale artifact status: multiple requirements have code/test evidence but remain unchecked in `architecture/features/kit-management.md`. These are process stale flags, not validation failures.
 
-## Traceability evidence
+## Traceability Evidence
 
-Commands run:
+- `cfs list-ids --artifact architecture/features/kit-management.md --all` found `106` IDs.
+- `cfs where-used --id cpt-studio-featstatus-kit-management` found only the intra-feature reference at `architecture/features/kit-management.md:67`.
+- `cfs where-used` for unchecked algorithm IDs found only intra-feature references, while direct code marker search found implementation markers for `github-helpers`, `model-normalize`, `manifest-normalize`, and `manifest-install`.
+- Focused test evidence includes KitModel/public components, manifest install/copy/register modes, GitHub provenance/freshness, offline last-known fallback, resource bindings, resolve-vars, adapter info output, agents generation, diff engine resource bindings, and whatsnew behavior.
 
-```text
-cfs where-defined --id cpt-studio-featstatus-kit-management
-cfs list-ids --kind feature
-git diff --stat origin/main -- architecture/features/kit-management.md
-git diff --unified=0 origin/main -- architecture/features/kit-management.md
-cfs where-used --id <changed-id>
-rg -n '@cpt-(changed-id-set)' src skills/studio/scripts/studio
-cfs spec-coverage --system studio --min-coverage 80 --verbose
-git log -1 --format='%cs %h %s' -- <downstream-file>
-```
+## What Remains
 
-Key direct evidence:
-
-- `architecture/features/kit-management.md:62`: defines `cpt-studio-featstatus-kit-management`
-- `architecture/features/kit-management.md:523`: defines `cpt-studio-algo-kit-model-normalize`
-- `architecture/features/kit-management.md:542`: defines `cpt-studio-algo-kit-canonical-manifest`
-- `architecture/features/kit-management.md:561`: defines `cpt-studio-algo-kit-local-path-install-mode`
-- `architecture/features/kit-management.md:579`: defines `cpt-studio-algo-kit-info-model-output`
-- `architecture/features/kit-management.md:594`: defines `cpt-studio-algo-kit-public-component-generation`
-- `architecture/features/kit-management.md:609`: defines `cpt-studio-algo-kit-variable-resolution`
-- `architecture/features/kit-management.md:623`: defines `cpt-studio-algo-kit-update-drift-prune`
-- `architecture/features/kit-management.md:639`: defines `cpt-studio-algo-kit-tool-permission-risk`
-- `architecture/features/kit-management.md:653`: defines `cpt-studio-algo-kit-manifest-normalize`
-- `architecture/features/kit-management.md:779`: defines `cpt-studio-state-kit-manifest`
-- `architecture/features/kit-management.md:791`: defines `cpt-studio-state-kit-install-mode`
-- `architecture/features/kit-management.md:848`: maps changed flow/algo IDs to `skills/studio/scripts/studio/commands/kit.py`
-- `architecture/features/kit-management.md:849`: maps new `KitModel` and public-generation IDs to missing `skills/studio/scripts/studio/utils/kit_model.py`
-- `architecture/features/kit-management.md:850`: maps manifest and variable-resolution IDs to `skills/studio/scripts/studio/utils/manifest.py`
-- `architecture/features/kit-management.md:853`: maps `cpt-studio-algo-kit-info-model-output` to missing `skills/studio/scripts/studio/commands/info.py`
-- `architecture/features/kit-management.md:854`: maps `cpt-studio-algo-kit-public-component-generation` to `skills/studio/scripts/studio/commands/agents.py`
+1. Reconcile unchecked CDSL with code markers: either mark implemented items done where evidence is sufficient, or add missing markers/implementation for the listed gaps.
+2. Close `cpt-studio-algo-kit-github-version-authority` as a coherent algorithm block, not only as acceptance criteria.
+3. Finish or explicitly re-scope the remaining `manifest-install` steps: datamodel, manifest validation, resource copy, and template variable resolution.
+4. Add or mark state coverage for authority, manifest, and install mode states; currently these state IDs have no downstream references.
+5. Re-check the acceptance criteria lines `878-894`, `896`, and `900` against the now-passing focused tests and update the feature artifact accordingly.
+6. After artifact reconciliation, rerun `cfs validate`, `cfs spec-coverage`, `cfs validate-kits`, and the focused pytest subset.

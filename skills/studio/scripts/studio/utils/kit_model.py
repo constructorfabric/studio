@@ -837,6 +837,99 @@ def _load_layout_model(kit_source: Path) -> KitModel:
     )
 
 
+def _resolve_core_path(studio_root: Path, raw_path: str) -> Path:
+    path = Path(raw_path)
+    return path.resolve() if path.is_absolute() else (studio_root / path).resolve()
+
+
+def _find_core_kit_entry(kit_source: Path) -> tuple[Path, str, Dict[str, Any]]:
+    for candidate in [kit_source, *kit_source.parents]:
+        core_path = candidate / "core.toml"
+        if not core_path.is_file():
+            continue
+        try:
+            data = toml_utils.load(core_path)
+        except (OSError, tomllib.TOMLDecodeError) as exc:
+            raise ValueError(f"Invalid core.toml at {core_path}: {exc}") from exc
+        kits = data.get("kits")
+        if not isinstance(kits, dict):
+            continue
+        studio_root = candidate.parent.resolve()
+        for slug, entry in sorted(kits.items()):
+            if not isinstance(entry, dict):
+                continue
+            raw_path = entry.get("path", f"config/kits/{slug}")
+            if not isinstance(raw_path, str):
+                continue
+            if _resolve_core_path(studio_root, raw_path) == kit_source.resolve():
+                return studio_root, str(slug), entry
+        fallback = kits.get(kit_source.name)
+        if isinstance(fallback, dict):
+            return studio_root, kit_source.name, fallback
+    raise ValueError(f"No core.toml registration found for installed kit root: {kit_source}")
+
+
+def _load_core_model(kit_source: Path) -> KitModel:
+    # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-core-bindings
+    studio_root, slug, entry = _find_core_kit_entry(kit_source)
+    bindings = entry.get("resources")
+    if not isinstance(bindings, dict) or not bindings:
+        raise ValueError(f"Kit '{slug}' has no resource bindings in core.toml")
+
+    warnings = ["installed core.toml resource bindings normalized to canonical KitModel"]
+    resources: List[KitResource] = []
+    for resource_id, binding in sorted(bindings.items()):
+        raw_binding = binding.get("path") if isinstance(binding, dict) else binding
+        if not isinstance(raw_binding, str) or not raw_binding.strip():
+            warnings.append(f"Resource '{resource_id}' has no usable binding path; skipped")
+            continue
+        bound_path = _resolve_core_path(studio_root, raw_binding)
+        try:
+            source = bound_path.relative_to(kit_source.resolve()).as_posix()
+        except ValueError as exc:
+            # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-containment
+            raise ValueError(
+                f"Resource '{resource_id}' binding '{raw_binding}' is outside selected kit root '{kit_source}'",
+            ) from exc
+            # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-containment
+        if not bound_path.exists():
+            raise ValueError(f"Resource '{resource_id}' binding path does not exist: {bound_path}")
+        resource_type = "directory" if bound_path.is_dir() else "file"
+        kind = _resource_kind_from_path(source, str(resource_id))
+        origin = str(binding.get("origin", "")).strip() if isinstance(binding, dict) else ""
+        if not origin and kind == "skill" and source.startswith("workflows/"):
+            origin = "legacy-workflow"
+        resources.append(KitResource(
+            id=str(resource_id),
+            kind=kind,
+            source=source,
+            install_path=source,
+            type=resource_type,
+            public=kind in _PUBLIC_KINDS,
+            description=str(binding.get("description", "")).strip() if isinstance(binding, dict) else "",
+            user_modifiable=bool(binding.get("user_modifiable", True)) if isinstance(binding, dict) else True,
+            aliases=_string_list(binding.get("aliases") if isinstance(binding, dict) else None, f"resources.{resource_id}.aliases"),
+            generated_targets=_string_list(binding.get("generated_targets") if isinstance(binding, dict) else None, f"resources.{resource_id}.generated_targets") or ["installed"],
+            origin=origin,
+            generated_name=_normalize_public_name(slug, str(resource_id)) if kind in _PUBLIC_KINDS else "",
+        ))
+    if not resources:
+        raise ValueError(f"No usable resource bindings found for kit '{slug}'")
+
+    return _with_hashes(
+        kit_source,
+        KitModel(
+            slug=slug,
+            name=str(entry.get("name") or slug),
+            version=str(entry.get("version") or ""),
+            manifest_source="core",
+            resources=resources,
+            warnings=warnings,
+        ),
+    )
+    # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-core-bindings
+
+
 # @cpt-algo:cpt-studio-algo-kit-model-normalize:p1
 def load_kit_model(kit_source: Path, source_hint: str = "") -> KitModel:
     """Load a kit source through canonical, legacy manifest, or layout adapters."""
@@ -852,10 +945,10 @@ def load_kit_model(kit_source: Path, source_hint: str = "") -> KitModel:
         legacy_model = _load_legacy_manifest_model(kit_source)
         if legacy_model is not None:
             return legacy_model
+    if source_hint == "core":
+        return _load_core_model(kit_source)
     if source_hint in ("", "layout"):
         return _load_layout_model(kit_source)
-    if source_hint == "core":
-        raise ValueError("core normalization requires an installed kit registration and is not available for source directories")
     raise ValueError(f"Unsupported normalization source: {source_hint}")
     # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-precedence
 
