@@ -1,13 +1,13 @@
 ---
 cf: true
 type: workflow
-name: cf-kit-init
+name: cf-kit
 description: "Invoke when user intent is initializing a kit folder, creating or validating .cf-studio-kit.toml, converting legacy manifest.toml, normalizing conf.toml + layout, or discovering resources for a new kit manifest."
 version: 0.1
 purpose: Initialize a kit root into a canonical .cf-studio-kit.toml through explicit preview, approval, write, and validation gates.
 ---
 
-# cf-kit-init
+# cf-kit
 
 This workflow initializes a target kit folder into a canonical `.cf-studio-kit.toml`. It resolves the target folder first, then applies init-time source precedence for that folder: keep an existing canonical manifest read-only, convert a legacy `manifest.toml` through `cfs kit normalize`, or discover candidate resources through `cf-explore`, propose a conservative manifest, gate all writes on user approval, then validate the written manifest through dry-run normalization.
 
@@ -15,23 +15,23 @@ Executor contract: the controller owns filesystem writes, exact-byte preview che
 
 ```pdsl
 UNIT KitInitBootstrap
-PURPOSE: Ensure the cf skill is loaded before any kit-init work.
+PURPOSE: Ensure the cf skill is loaded before any kit work.
 STATE:
   SET CFS_INIT: true | false (default false, scope session)
 DO:
   EMIT_MENU LoadCfSkillConfirm WHEN CFS_INIT != true
   STOP_TURN WHEN CFS_INIT != true
   RUN verify `{cfs_cmd} kit normalize --help` supports `--from`, `--output`, and `--dry-run`
-  EMIT "Required kit normalization command is unavailable; update Constructor Studio, then retry cf-kit-init." WHEN the normalize capability check fails
+  EMIT "Required kit normalization command is unavailable; update Constructor Studio, then retry cf-kit." WHEN the normalize capability check fails
   STOP_TURN WHEN the normalize capability check fails
   CONTINUE KitInitEntry WHEN CFS_INIT == true
 RULES:
-  ALWAYS verify the cf skill is loaded, CFS_INIT == true, before any kit-init work
+  ALWAYS verify the cf skill is loaded, CFS_INIT == true, before any kit work
   ALWAYS verify the kit normalize command surface before previewing, writing, or validating a kit manifest
   ALWAYS treat CFS_INIT as false when its value is unknown, ambiguous, or unset
   NEVER proceed past KitInitBootstrap unless CFS_INIT == true is positively confirmed
 MENU LoadCfSkillConfirm
-TITLE: The cf skill is not loaded. It is the Constructor Studio core that loads the shared rules and routes to cf-* skills, so kit init cannot run without it. Load it now to continue?
+TITLE: The cf skill is not loaded. It is the Constructor Studio core that loads the shared rules and routes to cf-* skills, so cf-kit cannot run without it. Load it now to continue?
 OPTIONS:
   1 load -> INVOKE skill `cf` and CONTINUE KitInitBootstrap
   2 stop -> STOP_TURN
@@ -65,7 +65,7 @@ DO:
   CONTINUE KitInitAskTarget WHEN TARGET_DIR == unset
   CONTINUE KitInitPreflight WHEN TARGET_DIR != unset
 RULES:
-  ALWAYS capture the original intent before routing any kit-init branch
+  ALWAYS capture the original intent before routing any cf-kit branch
   ALWAYS resolve the target folder before discovery, preview, validation, or write work
   NEVER guess a target folder from vague intent alone
 ```

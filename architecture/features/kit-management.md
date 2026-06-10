@@ -709,7 +709,7 @@ Enables users to install, update, and validate kit packages with interactive fil
    1. [x] - `p1` - **IF** `install_path` is user-modifiable in copy mode: prompt user for destination path (offering the manifest default) - `inst-manifest-prompt-path`
    2. [x] - `p1` - Resolve each resource target from its effective default or user-selected path - `inst-manifest-default-path`
 5. [x] - `p1` - Before writing files or registering resources, reject installation when any public component or nested subagent `generated_name` conflicts with another public component in the installing kit or with an already registered kit - `inst-public-name-conflict`
-6. [x] - `p1` - Manifest preview and kit-init approval reports show final generated names for public skills, agents, rules, and nested subagents, including whether each name is default-prefixed or `prefix_generated_name = false` as-is - `inst-public-name-preview`
+6. [x] - `p1` - Manifest preview and `cf-kit` approval reports show final generated names for public skills, agents, rules, and nested subagents, including whether each name is default-prefixed or `prefix_generated_name = false` as-is - `inst-public-name-preview`
    3. [x] - `p1` - **IF** copy mode: copy resource from source to resolved path, preserving directory structure within directory resources - `inst-manifest-copy-resource`
    4. [x] - `p1` - **IF** register mode: leave files in place and bind the resource to its source path after containment validation - `inst-manifest-register-resource-in-place`
 5. [x] - `p1` - Preserve `{identifier}` template variables in copied kit source files; expose effective bindings for read-time resolution by consumers - `inst-manifest-resolve-vars`
