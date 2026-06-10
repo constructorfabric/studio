@@ -77,9 +77,13 @@ In practice, `cfs generate-agents --agent <tool>` generates some combination of:
 
 - **skill outputs**
   - host-tool-visible Constructor Studio skill entry points that route into the core instructions
+  - public kit skills declared by a kit manifest
 
 - **subagents**
   - isolated task-specific agents with scoped permissions and dedicated prompts, where the host supports them
+
+- **rules and public kit agents**
+  - manifest-declared public rules and agents, written to each host's supported location when that host can expose them cleanly
 
 Claude Code is the **canonical full-fidelity format** for generated subagents.
 
@@ -153,6 +157,7 @@ That is one of the most important practical differences when using Constructor S
 
 1. **Regenerate integrations after setup changes**
    - If you changed workflows, skills, or host agent config, rerun `cfs generate-agents --agent <tool>`.
+   - If you changed a manifest-backed kit's public skills, agents, or rules, rerun `cfs generate-agents --agent <tool>`.
    - If you want upstream kit changes first, run `cfs kit update` or `cfs update --with-kits yes`.
    - If you are cleaning up a Cypilot migration, pass `--remove-cypilot yes`; normal regeneration keeps those legacy files.
 

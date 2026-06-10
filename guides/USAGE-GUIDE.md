@@ -212,7 +212,7 @@ For a first trial, it is usually safe to accept the default project root, keep t
 
 In a normal project, this creates a setup directory `.cf-studio/`, generated host integration files, and user-editable configuration under `config/` inside that setup directory.
 
-Generated runtime files such as `.cf-studio/.core/` and `.cf-studio/.gen/` are gitignored by default. Generated host integration files are also gitignored by default. Kit files are tracked or ignored per kit: tracked kits are editable repository content, while ignored kits are generated local content that Studio may repair or overwrite.
+Generated runtime files such as `.cf-studio/.core/` and `.cf-studio/.gen/` are gitignored by default. Generated host integration files are also gitignored by default. Kit files are tracked, ignored, or registered per kit: tracked kits are editable repository content, ignored kits are generated local content that Studio may repair or overwrite, and registered local kits stay in place with bindings recorded in `core.toml`.
 
 Studio also writes `.cf-studio/version.toml` and `.cf-studio/whatsnew.toml`. `version.toml` records the pinned Studio engine request used by later repair runs. `whatsnew.toml` records core What's New entries already shown by `cfs update`.
 
@@ -277,7 +277,9 @@ Some hosts may also show the resolved Constructor Studio path or loaded context.
 - **New project or already-structured work**: start with `cf generate: ...` or `cf plan: ...`
 - **Existing codebase with weak or missing conventions**: run 💬 `cf auto-config`, inspect what it inferred, and then refine the generated rules before large changes
 - **After changing workflows or host integrations**: rerun `cfs generate-agents` or `cfs generate-agents --agent <tool>`
+- **When you want to inspect upstream kit changes**: run `cfs kit check-updates`
 - **When you want upstream kit changes**: run `cfs kit update`, or explicitly opt in during a top-level update with `cfs update --with-kits yes`
+- **When you want a local kit**: use `cfs kit install --path <path> --install-mode copy` to copy it into the setup directory, or `--install-mode register` to keep it in place under the project root
 - **When you want a kit from a non-GitHub Git remote**: use `cfs kit install git/<url>[//<subdir>][@<kit>] --version <ref>`
 
 For the first trial, use one small real input only: one short requirement, one design note, or one focused change request. Do not start with a repo-wide review or a broad implementation request.
@@ -1056,6 +1058,8 @@ cfs kit update sdlc --version v1.2.4
 Studio records both the requested ref and the resolved commit SHA. This lets later updates compare real content identity instead of only a mutable branch or tag name.
 
 Do not put credentials in Git URLs. Use SSH config, Git credential helpers, or runtime Git auth instead. Studio rejects credential-bearing URLs, query strings, and fragments before fetching.
+
+Kits can also ship a canonical `.cf-studio-kit.toml` manifest. When a source contains several kits, select one with `@<kit>` in the source or with the kit selector offered by the CLI. For local path installs in non-interactive use, pass `--install-mode copy` or `--install-mode register` explicitly. Register mode keeps resources in their original project-contained path and stores their bindings in `core.toml`.
 
 
 ---
