@@ -307,15 +307,12 @@ def _flatten_vars(data, primary_root: Path) -> Dict[str, str]:
         for k in aliases:
             flat.setdefault(k, canonical)
 
-    kits = (data or {}).get("kits") or {}
-    if isinstance(kits, dict):
-        for _kit_slug, resources in kits.items():
-            if not isinstance(resources, dict):
+    variables = (data or {}).get("variables") or {}
+    if isinstance(variables, dict):
+        for name, val in variables.items():
+            if not isinstance(val, str):
                 continue
-            for name, val in resources.items():
-                if not isinstance(val, str):
-                    continue
-                store(str(name), val)
+            store(str(name), val)
     return flat
     # @cpt-end:cpt-studio-flow-map-cli:p1:inst-flatten-vars
 

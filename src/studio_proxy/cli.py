@@ -217,7 +217,7 @@ def _print_update_check_human(data: Dict[str, Any]) -> None:
         component = check.get("component", name)
         if action == "update_available":
             print(f"- {component}: update available")
-            current = check.get("current_version") or check.get("updates_available")
+            current = check.get("current_version", "")
             latest = check.get("latest_version", "")
             if current or latest:
                 print(f"  installed: {current or '?'}")

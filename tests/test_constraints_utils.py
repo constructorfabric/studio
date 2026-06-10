@@ -510,6 +510,16 @@ def test_load_constraints_files_merges_sequentially(tmp_path: Path):
     assert "DESIGN" in kc.by_kind
 
 
+def test_load_constraints_files_errors_on_missing_explicit_path(tmp_path: Path):
+    missing = tmp_path / "missing.toml"
+
+    kc, errs = load_constraints_files([missing])
+
+    assert kc is None
+    assert errs
+    assert "constraints file not found" in errs[0]
+
+
 def test_validate_artifact_file_enforces_constraints_and_required_kinds(tmp_path: Path):
     kc, errs = parse_kit_constraints({
         "PRD": {

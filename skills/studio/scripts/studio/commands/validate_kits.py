@@ -289,13 +289,18 @@ def _validate_kit_by_path(kit_path: Path, *, verbose: bool = False) -> Tuple[int
                 for component in model.public_components
             ]
     elif isinstance(model_error, ValueError) and has_model_input:
-        all_errors.append(constraints_error(
+        err = constraints_error(
             "resources",
             str(model_error),
             path=kit_dir,
             line=1,
             kit=slug,
-        ))
+        )
+        all_errors.append(err)
+        kit_report["status"] = "FAIL"
+        kit_report["error_count"] = int(kit_report.get("error_count", 0)) + 1
+        if verbose:
+            kit_report.setdefault("errors", []).append(err)
     # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-verify-resource-paths
 
     # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-build-artifacts-meta

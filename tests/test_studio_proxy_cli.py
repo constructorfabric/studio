@@ -143,6 +143,7 @@ def test_proxy_check_updates_runs_full_manual_report(monkeypatch, capsys):
     assert "pipx upgrade constructor-studio" in out
     assert "cfs update" in out
     assert "cfs kit update sdlc" in out
+    assert "  installed: 1\n" not in out
 
 
 def test_background_update_check_prints_cached_notices(monkeypatch, tmp_path, capsys):

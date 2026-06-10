@@ -2089,6 +2089,8 @@ def load_constraints_files(paths: Sequence[Path]) -> Tuple[Optional[KitConstrain
         constraints, errs = load_constraints_file(path)
         if errs:
             errors.extend(f"{path.name}: {err}" for err in errs)
+        elif constraints is None:
+            errors.append(f"{path.name}: constraints file not found or is not a file")
         if constraints is not None:
             loaded.append(constraints)
     if errors:

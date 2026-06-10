@@ -431,6 +431,67 @@ class TestFileLevelKitUpdate(unittest.TestCase):
             self.assertEqual(result["status"], "updated")
             self.assertIn("SKILL.md", result["accepted"])
 
+    def test_auto_approve_declines_user_modifiable_resource_without_overwrite_approval(self):
+        from studio.utils.diff_engine import file_level_kit_update
+        from studio.utils.manifest import ResourceInfo
+
+        with TemporaryDirectory() as td:
+            src = Path(td) / "src"
+            usr = Path(td) / "usr"
+            src.mkdir(); usr.mkdir()
+            (src / "SKILL.md").write_text("new\n", encoding="utf-8")
+            (usr / "SKILL.md").write_text("old\n", encoding="utf-8")
+
+            result = file_level_kit_update(
+                src,
+                usr,
+                auto_approve=True,
+                content_files=("SKILL.md",),
+                source_to_resource_id={"SKILL.md": "skill"},
+                resource_info={
+                    "skill": ResourceInfo(
+                        type="file",
+                        source_base="SKILL.md",
+                        user_modifiable=True,
+                    ),
+                },
+            )
+
+            self.assertEqual(result["status"], "updated")
+            self.assertIn("SKILL.md", result["declined"])
+            self.assertEqual((usr / "SKILL.md").read_text(encoding="utf-8"), "old\n")
+
+    def test_auto_approve_accepts_user_modifiable_resource_with_overwrite_approval(self):
+        from studio.utils.diff_engine import file_level_kit_update
+        from studio.utils.manifest import ResourceInfo
+
+        with TemporaryDirectory() as td:
+            src = Path(td) / "src"
+            usr = Path(td) / "usr"
+            src.mkdir(); usr.mkdir()
+            (src / "SKILL.md").write_text("new\n", encoding="utf-8")
+            (usr / "SKILL.md").write_text("old\n", encoding="utf-8")
+
+            result = file_level_kit_update(
+                src,
+                usr,
+                auto_approve=True,
+                content_files=("SKILL.md",),
+                approved_overwrites=["skill"],
+                source_to_resource_id={"SKILL.md": "skill"},
+                resource_info={
+                    "skill": ResourceInfo(
+                        type="file",
+                        source_base="SKILL.md",
+                        user_modifiable=True,
+                    ),
+                },
+            )
+
+            self.assertEqual(result["status"], "updated")
+            self.assertIn("SKILL.md", result["accepted"])
+            self.assertEqual((usr / "SKILL.md").read_text(encoding="utf-8"), "new\n")
+
     def test_added_file_auto_approve(self):
         from studio.utils.diff_engine import file_level_kit_update
         with TemporaryDirectory() as td:
@@ -857,6 +918,7 @@ class TestFileLevelKitUpdateResourceBindings(unittest.TestCase):
                 resource_bindings=resource_bindings,
                 source_to_resource_id=source_to_resource_id,
                 resource_info=resource_info,
+                approved_overwrites=["adr_template"],
             )
 
             self.assertEqual(result["status"], "updated")
@@ -925,6 +987,7 @@ class TestFileLevelKitUpdateResourceBindings(unittest.TestCase):
                 resource_bindings=resource_bindings,
                 source_to_resource_id=source_to_resource_id,
                 resource_info=resource_info,
+                approved_overwrites=["adr_example"],
             )
 
             self.assertEqual(result["status"], "updated")

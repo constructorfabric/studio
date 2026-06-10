@@ -667,11 +667,20 @@ class TestValidateKitByPathManifest(unittest.TestCase):
                 },
             ])
 
-            rc, result = _validate_kit_by_path(kit_dir)
+            rc, result = _validate_kit_by_path(kit_dir, verbose=True)
             resource_errors = [
                 e for e in result.get("errors", [])
                 if e.get("type") == "resources"
             ]
+            kit_report = result["kits"][0]
+            self.assertEqual(rc, 2)
+            self.assertEqual(result["status"], "FAIL")
+            self.assertEqual(kit_report["status"], "FAIL")
+            self.assertGreater(kit_report["error_count"], 0)
+            self.assertTrue(any(
+                e.get("type") == "resources"
+                for e in kit_report.get("errors", [])
+            ))
             self.assertGreater(len(resource_errors), 0)
 
     def test_no_manifest_no_resource_check(self):

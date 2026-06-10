@@ -866,7 +866,7 @@ def file_level_kit_update(
             else:
                 action = (
                     "accepted"
-                    if not requires_overwrite_approval or interactive or has_overwrite_approval
+                    if not requires_overwrite_approval or has_overwrite_approval
                     else "declined"
                 )
         elif not interactive:
