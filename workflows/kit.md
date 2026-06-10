@@ -194,9 +194,10 @@ MENU KitInitLegacyApprovalMenu
 TITLE: Approve the legacy-source conversion?
 OPTIONS:
   1 approve-default -> SET APPROVED_PREVIEW = CURRENT_PREVIEW_TOML; RUN write APPROVED_PREVIEW bytes exactly to `<target>/.cf-studio-kit.toml`; RUN verify the written file bytes equal APPROVED_PREVIEW; CONTINUE KitInitValidateWrittenManifest
-  2 edit -> SET PENDING_EDIT_BRANCH = legacy_manifest; EMIT "Reply with edit commands such as `set metadata.name=<name>`, `set metadata.version=<semver>`, `remove resource id=<id>`, `set resource <id>.kind=<kind>`, `set resource <id>.install_path=<path>`, `set resource <id>.prefix_generated_name=false`, or `preserve field=<field>`."; WAIT user.reply; STOP_TURN
-  3 cancel -> STOP_TURN
-  INVALID -> EMIT "Reply 1-3." and EMIT_MENU KitInitLegacyApprovalMenu
+  2 show-preview -> EMIT CURRENT_PREVIEW_TOML in a fenced `toml` block; EMIT CURRENT_PREVIEW_REPORT; EMIT_MENU KitInitLegacyApprovalMenu; WAIT user.reply; STOP_TURN
+  3 edit -> SET PENDING_EDIT_BRANCH = legacy_manifest; EMIT "Reply with edit commands such as `set metadata.name=<name>`, `set metadata.version=<semver>`, `remove resource id=<id>`, `set resource <id>.kind=<kind>`, `set resource <id>.install_path=<path>`, `set resource <id>.prefix_generated_name=false`, or `preserve field=<field>`."; WAIT user.reply; STOP_TURN
+  4 cancel -> STOP_TURN
+  INVALID -> EMIT "Reply 1-4." and EMIT_MENU KitInitLegacyApprovalMenu
 MENU KitInitPreviewFailureMenu
 TITLE: The manifest preview could not be produced. Fix the source input and retry, or cancel.
 OPTIONS:
@@ -277,10 +278,11 @@ MENU KitInitDiscoveryApprovalMenu
 TITLE: Approve the proposed canonical manifest for this folder?
 OPTIONS:
   1 approve-default -> SET APPROVED_PREVIEW = CURRENT_PREVIEW_TOML; RUN write APPROVED_PREVIEW bytes exactly to `<target>/.cf-studio-kit.toml`; RUN verify the written file bytes equal APPROVED_PREVIEW; CONTINUE KitInitValidateWrittenManifest
-  2 edit -> SET PENDING_EDIT_BRANCH = discovery; EMIT "Reply with edit commands such as `set metadata.name=<name>`, `add resource id=<id> kind=<kind> source=<path>`, `remove resource id=<id>`, `set resource <id>.aliases=<a,b>`, `set resource <id>.install_path=<path>`, `set resource <id>.prefix_generated_name=false`, or `exclude source=<path>`."; WAIT user.reply; STOP_TURN
-  3 rerun-discovery -> CONTINUE KitInitDiscoveryRun
-  4 cancel -> STOP_TURN
-  INVALID -> EMIT "Reply 1-4." and EMIT_MENU KitInitDiscoveryApprovalMenu
+  2 show-preview -> EMIT CURRENT_PREVIEW_TOML in a fenced `toml` block; EMIT CURRENT_PREVIEW_REPORT; EMIT_MENU KitInitDiscoveryApprovalMenu; WAIT user.reply; STOP_TURN
+  3 edit -> SET PENDING_EDIT_BRANCH = discovery; EMIT "Reply with edit commands such as `set metadata.name=<name>`, `add resource id=<id> kind=<kind> source=<path>`, `remove resource id=<id>`, `set resource <id>.aliases=<a,b>`, `set resource <id>.install_path=<path>`, `set resource <id>.prefix_generated_name=false`, or `exclude source=<path>`."; WAIT user.reply; STOP_TURN
+  4 rerun-discovery -> CONTINUE KitInitDiscoveryRun
+  5 cancel -> STOP_TURN
+  INVALID -> EMIT "Reply 1-5." and EMIT_MENU KitInitDiscoveryApprovalMenu
 ```
 
 ```pdsl
