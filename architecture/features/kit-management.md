@@ -877,22 +877,22 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 ## 7. Acceptance Criteria
 
-- [ ] `p1` - `cfs kit install <owner/repo[@version]>` or `cfs kit install --path <dir>` installs a kit and returns JSON with status, files_copied
-- [ ] `p1` - `cfs kit install` with `.cf-studio-kit.toml`: validates canonical manifest, prompts for `user_modifiable` paths and local copy/register mode, copies or registers resources at effective paths, and records bindings in `core.toml`
-- [ ] `p1` - `.cf-studio-kit.toml` is sufficient by itself; `conf.toml` is not required and is ignored for canonical fields when the canonical manifest is present
-- [ ] `p1` - `cfs kit normalize <path>` can generate a canonical `.cf-studio-kit.toml` from legacy `manifest.toml`, `conf.toml + layout`, or installed resource bindings without mutating resources
-- [ ] `p1` - A local path kit whose manifest and resources are inside the current project root can be explicitly registered in place without copying files
-- [ ] `p1` - `cfs kit update <path>` shows interactive diff and applies accepted changes
-- [ ] `p1` - `cfs kit update` with canonical or legacy manifest on legacy install: auto-populates resource bindings from existing kit root + manifest defaults
-- [ ] `p1` - `cfs kit update` with resource bindings: updates files at their registered paths (not default `config/kits/{slug}/` paths); new resources without bindings go to default paths
-- [ ] `p1` - `cfs validate-kits` validates all registered kits (constraints + templates); for manifest kits, verifies registered resource paths exist
-- [ ] `p1` - `.gen/AGENTS.md` and `.gen/SKILL.md` are regenerated after install/update
-- [ ] `p1` - `cfs generate-agents` consumes `KitModel.public_components` and emits skills/subagents/rules, not workflow directory scans, for manifest-backed kits
-- [ ] `p1` - Public skills and subagents generated from kits are named `cf-{kit-slug}-{name}` and already-prefixed names are not double-prefixed
-- [ ] `p1` - Legacy `workflow` entries are surfaced as skills with `origin = "legacy-workflow"` and deprecated workflow output is derived from those skills only for compatibility
-- [ ] `p1` - File-level diff correctly handles TOC stripping, conflict merging, and editor integration
-- [ ] `p1` - `cfs info` outputs canonical `kit_models` with resource bindings, generated names, install mode, drift, risk, provenance, and legacy `kit_details` derived from the same model
-- [ ] `p1` - `cfs resolve-vars` omits `{kit_slug.resource_id}` variables from the flat map, exposes unqualified variables only when unique, and warns on conflicts
+- [x] `p1` - `cfs kit install <owner/repo[@version]>` or `cfs kit install --path <dir>` installs a kit and returns JSON with status, files_copied
+- [x] `p1` - `cfs kit install` with `.cf-studio-kit.toml`: validates canonical manifest, prompts for `user_modifiable` paths and local copy/register mode, copies or registers resources at effective paths, and records bindings in `core.toml`
+- [x] `p1` - `.cf-studio-kit.toml` is sufficient by itself; `conf.toml` is not required and is ignored for canonical fields when the canonical manifest is present
+- [x] `p1` - `cfs kit normalize <path>` can generate a canonical `.cf-studio-kit.toml` from legacy `manifest.toml`, `conf.toml + layout`, or installed resource bindings without mutating resources
+- [x] `p1` - A local path kit whose manifest and resources are inside the current project root can be explicitly registered in place without copying files
+- [x] `p1` - `cfs kit update <path>` shows interactive diff and applies accepted changes
+- [x] `p1` - `cfs kit update` with canonical or legacy manifest on legacy install: auto-populates resource bindings from existing kit root + manifest defaults
+- [x] `p1` - `cfs kit update` with resource bindings: updates files at their registered paths (not default `config/kits/{slug}/` paths); new resources without bindings go to default paths
+- [x] `p1` - `cfs validate-kits` validates all registered kits (constraints + templates); for manifest kits, verifies registered resource paths exist
+- [x] `p1` - `.gen/AGENTS.md` and `.gen/SKILL.md` are regenerated after install/update
+- [x] `p1` - `cfs generate-agents` consumes `KitModel.public_components` and emits skills/subagents/rules, not workflow directory scans, for manifest-backed kits
+- [x] `p1` - Public skills and subagents generated from kits are named `cf-{kit-slug}-{name}` and already-prefixed names are not double-prefixed
+- [x] `p1` - Legacy `workflow` entries are surfaced as skills with `origin = "legacy-workflow"` and deprecated workflow output is derived from those skills only for compatibility
+- [x] `p1` - File-level diff correctly handles TOC stripping, conflict merging, and editor integration
+- [x] `p1` - `cfs info` outputs canonical `kit_models` with resource bindings, generated names, install mode, drift, risk, provenance, and legacy `kit_details` derived from the same model
+- [x] `p1` - `cfs resolve-vars` omits `{kit_slug.resource_id}` variables from the flat map, exposes unqualified variables only when unique, and warns on conflicts
 - [ ] `p1` - Install, update, info, resolve-vars, validate, and generate-agents all use the shared `KitModel` service; command-specific ad hoc kit scanning is limited to declared legacy adapters
 - [x] `p1` - `cfs kit update` displays whatsnew entries from kit's `whatsnew.toml` before file-level diff (versions > installed version)
 - [ ] `p1` - All CDSL instructions have corresponding `@cpt-begin`/`@cpt-end` markers in code
