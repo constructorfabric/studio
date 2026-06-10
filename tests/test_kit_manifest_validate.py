@@ -214,8 +214,8 @@ class TestContextConstraintsResourceBinding(unittest.TestCase):
             self.assertIn("sdlc", ctx.kits)
             self.assertIsNone(ctx.kits["sdlc"].constraints)
             msgs = [str(e.get("message", "")) for e in (ctx._errors or [])]
-            self.assertTrue(any("Invalid constraints.toml" in msg for msg in msgs))
-            self.assertTrue(any("Bound constraints path does not exist or is not a file" in str(e.get("errors", [])) for e in (ctx._errors or [])))
+            self.assertTrue(any("Invalid constraints" in msg for msg in msgs))
+            self.assertTrue(any("Bound constraints resource" in str(e.get("errors", [])) for e in (ctx._errors or [])))
 
 
 # ---------------------------------------------------------------------------

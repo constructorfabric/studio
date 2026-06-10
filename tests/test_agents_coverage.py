@@ -9,9 +9,11 @@ Covers:
 - _list_workflow_files gen kit scanning
 """
 
+import io
 import json
 import sys
 import unittest
+from contextlib import redirect_stderr
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -26,6 +28,32 @@ class TestStudioEndpointTarget(unittest.TestCase):
 
         content = "Constructor Studio endpoint only. Prompt source: {cf-studio-path}/skills/x"
         self.assertIsNone(_extract_studio_endpoint_target(content))
+
+    def test_endpoint_target_rejects_non_studio_path(self):
+        from studio.commands.agents import _extract_studio_endpoint_target
+
+        content = "Prompt source: /tmp/not-studio. Final prompt follows"
+        self.assertIsNone(_extract_studio_endpoint_target(content))
+
+    def test_pure_generated_endpoint_stub_is_accepted(self):
+        from studio.commands.agents import _GENERATED_MARKER, _is_pure_studio_generated
+
+        content = (
+            f"{_GENERATED_MARKER}\n"
+            "Constructor Studio endpoint only. Prompt source: .bootstrap/.core/skills/studio/SKILL.md"
+        )
+        self.assertTrue(_is_pure_studio_generated(content))
+
+    def test_target_path_outside_project_root_warns_and_returns_absolute(self):
+        from studio.commands.agents import _target_path_from_root
+
+        target = Path("/outside/project/agent.md")
+        buf = io.StringIO()
+        with redirect_stderr(buf):
+            result = _target_path_from_root(target, Path("/workspace/project"))
+
+        self.assertEqual(result, target.as_posix())
+        self.assertIn("outside project root", buf.getvalue())
 
 
 class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
@@ -2072,6 +2100,11 @@ class TestKitWorkflowSharedSkills(unittest.TestCase):
 
 class TestIsPureCypilotGenerated(unittest.TestCase):
     """Regression: _is_pure_studio_generated must distinguish pure stubs from customized files."""
+
+    def test_blank_generated_content_is_pure(self):
+        from studio.commands.agents import _GENERATED_MARKER, _is_pure_studio_generated
+
+        self.assertTrue(_is_pure_studio_generated(f"{_GENERATED_MARKER}\n"))
 
     def test_pure_stub_is_detected(self):
         from studio.commands.agents import _is_pure_studio_generated

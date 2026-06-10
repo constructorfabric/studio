@@ -309,7 +309,7 @@ def _flatten_vars(data, primary_root: Path) -> Dict[str, str]:
 
     kits = (data or {}).get("kits") or {}
     if isinstance(kits, dict):
-        for kit_slug, resources in kits.items():
+        for _kit_slug, resources in kits.items():
             if not isinstance(resources, dict):
                 continue
             for name, val in resources.items():

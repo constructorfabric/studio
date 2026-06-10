@@ -1,5 +1,6 @@
 """Non-blocking update advisory checks for the global cfs proxy."""
 
+# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
 from __future__ import annotations
 
 import argparse
@@ -16,8 +17,10 @@ from urllib.request import Request, urlopen
 
 
 _DEFAULT_TTL_SECONDS = 6 * 60 * 60
+# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-bg-version-check
 def update_check_file() -> Path:
     configured = os.environ.get("CFS_UPDATE_CHECK_FILE", "")
     if configured:
@@ -47,8 +50,10 @@ def should_refresh(cache: Optional[Dict[str, Any]], ttl_seconds: int = _DEFAULT_
     except (TypeError, ValueError):
         return True
     return int(time.time()) - checked_at >= ttl_seconds
+# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-bg-version-check
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-version-mismatch
 def _version_key(version: str) -> tuple:
     cleaned = version.strip().lstrip("v")
     parts = []
@@ -68,8 +73,10 @@ def _is_newer(latest: str, current: str) -> bool:
     if latest_key != (0,) or current_key != (0,):
         return latest_key > current_key
     return latest != current
+# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-version-mismatch
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-show-update-notice
 def _proxy_current_version() -> str:
     from studio_proxy import __version__
     return __version__
@@ -102,8 +109,10 @@ def check_proxy() -> Dict[str, Any]:
     if _is_newer(latest, current):
         result["action"] = "update_available"
     return result
+# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-show-update-notice
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-bg-version-check
 def check_skill_engine(skill_path: Optional[Path]) -> Dict[str, Any]:
     result: Dict[str, Any] = {
         "component": "skill-engine",
@@ -129,8 +138,10 @@ def check_skill_engine(skill_path: Optional[Path]) -> Dict[str, Any]:
     except (OSError, ValueError, RuntimeError) as exc:
         result.update({"action": "unknown", "message": str(exc)})
     return result
+# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-bg-version-check
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-version-mismatch
 def check_kits(skill_path: Optional[Path], project_root: str = "") -> Dict[str, Any]:
     result: Dict[str, Any] = {
         "component": "kits",
@@ -169,8 +180,10 @@ def check_kits(skill_path: Optional[Path], project_root: str = "") -> Dict[str, 
         "status": payload.get("status", ""),
     })
     return result
+# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-version-mismatch
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-bg-version-check
 def run_update_check(
     *,
     skill_path: Optional[Path] = None,
@@ -201,8 +214,10 @@ def run_update_check(
     if write_cache:
         write_cached_update_check(data)
     return data
+# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-bg-version-check
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-show-update-notice
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(prog="studio-proxy-update-check")
     parser.add_argument("--skill-path", default="")
@@ -220,7 +235,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.json:
         print(json.dumps(data, indent=2, sort_keys=True))
     return 0
+# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-show-update-notice
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-bg-version-check
 if __name__ == "__main__":
     raise SystemExit(main())
+# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-bg-version-check

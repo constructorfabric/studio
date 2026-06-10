@@ -15,6 +15,7 @@ import unittest
 from contextlib import redirect_stdout, redirect_stderr
 from pathlib import Path, PureWindowsPath
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
@@ -226,6 +227,709 @@ class TestKitNormalize(unittest.TestCase):
             resources = {r["id"]: r for r in manifest_data["kits"][0]["resources"]}
             self.assertEqual(resources["constraints"]["kind"], "constraints")
             self.assertFalse((kit_src / ".cf-studio-kit.toml").exists())
+
+    def test_normalize_legacy_manifest_v2_components(self):
+        from studio.commands.kit import cmd_kit_normalize
+
+        with TemporaryDirectory() as td:
+            kit_src = Path(td) / "componentkit"
+            kit_src.mkdir()
+            (kit_src / "skills").mkdir()
+            (kit_src / "agents").mkdir()
+            (kit_src / "rules").mkdir()
+            (kit_src / "workflows").mkdir()
+            (kit_src / "skills" / "standctl.md").write_text("# Standctl\n", encoding="utf-8")
+            (kit_src / "agents" / "bug-fixer.md").write_text("# Bug fixer\n", encoding="utf-8")
+            (kit_src / "rules" / "repo.md").write_text("# Rule\n", encoding="utf-8")
+            (kit_src / "workflows" / "ship.md").write_text("# Ship\n", encoding="utf-8")
+            (kit_src / "manifest.toml").write_text(
+                "\n".join([
+                    "[manifest]",
+                    'version = "2.0"',
+                    "",
+                    "[[skills]]",
+                    'id = "standctl"',
+                    'description = "Stand control skill"',
+                    'source = "skills/standctl.md"',
+                    'agents = ["claude"]',
+                    "",
+                    "[[agents]]",
+                    'id = "bug-fixer"',
+                    'description = "Fix bugs on stands"',
+                    'source = "agents/bug-fixer.md"',
+                    'tools = ["Bash", "Read"]',
+                    'model = "sonnet"',
+                    'color = "magenta"',
+                    'memory_dir = ".claude/agent-memory/bug-fixer"',
+                    'skills = ["standctl"]',
+                    'agents = ["claude"]',
+                    "",
+                    "[[rules]]",
+                    'id = "repo-rule"',
+                    'description = "Repository rule"',
+                    'source = "rules/repo.md"',
+                    'agents = ["claude"]',
+                    "",
+                    "[[workflows]]",
+                    'id = "ship-flow"',
+                    'description = "Ship workflow"',
+                    'source = "workflows/ship.md"',
+                    'agents = ["claude"]',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = cmd_kit_normalize([str(kit_src), "--dry-run"])
+
+            self.assertEqual(rc, 0)
+            out = json.loads(buf.getvalue())
+            data = tomllib.loads(out["manifest"])
+            resources = {r["id"]: r for r in data["kits"][0]["resources"]}
+
+            self.assertEqual(resources["standctl"]["kind"], "skill")
+            self.assertEqual(resources["standctl"]["generated_targets"], ["claude"])
+            self.assertEqual(resources["bug-fixer"]["kind"], "agent")
+            self.assertEqual(resources["bug-fixer"]["tools"], ["Bash", "Read"])
+            self.assertEqual(resources["bug-fixer"]["model"], "sonnet")
+            self.assertEqual(resources["bug-fixer"]["color"], "magenta")
+            self.assertEqual(resources["bug-fixer"]["memory_dir"], ".claude/agent-memory/bug-fixer")
+            self.assertEqual(resources["bug-fixer"]["skills"], ["standctl"])
+            self.assertEqual(resources["repo-rule"]["kind"], "rule")
+            self.assertEqual(resources["ship-flow"]["kind"], "skill")
+            self.assertEqual(resources["ship-flow"]["origin"], "legacy-workflow")
+
+
+class TestKitUpdateCheckCoverage(unittest.TestCase):
+    """Focused coverage for kit update-check and public name conflict helpers."""
+
+    def setUp(self):
+        from studio.utils.ui import set_json_mode
+        set_json_mode(True)
+
+    def tearDown(self):
+        from studio.utils.ui import set_json_mode
+        set_json_mode(False)
+
+    def _component(self, component_id, generated_name, kind="skill", subagents=None):
+        return SimpleNamespace(
+            id=component_id,
+            generated_name=generated_name,
+            kind=kind,
+            subagents=subagents or [],
+        )
+
+    def _model(self, slug, components):
+        return SimpleNamespace(slug=slug, public_components=components)
+
+    def test_public_component_name_conflicts_include_nested_subagents(self):
+        from studio.commands.kit import _kit_model_public_component_names, _public_component_name_conflicts
+
+        model = self._model(
+            "pubkit",
+            [
+                self._component(
+                    "agent",
+                    "cf-pubkit-agent",
+                    kind="agent",
+                    subagents=[
+                        {"id": "helper"},
+                        {"id": ""},
+                        "not-a-table",
+                        {"id": "exact", "prefix_generated_name": False},
+                    ],
+                ),
+                self._component("duplicate", "cf-pubkit-helper"),
+            ],
+        )
+
+        names = _kit_model_public_component_names(model)
+        self.assertEqual(names["cf-pubkit-helper"], "duplicate")
+        self.assertEqual(names["exact"], "agent.subagents.exact")
+
+        errors = _public_component_name_conflicts(Path("/no-studio"), "pubkit", model)
+        self.assertTrue(any("cf-pubkit-helper" in error for error in errors))
+
+    def test_public_component_name_conflicts_against_existing_registered_kit(self):
+        from studio.commands.kit import _public_component_name_conflicts
+
+        with TemporaryDirectory() as td:
+            studio_dir = Path(td) / ".bootstrap"
+            existing_root = studio_dir / "config" / "kits" / "existing"
+            existing_root.mkdir(parents=True)
+            installing = self._model(
+                "newkit",
+                [self._component("skill", "cf-newkit-skill")],
+            )
+            existing = self._model(
+                "existing",
+                [self._component("skill", "cf-newkit-skill")],
+            )
+
+            with patch(
+                "studio.commands.kit._read_kits_from_core_toml",
+                return_value={"existing": {"path": "config/kits/existing"}},
+            ), patch("studio.utils.kit_model.load_kit_model", return_value=existing):
+                errors = _public_component_name_conflicts(studio_dir, "newkit", installing)
+
+            self.assertTrue(any("already generated by kit 'existing'" in error for error in errors))
+
+    def test_kit_update_check_result_branches(self):
+        from studio.commands.kit import _kit_update_check_result
+
+        github = _kit_update_check_result(
+            "kit",
+            {"source": "github:owner/repo", "source_provenance": {"resolved_ref": "v1.0.0"}},
+            {"source_type": "github", "resolved_ref": "v1.1.0"},
+        )
+        self.assertEqual(github["action"], "update_available")
+        self.assertEqual(github["latest_ref"], "v1.1.0")
+
+        git = _kit_update_check_result(
+            "kit",
+            {"content_identity": {"commit_sha": "abc"}},
+            {"source_type": "git", "commit_sha": "def"},
+        )
+        self.assertEqual(git["action"], "update_available")
+        self.assertEqual(git["installed_commit"], "abc")
+
+        failed = _kit_update_check_result("kit", {}, None)
+        self.assertEqual(failed["action"], "failed")
+
+    def test_seed_kit_config_files_copies_missing_toml_only(self):
+        from studio.commands.kit import _seed_kit_config_files
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            gen_scripts_dir = root / "scripts"
+            config_dir = root / "config"
+            gen_scripts_dir.mkdir()
+            (gen_scripts_dir / "settings.toml").write_text("value = 1\n", encoding="utf-8")
+            (gen_scripts_dir / "ignored.txt").write_text("value = 2\n", encoding="utf-8")
+
+            actions = {}
+            _seed_kit_config_files(gen_scripts_dir, config_dir, actions)
+
+            self.assertEqual((config_dir / "settings.toml").read_text(encoding="utf-8"), "value = 1\n")
+            self.assertFalse((config_dir / "ignored.txt").exists())
+            self.assertEqual(actions, {"config_settings": "seeded"})
+
+            (gen_scripts_dir / "settings.toml").write_text("value = 3\n", encoding="utf-8")
+            _seed_kit_config_files(gen_scripts_dir, config_dir, actions)
+            self.assertEqual((config_dir / "settings.toml").read_text(encoding="utf-8"), "value = 1\n")
+
+    def test_write_whatsnew_from_github_releases_branches(self):
+        import json as json_module
+        from studio.commands.kit import _write_kit_whatsnew_from_github_releases
+
+        class _Response:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return json_module.dumps(self.payload).encode("utf-8")
+
+        with TemporaryDirectory() as td:
+            kit_dir = Path(td)
+            with patch("studio.commands.kit.urllib.request.urlopen", return_value=_Response({"message": "not a list"})):
+                _write_kit_whatsnew_from_github_releases(kit_dir, "owner", "repo")
+            self.assertFalse((kit_dir / "whatsnew.toml").exists())
+
+            releases = [
+                {"tag_name": "", "name": "blank"},
+                "not-a-release",
+                {"tag_name": "v1.0.0", "name": "First release", "body": "Details"},
+            ]
+            with patch("studio.commands.kit.urllib.request.urlopen", return_value=_Response(releases)):
+                _write_kit_whatsnew_from_github_releases(kit_dir, "owner", "repo")
+
+            rendered = (kit_dir / "whatsnew.toml").read_text(encoding="utf-8")
+            self.assertIn('[whatsnew."v1.0.0"]', rendered)
+            self.assertIn('summary = "First release"', rendered)
+
+    def test_check_registered_kit_updates_summarizes_failures_and_cleans_tmpdir(self):
+        from studio.commands.kit import _check_registered_kit_updates
+
+        with TemporaryDirectory() as td:
+            tmp_dir = Path(td) / "tmp-kit"
+            tmp_dir.mkdir()
+            with patch(
+                "studio.commands.kit._resolve_registered_update_targets",
+                return_value=(
+                    [("gitkit", Path(td), "git:https://example.invalid/repo.git", tmp_dir, {"source_type": "git", "commit_sha": "new"})],
+                    [{"kit": "bad", "action": "ERROR", "message": "broken", "source": "git:bad"}],
+                ),
+            ):
+                results, failures = _check_registered_kit_updates({
+                    "gitkit": {
+                        "source": "git:https://example.invalid/repo.git",
+                        "source_provenance": {"commit_sha": "old"},
+                    }
+                })
+
+            self.assertFalse(tmp_dir.exists())
+            self.assertEqual(failures[0]["kit"], "bad")
+            actions = {result["kit"]: result["action"] for result in results}
+            self.assertEqual(actions["bad"], "failed")
+            self.assertEqual(actions["gitkit"], "update_available")
+
+    def test_cmd_kit_check_updates_filters_slug_and_outputs_commands(self):
+        from studio.commands.kit import cmd_kit_check_updates
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            studio_dir = root / ".bootstrap"
+            studio_dir.mkdir()
+            with patch("studio.commands.kit._resolve_studio_dir", return_value=(root, studio_dir)), \
+                    patch(
+                        "studio.commands.kit._read_kits_from_core_toml",
+                        return_value={"sdlc": {"source": "github:owner/repo"}},
+                    ), \
+                    patch(
+                        "studio.commands.kit._check_registered_kit_updates",
+                        return_value=([
+                            {
+                                "kit": "sdlc",
+                                "action": "update_available",
+                                "command": "cfs kit update sdlc",
+                                "installed_ref": "v1.0.0",
+                                "latest_ref": "v1.1.0",
+                            }
+                        ], []),
+                    ):
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = cmd_kit_check_updates(["sdlc", "--project-root", str(root)])
+
+        self.assertEqual(rc, 0)
+        out = json.loads(buf.getvalue())
+        self.assertEqual(out["updates_available"], 1)
+        self.assertEqual(out["commands"], ["cfs kit update sdlc"])
+
+    def test_cmd_kit_check_updates_reports_missing_slug(self):
+        from studio.commands.kit import cmd_kit_check_updates
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            studio_dir = root / ".bootstrap"
+            studio_dir.mkdir()
+            with patch("studio.commands.kit._resolve_studio_dir", return_value=(root, studio_dir)), \
+                    patch(
+                        "studio.commands.kit._read_kits_from_core_toml",
+                        return_value={"sdlc": {"source": "github:owner/repo"}},
+                    ):
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = cmd_kit_check_updates(["missing"])
+
+        self.assertEqual(rc, 2)
+        self.assertIn("Kit 'missing' not found", json.loads(buf.getvalue())["message"])
+
+    def test_cmd_kit_check_updates_no_project_and_no_kits_branches(self):
+        from studio.commands.kit import cmd_kit_check_updates
+
+        with patch("studio.commands.kit._resolve_studio_dir", return_value=None):
+            self.assertEqual(cmd_kit_check_updates([]), 1)
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            studio_dir = root / ".bootstrap"
+            studio_dir.mkdir()
+            with patch("studio.commands.kit._resolve_studio_dir", return_value=(root, studio_dir)), \
+                    patch("studio.commands.kit._read_kits_from_core_toml", return_value={}):
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = cmd_kit_check_updates([])
+
+        self.assertEqual(rc, 2)
+        self.assertIn("No kits registered", json.loads(buf.getvalue())["message"])
+
+    def test_cmd_kit_update_aborts_when_whatsnew_declined_and_cleans_tmpdir(self):
+        from studio.commands.kit import cmd_kit_update
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            studio_dir = root / ".bootstrap"
+            config_dir = studio_dir / "config"
+            kit_source = Path(td) / "kit-source"
+            tmp_dir = Path(td) / "tmp-kit"
+            config_dir.mkdir(parents=True)
+            kit_source.mkdir()
+            tmp_dir.mkdir()
+
+            with patch("studio.commands.kit._resolve_studio_dir", return_value=(root, studio_dir)), \
+                    patch(
+                        "studio.commands.kit._read_kits_from_core_toml",
+                        return_value={"sdlc": {"source": "github:owner/repo", "version": "v1.0.0"}},
+                    ), \
+                    patch(
+                        "studio.commands.kit._resolve_registered_update_targets",
+                        return_value=(
+                            [("sdlc", kit_source, "github:owner/repo", tmp_dir, {"source_type": "github"})],
+                            [],
+                        ),
+                    ), \
+                    patch("studio.commands.kit._read_kit_version_from_core", return_value="v1.0.0"), \
+                    patch("studio.commands.kit.show_kit_whatsnew", return_value=False), \
+                    patch("studio.commands.kit.regenerate_gen_aggregates") as regen_mock:
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = cmd_kit_update(["sdlc", "--project-root", str(root)])
+
+        self.assertEqual(rc, 0)
+        out = json.loads(buf.getvalue())
+        self.assertEqual(out["status"], "PASS")
+        self.assertEqual(out["results"][0]["action"], "aborted")
+        self.assertFalse(tmp_dir.exists())
+        regen_mock.assert_called_once_with(studio_dir)
+
+    def test_human_kit_check_updates_renders_all_result_kinds(self):
+        from studio.commands.kit import _human_kit_check_updates
+        from studio.utils.ui import set_json_mode
+
+        set_json_mode(False)
+        try:
+            buf = io.StringIO()
+            with redirect_stderr(buf):
+                _human_kit_check_updates({
+                    "status": "WARN",
+                    "updates_available": 1,
+                    "results": [
+                        {
+                            "kit": "sdlc",
+                            "action": "update_available",
+                            "installed_ref": "v1.0.0",
+                            "latest_ref": "v1.1.0",
+                            "command": "cfs kit update sdlc",
+                        },
+                        {"kit": "bad", "action": "failed", "message": "broken"},
+                        {"kit": "ok", "action": "current"},
+                    ],
+                })
+            rendered = buf.getvalue()
+        finally:
+            set_json_mode(True)
+
+        self.assertIn("Kit Update Check", rendered)
+        self.assertIn("update available", rendered)
+        self.assertIn("broken", rendered)
+
+    def test_semver_tag_resolution_error_and_no_candidates(self):
+        import json as json_module
+        from studio.commands.kit import _resolve_latest_semver_tag
+
+        class _Response:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return json_module.dumps(self.payload).encode("utf-8")
+
+        with patch("studio.commands.kit.urllib.request.urlopen", return_value=_Response(["bad-entry", {"name": "latest"}])):
+            self.assertEqual(_resolve_latest_semver_tag("owner", "repo"), "")
+
+        with patch("studio.commands.kit.urllib.request.urlopen", side_effect=OSError("offline")):
+            with self.assertRaisesRegex(RuntimeError, "Failed to query GitHub tags"):
+                _resolve_latest_semver_tag("owner", "repo")
+
+    def test_resolve_registered_update_targets_error_branches(self):
+        from studio.commands.kit import _resolve_registered_update_targets
+        from studio.utils.git_kit_source import GitSourceError
+
+        with patch(
+            "studio.commands.kit.parse_git_kit_source",
+            side_effect=GitSourceError("invalid", "bad source"),
+        ):
+            targets, failures = _resolve_registered_update_targets({"bad": {"source": "git:bad"}})
+        self.assertEqual(targets, [])
+        self.assertEqual(failures[0]["kit"], "bad")
+        self.assertEqual(failures[0]["error_code"], "invalid")
+
+        parsed = SimpleNamespace(canonical_source="git:https://example.invalid/repo.git")
+        with patch("studio.commands.kit.parse_git_kit_source", return_value=parsed), \
+                patch("studio.commands.kit.materialize_git_kit_source", side_effect=RuntimeError("offline")):
+            targets, failures = _resolve_registered_update_targets({
+                "bad": {
+                    "source": "git:https://example.invalid/repo.git",
+                    "source_provenance": {"requested_ref": "HEAD"},
+                }
+            })
+        self.assertEqual(targets, [])
+        self.assertIn("offline", failures[0]["message"])
+
+    def test_resolve_github_update_targets_error_and_last_known_branches(self):
+        from studio.commands.kit import _resolve_github_update_targets
+
+        kits = {
+            "missing": {},
+            "pathkit": {"source": "path:/tmp/kit"},
+            "bad": {"source": "github:not-enough"},
+            "current": {"source": "github:owner/repo@v1.2.3", "version": "v1.2.3"},
+            "failed": {"source": "github:owner/repo@v2.0.0", "version": "v1.0.0"},
+        }
+
+        def fake_resolve(owner, repo, version="", previous_entry=None):
+            if previous_entry and previous_entry.get("version") == "v1.2.3":
+                return {
+                    "source_type": "github",
+                    "freshness": "last_known",
+                    "resolved_ref": "v1.2.3",
+                }
+            raise RuntimeError("no authority")
+
+        with patch(
+            "studio.commands.kit._download_kit_from_github_with_authority",
+            side_effect=RuntimeError("offline"),
+        ), patch("studio.commands.kit._resolve_github_ref", side_effect=fake_resolve):
+            targets, failures = _resolve_github_update_targets(kits)
+
+        self.assertEqual(targets, [])
+        actions = {failure["kit"]: failure["action"] for failure in failures}
+        self.assertEqual(actions["missing"], "ERROR")
+        self.assertEqual(actions["pathkit"], "ERROR")
+        self.assertEqual(actions["bad"], "ERROR")
+        self.assertEqual(actions["current"], "current")
+        self.assertEqual(actions["failed"], "failed")
+
+    def test_resolve_github_update_targets_success_returns_cleanup_dir_and_authority(self):
+        from studio.commands.kit import _resolve_github_update_targets
+
+        with TemporaryDirectory() as td:
+            source_dir = Path(td) / "repo" / "kit"
+            source_dir.mkdir(parents=True)
+            authority = {"source_type": "github", "resolved_ref": "v1.0.0"}
+            with patch(
+                "studio.commands.kit._download_kit_from_github_with_authority",
+                return_value=(source_dir, "v1.0.0", authority),
+            ):
+                targets, failures = _resolve_github_update_targets({
+                    "ok": {"source": "github:owner/repo@v1.0.0"}
+                })
+
+        self.assertEqual(failures, [])
+        self.assertEqual(targets[0][0], "ok")
+        self.assertEqual(targets[0][3], source_dir.parent)
+        self.assertEqual(targets[0][4], authority)
+
+    def test_human_kit_update_renders_authority_and_warning_status(self):
+        from studio.commands.kit import _human_kit_update
+        from studio.utils.ui import set_json_mode
+
+        set_json_mode(False)
+        try:
+            buf = io.StringIO()
+            with redirect_stderr(buf):
+                _human_kit_update({
+                    "status": "WARN",
+                    "kits_updated": 1,
+                    "results": [
+                        {
+                            "kit": "sdlc",
+                            "action": "updated",
+                            "accepted": ["SKILL.md"],
+                            "declined": ["AGENTS.md"],
+                            "unchanged": 2,
+                            "authority": {
+                                "resolution_basis": "semver",
+                                "resolved_ref": "v1.1.0",
+                                "commit_sha": "abc123",
+                                "freshness": "live",
+                            },
+                        },
+                    ],
+                    "errors": ["minor warning"],
+                })
+            rendered = buf.getvalue()
+        finally:
+            set_json_mode(True)
+
+        self.assertIn("Kit Update", rendered)
+        self.assertIn("authority", rendered)
+        self.assertIn("minor warning", rendered)
+
+    def test_human_kit_install_renders_dry_run_fail_and_unknown(self):
+        from studio.commands.kit import _human_kit_install
+        from studio.utils.ui import set_json_mode
+
+        set_json_mode(False)
+        try:
+            buf = io.StringIO()
+            with redirect_stderr(buf):
+                _human_kit_install({
+                    "status": "DRY_RUN",
+                    "kit": "sdlc",
+                    "version": "1.0",
+                    "source": "path:/kit",
+                    "target": ".bootstrap/config/kits/sdlc",
+                })
+                _human_kit_install({
+                    "status": "FAIL",
+                    "kit": "sdlc",
+                    "version": "1.0",
+                    "files_written": 0,
+                    "artifact_kinds": ["skill"],
+                    "errors": ["conflict"],
+                    "message": "Install failed",
+                    "hint": "pick another name",
+                })
+                _human_kit_install({
+                    "status": "PARTIAL",
+                    "kit": "sdlc",
+                    "version": "1.0",
+                    "files_written": 1,
+                })
+            rendered = buf.getvalue()
+        finally:
+            set_json_mode(True)
+
+        self.assertIn("Dry run", rendered)
+        self.assertIn("conflict", rendered)
+        self.assertIn("Status: PARTIAL", rendered)
+
+    def test_manifest_resource_copy_and_change_detection_directory_branches(self):
+        from studio.commands.kit import _copy_manifest_resource, _manifest_resource_changed
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            kit_source = root / "source"
+            kit_source.mkdir()
+            source_dir = kit_source / "bundle"
+            source_dir.mkdir()
+            (source_dir / "a.txt").write_text("one", encoding="utf-8")
+            (source_dir / "nested").mkdir()
+            (source_dir / "nested" / "b.txt").write_text("two", encoding="utf-8")
+
+            dir_res = SimpleNamespace(source="bundle", type="directory")
+            target_dir = root / "target"
+            self.assertFalse(_manifest_resource_changed(kit_source, dir_res, target_dir))
+
+            target_dir.mkdir()
+            (target_dir / "stale.txt").write_text("stale", encoding="utf-8")
+            self.assertTrue(_manifest_resource_changed(kit_source, dir_res, target_dir))
+
+            _copy_manifest_resource(kit_source, dir_res, target_dir)
+            self.assertFalse((target_dir / "stale.txt").exists())
+            self.assertFalse(_manifest_resource_changed(kit_source, dir_res, target_dir))
+
+            (target_dir / "nested" / "b.txt").write_text("changed", encoding="utf-8")
+            self.assertTrue(_manifest_resource_changed(kit_source, dir_res, target_dir))
+
+            file_res = SimpleNamespace(source="bundle/a.txt", type="file")
+            file_target = root / "copied" / "a.txt"
+            _copy_manifest_resource(kit_source, file_res, file_target)
+            self.assertEqual(file_target.read_text(encoding="utf-8"), "one")
+            self.assertFalse(_manifest_resource_changed(kit_source, file_res, file_target))
+            with patch.object(Path, "read_bytes", side_effect=OSError("unreadable")):
+                self.assertTrue(_manifest_resource_changed(kit_source, file_res, file_target))
+
+            file_target.unlink()
+            file_target.mkdir()
+            self.assertTrue(_manifest_resource_changed(kit_source, file_res, file_target))
+
+    def test_resolve_install_source_git_error_and_success_branches(self):
+        from studio.commands.kit import _resolve_install_source_git
+        from studio.utils.git_kit_source import GitSourceError
+
+        with patch(
+            "studio.commands.kit.parse_git_kit_source",
+            side_effect=GitSourceError("invalid", "bad git source"),
+        ):
+            self.assertIsNone(_resolve_install_source_git("git:bad"))
+
+        parsed = SimpleNamespace(canonical_source="git:https://example.invalid/repo.git", kit_identity="")
+        with patch("studio.commands.kit.parse_git_kit_source", return_value=parsed), \
+                patch("studio.commands.kit.materialize_git_kit_source", side_effect=RuntimeError("offline")):
+            result = _resolve_install_source_git("git:https://example.invalid/repo.git")
+        self.assertEqual(result[5], 1)
+
+        with TemporaryDirectory() as td:
+            tmp_dir = Path(td) / "tmp"
+            kit_source = tmp_dir / "kit"
+            kit_source.mkdir(parents=True)
+            resolution = SimpleNamespace(
+                kit_source_dir=kit_source,
+                tmp_dir=tmp_dir,
+                authority_metadata={"installed_version": "abc123"},
+            )
+
+            with patch("studio.commands.kit.parse_git_kit_source", return_value=parsed), \
+                    patch("studio.commands.kit.materialize_git_kit_source", return_value=resolution), \
+                    patch("studio.commands.kit._read_kit_slug", return_value=""):
+                missing_slug = _resolve_install_source_git("git:https://example.invalid/repo.git")
+            self.assertEqual(missing_slug[5], 1)
+            self.assertFalse(tmp_dir.exists())
+
+        with TemporaryDirectory() as td:
+            tmp_dir = Path(td) / "tmp"
+            kit_source = tmp_dir / "kit"
+            kit_source.mkdir(parents=True)
+            parsed_with_identity = SimpleNamespace(
+                canonical_source="git:https://example.invalid/repo.git@wanted",
+                kit_identity="wanted",
+            )
+            resolution = SimpleNamespace(
+                kit_source_dir=kit_source,
+                tmp_dir=tmp_dir,
+                authority_metadata={"installed_version": "def456"},
+            )
+            with patch("studio.commands.kit.parse_git_kit_source", return_value=parsed_with_identity), \
+                    patch("studio.commands.kit.materialize_git_kit_source", return_value=resolution), \
+                    patch("studio.commands.kit._read_kit_slug", return_value="actual"):
+                mismatch = _resolve_install_source_git("git:https://example.invalid/repo.git@wanted")
+            self.assertEqual(mismatch[5], 1)
+            self.assertFalse(tmp_dir.exists())
+
+        with TemporaryDirectory() as td:
+            tmp_dir = Path(td) / "tmp"
+            kit_source = tmp_dir / "kit"
+            kit_source.mkdir(parents=True)
+            resolution = SimpleNamespace(
+                kit_source_dir=kit_source,
+                tmp_dir=tmp_dir,
+                authority_metadata={"installed_version": "cafebabe"},
+            )
+            with patch("studio.commands.kit.parse_git_kit_source", return_value=parsed), \
+                    patch("studio.commands.kit.materialize_git_kit_source", return_value=resolution), \
+                    patch("studio.commands.kit._read_kit_slug", return_value="sdlc"):
+                success = _resolve_install_source_git("git:https://example.invalid/repo.git")
+            self.assertEqual(success[1], "sdlc")
+            self.assertEqual(success[2], "cafebabe")
+            self.assertEqual(success[4], tmp_dir)
+
+    def test_project_root_from_core_toml_branches(self):
+        from studio.commands.kit import _project_root_from_core_toml
+
+        with TemporaryDirectory() as td:
+            studio_dir = Path(td) / ".bootstrap"
+            config_dir = studio_dir / "config"
+            config_dir.mkdir(parents=True)
+            self.assertIsNone(_project_root_from_core_toml(config_dir, studio_dir))
+
+            (config_dir / "core.toml").write_text("project_root = 123\n", encoding="utf-8")
+            self.assertIsNone(_project_root_from_core_toml(config_dir, studio_dir))
+
+            (config_dir / "core.toml").write_text('project_root = ".."\n', encoding="utf-8")
+            self.assertEqual(_project_root_from_core_toml(config_dir, studio_dir), studio_dir.parent.resolve())
+
+            absolute_root = Path(td).resolve()
+            (config_dir / "core.toml").write_text(
+                f'project_root = "{absolute_root.as_posix()}"\n',
+                encoding="utf-8",
+            )
+            self.assertEqual(_project_root_from_core_toml(config_dir, studio_dir), absolute_root)
 
     def test_normalize_layout_writes_default_manifest(self):
         from studio.commands.kit import cmd_kit_normalize
@@ -3412,6 +4116,24 @@ class TestDownloadKitFromGithub(unittest.TestCase):
                 "version = 1\n",
             )
             # Cleanup
+            shutil.rmtree(result_dir.parent, ignore_errors=True)
+
+    def test_success_without_version_resolves_latest_release(self):
+        from studio.commands.kit import _download_kit_from_github
+
+        tar_bytes = self._make_tarball_bytes([
+            {"name": "owner-repo-abc123/", "type": tarfile.DIRTYPE},
+            {"name": "owner-repo-abc123/conf.toml", "data": b"version = 1\n"},
+        ])
+
+        with patch("studio.commands.kit._resolve_latest_github_release", return_value="v2.0"), \
+                patch(
+                    "studio.commands.kit.urllib.request.urlopen",
+                    return_value=self._fake_response(tar_bytes),
+                ):
+            result_dir, ver = _download_kit_from_github("owner", "repo")
+            self.assertTrue(result_dir.is_dir())
+            self.assertEqual(ver, "v2.0")
             shutil.rmtree(result_dir.parent, ignore_errors=True)
 
     def test_download_generates_whatsnew_from_github_releases(self):

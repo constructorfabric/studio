@@ -71,6 +71,7 @@ def _peek_named_param(args: List[str], name: str) -> Optional[str]:
     return None
 # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
 
+# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
 def _handle_mirror(args: List[str]) -> int:
     """
     Handle the 'mirror' subcommand family.
@@ -170,8 +171,10 @@ def _handle_mirror(args: List[str]) -> int:
     print("  cfs mirror override github.com/constructorfabric/studio github.com/ainetx/studio")
     print("  cfs mirror override constructorfabric ainetx   # rewrites all constructorfabric/* URLs")
     return 0
+# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-bg-version-check
 def _handle_check_updates(args: List[str]) -> int:
     """Run a foreground full update check for proxy, skill engine, and kits."""
     import argparse
@@ -198,8 +201,10 @@ def _handle_check_updates(args: List[str]) -> int:
         return 0
     _print_update_check_human(data)
     return 0
+# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-bg-version-check
 
 
+# @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-show-update-notice
 def _print_update_check_human(data: Dict[str, Any]) -> None:
     print("Constructor Studio Update Check")
     print(f"Updates available: {data.get('updates_available', 0)}")
@@ -227,6 +232,7 @@ def _print_update_check_human(data: Dict[str, Any]) -> None:
             print(f"- {component}: up to date")
         else:
             print(f"- {component}: unknown ({check.get('message', 'check failed')})")
+# @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-show-update-notice
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -398,9 +404,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     if use_cache_for_init:
         skill_path = find_cached_skill()
-        source = "cache" if skill_path else "none"
     else:
-        skill_path, source = resolve_skill()
+        skill_path, _source = resolve_skill()
     # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-cache
     # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-check-cache
     # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-else-no-project
@@ -452,7 +457,6 @@ def main(argv: Optional[List[str]] = None) -> int:
         if skill_path is None:
             sys.stderr.write("  Error: Cache populated but skill entry point not found.\n")
             return 1
-        source = "cache"
         # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-forward-fresh-cache
     # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-else-no-cache
 

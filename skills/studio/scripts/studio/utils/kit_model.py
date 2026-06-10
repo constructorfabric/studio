@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 
 from . import toml_utils
 from ._tomllib_compat import tomllib
-from .manifest import Manifest, ManifestResource, ManifestV2, load_manifest
+from .manifest import AgentEntry, ComponentEntry, Manifest, ManifestResource, ManifestV2, load_manifest
 
 _CANONICAL_MANIFEST = ".cf-studio-kit.toml"
 _CANONICAL_MANIFEST_VERSION = "1.0"
@@ -127,22 +127,27 @@ class KitModel:
 
 
 def _require_string(data: Dict[str, Any], key: str, context: str) -> str:
+    # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-resource-shape
     value = data.get(key)
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{context}: missing or invalid string field '{key}'")
     return value.strip()
+    # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-resource-shape
 
 
 def _optional_string(data: Dict[str, Any], key: str) -> str:
+    # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-metadata
     value = data.get(key, "")
     if value is None:
         return ""
     if not isinstance(value, str):
         raise ValueError(f"Field '{key}' must be a string")
     return value.strip()
+    # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-metadata
 
 
 def _string_list(value: Any, field_name: str) -> List[str]:
+    # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-resource-shape
     if value is None:
         return []
     if not isinstance(value, list):
@@ -155,18 +160,22 @@ def _string_list(value: Any, field_name: str) -> List[str]:
         if cleaned:
             result.append(cleaned)
     return result
+    # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-resource-shape
 
 
 def _config_string(raw: Dict[str, Any], agent_config: Dict[str, Any], key: str, default: str = "") -> str:
+    # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-agent-fields
     value = agent_config.get(key, raw.get(key, default))
     if value is None:
         return ""
     if not isinstance(value, str):
         raise ValueError(f"Field '{key}' must be a string")
     return value.strip()
+    # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-agent-fields
 
 
 def _config_optional_string(raw: Dict[str, Any], agent_config: Dict[str, Any], key: str) -> Optional[str]:
+    # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-agent-fields
     value = agent_config.get(key, raw.get(key))
     if value is None:
         return None
@@ -174,27 +183,35 @@ def _config_optional_string(raw: Dict[str, Any], agent_config: Dict[str, Any], k
         raise ValueError(f"Field '{key}' must be a string")
     cleaned = value.strip()
     return cleaned or None
+    # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-agent-fields
 
 
 def _config_bool(raw: Dict[str, Any], agent_config: Dict[str, Any], key: str, default: bool = False) -> bool:
+    # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-agent-fields
     value = agent_config.get(key, raw.get(key, default))
     if not isinstance(value, bool):
         raise ValueError(f"Field '{key}' must be a boolean")
     return value
+    # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-agent-fields
 
 
 def _optional_bool(data: Dict[str, Any], key: str, default: bool = True) -> bool:
+    # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-resource-shape
     value = data.get(key, default)
     if not isinstance(value, bool):
         raise ValueError(f"Field '{key}' must be a boolean")
     return value
+    # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-resource-shape
 
 
 def _config_string_list(raw: Dict[str, Any], agent_config: Dict[str, Any], key: str, field_name: str) -> List[str]:
+    # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-agent-fields
     return _string_list(agent_config.get(key, raw.get(key)), field_name)
+    # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-agent-fields
 
 
 def _config_subagents(raw: Dict[str, Any], agent_config: Dict[str, Any], field_name: str) -> List[Dict[str, Any]]:
+    # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-subagent-config
     value = agent_config.get("subagents", raw.get("subagents"))
     if value is None:
         return []
@@ -206,9 +223,11 @@ def _config_subagents(raw: Dict[str, Any], agent_config: Dict[str, Any], field_n
             raise ValueError(f"Field '{field_name}[{idx}]' must be a table")
         result.append(dict(item))
     return result
+    # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-subagent-config
 
 
 def _config_table(raw: Dict[str, Any], key: str, field_name: str) -> Dict[str, Dict[str, Any]]:
+    # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-agent-config
     value = raw.get(key)
     if value is None:
         return {}
@@ -220,6 +239,7 @@ def _config_table(raw: Dict[str, Any], key: str, field_name: str) -> Dict[str, D
             raise ValueError(f"Field '{field_name}.{name}' must be a table")
         result[str(name)] = dict(item)
     return result
+    # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-agent-config
 
 
 def _normalize_kind(kind: str, *, warnings: List[str], resource_id: str) -> str:
@@ -275,6 +295,7 @@ def _warn_unknown_keys(
 
 
 def _validate_relative_source(kit_source: Path, resource: KitResource) -> None:
+    # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-any-layout
     source_path = PurePosixPath(resource.source)
     if source_path.is_absolute() or ".." in source_path.parts:
         raise ValueError(
@@ -299,14 +320,17 @@ def _validate_relative_source(kit_source: Path, resource: KitResource) -> None:
         raise ValueError(
             f"Resource '{resource.id}': type is 'directory' but source is not a directory",
         )
+    # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-any-layout
 
 
 def _validate_install_path(resource: KitResource) -> None:
+    # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-resource-shape
     install_path = PurePosixPath(resource.install_path)
     if install_path.is_absolute() or ".." in install_path.parts:
         raise ValueError(
             f"Resource '{resource.id}': install_path '{resource.install_path}' must be relative and must not contain '..'",
         )
+    # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-resource-shape
 
 
 _HASH_EXCLUDED_DIRS = {
@@ -321,13 +345,17 @@ _HASH_EXCLUDED_DIRS = {
 
 
 def _sha256_bytes(data: bytes) -> str:
+    # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-hashes
     return hashlib.sha256(data).hexdigest()
+    # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-hashes
 
 
 def _resource_content_hash(kit_source: Path, resource: KitResource) -> str:
+    # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-hashes
     source_path = kit_source / resource.source
     if resource.type == "file":
         return _sha256_bytes(source_path.read_bytes())
+    # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-hashes
 
     # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-directory-hash
     entries: List[Dict[str, str]] = []
@@ -412,7 +440,9 @@ _DANGEROUS_TOOLS = {
 
 
 def _tool_key(tool: str) -> str:
+    # @cpt-begin:cpt-studio-algo-kit-tool-permission-risk:p1:inst-risk-dangerous-summary
     return tool.strip().lower()
+    # @cpt-end:cpt-studio-algo-kit-tool-permission-risk:p1:inst-risk-dangerous-summary
 
 
 # @cpt-begin:cpt-studio-algo-kit-tool-permission-risk:p1:inst-risk-unknown-tools-warn
@@ -446,6 +476,7 @@ def _tool_risk_summary(resources: List[KitResource], warnings: List[str]) -> Dic
 
 
 def _public_components(resources: List[KitResource]) -> List[PublicComponent]:
+    # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
     return [
         PublicComponent(
             id=resource.id,
@@ -475,6 +506,7 @@ def _public_components(resources: List[KitResource]) -> List[PublicComponent]:
         for resource in resources
         if resource.public and resource.kind in _PUBLIC_KINDS
     ]
+    # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
 
 
 def _with_hashes(kit_source: Path, model: KitModel) -> KitModel:
@@ -776,6 +808,7 @@ def load_canonical_kit_models(kit_source: Path) -> List[KitModel]:
 
 def load_canonical_kit_model(kit_source: Path, kit_slug: str = "") -> Optional[KitModel]:
     """Load one kit from ``.cf-studio-kit.toml`` from *kit_source* when present."""
+    # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-multi-kit
     models = load_canonical_kit_models(kit_source)
     if not models:
         return None
@@ -789,9 +822,11 @@ def load_canonical_kit_model(kit_source: Path, kit_slug: str = "") -> Optional[K
         available = ", ".join(model.slug for model in models)
         raise ValueError(f"{_CANONICAL_MANIFEST}: contains multiple kits: {available}; choose one with --kit")
     return models[0]
+    # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-multi-kit
 
 
 def _read_conf_metadata(kit_source: Path) -> tuple[str, str]:
+    # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-precedence
     conf_path = kit_source / "conf.toml"
     if not conf_path.is_file():
         return "", ""
@@ -805,9 +840,11 @@ def _read_conf_metadata(kit_source: Path) -> tuple[str, str]:
         str(slug).strip() if slug else "",
         str(version).strip() if version else "",
     )
+    # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-precedence
 
 
 def _resource_kind_from_path(source: str, resource_id: str) -> str:
+    # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-resource-kinds
     source_name = Path(source).name
     normalized_id = resource_id.strip().lower()
     if normalized_id == "constraints" or source_name == "constraints.toml":
@@ -825,9 +862,11 @@ def _resource_kind_from_path(source: str, resource_id: str) -> str:
     if resource_id == "workflows" or source.startswith("workflows/"):
         return "skill"
     return "directory" if "." not in Path(source).name else "other"
+    # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-resource-kinds
 
 
-def _from_manifest_resource(slug: str, res: ManifestResource, warnings: List[str]) -> KitResource:
+def _from_manifest_resource(slug: str, res: ManifestResource, _warnings: List[str]) -> KitResource:
+    # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-resource-id-vs-generated-name
     kind = _resource_kind_from_path(res.source, res.id)
     origin = "legacy-workflow" if kind == "skill" and res.source.startswith("workflows/") else ""
     return KitResource(
@@ -842,9 +881,70 @@ def _from_manifest_resource(slug: str, res: ManifestResource, warnings: List[str
         origin=origin,
         generated_name=_normalize_public_name(slug, res.id) if kind in _PUBLIC_KINDS else "",
     )
+    # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-resource-id-vs-generated-name
+
+
+def _source_from_component(component: ComponentEntry) -> str:
+    return component.source or component.prompt_file
+
+
+def _from_manifest_component(
+    slug: str,
+    component: ComponentEntry,
+    kind: str,
+    *,
+    origin: str = "",
+) -> Optional[KitResource]:
+    source = _source_from_component(component)
+    if not source:
+        return None
+    generated_targets = component.agents or ["installed"]
+    kwargs: Dict[str, Any] = {}
+    if isinstance(component, AgentEntry):
+        kwargs = {
+            "tools": component.tools,
+            "disallowed_tools": component.disallowed_tools,
+            "mode": component.mode,
+            "isolation": component.isolation,
+            "model": component.model,
+            "skills": component.skills,
+            "color": component.color,
+            "memory_dir": component.memory_dir,
+            "role": component.role,
+            "target": component.target,
+            "provider": component.provider,
+            "reasoning_effort": component.reasoning_effort,
+            "context_window": component.context_window,
+        }
+    return KitResource(
+        id=component.id,
+        kind=kind,
+        source=source,
+        install_path=source,
+        type="file",
+        public=True,
+        description=component.description,
+        user_modifiable=True,
+        generated_targets=generated_targets,
+        origin=origin,
+        generated_name=_normalize_public_name(slug, component.id),
+        **kwargs,
+    )
+
+
+def _append_unique_legacy_resource(
+    resources: List[KitResource],
+    seen_ids: set[str],
+    resource: KitResource,
+) -> None:
+    if resource.id in seen_ids:
+        raise ValueError(f"Duplicate resource id '{resource.id}' in legacy manifest")
+    seen_ids.add(resource.id)
+    resources.append(resource)
 
 
 def _load_legacy_manifest_model(kit_source: Path) -> Optional[KitModel]:
+    # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-precedence
     manifest = load_manifest(kit_source)
     if manifest is None:
         return None
@@ -857,33 +957,34 @@ def _load_legacy_manifest_model(kit_source: Path) -> Optional[KitModel]:
     ]
     # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-rollout-docs-deprecation
     resources: List[KitResource] = []
+    seen_ids: set[str] = set()
     if isinstance(manifest, Manifest):
-        resources = [
-            _from_manifest_resource(slug, res, warnings)
-            for res in manifest.resources
-        ]
+        for res in manifest.resources:
+            _append_unique_legacy_resource(
+                resources,
+                seen_ids,
+                _from_manifest_resource(slug, res, warnings),
+            )
         version = manifest.version or conf_version
     elif isinstance(manifest, ManifestV2):
         version = manifest.version or conf_version
         for res in manifest.resources:
-            resources.append(_from_manifest_resource(slug, res, warnings))
+            _append_unique_legacy_resource(
+                resources,
+                seen_ids,
+                _from_manifest_resource(slug, res, warnings),
+            )
         for workflow in manifest.workflows:
-            source = workflow.source or workflow.prompt_file
-            if source:
+            resource = _from_manifest_component(
+                slug,
+                workflow,
+                "skill",
+                origin="legacy-workflow",
+            )
+            if resource is not None:
                 # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-workflow-to-skill
                 # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-workflows-to-skills
-                resources.append(KitResource(
-                    id=workflow.id,
-                    kind="skill",
-                    source=source,
-                    install_path=source,
-                    type="file",
-                    public=True,
-                    description=workflow.description,
-                    user_modifiable=True,
-                    origin="legacy-workflow",
-                    generated_name=_normalize_public_name(slug, workflow.id),
-                ))
+                _append_unique_legacy_resource(resources, seen_ids, resource)
                 warnings.append(
                     f"Legacy workflow '{workflow.id}' normalized to public skill resource",
                 )
@@ -892,21 +993,20 @@ def _load_legacy_manifest_model(kit_source: Path) -> Optional[KitModel]:
                 # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-workflows-to-skills
                 # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-workflow-to-skill
         for skill in manifest.skills:
-            source = skill.source or skill.prompt_file
-            if source:
-                resources.append(KitResource(
-                    id=skill.id,
-                    kind="skill",
-                    source=source,
-                    install_path=source,
-                    type="file",
-                    public=True,
-                    description=skill.description,
-                    user_modifiable=True,
-                    generated_name=_normalize_public_name(slug, skill.id),
-                ))
+            resource = _from_manifest_component(slug, skill, "skill")
+            if resource is not None:
+                _append_unique_legacy_resource(resources, seen_ids, resource)
+        for agent in manifest.agents:
+            resource = _from_manifest_component(slug, agent, "agent")
+            if resource is not None:
+                _append_unique_legacy_resource(resources, seen_ids, resource)
+        for rule in manifest.rules:
+            resource = _from_manifest_component(slug, rule, "rule")
+            if resource is not None:
+                _append_unique_legacy_resource(resources, seen_ids, resource)
     else:
         return None
+    # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-precedence
 
     for resource in resources:
         _validate_relative_source(kit_source, resource)
@@ -925,6 +1025,7 @@ def _load_legacy_manifest_model(kit_source: Path) -> Optional[KitModel]:
 
 
 def _load_layout_model(kit_source: Path) -> KitModel:
+    # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-precedence
     conf_slug, conf_version = _read_conf_metadata(kit_source)
     slug = conf_slug or kit_source.name
     resources: List[KitResource] = []
@@ -965,6 +1066,7 @@ def _load_layout_model(kit_source: Path) -> KitModel:
             ))
     if not resources:
         raise ValueError(f"No kit resources found under {kit_source}")
+    # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-precedence
     return _with_hashes(
         kit_source,
         KitModel(
@@ -979,11 +1081,14 @@ def _load_layout_model(kit_source: Path) -> KitModel:
 
 
 def _resolve_core_path(studio_root: Path, raw_path: str) -> Path:
+    # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-core-bindings
     path = Path(raw_path)
     return path.resolve() if path.is_absolute() else (studio_root / path).resolve()
+    # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-core-bindings
 
 
 def _find_core_kit_entry(kit_source: Path) -> tuple[Path, str, Dict[str, Any]]:
+    # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-core-bindings
     for candidate in [kit_source, *kit_source.parents]:
         core_path = candidate / "core.toml"
         if not core_path.is_file():
@@ -1008,6 +1113,7 @@ def _find_core_kit_entry(kit_source: Path) -> tuple[Path, str, Dict[str, Any]]:
         if isinstance(fallback, dict):
             return studio_root, kit_source.name, fallback
     raise ValueError(f"No core.toml registration found for installed kit root: {kit_source}")
+    # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-core-bindings
 
 
 def _load_core_model(kit_source: Path) -> KitModel:

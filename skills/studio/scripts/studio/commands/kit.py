@@ -958,29 +958,36 @@ def _read_project_name_from_registry(config_dir: Path) -> Optional[str]:
 
 
 def _input_stderr(prompt: str) -> str:
+    # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
     sys.stderr.write(prompt)
     sys.stderr.flush()
     try:
         return input("").strip()
     except EOFError:
         return ""
+    # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
 
 
 def _resolve_manifest_user_path(base: Path, raw_path: str) -> Path:
+    # @cpt-begin:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-register-containment
     user_path = Path(raw_path)
     if user_path.is_absolute():
         return user_path.resolve()
     return (base / user_path).resolve()
+    # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-register-containment
 
 
 def _path_is_within(path: Path, root: Path) -> bool:
+    # @cpt-begin:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-register-containment
     try:
         path.resolve().relative_to(root.resolve())
         return True
     except ValueError:
         return False
+    # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-register-containment
 
 
+# @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-register-bindings
 def _manifest_resource_target(
     kit_root: Path,
     res: Any,
@@ -1030,8 +1037,10 @@ def _manifest_register_resource_bindings(
             entry["kind"] = kind
         bindings[res.id] = entry
     return bindings
+# @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-register-bindings
 
 
+# @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-hashes
 def _kit_model_content_identity(model: Any) -> Dict[str, Any]:
     return {
         "manifest_semantic_hash": getattr(model, "manifest_semantic_hash", ""),
@@ -1039,8 +1048,10 @@ def _kit_model_content_identity(model: Any) -> Dict[str, Any]:
         "resource_hashes": getattr(model, "resource_hashes", {}) or {},
         "tool_risk_fingerprint": getattr(model, "tool_risk_fingerprint", ""),
     }
+# @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-hashes
 
 
+# @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-prefix
 def _kit_model_public_component_names(model: Any) -> Dict[str, str]:
     names: Dict[str, str] = {}
     for component in getattr(model, "public_components", []) or []:
@@ -1064,8 +1075,10 @@ def _kit_model_public_component_names(model: Any) -> Dict[str, str]:
                 subagent_name = subagent_id
             names[subagent_name] = f"{base_component_id}.subagents.{subagent_id}"
     return names
+# @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-prefix
 
 
+# @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-prefix
 def _public_component_name_conflicts(
     studio_dir: Path,
     installing_slug: str,
@@ -1144,6 +1157,7 @@ def _public_component_name_conflicts(
                     f"'{existing_slug_str}' resource '{existing_names[name]}'",
                 )
     return errors
+# @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-prefix
 
 
 def _local_path_provenance(kit_source: Path, install_mode: str) -> Dict[str, str]:
@@ -2706,6 +2720,7 @@ def _resolve_registered_update_targets(
     requested_ref_override: str = "",
 ) -> Tuple[List[Tuple[str, Path, str, Optional[Path], Optional[Dict[str, Any]]]], List[Dict[str, Any]]]:
     """Resolve registered kit update targets across supported source types."""
+    # @cpt-begin:cpt-studio-algo-kit-update:p1:inst-read-source-version
     github_map: Dict[str, Dict[str, Any]] = {}
     targets: List[Tuple[str, Path, str, Optional[Path], Optional[Dict[str, Any]]]] = []
     failures: List[Dict[str, Any]] = []
@@ -2769,18 +2784,22 @@ def _resolve_registered_update_targets(
         failures.extend(github_failures)
         # @cpt-end:cpt-studio-algo-kit-source-mode-validation:p1:inst-github-mode-authority
     return targets, failures
+    # @cpt-end:cpt-studio-algo-kit-update:p1:inst-read-source-version
 
 
 def _kit_installed_resolved_ref(kit_data: Dict[str, Any]) -> str:
+    # @cpt-begin:cpt-studio-algo-kit-update:p1:inst-read-source-version
     provenance = kit_data.get("source_provenance", {})
     if isinstance(provenance, dict):
         resolved_ref = str(provenance.get("resolved_ref") or "")
         if resolved_ref:
             return resolved_ref
     return str(kit_data.get("version") or "")
+    # @cpt-end:cpt-studio-algo-kit-update:p1:inst-read-source-version
 
 
 def _kit_installed_commit_sha(kit_data: Dict[str, Any]) -> str:
+    # @cpt-begin:cpt-studio-algo-kit-update:p1:inst-read-source-version
     identity = kit_data.get("content_identity", {})
     if isinstance(identity, dict):
         commit_sha = str(identity.get("commit_sha") or "")
@@ -2790,6 +2809,7 @@ def _kit_installed_commit_sha(kit_data: Dict[str, Any]) -> str:
     if isinstance(provenance, dict):
         return str(provenance.get("commit_sha") or "")
     return str(kit_data.get("commit_sha") or "")
+    # @cpt-end:cpt-studio-algo-kit-update:p1:inst-read-source-version
 
 
 def _kit_update_check_result(
@@ -2798,6 +2818,7 @@ def _kit_update_check_result(
     authority_metadata: Optional[Dict[str, Any]],
 ) -> Dict[str, Any]:
     """Build a non-mutating update-check result from resolved authority metadata."""
+    # @cpt-begin:cpt-studio-algo-kit-update:p1:inst-version-check
     authority = _authority_result_summary(authority_metadata) or authority_metadata or {}
     source_type = str(authority.get("source_type") or "")
     result: Dict[str, Any] = {
@@ -2830,12 +2851,14 @@ def _kit_update_check_result(
     result["action"] = "failed"
     result["message"] = "No comparable source authority metadata"
     return result
+    # @cpt-end:cpt-studio-algo-kit-update:p1:inst-version-check
 
 
 def _check_registered_kit_updates(
     kits_map: Dict[str, Dict[str, Any]],
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """Check remote kit authorities without writing installed kit files."""
+    # @cpt-begin:cpt-studio-algo-kit-update:p1:inst-version-check
     update_targets, source_failures = _resolve_registered_update_targets(kits_map)
     results: List[Dict[str, Any]] = []
     for failure in source_failures:
@@ -2865,6 +2888,7 @@ def _check_registered_kit_updates(
             if tmp_dir:
                 shutil.rmtree(tmp_dir, ignore_errors=True)
     return results, source_failures
+    # @cpt-end:cpt-studio-algo-kit-update:p1:inst-version-check
 
 
 # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-build-update-result
@@ -3242,6 +3266,7 @@ def _human_kit_update(data: dict) -> None:
 
 def cmd_kit_check_updates(argv: List[str]) -> int:
     """Check registered git/GitHub kit sources for newer remote versions."""
+    # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-format-output
     p = argparse.ArgumentParser(
         prog="kit check-updates",
         description="Check registered git/GitHub kit sources for updates without writing files",
@@ -3302,9 +3327,11 @@ def cmd_kit_check_updates(argv: List[str]) -> int:
         ]
     ui.result(output, human_fn=_human_kit_check_updates)
     return 0
+    # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-format-output
 
 
 def _human_kit_check_updates(data: dict) -> None:
+    # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-human-output
     ui.header("Kit Update Check")
     ui.detail("Updates available", str(data.get("updates_available", 0)))
 
@@ -3328,6 +3355,7 @@ def _human_kit_check_updates(data: dict) -> None:
     elif data.get("status") == "PASS":
         ui.success("All checked kits are up to date.")
     ui.blank()
+    # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-human-output
 
 # ---------------------------------------------------------------------------
 # Kit Normalize

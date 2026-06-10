@@ -31,7 +31,7 @@ def run_validate_kits(
     This is the reusable engine called by both the CLI and ``cmd_update``.
     """
     # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-init-context
-    from ..utils.context import get_context, _resolve_loaded_kit_constraints_path
+    from ..utils.context import get_context
     from ..utils.artifacts_meta import load_artifacts_meta
 
     ctx = get_context()
@@ -77,11 +77,6 @@ def run_validate_kits(
         kit_root = getattr(loaded_kit, "kit_root", None)
         kit_path_value = str(getattr(getattr(loaded_kit, "kit", None), "path", "") or "")
         reported_kit_path = str(kit_root) if isinstance(kit_root, Path) else kit_path_value
-        constraints_path = _resolve_loaded_kit_constraints_path(
-            adapter_dir,
-            project_root,
-            loaded_kit,
-        )
         kit_id_str = str(kit_id)
         kit_context_errors = context_kit_errors.get(kit_id_str, [])
         rep_errors: List[Dict[str, object]] = list(kit_context_errors)
