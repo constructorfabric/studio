@@ -273,6 +273,25 @@ class TestKitNormalize(unittest.TestCase):
             self.assertIn("[[kits]]", out)
             self.assertIn("[[kits.resources]]", out)
 
+    def test_normalize_stdout_prints_raw_versioned_manifest_only(self):
+        from studio.commands.kit import cmd_kit_normalize
+
+        with TemporaryDirectory() as td:
+            kit_src = _make_manifest_kit_source(Path(td), "stdoutkit")
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = cmd_kit_normalize([str(kit_src), "--from", "manifest", "--stdout"])
+
+            self.assertEqual(rc, 0)
+            out = buf.getvalue()
+            self.assertIn('manifest_version = "1.0"', out)
+            self.assertIn("[[kits]]", out)
+            self.assertIn("[[kits.resources]]", out)
+            data = tomllib.loads(out)
+            self.assertEqual(data["manifest_version"], "1.0")
+            self.assertEqual(data["kits"][0]["slug"], "stdoutkit")
+            self.assertFalse((kit_src / ".cf-studio-kit.toml").exists())
+
     def test_normalize_refuses_unversioned_rendered_manifest(self):
         from studio.utils import kit_model
 

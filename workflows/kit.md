@@ -21,7 +21,7 @@ STATE:
 DO:
   EMIT_MENU LoadCfSkillConfirm WHEN CFS_INIT != true
   STOP_TURN WHEN CFS_INIT != true
-  RUN verify `{cfs_cmd} kit normalize --help` supports `--from`, `--output`, and `--dry-run`
+  RUN verify `{cfs_cmd} kit normalize --help` supports `--from`, `--output`, `--dry-run`, and `--stdout`
   EMIT "Required kit normalization command is unavailable; update Constructor Studio, then retry cf-kit." WHEN the normalize capability check fails
   STOP_TURN WHEN the normalize capability check fails
   CONTINUE KitInitEntry WHEN CFS_INIT == true
@@ -167,12 +167,13 @@ PURPOSE: Convert a legacy manifest.toml or conf.toml + layout source into a cano
 WHEN:
   REQUIRE TARGET_SOURCE == legacy_manifest OR TARGET_SOURCE == legacy_layout
 DO:
-  RUN `{cfs_cmd} kit normalize <target> --from <NORMALIZE_SOURCE_HINT> --dry-run`
-  SET PREVIEW_STATUS = pass WHEN dry-run returns a valid manifest preview with top-level `manifest_version = "1.0"` before any `[[kits]]` table
+  RUN `{cfs_cmd} kit normalize <target> --from <NORMALIZE_SOURCE_HINT> --dry-run` for validation findings, report, and public generated-name preview
+  RUN `{cfs_cmd} kit normalize <target> --from <NORMALIZE_SOURCE_HINT> --stdout` for the exact proposed canonical `.cf-studio-kit.toml` bytes
+  SET PREVIEW_STATUS = pass WHEN dry-run passes AND stdout returns valid TOML with top-level `manifest_version = "1.0"` before any `[[kits]]` table
   SET PREVIEW_STATUS = fail WHEN dry-run returns validation findings
-  SET PREVIEW_STATUS = error WHEN dry-run cannot parse or load the legacy manifest, cannot extract the generated TOML, or the generated TOML omits/changes `manifest_version`
-  SET CURRENT_PREVIEW_TOML = the proposed canonical `.cf-studio-kit.toml` text WHEN PREVIEW_STATUS == pass
-  SET CURRENT_PREVIEW_REPORT = the migration report WHEN PREVIEW_STATUS == pass
+  SET PREVIEW_STATUS = error WHEN dry-run cannot parse/load the legacy manifest, stdout cannot render the generated TOML, or stdout omits/changes `manifest_version`
+  SET CURRENT_PREVIEW_TOML = the stdout canonical `.cf-studio-kit.toml` text WHEN PREVIEW_STATUS == pass
+  SET CURRENT_PREVIEW_REPORT = the dry-run migration report WHEN PREVIEW_STATUS == pass
   EMIT the migration report, public generated-name preview, and proposed canonical `.cf-studio-kit.toml` WHEN PREVIEW_STATUS == pass
   EMIT_MENU KitInitLegacyApprovalMenu WHEN PREVIEW_STATUS == pass
   EMIT the normalization findings and blocking error details WHEN PREVIEW_STATUS != pass

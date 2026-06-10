@@ -3355,7 +3355,10 @@ def cmd_kit_normalize(argv: List[str]) -> int:
         help="Output path for .cf-studio-kit.toml (default: <path>/.cf-studio-kit.toml)",
     )
     p.add_argument("--dry-run", action="store_true", help="Print the generated manifest without writing it")
+    p.add_argument("--stdout", action="store_true", help="Write only the generated canonical manifest TOML to stdout")
     args = p.parse_args(argv)
+    if args.stdout and args.output:
+        p.error("--stdout cannot be combined with --output")
     # @cpt-end:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-parse-args
 
     # @cpt-begin:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-validate-source
@@ -3386,6 +3389,12 @@ def cmd_kit_normalize(argv: List[str]) -> int:
     # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-report-ambiguity
     report = _kit_normalize_report(model)
     # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-report-ambiguity
+
+    if args.stdout:
+        sys.stdout.write(manifest_text)
+        if not manifest_text.endswith("\n"):
+            sys.stdout.write("\n")
+        return 0
 
     # @cpt-begin:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-dry-run
     if args.dry_run:
