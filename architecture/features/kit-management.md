@@ -200,7 +200,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 ### GitHub Helpers
 
-- [ ] `p1` - **ID**: `cpt-studio-algo-kit-github-helpers`
+- [x] `p1` - **ID**: `cpt-studio-algo-kit-github-helpers`
 
 **Input**: GitHub source string (`owner/repo[@ref]`), optional `GITHUB_TOKEN`, optional last-known persisted source state
 
@@ -211,26 +211,26 @@ Enables users to install, update, and validate kit packages with interactive fil
 2. [x] - `p1` - Parse GitHub source string into owner, repo, and requested_ref; empty requested_ref means resolver chooses latest release/default branch - `inst-parse-source`
 3. [x] - `p1` - Resolve GitHub authority: determine resolver_mode, resolution_basis, requested_ref, resolved_ref, commit_sha/content identity, canonical_source, effective_source, version display value, verified state, and freshness state - `inst-resolve-release`
 4. [x] - `p1` - Download tarball using the resolved effective ref, extract to temp directory, and return extracted path plus authority metadata - `inst-download`
-5. [ ] - `p1` - **IF** GitHub cannot be reached and last-known metadata exists: mark freshness as stale/offline and use last-known requested_ref/resolved_ref/commit_sha/version for reporting; do not guess from local files or `conf.toml` - `inst-offline-last-known`
+5. [x] - `p1` - **IF** GitHub cannot be reached and last-known metadata exists: mark freshness as stale/offline and use last-known requested_ref/resolved_ref/commit_sha/version for reporting; do not guess from local files or `conf.toml` - `inst-offline-last-known`
 
 **Supporting**:
 - [x] - `p1` - Module imports and dependencies for kit management commands - `inst-kit-imports`
 
 ### GitHub Kit Version Authority
 
-- [ ] `p1` - **ID**: `cpt-studio-algo-kit-github-version-authority`
+- [x] `p1` - **ID**: `cpt-studio-algo-kit-github-version-authority`
 
 **Input**: GitHub owner/repo, requested_ref, resolver mode, optional last-known metadata
 
 **Output**: Structured authority metadata for `core.toml [kits.<slug>]`
 
 **Rules**:
-1. [ ] - `p1` - For GitHub-backed kits, `core.toml [kits.<slug>].version` is the display/backcompat release version resolved from GitHub; it MUST NOT be read from kit `conf.toml` - `inst-core-version-github-authority`
-2. [ ] - `p1` - Persist `resolver_mode`, `resolution_basis`, `requested_ref`, `resolved_ref`, `commit_sha` or equivalent content identity, `canonical_source`, `effective_source`, `verified`, and `freshness` in structured metadata under the kit registration - `inst-persist-authority-metadata`
-3. [ ] - `p1` - `conf.toml version` is optional local/package metadata only; it MAY be reported as migrated/local metadata but MUST NOT drive GitHub update currentness checks - `inst-conf-version-local-only`
-4. [ ] - `p1` - For latest-release resolution, store the requested selector separately from the resolved release tag and commit identity so future updates can refresh the selector without losing the previous content identity - `inst-store-selector-and-identity`
-5. [ ] - `p1` - For branch or SHA resolution, store both the requested ref and immutable resolved content identity; currentness checks compare content identity where available - `inst-store-ref-identity`
-6. [ ] - `p1` - Offline fallback uses the last-known persisted GitHub state and marks freshness stale/offline; it MUST NOT inspect installed files or local `conf.toml` to invent a GitHub version - `inst-offline-authority`
+1. [x] - `p1` - For GitHub-backed kits, `core.toml [kits.<slug>].version` is the display/backcompat release version resolved from GitHub; it MUST NOT be read from kit `conf.toml` - `inst-core-version-github-authority`
+2. [x] - `p1` - Persist `resolver_mode`, `resolution_basis`, `requested_ref`, `resolved_ref`, `commit_sha` or equivalent content identity, `canonical_source`, `effective_source`, `verified`, and `freshness` in structured metadata under the kit registration - `inst-persist-authority-metadata`
+3. [x] - `p1` - `conf.toml version` is optional local/package metadata only; it MAY be reported as migrated/local metadata but MUST NOT drive GitHub update currentness checks - `inst-conf-version-local-only`
+4. [x] - `p1` - For latest-release resolution, store the requested selector separately from the resolved release tag and commit identity so future updates can refresh the selector without losing the previous content identity - `inst-store-selector-and-identity`
+5. [x] - `p1` - For branch or SHA resolution, store both the requested ref and immutable resolved content identity; currentness checks compare content identity where available - `inst-store-ref-identity`
+6. [x] - `p1` - Offline fallback uses the last-known persisted GitHub state and marks freshness stale/offline; it MUST NOT inspect installed files or local `conf.toml` to invent a GitHub version - `inst-offline-authority`
 
 ### Kit Content Management
 

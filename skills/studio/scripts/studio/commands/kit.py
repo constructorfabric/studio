@@ -131,8 +131,11 @@ def _resolve_github_ref(
     previous_entry: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Resolve GitHub kit selector into structured authority metadata."""
+    # @cpt-begin:cpt-studio-algo-kit-github-version-authority:p1:inst-core-version-github-authority
+    # @cpt-begin:cpt-studio-algo-kit-github-version-authority:p1:inst-conf-version-local-only
     canonical_source = f"github:{owner}/{repo}"
     if requested_ref:
+        # @cpt-begin:cpt-studio-algo-kit-github-version-authority:p1:inst-store-ref-identity
         return {
             "source_type": "github",
             "requested_ref": requested_ref,
@@ -145,10 +148,13 @@ def _resolve_github_ref(
             "verified": "verified",
             "freshness": "fresh",
         }
+        # @cpt-end:cpt-studio-algo-kit-github-version-authority:p1:inst-store-ref-identity
 
     try:
         resolved_ref = _resolve_latest_github_release(owner, repo)
     except RuntimeError:
+        # @cpt-begin:cpt-studio-algo-kit-github-helpers:p1:inst-offline-last-known
+        # @cpt-begin:cpt-studio-algo-kit-github-version-authority:p1:inst-offline-authority
         if previous_entry:
             previous_provenance = previous_entry.get("source_provenance", {})
             previous_identity = previous_entry.get("content_identity", {})
@@ -171,8 +177,11 @@ def _resolve_github_ref(
                     "verified": "stale",
                     "freshness": "last_known",
                 }
+        # @cpt-end:cpt-studio-algo-kit-github-version-authority:p1:inst-offline-authority
+        # @cpt-end:cpt-studio-algo-kit-github-helpers:p1:inst-offline-last-known
         raise
 
+    # @cpt-begin:cpt-studio-algo-kit-github-version-authority:p1:inst-store-selector-and-identity
     return {
         "source_type": "github",
         "requested_ref": "latest",
@@ -185,6 +194,9 @@ def _resolve_github_ref(
         "verified": "verified",
         "freshness": "fresh",
     }
+    # @cpt-end:cpt-studio-algo-kit-github-version-authority:p1:inst-store-selector-and-identity
+    # @cpt-end:cpt-studio-algo-kit-github-version-authority:p1:inst-conf-version-local-only
+    # @cpt-end:cpt-studio-algo-kit-github-version-authority:p1:inst-core-version-github-authority
 
 
 def _derive_commit_sha_from_tar_root(extracted_dir: Path, owner: str, repo: str) -> str:
@@ -4109,6 +4121,7 @@ def _register_kit_in_core_toml(
             key: value for key, value in source_provenance.items() if value != ""
         }
     if authority_metadata:
+        # @cpt-begin:cpt-studio-algo-kit-github-version-authority:p1:inst-persist-authority-metadata
         source_type = "github" if source.startswith("github:") else ("git" if source.startswith("git:") else "unknown")
         source_provenance = {
             "source_type": authority_metadata.get("source_type", source_type),
@@ -4152,6 +4165,7 @@ def _register_kit_in_core_toml(
         )
         if authority_version:
             existing["version"] = str(authority_version)
+        # @cpt-end:cpt-studio-algo-kit-github-version-authority:p1:inst-persist-authority-metadata
     elif kit_version:
         existing["version"] = kit_version
     if content_identity:
