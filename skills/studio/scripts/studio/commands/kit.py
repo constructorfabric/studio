@@ -1331,7 +1331,14 @@ def install_kit(
 
     # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-manifest-install
     # Check for manifest-driven installation
-    manifest = _load_manifest_install_adapter(kit_source, kit_slug=kit_slug)
+    try:
+        manifest = _load_manifest_install_adapter(kit_source, kit_slug=kit_slug)
+    except (OSError, ValueError) as exc:
+        return {
+            "status": "FAIL",
+            "kit": kit_slug,
+            "errors": [str(exc)],
+        }
     if manifest is not None:
         # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-manifest-install
         return install_kit_with_manifest(
@@ -1884,7 +1891,7 @@ def migrate_legacy_kit_to_manifest(
     Returns:
         Dict with: status, kit, migrated_count, new_count, resource_bindings.
     """
-    from ..utils.manifest import load_manifest, validate_manifest
+    from ..utils.manifest import validate_manifest
 
     config_dir = studio_dir / "config"
     resource_bindings: Dict[str, Dict[str, str]] = {}
@@ -1892,12 +1899,19 @@ def migrate_legacy_kit_to_manifest(
     new_count = 0       # new files copied from source
 
     # @cpt-begin:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-read-manifest
-    manifest = load_manifest(kit_source)
+    try:
+        manifest = _load_manifest_install_adapter(kit_source, kit_slug=kit_slug)
+    except (OSError, ValueError) as exc:
+        return {
+            "status": "FAIL",
+            "kit": kit_slug,
+            "errors": [str(exc)],
+        }
     if manifest is None:
         return {
             "status": "SKIP",
             "kit": kit_slug,
-            "message": "No manifest.toml in kit source",
+            "message": "No manifest-backed kit source",
         }
 
     validation_errors = validate_manifest(manifest, kit_source)
@@ -2239,7 +2253,10 @@ def cmd_kit_install(argv: List[str]) -> int:
         # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
         # @cpt-begin:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-mode-always-ask
         if args.local_path and not args.install_mode and sys.stdin.isatty():
-            local_manifest = _load_manifest_install_adapter(kit_source, kit_slug=kit_slug)
+            try:
+                local_manifest = _load_manifest_install_adapter(kit_source, kit_slug=kit_slug)
+            except (OSError, ValueError):
+                local_manifest = None
             if local_manifest is not None:
                 selected_install_mode = _prompt_local_manifest_install_mode(
                     project_root,
@@ -3835,8 +3852,13 @@ def update_kit(
     # @cpt-end:cpt-studio-algo-kit-update:p1:inst-read-source-version
 
     # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-rollout-update-drift
-    from ..utils.manifest import load_manifest as _load_manifest
-    _manifest = _load_manifest(source_dir)
+    try:
+        _manifest = _load_manifest_install_adapter(source_dir, kit_slug=kit_slug)
+    except (OSError, ValueError) as exc:
+        result["version"] = {"status": "failed"}
+        result["gen"] = {"files_written": 0}
+        result["errors"] = [str(exc)]
+        return result
     _risk_model = None
     _risk_changed = False
     if _manifest is not None:
