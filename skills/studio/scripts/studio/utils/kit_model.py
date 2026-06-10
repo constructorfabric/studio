@@ -56,9 +56,12 @@ class PublicComponent:
     kind: str
     source: str
     generated_name: str
+    description: str = ""
     generated_targets: List[str] = field(default_factory=list)
     aliases: List[str] = field(default_factory=list)
     origin: str = ""
+    tools: List[str] = field(default_factory=list)
+    disallowed_tools: List[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -318,9 +321,12 @@ def _public_components(resources: List[KitResource]) -> List[PublicComponent]:
             kind=resource.kind,
             source=resource.source,
             generated_name=resource.generated_name,
+            description=resource.description,
             generated_targets=resource.generated_targets or ["installed"],
             aliases=resource.aliases,
             origin=resource.origin,
+            tools=resource.tools,
+            disallowed_tools=resource.disallowed_tools,
         )
         for resource in resources
         if resource.public and resource.kind in _PUBLIC_KINDS

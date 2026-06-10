@@ -28,6 +28,119 @@ class TestStudioEndpointTarget(unittest.TestCase):
         self.assertIsNone(_extract_studio_endpoint_target(content))
 
 
+class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
+    """Canonical kit public components drive generated skills, agents, and rules."""
+
+    def _make_project(self, tmpdir):
+        root = Path(tmpdir) / "project"
+        root.mkdir()
+        (root / ".git").mkdir()
+        (root / "AGENTS.md").write_text(
+            '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".bootstrap"\n```\n<!-- /@cf:root-agents -->\n',
+            encoding="utf-8",
+        )
+        studio_root = root / ".bootstrap"
+        core_skill = studio_root / ".core" / "skills" / "studio"
+        core_skill.mkdir(parents=True)
+        (core_skill / "SKILL.md").write_text(
+            "---\nname: cf\ndescription: Constructor Studio\n---\nCore skill\n",
+            encoding="utf-8",
+        )
+        (studio_root / ".core" / "workflows").mkdir(parents=True)
+        kit_root = studio_root / "config" / "kits" / "pubkit"
+        kit_root.mkdir(parents=True)
+        (studio_root / "config" / "core.toml").write_text(
+            "\n".join([
+                'version = "1.0"',
+                'project_root = ".."',
+                "",
+                "[kits.pubkit]",
+                'path = "config/kits/pubkit"',
+                'version = "1.0"',
+            ]) + "\n",
+            encoding="utf-8",
+        )
+        (kit_root / "skill.md").write_text(
+            "---\nname: helper\ndescription: Helper skill\n---\n# Helper\n",
+            encoding="utf-8",
+        )
+        (kit_root / "agent.md").write_text("# Reviewer\nReview carefully.\n", encoding="utf-8")
+        (kit_root / "rule.md").write_text("# Guard\nFollow the guard.\n", encoding="utf-8")
+        (kit_root / "openai-agent.md").write_text("# OpenAI only\n", encoding="utf-8")
+        (kit_root / ".cf-studio-kit.toml").write_text(
+            "\n".join([
+                "[kit]",
+                'slug = "pubkit"',
+                'name = "Public Kit"',
+                'version = "1.0"',
+                "",
+                "[[resources]]",
+                'id = "helper"',
+                'kind = "skill"',
+                'source = "skill.md"',
+                'type = "file"',
+                "public = true",
+                'generated_targets = ["cursor"]',
+                'description = "Helper skill"',
+                "",
+                "[[resources]]",
+                'id = "reviewer"',
+                'kind = "agent"',
+                'source = "agent.md"',
+                'type = "file"',
+                "public = true",
+                'generated_targets = ["cursor"]',
+                'description = "Reviewer agent"',
+                "",
+                "[[resources]]",
+                'id = "guard"',
+                'kind = "rule"',
+                'source = "rule.md"',
+                'type = "file"',
+                "public = true",
+                'generated_targets = ["cursor"]',
+                'description = "Guard rule"',
+                "",
+                "[[resources]]",
+                'id = "codexonly"',
+                'kind = "agent"',
+                'source = "openai-agent.md"',
+                'type = "file"',
+                "public = true",
+                'generated_targets = ["openai"]',
+            ]) + "\n",
+            encoding="utf-8",
+        )
+        return root, studio_root
+
+    def test_generate_agents_uses_kitmodel_public_skill_agent_and_rule(self):
+        from studio.commands.agents import _default_agents_config, _process_single_agent
+
+        with TemporaryDirectory() as td:
+            root, studio_root = self._make_project(td)
+
+            result = _process_single_agent(
+                "cursor",
+                root,
+                studio_root,
+                _default_agents_config(),
+                None,
+                dry_run=False,
+            )
+
+            self.assertEqual(result["status"], "PASS")
+            skill_path = root / ".agents" / "skills" / "cf-pubkit-helper" / "SKILL.md"
+            agent_path = root / ".cursor" / "agents" / "cf-pubkit-reviewer.mdc"
+            rule_path = root / ".cursor" / "rules" / "cf-pubkit-guard.mdc"
+            self.assertTrue(skill_path.is_file())
+            self.assertTrue(agent_path.is_file())
+            self.assertTrue(rule_path.is_file())
+            self.assertIn("skill.md", skill_path.read_text(encoding="utf-8"))
+            self.assertIn("Review carefully.", agent_path.read_text(encoding="utf-8"))
+            self.assertIn("Follow the guard.", rule_path.read_text(encoding="utf-8"))
+            self.assertFalse((root / ".cursor" / "agents" / "cf-pubkit-codexonly.mdc").exists())
+
+
 class TestEnsureFrontmatterDescriptionQuoted(unittest.TestCase):
     """Cover lines 440, 455-457 in agents.py."""
 

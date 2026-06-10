@@ -614,7 +614,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 **Output**: Generated skills, subagents, and rules for the requested target
 
 **Rules**:
-1. [ ] - `p1` - `generate-agents` consumes `KitModel.public_components` where kind is `skill`, `agent`, or `rule` and the component is enabled for the target - `inst-public-generate-from-kitmodel`
+1. [x] - `p1` - `generate-agents` consumes `KitModel.public_components` where kind is `skill`, `agent`, or `rule` and the component is enabled for the target - `inst-public-generate-from-kitmodel`
 2. [x] - `p1` - For manifest-backed kits, do not scan workflow directories to infer public commands; generated output is manifest-driven - `inst-public-no-workflow-scan`
 3. [x] - `p1` - Project-level `.cf-studio-kit.toml` files contribute public components only after explicit install/register; the system must not recursively scan arbitrary manifests - `inst-public-explicit-install`
 4. [x] - `p1` - Generated public skill and subagent names use `cf-{kit-slug}-{name}` with no double prefixing - `inst-public-prefix`

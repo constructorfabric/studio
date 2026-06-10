@@ -66,7 +66,7 @@ from ..utils.manifest import (
     resolve_includes as _resolve_includes,
     merge_components as _merge_components,
 )
-from ..utils.manifest import AgentEntry as _AgentEntry, SkillEntry as _SkillEntry  # type: ignore
+from ..utils.manifest import AgentEntry as _AgentEntry, RuleEntry as _RuleEntry, SkillEntry as _SkillEntry  # type: ignore
 from ..utils.manifest import (
     MergedComponents as _MergedComponents,
     ProvenanceRecord as _ProvenanceRecord,
@@ -1928,6 +1928,7 @@ def _registered_kit_dirs(project_root: Optional[Path]) -> Optional[Set[str]]:
 
 # @cpt-begin:cpt-studio-algo-agent-integration-list-workflows:p1:inst-scan-core-workflows
 KitWorkflowSkill = Tuple[str, Path, Optional[str], Optional[str]]
+KitPublicComponent = Tuple[str, object, Path]
 
 
 def _list_workflow_files(
@@ -2040,11 +2041,12 @@ def _component_enabled_for_agent(component: object, agent: str) -> bool:
     return not targets or "installed" in targets or "all" in targets or agent in targets
 
 
-def _list_public_component_skills(
+def _list_public_components(
     studio_root: Path,
     project_root: Optional[Path],
     agent: str,
-) -> Tuple[List[KitWorkflowSkill], Set[str]]:
+) -> Tuple[List[KitPublicComponent], Set[str]]:
+    # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
     # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-no-workflow-scan
     if project_root is None:
         return [], set()
@@ -2060,7 +2062,7 @@ def _list_public_component_skills(
     except ImportError:
         return [], set()
 
-    components: List[KitWorkflowSkill] = []
+    components: List[KitPublicComponent] = []
     manifest_backed_kits: Set[str] = set()
     for slug, kit_entry in sorted(kits.items()):
         kit_slug = str(slug)
@@ -2073,7 +2075,7 @@ def _list_public_component_skills(
             continue
         manifest_backed_kits.add(kit_slug)
         for component in model.public_components:
-            if getattr(component, "kind", "") != "skill":
+            if getattr(component, "kind", "") not in {"skill", "agent", "rule"}:
                 continue
             if not _component_enabled_for_agent(component, agent):
                 continue
@@ -2083,9 +2085,24 @@ def _list_public_component_skills(
             generated_name = str(getattr(component, "generated_name", "")).strip()
             if not generated_name:
                 continue
-            components.append((source_path.name, source_path, kit_slug, generated_name))
+            components.append((kit_slug, component, source_path))
     return components, manifest_backed_kits
     # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-no-workflow-scan
+    # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
+
+
+def _list_public_component_skills(
+    studio_root: Path,
+    project_root: Optional[Path],
+    agent: str,
+) -> Tuple[List[KitWorkflowSkill], Set[str]]:
+    components: List[KitWorkflowSkill] = []
+    public_components, manifest_backed_kits = _list_public_components(studio_root, project_root, agent)
+    for kit_slug, component, source_path in public_components:
+        if getattr(component, "kind", "") == "skill":
+            generated_name = str(getattr(component, "generated_name", "")).strip()
+            components.append((source_path.name, source_path, kit_slug, generated_name))
+    return components, manifest_backed_kits
 
 # ---------------------------------------------------------------------------
 # Kit workflow → skill generation for skill-native tools
@@ -3168,6 +3185,73 @@ def _process_kit_workflow_skills(
     return partial
 
 
+def _component_agent_targets(component: object) -> List[str]:
+    targets = [str(target) for target in (getattr(component, "generated_targets", []) or [])]
+    if not targets or "installed" in targets or "all" in targets:
+        return []
+    return targets
+
+
+def _process_kit_public_agents_and_rules(
+    agent: str,
+    project_root: Path,
+    studio_root: Path,
+    dry_run: bool,
+) -> Dict[str, Dict[str, Any]]:
+    """Generate canonical-kit public agent and rule components for one target."""
+    public_components, _manifest_backed_kits = _list_public_components(
+        studio_root,
+        project_root,
+        agent,
+    )
+    agent_entries: Dict[str, _AgentEntry] = {}
+    rule_entries: Dict[str, _RuleEntry] = {}
+    trusted_roots: List[Path] = []
+
+    # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
+    for _kit_slug, component, source_path in public_components:
+        generated_name = str(getattr(component, "generated_name", "")).strip()
+        if not generated_name:
+            continue
+        trusted_roots.append(source_path.parent)
+        description = str(getattr(component, "description", "") or "").strip()
+        if getattr(component, "kind", "") == "agent":
+            agent_entries[generated_name] = _AgentEntry(
+                id=generated_name,
+                description=description or f"Constructor Studio {generated_name} agent",
+                source=source_path.as_posix(),
+                agents=_component_agent_targets(component),
+                tools=list(getattr(component, "tools", []) or []),
+                disallowed_tools=list(getattr(component, "disallowed_tools", []) or []),
+            )
+        elif getattr(component, "kind", "") == "rule":
+            rule_entries[generated_name] = _RuleEntry(
+                id=generated_name,
+                description=description or f"Constructor Studio {generated_name} rule",
+                source=source_path.as_posix(),
+                agents=_component_agent_targets(component),
+            )
+    # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
+
+    public_agents = generate_manifest_agents(
+        agent_entries,
+        agent,
+        project_root,
+        dry_run,
+        studio_root=studio_root,
+        trusted_roots=trusted_roots,
+    )
+    public_rules = generate_manifest_rules(
+        rule_entries,
+        agent,
+        project_root,
+        dry_run,
+        studio_root=studio_root,
+        trusted_roots=trusted_roots,
+    )
+    return {"agents": public_agents, "rules": public_rules}
+
+
 def _process_legacy_cleanup(
     agent: str,
     project_root: Path,
@@ -3536,6 +3620,19 @@ def _merge_skills_partial(dest: Dict[str, Any], src: Dict[str, Any]) -> None:
         dest[key] = val
 
 
+def _merge_action_result(dest: Dict[str, Any], src: Dict[str, Any]) -> None:
+    """Merge generated-file result lists without changing skip state semantics."""
+    for key in ("created", "updated", "deleted", "outputs", "errors"):
+        dest.setdefault(key, []).extend(src.get(key, []))
+    if src.get("created") or src.get("updated") or src.get("deleted"):
+        dest["skipped"] = False
+        dest["skip_reason"] = ""
+        return
+    if src.get("skipped") and not dest.get("skipped"):
+        dest["skipped"] = src.get("skipped")
+        dest["skip_reason"] = src.get("skip_reason", "")
+
+
 def _process_single_agent(
     agent: str,
     project_root: Path,
@@ -3592,12 +3689,22 @@ def _process_single_agent(
             remove_cypilot=remove_cypilot,
         ),
     )
+    public_components_result = _process_kit_public_agents_and_rules(
+        agent, project_root, studio_root, dry_run,
+    )
     subagents_result = _process_subagents(
         agent, project_root, studio_root, cfg, cfg_path, dry_run,
     )
+    _merge_action_result(subagents_result, public_components_result["agents"])
+    rules_result = public_components_result["rules"]
 
     # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-agent-result
-    all_errors = workflows_result.get("errors", []) + skills_result.get("errors", []) + subagents_result.get("errors", [])
+    all_errors = (
+        workflows_result.get("errors", [])
+        + skills_result.get("errors", [])
+        + subagents_result.get("errors", [])
+        + rules_result.get("errors", [])
+    )
     agent_status = "PASS" if not all_errors else "PARTIAL"
 
     return {
@@ -3642,6 +3749,19 @@ def _process_single_agent(
                 "created": len(subagents_result["created"]),
                 "updated": len(subagents_result["updated"]),
                 "deleted": len(subagents_result["deleted"]),
+            },
+        },
+        "rules": {
+            "created": rules_result["created"],
+            "updated": rules_result["updated"],
+            "deleted": rules_result["deleted"],
+            "skipped": rules_result.get("skipped", False),
+            "skip_reason": rules_result.get("skip_reason", ""),
+            "outputs": rules_result["outputs"],
+            "counts": {
+                "created": len(rules_result["created"]),
+                "updated": len(rules_result["updated"]),
+                "deleted": len(rules_result["deleted"]),
             },
         },
         "errors": all_errors if all_errors else None,
@@ -5143,6 +5263,91 @@ def generate_manifest_skills(
             result["outputs"].append(deleted_record)
 
     # Step 3: Return result dict
+    result["unchanged"] = [
+        o["path"] for o in result["outputs"] if o.get("action") == "unchanged"
+    ]
+    return result
+
+
+_RULE_OUTPUT_PATHS: Dict[str, str] = {
+    "claude": ".claude/rules/{id}.md",
+    "cursor": ".cursor/rules/{id}.mdc",
+    "copilot": ".github/instructions/{id}.instructions.md",
+    "openai": ".agents/rules/{id}.md",
+    "windsurf": ".agents/rules/{id}.md",
+}
+
+
+def _build_rule_content(
+    rule_id: str,
+    rule: Any,
+    source_content: str,
+    variables: Optional[Dict[str, str]],
+) -> str:
+    description = getattr(rule, "description", "") or f"Constructor Studio rule {rule_id}"
+    content = "\n".join([
+        "---",
+        f"name: {rule_id}",
+        f"description: {_yaml_double_quote(description)}",
+        "---",
+        _GENERATED_MARKER,
+        "",
+        source_content,
+    ])
+    append = getattr(rule, "append", "")
+    if append:
+        content = content.rstrip("\n") + "\n" + str(append)
+    if variables:
+        variables = {k: v.replace("\n", " ") for k, v in variables.items()}
+    return _apply_variables(content, variables)
+
+
+def generate_manifest_rules(
+    rules: Dict[str, "_RuleEntry"],
+    target: str,
+    project_root: Path,
+    dry_run: bool,
+    variables: Optional[Dict[str, str]] = None,
+    studio_root: Optional[Path] = None,
+    trusted_roots: Optional[List[Path]] = None,
+) -> Dict[str, Any]:
+    """Generate rule files from public manifest rule entries."""
+    result: Dict[str, Any] = {
+        "created": [],
+        "updated": [],
+        "unchanged": [],
+        "deleted": [],
+        "outputs": [],
+    }
+    path_template = _RULE_OUTPUT_PATHS.get(target)
+    if not path_template:
+        result["skipped"] = True
+        result["skip_reason"] = f"{target} does not support rule generation"
+        return result
+
+    for rule_id, rule in rules.items():
+        if rule.agents and target not in rule.agents:
+            continue
+        src_str = rule.source or rule.prompt_file
+        if not src_str:
+            sys.stderr.write(
+                f"WARNING: rule '{rule_id}' has no source or prompt_file, skipping\n"
+            )
+            continue
+        source_content = _read_source_content(
+            "rule",
+            rule_id,
+            src_str,
+            project_root,
+            studio_root=studio_root,
+            trusted_roots=trusted_roots,
+        )
+        if source_content is None:
+            continue
+        content = _build_rule_content(rule_id, rule, source_content, variables)
+        rel_out = path_template.replace("{id}", rule_id)
+        _write_or_skip(project_root / rel_out, content, result, project_root, dry_run)
+
     result["unchanged"] = [
         o["path"] for o in result["outputs"] if o.get("action") == "unchanged"
     ]
