@@ -958,6 +958,7 @@ def _load_core_model(kit_source: Path) -> KitModel:
 # @cpt-algo:cpt-studio-algo-kit-model-normalize:p1
 def load_kit_model(kit_source: Path, source_hint: str = "") -> KitModel:
     """Load a kit source through canonical, legacy manifest, or layout adapters."""
+    # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-single-boundary
     # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-canonical-manifest
     if source_hint in ("", "manifest"):
         model = load_canonical_kit_model(kit_source)
@@ -976,6 +977,7 @@ def load_kit_model(kit_source: Path, source_hint: str = "") -> KitModel:
         return _load_layout_model(kit_source)
     raise ValueError(f"Unsupported normalization source: {source_hint}")
     # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-precedence
+    # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-single-boundary
 
 
 def kit_model_to_toml_data(model: KitModel) -> Dict[str, Any]:

@@ -536,7 +536,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 ### Universal Kit Model Normalization
 
-- [ ] `p1` - **ID**: `cpt-studio-algo-kit-model-normalize`
+- [x] `p1` - **ID**: `cpt-studio-algo-kit-model-normalize`
 
 **Input**: Kit source root, optional existing `core.toml` registration, install/update context
 
@@ -551,7 +551,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 6. [x] - `p1` - Compute `manifest_semantic_hash`, `manifest_bytes_hash`, per-file resource hashes as `sha256(bytes)`, directory resource hashes, and separate tool-risk fingerprint - `inst-kitmodel-hashes`
 7. [x] - `p1` - Compute directory resource hashes from sorted relative paths plus per-file hashes, excluding VCS directories, cache directories, and configured ignore globs - `inst-kitmodel-directory-hash`
 8. [x] - `p1` - Return structured warnings for legacy input, workflow normalization, unknown optional fields, unqualified variable conflicts, and risk-confirmation requirements - `inst-kitmodel-warnings`
-9. [ ] - `p1` - Expose a single `KitModel` service boundary used by install, update, info, resolve-vars, validate, and generate-agents; no command may independently scan kit directories except through this service or its legacy adapters - `inst-kitmodel-single-boundary`
+9. [x] - `p1` - Expose a single `KitModel` service boundary used by install, update, info, resolve-vars, validate, and generate-agents; no command may independently scan kit directories except through this service or its legacy adapters - `inst-kitmodel-single-boundary`
 
 ### Canonical `.cf-studio-kit.toml`
 
