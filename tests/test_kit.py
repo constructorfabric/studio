@@ -107,6 +107,44 @@ def _make_canonical_kit_source(td: Path, slug: str = "canonicalkit") -> Path:
     return kit_src
 
 
+def _make_multi_canonical_kit_source(td: Path) -> Path:
+    kit_src = td / "multi-kit"
+    kit_src.mkdir(parents=True, exist_ok=True)
+    (kit_src / "alpha.md").write_text("# Alpha\n", encoding="utf-8")
+    (kit_src / "beta.md").write_text("# Beta\n", encoding="utf-8")
+    (kit_src / ".cf-studio-kit.toml").write_text(
+        "\n".join([
+            "[[kits]]",
+            'slug = "alpha"',
+            'name = "Alpha"',
+            'version = "1.0.0"',
+            "",
+            "[[kits.resources]]",
+            'id = "skill"',
+            'kind = "skill"',
+            'source = "alpha.md"',
+            'install_path = "SKILL.md"',
+            'type = "file"',
+            "public = true",
+            "",
+            "[[kits]]",
+            'slug = "beta"',
+            'name = "Beta"',
+            'version = "2.0.0"',
+            "",
+            "[[kits.resources]]",
+            'id = "skill"',
+            'kind = "skill"',
+            'source = "beta.md"',
+            'install_path = "SKILL.md"',
+            'type = "file"',
+            "public = true",
+        ]) + "\n",
+        encoding="utf-8",
+    )
+    return kit_src
+
+
 class TestCmdKitDispatcher(unittest.TestCase):
     """Kit CLI dispatcher: handles subcommands and errors."""
 
@@ -582,6 +620,94 @@ class TestKitSourceModeValidation(unittest.TestCase):
         self.assertEqual(out["status"], "FAIL")
         self.assertIn("--install-mode", out["message"])
         self.assertIn("--path", out["message"])
+
+    def test_multi_kit_manifest_parser_lists_models(self):
+        from studio.utils.kit_model import load_canonical_kit_models
+
+        with TemporaryDirectory() as td:
+            kit_src = _make_multi_canonical_kit_source(Path(td))
+
+            models = load_canonical_kit_models(kit_src)
+
+            self.assertEqual([model.slug for model in models], ["alpha", "beta"])
+            self.assertEqual(models[0].resources[0].source, "alpha.md")
+            self.assertEqual(models[1].resources[0].source, "beta.md")
+
+    def test_multi_kit_manifest_requires_selection_noninteractive(self):
+        from studio.commands.kit import cmd_kit_install
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            _bootstrap_project(root)
+            kit_src = _make_multi_canonical_kit_source(root / "local-kits")
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = cmd_kit_install(["--path", str(kit_src), "--install-mode", "copy"])
+                self.assertEqual(rc, 2)
+                out = json.loads(buf.getvalue())
+                self.assertEqual(out["status"], "FAIL")
+                self.assertIn("multiple kits", out["message"])
+                self.assertEqual(out["available_kits"], ["alpha", "beta"])
+            finally:
+                os.chdir(cwd)
+
+    def test_multi_kit_manifest_installs_selected_kit(self):
+        from studio.commands.kit import cmd_kit_install
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            kit_src = _make_multi_canonical_kit_source(root / "local-kits")
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = cmd_kit_install([
+                        "--path", str(kit_src),
+                        "--install-mode", "copy",
+                        "--kit", "beta",
+                    ])
+                self.assertEqual(rc, 0)
+                out = json.loads(buf.getvalue())
+                self.assertEqual(out["kit"], "beta")
+                self.assertEqual(out["version"], "2.0.0")
+                self.assertEqual(
+                    (adapter / "config" / "kits" / "beta" / "SKILL.md").read_text(encoding="utf-8"),
+                    "# Beta\n",
+                )
+                self.assertFalse((adapter / "config" / "kits" / "alpha").exists())
+            finally:
+                os.chdir(cwd)
+
+    def test_multi_kit_manifest_installs_all_selected_kits(self):
+        from studio.commands.kit import cmd_kit_install
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            kit_src = _make_multi_canonical_kit_source(root / "local-kits")
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = cmd_kit_install([
+                        "--path", str(kit_src),
+                        "--install-mode", "copy",
+                        "--kit", "all",
+                    ])
+                self.assertEqual(rc, 0)
+                out = json.loads(buf.getvalue())
+                self.assertEqual(out["status"], "PASS")
+                self.assertEqual(out["kits_installed"], 2)
+                self.assertTrue((adapter / "config" / "kits" / "alpha" / "SKILL.md").is_file())
+                self.assertTrue((adapter / "config" / "kits" / "beta" / "SKILL.md").is_file())
+            finally:
+                os.chdir(cwd)
 
     def test_install_mode_registers_in_project_manifest_resources(self):
         from studio.commands.kit import cmd_kit_install

@@ -1031,7 +1031,7 @@ def _validate_against_schema(data: Dict[str, Any]) -> List[str]:
 # ---------------------------------------------------------------------------
 
 # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-read
-def load_manifest(kit_source: Path) -> Optional[Union[Manifest, ManifestV2]]:
+def load_manifest(kit_source: Path, kit_slug: str = "") -> Optional[Union[Manifest, ManifestV2]]:
     """Read and parse ``manifest.toml`` from *kit_source*.
 
     Returns ``None`` if the file does not exist.  V2 manifests are delegated
@@ -1040,7 +1040,7 @@ def load_manifest(kit_source: Path) -> Optional[Union[Manifest, ManifestV2]]:
     """
     manifest_path = kit_source / "manifest.toml"
     if not manifest_path.is_file():
-        return _load_canonical_kit_manifest(kit_source)
+        return _load_canonical_kit_manifest(kit_source, kit_slug=kit_slug)
 
     try:
         with open(manifest_path, "rb") as f:
@@ -1086,7 +1086,7 @@ def load_manifest(kit_source: Path) -> Optional[Union[Manifest, ManifestV2]]:
     )
 
 
-def _load_canonical_kit_manifest(kit_source: Path) -> Optional[Manifest]:
+def _load_canonical_kit_manifest(kit_source: Path, kit_slug: str = "") -> Optional[Manifest]:
     """Adapt canonical kit metadata into the manifest installer model."""
     canonical_path = kit_source / ".cf-studio-kit.toml"
     if not canonical_path.is_file():
@@ -1094,7 +1094,7 @@ def _load_canonical_kit_manifest(kit_source: Path) -> Optional[Manifest]:
 
     from .kit_model import load_canonical_kit_model
 
-    model = load_canonical_kit_model(kit_source)
+    model = load_canonical_kit_model(kit_source, kit_slug=kit_slug)
     if model is None:
         return None
 

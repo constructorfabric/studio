@@ -529,47 +529,42 @@ def _with_hashes(kit_source: Path, model: KitModel) -> KitModel:
     # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-hashes
 
 
-# @cpt-algo:cpt-studio-algo-kit-canonical-manifest:p1
-def load_canonical_kit_model(kit_source: Path) -> Optional[KitModel]:
-    """Load ``.cf-studio-kit.toml`` from *kit_source* when present."""
-    # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-any-layout
-    manifest_path = kit_source / _CANONICAL_MANIFEST
-    if not manifest_path.is_file():
-        return None
-    try:
-        data = toml_utils.load(manifest_path)
-    except tomllib.TOMLDecodeError as exc:
-        raise ValueError(f"Invalid {_CANONICAL_MANIFEST}: {exc}") from exc
-    # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-any-layout
-
+def _canonical_model_from_entry(
+    kit_source: Path,
+    meta: Dict[str, Any],
+    raw_resources: Any,
+    *,
+    kit_context: str,
+    resources_context: str,
+) -> KitModel:
     warnings: List[str] = []
     # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-metadata
-    meta = data.get("kit")
-    if not isinstance(meta, dict):
-        raise ValueError(f"{_CANONICAL_MANIFEST}: missing [kit] metadata table")
     _warn_unknown_keys(
         meta,
-        {"slug", "name", "version", "description", "source", "targets", "defaults", "compatibility"},
-        "[kit]",
+        {
+            "slug", "name", "version", "description", "source", "targets",
+            "defaults", "compatibility", "resources",
+        },
+        kit_context,
         warnings,
     )
-    slug = _require_string(meta, "slug", "[kit]")
+    slug = _require_string(meta, "slug", kit_context)
     name = _optional_string(meta, "name") or slug
     version = _optional_string(meta, "version")
     # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-metadata
 
     # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-resource-shape
-    raw_resources = data.get("resources", [])
     if not isinstance(raw_resources, list):
-        raise ValueError(f"{_CANONICAL_MANIFEST}: resources must be an array of tables")
+        raise ValueError(f"{_CANONICAL_MANIFEST}: {resources_context} must be an array of tables")
     resources: List[KitResource] = []
     seen_ids: set[str] = set()
     for idx, raw in enumerate(raw_resources):
         if not isinstance(raw, dict):
-            raise ValueError(f"{_CANONICAL_MANIFEST}: [[resources]][{idx}] must be a table")
-        resource_id = _require_string(raw, "id", f"[[resources]][{idx}]")
+            raise ValueError(f"{_CANONICAL_MANIFEST}: {resources_context}[{idx}] must be a table")
+        resource_context = f"{resources_context}[{idx}]"
+        resource_id = _require_string(raw, "id", resource_context)
         if resource_id in seen_ids:
-            raise ValueError(f"Duplicate resource id '{resource_id}'")
+            raise ValueError(f"Duplicate resource id '{resource_id}' in kit '{slug}'")
         seen_ids.add(resource_id)
         # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-no-binding-path
         if "binding_path" in raw:
@@ -587,7 +582,7 @@ def load_canonical_kit_model(kit_source: Path) -> Optional[KitModel]:
                 "skills", "color", "memory_dir", "role", "target", "provider",
                 "reasoning_effort", "context_window", "subagents",
             },
-            f"[[resources]][{idx}]",
+            resource_context,
             warnings,
         )
         agent_config = raw.get("agent") if isinstance(raw.get("agent"), dict) else {}
@@ -600,15 +595,15 @@ def load_canonical_kit_model(kit_source: Path) -> Optional[KitModel]:
                     "provider", "reasoning_effort", "context_window",
                     "subagents",
                 },
-                f"[[resources]][{idx}].agent",
+                f"{resource_context}.agent",
                 warnings,
             )
         kind = _normalize_kind(
-            _require_string(raw, "kind", f"[[resources]][{idx}]"),
+            _require_string(raw, "kind", resource_context),
             warnings=warnings,
             resource_id=resource_id,
         )
-        source = _require_string(raw, "source", f"[[resources]][{idx}]")
+        source = _require_string(raw, "source", resource_context)
         resource_type = _optional_string(raw, "type") or "file"
         if resource_type not in {"file", "directory"}:
             raise ValueError(
@@ -677,6 +672,79 @@ def load_canonical_kit_model(kit_source: Path) -> Optional[KitModel]:
             warnings=warnings,
         ),
     )
+
+
+# @cpt-algo:cpt-studio-algo-kit-canonical-manifest:p1
+def load_canonical_kit_models(kit_source: Path) -> List[KitModel]:
+    """Load all kits from ``.cf-studio-kit.toml`` when present."""
+    # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-any-layout
+    manifest_path = kit_source / _CANONICAL_MANIFEST
+    if not manifest_path.is_file():
+        return []
+    try:
+        data = toml_utils.load(manifest_path)
+    except tomllib.TOMLDecodeError as exc:
+        raise ValueError(f"Invalid {_CANONICAL_MANIFEST}: {exc}") from exc
+    # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-any-layout
+
+    raw_kits = data.get("kits")
+    # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-multi-kit
+    if raw_kits is not None:
+        if data.get("kit") is not None or data.get("resources") is not None:
+            raise ValueError(f"{_CANONICAL_MANIFEST}: cannot mix [kit]/[[resources]] with [[kits]]")
+        if not isinstance(raw_kits, list) or not raw_kits:
+            raise ValueError(f"{_CANONICAL_MANIFEST}: [[kits]] must be a non-empty array of tables")
+        models = [
+            _canonical_model_from_entry(
+                kit_source,
+                raw_kit,
+                raw_kit.get("resources", []) if isinstance(raw_kit, dict) else None,
+                kit_context=f"[[kits]][{idx}]",
+                resources_context=f"[[kits]][{idx}].resources",
+            )
+            for idx, raw_kit in enumerate(raw_kits)
+            if isinstance(raw_kit, dict)
+        ]
+        if len(models) != len(raw_kits):
+            raise ValueError(f"{_CANONICAL_MANIFEST}: every [[kits]] entry must be a table")
+    else:
+        meta = data.get("kit")
+        if not isinstance(meta, dict):
+            raise ValueError(f"{_CANONICAL_MANIFEST}: missing [kit] metadata table")
+        models = [
+            _canonical_model_from_entry(
+                kit_source,
+                meta,
+                data.get("resources", []),
+                kit_context="[kit]",
+                resources_context="[[resources]]",
+            ),
+        ]
+    # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-multi-kit
+
+    seen_slugs: set[str] = set()
+    for model in models:
+        if model.slug in seen_slugs:
+            raise ValueError(f"{_CANONICAL_MANIFEST}: duplicate kit slug '{model.slug}'")
+        seen_slugs.add(model.slug)
+    return models
+
+
+def load_canonical_kit_model(kit_source: Path, kit_slug: str = "") -> Optional[KitModel]:
+    """Load one kit from ``.cf-studio-kit.toml`` from *kit_source* when present."""
+    models = load_canonical_kit_models(kit_source)
+    if not models:
+        return None
+    if kit_slug:
+        for model in models:
+            if model.slug == kit_slug:
+                return model
+        available = ", ".join(model.slug for model in models)
+        raise ValueError(f"{_CANONICAL_MANIFEST}: kit '{kit_slug}' not found; available kits: {available}")
+    if len(models) > 1:
+        available = ", ".join(model.slug for model in models)
+        raise ValueError(f"{_CANONICAL_MANIFEST}: contains multiple kits: {available}; choose one with --kit")
+    return models[0]
 
 
 def _read_conf_metadata(kit_source: Path) -> tuple[str, str]:
@@ -956,12 +1024,12 @@ def _load_core_model(kit_source: Path) -> KitModel:
 
 
 # @cpt-algo:cpt-studio-algo-kit-model-normalize:p1
-def load_kit_model(kit_source: Path, source_hint: str = "") -> KitModel:
+def load_kit_model(kit_source: Path, source_hint: str = "", kit_slug: str = "") -> KitModel:
     """Load a kit source through canonical, legacy manifest, or layout adapters."""
     # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-single-boundary
     # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-canonical-manifest
     if source_hint in ("", "manifest"):
-        model = load_canonical_kit_model(kit_source)
+        model = load_canonical_kit_model(kit_source, kit_slug=kit_slug)
         if model is not None:
             return model
     # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-canonical-manifest

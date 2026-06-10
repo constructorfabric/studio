@@ -992,18 +992,18 @@ def _path_is_within(path: Path, root: Path) -> bool:
 
 def _manifest_resource_target(
     kit_root: Path,
-    res: ManifestResource,
+    res: Any,
     resource_overrides: Dict[str, Path],
 ) -> Path:
     if res.id in resource_overrides:
         return resource_overrides[res.id]
-    return (kit_root / res.default_path).resolve()
+    return (kit_root / _resource_install_path(res)).resolve()
 
 
 def _manifest_resource_bindings(
     studio_dir: Path,
     kit_root: Path,
-    resources: List[ManifestResource],
+    resources: List[Any],
     resource_overrides: Dict[str, Path],
 ) -> Dict[str, Dict[str, str]]:
     return {
@@ -1020,7 +1020,7 @@ def _manifest_resource_bindings(
 def _manifest_register_resource_bindings(
     studio_dir: Path,
     kit_source: Path,
-    resources: List[ManifestResource],
+    resources: List[Any],
 ) -> Dict[str, Dict[str, str]]:
     return {
         res.id: {
@@ -1140,7 +1140,7 @@ def _prompt_local_manifest_install_mode(
 def _emit_manifest_install_plan(
     kit_slug: str,
     kit_root: Path,
-    resources: List[ManifestResource],
+    resources: List[Any],
     resource_overrides: Dict[str, Path],
 ) -> None:
     sys.stderr.write("\n")
@@ -1166,12 +1166,15 @@ def _prompt_manifest_install_plan(
     kit_root: Path,
     manifest: Manifest,
     *,
+    resources: Optional[List[Any]] = None,
     registered_kit_root_rel: Optional[str] = None,
     interactive: bool,
 ) -> tuple[Path, str, Dict[str, Dict[str, str]]]:
     resource_overrides: Dict[str, Path] = {}
-    resources = list(manifest.resources)
-    can_edit = manifest.user_modifiable or any(res.user_modifiable for res in resources)
+    resources = list(resources if resources is not None else manifest.resources)
+    can_edit = manifest.user_modifiable or any(
+        bool(getattr(res, "user_modifiable", True)) for res in resources
+    )
     root_changed = False
 
     def _kit_root_rel() -> str:
@@ -1208,7 +1211,7 @@ def _prompt_manifest_install_plan(
 
         sys.stderr.write("\n")
         sys.stderr.write("  Select path to change\n")
-        menu: List[tuple[str, str, Optional[ManifestResource]]] = []
+        menu: List[tuple[str, str, Optional[Any]]] = []
         if manifest.user_modifiable:
             menu.append(("root", f"Kit root -> {kit_root}", None))
         for res in resources:
@@ -1315,7 +1318,7 @@ def install_kit(
     # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-manifest-install
     # Check for manifest-driven installation
     from ..utils.manifest import load_manifest
-    manifest = load_manifest(kit_source)
+    manifest = load_manifest(kit_source, kit_slug=kit_slug)
     if manifest is not None:
         # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-manifest-install
         return install_kit_with_manifest(
@@ -1463,13 +1466,14 @@ def install_kit_with_manifest(
 
     try:
         from ..utils.kit_model import load_kit_model
-        kit_model = load_kit_model(kit_source)
+        kit_model = load_kit_model(kit_source, kit_slug=kit_slug)
     except (OSError, ValueError) as exc:
         return {
             "status": "FAIL",
             "kit": kit_slug,
             "errors": [str(exc)],
         }
+    model_resources = list(getattr(kit_model, "resources", []))
     model_content_identity = _kit_model_content_identity(kit_model)
     risk_errors = _tool_risk_approval_errors(
         kit_model,
@@ -1513,7 +1517,7 @@ def install_kit_with_manifest(
         resource_bindings = _manifest_register_resource_bindings(
             studio_dir,
             kit_source,
-            list(manifest.resources),
+            model_resources,
         )
         kit_root = kit_source.resolve()
         kit_root_rel = _serialize_manifest_binding_path(kit_root, studio_dir)
@@ -1581,6 +1585,7 @@ def install_kit_with_manifest(
         studio_dir,
         kit_root,
         manifest,
+        resources=model_resources,
         registered_kit_root_rel=kit_root_rel,
         interactive=interactive,
     )
@@ -1588,7 +1593,7 @@ def install_kit_with_manifest(
     overwrite_errors = _preflight_manifest_copy_overwrites(
         kit_source,
         studio_dir,
-        list(manifest.resources),
+        model_resources,
         resource_bindings,
         interactive=interactive,
         approved_overwrites=approved_overwrites or [],
@@ -1604,7 +1609,7 @@ def install_kit_with_manifest(
     kit_root.mkdir(parents=True, exist_ok=True)
 
     # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-foreach-resource
-    for res in manifest.resources:
+    for res in model_resources:
         # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-default-path
         binding_path = resource_bindings[res.id]["path"]
         target_abs = (studio_dir / binding_path).resolve()
@@ -1673,7 +1678,7 @@ def install_kit_with_manifest(
 # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-copy-manifest-resource
 def _copy_manifest_resource(
     kit_source: Path,
-    res: ManifestResource,
+    res: Any,
     target_abs: Path,
 ) -> None:
     """Copy a single manifest resource from kit source to target path.
@@ -1697,7 +1702,7 @@ def _copy_manifest_resource(
 # @cpt-begin:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-copy-no-silent-overwrite
 def _manifest_resource_changed(
     kit_source: Path,
-    res: ManifestResource,
+    res: Any,
     target_abs: Path,
 ) -> bool:
     """Return True when copying *res* would replace different target content."""
@@ -1738,7 +1743,7 @@ def _manifest_resource_changed(
 def _preflight_manifest_copy_overwrites(
     kit_source: Path,
     studio_dir: Path,
-    resources: List[ManifestResource],
+    resources: List[Any],
     resource_bindings: Dict[str, Dict[str, str]],
     *,
     interactive: bool,
@@ -2096,6 +2101,13 @@ def cmd_kit_install(argv: List[str]) -> int:
         help="For local manifest installs, choose copy into Studio storage or register in place",
     )
     p.add_argument(
+        "--kit",
+        action="append",
+        default=[],
+        metavar="SLUG",
+        help="Select a kit from a multi-kit .cf-studio-kit.toml; repeat, use comma-separated slugs, or use 'all'",
+    )
+    p.add_argument(
         "--approve-overwrite",
         action="append",
         default=[],
@@ -2183,6 +2195,23 @@ def cmd_kit_install(argv: List[str]) -> int:
         # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-read-slug-version
         if exit_code is not None:
             return exit_code
+
+    selected_models, selection_error = _select_canonical_kit_models_for_install(
+        kit_source,
+        args.kit,
+        interactive=sys.stdin.isatty(),
+    )
+    if selection_error is not None:
+        ui.result(selection_error)
+        return 2
+    selected_specs: List[Tuple[str, str]] = [
+        (str(model.slug), str(model.version or kit_version))
+        for model in selected_models
+    ]
+    if selected_specs:
+        kit_slug, kit_version = selected_specs[0]
+    else:
+        selected_specs = [(kit_slug, kit_version)]
     # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-validate-source
 
     try:
@@ -2192,6 +2221,99 @@ def cmd_kit_install(argv: List[str]) -> int:
             return 1
         project_root, studio_dir = resolved
         config_dir = studio_dir / "config"
+
+        selected_install_mode = args.install_mode or "copy"
+        # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
+        # @cpt-begin:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-mode-always-ask
+        if args.local_path and not args.install_mode and sys.stdin.isatty():
+            from ..utils.manifest import load_manifest as _load_manifest
+            local_manifest = _load_manifest(kit_source, kit_slug=kit_slug)
+            if local_manifest is not None:
+                selected_install_mode = _prompt_local_manifest_install_mode(
+                    project_root,
+                    studio_dir,
+                    kit_source,
+                    kit_slug,
+                    local_manifest,
+                )
+        # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-mode-always-ask
+        # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
+
+        if len(selected_specs) > 1:
+            preflight_errors: List[str] = []
+            dry_run_results: List[Dict[str, Any]] = []
+            for selected_slug, selected_version in selected_specs:
+                selected_dir, _, _, _ = _resolve_installed_kit_root(
+                    studio_dir, config_dir, selected_slug,
+                )
+                if selected_dir is None:
+                    preflight_errors.append(
+                        f"Kit '{selected_slug}' is registered at an absolute path that is not accessible on this OS",
+                    )
+                    continue
+                if selected_dir.exists() and not args.force:
+                    preflight_errors.append(
+                        f"Kit '{selected_slug}' is already installed at {selected_dir}",
+                    )
+                dry_run_results.append({
+                    "kit": selected_slug,
+                    "version": selected_version,
+                    "target": selected_dir.as_posix(),
+                })
+            if preflight_errors:
+                ui.result({
+                    "status": "FAIL",
+                    "message": "One or more selected kits cannot be installed",
+                    "errors": preflight_errors,
+                })
+                return 2
+            if args.dry_run:
+                ui.result({
+                    "status": "DRY_RUN",
+                    "kits": dry_run_results,
+                    "source": source_registration or kit_source.as_posix(),
+                })
+                return 0
+
+            results: List[Dict[str, Any]] = []
+            failed = False
+            for selected_slug, selected_version in selected_specs:
+                result = install_kit(
+                    kit_source,
+                    studio_dir,
+                    selected_slug,
+                    selected_version,
+                    source=source_registration,
+                    interactive=True,
+                    install_mode=selected_install_mode,
+                    project_root=project_root,
+                    authority_metadata=authority_metadata,
+                    approved_overwrites=args.approve_overwrite,
+                    approved_tool_risks=args.approve_tool_risk,
+                )
+                if str(result.get("status", "")).upper() == "FAIL":
+                    failed = True
+                results.append({
+                    "status": result.get("status", "PASS"),
+                    "action": result.get("action", "installed"),
+                    "kit": selected_slug,
+                    "version": selected_version,
+                    "install_mode": result.get("install_mode", selected_install_mode),
+                    "files_written": result.get("files_copied", 0),
+                    "files_registered": result.get("files_registered", 0),
+                    "errors": result.get("errors", []),
+                })
+            if not failed:
+                regenerate_gen_aggregates(studio_dir)
+            ui.result({
+                "status": "FAIL" if failed else "PASS",
+                "action": "installed",
+                "kits_installed": 0 if failed else len(results),
+                "results": results,
+                "source": source_registration or kit_source.as_posix(),
+            })
+            return 2 if failed else 0
+
         config_kit_dir, _, _, _ = _resolve_installed_kit_root(
             studio_dir, config_dir, kit_slug,
         )
@@ -2232,23 +2354,6 @@ def cmd_kit_install(argv: List[str]) -> int:
             })
             return 0
         # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-dry-run
-
-        selected_install_mode = args.install_mode or "copy"
-        # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
-        # @cpt-begin:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-mode-always-ask
-        if args.local_path and not args.install_mode and sys.stdin.isatty():
-            from ..utils.manifest import load_manifest as _load_manifest
-            local_manifest = _load_manifest(kit_source)
-            if local_manifest is not None:
-                selected_install_mode = _prompt_local_manifest_install_mode(
-                    project_root,
-                    studio_dir,
-                    kit_source,
-                    kit_slug,
-                    local_manifest,
-                )
-        # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-mode-always-ask
-        # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
 
         # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-delegate-install
         result = install_kit(
@@ -3552,6 +3657,10 @@ def _resolve_manifest_root_from_binding(
     return ""
 
 
+def _resource_install_path(res: Any) -> str:
+    return str(getattr(res, "install_path", getattr(res, "default_path", "")))
+
+
 def _resolve_declared_manifest_root(manifest: Any, kit_slug: str) -> str:
     manifest_root = getattr(manifest, "root", "")
     if isinstance(manifest_root, str) and manifest_root.strip():
@@ -3569,7 +3678,7 @@ def _resolve_manifest_kit_root_rel(
     for res in getattr(manifest, "resources", []):
         binding = merged.get(res.id, {})
         binding_path = binding.get("path") if isinstance(binding, dict) else None
-        binding_root = _resolve_manifest_root_from_binding(binding_path, res.default_path)
+        binding_root = _resolve_manifest_root_from_binding(binding_path, _resource_install_path(res))
         if binding_root is not None:
             return binding_root
 
@@ -3596,12 +3705,13 @@ def _sync_manifest_resource_bindings(
         elif isinstance(binding, str):
             merged[res_id] = {"path": binding}
     kit_root_rel = _resolve_manifest_kit_root_rel(manifest, merged, kit_slug)
-    for res in manifest.resources:
+    for res in getattr(manifest, "resources", []):
         if res.id not in merged:
+            install_path = _resource_install_path(res)
             if kit_root_rel:
-                resource_path = (PurePosixPath(kit_root_rel) / res.default_path).as_posix()
+                resource_path = (PurePosixPath(kit_root_rel) / install_path).as_posix()
             else:
-                resource_path = PurePosixPath(res.default_path).as_posix()
+                resource_path = PurePosixPath(install_path).as_posix()
             merged[res.id] = {"path": resource_path}
     return merged
 # @cpt-end:cpt-studio-algo-kit-update:p1:inst-sync-manifest-bindings
@@ -3792,7 +3902,7 @@ def update_kit(
         resource_bindings = _manifest_register_resource_bindings(
             studio_dir,
             source_dir,
-            list(_manifest.resources),
+            list(getattr(kit_model, "resources", [])),
         )
         local_metadata: Dict[str, str] = {}
         if local_conf_version:
@@ -3931,6 +4041,7 @@ def update_kit(
                 authority_metadata=authority_metadata,
                 kit_path=registered_kit_path if has_registered_kit_path else "",
                 approved_overwrites=approved_overwrites,
+                approved_tool_risks=approved_tool_risks,
             )
             files_written = _install_result.get("files_copied", 0)
         else:
@@ -4000,7 +4111,7 @@ def update_kit(
 
         # @cpt-begin:cpt-studio-algo-kit-update:p1:inst-update-core-toml
         _merged_resources = _sync_manifest_resource_bindings(
-            _manifest, config_dir, kit_slug,
+            _risk_model if _risk_model is not None else _manifest, config_dir, kit_slug,
         )
         # Bump core.toml version only when at least one diff was accepted —
         # OR when there was nothing to diff in the first place (the kit was
@@ -4189,10 +4300,12 @@ def _read_kit_slug(kit_source: Path) -> str:
     """Read kit slug from canonical manifest or source conf.toml."""
     # @cpt-begin:cpt-studio-algo-kit-config-helpers:p1:inst-read-slug
     try:
-        from ..utils.kit_model import load_canonical_kit_model
-        canonical_model = load_canonical_kit_model(kit_source)
-        if canonical_model is not None and canonical_model.slug:
-            return canonical_model.slug
+        from ..utils.kit_model import load_canonical_kit_models
+        canonical_models = load_canonical_kit_models(kit_source)
+        if len(canonical_models) == 1 and canonical_models[0].slug:
+            return canonical_models[0].slug
+        if len(canonical_models) > 1:
+            return ""
     except ValueError as exc:
         sys.stderr.write(f"kit: warning: cannot read canonical kit metadata from {kit_source}: {exc}\n")
 
@@ -4215,15 +4328,114 @@ def _read_kit_slug(kit_source: Path) -> str:
 def _read_kit_source_version(kit_source: Path) -> str:
     """Read kit version from canonical manifest or source conf.toml."""
     try:
-        from ..utils.kit_model import load_canonical_kit_model
-        canonical_model = load_canonical_kit_model(kit_source)
-        if canonical_model is not None and canonical_model.version:
-            return canonical_model.version
+        from ..utils.kit_model import load_canonical_kit_models
+        canonical_models = load_canonical_kit_models(kit_source)
+        if len(canonical_models) == 1 and canonical_models[0].version:
+            return canonical_models[0].version
+        if len(canonical_models) > 1:
+            return ""
     except ValueError as exc:
         sys.stderr.write(f"kit: warning: cannot read canonical kit metadata from {kit_source}: {exc}\n")
 
     conf_toml = kit_source / _KIT_CONF_FILE
     return _read_kit_version(conf_toml) if conf_toml.is_file() else ""
+
+
+def _split_kit_selectors(raw_values: List[str]) -> List[str]:
+    selectors: List[str] = []
+    for raw_value in raw_values:
+        for part in str(raw_value).split(","):
+            value = part.strip()
+            if value:
+                selectors.append(value)
+    return selectors
+
+
+def _select_canonical_kit_models_for_install(
+    kit_source: Path,
+    requested_kits: List[str],
+    *,
+    interactive: bool,
+) -> Tuple[List[Any], Optional[Dict[str, Any]]]:
+    """Return selected canonical KitModels, or [] for non-canonical sources."""
+    # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-install-select-kit
+    try:
+        from ..utils.kit_model import load_canonical_kit_models
+        models = load_canonical_kit_models(kit_source)
+    except ValueError as exc:
+        return [], {"status": "FAIL", "message": str(exc)}
+    if not models:
+        if requested_kits:
+            return [], {
+                "status": "FAIL",
+                "message": "--kit can only select kits declared in .cf-studio-kit.toml",
+            }
+        return [], None
+
+    by_slug = {str(model.slug): model for model in models}
+    requested = _split_kit_selectors(requested_kits)
+    if requested:
+        if any(value == "all" for value in requested):
+            return models, None
+        missing = [value for value in requested if value not in by_slug]
+        if missing:
+            return [], {
+                "status": "FAIL",
+                "message": f"Unknown kit selection: {', '.join(missing)}",
+                "available_kits": sorted(by_slug),
+                "hint": "Use --kit <slug>, repeat --kit, or --kit all",
+            }
+        selected: List[Any] = []
+        seen: set[str] = set()
+        for value in requested:
+            if value not in seen:
+                selected.append(by_slug[value])
+                seen.add(value)
+        return selected, None
+
+    if len(models) == 1:
+        return models, None
+
+    if not interactive:
+        return [], {
+            "status": "FAIL",
+            "message": ".cf-studio-kit.toml declares multiple kits; choose which to install",
+            "available_kits": sorted(by_slug),
+            "hint": "Use --kit <slug>, repeat --kit, or --kit all",
+        }
+
+    sys.stderr.write("\n  Multiple kits are declared:\n")
+    for idx, model in enumerate(models, start=1):
+        sys.stderr.write(f"  [{idx}] {model.slug}  {model.version or ''}\n")
+    answer = _input_stderr("  Install which kits? (number/slug, comma-separated, or all): ")
+    requested = _split_kit_selectors([answer])
+    if not requested:
+        return [], {
+            "status": "FAIL",
+            "message": "No kits selected",
+            "available_kits": sorted(by_slug),
+        }
+    normalized: List[str] = []
+    for value in requested:
+        if value == "all":
+            return models, None
+        if value.isdigit():
+            idx = int(value)
+            if idx < 1 or idx > len(models):
+                return [], {
+                    "status": "FAIL",
+                    "message": f"Kit selection index out of range: {value}",
+                    "available_kits": sorted(by_slug),
+                }
+            normalized.append(str(models[idx - 1].slug))
+        else:
+            normalized.append(value)
+    return _select_canonical_kit_models_for_install(
+        kit_source,
+        normalized,
+        interactive=False,
+    )
+    # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-install-select-kit
 
 # @cpt-begin:cpt-studio-algo-kit-config-helpers:p1:inst-read-version-core-fn
 def _read_kit_version_from_core(config_dir: Path, kit_slug: str) -> str:

@@ -236,10 +236,13 @@ WHEN:
 DO:
   RUN classify candidates from RESOURCE_CONTEXT into public skills, agents, and rules, plus supporting templates, checklists, scripts, directories, and other
   RUN synthesize a conservative canonical proposal using the discovered candidates and explicit local metadata only:
+    - default shape is single-kit `[kit]` + `[[resources]]`
+    - use multi-kit `[[kits]]` + nested `[[kits.resources]]` only when the user explicitly asks for several kits or discovery returns clearly separate kit packages under TARGET_DIR
+    - multi-kit proposals require unique kit slugs; each kit owns its own resource ID namespace
     - slug = explicit kit slug from discovered metadata, else target folder basename normalized to kebab-case
     - name = explicit kit display name from discovered metadata, else the slug
     - version = explicit semantic-version-compatible metadata, else `0.1.0`
-    - each `[[resources]]` includes required `id`, `kind`, and `source`
+    - each `[[resources]]` or `[[kits.resources]]` includes required `id`, `kind`, and `source`
     - `install_path` is included only when the path can be expressed as a normalized relative path under TARGET_DIR without symlink escape or absolute segments
     - `public = true` is used only for skills, agents, and rules
     - `generated_targets = ["installed"]` is used only for public resources with no explicit target
@@ -254,6 +257,7 @@ RULES:
   ALWAYS classify discovered candidates into the public and supporting groups before proposing a manifest
   ALWAYS keep the proposal conservative and report ambiguity instead of guessing
   ALWAYS propose a default manifest before any write when no legacy manifest is present
+  ALWAYS keep `[kit]` + `[[resources]]` and `[[kits]]` mutually exclusive in one `.cf-studio-kit.toml`
   NEVER write `.cf-studio-kit.toml` before the approval menu resolves
 MENU KitInitDiscoveryApprovalMenu
 TITLE: Approve the proposed canonical manifest for this folder?
@@ -271,7 +275,7 @@ PURPOSE: Turn user-provided manual resource guidance into a fresh manifest propo
 WHEN:
   REQUIRE PENDING_MANUAL_GUIDANCE == true
 DO:
-  RUN parse the user reply as manual candidate resources, resource kinds, metadata defaults, aliases, install paths, generated targets, and exclusions
+  RUN parse the user reply as manual candidate resources, optional multiple kit declarations, resource kinds, metadata defaults, aliases, install paths, generated targets, and exclusions
   RUN reject guidance that references sources outside TARGET_DIR, uses unsupported resource kinds, creates duplicate IDs, or omits every candidate resource
   EMIT rejected guidance with reasons and EMIT_MENU KitInitManualGuidanceRetryMenu WHEN guidance is invalid
   WAIT user.reply WHEN guidance is invalid
@@ -303,8 +307,8 @@ PURPOSE: Apply user-supplied manifest edits, re-render the preview, and return t
 WHEN:
   REQUIRE PENDING_EDIT_BRANCH != unset
 DO:
-  RUN parse the user reply as requested manifest edits: metadata changes, resource additions/removals, kind changes, aliases, install paths, generated targets, and fields to preserve
-  RUN reject edits that would reference sources outside TARGET_DIR, introduce duplicate resource IDs, use unsupported resource kinds, or contradict canonical manifest shape
+  RUN parse the user reply as requested manifest edits: metadata changes, kit additions/removals for multi-kit manifests, resource additions/removals, kind changes, aliases, install paths, generated targets, and fields to preserve
+  RUN reject edits that would reference sources outside TARGET_DIR, introduce duplicate kit slugs, introduce duplicate resource IDs within the same kit, use unsupported resource kinds, or contradict canonical manifest shape
   EMIT the rejected edits with reasons and EMIT_MENU KitInitEditRetryMenu WHEN any requested edit is invalid
   WAIT user.reply WHEN any requested edit is invalid
   STOP_TURN WHEN any requested edit is invalid
