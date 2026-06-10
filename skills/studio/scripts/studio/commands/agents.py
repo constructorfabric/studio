@@ -1907,23 +1907,23 @@ def _resolve_config_kits(studio_root: Path, project_root: Optional[Path] = None)
                 return adapter_config_kits
     return config_kits
 
-def _registered_kit_dirs(project_root: Optional[Path]) -> Optional[Set[str]]:
-    """Return set of kit directory names registered in core.toml, or None if config unavailable."""
+def _registered_kit_dirs(project_root: Optional[Path]) -> Set[str]:
+    """Return kit directory names registered in core.toml."""
     if project_root is None:
-        return None
+        return set()
     cfg = load_project_config(project_root)
     if cfg is None:
-        return None
+        return set()
     kits = cfg.get("kits")
     if not isinstance(kits, dict):
-        return None
+        return set()
     dirs: Set[str] = set()
     for kit_cfg in kits.values():
         if isinstance(kit_cfg, dict):
             path = kit_cfg.get("path", "")
             if path:
                 dirs.add(Path(path).name)
-    return dirs if dirs else None
+    return dirs
 # @cpt-end:cpt-studio-algo-agent-integration-discover-agents:p1:inst-resolve-kits
 
 # @cpt-begin:cpt-studio-algo-agent-integration-list-workflows:p1:inst-scan-core-workflows
@@ -1974,14 +1974,13 @@ def _list_workflow_files(
     _scan_dir(core_subpath(studio_root, "workflows"), None)
 
     # 2. Kit workflows (config/kits/*/workflows/) — kit_slug = directory name
-    registered = _registered_kit_dirs(project_root)
-    registered_dirs: Set[str] = registered if isinstance(registered, set) else set()
+    registered_dirs = _registered_kit_dirs(project_root)
     skip_slugs = skip_kit_slugs or set()
     config_kits = _resolve_config_kits(studio_root, project_root)
     if config_kits.is_dir():
         try:
             for kit_dir in sorted(config_kits.iterdir()):
-                if registered_dirs and kit_dir.name not in registered_dirs:
+                if kit_dir.name not in registered_dirs:
                     continue
                 if kit_dir.name in skip_slugs:
                     continue

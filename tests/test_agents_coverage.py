@@ -222,7 +222,7 @@ class TestResolveConfigKits(unittest.TestCase):
 class TestRegisteredKitDirs(unittest.TestCase):
     """Cover line 503 in agents.py."""
 
-    def test_kits_not_dict_returns_none(self):
+    def test_kits_not_dict_returns_empty_set(self):
         from studio.commands.agents import _registered_kit_dirs
 
         with TemporaryDirectory() as tmpdir:
@@ -240,7 +240,7 @@ class TestRegisteredKitDirs(unittest.TestCase):
                 encoding="utf-8",
             )
             result = _registered_kit_dirs(root)
-            self.assertIsNone(result)
+            self.assertEqual(result, set())
 
 
 class TestEnsureCypilotLocal(unittest.TestCase):
@@ -286,11 +286,25 @@ class TestEnsureCypilotLocal(unittest.TestCase):
 class TestListWorkflowFilesConfigKits(unittest.TestCase):
     """Cover kit workflow scanning in agents.py."""
 
-    def test_scans_config_kit_workflows(self):
+    def test_scans_registered_config_kit_workflows(self):
         from studio.commands.agents import _list_workflow_files
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
+            (root / "AGENTS.md").write_text(
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "."\n```\n<!-- /@cf:root-agents -->\n',
+                encoding="utf-8",
+            )
+            (root / "config").mkdir()
+            (root / "config" / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    "",
+                    "[kits.sdlc]",
+                    'path = "config/kits/sdlc"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
             # Create core workflows dir (need .core/ so core_subpath routes there)
             core_wf = root / ".core" / "workflows"
             core_wf.mkdir(parents=True)
@@ -307,10 +321,32 @@ class TestListWorkflowFilesConfigKits(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            results = _list_workflow_files(root, project_root=None)
+            results = _list_workflow_files(root, project_root=root)
             names = [r[0] for r in results]
             self.assertIn("analyze.md", names)
             self.assertIn("pr-review.md", names)
+
+    def test_ignores_unregistered_config_kit_workflows(self):
+        from studio.commands.agents import _list_workflow_files
+
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "AGENTS.md").write_text(
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "."\n```\n<!-- /@cf:root-agents -->\n',
+                encoding="utf-8",
+            )
+            (root / "config").mkdir()
+            (root / "config" / "core.toml").write_text('version = "1.0"\n', encoding="utf-8")
+            config_kit_wf = root / "config" / "kits" / "loose" / "workflows"
+            config_kit_wf.mkdir(parents=True)
+            (config_kit_wf / "pr-review.md").write_text(
+                "---\ntype: workflow\ndescription: pr review\n---\nContent\n",
+                encoding="utf-8",
+            )
+
+            results = _list_workflow_files(root, project_root=root)
+
+            self.assertNotIn("pr-review.md", [r[0] for r in results])
 
     def test_config_kit_iterdir_exception_is_handled(self):
         from studio.commands.agents import _list_workflow_files
