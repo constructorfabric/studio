@@ -72,7 +72,7 @@ Instead, it projects its workflows and instructions into the host tool you use.
 In practice, `cfs generate-agents --agent <tool>` generates some combination of:
 
 - **workflow commands**
-  - entry points for `plan`, `generate`, `analyze`, and, where the host format can surface them cleanly, more specialized routes such as `help`, `explore`, `brainstorm`, `map`, and `auto-config`, alongside workspace flows and kit workflows
+  - entry points for concrete skills such as `cf-plan`, `cf-coding`, `cf-write-docs`, `cf-write-skills`, `cf-help`, `cf-explore`, `cf-brainstorm`, `cf-map`, and `cf-auto-config`, alongside workspace flows and kit workflows
   - advanced maintainer routes such as `write-skills` and `debug-prompts` when the host can expose prompt, skill, workflow, or agent-instruction authoring/debugging surfaces cleanly
 
 - **skill outputs**
@@ -161,20 +161,20 @@ That is one of the most important practical differences when using Constructor S
    - If you want upstream kit changes first, run `cfs kit update` or `cfs update --with-kits yes`.
    - If you are cleaning up a Cypilot migration, pass `--remove-cypilot yes`; normal regeneration keeps those legacy files.
 
-2. **Use `plan` before large work**
-   - Do not push a large ambiguous request straight into `generate`.
+2. **Use `cf-plan` before large work**
+   - Do not push a large ambiguous request straight into a concrete writing route.
 
-3. **Separate generation from review**
+3. **Separate writing from review**
    - If the host supports subagents, use them.
    - If it does not, use separate chats.
 
 4. **Use a fresh chat for a new task**
-   - Especially for generation and review.
+   - Especially for writing and review.
    - If you stay in the same session, clear the context first.
    - In tools such as Claude Code or Codex-style shells, `💬 /clear` is the practical reset.
 
-5. **Validate after generation**
-   - A successful generation step is not the end.
+5. **Validate after writing**
+   - A successful writing step is not the end.
    - Run validation, review, fix, and validate again.
 
 6. **Keep tasks bounded**
@@ -529,7 +529,7 @@ Its main practical upside is that it can still be valuable as a **multi-model ho
 
 **Fix**:
 
-- use `💬 cf plan: ...`
+- use `💬 cf-plan: ...`
 - execute phase by phase
 - validate after each meaningful step
 
@@ -550,8 +550,8 @@ One practical workaround is to use Constructor Studio to generate the **next-cha
 Example:
 
 - in the current chat:
-  - 💬 `cf analyze: generate a bounded prompt for a fresh Windsurf chat that should implement only phase 2 of the approved plan, list the exact files to inspect first, preserve @cpt-* markers, and end by running validation and summarizing any remaining issues`
-  - 💬 `cf analyze: generate a bounded prompt for a fresh Windsurf chat that should review the code changed for phase 2 against the approved FEATURE and DESIGN, check for missing @cpt-* markers, and return a structured list of issues by severity`
+  - 💬 `cf-write-skills: write a bounded prompt for a fresh Windsurf chat that should implement only phase 2 of the approved plan, list the exact files to inspect first, preserve @cpt-* markers, and end by running validation and summarizing any remaining issues`
+  - 💬 `cf-write-skills: write a bounded prompt for a fresh Windsurf chat that should review the code changed for phase 2 against the approved FEATURE and DESIGN, check for missing @cpt-* markers, and return a structured list of issues by severity`
 
 - then open a **new Windsurf chat** and paste the generated prompt there
 

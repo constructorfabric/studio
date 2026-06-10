@@ -18,8 +18,8 @@
   - [Code markers](#code-markers)
   - [ID search and navigation](#id-search-and-navigation)
 - [4. Artifact Templates, Rules, Checklists, Constraints](#4-artifact-templates-rules-checklists-constraints)
-  - [Templates — control artifact generation structure](#templates--control-artifact-generation-structure)
-  - [Rules — control generation and validation behavior](#rules--control-generation-and-validation-behavior)
+  - [Templates — control artifact structure](#templates--control-artifact-structure)
+  - [Rules — control authoring and validation behavior](#rules--control-authoring-and-validation-behavior)
   - [Checklists — control semantic review criteria](#checklists--control-semantic-review-criteria)
   - [Structural constraints — control heading structure, ID placement](#structural-constraints--control-heading-structure-id-placement)
 - [5. Code Generation and Review](#5-code-generation-and-review)
@@ -35,9 +35,9 @@
   - [Generic Git kit sources](#generic-git-kit-sources)
   - [Kit provenance and update behavior](#kit-provenance-and-update-behavior)
 - [8b. Language Policy (`cfs check-language`, `LANG001`)](#8b-language-policy-cfs-check-language-lang001)
-- [9. Dependency Map (`cfs map` / `cf map`)](#9-dependency-map-cfs-map--cf-map)
+- [9. Dependency Map (`cfs map` / `cf-map`)](#9-dependency-map-cfs-map--cf-map)
   - [CLI](#cli)
-  - [Chat workflow (`cf map`)](#chat-workflow-cf-map)
+  - [Chat workflow (`cf-map`)](#chat-workflow-cf-map)
   - [`md-map.toml` — categories and styling](#md-maptoml--categories-and-styling)
 - [10. Mirror Overrides (`cfs mirror`)](#10-mirror-overrides-cfs-mirror)
 - [Quick Reference — Terminal](#quick-reference--terminal)
@@ -55,7 +55,7 @@ This guide assumes you already know the README setup and workflow model.
 The canonical operating surface is:
 
 - 🖥 `cfs ...` in the terminal for setup, validation, kit management, and registry inspection
-- 💬 `cf plan: ...`, 💬 `cf generate: ...`, and 💬 `cf analyze: ...` in your AI coding tool chat for workflow-driven work
+- 💬 concrete skill routes such as `cf-plan: ...`, `cf-coding: ...`, `cf-sdlc-doc-feature: ...`, `cf-write-docs: ...`, `cf-write-skills: ...`, and `cf-map: ...` in your AI coding tool chat for workflow-driven work
 
 This guide is only about the configuration those workflows use.
 
@@ -107,26 +107,26 @@ Constructor Studio configuration has three main jobs. Use this table first, then
  
  Tell the agent which files to load for which tasks. This is the most impactful setting — it determines what context the agent sees for specific domains.
  
-- 💬 `cf generate: update config/AGENTS.md so authentication work always loads docs/security.md`
-- 💬 `cf generate: update config/AGENTS.md so testing tasks always load docs/test-patterns.md`
-- 💬 `cf generate: update config/AGENTS.md so PR review tasks always load docs/review-guidelines.md`
+- 💬 `cf-write-skills: update config/AGENTS.md so authentication work always loads docs/security.md`
+- 💬 `cf-write-skills: update config/AGENTS.md so testing tasks always load docs/test-patterns.md`
+- 💬 `cf-write-skills: update config/AGENTS.md so PR review tasks always load docs/review-guidelines.md`
 
 ### Skill instructions (`config/SKILL.md`)
  
  Always-on instructions loaded into the agent's context on every request. Use these for project-wide invariants that apply everywhere — API envelope format, error handling strategy, logging approach.
  
-- 💬 `cf generate: update config/SKILL.md so all REST endpoints return a JSON envelope with data, error, and meta`
-- 💬 `cf generate: update config/SKILL.md so print() is never used for logging and the logger module is required instead`
+- 💬 `cf-write-skills: update config/SKILL.md so all REST endpoints return a JSON envelope with data, error, and meta`
+- 💬 `cf-write-skills: update config/SKILL.md so print() is never used for logging and the logger module is required instead`
 
 ### Project rules (`config/rules/`)
  
  Per-topic convention files — conventions, architecture, testing, patterns. The agent loads relevant rules based on the task. Unlike skill instructions (always loaded), rules are topic-scoped and can be more detailed without bloating every request.
  
-- 💬 `cf generate: update config/rules/conventions.md so all function names use snake_case with no abbreviations`
-- 💬 `cf generate: update config/rules/architecture.md so services communicate through the message bus and not through direct imports`
-- 💬 `cf generate: update config/rules/testing.md so every public function requires at least one unit test`
-- 💬 `cf auto-config`
-- 💬 `cf generate: refine the inferred rules after auto-config for this project`
+- 💬 `cf-write-skills: update config/rules/conventions.md so all function names use snake_case with no abbreviations`
+- 💬 `cf-write-skills: update config/rules/architecture.md so services communicate through the message bus and not through direct imports`
+- 💬 `cf-write-skills: update config/rules/testing.md so every public function requires at least one unit test`
+- 💬 `cf-auto-config`
+- 💬 `cf-write-skills: refine the inferred rules after auto-config for this project`
 
 ---
 
@@ -169,10 +169,10 @@ ID kinds define **what types of identifiers** exist for each artifact. For examp
 | `headings` | Which constraint headings can contain these IDs |
 | `references.TARGET.coverage` | Whether cross-references to the target artifact are mandatory |
 
-- 💬 `cf generate: update FEATURE constraints.toml to add an api-endpoint ID kind with template cpt-{system}-api-{feature-slug}-{slug} and to_code = true`
-- 💬 `cf generate: update the algo ID kind in FEATURE constraints.toml so to_code = false`
-- 💬 `cf generate: update the dod ID kind in FEATURE constraints.toml so task = false and priority = false`
-- 💬 `cf generate: update constraints.toml so DESIGN component IDs must reference DECOMPOSITION with coverage = true`
+- 💬 `cf-sdlc-doc-feature: update FEATURE constraints.toml to add an api-endpoint ID kind with template cpt-{system}-api-{feature-slug}-{slug} and to_code = true`
+- 💬 `cf-sdlc-doc-feature: update the algo ID kind in FEATURE constraints.toml so to_code = false`
+- 💬 `cf-sdlc-doc-feature: update the dod ID kind in FEATURE constraints.toml so task = false and priority = false`
+- 💬 `cf-sdlc-doc-design: update constraints.toml so DESIGN component IDs must reference DECOMPOSITION with coverage = true`
 
 ### What `cfs validate` checks
 
@@ -231,8 +231,8 @@ def login_flow(request):
 
 Validation connects the chain: CDSL step `[x]` on `inst-validate` → code marker `@cpt-begin:...:inst-validate` must exist. Step `[ ]` on `inst-gen-token` → code marker must **not** exist yet. This gives you per-instruction implementation tracking.
 
-- 💬 `cf generate: create a FEATURE for user authentication` — generates a FEATURE with CDSL flows
-- 💬 `cf generate: implement code from cpt-myapp-feature-auth-flow-login for phase p1` — generates code with markers for all `[x]` p1 steps
+- 💬 `cf-sdlc-doc-feature: create a FEATURE for user authentication` — creates a FEATURE with CDSL flows
+- 💬 `cf-sdlc-implement: implement code from cpt-myapp-feature-auth-flow-login for phase p1` — writes code with markers for all `[x]` p1 steps
 
 ### Traceability mode (in `artifacts.toml`)
 
@@ -241,8 +241,8 @@ Controls whether code `@cpt-*` markers are validated for an artifact type. Chang
  - **`FULL`** — all checks above are active, including code marker validation
  - **`DOCS-ONLY`** — code markers are prohibited; only document-level ID and cross-reference checks apply
  
-- 💬 `cf generate: update artifacts.toml so FEATURE artifacts use DOCS-ONLY traceability`
-- 💬 `cf generate: update artifacts.toml so ADR artifacts use FULL traceability`
+- 💬 `cf-sdlc-doc-feature: update artifacts.toml so FEATURE artifacts use DOCS-ONLY traceability`
+- 💬 `cf-sdlc-doc-adr: update artifacts.toml so ADR artifacts use FULL traceability`
 
 ### Code markers
 
@@ -257,8 +257,8 @@ When `to_code = true`, implementation code must contain `@cpt-*` markers linking
     # @cpt-end:cpt-myapp-feature-auth-flow-login:p1:inst-validate    ← block end
  ```
  
-- 💬 `cf generate: implement code from cpt-myapp-feature-auth-flow-login with code traceability markers`
-- 💬 `cf analyze: report which IDs are still missing code markers`
+- 💬 `cf-sdlc-implement: implement code from cpt-myapp-feature-auth-flow-login with code traceability markers`
+- 💬 `cf-map: report which IDs are still missing code markers`
 
 - 🖥 `cfs validate` — validates artifact IDs, cross-references, and code markers
 - 🖥 `cfs spec-coverage` — shows which `to_code` IDs have/lack code markers
@@ -272,47 +272,47 @@ When `to_code = true`, implementation code must contain `@cpt-*` markers linking
 - 🖥 `cfs where-used --id cpt-myapp-fr-user-auth` — find all references to an ID
 - 🖥 `cfs get-content --id cpt-myapp-fr-user-auth` — print the content block defined under an ID (handy for AI prompts and quick inspection)
 
-- 💬 `cf analyze: find all IDs of kind flow in the auth feature`
-- 💬 `cf analyze: show which artifacts reference cpt-myapp-fr-user-auth`
-- 💬 `cf analyze: check cross-reference coverage for DESIGN components`
+- 💬 `cf-map: find all IDs of kind flow in the auth feature`
+- 💬 `cf-map: show which artifacts reference cpt-myapp-fr-user-auth`
+- 💬 `cf-map: check cross-reference coverage for DESIGN components`
 
 ---
 
 ## 4. Artifact Templates, Rules, Checklists, Constraints
  
- These resources control **how artifacts are generated and validated**. Templates define the structure, rules define generation/validation behavior, checklists define what the agent checks during review, and constraints define the structural schema.
+ These resources control **how artifacts are written and validated**. Templates define the structure, rules define authoring and validation behavior, checklists define what the agent checks during review, and constraints define the structural schema.
 
-**Why configure this**: your team may need extra sections (e.g., compliance, migration plan), stricter validation (e.g., every ADR must list alternatives), or domain-specific review criteria (e.g., check for GDPR implications). Editing these resources ensures every artifact follows your standards — whether generated by a junior developer or a senior architect.
+**Why configure this**: your team may need extra sections (e.g., compliance, migration plan), stricter validation (e.g., every ADR must list alternatives), or domain-specific review criteria (e.g., check for GDPR implications). Editing these resources ensures every artifact follows your standards, regardless of who writes it.
 
- **What it affects**: `cf generate: ...` uses templates when generating artifacts. `cfs validate` checks artifacts against constraints. The agent uses rules during generation and checklists during review.
+ **What it affects**: SDLC authoring routes use templates when writing artifacts. `cfs validate` checks artifacts against constraints. The agent uses rules during writing and checklists during review.
 
 Each artifact kind (ADR, PRD, DESIGN, FEATURE, etc.) has resource files. Paths are in `config/core.toml` under `[kits.sdlc.resources]`.
 
 - 🖥 `cfs resolve-vars --flat | grep adr` — find where ADR resources live
 
-### Templates — control artifact generation structure
+### Templates — control artifact structure
  
  Templates define what sections a new artifact gets. Edit these when the default structure doesn't match your process — e.g., your ADRs need a "Migration Plan", or your PRDs need a "Compliance" section.
  
-- 💬 `cf generate: update the ADR template so it adds a required ## Migration Plan section after ## Consequences`
-- 💬 `cf generate: update the PRD template so it adds a ## Compliance Requirements section`
-- 💬 `cf generate: update the FEATURE template so it adds a ## Performance Targets section`
+- 💬 `cf-sdlc-doc-adr: update the ADR template so it adds a required ## Migration Plan section after ## Consequences`
+- 💬 `cf-sdlc-doc-prd: update the PRD template so it adds a ## Compliance Requirements section`
+- 💬 `cf-sdlc-doc-feature: update the FEATURE template so it adds a ## Performance Targets section`
 
-### Rules — control generation and validation behavior
+### Rules — control authoring and validation behavior
  
- Rules tell the agent what to enforce when generating or validating an artifact. They are more specific than templates — e.g., "every flow must have error handling" or "components must list dependencies".
+ Rules tell the agent what to enforce when writing or validating an artifact. They are more specific than templates — e.g., "every flow must have error handling" or "components must list dependencies".
  
-- 💬 `cf generate: update ADR rules so the Migration Plan section must contain at least one checklist item`
-- 💬 `cf generate: update FEATURE rules so every flow must have at least one error-handling path`
-- 💬 `cf generate: update DESIGN rules so components must list all dependencies explicitly`
+- 💬 `cf-sdlc-doc-adr: update ADR rules so the Migration Plan section must contain at least one checklist item`
+- 💬 `cf-sdlc-doc-feature: update FEATURE rules so every flow must have at least one error-handling path`
+- 💬 `cf-sdlc-doc-design: update DESIGN rules so components must list all dependencies explicitly`
 
 ### Checklists — control semantic review criteria
  
- Checklists are used by the agent during artifact review (`cf analyze`). They define what the agent should verify beyond structural constraints — business logic, completeness, consistency.
+ Checklists are used by the agent during route-specific artifact review. They define what the agent should verify beyond structural constraints — business logic, completeness, consistency.
  
-- 💬 `cf generate: update the DESIGN review checklist so it verifies timeout and retry configuration for external API calls`
-- 💬 `cf generate: update the FEATURE review checklist so every DoD item is checked for a priority marker`
-- 💬 `cf generate: update the ADR review checklist so alternatives must be evaluated with pros and cons`
+- 💬 `cf-sdlc-doc-design: update the DESIGN review checklist so it verifies timeout and retry configuration for external API calls`
+- 💬 `cf-sdlc-doc-feature: update the FEATURE review checklist so every DoD item is checked for a priority marker`
+- 💬 `cf-sdlc-doc-adr: update the ADR review checklist so alternatives must be evaluated with pros and cons`
 
 ### Structural constraints — control heading structure, ID placement
  
@@ -320,8 +320,8 @@ Each artifact kind (ADR, PRD, DESIGN, FEATURE, etc.) has resource files. Paths a
  
  Each heading entry in `constraints.toml` needs `id`, `level`, `required`, `pattern`.
  
-- 💬 `cf generate: update ADR constraints.toml so a required level-2 heading Migration Plan with id adr-migration-plan is enforced`
-- 💬 `cf generate: update FEATURE constraints.toml so ## Performance Targets is optional instead of required`
+- 💬 `cf-sdlc-doc-adr: update ADR constraints.toml so a required level-2 heading Migration Plan with id adr-migration-plan is enforced`
+- 💬 `cf-sdlc-doc-feature: update FEATURE constraints.toml so ## Performance Targets is optional instead of required`
 
 - 🖥 `cfs validate-kits` — validate constraint definitions
 - 🖥 `cfs validate` — validate artifacts against constraints
@@ -330,7 +330,7 @@ Each artifact kind (ADR, PRD, DESIGN, FEATURE, etc.) has resource files. Paths a
 
 ## 5. Code Generation and Review
 
-These settings control **how the agent writes and reviews code**. Code rules apply when the agent generates or modifies source files. The code review checklist applies when the agent reviews code (e.g., during `cf analyze` on a source file).
+These settings control **how the agent writes and reviews code**. Code rules apply when the agent writes or modifies source files. The code review checklist applies when the agent reviews code (for example, during `cf-coding` on a source file).
 
 **Why configure this**: prevent common mistakes before they happen. If your team has had incidents with SQL injection, add a rule forbidding string interpolation in queries. If secrets have leaked, add a review checklist item. These rules act as a persistent safety net that applies to every code change.
 
@@ -338,32 +338,32 @@ These settings control **how the agent writes and reviews code**. Code rules app
  
  Apply when the agent writes or modifies source code. Use these for security policies, style enforcement, and antipattern prevention.
  
-- 💬 `cf generate: update codebase rules so database queries always use parameterized statements and never string interpolation`
-- 💬 `cf generate: update codebase rules so async functions require explicit timeout handling`
-- 💬 `cf generate: update codebase rules so internal modules are never imported through relative paths`
+- 💬 `cf-coding: update codebase rules so database queries always use parameterized statements and never string interpolation`
+- 💬 `cf-coding: update codebase rules so async functions require explicit timeout handling`
+- 💬 `cf-coding: update codebase rules so internal modules are never imported through relative paths`
 
 ### Code review checklist
  
  Used when the agent reviews code. Each item becomes a check the agent performs and reports on.
  
-- 💬 `cf generate: update the code review checklist so it verifies no secrets or API keys are hardcoded`
-- 💬 `cf generate: update the code review checklist so all new public functions are checked for docstrings`
-- 💬 `cf generate: update the code review checklist so error messages are checked for correlation IDs`
+- 💬 `cf-coding: update the code review checklist so it verifies no secrets or API keys are hardcoded`
+- 💬 `cf-coding: update the code review checklist so all new public functions are checked for docstrings`
+- 💬 `cf-coding: update the code review checklist so error messages are checked for correlation IDs`
 
 ---
 
 ## 6. Workflow customization
 
- Workflow resources are **configuration inputs for the canonical `plan`, `generate`, and `analyze` workflows**. They do not replace the workflow model from the README; they customize how those workflows behave for your installed kits and project rules.
+ Workflow resources are **configuration inputs for specific `cf-*` skills**. They do not replace the workflow model from the README; they customize how those skills behave for your installed kits and project rules.
 
 **Why configure this**: if the default workflow misses a step your team cares about (e.g., checking for migration files, asking about backward compatibility), you can add it. If a step is unnecessary for your project, you can remove it.
 
- **What it affects**: every `cf plan: ...`, `cf generate: ...`, and `cf analyze: ...` request uses these workflow resources when the active kit or project configuration routes to them. Changes here affect the agent's behavior globally for that workflow type.
+ **What it affects**: skill requests such as `cf-plan: ...`, `cf-write-skills: ...`, `cf-coding: ...`, and SDLC routes use these workflow resources when the active kit or project configuration routes to them. Changes here affect the agent's behavior globally for that skill type.
 
  Paths are in `core.toml` as `kits.sdlc.resources.workflow_*`.
  
-- 💬 `cf generate: update the PR review workflow so it checks whether migration files changed after fetching the diff`
-- 💬 `cf generate: update the generate workflow so it always asks about backward compatibility before writing`
+- 💬 `cf-write-skills: update the PR review workflow so it checks whether migration files changed after fetching the diff`
+- 💬 `cf-write-skills: update the coding workflow resource so it always asks about backward compatibility before writing`
 
 ---
 
@@ -381,7 +381,7 @@ It has three layers:
  
  A system is a top-level grouping with a `name`, `slug`, and `kit`. The slug becomes part of every ID (`cpt-{slug}-...`). Most projects have one system; monorepos may have several.
  
-- 💬 `cf generate: update artifacts.toml to add a new billing system with slug billing, kit sdlc, and artifacts rooted at billing/architecture`
+- 💬 `cf-auto-config: update the artifact registry to add a new billing system with slug billing, kit sdlc, and artifacts rooted at billing/architecture`
 
 ### Autodetect patterns
 
@@ -395,13 +395,13 @@ Each artifact pattern has:
 | `traceability` | `FULL` (code markers validated) or `DOCS-ONLY` (no code markers) |
 | `required` | Whether the artifact must exist |
 
-- 💬 `cf generate: update artifacts.toml so FEATURE autodetect uses pattern features/*.md with FULL traceability and required = false`
-- 💬 `cf generate: update artifacts.toml so ADR autodetect uses pattern decisions/**/*.md`
-- 💬 `cf generate: update artifacts.toml so PRD autodetect sets required = true`
+- 💬 `cf-sdlc-doc-feature: update artifacts.toml so FEATURE autodetect uses pattern features/*.md with FULL traceability and required = false`
+- 💬 `cf-sdlc-doc-adr: update artifacts.toml so ADR autodetect uses pattern decisions/**/*.md`
+- 💬 `cf-sdlc-doc-prd: update artifacts.toml so PRD autodetect sets required = true`
 
  You can also register a specific artifact manually (not via autodetect):
  
-- 💬 `cf generate: update artifacts.toml to register Execution Plans at architecture/features/execution-plans.md as FEATURE with DOCS-ONLY traceability`
+- 💬 `cf-sdlc-doc-feature: update artifacts.toml to register Execution Plans at architecture/features/execution-plans.md as FEATURE with DOCS-ONLY traceability`
 
 ### Codebase entries
 
@@ -415,15 +415,15 @@ Each codebase entry tells Constructor Studio where source code lives and how to 
 | `singleLineComments` | Comment prefixes, e.g. `["#"]`, `["//"]` |
 | `multiLineComments` | Multi-line comment delimiters, e.g. `[{start = '"""', end = '"""'}]` |
 
-- 💬 `cf generate: update artifacts.toml to add a Frontend codebase at web/src using TypeScript extensions and // comments`
-- 💬 `cf generate: update artifacts.toml to add a Mobile codebase at mobile/lib using Dart extensions and // comments`
-- 💬 `cf generate: update artifacts.toml so the Backend codebase includes Python triple-quote multiline comments`
+- 💬 `cf-coding: update artifacts.toml to add a Frontend codebase at web/src using TypeScript extensions and // comments`
+- 💬 `cf-coding: update artifacts.toml to add a Mobile codebase at mobile/lib using Dart extensions and // comments`
+- 💬 `cf-coding: update artifacts.toml so the Backend codebase includes Python triple-quote multiline comments`
 
 ### Ignore patterns
  
  Exclude files from validation. Use this for test fixtures with synthetic `@cpt-*` markers, generated files, or legacy code you don't want validated yet.
  
-- 💬 `cf generate: update artifacts.toml to ignore tests/test_fixtures/** with reason synthetic test data`
+- 💬 `cf-coding: update artifacts.toml to ignore tests/test_fixtures/** with reason synthetic test data`
 
 - 🖥 `cfs validate` — validate registry and all artifacts
 
@@ -515,13 +515,13 @@ ignore_paths              = ["translations/**/*.md"]
 
 ---
 
-## 9. Dependency Map (`cfs map` / `cf map`)
+## 9. Dependency Map (`cfs map` / `cf-map`)
 
 `cfs map` builds an interactive **markdown ↔ source dependency map** by scanning links, code references, and `@cpt-*` identifiers across the project. It is the fastest way to see how artifacts, rules, workflows, and code wire together — and where the wiring is broken (phantom IDs, dangling links, uncategorized files).
 
 **Why configure this**: the default scan reads every Markdown file under the project root and tags nodes by path. With a project-local `md-map.toml` you control which directories become named categories, what colors they use in the rendered graph, and whether files outside those categories are still shown.
 
-**What it affects**: `cfs map` output (`md-map.html`, `md-map.json`) and the `cf map: ...` chat workflow. Some hosts may also expose `/cf-map` as a slash-command alias. The map is read-only: it never edits artifacts or code.
+**What it affects**: `cfs map` output (`md-map.html`, `md-map.json`) and the `cf-map: ...` chat workflow. Some hosts may also expose `/cf-map` as a slash-command alias. The map is read-only: it never edits artifacts or code.
 
 ### CLI
 
@@ -534,12 +534,12 @@ ignore_paths              = ["translations/**/*.md"]
 - 🖥 `cfs map --inline-data` — embed graph data inside the HTML (self-contained file)
 - 🖥 `cfs map --include-adapter` — also walk the `{cf-studio-path}/` adapter dir so links to `{cf-studio-path}/...` resolve as nodes
 
-### Chat workflow (`cf map`)
+### Chat workflow (`cf-map`)
 
-- 💬 `cf map: render the dependency map` — runs the full four-phase workflow (pre-flight → configure → generate → validate)
-- 💬 `cf map: find dangling references` — routes into `analyze` with the map as input
-- 💬 `cf map: export the graph as json`
-- 💬 `cf map: help me configure md-map.toml` — interactive config-assist phase
+- 💬 `cf-map: render the dependency map` — runs the full four-phase workflow (pre-flight → configure → generate → validate)
+- 💬 `cf-map: find dangling references` — reviews the rendered graph for broken references
+- 💬 `cf-map: export the graph as json`
+- 💬 `cf-map: help me configure md-map.toml` — interactive config-assist phase
 
 ### `md-map.toml` — categories and styling
 
@@ -571,9 +571,9 @@ background = "#eff6ff"
 
 When `md-map.toml` is loaded, the renderer hides the synthetic `uncategorized` bucket by default; toggle via the config-assist phase prompt `show_uncategorized`.
 
-- 💬 `cf map: add a new category named "kits" rooted at .cf-studio/config/kits/**`
-- 💬 `cf map: change the workflows category color to #14b8a6`
-- 💬 `cf generate: update md-map.toml so .github/agents/** is grouped under a copilot-agents category`
+- 💬 `cf-map: add a new category named "kits" rooted at .cf-studio/config/kits/**`
+- 💬 `cf-map: change the workflows category color to #14b8a6`
+- 💬 `cf-write-skills: update md-map.toml so .github/agents/** is grouped under a copilot-agents category`
 
 ---
 
@@ -657,32 +657,32 @@ cfs mirror clear --yes
  | Category | Prompt |
  |---|---|
 | **Agent behavior** | |
-| Auto-config project rules | `cf auto-config` |
-| Navigation rule | `cf generate: update config/AGENTS.md so <task type> always loads <file>` |
-| Skill instruction | `cf generate: update config/SKILL.md so <instruction> always applies` |
-| Topic rule | `cf generate: update config/rules/<topic>.md so <rule> applies` |
+| Auto-config project rules | `cf-auto-config` |
+| Navigation rule | `cf-write-skills: update config/AGENTS.md so <task type> always loads <file>` |
+| Skill instruction | `cf-write-skills: update config/SKILL.md so <instruction> always applies` |
+| Topic rule | `cf-write-skills: update config/rules/<topic>.md so <rule> applies` |
 | **Identifiers and traceability** | |
-| Add ID kind | `cf generate: update <KIND> constraints.toml to add a new ID kind "<kind>" with template "cpt-{system}-<kind>-{slug}"` |
-| Change to_code | `cf generate: update <KIND> constraints.toml so "<kind>" uses to_code = <true/false>` |
-| Add cross-ref rule | `cf generate: update constraints.toml so <KIND> <kind> IDs must reference <TARGET> with coverage = true` |
-| Change traceability | `cf generate: update artifacts.toml so <KIND> artifacts use <FULL/DOCS-ONLY> traceability` |
-| Find missing markers | `cf analyze: report which IDs are missing code markers` |
+| Add FEATURE ID kind | `cf-sdlc-doc-feature: update FEATURE constraints.toml to add a new ID kind "<kind>" with template "cpt-{system}-<kind>-{slug}"` |
+| Change FEATURE to_code | `cf-sdlc-doc-feature: update FEATURE constraints.toml so "<kind>" uses to_code = <true/false>` |
+| Add DESIGN cross-ref rule | `cf-sdlc-doc-design: update constraints.toml so DESIGN component IDs must reference DECOMPOSITION with coverage = true` |
+| Change FEATURE traceability | `cf-sdlc-doc-feature: update artifacts.toml so FEATURE artifacts use <FULL/DOCS-ONLY> traceability` |
+| Find missing markers | `cf-map: report which IDs are missing code markers` |
 | **Artifact resources** | |
-| Edit template | `cf generate: update the <KIND> template so it adds <heading or section>` |
-| Edit rules | `cf generate: update <KIND> rules so <rule> is enforced` |
-| Edit checklist | `cf generate: update the <KIND> review checklist so it verifies <criteria>` |
-| Edit constraints | `cf generate: update <KIND> constraints.toml so <heading or requirement> is enforced` |
+| Edit ADR template | `cf-sdlc-doc-adr: update the ADR template so it adds <heading or section>` |
+| Edit FEATURE rules | `cf-sdlc-doc-feature: update FEATURE rules so <rule> is enforced` |
+| Edit DESIGN checklist | `cf-sdlc-doc-design: update the DESIGN review checklist so it verifies <criteria>` |
+| Edit FEATURE constraints | `cf-sdlc-doc-feature: update FEATURE constraints.toml so <heading or requirement> is enforced` |
 | **Code resources** | |
-| Code rule | `cf generate: update codebase rules so <rule> is enforced` |
-| Code checklist | `cf generate: update the code review checklist so it verifies <criteria>` |
+| Code rule | `cf-coding: update codebase rules so <rule> is enforced` |
+| Code checklist | `cf-coding: update the code review checklist so it verifies <criteria>` |
 | **Registry** | |
-| Add system | `cf generate: update artifacts.toml to add a new system "<name>" with slug "<slug>" and kit "<kit>"` |
-| Add autodetect | `cf generate: update artifacts.toml so <KIND> autodetect uses pattern "<glob>" with traceability <FULL/DOCS-ONLY>` |
-| Add manual artifact | `cf generate: update artifacts.toml to register "<name>" at <path> as kind <KIND>` |
-| Add codebase | `cf generate: update artifacts.toml to add a codebase at <path> with the right extensions and comment syntax` |
-| Add ignore pattern | `cf generate: update artifacts.toml to ignore <glob> with reason "<reason>"` |
+| Add system | `cf-auto-config: update the artifact registry to add a new system "<name>" with slug "<slug>" and kit "<kit>"` |
+| Add FEATURE autodetect | `cf-sdlc-doc-feature: update artifacts.toml so FEATURE autodetect uses pattern "<glob>" with traceability <FULL/DOCS-ONLY>` |
+| Add FEATURE manual artifact | `cf-sdlc-doc-feature: update artifacts.toml to register "<name>" at <path> as kind FEATURE` |
+| Add codebase | `cf-coding: update artifacts.toml to add a codebase at <path> with the right extensions and comment syntax` |
+| Add ignore pattern | `cf-coding: update artifacts.toml to ignore <glob> with reason "<reason>"` |
 | **Workflow resources** | |
-| Update workflow resource | `cf generate: update the <workflow> workflow resource so it enforces <behavior>` |
+| Update workflow resource | `cf-write-skills: update the <workflow> workflow resource so it enforces <behavior>` |
 
 ---
 

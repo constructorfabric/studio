@@ -91,10 +91,10 @@ In the current repository-oriented distribution, teams usually encounter and tou
 
 | Surface | Form | Role |
 |---|---|---|
-| Guided chat entry | `cf help` | Fastest way to get oriented inside a repo when you are new to Constructor Studio or unsure which route to use |
-| Core workflow chat surface | `cf plan: ...`, `cf generate: ...`, `cf analyze: ...` | Main chat entry for bounded planning, creation/update work, and validation/review |
-| Specialized chat routes | `cf explore: ...`, `cf brainstorm: ...`, `cf auto-config`, `cf map: ...` | Discovery, ideation, project inference/setup, and dependency-graph tasks |
-| Advanced maintainer routes | `cf write-skills: ...`, `cf debug-prompts` | Prompt, skill, workflow, and agent-instruction authoring or step-through debugging |
+| Guided chat entry | `cf-help` | Fastest way to get oriented inside a repo when you are new to Constructor Studio or unsure which route to use |
+| Core workflow chat surface | `cf-plan: ...`, `cf-coding: ...`, `cf-write-docs: ...` | Main chat entry for bounded planning, source-code work, and documentation work |
+| Specialized chat routes | `cf-explore: ...`, `cf-brainstorm: ...`, `cf-auto-config`, `cf-explain: ...`, `cf-map: ...` | Discovery, ideation, project inference/setup, walkthroughs, and dependency-graph tasks |
+| Advanced maintainer routes | `cf-write-skills: ...`, `cf-debug-prompts` | Prompt, skill, workflow, and agent-instruction authoring or step-through debugging |
 | Deterministic CLI | `cfs <command>` | Setup, validation, health checks, agent regeneration, delegation, map rendering, and repeatable local or CI checks |
 | Generated AI coding tool integration files | generated files in the repository | Connect the repository or workspace to supported tools without manual setup in each host |
 | Optional kit content | installed kit content | Add domain-specific templates, rules, workflows, and validation material |
@@ -286,40 +286,41 @@ This is an operating model, not a guarantee. It does not replace human approval,
 
 ## Workflow model
 
-Use `cf ...` in AI coding tool chat and `cfs ...` in the terminal.
+Use concrete `cf-*` skills in AI coding tool chat and `cfs ...` in the terminal.
 
-Constructor Studio has three core workflows, plus specialized chat routes and CLI utilities around them. Each core workflow has a portable chat form and, in some hosts, a matching slash-command alias.
+Constructor Studio exposes concrete `cf-*` skill routes plus CLI utilities around them. Routes with a request payload use a portable chat form and, in some hosts, may also have a matching slash-command alias.
 
 | Workflow | Portable chat form | Matching alias in some hosts | Use it when |
 |---|---|---|---|
-| Plan | `cf plan: ...` | `/cf-plan` | the task is too large, risky, or context-heavy for one conversation |
-| Generate | `cf generate: ...` | `/cf-generate` | you want to create, update, implement, or configure something |
-| Analyze | `cf analyze: ...` | `/cf-analyze` | you want to validate, review, inspect, compare, or audit |
+| Plan | `cf-plan: ...` | `/cf-plan` | the task is too large, risky, or context-heavy for one conversation |
+| Code | `cf-coding: ...` | host-specific skill alias, when available | you want to author, implement, refactor, fix, or review source code |
+| Docs | `cf-write-docs: ...` | host-specific skill alias, when available | you want to write, revise, or review documentation, guides, reports, or READMEs |
+| Write skills | `cf-write-skills: ...` | host-specific skill alias, when available | you want to author or review prompts, skills, workflows, agents, or instruction files |
 
-The portable `cf <workflow>: ...` form is the best default. Slash commands are host-specific aliases, not separate capabilities.
+The portable `cf-<skill>: ...` form is the best default. Slash commands are host-specific aliases, not separate capabilities.
 
-`plan`, `generate`, and `analyze` are reusable workflow modes, not a fixed mandatory sequence. They define how work is framed; the next section shows one common delivery order in which teams often combine them.
+`plan` is the general sequencing workflow. Concrete work should use the specific skill route that matches the target: `cf-coding`, `cf-write-docs`, `cf-write-skills`, `cf-explain`, `cf-map`, `cf-auto-config`, or the SDLC routes such as `cf-sdlc-doc-feature` and `cf-sdlc-implement`.
 
 Specialized chat routes build on that same model:
 
 | Capability | Portable chat form | Use it when |
 |---|---|---|
-| Help | `cf help` | you want guided onboarding to Constructor Studio itself before picking a workflow |
-| Explore | `cf explore: ...` | you need project or artifact discovery before planning, generating, or reviewing |
-| Brainstorm | `cf brainstorm: ...` | the option space is still open and you want structured ideation before locking scope |
-| Brave New World | `cf brave-new-world` | you want Studio to auto-select safe, reversible workflow choices and still ask for risky ones |
-| Auto-config | `cf auto-config` | you want Constructor Studio to scan a project and infer or refresh rules/config for brownfield work |
-| Code | `cf coding: ...` | you are authoring, implementing, refactoring, fixing, or reviewing source code with code-quality and bug-finding checks |
-| Docs | `cf write-docs: ...` | you are writing, revising, or reviewing documentation, guides, reports, READMEs, or other project documents |
-| Explain | `cf analyze: explain <target>` | you want an interactive walkthrough, onboarding session, or teaching flow instead of defect review |
-| Map | `cf map: ...` | you want to render or inspect the dependency graph and route follow-up analysis through the map |
+| Help | `cf-help` | you want guided onboarding to Constructor Studio itself before picking a workflow |
+| Explore | `cf-explore: ...` | you need project or artifact discovery before planning, coding, documenting, or reviewing |
+| Brainstorm | `cf-brainstorm: ...` | the option space is still open and you want structured ideation before locking scope |
+| Brave New World | `cf-brave-new-world` | you want Studio to auto-select safe, reversible workflow choices and still ask for risky ones |
+| Auto-config | `cf-auto-config` | you want Constructor Studio to scan a project and infer or refresh rules/config for brownfield work |
+| Code | `cf-coding: ...` | you are authoring, implementing, refactoring, fixing, or reviewing source code with code-quality and bug-finding checks |
+| Docs | `cf-write-docs: ...` | you are writing, revising, or reviewing documentation, guides, reports, READMEs, or other project documents |
+| Explain | `cf-explain: <target>` | you want an interactive walkthrough, onboarding session, or teaching flow instead of defect review |
+| Map | `cf-map: ...` | you want to render or inspect the dependency graph and route follow-up analysis through the map |
 
 Advanced maintainer routes:
 
 | Capability | Portable chat form | Use it when |
 |---|---|---|
-| Write skills | `cf write-skills: ...` | you are authoring, transforming, or reviewing prompt, workflow, skill, or agent instruction files |
-| Debug prompts | `cf debug-prompts` | you want to step through a skill, workflow, or prompt execution in-session |
+| Write skills | `cf-write-skills: ...` | you are authoring, transforming, or reviewing prompt, workflow, skill, or agent instruction files |
+| Debug prompts | `cf-debug-prompts` | you want to step through a skill, workflow, or prompt execution in-session |
 
 Common `cfs` utilities around those chat workflows:
 
@@ -334,7 +335,7 @@ Common `cfs` utilities around those chat workflows:
 
 ### Brave New World autonomous defaults
 
-`cf brave-new-world` enables an optional session overlay that reduces repeated low-risk questions. When enabled, Studio may choose a visible workflow option for you only when that option is non-destructive and reversible.
+`cf-brave-new-world` enables an optional session overlay that reduces repeated low-risk questions. When enabled, Studio may choose a visible workflow option for you only when that option is non-destructive and reversible.
 
 It does **not** approve risky actions. Studio still asks before destructive file operations, dependency installs or updates, network or permission escalation, credential handling, deployment, publication, git staging, commits, pushes, or choices that need fresh human judgment.
 
@@ -352,7 +353,7 @@ Set the level in `{cf-studio-path}/config/core.toml` (`{cf-studio-path}` is your
 
 ### Explain mode (storytelling companion)
 
-`analyze` has an interactive **storytelling** companion that teaches you about an artifact, PR, or codebase region at a pace you control. Start it with **`cf analyze: explain <target>`**. Any explain-style verb works: `walk me through`, `teach me`, `present`, `onboard me to`, `quiz me on`, or `explain --resume {session-id}`.
+`cf-explain` is the interactive **storytelling** route that teaches you about an artifact, PR, or codebase region at a pace you control. Start it with **`cf-explain: <target>`**. Any explain-style verb works: `walk me through`, `teach me`, `present`, `onboard me to`, `quiz me on`, or `explain --resume {session-id}`.
 
 It first asks you to pick one of six modes:
 
@@ -365,9 +366,9 @@ It first asks you to pick one of six modes:
 
 It then delivers the content in small, no-scroll portions. Navigation is simple (Next / Deeper / Lateral / Recap / Ask / Wrap), with audience-adapted diagrams and clickable source links. You choose where each output goes: chat-only, save-to-file, or post-to-resource.
 
-You can also produce a hand-off-able **package** (READMEs, training material, guides) instead of a chat session. Use `cf generate: explain package for <target>`, `cf generate: make a README from <target>`, or `cf generate: build onboarding doc set for <target>`. It writes a navigable folder of Markdown files under `{cf-studio-path}/.cache/explain/packages/`.
+You can also produce a hand-off-able **package** (READMEs, training material, guides) instead of a chat session. Use `cf-write-docs: make an explain package for <target>`, `cf-write-docs: make a README from <target>`, or `cf-write-docs: build onboarding docs for <target>`. It writes a navigable folder of Markdown files under `{cf-studio-path}/.cache/explain/packages/`.
 
-Plain `cf analyze: review my changes` keeps the standard analyze contract (defect-finding with `Fix Prompt` / `Plan Prompt`); explain mode requires explicit explain-family verbs.
+Plain review requests should use the route that matches the target, such as `cf-coding: review my changes` for source code or `cf-write-docs: review this guide` for documentation. Explain mode requires explicit explain-family verbs.
 
 Full methodology spec: [`requirements/storytelling.md`](requirements/storytelling.md) (router) + three always-loaded modules ([`storytelling-phases.md`](requirements/storytelling-phases.md), [`storytelling-modes.md`](requirements/storytelling-modes.md), [`storytelling-preferences.md`](requirements/storytelling-preferences.md)) + one conditional module ([`storytelling-export.md`](requirements/storytelling-export.md), loaded only when `EXPLAIN_EXPORT=true`).
 
@@ -377,14 +378,14 @@ For default routing priorities and detailed workflow-choice advice, use **[guide
 
 This is one common order for combining the workflows when an early idea or PoC needs to become a production-ready change without losing scope or design intent.
 
-Not every task starts at `plan`. In practice, many teams first use `cf help`, `cf explore: ...`, `cf brainstorm: ...`, or `cf auto-config` to get into the right lane before they plan, generate, or analyze.
+Not every task starts at `plan`. In practice, many teams first use `cf-help`, `cf-explore: ...`, `cf-brainstorm: ...`, or `cf-auto-config` to get into the right lane before they plan, code, write docs, or run a specific review route.
 
 In practice, teams usually move through four visible stages:
 
 1. **Approve the requirement and design** so the change starts from explicit scope and constraints.
 2. **Use `plan` to split larger work into bounded phases** before execution sprawls across one long chat.
-3. **Use `generate` within approved scope** so implementation stays tied to the intended change.
-4. **Use `analyze` and deterministic checks before merge** so review sees both the implementation and its validation surface.
+3. **Use a specific writing route within approved scope** such as `cf-coding`, `cf-write-docs`, `cf-write-skills`, or `cf-sdlc-implement` so output stays tied to the intended change.
+4. **Use route-specific review and deterministic checks before merge** so review sees both the implementation and its validation surface.
 
 ```mermaid
 flowchart LR
@@ -421,7 +422,7 @@ Constructor Studio works across multiple AI coding tools through the same portab
   1. **Pick one real repository and one narrow real input** such as a requirement, design note, or change request that should produce a bounded, reviewable output.
   2. **Complete the one-time setup for that repository** using the installation and setup reference below so the repo is initialized and ready for Constructor Studio.
   3. **Activate Constructor Studio in chat** with 💬 `cf` in the AI coding tool attached to that repository.
-  4. **Run one focused request** with 💬 `cf analyze: ...` when you want an inspectable assessment of the input, or 💬 `cf plan: ...` when you want bounded execution steps before implementation.
+  4. **Run one focused request** with 💬 `cf-explain: ...`, 💬 `cf-coding: review ...`, or 💬 `cf-write-docs: review ...` when you want an inspectable assessment of the input, or 💬 `cf-plan: ...` when you want bounded execution steps before implementation.
  
 ### Validation checkpoint
  
@@ -463,7 +464,7 @@ Constructor Studio works across multiple AI coding tools through the same portab
   - ensure Python 3.11+ is available for the repository-local scripts and CI
   - clone or open the repository in your supported AI coding tool
   - activate Constructor Studio in chat with 💬 `cf`
-  - send one focused request with 💬 `cf help`, 💬 `cf explore: ...`, 💬 `cf analyze: ...`, or 💬 `cf plan: ...`
+  - send one focused request with 💬 `cf-help`, 💬 `cf-explore: ...`, 💬 `cf-explain: ...`, 💬 `cf-coding: ...`, 💬 `cf-write-docs: ...`, or 💬 `cf-plan: ...`
 
  - **If the repository does not yet include Constructor Studio**
    - install `cfs` globally if you want to bootstrap the repository yourself
@@ -503,7 +504,7 @@ Constructor Studio works across multiple AI coding tools through the same portab
     cf
     ```
 
-4. **Run one focused request** with 💬 `cf help`, 💬 `cf explore: ...`, 💬 `cf analyze: ...`, or 💬 `cf plan: ...`
+4. **Run one focused request** with 💬 `cf-help`, 💬 `cf-explore: ...`, 💬 `cf-explain: ...`, 💬 `cf-coding: ...`, 💬 `cf-write-docs: ...`, or 💬 `cf-plan: ...`
 
 For detailed host-specific setup, troubleshooting, and operational walkthroughs, use **[guides/AGENT-TOOLS.md](guides/AGENT-TOOLS.md)** and **[guides/USAGE-GUIDE.md](guides/USAGE-GUIDE.md)**.
 

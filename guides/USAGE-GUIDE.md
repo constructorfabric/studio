@@ -25,9 +25,9 @@
   - [Use `help` when](#use-help-when)
   - [Use `explore` when](#use-explore-when)
   - [Use `auto-config` when](#use-auto-config-when)
-  - [Use `generate` when](#use-generate-when)
-  - [Use `analyze` when](#use-analyze-when)
-  - [What `analyze` is for in practice](#what-analyze-is-for-in-practice)
+  - [Use `coding`, `write-docs`, `write-skills`, or SDLC routes when](#use-coding-write-docs-write-skills-or-sdlc-routes-when)
+  - [Use route-specific review when](#use-route-specific-review-when)
+  - [What route-specific review is for in practice](#what-route-specific-review-is-for-in-practice)
   - [Use `brainstorm` when](#use-brainstorm-when)
   - [Use `brave-new-world` when](#use-brave-new-world-when)
   - [Use `write-skills` when](#use-write-skills-when)
@@ -77,7 +77,7 @@
   - [Managing large inputs (`cfs chunk-input`)](#managing-large-inputs-cfs-chunk-input)
 - [15. Quick decision checklist](#15-quick-decision-checklist)
 - [16. Mirror overrides](#16-mirror-overrides)
-- [17. Dependency map (`cfs map` / `cf map`)](#17-dependency-map-cfs-map--cf-map)
+- [17. Dependency map (`cfs map` / `cf-map`)](#17-dependency-map-cfs-map--cf-map)
   - [Why use it](#why-use-it)
   - [When to use it](#when-to-use-it)
   - [Typical commands](#typical-commands-1)
@@ -98,7 +98,7 @@ This guide is for the practical questions that come up after onboarding:
 
 - **What should I do in this situation?**
 - **What should I avoid?**
-- **When should I use `help`, `explore`, `auto-config`, `plan`, `generate`, or `analyze`?**
+- **When should I use `cf-help`, `cf-explore`, `cf-auto-config`, `cf-plan`, `cf-coding`, `cf-write-docs`, `cf-write-skills`, or an SDLC skill?**
 - **When is Constructor Studio useful, and when is it just overhead?**
 - **How do I get the benefits without using the product badly?**
 
@@ -119,10 +119,10 @@ For the short version, use the setup section in **[README](../README.md)** first
 ### One easy operating rule
 
 - use `cfs` in your terminal for setup, validation, updates, and workspace commands
-- use `cf ...` in your AI coding tool chat for `help`, `explore`, `auto-config`, `plan`, `generate`, `analyze`, and specialized routes such as `brainstorm` and `map`
-- do **not** run `cf ...` in the terminal
-- use the portable `cf <workflow>: ...` form as your default when a workflow takes a request payload; some chat routes are command-like prompts such as `cf help` and `cf auto-config`
-- use `cf brave-new-world` only when you want Studio to auto-select safe, reversible workflow choices during the current session
+- use concrete `cf-*` skills in your AI coding tool chat for `help`, `explore`, `auto-config`, `plan`, and specific routes such as `coding`, `write-docs`, `write-skills`, `explain`, `brainstorm`, and `map`
+- do **not** run concrete `cf-*` skills in the terminal
+- use the portable `cf-<skill>: ...` form as your default when a route takes a request payload; some chat routes are command-like prompts such as `cf-help` and `cf-auto-config`
+- use `cf-brave-new-world` only when you want Studio to auto-select safe, reversible workflow choices during the current session
 
 ### Prerequisites
 
@@ -141,7 +141,7 @@ In that case:
 - ensure Python 3.11+ is available for the repository-local scripts and CI
 - open the repository in your supported AI coding tool
 - activate Constructor Studio in chat with 💬 `cf`
-- start with one focused request such as 💬 `cf help`, 💬 `cf explore: ...`, 💬 `cf analyze: ...`, or 💬 `cf plan: ...`
+- start with one focused request such as 💬 `cf-help`, 💬 `cf-explore: ...`, 💬 `cf-explain: ...`, 💬 `cf-coding: ...`, 💬 `cf-write-docs: ...`, or 💬 `cf-plan: ...`
 
 Use the CLI install path below when you need to bootstrap the repository yourself, run terminal commands directly, or manage setup across multiple repositories.
 
@@ -263,19 +263,19 @@ Some hosts may also show the resolved Constructor Studio path or loaded context.
   - Make sure `cfs generate-agents` already ran.
   - Then retry `cf`.
 
-- **You expected slash commands, but only `cf ...` works**
-  - That is normal. `cf <workflow>: ...` is the portable default. Slash commands are host-specific aliases.
+- **You expected slash commands, but only concrete `cf-*` skills work**
+  - That is normal. `cf-<skill>: ...` is the portable default. Slash commands are host-specific aliases.
 
 - **Workspace-aware validation feels noisy on a first trial**
   - Start with `cfs validate --local-only`.
 
 ### Pick the right first move
 
-- **New to Constructor Studio in this repo**: start with `cf help`
-- **First 5-minute trial**: start with `cf analyze: ...` or `cf plan: ...`, not `generate`
-- **Need context before editing**: start with `cf explore: ...`
-- **New project or already-structured work**: start with `cf generate: ...` or `cf plan: ...`
-- **Existing codebase with weak or missing conventions**: run 💬 `cf auto-config`, inspect what it inferred, and then refine the generated rules before large changes
+- **New to Constructor Studio in this repo**: start with `cf-help`
+- **First 5-minute trial**: start with `cf-explain: ...`, `cf-coding: review ...`, `cf-write-docs: review ...`, or `cf-plan: ...`; avoid broad creation requests
+- **Need context before editing**: start with `cf-explore: ...`
+- **New project or already-structured work**: start with the concrete route for the target (`cf-coding`, `cf-write-docs`, `cf-write-skills`, an SDLC route, or `cf-plan`)
+- **Existing codebase with weak or missing conventions**: run 💬 `cf-auto-config`, inspect what it inferred, and then refine the generated rules before large changes
 - **After changing workflows or host integrations**: rerun `cfs generate-agents` or `cfs generate-agents --agent <tool>`
 - **When you want to inspect upstream kit changes**: run `cfs kit check-updates`
 - **When you want upstream kit changes**: run `cfs kit update`, or explicitly opt in during a top-level update with `cfs update --with-kits yes`
@@ -286,8 +286,8 @@ For the first trial, use one small real input only: one short requirement, one d
 
 Good first requests:
 
-- 💬 `cf analyze: review this requirement and list the top 5 unclear or missing points before implementation`
-- 💬 `cf plan: break this change request into 3-7 safe reviewable phases with the main risk in each phase`
+- 💬 `cf-write-docs: review this requirement and list the top 5 unclear or missing points before implementation`
+- 💬 `cf-plan: break this change request into 3-7 safe reviewable phases with the main risk in each phase`
 
 ### What success looks like after the first few minutes
 
@@ -375,7 +375,7 @@ Constructor Studio is often not the best first move when:
 
 - **You want maximum free-form exploration with no structured output**
   
-  Example: purely visual direction-finding, throwaway speculation, or loose ideation where a structured panel output is not the goal. For option mapping and structured ideation, `cf brainstorm` is the right route — see [When Constructor Studio is a good fit](#4-when-constructor-studio-is-a-good-fit).
+  Example: purely visual direction-finding, throwaway speculation, or loose ideation where a structured panel output is not the goal. For option mapping and structured ideation, `cf-brainstorm` is the right route — see [When Constructor Studio is a good fit](#4-when-constructor-studio-is-a-good-fit).
 
 - **You want maximum first-draft speed with minimum ceremony**
   
@@ -404,32 +404,32 @@ For these cases, lighter approaches or direct prompting can be a better starting
 
 ## 6. Choosing the right workflow
 
-`plan`, `generate`, and `analyze` are the three core workflows. Specialized routes (`explore`, `brainstorm`, `coding`, `write-docs`, and others) build on or precede them.
+`plan` is the general sequencing workflow. Concrete work should use the specific route that matches the target: `coding`, `write-docs`, `write-skills`, `explain`, `map`, `auto-config`, or an SDLC route.
 
 ```mermaid
 flowchart TD
     Start["What do you need to do?"] --> Q1{"Is the scope clear and the task structured?"}
-    Q1 -->|No - explore first| Explore["cf explore / cf auto-config"]
-    Q1 -->|Options still open| Brainstorm["cf brainstorm: ..."]
+    Q1 -->|No - explore first| Explore["cf-explore / cf-auto-config"]
+    Q1 -->|Options still open| Brainstorm["cf-brainstorm: ..."]
     Q1 -->|Yes| Q2{"Is the task large, risky, or multi-step?"}
-    Q2 -->|Yes| Plan["cf plan: ..."]
+    Q2 -->|Yes| Plan["cf-plan: ..."]
     Q2 -->|No| Q3{"What is the main job?"}
-    Q3 -->|Create or update something| Q4{"Target type?"}
-    Q3 -->|Validate, review, or audit| Analyze["cf analyze: ..."]
-    Q4 -->|SDLC artifact| Generate["cf generate: ..."]
-    Q4 -->|Source code| Coding["cf coding: ..."]
-    Q4 -->|Human-facing document| WriteDocs["cf write-docs: ..."]
+    Q3 -->|Create, update, validate, or review| Q4{"Target type?"}
+    Q4 -->|SDLC artifact| SDLC["cf-sdlc-doc-* / cf-sdlc-implement"]
+    Q4 -->|Source code| Coding["cf-coding: ..."]
+    Q4 -->|Human-facing document| WriteDocs["cf-write-docs: ..."]
+    Q4 -->|Prompt, workflow, skill, or agent| WriteSkills["cf-write-skills: ..."]
 ```
 
-If you only need a quick route for the less-obvious cases (plan, generate, and analyze are covered in depth below):
+If you only need a quick route for the less-obvious cases:
 
-- need product or workflow orientation first -> use `cf help`
-- need project or artifact discovery first -> use `cf explore: ...`
-- need inferred repo rules or setup help for brownfield work -> use `cf auto-config`
+- need product or workflow orientation first -> use `cf-help`
+- need project or artifact discovery first -> use `cf-explore: ...`
+- need inferred repo rules or setup help for brownfield work -> use `cf-auto-config`
 - need open-ended option mapping first -> use [`brainstorm`](#use-brainstorm-when)
 - want safe low-risk workflow prompts auto-selected this session -> use [`brave-new-world`](#use-brave-new-world-when)
 - need prompt / workflow / agent contract work -> use [`write-skills`](#use-write-skills-when)
-- need a rendered graph of docs, links, and code references -> use [`cfs map` / `cf map`](#17-dependency-map-cfs-map--cf-map)
+- need a rendered graph of docs, links, and code references -> use [`cfs map` / `cf-map`](#17-dependency-map-cfs-map--cf-map)
 
 ### Use `plan` when
 
@@ -453,7 +453,7 @@ A task is usually large enough for `plan` if one or more of these are true:
 
 In practice, “large” does not only mean many lines of code.
 
-It also means **too much coordination, risk, or context to trust to one generation step**.
+It also means **too much coordination, risk, or context to trust to one writing step**.
 
 ### Quick check: should you use `plan` first?
 
@@ -480,71 +480,72 @@ Why this matters:
 
 Use the portable workflow form by default:
 
-- 💬 `cf help`
-- 💬 `cf explore: ...`
-- 💬 `cf auto-config`
-- 💬 `cf plan: ...`
-- 💬 `cf generate: ...`
-- 💬 `cf analyze: ...`
-- 💬 `cf brainstorm: ...`
-- 💬 `cf map: ...`
-- 💬 `cf coding: ...`
-- 💬 `cf write-docs: ...`
+- 💬 `cf-help`
+- 💬 `cf-explore: ...`
+- 💬 `cf-auto-config`
+- 💬 `cf-plan: ...`
+- 💬 `cf-coding: ...`
+- 💬 `cf-write-docs: ...`
+- 💬 `cf-write-skills: ...`
+- 💬 `cf-brainstorm: ...`
+- 💬 `cf-map: ...`
+- 💬 `cf-coding: ...`
+- 💬 `cf-write-docs: ...`
 
 Advanced maintainer routes exist for prompt, skill, and workflow authors:
 
-- 💬 `cf write-skills: ...`
-- 💬 `cf debug-prompts`
+- 💬 `cf-write-skills: ...`
+- 💬 `cf-debug-prompts`
 
-Some hosts also expose slash-command aliases such as `/cf-plan`, `/cf-generate`, or `/cf-analyze`.
+Some hosts also expose slash-command aliases such as `/cf-plan` or route-specific skill aliases.
 
 Treat those as host-specific aliases, not separate capabilities.
 
 **Good prompt shape**:
 
-- 💬 `cf plan: break this auth migration into safe implementation phases`
+- 💬 `cf-plan: break this auth migration into safe implementation phases`
 
 ### Use `help` when
 
 Use `help` when you need **guided orientation to Constructor Studio itself** before choosing a workflow or command.
 
-- 💬 `cf help`
+- 💬 `cf-help`
 
 Use it when:
 
 - you are new to Constructor Studio in this repo
-- you do not yet know whether the job should start with `explore`, `plan`, `generate`, or `analyze`
+- you do not yet know whether the job should start with `cf-explore`, `cf-plan`, `cf-coding`, `cf-write-docs`, `cf-write-skills`, or an SDLC skill
 - you want a guided walkthrough of the current product surface instead of a one-shot command list
 
 ### Use `explore` when
 
 Use `explore` for **project and artifact discovery before editing**. It is the right first move when the main problem is "find the relevant context" rather than "write the change now".
 
-- 💬 `cf explore: trace where auth configuration is defined and loaded`
-- 💬 `cf explore: find the files that define billing validation rules`
-- 💬 `cf explore: gather the main artifacts and code paths for the deployment story`
+- 💬 `cf-explore: trace where auth configuration is defined and loaded`
+- 💬 `cf-explore: find the files that define billing validation rules`
+- 💬 `cf-explore: gather the main artifacts and code paths for the deployment story`
 
-Use `explore` before `plan`, `generate`, or `analyze` when the codebase is unfamiliar or the relevant surfaces are not yet clear.
+Use `explore` before planning, coding, documenting, writing skills, or reviewing when the codebase is unfamiliar or the relevant surfaces are not yet clear.
 
 ### Use `auto-config` when
 
 Use `auto-config` when you need Constructor Studio to **scan a project and infer or refresh rules/config** for a brownfield repository.
 
-- 💬 `cf auto-config`
-- 💬 `cf generate: refine the inferred rules after auto-config for this project`
+- 💬 `cf-auto-config`
+- 💬 `cf-write-skills: refine the inferred rules after auto-config for this project`
 
 Use it when:
 
 - the repo has weak or missing conventions captured in Constructor Studio
 - you want a fast first pass over current project structure, patterns, and likely rules
-- you are setting up a brownfield repo before larger `plan` or `generate` work
+- you are setting up a brownfield repo before larger planning, coding, documentation, or skill-writing work
 
 Do not treat auto-config output as final truth. Inspect and refine what it inferred before relying on it for large changes.
 
-### Use `generate` when
+### Use `coding`, `write-docs`, `write-skills`, or SDLC routes when
 
-- you want to create or update an artifact
-- you want to implement already-structured work
+- you want to create or update a concrete target
+- you want to implement already-structured work in source code
 - the target and source materials are known
 - the main job is producing or updating something, not diagnosing uncertainty
 
@@ -552,9 +553,12 @@ Do not treat auto-config output as final truth. Inspect and refine what it infer
 
 When a prompt below references `PRD`, `DESIGN`, `DECOMPOSITION`, or `FEATURE`, it assumes the built-in SDLC kit is installed.
 
-- 💬 `cf generate: implement the approved FEATURE for login rate limiting` *(requires SDLC kit)*
+- 💬 `cf-sdlc-implement: implement the approved FEATURE for login rate limiting` *(requires SDLC kit)*
+- 💬 `cf-coding: refactor the auth middleware without changing public behavior`
+- 💬 `cf-write-docs: update the onboarding guide from the new deployment notes`
+- 💬 `cf-write-skills: update the review workflow so it checks backward compatibility`
 
-### Use `analyze` when
+### Use route-specific review when
 
 - you want to validate something
 - you want a review or audit
@@ -564,21 +568,23 @@ When a prompt below references `PRD`, `DESIGN`, `DECOMPOSITION`, or `FEATURE`, i
 
 **Good prompt shape**:
 
-- 💬 `cf analyze: validate architecture/DESIGN.md against the current FEATURE docs` *(requires SDLC kit)*
+- 💬 `cf-sdlc-change-impact-analysis: validate architecture/DESIGN.md against the current FEATURE docs` *(requires SDLC kit)*
+- 💬 `cf-coding: review this module for correctness, regression risk, and missing tests`
+- 💬 `cf-write-docs: review this guide for stale routing examples`
 
-### What `analyze` is for in practice
+### What route-specific review is for in practice
 
-`analyze` is the review and inspection workflow.
+Review and inspection should use the route that matches the target.
 
 In day-to-day use, reach for it when you need one of five things:
 
 - **validation** of structure, references, or traceability
-- **review** of prompts, instructions, or code
+- **review** of prompts, instructions, documents, or code
 - **comparison** between documents, artifacts, or versions
 - **drift / gap detection** across related sources
-- **brownfield understanding** before you plan or generate changes in an unfamiliar codebase
+- **brownfield understanding** before you plan or make changes in an unfamiliar codebase
 
-If the main job is understanding what is wrong, inconsistent, missing, or risky, `analyze` is usually the right starting point.
+If the main job is understanding what is wrong, inconsistent, missing, or risky, use the most specific review route for that target.
 
 How to choose between them:
 
@@ -586,18 +592,18 @@ How to choose between them:
 - **Need quality feedback on prompts or code?** Ask for review.
 - **Need defect hunting?** Ask explicitly for bug finding.
 - **Need cross-document alignment?** Ask for consistency, contradiction, gap, or drift analysis.
-- **Need to understand an unfamiliar codebase first?** Start with reverse engineering or brownfield analysis before generation.
+- **Need to understand an unfamiliar codebase first?** Start with `cf-explore`, `cf-explain`, or `cf-auto-config` before implementation.
 - **Need a large review?** Use `plan` first, then execute the analysis in bounded phases.
 
 ### Use `brainstorm` when
 
-Use `brainstorm` for **open-ended exploration before scope is decided** — early-stage ideation, option mapping, structured panel critique, or "what should this look like" conversations that are too unformed for `plan` or `generate`.
+Use `brainstorm` for **open-ended exploration before scope is decided** — early-stage ideation, option mapping, structured panel critique, or "what should this look like" conversations that are too unformed for `cf-plan` or a concrete work route.
 
-Unlike chat brainstorming, the Constructor Studio brainstorm workflow runs a **facilitator + multi-expert panel** with scoped numbered options, so the output is structured enough that downstream `cf generate` / `cf plan` can consume it.
+Unlike chat brainstorming, the Constructor Studio brainstorm workflow runs a **facilitator + multi-expert panel** with scoped numbered options, so the output is structured enough that downstream `cf-plan` or a specific work route can consume it.
 
-- 💬 `cf brainstorm: explore options for splitting the billing service from the monolith`
-- 💬 `cf brainstorm: panel critique of our proposed retention policy`
-- 💬 `cf brainstorm: map alternatives for caching layer placement`
+- 💬 `cf-brainstorm: explore options for splitting the billing service from the monolith`
+- 💬 `cf-brainstorm: panel critique of our proposed retention policy`
+- 💬 `cf-brainstorm: map alternatives for caching layer placement`
 
 Use `brainstorm` **before** `plan` when scope itself is the open question. Skip it when the change is already well-understood.
 
@@ -605,7 +611,7 @@ Use `brainstorm` **before** `plan` when scope itself is the open question. Skip 
 
 Use `brave-new-world` when you want Constructor Studio to move through safe workflow choices without asking every time.
 
-- 💬 `cf brave-new-world`
+- 💬 `cf-brave-new-world`
 - 💬 `turn off Brave New World`
 
 The overlay can pick non-destructive, reversible options such as continuing routing, loading a safe workflow, accepting a default discovery scope, choosing a review scope, or retrying validation.
@@ -625,14 +631,14 @@ Use `write-skills` when:
 - you have prose-style instructions and want them converted to compact PDSL (preserving behavior)
 - you want to review existing prompt files for state-machine correctness, missing `STOP_TURN`, hidden prose rules, or handoff bugs
 
-- 💬 `cf write-skills: review .claude/agents/my-agent.md for state-machine correctness`
-- 💬 `cf write-skills: transform this prose workflow into PDSL`
-- 💬 `cf write-skills: author a new agent instruction file for code review`
+- 💬 `cf-write-skills: review .claude/agents/my-agent.md for state-machine correctness`
+- 💬 `cf-write-skills: transform this prose workflow into PDSL`
+- 💬 `cf-write-skills: author a new agent instruction file for code review`
 
 Use `debug-prompts` when you need to inspect execution live instead of editing the prompt file:
 
-- 💬 `cf debug-prompts`
-- 💬 `cf debug-prompts: step through cf-write-docs and pause before each instruction`
+- 💬 `cf-debug-prompts`
+- 💬 `cf-debug-prompts: step through cf-write-docs and pause before each instruction`
 
 This is an authoring/operating tool for the people who write Constructor Studio prompts and agents themselves; most end users will never need it.
 
@@ -640,29 +646,29 @@ This is an authoring/operating tool for the people who write Constructor Studio 
 
 Use `coding` for **authoring, implementing, refactoring, fixing, or reviewing source code** with code-quality and bug-finding checks built in.
 
-- 💬 `cf coding: refactor the auth module and check for correctness issues`
-- 💬 `cf coding: review the changes in src/billing/ for logic bugs`
+- 💬 `cf-coding: refactor the auth module and check for correctness issues`
+- 💬 `cf-coding: review the changes in src/billing/ for logic bugs`
 
-Use `coding` instead of `generate` when the work is code-centric and you want code-quality checks as part of the same flow, not as a separate `analyze` step.
+Use `cf-coding` when the work is code-centric and you want code-quality checks as part of the same flow.
 
 ### Use `write-docs` when
 
 Use `write-docs` for **writing, revising, or reviewing documentation** — guides, reports, READMEs, or other project documents.
 
-- 💬 `cf write-docs: write a usage guide for the billing API`
-- 💬 `cf write-docs: review README.md for quality and correctness`
+- 💬 `cf-write-docs: write a usage guide for the billing API`
+- 💬 `cf-write-docs: review README.md for quality and correctness`
 
-Use `write-docs` instead of `generate` when the target is a human-facing document and you want documentation-quality checks, consistency review, and deterministic gate checks as part of the same flow.
+Use `cf-write-docs` when the target is a human-facing document and you want documentation-quality checks, consistency review, and deterministic gate checks as part of the same flow.
 
 ### Default routing rule
 
-If a request is both **large** and **generative**, prefer:
+If a request is both **large** and **output-producing**, prefer:
 
 - **plan first**
-- **generate second**
-- **analyze throughout**
+- **the concrete writing route second**
+- **route-specific review throughout**
 
-A large request should usually become a plan first instead of being forced through one overloaded `generate` call.
+A large request should usually become a plan first instead of being forced through one overloaded writing request.
 
 ### When to expect or ask for subagent delegation
 
@@ -726,11 +732,11 @@ A final **human review is still required** before treating the result as done.
 8. **Make review repeatable, then make a final human call**
    - Use repeatable checks to improve consistency, but keep final engineering judgment with a human reviewer.
 
-9. **Use a fresh chat for new generation or review work**
-   - For substantial `generate` or `analyze` tasks, prefer a new chat. If you stay in the same session, clear context before the next task.
+9. **Use a fresh chat for new writing or review work**
+   - For substantial `cf-coding`, `cf-write-docs`, `cf-write-skills`, SDLC, or review tasks, prefer a new chat. If you stay in the same session, clear context before the next task.
 
 10. **Use autonomous defaults only for low-risk workflow friction**
-   - `cf brave-new-world` is for reversible workflow choices, not for approving edits, installs, git changes, or external actions.
+   - `cf-brave-new-world` is for reversible workflow choices, not for approving edits, installs, git changes, or external actions.
 
 ### CI with `cfs` tools
 
@@ -748,7 +754,7 @@ Use narrower checks while iterating and broader checks before merge. Let humans 
 1. **Using Constructor Studio like a generic chat tool**
    - That bypasses the workflows, structure, and validation that make it useful.
 
-2. **Starting with `generate` on a huge ambiguous task**
+2. **Starting with a writing skill on a huge ambiguous task**
    - This usually creates drift, missed constraints, and context overload.
 
 3. **Skipping validation until the end**
@@ -766,7 +772,7 @@ Use narrower checks while iterating and broader checks before merge. Let humans 
 7. **Asking for outcomes without naming the governing artifact or source**
    - The agent then guesses instead of transforming from clear input.
 
-8. **Reusing stale context across unrelated generation or review tasks**
+8. **Reusing stale context across unrelated writing or review tasks**
    - Old context can leak assumptions into the next task. Start a new chat or clear the context first.
 
 
@@ -791,8 +797,8 @@ Use narrower checks while iterating and broader checks before merge. Let humans 
 
 **Do**:
 
-- 💬 `cf explore: find the main code and artifact surfaces if the repo is unfamiliar`
-- 💬 `cf auto-config`
+- 💬 `cf-explore: find the main code and artifact surfaces if the repo is unfamiliar`
+- 💬 `cf-auto-config`
 - inspect generated rules and config
 - refine what auto-config inferred
 
@@ -805,8 +811,8 @@ Use narrower checks while iterating and broader checks before merge. Let humans 
 
 **Do**:
 
-- use `generate` when the target is a structured SDLC artifact such as PRD, DESIGN, DECOMPOSITION, or FEATURE
-- use `write-docs` when the target is a human-facing document such as a guide, README, or report (see [Use `write-docs` when](#use-write-docs-when))
+- use the matching SDLC skill when the target is a structured SDLC artifact such as PRD, DESIGN, DECOMPOSITION, or FEATURE
+- use `cf-write-docs` when the target is a human-facing document such as a guide, README, or report (see [Use `write-docs` when](#use-write-docs-when))
 - point at the source artifact or input explicitly
 - state the exact target artifact or document
 
@@ -814,13 +820,13 @@ Use narrower checks while iterating and broader checks before merge. Let humans 
 
 - ask for "a better spec" without naming the current source
 - mix five unrelated artifact changes into one prompt
-- use `generate` for human-facing documents when `write-docs` provides documentation-quality checks
+- use an SDLC artifact skill for human-facing documents when `cf-write-docs` provides documentation-quality checks
 
 ### Situation: large implementation request
 
 **Do**:
 
-- start with `plan`
+- start with `cf-plan`
 - execute phase by phase
 - validate after meaningful steps
 - review the produced code against the relevant artifacts
@@ -828,14 +834,14 @@ Use narrower checks while iterating and broader checks before merge. Let humans 
 
 **Do not**:
 
-- try to push the full change through a single huge `generate` request
-- treat one successful generation pass as final proof that the result is correct
+- try to push the full change through a single huge writing request
+- treat one successful writing pass as final proof that the result is correct
 
 ### Situation: implementing code from an approved artifact
 
 **Do**:
 
-- use `generate` if the implementation target is already clear
+- use `cf-sdlc-implement` for implementation from an approved FEATURE, or `cf-coding` for code-centric work outside the SDLC artifact flow
 - name the governing artifact explicitly
 - preserve required traceability markers if your workflow uses them
 - validate and review after implementation
@@ -850,7 +856,7 @@ Use narrower checks while iterating and broader checks before merge. Let humans 
 
 **Do**:
 
-- use `analyze`
+- use the matching review route, such as `cf-coding`, `cf-write-docs`, `cf-sdlc-change-impact-analysis`, or `cf-sdlc-pr-review`
 - compare implementation against artifacts or checklists
 - keep deterministic validation in the loop
 
@@ -873,28 +879,28 @@ Use narrower checks while iterating and broader checks before merge. Let humans 
 
 **Do**:
 
-- use `coding` for authoring, implementing, refactoring, fixing, or reviewing source code
-- let `coding` run code-quality and bug-finding checks in the same flow
+- use `cf-coding` for authoring, implementing, refactoring, fixing, or reviewing source code
+- let `cf-coding` run code-quality and bug-finding checks in the same flow
 
 **Do not**:
 
-- use `generate` when you want code-quality checks built into the workflow
+- use an SDLC artifact skill when you want code-quality checks built into the workflow
 - skip validation after implementation
 
 ### Situation: writing or revising a human-facing document
 
 **Do**:
 
-- use `write-docs` for guides, READMEs, reports, or other project documents
-- let `write-docs` run documentation-quality checks, consistency review, and the deterministic gate
+- use `cf-write-docs` for guides, READMEs, reports, or other project documents
+- let `cf-write-docs` run documentation-quality checks, consistency review, and the deterministic gate
 
 **Do not**:
 
-- use `generate` for human-facing documents when `write-docs` provides the right review and gate checks
+- use an SDLC artifact skill for human-facing documents when `cf-write-docs` provides the right review and gate checks
 
 ### Context hygiene
 
-- 💬 start a new chat before a new generation or review task
+- 💬 start a new chat before a new writing or review task
 - 💬 clear the chat context before the next task if you stay in the same session
 
 
@@ -906,86 +912,86 @@ Examples that reference `PRD`, `DESIGN`, `DECOMPOSITION`, or `FEATURE` assume th
 
 ### Structured generation
 
-- 💬 `cf generate: create a DESIGN from architecture/PRD.md for the billing service`
-- 💬 `cf generate: implement the approved FEATURE for rate limiting in the auth service and preserve required @cpt-* code markers`
+- 💬 `cf-sdlc-doc-design: create a DESIGN from architecture/PRD.md for the billing service`
+- 💬 `cf-sdlc-implement: implement the approved FEATURE for rate limiting in the auth service and preserve required @cpt-* code markers`
 
 ### Orientation and discovery
 
-- 💬 `cf help`
-- 💬 `cf explore: trace the main files and artifacts behind the auth flow`
-- 💬 `cf auto-config`
+- 💬 `cf-help`
+- 💬 `cf-explore: trace the main files and artifacts behind the auth flow`
+- 💬 `cf-auto-config`
 
 ### Structured analysis
 
-- 💬 `cf analyze: validate architecture/FEATURE-login.md`
-- 💬 `cf analyze: review the current code against the approved FEATURE and report missing traceability markers, validation issues, and likely implementation gaps`
+- 💬 `cf-sdlc-change-impact-analysis: validate architecture/FEATURE-login.md`
+- 💬 `cf-coding: review the current code against the approved FEATURE and report missing traceability markers, validation issues, and likely implementation gaps`
 
 ### Planning
 
-- 💬 `cf plan: break this monolith-to-service extraction into safe phases with validation points`
-- 💬 `cf plan: break this FEATURE implementation into artifact-aware coding phases with validation and review checkpoints`
+- 💬 `cf-plan: break this monolith-to-service extraction into safe phases with validation points`
+- 💬 `cf-plan: break this FEATURE implementation into artifact-aware coding phases with validation and review checkpoints`
 
 ### Context-bounded execution
 
-- 💬 `cf generate: implement only phase 2 of the approved migration plan`
-- 💬 `cf generate: implement only phase 2 of the approved plan, then validate and summarize any remaining errors before continuing`
+- 💬 `cf-coding: implement only phase 2 of the approved migration plan`
+- 💬 `cf-coding: implement only phase 2 of the approved plan, then validate and summarize any remaining errors before continuing`
 
 ### Brownfield understanding
 
-- 💬 `cf explore: gather the likely architecture boundaries and entry points for this repo`
-- 💬 `cf auto-config`
-- 💬 `cf analyze: explain the current project conventions and likely architecture boundaries`
+- 💬 `cf-explore: gather the likely architecture boundaries and entry points for this repo`
+- 💬 `cf-auto-config`
+- 💬 `cf-explain: current project conventions and likely architecture boundaries`
 
 ### Storytelling / explain mode
 
-`cf analyze: explain ...` is the entry point for the storytelling companion. It asks you to pick one of six modes at session start (presentation / review / onboarding / decision / socratic / change-impact), then delivers the content in small portions you navigate at your own pace. The mode is always your choice — the agent never picks one for you; your intent only pre-selects the suggested default.
+`cf-explain: ...` is the entry point for the storytelling companion. It asks you to pick one of six modes at session start (presentation / review / onboarding / decision / socratic / change-impact), then delivers the content in small portions you navigate at your own pace. The mode is always your choice — the agent never picks one for you; your intent only pre-selects the suggested default.
 
 Canonical prompts:
 
-- 💬 `cf analyze: explain DESIGN.md` — pedagogical walkthrough of a local artifact (default mode = presentation; pick another at the prompt)
-- 💬 `cf analyze: explain REQ-001` — explain a registered Constructor Studio artifact by ID
-- 💬 `cf analyze: explain https://github.com/constructorfabric/studio/pull/25` — fetch a GitHub PR via the Phase E0 access chain (MCP → skill → CLI → user fallback) and walk through it; for review-mode pick `2.review` at the prompt
-- 💬 `cf analyze: walk me through the auth flow as architect for new joiners` — explicit role + audience hint feeds the suggested default
-- 💬 `cf analyze: onboard me to this repo` — onboarding mode (suggested at prompt)
-- 💬 `cf analyze: quiz me on the data-model section of DESIGN.md` — socratic mode
-- 💬 `cf analyze: what changed in this PR — walk me through it` — change-impact mode (note plain `review my changes` stays in standard analyze, NOT explain — explain requires explicit explain-family verbs)
-- 💬 `cf analyze: explain --resume 20260506T164904Z` — resume a previously-saved session by ISO-timestamp
+- 💬 `cf-explain: DESIGN.md` — pedagogical walkthrough of a local artifact (default mode = presentation; pick another at the prompt)
+- 💬 `cf-explain: REQ-001` — explain a registered Constructor Studio artifact by ID
+- 💬 `cf-explain: https://github.com/constructorfabric/studio/pull/25` — fetch a GitHub PR via the Phase E0 access chain (MCP → skill → CLI → user fallback) and walk through it; for review-mode pick `2.review` at the prompt
+- 💬 `cf-explain: walk me through the auth flow as architect for new joiners` — explicit role + audience hint feeds the suggested default
+- 💬 `cf-explain: onboard me to this repo` — onboarding mode (suggested at prompt)
+- 💬 `cf-explain: quiz me on the data-model section of DESIGN.md` — socratic mode
+- 💬 `cf-explain: what changed in this PR — walk me through it` — change-impact mode
+- 💬 `cf-explain: --resume 20260506T164904Z` — resume a previously-saved session by ISO-timestamp
 
-To produce a **hand-off-able package** (READMEs, training material, guides) instead of a chat session, route through `generate`:
+To produce a **hand-off-able package** (READMEs, training material, guides) instead of a chat session, route through `write-docs`:
 
-- 💬 `cf generate: explain package for DESIGN.md` — full multi-file Markdown package under `{cf-studio-path}/.cache/explain/packages/`
-- 💬 `cf generate: make a README from public-interface/PLID.md`
-- 💬 `cf generate: build onboarding doc set for the auth subsystem`
-- 💬 `cf generate: training material for new joiners covering the deployment story`
+- 💬 `cf-write-docs: make an explain package for DESIGN.md` — full multi-file Markdown package under `{cf-studio-path}/.cache/explain/packages/`
+- 💬 `cf-write-docs: make a README from public-interface/PLID.md`
+- 💬 `cf-write-docs: build onboarding doc set for the auth subsystem`
+- 💬 `cf-write-docs: training material for new joiners covering the deployment story`
 
 The package contains an `index.md` with a Mermaid navigation graph + per-portion Markdown files + mode-specific extras (reading roadmap for onboarding; recommendation + dissenting opinions for decision; impact map for change-impact; review-comments file for review).
 
-**Explain vs standard analyze** — when to use which:
+**Explain vs target-specific review** — when to use which:
 
 | Intent | Goes to | Why |
 |---|---|---|
 | Pedagogical walkthrough; "help me understand" | `explain` | interactive, plan + portions + navigation |
-| Defect-finding review; "find bugs / issues" | standard `analyze` | deterministic gate + Fix/Plan prompts |
-| Audit / inspection of an artifact | standard `analyze` | validation + checklist |
+| Defect-finding review; "find bugs / issues" | target-specific review route | deterministic gate + Fix/Plan prompts |
+| Audit / inspection of an artifact | target-specific review route | validation + checklist |
 | Panel-critique walkthrough of a PR | `explain` (review mode) | structured discussion + line-anchored comments |
-| Hand-off-able guide / README | `generate: explain package` | written package, not chat |
+| Hand-off-able guide / README | `write-docs` | written package, not chat |
 
 ### Marker recovery
 
-- 💬 `cf generate: add the missing @cpt-* markers to the code changed for this FEATURE and keep the implementation behavior unchanged`
+- 💬 `cf-coding: add the missing @cpt-* markers to the code changed for this FEATURE and keep the implementation behavior unchanged`
 
 
 ---
 
 ## 11. Prompt patterns that usually go wrong
 
-- 💬 `cf generate: build the whole system`
-- 💬 `cf generate: make this project enterprise grade`
-- 💬 `cf generate: improve everything`
-- 💬 `cf analyze: tell me if this code is good`
-- 💬 `cf generate: rewrite the app based on best practices`
-- 💬 `cf generate: implement this spec in code and treat the first pass as done without validation`
-- 💬 `cf generate: add the feature, markers are not important`
+- 💬 `cf-coding: build the whole system`
+- 💬 `cf-coding: make this project enterprise grade`
+- 💬 `cf-coding: improve everything`
+- 💬 `cf-coding: tell me if this code is good`
+- 💬 `cf-coding: rewrite the app based on best practices`
+- 💬 `cf-coding: implement this spec in code and treat the first pass as done without validation`
+- 💬 `cf-coding: add the feature, markers are not important`
 
 Why these go wrong:
 
@@ -997,10 +1003,10 @@ Why these go wrong:
 
 Better versions:
 
-- Instead of `cf generate: build the whole system`: 💬 `cf plan: break the auth rewrite into phases constrained to backend API first`
-- Instead of `cf analyze: tell me if this code is good`: 💬 `cf analyze: review this module for correctness, regression risk, and missing tests`
-- Instead of `cf generate: rewrite the app based on best practices`: 💬 `cf analyze: find the three highest-risk design and implementation issues in this module`
-- Instead of `cf generate: implement this spec in code and treat the first pass as done without validation`: 💬 `cf generate: update only the login FEATURE spec using the approved auth DESIGN, then validate the result`
+- Instead of a broad system-build request: 💬 `cf-plan: break the auth rewrite into phases constrained to backend API first`
+- Instead of vague code-quality review: 💬 `cf-coding: review this module for correctness, regression risk, and missing tests`
+- Instead of an unbounded rewrite: 💬 `cf-coding: find the three highest-risk design and implementation issues in this module`
+- Instead of skipping validation: 💬 `cf-sdlc-doc-feature: update only the login FEATURE spec using the approved auth DESIGN, then validate the result`
 
 
 ---
@@ -1072,10 +1078,10 @@ Brownfield projects are often a strong Constructor Studio use case, but only if 
 
 ### Good approach
 
-- start with 💬 `cf auto-config`
+- start with 💬 `cf-auto-config`
 - inspect inferred rules
 - identify the real source-of-truth artifacts
-- use analysis before generation when the current system is still unclear
+- use `cf-explore` or `cf-explain` before writing when the current system is still unclear
 
 ### Bad approach
 
@@ -1088,9 +1094,9 @@ Brownfield projects are often a strong Constructor Studio use case, but only if 
 1. 🖥 `cfs init`
 2. 🖥 `cfs generate-agents`
 3. 💬 `cf`
-4. 💬 `cf auto-config`
-5. 💬 `cf analyze: summarize current conventions and likely architecture boundaries`
-6. 💬 `cf plan: break the requested change into safe brownfield phases`
+4. 💬 `cf-auto-config`
+5. 💬 `cf-explain: summarize current conventions and likely architecture boundaries`
+6. 💬 `cf-plan: break the requested change into safe brownfield phases`
 
 
 ---
@@ -1105,11 +1111,11 @@ Delegation can be useful, but only when three things are clear:
 
 It is usually **not** the right day-one path.
 
-Start with normal interactive `plan`, `generate`, and `analyze` use first. Add delegation later only when the workflow is already working well interactively.
+Start with normal interactive `cf-plan` and concrete writing/review routes first. Add delegation later only when the workflow is already working well interactively.
 
 A delegated loop often looks like:
 
-- generate
+- write
 - validate
 - fix
 - validate again
@@ -1167,14 +1173,14 @@ Useful flags:
 
 ### Managing large inputs (`cfs chunk-input`)
 
-When a request brings a large external input — a long requirement doc, a wide PR diff, several files — the workflow may hit the raw-input overflow threshold. `cfs chunk-input` is a deterministic, idempotent way to **package** that input into line-bounded chunks the plan/generate workflows can consume cleanly:
+When a request brings a large external input — a long requirement doc, a wide PR diff, several files — the workflow may hit the raw-input overflow threshold. `cfs chunk-input` is a deterministic, idempotent way to **package** that input into line-bounded chunks that `cf-plan` and concrete writing routes can consume cleanly:
 
 - 🖥 `cfs chunk-input docs/big-spec.md --output-dir {cf-studio-path}/.cache/chunks/` — chunk one file (default 300 lines / chunk)
 - 🖥 `cfs chunk-input --max-lines 500 path1.md path2.md --output-dir <dir>` — multiple files, larger chunk size
 - 🖥 `echo "prompt text" | cfs chunk-input --include-stdin docs/spec.md --output-dir <dir>` — combine pasted prompt with file inputs
 - 🖥 `cfs chunk-input ... --dry-run` — show what would be written, write nothing
 
-Use this **before** invoking `cf plan: ...` on a large input. The chunked output is reproducible: the same input always yields the same chunk set, so the plan workflow sees stable context across runs.
+Use this **before** invoking `cf-plan: ...` on a large input. The chunked output is reproducible: the same input always yields the same chunk set, so the plan workflow sees stable context across runs.
 
 
 ---
@@ -1217,7 +1223,7 @@ Overrides are stored in `${XDG_CONFIG_HOME:-~/.config}/constructor-studio/mirror
 
 ---
 
-## 17. Dependency map (`cfs map` / `cf map`)
+## 17. Dependency map (`cfs map` / `cf-map`)
 
 `cfs map` builds an interactive **markdown ↔ source dependency map** of the project — every `@cpt-*` identifier, every cross-file link, every artifact-to-code reference becomes a node and edge in a graph you can open in the browser.
 
@@ -1230,7 +1236,7 @@ Overrides are stored in `${XDG_CONFIG_HOME:-~/.config}/constructor-studio/mirror
 
 ### When to use it
 
-- **Before a big review** — render the map first, then ask `cf analyze: find dangling references` against it. You catch broken cross-refs without reading every file.
+- **Before a big review** — render the map first, then ask `cf-map: find dangling references` against it. You catch broken cross-refs without reading every file.
 - **Brownfield landing** — first move in an unfamiliar repo; the categories in the legend tell you where the important surfaces are.
 - **After a rename or restructure** — quickly verify nothing was orphaned by the move.
 - **Workspace work** — `cfs map` (without `--local-only`) walks resolved workspace sources too.
@@ -1244,9 +1250,9 @@ Overrides are stored in `${XDG_CONFIG_HOME:-~/.config}/constructor-studio/mirror
 
 ### Chat workflow
 
-- 💬 `cf map: render the dependency map`
-- 💬 `cf map: find dangling references` — routes into `analyze` on the map
-- 💬 `cf map: help me configure md-map.toml` — interactive config-assist for path → category styling
+- 💬 `cf-map: render the dependency map`
+- 💬 `cf-map: find dangling references` — reviews the rendered graph for broken references
+- 💬 `cf-map: help me configure md-map.toml` — interactive config-assist for path → category styling
 
 To control which directories become named categories (and their colors) in the rendered graph, drop an `md-map.toml` at the project root. See the **[Configuration guide §9](CONFIGURATION.md#9-dependency-map-cfs-map--cf-map)** for the schema.
 
