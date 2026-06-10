@@ -10,6 +10,7 @@ Entry point: ``file_level_kit_update()``.
 
 # @cpt-begin:cpt-studio-algo-kit-diff-display:p1:inst-diff-datamodel
 import difflib
+import hashlib
 import os
 import re
 import shlex
@@ -32,6 +33,13 @@ class DiffReport:
     def has_changes(self) -> bool:
         return bool(self.added or self.removed or self.modified)
 # @cpt-end:cpt-studio-algo-kit-diff-display:p1:inst-diff-datamodel
+
+
+# @cpt-begin:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-explicit-prune
+def _prune_fingerprint(resource_id: str, rel_path: str, dest: Path) -> str:
+    payload = f"{resource_id}\n{rel_path}\n{dest.as_posix()}".encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+# @cpt-end:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-explicit-prune
 
 
 # ---------------------------------------------------------------------------
@@ -597,6 +605,9 @@ def file_level_kit_update(
     resource_bindings: Optional[Dict[str, Path]] = None,
     source_to_resource_id: Optional[Dict[str, str]] = None,
     resource_info: Optional[Dict[str, Any]] = None,
+    approved_overwrites: Optional[List[str]] = None,
+    prune_mode: bool = False,
+    approved_prunes: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Compare source kit against user's installed copy and apply updates.
 
@@ -717,6 +728,14 @@ def file_level_kit_update(
                                 target_mapping[src_rel_path] = fpath
                             except (OSError, IOError):
                                 pass
+            elif info.type == "file" and binding_path.is_file():
+                src_rel_path = info.source_base
+                if src_rel_path not in user_files:
+                    try:
+                        user_files[src_rel_path] = binding_path.read_bytes()
+                        target_mapping[src_rel_path] = binding_path
+                    except (OSError, IOError):
+                        pass
             elif info.type == "file" and binding_path.is_dir():
                 # File resource but binding points to directory: check for file with same name
                 filename = info.source_base.split("/")[-1]
@@ -789,6 +808,12 @@ def file_level_kit_update(
     result_modified: List[Dict[str, str]] = []
 
     review_state: Dict[str, bool] = {}
+    overwrite_approvals = {
+        token.strip() for token in (approved_overwrites or []) if token.strip()
+    }
+    prune_approvals = {
+        token.strip() for token in (approved_prunes or []) if token.strip()
+    }
 
     changed = sorted(
         [(p, "added") for p in report.added]
@@ -803,11 +828,64 @@ def file_level_kit_update(
         new_content = source_stripped.get(rel_path, b"")
         raw_new_content = source_files.get(rel_path, b"")
         toc_fmt = toc_formats.get(rel_path, "")
+        dest = target_mapping.get(rel_path, user_dir / rel_path)
+        res_id = source_to_resource_id.get(rel_path) if source_to_resource_id else None
+        if res_id is None and resource_info:
+            for candidate_id, candidate_info in resource_info.items():
+                source_base = getattr(candidate_info, "source_base", "")
+                if rel_path == source_base or rel_path.startswith(f"{source_base}/"):
+                    res_id = candidate_id
+                    break
+        res_info = resource_info.get(res_id) if res_id and resource_info else None
+        requires_overwrite_approval = (
+            change_type == "modified"
+            and bool(res_info)
+            and bool(getattr(res_info, "user_modifiable", True))
+        )
+        # @cpt-begin:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-no-auto-delete
+        requires_prune_mode = change_type == "removed" and bool(res_info)
+        # @cpt-end:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-no-auto-delete
+        prune_fingerprint = (
+            _prune_fingerprint(str(res_id), rel_path, dest)
+            if requires_prune_mode
+            else ""
+        )
+        has_prune_approval = prune_fingerprint in prune_approvals
+        has_overwrite_approval = False
+        if requires_overwrite_approval:
+            approval_tokens = {
+                str(res_id),
+                rel_path,
+                dest.as_posix(),
+            }
+            has_overwrite_approval = bool(overwrite_approvals.intersection(approval_tokens))
 
         if force or auto_approve:
-            action = "accepted"
+            if requires_prune_mode:
+                action = "accepted" if prune_mode and has_prune_approval else "declined"
+            else:
+                action = (
+                    "accepted"
+                    if not requires_overwrite_approval or has_overwrite_approval
+                    else "declined"
+                )
         elif not interactive:
-            action = "declined"
+            action = (
+                "accepted"
+                if requires_prune_mode and prune_mode and has_prune_approval
+                else "declined"
+            )
+        elif requires_prune_mode:
+            # @cpt-begin:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-prune-path-prompts
+            sys.stderr.write(
+                f"\n    \033[31m- {rel_path}\033[0m  (deleted upstream; prune fingerprint {prune_fingerprint})\n"
+            )
+            if prune_mode:
+                decision = _prompt_kit_file(rel_path, review_state)
+                action = "accepted" if decision == "accept" else "declined"
+            else:
+                action = "declined"
+            # @cpt-end:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-prune-path-prompts
         else:
             # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-show-change-context
             if change_type == "added":
@@ -849,7 +927,15 @@ def file_level_kit_update(
         entry = {"path": rel_path, "action": action}
         wrote_file = False
         wrote_raw = False
-        dest = target_mapping.get(rel_path, user_dir / rel_path)
+        if requires_overwrite_approval and action == "declined" and not interactive and not has_overwrite_approval:
+            entry["reason"] = (
+                f"requires --approve-overwrite {res_id} or --approve-overwrite {dest.as_posix()}"
+            )
+        if requires_prune_mode and action == "declined":
+            entry["reason"] = "resource removed upstream; explicit prune mode required"
+            entry["prune_fingerprint"] = prune_fingerprint
+        elif requires_prune_mode:
+            entry["prune_fingerprint"] = prune_fingerprint
 
         if change_type == "added":
             if action in ("accepted", "modified") and not dry_run:

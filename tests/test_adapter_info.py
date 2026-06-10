@@ -9,6 +9,7 @@ import tempfile
 import shutil
 import io
 import sys
+import hashlib
 from pathlib import Path
 from contextlib import redirect_stdout, redirect_stderr
 
@@ -91,6 +92,308 @@ class TestAdapterInfoCommand(unittest.TestCase):
             self.assertIn("artifacts_registry_path", output)
             self.assertIn("artifacts_registry", output)
             self.assertIsNone(output.get("artifacts_registry_error"))
+
+    def test_adapter_info_outputs_kit_models_and_legacy_details(self):
+        """Info exposes canonical kit_models while preserving kit_details."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir) / "project"
+            project_root.mkdir()
+            (project_root / ".git").mkdir()
+            (project_root / "AGENTS.md").write_text(
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".cypilot-adapter"\n```\n<!-- /@cf:root-agents -->\n',
+                encoding="utf-8",
+            )
+            adapter_dir = project_root / ".cypilot-adapter"
+            config_dir = adapter_dir / "config"
+            kit_dir = config_dir / "kits" / "sdlc"
+            kit_dir.mkdir(parents=True)
+            (config_dir / "AGENTS.md").write_text("# Constructor Studio Adapter: TestProject\n", encoding="utf-8")
+            (kit_dir / "SKILL.md").write_text("# SDLC skill\n", encoding="utf-8")
+            (kit_dir / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "sdlc"',
+                    'name = "SDLC Kit"',
+                    'version = "2.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "skill"',
+                    'kind = "skill"',
+                    'source = "SKILL.md"',
+                    'install_path = "SKILL.md"',
+                    'type = "file"',
+                    "public = true",
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            (config_dir / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    'project_root = ".."',
+                    "",
+                    "[kits.sdlc]",
+                    'format = "CFS"',
+                    'path = "config/kits/sdlc"',
+                    'version = "2.0"',
+                    "",
+                    "[kits.sdlc.resources.skill]",
+                    'path = "config/kits/sdlc/SKILL.md"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            stdout_capture = io.StringIO()
+            with redirect_stdout(stdout_capture):
+                exit_code = main(["info", "--root", str(project_root)])
+
+            output = json.loads(stdout_capture.getvalue())
+            self.assertEqual(exit_code, 0)
+            kit_model = output["kit_models"]["sdlc"]
+            self.assertEqual(kit_model["name"], "SDLC Kit")
+            self.assertEqual(kit_model["manifest_source"], "canonical")
+            self.assertEqual(kit_model["resources"]["skill"]["binding_path"], "config/kits/sdlc/SKILL.md")
+            self.assertEqual(kit_model["public_components"][0]["generated_name"], "cf-sdlc-skill")
+            self.assertEqual(kit_model["active_targets"], ["installed"])
+            self.assertEqual(kit_model["provenance"]["registered_path"], "config/kits/sdlc")
+            self.assertIn("tool_fingerprint", kit_model["risk"])
+            self.assertTrue(kit_model["legacy_compatibility"]["kit_details"])
+            self.assertRegex(kit_model["content_identity"]["manifest_semantic_hash"], r"^[0-9a-f]{64}$")
+
+            kit_detail = output["kit_details"]["sdlc"]
+            self.assertEqual(kit_detail["name"], "SDLC Kit")
+            self.assertEqual(kit_detail["resources"]["skill"]["path"], "config/kits/sdlc/SKILL.md")
+
+    def test_adapter_info_ignores_unregistered_config_kit_dirs(self):
+        """Info reports kits registered in core.toml, not loose config/kits dirs."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir) / "project"
+            project_root.mkdir()
+            (project_root / ".git").mkdir()
+            (project_root / "AGENTS.md").write_text(
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".cypilot-adapter"\n```\n<!-- /@cf:root-agents -->\n',
+                encoding="utf-8",
+            )
+            adapter_dir = project_root / ".cypilot-adapter"
+            config_dir = adapter_dir / "config"
+            sdlc_dir = config_dir / "kits" / "sdlc"
+            loose_dir = config_dir / "kits" / "loose"
+            sdlc_dir.mkdir(parents=True)
+            loose_dir.mkdir(parents=True)
+            (config_dir / "AGENTS.md").write_text("# Constructor Studio Adapter: TestProject\n", encoding="utf-8")
+            for kit_dir, slug in ((sdlc_dir, "sdlc"), (loose_dir, "loose")):
+                (kit_dir / "SKILL.md").write_text(f"# {slug}\n", encoding="utf-8")
+                (kit_dir / ".cf-studio-kit.toml").write_text(
+                    "\n".join([
+                        'manifest_version = "1.0"',
+                        "",
+                        "[[kits]]",
+                        f'slug = "{slug}"',
+                        f'name = "{slug}"',
+                        'version = "1.0"',
+                        "",
+                        "[[kits.resources]]",
+                        'id = "skill"',
+                        'kind = "skill"',
+                        'source = "SKILL.md"',
+                    ]) + "\n",
+                    encoding="utf-8",
+                )
+            (config_dir / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    'project_root = ".."',
+                    "",
+                    "[kits.sdlc]",
+                    'path = "config/kits/sdlc"',
+                    'version = "1.0"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            stdout_capture = io.StringIO()
+            with redirect_stdout(stdout_capture):
+                exit_code = main(["info", "--root", str(project_root)])
+
+            output = json.loads(stdout_capture.getvalue())
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(sorted(output["kit_models"]), ["sdlc"])
+            self.assertEqual(sorted(output["kit_details"]), ["sdlc"])
+
+    def test_adapter_info_does_not_scan_loose_kit_dirs_without_registry(self):
+        """Info does not infer installed kits from config/kits without core registration."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir) / "project"
+            project_root.mkdir()
+            (project_root / ".git").mkdir()
+            (project_root / "AGENTS.md").write_text(
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".cypilot-adapter"\n```\n<!-- /@cf:root-agents -->\n',
+                encoding="utf-8",
+            )
+            adapter_dir = project_root / ".cypilot-adapter"
+            config_dir = adapter_dir / "config"
+            loose_dir = config_dir / "kits" / "loose"
+            loose_dir.mkdir(parents=True)
+            (config_dir / "AGENTS.md").write_text("# Constructor Studio Adapter: TestProject\n", encoding="utf-8")
+            (loose_dir / "SKILL.md").write_text("# loose\n", encoding="utf-8")
+            (loose_dir / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "loose"',
+                    'name = "loose"',
+                    'version = "1.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "skill"',
+                    'kind = "skill"',
+                    'source = "SKILL.md"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            (config_dir / "core.toml").write_text(
+                'version = "1.0"\nproject_root = ".."\n',
+                encoding="utf-8",
+            )
+
+            stdout_capture = io.StringIO()
+            with redirect_stdout(stdout_capture):
+                exit_code = main(["info", "--root", str(project_root)])
+
+            output = json.loads(stdout_capture.getvalue())
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(output["kit_models"], {})
+            self.assertEqual(output["kit_details"], {})
+
+    def test_adapter_info_lists_workflows_from_frontmatter_directory(self):
+        """Legacy workflow directory resources list workflow files, not the directory."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir) / "project"
+            project_root.mkdir()
+            (project_root / ".git").mkdir()
+            (project_root / "AGENTS.md").write_text(
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".cypilot-adapter"\n```\n<!-- /@cf:root-agents -->\n',
+                encoding="utf-8",
+            )
+            adapter_dir = project_root / ".cypilot-adapter"
+            config_dir = adapter_dir / "config"
+            kit_dir = config_dir / "kits" / "sdlc"
+            workflows_dir = kit_dir / "workflows"
+            workflows_dir.mkdir(parents=True)
+            (config_dir / "AGENTS.md").write_text("# Constructor Studio Adapter: TestProject\n", encoding="utf-8")
+            (workflows_dir / "implement.md").write_text(
+                "---\ntype: workflow\n---\n# Implement\n",
+                encoding="utf-8",
+            )
+            (workflows_dir / "README.md").write_text("# Workflow notes\n", encoding="utf-8")
+            (kit_dir / "SKILL.md").write_text("# SDLC skill\n", encoding="utf-8")
+            (config_dir / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    'project_root = ".."',
+                    "",
+                    "[kits.sdlc]",
+                    'format = "CFS"',
+                    'path = "config/kits/sdlc"',
+                    'version = "1.1.1"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            stdout_capture = io.StringIO()
+            with redirect_stdout(stdout_capture):
+                exit_code = main(["info", "--root", str(project_root)])
+
+            output = json.loads(stdout_capture.getvalue())
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(output["kit_details"]["sdlc"]["workflows"], ["implement"])
+
+    def test_adapter_info_reports_kit_model_drift(self):
+        """Info reports installed resource and hash drift for canonical kits."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir) / "project"
+            project_root.mkdir()
+            (project_root / ".git").mkdir()
+            (project_root / "AGENTS.md").write_text(
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".cypilot-adapter"\n```\n<!-- /@cf:root-agents -->\n',
+                encoding="utf-8",
+            )
+            adapter_dir = project_root / ".cypilot-adapter"
+            config_dir = adapter_dir / "config"
+            kit_dir = config_dir / "kits" / "sdlc"
+            kit_dir.mkdir(parents=True)
+            (config_dir / "AGENTS.md").write_text("# Constructor Studio Adapter: TestProject\n", encoding="utf-8")
+            (kit_dir / "SKILL.md").write_text("# SDLC skill\n", encoding="utf-8")
+            (kit_dir / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "sdlc"',
+                    'name = "SDLC Kit"',
+                    'version = "2.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "skill"',
+                    'kind = "skill"',
+                    'source = "SKILL.md"',
+                    'install_path = "SKILL.md"',
+                    'type = "file"',
+                    "public = true",
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            skill_hash = hashlib.sha256(b"# SDLC skill\n").hexdigest()
+            (config_dir / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    'project_root = ".."',
+                    "",
+                    "[kits.sdlc]",
+                    'format = "CFS"',
+                    'path = "config/kits/sdlc"',
+                    'version = "2.0"',
+                    'install_mode = "copy"',
+                    "",
+                    "[kits.sdlc.content_identity]",
+                    'manifest_semantic_hash = "old-semantic"',
+                    'manifest_bytes_hash = "old-bytes"',
+                    "",
+                    "[kits.sdlc.content_identity.resource_hashes]",
+                    f'skill = "{skill_hash}"',
+                    'old = "stale"',
+                    "",
+                    "[kits.sdlc.resources.skill]",
+                    'path = "config/kits/sdlc/MISSING.md"',
+                    "",
+                    "[kits.sdlc.resources.old]",
+                    'path = "config/kits/sdlc/OLD.md"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            stdout_capture = io.StringIO()
+            with redirect_stdout(stdout_capture):
+                exit_code = main(["info", "--root", str(project_root)])
+
+            output = json.loads(stdout_capture.getvalue())
+            self.assertEqual(exit_code, 0)
+            kit_model = output["kit_models"]["sdlc"]
+            drift = output["kit_models"]["sdlc"]["drift"]
+            self.assertEqual(drift["status"], "drifted")
+            self.assertEqual(drift["install_mode"], "copy")
+            self.assertEqual(drift["containment"]["status"], "contained")
+            self.assertEqual(drift["missing_resources"], ["skill"])
+            self.assertEqual(drift["stale_resources"], ["old"])
+            self.assertEqual(drift["disabled_public_components"], ["skill"])
+            self.assertEqual(kit_model["active_targets"], [])
+            self.assertTrue(kit_model["public_components"][0]["disabled"])
+            self.assertTrue(drift["manifest_semantic_hash"]["drifted"])
+            self.assertTrue(drift["manifest_bytes_hash"]["drifted"])
+            self.assertTrue(drift["resource_hashes"]["drifted"])
+            self.assertEqual(drift["resource_hashes"]["stale"], ["old"])
 
     def test_adapter_info_expands_autodetect_systems(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

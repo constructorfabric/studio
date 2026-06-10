@@ -6,9 +6,14 @@ from skills.studio.scripts.studio.utils.constraints import (
     ArtifactRecord,
     ArtifactKindConstraints,
     HeadingConstraint,
+    IdConstraint,
+    KitConstraints,
     cross_validate_artifacts,
     heading_constraint_ids_by_line,
+    load_constraints_file,
+    load_constraints_files,
     load_constraints_toml,
+    merge_kit_constraints_all_of,
     parse_kit_constraints,
     validate_artifact_file,
     validate_headings_contract,
@@ -82,6 +87,38 @@ def test_parse_kit_constraints_valid_happy_path_and_normalizations():
     assert d0.references is not None
     assert set(d0.references.keys()) == {"DESIGN", "SPEC"}
     assert d0.references["DESIGN"].coverage is True
+
+
+def test_merge_all_of_preserves_stricter_false_values():
+    base = KitConstraints(
+        by_kind={
+            "PRD": ArtifactKindConstraints(
+                name=None,
+                description=None,
+                defined_id=[IdConstraint(kind="fr", required=False)],
+                headings=None,
+                toc=False,
+            )
+        }
+    )
+    incoming = KitConstraints(
+        by_kind={
+            "PRD": ArtifactKindConstraints(
+                name=None,
+                description=None,
+                defined_id=[IdConstraint(kind="fr", required=True)],
+                headings=None,
+                toc=True,
+            )
+        }
+    )
+
+    merged = merge_kit_constraints_all_of([base, incoming])
+
+    assert merged is not None
+    prd = merged.by_kind["PRD"]
+    assert prd.defined_id[0].required is False
+    assert prd.toc is False
 
 
 def test_parse_kit_constraints_duplicate_kind_detection():
@@ -424,6 +461,63 @@ def test_load_constraints_toml_parses_valid_constraints(tmp_path: Path):
     assert errs == []
     assert kc is not None
     assert "PRD" in kc.by_kind
+
+
+def test_load_constraints_file_allows_arbitrary_filename(tmp_path: Path):
+    path = tmp_path / "ruleset-a.toml"
+    path.write_text("[PRD.identifiers.fr]\nrequired = true\n", encoding="utf-8")
+
+    kc, errs = load_constraints_file(path)
+
+    assert errs == []
+    assert kc is not None
+    assert [c.kind for c in kc.by_kind["PRD"].defined_id] == ["fr"]
+
+
+def test_load_constraints_files_merges_sequentially(tmp_path: Path):
+    base = tmp_path / "base.toml"
+    extra = tmp_path / "extra.toml"
+    base.write_text(
+        "\n".join([
+            "[PRD]",
+            'name = "Base"',
+            "toc = false",
+            "[PRD.identifiers.fr]",
+            "required = true",
+        ]),
+        encoding="utf-8",
+    )
+    extra.write_text(
+        "\n".join([
+            "[PRD]",
+            'description = "Extra"',
+            "[PRD.identifiers.actor]",
+            "required = false",
+            "[DESIGN.identifiers.component]",
+            "required = true",
+        ]),
+        encoding="utf-8",
+    )
+
+    kc, errs = load_constraints_files([base, extra])
+
+    assert errs == []
+    assert kc is not None
+    assert kc.by_kind["PRD"].name == "Base"
+    assert kc.by_kind["PRD"].description == "Extra"
+    assert kc.by_kind["PRD"].toc is False
+    assert [c.kind for c in kc.by_kind["PRD"].defined_id] == ["fr", "actor"]
+    assert "DESIGN" in kc.by_kind
+
+
+def test_load_constraints_files_errors_on_missing_explicit_path(tmp_path: Path):
+    missing = tmp_path / "missing.toml"
+
+    kc, errs = load_constraints_files([missing])
+
+    assert kc is None
+    assert errs
+    assert "constraints file not found" in errs[0]
 
 
 def test_validate_artifact_file_enforces_constraints_and_required_kinds(tmp_path: Path):

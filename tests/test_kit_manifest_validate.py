@@ -214,8 +214,8 @@ class TestContextConstraintsResourceBinding(unittest.TestCase):
             self.assertIn("sdlc", ctx.kits)
             self.assertIsNone(ctx.kits["sdlc"].constraints)
             msgs = [str(e.get("message", "")) for e in (ctx._errors or [])]
-            self.assertTrue(any("Invalid constraints.toml" in msg for msg in msgs))
-            self.assertTrue(any("Bound constraints path does not exist or is not a file" in str(e.get("errors", [])) for e in (ctx._errors or [])))
+            self.assertTrue(any("Invalid constraints" in msg for msg in msgs))
+            self.assertTrue(any("Bound constraints resource" in str(e.get("errors", [])) for e in (ctx._errors or [])))
 
 
 # ---------------------------------------------------------------------------
@@ -635,7 +635,10 @@ class TestValidateKitByPathManifest(unittest.TestCase):
                 },
             ])
 
-            rc, result = _validate_kit_by_path(kit_dir)
+            rc, result = _validate_kit_by_path(kit_dir, verbose=True)
+            self.assertEqual(rc, 0)
+            self.assertEqual(result["kits"][0]["manifest_source"], "legacy_manifest")
+            self.assertEqual(result["kits"][0]["resource_count"], 1)
             resource_errors = [
                 e for e in result.get("errors", [])
                 if e.get("type") == "resources"
@@ -664,11 +667,20 @@ class TestValidateKitByPathManifest(unittest.TestCase):
                 },
             ])
 
-            rc, result = _validate_kit_by_path(kit_dir)
+            rc, result = _validate_kit_by_path(kit_dir, verbose=True)
             resource_errors = [
                 e for e in result.get("errors", [])
                 if e.get("type") == "resources"
             ]
+            kit_report = result["kits"][0]
+            self.assertEqual(rc, 2)
+            self.assertEqual(result["status"], "FAIL")
+            self.assertEqual(kit_report["status"], "FAIL")
+            self.assertGreater(kit_report["error_count"], 0)
+            self.assertTrue(any(
+                e.get("type") == "resources"
+                for e in kit_report.get("errors", [])
+            ))
             self.assertGreater(len(resource_errors), 0)
 
     def test_no_manifest_no_resource_check(self):
@@ -688,6 +700,51 @@ class TestValidateKitByPathManifest(unittest.TestCase):
                 if e.get("type") == "resources"
             ]
             self.assertEqual(len(resource_errors), 0)
+
+    def test_canonical_constraints_kind_resources_with_arbitrary_names(self):
+        """Standalone canonical kit loads constraints by kind, not filename or id."""
+        from studio.commands.validate_kits import _validate_kit_by_path
+
+        with TemporaryDirectory() as td:
+            td_path = Path(td)
+            kit_dir = td_path / "mykit"
+            kit_dir.mkdir()
+            (kit_dir / "base-rules.toml").write_text(
+                "[PRD.identifiers.fr]\nrequired = true\n",
+                encoding="utf-8",
+            )
+            (kit_dir / "extra-rules.toml").write_text(
+                "[DESIGN.identifiers.component]\nrequired = true\n",
+                encoding="utf-8",
+            )
+            (kit_dir / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "mykit"',
+                    'version = "1.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "policy-a"',
+                    'kind = "constraints"',
+                    'source = "base-rules.toml"',
+                    'type = "file"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "policy-b"',
+                    'kind = "constraints"',
+                    'source = "extra-rules.toml"',
+                    'type = "file"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            rc, result = _validate_kit_by_path(kit_dir, verbose=True)
+
+            self.assertEqual(rc, 0)
+            self.assertEqual(result["kits"][0]["manifest_source"], "canonical")
+            self.assertEqual(result["kits"][0]["kinds"], ["DESIGN", "PRD"])
 
     def test_malformed_manifest_produces_error(self):
         """Standalone kit with malformed manifest.toml → resource error reported."""

@@ -9,9 +9,11 @@ Covers:
 - _list_workflow_files gen kit scanning
 """
 
+import io
 import json
 import sys
 import unittest
+from contextlib import redirect_stderr
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -26,6 +28,390 @@ class TestStudioEndpointTarget(unittest.TestCase):
 
         content = "Constructor Studio endpoint only. Prompt source: {cf-studio-path}/skills/x"
         self.assertIsNone(_extract_studio_endpoint_target(content))
+
+    def test_endpoint_target_rejects_non_studio_path(self):
+        from studio.commands.agents import _extract_studio_endpoint_target
+
+        content = "Prompt source: /tmp/not-studio. Final prompt follows"
+        self.assertIsNone(_extract_studio_endpoint_target(content))
+
+    def test_pure_generated_endpoint_stub_is_accepted(self):
+        from studio.commands.agents import _GENERATED_MARKER, _is_pure_studio_generated
+
+        content = (
+            f"{_GENERATED_MARKER}\n"
+            "Constructor Studio endpoint only. Prompt source: .bootstrap/.core/skills/studio/SKILL.md"
+        )
+        self.assertTrue(_is_pure_studio_generated(content))
+
+    def test_target_path_outside_project_root_warns_and_returns_absolute(self):
+        from studio.commands.agents import _target_path_from_root
+
+        target = Path("/outside/project/agent.md")
+        buf = io.StringIO()
+        with redirect_stderr(buf):
+            result = _target_path_from_root(target, Path("/workspace/project"))
+
+        self.assertEqual(result, target.as_posix())
+        self.assertIn("outside project root", buf.getvalue())
+
+
+class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
+    """Canonical kit public components drive generated skills, agents, and rules."""
+
+    def _make_project(self, tmpdir):
+        root = Path(tmpdir) / "project"
+        root.mkdir()
+        (root / ".git").mkdir()
+        (root / "AGENTS.md").write_text(
+            '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".bootstrap"\n```\n<!-- /@cf:root-agents -->\n',
+            encoding="utf-8",
+        )
+        studio_root = root / ".bootstrap"
+        core_skill = studio_root / ".core" / "skills" / "studio"
+        core_skill.mkdir(parents=True)
+        (core_skill / "SKILL.md").write_text(
+            "---\nname: cf\ndescription: Constructor Studio\n---\nCore skill\n",
+            encoding="utf-8",
+        )
+        (studio_root / ".core" / "workflows").mkdir(parents=True)
+        kit_root = studio_root / "config" / "kits" / "pubkit"
+        kit_root.mkdir(parents=True)
+        (studio_root / "config" / "core.toml").write_text(
+            "\n".join([
+                'version = "1.0"',
+                'project_root = ".."',
+                "",
+                "[kits.pubkit]",
+                'path = "config/kits/pubkit"',
+                'version = "1.0"',
+            ]) + "\n",
+            encoding="utf-8",
+        )
+        (kit_root / "skill.md").write_text(
+            "---\nname: helper\ndescription: Helper skill\n---\n# Helper\n",
+            encoding="utf-8",
+        )
+        (kit_root / "agent.md").write_text("# Reviewer\nReview carefully.\n", encoding="utf-8")
+        (kit_root / "auditor.md").write_text("# Auditor\nAudit nested behavior.\n", encoding="utf-8")
+        (kit_root / "openai-auditor.md").write_text("# OpenAI auditor\n", encoding="utf-8")
+        (kit_root / "rule.md").write_text("# Guard\nFollow the guard.\n", encoding="utf-8")
+        (kit_root / "openai-agent.md").write_text("# OpenAI only\n", encoding="utf-8")
+        (kit_root / ".cf-studio-kit.toml").write_text(
+            "\n".join([
+                'manifest_version = "1.0"',
+                "",
+                "[[kits]]",
+                'slug = "pubkit"',
+                'name = "Public Kit"',
+                'version = "1.0"',
+                "",
+                "[[kits.resources]]",
+                'id = "helper"',
+                'kind = "skill"',
+                'source = "skill.md"',
+                'type = "file"',
+                "public = true",
+                'generated_targets = ["cursor"]',
+                'description = "Helper skill"',
+                "",
+                "[[kits.resources]]",
+                'id = "reviewer"',
+                'kind = "agent"',
+                'source = "agent.md"',
+                'type = "file"',
+                "public = true",
+                'generated_targets = ["cursor"]',
+                'description = "Reviewer agent"',
+                "",
+                "[kits.resources.targets.cursor]",
+                'mode = "readonly"',
+                'reasoning_effort = "high"',
+                "",
+                "[[kits.resources.agent.subagents]]",
+                'id = "auditor"',
+                'source = "auditor.md"',
+                'description = "Nested auditor"',
+                'generated_targets = ["cursor"]',
+                "prefix_generated_name = false",
+                'mode = "readonly"',
+                'tools = ["Read"]',
+                "",
+                "[[kits.resources.agent.subagents]]",
+                'id = "codex-auditor"',
+                'source = "openai-auditor.md"',
+                'generated_targets = ["openai"]',
+                "",
+                "[[kits.resources]]",
+                'id = "guard"',
+                'kind = "rule"',
+                'source = "rule.md"',
+                'type = "file"',
+                "public = true",
+                'generated_targets = ["cursor"]',
+                'description = "Guard rule"',
+                "",
+                "[[kits.resources]]",
+                'id = "codexonly"',
+                'kind = "agent"',
+                'source = "openai-agent.md"',
+                'type = "file"',
+                "public = true",
+                'generated_targets = ["openai"]',
+            ]) + "\n",
+            encoding="utf-8",
+        )
+        return root, studio_root
+
+    def test_generate_agents_uses_kitmodel_public_skill_agent_and_rule(self):
+        from studio.commands.agents import _default_agents_config, _process_single_agent
+
+        with TemporaryDirectory() as td:
+            root, studio_root = self._make_project(td)
+
+            result = _process_single_agent(
+                "cursor",
+                root,
+                studio_root,
+                _default_agents_config(),
+                None,
+                dry_run=False,
+            )
+
+            self.assertEqual(result["status"], "PASS")
+            skill_path = root / ".agents" / "skills" / "cf-pubkit-helper" / "SKILL.md"
+            agent_path = root / ".cursor" / "agents" / "cf-pubkit-reviewer.mdc"
+            nested_agent_path = root / ".cursor" / "agents" / "auditor.mdc"
+            rule_path = root / ".cursor" / "rules" / "cf-pubkit-guard.mdc"
+            self.assertTrue(skill_path.is_file())
+            self.assertTrue(agent_path.is_file())
+            self.assertTrue(nested_agent_path.is_file())
+            self.assertFalse((root / ".cursor" / "agents" / "cf-pubkit-auditor.mdc").exists())
+            self.assertTrue(rule_path.is_file())
+            self.assertIn("skill.md", skill_path.read_text(encoding="utf-8"))
+            agent_content = agent_path.read_text(encoding="utf-8")
+            self.assertIn("Review carefully.", agent_content)
+            self.assertIn("readonly: true", agent_content)
+            self.assertIn("reasoning_effort=high", agent_content)
+            nested_content = nested_agent_path.read_text(encoding="utf-8")
+            self.assertIn("Audit nested behavior.", nested_content)
+            self.assertIn("readonly: true", nested_content)
+            self.assertIn("Follow the guard.", rule_path.read_text(encoding="utf-8"))
+            self.assertFalse((root / ".cursor" / "agents" / "cf-pubkit-codexonly.mdc").exists())
+            self.assertFalse((root / ".cursor" / "agents" / "cf-pubkit-codex-auditor.mdc").exists())
+
+    def test_nested_public_subagent_uses_registered_resource_binding(self):
+        from studio.commands.agents import _default_agents_config, _process_single_agent
+
+        with TemporaryDirectory() as td:
+            root, studio_root = self._make_project(td)
+            rebound_dir = studio_root / "config" / "rebound"
+            rebound_dir.mkdir(parents=True)
+            (rebound_dir / "auditor.md").write_text("# Rebound auditor\nBound nested behavior.\n", encoding="utf-8")
+            core_toml = studio_root / "config" / "core.toml"
+            core_toml.write_text(
+                core_toml.read_text(encoding="utf-8")
+                + "\n[kits.pubkit.resources.auditor]\n"
+                + 'path = "config/rebound/auditor.md"\n',
+                encoding="utf-8",
+            )
+
+            result = _process_single_agent(
+                "cursor",
+                root,
+                studio_root,
+                _default_agents_config(),
+                None,
+                dry_run=False,
+            )
+
+            self.assertEqual(result["status"], "PASS")
+            nested_content = (root / ".cursor" / "agents" / "auditor.mdc").read_text(encoding="utf-8")
+            self.assertIn("Bound nested behavior.", nested_content)
+            self.assertNotIn("Audit nested behavior.", nested_content)
+
+    def test_generate_agents_reports_duplicate_public_agent_names(self):
+        from studio.commands.agents import _default_agents_config, _process_single_agent
+
+        with TemporaryDirectory() as td:
+            root, studio_root = self._make_project(td)
+            kit_root = studio_root / "config" / "kits" / "zdupekit"
+            kit_root.mkdir(parents=True)
+            (kit_root / "agent.md").write_text("# Duplicate\nDuplicate agent.\n", encoding="utf-8")
+            (kit_root / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "zdupekit"',
+                    'name = "Duplicate Kit"',
+                    'version = "1.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "cf-pubkit-reviewer"',
+                    'kind = "agent"',
+                    'source = "agent.md"',
+                    'type = "file"',
+                    "public = true",
+                    "prefix_generated_name = false",
+                    'generated_targets = ["cursor"]',
+                    'description = "Duplicate reviewer"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            core_toml = studio_root / "config" / "core.toml"
+            core_toml.write_text(
+                core_toml.read_text(encoding="utf-8")
+                + "\n[kits.zdupekit]\n"
+                + 'path = "config/kits/zdupekit"\n'
+                + 'version = "1.0"\n',
+                encoding="utf-8",
+            )
+
+            result = _process_single_agent(
+                "cursor",
+                root,
+                studio_root,
+                _default_agents_config(),
+                None,
+                dry_run=False,
+            )
+
+            self.assertEqual(result["status"], "PARTIAL")
+            errors = "\n".join(str(error) for error in result["errors"])
+            self.assertIn("duplicate public agent 'cf-pubkit-reviewer'", errors)
+            agent_path = root / ".cursor" / "agents" / "cf-pubkit-reviewer.mdc"
+            self.assertIn("Review carefully.", agent_path.read_text(encoding="utf-8"))
+            self.assertNotIn("Duplicate agent.", agent_path.read_text(encoding="utf-8"))
+
+    def test_generate_agents_reports_duplicate_public_skill_and_rule_names(self):
+        from studio.commands.agents import _default_agents_config, _process_single_agent
+
+        with TemporaryDirectory() as td:
+            root, studio_root = self._make_project(td)
+            kit_root = studio_root / "config" / "kits" / "zdupes"
+            kit_root.mkdir(parents=True)
+            (kit_root / "skill.md").write_text("# Duplicate skill\n", encoding="utf-8")
+            (kit_root / "rule.md").write_text("# Duplicate rule\n", encoding="utf-8")
+            (kit_root / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "zdupes"',
+                    'name = "Duplicate Names"',
+                    'version = "1.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "cf-pubkit-helper"',
+                    'kind = "skill"',
+                    'source = "skill.md"',
+                    'type = "file"',
+                    "public = true",
+                    "prefix_generated_name = false",
+                    'generated_targets = ["cursor"]',
+                    'description = "Duplicate helper"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "cf-pubkit-guard"',
+                    'kind = "rule"',
+                    'source = "rule.md"',
+                    'type = "file"',
+                    "public = true",
+                    "prefix_generated_name = false",
+                    'generated_targets = ["cursor"]',
+                    'description = "Duplicate guard"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            core_toml = studio_root / "config" / "core.toml"
+            core_toml.write_text(
+                core_toml.read_text(encoding="utf-8")
+                + "\n[kits.zdupes]\n"
+                + 'path = "config/kits/zdupes"\n'
+                + 'version = "1.0"\n',
+                encoding="utf-8",
+            )
+
+            result = _process_single_agent(
+                "cursor",
+                root,
+                studio_root,
+                _default_agents_config(),
+                None,
+                dry_run=False,
+            )
+
+            self.assertEqual(result["status"], "PARTIAL")
+            errors = "\n".join(str(error) for error in result["errors"])
+            self.assertIn("duplicate public skill 'cf-pubkit-helper'", errors)
+            self.assertIn("duplicate public rule 'cf-pubkit-guard'", errors)
+            self.assertIn(
+                "config/kits/pubkit/skill.md",
+                (root / ".agents" / "skills" / "cf-pubkit-helper" / "SKILL.md").read_text(encoding="utf-8"),
+            )
+            self.assertIn(
+                "Follow the guard.",
+                (root / ".cursor" / "rules" / "cf-pubkit-guard.mdc").read_text(encoding="utf-8"),
+            )
+
+    def test_generate_agents_reports_duplicate_public_nested_agent_names(self):
+        from studio.commands.agents import _default_agents_config, _process_single_agent
+
+        with TemporaryDirectory() as td:
+            root, studio_root = self._make_project(td)
+            kit_root = studio_root / "config" / "kits" / "znesteddupe"
+            kit_root.mkdir(parents=True)
+            (kit_root / "agent.md").write_text("# Owner\n", encoding="utf-8")
+            (kit_root / "auditor.md").write_text("# Duplicate nested auditor\n", encoding="utf-8")
+            (kit_root / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "znesteddupe"',
+                    'name = "Duplicate Nested"',
+                    'version = "1.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "owner"',
+                    'kind = "agent"',
+                    'source = "agent.md"',
+                    'type = "file"',
+                    "public = true",
+                    'generated_targets = ["cursor"]',
+                    "",
+                    "[[kits.resources.agent.subagents]]",
+                    'id = "auditor"',
+                    'source = "auditor.md"',
+                    'generated_targets = ["cursor"]',
+                    "prefix_generated_name = false",
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            core_toml = studio_root / "config" / "core.toml"
+            core_toml.write_text(
+                core_toml.read_text(encoding="utf-8")
+                + "\n[kits.znesteddupe]\n"
+                + 'path = "config/kits/znesteddupe"\n'
+                + 'version = "1.0"\n',
+                encoding="utf-8",
+            )
+
+            result = _process_single_agent(
+                "cursor",
+                root,
+                studio_root,
+                _default_agents_config(),
+                None,
+                dry_run=False,
+            )
+
+            self.assertEqual(result["status"], "PARTIAL")
+            errors = "\n".join(str(error) for error in result["errors"])
+            self.assertIn("duplicate public agent 'auditor'", errors)
+            self.assertIn("Audit nested behavior.", (root / ".cursor" / "agents" / "auditor.mdc").read_text(encoding="utf-8"))
+            self.assertNotIn("Duplicate nested auditor", (root / ".cursor" / "agents" / "auditor.mdc").read_text(encoding="utf-8"))
 
 
 class TestEnsureFrontmatterDescriptionQuoted(unittest.TestCase):
@@ -81,7 +467,7 @@ class TestResolveConfigKits(unittest.TestCase):
 class TestRegisteredKitDirs(unittest.TestCase):
     """Cover line 503 in agents.py."""
 
-    def test_kits_not_dict_returns_none(self):
+    def test_kits_not_dict_returns_empty_set(self):
         from studio.commands.agents import _registered_kit_dirs
 
         with TemporaryDirectory() as tmpdir:
@@ -99,7 +485,7 @@ class TestRegisteredKitDirs(unittest.TestCase):
                 encoding="utf-8",
             )
             result = _registered_kit_dirs(root)
-            self.assertIsNone(result)
+            self.assertEqual(result, set())
 
 
 class TestEnsureCypilotLocal(unittest.TestCase):
@@ -145,11 +531,25 @@ class TestEnsureCypilotLocal(unittest.TestCase):
 class TestListWorkflowFilesConfigKits(unittest.TestCase):
     """Cover kit workflow scanning in agents.py."""
 
-    def test_scans_config_kit_workflows(self):
+    def test_scans_registered_config_kit_workflows(self):
         from studio.commands.agents import _list_workflow_files
 
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
+            (root / "AGENTS.md").write_text(
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "."\n```\n<!-- /@cf:root-agents -->\n',
+                encoding="utf-8",
+            )
+            (root / "config").mkdir()
+            (root / "config" / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    "",
+                    "[kits.sdlc]",
+                    'path = "config/kits/sdlc"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
             # Create core workflows dir (need .core/ so core_subpath routes there)
             core_wf = root / ".core" / "workflows"
             core_wf.mkdir(parents=True)
@@ -166,10 +566,32 @@ class TestListWorkflowFilesConfigKits(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            results = _list_workflow_files(root, project_root=None)
+            results = _list_workflow_files(root, project_root=root)
             names = [r[0] for r in results]
             self.assertIn("analyze.md", names)
             self.assertIn("pr-review.md", names)
+
+    def test_ignores_unregistered_config_kit_workflows(self):
+        from studio.commands.agents import _list_workflow_files
+
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "AGENTS.md").write_text(
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "."\n```\n<!-- /@cf:root-agents -->\n',
+                encoding="utf-8",
+            )
+            (root / "config").mkdir()
+            (root / "config" / "core.toml").write_text('version = "1.0"\n', encoding="utf-8")
+            config_kit_wf = root / "config" / "kits" / "loose" / "workflows"
+            config_kit_wf.mkdir(parents=True)
+            (config_kit_wf / "pr-review.md").write_text(
+                "---\ntype: workflow\ndescription: pr review\n---\nContent\n",
+                encoding="utf-8",
+            )
+
+            results = _list_workflow_files(root, project_root=root)
+
+            self.assertNotIn("pr-review.md", [r[0] for r in results])
 
     def test_config_kit_iterdir_exception_is_handled(self):
         from studio.commands.agents import _list_workflow_files
@@ -625,8 +1047,24 @@ class TestProcessSingleAgentEdgeCases(unittest.TestCase):
         root = (Path(tmpdir) / "proj").resolve()
         root.mkdir()
         (root / ".git").mkdir()
+        (root / "AGENTS.md").write_text(
+            '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "cypilot"\n```\n<!-- /@cf:root-agents -->\n',
+            encoding="utf-8",
+        )
         cpt = root / "cypilot"
         cpt.mkdir()
+        config_dir = cpt / "config"
+        config_dir.mkdir()
+        (config_dir / "core.toml").write_text(
+            "\n".join([
+                'version = "1.0"',
+                'project_root = ".."',
+                "",
+                "[kits.sdlc]",
+                'path = "config/kits/sdlc"',
+            ]) + "\n",
+            encoding="utf-8",
+        )
         core_skill = cpt / ".core" / "skills" / "cypilot" / "SKILL.md"
         core_skill.parent.mkdir(parents=True)
         core_skill.write_text(
@@ -658,6 +1096,22 @@ class TestProcessSingleAgentEdgeCases(unittest.TestCase):
             # The kit description from config/kits/sdlc/SKILL.md must appear in the output,
             # proving the enrichment branch in _process_single_agent() ran.
             self.assertIn("SDLC-ENRICHMENT-SENTINEL", content, "Kit description enrichment must be present")
+
+    def test_unregistered_kit_description_not_enriched(self):
+        """Loose config/kits dirs must not enrich generated skill descriptions."""
+        from studio.commands.agents import _process_single_agent, _default_agents_config
+
+        with TemporaryDirectory() as td:
+            root, cpt = self._make_project(td)
+            core_toml = cpt / "config" / "core.toml"
+            core_toml.write_text('version = "1.0"\nproject_root = ".."\nkits = {}\n', encoding="utf-8")
+
+            cfg = _default_agents_config()
+            result = _process_single_agent("windsurf", root, cpt, cfg, None, dry_run=False)
+            agents_skill = root / ".agents" / "skills" / "cf" / "SKILL.md"
+            self.assertTrue(agents_skill.exists(), f"Expected {agents_skill} to exist")
+            content = agents_skill.read_text(encoding="utf-8")
+            self.assertNotIn("SDLC-ENRICHMENT-SENTINEL", content)
 
     def test_non_dict_output_cfg_skipped(self):
         """Non-dict entries in outputs list are skipped (line 614)."""
@@ -1693,8 +2147,14 @@ class TestKitWorkflowSharedSkills(unittest.TestCase):
         root = (Path(td) / "proj").resolve()
         root.mkdir()
         (root / ".git").mkdir()
+        (root / "AGENTS.md").write_text(
+            '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "cypilot"\n```\n<!-- /@cf:root-agents -->\n',
+            encoding="utf-8",
+        )
         cpt = root / "cypilot"
         cpt.mkdir()
+        (cpt / "config").mkdir(parents=True, exist_ok=True)
+        (cpt / "config" / "core.toml").write_text('version = "1.0"\n', encoding="utf-8")
         core_skill = cpt / ".core" / "skills" / "cypilot" / "SKILL.md"
         core_skill.parent.mkdir(parents=True)
         core_skill.write_text("---\nname: cypilot\ndescription: Test\n---\nContent\n")
@@ -1742,9 +2202,122 @@ class TestKitWorkflowSharedSkills(unittest.TestCase):
             self.assertTrue(shared_skill.exists(),
                 ".agents/skills/cf-generate/SKILL.md must be generated for copilot")
 
+    def test_manifest_public_skill_generates_from_kit_model_without_workflow_scan(self):
+        """Canonical kit public skills are generated from KitModel, not workflow folders."""
+        from studio.commands.agents import _process_single_agent, _default_agents_config
+
+        with TemporaryDirectory() as td:
+            root, cpt = self._make_project(td)
+            kit_dir = cpt / "config" / "kits" / "pub"
+            kit_dir.mkdir(parents=True)
+            (kit_dir / "SKILL.md").write_text(
+                "---\nname: Public Release\ndescription: Release flow\n---\n# Release\n",
+                encoding="utf-8",
+            )
+            workflow_dir = kit_dir / "workflows"
+            workflow_dir.mkdir()
+            (workflow_dir / "legacy.md").write_text(
+                "---\ntype: workflow\nname: Legacy\ndescription: Should not be generated\n---\n# Legacy\n",
+                encoding="utf-8",
+            )
+            (kit_dir / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "pub"',
+                    'name = "Public Kit"',
+                    'version = "1.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "release"',
+                    'kind = "skill"',
+                    'source = "SKILL.md"',
+                    'install_path = "SKILL.md"',
+                    'type = "file"',
+                    "public = true",
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            (cpt / "config" / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    "",
+                    "[kits.pub]",
+                    'format = "CFS"',
+                    'path = "config/kits/pub"',
+                    "",
+                    "[kits.pub.resources.release]",
+                    'path = "config/kits/pub/SKILL.md"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            cfg = _default_agents_config()
+            _process_single_agent("cursor", root, cpt, cfg, None, dry_run=False)
+
+            public_skill = root / ".agents" / "skills" / "cf-pub-release" / "SKILL.md"
+            self.assertTrue(public_skill.exists())
+            content = public_skill.read_text(encoding="utf-8")
+            self.assertIn("name: Public Release", content)
+            self.assertIn("{cf-studio-path}/config/kits/pub/SKILL.md", content)
+            self.assertFalse((root / ".agents" / "skills" / "cf-pub-legacy" / "SKILL.md").exists())
+
+    def test_legacy_manifest_workflow_renders_as_skill_without_alias_artifact(self):
+        """Legacy manifest workflows render as public skills from KitModel."""
+        from studio.commands.agents import _process_single_agent, _default_agents_config
+
+        with TemporaryDirectory() as td:
+            root, cpt = self._make_project(td)
+            kit_dir = cpt / "config" / "kits" / "legacyv2"
+            kit_dir.mkdir(parents=True)
+            (kit_dir / "release.md").write_text(
+                "---\nname: Release Workflow\ndescription: Ship release\n---\n# Release\n",
+                encoding="utf-8",
+            )
+            (kit_dir / "manifest.toml").write_text(
+                "\n".join([
+                    "[manifest]",
+                    'version = "2.0"',
+                    "",
+                    "[[workflows]]",
+                    'id = "release"',
+                    'prompt_file = "release.md"',
+                    'description = "Ship release"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            (cpt / "config" / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    "",
+                    "[kits.legacyv2]",
+                    'format = "CFS"',
+                    'path = "config/kits/legacyv2"',
+                    "",
+                    "[kits.legacyv2.resources.release]",
+                    'path = "config/kits/legacyv2/release.md"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            _process_single_agent("cursor", root, cpt, _default_agents_config(), None, dry_run=False)
+
+            public_skill = root / ".agents" / "skills" / "cf-legacyv2-release" / "SKILL.md"
+            self.assertTrue(public_skill.exists())
+            content = public_skill.read_text(encoding="utf-8")
+            self.assertIn("Release Workflow", content)
+            self.assertIn("{cf-studio-path}/config/kits/legacyv2/release.md", content)
+            self.assertFalse((root / ".agents" / "skills" / "release" / "SKILL.md").exists())
+
 
 class TestIsPureCypilotGenerated(unittest.TestCase):
     """Regression: _is_pure_studio_generated must distinguish pure stubs from customized files."""
+
+    def test_blank_generated_content_is_pure(self):
+        from studio.commands.agents import _GENERATED_MARKER, _is_pure_studio_generated
+
+        self.assertTrue(_is_pure_studio_generated(f"{_GENERATED_MARKER}\n"))
 
     def test_pure_stub_is_detected(self):
         from studio.commands.agents import _is_pure_studio_generated
@@ -3184,32 +3757,70 @@ class TestDiscoverKitAgentsFileSkip(unittest.TestCase):
             self.assertIsInstance(result, list)
 
     def test_unregistered_kit_dir_is_skipped(self):
-        """Kit dir not in registered_dirs is skipped (line 992).
-
-        This requires registered_dirs to be non-empty and the kit dir's name
-        to be absent from it.
-        """
+        """Kit dir not registered in core.toml is skipped."""
         from studio.commands.agents import _discover_kit_agents
-        from unittest.mock import patch
 
         with TemporaryDirectory() as td:
             root = Path(td)
             (root / ".git").mkdir()
             (root / "AGENTS.md").write_text(
-                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "cpt"\n```\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "cpt"\n```\n<!-- /@cf:root-agents -->\n',
                 encoding="utf-8",
             )
             cypilot_root = root / "cpt"
             config_kits = cypilot_root / "config" / "kits"
             kit_dir = config_kits / "my-kit"
             kit_dir.mkdir(parents=True)
-            # Patch _registered_kit_dirs to return a non-empty set that excludes my-kit
-            with patch(
-                "studio.commands.agents._registered_kit_dirs",
-                return_value={"other-kit"},
-            ):
-                result = _discover_kit_agents(cypilot_root, root)
-            self.assertIsInstance(result, list)
+            (cypilot_root / "config" / "core.toml").write_text(
+                'version = "1.0"\nproject_root = ".."\nkits = {}\n',
+                encoding="utf-8",
+            )
+            (kit_dir / "agents.toml").write_text(
+                "[agents.loose]\ndescription = \"Loose agent\"\nprompt_file = \"agents/loose.md\"\n",
+                encoding="utf-8",
+            )
+            (kit_dir / "agents").mkdir()
+            (kit_dir / "agents" / "loose.md").write_text("Loose\n", encoding="utf-8")
+
+            result = _discover_kit_agents(cypilot_root, root)
+
+            self.assertNotIn("loose", [entry["name"] for entry in result])
+
+    def test_registered_kit_dir_agents_are_loaded(self):
+        """Registered kit agents.toml contributes agent definitions."""
+        from studio.commands.agents import _discover_kit_agents
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            (root / "AGENTS.md").write_text(
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "cpt"\n```\n<!-- /@cf:root-agents -->\n',
+                encoding="utf-8",
+            )
+            cypilot_root = root / "cpt"
+            config_kits = cypilot_root / "config" / "kits"
+            kit_dir = config_kits / "my-kit"
+            kit_dir.mkdir(parents=True)
+            (cypilot_root / "config" / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    'project_root = ".."',
+                    "",
+                    "[kits.my-kit]",
+                    'path = "config/kits/my-kit"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            (kit_dir / "agents.toml").write_text(
+                "[agents.registered]\ndescription = \"Registered agent\"\nprompt_file = \"agents/registered.md\"\n",
+                encoding="utf-8",
+            )
+            (kit_dir / "agents").mkdir()
+            (kit_dir / "agents" / "registered.md").write_text("Registered\n", encoding="utf-8")
+
+            result = _discover_kit_agents(cypilot_root, root)
+
+            self.assertIn("registered", [entry["name"] for entry in result])
 
 
 class TestProcessWorkflowsRelativeContainment(unittest.TestCase):

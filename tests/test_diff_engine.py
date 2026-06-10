@@ -431,6 +431,67 @@ class TestFileLevelKitUpdate(unittest.TestCase):
             self.assertEqual(result["status"], "updated")
             self.assertIn("SKILL.md", result["accepted"])
 
+    def test_auto_approve_declines_user_modifiable_resource_without_overwrite_approval(self):
+        from studio.utils.diff_engine import file_level_kit_update
+        from studio.utils.manifest import ResourceInfo
+
+        with TemporaryDirectory() as td:
+            src = Path(td) / "src"
+            usr = Path(td) / "usr"
+            src.mkdir(); usr.mkdir()
+            (src / "SKILL.md").write_text("new\n", encoding="utf-8")
+            (usr / "SKILL.md").write_text("old\n", encoding="utf-8")
+
+            result = file_level_kit_update(
+                src,
+                usr,
+                auto_approve=True,
+                content_files=("SKILL.md",),
+                source_to_resource_id={"SKILL.md": "skill"},
+                resource_info={
+                    "skill": ResourceInfo(
+                        type="file",
+                        source_base="SKILL.md",
+                        user_modifiable=True,
+                    ),
+                },
+            )
+
+            self.assertEqual(result["status"], "updated")
+            self.assertIn("SKILL.md", result["declined"])
+            self.assertEqual((usr / "SKILL.md").read_text(encoding="utf-8"), "old\n")
+
+    def test_auto_approve_accepts_user_modifiable_resource_with_overwrite_approval(self):
+        from studio.utils.diff_engine import file_level_kit_update
+        from studio.utils.manifest import ResourceInfo
+
+        with TemporaryDirectory() as td:
+            src = Path(td) / "src"
+            usr = Path(td) / "usr"
+            src.mkdir(); usr.mkdir()
+            (src / "SKILL.md").write_text("new\n", encoding="utf-8")
+            (usr / "SKILL.md").write_text("old\n", encoding="utf-8")
+
+            result = file_level_kit_update(
+                src,
+                usr,
+                auto_approve=True,
+                content_files=("SKILL.md",),
+                approved_overwrites=["skill"],
+                source_to_resource_id={"SKILL.md": "skill"},
+                resource_info={
+                    "skill": ResourceInfo(
+                        type="file",
+                        source_base="SKILL.md",
+                        user_modifiable=True,
+                    ),
+                },
+            )
+
+            self.assertEqual(result["status"], "updated")
+            self.assertIn("SKILL.md", result["accepted"])
+            self.assertEqual((usr / "SKILL.md").read_text(encoding="utf-8"), "new\n")
+
     def test_added_file_auto_approve(self):
         from studio.utils.diff_engine import file_level_kit_update
         with TemporaryDirectory() as td:
@@ -627,6 +688,153 @@ class TestFileLevelKitUpdateResourceBindings(unittest.TestCase):
             # Files should NOT be at default paths
             self.assertFalse((usr / "artifacts" / "ADR" / "template.md").exists())
 
+    def test_removed_bound_resource_file_requires_prune(self):
+        """Manifest-bound resource removals are not deleted by normal update."""
+        from studio.utils.diff_engine import file_level_kit_update
+        from studio.utils.manifest import ResourceInfo
+
+        with TemporaryDirectory() as td:
+            src = Path(td) / "src"
+            usr = Path(td) / "usr"
+            redirect_dir = Path(td) / "redirect"
+            src.mkdir()
+            usr.mkdir()
+            redirect_dir.mkdir()
+
+            (src / "artifacts" / "ADR").mkdir(parents=True)
+            (src / "artifacts" / "ADR" / "kept.md").write_text("kept\n", encoding="utf-8")
+            (redirect_dir / "ADR").mkdir()
+            (redirect_dir / "ADR" / "kept.md").write_text("kept\n", encoding="utf-8")
+            removed_file = redirect_dir / "ADR" / "removed.md"
+            removed_file.write_text("user content\n", encoding="utf-8")
+
+            result = file_level_kit_update(
+                src, usr,
+                auto_approve=True,
+                content_dirs=("artifacts",),
+                resource_bindings={"adr_artifacts": redirect_dir / "ADR"},
+                source_to_resource_id={
+                    "artifacts/ADR/kept.md": "adr_artifacts",
+                },
+                resource_info={
+                    "adr_artifacts": ResourceInfo(type="directory", source_base="artifacts/ADR"),
+                },
+            )
+
+            self.assertEqual(result["status"], "updated")
+            self.assertTrue(removed_file.is_file())
+            self.assertEqual(result["accepted"], [])
+            self.assertEqual(result["declined"], ["artifacts/ADR/removed.md"])
+            self.assertEqual(
+                result["removed"][0]["reason"],
+                "resource removed upstream; explicit prune mode required",
+            )
+
+    def test_prune_bound_resource_file_requires_fingerprint(self):
+        """Non-interactive prune mode still requires the per-path fingerprint."""
+        from studio.utils.diff_engine import file_level_kit_update
+        from studio.utils.manifest import ResourceInfo
+
+        with TemporaryDirectory() as td:
+            src = Path(td) / "src"
+            usr = Path(td) / "usr"
+            redirect_dir = Path(td) / "redirect"
+            src.mkdir()
+            usr.mkdir()
+            redirect_dir.mkdir()
+
+            (redirect_dir / "template.md").write_text("user content\n", encoding="utf-8")
+            result = file_level_kit_update(
+                src, usr,
+                auto_approve=True,
+                prune_mode=True,
+                content_dirs=("artifacts",),
+                resource_bindings={"adr_template": redirect_dir / "template.md"},
+                source_to_resource_id={},
+                resource_info={
+                    "adr_template": ResourceInfo(type="file", source_base="artifacts/template.md"),
+                },
+            )
+
+            self.assertTrue((redirect_dir / "template.md").is_file())
+            self.assertEqual(result["declined"], ["artifacts/template.md"])
+            self.assertRegex(result["removed"][0]["prune_fingerprint"], r"^[0-9a-f]{64}$")
+
+    def test_prune_bound_resource_file_with_fingerprint_deletes(self):
+        """A matching prune fingerprint allows non-interactive deletion."""
+        from studio.utils.diff_engine import file_level_kit_update
+        from studio.utils.manifest import ResourceInfo
+
+        with TemporaryDirectory() as td:
+            src = Path(td) / "src"
+            usr = Path(td) / "usr"
+            redirect_dir = Path(td) / "redirect"
+            src.mkdir()
+            usr.mkdir()
+            redirect_dir.mkdir()
+
+            removed_file = redirect_dir / "template.md"
+            removed_file.write_text("user content\n", encoding="utf-8")
+            resource_info = {
+                "adr_template": ResourceInfo(type="file", source_base="artifacts/template.md"),
+            }
+            first = file_level_kit_update(
+                src, usr,
+                auto_approve=True,
+                prune_mode=True,
+                content_dirs=("artifacts",),
+                resource_bindings={"adr_template": removed_file},
+                source_to_resource_id={},
+                resource_info=resource_info,
+            )
+            fingerprint = first["removed"][0]["prune_fingerprint"]
+
+            result = file_level_kit_update(
+                src, usr,
+                auto_approve=True,
+                prune_mode=True,
+                approved_prunes=[fingerprint],
+                content_dirs=("artifacts",),
+                resource_bindings={"adr_template": removed_file},
+                source_to_resource_id={},
+                resource_info=resource_info,
+            )
+
+            self.assertFalse(removed_file.exists())
+            self.assertEqual(result["accepted"], ["artifacts/template.md"])
+            self.assertEqual(result["removed"][0]["prune_fingerprint"], fingerprint)
+
+    def test_prune_bound_resource_interactive_accept_deletes(self):
+        """Interactive prune mode prompts per removed manifest-bound path."""
+        from studio.utils.diff_engine import file_level_kit_update
+        from studio.utils.manifest import ResourceInfo
+
+        with TemporaryDirectory() as td:
+            src = Path(td) / "src"
+            usr = Path(td) / "usr"
+            redirect_dir = Path(td) / "redirect"
+            src.mkdir()
+            usr.mkdir()
+            redirect_dir.mkdir()
+
+            removed_file = redirect_dir / "template.md"
+            removed_file.write_text("user content\n", encoding="utf-8")
+            with patch("builtins.input", return_value="a"):
+                result = file_level_kit_update(
+                    src, usr,
+                    interactive=True,
+                    prune_mode=True,
+                    content_dirs=("artifacts",),
+                    resource_bindings={"adr_template": removed_file},
+                    source_to_resource_id={},
+                    resource_info={
+                        "adr_template": ResourceInfo(type="file", source_base="artifacts/template.md"),
+                    },
+                )
+
+            self.assertFalse(removed_file.exists())
+            self.assertEqual(result["accepted"], ["artifacts/template.md"])
+
     def test_mixed_bound_and_unbound_files(self):
         """Files without bindings go to user_dir, bound files go to binding path."""
         from studio.utils.diff_engine import file_level_kit_update
@@ -710,6 +918,7 @@ class TestFileLevelKitUpdateResourceBindings(unittest.TestCase):
                 resource_bindings=resource_bindings,
                 source_to_resource_id=source_to_resource_id,
                 resource_info=resource_info,
+                approved_overwrites=["adr_template"],
             )
 
             self.assertEqual(result["status"], "updated")
@@ -778,6 +987,7 @@ class TestFileLevelKitUpdateResourceBindings(unittest.TestCase):
                 resource_bindings=resource_bindings,
                 source_to_resource_id=source_to_resource_id,
                 resource_info=resource_info,
+                approved_overwrites=["adr_example"],
             )
 
             self.assertEqual(result["status"], "updated")

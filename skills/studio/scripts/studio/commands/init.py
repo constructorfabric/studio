@@ -38,6 +38,19 @@ KIT_TRACKING_ALIASES = {"untracked": "ignored"}
 GITIGNORE_MARKER_START = "# BEGIN Constructor Studio"
 GITIGNORE_MARKER_END = "# END Constructor Studio"
 
+def _cache_allows_root_metadata(cache_dir: Path) -> bool:
+    """Return False for local/path cache sources where version metadata is not authoritative."""
+    provenance_path = cache_dir / ".provenance.json"
+    if not provenance_path.is_file():
+        return True
+    try:
+        data = json.loads(provenance_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return True
+    source_type = str(data.get("source_type") or "").strip().lower()
+    return source_type not in {"local", "local_path", "path"}
+
+
 def _copy_from_cache(cache_dir: Path, target_dir: Path, force: bool = False) -> Dict[str, str]:
     """Copy cache content into the project install directory.
 
@@ -138,8 +151,12 @@ def _copy_from_cache(cache_dir: Path, target_dir: Path, force: bool = False) -> 
     for name in COPY_ROOT_DIRS:
         _copy_dir(cache_dir / name, target_dir / name, name)
 
-    for name in COPY_ROOT_FILES:
-        _copy_file(cache_dir / name, target_dir / name, name)
+    if _cache_allows_root_metadata(cache_dir):
+        for name in COPY_ROOT_FILES:
+            _copy_file(cache_dir / name, target_dir / name, name)
+    else:
+        for name in COPY_ROOT_FILES:
+            results[name] = "skipped_local_path_source"
 
     return results
 
@@ -153,6 +170,10 @@ def _dry_run_copy_results(
     results = {d: "dry_run" for d in COPY_DIRS}
     for item in COPY_ARCHITECTURE_ITEMS:
         results[f"architecture/{item}"] = "dry_run"
+    if cache_dir is not None and not _cache_allows_root_metadata(cache_dir):
+        for name in COPY_ROOT_FILES:
+            results[name] = "skipped_local_path_source"
+        return results
     for name in COPY_ROOT_FILES:
         if cache_dir is not None and not (cache_dir / name).is_file():
             dst = target_dir / name if target_dir is not None else None

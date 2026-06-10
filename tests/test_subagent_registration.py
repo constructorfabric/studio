@@ -61,6 +61,22 @@ def _make_kit(kit_dir: Path) -> None:
     )
 
 
+def _register_kit(studio_root: Path, kit_name: str = "sdlc") -> None:
+    """Register a kit path in core.toml so discovery is registry-driven."""
+    (studio_root.parent / "AGENTS.md").write_text(
+        '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "cypilot_src"\n```\n<!-- /@cf:root-agents -->\n',
+        encoding="utf-8",
+    )
+    config_dir = studio_root / "config"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    with (config_dir / "core.toml").open("a", encoding="utf-8") as fh:
+        fh.write(
+            f"[kits.{kit_name}]\n"
+            'format = "CFS"\n'
+            f'path = "config/kits/{kit_name}"\n'
+        )
+
+
 def _make_semantic_agent(
     name: str = "test-agent",
     description: str = "Test agent",
@@ -96,6 +112,7 @@ class TestDiscoverKitAgents(unittest.TestCase):
         cypilot = root / "cypilot_src"
         kit_dir = cypilot / "config" / "kits" / kit_name
         _make_kit(kit_dir)
+        _register_kit(cypilot, kit_name)
         return cypilot
 
     def test_discovers_agents_from_core_skill(self):
@@ -195,6 +212,7 @@ class TestDiscoverKitAgents(unittest.TestCase):
             cypilot = root / "cypilot_src"
             kit_dir = cypilot / "config" / "kits" / "bad"
             kit_dir.mkdir(parents=True)
+            _register_kit(cypilot, "bad")
             (kit_dir / "agents.toml").write_text(
                 '[agents.my-agent]\ndescription = "test"\n'
                 'prompt_file = "x.md"\nmode = "read_only"\n',
@@ -211,6 +229,7 @@ class TestDiscoverKitAgents(unittest.TestCase):
             cypilot = root / "cypilot_src"
             kit_dir = cypilot / "config" / "kits" / "bad"
             kit_dir.mkdir(parents=True)
+            _register_kit(cypilot, "bad")
             (kit_dir / "agents.toml").write_text(
                 '[agents.my-agent]\ndescription = "test"\n'
                 'prompt_file = "x.md"\nmodel = "turbo"\n',
@@ -237,6 +256,7 @@ class TestDiscoverKitAgents(unittest.TestCase):
             # Kit agent with same name
             kit_dir = cypilot / "config" / "kits" / "sdlc"
             kit_dir.mkdir(parents=True)
+            _register_kit(cypilot, "sdlc")
             (kit_dir / "x.md").write_text("kit prompt", encoding="utf-8")
             (kit_dir / "agents.toml").write_text(
                 '[agents.my-agent]\ndescription = "from kit"\nprompt_file = "x.md"\n',
@@ -253,6 +273,7 @@ class TestDiscoverKitAgents(unittest.TestCase):
             # Kit "aaa" comes first alphabetically
             kit_a = cypilot / "config" / "kits" / "aaa"
             kit_a.mkdir(parents=True)
+            _register_kit(cypilot, "aaa")
             (kit_a / "x.md").write_text("aaa prompt", encoding="utf-8")
             (kit_a / "agents.toml").write_text(
                 '[agents.my-agent]\ndescription = "from aaa"\nprompt_file = "x.md"\n',
@@ -260,6 +281,7 @@ class TestDiscoverKitAgents(unittest.TestCase):
             )
             kit_b = cypilot / "config" / "kits" / "bbb"
             kit_b.mkdir(parents=True)
+            _register_kit(cypilot, "bbb")
             (kit_b / "x.md").write_text("bbb prompt", encoding="utf-8")
             (kit_b / "agents.toml").write_text(
                 '[agents.my-agent]\ndescription = "from bbb"\nprompt_file = "x.md"\n',
@@ -275,9 +297,7 @@ class TestDiscoverKitAgents(unittest.TestCase):
             cypilot = self._make_kit_tree(root)
             with patch("studio.commands.agents._registered_kit_dirs", return_value=object()):
                 agents = _discover_kit_agents(cypilot, root)
-            self.assertEqual(len(agents), 2)
-            names = {a["name"] for a in agents}
-            self.assertEqual(names, {"cypilot-codegen", "cypilot-pr-review"})
+            self.assertEqual(agents, [])
 
 
 # ── Per-tool template tests ─────────────────────────────────────────

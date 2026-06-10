@@ -24,7 +24,8 @@ if TYPE_CHECKING:
     from .workspace import SourceEntry, WorkspaceConfig
 
 from .artifacts_meta import Artifact, ArtifactsMeta, CodebaseEntry, Kit, load_artifacts_meta
-from .constraints import KitConstraints, error, load_constraints_toml
+from .constraints import KitConstraints, error, load_constraints_files, load_constraints_toml
+from ._tomllib_compat import tomllib
 
 _CONSTRAINTS_FILE = "constraints.toml"
 
@@ -37,6 +38,7 @@ class LoadedKit:
     resource_bindings: Optional[Dict[str, str]] = None
     kit_root: Optional[Path] = None
     constraints_path: Optional[Path] = None
+    constraints_paths: Optional[List[Path]] = None
 
 @dataclass
 class StudioContext:
@@ -244,27 +246,73 @@ def load_resource_bindings(adapter_dir: Path, kit_id: str) -> Tuple[Optional[Dic
     return rb, resolved_bindings, errors
 
 
+def _load_core_resource_entries(adapter_dir: Path, kit_id: str) -> Dict[str, object]:
+    core_toml = _resolve_core_config_path(adapter_dir)
+    if not core_toml.is_file():
+        return {}
+    try:
+        with open(core_toml, "rb") as f:
+            data = tomllib.load(f)
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
+    kits = data.get("kits")
+    if not isinstance(kits, dict):
+        return {}
+    kit_entry = kits.get(kit_id)
+    if not isinstance(kit_entry, dict):
+        return {}
+    resources = kit_entry.get("resources")
+    return dict(resources) if isinstance(resources, dict) else {}
+
+
+def _constraints_resource_paths(
+    resolved_bindings: Dict[str, Path],
+    resource_entries: Optional[Dict[str, object]],
+) -> List[Tuple[str, Path]]:
+    entries = resource_entries or {}
+    selected: List[Tuple[str, Path]] = []
+    for resource_id, path in resolved_bindings.items():
+        entry = entries.get(resource_id)
+        kind = entry.get("kind") if isinstance(entry, dict) else None
+        if isinstance(kind, str) and kind.strip().lower() == "constraints":
+            selected.append((resource_id, path.resolve()))
+    if selected:
+        return selected
+    if "constraints" in resolved_bindings:
+        return [("constraints", resolved_bindings["constraints"].resolve())]
+    return []
+
+
 def resolve_constraints_from_bindings(
-    _resolved_bindings: Dict[str, Path],
+    resolved_bindings: Dict[str, Path],
     kit_root: Optional[Path],
-) -> Tuple[Optional[KitConstraints], List[str], Optional[Path], Optional[Path]]:
+    resource_entries: Optional[Dict[str, object]] = None,
+) -> Tuple[Optional[KitConstraints], List[str], Optional[Path], Optional[Path], List[Path]]:
     """Resolve constraints from bindings first, then from the kit root."""
     _constraints_root: Optional[Path] = kit_root if isinstance(kit_root, Path) else None
-    resolved_constraints_path: Optional[Path] = None
-    if _resolved_bindings and "constraints" in _resolved_bindings:
-        _constraints_path = _resolved_bindings["constraints"].resolve()
-        resolved_constraints_path = _constraints_path
-        _constraints_root = _constraints_path.parent
-        if not _constraints_path.is_file():
-            return None, [f"Bound constraints path does not exist or is not a file: {_constraints_path}"], resolved_constraints_path, _constraints_root
+    selected_constraints = _constraints_resource_paths(resolved_bindings, resource_entries)
+    if selected_constraints:
+        constraint_paths = [path for _resource_id, path in selected_constraints]
+        errors = [
+            f"Bound constraints resource '{resource_id}' path does not exist or is not a file: {path}"
+            for resource_id, path in selected_constraints
+            if not path.is_file()
+        ]
+        first_path = constraint_paths[0] if constraint_paths else None
+        first_root = first_path.parent if first_path is not None else _constraints_root
+        if errors:
+            return None, errors, first_path, first_root, constraint_paths
+        kit_constraints, constraints_errs = load_constraints_files(constraint_paths)
+        return kit_constraints, constraints_errs, first_path, first_root, constraint_paths
 
     kit_constraints: Optional[KitConstraints] = None
     constraints_errs: List[str] = []
+    resolved_constraints_path: Optional[Path] = None
     if _constraints_root is not None and _constraints_root.is_dir():
         kit_constraints, constraints_errs = load_constraints_toml(_constraints_root)
     if resolved_constraints_path is None and _constraints_root is not None and _constraints_root.is_dir():
         resolved_constraints_path = (_constraints_root / _CONSTRAINTS_FILE).resolve()
-    return kit_constraints, constraints_errs, resolved_constraints_path, _constraints_root
+    return kit_constraints, constraints_errs, resolved_constraints_path, _constraints_root, [resolved_constraints_path] if resolved_constraints_path else []
 
 
 def _load_single_kit(kit_id, kit, adapter_dir, project_root):
@@ -283,9 +331,11 @@ def _load_single_kit(kit_id, kit, adapter_dir, project_root):
     # @cpt-end:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-load-resource-bindings
 
     # @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-constraints-from-binding
-    kit_constraints, constraints_errs, resolved_constraints_path, _constraints_root = resolve_constraints_from_bindings(
+    resource_entries = _load_core_resource_entries(adapter_dir, str(kit_id))
+    kit_constraints, constraints_errs, resolved_constraints_path, _constraints_root, resolved_constraints_paths = resolve_constraints_from_bindings(
         _resolved_bindings,
         kit_root,
+        resource_entries,
     )
     # @cpt-end:cpt-studio-algo-core-infra-context-loading:p1:inst-constraints-from-binding
 
@@ -295,7 +345,7 @@ def _load_single_kit(kit_id, kit, adapter_dir, project_root):
             constraints_path = (_constraints_root / _CONSTRAINTS_FILE).resolve()
         errors.append(error(
             "constraints",
-            "Invalid constraints.toml",
+            "Invalid constraints",
             path=constraints_path,
             line=1,
             errors=list(constraints_errs),
@@ -309,6 +359,7 @@ def _load_single_kit(kit_id, kit, adapter_dir, project_root):
         resource_bindings=rb,
         kit_root=kit_root,
         constraints_path=resolved_constraints_path,
+        constraints_paths=resolved_constraints_paths,
     )
     return loaded, errors
 

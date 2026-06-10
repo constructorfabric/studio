@@ -86,6 +86,21 @@ def _make_agent(**kwargs) -> AgentEntry:
     return AgentEntry(**defaults)
 
 
+def _register_kit(studio_root: Path, kit_name: str) -> None:
+    (studio_root.parent / "AGENTS.md").write_text(
+        '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "cypilot_src"\n```\n<!-- /@cf:root-agents -->\n',
+        encoding="utf-8",
+    )
+    config_dir = studio_root / "config"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    with (config_dir / "core.toml").open("a", encoding="utf-8") as fh:
+        fh.write(
+            f"[kits.{kit_name}]\n"
+            'format = "CFS"\n'
+            f'path = "config/kits/{kit_name}"\n'
+        )
+
+
 def _make_project(tmpdir: str) -> tuple:
     """Create a minimal project + cypilot_root inside it.
 
@@ -488,6 +503,7 @@ class TestDiscoverKitAgentsEdgeCases(unittest.TestCase):
             cypilot = root / "cypilot_src"
             kit_dir = cypilot / "config" / "kits" / "bad"
             kit_dir.mkdir(parents=True)
+            _register_kit(cypilot, "bad")
             # agents is a list, not a table
             (kit_dir / "agents.toml").write_text(
                 "agents = [\"item1\", \"item2\"]\n",
@@ -503,6 +519,7 @@ class TestDiscoverKitAgentsEdgeCases(unittest.TestCase):
             cypilot = root / "cypilot_src"
             kit_dir = cypilot / "config" / "kits" / "bad"
             kit_dir.mkdir(parents=True)
+            _register_kit(cypilot, "bad")
             # agents.my-agent is a string, not a table
             (kit_dir / "agents.toml").write_text(
                 '[agents]\nmy-agent = "not a table"\n',
@@ -518,6 +535,7 @@ class TestDiscoverKitAgentsEdgeCases(unittest.TestCase):
             cypilot = root / "cypilot_src"
             kit_dir = cypilot / "config" / "kits" / "bad"
             kit_dir.mkdir(parents=True)
+            _register_kit(cypilot, "bad")
             (kit_dir / "agents.toml").write_text(
                 '[agents.my-agent]\ndescription = "test"\nprompt_file = 42\n',
                 encoding="utf-8",
@@ -535,6 +553,7 @@ class TestDiscoverKitAgentsEdgeCases(unittest.TestCase):
             cypilot = root / "cypilot_src"
             kit_dir = cypilot / "config" / "kits" / "bad"
             kit_dir.mkdir(parents=True)
+            _register_kit(cypilot, "bad")
             (kit_dir / "agents.toml").write_text(
                 '[agents.my-agent]\ndescription = "test"\nprompt_file = ""\n',
                 encoding="utf-8",
@@ -552,6 +571,7 @@ class TestDiscoverKitAgentsEdgeCases(unittest.TestCase):
             cypilot = root / "cypilot_src"
             kit_dir = cypilot / "config" / "kits" / "bad"
             kit_dir.mkdir(parents=True)
+            _register_kit(cypilot, "bad")
             (kit_dir / "agents.toml").write_text(
                 '[agents.my-agent]\ndescription = "test"\nprompt_file = "missing.md"\n',
                 encoding="utf-8",

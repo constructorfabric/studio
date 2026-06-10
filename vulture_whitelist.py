@@ -10,6 +10,7 @@ from studio.ralphex_export import (
 )
 from studio.commands.agents import _AgentEntry, _SkillEntry, _MergedComponents, _ProvenanceRecord
 from studio.commands.resolve_vars import assemble_component
+from studio.utils.context import LoadedKit
 from studio.utils.manifest import ManifestLayerState
 
 is_json = _UI.is_json  # staticmethod alias exposed on the ui singleton
@@ -26,6 +27,7 @@ _SkillEntry  # used as string type hint in agents.py
 _MergedComponents  # used as string type hint in agents.py
 _ProvenanceRecord  # used as string type hint in agents.py
 assemble_component  # public API for future use
+_ = LoadedKit.constraints_paths  # public context field for multi-constraints consumers
 INCLUDE_ERROR = ManifestLayerState.INCLUDE_ERROR  # valid enum value for future use
 
 # cfs map module — symbols retained for layout/configuration completeness.

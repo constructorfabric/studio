@@ -1031,7 +1031,7 @@ def _validate_against_schema(data: Dict[str, Any]) -> List[str]:
 # ---------------------------------------------------------------------------
 
 # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-read
-def load_manifest(kit_source: Path) -> Optional[Union[Manifest, ManifestV2]]:
+def load_manifest(kit_source: Path, kit_slug: str = "") -> Optional[Union[Manifest, ManifestV2]]:
     """Read and parse ``manifest.toml`` from *kit_source*.
 
     Returns ``None`` if the file does not exist.  V2 manifests are delegated
@@ -1040,7 +1040,7 @@ def load_manifest(kit_source: Path) -> Optional[Union[Manifest, ManifestV2]]:
     """
     manifest_path = kit_source / "manifest.toml"
     if not manifest_path.is_file():
-        return None
+        return _load_canonical_kit_manifest(kit_source, kit_slug=kit_slug)
 
     try:
         with open(manifest_path, "rb") as f:
@@ -1083,6 +1083,36 @@ def load_manifest(kit_source: Path) -> Optional[Union[Manifest, ManifestV2]]:
         root=str(meta.get("root", "{cf-studio-path}/config/kits/{slug}")).strip(),
         user_modifiable=bool(meta.get("user_modifiable", True)),
         resources=resources,
+    )
+
+
+def _load_canonical_kit_manifest(kit_source: Path, kit_slug: str = "") -> Optional[Manifest]:
+    """Adapt canonical kit metadata into the manifest installer model."""
+    canonical_path = kit_source / ".cf-studio-kit.toml"
+    if not canonical_path.is_file():
+        return None
+
+    from .kit_model import load_canonical_kit_model
+
+    model = load_canonical_kit_model(kit_source, kit_slug=kit_slug)
+    if model is None:
+        return None
+
+    return Manifest(
+        version=model.version or "1",
+        root="{cf-studio-path}/config/kits/{slug}",
+        user_modifiable=True,
+        resources=[
+            ManifestResource(
+                id=res.id,
+                source=res.source,
+                default_path=res.install_path,
+                type=res.type,
+                description=res.description,
+                user_modifiable=res.user_modifiable,
+            )
+            for res in model.resources
+        ],
     )
 # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-read
 
@@ -1274,6 +1304,7 @@ class ResourceInfo:
 
     type: str  # "file" or "directory"
     source_base: str  # source path in manifest (e.g., "artifacts/ADR")
+    user_modifiable: bool = True
 # @cpt-end:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-resource-info
 
 
@@ -1318,6 +1349,7 @@ def build_source_to_resource_mapping(
         resource_info[res.id] = ResourceInfo(
             type=res.type,
             source_base=res.source,
+            user_modifiable=res.user_modifiable,
         )
         if res.type == "file":
             source_to_resource_id[res.source] = res.id

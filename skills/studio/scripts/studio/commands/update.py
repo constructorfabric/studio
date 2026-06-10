@@ -40,6 +40,7 @@ from .init import (
     DEFAULT_INSTALL_DIR,
     _copy_from_cache,
     _core_readme,
+    _cache_allows_root_metadata,
     _dry_run_copy_results,
     _persist_install_metadata,
     _read_install_tracking,
@@ -266,8 +267,10 @@ def cmd_update(argv: List[str]) -> int:
     kit_tracking = _read_kit_tracking(core_toml_path, default="tracked")
     with_kits = str(args.with_kits).lower() in ("yes", "true")
 
+    cache_allows_root_metadata = _cache_allows_root_metadata(CACHE_DIR)
+
     # ── Show core whatsnew (before .core/ is replaced) ────────────────────
-    if not args.dry_run:
+    if not args.dry_run and cache_allows_root_metadata:
         cache_whatsnew = read_whatsnew(CACHE_DIR / "whatsnew.toml")
         core_whatsnew = read_whatsnew(installed_whatsnew_path)
         if not core_whatsnew:

@@ -124,6 +124,53 @@ def _bootstrap_project(root: Path, adapter_rel: str = "cypilot") -> Path:
 # install_kit_with_manifest (unit tests)
 # ---------------------------------------------------------------------------
 
+class TestManifestInstallAdapter(unittest.TestCase):
+    """Manifest install adapter is selected through the KitModel boundary."""
+
+    def test_canonical_manifest_loads_adapter(self):
+        from studio.commands.kit import _load_manifest_install_adapter
+
+        with TemporaryDirectory() as td:
+            kit_src = Path(td) / "kit"
+            kit_src.mkdir()
+            (kit_src / "SKILL.md").write_text("# Skill\n", encoding="utf-8")
+            (kit_src / ".cf-studio-kit.toml").write_text(
+                textwrap.dedent(
+                    """\
+                    manifest_version = "1.0"
+
+                    [[kits]]
+                    slug = "mykit"
+                    name = "My Kit"
+                    version = "1.0"
+
+                    [[kits.resources]]
+                    id = "skill"
+                    kind = "skill"
+                    source = "SKILL.md"
+                    install_path = "SKILL.md"
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            manifest = _load_manifest_install_adapter(kit_src, kit_slug="mykit")
+
+            self.assertIsNotNone(manifest)
+            assert manifest is not None
+            self.assertEqual(manifest.resources[0].id, "skill")
+
+    def test_source_without_manifest_returns_none(self):
+        from studio.commands.kit import _load_manifest_install_adapter
+
+        with TemporaryDirectory() as td:
+            kit_src = Path(td) / "kit"
+            kit_src.mkdir()
+            (kit_src / "conf.toml").write_text('name = "legacy"\n', encoding="utf-8")
+
+            self.assertIsNone(_load_manifest_install_adapter(kit_src, kit_slug="legacy"))
+
+
 class TestInstallKitWithManifest(unittest.TestCase):
     """Unit tests for install_kit_with_manifest()."""
 
@@ -203,6 +250,168 @@ class TestInstallKitWithManifest(unittest.TestCase):
             # Each binding has a "path" key
             self.assertIn("path", resources["adr_artifacts"])
             self.assertIn("path", resources["constraints"])
+            self.assertEqual(resources["constraints"]["kind"], "constraints")
+
+    def test_manifest_install_fails_when_core_toml_cannot_be_registered(self):
+        from studio.commands.kit import install_kit_with_manifest
+
+        with TemporaryDirectory() as td:
+            td_path = Path(td)
+            kit_src = _make_kit_with_manifest(td_path, "mykit")
+
+            adapter = td_path / "adapter"
+            (adapter / "config").mkdir(parents=True)
+
+            manifest = load_manifest(kit_src)
+            assert manifest is not None
+
+            result = install_kit_with_manifest(
+                kit_src, adapter, "mykit", "2.0", manifest,
+                interactive=False,
+            )
+
+            self.assertEqual(result["status"], "FAIL")
+            self.assertTrue(result["files_copied"] > 0)
+            self.assertIn("missing", "\n".join(result["errors"]))
+
+    def test_canonical_constraints_resource_kind_is_preserved_in_core_toml(self):
+        from studio.commands.kit import install_kit_with_manifest
+        import tomllib
+
+        with TemporaryDirectory() as td:
+            td_path = Path(td)
+            kit_src = td_path / "source"
+            kit_src.mkdir()
+            (kit_src / "custom-rules.toml").write_text(
+                "[PRD.identifiers.fr]\nrequired = true\n",
+                encoding="utf-8",
+            )
+            (kit_src / ".cf-studio-kit.toml").write_text(
+                textwrap.dedent(
+                    """\
+                    manifest_version = "1.0"
+
+                    [[kits]]
+                    slug = "mykit"
+                    version = "1.0"
+
+                    [[kits.resources]]
+                    id = "policy"
+                    kind = "constraints"
+                    source = "custom-rules.toml"
+                    install_path = "rules/custom.toml"
+                    type = "file"
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            adapter = td_path / "adapter"
+            config = adapter / "config"
+            config.mkdir(parents=True)
+            from studio.utils import toml_utils
+            toml_utils.dump({
+                "version": "1.0", "project_root": "..", "kits": {},
+            }, config / "core.toml")
+
+            from studio.commands.kit import _load_manifest_install_adapter
+            manifest = _load_manifest_install_adapter(kit_src, kit_slug="mykit")
+            assert manifest is not None
+
+            result = install_kit_with_manifest(
+                kit_src, adapter, "mykit", "1.0", manifest,
+                interactive=False,
+            )
+
+            self.assertEqual(result["status"], "PASS")
+            with open(config / "core.toml", "rb") as f:
+                data = tomllib.load(f)
+            self.assertEqual(
+                data["kits"]["mykit"]["resources"]["policy"]["kind"],
+                "constraints",
+            )
+            self.assertEqual(
+                data["kits"]["mykit"]["resources"]["policy"]["path"],
+                "config/kits/mykit/rules/custom.toml",
+            )
+
+    def test_public_component_name_conflict_blocks_install(self):
+        from studio.commands.kit import _load_manifest_install_adapter, install_kit_with_manifest
+
+        with TemporaryDirectory() as td:
+            td_path = Path(td)
+            adapter = td_path / "adapter"
+            config = adapter / "config"
+            existing = config / "kits" / "existing"
+            existing.mkdir(parents=True)
+            (existing / "SKILL.md").write_text("# Existing\n", encoding="utf-8")
+            (existing / ".cf-studio-kit.toml").write_text(
+                textwrap.dedent(
+                    """\
+                    manifest_version = "1.0"
+
+                    [[kits]]
+                    slug = "existing"
+                    version = "1.0"
+
+                    [[kits.resources]]
+                    id = "shared"
+                    kind = "skill"
+                    source = "SKILL.md"
+                    type = "file"
+                    public = true
+                    prefix_generated_name = false
+                    """
+                ),
+                encoding="utf-8",
+            )
+            from studio.utils import toml_utils
+            toml_utils.dump({
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {
+                    "existing": {
+                        "format": "CFS",
+                        "path": "config/kits/existing",
+                    },
+                },
+            }, config / "core.toml")
+
+            kit_src = td_path / "incoming"
+            kit_src.mkdir()
+            (kit_src / "SKILL.md").write_text("# Incoming\n", encoding="utf-8")
+            (kit_src / ".cf-studio-kit.toml").write_text(
+                textwrap.dedent(
+                    """\
+                    manifest_version = "1.0"
+
+                    [[kits]]
+                    slug = "incoming"
+                    version = "1.0"
+
+                    [[kits.resources]]
+                    id = "shared"
+                    kind = "skill"
+                    source = "SKILL.md"
+                    type = "file"
+                    public = true
+                    prefix_generated_name = false
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            manifest = _load_manifest_install_adapter(kit_src, kit_slug="incoming")
+            assert manifest is not None
+
+            result = install_kit_with_manifest(
+                kit_src, adapter, "incoming", "1.0", manifest,
+                interactive=False,
+            )
+
+            self.assertEqual(result["status"], "FAIL")
+            self.assertIn("Public component name conflict", "\n".join(result["errors"]))
+            self.assertFalse((adapter / "config" / "kits" / "incoming" / "SKILL.md").exists())
 
     def test_resource_bindings_in_result(self):
         """Result dict contains flattened resource_bindings."""
@@ -488,14 +697,14 @@ class TestInstallKitWithManifest(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Template variable resolution
+# Template variable preservation
 # ---------------------------------------------------------------------------
 
-class TestTemplateVariableResolution(unittest.TestCase):
-    """Tests for {identifier} template variable resolution in copied files."""
+class TestTemplateVariablePreservation(unittest.TestCase):
+    """Tests that install preserves {identifier} variables in copied files."""
 
-    def test_template_variables_resolved(self):
-        """Template variables {resource_id} are replaced in copied .md files."""
+    def test_template_variables_preserved_in_copied_resources(self):
+        """Template variables stay in copied kit source files."""
         from studio.commands.kit import install_kit_with_manifest
 
         with TemporaryDirectory() as td:
@@ -503,7 +712,6 @@ class TestTemplateVariableResolution(unittest.TestCase):
             kit_src = td_path / "tplkit"
             kit_src.mkdir()
 
-            # Create a resource with template variables
             (kit_src / "rules.md").write_text(
                 "See constraints at {constraints}\nSee ADR at {adr_artifacts}\n",
                 encoding="utf-8",
@@ -553,14 +761,20 @@ class TestTemplateVariableResolution(unittest.TestCase):
 
             self.assertEqual(result["status"], "PASS")
 
-            # Read the copied rules.md and check that variables were resolved
             kit_root = adapter / "config" / "kits" / "tplkit"
             rules_text = (kit_root / "rules.md").read_text(encoding="utf-8")
-            # {constraints} should have been replaced with its binding path
-            self.assertNotIn("{constraints}", rules_text)
-            self.assertNotIn("{adr_artifacts}", rules_text)
-            # Check that the resolved path is present
-            self.assertIn("constraints.toml", rules_text)
+            self.assertEqual(
+                rules_text,
+                "See constraints at {constraints}\nSee ADR at {adr_artifacts}\n",
+            )
+            self.assertEqual(
+                result["resource_bindings"]["constraints"],
+                "config/kits/tplkit/constraints.toml",
+            )
+            self.assertEqual(
+                result["resource_bindings"]["adr_artifacts"],
+                "config/kits/tplkit/artifacts/ADR",
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -656,7 +870,7 @@ class TestCmdKitInstallManifest(unittest.TestCase):
                 os.chdir(root)
                 buf = io.StringIO()
                 with redirect_stdout(buf):
-                    rc = cmd_kit_install(["--path", str(kit_src)])
+                    rc = cmd_kit_install(["--path", str(kit_src), "--install-mode", "copy"])
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
                 self.assertEqual(out["status"], "PASS")
@@ -684,7 +898,7 @@ class TestCmdKitInstallManifest(unittest.TestCase):
                 os.chdir(root)
                 buf = io.StringIO()
                 with redirect_stdout(buf):
-                    rc = cmd_kit_install(["--path", str(kit_src)])
+                    rc = cmd_kit_install(["--path", str(kit_src), "--install-mode", "copy"])
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
                 self.assertEqual(out["status"], "PASS")
@@ -764,14 +978,14 @@ class TestCopyManifestResource(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# _resolve_template_variables
+# _preserve_template_variables
 # ---------------------------------------------------------------------------
 
-class TestResolveTemplateVariables(unittest.TestCase):
-    """Tests for _resolve_template_variables helper."""
+class TestPreserveTemplateVariables(unittest.TestCase):
+    """Tests for _preserve_template_variables helper."""
 
-    def test_replaces_variables_in_md_files(self):
-        from studio.commands.kit import _resolve_template_variables
+    def test_preserves_variables_in_md_files(self):
+        from studio.commands.kit import _preserve_template_variables
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -781,19 +995,16 @@ class TestResolveTemplateVariables(unittest.TestCase):
                 "Path: {constraints}\nRef: {adr}\n", encoding="utf-8",
             )
 
-            _resolve_template_variables(root, {
+            _preserve_template_variables(root, {
                 "constraints": {"path": "config/kits/x/constraints.toml"},
                 "adr": {"path": "config/kits/x/artifacts/ADR"},
             })
 
             text = (root / "doc.md").read_text()
-            self.assertIn("config/kits/x/constraints.toml", text)
-            self.assertIn("config/kits/x/artifacts/ADR", text)
-            self.assertNotIn("{constraints}", text)
-            self.assertNotIn("{adr}", text)
+            self.assertEqual(text, "Path: {constraints}\nRef: {adr}\n")
 
-    def test_ignores_non_text_files(self):
-        from studio.commands.kit import _resolve_template_variables
+    def test_preserves_binary_files(self):
+        from studio.commands.kit import _preserve_template_variables
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -801,15 +1012,14 @@ class TestResolveTemplateVariables(unittest.TestCase):
             root.mkdir()
             (root / "image.png").write_bytes(b"\x89PNG{constraints}")
 
-            _resolve_template_variables(root, {
+            _preserve_template_variables(root, {
                 "constraints": {"path": "x"},
             })
 
-            # .png not in _TEMPLATE_EXTENSIONS — content unchanged
             self.assertEqual((root / "image.png").read_bytes(), b"\x89PNG{constraints}")
 
     def test_empty_bindings_noop(self):
-        from studio.commands.kit import _resolve_template_variables
+        from studio.commands.kit import _preserve_template_variables
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -817,7 +1027,7 @@ class TestResolveTemplateVariables(unittest.TestCase):
             root.mkdir()
             (root / "doc.md").write_text("{foo}\n", encoding="utf-8")
 
-            _resolve_template_variables(root, {})
+            _preserve_template_variables(root, {})
 
             self.assertEqual((root / "doc.md").read_text(), "{foo}\n")
 

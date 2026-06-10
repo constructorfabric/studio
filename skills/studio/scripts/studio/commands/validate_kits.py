@@ -31,8 +31,7 @@ def run_validate_kits(
     This is the reusable engine called by both the CLI and ``cmd_update``.
     """
     # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-init-context
-    from ..utils.context import get_context, _resolve_loaded_kit_constraints_path
-    from ..utils.constraints import load_constraints_toml
+    from ..utils.context import get_context
     from ..utils.artifacts_meta import load_artifacts_meta
 
     ctx = get_context()
@@ -46,7 +45,7 @@ def run_validate_kits(
     kit_reports_by_id: Dict[str, Dict[str, object]] = {}
     kit_errors_by_id: Dict[str, List[Dict[str, object]]] = {}
     all_errors: List[Dict[str, object]] = []
-    context_resource_errors: Dict[str, List[Dict[str, object]]] = {}
+    context_kit_errors: Dict[str, List[Dict[str, object]]] = {}
 
     def _sync_kit_report(kit_id: str) -> None:
         rep = kit_reports_by_id.get(kit_id)
@@ -62,13 +61,13 @@ def run_validate_kits(
                 rep.pop("errors", None)
 
     for err in (getattr(ctx, "_errors", []) or []):
-        if not isinstance(err, dict) or err.get("type") != "resources":
+        if not isinstance(err, dict) or err.get("type") not in {"resources", "constraints"}:
             continue
         err_kit = str(err.get("kit", "") or "")
         if kit_filter and err_kit != str(kit_filter):
             continue
         if err_kit:
-            context_resource_errors.setdefault(err_kit, []).append(err)
+            context_kit_errors.setdefault(err_kit, []).append(err)
         all_errors.append(err)
 
     for kit_id, loaded_kit in (ctx.kits or {}).items():
@@ -78,22 +77,9 @@ def run_validate_kits(
         kit_root = getattr(loaded_kit, "kit_root", None)
         kit_path_value = str(getattr(getattr(loaded_kit, "kit", None), "path", "") or "")
         reported_kit_path = str(kit_root) if isinstance(kit_root, Path) else kit_path_value
-        constraints_path = _resolve_loaded_kit_constraints_path(
-            adapter_dir,
-            project_root,
-            loaded_kit,
-        )
         kit_id_str = str(kit_id)
-        constraints_root = constraints_path.parent if constraints_path is not None else (
-            kit_root if isinstance(kit_root, Path) else None
-        )
-
-        if constraints_root is not None:
-            _kc, kc_errs = load_constraints_toml(constraints_root)
-        else:
-            _kc, kc_errs = None, []
-        kit_resource_errors = context_resource_errors.get(kit_id_str, [])
-        rep_errors: List[Dict[str, object]] = list(kit_resource_errors)
+        kit_context_errors = context_kit_errors.get(kit_id_str, [])
+        rep_errors: List[Dict[str, object]] = list(kit_context_errors)
 
         rep: Dict[str, object] = {
             "kit": kit_id_str,
@@ -101,17 +87,7 @@ def run_validate_kits(
             "status": "PASS",
             "error_count": 0,
         }
-        if kc_errs:
-            constraints_err = constraints_error(
-                "constraints",
-                "Invalid constraints.toml",
-                path=(constraints_path or (constraints_root / "constraints.toml")),
-                line=1,
-                errors=list(kc_errs),
-                kit=kit_id_str,
-            )
-            rep_errors.insert(0, constraints_err)
-            all_errors.append(constraints_err)
+        _kc = getattr(loaded_kit, "constraints", None)
         if verbose and _kc is not None and getattr(_kc, "by_kind", None):
             rep["kinds"] = sorted(_kc.by_kind.keys())
 
@@ -242,7 +218,7 @@ def cmd_validate_kits(argv: List[str]) -> int:
 def _validate_kit_by_path(kit_path: Path, *, verbose: bool = False) -> Tuple[int, Dict[str, Any]]:
     """Validate a standalone kit directory (not necessarily registered in config)."""
     # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-resolve-dir
-    from ..utils.constraints import load_constraints_toml
+    from ..utils.constraints import load_constraints_files, load_constraints_toml
     from ..utils.artifacts_meta import ArtifactsMeta
 
     kit_dir = Path(kit_path).resolve()
@@ -251,12 +227,40 @@ def _validate_kit_by_path(kit_path: Path, *, verbose: bool = False) -> Tuple[int
 
     # Derive slug from directory name
     slug = kit_dir.name
+    has_model_input = (
+        (kit_dir / ".cf-studio-kit.toml").is_file()
+        or (kit_dir / "manifest.toml").is_file()
+        or (kit_dir / "conf.toml").is_file()
+        or any((kit_dir / dirname).exists() for dirname in ("artifacts", "codebase", "scripts", "workflows"))
+    )
     # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-resolve-dir
 
     # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-structural-check
-    # ── Phase 1: Structural — constraints.toml ────────────────────────
+    # ── Phase 1: Structural — KitModel constraints resources ──────────
     all_errors: List[Dict[str, object]] = []
-    _kc, kc_errs = load_constraints_toml(kit_dir)
+    model = None
+    model_error: Optional[Exception] = None
+    try:
+        from ..utils.kit_model import load_kit_model
+        model = load_kit_model(kit_dir)
+    except ValueError as exc:
+        model_error = exc
+    except (OSError, KeyError) as exc:
+        model_error = exc
+
+    constraint_paths: List[Path] = []
+    if model is not None:
+        constraint_paths = [
+            (kit_dir / str(resource.source)).resolve()
+            for resource in getattr(model, "resources", [])
+            if str(getattr(resource, "kind", "") or "").strip().lower() == "constraints"
+        ]
+    if constraint_paths:
+        _kc, kc_errs = load_constraints_files(constraint_paths)
+        constraints_error_path = constraint_paths[0]
+    else:
+        _kc, kc_errs = load_constraints_toml(kit_dir)
+        constraints_error_path = kit_dir / "constraints.toml"
 
     kit_report: Dict[str, object] = {
         "kit": slug,
@@ -265,7 +269,7 @@ def _validate_kit_by_path(kit_path: Path, *, verbose: bool = False) -> Tuple[int
         "error_count": len(kc_errs),
     }
     if kc_errs:
-        errs = [constraints_error("constraints", "Invalid constraints.toml", path=(kit_dir / "constraints.toml"), line=1, errors=list(kc_errs), kit=slug)]
+        errs = [constraints_error("constraints", "Invalid constraints", path=constraints_error_path, line=1, errors=list(kc_errs), kit=slug)]
         if verbose:
             kit_report["errors"] = errs
         all_errors.extend(errs)
@@ -275,30 +279,28 @@ def _validate_kit_by_path(kit_path: Path, *, verbose: bool = False) -> Tuple[int
     # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-structural-check
 
     # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-verify-resource-paths
-    # ── Phase 1b: Manifest resource verification ─────────────────────
-    try:
-        from ..utils.manifest import load_manifest, validate_manifest
-        manifest = load_manifest(kit_dir)
-        if manifest is not None:
-            manifest_errs = validate_manifest(manifest, kit_dir)
-            for me in manifest_errs:
-                all_errors.append(constraints_error(
-                    "resources",
-                    me,
-                    path=(kit_dir / "manifest.toml"),
-                    line=1,
-                    kit=slug,
-                ))
-    except ValueError as exc:
-        all_errors.append(constraints_error(
+    # ── Phase 1b: KitModel resource verification ─────────────────────
+    if model is not None:
+        if verbose:
+            kit_report["manifest_source"] = model.manifest_source
+            kit_report["resource_count"] = len(model.resources)
+            kit_report["public_components"] = [
+                component.generated_name
+                for component in model.public_components
+            ]
+    elif isinstance(model_error, ValueError) and has_model_input:
+        err = constraints_error(
             "resources",
-            str(exc),
-            path=(kit_dir / "manifest.toml"),
+            str(model_error),
+            path=kit_dir,
             line=1,
             kit=slug,
-        ))
-    except (OSError, KeyError):
-        pass
+        )
+        all_errors.append(err)
+        kit_report["status"] = "FAIL"
+        kit_report["error_count"] = int(kit_report.get("error_count", 0)) + 1
+        if verbose:
+            kit_report.setdefault("errors", []).append(err)
     # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-verify-resource-paths
 
     # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-build-artifacts-meta

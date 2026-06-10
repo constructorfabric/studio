@@ -90,7 +90,7 @@ Ensures teams can upgrade Studio without losing configuration or customizations 
 9. [x] - `p1` - Run self-check to verify kit integrity (`run_self_check_from_meta`); include result in report, WARN if failed - `inst-self-check`
 10. [x] - `p1` - **RETURN** update report with actions taken and self-check result - `inst-return-report`
 11. [x] - `p1` - Imports, constants, and module setup for update command - `inst-update-imports`
-12. [x] - `p1` - Display core whatsnew entries (cache vs installed) before applying update - `inst-whatsnew`
+12. [x] - `p1` - Display core whatsnew entries (cache vs installed) before applying update only when cache provenance is Git/GitHub-authoritative; local/path cache sources skip root `whatsnew.toml` display and install-root metadata refresh - `inst-whatsnew`
 13. [x] - `p1` - Helper functions: ensure file creation, config README, auto-regenerate agents, read/show whatsnew - `inst-update-helpers`
 14. [x] - `p1` - Human-friendly formatter for update report output - `inst-update-format-output`
 15. [ ] - `p1` - Resolve authoritative cache provenance from GitHub Release/tag metadata; record resolved ref, release/tag name, commit/content identity, source URL, and verification timestamp - `inst-resolve-github-provenance`
@@ -134,7 +134,7 @@ Ensures teams can upgrade Studio without losing configuration or customizations 
 
 - [ ] `p1` - **ID**: `cpt-studio-algo-version-config-github-authority`
 
-**Authority Rule**: For GitHub-backed proxy package builds, proxy cache, and project install state, release tags are the source of version truth. The Python package version is derived dynamically from SCM tag metadata at build/install time, while installed cache/project state uses resolved GitHub Release/tag provenance captured during cache resolution or update. Local version files copied into `.core/` or cache content are not authoritative.
+**Authority Rule**: For GitHub-backed proxy package builds, proxy cache, and project install state, release tags are the source of version truth. The Python package version is derived dynamically from SCM tag metadata at build/install time, while installed cache/project state uses resolved GitHub Release/tag provenance captured during cache resolution or update. Local/path cache sources are not version-authoritative: `cfs init` and `cfs update` must not create, replace, or delete install-root `version.toml` or `whatsnew.toml` from such cache content. Local version files copied into `.core/` or cache content are not authoritative.
 
 1. [ ] - `p1` - Resolve explicit version, `latest`, or default target to a GitHub Release/tag/ref - `inst-authority-resolve-ref`
 2. [ ] - `p1` - Capture source repository, resolved release/tag, resolved commit/content identity, asset/source URL, and retrieval timestamp - `inst-authority-capture-provenance`
@@ -213,6 +213,7 @@ Installed state is derived from project install metadata. Freshness describes wh
 - [x] - `p1` - User config files in `config/` are NEVER overwritten
 - [x] - `p1` - [LEGACY] Blueprint version comparison detects same, migration needed, and missing states
 - [x] - `p1` - `cfs update` renders `whatsnew` ANSI styling only when stderr is a TTY; redirected or piped stderr stays plain text
+- [x] - `p1` - `cfs init` and `cfs update` skip install-root `version.toml` and `whatsnew.toml` when cache provenance is local/path rather than Git/GitHub
 - [x] - `p1` - `cfs update` removes leftover `config/kits/*/blueprints/` directories from pre-ADR-0001 installs
 - [x] - `p1` - `cfs update` removes legacy `[system]` section from `config/core.toml` (system identity now lives in `artifacts.toml`)
 - [x] - `p1` - `cfs update` auto-migrates legacy kits to manifest-driven resource bindings when source contains `manifest.toml` and core.toml lacks `[kits.{slug}.resources]`

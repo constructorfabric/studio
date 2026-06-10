@@ -387,23 +387,23 @@ def test_flatten_vars_legacy_alias():
 
 
 def test_flatten_vars_with_kits():
-    """_flatten_vars should expose kit resources with multiple key forms."""
+    """_flatten_vars should expose canonical variables as unqualified keys only."""
     from studio.commands.map.cli import _flatten_vars
     data = {
         "system": {},
+        "variables": {
+            "adr_template": "/some/project/kits/sdlc/adr.md",
+        },
         "kits": {
             "sdlc": {
-                "adr_template": "/some/project/kits/sdlc/adr.md",
+                "adr_template": "/some/project/kits/other/adr.md",
             }
         },
     }
     result = _flatten_vars(data, Path("/some/project"))
-    # Should have bare key
     assert "adr_template" in result
-    # Should have qualified key
-    assert "sdlc.adr_template" in result
-    # Should have fully qualified key
-    assert "kits.sdlc.adr_template" in result
+    assert "sdlc.adr_template" not in result
+    assert "kits.sdlc.adr_template" not in result
 
 
 def test_flatten_vars_skips_non_string_values():
@@ -411,13 +411,30 @@ def test_flatten_vars_skips_non_string_values():
     from studio.commands.map.cli import _flatten_vars
     data = {
         "system": {"numeric_val": 42, "valid_val": "/some/project/foo"},
+        "variables": {"nested_dict": {"not": "a string"}},
         "kits": {
-            "bad": {"nested_dict": {"not": "a string"}},
+            "bad": {"legacy": "/some/project/legacy"},
         },
     }
     result = _flatten_vars(data, Path("/some/project"))
     # numeric_val should not be in result
     assert "numeric_val" not in result
+    assert "nested_dict" not in result
+    assert "legacy" not in result
+
+
+def test_flatten_vars_ignores_legacy_kits_when_variables_absent():
+    """Legacy kit maps are ambiguous and not used as template variables."""
+    from studio.commands.map.cli import _flatten_vars
+    data = {
+        "system": {},
+        "kits": {
+            "sdlc": {"adr_template": "/some/project/kits/sdlc/adr.md"},
+            "legacy": {"adr_template": "/some/project/kits/legacy/adr.md"},
+        },
+    }
+    result = _flatten_vars(data, Path("/some/project"))
+    assert "adr_template" not in result
 
 
 def test_flatten_vars_none_data():

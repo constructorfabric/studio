@@ -106,6 +106,7 @@ class TestCollectAllVariables(unittest.TestCase):
             })
 
             self.assertIn("adr_template", result["variables"])
+            self.assertNotIn("sdlc.adr_template", result["variables"])
             self.assertIn("scripts", result["variables"])
             self.assertTrue(result["variables"]["adr_template"].endswith(
                 "config/kits/sdlc/artifacts/ADR/template.md"
@@ -113,6 +114,150 @@ class TestCollectAllVariables(unittest.TestCase):
             # Check structured output
             self.assertIn("sdlc", result["kits"])
             self.assertIn("adr_template", result["kits"]["sdlc"])
+
+    def test_installed_kit_resources_prefer_effective_bindings_over_kit_model(self):
+        """Installed core.toml bindings win over KitModel source paths."""
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            config = adapter / "config"
+            kit_root = config / "kits" / "sdlc"
+            (kit_root / "artifacts" / "ADR").mkdir(parents=True)
+            (kit_root / "artifacts" / "ADR" / "template.md").write_text("# ADR\n", encoding="utf-8")
+            (kit_root / "workflows").mkdir()
+            (kit_root / "workflows" / "implement.md").write_text(
+                "---\ntype: workflow\n---\n# Implement\n",
+                encoding="utf-8",
+            )
+            _write_core_toml(config, {
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {
+                    "sdlc": {
+                        "format": "CFS",
+                        "path": "config/kits/sdlc",
+                        "version": "2.0",
+                        "resources": {
+                            "adr_template": {
+                                "path": "config/kits/sdlc/artifacts/ADR/template.md",
+                                "aliases": ["adr"],
+                            },
+                            "implement": {
+                                "path": "config/kits/sdlc/workflows/implement.md",
+                                "origin": "legacy-workflow",
+                            },
+                        },
+                    },
+                },
+            })
+
+            result = _collect_all_variables(root, adapter, {
+                "version": "1.0",
+                "kits": {
+                    "sdlc": {
+                        "path": "config/kits/sdlc",
+                        "resources": {
+                            "adr_template": {
+                                "path": "custom/ADR/template.md",
+                                "aliases": ["adr"],
+                            },
+                            "implement": {
+                                "path": "config/kits/sdlc/workflows/implement.md",
+                                "origin": "legacy-workflow",
+                            },
+                        },
+                    },
+                },
+            })
+
+            self.assertIn("adr_template", result["variables"])
+            self.assertIn("adr", result["variables"])
+            self.assertIn("implement", result["variables"])
+            self.assertNotIn("sdlc.adr_template", result["variables"])
+            self.assertTrue(result["variables"]["adr_template"].endswith(
+                "custom/ADR/template.md"
+            ))
+            self.assertEqual(result["variables"]["adr"], result["variables"]["adr_template"])
+            self.assertTrue(result["variables"]["implement"].endswith(
+                "config/kits/sdlc/workflows/implement.md"
+            ))
+
+    def test_kit_model_aliases_do_not_override_effective_bindings(self):
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            kit_root = adapter / "config" / "kits" / "sdlc"
+            kit_root.mkdir(parents=True)
+            (kit_root / "artifacts" / "ADR").mkdir(parents=True)
+            (kit_root / "artifacts" / "ADR" / "template.md").write_text("# ADR\n", encoding="utf-8")
+            (kit_root / "custom" / "ADR").mkdir(parents=True)
+            (kit_root / "custom" / "ADR" / "template.md").write_text("# Custom ADR\n", encoding="utf-8")
+            (kit_root / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "sdlc"',
+                    'version = "1.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "adr_template"',
+                    'kind = "template"',
+                    'source = "artifacts/ADR/template.md"',
+                    'install_path = "artifacts/ADR/template.md"',
+                    'aliases = ["other_template"]',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "other_template"',
+                    'kind = "template"',
+                    'source = "custom/ADR/template.md"',
+                    'install_path = "custom/ADR/template.md"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            result = _collect_all_variables(
+                root,
+                adapter,
+                {
+                    "kits": {
+                        "sdlc": {
+                            "path": "config/kits/sdlc",
+                            "resources": {
+                                "adr_template": {"path": "config/kits/sdlc/artifacts/ADR/template.md"},
+                                "other_template": {"path": "config/kits/sdlc/custom/ADR/template.md"},
+                            },
+                        },
+                    },
+                },
+            )
+
+            self.assertTrue(result["variables"]["other_template"].endswith(
+                "config/kits/sdlc/custom/ADR/template.md"
+            ))
+
+    def test_kit_aliases_resolved_with_unqualified_names_only(self):
+        """Aliases on resource bindings resolve like resource identifiers."""
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            result = _collect_all_variables(root, adapter, {
+                "kits": {
+                    "sdlc": {
+                        "resources": {
+                            "adr_template": {
+                                "path": "config/kits/sdlc/artifacts/ADR/template.md",
+                                "aliases": ["adr"],
+                            },
+                        },
+                    },
+                },
+            })
+
+            self.assertIn("adr", result["variables"])
+            self.assertNotIn("sdlc.adr", result["variables"])
+            self.assertNotIn("sdlc.adr_template", result["variables"])
+            self.assertEqual(result["variables"]["adr"], result["variables"]["adr_template"])
 
     def test_no_kits_returns_system_only(self):
         """Without kits, only system variables returned."""
@@ -281,7 +426,9 @@ class TestCmdResolveVars(unittest.TestCase):
             self.assertEqual(rc, 0)
             out = json.loads(buf.getvalue())
             self.assertIn("var_a", out["variables"])
+            self.assertNotIn("sdlc.var_a", out["variables"])
             self.assertNotIn("var_b", out["variables"])
+            self.assertNotIn("other.var_b", out["variables"])
             self.assertIn("sdlc", out["kits"])
             self.assertNotIn("other", out["kits"])
 
@@ -652,7 +799,7 @@ class TestCollectAllVariablesEdgeCases(unittest.TestCase):
             self.assertIn("var_x", result["variables"])
 
     def test_collision_detected_different_paths(self):
-        """Duplicate var_name across kits with different paths records collision."""
+        """Duplicate unqualified names with different paths are omitted."""
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
@@ -666,8 +813,9 @@ class TestCollectAllVariablesEdgeCases(unittest.TestCase):
                     },
                 },
             })
-            # First-writer-wins: kit_a's value kept
-            self.assertTrue(result["variables"]["shared_var"].endswith("a/path"))
+            self.assertNotIn("shared_var", result["variables"])
+            self.assertNotIn("kit_a.shared_var", result["variables"])
+            self.assertNotIn("kit_b.shared_var", result["variables"])
             # Collision recorded
             self.assertIn("collisions", result)
             self.assertEqual(len(result["collisions"]), 1)

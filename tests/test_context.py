@@ -183,6 +183,57 @@ class TestStudioContextLoad:
         """Reset global context after each test."""
         set_context(None)
 
+    def test_load_from_dir_uses_constraint_resources_by_kind_and_merges(self):
+        with TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            adapter_dir = tmp / "adapter"
+            config_dir = adapter_dir / "config"
+            kit_dir = config_dir / "kits" / "custom"
+            kit_dir.mkdir(parents=True)
+
+            (config_dir / "artifacts.toml").write_text(
+                'version = "1.1"\nproject_root = ".."\nsystems = []\n',
+                encoding="utf-8",
+            )
+            (config_dir / "core.toml").write_text(
+                """
+version = "1.0"
+project_root = ".."
+
+[kits.custom]
+format = "CFS"
+path = "config/kits/custom"
+
+[kits.custom.resources.alpha]
+path = "config/kits/custom/base-rules.toml"
+kind = "constraints"
+
+[kits.custom.resources.beta]
+path = "config/kits/custom/extra-rules.toml"
+kind = "constraints"
+""",
+                encoding="utf-8",
+            )
+            (kit_dir / "base-rules.toml").write_text(
+                "[PRD.identifiers.fr]\nrequired = true\n",
+                encoding="utf-8",
+            )
+            (kit_dir / "extra-rules.toml").write_text(
+                "[DESIGN.identifiers.component]\nrequired = true\n",
+                encoding="utf-8",
+            )
+
+            ctx = StudioContext.load_from_dir(adapter_dir)
+
+            assert ctx is not None
+            loaded = ctx.kits["custom"]
+            assert loaded.constraints is not None
+            assert sorted(loaded.constraints.by_kind) == ["DESIGN", "PRD"]
+            assert loaded.constraints_paths == [
+                (kit_dir / "base-rules.toml").resolve(),
+                (kit_dir / "extra-rules.toml").resolve(),
+            ]
+
     @patch("studio.utils.files.find_studio_directory")
     def test_load_returns_none_when_no_adapter(self, mock_find):
         """load returns None when adapter directory not found."""
@@ -256,7 +307,7 @@ class TestStudioContextLoad:
             # - constraints.toml parse error surfaced
             # - autodetect kind-not-registered error surfaced
             msgs = [str(e.get("message", "")) for e in (ctx._errors or [])]
-            assert any("Invalid constraints.toml" in m for m in msgs)
+            assert any("Invalid constraints" in m for m in msgs)
             assert any("Autodetect validation error" in m for m in msgs)
 
     @patch("studio.utils.context.load_artifacts_meta")

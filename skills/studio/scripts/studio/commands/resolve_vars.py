@@ -1,7 +1,7 @@
 """
 Resolve Variables Command — resolve template variables to absolute paths.
 
-Reads kit resource bindings from ``core.toml`` and resolves all template
+Reads kit resource bindings through the normalized KitModel service and resolves all template
 variables (``{adr_template}``, ``{scripts}``, ``{cf-studio-path}``, etc.)
 to absolute file paths.  Output is a flat dict suitable for
 ``str.format_map()`` substitution in Markdown files.
@@ -31,15 +31,24 @@ def _merge_with_collision_tracking(
     system_vars: Dict[str, str],
     kit_vars: Dict[str, Dict[str, str]],
 ) -> Tuple[Dict[str, str], List[Dict[str, str]]]:
-    """Merge system and kit variables with first-writer-wins collision tracking.
+    """Merge system and kit variables with unqualified names and collision tracking.
 
     Returns (flat_dict, collisions_list).
     """
+    # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-no-kit-qualified
     flat: Dict[str, str] = dict(system_vars)
+    # Kit slugs remain available in the structured `kits` output, but are not
+    # valid placeholder prefixes in the flat variable map.
+    # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-no-kit-qualified
+
+    # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-unqualified-unique
     collisions: List[Dict[str, str]] = []
     owners: Dict[str, str] = {k: "system" for k in system_vars}
+    omitted: set[str] = set()
     for slug, kvars in kit_vars.items():
         for var_name, var_path in kvars.items():
+            if var_name in omitted:
+                continue
             if var_name in flat and flat[var_name] != var_path:
                 collisions.append({
                     "variable": var_name,
@@ -48,9 +57,13 @@ def _merge_with_collision_tracking(
                     "previous_kit": owners[var_name],
                     "previous_path": flat[var_name],
                 })
-                continue  # first-writer-wins; skip collision
+                if owners[var_name] != "system":
+                    flat.pop(var_name, None)
+                omitted.add(var_name)
+                continue
             flat[var_name] = var_path
             owners[var_name] = slug
+    # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-unqualified-unique
     return flat, collisions
 # @cpt-end:cpt-studio-algo-developer-experience-resolve-vars:p1:inst-merge-flat-dict
 
@@ -59,11 +72,12 @@ def _merge_with_collision_tracking(
 def _resolve_kit_variables(
     adapter_dir: Path,
     core_kit: dict,
+    kit_slug: str = "",
 ) -> Dict[str, str]:
     """Resolve resource bindings for a single kit to absolute paths."""
     resources = core_kit.get("resources")
     if not isinstance(resources, dict):
-        return {}
+        return _resolve_kit_variables_from_model(adapter_dir, core_kit, kit_slug)
 
     result: Dict[str, str] = {}
     for identifier, binding in resources.items():
@@ -79,11 +93,101 @@ def _resolve_kit_variables(
             continue
         if not rel_path:
             continue
-        result[identifier] = (adapter_dir / rel_path).resolve().as_posix()
+        # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings
+        resolved_path = (adapter_dir / rel_path).resolve().as_posix()
+        result[identifier] = resolved_path
+        # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings
+        # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-aliases
+        aliases = binding.get("aliases", []) if isinstance(binding, dict) else []
+        if isinstance(aliases, list):
+            for alias in aliases:
+                if isinstance(alias, str) and alias.strip():
+                    result[alias.strip()] = resolved_path
+        # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-aliases
         # @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-resolve-binding
 
+    # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings
+    model_vars = _resolve_kit_variables_from_model(adapter_dir, core_kit, kit_slug)
+    for var_name, var_path in model_vars.items():
+        result.setdefault(var_name, var_path)
+    # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings
+    # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-aliases
+    model_aliases = _resolve_kit_aliases_from_model(adapter_dir, core_kit, kit_slug)
+    for alias, resource_id in model_aliases.items():
+        if resource_id in result:
+            result.setdefault(alias, result[resource_id])
+    # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-aliases
     return result
 # @cpt-end:cpt-studio-algo-developer-experience-resolve-vars:p1:inst-resolve-binding-path
+
+
+# @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings
+def _resolve_kit_variables_from_model(
+    adapter_dir: Path,
+    core_kit: dict,
+    kit_slug: str,
+) -> Dict[str, str]:
+    """Resolve kit variables through KitModel when an installed kit root exists."""
+    raw_path = core_kit.get("path") if isinstance(core_kit, dict) else ""
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        if not kit_slug:
+            return {}
+        raw_path = f"config/kits/{kit_slug}"
+    kit_root = (adapter_dir / raw_path.strip()).resolve()
+    if not kit_root.exists():
+        return {}
+    try:
+        from ..utils.kit_model import load_kit_model
+        model = load_kit_model(kit_root, source_hint="core")
+    except (OSError, ValueError, KeyError):
+        return {}
+
+    result: Dict[str, str] = {}
+    for resource in getattr(model, "resources", []):
+        resource_id = str(getattr(resource, "id", "") or "").strip()
+        source = str(getattr(resource, "source", "") or "").strip()
+        if not resource_id or not source:
+            continue
+        resolved_path = (kit_root / source).resolve().as_posix()
+        result[resource_id] = resolved_path
+        for alias in getattr(resource, "aliases", []) or []:
+            if isinstance(alias, str) and alias.strip():
+                result[alias.strip()] = resolved_path
+    return result
+# @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings
+
+
+# @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-aliases
+def _resolve_kit_aliases_from_model(
+    adapter_dir: Path,
+    core_kit: dict,
+    kit_slug: str,
+) -> Dict[str, str]:
+    """Return alias -> resource_id mappings from KitModel metadata."""
+    raw_path = core_kit.get("path") if isinstance(core_kit, dict) else ""
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        if not kit_slug:
+            return {}
+        raw_path = f"config/kits/{kit_slug}"
+    kit_root = (adapter_dir / raw_path.strip()).resolve()
+    if not kit_root.exists():
+        return {}
+    try:
+        from ..utils.kit_model import load_kit_model
+        model = load_kit_model(kit_root, source_hint="core")
+    except (OSError, ValueError, KeyError):
+        return {}
+
+    aliases: Dict[str, str] = {}
+    for resource in getattr(model, "resources", []):
+        resource_id = str(getattr(resource, "id", "") or "").strip()
+        if not resource_id:
+            continue
+        for alias in getattr(resource, "aliases", []) or []:
+            if isinstance(alias, str) and alias.strip():
+                aliases[alias.strip()] = resource_id
+    return aliases
+# @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-aliases
 
 
 def _collect_all_variables(
@@ -124,7 +228,7 @@ def _collect_all_variables(
             if not isinstance(kit_entry, dict):
                 continue
             resolved = _resolve_kit_variables(
-                adapter_dir, kit_entry,
+                adapter_dir, kit_entry, str(slug),
             )
             if resolved:
                 kit_vars[slug] = resolved
@@ -390,7 +494,11 @@ def cmd_resolve_vars(argv: list[str]) -> int:
                 filtered_flat[k] = v
         # Preserve layer variables (base_dir, master_repo, repo) from enriched set —
         # these are in result["variables"] but not in system or any kit's resources.
-        all_kit_var_names = {k for kvars in result["kits"].values() for k in kvars}
+        all_kit_var_names = {
+            key
+            for kvars in result["kits"].values()
+            for key in kvars
+        }
         for k, v in result["variables"].items():
             if k not in filtered_flat and k not in all_kit_var_names:
                 filtered_flat[k] = v
