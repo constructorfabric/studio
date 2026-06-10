@@ -391,6 +391,78 @@ def test_force_copy_root_file_replaces_directory_collision():
         assert '[cfs]' in collision.read_text(encoding="utf-8")
 
 
+def test_copy_from_local_path_cache_skips_root_metadata_files():
+    with TemporaryDirectory() as td:
+        workspace = Path(td)
+        cache = _make_cache(workspace)
+        (cache / ".provenance.json").write_text(
+            json.dumps({"source_type": "local_path"}),
+            encoding="utf-8",
+        )
+        target_dir = workspace / "proj" / ".bootstrap"
+        target_dir.mkdir(parents=True)
+        existing = target_dir / "version.toml"
+        existing.write_text("keep me", encoding="utf-8")
+
+        result = _copy_from_cache(cache, target_dir, force=True)
+
+        assert result["version.toml"] == "skipped_local_path_source"
+        assert result["whatsnew.toml"] == "skipped_local_path_source"
+        assert existing.read_text(encoding="utf-8") == "keep me"
+        assert not (target_dir / "whatsnew.toml").exists()
+
+
+def test_init_from_local_path_cache_does_not_create_root_metadata_files():
+    with TemporaryDirectory() as td:
+        root = Path(td) / "proj"
+        root.mkdir()
+        cache = _make_cache(Path(td))
+        (cache / ".provenance.json").write_text(
+            json.dumps({"source_type": "local_path"}),
+            encoding="utf-8",
+        )
+
+        with patch("studio.commands.init.CACHE_DIR", cache), patch(
+            "studio.commands.init._install_default_kit",
+            return_value={},
+        ):
+            rc, result = _run_json(
+                cmd_init,
+                ["--project-root", str(root), "--install-dir", ".bootstrap", "--yes"],
+            )
+
+        assert rc == 0
+        assert result["status"] == "PASS"
+        copy_actions = json.loads(result["actions"]["copy"])
+        assert copy_actions["version.toml"] == "skipped_local_path_source"
+        assert copy_actions["whatsnew.toml"] == "skipped_local_path_source"
+        assert not (root / ".bootstrap" / "version.toml").exists()
+        assert not (root / ".bootstrap" / "whatsnew.toml").exists()
+
+
+def test_update_from_local_path_cache_preserves_root_metadata_files():
+    with TemporaryDirectory() as td:
+        root = Path(td) / "proj"
+        root.mkdir()
+        studio_dir = _write_initialized_project(root)
+        cache = _make_cache(Path(td))
+        (cache / ".provenance.json").write_text(
+            json.dumps({"source_type": "local_path"}),
+            encoding="utf-8",
+        )
+        (studio_dir / "version.toml").write_text("installed version", encoding="utf-8")
+        (studio_dir / "whatsnew.toml").write_text("installed whatsnew", encoding="utf-8")
+
+        with patch("studio.commands.update.CACHE_DIR", cache):
+            rc, result = _run_json(cmd_update, ["--project-root", str(root)])
+
+        assert rc == 0
+        assert result["actions"]["core_update"]["version.toml"] == "skipped_local_path_source"
+        assert result["actions"]["core_update"]["whatsnew.toml"] == "skipped_local_path_source"
+        assert (studio_dir / "version.toml").read_text(encoding="utf-8") == "installed version"
+        assert (studio_dir / "whatsnew.toml").read_text(encoding="utf-8") == "installed whatsnew"
+
+
 def test_dry_run_reports_stale_root_file_removal_when_cache_source_missing():
     with TemporaryDirectory() as td:
         root = Path(td) / "proj"
