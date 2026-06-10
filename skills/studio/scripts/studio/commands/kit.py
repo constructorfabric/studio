@@ -1618,8 +1618,7 @@ def install_kit_with_manifest(
     # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-copy-resources
 
     # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-resolve-vars
-    # Resolve {identifier} template variables in copied kit files
-    _resolve_template_variables(kit_root, resource_bindings)
+    _preserve_template_variables(kit_root, resource_bindings)
     # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-resolve-vars
 
     # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-register-bindings
@@ -1822,36 +1821,17 @@ def _tool_risk_approval_errors(
 
 
 # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-resolve-template-vars
-_TEMPLATE_EXTENSIONS = {".md", ".toml", ".txt", ".yaml", ".yml"}
-
-
-def _resolve_template_variables(
+def _preserve_template_variables(
     kit_root: Path,
     resource_bindings: Dict[str, Dict[str, str]],
 ) -> None:
-    """Resolve ``{identifier}`` template variables in copied kit text files.
+    """Keep copied kit resources byte-for-byte and resolve variables only at read time.
 
-    Walks *kit_root* recursively and replaces ``{resource_id}`` placeholders
-    with the resolved path from *resource_bindings* in all text files with
-    supported extensions.
+    The bindings are persisted in ``core.toml`` and consumed by commands such as
+    ``resolve-vars``. Installation must not rewrite workflow, skill, rule, or
+    template source content because those files are part of the kit source.
     """
-    if not resource_bindings:
-        return
-
-    replacements = {f"{{{rid}}}": info["path"] for rid, info in resource_bindings.items()}
-
-    for fpath in kit_root.rglob("*"):
-        if not fpath.is_file() or fpath.suffix not in _TEMPLATE_EXTENSIONS:
-            continue
-        try:
-            text = fpath.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            continue
-        new_text = text
-        for pattern, value in replacements.items():
-            new_text = new_text.replace(pattern, value)
-        if new_text != text:
-            fpath.write_text(new_text, encoding="utf-8")
+    _ = (kit_root, resource_bindings)
 # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-resolve-template-vars
 
 
@@ -1976,8 +1956,7 @@ def migrate_legacy_kit_to_manifest(
         resources=resource_bindings,
         kit_path=_resolve_manifest_kit_root_rel(manifest, resource_bindings, kit_slug),
     )
-    # Resolve template variables in kit files with new resource bindings
-    _resolve_template_variables(kit_root, resource_bindings)
+    _preserve_template_variables(kit_root, resource_bindings)
     # @cpt-end:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-write-bindings
 
     # @cpt-begin:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-return

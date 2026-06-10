@@ -488,14 +488,14 @@ class TestInstallKitWithManifest(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Template variable resolution
+# Template variable preservation
 # ---------------------------------------------------------------------------
 
-class TestTemplateVariableResolution(unittest.TestCase):
-    """Tests for {identifier} template variable resolution in copied files."""
+class TestTemplateVariablePreservation(unittest.TestCase):
+    """Tests that install preserves {identifier} variables in copied files."""
 
-    def test_template_variables_resolved(self):
-        """Template variables {resource_id} are replaced in copied .md files."""
+    def test_template_variables_preserved_in_copied_resources(self):
+        """Template variables stay in copied kit source files."""
         from studio.commands.kit import install_kit_with_manifest
 
         with TemporaryDirectory() as td:
@@ -503,7 +503,6 @@ class TestTemplateVariableResolution(unittest.TestCase):
             kit_src = td_path / "tplkit"
             kit_src.mkdir()
 
-            # Create a resource with template variables
             (kit_src / "rules.md").write_text(
                 "See constraints at {constraints}\nSee ADR at {adr_artifacts}\n",
                 encoding="utf-8",
@@ -553,14 +552,20 @@ class TestTemplateVariableResolution(unittest.TestCase):
 
             self.assertEqual(result["status"], "PASS")
 
-            # Read the copied rules.md and check that variables were resolved
             kit_root = adapter / "config" / "kits" / "tplkit"
             rules_text = (kit_root / "rules.md").read_text(encoding="utf-8")
-            # {constraints} should have been replaced with its binding path
-            self.assertNotIn("{constraints}", rules_text)
-            self.assertNotIn("{adr_artifacts}", rules_text)
-            # Check that the resolved path is present
-            self.assertIn("constraints.toml", rules_text)
+            self.assertEqual(
+                rules_text,
+                "See constraints at {constraints}\nSee ADR at {adr_artifacts}\n",
+            )
+            self.assertEqual(
+                result["resource_bindings"]["constraints"],
+                "config/kits/tplkit/constraints.toml",
+            )
+            self.assertEqual(
+                result["resource_bindings"]["adr_artifacts"],
+                "config/kits/tplkit/artifacts/ADR",
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -764,14 +769,14 @@ class TestCopyManifestResource(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# _resolve_template_variables
+# _preserve_template_variables
 # ---------------------------------------------------------------------------
 
-class TestResolveTemplateVariables(unittest.TestCase):
-    """Tests for _resolve_template_variables helper."""
+class TestPreserveTemplateVariables(unittest.TestCase):
+    """Tests for _preserve_template_variables helper."""
 
-    def test_replaces_variables_in_md_files(self):
-        from studio.commands.kit import _resolve_template_variables
+    def test_preserves_variables_in_md_files(self):
+        from studio.commands.kit import _preserve_template_variables
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -781,19 +786,16 @@ class TestResolveTemplateVariables(unittest.TestCase):
                 "Path: {constraints}\nRef: {adr}\n", encoding="utf-8",
             )
 
-            _resolve_template_variables(root, {
+            _preserve_template_variables(root, {
                 "constraints": {"path": "config/kits/x/constraints.toml"},
                 "adr": {"path": "config/kits/x/artifacts/ADR"},
             })
 
             text = (root / "doc.md").read_text()
-            self.assertIn("config/kits/x/constraints.toml", text)
-            self.assertIn("config/kits/x/artifacts/ADR", text)
-            self.assertNotIn("{constraints}", text)
-            self.assertNotIn("{adr}", text)
+            self.assertEqual(text, "Path: {constraints}\nRef: {adr}\n")
 
-    def test_ignores_non_text_files(self):
-        from studio.commands.kit import _resolve_template_variables
+    def test_preserves_binary_files(self):
+        from studio.commands.kit import _preserve_template_variables
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -801,15 +803,14 @@ class TestResolveTemplateVariables(unittest.TestCase):
             root.mkdir()
             (root / "image.png").write_bytes(b"\x89PNG{constraints}")
 
-            _resolve_template_variables(root, {
+            _preserve_template_variables(root, {
                 "constraints": {"path": "x"},
             })
 
-            # .png not in _TEMPLATE_EXTENSIONS — content unchanged
             self.assertEqual((root / "image.png").read_bytes(), b"\x89PNG{constraints}")
 
     def test_empty_bindings_noop(self):
-        from studio.commands.kit import _resolve_template_variables
+        from studio.commands.kit import _preserve_template_variables
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -817,7 +818,7 @@ class TestResolveTemplateVariables(unittest.TestCase):
             root.mkdir()
             (root / "doc.md").write_text("{foo}\n", encoding="utf-8")
 
-            _resolve_template_variables(root, {})
+            _preserve_template_variables(root, {})
 
             self.assertEqual((root / "doc.md").read_text(), "{foo}\n")
 
