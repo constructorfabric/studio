@@ -219,6 +219,7 @@ class TestKitNormalize(unittest.TestCase):
             warnings = "\n".join(out["report"]["warnings"])
             self.assertIn("legacy manifest.toml is supported for migration", warnings)
             self.assertIn(".cf-studio-kit.toml", warnings)
+            self.assertIn('manifest_version = "1.0"', out["manifest"])
             self.assertIn("[[kits]]", out["manifest"])
             self.assertIn("[[kits.resources]]", out["manifest"])
             self.assertFalse((kit_src / ".cf-studio-kit.toml").exists())
@@ -241,10 +242,45 @@ class TestKitNormalize(unittest.TestCase):
             self.assertIn("legacy workflow resources are normalized to public skill resources", warnings)
             with open(manifest_path, "rb") as f:
                 data = tomllib.load(f)
+            self.assertEqual(data["manifest_version"], "1.0")
             self.assertEqual(data["kits"][0]["slug"], "layoutkit")
             resource_ids = {r["id"] for r in data["kits"][0]["resources"]}
             self.assertIn("artifacts", resource_ids)
             self.assertIn("skill", resource_ids)
+
+    def test_normalize_dry_run_human_prints_versioned_manifest(self):
+        from studio.commands.kit import cmd_kit_normalize
+        from studio.utils.ui import set_json_mode
+
+        with TemporaryDirectory() as td:
+            kit_src = _make_manifest_kit_source(Path(td), "humankit")
+            buf = io.StringIO()
+            set_json_mode(False)
+            try:
+                with redirect_stderr(buf):
+                    rc = cmd_kit_normalize([str(kit_src), "--dry-run"])
+            finally:
+                set_json_mode(True)
+
+            self.assertEqual(rc, 0)
+            out = buf.getvalue()
+            self.assertIn('manifest_version = "1.0"', out)
+            self.assertIn("[[kits]]", out)
+            self.assertIn("[[kits.resources]]", out)
+
+    def test_normalize_refuses_unversioned_rendered_manifest(self):
+        from studio.utils import kit_model
+
+        with TemporaryDirectory() as td:
+            kit_src = _make_manifest_kit_source(Path(td), "guardkit")
+
+            with patch.object(
+                kit_model,
+                "render_canonical_manifest",
+                return_value='[[kits]]\nslug = "guardkit"\n',
+            ):
+                with self.assertRaisesRegex(ValueError, "missing required manifest_version"):
+                    kit_model.normalize_kit_source(kit_src)
 
     def test_normalize_report_includes_public_component_preview(self):
         from studio.commands.kit import cmd_kit_normalize

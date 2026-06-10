@@ -1188,4 +1188,12 @@ def normalize_kit_source(kit_source: Path, source_hint: str = "") -> tuple[KitMo
     model = load_kit_model(kit_source, source_hint)
     # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-load-kitmodel
     # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-rollout-kitmodel-tests
-    return model, render_canonical_manifest(model)
+    manifest_text = render_canonical_manifest(model)
+    # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-version-gate
+    try:
+        rendered_data = toml_utils.loads(manifest_text)
+    except tomllib.TOMLDecodeError as exc:
+        raise ValueError(f"Generated canonical manifest is invalid TOML: {exc}") from exc
+    _validate_canonical_manifest_version(rendered_data)
+    # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-version-gate
+    return model, manifest_text

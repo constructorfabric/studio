@@ -168,9 +168,9 @@ WHEN:
   REQUIRE TARGET_SOURCE == legacy_manifest OR TARGET_SOURCE == legacy_layout
 DO:
   RUN `{cfs_cmd} kit normalize <target> --from <NORMALIZE_SOURCE_HINT> --dry-run`
-  SET PREVIEW_STATUS = pass WHEN dry-run returns a valid manifest preview
+  SET PREVIEW_STATUS = pass WHEN dry-run returns a valid manifest preview with top-level `manifest_version = "1.0"` before any `[[kits]]` table
   SET PREVIEW_STATUS = fail WHEN dry-run returns validation findings
-  SET PREVIEW_STATUS = error WHEN dry-run cannot parse or load the legacy manifest
+  SET PREVIEW_STATUS = error WHEN dry-run cannot parse or load the legacy manifest, cannot extract the generated TOML, or the generated TOML omits/changes `manifest_version`
   SET CURRENT_PREVIEW_TOML = the proposed canonical `.cf-studio-kit.toml` text WHEN PREVIEW_STATUS == pass
   SET CURRENT_PREVIEW_REPORT = the migration report WHEN PREVIEW_STATUS == pass
   EMIT the migration report, public generated-name preview, and proposed canonical `.cf-studio-kit.toml` WHEN PREVIEW_STATUS == pass
@@ -183,6 +183,7 @@ RULES:
   ALWAYS treat `<target>/manifest.toml` as the selected legacy input when it exists and `<target>/.cf-studio-kit.toml` does not
   ALWAYS treat `conf.toml + layout` as the selected legacy input when no canonical or legacy manifest exists and layout evidence exists
   ALWAYS preview the normalized canonical manifest before any write
+  ALWAYS verify the normalized preview contains top-level `manifest_version = "1.0"`; never approve or write an unversioned manifest
   <!-- @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-public-name-preview -->
   ALWAYS show a generated-name preview before approval for every public skill, agent, rule, and nested subagent: include resource/subagent id, kind, final generated name, and whether it is default-prefixed or `prefix_generated_name = false` as-is
   ALWAYS call out that `prefix_generated_name = false` is the manifest option to publish a public resource or nested subagent name as-is

@@ -3486,6 +3486,13 @@ def _human_kit_normalize(data: dict) -> None:
             ui.warn(str(warning))
     if data.get("dry_run"):
         ui.success("Dry run - no files written.")
+        manifest = str(data.get("manifest") or "")
+        if manifest:
+            ui.blank()
+            ui.info("Generated .cf-studio-kit.toml preview:")
+            sys.stderr.write(manifest)
+            if not manifest.endswith("\n"):
+                sys.stderr.write("\n")
     else:
         ui.success("Canonical manifest written.")
     ui.blank()
