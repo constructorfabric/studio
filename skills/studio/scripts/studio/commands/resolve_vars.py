@@ -1,7 +1,7 @@
 """
 Resolve Variables Command — resolve template variables to absolute paths.
 
-Reads kit resource bindings from ``core.toml`` and resolves all template
+Reads kit resource bindings through the normalized KitModel service and resolves all template
 variables (``{adr_template}``, ``{scripts}``, ``{cf-studio-path}``, etc.)
 to absolute file paths.  Output is a flat dict suitable for
 ``str.format_map()`` substitution in Markdown files.
@@ -72,8 +72,13 @@ def _merge_with_collision_tracking(
 def _resolve_kit_variables(
     adapter_dir: Path,
     core_kit: dict,
+    kit_slug: str = "",
 ) -> Dict[str, str]:
     """Resolve resource bindings for a single kit to absolute paths."""
+    model_vars = _resolve_kit_variables_from_model(adapter_dir, core_kit, kit_slug)
+    if model_vars:
+        return model_vars
+
     resources = core_kit.get("resources")
     if not isinstance(resources, dict):
         return {}
@@ -107,6 +112,40 @@ def _resolve_kit_variables(
 
     return result
 # @cpt-end:cpt-studio-algo-developer-experience-resolve-vars:p1:inst-resolve-binding-path
+
+
+def _resolve_kit_variables_from_model(
+    adapter_dir: Path,
+    core_kit: dict,
+    kit_slug: str,
+) -> Dict[str, str]:
+    """Resolve kit variables through KitModel when an installed kit root exists."""
+    raw_path = core_kit.get("path") if isinstance(core_kit, dict) else ""
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        if not kit_slug:
+            return {}
+        raw_path = f"config/kits/{kit_slug}"
+    kit_root = (adapter_dir / raw_path.strip()).resolve()
+    if not kit_root.exists():
+        return {}
+    try:
+        from ..utils.kit_model import load_kit_model
+        model = load_kit_model(kit_root, source_hint="core")
+    except (OSError, ValueError, KeyError):
+        return {}
+
+    result: Dict[str, str] = {}
+    for resource in getattr(model, "resources", []):
+        resource_id = str(getattr(resource, "id", "") or "").strip()
+        source = str(getattr(resource, "source", "") or "").strip()
+        if not resource_id or not source:
+            continue
+        resolved_path = (kit_root / source).resolve().as_posix()
+        result[resource_id] = resolved_path
+        for alias in getattr(resource, "aliases", []) or []:
+            if isinstance(alias, str) and alias.strip():
+                result[alias.strip()] = resolved_path
+    return result
 
 
 def _collect_all_variables(
@@ -147,7 +186,7 @@ def _collect_all_variables(
             if not isinstance(kit_entry, dict):
                 continue
             resolved = _resolve_kit_variables(
-                adapter_dir, kit_entry,
+                adapter_dir, kit_entry, str(slug),
             )
             if resolved:
                 kit_vars[slug] = resolved

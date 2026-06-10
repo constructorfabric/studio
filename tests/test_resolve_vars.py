@@ -115,6 +115,65 @@ class TestCollectAllVariables(unittest.TestCase):
             self.assertIn("sdlc", result["kits"])
             self.assertIn("adr_template", result["kits"]["sdlc"])
 
+    def test_installed_kit_resources_resolved_through_kit_model(self):
+        """Installed core.toml bindings resolve through KitModel without slug-qualified vars."""
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            config = adapter / "config"
+            kit_root = config / "kits" / "sdlc"
+            (kit_root / "artifacts" / "ADR").mkdir(parents=True)
+            (kit_root / "artifacts" / "ADR" / "template.md").write_text("# ADR\n", encoding="utf-8")
+            (kit_root / "workflows").mkdir()
+            (kit_root / "workflows" / "implement.md").write_text(
+                "---\ntype: workflow\n---\n# Implement\n",
+                encoding="utf-8",
+            )
+            _write_core_toml(config, {
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {
+                    "sdlc": {
+                        "format": "CFS",
+                        "path": "config/kits/sdlc",
+                        "version": "2.0",
+                        "resources": {
+                            "adr_template": {
+                                "path": "config/kits/sdlc/artifacts/ADR/template.md",
+                                "aliases": ["adr"],
+                            },
+                            "implement": {
+                                "path": "config/kits/sdlc/workflows/implement.md",
+                                "origin": "legacy-workflow",
+                            },
+                        },
+                    },
+                },
+            })
+
+            result = _collect_all_variables(root, adapter, {
+                "version": "1.0",
+                "kits": {
+                    "sdlc": {
+                        "path": "config/kits/sdlc",
+                        "resources": {
+                            "adr_template": {"path": "ignored/fallback.md"},
+                        },
+                    },
+                },
+            })
+
+            self.assertIn("adr_template", result["variables"])
+            self.assertIn("adr", result["variables"])
+            self.assertIn("implement", result["variables"])
+            self.assertNotIn("sdlc.adr_template", result["variables"])
+            self.assertTrue(result["variables"]["adr_template"].endswith(
+                "config/kits/sdlc/artifacts/ADR/template.md"
+            ))
+            self.assertTrue(result["variables"]["implement"].endswith(
+                "config/kits/sdlc/workflows/implement.md"
+            ))
+
     def test_kit_aliases_resolved_with_unqualified_names_only(self):
         """Aliases on resource bindings resolve like resource identifiers."""
         with TemporaryDirectory() as td:
