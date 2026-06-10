@@ -47,7 +47,13 @@ pipx install git+https://github.com/constructorfabric/studio.git
 cfs --version
 ```
 
-🖥 Set up Studio in this repository:
+🖥 Go to the repository you want to connect:
+
+```bash
+cd path/to/your/repository
+```
+
+🖥 Set up Studio there:
 
 ```bash
 cfs init
