@@ -259,8 +259,8 @@ Enables users to install, update, and validate kit packages with interactive fil
 **Output**: Updated `.gen/AGENTS.md`, `.gen/SKILL.md`, `.gen/README.md`
 
 **Steps**:
-1. [x] - `p1` - Scan `config/kits/*/` for all installed kit directories - `inst-scan-kits`
-2. [x] - `p1` - Collect metadata (skill_nav, agents_content) from each kit - `inst-collect-all-metadata`
+1. [x] - `p1` - Read installed kit registrations from `config/core.toml`; unregistered `config/kits/*` directories never contribute generated aggregate output - `inst-scan-kits`
+2. [x] - `p1` - Collect metadata (skill_nav, agents_content) from each registered kit - `inst-collect-all-metadata`
 3. [x] - `p1` - Read project name from `config/artifacts.toml [[systems]][0].name` (per `cpt-studio-adr-remove-system-from-core-toml`) - `inst-read-project-name`
 4. [x] - `p1` - Compose and write `.gen/AGENTS.md` with navigation rules and kit agent content - `inst-write-gen-agents`
 5. [x] - `p1` - Compose and write `.gen/SKILL.md` with per-kit skill navigation pointers - `inst-write-gen-skill`

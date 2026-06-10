@@ -847,8 +847,9 @@ def _collect_kit_metadata(
 def regenerate_gen_aggregates(studio_dir: Path) -> Dict[str, Any]:
     """Regenerate .gen/AGENTS.md, .gen/SKILL.md, .gen/README.md from all installed kits.
 
-    Scans config/kits/*/ for installed kits, collects metadata (skill_nav,
-    agents_content) from each, and writes the aggregate files into .gen/.
+    Reads registered kits from core.toml, collects metadata (skill_nav,
+    agents_content) from each registered kit, and writes the aggregate files
+    into .gen/.
 
     This is the canonical function — called by cmd_kit_install, cmd_kit_update,
     cmd_init, and cmd_update.
@@ -866,29 +867,17 @@ def regenerate_gen_aggregates(studio_dir: Path) -> Dict[str, Any]:
     gen_skill_nav_parts: List[str] = []
     gen_agents_parts: List[str] = []
     kits_map = _read_kits_from_core_toml(config_dir)
-    if kits_map:
-        for kit_slug in sorted(kits_map):
-            kit_dir, kit_rel_path = _resolve_registered_kit_metadata_target(
-                studio_dir, kit_slug, kits_map.get(kit_slug, {}),
-            )
-            meta = _collect_kit_metadata(kit_dir, kit_slug, kit_rel_path)
-            if meta["skill_nav"]:
-                gen_skill_nav_parts.append(meta["skill_nav"])
-            if meta["agents_content"]:
-                gen_agents_parts.append(meta["agents_content"])
-    else:
-        config_kits_dir = config_dir / "kits"
-        if config_kits_dir.is_dir():
-            for kit_dir in sorted(config_kits_dir.iterdir()):
-                if not kit_dir.is_dir():
-                    continue
-                # @cpt-begin:cpt-studio-algo-kit-regen-gen:p1:inst-collect-all-metadata
-                meta = _collect_kit_metadata(kit_dir, kit_dir.name)
-                if meta["skill_nav"]:
-                    gen_skill_nav_parts.append(meta["skill_nav"])
-                if meta["agents_content"]:
-                    gen_agents_parts.append(meta["agents_content"])
-                # @cpt-end:cpt-studio-algo-kit-regen-gen:p1:inst-collect-all-metadata
+    for kit_slug in sorted(kits_map):
+        kit_dir, kit_rel_path = _resolve_registered_kit_metadata_target(
+            studio_dir, kit_slug, kits_map.get(kit_slug, {}),
+        )
+        # @cpt-begin:cpt-studio-algo-kit-regen-gen:p1:inst-collect-all-metadata
+        meta = _collect_kit_metadata(kit_dir, kit_slug, kit_rel_path)
+        if meta["skill_nav"]:
+            gen_skill_nav_parts.append(meta["skill_nav"])
+        if meta["agents_content"]:
+            gen_agents_parts.append(meta["agents_content"])
+        # @cpt-end:cpt-studio-algo-kit-regen-gen:p1:inst-collect-all-metadata
     # @cpt-end:cpt-studio-algo-kit-regen-gen:p1:inst-scan-kits
 
     # @cpt-begin:cpt-studio-algo-kit-regen-gen:p1:inst-read-project-name

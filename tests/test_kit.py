@@ -4172,6 +4172,34 @@ class TestRegisterKitInCoreToml(unittest.TestCase):
 
 
 class TestRegenerateGenAggregates(unittest.TestCase):
+    def test_ignores_unregistered_config_kit_dirs(self):
+        from studio.commands.kit import regenerate_gen_aggregates
+        from studio.utils import toml_utils
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            config = adapter / "config"
+            loose_kit = config / "kits" / "loose"
+            loose_kit.mkdir(parents=True)
+            (loose_kit / "SKILL.md").write_text("# Loose Skill\n", encoding="utf-8")
+            (loose_kit / "AGENTS.md").write_text("# Loose Agents\n", encoding="utf-8")
+            toml_utils.dump({
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {},
+            }, config / "core.toml")
+            toml_utils.dump({
+                "systems": [{"name": "MyProject", "slug": "myproject", "kit": "sdlc"}],
+            }, config / "artifacts.toml")
+
+            regenerate_gen_aggregates(adapter)
+
+            gen_skill = (adapter / ".gen" / "SKILL.md").read_text(encoding="utf-8")
+            gen_agents = (adapter / ".gen" / "AGENTS.md").read_text(encoding="utf-8")
+            self.assertNotIn("Loose Skill", gen_skill)
+            self.assertNotIn("loose", gen_skill)
+            self.assertNotIn("# Loose Agents", gen_agents)
+
     def test_uses_default_installed_kit_path_when_path_not_explicitly_registered(self):
         from studio.commands.kit import regenerate_gen_aggregates
         from studio.utils import toml_utils
