@@ -1053,6 +1053,20 @@ def _local_path_provenance(kit_source: Path, install_mode: str) -> Dict[str, str
     }
 
 
+def _load_manifest_install_adapter(kit_source: Path, kit_slug: str = "") -> Optional[Manifest]:
+    """Load a manifest installer adapter only through a manifest-backed KitModel."""
+    if not ((kit_source / ".cf-studio-kit.toml").is_file() or (kit_source / "manifest.toml").is_file()):
+        return None
+
+    from ..utils.kit_model import load_kit_model
+    from ..utils.manifest import load_manifest
+
+    model = load_kit_model(kit_source, source_hint="manifest", kit_slug=kit_slug)
+    if getattr(model, "manifest_source", "") not in {"canonical", "legacy_manifest"}:
+        return None
+    return load_manifest(kit_source, kit_slug=kit_slug)
+
+
 def _validate_register_manifest_containment(
     project_root: Optional[Path],
     studio_dir: Path,
@@ -1317,8 +1331,7 @@ def install_kit(
 
     # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-manifest-install
     # Check for manifest-driven installation
-    from ..utils.manifest import load_manifest
-    manifest = load_manifest(kit_source, kit_slug=kit_slug)
+    manifest = _load_manifest_install_adapter(kit_source, kit_slug=kit_slug)
     if manifest is not None:
         # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-manifest-install
         return install_kit_with_manifest(
@@ -2226,8 +2239,7 @@ def cmd_kit_install(argv: List[str]) -> int:
         # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
         # @cpt-begin:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-mode-always-ask
         if args.local_path and not args.install_mode and sys.stdin.isatty():
-            from ..utils.manifest import load_manifest as _load_manifest
-            local_manifest = _load_manifest(kit_source, kit_slug=kit_slug)
+            local_manifest = _load_manifest_install_adapter(kit_source, kit_slug=kit_slug)
             if local_manifest is not None:
                 selected_install_mode = _prompt_local_manifest_install_mode(
                     project_root,

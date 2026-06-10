@@ -124,6 +124,51 @@ def _bootstrap_project(root: Path, adapter_rel: str = "cypilot") -> Path:
 # install_kit_with_manifest (unit tests)
 # ---------------------------------------------------------------------------
 
+class TestManifestInstallAdapter(unittest.TestCase):
+    """Manifest install adapter is selected through the KitModel boundary."""
+
+    def test_canonical_manifest_loads_adapter(self):
+        from studio.commands.kit import _load_manifest_install_adapter
+
+        with TemporaryDirectory() as td:
+            kit_src = Path(td) / "kit"
+            kit_src.mkdir()
+            (kit_src / "SKILL.md").write_text("# Skill\n", encoding="utf-8")
+            (kit_src / ".cf-studio-kit.toml").write_text(
+                textwrap.dedent(
+                    """\
+                    [[kits]]
+                    slug = "mykit"
+                    name = "My Kit"
+                    version = "1.0"
+
+                    [[kits.resources]]
+                    id = "skill"
+                    kind = "skill"
+                    source = "SKILL.md"
+                    install_path = "SKILL.md"
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            manifest = _load_manifest_install_adapter(kit_src, kit_slug="mykit")
+
+            self.assertIsNotNone(manifest)
+            assert manifest is not None
+            self.assertEqual(manifest.resources[0].id, "skill")
+
+    def test_source_without_manifest_returns_none(self):
+        from studio.commands.kit import _load_manifest_install_adapter
+
+        with TemporaryDirectory() as td:
+            kit_src = Path(td) / "kit"
+            kit_src.mkdir()
+            (kit_src / "conf.toml").write_text('name = "legacy"\n', encoding="utf-8")
+
+            self.assertIsNone(_load_manifest_install_adapter(kit_src, kit_slug="legacy"))
+
+
 class TestInstallKitWithManifest(unittest.TestCase):
     """Unit tests for install_kit_with_manifest()."""
 
