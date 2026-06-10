@@ -1308,6 +1308,7 @@ def install_kit(
     from ..utils.manifest import load_manifest
     manifest = load_manifest(kit_source)
     if manifest is not None:
+        # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-manifest-install
         return install_kit_with_manifest(
             kit_source, studio_dir, kit_slug, kit_version,
             manifest, interactive=interactive, source=source,
@@ -1322,6 +1323,7 @@ def install_kit(
                 else ""
             ),
         )
+        # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-manifest-install
     # @cpt-end:cpt-studio-algo-kit-install:p1:inst-manifest-install
 
     if install_mode != "copy":
@@ -2134,6 +2136,7 @@ def cmd_kit_install(argv: List[str]) -> int:
         return 2
     # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-register-local-only
     if args.local_path:
+        # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-validate-source-mode
         conflict = _validate_kit_source_mode(
             local_path=args.local_path,
             version=args.version,
@@ -2141,6 +2144,7 @@ def cmd_kit_install(argv: List[str]) -> int:
         if conflict:
             ui.result(conflict)
             return 2
+        # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-validate-source-mode
     # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-parse-args
 
     # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-validate-source
@@ -2176,7 +2180,9 @@ def cmd_kit_install(argv: List[str]) -> int:
         if source_is_generic_git(args.source):
             resolved_source = _resolve_install_source_git(args.source, args.version)
         else:
+            # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-resolve-github-authority
             resolved_source = _resolve_install_source_github(args.source)
+            # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-resolve-github-authority
         if resolved_source is None:
             return 2
         # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-read-slug-version
@@ -2235,6 +2241,7 @@ def cmd_kit_install(argv: List[str]) -> int:
         # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-dry-run
 
         selected_install_mode = args.install_mode or "copy"
+        # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
         # @cpt-begin:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-mode-always-ask
         if args.local_path and not args.install_mode and sys.stdin.isatty():
             from ..utils.manifest import load_manifest as _load_manifest
@@ -2248,6 +2255,7 @@ def cmd_kit_install(argv: List[str]) -> int:
                     local_manifest,
                 )
         # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-mode-always-ask
+        # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
 
         # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-delegate-install
         result = install_kit(
