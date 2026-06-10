@@ -235,19 +235,28 @@ def _enrich_authority_with_content_identity(
 
 def _authority_result_summary(
     authority_metadata: Optional[Dict[str, Any]],
-) -> Optional[Dict[str, str]]:
+) -> Optional[Dict[str, Any]]:
     if not authority_metadata:
         return None
+    content_identity = authority_metadata.get("content_identity")
+    identity = str(authority_metadata.get("identity") or "")
+    if isinstance(content_identity, dict):
+        identity = identity or str(content_identity.get("identity") or "")
     summary = {
+        "source_type": str(authority_metadata.get("source_type") or ""),
         "resolver_mode": str(authority_metadata.get("resolver_mode") or ""),
         "resolution_basis": str(authority_metadata.get("resolution_basis") or ""),
         "requested_ref": str(authority_metadata.get("requested_ref") or ""),
         "resolved_ref": str(authority_metadata.get("resolved_ref") or ""),
         "commit_sha": str(authority_metadata.get("commit_sha") or ""),
+        "canonical_source": str(authority_metadata.get("canonical_source") or ""),
+        "effective_source": str(authority_metadata.get("effective_source") or ""),
+        "identity": identity,
+        "content_identity": content_identity if isinstance(content_identity, dict) else None,
         "freshness": str(authority_metadata.get("freshness") or ""),
         "verified": str(authority_metadata.get("verified") or ""),
     }
-    return {key: value for key, value in summary.items() if value}
+    return {key: value for key, value in summary.items() if value not in ("", None, {})}
 
 
 def _authority_commit_changed(
@@ -1387,6 +1396,7 @@ def install_kit(
         "version": kit_version,
         "install_mode": install_mode,
         "files_copied": files_copied,
+        "local_metadata": local_metadata,
         "errors": errors,
         "skill_nav": meta["skill_nav"],
         "agents_content": meta["agents_content"],
@@ -1536,6 +1546,7 @@ def install_kit_with_manifest(
             "files_copied": 0,
             "files_registered": len(resource_bindings),
             "resource_bindings": {k: v["path"] for k, v in resource_bindings.items()},
+            "local_metadata": local_metadata,
             "errors": errors,
             "skill_nav": meta["skill_nav"],
             "agents_content": meta["agents_content"],
@@ -1652,6 +1663,7 @@ def install_kit_with_manifest(
         "install_mode": install_mode,
         "files_copied": files_copied,
         "resource_bindings": {k: v["path"] for k, v in resource_bindings.items()},
+        "local_metadata": local_metadata,
         "errors": errors,
         "skill_nav": meta["skill_nav"],
         "agents_content": meta["agents_content"],
@@ -2308,6 +2320,8 @@ def cmd_kit_install(argv: List[str]) -> int:
             output["source"] = source_registration
         if authority_metadata:
             output["authority"] = _authority_result_summary(authority_metadata) or authority_metadata
+        if result.get("local_metadata"):
+            output["local_metadata"] = result["local_metadata"]
         if result.get("errors"):
             output["errors"] = result["errors"]
 

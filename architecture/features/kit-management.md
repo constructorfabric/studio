@@ -899,5 +899,5 @@ Enables users to install, update, and validate kit packages with interactive fil
 - [x] `p1` - GitHub-backed kit registrations store `version` as GitHub-derived display/backcompat release/ref version plus structured authority metadata: resolver_mode, resolution_basis, requested_ref, resolved_ref, commit_sha/content identity, canonical_source, effective_source, verified, and freshness
 - [x] `p1` - `conf.toml version` is optional local metadata only and never determines GitHub-backed install/update authority
 - [x] `p1` - Local/path kit operations are outside GitHub authority and reject GitHub selector/ref flags
-- [ ] `p1` - Kit install/update/report output shows source, effective source, content identity, authority freshness, and any migration from legacy `conf.toml` metadata
+- [x] `p1` - Kit install/update/report output shows source, effective source, content identity, authority freshness, and any migration from legacy `conf.toml` metadata
 - [x] `p1` - Offline GitHub fallback uses last-known persisted state and never guesses from installed files or local `conf.toml`

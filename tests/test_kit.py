@@ -3291,6 +3291,34 @@ class TestResolveGithubRef(unittest.TestCase):
         self.assertEqual(meta["verified"], "stale")
         self.assertEqual(meta["commit_sha"], "abc123")
 
+    def test_authority_summary_includes_source_and_identity(self):
+        from studio.commands.kit import _authority_result_summary
+
+        summary = _authority_result_summary({
+            "source_type": "github",
+            "resolver_mode": "latest_release",
+            "resolution_basis": "github_release",
+            "requested_ref": "latest",
+            "resolved_ref": "v2.0.0",
+            "commit_sha": "abc123",
+            "canonical_source": "github:o/r",
+            "effective_source": "github:mirror/r",
+            "identity": "o/r@v2.0.0#abc123",
+            "content_identity": {
+                "resolved_ref": "v2.0.0",
+                "commit_sha": "abc123",
+                "identity": "o/r@v2.0.0#abc123",
+            },
+            "freshness": "fresh",
+            "verified": "verified",
+        })
+
+        self.assertEqual(summary["source_type"], "github")
+        self.assertEqual(summary["canonical_source"], "github:o/r")
+        self.assertEqual(summary["effective_source"], "github:mirror/r")
+        self.assertEqual(summary["identity"], "o/r@v2.0.0#abc123")
+        self.assertEqual(summary["content_identity"]["commit_sha"], "abc123")
+
 
 class TestKitUpdateAuthorityIdentity(unittest.TestCase):
     def test_same_ref_with_new_commit_does_not_short_circuit_as_current(self):
@@ -3751,6 +3779,7 @@ class TestRegisterKitInCoreToml(unittest.TestCase):
             )
 
             self.assertEqual(result["version"], "v2.0.0")
+            self.assertEqual(result["local_metadata"]["conf_version"], "999.0.0")
             with open(studio_dir / "config" / "core.toml", "rb") as f:
                 data = tomllib.load(f)
             kit = data["kits"]["mykit"]
