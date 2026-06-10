@@ -92,6 +92,10 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
                 'generated_targets = ["cursor"]',
                 'description = "Reviewer agent"',
                 "",
+                "[resources.targets.cursor]",
+                'mode = "readonly"',
+                'reasoning_effort = "high"',
+                "",
                 "[[resources]]",
                 'id = "guard"',
                 'kind = "rule"',
@@ -136,7 +140,10 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
             self.assertTrue(agent_path.is_file())
             self.assertTrue(rule_path.is_file())
             self.assertIn("skill.md", skill_path.read_text(encoding="utf-8"))
-            self.assertIn("Review carefully.", agent_path.read_text(encoding="utf-8"))
+            agent_content = agent_path.read_text(encoding="utf-8")
+            self.assertIn("Review carefully.", agent_content)
+            self.assertIn("readonly: true", agent_content)
+            self.assertIn("reasoning_effort=high", agent_content)
             self.assertIn("Follow the guard.", rule_path.read_text(encoding="utf-8"))
             self.assertFalse((root / ".cursor" / "agents" / "cf-pubkit-codexonly.mdc").exists())
 

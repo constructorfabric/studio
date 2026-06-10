@@ -3194,6 +3194,21 @@ def _component_agent_targets(component: object) -> List[str]:
     return targets
 
 
+def _component_target_config(component: object, agent: str) -> Dict[str, Any]:
+    target_configs = getattr(component, "target_configs", {}) or {}
+    config = target_configs.get(agent, {}) if isinstance(target_configs, dict) else {}
+    return config if isinstance(config, dict) else {}
+
+
+def _component_config_value(component: object, target_config: Dict[str, Any], key: str, default: Any) -> Any:
+    return target_config.get(key, getattr(component, key, default))
+
+
+def _component_config_list(component: object, target_config: Dict[str, Any], key: str) -> List[str]:
+    value = _component_config_value(component, target_config, key, [])
+    return list(value or []) if isinstance(value, list) else []
+
+
 def _process_kit_public_agents_and_rules(
     agent: str,
     project_root: Path,
@@ -3218,13 +3233,25 @@ def _process_kit_public_agents_and_rules(
         trusted_roots.append(source_path.parent)
         description = str(getattr(component, "description", "") or "").strip()
         if getattr(component, "kind", "") == "agent":
+            target_config = _component_target_config(component, agent)
             agent_entries[generated_name] = _AgentEntry(
                 id=generated_name,
                 description=description or f"Constructor Studio {generated_name} agent",
                 source=source_path.as_posix(),
                 agents=_component_agent_targets(component),
-                tools=list(getattr(component, "tools", []) or []),
-                disallowed_tools=list(getattr(component, "disallowed_tools", []) or []),
+                tools=_component_config_list(component, target_config, "tools"),
+                disallowed_tools=_component_config_list(component, target_config, "disallowed_tools"),
+                mode=str(_component_config_value(component, target_config, "mode", "readwrite") or "readwrite"),
+                isolation=bool(_component_config_value(component, target_config, "isolation", False)),
+                model=str(_component_config_value(component, target_config, "model", "") or ""),
+                skills=_component_config_list(component, target_config, "skills"),
+                color=str(_component_config_value(component, target_config, "color", "") or ""),
+                memory_dir=str(_component_config_value(component, target_config, "memory_dir", "") or ""),
+                role=str(_component_config_value(component, target_config, "role", "any") or "any"),
+                target=str(_component_config_value(component, target_config, "target", "any") or "any"),
+                provider=str(_component_config_value(component, target_config, "provider", "anthropic") or "anthropic"),
+                reasoning_effort=_component_config_value(component, target_config, "reasoning_effort", None),
+                context_window=_component_config_value(component, target_config, "context_window", None),
             )
         elif getattr(component, "kind", "") == "rule":
             rule_entries[generated_name] = _RuleEntry(

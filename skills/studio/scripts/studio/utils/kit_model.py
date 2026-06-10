@@ -46,6 +46,19 @@ class KitResource:
     content_hash: str = ""
     tools: List[str] = field(default_factory=list)
     disallowed_tools: List[str] = field(default_factory=list)
+    mode: str = "readwrite"
+    isolation: bool = False
+    model: str = ""
+    skills: List[str] = field(default_factory=list)
+    color: str = ""
+    memory_dir: str = ""
+    role: str = "any"
+    target: str = "any"
+    provider: str = "anthropic"
+    reasoning_effort: Optional[str] = None
+    context_window: Optional[str] = None
+    subagents: List[Dict[str, Any]] = field(default_factory=list)
+    target_configs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -62,6 +75,19 @@ class PublicComponent:
     origin: str = ""
     tools: List[str] = field(default_factory=list)
     disallowed_tools: List[str] = field(default_factory=list)
+    mode: str = "readwrite"
+    isolation: bool = False
+    model: str = ""
+    skills: List[str] = field(default_factory=list)
+    color: str = ""
+    memory_dir: str = ""
+    role: str = "any"
+    target: str = "any"
+    provider: str = "anthropic"
+    reasoning_effort: Optional[str] = None
+    context_window: Optional[str] = None
+    subagents: List[Dict[str, Any]] = field(default_factory=list)
+    target_configs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -111,6 +137,64 @@ def _string_list(value: Any, field_name: str) -> List[str]:
         cleaned = item.strip()
         if cleaned:
             result.append(cleaned)
+    return result
+
+
+def _config_string(raw: Dict[str, Any], agent_config: Dict[str, Any], key: str, default: str = "") -> str:
+    value = agent_config.get(key, raw.get(key, default))
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise ValueError(f"Field '{key}' must be a string")
+    return value.strip()
+
+
+def _config_optional_string(raw: Dict[str, Any], agent_config: Dict[str, Any], key: str) -> Optional[str]:
+    value = agent_config.get(key, raw.get(key))
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"Field '{key}' must be a string")
+    cleaned = value.strip()
+    return cleaned or None
+
+
+def _config_bool(raw: Dict[str, Any], agent_config: Dict[str, Any], key: str, default: bool = False) -> bool:
+    value = agent_config.get(key, raw.get(key, default))
+    if not isinstance(value, bool):
+        raise ValueError(f"Field '{key}' must be a boolean")
+    return value
+
+
+def _config_string_list(raw: Dict[str, Any], agent_config: Dict[str, Any], key: str, field_name: str) -> List[str]:
+    return _string_list(agent_config.get(key, raw.get(key)), field_name)
+
+
+def _config_subagents(raw: Dict[str, Any], agent_config: Dict[str, Any], field_name: str) -> List[Dict[str, Any]]:
+    value = agent_config.get("subagents", raw.get("subagents"))
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError(f"Field '{field_name}' must be a list of tables")
+    result: List[Dict[str, Any]] = []
+    for idx, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise ValueError(f"Field '{field_name}[{idx}]' must be a table")
+        result.append(dict(item))
+    return result
+
+
+def _config_table(raw: Dict[str, Any], key: str, field_name: str) -> Dict[str, Dict[str, Any]]:
+    value = raw.get(key)
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"Field '{field_name}' must be a table")
+    result: Dict[str, Dict[str, Any]] = {}
+    for name, item in value.items():
+        if not isinstance(item, dict):
+            raise ValueError(f"Field '{field_name}.{name}' must be a table")
+        result[str(name)] = dict(item)
     return result
 
 
@@ -246,6 +330,19 @@ def _semantic_resource_data(resource: KitResource) -> Dict[str, Any]:
         "generated_name": resource.generated_name,
         "tools": resource.tools,
         "disallowed_tools": resource.disallowed_tools,
+        "mode": resource.mode,
+        "isolation": resource.isolation,
+        "model": resource.model,
+        "skills": resource.skills,
+        "color": resource.color,
+        "memory_dir": resource.memory_dir,
+        "role": resource.role,
+        "target": resource.target,
+        "provider": resource.provider,
+        "reasoning_effort": resource.reasoning_effort,
+        "context_window": resource.context_window,
+        "subagents": resource.subagents,
+        "target_configs": resource.target_configs,
     }
     # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-resource-id-vs-generated-name
     return data
@@ -327,6 +424,19 @@ def _public_components(resources: List[KitResource]) -> List[PublicComponent]:
             origin=resource.origin,
             tools=resource.tools,
             disallowed_tools=resource.disallowed_tools,
+            mode=resource.mode,
+            isolation=resource.isolation,
+            model=resource.model,
+            skills=resource.skills,
+            color=resource.color,
+            memory_dir=resource.memory_dir,
+            role=resource.role,
+            target=resource.target,
+            provider=resource.provider,
+            reasoning_effort=resource.reasoning_effort,
+            context_window=resource.context_window,
+            subagents=resource.subagents,
+            target_configs=resource.target_configs,
         )
         for resource in resources
         if resource.public and resource.kind in _PUBLIC_KINDS
@@ -356,6 +466,19 @@ def _with_hashes(kit_source: Path, model: KitModel) -> KitModel:
             content_hash=resource_hashes[resource.id],
             tools=resource.tools,
             disallowed_tools=resource.disallowed_tools,
+            mode=resource.mode,
+            isolation=resource.isolation,
+            model=resource.model,
+            skills=resource.skills,
+            color=resource.color,
+            memory_dir=resource.memory_dir,
+            role=resource.role,
+            target=resource.target,
+            provider=resource.provider,
+            reasoning_effort=resource.reasoning_effort,
+            context_window=resource.context_window,
+            subagents=resource.subagents,
+            target_configs=resource.target_configs,
         )
         for resource in model.resources
     ]
@@ -448,7 +571,9 @@ def load_canonical_kit_model(kit_source: Path) -> Optional[KitModel]:
                 "id", "kind", "source", "install_path", "type", "public",
                 "description", "user_modifiable", "aliases", "generated_targets",
                 "origin", "generated_name", "agent", "targets", "permissions",
-                "tools", "disallowed_tools",
+                "tools", "disallowed_tools", "mode", "isolation", "model",
+                "skills", "color", "memory_dir", "role", "target", "provider",
+                "reasoning_effort", "context_window", "subagents",
             },
             f"[[resources]][{idx}]",
             warnings,
@@ -479,6 +604,7 @@ def load_canonical_kit_model(kit_source: Path) -> Optional[KitModel]:
             )
         install_path = _optional_string(raw, "install_path") or source
         public = bool(raw.get("public", kind in _PUBLIC_KINDS))
+        permissions_config = raw.get("permissions") if isinstance(raw.get("permissions"), dict) else {}
         resource = KitResource(
             id=resource_id,
             kind=kind,
@@ -495,13 +621,33 @@ def load_canonical_kit_model(kit_source: Path) -> Optional[KitModel]:
             origin=_optional_string(raw, "origin"),
             generated_name=_normalize_public_name(slug, resource_id) if public else "",
             tools=_string_list(
-                agent_config.get("tools", raw.get("tools")),
+                agent_config.get("tools", raw.get("tools", permissions_config.get("tools"))),
                 f"resources.{resource_id}.tools",
             ),
             disallowed_tools=_string_list(
-                agent_config.get("disallowed_tools", raw.get("disallowed_tools")),
+                agent_config.get(
+                    "disallowed_tools",
+                    raw.get("disallowed_tools", permissions_config.get("disallowed_tools")),
+                ),
                 f"resources.{resource_id}.disallowed_tools",
             ),
+            # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-agent-config
+            # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-agent-fields
+            mode=_config_string(raw, agent_config, "mode", "readwrite") or "readwrite",
+            isolation=_config_bool(raw, agent_config, "isolation", False),
+            model=_config_string(raw, agent_config, "model"),
+            skills=_config_string_list(raw, agent_config, "skills", f"resources.{resource_id}.skills"),
+            color=_config_string(raw, agent_config, "color"),
+            memory_dir=_config_string(raw, agent_config, "memory_dir"),
+            role=_config_string(raw, agent_config, "role", "any") or "any",
+            target=_config_string(raw, agent_config, "target", "any") or "any",
+            provider=_config_string(raw, agent_config, "provider", "anthropic") or "anthropic",
+            reasoning_effort=_config_optional_string(raw, agent_config, "reasoning_effort"),
+            context_window=_config_optional_string(raw, agent_config, "context_window"),
+            subagents=_config_subagents(raw, agent_config, f"resources.{resource_id}.subagents"),
+            target_configs=_config_table(raw, "targets", f"resources.{resource_id}.targets"),
+            # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-agent-fields
+            # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-agent-config
         )
         _validate_relative_source(kit_source, resource)
         _validate_install_path(resource)
@@ -743,6 +889,32 @@ def kit_model_to_toml_data(model: KitModel) -> Dict[str, Any]:
             item["tools"] = resource.tools
         if resource.disallowed_tools:
             item["disallowed_tools"] = resource.disallowed_tools
+        if resource.mode != "readwrite":
+            item["mode"] = resource.mode
+        if resource.isolation:
+            item["isolation"] = resource.isolation
+        if resource.model:
+            item["model"] = resource.model
+        if resource.skills:
+            item["skills"] = resource.skills
+        if resource.color:
+            item["color"] = resource.color
+        if resource.memory_dir:
+            item["memory_dir"] = resource.memory_dir
+        if resource.role != "any":
+            item["role"] = resource.role
+        if resource.target != "any":
+            item["target"] = resource.target
+        if resource.provider != "anthropic":
+            item["provider"] = resource.provider
+        if resource.reasoning_effort:
+            item["reasoning_effort"] = resource.reasoning_effort
+        if resource.context_window:
+            item["context_window"] = resource.context_window
+        if resource.subagents:
+            item["subagents"] = resource.subagents
+        if resource.target_configs:
+            item["targets"] = resource.target_configs
         resources.append(item)
     # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
 

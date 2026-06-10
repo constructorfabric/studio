@@ -324,6 +324,64 @@ class TestKitNormalize(unittest.TestCase):
 
             self.assertEqual(data["resources"][0]["tools"], ["Bash"])
 
+    def test_kit_model_preserves_public_agent_configuration_fields(self):
+        from studio.utils.kit_model import load_kit_model, kit_model_to_toml_data
+
+        with TemporaryDirectory() as td:
+            kit_src = _make_canonical_kit_source(Path(td), "agentkit")
+            manifest = kit_src / ".cf-studio-kit.toml"
+            manifest.write_text(
+                manifest.read_text(encoding="utf-8")
+                .replace('kind = "skill"', 'kind = "agent"')
+                + "\n[resources.agent]\n"
+                + 'mode = "readonly"\n'
+                + "isolation = true\n"
+                + 'model = "cf:tier:balanced"\n'
+                + 'skills = ["cf-agentkit-helper"]\n'
+                + 'color = "blue"\n'
+                + 'memory_dir = ".memory/agentkit"\n'
+                + 'role = "analyze"\n'
+                + 'target = "codebase"\n'
+                + 'provider = "anthropic"\n'
+                + 'reasoning_effort = "high"\n'
+                + 'context_window = "max"\n'
+                + '\n[resources.permissions]\n'
+                + 'tools = ["Read"]\n'
+                + '[[resources.agent.subagents]]\n'
+                + 'id = "helper"\n'
+                + 'source = "SKILL.md"\n'
+                + '\n[resources.targets.cursor]\n'
+                + 'mode = "readonly"\n'
+                + 'reasoning_effort = "high"\n',
+                encoding="utf-8",
+            )
+
+            model = load_kit_model(kit_src)
+            component = model.public_components[0]
+
+            self.assertEqual(component.mode, "readonly")
+            self.assertTrue(component.isolation)
+            self.assertEqual(component.model, "cf:tier:balanced")
+            self.assertEqual(component.skills, ["cf-agentkit-helper"])
+            self.assertEqual(component.color, "blue")
+            self.assertEqual(component.memory_dir, ".memory/agentkit")
+            self.assertEqual(component.role, "analyze")
+            self.assertEqual(component.target, "codebase")
+            self.assertEqual(component.reasoning_effort, "high")
+            self.assertEqual(component.context_window, "max")
+            self.assertEqual(component.tools, ["Read"])
+            self.assertEqual(component.subagents[0]["id"], "helper")
+            self.assertEqual(component.target_configs["cursor"]["mode"], "readonly")
+
+            data = kit_model_to_toml_data(model)
+            resource = data["resources"][0]
+            self.assertEqual(resource["mode"], "readonly")
+            self.assertTrue(resource["isolation"])
+            self.assertEqual(resource["tools"], ["Read"])
+            self.assertEqual(resource["skills"], ["cf-agentkit-helper"])
+            self.assertEqual(resource["subagents"][0]["id"], "helper")
+            self.assertEqual(resource["targets"]["cursor"]["reasoning_effort"], "high")
+
     def test_kit_model_preserves_prefixed_public_name(self):
         from studio.utils.kit_model import load_kit_model
 
