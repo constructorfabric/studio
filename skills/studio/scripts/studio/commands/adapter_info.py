@@ -621,18 +621,12 @@ def cmd_adapter_info(argv: list[str]) -> int:
     kit_models = {}
     # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitdetails-derived
     kit_details = {}
-    config_kits_dir = adapter_dir / "config" / "kits"
     kit_entries: dict = {}
-    has_registered_kits = bool(core_data and isinstance(core_data.get("kits"), dict))
-    if has_registered_kits:
+    if core_data and isinstance(core_data.get("kits"), dict):
         kit_entries.update({
             str(slug): entry if isinstance(entry, dict) else {}
             for slug, entry in core_data["kits"].items()
         })
-    elif config_kits_dir.is_dir():
-        for kit_dir in sorted(config_kits_dir.iterdir()):
-            if kit_dir.is_dir():
-                kit_entries.setdefault(kit_dir.name, {})
 
     for slug in sorted(kit_entries):
         core_kit = kit_entries[slug]
