@@ -236,13 +236,13 @@ WHEN:
 DO:
   RUN classify candidates from RESOURCE_CONTEXT into public skills, agents, and rules, plus supporting templates, checklists, scripts, directories, and other
   RUN synthesize a conservative canonical proposal using the discovered candidates and explicit local metadata only:
-    - default shape is single-kit `[kit]` + `[[resources]]`
-    - use multi-kit `[[kits]]` + nested `[[kits.resources]]` only when the user explicitly asks for several kits or discovery returns clearly separate kit packages under TARGET_DIR
+    - canonical shape is always `[[kits]]` + nested `[[kits.resources]]`, even when the file declares exactly one kit
+    - add multiple `[[kits]]` entries only when the user explicitly asks for several kits or discovery returns clearly separate kit packages under TARGET_DIR
     - multi-kit proposals require unique kit slugs; each kit owns its own resource ID namespace
     - slug = explicit kit slug from discovered metadata, else target folder basename normalized to kebab-case
     - name = explicit kit display name from discovered metadata, else the slug
     - version = explicit semantic-version-compatible metadata, else `0.1.0`
-    - each `[[resources]]` or `[[kits.resources]]` includes required `id`, `kind`, and `source`
+    - each `[[kits.resources]]` includes required `id`, `kind`, and `source`
     - `install_path` is included only when the path can be expressed as a normalized relative path under TARGET_DIR without symlink escape or absolute segments
     - `public = true` is used only for skills, agents, and rules
     - `generated_targets = ["installed"]` is used only for public resources with no explicit target
@@ -257,7 +257,7 @@ RULES:
   ALWAYS classify discovered candidates into the public and supporting groups before proposing a manifest
   ALWAYS keep the proposal conservative and report ambiguity instead of guessing
   ALWAYS propose a default manifest before any write when no legacy manifest is present
-  ALWAYS keep `[kit]` + `[[resources]]` and `[[kits]]` mutually exclusive in one `.cf-studio-kit.toml`
+  ALWAYS use `[[kits]]` + `[[kits.resources]]`; never emit `[kit]` or top-level `[[resources]]`
   NEVER write `.cf-studio-kit.toml` before the approval menu resolves
 MENU KitInitDiscoveryApprovalMenu
 TITLE: Approve the proposed canonical manifest for this folder?

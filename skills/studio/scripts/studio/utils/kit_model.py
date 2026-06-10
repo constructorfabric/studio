@@ -689,37 +689,25 @@ def load_canonical_kit_models(kit_source: Path) -> List[KitModel]:
 
     raw_kits = data.get("kits")
     # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-multi-kit
-    if raw_kits is not None:
-        if data.get("kit") is not None or data.get("resources") is not None:
-            raise ValueError(f"{_CANONICAL_MANIFEST}: cannot mix [kit]/[[resources]] with [[kits]]")
-        if not isinstance(raw_kits, list) or not raw_kits:
-            raise ValueError(f"{_CANONICAL_MANIFEST}: [[kits]] must be a non-empty array of tables")
-        models = [
-            _canonical_model_from_entry(
-                kit_source,
-                raw_kit,
-                raw_kit.get("resources", []) if isinstance(raw_kit, dict) else None,
-                kit_context=f"[[kits]][{idx}]",
-                resources_context=f"[[kits]][{idx}].resources",
-            )
-            for idx, raw_kit in enumerate(raw_kits)
-            if isinstance(raw_kit, dict)
-        ]
-        if len(models) != len(raw_kits):
-            raise ValueError(f"{_CANONICAL_MANIFEST}: every [[kits]] entry must be a table")
-    else:
-        meta = data.get("kit")
-        if not isinstance(meta, dict):
-            raise ValueError(f"{_CANONICAL_MANIFEST}: missing [kit] metadata table")
-        models = [
-            _canonical_model_from_entry(
-                kit_source,
-                meta,
-                data.get("resources", []),
-                kit_context="[kit]",
-                resources_context="[[resources]]",
-            ),
-        ]
+    if data.get("kit") is not None or data.get("resources") is not None:
+        raise ValueError(
+            f"{_CANONICAL_MANIFEST}: canonical manifests must use [[kits]] with nested [[kits.resources]]",
+        )
+    if not isinstance(raw_kits, list) or not raw_kits:
+        raise ValueError(f"{_CANONICAL_MANIFEST}: [[kits]] must be a non-empty array of tables")
+    models = [
+        _canonical_model_from_entry(
+            kit_source,
+            raw_kit,
+            raw_kit.get("resources", []) if isinstance(raw_kit, dict) else None,
+            kit_context=f"[[kits]][{idx}]",
+            resources_context=f"[[kits]][{idx}].resources",
+        )
+        for idx, raw_kit in enumerate(raw_kits)
+        if isinstance(raw_kit, dict)
+    ]
+    if len(models) != len(raw_kits):
+        raise ValueError(f"{_CANONICAL_MANIFEST}: every [[kits]] entry must be a table")
     # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-multi-kit
 
     seen_slugs: set[str] = set()
@@ -1107,12 +1095,14 @@ def kit_model_to_toml_data(model: KitModel) -> Dict[str, Any]:
     # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
 
     return {
-        "kit": {
-            "slug": model.slug,
-            "name": model.name,
-            "version": model.version,
-        },
-        "resources": resources,
+        "kits": [
+            {
+                "slug": model.slug,
+                "name": model.name,
+                "version": model.version,
+                "resources": resources,
+            },
+        ],
     }
 
 

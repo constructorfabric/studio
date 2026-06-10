@@ -89,12 +89,12 @@ def _make_canonical_kit_source(td: Path, slug: str = "canonicalkit") -> Path:
     (kit_src / "SKILL.md").write_text("# Canonical kit\n", encoding="utf-8")
     (kit_src / ".cf-studio-kit.toml").write_text(
         "\n".join([
-            "[kit]",
+            "[[kits]]",
             f'slug = "{slug}"',
             f'name = "{slug}"',
             'version = "1.2.3"',
             "",
-            "[[resources]]",
+            "[[kits.resources]]",
             'id = "skill"',
             'kind = "skill"',
             'source = "SKILL.md"',
@@ -215,8 +215,8 @@ class TestKitNormalize(unittest.TestCase):
             warnings = "\n".join(out["report"]["warnings"])
             self.assertIn("legacy manifest.toml is supported for migration", warnings)
             self.assertIn(".cf-studio-kit.toml", warnings)
-            self.assertIn("[kit]", out["manifest"])
-            self.assertIn("[[resources]]", out["manifest"])
+            self.assertIn("[[kits]]", out["manifest"])
+            self.assertIn("[[kits.resources]]", out["manifest"])
             self.assertFalse((kit_src / ".cf-studio-kit.toml").exists())
 
     def test_normalize_layout_writes_default_manifest(self):
@@ -237,8 +237,8 @@ class TestKitNormalize(unittest.TestCase):
             self.assertIn("legacy workflow resources are normalized to public skill resources", warnings)
             with open(manifest_path, "rb") as f:
                 data = tomllib.load(f)
-            self.assertEqual(data["kit"]["slug"], "layoutkit")
-            resource_ids = {r["id"] for r in data["resources"]}
+            self.assertEqual(data["kits"][0]["slug"], "layoutkit")
+            resource_ids = {r["id"] for r in data["kits"][0]["resources"]}
             self.assertIn("artifacts", resource_ids)
             self.assertIn("skill", resource_ids)
 
@@ -415,7 +415,7 @@ class TestKitNormalize(unittest.TestCase):
             manifest = kit_src / ".cf-studio-kit.toml"
             manifest.write_text(
                 manifest.read_text(encoding="utf-8")
-                + "\n[resources.agent]\n"
+                + "\n[kits.resources.agent]\n"
                 + 'tools = ["Bash", "FutureTool"]\n',
                 encoding="utf-8",
             )
@@ -436,14 +436,14 @@ class TestKitNormalize(unittest.TestCase):
             manifest = kit_src / ".cf-studio-kit.toml"
             manifest.write_text(
                 manifest.read_text(encoding="utf-8")
-                + "\n[resources.agent]\n"
+                + "\n[kits.resources.agent]\n"
                 + 'tools = ["Bash"]\n',
                 encoding="utf-8",
             )
 
             data = kit_model_to_toml_data(load_kit_model(kit_src))
 
-            self.assertEqual(data["resources"][0]["tools"], ["Bash"])
+            self.assertEqual(data["kits"][0]["resources"][0]["tools"], ["Bash"])
 
     def test_kit_model_preserves_public_agent_configuration_fields(self):
         from studio.utils.kit_model import load_kit_model, kit_model_to_toml_data
@@ -454,7 +454,7 @@ class TestKitNormalize(unittest.TestCase):
             manifest.write_text(
                 manifest.read_text(encoding="utf-8")
                 .replace('kind = "skill"', 'kind = "agent"')
-                + "\n[resources.agent]\n"
+                + "\n[kits.resources.agent]\n"
                 + 'mode = "readonly"\n'
                 + "isolation = true\n"
                 + 'model = "cf:tier:balanced"\n'
@@ -466,12 +466,12 @@ class TestKitNormalize(unittest.TestCase):
                 + 'provider = "anthropic"\n'
                 + 'reasoning_effort = "high"\n'
                 + 'context_window = "max"\n'
-                + '\n[resources.permissions]\n'
+                + '\n[kits.resources.permissions]\n'
                 + 'tools = ["Read"]\n'
-                + '[[resources.agent.subagents]]\n'
+                + '[[kits.resources.agent.subagents]]\n'
                 + 'id = "helper"\n'
                 + 'source = "SKILL.md"\n'
-                + '\n[resources.targets.cursor]\n'
+                + '\n[kits.resources.targets.cursor]\n'
                 + 'mode = "readonly"\n'
                 + 'reasoning_effort = "high"\n',
                 encoding="utf-8",
@@ -495,7 +495,7 @@ class TestKitNormalize(unittest.TestCase):
             self.assertEqual(component.target_configs["cursor"]["mode"], "readonly")
 
             data = kit_model_to_toml_data(model)
-            resource = data["resources"][0]
+            resource = data["kits"][0]["resources"][0]
             self.assertEqual(resource["mode"], "readonly")
             self.assertTrue(resource["isolation"])
             self.assertEqual(resource["tools"], ["Read"])
@@ -575,8 +575,8 @@ class TestKitNormalize(unittest.TestCase):
             )
             model = load_kit_model(kit_src)
             warnings = "\n".join(model.warnings)
-            self.assertIn("[kit]: unknown optional field 'extra_meta' ignored", warnings)
-            self.assertIn("[[resources]][0]: unknown optional field 'extra_resource' ignored", warnings)
+            self.assertIn("[[kits]][0]: unknown optional field 'extra_meta' ignored", warnings)
+            self.assertIn("[[kits]][0].resources[0]: unknown optional field 'extra_resource' ignored", warnings)
 
             manifest.write_text(
                 manifest.read_text(encoding="utf-8") + 'binding_path = "config/kits/warnkit/SKILL.md"\n',
@@ -1115,7 +1115,7 @@ class TestCanonicalKitMetadata(unittest.TestCase):
             manifest = kit_src / ".cf-studio-kit.toml"
             manifest.write_text(
                 manifest.read_text(encoding="utf-8")
-                + "\n[resources.agent]\n"
+                + "\n[kits.resources.agent]\n"
                 + 'tools = ["Bash"]\n',
                 encoding="utf-8",
             )
@@ -1163,7 +1163,7 @@ class TestCanonicalKitMetadata(unittest.TestCase):
                 manifest = kit_src / ".cf-studio-kit.toml"
                 manifest.write_text(
                     manifest.read_text(encoding="utf-8")
-                    + "\n[resources.agent]\n"
+                    + "\n[kits.resources.agent]\n"
                     + 'tools = ["Bash"]\n',
                     encoding="utf-8",
                 )

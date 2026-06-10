@@ -111,12 +111,12 @@ class TestAdapterInfoCommand(unittest.TestCase):
             (kit_dir / "SKILL.md").write_text("# SDLC skill\n", encoding="utf-8")
             (kit_dir / ".cf-studio-kit.toml").write_text(
                 "\n".join([
-                    "[kit]",
+                    "[[kits]]",
                     'slug = "sdlc"',
                     'name = "SDLC Kit"',
                     'version = "2.0"',
                     "",
-                    "[[resources]]",
+                    "[[kits.resources]]",
                     'id = "skill"',
                     'kind = "skill"',
                     'source = "SKILL.md"',
@@ -224,12 +224,12 @@ class TestAdapterInfoCommand(unittest.TestCase):
             (kit_dir / "SKILL.md").write_text("# SDLC skill\n", encoding="utf-8")
             (kit_dir / ".cf-studio-kit.toml").write_text(
                 "\n".join([
-                    "[kit]",
+                    "[[kits]]",
                     'slug = "sdlc"',
                     'name = "SDLC Kit"',
                     'version = "2.0"',
                     "",
-                    "[[resources]]",
+                    "[[kits.resources]]",
                     'id = "skill"',
                     'kind = "skill"',
                     'source = "SKILL.md"',
