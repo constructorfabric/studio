@@ -2144,6 +2144,7 @@ def cmd_kit_install(argv: List[str]) -> int:
     tmp_dir_to_clean: Optional[Path] = None
 
     if args.local_path:
+        # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-rollout-path-install
         kit_source = Path(args.local_path).resolve()
         if not kit_source.is_dir():
             ui.result({
@@ -2167,6 +2168,7 @@ def cmd_kit_install(argv: List[str]) -> int:
         kit_version = _read_kit_source_version(kit_source)
         # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-read-slug-version
         # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-load-kit-model
+        # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-rollout-path-install
     else:
         if source_is_generic_git(args.source):
             resolved_source = _resolve_install_source_git(args.source, args.version)
@@ -3710,6 +3712,7 @@ def update_kit(
         source_version = local_source_version
     # @cpt-end:cpt-studio-algo-kit-update:p1:inst-read-source-version
 
+    # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-rollout-update-drift
     from ..utils.manifest import load_manifest as _load_manifest
     _manifest = _load_manifest(source_dir)
     _risk_model = None
@@ -3835,6 +3838,7 @@ def update_kit(
             result["agents_content"] = meta["agents_content"]
         return result
     # @cpt-end:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-register-reread
+    # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-rollout-update-drift
 
     # @cpt-begin:cpt-studio-algo-kit-update:p1:inst-version-check
     # ── Version check (skip update if same version, unless force) ────────

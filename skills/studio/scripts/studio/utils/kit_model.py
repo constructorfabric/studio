@@ -1058,9 +1058,11 @@ def render_canonical_manifest(model: KitModel) -> str:
 
 def normalize_kit_source(kit_source: Path, source_hint: str = "") -> tuple[KitModel, str]:
     """Normalize *kit_source* and return the model plus canonical TOML text."""
+    # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-rollout-kitmodel-tests
     # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-load-kitmodel
     if not kit_source.is_dir():
         raise ValueError(f"Kit source directory not found: {kit_source}")
     model = load_kit_model(kit_source, source_hint)
     # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-load-kitmodel
+    # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-rollout-kitmodel-tests
     return model, render_canonical_manifest(model)

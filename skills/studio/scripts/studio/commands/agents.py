@@ -2046,6 +2046,7 @@ def _list_public_components(
     project_root: Optional[Path],
     agent: str,
 ) -> Tuple[List[KitPublicComponent], Set[str]]:
+    # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-rollout-generate-agents
     # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
     # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-no-workflow-scan
     if project_root is None:
@@ -2091,6 +2092,7 @@ def _list_public_components(
     return components, manifest_backed_kits
     # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-no-workflow-scan
     # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
+    # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-rollout-generate-agents
 
 
 def _list_public_component_skills(

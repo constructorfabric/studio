@@ -666,7 +666,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 ### Kit Manifest Normalization and Migration
 
-- [ ] `p1` - **ID**: `cpt-studio-algo-kit-manifest-normalize`
+- [x] `p1` - **ID**: `cpt-studio-algo-kit-manifest-normalize`
 
 **Input**: Source kit root, optional `--from manifest|layout|core`, optional output path
 
@@ -682,11 +682,11 @@ Enables users to install, update, and validate kit packages with interactive fil
 7. [x] - `p1` - Refuse to write a canonical manifest that would reference sources outside the selected kit root unless the user explicitly chooses a safe local registration root and containment passes - `inst-normalize-containment`
 
 **Rollout Phases**:
-1. [ ] - `p1` - Add parser/model/converter tests with no install behavior change - `inst-rollout-kitmodel-tests`
-2. [ ] - `p1` - Make `cfs info` read through `KitModel` while preserving legacy fields for compatibility - `inst-rollout-info`
-3. [ ] - `p1` - Make `cfs kit install --path` support copy/register using compact `core.toml` bindings - `inst-rollout-path-install`
-4. [ ] - `p1` - Make `generate-agents` consume `KitModel.public_components` and emit skills-only public workflow replacements - `inst-rollout-generate-agents`
-5. [ ] - `p1` - Add update, prune, drift, hash, and risk-fingerprint behavior - `inst-rollout-update-drift`
+1. [x] - `p1` - Add parser/model/converter tests with no install behavior change - `inst-rollout-kitmodel-tests`
+2. [x] - `p1` - Make `cfs info` read through `KitModel` while preserving legacy fields for compatibility - `inst-rollout-info`
+3. [x] - `p1` - Make `cfs kit install --path` support copy/register using compact `core.toml` bindings - `inst-rollout-path-install`
+4. [x] - `p1` - Make `generate-agents` consume `KitModel.public_components` and emit skills-only public workflow replacements - `inst-rollout-generate-agents`
+5. [x] - `p1` - Add update, prune, drift, hash, and risk-fingerprint behavior - `inst-rollout-update-drift`
 6. [x] - `p1` - Add docs, warnings, and deprecation messaging for legacy `manifest.toml`, legacy workflow resources, and layout-only kits - `inst-rollout-docs-deprecation`
 
 ### Manifest-Driven Installation
@@ -826,11 +826,11 @@ Enables users to install, update, and validate kit packages with interactive fil
 1. [x] - `p1` - `install_kit` copies all `_KIT_CONTENT_DIRS` and `_KIT_CONTENT_FILES` from source to `config/kits/{slug}/`
 2. [x] - `p1` - Kit is registered in `core.toml` with correct path and version
 3. [x] - `p1` - `.gen/` aggregates are updated after install
-4. [ ] - `p1` - **IF** kit contains `.cf-studio-kit.toml` or a legacy manifest: all declared resources are copied or registered at effective paths, template variables are preserved in source files, and resource bindings are registered in `core.toml` for read-time resolution
-5. [ ] - `p1` - **IF** local `--path` install: user is asked copy vs register in interactive mode, or `--install-mode` is required in non-interactive mode
+4. [x] - `p1` - **IF** kit contains `.cf-studio-kit.toml` or a legacy manifest: all declared resources are copied or registered at effective paths, template variables are preserved in source files, and resource bindings are registered in `core.toml` for read-time resolution
+5. [x] - `p1` - **IF** local `--path` install: user is asked copy vs register in interactive mode, or `--install-mode` is required in non-interactive mode
 6. [x] - `p1` - GitHub-backed installs persist GitHub-derived version authority and structured source/content metadata; `conf.toml version` is not authoritative
 7. [x] - `p1` - Local/path installs are recorded as outside GitHub authority and reject conflicting GitHub selector options
-8. [ ] - `p1` - Public skills and subagents are generated with `cf-{kit-slug}-{name}` names and no double-prefixing
+8. [x] - `p1` - Public skills and subagents are generated with `cf-{kit-slug}-{name}` names and no double-prefixing
 
 ### Kit Update Shows Diffs
 
@@ -846,8 +846,8 @@ Enables users to install, update, and validate kit packages with interactive fil
 8. [x] - `p1` - **IF** kit source contains `whatsnew.toml`: display new version entries before file-level diff; user can abort update after reviewing
 9. [x] - `p1` - GitHub-backed updates determine currentness from persisted/refreshed GitHub authority metadata, not `conf.toml`
 10. [x] - `p1` - Offline GitHub update fallback reports and uses last-known source state only; it does not guess versions from local files
-11. [ ] - `p1` - Register-in-place updates re-read source files in place, revalidate containment, recompute hashes/risk, and update only bindings/state unless the user explicitly chooses copy or prune
-12. [ ] - `p1` - Removed resources are not deleted by normal update; prune requires explicit confirmation/fingerprint and never deletes registered source files
+11. [x] - `p1` - Register-in-place updates re-read source files in place, revalidate containment, recompute hashes/risk, and update only bindings/state unless the user explicitly chooses copy or prune
+12. [x] - `p1` - Removed resources are not deleted by normal update; prune requires explicit confirmation/fingerprint and never deletes registered source files
 
 ### Kit Validate Checks Integrity
 

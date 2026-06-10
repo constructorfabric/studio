@@ -253,6 +253,7 @@ def _kit_model_drift(
 
 def _kit_model_to_info(adapter_dir: Path, kit_root: Path, core_kit: dict) -> tuple[dict, dict]:
     """Return canonical kit model info plus legacy kit_details compatibility."""
+    # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-rollout-info
     # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitmodel-source
     from ..utils.kit_model import load_kit_model
 
@@ -357,6 +358,7 @@ def _kit_model_to_info(adapter_dir: Path, kit_root: Path, core_kit: dict) -> tup
         kit_detail["resources"] = resource_bindings
     # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitdetails-derived
 
+    # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-rollout-info
     return model_info, kit_detail
 
 
