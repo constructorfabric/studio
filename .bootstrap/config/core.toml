@@ -7,146 +7,231 @@ project_root = ".."
 [kits.sdlc]
 format = "CFS"
 path = "config/kits/sdlc"
-version = "v1.1.1"
+version = "v1.2.0"
 source = "github:constructorfabric/studio-kit-sdlc"
 tracking = "ignored"
 
 [kits.sdlc.resources]
 [kits.sdlc.resources.adr_template]
 path = "config/kits/sdlc/artifacts/ADR/template.md"
+kind = "template"
 
 [kits.sdlc.resources.adr_rules]
 path = "config/kits/sdlc/artifacts/ADR/rules.md"
+kind = "other"
 
 [kits.sdlc.resources.adr_checklist]
 path = "config/kits/sdlc/artifacts/ADR/checklist.md"
+kind = "checklist"
 
 [kits.sdlc.resources.adr_example]
 path = "config/kits/sdlc/artifacts/ADR/examples/example.md"
+kind = "other"
 
 [kits.sdlc.resources.decomposition_template]
 path = "config/kits/sdlc/artifacts/DECOMPOSITION/template.md"
+kind = "template"
 
 [kits.sdlc.resources.decomposition_rules]
 path = "config/kits/sdlc/artifacts/DECOMPOSITION/rules.md"
+kind = "other"
 
 [kits.sdlc.resources.decomposition_checklist]
 path = "config/kits/sdlc/artifacts/DECOMPOSITION/checklist.md"
+kind = "checklist"
 
 [kits.sdlc.resources.decomposition_example]
 path = "config/kits/sdlc/artifacts/DECOMPOSITION/examples/example.md"
+kind = "other"
 
 [kits.sdlc.resources.design_template]
 path = "config/kits/sdlc/artifacts/DESIGN/template.md"
+kind = "template"
 
 [kits.sdlc.resources.design_rules]
 path = "config/kits/sdlc/artifacts/DESIGN/rules.md"
+kind = "other"
 
 [kits.sdlc.resources.design_checklist]
 path = "config/kits/sdlc/artifacts/DESIGN/checklist.md"
+kind = "checklist"
 
 [kits.sdlc.resources.design_example]
 path = "config/kits/sdlc/artifacts/DESIGN/examples/example.md"
+kind = "other"
 
 [kits.sdlc.resources.feature_template]
 path = "config/kits/sdlc/artifacts/FEATURE/template.md"
+kind = "template"
 
 [kits.sdlc.resources.feature_rules]
 path = "config/kits/sdlc/artifacts/FEATURE/rules.md"
+kind = "other"
 
 [kits.sdlc.resources.feature_checklist]
 path = "config/kits/sdlc/artifacts/FEATURE/checklist.md"
+kind = "checklist"
 
 [kits.sdlc.resources.feature_example]
 path = "config/kits/sdlc/artifacts/FEATURE/examples/example.md"
+kind = "other"
 
 [kits.sdlc.resources.prd_template]
 path = "config/kits/sdlc/artifacts/PRD/template.md"
+kind = "template"
 
 [kits.sdlc.resources.prd_rules]
 path = "config/kits/sdlc/artifacts/PRD/rules.md"
+kind = "other"
 
 [kits.sdlc.resources.prd_checklist]
 path = "config/kits/sdlc/artifacts/PRD/checklist.md"
+kind = "checklist"
 
 [kits.sdlc.resources.prd_example]
 path = "config/kits/sdlc/artifacts/PRD/examples/example.md"
+kind = "other"
 
 [kits.sdlc.resources.pr_code_review_template]
 path = "config/kits/sdlc/artifacts/PR-CODE-REVIEW-TEMPLATE/template.md"
+kind = "template"
 
 [kits.sdlc.resources.pr_status_report_template]
 path = "config/kits/sdlc/artifacts/PR-STATUS-REPORT-TEMPLATE/template.md"
+kind = "template"
 
 [kits.sdlc.resources.codebase_rules]
 path = "config/kits/sdlc/codebase/rules.md"
+kind = "other"
 
 [kits.sdlc.resources.codebase_checklist]
 path = "config/kits/sdlc/codebase/checklist.md"
+kind = "checklist"
 
 [kits.sdlc.resources.workflow_pr_review]
 path = "config/kits/sdlc/workflows/pr-review.md"
+kind = "skill"
 
 [kits.sdlc.resources.workflow_pr_status]
 path = "config/kits/sdlc/workflows/pr-status.md"
+kind = "skill"
 
 [kits.sdlc.resources.scripts]
 path = "config/kits/sdlc/scripts"
+kind = "directory"
 
 [kits.sdlc.resources.constraints]
 path = "config/kits/sdlc/constraints.toml"
+kind = "constraints"
 
 [kits.sdlc.resources.skill]
 path = "config/kits/sdlc/SKILL.md"
+kind = "skill"
 
 [kits.sdlc.resources.agents]
 path = "config/kits/sdlc/AGENTS.md"
+kind = "rule"
 
 [kits.sdlc.resources.workflow_migrate_openspec]
 path = "config/kits/sdlc/workflows/migrate-openspec.md"
+kind = "skill"
 
 [kits.sdlc.resources.workflow_doc_prd]
 path = "config/kits/sdlc/workflows/doc-prd.md"
+kind = "skill"
 
 [kits.sdlc.resources.workflow_doc_adr]
 path = "config/kits/sdlc/workflows/doc-adr.md"
+kind = "skill"
 
 [kits.sdlc.resources.workflow_doc_design]
 path = "config/kits/sdlc/workflows/doc-design.md"
+kind = "skill"
 
 [kits.sdlc.resources.workflow_decompose]
 path = "config/kits/sdlc/workflows/decompose.md"
+kind = "skill"
 
 [kits.sdlc.resources.workflow_doc_feature]
 path = "config/kits/sdlc/workflows/doc-feature.md"
+kind = "skill"
 
 [kits.sdlc.resources.workflow_implement]
 path = "config/kits/sdlc/workflows/implement.md"
+kind = "skill"
 
 [kits.sdlc.resources.workflow_change_impact_analysis]
 path = "config/kits/sdlc/workflows/change-impact-analysis.md"
+kind = "skill"
 
 [kits.sdlc.resources.workflow_reverse_engineer]
 path = "config/kits/sdlc/workflows/reverse-engineer.md"
+kind = "skill"
 
 [kits.sdlc.resources.change_impact_config]
 path = "config/kits/sdlc/scripts/change-impact-analysis.toml"
+kind = "script"
 
 [kits.sdlc.source_provenance]
 source_type = "github"
 resolver_mode = "latest_release"
 resolution_basis = "github_release"
 requested_ref = "latest"
-resolved_ref = "v1.1.1"
+resolved_ref = "v1.2.0"
 canonical_source = "github:constructorfabric/studio-kit-sdlc"
 effective_source = "github:constructorfabric/studio-kit-sdlc"
 verified = "verified"
 freshness = "fresh"
 
 [kits.sdlc.content_identity]
-commit_sha = "eec9788"
-resolved_ref = "v1.1.1"
-identity = "constructorfabric/studio-kit-sdlc@v1.1.1#eec9788"
+commit_sha = "6fe242e"
+resolved_ref = "v1.2.0"
+identity = "constructorfabric/studio-kit-sdlc@v1.2.0#6fe242e"
+manifest_semantic_hash = "2c484cdd03e4d11c053e5dc57ea3a032b1a69f4b604e5a7e38c8cb43801b318a"
+manifest_bytes_hash = "48fa5c7a7d6fcf49f44d045f829057f8d307c2ba9a236970ecc6cce7ec1632e3"
+tool_risk_fingerprint = "3bdcd30d3029ad80e74c76eb0b57d80ad617a51191eb9d9307b2921c65f5dc16"
+
+[kits.sdlc.content_identity.resource_hashes]
+adr_template = "bc52ad806c3c6afd8d3c3384f621f31863d98429e7a236494f13b918b02a04e3"
+adr_rules = "244ba32c0a3cb8d185a5727b5254ecac13315079f61451e448ee8bdd7fbdaaea"
+adr_checklist = "a5222ca128f4842f088c0864695d183e643928f63519b08b7f055793aa013a7c"
+adr_example = "2b01dd93b541e24d2fa050c9a385dbd72c27ec068b4e1abb0a41873e5c3c15c3"
+decomposition_template = "2dcf5bf563087bb3f2dcf5fab4fc4b9bff0522df9d65ef91cbb6d7485352ee7f"
+decomposition_rules = "fab2bef48c532045a679a254935fe55a4a60d73bd4eb9af22b21f301317ad9bb"
+decomposition_checklist = "3f3294d19ac3e363796aa89eda2347c0b9ed2702d0f00cec17269969f0e80fdb"
+decomposition_example = "8603586341fd37aaad7676f0615f01f531e7e1e82dd1ee1d4d92e3ae4868112a"
+design_template = "2bcce04c675e463c002555f24d29b966620374aeb478ce75ba56476b5c2daa9e"
+design_rules = "9dc68f16c4540b1c26c1df55655321561b46953dab6741e682889ec8b3de2b13"
+design_checklist = "8d503a971ddb235dc4960ce611b40a9c6804a76d443de53499180124143666e6"
+design_example = "88efdbe64d76e1fb2d3f161dc2f9b6dbde3ed8b2cfe0e2d8d198e1b87d01e2ef"
+feature_template = "480a2686a5a6ceba049b397a4f5e9f9dc5d194dff2832a85ea478eb6ff151063"
+feature_rules = "25117542cd9791b86b5b7ac5449404abdb64bdabb4e68ee473eb3c99a33bcfb8"
+feature_checklist = "8a2ffd8d2f99cb64d99faf3ffa315139ecff8cd997770d8a3d591e818e473aaa"
+feature_example = "6b262f2c41690d3ee713fd73c6deb5eb3a3c59a1118fd4dafb2451a253e589be"
+prd_template = "a52a8293666ad2c4ada7ee8a3a3d73fc07dae5dcdb896a0bca0b1834fe12ebda"
+prd_rules = "cf11e54401588a52d772b09ed0f551d8fd52b14bffe28bab577462d72ac055d7"
+prd_checklist = "33da6604c1b75e9d7be3fe458846def8c5242552b85d743447118200bb02b3e4"
+prd_example = "f06909f21ffd03603764085de9d576aa66f70d276192b21f503a218db72ff1be"
+pr_code_review_template = "e82615e53e5fa22ee171b7d6d9845dce44fb100a1ca04ebf44afcbaa9959b0f9"
+pr_status_report_template = "5e83c2e4521b17623e47d7ae963729fe0c8f5ab9551b8582fadb3e660a955171"
+codebase_rules = "c83f9ac65a7ead7d8db4e328f98ae6e8eb5aaf17a8e55cc7c7a4f81bdb6e0694"
+codebase_checklist = "d941b258faf1019b953d9ea90af0bef596cda62ddc3e3f2aa9cc43648394dd63"
+workflow_pr_review = "29492bb44c231ba317998e2c089df7f3e19946f3ecc294538f5063993c5081c0"
+workflow_pr_status = "d8a216dcef4cd559eef7ba4c9d54f33b726743e655a36a55006df95d0421656a"
+workflow_migrate_openspec = "02e1e2e59c097515349c0ba748d421207f86c69673a32277ee98d7e1a039b259"
+workflow_doc_prd = "1d8fc122316e6d95055c8c4e21211e3962ea76ae9e637936ad63301ec3a0e5b7"
+workflow_doc_adr = "511b6efdfca559f36269d116119c46ceee893b7168413e9e5f359dd3ec079648"
+workflow_doc_design = "975c9ccab1405d39ec2fd7902c13ed9feec5b1a850a5fca932791926600cb85e"
+workflow_decompose = "6e5757eaa52ce9c238d44c831991161e1ad098fa528d1d28496b3679e96027d0"
+workflow_doc_feature = "32ac0999833ac4fe08c6b0eb077851109d41a16a9629acb8cef0193ab846b370"
+workflow_implement = "8588977e4ba9ec7be1a00f7898233bd9f1e4c119b80db0b944cdf4ffccf94ee4"
+workflow_change_impact_analysis = "e9b16eb5372fe6f8c880942f4021342a0f892deb6a5bbdf023df45dd1aafebce"
+workflow_reverse_engineer = "0e16a079eeb949e806c9afacd80ab05d385aed80d28fdacc7f99f62be5526a47"
+change_impact_config = "e4234d00859f5d62bdd9f83045021e00ea576c1c989113c44fa6fb275613e04e"
+scripts = "fd30fc1835f813011dc89af712f579cd2204338cee3cea49d60c0a4554130a4c"
+constraints = "a8a75c343b05153ec680f3df70a808262ce6f219a8611b5096d2f5191c7db8fb"
+skill = "84e4bdeffc15f445bdff4bcc9e4a0483106a63f3968c72361004128d8425d840"
+agents = "e7bd39466496313cf8664ce069906f586d8f8f329c1dfc2017b0914b7f4e6906"
 
 [kits.sdlc.local_metadata]
 conf_version = "1.0.0"
