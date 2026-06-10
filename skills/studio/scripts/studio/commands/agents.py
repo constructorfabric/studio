@@ -1233,7 +1233,7 @@ def _discover_kit_agents(
         for kit_dir in kit_dirs:
             if not kit_dir.is_dir():
                 continue
-            if registered_dirs and kit_dir.name not in registered_dirs:
+            if kit_dir.name not in registered_dirs:
                 continue
             _load_agents_toml(kit_dir / "agents.toml", kit_dir)
 
@@ -3070,7 +3070,7 @@ def _process_skills(
                         kit_descs: List[str] = []
                         try:
                             for kit_dir in sorted(config_kits.iterdir()):
-                                if registered_dirs and kit_dir.name not in registered_dirs:
+                                if kit_dir.name not in registered_dirs:
                                     continue
                                 kit_skill = kit_dir / "SKILL.md"
                                 if kit_skill.is_file():
@@ -3210,7 +3210,14 @@ def _component_config_list(component: object, target_config: Dict[str, Any], key
     return list(value or []) if isinstance(value, list) else []
 
 
-def _public_component_generated_name(kit_slug: str, component_id: str) -> str:
+def _public_component_generated_name(
+    kit_slug: str,
+    component_id: str,
+    *,
+    prefix_generated_name: bool = True,
+) -> str:
+    if not prefix_generated_name:
+        return component_id
     prefix = f"cf-{kit_slug}-"
     return component_id if component_id == f"cf-{kit_slug}" or component_id.startswith(prefix) else f"{prefix}{component_id}"
 
@@ -3301,7 +3308,12 @@ def _process_kit_public_agents_and_rules(
                 if not subagent_source_path.is_absolute():
                     subagent_source_path = (kit_root / subagent_source_path).resolve()
                 nested_target = _nested_subagent_config(subagent, agent)
-                nested_name = _public_component_generated_name(kit_slug, subagent_id)
+                nested_prefix = bool(subagent.get("prefix_generated_name", True))
+                nested_name = _public_component_generated_name(
+                    kit_slug,
+                    subagent_id,
+                    prefix_generated_name=nested_prefix,
+                )
                 agent_entries[nested_name] = _AgentEntry(
                     id=nested_name,
                     description=str(subagent.get("description", "") or f"Constructor Studio {nested_name} agent"),

@@ -564,15 +564,17 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 **Rules**:
 1. [x] - `p1` - The file is valid at any kit root and may describe any directory structure exclusively by enumerating resources; fixed folders such as `artifacts/`, `workflows/`, or `scripts/` are conventions only, not requirements - `inst-canonical-any-layout`
-2. [x] - `p1` - Manifest metadata declares at least slug/name/version-compatible display metadata and may declare description, source, targets, defaults, and compatibility fields - `inst-canonical-metadata`
-3. [x] - `p1` - A canonical file always uses `[[kits]]` entries with nested `[[kits.resources]]`; the file may contain one kit or multiple selectable kits, and kit slugs must be unique - `inst-canonical-multi-kit`
-4. [x] - `p1` - `[[kits.resources]]` entries require `id`, `kind`, and `source`; optional fields include `install_path`, `type`, `public`, `description`, `user_modifiable`, `aliases`, `generated_targets`, and nested configuration tables - `inst-canonical-resource-shape`
-5. [x] - `p1` - Public resource kinds are `skill`, `agent`, and `rule`; supporting kinds include `template`, `checklist`, `script`, `directory`, and `other`; `workflow` is accepted only as a legacy alias normalized to `skill` - `inst-canonical-resource-kinds`
-6. [x] - `p1` - Small agent configuration may be inline on the resource; larger configuration may use `[kits.resources.agent]`, `[kits.resources.targets.<target>]`, and `[kits.resources.permissions]` under the selected `[[kits.resources]]` entry - `inst-canonical-agent-config`
-7. [x] - `p1` - Agent configuration supports `mode`, `isolation`, `model`, `tools`, `disallowed_tools`, `skills`, `color`, `memory_dir`, `role`, `target`, `provider`, `reasoning_effort`, `context_window`, and nested `subagents` - `inst-canonical-agent-fields`
-8. [x] - `p1` - Nested `subagents` may declare the same target-specific agent schema as top-level agent resources, including tool permissions, generated targets, prompt/source resources, and model/provider fields - `inst-canonical-subagent-config`
-9. [x] - `p1` - `generated_targets` defaults to `installed`, accepts an explicit target list or `all`, and controls which agent tools receive public component output - `inst-canonical-generated-targets`
-10. [x] - `p1` - The manifest MUST NOT expose author-facing `binding_path`; effective paths are installation state recorded in `core.toml` - `inst-canonical-no-binding-path`
+2. [x] - `p1` - The file MUST declare top-level `manifest_version = "1.0"`; missing or unsupported manifest versions are blocking errors that instruct the user to update Constructor Studio with `pipx upgrade constructor-studio` before retrying - `inst-canonical-version-gate`
+3. [x] - `p1` - Manifest metadata declares at least slug/name/version-compatible display metadata and may declare description, source, targets, defaults, and compatibility fields - `inst-canonical-metadata`
+4. [x] - `p1` - A canonical file always uses `[[kits]]` entries with nested `[[kits.resources]]`; the file may contain one kit or multiple selectable kits, and kit slugs must be unique - `inst-canonical-multi-kit`
+5. [x] - `p1` - `[[kits.resources]]` entries require `id`, `kind`, and `source`; optional fields include `install_path`, `type`, `public`, `description`, `user_modifiable`, `aliases`, `generated_targets`, and nested configuration tables - `inst-canonical-resource-shape`
+6. [x] - `p1` - Public resource kinds are `skill`, `agent`, and `rule`; supporting kinds include `template`, `checklist`, `constraints`, `script`, `directory`, and `other`; `workflow` is accepted only as a legacy alias normalized to `skill` - `inst-canonical-resource-kinds`
+7. [x] - `p1` - Small agent configuration may be inline on the resource; larger configuration may use `[kits.resources.agent]`, `[kits.resources.targets.<target>]`, and `[kits.resources.permissions]` under the selected `[[kits.resources]]` entry - `inst-canonical-agent-config`
+8. [x] - `p1` - Agent configuration supports `mode`, `isolation`, `model`, `tools`, `disallowed_tools`, `skills`, `color`, `memory_dir`, `role`, `target`, `provider`, `reasoning_effort`, `context_window`, and nested `subagents` - `inst-canonical-agent-fields`
+9. [x] - `p1` - Nested `subagents` may declare the same target-specific agent schema as top-level agent resources, including tool permissions, generated targets, prompt/source resources, and model/provider fields - `inst-canonical-subagent-config`
+10. [x] - `p1` - Public resources and nested subagents generate agent-facing names as `cf-{kit-slug}-{resource-id}` by default; `prefix_generated_name = false` disables that prefix for a resource or subagent and uses its `id` as-is - `inst-canonical-public-name-prefix`
+11. [x] - `p1` - `generated_targets` defaults to `installed`, accepts an explicit target list or `all`, and controls which agent tools receive public component output - `inst-canonical-generated-targets`
+12. [x] - `p1` - The manifest MUST NOT expose author-facing `binding_path`; effective paths are installation state recorded in `core.toml` - `inst-canonical-no-binding-path`
 
 ### Local Path Install Mode
 
@@ -706,6 +708,8 @@ Enables users to install, update, and validate kit packages with interactive fil
 4. [x] - `p1` - **FOR EACH** resource declared in `KitModel.resources` - `inst-manifest-foreach-resource`
    1. [x] - `p1` - **IF** `install_path` is user-modifiable in copy mode: prompt user for destination path (offering the manifest default) - `inst-manifest-prompt-path`
    2. [x] - `p1` - Resolve each resource target from its effective default or user-selected path - `inst-manifest-default-path`
+5. [x] - `p1` - Before writing files or registering resources, reject installation when any public component or nested subagent `generated_name` conflicts with another public component in the installing kit or with an already registered kit - `inst-public-name-conflict`
+6. [x] - `p1` - Manifest preview and kit-init approval reports show final generated names for public skills, agents, rules, and nested subagents, including whether each name is default-prefixed or `prefix_generated_name = false` as-is - `inst-public-name-preview`
    3. [x] - `p1` - **IF** copy mode: copy resource from source to resolved path, preserving directory structure within directory resources - `inst-manifest-copy-resource`
    4. [x] - `p1` - **IF** register mode: leave files in place and bind the resource to its source path after containment validation - `inst-manifest-register-resource-in-place`
 5. [x] - `p1` - Preserve `{identifier}` template variables in copied kit source files; expose effective bindings for read-time resolution by consumers - `inst-manifest-resolve-vars`

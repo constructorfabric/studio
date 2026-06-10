@@ -13,12 +13,15 @@ from ._tomllib_compat import tomllib
 from .manifest import Manifest, ManifestResource, ManifestV2, load_manifest
 
 _CANONICAL_MANIFEST = ".cf-studio-kit.toml"
+_CANONICAL_MANIFEST_VERSION = "1.0"
+_SUPPORTED_CANONICAL_MANIFEST_VERSIONS = {_CANONICAL_MANIFEST_VERSION}
 _LEGACY_CONTENT_DIRS = ("artifacts", "codebase", "scripts", "workflows")
 _LEGACY_CONTENT_FILES = ("constraints.toml", "SKILL.md", "AGENTS.md")
 _PUBLIC_KINDS = {"skill", "agent", "rule"}
 _SUPPORTING_KINDS = {
     "template",
     "checklist",
+    "constraints",
     "script",
     "directory",
     "other",
@@ -36,6 +39,7 @@ _LEGACY_WORKFLOW_DEPRECATION_WARNING = (
     "legacy workflow resources are normalized to public skill resources; "
     "use kind = \"skill\" in .cf-studio-kit.toml"
 )
+_UPDATE_CFS_HINT = "Update Constructor Studio with `pipx upgrade constructor-studio` and retry."
 
 
 # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-datamodel
@@ -55,6 +59,7 @@ class KitResource:
     generated_targets: List[str] = field(default_factory=list)
     origin: str = ""
     generated_name: str = ""
+    prefix_generated_name: bool = True
     content_hash: str = ""
     tools: List[str] = field(default_factory=list)
     disallowed_tools: List[str] = field(default_factory=list)
@@ -178,6 +183,13 @@ def _config_bool(raw: Dict[str, Any], agent_config: Dict[str, Any], key: str, de
     return value
 
 
+def _optional_bool(data: Dict[str, Any], key: str, default: bool = True) -> bool:
+    value = data.get(key, default)
+    if not isinstance(value, bool):
+        raise ValueError(f"Field '{key}' must be a boolean")
+    return value
+
+
 def _config_string_list(raw: Dict[str, Any], agent_config: Dict[str, Any], key: str, field_name: str) -> List[str]:
     return _string_list(agent_config.get(key, raw.get(key)), field_name)
 
@@ -238,6 +250,15 @@ def _normalize_public_name(slug: str, resource_id: str) -> str:
     else:
         generated_name = f"{prefix}{resource_id}"
     # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-prefix-public-names
+    return generated_name
+
+
+def _resource_generated_name(slug: str, resource_id: str, public: bool, prefix_generated_name: bool) -> str:
+    # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-public-name-prefix
+    generated_name = ""
+    if public:
+        generated_name = resource_id if not prefix_generated_name else _normalize_public_name(slug, resource_id)
+    # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-public-name-prefix
     return generated_name
 
 
@@ -340,6 +361,7 @@ def _semantic_resource_data(resource: KitResource) -> Dict[str, Any]:
         "generated_targets": resource.generated_targets,
         "origin": resource.origin,
         "generated_name": resource.generated_name,
+        "prefix_generated_name": resource.prefix_generated_name,
         "tools": resource.tools,
         "disallowed_tools": resource.disallowed_tools,
         "mode": resource.mode,
@@ -475,6 +497,7 @@ def _with_hashes(kit_source: Path, model: KitModel) -> KitModel:
             generated_targets=resource.generated_targets,
             origin=resource.origin,
             generated_name=resource.generated_name,
+            prefix_generated_name=resource.prefix_generated_name,
             content_hash=resource_hashes[resource.id],
             tools=resource.tools,
             disallowed_tools=resource.disallowed_tools,
@@ -577,7 +600,7 @@ def _canonical_model_from_entry(
             {
                 "id", "kind", "source", "install_path", "type", "public",
                 "description", "user_modifiable", "aliases", "generated_targets",
-                "origin", "generated_name", "agent", "targets", "permissions",
+                "origin", "generated_name", "prefix_generated_name", "agent", "targets", "permissions",
                 "tools", "disallowed_tools", "mode", "isolation", "model",
                 "skills", "color", "memory_dir", "role", "target", "provider",
                 "reasoning_effort", "context_window", "subagents",
@@ -611,6 +634,7 @@ def _canonical_model_from_entry(
             )
         install_path = _optional_string(raw, "install_path") or source
         public = bool(raw.get("public", kind in _PUBLIC_KINDS))
+        prefix_generated_name = _optional_bool(raw, "prefix_generated_name", True)
         permissions_config = raw.get("permissions") if isinstance(raw.get("permissions"), dict) else {}
         resource = KitResource(
             id=resource_id,
@@ -626,7 +650,8 @@ def _canonical_model_from_entry(
             generated_targets=_string_list(raw.get("generated_targets"), "generated_targets") or ["installed"],
             # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-generated-targets
             origin=_optional_string(raw, "origin"),
-            generated_name=_normalize_public_name(slug, resource_id) if public else "",
+            generated_name=_resource_generated_name(slug, resource_id, public, prefix_generated_name),
+            prefix_generated_name=prefix_generated_name,
             tools=_string_list(
                 agent_config.get("tools", raw.get("tools", permissions_config.get("tools"))),
                 f"resources.{resource_id}.tools",
@@ -674,6 +699,23 @@ def _canonical_model_from_entry(
     )
 
 
+def _validate_canonical_manifest_version(data: Dict[str, Any]) -> None:
+    # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-version-gate
+    raw_version = data.get("manifest_version")
+    if not isinstance(raw_version, str) or not raw_version.strip():
+        raise ValueError(
+            f"{_CANONICAL_MANIFEST}: missing required manifest_version. {_UPDATE_CFS_HINT}",
+        )
+    version = raw_version.strip()
+    if version not in _SUPPORTED_CANONICAL_MANIFEST_VERSIONS:
+        supported = ", ".join(sorted(_SUPPORTED_CANONICAL_MANIFEST_VERSIONS))
+        raise ValueError(
+            f"{_CANONICAL_MANIFEST}: unsupported manifest_version '{version}' "
+            f"(supported: {supported}). {_UPDATE_CFS_HINT}",
+        )
+    # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-version-gate
+
+
 # @cpt-algo:cpt-studio-algo-kit-canonical-manifest:p1
 def load_canonical_kit_models(kit_source: Path) -> List[KitModel]:
     """Load all kits from ``.cf-studio-kit.toml`` when present."""
@@ -687,6 +729,7 @@ def load_canonical_kit_models(kit_source: Path) -> List[KitModel]:
         raise ValueError(f"Invalid {_CANONICAL_MANIFEST}: {exc}") from exc
     # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-any-layout
 
+    _validate_canonical_manifest_version(data)
     raw_kits = data.get("kits")
     # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-multi-kit
     if data.get("kit") is not None or data.get("resources") is not None:
@@ -976,7 +1019,11 @@ def _load_core_model(kit_source: Path) -> KitModel:
         if not bound_path.exists():
             raise ValueError(f"Resource '{resource_id}' binding path does not exist: {bound_path}")
         resource_type = "directory" if bound_path.is_dir() else "file"
-        kind = _resource_kind_from_path(source, str(resource_id))
+        raw_kind = binding.get("kind") if isinstance(binding, dict) else None
+        if isinstance(raw_kind, str) and raw_kind.strip():
+            kind = _normalize_kind(raw_kind, warnings=warnings, resource_id=str(resource_id))
+        else:
+            kind = _resource_kind_from_path(source, str(resource_id))
         origin = str(binding.get("origin", "")).strip() if isinstance(binding, dict) else ""
         if not origin and kind == "skill" and source.startswith("workflows/"):
             origin = "legacy-workflow"
@@ -1061,6 +1108,8 @@ def kit_model_to_toml_data(model: KitModel) -> Dict[str, Any]:
             item["origin"] = resource.origin
         if resource.generated_name:
             item["generated_name"] = resource.generated_name
+        if not resource.prefix_generated_name:
+            item["prefix_generated_name"] = False
         if resource.tools:
             item["tools"] = resource.tools
         if resource.disallowed_tools:
@@ -1095,6 +1144,7 @@ def kit_model_to_toml_data(model: KitModel) -> Dict[str, Any]:
     # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
 
     return {
+        "manifest_version": _CANONICAL_MANIFEST_VERSION,
         "kits": [
             {
                 "slug": model.slug,

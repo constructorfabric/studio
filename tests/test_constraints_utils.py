@@ -8,6 +8,8 @@ from skills.studio.scripts.studio.utils.constraints import (
     HeadingConstraint,
     cross_validate_artifacts,
     heading_constraint_ids_by_line,
+    load_constraints_file,
+    load_constraints_files,
     load_constraints_toml,
     parse_kit_constraints,
     validate_artifact_file,
@@ -424,6 +426,53 @@ def test_load_constraints_toml_parses_valid_constraints(tmp_path: Path):
     assert errs == []
     assert kc is not None
     assert "PRD" in kc.by_kind
+
+
+def test_load_constraints_file_allows_arbitrary_filename(tmp_path: Path):
+    path = tmp_path / "ruleset-a.toml"
+    path.write_text("[PRD.identifiers.fr]\nrequired = true\n", encoding="utf-8")
+
+    kc, errs = load_constraints_file(path)
+
+    assert errs == []
+    assert kc is not None
+    assert [c.kind for c in kc.by_kind["PRD"].defined_id] == ["fr"]
+
+
+def test_load_constraints_files_merges_sequentially(tmp_path: Path):
+    base = tmp_path / "base.toml"
+    extra = tmp_path / "extra.toml"
+    base.write_text(
+        "\n".join([
+            "[PRD]",
+            'name = "Base"',
+            "toc = false",
+            "[PRD.identifiers.fr]",
+            "required = true",
+        ]),
+        encoding="utf-8",
+    )
+    extra.write_text(
+        "\n".join([
+            "[PRD]",
+            'description = "Extra"',
+            "[PRD.identifiers.actor]",
+            "required = false",
+            "[DESIGN.identifiers.component]",
+            "required = true",
+        ]),
+        encoding="utf-8",
+    )
+
+    kc, errs = load_constraints_files([base, extra])
+
+    assert errs == []
+    assert kc is not None
+    assert kc.by_kind["PRD"].name == "Base"
+    assert kc.by_kind["PRD"].description == "Extra"
+    assert kc.by_kind["PRD"].toc is True
+    assert [c.kind for c in kc.by_kind["PRD"].defined_id] == ["fr", "actor"]
+    assert "DESIGN" in kc.by_kind
 
 
 def test_validate_artifact_file_enforces_constraints_and_required_kinds(tmp_path: Path):

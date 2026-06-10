@@ -71,6 +71,8 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
         (kit_root / "openai-agent.md").write_text("# OpenAI only\n", encoding="utf-8")
         (kit_root / ".cf-studio-kit.toml").write_text(
             "\n".join([
+                'manifest_version = "1.0"',
+                "",
                 "[[kits]]",
                 'slug = "pubkit"',
                 'name = "Public Kit"',
@@ -103,6 +105,7 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
                 'source = "auditor.md"',
                 'description = "Nested auditor"',
                 'generated_targets = ["cursor"]',
+                "prefix_generated_name = false",
                 'mode = "readonly"',
                 'tools = ["Read"]',
                 "",
@@ -150,11 +153,12 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
             self.assertEqual(result["status"], "PASS")
             skill_path = root / ".agents" / "skills" / "cf-pubkit-helper" / "SKILL.md"
             agent_path = root / ".cursor" / "agents" / "cf-pubkit-reviewer.mdc"
-            nested_agent_path = root / ".cursor" / "agents" / "cf-pubkit-auditor.mdc"
+            nested_agent_path = root / ".cursor" / "agents" / "auditor.mdc"
             rule_path = root / ".cursor" / "rules" / "cf-pubkit-guard.mdc"
             self.assertTrue(skill_path.is_file())
             self.assertTrue(agent_path.is_file())
             self.assertTrue(nested_agent_path.is_file())
+            self.assertFalse((root / ".cursor" / "agents" / "cf-pubkit-auditor.mdc").exists())
             self.assertTrue(rule_path.is_file())
             self.assertIn("skill.md", skill_path.read_text(encoding="utf-8"))
             agent_content = agent_path.read_text(encoding="utf-8")
@@ -802,8 +806,24 @@ class TestProcessSingleAgentEdgeCases(unittest.TestCase):
         root = (Path(tmpdir) / "proj").resolve()
         root.mkdir()
         (root / ".git").mkdir()
+        (root / "AGENTS.md").write_text(
+            '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "cypilot"\n```\n<!-- /@cf:root-agents -->\n',
+            encoding="utf-8",
+        )
         cpt = root / "cypilot"
         cpt.mkdir()
+        config_dir = cpt / "config"
+        config_dir.mkdir()
+        (config_dir / "core.toml").write_text(
+            "\n".join([
+                'version = "1.0"',
+                'project_root = ".."',
+                "",
+                "[kits.sdlc]",
+                'path = "config/kits/sdlc"',
+            ]) + "\n",
+            encoding="utf-8",
+        )
         core_skill = cpt / ".core" / "skills" / "cypilot" / "SKILL.md"
         core_skill.parent.mkdir(parents=True)
         core_skill.write_text(
@@ -835,6 +855,22 @@ class TestProcessSingleAgentEdgeCases(unittest.TestCase):
             # The kit description from config/kits/sdlc/SKILL.md must appear in the output,
             # proving the enrichment branch in _process_single_agent() ran.
             self.assertIn("SDLC-ENRICHMENT-SENTINEL", content, "Kit description enrichment must be present")
+
+    def test_unregistered_kit_description_not_enriched(self):
+        """Loose config/kits dirs must not enrich generated skill descriptions."""
+        from studio.commands.agents import _process_single_agent, _default_agents_config
+
+        with TemporaryDirectory() as td:
+            root, cpt = self._make_project(td)
+            core_toml = cpt / "config" / "core.toml"
+            core_toml.write_text('version = "1.0"\nproject_root = ".."\nkits = {}\n', encoding="utf-8")
+
+            cfg = _default_agents_config()
+            result = _process_single_agent("windsurf", root, cpt, cfg, None, dry_run=False)
+            agents_skill = root / ".agents" / "skills" / "cf" / "SKILL.md"
+            self.assertTrue(agents_skill.exists(), f"Expected {agents_skill} to exist")
+            content = agents_skill.read_text(encoding="utf-8")
+            self.assertNotIn("SDLC-ENRICHMENT-SENTINEL", content)
 
     def test_non_dict_output_cfg_skipped(self):
         """Non-dict entries in outputs list are skipped (line 614)."""
@@ -1945,6 +1981,8 @@ class TestKitWorkflowSharedSkills(unittest.TestCase):
             )
             (kit_dir / ".cf-studio-kit.toml").write_text(
                 "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
                     "[[kits]]",
                     'slug = "pub"',
                     'name = "Public Kit"',
@@ -3473,32 +3511,70 @@ class TestDiscoverKitAgentsFileSkip(unittest.TestCase):
             self.assertIsInstance(result, list)
 
     def test_unregistered_kit_dir_is_skipped(self):
-        """Kit dir not in registered_dirs is skipped (line 992).
-
-        This requires registered_dirs to be non-empty and the kit dir's name
-        to be absent from it.
-        """
+        """Kit dir not registered in core.toml is skipped."""
         from studio.commands.agents import _discover_kit_agents
-        from unittest.mock import patch
 
         with TemporaryDirectory() as td:
             root = Path(td)
             (root / ".git").mkdir()
             (root / "AGENTS.md").write_text(
-                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "cpt"\n```\n',
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "cpt"\n```\n<!-- /@cf:root-agents -->\n',
                 encoding="utf-8",
             )
             cypilot_root = root / "cpt"
             config_kits = cypilot_root / "config" / "kits"
             kit_dir = config_kits / "my-kit"
             kit_dir.mkdir(parents=True)
-            # Patch _registered_kit_dirs to return a non-empty set that excludes my-kit
-            with patch(
-                "studio.commands.agents._registered_kit_dirs",
-                return_value={"other-kit"},
-            ):
-                result = _discover_kit_agents(cypilot_root, root)
-            self.assertIsInstance(result, list)
+            (cypilot_root / "config" / "core.toml").write_text(
+                'version = "1.0"\nproject_root = ".."\nkits = {}\n',
+                encoding="utf-8",
+            )
+            (kit_dir / "agents.toml").write_text(
+                "[agents.loose]\ndescription = \"Loose agent\"\nprompt_file = \"agents/loose.md\"\n",
+                encoding="utf-8",
+            )
+            (kit_dir / "agents").mkdir()
+            (kit_dir / "agents" / "loose.md").write_text("Loose\n", encoding="utf-8")
+
+            result = _discover_kit_agents(cypilot_root, root)
+
+            self.assertNotIn("loose", [entry["name"] for entry in result])
+
+    def test_registered_kit_dir_agents_are_loaded(self):
+        """Registered kit agents.toml contributes agent definitions."""
+        from studio.commands.agents import _discover_kit_agents
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".git").mkdir()
+            (root / "AGENTS.md").write_text(
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = "cpt"\n```\n<!-- /@cf:root-agents -->\n',
+                encoding="utf-8",
+            )
+            cypilot_root = root / "cpt"
+            config_kits = cypilot_root / "config" / "kits"
+            kit_dir = config_kits / "my-kit"
+            kit_dir.mkdir(parents=True)
+            (cypilot_root / "config" / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    'project_root = ".."',
+                    "",
+                    "[kits.my-kit]",
+                    'path = "config/kits/my-kit"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            (kit_dir / "agents.toml").write_text(
+                "[agents.registered]\ndescription = \"Registered agent\"\nprompt_file = \"agents/registered.md\"\n",
+                encoding="utf-8",
+            )
+            (kit_dir / "agents").mkdir()
+            (kit_dir / "agents" / "registered.md").write_text("Registered\n", encoding="utf-8")
+
+            result = _discover_kit_agents(cypilot_root, root)
+
+            self.assertIn("registered", [entry["name"] for entry in result])
 
 
 class TestProcessWorkflowsRelativeContainment(unittest.TestCase):

@@ -32,7 +32,6 @@ def run_validate_kits(
     """
     # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-init-context
     from ..utils.context import get_context, _resolve_loaded_kit_constraints_path
-    from ..utils.constraints import load_constraints_toml
     from ..utils.artifacts_meta import load_artifacts_meta
 
     ctx = get_context()
@@ -46,7 +45,7 @@ def run_validate_kits(
     kit_reports_by_id: Dict[str, Dict[str, object]] = {}
     kit_errors_by_id: Dict[str, List[Dict[str, object]]] = {}
     all_errors: List[Dict[str, object]] = []
-    context_resource_errors: Dict[str, List[Dict[str, object]]] = {}
+    context_kit_errors: Dict[str, List[Dict[str, object]]] = {}
 
     def _sync_kit_report(kit_id: str) -> None:
         rep = kit_reports_by_id.get(kit_id)
@@ -62,13 +61,13 @@ def run_validate_kits(
                 rep.pop("errors", None)
 
     for err in (getattr(ctx, "_errors", []) or []):
-        if not isinstance(err, dict) or err.get("type") != "resources":
+        if not isinstance(err, dict) or err.get("type") not in {"resources", "constraints"}:
             continue
         err_kit = str(err.get("kit", "") or "")
         if kit_filter and err_kit != str(kit_filter):
             continue
         if err_kit:
-            context_resource_errors.setdefault(err_kit, []).append(err)
+            context_kit_errors.setdefault(err_kit, []).append(err)
         all_errors.append(err)
 
     for kit_id, loaded_kit in (ctx.kits or {}).items():
@@ -84,16 +83,8 @@ def run_validate_kits(
             loaded_kit,
         )
         kit_id_str = str(kit_id)
-        constraints_root = constraints_path.parent if constraints_path is not None else (
-            kit_root if isinstance(kit_root, Path) else None
-        )
-
-        if constraints_root is not None:
-            _kc, kc_errs = load_constraints_toml(constraints_root)
-        else:
-            _kc, kc_errs = None, []
-        kit_resource_errors = context_resource_errors.get(kit_id_str, [])
-        rep_errors: List[Dict[str, object]] = list(kit_resource_errors)
+        kit_context_errors = context_kit_errors.get(kit_id_str, [])
+        rep_errors: List[Dict[str, object]] = list(kit_context_errors)
 
         rep: Dict[str, object] = {
             "kit": kit_id_str,
@@ -101,17 +92,7 @@ def run_validate_kits(
             "status": "PASS",
             "error_count": 0,
         }
-        if kc_errs:
-            constraints_err = constraints_error(
-                "constraints",
-                "Invalid constraints.toml",
-                path=(constraints_path or (constraints_root / "constraints.toml")),
-                line=1,
-                errors=list(kc_errs),
-                kit=kit_id_str,
-            )
-            rep_errors.insert(0, constraints_err)
-            all_errors.append(constraints_err)
+        _kc = getattr(loaded_kit, "constraints", None)
         if verbose and _kc is not None and getattr(_kc, "by_kind", None):
             rep["kinds"] = sorted(_kc.by_kind.keys())
 

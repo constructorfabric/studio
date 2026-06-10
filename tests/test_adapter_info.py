@@ -111,6 +111,8 @@ class TestAdapterInfoCommand(unittest.TestCase):
             (kit_dir / "SKILL.md").write_text("# SDLC skill\n", encoding="utf-8")
             (kit_dir / ".cf-studio-kit.toml").write_text(
                 "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
                     "[[kits]]",
                     'slug = "sdlc"',
                     'name = "SDLC Kit"',
@@ -184,6 +186,8 @@ class TestAdapterInfoCommand(unittest.TestCase):
                 (kit_dir / "SKILL.md").write_text(f"# {slug}\n", encoding="utf-8")
                 (kit_dir / ".cf-studio-kit.toml").write_text(
                     "\n".join([
+                        'manifest_version = "1.0"',
+                        "",
                         "[[kits]]",
                         f'slug = "{slug}"',
                         f'name = "{slug}"',
@@ -235,6 +239,8 @@ class TestAdapterInfoCommand(unittest.TestCase):
             (loose_dir / "SKILL.md").write_text("# loose\n", encoding="utf-8")
             (loose_dir / ".cf-studio-kit.toml").write_text(
                 "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
                     "[[kits]]",
                     'slug = "loose"',
                     'name = "loose"',
@@ -322,6 +328,8 @@ class TestAdapterInfoCommand(unittest.TestCase):
             (kit_dir / "SKILL.md").write_text("# SDLC skill\n", encoding="utf-8")
             (kit_dir / ".cf-studio-kit.toml").write_text(
                 "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
                     "[[kits]]",
                     'slug = "sdlc"',
                     'name = "SDLC Kit"',

@@ -173,7 +173,7 @@ DO:
   SET PREVIEW_STATUS = error WHEN dry-run cannot parse or load the legacy manifest
   SET CURRENT_PREVIEW_TOML = the proposed canonical `.cf-studio-kit.toml` text WHEN PREVIEW_STATUS == pass
   SET CURRENT_PREVIEW_REPORT = the migration report WHEN PREVIEW_STATUS == pass
-  EMIT the migration report and proposed canonical `.cf-studio-kit.toml` WHEN PREVIEW_STATUS == pass
+  EMIT the migration report, public generated-name preview, and proposed canonical `.cf-studio-kit.toml` WHEN PREVIEW_STATUS == pass
   EMIT_MENU KitInitLegacyApprovalMenu WHEN PREVIEW_STATUS == pass
   EMIT the normalization findings and blocking error details WHEN PREVIEW_STATUS != pass
   EMIT_MENU KitInitPreviewFailureMenu WHEN PREVIEW_STATUS != pass
@@ -183,12 +183,16 @@ RULES:
   ALWAYS treat `<target>/manifest.toml` as the selected legacy input when it exists and `<target>/.cf-studio-kit.toml` does not
   ALWAYS treat `conf.toml + layout` as the selected legacy input when no canonical or legacy manifest exists and layout evidence exists
   ALWAYS preview the normalized canonical manifest before any write
+  <!-- @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-public-name-preview -->
+  ALWAYS show a generated-name preview before approval for every public skill, agent, rule, and nested subagent: include resource/subagent id, kind, final generated name, and whether it is default-prefixed or `prefix_generated_name = false` as-is
+  ALWAYS call out that `prefix_generated_name = false` is the manifest option to publish a public resource or nested subagent name as-is
+  <!-- @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-public-name-preview -->
   NEVER write the canonical manifest before the approval menu resolves
 MENU KitInitLegacyApprovalMenu
 TITLE: Approve the legacy-source conversion?
 OPTIONS:
   1 approve-default -> SET APPROVED_PREVIEW = CURRENT_PREVIEW_TOML; RUN write APPROVED_PREVIEW bytes exactly to `<target>/.cf-studio-kit.toml`; RUN verify the written file bytes equal APPROVED_PREVIEW; CONTINUE KitInitValidateWrittenManifest
-  2 edit -> SET PENDING_EDIT_BRANCH = legacy_manifest; EMIT "Reply with edit commands such as `set metadata.name=<name>`, `set metadata.version=<semver>`, `remove resource id=<id>`, `set resource <id>.kind=<kind>`, `set resource <id>.install_path=<path>`, or `preserve field=<field>`."; WAIT user.reply; STOP_TURN
+  2 edit -> SET PENDING_EDIT_BRANCH = legacy_manifest; EMIT "Reply with edit commands such as `set metadata.name=<name>`, `set metadata.version=<semver>`, `remove resource id=<id>`, `set resource <id>.kind=<kind>`, `set resource <id>.install_path=<path>`, `set resource <id>.prefix_generated_name=false`, or `preserve field=<field>`."; WAIT user.reply; STOP_TURN
   3 cancel -> STOP_TURN
   INVALID -> EMIT "Reply 1-3." and EMIT_MENU KitInitLegacyApprovalMenu
 MENU KitInitPreviewFailureMenu
@@ -236,6 +240,8 @@ WHEN:
 DO:
   RUN classify candidates from RESOURCE_CONTEXT into public skills, agents, and rules, plus supporting templates, checklists, scripts, directories, and other
   RUN synthesize a conservative canonical proposal using the discovered candidates and explicit local metadata only:
+    - top-level `manifest_version = "1.0"` is required before any `[[kits]]` table
+    - missing or unknown `manifest_version` is blocking; report that the user should update Constructor Studio with `pipx upgrade constructor-studio` and retry
     - canonical shape is always `[[kits]]` + nested `[[kits.resources]]`, even when the file declares exactly one kit
     - add multiple `[[kits]]` entries only when the user explicitly asks for several kits or discovery returns clearly separate kit packages under TARGET_DIR
     - multi-kit proposals require unique kit slugs; each kit owns its own resource ID namespace
@@ -245,11 +251,12 @@ DO:
     - each `[[kits.resources]]` includes required `id`, `kind`, and `source`
     - `install_path` is included only when the path can be expressed as a normalized relative path under TARGET_DIR without symlink escape or absolute segments
     - `public = true` is used only for skills, agents, and rules
+    - `prefix_generated_name = false` may be used only for public resources whose generated agent/skill/rule name must be exactly the resource `id`; the default is omitted/true and generates `cf-{kit-slug}-{id}`
     - `generated_targets = ["installed"]` is used only for public resources with no explicit target
     - workflow-like public entry points are normalized to `kind = "skill"` only when file content or discovered metadata identifies them as cf-* entry points
   SET CURRENT_PREVIEW_TOML = the proposed `.cf-studio-kit.toml` text
   SET CURRENT_PREVIEW_REPORT = the discovery classification and proposal ambiguity report
-  EMIT the discovery classification, proposal ambiguities, and proposed `.cf-studio-kit.toml` preview
+  EMIT the discovery classification, proposal ambiguities, public generated-name preview, and proposed `.cf-studio-kit.toml` preview
   EMIT_MENU KitInitDiscoveryApprovalMenu
   WAIT user.reply
   STOP_TURN
@@ -257,13 +264,16 @@ RULES:
   ALWAYS classify discovered candidates into the public and supporting groups before proposing a manifest
   ALWAYS keep the proposal conservative and report ambiguity instead of guessing
   ALWAYS propose a default manifest before any write when no legacy manifest is present
-  ALWAYS use `[[kits]]` + `[[kits.resources]]`; never emit `[kit]` or top-level `[[resources]]`
+  ALWAYS use top-level `manifest_version = "1.0"` plus `[[kits]]` + `[[kits.resources]]`; never emit `[kit]` or top-level `[[resources]]`
+  ALWAYS show a generated-name preview before approval for every public skill, agent, rule, and nested subagent: include resource/subagent id, kind, final generated name, and whether it is default-prefixed or `prefix_generated_name = false` as-is
+  ALWAYS call out that `prefix_generated_name = false` is the manifest option to publish a public resource or nested subagent name as-is
+  ALWAYS treat missing or unsupported canonical `manifest_version` as a blocking validation failure, not a recoverable warning
   NEVER write `.cf-studio-kit.toml` before the approval menu resolves
 MENU KitInitDiscoveryApprovalMenu
 TITLE: Approve the proposed canonical manifest for this folder?
 OPTIONS:
   1 approve-default -> SET APPROVED_PREVIEW = CURRENT_PREVIEW_TOML; RUN write APPROVED_PREVIEW bytes exactly to `<target>/.cf-studio-kit.toml`; RUN verify the written file bytes equal APPROVED_PREVIEW; CONTINUE KitInitValidateWrittenManifest
-  2 edit -> SET PENDING_EDIT_BRANCH = discovery; EMIT "Reply with edit commands such as `set metadata.name=<name>`, `add resource id=<id> kind=<kind> source=<path>`, `remove resource id=<id>`, `set resource <id>.aliases=<a,b>`, `set resource <id>.install_path=<path>`, or `exclude source=<path>`."; WAIT user.reply; STOP_TURN
+  2 edit -> SET PENDING_EDIT_BRANCH = discovery; EMIT "Reply with edit commands such as `set metadata.name=<name>`, `add resource id=<id> kind=<kind> source=<path>`, `remove resource id=<id>`, `set resource <id>.aliases=<a,b>`, `set resource <id>.install_path=<path>`, `set resource <id>.prefix_generated_name=false`, or `exclude source=<path>`."; WAIT user.reply; STOP_TURN
   3 rerun-discovery -> CONTINUE KitInitDiscoveryRun
   4 cancel -> STOP_TURN
   INVALID -> EMIT "Reply 1-4." and EMIT_MENU KitInitDiscoveryApprovalMenu
@@ -276,15 +286,15 @@ WHEN:
   REQUIRE PENDING_MANUAL_GUIDANCE == true
 DO:
   RUN parse the user reply as manual candidate resources, optional multiple kit declarations, resource kinds, metadata defaults, aliases, install paths, generated targets, and exclusions
-  RUN reject guidance that references sources outside TARGET_DIR, uses unsupported resource kinds, creates duplicate IDs, or omits every candidate resource
+  RUN reject guidance that references sources outside TARGET_DIR, uses unsupported resource kinds, creates duplicate IDs, proposes an unsupported `manifest_version`, or omits every candidate resource
   EMIT rejected guidance with reasons and EMIT_MENU KitInitManualGuidanceRetryMenu WHEN guidance is invalid
   WAIT user.reply WHEN guidance is invalid
   STOP_TURN WHEN guidance is invalid
-  RUN synthesize a conservative canonical proposal from the accepted manual guidance using the same canonical shape and containment rules as KitInitDiscoveryProposal
+  RUN synthesize a conservative canonical proposal from the accepted manual guidance using the same canonical shape and containment rules as KitInitDiscoveryProposal, including top-level `manifest_version = "1.0"`
   SET CURRENT_PREVIEW_TOML = the proposed `.cf-studio-kit.toml` text
   SET CURRENT_PREVIEW_REPORT = the manual guidance classification and ambiguity report
   SET PENDING_MANUAL_GUIDANCE = unset
-  EMIT the manual classification, proposal ambiguities, and proposed `.cf-studio-kit.toml` preview
+  EMIT the manual classification, proposal ambiguities, public generated-name preview, and proposed `.cf-studio-kit.toml` preview
   EMIT_MENU KitInitDiscoveryApprovalMenu
   WAIT user.reply
   STOP_TURN
@@ -308,7 +318,7 @@ WHEN:
   REQUIRE PENDING_EDIT_BRANCH != unset
 DO:
   RUN parse the user reply as requested manifest edits: metadata changes, kit additions/removals for multi-kit manifests, resource additions/removals, kind changes, aliases, install paths, generated targets, and fields to preserve
-  RUN reject edits that would reference sources outside TARGET_DIR, introduce duplicate kit slugs, introduce duplicate resource IDs within the same kit, use unsupported resource kinds, or contradict canonical manifest shape
+  RUN reject edits that would reference sources outside TARGET_DIR, introduce duplicate kit slugs, introduce duplicate resource IDs within the same kit, use unsupported resource kinds, set `prefix_generated_name = false` on a non-public resource, remove required `manifest_version = "1.0"`, set an unsupported `manifest_version`, or contradict canonical manifest shape
   EMIT the rejected edits with reasons and EMIT_MENU KitInitEditRetryMenu WHEN any requested edit is invalid
   WAIT user.reply WHEN any requested edit is invalid
   STOP_TURN WHEN any requested edit is invalid
@@ -316,7 +326,7 @@ DO:
   RUN re-render the proposed `.cf-studio-kit.toml`
   SET CURRENT_PREVIEW_TOML = the revised `.cf-studio-kit.toml` text
   SET CURRENT_PREVIEW_REPORT = the revised preview report and remaining ambiguities
-  EMIT the revised preview and remaining ambiguities
+  EMIT the revised public generated-name preview, revised manifest preview, and remaining ambiguities
   EMIT_MENU KitInitLegacyApprovalMenu WHEN PENDING_EDIT_BRANCH == legacy_manifest
   EMIT_MENU KitInitDiscoveryApprovalMenu WHEN PENDING_EDIT_BRANCH == discovery
   SET PENDING_EDIT_BRANCH = unset WHEN all valid edits were applied and an approval menu is emitted
@@ -324,6 +334,8 @@ DO:
   STOP_TURN
 RULES:
   ALWAYS return edited manifests to a preview approval menu before any write
+  ALWAYS preserve top-level `manifest_version = "1.0"` after applying edits
+  ALWAYS recompute and show the public generated-name preview after applying edits and before returning to approval
   ALWAYS reject unsafe or unsupported edits instead of guessing
   NEVER write from an edit reply directly
 MENU KitInitEditRetryMenu

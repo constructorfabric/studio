@@ -137,6 +137,8 @@ class TestManifestInstallAdapter(unittest.TestCase):
             (kit_src / ".cf-studio-kit.toml").write_text(
                 textwrap.dedent(
                     """\
+                    manifest_version = "1.0"
+
                     [[kits]]
                     slug = "mykit"
                     name = "My Kit"
@@ -248,6 +250,146 @@ class TestInstallKitWithManifest(unittest.TestCase):
             # Each binding has a "path" key
             self.assertIn("path", resources["adr_artifacts"])
             self.assertIn("path", resources["constraints"])
+            self.assertEqual(resources["constraints"]["kind"], "other")
+
+    def test_canonical_constraints_resource_kind_is_preserved_in_core_toml(self):
+        from studio.commands.kit import install_kit_with_manifest
+        import tomllib
+
+        with TemporaryDirectory() as td:
+            td_path = Path(td)
+            kit_src = td_path / "source"
+            kit_src.mkdir()
+            (kit_src / "custom-rules.toml").write_text(
+                "[PRD.identifiers.fr]\nrequired = true\n",
+                encoding="utf-8",
+            )
+            (kit_src / ".cf-studio-kit.toml").write_text(
+                textwrap.dedent(
+                    """\
+                    manifest_version = "1.0"
+
+                    [[kits]]
+                    slug = "mykit"
+                    version = "1.0"
+
+                    [[kits.resources]]
+                    id = "policy"
+                    kind = "constraints"
+                    source = "custom-rules.toml"
+                    install_path = "rules/custom.toml"
+                    type = "file"
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            adapter = td_path / "adapter"
+            config = adapter / "config"
+            config.mkdir(parents=True)
+            from studio.utils import toml_utils
+            toml_utils.dump({
+                "version": "1.0", "project_root": "..", "kits": {},
+            }, config / "core.toml")
+
+            from studio.commands.kit import _load_manifest_install_adapter
+            manifest = _load_manifest_install_adapter(kit_src, kit_slug="mykit")
+            assert manifest is not None
+
+            result = install_kit_with_manifest(
+                kit_src, adapter, "mykit", "1.0", manifest,
+                interactive=False,
+            )
+
+            self.assertEqual(result["status"], "PASS")
+            with open(config / "core.toml", "rb") as f:
+                data = tomllib.load(f)
+            self.assertEqual(
+                data["kits"]["mykit"]["resources"]["policy"]["kind"],
+                "constraints",
+            )
+            self.assertEqual(
+                data["kits"]["mykit"]["resources"]["policy"]["path"],
+                "config/kits/mykit/rules/custom.toml",
+            )
+
+    def test_public_component_name_conflict_blocks_install(self):
+        from studio.commands.kit import _load_manifest_install_adapter, install_kit_with_manifest
+
+        with TemporaryDirectory() as td:
+            td_path = Path(td)
+            adapter = td_path / "adapter"
+            config = adapter / "config"
+            existing = config / "kits" / "existing"
+            existing.mkdir(parents=True)
+            (existing / "SKILL.md").write_text("# Existing\n", encoding="utf-8")
+            (existing / ".cf-studio-kit.toml").write_text(
+                textwrap.dedent(
+                    """\
+                    manifest_version = "1.0"
+
+                    [[kits]]
+                    slug = "existing"
+                    version = "1.0"
+
+                    [[kits.resources]]
+                    id = "shared"
+                    kind = "skill"
+                    source = "SKILL.md"
+                    type = "file"
+                    public = true
+                    prefix_generated_name = false
+                    """
+                ),
+                encoding="utf-8",
+            )
+            from studio.utils import toml_utils
+            toml_utils.dump({
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {
+                    "existing": {
+                        "format": "CFS",
+                        "path": "config/kits/existing",
+                    },
+                },
+            }, config / "core.toml")
+
+            kit_src = td_path / "incoming"
+            kit_src.mkdir()
+            (kit_src / "SKILL.md").write_text("# Incoming\n", encoding="utf-8")
+            (kit_src / ".cf-studio-kit.toml").write_text(
+                textwrap.dedent(
+                    """\
+                    manifest_version = "1.0"
+
+                    [[kits]]
+                    slug = "incoming"
+                    version = "1.0"
+
+                    [[kits.resources]]
+                    id = "shared"
+                    kind = "skill"
+                    source = "SKILL.md"
+                    type = "file"
+                    public = true
+                    prefix_generated_name = false
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            manifest = _load_manifest_install_adapter(kit_src, kit_slug="incoming")
+            assert manifest is not None
+
+            result = install_kit_with_manifest(
+                kit_src, adapter, "incoming", "1.0", manifest,
+                interactive=False,
+            )
+
+            self.assertEqual(result["status"], "FAIL")
+            self.assertIn("Public component name conflict", "\n".join(result["errors"]))
+            self.assertFalse((adapter / "config" / "kits" / "incoming" / "SKILL.md").exists())
 
     def test_resource_bindings_in_result(self):
         """Result dict contains flattened resource_bindings."""

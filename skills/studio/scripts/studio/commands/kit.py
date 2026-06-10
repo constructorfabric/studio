@@ -995,15 +995,19 @@ def _manifest_resource_bindings(
     resources: List[Any],
     resource_overrides: Dict[str, Path],
 ) -> Dict[str, Dict[str, str]]:
-    return {
-        res.id: {
+    bindings: Dict[str, Dict[str, str]] = {}
+    for res in resources:
+        entry = {
             "path": _serialize_manifest_binding_path(
                 _manifest_resource_target(kit_root, res, resource_overrides),
                 studio_dir,
             )
         }
-        for res in resources
-    }
+        kind = str(getattr(res, "kind", "") or "").strip()
+        if kind:
+            entry["kind"] = kind
+        bindings[res.id] = entry
+    return bindings
 
 
 def _manifest_register_resource_bindings(
@@ -1011,15 +1015,19 @@ def _manifest_register_resource_bindings(
     kit_source: Path,
     resources: List[Any],
 ) -> Dict[str, Dict[str, str]]:
-    return {
-        res.id: {
+    bindings: Dict[str, Dict[str, str]] = {}
+    for res in resources:
+        entry = {
             "path": _serialize_manifest_binding_path(
                 (kit_source / res.source).resolve(),
                 studio_dir,
             )
         }
-        for res in resources
-    }
+        kind = str(getattr(res, "kind", "") or "").strip()
+        if kind:
+            entry["kind"] = kind
+        bindings[res.id] = entry
+    return bindings
 
 
 def _kit_model_content_identity(model: Any) -> Dict[str, Any]:
@@ -1029,6 +1037,111 @@ def _kit_model_content_identity(model: Any) -> Dict[str, Any]:
         "resource_hashes": getattr(model, "resource_hashes", {}) or {},
         "tool_risk_fingerprint": getattr(model, "tool_risk_fingerprint", ""),
     }
+
+
+def _kit_model_public_component_names(model: Any) -> Dict[str, str]:
+    names: Dict[str, str] = {}
+    for component in getattr(model, "public_components", []) or []:
+        name = str(getattr(component, "generated_name", "") or "").strip()
+        base_component_id = str(getattr(component, "id", "") or "")
+        if name:
+            names[name] = base_component_id
+        if str(getattr(component, "kind", "") or "") != "agent":
+            continue
+        for subagent in getattr(component, "subagents", []) or []:
+            if not isinstance(subagent, dict):
+                continue
+            subagent_id = str(subagent.get("id", "") or "").strip()
+            if not subagent_id:
+                continue
+            prefix_generated_name = bool(subagent.get("prefix_generated_name", True))
+            if prefix_generated_name:
+                prefix = f"cf-{model.slug}-"
+                subagent_name = subagent_id if subagent_id == f"cf-{model.slug}" or subagent_id.startswith(prefix) else f"{prefix}{subagent_id}"
+            else:
+                subagent_name = subagent_id
+            names[subagent_name] = f"{base_component_id}.subagents.{subagent_id}"
+    return names
+
+
+def _public_component_name_conflicts(
+    studio_dir: Path,
+    installing_slug: str,
+    installing_model: Any,
+) -> List[str]:
+    incoming = _kit_model_public_component_names(installing_model)
+    if not incoming:
+        return []
+
+    errors: List[str] = []
+    seen: Dict[str, str] = {}
+    for component in getattr(installing_model, "public_components", []) or []:
+        name = str(getattr(component, "generated_name", "") or "").strip()
+        base_component_id = str(getattr(component, "id", "") or "")
+        if not name:
+            continue
+        component_id = base_component_id
+        if name in seen:
+            errors.append(
+                f"Public component name conflict in kit '{installing_slug}': "
+                f"'{name}' is produced by resources '{seen[name]}' and '{component_id}'",
+            )
+        else:
+            seen[name] = component_id
+        if str(getattr(component, "kind", "") or "") != "agent":
+            continue
+        for subagent in getattr(component, "subagents", []) or []:
+            if not isinstance(subagent, dict):
+                continue
+            subagent_id = str(subagent.get("id", "") or "").strip()
+            if not subagent_id:
+                continue
+            prefix_generated_name = bool(subagent.get("prefix_generated_name", True))
+            if prefix_generated_name:
+                prefix = f"cf-{installing_slug}-"
+                name = subagent_id if subagent_id == f"cf-{installing_slug}" or subagent_id.startswith(prefix) else f"{prefix}{subagent_id}"
+            else:
+                name = subagent_id
+            subagent_component_id = f"{base_component_id}.subagents.{subagent_id}"
+            if name in seen:
+                errors.append(
+                    f"Public component name conflict in kit '{installing_slug}': "
+                    f"'{name}' is produced by '{seen[name]}' and '{subagent_component_id}'",
+                )
+            else:
+                seen[name] = subagent_component_id
+    if errors:
+        return errors
+
+    try:
+        from ..utils.kit_model import load_kit_model
+    except ImportError:
+        return []
+
+    config_dir = studio_dir / "config"
+    for existing_slug, kit_entry in sorted(_read_kits_from_core_toml(config_dir).items()):
+        existing_slug_str = str(existing_slug)
+        if existing_slug_str == str(installing_slug):
+            continue
+        if not isinstance(kit_entry, dict):
+            continue
+        existing_path = str(kit_entry.get("path") or f"config/kits/{existing_slug_str}")
+        existing_root = _resolve_registered_kit_dir(studio_dir, existing_path)
+        if existing_root is None or not existing_root.is_dir():
+            continue
+        try:
+            existing_model = load_kit_model(existing_root)
+        except (OSError, ValueError):
+            continue
+        for name, resource_id in incoming.items():
+            existing_names = _kit_model_public_component_names(existing_model)
+            if name in existing_names:
+                errors.append(
+                    f"Public component name conflict: kit '{installing_slug}' resource "
+                    f"'{resource_id}' generates '{name}', already generated by kit "
+                    f"'{existing_slug_str}' resource '{existing_names[name]}'",
+                )
+    return errors
 
 
 def _local_path_provenance(kit_source: Path, install_mode: str) -> Dict[str, str]:
@@ -1496,6 +1609,16 @@ def install_kit_with_manifest(
             "install_mode": install_mode,
             "errors": risk_errors,
         }
+    # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-public-name-conflict
+    name_conflicts = _public_component_name_conflicts(studio_dir, kit_slug, kit_model)
+    if name_conflicts:
+        return {
+            "status": "FAIL",
+            "kit": kit_slug,
+            "install_mode": install_mode,
+            "errors": name_conflicts,
+        }
+    # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-public-name-conflict
 
     # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-resolve-install-mode
     if install_mode not in {"copy", "register"}:
@@ -3287,23 +3410,49 @@ def cmd_kit_normalize(argv: List[str]) -> int:
 
 def _kit_normalize_report(model: Any) -> Dict[str, Any]:
     """Build the migration report for normalized kit output."""
+    def _subagent_previews(component: Any) -> List[Dict[str, str]]:
+        previews: List[Dict[str, str]] = []
+        for subagent in getattr(component, "subagents", []) or []:
+            if not isinstance(subagent, dict):
+                continue
+            subagent_id = str(subagent.get("id", "") or "").strip()
+            if not subagent_id:
+                continue
+            prefix_generated_name = bool(subagent.get("prefix_generated_name", True))
+            if prefix_generated_name:
+                prefix = f"cf-{model.slug}-"
+                generated_name = subagent_id if subagent_id == f"cf-{model.slug}" or subagent_id.startswith(prefix) else f"{prefix}{subagent_id}"
+            else:
+                generated_name = subagent_id
+            previews.append({
+                "id": subagent_id,
+                "kind": "subagent",
+                "generated_name": generated_name,
+                "name_mode": "prefixed" if prefix_generated_name and generated_name != subagent_id else "as_is",
+            })
+        return previews
+
     # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-preserve-fields
     report = {
         "manifest_source": model.manifest_source,
         "resources": len(model.resources),
         "public_resources": len([r for r in model.resources if r.public]),
+        # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-public-name-preview
         "public_components": [
             {
                 "id": component.id,
                 "kind": component.kind,
                 "source": component.source,
                 "generated_name": component.generated_name,
+                "name_mode": "prefixed" if component.generated_name != component.id else "as_is",
                 "generated_targets": component.generated_targets,
                 "aliases": component.aliases,
                 "origin": component.origin,
+                "subagents": _subagent_previews(component),
             }
             for component in model.public_components
         ],
+        # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-public-name-preview
         "content_identity": {
             "manifest_semantic_hash": model.manifest_semantic_hash,
             "manifest_bytes_hash": model.manifest_bytes_hash,
@@ -3731,6 +3880,9 @@ def _sync_manifest_resource_bindings(
             else:
                 resource_path = PurePosixPath(install_path).as_posix()
             merged[res.id] = {"path": resource_path}
+        kind = str(getattr(res, "kind", "") or "").strip()
+        if kind:
+            merged[res.id]["kind"] = kind
     return merged
 # @cpt-end:cpt-studio-algo-kit-update:p1:inst-sync-manifest-bindings
 

@@ -1972,16 +1972,105 @@ def parse_kit_constraints(data: object) -> Tuple[Optional[KitConstraints], List[
     return KitConstraints(by_kind=out), []
     # @cpt-end:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-parse-kit
 
-def load_constraints_toml(kit_root: Path) -> Tuple[Optional[KitConstraints], List[str]]:
+def _merge_reference_rule(base: ReferenceRule, incoming: ReferenceRule) -> ReferenceRule:
+    return ReferenceRule(
+        coverage=incoming.coverage if incoming.coverage is not None else base.coverage,
+        task=incoming.task if incoming.task is not None else base.task,
+        priority=incoming.priority if incoming.priority is not None else base.priority,
+        headings=_merge_unique_strings(base.headings, incoming.headings),
+    )
+
+
+def _merge_unique_strings(base: Optional[List[str]], incoming: Optional[List[str]]) -> Optional[List[str]]:
+    merged: List[str] = []
+    seen: set[str] = set()
+    for value in (base or []) + (incoming or []):
+        key = str(value)
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(value)
+    return merged or None
+
+
+def _merge_id_constraint(base: IdConstraint, incoming: IdConstraint) -> IdConstraint:
+    references = dict(base.references or {})
+    for name, rule in (incoming.references or {}).items():
+        references[name] = _merge_reference_rule(references[name], rule) if name in references else rule
+    return IdConstraint(
+        kind=incoming.kind or base.kind,
+        required=base.required or incoming.required,
+        name=incoming.name if incoming.name is not None else base.name,
+        description=incoming.description if incoming.description is not None else base.description,
+        template=incoming.template if incoming.template is not None else base.template,
+        examples=(base.examples or []) + (incoming.examples or []) or None,
+        task=incoming.task if incoming.task is not None else base.task,
+        priority=incoming.priority if incoming.priority is not None else base.priority,
+        to_code=incoming.to_code if incoming.to_code is not None else base.to_code,
+        headings=_merge_unique_strings(base.headings, incoming.headings),
+        references=references or None,
+    )
+
+
+def _merge_artifact_constraints(
+    base: ArtifactKindConstraints,
+    incoming: ArtifactKindConstraints,
+) -> ArtifactKindConstraints:
+    by_id_kind = {
+        str(c.kind).strip().lower(): c
+        for c in (base.defined_id or [])
+        if str(getattr(c, "kind", "") or "").strip()
+    }
+    order = [
+        str(c.kind).strip().lower()
+        for c in (base.defined_id or [])
+        if str(getattr(c, "kind", "") or "").strip()
+    ]
+    for constraint in incoming.defined_id or []:
+        key = str(constraint.kind).strip().lower()
+        if not key:
+            continue
+        if key in by_id_kind:
+            by_id_kind[key] = _merge_id_constraint(by_id_kind[key], constraint)
+        else:
+            by_id_kind[key] = constraint
+            order.append(key)
+    return ArtifactKindConstraints(
+        name=incoming.name if incoming.name is not None else base.name,
+        description=incoming.description if incoming.description is not None else base.description,
+        defined_id=[by_id_kind[key] for key in order if key in by_id_kind],
+        headings=(base.headings or []) + (incoming.headings or []) or None,
+        toc=base.toc or incoming.toc,
+    )
+
+
+def merge_kit_constraints_all_of(constraints: Sequence[KitConstraints]) -> Optional[KitConstraints]:
+    """Merge constraints sequentially using allOf-style additive semantics."""
+    by_kind: Dict[str, ArtifactKindConstraints] = {}
+    for kit_constraints in constraints:
+        for kind, incoming in (kit_constraints.by_kind or {}).items():
+            normalized = str(kind).strip().upper()
+            if not normalized:
+                continue
+            if normalized in by_kind:
+                by_kind[normalized] = _merge_artifact_constraints(by_kind[normalized], incoming)
+            else:
+                by_kind[normalized] = incoming
+    if not by_kind:
+        return None
+    return KitConstraints(by_kind=by_kind)
+
+
+def load_constraints_file(path: Path) -> Tuple[Optional[KitConstraints], List[str]]:
     # @cpt-begin:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-load-toml
-    path = (kit_root / "constraints.toml").resolve()
+    path = path.resolve()
     if not path.is_file():
         return None, []
     try:
         from . import toml_utils
         data = toml_utils.load(path)
     except (OSError, ValueError, KeyError) as e:
-        return None, [f"Failed to parse constraints.toml: {e}"]
+        return None, [f"Failed to parse {path.name}: {e}"]
 
     # TOML wraps kinds under "artifacts" key
     artifacts_data = data.get("artifacts", data)
@@ -1990,6 +2079,25 @@ def load_constraints_toml(kit_root: Path) -> Tuple[Optional[KitConstraints], Lis
         return None, errs
     return constraints, []
     # @cpt-end:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-load-toml
+
+
+def load_constraints_files(paths: Sequence[Path]) -> Tuple[Optional[KitConstraints], List[str]]:
+    loaded: List[KitConstraints] = []
+    errors: List[str] = []
+    for path in paths:
+        constraints, errs = load_constraints_file(path)
+        if errs:
+            errors.extend(f"{path.name}: {err}" for err in errs)
+        if constraints is not None:
+            loaded.append(constraints)
+    if errors:
+        return None, errors
+    return merge_kit_constraints_all_of(loaded), []
+
+
+def load_constraints_toml(kit_root: Path) -> Tuple[Optional[KitConstraints], List[str]]:
+    return load_constraints_file((kit_root / "constraints.toml").resolve())
+
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-headings-datamodel
 __all__ = [
@@ -2002,7 +2110,10 @@ __all__ = [
     "ParsedStudioId",
     "cross_validate_artifacts",
     "error",
+    "load_constraints_file",
+    "load_constraints_files",
     "load_constraints_toml",
+    "merge_kit_constraints_all_of",
     "parse_cpt",
     "parse_kit_constraints",
     "validate_artifact_file",

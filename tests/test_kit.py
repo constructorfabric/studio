@@ -89,6 +89,8 @@ def _make_canonical_kit_source(td: Path, slug: str = "canonicalkit") -> Path:
     (kit_src / "SKILL.md").write_text("# Canonical kit\n", encoding="utf-8")
     (kit_src / ".cf-studio-kit.toml").write_text(
         "\n".join([
+            'manifest_version = "1.0"',
+            "",
             "[[kits]]",
             f'slug = "{slug}"',
             f'name = "{slug}"',
@@ -114,6 +116,8 @@ def _make_multi_canonical_kit_source(td: Path) -> Path:
     (kit_src / "beta.md").write_text("# Beta\n", encoding="utf-8")
     (kit_src / ".cf-studio-kit.toml").write_text(
         "\n".join([
+            'manifest_version = "1.0"',
+            "",
             "[[kits]]",
             'slug = "alpha"',
             'name = "Alpha"',
@@ -407,6 +411,23 @@ class TestKitNormalize(unittest.TestCase):
             self.assertEqual(component.generated_targets, ["installed"])
             self.assertEqual(model.resources[0].id, "skill")
 
+    def test_kit_model_can_disable_public_name_prefix_per_resource(self):
+        from studio.utils.kit_model import load_kit_model, kit_model_to_toml_data
+
+        with TemporaryDirectory() as td:
+            kit_src = _make_canonical_kit_source(Path(td), "pubkit")
+            manifest = kit_src / ".cf-studio-kit.toml"
+            manifest.write_text(
+                manifest.read_text(encoding="utf-8") + "prefix_generated_name = false\n",
+                encoding="utf-8",
+            )
+
+            model = load_kit_model(kit_src)
+
+            self.assertEqual(model.public_components[0].generated_name, "skill")
+            self.assertFalse(model.resources[0].prefix_generated_name)
+            self.assertFalse(kit_model_to_toml_data(model)["kits"][0]["resources"][0]["prefix_generated_name"])
+
     def test_kit_model_tool_risk_summary_warns_and_fingerprints(self):
         from studio.utils.kit_model import load_kit_model
 
@@ -583,6 +604,37 @@ class TestKitNormalize(unittest.TestCase):
                 encoding="utf-8",
             )
             with self.assertRaisesRegex(ValueError, "binding_path"):
+                load_kit_model(kit_src)
+
+    def test_kit_model_requires_canonical_manifest_version(self):
+        from studio.utils.kit_model import load_kit_model
+
+        with TemporaryDirectory() as td:
+            kit_src = _make_canonical_kit_source(Path(td), "versionless")
+            manifest = kit_src / ".cf-studio-kit.toml"
+            manifest.write_text(
+                manifest.read_text(encoding="utf-8").replace('manifest_version = "1.0"\n\n', ""),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "missing required manifest_version"):
+                load_kit_model(kit_src)
+
+    def test_kit_model_rejects_unknown_canonical_manifest_version_with_update_hint(self):
+        from studio.utils.kit_model import load_kit_model
+
+        with TemporaryDirectory() as td:
+            kit_src = _make_canonical_kit_source(Path(td), "futurekit")
+            manifest = kit_src / ".cf-studio-kit.toml"
+            manifest.write_text(
+                manifest.read_text(encoding="utf-8").replace(
+                    'manifest_version = "1.0"',
+                    'manifest_version = "99.0"',
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "unsupported manifest_version '99.0'.*pipx upgrade constructor-studio"):
                 load_kit_model(kit_src)
 
 
