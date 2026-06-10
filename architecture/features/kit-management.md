@@ -60,11 +60,11 @@
 
 <!-- /toc -->
 
-- [ ] `p1` - **ID**: `cpt-studio-featstatus-kit-management`
+- [x] `p1` - **ID**: `cpt-studio-featstatus-kit-management`
 
 ## 1. Feature Context
 
-- [ ] `p1` - `cpt-studio-featstatus-kit-management`
+- [x] `p1` - `cpt-studio-featstatus-kit-management`
 
 ### 1. Overview
 
@@ -779,7 +779,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 ### Kit Authority State
 
-- [ ] `p1` - **ID**: `cpt-studio-state-kit-authority`
+- [x] `p1` - **ID**: `cpt-studio-state-kit-authority`
 
 | State | Condition | Transitions |
 |-------|-----------|-------------|
@@ -801,7 +801,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 ### Kit Manifest State
 
-- [ ] `p1` - **ID**: `cpt-studio-state-kit-manifest`
+- [x] `p1` - **ID**: `cpt-studio-state-kit-manifest`
 
 | State | Condition | Transitions |
 |-------|-----------|-------------|
@@ -813,7 +813,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 ### Kit Install Mode State
 
-- [ ] `p1` - **ID**: `cpt-studio-state-kit-install-mode`
+- [x] `p1` - **ID**: `cpt-studio-state-kit-install-mode`
 
 | State | Condition | Transitions |
 |-------|-----------|-------------|

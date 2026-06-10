@@ -131,6 +131,7 @@ def _resolve_github_ref(
     previous_entry: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Resolve GitHub kit selector into structured authority metadata."""
+    # @cpt-begin:cpt-studio-state-kit-authority:p1:inst-github-authority-state
     # @cpt-begin:cpt-studio-algo-kit-github-version-authority:p1:inst-core-version-github-authority
     # @cpt-begin:cpt-studio-algo-kit-github-version-authority:p1:inst-conf-version-local-only
     canonical_source = f"github:{owner}/{repo}"
@@ -197,6 +198,7 @@ def _resolve_github_ref(
     # @cpt-end:cpt-studio-algo-kit-github-version-authority:p1:inst-store-selector-and-identity
     # @cpt-end:cpt-studio-algo-kit-github-version-authority:p1:inst-conf-version-local-only
     # @cpt-end:cpt-studio-algo-kit-github-version-authority:p1:inst-core-version-github-authority
+    # @cpt-end:cpt-studio-state-kit-authority:p1:inst-github-authority-state
 
 
 def _derive_commit_sha_from_tar_root(extracted_dir: Path, owner: str, repo: str) -> str:
@@ -1145,6 +1147,7 @@ def _public_component_name_conflicts(
 
 
 def _local_path_provenance(kit_source: Path, install_mode: str) -> Dict[str, str]:
+    # @cpt-begin:cpt-studio-state-kit-authority:p1:inst-local-authority-state
     return {
         "source_type": "local_path",
         "resolver_mode": install_mode,
@@ -1153,6 +1156,7 @@ def _local_path_provenance(kit_source: Path, install_mode: str) -> Dict[str, str
         "verified": "local",
         "freshness": "local",
     }
+    # @cpt-end:cpt-studio-state-kit-authority:p1:inst-local-authority-state
 
 
 def _load_manifest_install_adapter(kit_source: Path, kit_slug: str = "") -> Optional[Manifest]:
@@ -2304,6 +2308,7 @@ def cmd_kit_install(argv: List[str]) -> int:
                 "hint": "Provide a path to a valid kit directory",
             })
             return 2
+        # @cpt-begin:cpt-studio-state-kit-install-mode:p1:inst-mode-required
         # @cpt-begin:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-mode-noninteractive-required
         if not args.dry_run and not args.install_mode and not sys.stdin.isatty():
             ui.result({
@@ -2313,6 +2318,7 @@ def cmd_kit_install(argv: List[str]) -> int:
             })
             return 2
         # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-mode-noninteractive-required
+        # @cpt-end:cpt-studio-state-kit-install-mode:p1:inst-mode-required
         # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-load-kit-model
         # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-read-slug-version
         kit_slug = _read_kit_slug(kit_source) or kit_source.name
@@ -2361,6 +2367,7 @@ def cmd_kit_install(argv: List[str]) -> int:
         project_root, studio_dir = resolved
         config_dir = studio_dir / "config"
 
+        # @cpt-begin:cpt-studio-state-kit-install-mode:p1:inst-mode-copy-or-register
         selected_install_mode = args.install_mode or "copy"
         # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
         # @cpt-begin:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-mode-always-ask
@@ -2378,6 +2385,7 @@ def cmd_kit_install(argv: List[str]) -> int:
                     local_manifest,
                 )
         # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-mode-always-ask
+        # @cpt-end:cpt-studio-state-kit-install-mode:p1:inst-mode-copy-or-register
         # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
 
         if len(selected_specs) > 1:
