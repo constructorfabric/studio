@@ -47,7 +47,7 @@ pipx install git+https://github.com/constructorfabric/studio.git
 cfs --version
 ```
 
-🖥 Initialize the repository:
+🖥 Set up Studio in this repository:
 
 ```bash
 cfs init
