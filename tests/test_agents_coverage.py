@@ -254,6 +254,135 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
             self.assertIn("Review carefully.", agent_path.read_text(encoding="utf-8"))
             self.assertNotIn("Duplicate agent.", agent_path.read_text(encoding="utf-8"))
 
+    def test_generate_agents_reports_duplicate_public_skill_and_rule_names(self):
+        from studio.commands.agents import _default_agents_config, _process_single_agent
+
+        with TemporaryDirectory() as td:
+            root, studio_root = self._make_project(td)
+            kit_root = studio_root / "config" / "kits" / "zdupes"
+            kit_root.mkdir(parents=True)
+            (kit_root / "skill.md").write_text("# Duplicate skill\n", encoding="utf-8")
+            (kit_root / "rule.md").write_text("# Duplicate rule\n", encoding="utf-8")
+            (kit_root / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "zdupes"',
+                    'name = "Duplicate Names"',
+                    'version = "1.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "cf-pubkit-helper"',
+                    'kind = "skill"',
+                    'source = "skill.md"',
+                    'type = "file"',
+                    "public = true",
+                    "prefix_generated_name = false",
+                    'generated_targets = ["cursor"]',
+                    'description = "Duplicate helper"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "cf-pubkit-guard"',
+                    'kind = "rule"',
+                    'source = "rule.md"',
+                    'type = "file"',
+                    "public = true",
+                    "prefix_generated_name = false",
+                    'generated_targets = ["cursor"]',
+                    'description = "Duplicate guard"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            core_toml = studio_root / "config" / "core.toml"
+            core_toml.write_text(
+                core_toml.read_text(encoding="utf-8")
+                + "\n[kits.zdupes]\n"
+                + 'path = "config/kits/zdupes"\n'
+                + 'version = "1.0"\n',
+                encoding="utf-8",
+            )
+
+            result = _process_single_agent(
+                "cursor",
+                root,
+                studio_root,
+                _default_agents_config(),
+                None,
+                dry_run=False,
+            )
+
+            self.assertEqual(result["status"], "PARTIAL")
+            errors = "\n".join(str(error) for error in result["errors"])
+            self.assertIn("duplicate public skill 'cf-pubkit-helper'", errors)
+            self.assertIn("duplicate public rule 'cf-pubkit-guard'", errors)
+            self.assertIn(
+                "config/kits/pubkit/skill.md",
+                (root / ".agents" / "skills" / "cf-pubkit-helper" / "SKILL.md").read_text(encoding="utf-8"),
+            )
+            self.assertIn(
+                "Follow the guard.",
+                (root / ".cursor" / "rules" / "cf-pubkit-guard.mdc").read_text(encoding="utf-8"),
+            )
+
+    def test_generate_agents_reports_duplicate_public_nested_agent_names(self):
+        from studio.commands.agents import _default_agents_config, _process_single_agent
+
+        with TemporaryDirectory() as td:
+            root, studio_root = self._make_project(td)
+            kit_root = studio_root / "config" / "kits" / "znesteddupe"
+            kit_root.mkdir(parents=True)
+            (kit_root / "agent.md").write_text("# Owner\n", encoding="utf-8")
+            (kit_root / "auditor.md").write_text("# Duplicate nested auditor\n", encoding="utf-8")
+            (kit_root / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "znesteddupe"',
+                    'name = "Duplicate Nested"',
+                    'version = "1.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "owner"',
+                    'kind = "agent"',
+                    'source = "agent.md"',
+                    'type = "file"',
+                    "public = true",
+                    'generated_targets = ["cursor"]',
+                    "",
+                    "[[kits.resources.agent.subagents]]",
+                    'id = "auditor"',
+                    'source = "auditor.md"',
+                    'generated_targets = ["cursor"]',
+                    "prefix_generated_name = false",
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            core_toml = studio_root / "config" / "core.toml"
+            core_toml.write_text(
+                core_toml.read_text(encoding="utf-8")
+                + "\n[kits.znesteddupe]\n"
+                + 'path = "config/kits/znesteddupe"\n'
+                + 'version = "1.0"\n',
+                encoding="utf-8",
+            )
+
+            result = _process_single_agent(
+                "cursor",
+                root,
+                studio_root,
+                _default_agents_config(),
+                None,
+                dry_run=False,
+            )
+
+            self.assertEqual(result["status"], "PARTIAL")
+            errors = "\n".join(str(error) for error in result["errors"])
+            self.assertIn("duplicate public agent 'auditor'", errors)
+            self.assertIn("Audit nested behavior.", (root / ".cursor" / "agents" / "auditor.mdc").read_text(encoding="utf-8"))
+            self.assertNotIn("Duplicate nested auditor", (root / ".cursor" / "agents" / "auditor.mdc").read_text(encoding="utf-8"))
+
 
 class TestEnsureFrontmatterDescriptionQuoted(unittest.TestCase):
     """Cover lines 440, 455-457 in agents.py."""

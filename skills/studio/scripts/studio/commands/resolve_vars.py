@@ -106,17 +106,22 @@ def _resolve_kit_variables(
         # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-aliases
         # @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-resolve-binding
 
+    # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings
     model_vars = _resolve_kit_variables_from_model(adapter_dir, core_kit, kit_slug)
     for var_name, var_path in model_vars.items():
         result.setdefault(var_name, var_path)
+    # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings
+    # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-aliases
     model_aliases = _resolve_kit_aliases_from_model(adapter_dir, core_kit, kit_slug)
     for alias, resource_id in model_aliases.items():
         if resource_id in result:
             result.setdefault(alias, result[resource_id])
+    # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-aliases
     return result
 # @cpt-end:cpt-studio-algo-developer-experience-resolve-vars:p1:inst-resolve-binding-path
 
 
+# @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings
 def _resolve_kit_variables_from_model(
     adapter_dir: Path,
     core_kit: dict,
@@ -149,8 +154,10 @@ def _resolve_kit_variables_from_model(
             if isinstance(alias, str) and alias.strip():
                 result[alias.strip()] = resolved_path
     return result
+# @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings
 
 
+# @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-aliases
 def _resolve_kit_aliases_from_model(
     adapter_dir: Path,
     core_kit: dict,
@@ -180,6 +187,7 @@ def _resolve_kit_aliases_from_model(
             if isinstance(alias, str) and alias.strip():
                 aliases[alias.strip()] = resource_id
     return aliases
+# @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-aliases
 
 
 def _collect_all_variables(

@@ -1730,6 +1730,32 @@ class TestKitSourceModeValidation(unittest.TestCase):
             finally:
                 os.chdir(cwd)
 
+    def test_update_register_mode_returns_core_registration_errors(self):
+        from studio.commands.kit import cmd_kit_install, update_kit
+        from studio.utils import toml_utils
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            kit_src = _make_canonical_kit_source(root / "local-kits", "regfail")
+            toml_utils.dump({"version": "9.9.9", "slug": "regfail"}, kit_src / "conf.toml")
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                with redirect_stdout(io.StringIO()):
+                    rc = cmd_kit_install(["--path", str(kit_src), "--install-mode", "register"])
+                self.assertEqual(rc, 0)
+                (kit_src / "SKILL.md").write_text("# Registered update failure\n", encoding="utf-8")
+
+                with patch("studio.commands.kit._register_kit_in_core_toml", return_value=["cannot write core"]):
+                    result = update_kit("regfail", kit_src, adapter, project_root=root)
+
+                self.assertEqual(result["version"]["status"], "failed")
+                self.assertEqual(result["gen"]["files_written"], 0)
+                self.assertEqual(result["errors"], ["cannot write core"])
+            finally:
+                os.chdir(cwd)
+
     def test_update_register_mode_revalidates_containment(self):
         from studio.commands.kit import cmd_kit_install, update_kit
 
@@ -3782,6 +3808,42 @@ class TestUpdateKitExistingBranch(unittest.TestCase):
             self.assertTrue(custom_kit_dir.is_dir())
             self.assertFalse(default_kit_dir.exists())
 
+    def test_update_same_version_returns_authority_registration_errors(self):
+        from studio.commands.kit import install_kit, update_kit
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            kit_src = _make_kit_source(Path(td), "currentfail")
+            authority = {
+                "source_type": "github",
+                "requested_ref": "main",
+                "resolved_ref": "main",
+                "installed_version": "main",
+                "canonical_source": "github:o/r",
+                "effective_source": "github:o/r",
+                "resolver_mode": "explicit",
+                "resolution_basis": "github_ref",
+                "verified": "verified",
+                "freshness": "fresh",
+                "commit_sha": "same123",
+                "identity": "o/r@main#same123",
+            }
+            install_kit(kit_src, adapter, "currentfail", "main", source="github:o/r", authority_metadata=authority)
+
+            with patch("studio.commands.kit._register_kit_in_core_toml", return_value=["cannot write core"]):
+                result = update_kit(
+                    "currentfail",
+                    kit_src,
+                    adapter,
+                    source="github:o/r",
+                    authority_metadata=authority,
+                )
+
+            self.assertEqual(result["version"]["status"], "failed")
+            self.assertEqual(result["gen"]["files_written"], 0)
+            self.assertEqual(result["errors"], ["cannot write core"])
+
     def test_update_uses_registered_custom_root_as_update_target(self):
         from studio.commands.kit import install_kit, update_kit
         from studio.utils import toml_utils
@@ -3817,6 +3879,25 @@ class TestUpdateKitExistingBranch(unittest.TestCase):
             with open(adapter / "config" / "core.toml", "rb") as f:
                 data = tomllib.load(f)
             self.assertEqual(data["kits"]["customupdate"]["path"], "custom-kits/customupdate")
+
+    def test_update_existing_returns_core_registration_errors(self):
+        from studio.commands.kit import install_kit, update_kit
+        from studio.utils import toml_utils
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            kit_src = _make_kit_source(Path(td), "updatefail")
+            install_kit(kit_src, adapter, "updatefail")
+            (kit_src / "SKILL.md").write_text("# Updated Skill\n", encoding="utf-8")
+            toml_utils.dump({"version": 2}, kit_src / "conf.toml")
+
+            with patch("studio.commands.kit._register_kit_in_core_toml", return_value=["cannot write core"]):
+                result = update_kit("updatefail", kit_src, adapter, auto_approve=True)
+
+            self.assertEqual(result["version"]["status"], "failed")
+            self.assertEqual(result["gen"]["files_written"], 0)
+            self.assertEqual(result["errors"], ["cannot write core"])
 
     def test_update_manifest_migration_preserves_absolute_bindings_when_relpath_raises(self):
         import studio.commands.kit as kit_module
@@ -5075,6 +5156,57 @@ class TestRegisterKitInCoreToml(unittest.TestCase):
             with open(config / "core.toml", "rb") as f:
                 data = tomllib.load(f)
             self.assertEqual(data["kits"]["mykit"]["path"], r"C:\external-kits\mykit")
+
+    def test_register_returns_write_errors(self):
+        from studio.commands.kit import _register_kit_in_core_toml
+        from studio.utils import toml_utils
+
+        with TemporaryDirectory() as td:
+            config = Path(td)
+            toml_utils.dump({"kits": {}}, config / "core.toml")
+            err = io.StringIO()
+            with redirect_stderr(err), patch("studio.utils.toml_utils.dump", side_effect=OSError("full")):
+                errors = _register_kit_in_core_toml(config, "mykit", "1.0", Path(td))
+
+            self.assertEqual(len(errors), 1)
+            self.assertIn("failed to register mykit", errors[0])
+            self.assertIn("failed to register mykit", err.getvalue())
+
+    def test_install_kit_fails_when_core_registration_fails(self):
+        from studio.commands.kit import install_kit
+        from studio.utils import toml_utils
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            kit_src = _make_kit_source(root, "failkit")
+            studio_dir = root / ".cf-studio"
+            (studio_dir / "config").mkdir(parents=True)
+            toml_utils.dump({"kits": {}}, studio_dir / "config" / "core.toml")
+
+            with patch("studio.commands.kit._register_kit_in_core_toml", return_value=["cannot write core"]):
+                result = install_kit(kit_src, studio_dir, "failkit")
+
+            self.assertEqual(result["status"], "FAIL")
+            self.assertEqual(result["kit"], "failkit")
+            self.assertEqual(result["errors"], ["cannot write core"])
+
+    def test_install_canonical_manifest_fails_when_core_registration_fails(self):
+        from studio.commands.kit import install_kit
+        from studio.utils import toml_utils
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            kit_src = _make_canonical_kit_source(root, "failmanifest")
+            studio_dir = root / ".cf-studio"
+            (studio_dir / "config").mkdir(parents=True)
+            toml_utils.dump({"kits": {}}, studio_dir / "config" / "core.toml")
+
+            with patch("studio.commands.kit._register_kit_in_core_toml", return_value=["cannot write core"]):
+                result = install_kit(kit_src, studio_dir, "failmanifest", install_mode="copy")
+
+            self.assertEqual(result["status"], "FAIL")
+            self.assertEqual(result["kit"], "failmanifest")
+            self.assertEqual(result["errors"], ["cannot write core"])
 
     def test_missing_core_toml(self):
         from studio.commands.kit import _register_kit_in_core_toml

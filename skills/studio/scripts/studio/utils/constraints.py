@@ -1972,6 +1972,7 @@ def parse_kit_constraints(data: object) -> Tuple[Optional[KitConstraints], List[
     return KitConstraints(by_kind=out), []
     # @cpt-end:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-parse-kit
 
+# @cpt-begin:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-constraints-normalize
 def _merge_reference_rule(base: ReferenceRule, incoming: ReferenceRule) -> ReferenceRule:
     return ReferenceRule(
         coverage=incoming.coverage if incoming.coverage is not None else base.coverage,
@@ -2059,7 +2060,7 @@ def merge_kit_constraints_all_of(constraints: Sequence[KitConstraints]) -> Optio
     if not by_kind:
         return None
     return KitConstraints(by_kind=by_kind)
-
+# @cpt-end:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-constraints-normalize
 
 def load_constraints_file(path: Path) -> Tuple[Optional[KitConstraints], List[str]]:
     # @cpt-begin:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-load-toml
