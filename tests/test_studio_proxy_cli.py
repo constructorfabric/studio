@@ -4,6 +4,7 @@ import tarfile
 from io import BytesIO
 import json
 from urllib.error import HTTPError, URLError
+import time
 
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -94,6 +95,124 @@ def test_update_strips_only_positional_cache_version(monkeypatch):
     assert rc == 0
     assert captured["cache"]["version"] == "v1.2.3"
     assert captured["forward_args"] == ["update", "--project-root", "/repo", "--yes"]
+
+
+def test_proxy_check_updates_runs_full_manual_report(monkeypatch, capsys):
+    from studio_proxy import cli
+    import studio_proxy.telemetry as telemetry
+    import studio_proxy.update_check as update_check
+
+    monkeypatch.setattr(telemetry, "track_invocation", lambda _args: None)
+    monkeypatch.setattr(cli, "resolve_skill", lambda: (Path("/tmp/studio.py"), "cache"))
+    monkeypatch.setattr(
+        update_check,
+        "run_update_check",
+        lambda **_kwargs: {
+            "status": "PASS",
+            "updates_available": 3,
+            "checks": {
+                "proxy": {
+                    "component": "constructor-studio-proxy",
+                    "action": "update_available",
+                    "current_version": "1.0.0",
+                    "latest_version": "1.1.0",
+                    "command": "pipx upgrade constructor-studio",
+                },
+                "skill_engine": {
+                    "component": "skill-engine",
+                    "action": "update_available",
+                    "current_version": "v1.0.0",
+                    "latest_version": "v1.1.0",
+                    "command": "cfs update",
+                },
+                "kits": {
+                    "component": "kits",
+                    "action": "update_available",
+                    "updates_available": 1,
+                    "commands": ["cfs kit update sdlc"],
+                },
+            },
+        },
+    )
+
+    rc = cli.main(["check-updates"])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "pipx upgrade constructor-studio" in out
+    assert "cfs update" in out
+    assert "cfs kit update sdlc" in out
+
+
+def test_background_update_check_prints_cached_notices(monkeypatch, tmp_path, capsys):
+    from studio_proxy import cli
+    import studio_proxy.update_check as update_check
+
+    monkeypatch.setenv("CFS_UPDATE_CHECK_FILE", str(tmp_path / "update-check.json"))
+    update_check.write_cached_update_check({
+        "checked_at": int(time.time()),
+        "updates_available": 2,
+        "checks": {
+            "proxy": {
+                "action": "update_available",
+                "current_version": "1.0.0",
+                "latest_version": "1.1.0",
+            },
+            "kits": {
+                "action": "update_available",
+                "updates_available": 1,
+                "commands": ["cfs kit update sdlc"],
+            },
+        },
+    })
+
+    cli._background_version_check(Path("/tmp/studio.py"), ["info"])
+
+    err = capsys.readouterr().err
+    assert "pipx upgrade constructor-studio" in err
+    assert "cfs kit update sdlc" in err
+
+
+def test_background_update_check_spawns_refresh_when_stale(monkeypatch, tmp_path):
+    from studio_proxy import cli
+    import studio_proxy.update_check as update_check
+
+    popen_calls = []
+
+    class FakePopen:
+        def __init__(self, cmd, **_kwargs):
+            popen_calls.append(cmd)
+
+    monkeypatch.setenv("CFS_UPDATE_CHECK_FILE", str(tmp_path / "update-check.json"))
+    update_check.write_cached_update_check({"checked_at": 1, "updates_available": 0, "checks": {}})
+    monkeypatch.setattr(cli.subprocess, "Popen", FakePopen)
+
+    cli._background_version_check(Path("/tmp/studio.py"), ["info", "--project-root", "/repo"])
+
+    assert popen_calls
+    assert "studio_proxy.update_check" in popen_calls[0]
+    assert "--project-root" in popen_calls[0]
+
+
+def test_update_check_kits_parses_skill_engine_json(monkeypatch):
+    import studio_proxy.update_check as update_check
+
+    class Proc:
+        stdout = json.dumps({
+            "updates_available": 1,
+            "commands": ["cfs kit update sdlc"],
+            "results": [{"kit": "sdlc", "action": "update_available"}],
+            "status": "PASS",
+        })
+        stderr = ""
+
+    monkeypatch.setattr(update_check.subprocess, "run", lambda *_args, **_kwargs: Proc())
+
+    result = update_check.check_kits(Path("/tmp/studio.py"))
+
+    assert result["action"] == "update_available"
+    assert result["updates_available"] == 1
+    assert result["commands"] == ["cfs kit update sdlc"]
 
 
 def test_download_and_cache_writes_github_provenance(monkeypatch, tmp_path):

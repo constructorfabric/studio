@@ -2536,6 +2536,102 @@ def _resolve_registered_update_targets(
     return targets, failures
 
 
+def _kit_installed_resolved_ref(kit_data: Dict[str, Any]) -> str:
+    provenance = kit_data.get("source_provenance", {})
+    if isinstance(provenance, dict):
+        resolved_ref = str(provenance.get("resolved_ref") or "")
+        if resolved_ref:
+            return resolved_ref
+    return str(kit_data.get("version") or "")
+
+
+def _kit_installed_commit_sha(kit_data: Dict[str, Any]) -> str:
+    identity = kit_data.get("content_identity", {})
+    if isinstance(identity, dict):
+        commit_sha = str(identity.get("commit_sha") or "")
+        if commit_sha:
+            return commit_sha
+    provenance = kit_data.get("source_provenance", {})
+    if isinstance(provenance, dict):
+        return str(provenance.get("commit_sha") or "")
+    return str(kit_data.get("commit_sha") or "")
+
+
+def _kit_update_check_result(
+    slug: str,
+    kit_data: Dict[str, Any],
+    authority_metadata: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Build a non-mutating update-check result from resolved authority metadata."""
+    authority = _authority_result_summary(authority_metadata) or authority_metadata or {}
+    source_type = str(authority.get("source_type") or "")
+    result: Dict[str, Any] = {
+        "kit": slug,
+        "action": "current",
+        "source": kit_data.get("source", ""),
+        "command": f"cfs kit update {slug}",
+    }
+    if authority:
+        result["authority"] = authority
+
+    if source_type == "github":
+        installed_ref = _kit_installed_resolved_ref(kit_data)
+        latest_ref = str(authority.get("resolved_ref") or "")
+        result["installed_ref"] = installed_ref
+        result["latest_ref"] = latest_ref
+        if installed_ref and latest_ref and installed_ref != latest_ref:
+            result["action"] = "update_available"
+        return result
+
+    if source_type == "git":
+        installed_commit = _kit_installed_commit_sha(kit_data)
+        latest_commit = str(authority.get("commit_sha") or authority.get("resolved_ref") or "")
+        result["installed_commit"] = installed_commit
+        result["latest_commit"] = latest_commit
+        if installed_commit and latest_commit and installed_commit != latest_commit:
+            result["action"] = "update_available"
+        return result
+
+    result["action"] = "failed"
+    result["message"] = "No comparable source authority metadata"
+    return result
+
+
+def _check_registered_kit_updates(
+    kits_map: Dict[str, Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Check remote kit authorities without writing installed kit files."""
+    update_targets, source_failures = _resolve_registered_update_targets(kits_map)
+    results: List[Dict[str, Any]] = []
+    for failure in source_failures:
+        result = {
+            "kit": failure.get("kit", ""),
+            "action": _normalize_kit_update_action(failure.get("action")) or "failed",
+            "source": failure.get("source", ""),
+            "message": failure.get("message", ""),
+        }
+        if failure.get("authority"):
+            result["authority"] = _authority_result_summary(failure.get("authority")) or failure["authority"]
+        results.append(result)
+
+    for update_target in update_targets:
+        if len(update_target) == 4:
+            slug, _kit_source, _source, tmp_dir = update_target
+            authority_metadata = None
+        else:
+            slug, _kit_source, _source, tmp_dir, authority_metadata = update_target
+        try:
+            results.append(_kit_update_check_result(
+                slug,
+                kits_map.get(slug, {}),
+                authority_metadata,
+            ))
+        finally:
+            if tmp_dir:
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+    return results, source_failures
+
+
 # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-build-update-result
 def _normalize_kit_update_action(action: Any) -> str:
     normalized = str(action or "").strip().lower()
@@ -2907,6 +3003,96 @@ def _human_kit_update(data: dict) -> None:
         ui.info(f"Status: {status}")
     ui.blank()
 # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-human-output
+
+
+def cmd_kit_check_updates(argv: List[str]) -> int:
+    """Check registered git/GitHub kit sources for newer remote versions."""
+    p = argparse.ArgumentParser(
+        prog="kit check-updates",
+        description="Check registered git/GitHub kit sources for updates without writing files",
+    )
+    p.add_argument(
+        "slug", nargs="?", default=None,
+        help="Kit slug to check (default: all registered kits)",
+    )
+    p.add_argument("--project-root", default=None, help="Project root directory")
+    args = p.parse_args(argv)
+
+    project_root_arg = Path(args.project_root) if args.project_root else None
+    resolved = _resolve_studio_dir(project_root_arg)
+    if resolved is None:
+        return 1
+    _project_root, studio_dir = resolved
+    config_dir = studio_dir / "config"
+
+    kits_map = _read_kits_from_core_toml(config_dir)
+    if not kits_map:
+        ui.result({
+            "status": "FAIL",
+            "message": "No kits registered in core.toml",
+            "hint": "Install a kit first: cfs kit install owner/repo",
+        })
+        return 2
+
+    if args.slug:
+        if args.slug not in kits_map:
+            ui.result({
+                "status": "FAIL",
+                "message": f"Kit '{args.slug}' not found in core.toml",
+                "hint": f"Registered kits: {', '.join(kits_map.keys())}",
+            })
+            return 2
+        kits_map = {args.slug: kits_map[args.slug]}
+
+    results, _failures = _check_registered_kit_updates(kits_map)
+    updates = [r for r in results if r.get("action") == "update_available"]
+    failures = [
+        r for r in results
+        if _normalize_kit_update_action(r.get("action")) == "failed"
+    ]
+    output: Dict[str, Any] = {
+        "status": "WARN" if failures else "PASS",
+        "updates_available": len(updates),
+        "results": results,
+    }
+    if updates:
+        output["commands"] = [r["command"] for r in updates if r.get("command")]
+        output["message"] = "Kit updates available"
+    else:
+        output["message"] = "All checked kits are up to date"
+    if failures:
+        output["errors"] = [
+            f"{r.get('kit')}: {r.get('message', 'update check failed')}"
+            for r in failures
+        ]
+    ui.result(output, human_fn=_human_kit_check_updates)
+    return 0
+
+
+def _human_kit_check_updates(data: dict) -> None:
+    ui.header("Kit Update Check")
+    ui.detail("Updates available", str(data.get("updates_available", 0)))
+
+    for result in data.get("results", []):
+        slug = result.get("kit", "?")
+        action = result.get("action", "?")
+        if action == "update_available":
+            ui.step(f"{slug}: update available")
+            installed_ref = result.get("installed_ref") or result.get("installed_commit")
+            latest_ref = result.get("latest_ref") or result.get("latest_commit")
+            if installed_ref or latest_ref:
+                ui.substep(f"  installed={installed_ref or '?'} latest={latest_ref or '?'}")
+            ui.hint(f"Run `{result.get('command')}`")
+        elif _normalize_kit_update_action(action) == "failed":
+            ui.warn(f"{slug}: {result.get('message', 'update check failed')}")
+        else:
+            ui.step(f"{slug}: up to date")
+
+    if data.get("updates_available", 0):
+        ui.warn("Kit updates are available.")
+    elif data.get("status") == "PASS":
+        ui.success("All checked kits are up to date.")
+    ui.blank()
 
 # ---------------------------------------------------------------------------
 # Kit Normalize
@@ -3901,17 +4087,18 @@ def cmd_kit_migrate(_argv: List[str]) -> int:
 def cmd_kit(argv: List[str]) -> int:
     """Kit management command dispatcher.
 
-    Usage: cfs kit <install|update|validate|normalize|migrate> [options]
+    Usage: cfs kit <install|update|check-updates|validate|normalize|migrate> [options]
     """
     # @cpt-begin:cpt-studio-flow-kit-dispatch:p1:inst-parse-subcmd
-    subcommands = ["install", "update", "validate", "normalize", "migrate"]
-    usage = "cfs kit <install|update|validate|normalize|migrate> [options]"
+    subcommands = ["install", "update", "check-updates", "validate", "normalize", "migrate"]
+    usage = "cfs kit <install|update|check-updates|validate|normalize|migrate> [options]"
     descriptions = {
         "install": [
             ("<owner/repo[@ref]>", "Install a kit from GitHub"),
             ("--path <dir>", "Install a kit from a local directory"),
         ],
         "update": [("[slug|--path <dir>]", "Update installed kit files")],
+        "check-updates": [("[slug]", "Check git/GitHub kit sources for updates")],
         "validate": [("", "Validate kit structure and examples")],
         "normalize": [("<path> [--dry-run]", "Generate .cf-studio-kit.toml from a kit source")],
         "migrate": [("", "Deprecated; use update")],
@@ -3949,6 +4136,8 @@ def cmd_kit(argv: List[str]) -> int:
         return cmd_kit_install(rest)
     elif subcmd == "update":
         return cmd_kit_update(rest)
+    elif subcmd == "check-updates":
+        return cmd_kit_check_updates(rest)
     elif subcmd == "validate":
         from .validate_kits import cmd_validate_kits
         return cmd_validate_kits(rest)

@@ -24,6 +24,18 @@ _SUPPORTING_KINDS = {
     "other",
 }
 _LEGACY_KIND_ALIASES = {"workflow": "skill"}
+_LEGACY_MANIFEST_DEPRECATION_WARNING = (
+    "legacy manifest.toml is supported for migration; publish "
+    ".cf-studio-kit.toml for new kits"
+)
+_LEGACY_LAYOUT_DEPRECATION_WARNING = (
+    "layout-only kit discovery is supported for migration; publish "
+    ".cf-studio-kit.toml for new kits"
+)
+_LEGACY_WORKFLOW_DEPRECATION_WARNING = (
+    "legacy workflow resources are normalized to public skill resources; "
+    "use kind = \"skill\" in .cf-studio-kit.toml"
+)
 
 
 # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-datamodel
@@ -722,7 +734,12 @@ def _load_legacy_manifest_model(kit_source: Path) -> Optional[KitModel]:
         return None
     conf_slug, conf_version = _read_conf_metadata(kit_source)
     slug = conf_slug or kit_source.name
-    warnings = ["legacy manifest.toml normalized to canonical KitModel"]
+    # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-rollout-docs-deprecation
+    warnings = [
+        "legacy manifest.toml normalized to canonical KitModel",
+        _LEGACY_MANIFEST_DEPRECATION_WARNING,
+    ]
+    # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-rollout-docs-deprecation
     resources: List[KitResource] = []
     if isinstance(manifest, Manifest):
         resources = [
@@ -754,6 +771,8 @@ def _load_legacy_manifest_model(kit_source: Path) -> Optional[KitModel]:
                 warnings.append(
                     f"Legacy workflow '{workflow.id}' normalized to public skill resource",
                 )
+                if _LEGACY_WORKFLOW_DEPRECATION_WARNING not in warnings:
+                    warnings.append(_LEGACY_WORKFLOW_DEPRECATION_WARNING)
                 # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-workflows-to-skills
                 # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-workflow-to-skill
         for skill in manifest.skills:
@@ -793,9 +812,15 @@ def _load_layout_model(kit_source: Path) -> KitModel:
     conf_slug, conf_version = _read_conf_metadata(kit_source)
     slug = conf_slug or kit_source.name
     resources: List[KitResource] = []
+    warnings = [
+        "legacy layout normalized to canonical KitModel",
+        _LEGACY_LAYOUT_DEPRECATION_WARNING,
+    ]
     for dirname in _LEGACY_CONTENT_DIRS:
         path = kit_source / dirname
         if path.is_dir():
+            if dirname == "workflows" and _LEGACY_WORKFLOW_DEPRECATION_WARNING not in warnings:
+                warnings.append(_LEGACY_WORKFLOW_DEPRECATION_WARNING)
             resources.append(KitResource(
                 id=dirname,
                 kind="skill" if dirname == "workflows" else "directory",
@@ -832,7 +857,7 @@ def _load_layout_model(kit_source: Path) -> KitModel:
             version=conf_version,
             manifest_source="legacy_layout",
             resources=resources,
-            warnings=["legacy layout normalized to canonical KitModel"],
+            warnings=warnings,
         ),
     )
 

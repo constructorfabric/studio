@@ -16,7 +16,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from studio_proxy.resolve import (
     find_cached_skill,
@@ -172,6 +172,63 @@ def _handle_mirror(args: List[str]) -> int:
     return 0
 
 
+def _handle_check_updates(args: List[str]) -> int:
+    """Run a foreground full update check for proxy, skill engine, and kits."""
+    import argparse
+    import json
+    from studio_proxy.update_check import run_update_check
+
+    parser = argparse.ArgumentParser(
+        prog="cfs check-updates",
+        description="Check constructor-studio proxy, skill engine, and installed kits for updates",
+    )
+    parser.add_argument("--project-root", default="")
+    parser.add_argument("--json", action="store_true")
+    parsed = parser.parse_args(args)
+
+    skill_path, _source = resolve_skill()
+    data = run_update_check(
+        skill_path=skill_path,
+        project_root=parsed.project_root,
+        include_kits=True,
+        write_cache=True,
+    )
+    if parsed.json:
+        print(json.dumps(data, indent=2, sort_keys=True))
+        return 0
+    _print_update_check_human(data)
+    return 0
+
+
+def _print_update_check_human(data: Dict[str, Any]) -> None:
+    print("Constructor Studio Update Check")
+    print(f"Updates available: {data.get('updates_available', 0)}")
+    checks = data.get("checks", {})
+    for name in ("proxy", "skill_engine", "kits"):
+        check = checks.get(name, {})
+        if not isinstance(check, dict):
+            continue
+        action = check.get("action", "unknown")
+        component = check.get("component", name)
+        if action == "update_available":
+            print(f"- {component}: update available")
+            current = check.get("current_version") or check.get("updates_available")
+            latest = check.get("latest_version", "")
+            if current or latest:
+                print(f"  installed: {current or '?'}")
+                if latest:
+                    print(f"  latest:    {latest}")
+            command = check.get("command")
+            if command:
+                print(f"  run: {command}")
+            for command in check.get("commands", []) or []:
+                print(f"  run: {command}")
+        elif action == "current":
+            print(f"- {component}: up to date")
+        else:
+            print(f"- {component}: unknown ({check.get('message', 'check failed')})")
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     """
     Main entry point for the cfs / constructor-studio command.
@@ -188,6 +245,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     from studio_proxy.telemetry import track_invocation
     track_invocation(args)
     # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-telemetry
+
+    if args and args[0] == "check-updates":
+        return _handle_check_updates(args[1:])
 
     # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
     # Handle --version with no value: show version info
@@ -401,8 +461,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-engine-execute
 
     # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-bg-version-check
-    if source == "project" and not os.environ.get("CFS_NO_VERSION_CHECK"):
-        _background_version_check(skill_path)
+    if not os.environ.get("CFS_NO_VERSION_CHECK"):
+        _background_version_check(skill_path, args)
     # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-bg-version-check
 
     # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-return-exit
@@ -438,36 +498,88 @@ def _forward_to_skill(skill_path: Path, args: List[str]) -> int:
     # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-forward-cache
     # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-forward-project
 
-def _background_version_check(project_skill_path: Path) -> None:
+def _background_version_check(project_skill_path: Path, args: Optional[List[str]] = None) -> None:
     """
     Non-blocking background version check.
 
-    Compares cached version with project version and prints
-    update notice to stderr if cached is newer.
+    Prints cached update notices, then refreshes the cache in a detached
+    subprocess. The foreground cfs command never waits for network I/O.
 
     """
+    args = args or []
+    if "--json" in args:
+        return
     try:
-        cached_version = get_cached_version()
-        if cached_version is None:
-            return
-
-        project_version = get_project_version(project_skill_path)
-        if project_version is None:
-            return
-
+        from studio_proxy.update_check import read_cached_update_check, should_refresh
+        cached = read_cached_update_check()
         # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-version-mismatch
         # @cpt-begin:cpt-studio-state-core-infra-project-install:p1:inst-version-mismatch
-        if _normalize_version_for_compare(cached_version) != _normalize_version_for_compare(project_version):
-            # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-show-update-notice
-            sys.stderr.write(
-                f"cfs: update available ({project_version} → {cached_version}). "
-                f"Run: cfs update\n"
-            )
-            # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-show-update-notice
+        _print_cached_update_notices(cached)
+        if should_refresh(cached):
+            _spawn_update_check_worker(project_skill_path, args)
         # @cpt-end:cpt-studio-state-core-infra-project-install:p1:inst-version-mismatch
         # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-version-mismatch
     except (OSError, ValueError):
         pass  # Never fail the actual command for a version check
+
+
+def _print_cached_update_notices(cached: Optional[Dict[str, Any]]) -> None:
+    # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-show-update-notice
+    if not cached or not cached.get("updates_available"):
+        return
+    checks = cached.get("checks", {})
+    if not isinstance(checks, dict):
+        return
+    proxy = checks.get("proxy", {})
+    if isinstance(proxy, dict) and proxy.get("action") == "update_available":
+        sys.stderr.write(
+            "cfs: constructor-studio proxy update available "
+            f"({proxy.get('current_version', '?')} -> {proxy.get('latest_version', '?')}). "
+            "Run: pipx upgrade constructor-studio\n"
+        )
+    skill = checks.get("skill_engine", {})
+    if isinstance(skill, dict) and skill.get("action") == "update_available":
+        sys.stderr.write(
+            "cfs: skill engine update available "
+            f"({skill.get('current_version', '?')} -> {skill.get('latest_version', '?')}). "
+            "Run: cfs update\n"
+        )
+    kits = checks.get("kits", {})
+    if isinstance(kits, dict) and kits.get("updates_available"):
+        commands = kits.get("commands") or []
+        command_hint = ", ".join(str(command) for command in commands[:3])
+        if not command_hint:
+            command_hint = "cfs kit update"
+        sys.stderr.write(
+            f"cfs: {kits.get('updates_available')} kit update(s) available. "
+            f"Run: {command_hint}\n"
+        )
+    # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-show-update-notice
+
+
+def _spawn_update_check_worker(project_skill_path: Path, args: List[str]) -> None:
+    project_root = _peek_named_param(args, "--project-root") or ""
+    cmd = [
+        sys.executable,
+        "-m",
+        "studio_proxy.update_check",
+        "--skill-path",
+        str(project_skill_path),
+        "--write-cache",
+    ]
+    if project_root:
+        cmd.extend(["--project-root", project_root])
+    try:
+        with open(os.devnull, "w", encoding="utf-8") as devnull:
+            subprocess.Popen(  # pylint: disable=consider-using-with  # detached advisory worker
+                cmd,
+                stdin=devnull,
+                stdout=devnull,
+                stderr=devnull,
+                close_fds=True,
+            )
+    except OSError:
+        pass
 
 
 def _normalize_version_for_compare(version: str) -> str:

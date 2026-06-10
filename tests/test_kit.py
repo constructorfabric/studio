@@ -174,6 +174,9 @@ class TestKitNormalize(unittest.TestCase):
             self.assertEqual(out["kit"], "manifestkit")
             self.assertEqual(out["report"]["manifest_source"], "legacy_manifest")
             self.assertRegex(out["report"]["content_identity"]["manifest_semantic_hash"], r"^[0-9a-f]{64}$")
+            warnings = "\n".join(out["report"]["warnings"])
+            self.assertIn("legacy manifest.toml is supported for migration", warnings)
+            self.assertIn(".cf-studio-kit.toml", warnings)
             self.assertIn("[kit]", out["manifest"])
             self.assertIn("[[resources]]", out["manifest"])
             self.assertFalse((kit_src / ".cf-studio-kit.toml").exists())
@@ -191,6 +194,9 @@ class TestKitNormalize(unittest.TestCase):
             self.assertEqual(out["status"], "PASS")
             manifest_path = kit_src / ".cf-studio-kit.toml"
             self.assertEqual(Path(out["output"]).resolve(), manifest_path.resolve())
+            warnings = "\n".join(out["report"]["warnings"])
+            self.assertIn("layout-only kit discovery is supported for migration", warnings)
+            self.assertIn("legacy workflow resources are normalized to public skill resources", warnings)
             with open(manifest_path, "rb") as f:
                 data = tomllib.load(f)
             self.assertEqual(data["kit"]["slug"], "layoutkit")
@@ -512,7 +518,10 @@ class TestKitNormalize(unittest.TestCase):
             self.assertEqual(model.resources[0].kind, "skill")
             self.assertEqual(model.resources[0].origin, "legacy-workflow")
             self.assertEqual(model.public_components[0].generated_name, "cf-legacyv2-release")
-            self.assertIn("Legacy workflow 'release'", "\n".join(model.warnings))
+            warnings = "\n".join(model.warnings)
+            self.assertIn("Legacy workflow 'release'", warnings)
+            self.assertIn("legacy workflow resources are normalized to public skill resources", warnings)
+            self.assertIn('use kind = "skill"', warnings)
 
     def test_kit_model_warns_on_unknown_canonical_fields_and_rejects_binding_path(self):
         from studio.utils.kit_model import load_kit_model
@@ -1444,6 +1453,131 @@ class TestCmdKitUpdate(unittest.TestCase):
                 self.assertEqual([r["action"] for r in out["results"]], ["failed", "updated"])
                 self.assertTrue(any("unexpected update error" in err for err in out.get("errors", [])))
                 regen_mock.assert_not_called()
+            finally:
+                os.chdir(cwd)
+
+    def test_check_updates_reports_github_update_command(self):
+        import studio.commands.kit as kit_module
+        from studio.commands.kit import cmd_kit_check_updates
+        from studio.utils import toml_utils
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            kit_src = _make_kit_source(Path(td), "sdlc")
+            toml_utils.dump({
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {
+                    "sdlc": {
+                        "format": "CFS",
+                        "path": "config/kits/sdlc",
+                        "version": "v1.0.0",
+                        "source": "github:o/r",
+                        "source_provenance": {
+                            "source_type": "github",
+                            "resolved_ref": "v1.0.0",
+                        },
+                    },
+                },
+            }, adapter / "config" / "core.toml")
+
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                with patch.object(
+                    kit_module,
+                    "_resolve_registered_update_targets",
+                    return_value=([
+                        ("sdlc", kit_src, "github:o/r", None, {
+                            "source_type": "github",
+                            "resolved_ref": "v1.1.0",
+                            "resolver_mode": "latest_release",
+                            "resolution_basis": "github_release",
+                            "freshness": "fresh",
+                        }),
+                    ], []),
+                ):
+                    buf = io.StringIO()
+                    with redirect_stdout(buf):
+                        rc = cmd_kit_check_updates([])
+                self.assertEqual(rc, 0)
+                out = json.loads(buf.getvalue())
+                self.assertEqual(out["status"], "PASS")
+                self.assertEqual(out["updates_available"], 1)
+                self.assertEqual(out["commands"], ["cfs kit update sdlc"])
+                self.assertEqual(out["results"][0]["action"], "update_available")
+                self.assertEqual(out["results"][0]["installed_ref"], "v1.0.0")
+                self.assertEqual(out["results"][0]["latest_ref"], "v1.1.0")
+            finally:
+                os.chdir(cwd)
+
+    def test_check_updates_reports_generic_git_commit_update(self):
+        from studio.commands.kit import _kit_update_check_result
+
+        result = _kit_update_check_result(
+            "custom",
+            {
+                "source": "git:https://example.com/org/repo.git",
+                "content_identity": {"commit_sha": "old123"},
+            },
+            {
+                "source_type": "git",
+                "resolved_ref": "new456",
+                "commit_sha": "new456",
+                "canonical_source": "git:https://example.com/org/repo.git",
+                "freshness": "fresh",
+            },
+        )
+
+        self.assertEqual(result["action"], "update_available")
+        self.assertEqual(result["command"], "cfs kit update custom")
+        self.assertEqual(result["installed_commit"], "old123")
+        self.assertEqual(result["latest_commit"], "new456")
+
+    def test_check_updates_remote_failure_is_nonblocking_warn(self):
+        import studio.commands.kit as kit_module
+        from studio.commands.kit import cmd_kit_check_updates
+        from studio.utils import toml_utils
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            toml_utils.dump({
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {
+                    "sdlc": {
+                        "format": "CFS",
+                        "path": "config/kits/sdlc",
+                        "version": "v1.0.0",
+                        "source": "github:o/r",
+                    },
+                },
+            }, adapter / "config" / "core.toml")
+
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                with patch.object(
+                    kit_module,
+                    "_resolve_registered_update_targets",
+                    return_value=([], [{
+                        "kit": "sdlc",
+                        "action": "failed",
+                        "source": "github:o/r",
+                        "message": "GitHub unavailable",
+                    }]),
+                ):
+                    buf = io.StringIO()
+                    with redirect_stdout(buf):
+                        rc = cmd_kit_check_updates([])
+                self.assertEqual(rc, 0)
+                out = json.loads(buf.getvalue())
+                self.assertEqual(out["status"], "WARN")
+                self.assertEqual(out["updates_available"], 0)
+                self.assertEqual(out["results"][0]["action"], "failed")
+                self.assertIn("GitHub unavailable", out["errors"][0])
             finally:
                 os.chdir(cwd)
 

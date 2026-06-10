@@ -687,7 +687,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 3. [ ] - `p1` - Make `cfs kit install --path` support copy/register using compact `core.toml` bindings - `inst-rollout-path-install`
 4. [ ] - `p1` - Make `generate-agents` consume `KitModel.public_components` and emit skills-only public workflow replacements - `inst-rollout-generate-agents`
 5. [ ] - `p1` - Add update, prune, drift, hash, and risk-fingerprint behavior - `inst-rollout-update-drift`
-6. [ ] - `p1` - Add docs, warnings, and deprecation messaging for legacy `manifest.toml`, legacy workflow resources, and layout-only kits - `inst-rollout-docs-deprecation`
+6. [x] - `p1` - Add docs, warnings, and deprecation messaging for legacy `manifest.toml`, legacy workflow resources, and layout-only kits - `inst-rollout-docs-deprecation`
 
 ### Manifest-Driven Installation
 
