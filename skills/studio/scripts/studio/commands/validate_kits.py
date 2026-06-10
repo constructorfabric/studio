@@ -275,25 +275,22 @@ def _validate_kit_by_path(kit_path: Path, *, verbose: bool = False) -> Tuple[int
     # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-structural-check
 
     # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-verify-resource-paths
-    # ── Phase 1b: Manifest resource verification ─────────────────────
+    # ── Phase 1b: KitModel resource verification ─────────────────────
     try:
-        from ..utils.manifest import load_manifest, validate_manifest
-        manifest = load_manifest(kit_dir)
-        if manifest is not None:
-            manifest_errs = validate_manifest(manifest, kit_dir)
-            for me in manifest_errs:
-                all_errors.append(constraints_error(
-                    "resources",
-                    me,
-                    path=(kit_dir / "manifest.toml"),
-                    line=1,
-                    kit=slug,
-                ))
+        from ..utils.kit_model import load_kit_model
+        model = load_kit_model(kit_dir)
+        if verbose:
+            kit_report["manifest_source"] = model.manifest_source
+            kit_report["resource_count"] = len(model.resources)
+            kit_report["public_components"] = [
+                component.generated_name
+                for component in model.public_components
+            ]
     except ValueError as exc:
         all_errors.append(constraints_error(
             "resources",
             str(exc),
-            path=(kit_dir / "manifest.toml"),
+            path=kit_dir,
             line=1,
             kit=slug,
         ))

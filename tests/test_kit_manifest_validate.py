@@ -635,7 +635,10 @@ class TestValidateKitByPathManifest(unittest.TestCase):
                 },
             ])
 
-            rc, result = _validate_kit_by_path(kit_dir)
+            rc, result = _validate_kit_by_path(kit_dir, verbose=True)
+            self.assertEqual(rc, 0)
+            self.assertEqual(result["kits"][0]["manifest_source"], "legacy_manifest")
+            self.assertEqual(result["kits"][0]["resource_count"], 1)
             resource_errors = [
                 e for e in result.get("errors", [])
                 if e.get("type") == "resources"
