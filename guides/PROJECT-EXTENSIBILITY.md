@@ -3,685 +3,268 @@
 
 <!-- toc -->
 
-- [The Problem](#the-problem)
-- [The Orchestrator Repo Pattern](#the-orchestrator-repo-pattern)
-- [Four-Layer Manifest Hierarchy](#four-layer-manifest-hierarchy)
-  - [Filesystem Layout](#filesystem-layout)
-  - [Resolution Semantics](#resolution-semantics)
-- [Manifest Format](#manifest-format)
-  - [Component Sections](#component-sections)
-  - [Includes Directive](#includes-directive)
-  - [Agent Definitions](#agent-definitions)
-  - [Extended Agent Fields](#extended-agent-fields)
-  - [Skill Definitions](#skill-definitions)
-  - [Workflow Definitions](#workflow-definitions)
-  - [Rule Definitions](#rule-definitions)
-  - [Hook Definitions (Future)](#hook-definitions-future)
-  - [Permissions (Future)](#permissions-future)
-- [Section Appending](#section-appending)
-- [Cross-Agent Translation](#cross-agent-translation)
-- [Examples](#examples)
-  - [Standalone Repo](#standalone-repo)
-  - [Multi-Repo Hierarchy with Includes](#multi-repo-hierarchy-with-includes)
-  - [The standctl Case](#the-standctl-case)
-- [Discovery Mode](#discovery-mode)
-- [Backward Compatibility](#backward-compatibility)
-- [Relationship with Workspace Federation](#relationship-with-workspace-federation)
-  - [How They Compose](#how-they-compose)
-  - [Orchestrator Repo with Sub-Projects](#orchestrator-repo-with-sub-projects)
-  - [Current Limitations](#current-limitations)
-  - [Potential Improvements](#potential-improvements)
-- [Future Work](#future-work)
+- [1. What This Guide Is For](#1-what-this-guide-is-for)
+- [2. The Current Model](#2-the-current-model)
+- [3. Register a Local Kit](#3-register-a-local-kit)
+- [4. Recommended Local Kit Layout](#4-recommended-local-kit-layout)
+- [5. What Belongs in a Project Kit](#5-what-belongs-in-a-project-kit)
+- [6. Register Mode vs Copy Mode](#6-register-mode-vs-copy-mode)
+- [7. Multi-Repository Projects](#7-multi-repository-projects)
+- [8. Updating and Validating](#8-updating-and-validating)
+- [9. Migrating from Old Manifest-Based Extensibility](#9-migrating-from-old-manifest-based-extensibility)
+- [Further Reading](#further-reading)
 
 <!-- /toc -->
 
-This guide explains how Constructor Studio's manifest hierarchy enables projects and orchestrator repos to declare their own skills, agents, workflows, and rules — all discoverable by `cfs generate-agents`.
----
+This guide explains how to extend Constructor Studio for one project or organization.
 
-## The Problem
+> **Convention**: 🖥 = run in a terminal. 💬 = paste into your artificial intelligence (AI) coding tool chat.
 
-Constructor Studio generates agent entry points (skills, workflows, subagents) for five AI coding tools from a built-in registry. Without project-level extensibility, there is no mechanism for individual projects to:
+## 1. What This Guide Is For
 
-1. **Add their own skills** — a project that defines custom skills, agents, or workflows cannot register them through `cfs generate-agents`
-2. **Extend base templates** — projects cannot augment Constructor Studio's generated SKILL.md or workflow proxies with project-specific content
-3. **Register custom agents/subagents** — project-level agents live outside Constructor Studio's awareness
-4. **Include component packages** — tools like standctl that distribute agents and skills as subdirectories within a repo have no way to participate in generation
+Use project-level extensibility when the default Constructor Studio setup is not enough for your repository or organization.
 
-The result: project-level components work as standalone agent features but aren't portable across agent tools and aren't managed by `cfs generate-agents`.
+Typical reasons:
 
----
+- your team needs project-specific skills, templates, rules, or review checklists
+- your organization wants the same delivery process across many repositories
+- product, architecture, quality, security, operations, and development teams need shared artifact formats
+- the built-in Software Development Life Cycle (SDLC) kit is a good starting point, but your organization needs stricter rules or different document structure
 
-## The Orchestrator Repo Pattern
+The current recommended mechanism is a **local kit registered in place**.
 
-Constructor Studio supports an **orchestrator repo** pattern — a parent repository that organizes and coordinates many independent project repos. This provides monorepo-like discoverability with multi-repo isolation.
+## 2. The Current Model
 
-The orchestrator repo holds:
-- Organization-wide skills, agents, and rules (available to all child repos)
-- Shared templates and conventions (inherited via manifest hierarchy)
-- The filesystem structure that `cfs generate-agents` walks to discover what applies where
+Project-level extensibility is now kit-based.
 
-Each child repo remains an independent git repository with its own CI, permissions, and history. When Constructor Studio runs inside a child repo, it walks up the filesystem to discover what the orchestrator provides — and merges those contributions into the generated output.
+Instead of declaring project skills and agents through a standalone project `manifest.toml`, put those resources into a local kit and register it:
 
-This follows a git/golang-style convention for repo organization:
-
-```text
-{base_dir}/orchestrator-repo/git/{host}/{project}/{repo}
-```
-
-Where `{base_dir}` defaults to `~` or `~/code` and is configurable via:
-- Environment variable: `STUDIO_BASE_DIR`
-- Master repo config: `[manifest] base_dir = "~/code"`
-
-The current `generate-agents` CLI does not expose a `--base-dir` flag; pass
-`--root` to choose the project being generated.
-
----
-
-## Four-Layer Manifest Hierarchy
-
-When `cfs generate-agents` runs, it resolves components from four layers. Innermost scope wins on conflicts:
-
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│  4. Repo Layer                                                  │
-│     .cf-studio/config/manifest.toml                             │
-│     Repo-specific agents, skills, rules                         │
-├─────────────────────────────────────────────────────────────────┤
-│  3. Master Repo Layer                                           │
-│     {base_dir}/orchestrator/manifest.toml                       │
-│     Shared across all repos in the orchestrator                 │
-├─────────────────────────────────────────────────────────────────┤
-│  2. Kit Layer                                                   │
-│     manifest.toml in installed kit package                      │
-│     [[resources]], [[agents]], etc.                              │
-├─────────────────────────────────────────────────────────────────┤
-│  1. Core Layer (constructor-studio)                              │
-│     Built-in workflows, SKILL.md, AGENTS.md                     │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-> **Future**: Organization (git host root) and Project (parent of repo dir) layers will be added in a follow-up, expanding to six layers.
-
-### Filesystem Layout
-
-```text
-~/code/                                  # base_dir
-└── orchestrator-repo/                   # Layer 3: Master repo
-    ├── manifest.toml
-    ├── skills/
-    ├── standctl/                        # Included via includes directive
-    │   ├── manifest.toml
-    │   └── agents/
-    └── git/
-        └── git.example.com/
-            └── my-project/
-                ├── service-a/          # Layer 4: Repo
-                │   ├── .cf-studio/config/
-                │   │   └── manifest.toml
-                │   └── ...
-                └── service-b/
-                    └── ...
-```
-
-### Resolution Semantics
-
-**Walk-up discovery**: When `cfs generate-agents` runs inside a repo, it loads the repo layer from the active setup directory's `config/manifest.toml`, then walks up the directory tree looking for the master repo boundary:
-
-- **Repo layer**: `{setup-dir}/config/manifest.toml`; ordinary projects use `.cf-studio/`, while this repository uses `.bootstrap/` as a self-hosted exception
-- **Master repo**: `.git`, or `CLAUDE.md` + `skills/` at the same level
-
-**Merge order**: Innermost scope wins for the same component ID:
-```text
-Core → Kit → Master Repo → Repo
-                             ↑ wins
-```
-
-**Section appending** stacks across layers — each layer can append content to generated templates.
-
-Walk-up discovery stops at the master repo root. If no master repo is found, only Core + Kit + Repo layers apply — this is the standalone-repo case, fully backward compatible.
-
----
-
-## Manifest Format
-
-All layers use the same `manifest.toml` format. Version `"2.0"` enables component sections; version `"1.0"` manifests (resources-only) continue to work unchanged.
-
-```toml
-[manifest]
-version = "2.0"
-scope = "repo"    # "kit", "master", "repo"
-```
-
-The `scope` field is informational — layer identity is determined by filesystem position during walk-up discovery.
-
-### Component Sections
-
-A manifest can declare any combination of components:
-
-```toml
-[[agents]]      # Agent/subagent definitions
-[[skills]]      # Skill definitions
-[[workflows]]   # Workflow definitions
-[[rules]]       # Rule definitions
-[[hooks]]       # Hook definitions (reserved — not yet implemented)
-[[permissions]] # MCP tool allowlisting (reserved — not yet implemented)
-[[resources]]   # Kit resource bindings (kit layer only)
-```
-
-### Includes Directive
-
-Manifests can include subdirectory manifests using the `includes` array. This enables component packages (like standctl) to live as subdirectories within a repo while participating in generation:
-
-```toml
-[manifest]
-version = "2.0"
-scope = "repo"
-
-includes = [
-  "standctl/manifest.toml",
-  "another-tool/manifest.toml",
-]
-```
-
-**Semantics**:
-- Paths are relative to the directory containing the including manifest
-- Included manifests are loaded at the **same layer** as the includer (they don't create a new layer)
-- `prompt_file` and `source` paths in included manifests resolve relative to the *included* manifest's directory (not the includer's)
-- Component ID collisions between includer and includee are **errors** (not silent overrides)
-- Circular includes are detected and rejected
-- Includes are processed recursively (an included manifest can have its own `includes`), max depth: 3
-
-**Why `includes` over alternatives**:
-
-| Alternative | Why not |
-|---|---|
-| Flatten everything into root manifest | Breaks modularity — standctl's definitions belong with standctl's content |
-| Register subdirs as "kits" | Kits are installable packages with versioning; standctl is just a folder |
-| Convention-based scanning (`**/manifest.toml`) | Expensive, implicit, fragile |
-| Symlinks | Platform-dependent, git doesn't handle well |
-
-### Agent Definitions
-
-Agent definitions use an extended semantic schema that translates to tool-native frontmatter:
-
-```toml
-[[agents]]
-id = "go-stand-deployer"
-description = "Build and deploy Go projects to test stands"
-prompt_file = "agents/go-stand-deployer.md"    # relative to manifest dir
-mode = "readwrite"                              # "readwrite" or "readonly"
-isolation = false                               # worktree isolation (Claude Code)
-model = "cf:inherit"                            # cf:inherit, cf:auto, or cf:tier:{cheap,balanced,expensive}
-agents = ["claude", "cursor", "copilot"]        # which tools to generate for
-```
-
-### Extended Agent Fields
-
-Beyond the base fields, agents can declare tool-specific properties:
-
-```toml
-[[agents]]
-id = "go-stand-deployer"
-description = "Build and deploy Go projects to test stands"
-prompt_file = "agents/go-stand-deployer.md"
-mode = "readwrite"
-isolation = false
-model = "cf:inherit"
-
-# Extended fields
-color = "pink"                                              # Claude Code only
-memory_dir = ".claude/agent-memory/go-stand-deployer"       # Persistent memory path
-tools = [                                                   # Explicit tool allowlist
-  "mcp__standctl__standctl_login",
-  "mcp__standctl__standctl_deploy",
-  "mcp__standctl__standctl_pods",
-  "Bash", "Read", "Write", "Edit", "Glob", "Grep",
-]
-# disallowed_tools = ["Write", "Edit"]                      # Alternative: denylist (mutually exclusive with tools)
-
-agents = ["claude", "cursor", "copilot", "openai"]
-```
-
-| Field | Type | Description | Claude | Cursor | Copilot | Codex |
-|-------|------|-------------|--------|--------|---------|-------|
-| `tools` | string[] | Explicit tool allowlist | `tools:` list | limited | `tools` array | n/a (MCP level) |
-| `disallowed_tools` | string[] | Explicit tool denylist | `disallowedTools:` | n/a | n/a | n/a |
-| `color` | string | Agent color | `color:` | n/a | n/a | n/a |
-| `memory_dir` | string | Persistent memory path | prompt body | n/a | n/a | n/a |
-| `model` | string | Model tier or inherit policy | `model:` | `model:` | n/a | `model` |
-| `mode` | string | Access level | tools/disallowed | `readonly:` | tools | `sandbox_mode` |
-| `isolation` | bool | Isolated context | `isolation: worktree` | n/a | n/a | n/a |
-
-**Codex-specific mapping**: `mode: readonly` → `sandbox_mode = "read-only"`, `mode: readwrite` → `sandbox_mode = "workspace-write"`. Per-agent tool restrictions are not supported in Codex (managed at MCP server level).
-
-**`tools` and `disallowed_tools` are mutually exclusive** — specifying both on the same agent is an error.
-
-### Skill Definitions
-
-```toml
-[[skills]]
-id = "standctl"
-description = "Standctl MCP tools usage guide for test stand management"
-prompt_file = "skills/standctl/SKILL.md"    # relative to manifest dir
-agents = ["claude", "cursor", "windsurf"]
-```
-
-Skills generate agent-visible skill files. Claude Code gets native `.claude/skills/{id}/SKILL.md` files. Cursor, Copilot, Codex, and Windsurf currently share `.agents/skills/{id}/SKILL.md`. Manifest skills coexist with kit-composed skills (the `@cpt:skill` mechanism) — they use different code paths and output directories.
-
-### Workflow Definitions
-
-```toml
-[[workflows]]
-id = "deploy"
-description = "Build, push, and deploy to a test stand"
-source = "skills/deploy.py"
-agents = ["claude", "cursor", "windsurf"]
-```
-
-### Rule Definitions
-
-```toml
-[[rules]]
-id = "standctl-conventions"
-description = "Conventions for interacting with test stands"
-source = "guidelines/standctl.md"
-agents = ["claude", "cursor", "windsurf"]
-```
-
-### Hook Definitions (Future)
-
-> **Note**: Hook support is reserved in the schema but not yet implemented. The `[[hooks]]` section will be supported in a follow-up feature.
-
-```toml
-# Example (not yet supported):
-[[hooks]]
-event = "SessionEnd"
-command = "standctl review-session --hook"
-agents = ["claude"]
-```
-
-### Permissions (Future)
-
-> **Note**: Permissions support is reserved in the schema but not yet implemented. This is an important follow-up — granting MCP tool permissions is currently a manual, time-consuming process for projects using MCP servers.
-
-```toml
-# Example (not yet supported):
-[[permissions]]
-id = "standctl-mcp-tools"
-description = "Allow standctl MCP tools for stand management"
-target_agent = "claude"
-allow = [
-  "mcp__standctl__standctl_curl",
-  "mcp__standctl__standctl_pods",
-  "mcp__standctl__standctl_logs",
-  # ... (17 tools total for standctl)
-]
-```
-
-When implemented, `cfs generate-agents` will merge `allow` entries into `.claude/settings.local.json` (additive, idempotent). Without this, importing a tool like standctl via Constructor Studio still requires manually running the tool's own setup command just for the permissions side-effect.
-
----
-
-## Section Appending
-
-For MVP, template composition uses section appending — inner layers can append content to generated templates. Each component can declare `append` content that is added after the base content.
-
-```toml
-# Master repo manifest — append standctl tools to the skill
-[[skills]]
-id = "standctl"
-description = "Standctl MCP tools"
-prompt_file = "skills/standctl/SKILL.md"
-agents = ["claude"]
-append = """
-
-## Stand Management Quick Reference
-- `standctl pods` — List pods
-- `standctl logs` — View logs
-- `standctl deploy` — Deploy image
-"""
-```
-
-Appends from multiple layers stack in resolution order (outermost first, innermost last).
-
-> **Future**: Full block-based template composition with `<!-- @block:NAME -->` markers and operations (replace, prepend, append, delete, insert_after, insert_before) will be added in a follow-up feature.
-
----
-
-## Cross-Agent Translation
-
-Each component type maps to agent-native formats. `cfs generate-agents` handles the translation:
-
-| Component | Claude | Cursor | Windsurf | Copilot | Codex |
-|-----------|--------|--------|----------|---------|-------|
-| Skill | `.claude/skills/*/SKILL.md` | `.agents/skills/*/SKILL.md` | `.agents/skills/*/SKILL.md` | `.agents/skills/*/SKILL.md` | `.agents/skills/*/SKILL.md` |
-| Workflow | `.claude/commands/*.md` | `.cursor/commands/*.md` | `.windsurf/workflows/*.md` | `.github/prompts/*.prompt.md` | — |
-| Agent | `.claude/agents/*.md` (YAML frontmatter) | `.cursor/agents/*.mdc` (YAML frontmatter) | — (no subagents) | `.github/agents/*.md` (YAML frontmatter) | `.codex/agents/*.toml` |
-| Hook | `.claude/settings.json` | — | — | — | — |
-| Rule | `CLAUDE.md` managed block | `.cursor/rules/*.mdc` | `.windsurf/rules/*.md` | `.github/copilot-instructions.md` | — |
-
-Where a tool doesn't support a component type natively, Constructor Studio either embeds it in the nearest equivalent or skips it with a note in the generation report.
-
-**Codex agent format**:
-
-Unlike the markdown-based tools, Codex uses TOML configuration. Manifest-defined
-agents inline the prompt body in `developer_instructions`:
-
-```toml
-name = "go-stand-deployer"
-description = "Build and deploy Go projects to test stands"
-sandbox_mode = "workspace-write"
-model = "gpt-5-codex"
-developer_instructions = """
-You are a deployment specialist for Go services.
-
-Use standctl MCP tools to inspect, deploy, and debug test stand workloads.
-"""
-```
-
-Discovered Constructor Studio proxy agents use the same key, but contain only an
-endpoint pointer because the controller supplies the final prompt at dispatch
-time:
-
-```toml
-name = "cf-codegen"
-description = "Generate code changes for Constructor Studio workflows"
-developer_instructions = """
-Constructor Studio endpoint only. Prompt source: {cf-studio-path}/.core/skills/studio/agents/cf-codegen.md. Final prompt is supplied by the cf controller at dispatch time.
-"""
-```
-
-Key differences: `mode` maps to `sandbox_mode`, per-agent tool restrictions are managed at MCP server level (not in agent config), and `color`/`memory_dir` have no Codex equivalent.
-
----
-
-## Examples
-
-### Standalone Repo
-
-For repos not inside an orchestrator hierarchy, only Core + Kit + Repo layers apply. Add a `manifest.toml` to your adapter config:
-
-```toml
-# .cf-studio/config/manifest.toml
-[manifest]
-version = "2.0"
-scope = "repo"
-
-[[skills]]
-id = "my-custom-skill"
-description = "Project-specific skill"
-prompt_file = "../../.claude/skills/custom/SKILL.md"
-agents = ["claude"]
-
-[[agents]]
-id = "test-runner"
-description = "Run and analyze test failures"
-prompt_file = "../../.claude/agents/test-runner.md"
-mode = "readwrite"
-isolation = true
-model = "cf:inherit"
-agents = ["claude", "cursor"]
-```
-
-Then regenerate:
+🖥 Register a local kit in place:
 
 ```bash
-cfs generate-agents --agent claude
+cfs kit install --path <path> --install-mode register
 ```
 
-Your custom skill and agent appear alongside Constructor Studio's built-in outputs.
+Register mode keeps the kit files where they already live in the project. Constructor Studio records the effective resource bindings in `core.toml`, then `cfs generate-agents`, `cfs validate`, and skill routing can use them.
 
-### Multi-Repo Hierarchy with Includes
+This gives you one clear unit of extension:
 
-A full orchestrator setup showing the `includes` directive for component packages:
+- the kit contains your project or organization rules
+- the repository keeps the kit source visible in git
+- generated Studio runtime files and generated AI tool files stay repairable and ignored by git by default
+- reviewers can inspect the kit changes like any other project change
 
-**Master repo** (`orchestrator/manifest.toml`):
-```toml
-[manifest]
-version = "2.0"
-scope = "master"
-base_dir = "~/code"
+## 3. Register a Local Kit
 
-# Include component packages from subdirectories
-includes = [
-  "standctl/manifest.toml",
-]
+Put the kit under the project root. A common path is `kits/<kit-name>/`.
 
-[[skills]]
-id = "org-conventions"
-description = "Organization-wide coding conventions"
-prompt_file = "skills/org-conventions/SKILL.md"
-agents = ["claude", "cursor", "windsurf"]
-```
-
-**Included standctl package** (`orchestrator/standctl/manifest.toml`):
-```toml
-[manifest]
-version = "2.0"
-
-[[agents]]
-id = "go-stand-deployer"
-description = "Build and deploy Go projects to Acronis test stands"
-prompt_file = "agents/go-stand-deployer.md"
-mode = "readwrite"
-isolation = false
-model = "cf:inherit"
-color = "pink"
-memory_dir = ".claude/agent-memory/go-stand-deployer"
-tools = [
-  "mcp__standctl__standctl_login",
-  "mcp__standctl__standctl_deploy",
-  "mcp__standctl__standctl_pods",
-  "mcp__standctl__standctl_logs",
-  "Bash", "Read", "Write", "Edit", "Glob", "Grep",
-]
-agents = ["claude", "cursor", "copilot", "openai"]
-
-[[agents]]
-id = "stand-log-investigator"
-description = "Analyze logs and debug issues on Acronis test stands"
-prompt_file = "agents/stand-log-investigator.md"
-mode = "readonly"
-isolation = false
-model = "cf:tier:cheap"
-color = "orange"
-memory_dir = ".claude/agent-memory/stand-log-investigator"
-tools = [
-  "mcp__standctl__standctl_pods",
-  "mcp__standctl__standctl_logs",
-  "mcp__standctl__standctl_configmap",
-  "Read", "Glob", "Grep",
-]
-agents = ["claude"]
-
-[[skills]]
-id = "standctl"
-description = "Standctl MCP tools usage guide for test stand management"
-prompt_file = "skills/standctl/SKILL.md"
-agents = ["claude", "cursor", "windsurf"]
-```
-
-Note: `prompt_file` paths in `standctl/manifest.toml` resolve relative to `orchestrator/standctl/` (the included manifest's directory), not `orchestrator/`.
-
-**Repo** (`my-project/service-a/.cf-studio/config/manifest.toml`):
-```toml
-[manifest]
-version = "2.0"
-scope = "repo"
-
-[[agents]]
-id = "log-investigator"
-description = "Investigate service-a logs for pipeline issues"
-prompt_file = "../../.claude/agents/log-investigator.md"
-mode = "readonly"
-isolation = false
-model = "cf:tier:cheap"
-agents = ["claude"]
-```
-
-Running `cfs generate-agents --agent claude` inside `service-a/` produces merged output from all layers:
-- Kit agents (`cf-codegen`, `cf-pr-review`)
-- Master repo skill (`org-conventions`), included standctl agents + skill
-- Repo agent (`log-investigator`)
-
-### The standctl Case
-
-The standctl integration is the motivating use case for this feature. standctl is a Go CLI that distributes agents, skills, and MCP tool permissions into consuming projects. With project-level extensibility:
-
-**Before** (manual, per-tool):
-```bash
-standctl agent go-stand-deployer    # installs agent for current tool
-standctl agent stand-log-investigator
-standctl skill                       # installs skill
-standctl agent                       # sets up permissions
-```
-
-**After** (declarative, all tools at once):
-```bash
-cfs generate-agents --agent claude   # generates everything from manifest
-```
-
-The standctl `manifest.toml` (shown in the multi-repo example above) declares all three agents and the skill. `cfs generate-agents` translates them to each target tool's native format. Permissions remain manual for now (see [Future Work](#future-work)).
-
----
-
-## Discovery Mode
-
-For projects that don't want to manually enumerate components, use auto-discovery:
+🖥 Preview or normalize the kit first:
 
 ```bash
-cfs generate-agents --agent claude --discover
+cfs kit normalize ./kits/company-sdlc
 ```
 
-Discovery scans conventional directories:
-- `.claude/agents/*.md` → project agents
-- `.claude/skills/*/SKILL.md` → project skills
-- `.claude/commands/*.md` → project workflows
+🖥 Register the kit in place:
 
-Discovery writes found components into the project `manifest.toml`. Subsequent runs read it declaratively — similar to how `cfs kit install` writes resource bindings into `core.toml`.
+```bash
+cfs kit install --path ./kits/company-sdlc --install-mode register
+```
 
----
+🖥 Regenerate AI coding tool integration files:
 
-## Backward Compatibility
+```bash
+cfs generate-agents
+```
 
-- **v1 manifests**: `manifest.version = "1.0"` manifests (resources-only) continue to work unchanged
-- **`agents.toml` fallback**: `_discover_kit_agents()` checks `manifest.toml` `[[agents]]` first, falls back to `agents.toml` if present
-- **Standalone repos**: without an orchestrator hierarchy, only Core + Kit + Repo layers apply — identical to the previous behavior
-- **No new CLI commands**: everything extends the existing `cfs generate-agents`
-- **Model tiers**: use `cf:inherit`, `cf:auto`, or `cf:tier:{cheap,balanced,expensive}` in v2 manifests
+🖥 Validate the kit configuration:
 
----
+```bash
+cfs validate-kits
+```
 
-## Relationship with Workspace Federation
+🖥 Validate the repository:
 
-Constructor Studio has two complementary multi-repo mechanisms that address different dimensions of working across repositories:
+```bash
+cfs validate
+```
 
-| | Project Extensibility (this feature) | Workspace Federation |
-|---|---|---|
-| **Direction** | Vertical — walks *up* the filesystem from repo to orchestrator | Horizontal — federates *across* sibling repositories |
-| **Config file** | `manifest.toml` at each layer boundary | `.studio-workspace.toml` or inline in `core.toml` |
-| **Discovery** | `discover_layers()` — finds manifest layers by walking parent directories to a master repo boundary | `find_workspace_config()` — finds workspace config at project root, then resolves named sources |
-| **Merge model** | Component merging with innermost-wins precedence and provenance tracking | No merging — each source keeps its own independent adapter context |
-| **Primary use case** | Agent/skill/workflow generation via `cfs generate-agents` | Cross-repo artifact traceability via `cfs validate`, `cfs list-ids`, `cfs where-defined` |
-| **Runtime type** | `ManifestLayer`, `MergedComponents` | `WorkspaceContext`, `SourceContext` |
+Register mode requires the local kit path to stay inside the project root after symlink resolution. This prevents a project from silently depending on arbitrary files elsewhere on the machine.
 
-### How They Compose
+## 4. Recommended Local Kit Layout
 
-The two features operate on independent axes and do not conflict:
+A small project kit can look like this:
 
 ```text
-                    Workspace Federation (horizontal)
-                    ┌──────────┬──────────┬──────────┐
-                    │ source-a │ source-b │ source-c │
-                    └────┬─────┴────┬─────┴────┬─────┘
-                         │          │          │
-Project Extensibility    │          │          │
-(vertical, per-source)   ▼          ▼          ▼
-                    ┌─────────┐┌─────────┐┌─────────┐
-                    │ Repo    ││ Repo    ││ Repo    │
-                    │ Master  ││ Master  ││ Master  │
-                    │ Kit     ││ Kit     ││ Kit     │
-                    │ Core    ││ Core    ││ Core    │
-                    └─────────┘└─────────┘└─────────┘
+kits/company-sdlc/
+├── .cf-studio-kit.toml
+├── skills/
+│   └── company-review/SKILL.md
+├── rules/
+│   ├── architecture.md
+│   ├── security.md
+│   └── testing.md
+├── templates/
+│   ├── PRD.md
+│   ├── ADR.md
+│   ├── DESIGN.md
+│   └── FEATURE.md
+├── checklists/
+│   ├── design-review.md
+│   ├── code-review.md
+│   └── release-readiness.md
+└── constraints/
+    └── FEATURE/constraints.toml
 ```
 
-- **Workspace commands** (`workspace-init`, `workspace-add`, `validate --source`) manage cross-repo source federation and artifact traceability. They use `WorkspaceContext` and `SourceContext`.
-- **Extensibility commands** (`generate-agents`, `generate-agents --show-layers`) manage per-repo agent/skill generation from the manifest layer hierarchy. They use `discover_layers()` and `merge_components()`. (All run as `cfs <command>`.)
+Use names that match the organization vocabulary. For example, a security-heavy company may have `threat-model.md`, `data-handling.md`, and `security-review.md`; a platform team may have service templates and deployment checklists.
 
-### Orchestrator Repo with Sub-Projects
+## 5. What Belongs in a Project Kit
 
-A common deployment pattern is a quasi-mono-repo: an orchestration repository that contains many sub-projects for specific aspects of a system — services, libraries, infrastructure, documentation, etc. Each sub-project may be a Git submodule, a nested repository, or simply a subdirectory with its own Constructor Studio adapter. The orchestration repo itself holds shared configuration, organization-wide rules, and cross-cutting agents, while each sub-project maintains its own independent adapter.
+Good kit contents:
 
-```text
-orchestrator-repo/                          ← the orchestration repo (has .git/, CLAUDE.md, skills/)
-├── manifest.toml                           ← master layer: org-wide agents, rules
-├── .studio-workspace.toml          ← workspace config federating sub-projects
-├── service-a/                              ← sub-project with its own .cf-studio/
-│   └── .cf-studio/config/manifest.toml     ← repo layer for service-a
-├── service-b/
-│   └── .cf-studio/config/manifest.toml
-└── infra/
-    └── .cf-studio/config/manifest.toml
+- document templates for Product Requirements Documents, Architecture Decision Records, DESIGN documents, FEATURE specifications, and release documents
+- rules for architecture, security, testing, performance, observability, operations, and code style
+- review checklists for product, architecture, code, quality assurance, security, performance, and deployment readiness
+- constraints for required headings, identifiers, cross-references, and Canonical Provenance Trace ID (CPT ID) structure
+- skills for project-specific workflows, review behavior, or domain knowledge
+- workflow resources that change how a skill gathers context, asks questions, writes files, or validates output
+- scripts that support deterministic checks or repeatable project tasks
+
+Do not put generated runtime files in a kit. Generated Studio files and generated AI coding tool integration files should remain repairable outputs.
+
+## 6. Register Mode vs Copy Mode
+
+Use register mode when the kit is part of the project or workspace and should remain editable in place.
+
+🖥 Register local kit resources in place:
+
+```bash
+cfs kit install --path ./kits/company-sdlc --install-mode register
 ```
 
-This structure supports two distinct working modes, each engaging different combinations of the two features:
+Use copy mode when you want to copy local kit resources into the Constructor Studio setup directory.
 
-#### Mode 1: Multi-Project Scope (working from the orchestration repo root)
+🖥 Copy local kit resources:
 
-The developer opens or branches the orchestration repo itself — their working directory is the orchestration repo root. This is common for cross-cutting changes that span multiple sub-projects, or for reviewing the system as a whole.
+```bash
+cfs kit install --path ./kits/company-sdlc --install-mode copy
+```
 
-**What activates**:
+Use a Git or GitHub kit when the kit is published and reused across repositories.
 
-- **Workspace federation**: if the orchestration repo has a `.studio-workspace.toml` (or inline `[workspace]` in `core.toml`), context loading upgrades to `WorkspaceContext`. Each sub-project becomes a named source with its own `SourceContext`, enabling cross-repo traceability — `cfs validate`, `cfs list-ids`, and `cfs where-defined` resolve artifacts across all federated sources.
-- **Layer discovery**: `discover_layers()` runs from the orchestration repo's own setup directory. It finds the orchestration repo's kit layers and repo-layer manifest. Since the orchestration repo *is* the master repo boundary (it has `.git/`), the walk-up stops there — no master layer is added above it.
+🖥 Install a GitHub kit:
 
-**Net effect**: traceability spans the full workspace; agent generation uses the orchestration repo's own manifest hierarchy. Sub-project manifests are not merged into the orchestration repo's agent generation — each sub-project's agents are generated independently (see [Current Limitations](#current-limitations)).
+```bash
+cfs kit install <owner/repo[@ref]>
+```
 
-#### Mode 2: Single-Project Scope (working from within a sub-project)
+🖥 Install a kit from a generic Git source:
 
-The developer's working directory is inside a specific sub-project — e.g., `orchestrator-repo/service-a/`. This is the common case for feature work scoped to one service.
+```bash
+cfs kit install git/<url>[//<subdir>][@<kit>] --version <ref>
+```
 
-**What activates**:
+For project-level extensibility, prefer `--install-mode register` unless you have a clear reason to copy the files into the setup directory.
 
-- **Layer discovery**: `discover_layers()` runs from `service-a/.cf-studio/` in an ordinary project. It loads the kit layers and repo-layer manifest from `service-a/.cf-studio/config/manifest.toml`. It then walks up from `service-a/` and finds the orchestration repo as a master repo boundary (via `.git` or `CLAUDE.md` + `skills/`). If the orchestration repo has a `manifest.toml` at its root, that becomes the **master layer** — its agents, skills, and rules merge into service-a's generation with the repo layer winning on conflicts.
-- **Workspace federation**: if `service-a` has its own workspace config, it activates independently. More commonly, the sub-project has no workspace config and operates in single-repo mode — standalone context without `WorkspaceContext`.
+## 7. Multi-Repository Projects
 
-**Net effect**: the sub-project inherits organization-wide agents and rules from the orchestration repo's master-layer manifest, while its own repo-layer manifest can override or extend them. Cross-repo traceability is not active unless the sub-project has its own workspace config.
+For multi-repository work, keep the extension point explicit.
 
-#### Choosing Between Modes
+Common pattern:
 
-| Concern | Multi-Project (orchestration root) | Single-Project (sub-project) |
-|---|---|---|
-| Cross-repo artifact traceability | Yes — via workspace federation | No (unless sub-project has own workspace) |
-| Inherited org-wide agents/rules | Only from orchestration repo's own layers | Yes — via master layer walk-up |
-| Agent generation scope | Orchestration repo only | Submodule + orchestration master layer |
-| Typical use case | System-wide reviews, cross-cutting changes, workspace-info | Feature development within one service |
+- one documentation or architecture repository owns Product Requirements Documents, Architecture Decision Records, DESIGN documents, and shared kits
+- one user interface repository owns frontend code
+- one backend repository or several service repositories own implementation code
+- a workspace connects those repositories for validation, maps, and cross-repository traceability
 
-### Current Limitations
+Use workspace commands for the repository graph:
 
-Layer discovery and workspace federation operate independently. This means:
+🖥 Create a workspace:
 
-- `cfs generate-agents` does not discover or merge manifests from workspace sources — it runs within the primary repo's layer hierarchy only
-- Workspace sources with their own `manifest.toml` files must run `cfs generate-agents` independently within each source
-- There is no cross-source component merging — each source's manifest hierarchy is self-contained
+```bash
+cfs workspace-init
+```
 
-These boundaries are intentional for the MVP. Cross-source manifest merging would require precedence rules for component conflicts across sources and is tracked as future work.
+🖥 Add a documentation repository:
 
-### Potential Improvements
+```bash
+cfs workspace-add --name docs --path ../docs-repo --role artifacts
+```
 
-1. **Workspace-aware agent generation** — extend `cfs generate-agents` to optionally iterate workspace sources and run layer discovery within each, generating agents for all sources in a single invocation
-2. **Cross-source component visibility** — allow a workspace source's manifest to reference components defined in another source (e.g., a shared skill defined in an infra repo, consumed by a service repo)
-3. **Unified provenance** — extend `--show-layers` to include workspace source attribution alongside layer provenance, so the developer can see both *which layer* and *which source* contributed each component
+🖥 Add a service repository:
 
----
+```bash
+cfs workspace-add --name services --path ../services-repo --role codebase
+```
 
-## Future Work
+Use a registered local kit when the kit source lives inside the main project or workspace repository:
 
-These items are deferred from the MVP but planned for follow-up features:
+🖥 Register the shared local kit:
 
-1. **Organization and Project layers** — expand from 4 to 6 layers with git host and project group detection
-2. **Full template composition** — block-based `<!-- @block:NAME -->` markers with replace/prepend/delete/insert operations
-3. **`[[permissions]]` generation** — merge MCP tool permissions into `.claude/settings.local.json` (additive, idempotent); this is an important follow-up as manual permission setup is a significant time sink
-4. **`[[hooks]]` generation** — session hooks into agent-native config (e.g., `.claude/settings.json`)
-5. **Custom section preservation** — detect and preserve `<!-- *:custom -->` markers during regeneration
-6. **Workspace-aware layer discovery** — extend `discover_layers()` to optionally run within each workspace source, enabling cross-source component awareness in `cfs generate-agents`
+```bash
+cfs kit install --path ./kits/company-sdlc --install-mode register
+```
+
+If each repository needs its own generated AI tool files, run `cfs generate-agents` in each repository after the kit or workspace configuration changes.
+
+## 8. Updating and Validating
+
+After changing a registered local kit, regenerate and validate.
+
+🖥 Regenerate AI coding tool files:
+
+```bash
+cfs generate-agents
+```
+
+🖥 Validate kits:
+
+```bash
+cfs validate-kits
+```
+
+🖥 Validate project artifacts and traceability:
+
+```bash
+cfs validate
+```
+
+🖥 Render the dependency map:
+
+```bash
+cfs map
+```
+
+Registered local kits are normal project files. Review them in pull requests, run deterministic checks in continuous integration, and keep changes small enough that product, architecture, quality, security, operations, and development reviewers can understand what changed.
+
+## 9. Migrating from Old Manifest-Based Extensibility
+
+Older project-level extensibility designs used project `manifest.toml` files, include chains, and orchestrator-layer discovery as the main mechanism for custom skills, agents, workflows, and rules.
+
+Use the kit model instead:
+
+1. Move project-specific skills, rules, templates, checklists, constraints, scripts, and workflow resources into a local kit directory.
+2. Add or normalize the kit manifest.
+3. Register the kit in place.
+4. Regenerate AI coding tool files.
+5. Validate the kit and repository.
+
+🖥 Register the migrated kit:
+
+```bash
+cfs kit install --path ./kits/company-sdlc --install-mode register
+```
+
+🖥 Regenerate integration files:
+
+```bash
+cfs generate-agents
+```
+
+The old manifest hierarchy should not be the first choice for new project-level extension work. Kits provide a clearer review boundary and match the installation, update, validation, and distribution model used by Constructor Studio.
+
+## Further Reading
+
+- [Configuration guide](CONFIGURATION.md) - kit management, artifacts, templates, rules, checklists, constraints, and validation
+- [Usage guide](USAGE-GUIDE.md) - workflow selection, workspaces, dependency map, and practical operating guidance
+- [Constructor Studio README](../README.md)
