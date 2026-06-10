@@ -200,6 +200,36 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
             self.assertFalse((root / ".cursor" / "agents" / "cf-pubkit-codexonly.mdc").exists())
             self.assertFalse((root / ".cursor" / "agents" / "cf-pubkit-codex-auditor.mdc").exists())
 
+    def test_nested_public_subagent_uses_registered_resource_binding(self):
+        from studio.commands.agents import _default_agents_config, _process_single_agent
+
+        with TemporaryDirectory() as td:
+            root, studio_root = self._make_project(td)
+            rebound_dir = studio_root / "config" / "rebound"
+            rebound_dir.mkdir(parents=True)
+            (rebound_dir / "auditor.md").write_text("# Rebound auditor\nBound nested behavior.\n", encoding="utf-8")
+            core_toml = studio_root / "config" / "core.toml"
+            core_toml.write_text(
+                core_toml.read_text(encoding="utf-8")
+                + "\n[kits.pubkit.resources.auditor]\n"
+                + 'path = "config/rebound/auditor.md"\n',
+                encoding="utf-8",
+            )
+
+            result = _process_single_agent(
+                "cursor",
+                root,
+                studio_root,
+                _default_agents_config(),
+                None,
+                dry_run=False,
+            )
+
+            self.assertEqual(result["status"], "PASS")
+            nested_content = (root / ".cursor" / "agents" / "auditor.mdc").read_text(encoding="utf-8")
+            self.assertIn("Bound nested behavior.", nested_content)
+            self.assertNotIn("Audit nested behavior.", nested_content)
+
     def test_generate_agents_reports_duplicate_public_agent_names(self):
         from studio.commands.agents import _default_agents_config, _process_single_agent
 

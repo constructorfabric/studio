@@ -35,6 +35,7 @@ import re
 import shutil
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from ..constants import ROOT_AGENTS_PIPELINE_INSTRUCTION
@@ -1928,7 +1929,7 @@ def _registered_kit_dirs(project_root: Optional[Path]) -> Set[str]:
 
 # @cpt-begin:cpt-studio-algo-agent-integration-list-workflows:p1:inst-scan-core-workflows
 KitWorkflowSkill = Tuple[str, Path, Optional[str], Optional[str]]
-KitPublicComponent = Tuple[str, object, Path, Path]
+KitPublicComponent = Tuple[str, object, Path, Path, object]
 
 
 def _list_workflow_files(
@@ -2024,7 +2025,8 @@ def _resolve_registered_resource_path(
     kit_root: Path,
     component: object,
     kit_entry: object,
-) -> Path:
+    source: Optional[str] = None,
+) -> Optional[Path]:
     component_id = str(getattr(component, "id", ""))
     resources = kit_entry.get("resources") if isinstance(kit_entry, dict) else None
     binding = resources.get(component_id) if isinstance(resources, dict) else None
@@ -2032,7 +2034,10 @@ def _resolve_registered_resource_path(
     if isinstance(raw_path, str) and raw_path.strip():
         path = Path(raw_path)
         return path if path.is_absolute() else studio_root / path
-    return kit_root / str(getattr(component, "source", ""))
+    component_source = source if source is not None else str(getattr(component, "source", ""))
+    if not component_source:
+        return None
+    return kit_root / component_source
 
 
 def _component_enabled_for_agent(component: object, agent: str) -> bool:
@@ -2081,13 +2086,16 @@ def _list_public_components(
                 continue
             if not _component_enabled_for_agent(component, agent):
                 continue
-            source_path = _resolve_registered_resource_path(studio_root, kit_root, component, kit_entry).resolve()
+            resolved_source_path = _resolve_registered_resource_path(studio_root, kit_root, component, kit_entry)
+            if resolved_source_path is None:
+                continue
+            source_path = resolved_source_path.resolve()
             if not source_path.is_file():
                 continue
             generated_name = str(getattr(component, "generated_name", "")).strip()
             if not generated_name:
                 continue
-            components.append((kit_slug, component, source_path, kit_root))
+            components.append((kit_slug, component, source_path, kit_root, kit_entry))
     return components, manifest_backed_kits
     # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-no-workflow-scan
     # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
@@ -2101,7 +2109,7 @@ def _list_public_component_skills(
 ) -> Tuple[List[KitWorkflowSkill], Set[str]]:
     components: List[KitWorkflowSkill] = []
     public_components, manifest_backed_kits = _list_public_components(studio_root, project_root, agent)
-    for kit_slug, component, source_path, _kit_root in public_components:
+    for kit_slug, component, source_path, _kit_root, _kit_entry in public_components:
         if getattr(component, "kind", "") == "skill":
             generated_name = str(getattr(component, "generated_name", "")).strip()
             components.append((source_path.name, source_path, kit_slug, generated_name))
@@ -3279,7 +3287,7 @@ def _process_kit_public_agents_and_rules(
     trusted_roots: List[Path] = []
 
     # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
-    for kit_slug, component, source_path, kit_root in public_components:
+    for kit_slug, component, source_path, kit_root, kit_entry in public_components:
         generated_name = str(getattr(component, "generated_name", "")).strip()
         if not generated_name:
             continue
@@ -3325,9 +3333,18 @@ def _process_kit_public_agents_and_rules(
                 subagent_source = str(subagent.get("source", subagent.get("prompt_file", ""))).strip()
                 if not subagent_source:
                     continue
-                subagent_source_path = Path(subagent_source)
-                if not subagent_source_path.is_absolute():
-                    subagent_source_path = (kit_root / subagent_source_path).resolve()
+                resolved_subagent_source = _resolve_registered_resource_path(
+                    studio_root,
+                    kit_root,
+                    SimpleNamespace(id=subagent_id, source=subagent_source),
+                    kit_entry,
+                    source=subagent_source,
+                )
+                subagent_source_path = (
+                    resolved_subagent_source.resolve()
+                    if resolved_subagent_source is not None
+                    else (kit_root / subagent_source).resolve()
+                )
                 nested_target = _nested_subagent_config(subagent, agent)
                 nested_prefix = bool(subagent.get("prefix_generated_name", True))
                 nested_name = _public_component_generated_name(
