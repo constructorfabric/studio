@@ -31,16 +31,15 @@ def _merge_with_collision_tracking(
     system_vars: Dict[str, str],
     kit_vars: Dict[str, Dict[str, str]],
 ) -> Tuple[Dict[str, str], List[Dict[str, str]]]:
-    """Merge system and kit variables with qualified names and collision tracking.
+    """Merge system and kit variables with unqualified names and collision tracking.
 
     Returns (flat_dict, collisions_list).
     """
-    # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-qualified
+    # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-no-kit-qualified
     flat: Dict[str, str] = dict(system_vars)
-    for slug, kvars in kit_vars.items():
-        for var_name, var_path in kvars.items():
-            flat[f"{slug}.{var_name}"] = var_path
-    # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-qualified
+    # Kit slugs remain available in the structured `kits` output, but are not
+    # valid placeholder prefixes in the flat variable map.
+    # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-no-kit-qualified
 
     # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-unqualified-unique
     collisions: List[Dict[str, str]] = []
@@ -410,16 +409,14 @@ def cmd_resolve_vars(argv: list[str]) -> int:
         # Rebuild flat with only system + this kit + layer vars (system wins on collision)
         filtered_flat = dict(result["system"])
         for k, v in kit_section.items():
-            filtered_flat[f"{slug}.{k}"] = v
             if k not in filtered_flat:
                 filtered_flat[k] = v
         # Preserve layer variables (base_dir, master_repo, repo) from enriched set —
         # these are in result["variables"] but not in system or any kit's resources.
         all_kit_var_names = {
-            name
-            for kit_slug, kvars in result["kits"].items()
+            key
+            for kvars in result["kits"].values()
             for key in kvars
-            for name in (key, f"{kit_slug}.{key}")
         }
         for k, v in result["variables"].items():
             if k not in filtered_flat and k not in all_kit_var_names:

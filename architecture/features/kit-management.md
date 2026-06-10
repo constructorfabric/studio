@@ -629,7 +629,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 **Output**: Deterministic variable map for `cfs resolve-vars`, templates, and generated prompts
 
 **Rules**:
-1. [x] - `p1` - Always expose canonical `{kit_slug.resource_id}` variables pointing to effective installed or registered resource paths - `inst-vars-qualified`
+1. [x] - `p1` - Do not expose `{kit_slug.resource_id}` variables in the flat map; keep kit slug separation only in structured `kits[slug]` output - `inst-vars-no-kit-qualified`
 2. [x] - `p1` - Expose unqualified `{resource_id}` variables only when unique across all installed kits; omit conflicts and report warnings - `inst-vars-unqualified-unique`
 3. [x] - `p1` - Apply explicit aliases using the same uniqueness and warning rules as resource IDs - `inst-vars-aliases`
 4. [x] - `p1` - Resolve variable values from `core.toml` effective bindings, not from manifest source paths - `inst-vars-effective-bindings`
@@ -890,7 +890,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 - [ ] `p1` - Legacy `workflow` entries are surfaced as skills with `origin = "legacy-workflow"` and deprecated workflow output is derived from those skills only for compatibility
 - [ ] `p1` - File-level diff correctly handles TOC stripping, conflict merging, and editor integration
 - [ ] `p1` - `cfs info` outputs canonical `kit_models` with resource bindings, generated names, install mode, drift, risk, provenance, and legacy `kit_details` derived from the same model
-- [ ] `p1` - `cfs resolve-vars` exposes `{kit_slug.resource_id}` variables, exposes unqualified variables only when unique, and warns on conflicts
+- [ ] `p1` - `cfs resolve-vars` omits `{kit_slug.resource_id}` variables from the flat map, exposes unqualified variables only when unique, and warns on conflicts
 - [ ] `p1` - Install, update, info, resolve-vars, validate, and generate-agents all use the shared `KitModel` service; command-specific ad hoc kit scanning is limited to declared legacy adapters
 - [x] `p1` - `cfs kit update` displays whatsnew entries from kit's `whatsnew.toml` before file-level diff (versions > installed version)
 - [ ] `p1` - All CDSL instructions have corresponding `@cpt-begin`/`@cpt-end` markers in code

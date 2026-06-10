@@ -82,7 +82,7 @@ def test_load_template_vars_invalid_json(monkeypatch, tmp_path):
 
 
 def test_flatten_vars_with_nested_kits(tmp_path):
-    """Kit resources produce three lookup keys: bare, qualified, fully qualified."""
+    """Kit resources produce only unqualified lookup keys."""
     data = {
         "system": {"project_root": str(tmp_path), "cf-studio-path": str(tmp_path / ".bootstrap")},
         "kits": {
@@ -94,10 +94,9 @@ def test_flatten_vars_with_nested_kits(tmp_path):
         },
     }
     flat = map_cli._flatten_vars(data, tmp_path)
-    # Bare, kit-qualified, kit-prefix-qualified all present
     assert flat["adr_template"] == "kits/sdlc/ADR.md"
-    assert flat["sdlc.adr_template"] == "kits/sdlc/ADR.md"
-    assert flat["kits.sdlc.adr_template"] == "kits/sdlc/ADR.md"
+    assert "sdlc.adr_template" not in flat
+    assert "kits.sdlc.adr_template" not in flat
     # non_string skipped
     assert "non_string" not in flat
     # broken (string instead of dict) skipped

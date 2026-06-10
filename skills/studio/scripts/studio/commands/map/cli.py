@@ -250,10 +250,9 @@ def _load_template_vars(primary_root: Path) -> Dict[str, str]:
     template-variable expansion is best-effort enrichment, never a hard dep.
 
     Output shape: ``{"system": {...}, "kits": {<slug>: {...}}}`` with absolute
-    paths. We surface three lookup keys per kit resource:
-    ``adr_template``, ``sdlc.adr_template`` and ``kits.sdlc.adr_template``.
-    System variables (``cf-path``, ``project_root``, ``studio_path``)
-    are exposed at the top level.
+    paths. Kit resources are surfaced as unqualified lookup keys such as
+    ``adr_template``. System variables (``cf-path``, ``project_root``,
+    ``studio_path``) are exposed at the top level.
     """
     # @cpt-begin:cpt-studio-flow-map-cli:p1:inst-load-template-vars
     import json
@@ -316,9 +315,7 @@ def _flatten_vars(data, primary_root: Path) -> Dict[str, str]:
             for name, val in resources.items():
                 if not isinstance(val, str):
                     continue
-                store(str(name), val)                    # bare:  adr_template
-                store(f"{kit_slug}.{name}", val)         # qualified: sdlc.adr_template
-                store(f"kits.{kit_slug}.{name}", val)    # fully qualified
+                store(str(name), val)
     return flat
     # @cpt-end:cpt-studio-flow-map-cli:p1:inst-flatten-vars
 

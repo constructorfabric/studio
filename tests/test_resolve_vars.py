@@ -106,17 +106,16 @@ class TestCollectAllVariables(unittest.TestCase):
             })
 
             self.assertIn("adr_template", result["variables"])
-            self.assertIn("sdlc.adr_template", result["variables"])
+            self.assertNotIn("sdlc.adr_template", result["variables"])
             self.assertIn("scripts", result["variables"])
             self.assertTrue(result["variables"]["adr_template"].endswith(
                 "config/kits/sdlc/artifacts/ADR/template.md"
             ))
-            self.assertEqual(result["variables"]["sdlc.adr_template"], result["variables"]["adr_template"])
             # Check structured output
             self.assertIn("sdlc", result["kits"])
             self.assertIn("adr_template", result["kits"]["sdlc"])
 
-    def test_kit_aliases_resolved_with_qualified_and_unqualified_names(self):
+    def test_kit_aliases_resolved_with_unqualified_names_only(self):
         """Aliases on resource bindings resolve like resource identifiers."""
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
@@ -135,9 +134,9 @@ class TestCollectAllVariables(unittest.TestCase):
             })
 
             self.assertIn("adr", result["variables"])
-            self.assertIn("sdlc.adr", result["variables"])
+            self.assertNotIn("sdlc.adr", result["variables"])
+            self.assertNotIn("sdlc.adr_template", result["variables"])
             self.assertEqual(result["variables"]["adr"], result["variables"]["adr_template"])
-            self.assertEqual(result["variables"]["sdlc.adr"], result["variables"]["sdlc.adr_template"])
 
     def test_no_kits_returns_system_only(self):
         """Without kits, only system variables returned."""
@@ -306,7 +305,7 @@ class TestCmdResolveVars(unittest.TestCase):
             self.assertEqual(rc, 0)
             out = json.loads(buf.getvalue())
             self.assertIn("var_a", out["variables"])
-            self.assertIn("sdlc.var_a", out["variables"])
+            self.assertNotIn("sdlc.var_a", out["variables"])
             self.assertNotIn("var_b", out["variables"])
             self.assertNotIn("other.var_b", out["variables"])
             self.assertIn("sdlc", out["kits"])
@@ -694,8 +693,8 @@ class TestCollectAllVariablesEdgeCases(unittest.TestCase):
                 },
             })
             self.assertNotIn("shared_var", result["variables"])
-            self.assertTrue(result["variables"]["kit_a.shared_var"].endswith("a/path"))
-            self.assertTrue(result["variables"]["kit_b.shared_var"].endswith("b/path"))
+            self.assertNotIn("kit_a.shared_var", result["variables"])
+            self.assertNotIn("kit_b.shared_var", result["variables"])
             # Collision recorded
             self.assertIn("collisions", result)
             self.assertEqual(len(result["collisions"]), 1)

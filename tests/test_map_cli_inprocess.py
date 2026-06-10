@@ -387,7 +387,7 @@ def test_flatten_vars_legacy_alias():
 
 
 def test_flatten_vars_with_kits():
-    """_flatten_vars should expose kit resources with multiple key forms."""
+    """_flatten_vars should expose kit resources as unqualified keys only."""
     from studio.commands.map.cli import _flatten_vars
     data = {
         "system": {},
@@ -398,12 +398,9 @@ def test_flatten_vars_with_kits():
         },
     }
     result = _flatten_vars(data, Path("/some/project"))
-    # Should have bare key
     assert "adr_template" in result
-    # Should have qualified key
-    assert "sdlc.adr_template" in result
-    # Should have fully qualified key
-    assert "kits.sdlc.adr_template" in result
+    assert "sdlc.adr_template" not in result
+    assert "kits.sdlc.adr_template" not in result
 
 
 def test_flatten_vars_skips_non_string_values():
