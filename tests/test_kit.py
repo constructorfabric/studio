@@ -428,6 +428,48 @@ class TestKitNormalize(unittest.TestCase):
             self.assertFalse(model.resources[0].prefix_generated_name)
             self.assertFalse(kit_model_to_toml_data(model)["kits"][0]["resources"][0]["prefix_generated_name"])
 
+    def test_kit_model_rejects_public_supporting_resource(self):
+        from studio.utils.kit_model import load_kit_model
+
+        with TemporaryDirectory() as td:
+            kit_src = _make_canonical_kit_source(Path(td), "pubkit")
+            manifest = kit_src / ".cf-studio-kit.toml"
+            manifest.write_text(
+                manifest.read_text(encoding="utf-8").replace('kind = "skill"', 'kind = "template"'),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "public=true is only allowed"):
+                load_kit_model(kit_src)
+
+    def test_kit_model_rejects_non_public_generated_name_fields(self):
+        from studio.utils.kit_model import load_kit_model
+
+        with TemporaryDirectory() as td:
+            kit_src = _make_canonical_kit_source(Path(td), "pubkit")
+            manifest = kit_src / ".cf-studio-kit.toml"
+            manifest.write_text(
+                manifest.read_text(encoding="utf-8").replace(
+                    "public = true",
+                    "public = false\nprefix_generated_name = false",
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "prefix_generated_name=false is only allowed"):
+                load_kit_model(kit_src)
+
+            manifest.write_text(
+                manifest.read_text(encoding="utf-8").replace(
+                    "prefix_generated_name = false",
+                    'generated_targets = ["cursor"]',
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "generated_targets is only allowed"):
+                load_kit_model(kit_src)
+
     def test_kit_model_tool_risk_summary_warns_and_fingerprints(self):
         from studio.utils.kit_model import load_kit_model
 

@@ -633,8 +633,21 @@ def _canonical_model_from_entry(
                 f"Resource '{resource_id}': type must be 'file' or 'directory'",
             )
         install_path = _optional_string(raw, "install_path") or source
-        public = bool(raw.get("public", kind in _PUBLIC_KINDS))
+        public = _optional_bool(raw, "public", kind in _PUBLIC_KINDS)
         prefix_generated_name = _optional_bool(raw, "prefix_generated_name", True)
+        generated_targets = _string_list(raw.get("generated_targets"), "generated_targets")
+        if public and kind not in _PUBLIC_KINDS:
+            raise ValueError(
+                f"Resource '{resource_id}': public=true is only allowed for skill, agent, and rule resources",
+            )
+        if not public and not prefix_generated_name:
+            raise ValueError(
+                f"Resource '{resource_id}': prefix_generated_name=false is only allowed for public resources",
+            )
+        if not public and generated_targets:
+            raise ValueError(
+                f"Resource '{resource_id}': generated_targets is only allowed for public resources",
+            )
         permissions_config = raw.get("permissions") if isinstance(raw.get("permissions"), dict) else {}
         resource = KitResource(
             id=resource_id,
@@ -647,7 +660,7 @@ def _canonical_model_from_entry(
             user_modifiable=bool(raw.get("user_modifiable", True)),
             aliases=_string_list(raw.get("aliases"), "aliases"),
             # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-generated-targets
-            generated_targets=_string_list(raw.get("generated_targets"), "generated_targets") or ["installed"],
+            generated_targets=generated_targets or (["installed"] if public else []),
             # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-generated-targets
             origin=_optional_string(raw, "origin"),
             generated_name=_resource_generated_name(slug, resource_id, public, prefix_generated_name),
