@@ -691,29 +691,31 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 ### Manifest-Driven Installation
 
-- [ ] `p1` - **ID**: `cpt-studio-algo-kit-manifest-install`
+- [x] `p1` - **ID**: `cpt-studio-algo-kit-manifest-install`
 
 **Input**: Kit source directory, normalized `KitModel`, studio dir, slug, provenance, install mode
 
 **Output**: Result dict with status, resolved resource paths, files_copied
 
 **Steps**:
-1. [ ] - `p1` - Read and validate canonical `.cf-studio-kit.toml` or normalize a legacy manifest/layout into `KitModel` - `inst-manifest-read`
-2. [ ] - `p1` - Resolve effective install mode (`copy` or `register`) and effective resource destinations - `inst-manifest-resolve-install-mode`
-3. [ ] - `p1` - **FOR EACH** resource declared in `KitModel.resources` - `inst-manifest-foreach-resource`
-   1. [ ] - `p1` - **IF** `install_path` is user-modifiable in copy mode: prompt user for destination path (offering the manifest default) - `inst-manifest-prompt-path`
-   2. [ ] - `p1` - **IF** copy mode: copy resource from source to resolved path, preserving directory structure within directory resources - `inst-manifest-copy-resource`
-   3. [ ] - `p1` - **IF** register mode: leave files in place and bind the resource to its source path after containment validation - `inst-manifest-register-resource-in-place`
-4. [ ] - `p1` - Resolve template variables from effective resource bindings for copied/generated files and prompts - `inst-manifest-resolve-vars`
-5. [ ] - `p1` - Register effective resource paths, install mode, hashes, generated names, provenance, and warnings in `core.toml`; prefer paths relative to `{cf-studio-path}` or project root when deterministic - `inst-manifest-register-bindings`
-6. [ ] - `p1` - Collect public component metadata for `.gen/` aggregation and target-specific agent generation from `KitModel.public_components` - `inst-manifest-collect-meta`
-7. [ ] - `p1` - **RETURN** result with status, install_mode, resource_bindings, files_copied, files_registered, generated_names, warnings, and risk fingerprint - `inst-manifest-return`
+1. [x] - `p1` - Read and validate canonical `.cf-studio-kit.toml` or normalize a legacy manifest/layout into `KitModel` - `inst-manifest-read`
+2. [x] - `p1` - Resolve effective install mode (`copy` or `register`) and effective resource destinations - `inst-manifest-resolve-install-mode`
+3. [x] - `p1` - Resolve the effective installed kit root from an explicit registered path or manifest root template - `inst-manifest-root-prompt`
+4. [x] - `p1` - **FOR EACH** resource declared in `KitModel.resources` - `inst-manifest-foreach-resource`
+   1. [x] - `p1` - **IF** `install_path` is user-modifiable in copy mode: prompt user for destination path (offering the manifest default) - `inst-manifest-prompt-path`
+   2. [x] - `p1` - Resolve each resource target from its effective default or user-selected path - `inst-manifest-default-path`
+   3. [x] - `p1` - **IF** copy mode: copy resource from source to resolved path, preserving directory structure within directory resources - `inst-manifest-copy-resource`
+   4. [x] - `p1` - **IF** register mode: leave files in place and bind the resource to its source path after containment validation - `inst-manifest-register-resource-in-place`
+5. [x] - `p1` - Resolve template variables from effective resource bindings for copied/generated files and prompts - `inst-manifest-resolve-vars`
+6. [x] - `p1` - Register effective resource paths, install mode, hashes, generated names, provenance, and warnings in `core.toml`; prefer paths relative to `{cf-studio-path}` or project root when deterministic - `inst-manifest-register-bindings`
+7. [x] - `p1` - Collect public component metadata for `.gen/` aggregation and target-specific agent generation from `KitModel.public_components` - `inst-manifest-collect-meta`
+8. [x] - `p1` - **RETURN** result with status, install_mode, resource_bindings, files_copied, files_registered, generated_names, warnings, and risk fingerprint - `inst-manifest-return`
 
 **Supporting**:
-- [ ] - `p1` - Manifest/KitModel dataclass definitions (`KitModel`, `KitResource`, public component view, provenance, drift, risk) and imports - `inst-manifest-datamodel`
-- [ ] - `p1` - Validate parsed manifest against kit source (unique IDs, source paths exist, type matches, path containment for register mode) - `inst-manifest-validate`
-- [ ] - `p1` - Copy a single manifest resource (file or directory) from source to target path - `inst-copy-manifest-resource`
-- [ ] - `p1` - Resolve `{identifier}` template variables in copied kit files - `inst-resolve-template-vars`
+- [x] - `p1` - Manifest/KitModel dataclass definitions (`KitModel`, `KitResource`, public component view, provenance, drift, risk) and imports - `inst-manifest-datamodel`
+- [x] - `p1` - Validate parsed manifest against kit source (unique IDs, source paths exist, type matches, path containment for register mode) - `inst-manifest-validate`
+- [x] - `p1` - Copy a single manifest resource (file or directory) from source to target path - `inst-copy-manifest-resource`
+- [x] - `p1` - Resolve `{identifier}` template variables in copied kit files - `inst-resolve-template-vars`
 
 ### Manifest Legacy Migration
 

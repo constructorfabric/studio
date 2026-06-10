@@ -1460,14 +1460,17 @@ def install_kit_with_manifest(
             "errors": risk_errors,
         }
 
+    # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-resolve-install-mode
     if install_mode not in {"copy", "register"}:
         return {
             "status": "FAIL",
             "kit": kit_slug,
             "errors": [f"Unsupported install mode: {install_mode}"],
         }
+    # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-resolve-install-mode
 
     if install_mode == "register":
+        # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-register-resource-in-place
         # @cpt-begin:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-register-core-only
         containment_errors = _validate_register_manifest_containment(
             project_root,
@@ -1508,6 +1511,8 @@ def install_kit_with_manifest(
             local_metadata=local_metadata or None,
         )
         meta = _collect_kit_metadata(kit_root, kit_slug, kit_root_rel)
+        # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-register-core-only
+        # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-register-resource-in-place
         return {
             "status": "PASS",
             "action": "installed",
@@ -1521,7 +1526,6 @@ def install_kit_with_manifest(
             "skill_nav": meta["skill_nav"],
             "agents_content": meta["agents_content"],
         }
-        # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-register-core-only
 
     # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-root-prompt
     # Resolve kit root directory from manifest template
