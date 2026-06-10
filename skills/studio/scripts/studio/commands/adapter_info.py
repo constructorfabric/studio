@@ -623,12 +623,13 @@ def cmd_adapter_info(argv: list[str]) -> int:
     kit_details = {}
     config_kits_dir = adapter_dir / "config" / "kits"
     kit_entries: dict = {}
-    if core_data and isinstance(core_data.get("kits"), dict):
+    has_registered_kits = bool(core_data and isinstance(core_data.get("kits"), dict))
+    if has_registered_kits:
         kit_entries.update({
             str(slug): entry if isinstance(entry, dict) else {}
             for slug, entry in core_data["kits"].items()
         })
-    if config_kits_dir.is_dir():
+    elif config_kits_dir.is_dir():
         for kit_dir in sorted(config_kits_dir.iterdir()):
             if kit_dir.is_dir():
                 kit_entries.setdefault(kit_dir.name, {})

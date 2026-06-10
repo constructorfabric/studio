@@ -163,6 +163,60 @@ class TestAdapterInfoCommand(unittest.TestCase):
             self.assertEqual(kit_detail["name"], "SDLC Kit")
             self.assertEqual(kit_detail["resources"]["skill"]["path"], "config/kits/sdlc/SKILL.md")
 
+    def test_adapter_info_ignores_unregistered_config_kit_dirs(self):
+        """Info reports kits registered in core.toml, not loose config/kits dirs."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir) / "project"
+            project_root.mkdir()
+            (project_root / ".git").mkdir()
+            (project_root / "AGENTS.md").write_text(
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".cypilot-adapter"\n```\n<!-- /@cf:root-agents -->\n',
+                encoding="utf-8",
+            )
+            adapter_dir = project_root / ".cypilot-adapter"
+            config_dir = adapter_dir / "config"
+            sdlc_dir = config_dir / "kits" / "sdlc"
+            loose_dir = config_dir / "kits" / "loose"
+            sdlc_dir.mkdir(parents=True)
+            loose_dir.mkdir(parents=True)
+            (config_dir / "AGENTS.md").write_text("# Constructor Studio Adapter: TestProject\n", encoding="utf-8")
+            for kit_dir, slug in ((sdlc_dir, "sdlc"), (loose_dir, "loose")):
+                (kit_dir / "SKILL.md").write_text(f"# {slug}\n", encoding="utf-8")
+                (kit_dir / ".cf-studio-kit.toml").write_text(
+                    "\n".join([
+                        "[[kits]]",
+                        f'slug = "{slug}"',
+                        f'name = "{slug}"',
+                        'version = "1.0"',
+                        "",
+                        "[[kits.resources]]",
+                        'id = "skill"',
+                        'kind = "skill"',
+                        'source = "SKILL.md"',
+                    ]) + "\n",
+                    encoding="utf-8",
+                )
+            (config_dir / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    'project_root = ".."',
+                    "",
+                    "[kits.sdlc]",
+                    'path = "config/kits/sdlc"',
+                    'version = "1.0"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            stdout_capture = io.StringIO()
+            with redirect_stdout(stdout_capture):
+                exit_code = main(["info", "--root", str(project_root)])
+
+            output = json.loads(stdout_capture.getvalue())
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(sorted(output["kit_models"]), ["sdlc"])
+            self.assertEqual(sorted(output["kit_details"]), ["sdlc"])
+
     def test_adapter_info_lists_workflows_from_frontmatter_directory(self):
         """Legacy workflow directory resources list workflow files, not the directory."""
         with tempfile.TemporaryDirectory() as tmp_dir:
