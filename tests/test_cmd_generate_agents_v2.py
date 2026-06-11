@@ -321,6 +321,27 @@ class TestCmdGenerateAgentsDiscover(unittest.TestCase):
 class TestCmdGenerateAgentsLegacyPath(unittest.TestCase):
     """Legacy path (no v2 manifest) still works."""
 
+    def test_project_root_manifest_does_not_enable_v2_pipeline(self):
+        """A root manifest.toml is not a generate-agents layer unless registered/configured."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root, cypilot_root = _make_project(tmpdir)
+            (project_root / ".git").mkdir()
+            (project_root / "manifest.toml").write_text(_MANIFEST_V2_AGENT, encoding="utf-8")
+
+            src = project_root / "agents" / "my-agent.md"
+            src.parent.mkdir(parents=True, exist_ok=True)
+            src.write_text("# My Agent\nDo something.", encoding="utf-8")
+
+            ret = cmd_generate_agents([
+                "--root", str(project_root),
+                "--cf-constructor-root", str(cypilot_root),
+                "--agent", "claude",
+                "--dry-run",
+            ])
+
+            self.assertEqual(ret, 0)
+            self.assertFalse((project_root / ".claude" / "agents" / "my-agent.md").exists())
+
     def test_legacy_path_dry_run(self):
         """cmd_generate_agents in legacy mode with --dry-run returns 0."""
         with tempfile.TemporaryDirectory() as tmpdir:

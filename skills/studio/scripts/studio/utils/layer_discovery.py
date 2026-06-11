@@ -245,21 +245,17 @@ def discover_layers(repo_root: Path, studio_root: Path) -> List[ManifestLayer]:
     layers.extend(kit_layers)
     # @cpt-end:cpt-studio-algo-project-extensibility-walk-up-discovery:p1:step-1-kit-layers
 
-    # Step 3-6: Load master manifest — check project root first, then walk up
+    # Step 3-6: Load master manifest — walk up from the project root parent
     # @cpt-begin:cpt-studio-algo-project-extensibility-walk-up-discovery:p1:step-3-6-walkup
-    # A project may be its own master repo (manifest.toml at project root with
-    # scope = "master").  Check repo_root itself before walking up to a parent.
-    root_manifest = repo_root / _MANIFEST_TOML
-    if root_manifest.is_file():
-        master_layer = _load_master_layer(repo_root)
+    # The current kit-based extensibility model treats project-root
+    # manifest.toml files as ordinary repository files unless they are
+    # explicitly registered as a kit. Project-scoped manifest layers live under
+    # {studio_root}/config/manifest.toml.
+    master_root = _detect_master_repo(repo_root)
+    if master_root is not None:
+        master_layer = _load_master_layer(master_root)
         if master_layer is not None:
             layers.append(master_layer)
-    else:
-        master_root = _detect_master_repo(repo_root)
-        if master_root is not None:
-            master_layer = _load_master_layer(master_root)
-            if master_layer is not None:
-                layers.append(master_layer)
     # @cpt-end:cpt-studio-algo-project-extensibility-walk-up-discovery:p1:step-3-6-walkup
 
     # Step 2: Load repo layer from {studio_root}/config/manifest.toml
