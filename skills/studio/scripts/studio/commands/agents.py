@@ -4320,7 +4320,12 @@ def cmd_generate_agents(argv: List[str]) -> int:
 
     # ── NEW: Multi-layer discovery path ────────────────────────────────────
     # @cpt-begin:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-step2-discover-layers
-    layers = _discover_layers(project_root, studio_root)
+    discovered_layers = _discover_layers(project_root, studio_root)
+    # Agent configuration generation is intentionally sourced only from
+    # installed kit manifests. Repo/master manifest layers can describe broader
+    # project extensibility, but must not implicitly affect generated agent
+    # configuration files.
+    layers = [layer for layer in discovered_layers if layer.scope == "kit"]
     # @cpt-end:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-step2-discover-layers
 
     if _layers_have_v2_manifests(layers):
@@ -4333,7 +4338,8 @@ def cmd_generate_agents(argv: List[str]) -> int:
         # Step 4: Handle --discover flag
         if getattr(args, "discover", False):
             _run_discover_flag(args, project_root, studio_root)
-            layers = _discover_layers(project_root, studio_root)
+            discovered_layers = _discover_layers(project_root, studio_root)
+            layers = [layer for layer in discovered_layers if layer.scope == "kit"]
             resolved_layers, has_v2_errors = _resolve_includes_for_layers(layers, project_root)
             if has_v2_errors:
                 return 1
