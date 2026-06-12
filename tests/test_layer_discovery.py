@@ -438,6 +438,19 @@ class TestDiscoverLayers:
             scopes = [l.scope for l in layers]
             assert "repo" not in scopes
 
+    def test_project_root_manifest_is_not_loaded_as_master_layer(self):
+        """A project-root manifest.toml is ignored unless registered or copied into Studio config."""
+        with TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "project"
+            repo_root.mkdir()
+            (repo_root / ".git").mkdir()
+            _write(repo_root / "manifest.toml", _VALID_V2_MANIFEST)
+            cypilot_root = repo_root / ".bootstrap"
+            (cypilot_root / "config").mkdir(parents=True)
+
+            layers = discover_layers(repo_root, cypilot_root)
+            assert [layer.scope for layer in layers] == []
+
     def test_parse_error_results_in_parse_error_state(self):
         """Parse error at repo manifest results in PARSE_ERROR state layer."""
         with TemporaryDirectory() as tmp:

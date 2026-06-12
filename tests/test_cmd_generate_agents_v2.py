@@ -136,6 +136,15 @@ def _write_manifest(cypilot_root: Path, content: str) -> Path:
     return manifest_path
 
 
+def _write_registered_kit_manifest(cypilot_root: Path, content: str, kit_name: str = "testkit") -> Path:
+    _register_kit(cypilot_root, kit_name)
+    kit_root = cypilot_root / "config" / "kits" / kit_name
+    kit_root.mkdir(parents=True, exist_ok=True)
+    manifest_path = kit_root / "manifest.toml"
+    manifest_path.write_text(content, encoding="utf-8")
+    return manifest_path
+
+
 # ---------------------------------------------------------------------------
 # Tests: cmd_generate_agents — v2 manifest pipeline
 # ---------------------------------------------------------------------------
@@ -145,7 +154,7 @@ class TestCmdGenerateAgentsV2ManifestPipeline(unittest.TestCase):
 
     def _run(self, tmpdir: str, extra_argv: list = None) -> int:
         project_root, cypilot_root = _make_project(tmpdir)
-        _write_manifest(cypilot_root, _MANIFEST_V2_AGENT)
+        _write_registered_kit_manifest(cypilot_root, _MANIFEST_V2_AGENT)
 
         # Write the agent source file
         src = project_root / "agents" / "my-agent.md"
@@ -172,7 +181,7 @@ class TestCmdGenerateAgentsV2ManifestPipeline(unittest.TestCase):
         """dry_run=True prevents files being written even with v2 manifest."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root, cypilot_root = _make_project(tmpdir)
-            _write_manifest(cypilot_root, _MANIFEST_V2_AGENT)
+            _write_registered_kit_manifest(cypilot_root, _MANIFEST_V2_AGENT)
 
             src = project_root / "agents" / "my-agent.md"
             src.parent.mkdir(parents=True, exist_ok=True)
@@ -192,7 +201,7 @@ class TestCmdGenerateAgentsV2ManifestPipeline(unittest.TestCase):
         """cmd_generate_agents writes agent files with v2 manifest (no dry-run)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root, cypilot_root = _make_project(tmpdir)
-            _write_manifest(cypilot_root, _MANIFEST_V2_AGENT)
+            _write_registered_kit_manifest(cypilot_root, _MANIFEST_V2_AGENT)
 
             src = project_root / "agents" / "my-agent.md"
             src.parent.mkdir(parents=True, exist_ok=True)
@@ -217,7 +226,7 @@ class TestCmdGenerateAgentsShowLayers(unittest.TestCase):
         """--show-layers returns 0 with v2 manifest."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root, cypilot_root = _make_project(tmpdir)
-            _write_manifest(cypilot_root, _MANIFEST_V2_AGENT)
+            _write_registered_kit_manifest(cypilot_root, _MANIFEST_V2_AGENT)
 
             src = project_root / "agents" / "my-agent.md"
             src.parent.mkdir(parents=True, exist_ok=True)
@@ -250,7 +259,7 @@ class TestCmdGenerateAgentsShowLayers(unittest.TestCase):
         """--show-layers in v2 mode outputs provenance report (JSON or text)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root, cypilot_root = _make_project(tmpdir)
-            _write_manifest(cypilot_root, _MANIFEST_V2_AGENT)
+            _write_registered_kit_manifest(cypilot_root, _MANIFEST_V2_AGENT)
 
             src = project_root / "agents" / "my-agent.md"
             src.parent.mkdir(parents=True, exist_ok=True)
@@ -301,7 +310,7 @@ class TestCmdGenerateAgentsDiscover(unittest.TestCase):
         """--discover in v2 mode re-runs discovery after writing manifest."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root, cypilot_root = _make_project(tmpdir)
-            _write_manifest(cypilot_root, _MANIFEST_V2_AGENT)
+            _write_registered_kit_manifest(cypilot_root, _MANIFEST_V2_AGENT)
 
             src = project_root / "agents" / "my-agent.md"
             src.parent.mkdir(parents=True, exist_ok=True)
@@ -320,6 +329,90 @@ class TestCmdGenerateAgentsDiscover(unittest.TestCase):
 
 class TestCmdGenerateAgentsLegacyPath(unittest.TestCase):
     """Legacy path (no v2 manifest) still works."""
+
+    def test_project_root_manifest_does_not_enable_v2_pipeline(self):
+        """A root manifest.toml is not a generate-agents layer unless registered/configured."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root, cypilot_root = _make_project(tmpdir)
+            (project_root / ".git").mkdir()
+            (project_root / "manifest.toml").write_text(_MANIFEST_V2_AGENT, encoding="utf-8")
+
+            src = project_root / "agents" / "my-agent.md"
+            src.parent.mkdir(parents=True, exist_ok=True)
+            src.write_text("# My Agent\nDo something.", encoding="utf-8")
+
+            with mock.patch("studio.commands.agents._resolve_includes_for_layers") as mock_resolve:
+                ret = cmd_generate_agents([
+                    "--root", str(project_root),
+                    "--cf-constructor-root", str(cypilot_root),
+                    "--agent", "claude",
+                    "--dry-run",
+                ])
+
+            mock_resolve.assert_not_called()
+            self.assertEqual(ret, 0)
+            self.assertFalse((project_root / ".claude" / "agents" / "my-agent.md").exists())
+
+    def test_repo_config_manifest_does_not_enable_v2_pipeline(self):
+        """A Studio config manifest.toml is not used for agent configuration generation."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root, cypilot_root = _make_project(tmpdir)
+            _write_manifest(cypilot_root, _MANIFEST_V2_AGENT)
+
+            src = project_root / "agents" / "my-agent.md"
+            src.parent.mkdir(parents=True, exist_ok=True)
+            src.write_text("# My Agent\nDo something.", encoding="utf-8")
+
+            with mock.patch("studio.commands.agents._resolve_includes_for_layers") as mock_resolve:
+                ret = cmd_generate_agents([
+                    "--root", str(project_root),
+                    "--cf-constructor-root", str(cypilot_root),
+                    "--agent", "claude",
+                    "--dry-run",
+                ])
+
+            mock_resolve.assert_not_called()
+            self.assertEqual(ret, 0)
+            self.assertFalse((project_root / ".claude" / "agents" / "my-agent.md").exists())
+
+    def test_parent_master_manifest_does_not_enable_v2_pipeline(self):
+        """A parent repo manifest.toml is not used for agent configuration generation."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir) / "workspace"
+            workspace.mkdir()
+            (workspace / ".git").mkdir()
+            (workspace / "manifest.toml").write_text(_MANIFEST_V2_AGENT, encoding="utf-8")
+
+            project_root = workspace / "project"
+            project_root.mkdir()
+            (project_root / "AGENTS.md").write_text(_AGENTS_MD, encoding="utf-8")
+            cypilot_root = project_root / ".bootstrap"
+            core = cypilot_root / ".core"
+            (core / "requirements").mkdir(parents=True)
+            (core / "workflows").mkdir(parents=True)
+            (cypilot_root / "config").mkdir(parents=True)
+            skill_dir = core / "skills" / "cypilot"
+            skill_dir.mkdir(parents=True)
+            (skill_dir / "SKILL.md").write_text(
+                "---\nname: cypilot\ndescription: Cypilot\n---\n# Cypilot\n",
+                encoding="utf-8",
+            )
+
+            src = project_root / "agents" / "my-agent.md"
+            src.parent.mkdir(parents=True, exist_ok=True)
+            src.write_text("# My Agent\nDo something.", encoding="utf-8")
+
+            with mock.patch("studio.commands.agents._resolve_includes_for_layers") as mock_resolve:
+                ret = cmd_generate_agents([
+                    "--root", str(project_root),
+                    "--cf-constructor-root", str(cypilot_root),
+                    "--agent", "claude",
+                    "--dry-run",
+                ])
+
+            mock_resolve.assert_not_called()
+            self.assertEqual(ret, 0)
+            self.assertFalse((project_root / ".claude" / "agents" / "my-agent.md").exists())
 
     def test_legacy_path_dry_run(self):
         """cmd_generate_agents in legacy mode with --dry-run returns 0."""
@@ -648,8 +741,8 @@ class TestV2PreviewCountsLegacyWorkflows(unittest.TestCase):
         """
         project_root, cypilot_root = _make_project(tmpdir)
 
-        # Write a v2 manifest with an agent entry
-        _write_manifest(cypilot_root, _MANIFEST_V2_AGENT)
+        # Write a registered kit v2 manifest with an agent entry.
+        _write_registered_kit_manifest(cypilot_root, _MANIFEST_V2_AGENT)
 
         # Write the v2 agent source file
         src = project_root / "agents" / "my-agent.md"
