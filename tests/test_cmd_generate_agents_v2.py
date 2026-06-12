@@ -341,13 +341,15 @@ class TestCmdGenerateAgentsLegacyPath(unittest.TestCase):
             src.parent.mkdir(parents=True, exist_ok=True)
             src.write_text("# My Agent\nDo something.", encoding="utf-8")
 
-            ret = cmd_generate_agents([
-                "--root", str(project_root),
-                "--cf-constructor-root", str(cypilot_root),
-                "--agent", "claude",
-                "--dry-run",
-            ])
+            with mock.patch("studio.commands.agents._resolve_includes_for_layers") as mock_resolve:
+                ret = cmd_generate_agents([
+                    "--root", str(project_root),
+                    "--cf-constructor-root", str(cypilot_root),
+                    "--agent", "claude",
+                    "--dry-run",
+                ])
 
+            mock_resolve.assert_not_called()
             self.assertEqual(ret, 0)
             self.assertFalse((project_root / ".claude" / "agents" / "my-agent.md").exists())
 
@@ -361,13 +363,15 @@ class TestCmdGenerateAgentsLegacyPath(unittest.TestCase):
             src.parent.mkdir(parents=True, exist_ok=True)
             src.write_text("# My Agent\nDo something.", encoding="utf-8")
 
-            ret = cmd_generate_agents([
-                "--root", str(project_root),
-                "--cf-constructor-root", str(cypilot_root),
-                "--agent", "claude",
-                "--dry-run",
-            ])
+            with mock.patch("studio.commands.agents._resolve_includes_for_layers") as mock_resolve:
+                ret = cmd_generate_agents([
+                    "--root", str(project_root),
+                    "--cf-constructor-root", str(cypilot_root),
+                    "--agent", "claude",
+                    "--dry-run",
+                ])
 
+            mock_resolve.assert_not_called()
             self.assertEqual(ret, 0)
             self.assertFalse((project_root / ".claude" / "agents" / "my-agent.md").exists())
 
@@ -398,13 +402,15 @@ class TestCmdGenerateAgentsLegacyPath(unittest.TestCase):
             src.parent.mkdir(parents=True, exist_ok=True)
             src.write_text("# My Agent\nDo something.", encoding="utf-8")
 
-            ret = cmd_generate_agents([
-                "--root", str(project_root),
-                "--cf-constructor-root", str(cypilot_root),
-                "--agent", "claude",
-                "--dry-run",
-            ])
+            with mock.patch("studio.commands.agents._resolve_includes_for_layers") as mock_resolve:
+                ret = cmd_generate_agents([
+                    "--root", str(project_root),
+                    "--cf-constructor-root", str(cypilot_root),
+                    "--agent", "claude",
+                    "--dry-run",
+                ])
 
+            mock_resolve.assert_not_called()
             self.assertEqual(ret, 0)
             self.assertFalse((project_root / ".claude" / "agents" / "my-agent.md").exists())
 

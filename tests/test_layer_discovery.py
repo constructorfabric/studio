@@ -449,7 +449,7 @@ class TestDiscoverLayers:
             (cypilot_root / "config").mkdir(parents=True)
 
             layers = discover_layers(repo_root, cypilot_root)
-            assert [l.scope for l in layers] == []
+            assert [layer.scope for layer in layers] == []
 
     def test_parse_error_results_in_parse_error_state(self):
         """Parse error at repo manifest results in PARSE_ERROR state layer."""
