@@ -4249,7 +4249,7 @@ def _confirm_v2_generation(
     """
     if args.dry_run:
         return False
-    if preview_create == 0 and preview_update == 0 and preview_delete == 0:
+    if not preview_create and not preview_update and not preview_delete:
         ui.info("No changes needed — agent files are up to date.")
         return False
     from ..utils.ui import is_json_mode
@@ -4600,7 +4600,7 @@ def cmd_generate_agents(argv: List[str]) -> int:
         )
         return 1
 
-    if total_create == 0 and total_update == 0 and total_delete == 0:
+    if not total_create and not total_update and not total_delete:
         from ..utils.ui import is_json_mode
         if is_json_mode():
             agents_result = _build_result(

@@ -318,7 +318,7 @@ def _validate_tar_archive_before_extract(
                 )
 
     archive_size = tar_path.stat().st_size
-    if total_size > 0 and archive_size <= 0:
+    if archive_size <= 0 < total_size:
         raise RuntimeError(
             "Archive extraction blocked: invalid compressed archive size "
             f"({archive_size} bytes)"
@@ -893,7 +893,7 @@ def _collect_registered_kit_metadata(
             continue
         if kind == "skill":
             continue
-        elif kind == "rule":
+        if kind == "rule":
             try:
                 agents_parts.append(binding_abs.read_text(encoding="utf-8"))
             except OSError:
@@ -3310,7 +3310,7 @@ def cmd_kit_update(argv: List[str]) -> int:
     }
     if errors:
         output["errors"] = errors
-    if n_updated == 0 and not errors:
+    if not n_updated and not errors:
         output["message"] = "All kits are up to date"
 
     ui.result(output, human_fn=_human_kit_update)
@@ -4909,7 +4909,7 @@ def _register_kit_in_core_toml(
         existing["install_mode"] = install_mode
     if source_provenance:
         existing["source_provenance"] = {
-            key: value for key, value in source_provenance.items() if value != ""
+            key: value for key, value in source_provenance.items() if value
         }
     if authority_metadata:
         # @cpt-begin:cpt-studio-algo-kit-github-version-authority:p1:inst-persist-authority-metadata
@@ -4936,7 +4936,7 @@ def _register_kit_in_core_toml(
             "freshness": authority_metadata.get("freshness", "unknown"),
         }
         existing["source_provenance"] = {
-            key: value for key, value in source_provenance.items() if value != ""
+            key: value for key, value in source_provenance.items() if value
         }
         authority_content_identity = {
             "vcs": authority_metadata.get("content_identity", {}).get("vcs", "") if isinstance(authority_metadata.get("content_identity"), dict) else "",
@@ -4946,7 +4946,7 @@ def _register_kit_in_core_toml(
             "identity": authority_metadata.get("identity", ""),
         }
         existing["content_identity"] = {
-            key: value for key, value in authority_content_identity.items() if value != ""
+            key: value for key, value in authority_content_identity.items() if value
         }
         authority_version = (
             authority_metadata.get("installed_version")

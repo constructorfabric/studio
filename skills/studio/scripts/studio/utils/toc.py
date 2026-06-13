@@ -58,7 +58,7 @@ def _fence_update(
     # Closing fence must use same char, be at least as long, and have no
     # info string — only optional whitespace after the fence token (§4.5).
     if char == state[0] and length >= state[1]:
-        if stripped.lstrip()[m.end():].strip() == "":
+        if not stripped.lstrip()[m.end():].strip():
             return None
     return state
 # @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-fence-update
@@ -220,7 +220,7 @@ def build_toc(
             depth = len(parent_stack)
             parent_stack.append(level)
 
-            if depth == 0:
+            if not depth:
                 top_num += 1
                 toc_lines.append(f"{top_num}. [{disp}](#{slug})")
             else:
@@ -325,7 +325,7 @@ def insert_toc_markers(
             if m and len(m.group(1)) == 1:
                 insert_pos = i + 1
                 # Skip blank lines immediately after H1
-                while insert_pos < len(lines) and lines[insert_pos].strip() == "":
+                while insert_pos < len(lines) and not lines[insert_pos].strip():
                     insert_pos += 1
                 break
 
@@ -392,9 +392,9 @@ def insert_toc_heading(
     # @cpt-begin:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-insert-heading-replace
     if toc_start is not None and toc_end is not None:
         # Strip blank lines around the replacement region
-        while toc_start > 0 and lines[toc_start - 1].strip() == "":
+        while toc_start > 0 and not lines[toc_start - 1].strip():
             toc_start -= 1
-        while toc_end < len(lines) and lines[toc_end].strip() == "":
+        while toc_end < len(lines) and not lines[toc_end].strip():
             toc_end += 1
         before = "\n".join(lines[:toc_start])
         after = "\n".join(lines[toc_end:])
@@ -432,7 +432,7 @@ def insert_toc_heading(
             k = j + 1
             while k < len(lines):
                 s = lines[k].strip()
-                if s.startswith("**") or s.startswith("- ") or s == "":
+                if s.startswith("**") or s.startswith("- ") or not s:
                     k += 1
                 else:
                     break
@@ -494,9 +494,9 @@ def _strip_manual_toc(content: str) -> Tuple[str, bool]:
     # Strip blank lines around the section
     start = toc_heading_start
     end = toc_heading_end
-    while start > 0 and lines[start - 1].strip() == "":
+    while start > 0 and not lines[start - 1].strip():
         start -= 1
-    while end < len(lines) and lines[end].strip() == "":
+    while end < len(lines) and not lines[end].strip():
         end += 1
 
     new_lines = lines[:start] + lines[end:]
@@ -531,7 +531,7 @@ def process_file(
     lines = content.split("\n")
     heading_count = len(parse_headings(lines, min_level=2, max_level=max_level))
 
-    if heading_count == 0:
+    if not heading_count:
         return {"file": str(filepath), "status": "SKIP", "message": "No headings found"}
 
     # If only manual TOC was removed but markers unchanged, still write

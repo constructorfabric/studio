@@ -308,7 +308,7 @@ def build_envelope(results: Sequence[PdslSourceResult], *, command: str, verbose
 # @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-summary:p1:inst-summary-cf-pdsl-reuse
     return {
         "command": command,
-        "ok": error_count == 0 and fail_count == 0,
+        "ok": not error_count and not fail_count,
         "summary": {
             "pass_count": pass_count,
             "fail_count": fail_count,

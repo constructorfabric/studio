@@ -970,7 +970,7 @@ def _validate_against_schema(data: Dict[str, Any]) -> List[str]:
     if resources is None:
         # V1 manifest without resources — allowed; treat as empty.
         return errors
-    if not isinstance(resources, list) or len(resources) == 0:
+    if not isinstance(resources, list) or not resources:
         errors.append("[[resources]] must be a non-empty array")
         return errors
 

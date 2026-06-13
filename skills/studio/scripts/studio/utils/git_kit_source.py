@@ -352,7 +352,7 @@ def _run_git(args: List[str], *, cwd: Optional[Path] = None, env: Optional[Dict[
         raise RuntimeError("git command not found") from exc
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"git command timed out after {_GIT_TIMEOUT}s") from exc
-    if proc.returncode != 0:
+    if proc.returncode:
         stderr = (proc.stderr or proc.stdout or "git command failed").strip()
         raise RuntimeError(stderr)
     return proc.stdout.strip()

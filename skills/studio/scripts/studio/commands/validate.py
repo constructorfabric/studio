@@ -148,7 +148,7 @@ def cmd_validate(argv: List[str]) -> int:
                 kit_filter=None,
                 verbose=bool(args.verbose),
             )
-            if rc != 0 or str(report.get("status")) != "PASS":
+            if rc or str(report.get("status")) != "PASS":
                 out = {
                     "status": "FAIL" if rc == 2 else "ERROR",
                     "message": "validate-kits failed (kit structure or templates are inconsistent)",
@@ -1112,7 +1112,7 @@ def _format_issue(issue: object, *, is_error: bool) -> None:
         "reasons", "fixing_prompt",
     }
     for k, v in issue.items():
-        if k in _HANDLED_KEYS or v is None or v == "" or v == []:
+        if k in _HANDLED_KEYS or v is None or not v or v == []:
             continue
         if isinstance(v, list):
             ui.substep(f"    {k}: {', '.join(str(x) for x in v)}")

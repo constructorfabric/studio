@@ -173,7 +173,7 @@ def check_kits(skill_path: Optional[Path], project_root: str = "") -> Dict[str, 
     except (OSError, subprocess.TimeoutExpired) as exc:
         result["message"] = str(exc)
         return result
-    if proc.returncode != 0:
+    if proc.returncode:
         message = (proc.stderr or proc.stdout or f"kit check-updates exited {proc.returncode}").strip()
         result["message"] = message
         result["returncode"] = proc.returncode

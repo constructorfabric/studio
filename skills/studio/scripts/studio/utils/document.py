@@ -103,7 +103,7 @@ def scan_cpt_ids(path: Path) -> List[Dict[str, object]]:
                 "type": "definition",
                 "checked": checked,
                 "has_task": m.group("task") is not None,
-                "has_priority": priority is not None and str(priority).strip() != "",
+                "has_priority": priority is not None and str(priority).strip(),
             }
             if priority:
                 h["priority"] = priority
@@ -128,7 +128,7 @@ def scan_cpt_ids(path: Path) -> List[Dict[str, object]]:
                 "type": "reference",
                 "checked": checked,
                 "has_task": mref.group("task") is not None,
-                "has_priority": priority is not None and str(priority).strip() != "",
+                "has_priority": priority is not None and str(priority).strip(),
             }
             if priority:
                 h["priority"] = priority
@@ -300,7 +300,7 @@ def get_content_scoped(
             text_lines = text_lines[:-1]
             end_idx -= 1
         text = "\n".join(text_lines).strip()
-        if text == "":
+        if not text:
             return None
         return (text, start_idx + 1, end_idx + 1)
 

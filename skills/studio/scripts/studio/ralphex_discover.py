@@ -138,7 +138,7 @@ def validate(ralphex_path: Optional[str]) -> Dict[str, object]:
     # @cpt-end:cpt-studio-algo-ralphex-delegation-validate:p1:inst-parse-version
 
     # @cpt-begin:cpt-studio-algo-ralphex-delegation-validate:p1:inst-return-available
-    if proc.returncode == 0 and version:
+    if not proc.returncode and version:
         logger.info("ralphex %s validated at %s", version, ralphex_path)
         return {
             "status": "available",
