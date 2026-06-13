@@ -223,10 +223,9 @@ def parse_manifest_v2(path: Path) -> ManifestV2:
 
     if version == "1.0":
         return _parse_v1_as_v2(path, data)
-    elif version == "2.0":
+    if version == "2.0":
         return _parse_v2_sections(path, data)
-    else:
-        raise ValueError(f"{path}: unsupported manifest version '{version}'")
+    raise ValueError(f"{path}: unsupported manifest version '{version}'")
 # @cpt-end:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-parse-v2
 
 

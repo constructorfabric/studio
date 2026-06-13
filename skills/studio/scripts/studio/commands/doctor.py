@@ -137,5 +137,3 @@ def _check_ralphex(project_root: Path) -> dict:
         "message": result["message"],
     }
 # @cpt-end:cpt-studio-algo-developer-experience-doctor:p2:inst-check-ralphex
-
-

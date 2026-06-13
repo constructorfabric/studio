@@ -82,7 +82,7 @@ def build_cpt_edges(nodes: Sequence[Node]) -> Tuple[List[Edge], List[Node]]:
                     continue  # self
                 to_id = target.id
                 dangling = False
-                cross_repo = (src.source != target.source)
+                cross_repo = src.source != target.source
 
             edge_type = "cpt-doc" if src.kind == "markdown" else "cpt-impl"
             key = (src.id, to_id, use.cpt_id)

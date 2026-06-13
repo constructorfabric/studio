@@ -265,9 +265,8 @@ def _unique_slug(text: str, slug_counts: Dict[str, int]) -> str:
     if slug in slug_counts:
         slug_counts[slug] += 1
         return f"{slug}-{slug_counts[slug]}"
-    else:
-        slug_counts[slug] = 0
-        return slug
+    slug_counts[slug] = 0
+    return slug
 # @cpt-end:cpt-studio-algo-traceability-validation-toc-utils:p1:inst-toc-util-unique-slug
 
 # ---------------------------------------------------------------------------

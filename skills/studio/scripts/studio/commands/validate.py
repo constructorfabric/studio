@@ -165,7 +165,7 @@ def cmd_validate(argv: List[str]) -> int:
             ui.result(out)
             return 1
     # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-self-check
-    
+
     for loaded_kit in (ctx.kits or {}).values():
         kit_constraints = getattr(loaded_kit, "constraints", None)
         if not kit_constraints:

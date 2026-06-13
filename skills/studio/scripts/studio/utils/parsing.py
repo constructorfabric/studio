@@ -24,7 +24,7 @@ from ..constants import (
 def parse_required_sections(requirements_path: Path) -> Dict[str, str]:
     """
     Parse required sections from requirements file.
-    
+
     Returns dict mapping section ID to section title.
     """
     sections: Dict[str, str] = {}
@@ -43,7 +43,7 @@ def parse_required_sections(requirements_path: Path) -> Dict[str, str]:
 def find_present_section_ids(artifact_text: str) -> List[str]:
     """
     Find section letter IDs present in artifact (e.g., A, B, C).
-    
+
     Looks for headings like "# A. Introduction"
     """
     present = []
@@ -59,11 +59,11 @@ def find_present_section_ids(artifact_text: str) -> List[str]:
 def split_by_section_letter(text: str, section_re: re.Pattern) -> Tuple[List[str], Dict[str, List[str]]]:
     """
     Split text by lettered sections using provided regex pattern.
-    
+
     Args:
         text: Text to split
         section_re: Compiled regex pattern to match section headers
-    
+
     Returns:
         Tuple of (section_order, section_dict)
         - section_order: List of section letters in order found
@@ -114,37 +114,37 @@ def split_by_section_letter_with_offsets(
 # @cpt-begin:cpt-studio-algo-traceability-validation-parsing-utils:p1:inst-parse-datamodel
 def _is_field_header_terminator(line: str) -> bool:
     """Check if line should terminate a field block.
-    
+
     Field headers come in two styles:
     1. Non-list: **Field Name**: value
     2. List-style: - **Field Name**: value (used in DECOMPOSITION.md)
-    
+
     Content with bold is NOT a field header:
     - **Bold Title**: prose explanation (like in PRD problem lists)
-    
+
     Heuristic: List-style is a field header if value is short/empty/None.
     Prose explanations after bold are content, not field headers.
     """
     m = FIELD_HEADER_RE.match(line)
     if not m:
         return False
-    
+
     stripped = line.lstrip()
     value = m.group(2).strip()
-    
+
     # Non-list style (e.g., "**Status**: value") - always a field header
     if not stripped.startswith(("- **", "* **")):
         return True
-    
+
     # List-style: check if value looks like field content vs prose
     # Field headers have: empty, "None", or start with backtick/link
     if not value or value == "None" or value.startswith("`") or value.startswith("["):
         return True
-    
+
     # If value is long prose (>40 chars), it's likely content not a field header
     if len(value) > 40:
         return False
-    
+
     # Short values in list-style are treated as field headers
     return True
 # @cpt-end:cpt-studio-algo-traceability-validation-parsing-utils:p1:inst-parse-datamodel
@@ -154,10 +154,10 @@ def _is_field_header_terminator(line: str) -> bool:
 def field_block(lines: List[str], field_name: str) -> Optional[Dict[str, object]]:
     """
     Extract field block from list of lines.
-    
+
     Looks for field header like "**Field Name**: value" and extracts
     value plus all following lines until next field header.
-    
+
     Returns dict with {index, value, tail} or None if not found.
     """
     for idx, line in enumerate(lines):
@@ -188,7 +188,7 @@ def has_list_item(lines: List[str]) -> bool:
 def extract_backticked_ids(line: str, pattern: re.Pattern) -> List[str]:
     """
     Extract IDs from backticked tokens that match pattern.
-    
+
     Example: "`cpt-system-feature-x-flow-y`" -> ["cpt-system-feature-x-flow-y"]
     """
     ids: List[str] = []

@@ -4622,28 +4622,27 @@ def cmd_generate_agents(argv: List[str]) -> int:
             ui.info("No changes needed — agent files are up to date.")
         return 0
     # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-return-report
-    else:
-        from ..utils.ui import is_json_mode
-        if not is_json_mode():
-            auto_approve = getattr(args, "yes", False)
-            if not auto_approve:
-                _human_generate_agents_preview(agents_to_process, preview_results, project_root)
-            if not auto_approve and sys.stdin.isatty():
-                try:
-                    answer = input(
-                        "  Reply with `y` to write these generated files or `n` to abort.\n"
-                        "  Suggested: `y` when the previewed create/update set matches your intent.\n"
-                        "  `y` = continue with file generation. `n` = stop without writing.\n"
-                        "  Proceed? [Y/n] "
-                    ).strip().lower()
-                except (EOFError, KeyboardInterrupt):
-                    answer = "n"
-                if answer and answer not in ("y", "yes"):
-                    ui.result(
-                        {"status": "ABORTED", "message": "Cancelled by user"},
-                        human_fn=lambda d: (ui.warn("Aborted."), ui.blank()),
-                    )
-                    return 1
+    from ..utils.ui import is_json_mode
+    if not is_json_mode():
+        auto_approve = getattr(args, "yes", False)
+        if not auto_approve:
+            _human_generate_agents_preview(agents_to_process, preview_results, project_root)
+        if not auto_approve and sys.stdin.isatty():
+            try:
+                answer = input(
+                    "  Reply with `y` to write these generated files or `n` to abort.\n"
+                    "  Suggested: `y` when the previewed create/update set matches your intent.\n"
+                    "  `y` = continue with file generation. `n` = stop without writing.\n"
+                    "  Proceed? [Y/n] "
+                ).strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                answer = "n"
+            if answer and answer not in ("y", "yes"):
+                ui.result(
+                    {"status": "ABORTED", "message": "Cancelled by user"},
+                    human_fn=lambda d: (ui.warn("Aborted."), ui.blank()),
+                )
+                return 1
 
     # Step 3: Execute the actual write
     # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-for-each-agent

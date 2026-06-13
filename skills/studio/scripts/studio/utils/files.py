@@ -181,17 +181,17 @@ def find_studio_directory(start: Path, studio_root: Optional[Path] = None) -> Op
         "target", "build", "dist", ".idea", ".vscode", "vendor",
         "coverage", ".tox", ".mypy_cache", ".eggs"
     }
-    
+
     def is_adapter_directory(path: Path) -> bool:
         """Check if directory looks like a studio config directory."""
         agents_file = path / "AGENTS.md"
         if not agents_file.exists():
             return False
-        
+
         # Check AGENTS.md content
         try:
             content = agents_file.read_text(encoding="utf-8")
-            
+
             # STRONGEST indicator: Extends Constructor Studio AGENTS.md
             # Example: **Extends**: `../.cf/AGENTS.md`
             if "**Extends**:" in content and "AGENTS.md" in content:
@@ -208,7 +208,7 @@ def find_studio_directory(start: Path, studio_root: Optional[Path] = None) -> Op
                             return True
                 # Even without studio_root validation, Extends is strong signal
                 return True
-            
+
             # Look for studio-specific markers in content
             adapter_markers = [
                 "# Constructor Studio Adapter:",
@@ -233,26 +233,26 @@ def find_studio_directory(start: Path, studio_root: Optional[Path] = None) -> Op
         # Fallback: verify it has rules/ or specs/ directory (strong structural indicator)
         if (path / "config" / "rules").is_dir() or (path / "rules").is_dir() or (path / "specs").is_dir():
             return True
-        
+
         return False
-    
+
     def search_recursive(root: Path, max_depth: int = 5, current_depth: int = 0) -> Optional[Path]:
         """Recursively search for studio directory."""
         if current_depth > max_depth:
             return None
-        
+
         try:
             entries = list(root.iterdir())
         except (PermissionError, OSError):
             return None
-        
+
         # First pass: check current level directories
         for entry in entries:
             if not entry.is_dir() or entry.name in skip_dirs:
                 continue
             if is_adapter_directory(entry):
                 return entry
-        
+
         # Second pass: recurse into subdirectories (breadth-first preference)
         for entry in entries:
             if not entry.is_dir() or entry.name in skip_dirs:
@@ -260,9 +260,9 @@ def find_studio_directory(start: Path, studio_root: Optional[Path] = None) -> Op
             result = search_recursive(entry, max_depth, current_depth + 1)
             if result is not None:
                 return result
-        
+
         return None
-    
+
     return search_recursive(project_root)
 # @cpt-end:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-find-dir
 
@@ -276,7 +276,7 @@ def load_studio_config(adapter_dir: Path) -> Dict[str, object]:
         "studio_dir": adapter_dir.as_posix(),
         "rules": [],
     }
-    
+
     agents_file = adapter_dir / "AGENTS.md"
     if agents_file.exists():
         try:
@@ -298,7 +298,7 @@ def load_studio_config(adapter_dir: Path) -> Dict[str, object]:
         for rule_file in rules_dir.glob("*.md"):
             rule_files.append(rule_file.stem)
         config["rules"] = sorted(rule_files)
-    
+
     return config
 # @cpt-end:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-load-config
 
@@ -372,12 +372,12 @@ def studio_root_from_this_file() -> Path:
     for _ in range(10):  # Limit search depth to avoid infinite loop
         if _is_studio_root(current):
             return current
-        
+
         parent = current.parent
         if parent == current:  # Reached filesystem root
             break
         current = parent
-    
+
     # Fallback to old behavior if markers not found
     return Path(__file__).resolve().parents[6]
 

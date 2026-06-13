@@ -3195,7 +3195,7 @@ def cmd_kit_update(argv: List[str]) -> int:
                     "message": "All kits are up to date",
                 }, human_fn=_human_kit_update)
                 return 0
-            elif source_failures:
+            if source_failures:
                 ui.result({
                     "status": "FAIL",
                     "message": "All kits failed source resolution",
@@ -4503,7 +4503,7 @@ def update_kit(
         # resource bindings). Bumping after `partial` (everything declined)
         # would mark the kit "current" against a remote it does not match,
         # silently hiding the pending update on the next `cfs kit update`.
-        bumped_safe_to_record = (ver_status != "partial")
+        bumped_safe_to_record = ver_status != "partial"
         if (source_version and bumped_safe_to_record) or _merged_resources:
             _kit_root_rel = registered_kit_path if _manifest is not None else ""
             # When all changes were declined, preserve the previously
@@ -4614,20 +4614,19 @@ def cmd_kit(argv: List[str]) -> int:
     # @cpt-begin:cpt-studio-flow-kit-dispatch:p1:inst-route
     if subcmd == "install":
         return cmd_kit_install(rest)
-    elif subcmd == "update":
+    if subcmd == "update":
         return cmd_kit_update(rest)
-    elif subcmd == "check-updates":
+    if subcmd == "check-updates":
         return cmd_kit_check_updates(rest)
-    elif subcmd == "validate":
+    if subcmd == "validate":
         from .validate_kits import cmd_validate_kits
         return cmd_validate_kits(rest)
-    elif subcmd == "normalize":
+    if subcmd == "normalize":
         return cmd_kit_normalize(rest)
-    elif subcmd == "migrate":
+    if subcmd == "migrate":
         return cmd_kit_migrate(rest)
-    else:
-        ui.result({"status": "ERROR", "message": f"Unknown kit subcommand: {subcmd}", "subcommands": subcommands})
-        return 1
+    ui.result({"status": "ERROR", "message": f"Unknown kit subcommand: {subcmd}", "subcommands": subcommands})
+    return 1
     # @cpt-end:cpt-studio-flow-kit-dispatch:p1:inst-route
 
 # ---------------------------------------------------------------------------
