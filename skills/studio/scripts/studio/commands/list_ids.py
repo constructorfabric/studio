@@ -252,7 +252,7 @@ def cmd_list_ids(argv: List[str]) -> int:
 
     # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-if-list
     # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-return-query
-    ui.result(result, human_fn=lambda d: _human_list_ids(d))
+    ui.result(result, human_fn=_human_list_ids)
     return 0
     # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-return-query
 

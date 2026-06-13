@@ -193,7 +193,7 @@ def _output(data: dict, args: argparse.Namespace) -> None:
         text = json.dumps(data, indent=2, ensure_ascii=False)
         Path(args.output).write_text(text, encoding="utf-8")
         return
-    ui.result(data, human_fn=lambda d: _human_spec_coverage(d))
+    ui.result(data, human_fn=_human_spec_coverage)
 
 def _format_ranges(ranges: list) -> str:
     """Format [[start, end], ...] as 'start-end, start-end, ...'."""

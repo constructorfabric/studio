@@ -2610,7 +2610,7 @@ def cmd_kit_install(argv: List[str]) -> int:
                     "kit": kit_slug,
                     "message": f"Kit '{kit_slug}' is registered at an absolute path that is not accessible on this OS",
                 },
-                human_fn=lambda d: _human_kit_install(d),
+                human_fn=_human_kit_install,
             )
             return 2
         # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-resolve-project
@@ -2624,7 +2624,7 @@ def cmd_kit_install(argv: List[str]) -> int:
                     "message": f"Kit '{kit_slug}' is already installed at {config_kit_dir}",
                     "hint": f"Use 'cfs kit update' to update, or 'cfs kit install {args.source or args.local_path} --force' to reinstall",
                 },
-                human_fn=lambda d: _human_kit_install(d),
+                human_fn=_human_kit_install,
             )
             return 2
         # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-check-existing
@@ -2670,7 +2670,7 @@ def cmd_kit_install(argv: List[str]) -> int:
                 output["files_registered"] = result.get("files_registered", 0)
             if result.get("errors"):
                 output["errors"] = result["errors"]
-            ui.result(output, human_fn=lambda d: _human_kit_install(d))
+            ui.result(output, human_fn=_human_kit_install)
             return 2
 
         # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-regen-gen
@@ -2697,7 +2697,7 @@ def cmd_kit_install(argv: List[str]) -> int:
         if result.get("errors"):
             output["errors"] = result["errors"]
 
-        ui.result(output, human_fn=lambda d: _human_kit_install(d))
+        ui.result(output, human_fn=_human_kit_install)
         return 0
         # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-output-result
 
@@ -3203,7 +3203,7 @@ def cmd_kit_update(argv: List[str]) -> int:
                     "kits_updated": 0,
                     "results": current_results,
                     "message": "All kits are up to date",
-                }, human_fn=lambda d: _human_kit_update(d))
+                }, human_fn=_human_kit_update)
                 return 0
             elif source_failures:
                 ui.result({
@@ -3323,7 +3323,7 @@ def cmd_kit_update(argv: List[str]) -> int:
     if n_updated == 0 and not errors:
         output["message"] = "All kits are up to date"
 
-    ui.result(output, human_fn=lambda d: _human_kit_update(d))
+    ui.result(output, human_fn=_human_kit_update)
     return 2 if command_failed else 0
     # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-format-output
 
@@ -3557,7 +3557,7 @@ def cmd_kit_normalize(argv: List[str]) -> int:
             "output": output_path.as_posix(),
             "report": report,
             "manifest": manifest_text,
-        }, human_fn=lambda d: _human_kit_normalize(d))
+        }, human_fn=_human_kit_normalize)
         return 0
     # @cpt-end:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-dry-run
 
@@ -3571,7 +3571,7 @@ def cmd_kit_normalize(argv: List[str]) -> int:
         "kit": model.slug,
         "output": output_path.as_posix(),
         "report": report,
-    }, human_fn=lambda d: _human_kit_normalize(d))
+    }, human_fn=_human_kit_normalize)
     return 0
     # @cpt-end:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-write-output
 

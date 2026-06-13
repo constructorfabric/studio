@@ -106,7 +106,7 @@ def cmd_validate_toc(argv: List[str]) -> int:
         "results": results,
     }
 
-    ui.result(output, human_fn=lambda d: _human_validate_toc(d))
+    ui.result(output, human_fn=_human_validate_toc)
 
     if total_errors:
         return 2

@@ -160,7 +160,7 @@ def cmd_list_id_kinds(argv: List[str]) -> int:
             "artifact_type": artifact_type,
             "kinds": kinds_in_artifact,
             "kind_counts": {k: kind_counts.get(k, 0) for k in kinds_in_artifact},
-        }, human_fn=lambda d: _human_list_id_kinds(d))
+        }, human_fn=_human_list_id_kinds)
     else:
         ui.result({
             "kinds": all_kinds,
@@ -168,7 +168,7 @@ def cmd_list_id_kinds(argv: List[str]) -> int:
             "kind_to_templates": {k: sorted(v) for k, v in sorted(kind_to_templates.items())},
             "template_to_kinds": {k: sorted(v) for k, v in sorted(template_to_kinds.items())},
             "artifacts_scanned": len(artifacts_to_scan),
-        }, human_fn=lambda d: _human_list_id_kinds(d))
+        }, human_fn=_human_list_id_kinds)
     # @cpt-end:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-return
     return 0
 

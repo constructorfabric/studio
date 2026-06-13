@@ -269,7 +269,7 @@ def cmd_validate(argv: List[str]) -> int:
                 "error_count": len(ctx_errors),
                 "warning_count": 0,
                 "errors": ctx_errors,
-            }, human_fn=lambda d: _human_validate(d))
+            }, human_fn=_human_validate)
             return 2
         ui.result({"status": "PASS", "artifacts_validated": 0, "error_count": 0, "warning_count": 0, "message": "No artifacts found in registry"})
         return 0
@@ -301,7 +301,7 @@ def cmd_validate(argv: List[str]) -> int:
         if args.output:
             Path(args.output).write_text(json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8")
         else:
-            ui.result(out, human_fn=lambda d: _human_validate(d))
+            ui.result(out, human_fn=_human_validate)
         return 2
     # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-if-registry-fail
 
@@ -418,7 +418,7 @@ def cmd_validate(argv: List[str]) -> int:
         if args.output:
             Path(args.output).write_text(json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8")
         else:
-            ui.result(out, human_fn=lambda d: _human_validate(d))
+            ui.result(out, human_fn=_human_validate)
         return 2
     # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-if-structure-fail
 
@@ -777,7 +777,7 @@ def cmd_validate(argv: List[str]) -> int:
             out_text += "\n"
         Path(args.output).write_text(out_text, encoding="utf-8")
     else:
-        ui.result(report, human_fn=lambda d: _human_validate(d))
+        ui.result(report, human_fn=_human_validate)
 
     if overall_status == "PASS":
         # @cpt-begin:cpt-studio-state-traceability-validation-report:p1:inst-pass

@@ -19,11 +19,14 @@ def cmd_where_defined(argv: List[str]) -> int:
 
     target_id, _, artifacts_to_scan, path_to_source, err = resolve_target_and_artifacts(args)
     if err:
-        ui.result({"status": "ERROR", "message": err}, human_fn=lambda d: _human_where_defined(d))
+        ui.result({"status": "ERROR", "message": err}, human_fn=_human_where_defined)
         return 1
 
     if not artifacts_to_scan:
-        ui.result({"status": "NO_ARTIFACTS", "id": target_id, "artifacts_scanned": 0, "count": 0, "definitions": []}, human_fn=lambda d: _human_where_defined(d))
+        ui.result(
+            {"status": "NO_ARTIFACTS", "id": target_id, "artifacts_scanned": 0, "count": 0, "definitions": []},
+            human_fn=_human_where_defined,
+        )
         return 0
     # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-resolve
 
@@ -51,11 +54,17 @@ def cmd_where_defined(argv: List[str]) -> int:
             definitions.append(d)
 
     if not definitions:
-        ui.result({"status": "NOT_FOUND", "id": target_id, "artifacts_scanned": len(artifacts_to_scan), "count": 0, "definitions": []}, human_fn=lambda d: _human_where_defined(d))
+        ui.result(
+            {"status": "NOT_FOUND", "id": target_id, "artifacts_scanned": len(artifacts_to_scan), "count": 0, "definitions": []},
+            human_fn=_human_where_defined,
+        )
         return 2
 
     status = "FOUND" if len(definitions) == 1 else "AMBIGUOUS"
-    ui.result({"status": status, "id": target_id, "artifacts_scanned": len(artifacts_to_scan), "count": len(definitions), "definitions": definitions}, human_fn=lambda d: _human_where_defined(d))
+    ui.result(
+        {"status": status, "id": target_id, "artifacts_scanned": len(artifacts_to_scan), "count": len(definitions), "definitions": definitions},
+        human_fn=_human_where_defined,
+    )
     # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-if-where-def
     return 0 if status == "FOUND" else 2
 

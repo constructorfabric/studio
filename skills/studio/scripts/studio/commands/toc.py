@@ -110,7 +110,7 @@ def cmd_toc(argv: List[str]) -> int:
     elif any(r["status"] == "ERROR" for r in results):
         output["status"] = "PARTIAL" if len(results) > 1 else "ERROR"
 
-    ui.result(output, human_fn=lambda d: _human_toc(d))
+    ui.result(output, human_fn=_human_toc)
 
     if validation_errors:
         return 2
