@@ -495,9 +495,9 @@ def _strip_toc_for_diff(content: bytes) -> Tuple[bytes, str]:
 
     if start_idx is not None and end_idx is not None:
         s, e = start_idx, end_idx + 1
-        while s > 0 and lines[s - 1].strip() == "":
+        while s > 0 and not lines[s - 1].strip():
             s -= 1
-        while e < len(lines) and lines[e].strip() == "":
+        while e < len(lines) and not lines[e].strip():
             e += 1
         new_lines = lines[:s] + lines[e:]
         return "\n".join(new_lines).encode("utf-8"), "markers"
@@ -514,9 +514,9 @@ def _strip_toc_for_diff(content: bytes) -> Tuple[bytes, str]:
                 toc_end = len(lines)
 
             s, e = i, toc_end
-            while s > 0 and lines[s - 1].strip() == "":
+            while s > 0 and not lines[s - 1].strip():
                 s -= 1
-            while e < len(lines) and lines[e].strip() == "":
+            while e < len(lines) and not lines[e].strip():
                 e += 1
             new_lines = lines[:s] + lines[e:]
             return "\n".join(new_lines).encode("utf-8"), "heading"

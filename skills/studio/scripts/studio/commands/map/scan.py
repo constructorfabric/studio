@@ -68,7 +68,7 @@ def _section_around(lines_raw, line_no: int) -> str:
     """
     # @cpt-begin:cpt-studio-algo-map-scan:p1:inst-section-around
     n = len(lines_raw)
-    if not (1 <= line_no <= n):
+    if not 1 <= line_no <= n:
         return ""
     target_idx = line_no - 1
 

@@ -143,7 +143,7 @@ def cmd_spec_coverage(argv: List[str]) -> int:
 
     if args.min_file_coverage is not None:
         for fc in report.per_file:
-            if fc.total_lines == 0:
+            if not fc.total_lines:
                 continue
             if fc.coverage_pct < args.min_file_coverage:
                 status = "FAIL"
@@ -156,9 +156,9 @@ def cmd_spec_coverage(argv: List[str]) -> int:
 
     if args.min_file_granularity is not None:
         for fc in report.per_file:
-            if fc.effective_lines == 0:
+            if not fc.effective_lines:
                 continue
-            if fc.covered_lines == 0:
+            if not fc.covered_lines:
                 continue
             if fc.granularity < args.min_file_granularity:
                 status = "FAIL"
@@ -217,7 +217,7 @@ def _human_spec_coverage(data: dict) -> None:
     if files and isinstance(files, dict):
         ui.blank()
         covered = {p: e for p, e in files.items() if e.get("covered_lines", 0) > 0}
-        uncovered = {p: e for p, e in files.items() if e.get("covered_lines", 0) == 0}
+        uncovered = {p: e for p, e in files.items() if not e.get("covered_lines", 0)}
 
         if covered:
             ui.step(f"Covered files ({len(covered)})")

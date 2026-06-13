@@ -257,8 +257,8 @@ def migrate_from_cypilot(
     # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-followup-update
     if not skip_update and not dry_run:
         update_rc, update_result = _run_followup_update(project_root, yes=yes)
-        actions["update"] = "PASS" if update_rc == 0 else "FAIL"
-        if update_rc != 0:
+        actions["update"] = "PASS" if not update_rc else "FAIL"
+        if update_rc:
             warnings.append("follow-up update failed")
     elif skip_update:
         actions["update"] = "skipped"
@@ -276,8 +276,8 @@ def migrate_from_cypilot(
     # sees on a manual `cfs kit update`.
     if not skip_update and not dry_run:
         kit_update_rc = _run_followup_kit_update(project_root=project_root, yes=yes)
-        actions["kit_update"] = "PASS" if kit_update_rc == 0 else "FAIL"
-        if kit_update_rc != 0:
+        actions["kit_update"] = "PASS" if not kit_update_rc else "FAIL"
+        if kit_update_rc:
             warnings.append("follow-up kit update failed")
     elif skip_update:
         actions["kit_update"] = "skipped"
@@ -613,7 +613,7 @@ def _run_legacy_update_to_baseline(project_root: Path) -> Dict[str, Any]:
             "error": "Interrupted by user (Ctrl+C)",
         }
     return {
-        "status": "PASS" if proc.returncode == 0 else "ERROR",
+        "status": "PASS" if not proc.returncode else "ERROR",
         "command": cmd,
         "returncode": proc.returncode,
         "stdout": proc.stdout,
@@ -925,7 +925,7 @@ def _probe_root_files_dirty(project_root: Path, paths: List[Path]) -> List[str]:
         )
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return []
-    if proc.returncode != 0:
+    if proc.returncode:
         return []
     dirty: List[str] = []
     for line in proc.stdout.splitlines():

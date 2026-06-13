@@ -689,7 +689,7 @@ def cmd_update(argv: List[str]) -> int:
             )
             validate_kits_result = vk_report
             vk_status = str(vk_report.get("status", ""))
-            if vk_rc != 0 or vk_status != "PASS":
+            if vk_rc or vk_status != "PASS":
                 warnings.append(f"validate-kits: {vk_status}")
                 ui.warn(f"Validate kits: {vk_status}")
                 # Show top errors inline so the user doesn't have to re-run

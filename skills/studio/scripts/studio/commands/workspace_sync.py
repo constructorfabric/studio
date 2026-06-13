@@ -141,7 +141,7 @@ def cmd_workspace_sync(argv: List[str]) -> int:
         "failed": failed,
         "results": results,
     }, human_fn=_human_workspace_sync)
-    return 0 if synced > 0 or failed == 0 else 2
+    return 0 if synced > 0 or not failed else 2
     # @cpt-end:cpt-studio-flow-workspace-sync:p1:inst-sync-return-ok
 
 

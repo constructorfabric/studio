@@ -1158,7 +1158,7 @@ def extract_system_slug_candidates(cpt_id: str, parent_prefix: str, kind_tokens:
         if first_pos is None or idx < first_pos:
             first_pos = idx
     # 2. Discard if zero or more than one distinct kind token matched.
-    if len(matched_kinds) != 1 or first_pos is None or first_pos == 0:
+    if len(matched_kinds) != 1 or first_pos is None or not first_pos:
         return []
     slug = remainder[:first_pos]
     return [slug]

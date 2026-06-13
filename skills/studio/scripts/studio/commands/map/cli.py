@@ -270,7 +270,7 @@ def _load_template_vars(primary_root: Path) -> Dict[str, str]:
             )
         except Exception:  # pylint: disable=broad-exception-caught
             continue
-        if out.returncode != 0 or not out.stdout.strip():
+        if out.returncode or not out.stdout.strip():
             continue
         try:
             data = json.loads(out.stdout)

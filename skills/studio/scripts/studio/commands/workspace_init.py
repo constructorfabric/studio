@@ -309,7 +309,7 @@ def _write_workspace_config(
     # @cpt-begin:cpt-studio-state-workspace-config-lifecycle:p1:inst-config-reinit-standalone
     output_path = Path(output_arg).resolve() if output_arg else (scan_root / WORKSPACE_CONFIG_FILENAME)
     exit_code, data = _write_standalone(output_path, workspace_data)
-    if output_arg and exit_code == 0:
+    if output_arg and not exit_code:
         rel = output_path.relative_to(project_root) if output_path.is_relative_to(project_root) else output_path
         data["hint"] = (
             f"Custom output path used. Other commands will not discover this file automatically. "

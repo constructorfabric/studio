@@ -318,7 +318,7 @@ def _validate_tar_archive_before_extract(
                 )
 
     archive_size = tar_path.stat().st_size
-    if total_size > 0 and archive_size <= 0:
+    if archive_size <= 0 < total_size:
         raise RuntimeError(
             "Archive extraction blocked: invalid compressed archive size "
             f"({archive_size} bytes)"
@@ -893,7 +893,7 @@ def _collect_registered_kit_metadata(
             continue
         if kind == "skill":
             continue
-        elif kind == "rule":
+        if kind == "rule":
             try:
                 agents_parts.append(binding_abs.read_text(encoding="utf-8"))
             except OSError:
@@ -3195,7 +3195,7 @@ def cmd_kit_update(argv: List[str]) -> int:
                     "message": "All kits are up to date",
                 }, human_fn=_human_kit_update)
                 return 0
-            elif source_failures:
+            if source_failures:
                 ui.result({
                     "status": "FAIL",
                     "message": "All kits failed source resolution",
@@ -3310,7 +3310,7 @@ def cmd_kit_update(argv: List[str]) -> int:
     }
     if errors:
         output["errors"] = errors
-    if n_updated == 0 and not errors:
+    if not n_updated and not errors:
         output["message"] = "All kits are up to date"
 
     ui.result(output, human_fn=_human_kit_update)
@@ -4503,7 +4503,7 @@ def update_kit(
         # resource bindings). Bumping after `partial` (everything declined)
         # would mark the kit "current" against a remote it does not match,
         # silently hiding the pending update on the next `cfs kit update`.
-        bumped_safe_to_record = (ver_status != "partial")
+        bumped_safe_to_record = ver_status != "partial"
         if (source_version and bumped_safe_to_record) or _merged_resources:
             _kit_root_rel = registered_kit_path if _manifest is not None else ""
             # When all changes were declined, preserve the previously
@@ -4614,20 +4614,19 @@ def cmd_kit(argv: List[str]) -> int:
     # @cpt-begin:cpt-studio-flow-kit-dispatch:p1:inst-route
     if subcmd == "install":
         return cmd_kit_install(rest)
-    elif subcmd == "update":
+    if subcmd == "update":
         return cmd_kit_update(rest)
-    elif subcmd == "check-updates":
+    if subcmd == "check-updates":
         return cmd_kit_check_updates(rest)
-    elif subcmd == "validate":
+    if subcmd == "validate":
         from .validate_kits import cmd_validate_kits
         return cmd_validate_kits(rest)
-    elif subcmd == "normalize":
+    if subcmd == "normalize":
         return cmd_kit_normalize(rest)
-    elif subcmd == "migrate":
+    if subcmd == "migrate":
         return cmd_kit_migrate(rest)
-    else:
-        ui.result({"status": "ERROR", "message": f"Unknown kit subcommand: {subcmd}", "subcommands": subcommands})
-        return 1
+    ui.result({"status": "ERROR", "message": f"Unknown kit subcommand: {subcmd}", "subcommands": subcommands})
+    return 1
     # @cpt-end:cpt-studio-flow-kit-dispatch:p1:inst-route
 
 # ---------------------------------------------------------------------------
@@ -4910,7 +4909,7 @@ def _register_kit_in_core_toml(
         existing["install_mode"] = install_mode
     if source_provenance:
         existing["source_provenance"] = {
-            key: value for key, value in source_provenance.items() if value != ""
+            key: value for key, value in source_provenance.items() if value
         }
     if authority_metadata:
         # @cpt-begin:cpt-studio-algo-kit-github-version-authority:p1:inst-persist-authority-metadata
@@ -4937,7 +4936,7 @@ def _register_kit_in_core_toml(
             "freshness": authority_metadata.get("freshness", "unknown"),
         }
         existing["source_provenance"] = {
-            key: value for key, value in source_provenance.items() if value != ""
+            key: value for key, value in source_provenance.items() if value
         }
         authority_content_identity = {
             "vcs": authority_metadata.get("content_identity", {}).get("vcs", "") if isinstance(authority_metadata.get("content_identity"), dict) else "",
@@ -4947,7 +4946,7 @@ def _register_kit_in_core_toml(
             "identity": authority_metadata.get("identity", ""),
         }
         existing["content_identity"] = {
-            key: value for key, value in authority_content_identity.items() if value != ""
+            key: value for key, value in authority_content_identity.items() if value
         }
         authority_version = (
             authority_metadata.get("installed_version")
