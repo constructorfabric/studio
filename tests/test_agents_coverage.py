@@ -324,7 +324,7 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
             self.assertNotIn(outside_skill.resolve(), paths)
             self.assertEqual(kit_slugs, set())
             stderr.write.assert_any_call(
-                f"WARNING: kit 'pubkit' public skill source escapes studio root: {outside_skill.resolve()}, skipping\n"
+                f"WARNING: kit 'pubkit' public skill source escapes project/studio root: {outside_skill.resolve()}, skipping\n"
             )
 
     def test_list_public_components_skips_unresolvable_source(self):

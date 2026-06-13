@@ -2164,11 +2164,17 @@ def _list_registered_public_resource_skills(
             if not source_path.is_absolute():
                 source_path = studio_root / source_path
             source_path = source_path.resolve()
-            try:
-                source_path.relative_to(studio_root.resolve())
-            except ValueError:
+            allowed = False
+            for root in (studio_root, project_root):
+                try:
+                    source_path.relative_to(root.resolve())
+                    allowed = True
+                    break
+                except ValueError:
+                    pass
+            if not allowed:
                 sys.stderr.write(
-                    f"WARNING: kit {kit_slug!r} public skill source escapes studio root: {source_path}, skipping\n"
+                    f"WARNING: kit {kit_slug!r} public skill source escapes project/studio root: {source_path}, skipping\n"
                 )
                 continue
             if not source_path.is_file():
