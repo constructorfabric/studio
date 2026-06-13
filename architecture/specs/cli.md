@@ -236,7 +236,7 @@ cfs update [--project-root P] [--dry-run] [--no-interactive] [-y/--yes]
 1. Resolve project root and Constructor Studio directory.
 2. Replace `.core/` from cache (always force-overwrite).
 3. For each kit in cache: compare kit version (skip same, file-level diff if newer, copy on first install), update kit files in `config/kits/{slug}/` via interactive diff prompts.
-4. Write aggregate `.gen/AGENTS.md` and `.gen/SKILL.md` from collected kit parts.
+4. Write aggregate `.gen/AGENTS.md` from collected kit rule parts.
 5. Ensure `config/` scaffold files exist (create only if missing).
 6. Re-inject root `AGENTS.md` and `CLAUDE.md` managed blocks.
 7. Auto-regenerate agent integration files if real changes happened.
@@ -254,7 +254,7 @@ cfs update [--project-root P] [--dry-run] [--no-interactive] [-y/--yes]
     "core_update": {"architecture": "updated", "skills": "updated", "...": "..."},
     "kits": {"sdlc": {"kit": "sdlc", "version": {"status": "current"}, "gen": {"files_written": 25}}},
     "gen_agents": "updated",
-    "gen_skill": "updated"
+    "gen_readme": "updated"
   },
   "self_check": {"status": "PASS", "kits_checked": 1, "templates_checked": 9}
 }

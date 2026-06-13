@@ -20,20 +20,19 @@ DO:
   REQUIRE {cf-studio-path} is resolved before CommandResolution and before any LOAD below, since CommandResolution's fallback path depends on {cf-studio-path}
   RUN CommandResolution to resolve {cfs_cmd}
   LOAD and REMEMBER rules from {cf-studio-path}/.gen/AGENTS.md
-  LOAD and REMEMBER rules from {cf-studio-path}/.gen/SKILL.md
   LOAD and REMEMBER rules from {cf-studio-path}/config/AGENTS.md WHEN that file exists; SKIP it without error WHEN it is absent
   LOAD and REMEMBER rules from {cf-studio-path}/config/SKILL.md WHEN that file exists; SKIP it without error WHEN it is absent
   LOAD and REMEMBER rules from {cf-studio-path}/.core/requirements/pdsl-execution-card.md
   LOAD and REMEMBER all UNIT rules defined in this file
   SET CFS_INIT = true
   RUN CliCapabilities to discover and remember the available {cfs_cmd} commands
-  EMIT a load report that names each loaded rule source ({cf-studio-path}/.gen/AGENTS.md, {cf-studio-path}/.gen/SKILL.md, {cf-studio-path}/config/AGENTS.md and {cf-studio-path}/config/SKILL.md when present, {cf-studio-path}/.core/requirements/pdsl-execution-card.md, and the UNIT rules in this file) and confirms cf is ready to follow them
+  EMIT a load report that names each loaded rule source ({cf-studio-path}/.gen/AGENTS.md, {cf-studio-path}/config/AGENTS.md and {cf-studio-path}/config/SKILL.md when present, {cf-studio-path}/.core/requirements/pdsl-execution-card.md, and the UNIT rules in this file) and confirms cf is ready to follow them
   CONTINUE IntentRouting
 RULES:
   ALWAYS treat cf and cf-studio as the same skill, where cf-studio is a proxy alias to cf
   ALWAYS limit cf/cf-studio to initiating the session and loading core rules
   ALWAYS run CommandResolution then CliCapabilities on every cf/cf-studio activation, before routing
-  ALWAYS load the {cf-studio-path}/.gen/AGENTS.md and {cf-studio-path}/.gen/SKILL.md rule sources as mandatory
+  ALWAYS load the {cf-studio-path}/.gen/AGENTS.md rule source as mandatory
   ALWAYS treat the {cf-studio-path}/config/AGENTS.md and {cf-studio-path}/config/SKILL.md rule sources as optional, loading each when it exists and skipping it without error when it is absent
   ALWAYS report the loaded rule sources and confirm readiness to follow them before routing
 NOTES:

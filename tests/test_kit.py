@@ -384,10 +384,7 @@ class TestManifestKitStrictResourceAuthority(unittest.TestCase):
                 "UNDECLARED ROOT AGENTS",
                 (adapter / ".gen" / "AGENTS.md").read_text(encoding="utf-8"),
             )
-            self.assertNotIn(
-                "UNDECLARED ROOT SKILL",
-                (adapter / ".gen" / "SKILL.md").read_text(encoding="utf-8"),
-            )
+            self.assertFalse((adapter / ".gen" / "SKILL.md").exists())
 
     def test_legacy_manifest_install_ignores_undeclared_root_metadata_files(self):
         from studio.commands.kit import install_kit, regenerate_gen_aggregates
@@ -410,10 +407,7 @@ class TestManifestKitStrictResourceAuthority(unittest.TestCase):
                 "UNDECLARED ROOT AGENTS",
                 (adapter / ".gen" / "AGENTS.md").read_text(encoding="utf-8"),
             )
-            self.assertNotIn(
-                "UNDECLARED ROOT SKILL",
-                (adapter / ".gen" / "SKILL.md").read_text(encoding="utf-8"),
-            )
+            self.assertFalse((adapter / ".gen" / "SKILL.md").exists())
 
     def test_manifest_update_filters_undeclared_root_metadata_files(self):
         from studio.commands.kit import install_kit, update_kit
@@ -489,10 +483,7 @@ class TestManifestKitStrictResourceAuthority(unittest.TestCase):
                 "PUBLIC RULE SENTINEL",
                 (adapter / ".gen" / "AGENTS.md").read_text(encoding="utf-8"),
             )
-            self.assertNotIn(
-                "PUBLIC RULE SENTINEL",
-                (adapter / ".gen" / "SKILL.md").read_text(encoding="utf-8"),
-            )
+            self.assertFalse((adapter / ".gen" / "SKILL.md").exists())
 
 
 class TestKitUpdateCheckCoverage(unittest.TestCase):
@@ -4991,53 +4982,41 @@ class TestCollectKitMetadataOsError(unittest.TestCase):
             meta = _collect_kit_metadata(kit_dir, "sdlc")
             self.assertEqual(meta["agents_content"], "")
 
-    def test_skill_nav_uses_registered_custom_path(self):
+    def test_skill_nav_ignores_registered_custom_path(self):
         from studio.commands.kit import _collect_kit_metadata
         with TemporaryDirectory() as td:
             kit_dir = Path(td) / "custom-kits" / "sdlc"
             kit_dir.mkdir(parents=True)
             (kit_dir / "SKILL.md").write_text("# Skill\n", encoding="utf-8")
             meta = _collect_kit_metadata(kit_dir, "sdlc", "custom-kits/sdlc")
-            self.assertEqual(
-                meta["skill_nav"],
-                "ALWAYS invoke `{cf-studio-path}/custom-kits/sdlc/SKILL.md` FIRST",
-            )
+            self.assertEqual(meta["skill_nav"], "")
 
-    def test_skill_nav_uses_absolute_registered_custom_path(self):
+    def test_skill_nav_ignores_absolute_registered_custom_path(self):
         from studio.commands.kit import _collect_kit_metadata
         with TemporaryDirectory() as td:
             kit_dir = Path(td) / "custom-kits" / "sdlc"
             kit_dir.mkdir(parents=True)
             (kit_dir / "SKILL.md").write_text("# Skill\n", encoding="utf-8")
             meta = _collect_kit_metadata(kit_dir, "sdlc", kit_dir.as_posix())
-            self.assertEqual(
-                meta["skill_nav"],
-                f"ALWAYS invoke `{kit_dir.as_posix()}/SKILL.md` FIRST",
-            )
+            self.assertEqual(meta["skill_nav"], "")
 
-    def test_skill_nav_uses_windows_drive_registered_custom_path(self):
+    def test_skill_nav_ignores_windows_drive_registered_custom_path(self):
         from studio.commands.kit import _collect_kit_metadata
         with TemporaryDirectory() as td:
             kit_dir = Path(td) / "custom-kits" / "sdlc"
             kit_dir.mkdir(parents=True)
             (kit_dir / "SKILL.md").write_text("# Skill\n", encoding="utf-8")
             meta = _collect_kit_metadata(kit_dir, "sdlc", "C:/external-kits/sdlc")
-            self.assertEqual(
-                meta["skill_nav"],
-                "ALWAYS invoke `C:/external-kits/sdlc/SKILL.md` FIRST",
-            )
+            self.assertEqual(meta["skill_nav"], "")
 
-    def test_skill_nav_uses_windows_backslash_registered_custom_path(self):
+    def test_skill_nav_ignores_windows_backslash_registered_custom_path(self):
         from studio.commands.kit import _collect_kit_metadata
         with TemporaryDirectory() as td:
             kit_dir = Path(td) / "custom-kits" / "sdlc"
             kit_dir.mkdir(parents=True)
             (kit_dir / "SKILL.md").write_text("# Skill\n", encoding="utf-8")
             meta = _collect_kit_metadata(kit_dir, "sdlc", r"C:\external-kits\sdlc")
-            self.assertEqual(
-                meta["skill_nav"],
-                "ALWAYS invoke `C:/external-kits/sdlc/SKILL.md` FIRST",
-            )
+            self.assertEqual(meta["skill_nav"], "")
 
     def test_registered_resource_metadata_uses_public_bindings_only(self):
         from studio.commands.kit import _collect_registered_kit_metadata
@@ -5066,10 +5045,7 @@ class TestCollectKitMetadataOsError(unittest.TestCase):
                 },
             )
 
-        self.assertEqual(
-            meta["skill_nav"],
-            "ALWAYS invoke `{cf-studio-path}/custom/SKILL.md` FIRST",
-        )
+        self.assertEqual(meta["skill_nav"], "")
         self.assertEqual(meta["agents_content"], "PUBLIC RULE\n")
         self.assertNotIn("PRIVATE RULE", meta["agents_content"])
 
@@ -5094,7 +5070,7 @@ class TestCollectKitMetadataOsError(unittest.TestCase):
                 },
             )
 
-        self.assertIn("{cf-studio-path}/external/SKILL.md", meta["skill_nav"])
+        self.assertEqual(meta["skill_nav"], "")
         self.assertEqual(meta["agents_content"], "LEGACY RULE\n")
 
     def test_prompt_manifest_install_plan_allows_root_and_resource_overrides(self):
@@ -5648,10 +5624,8 @@ class TestRegenerateGenAggregates(unittest.TestCase):
 
             regenerate_gen_aggregates(adapter)
 
-            gen_skill = (adapter / ".gen" / "SKILL.md").read_text(encoding="utf-8")
             gen_agents = (adapter / ".gen" / "AGENTS.md").read_text(encoding="utf-8")
-            self.assertNotIn("Loose Skill", gen_skill)
-            self.assertNotIn("loose", gen_skill)
+            self.assertFalse((adapter / ".gen" / "SKILL.md").exists())
             self.assertNotIn("# Loose Agents", gen_agents)
 
     def test_uses_default_installed_kit_path_when_path_not_explicitly_registered(self):
@@ -5680,13 +5654,31 @@ class TestRegenerateGenAggregates(unittest.TestCase):
 
             regenerate_gen_aggregates(adapter)
 
-            gen_skill = (adapter / ".gen" / "SKILL.md").read_text(encoding="utf-8")
             gen_agents = (adapter / ".gen" / "AGENTS.md").read_text(encoding="utf-8")
-            self.assertIn(
-                "ALWAYS invoke `{cf-studio-path}/config/kits/sdlc/SKILL.md` FIRST",
-                gen_skill,
-            )
+            self.assertFalse((adapter / ".gen" / "SKILL.md").exists())
             self.assertIn("# Default Agents", gen_agents)
+
+    def test_deletes_legacy_generated_skill_aggregate(self):
+        from studio.commands.kit import regenerate_gen_aggregates
+        from studio.utils import toml_utils
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            config = adapter / "config"
+            gen_dir = adapter / ".gen"
+            gen_dir.mkdir(parents=True, exist_ok=True)
+            legacy_skill = gen_dir / "SKILL.md"
+            legacy_skill.write_text("# Studio Generated Skills\n", encoding="utf-8")
+            toml_utils.dump({
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {},
+            }, config / "core.toml")
+
+            result = regenerate_gen_aggregates(adapter)
+
+            self.assertEqual(result["gen_skill"], "deleted")
+            self.assertFalse(legacy_skill.exists())
 
     def test_uses_registered_custom_kit_path(self):
         from studio.commands.kit import regenerate_gen_aggregates
@@ -5715,12 +5707,8 @@ class TestRegenerateGenAggregates(unittest.TestCase):
 
             regenerate_gen_aggregates(adapter)
 
-            gen_skill = (adapter / ".gen" / "SKILL.md").read_text(encoding="utf-8")
             gen_agents = (adapter / ".gen" / "AGENTS.md").read_text(encoding="utf-8")
-            self.assertIn(
-                "ALWAYS invoke `{cf-studio-path}/custom-kits/sdlc/SKILL.md` FIRST",
-                gen_skill,
-            )
+            self.assertFalse((adapter / ".gen" / "SKILL.md").exists())
             self.assertIn("# Custom Agents", gen_agents)
 
     def test_uses_registered_absolute_custom_kit_path(self):
@@ -5750,12 +5738,8 @@ class TestRegenerateGenAggregates(unittest.TestCase):
 
             regenerate_gen_aggregates(adapter)
 
-            gen_skill = (adapter / ".gen" / "SKILL.md").read_text(encoding="utf-8")
             gen_agents = (adapter / ".gen" / "AGENTS.md").read_text(encoding="utf-8")
-            self.assertIn(
-                f"ALWAYS invoke `{custom_kit.as_posix()}/SKILL.md` FIRST",
-                gen_skill,
-            )
+            self.assertFalse((adapter / ".gen" / "SKILL.md").exists())
             self.assertIn("# Custom Agents", gen_agents)
 
     def test_uses_registered_windows_drive_custom_kit_path(self):
@@ -5787,12 +5771,8 @@ class TestRegenerateGenAggregates(unittest.TestCase):
 
             regenerate_gen_aggregates(adapter)
 
-            gen_skill = (adapter / ".gen" / "SKILL.md").read_text(encoding="utf-8")
             gen_agents = (adapter / ".gen" / "AGENTS.md").read_text(encoding="utf-8")
-            self.assertIn(
-                "ALWAYS invoke `C:/external-kits/sdlc/SKILL.md` FIRST",
-                gen_skill,
-            )
+            self.assertFalse((adapter / ".gen" / "SKILL.md").exists())
             self.assertNotIn("# Fake Project Relative Agents", gen_agents)
 
     def test_uses_registered_windows_backslash_custom_kit_path(self):
@@ -5824,12 +5804,8 @@ class TestRegenerateGenAggregates(unittest.TestCase):
 
             regenerate_gen_aggregates(adapter)
 
-            gen_skill = (adapter / ".gen" / "SKILL.md").read_text(encoding="utf-8")
             gen_agents = (adapter / ".gen" / "AGENTS.md").read_text(encoding="utf-8")
-            self.assertIn(
-                "ALWAYS invoke `C:/external-kits/sdlc/SKILL.md` FIRST",
-                gen_skill,
-            )
+            self.assertFalse((adapter / ".gen" / "SKILL.md").exists())
             self.assertNotIn("# Fake Project Relative Agents", gen_agents)
 
 
@@ -6192,7 +6168,7 @@ class TestUpdateKitVersionPaths(unittest.TestCase):
             # Source has version=1 via conf.toml
             r = update_kit("tk", src, cyp, force=False)
             self.assertEqual(r["version"]["status"], "current")
-            self.assertIn("skill_nav", r)
+            self.assertNotIn("skill_nav", r)
 
     def test_manifest_invalid_binding_returns_failed_without_writing(self):
         from studio.commands.kit import update_kit

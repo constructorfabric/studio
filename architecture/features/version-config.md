@@ -157,7 +157,7 @@ Ensures teams can upgrade Studio without losing configuration or customizations 
 1. [x] - `p1` - Backup affected directories - `inst-layout-backup`
 2. [x] - `p1` - Move generated outputs: `.gen/kits/{slug}/` → `config/kits/{slug}/` - `inst-layout-move-gen`
 3. [x] - `p1` - Remove old `kits/{slug}/` reference copies if present - `inst-layout-remove-refs`
-4. [x] - `p1` - Remove `.gen/kits/` directory (preserve `.gen/AGENTS.md`, `.gen/SKILL.md`, `.gen/README.md`) - `inst-layout-clean-gen`
+4. [x] - `p1` - Remove `.gen/kits/` directory (preserve `.gen/AGENTS.md` and `.gen/README.md`) - `inst-layout-clean-gen`
 5. [x] - `p1` - Update `core.toml` kit registrations with new paths (`config/kits/{slug}`) - `inst-layout-update-core`
 6. [x] - `p1` - **IF** any step fails, restore from backup and report error - `inst-layout-rollback`
 

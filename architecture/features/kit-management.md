@@ -256,15 +256,14 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 **Input**: Studio adapter directory
 
-**Output**: Updated `.gen/AGENTS.md`, `.gen/SKILL.md`, `.gen/README.md`
+**Output**: Updated `.gen/AGENTS.md`, `.gen/README.md`
 
 **Steps**:
 1. [x] - `p1` - Read installed kit registrations from `config/core.toml`; unregistered `config/kits/*` directories never contribute generated aggregate output - `inst-scan-kits`
-2. [x] - `p1` - Collect metadata (skill_nav, agents_content) from each registered kit - `inst-collect-all-metadata`
+2. [x] - `p1` - Collect agent-rule metadata from each registered kit - `inst-collect-all-metadata`
 3. [x] - `p1` - Read project name from `config/artifacts.toml [[systems]][0].name` (per `cpt-studio-adr-remove-system-from-core-toml`) - `inst-read-project-name`
 4. [x] - `p1` - Compose and write `.gen/AGENTS.md` with navigation rules and kit agent content - `inst-write-gen-agents`
-5. [x] - `p1` - Compose and write `.gen/SKILL.md` with per-kit skill navigation pointers - `inst-write-gen-skill`
-6. [x] - `p1` - Write `.gen/README.md` using `_gen_readme()` - `inst-write-gen-readme`
+5. [x] - `p1` - Write `.gen/README.md` using `_gen_readme()` - `inst-write-gen-readme`
 
 **Supporting**:
 - [x] - `p1` - Top-level `regenerate_gen_aggregates` function orchestrating all gen steps - `inst-regen-fn`
@@ -717,7 +716,7 @@ Enables users to install, update, and validate kit packages with interactive fil
    4. [x] - `p1` - **IF** register mode: leave files in place and bind the resource to its source path after containment validation - `inst-manifest-register-resource-in-place`
 5. [x] - `p1` - Preserve `{identifier}` template variables in copied kit source files; expose effective bindings for read-time resolution by consumers - `inst-manifest-resolve-vars`
 6. [x] - `p1` - Register effective resource paths, install mode, hashes, generated names, provenance, and warnings in `core.toml`; prefer paths relative to `{cf-studio-path}` or project root when deterministic, and fail the operation when registration cannot be persisted - `inst-manifest-register-bindings`
-7. [x] - `p1` - Collect public component metadata for `.gen/` aggregation from registered manifest resources only: public `skill` resources route through `.gen/SKILL.md`, public `rule` resources are injected into `.gen/AGENTS.md`, and undeclared root `AGENTS.md`/`SKILL.md` files are ignored - `inst-manifest-collect-meta`
+7. [x] - `p1` - Collect public component metadata for `.gen/` aggregation from registered manifest resources only: public `rule` resources are injected into `.gen/AGENTS.md`, public `skill` resources are emitted only through agent integration files, and undeclared root `AGENTS.md`/`SKILL.md` files are ignored - `inst-manifest-collect-meta`
 8. [x] - `p1` - Generate target-specific agent integration files only for public `agent` resources and nested subagents; public `rule` resources never generate per-agent rule/config files - `inst-manifest-public-rule-gen-boundary`
 9. [x] - `p1` - **RETURN** result with status, install_mode, resource_bindings, files_copied, files_registered, generated_names, warnings, and risk fingerprint - `inst-manifest-return`
 
@@ -899,8 +898,8 @@ Enables users to install, update, and validate kit packages with interactive fil
 - [x] `p1` - `cfs kit update` with canonical or legacy manifest on legacy install: auto-populates resource bindings from existing kit root + manifest defaults
 - [x] `p1` - `cfs kit update` with resource bindings: updates files at their registered paths (not default `config/kits/{slug}/` paths); new resources without bindings go to default paths
 - [x] `p1` - `cfs validate-kits` validates all registered kits (constraints + templates); for manifest kits, verifies registered resource paths exist
-- [x] `p1` - `.gen/AGENTS.md` and `.gen/SKILL.md` are regenerated after install/update
-- [x] `p1` - `cfs generate-agents` consumes `KitModel.public_components` and emits skills/subagents/rules, not workflow directory scans, for manifest-backed kits
+- [x] `p1` - `.gen/AGENTS.md` is regenerated after install/update; generated skill/workflow entry points are emitted through agent integration files
+- [x] `p1` - `cfs generate-agents` consumes `KitModel.public_components` and emits skills/subagents/rules into agent integration files, not workflow directory scans, for manifest-backed kits
 - [x] `p1` - Public skills and subagents generated from kits are named `cf-{kit-slug}-{name}` and already-prefixed names are not double-prefixed
 - [x] `p1` - Legacy `workflow` entries are surfaced as skills with `origin = "legacy-workflow"` and deprecated workflow output is derived from those skills only for compatibility
 - [x] `p1` - File-level diff correctly handles TOC stripping, conflict merging, and editor integration

@@ -113,7 +113,7 @@ def _cf_reference_has_existing_static_prefix(ref: str) -> bool:
         # namespace is canonical even when a concrete file is materialized only
         # after init/update.
         return True
-    if ref in {".gen/AGENTS.md", ".gen/SKILL.md"}:
+    if ref == ".gen/AGENTS.md":
         return True
     if ref.startswith(".gen/kits/") and any(token in ref for token in ("{", "}", "<", ">")):
         return True

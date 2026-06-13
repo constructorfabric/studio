@@ -808,25 +808,11 @@ def _collect_kit_metadata(
     """Read installed kit files and return metadata for .gen/ aggregation.
 
     Returns dict with:
-        skill_nav      — navigation line for ``.gen/SKILL.md``
         agents_content — raw content of kit's AGENTS.md for ``.gen/AGENTS.md``
     """
     # @cpt-begin:cpt-studio-algo-kit-content-mgmt:p1:inst-collect-metadata
+    del kit_slug, registered_kit_path
     result: Dict[str, str] = {"skill_nav": "", "agents_content": ""}
-    kit_rel_path = _normalize_registered_kit_path(registered_kit_path, kit_slug)
-
-    skill_path = config_kit_dir / _KIT_SKILL_FILE if config_kit_dir is not None else None
-    if (
-        (skill_path is not None and skill_path.is_file())
-        or (config_kit_dir is None and _is_registered_kit_path_absolute(kit_rel_path))
-    ):
-        if not kit_rel_path:
-            skill_target = f"{{cf-studio-path}}/{_KIT_SKILL_FILE}"
-        elif _is_registered_kit_path_absolute(kit_rel_path):
-            skill_target = f"{kit_rel_path}/{_KIT_SKILL_FILE}"
-        else:
-            skill_target = f"{{cf-studio-path}}/{kit_rel_path}/{_KIT_SKILL_FILE}"
-        result["skill_nav"] = f"ALWAYS invoke `{skill_target}` FIRST"
 
     agents_path = config_kit_dir / _KIT_AGENTS_FILE if config_kit_dir is not None else None
     if agents_path is not None and agents_path.is_file():
@@ -849,12 +835,6 @@ def _binding_is_public_metadata_resource(binding: Dict[str, Any], kind: str) -> 
     return kind in {"skill", "rule"}
 
 
-def _registered_metadata_target(binding_path: str) -> str:
-    if _is_registered_kit_path_absolute(binding_path):
-        return binding_path
-    return f"{{cf-studio-path}}/{binding_path}"
-
-
 def _collect_registered_kit_metadata(
     studio_dir: Path,
     kit_slug: str,
@@ -872,7 +852,6 @@ def _collect_registered_kit_metadata(
 
     result: Dict[str, str] = {"skill_nav": "", "agents_content": ""}
     agents_parts: List[str] = []
-    skill_nav_parts: List[str] = []
     for _res_id, raw_binding in sorted(resources.items()):
         if not isinstance(raw_binding, dict):
             raw_binding = {"path": raw_binding} if isinstance(raw_binding, str) else {}
@@ -894,15 +873,12 @@ def _collect_registered_kit_metadata(
         if binding_abs is None or not binding_abs.is_file():
             continue
         if kind == "skill":
-            skill_nav_parts.append(
-                f"ALWAYS invoke `{_registered_metadata_target(binding_path)}` FIRST",
-            )
+            continue
         elif kind == "rule":
             try:
                 agents_parts.append(binding_abs.read_text(encoding="utf-8"))
             except OSError:
                 pass
-    result["skill_nav"] = "\n\n".join(skill_nav_parts)
     result["agents_content"] = "\n\n".join(part for part in agents_parts if part)
     return result
 
@@ -914,16 +890,16 @@ def _collect_registered_kit_metadata(
 # @cpt-algo:cpt-studio-algo-kit-regen-gen:p1
 # @cpt-begin:cpt-studio-algo-kit-regen-gen:p1:inst-regen-fn
 def regenerate_gen_aggregates(studio_dir: Path) -> Dict[str, Any]:
-    """Regenerate .gen/AGENTS.md, .gen/SKILL.md, .gen/README.md from all installed kits.
+    """Regenerate .gen/AGENTS.md and .gen/README.md from all installed kits.
 
-    Reads registered kits from core.toml, collects metadata (skill_nav,
-    agents_content) from each registered kit, and writes the aggregate files
-    into .gen/.
+    Reads registered kits from core.toml, collects AGENTS.md metadata from each
+    registered kit, and writes the aggregate files into .gen/.
 
     This is the canonical function — called by cmd_kit_install, cmd_kit_update,
     cmd_init, and cmd_update.
 
-    Returns dict with keys: gen_agents, gen_skill, gen_readme (action strings).
+    Returns dict with keys: gen_agents and gen_readme (action strings), and
+    gen_skill when a legacy generated skill aggregate is removed.
     """
     config_dir = studio_dir / "config"
     gen_dir = studio_dir / ".gen"
@@ -933,14 +909,11 @@ def regenerate_gen_aggregates(studio_dir: Path) -> Dict[str, Any]:
 
     # @cpt-begin:cpt-studio-algo-kit-regen-gen:p1:inst-scan-kits
     # Collect metadata from all installed kits
-    gen_skill_nav_parts: List[str] = []
     gen_agents_parts: List[str] = []
     kits_map = _read_kits_from_core_toml(config_dir)
     for kit_slug in sorted(kits_map):
         # @cpt-begin:cpt-studio-algo-kit-regen-gen:p1:inst-collect-all-metadata
         meta = _collect_registered_kit_metadata(studio_dir, kit_slug, kits_map.get(kit_slug, {}))
-        if meta["skill_nav"]:
-            gen_skill_nav_parts.append(meta["skill_nav"])
         if meta["agents_content"]:
             gen_agents_parts.append(meta["agents_content"])
         # @cpt-end:cpt-studio-algo-kit-regen-gen:p1:inst-collect-all-metadata
@@ -972,17 +945,10 @@ def regenerate_gen_aggregates(studio_dir: Path) -> Dict[str, Any]:
     result["gen_agents"] = "updated"
     # @cpt-end:cpt-studio-algo-kit-regen-gen:p1:inst-write-gen-agents
 
-    # @cpt-begin:cpt-studio-algo-kit-regen-gen:p1:inst-write-gen-skill
-    # Write .gen/SKILL.md
-    nav_rules = "\n\n".join(gen_skill_nav_parts) if gen_skill_nav_parts else ""
-    (gen_dir / _KIT_SKILL_FILE).write_text(
-        "# Studio Generated Skills\n\n"
-        "This file routes to per-kit skill instructions.\n\n"
-        + (nav_rules + "\n" if nav_rules else ""),
-        encoding="utf-8",
-    )
-    result["gen_skill"] = "updated"
-    # @cpt-end:cpt-studio-algo-kit-regen-gen:p1:inst-write-gen-skill
+    legacy_gen_skill = gen_dir / _KIT_SKILL_FILE
+    if legacy_gen_skill.exists():
+        legacy_gen_skill.unlink()
+        result["gen_skill"] = "deleted"
 
     # @cpt-begin:cpt-studio-algo-kit-regen-gen:p1:inst-write-gen-readme
     # Write .gen/README.md

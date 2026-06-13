@@ -1566,7 +1566,7 @@ class TestHumanUpdateDetailed(_HumanModeBase):
                 "cypilot_dir": "/tmp/project/cypilot",
                 "actions": {
                     "gen_agents": "created",
-                    "gen_skill": "updated",
+                    "gen_readme": "updated",
                     "config_readme": "unchanged",
                     "core_update": {
                         "architecture": "updated",

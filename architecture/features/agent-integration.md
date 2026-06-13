@@ -14,13 +14,13 @@
 - [3. Processes / Business Logic (CDSL)](#3-processes--business-logic-cdsl)
   - [Discover Supported Agents](#discover-supported-agents)
   - [Generate Agent Shims](#generate-agent-shims)
-  - [Compose SKILL.md](#compose-skillmd)
+  - [Generate Skill Entrypoints](#generate-skill-entrypoints)
   - [List Workflow Files](#list-workflow-files)
 - [4. States (CDSL)](#4-states-cdsl)
   - [Agent Entry Point State](#agent-entry-point-state)
 - [5. Definitions of Done](#5-definitions-of-done)
   - [Agent Entry Point Generation](#agent-entry-point-generation)
-  - [SKILL.md Composition](#skillmd-composition)
+  - [Skill Entrypoint Generation](#skill-entrypoint-generation)
   - [Workflow Discovery](#workflow-discovery)
 - [6. Implementation Modules](#6-implementation-modules)
 - [7. Acceptance Criteria](#7-acceptance-criteria)
@@ -191,13 +191,13 @@ Without this feature, users would need to manually create and maintain agent-spe
 - [x] - `p1` - Codex `reasoning_effort` → `model_reasoning_effort` value map (max → xhigh) - `inst-codex-effort-map`
 - [x] - `p1` - HTML comment helper for `reasoning_effort`/`context_window` on tools that ignore these fields - `inst-unsupported-field-comment`
 
-### Compose SKILL.md
+### Generate Skill Entrypoints
 
 - [x] `p1` - **ID**: `cpt-studio-algo-agent-integration-compose-skill`
 
-1. - `p1` - Read all `.gen/kits/*/SKILL.md` files - `inst-read-kit-skills`
-2. - `p1` - Assemble core commands section + per-kit skill sections - `inst-assemble-sections`
-3. - `p1` - Write composed SKILL.md to `.gen/SKILL.md` - `inst-write-skill`
+1. - `p1` - Discover public core and kit skill/workflow entrypoints from registered sources - `inst-read-kit-skills`
+2. - `p1` - Assemble per-agent skill entrypoint files that follow the canonical Studio workflow or skill source - `inst-assemble-sections`
+3. - `p1` - Write skill entrypoints into agent integration paths, never into `.gen/` aggregates - `inst-write-skill`
 
 ### List Workflow Files
 
@@ -235,13 +235,13 @@ Without this feature, users would need to manually create and maintain agent-spe
 - [x] - `p1` - Full overwrite on each invocation (no merge)
 - [x] - `p1` - `--dry-run` flag shows what would be generated without writing
 
-### SKILL.md Composition
+### Skill Entrypoint Generation
 
 - [x] `p1` - **ID**: `cpt-studio-dod-agent-integration-skill-composition`
 
-- [x] - `p1` - Composed SKILL.md includes core commands section
-- [x] - `p1` - Composed SKILL.md includes all `@cpt:skill` sections from installed kits
-- [x] - `p1` - Composed SKILL.md written to `.gen/SKILL.md`
+- [x] - `p1` - Agent integration files include core skill/workflow entrypoints
+- [x] - `p1` - Agent integration files include public skill/workflow entrypoints from installed kits
+- [x] - `p1` - No generated skill or workflow entrypoint is written to a generated aggregate under `.gen/`
 - [x] - `p1` - Root skill metadata advertises all chat-facing route families
   rather than only plan/generate/analyze/workspace shortcuts
 

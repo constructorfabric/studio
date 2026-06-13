@@ -49,14 +49,14 @@ Chosen: **SKILL.md as the canonical agent entry point**, with generated per-agen
 ### Consequences
 
 Architecture:
-- `{cf-studio-path}/.gen/SKILL.md` — composed from core + kit SKILL.md extensions
+- Superseded: the generated skill aggregate is no longer generated or loaded; generated skills and workflows are emitted through agent integration files.
 - `{cf-studio-path}/config/AGENTS.md` — WHEN rules for conditional loading (system prompts, kit rules)
-- Per-agent entry points (`.windsurf/workflows/`, `.cursor/rules/`, etc.) — generated shims that point to SKILL.md
+- Per-agent entry points (`.windsurf/workflows/`, `.cursor/rules/`, etc.) — generated shims that point to canonical Studio skill/workflow sources
 
 SKILL.md contains: command reference, workflow routing, execution protocol, and variable definitions. It is the single document an agent needs to operate Studio.
 
 * Good, because one source of truth — change SKILL.md, all agents get the update
-* Good, because kits extend SKILL.md through composition (kit SKILL.md → `.gen/SKILL.md`)
+* Superseded: kits now expose public skill/workflow entrypoints through generated agent integration files instead of generated skill aggregate composition
 * Good, because agent shims are auto-generated and fully overwritten on each `cfs agents` invocation
 * Bad, because SKILL.md can become large — mitigated by AGENTS.md WHEN rules for conditional loading
 * Bad, because agent-specific format quirks require per-agent template maintenance

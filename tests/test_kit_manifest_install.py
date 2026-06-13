@@ -824,7 +824,7 @@ class TestInstallKitWithManifest(unittest.TestCase):
             )
 
             self.assertIn("skill_nav", result)
-            self.assertIn("mykit", result["skill_nav"])
+            self.assertEqual(result["skill_nav"], "")
 
 
 # ---------------------------------------------------------------------------
