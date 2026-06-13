@@ -2131,6 +2131,7 @@ def _list_public_component_skills(
     return components, manifest_backed_kits
 
 
+# @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-explicit-install
 def _list_registered_public_resource_skills(
     studio_root: Path,
     project_root: Optional[Path],
@@ -2182,6 +2183,7 @@ def _list_registered_public_resource_skills(
             out.append((source_path.name, source_path, kit_slug, None))
             kit_slugs.add(kit_slug)
     return out, kit_slugs
+# @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-explicit-install
 
 # ---------------------------------------------------------------------------
 # Kit workflow → skill generation for skill-native tools
