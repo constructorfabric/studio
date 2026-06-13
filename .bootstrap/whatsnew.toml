@@ -1,6 +1,10 @@
-[whatsnew."v1.3.3"]
-summary = "v1.3.3"
-details = "## What's Changed\r\n* Enhance artifact binding functionality in constraints resources by @ainetx in https://github.com/constructorfabric/studio/pull/30\r\n\r\n\r\n**Full Changelog**: https://github.com/constructorfabric/studio/compare/v1.3.2...v1.3.3"
+[whatsnew."v1.3.6"]
+summary = "v1.3.6"
+details = "## What's Changed\r\n* Add support for registered public skill resources without a manifest by @ainetx in https://github.com/constructorfabric/studio/pull/35\r\n\r\n\r\n**Full Changelog**: https://github.com/constructorfabric/studio/compare/v1.3.5...v1.3.6"
+
+[whatsnew."v1.3.5"]
+summary = "v1.3.5"
+details = "## What's Changed\r\n* Enhance _load_kit_layers for project root resolution and add tests by @ainetx in https://github.com/constructorfabric/studio/pull/34\r\n\r\n\r\n**Full Changelog**: https://github.com/constructorfabric/studio/compare/v1.3.4...v1.3.5"
 
 [whatsnew."v1.3.2"]
 summary = "v1.3.2"
