@@ -1,3 +1,7 @@
+[whatsnew."v1.3.3"]
+summary = "v1.3.3"
+details = "## What's Changed\r\n* Enhance artifact binding functionality in constraints resources by @ainetx in https://github.com/constructorfabric/studio/pull/30\r\n\r\n\r\n**Full Changelog**: https://github.com/constructorfabric/studio/compare/v1.3.2...v1.3.3"
+
 [whatsnew."v1.3.2"]
 summary = "v1.3.2"
 details = "## What's Changed\r\n* Fix migration process and clean up resources by @ainetx in https://github.com/constructorfabric/studio/pull/29\r\n\r\n\r\n**Full Changelog**: https://github.com/constructorfabric/studio/compare/v1.3.1...v1.3.2"
