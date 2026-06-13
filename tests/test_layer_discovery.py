@@ -347,6 +347,58 @@ version = "1.0.0"
             assert result[0].scope == "kit"
             assert result[0].state == ManifestLayerState.LOADED
 
+    def test_resolves_registered_sibling_kit_inside_project_root(self):
+        """Register-mode sibling kit paths may leave the Studio adapter but stay in the project."""
+        with TemporaryDirectory() as tmp:
+            project_root = Path(tmp) / "project"
+            cypilot_root = project_root / ".cf-studio"
+            kit_dir = project_root / "studio-kit-gears"
+            kit_dir.mkdir(parents=True)
+            (cypilot_root / "config").mkdir(parents=True)
+            _write(kit_dir / "manifest.toml", _VALID_V2_MANIFEST)
+
+            core_content = """\
+version = "1.0"
+
+[kits]
+[kits.gears]
+path = "../studio-kit-gears"
+format = "CFS"
+version = "1.0.0"
+"""
+            (cypilot_root / "config" / "core.toml").write_text(core_content)
+
+            result = _load_kit_layers(cypilot_root, project_root)
+            assert len(result) == 1
+            assert result[0].scope == "kit"
+            assert result[0].path == (kit_dir / "manifest.toml").resolve()
+
+    def test_project_relative_registered_kit_path_fallback(self):
+        """Project-relative kit paths are supported when adapter-relative path is absent."""
+        with TemporaryDirectory() as tmp:
+            project_root = Path(tmp) / "project"
+            cypilot_root = project_root / ".cf-studio"
+            kit_dir = project_root / "studio-kit-gears"
+            kit_dir.mkdir(parents=True)
+            (cypilot_root / "config").mkdir(parents=True)
+            _write(kit_dir / "manifest.toml", _VALID_V2_MANIFEST)
+
+            core_content = """\
+version = "1.0"
+
+[kits]
+[kits.gears]
+path = "studio-kit-gears"
+format = "CFS"
+version = "1.0.0"
+"""
+            (cypilot_root / "config" / "core.toml").write_text(core_content)
+
+            result = _load_kit_layers(cypilot_root, project_root)
+            assert len(result) == 1
+            assert result[0].scope == "kit"
+            assert result[0].path == (kit_dir / "manifest.toml").resolve()
+
 
 # ---------------------------------------------------------------------------
 # _load_master_layer

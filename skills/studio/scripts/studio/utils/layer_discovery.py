@@ -104,7 +104,7 @@ def _load_repo_layer(studio_root: Path) -> Optional[ManifestLayer]:
 
 
 # @cpt-begin:cpt-studio-algo-project-extensibility-walk-up-discovery:p1:inst-load-kit-layers
-def _load_kit_layers(studio_root: Path) -> List[ManifestLayer]:
+def _load_kit_layers(studio_root: Path, project_root: Optional[Path] = None) -> List[ManifestLayer]:
     """Load kit manifest layers from kit registrations in ``core.toml``.
 
     Reads ``{studio_root}/config/core.toml``, iterates over ``[kits]``
@@ -114,6 +114,7 @@ def _load_kit_layers(studio_root: Path) -> List[ManifestLayer]:
     Kits with a parse error return a ``PARSE_ERROR`` state layer.
     """
     core_toml = studio_root / "config" / "core.toml"
+    trusted_root = (project_root or studio_root).resolve()
     if not core_toml.is_file():
         return []
 
@@ -135,18 +136,22 @@ def _load_kit_layers(studio_root: Path) -> List[ManifestLayer]:
         if not kit_path_raw:
             continue
 
-        kit_path = Path(str(kit_path_raw))
-        # Resolve relative paths against studio_root
-        if not kit_path.is_absolute():
-            kit_path = (studio_root / kit_path).resolve()
+        kit_path_raw_obj = Path(str(kit_path_raw))
+        # Resolve relative paths using registered-kit semantics: adapter
+        # relative first, with a project-root fallback for register-mode kits.
+        if not kit_path_raw_obj.is_absolute():
+            kit_path = (studio_root / kit_path_raw_obj).resolve()
+            project_relative_path = (trusted_root / kit_path_raw_obj).resolve()
+            if not kit_path.is_dir() and project_relative_path.is_dir():
+                kit_path = project_relative_path
         else:
-            kit_path = kit_path.resolve()
+            kit_path = kit_path_raw_obj.resolve()
 
-        # Post-resolve containment check (only for relative paths that could
-        # escape via '..' or symlinks; absolute paths are explicitly authored)
-        if not Path(str(kit_path_raw)).is_absolute() and not kit_path.is_relative_to(studio_root.resolve()):
+        # Post-resolve containment check for relative paths. Absolute paths are
+        # explicitly authored; relative paths must stay inside the project.
+        if not kit_path_raw_obj.is_absolute() and not kit_path.is_relative_to(trusted_root):
             logger.warning(
-                "Kit path '%s' resolves outside studio root, skipping",
+                "Kit path '%s' resolves outside project root, skipping",
                 kit_path_raw,
             )
             continue
@@ -241,7 +246,7 @@ def discover_layers(repo_root: Path, studio_root: Path) -> List[ManifestLayer]:
     # Step 1: Load kit layers from core.toml
     # @cpt-begin:cpt-studio-algo-project-extensibility-walk-up-discovery:p1:step-1-kit-layers
     layers: List[ManifestLayer] = []
-    kit_layers = _load_kit_layers(studio_root)
+    kit_layers = _load_kit_layers(studio_root, repo_root)
     layers.extend(kit_layers)
     # @cpt-end:cpt-studio-algo-project-extensibility-walk-up-discovery:p1:step-1-kit-layers
 
