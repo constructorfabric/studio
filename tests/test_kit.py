@@ -384,10 +384,7 @@ class TestManifestKitStrictResourceAuthority(unittest.TestCase):
                 "UNDECLARED ROOT AGENTS",
                 (adapter / ".gen" / "AGENTS.md").read_text(encoding="utf-8"),
             )
-            self.assertNotIn(
-                "UNDECLARED ROOT SKILL",
-                (adapter / ".gen" / "SKILL.md").read_text(encoding="utf-8"),
-            )
+            self.assertFalse((adapter / ".gen" / "SKILL.md").exists())
 
     def test_legacy_manifest_install_ignores_undeclared_root_metadata_files(self):
         from studio.commands.kit import install_kit, regenerate_gen_aggregates
@@ -410,10 +407,7 @@ class TestManifestKitStrictResourceAuthority(unittest.TestCase):
                 "UNDECLARED ROOT AGENTS",
                 (adapter / ".gen" / "AGENTS.md").read_text(encoding="utf-8"),
             )
-            self.assertNotIn(
-                "UNDECLARED ROOT SKILL",
-                (adapter / ".gen" / "SKILL.md").read_text(encoding="utf-8"),
-            )
+            self.assertFalse((adapter / ".gen" / "SKILL.md").exists())
 
     def test_manifest_update_filters_undeclared_root_metadata_files(self):
         from studio.commands.kit import install_kit, update_kit
@@ -489,10 +483,7 @@ class TestManifestKitStrictResourceAuthority(unittest.TestCase):
                 "PUBLIC RULE SENTINEL",
                 (adapter / ".gen" / "AGENTS.md").read_text(encoding="utf-8"),
             )
-            self.assertNotIn(
-                "PUBLIC RULE SENTINEL",
-                (adapter / ".gen" / "SKILL.md").read_text(encoding="utf-8"),
-            )
+            self.assertFalse((adapter / ".gen" / "SKILL.md").exists())
 
 
 class TestKitUpdateCheckCoverage(unittest.TestCase):
@@ -5667,6 +5658,28 @@ class TestRegenerateGenAggregates(unittest.TestCase):
             self.assertFalse((adapter / ".gen" / "SKILL.md").exists())
             self.assertIn("# Default Agents", gen_agents)
 
+    def test_deletes_legacy_generated_skill_aggregate(self):
+        from studio.commands.kit import regenerate_gen_aggregates
+        from studio.utils import toml_utils
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            config = adapter / "config"
+            gen_dir = adapter / ".gen"
+            gen_dir.mkdir(parents=True, exist_ok=True)
+            legacy_skill = gen_dir / "SKILL.md"
+            legacy_skill.write_text("# Studio Generated Skills\n", encoding="utf-8")
+            toml_utils.dump({
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {},
+            }, config / "core.toml")
+
+            result = regenerate_gen_aggregates(adapter)
+
+            self.assertEqual(result["gen_skill"], "deleted")
+            self.assertFalse(legacy_skill.exists())
+
     def test_uses_registered_custom_kit_path(self):
         from studio.commands.kit import regenerate_gen_aggregates
         from studio.utils import toml_utils
@@ -6155,7 +6168,7 @@ class TestUpdateKitVersionPaths(unittest.TestCase):
             # Source has version=1 via conf.toml
             r = update_kit("tk", src, cyp, force=False)
             self.assertEqual(r["version"]["status"], "current")
-            self.assertIn("skill_nav", r)
+            self.assertNotIn("skill_nav", r)
 
     def test_manifest_invalid_binding_returns_failed_without_writing(self):
         from studio.commands.kit import update_kit
