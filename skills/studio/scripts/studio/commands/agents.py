@@ -4566,6 +4566,7 @@ def cmd_generate_agents(argv: List[str]) -> int:
         return 0
 
     # Step 2: Show preview and ask for confirmation (interactive)
+    # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-return-report
     preview_has_fatal_errors = any(
         r.get("status") in {"PARTIAL", "CONFIG_ERROR"} and _result_has_fatal_errors(r)
         for r in preview_results.values()
@@ -4609,6 +4610,7 @@ def cmd_generate_agents(argv: List[str]) -> int:
         else:
             ui.info("No changes needed — agent files are up to date.")
         return 0
+    # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-return-report
     else:
         from ..utils.ui import is_json_mode
         if not is_json_mode():
@@ -4662,6 +4664,7 @@ def cmd_generate_agents(argv: List[str]) -> int:
     # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-return-exit-code
 
 
+# @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-return-exit-code
 _OUTSIDE_SCOPE_MARKER = "resolves outside project_root and studio_root"
 
 
@@ -4693,6 +4696,7 @@ def _result_has_fatal_errors(result: Dict[str, Any]) -> bool:
         # Any other error (including non-string structured errors) is fatal.
         return True
     return False
+# @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-return-exit-code
 
 
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-format-output
