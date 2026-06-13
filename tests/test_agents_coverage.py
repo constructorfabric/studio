@@ -298,6 +298,35 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
             self.assertIn("Bound nested behavior.", nested_content)
             self.assertNotIn("Audit nested behavior.", nested_content)
 
+    def test_registered_public_skill_resource_outside_studio_root_is_skipped(self):
+        from studio.commands.agents import _list_registered_public_resource_skills
+
+        with TemporaryDirectory() as td:
+            root, studio_root = self._make_project(td)
+            outside_dir = Path(td) / "outside"
+            outside_dir.mkdir()
+            outside_skill = outside_dir / "escape.md"
+            outside_skill.write_text("# Escape\nDo not load this.\n", encoding="utf-8")
+            core_toml = studio_root / "config" / "core.toml"
+            core_toml.write_text(
+                core_toml.read_text(encoding="utf-8")
+                + "\n[kits.pubkit.resources.escape]\n"
+                + 'kind = "skill"\n'
+                + "public = true\n"
+                + f'path = "{outside_skill.as_posix()}"\n',
+                encoding="utf-8",
+            )
+
+            with patch("sys.stderr") as stderr:
+                components, kit_slugs = _list_registered_public_resource_skills(studio_root, root)
+
+            paths = [entry[1] for entry in components]
+            self.assertNotIn(outside_skill.resolve(), paths)
+            self.assertEqual(kit_slugs, set())
+            stderr.write.assert_any_call(
+                f"WARNING: kit 'pubkit' public skill source escapes studio root: {outside_skill.resolve()}, skipping\n"
+            )
+
     def test_list_public_components_skips_unresolvable_source(self):
         from studio.commands.agents import _list_public_components
 
