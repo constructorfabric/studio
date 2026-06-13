@@ -214,7 +214,7 @@ Version output distinguishes package metadata from installed state. `--version` 
 
 - [ ] `p1` - `cpt-studio-fr-core-layout-migration`
 
-**Design Response**: The Layout Migrator is a component in the Kit Manager that detects the old directory layout and performs automatic restructuring (generated outputs from `.gen/kits/` to `config/kits/`). This is an internal v3 restructuring, not a version bump. Detection: if `{cf-studio-path}/.gen/kits/{slug}/` exists → old layout. Migration steps: (1) backup affected directories, (2) move `.gen/kits/{slug}/` → `config/kits/{slug}/` (generated outputs), (3) remove old `kits/{slug}/` reference copies if present, (4) remove `.gen/kits/` directory (preserve `.gen/AGENTS.md`, `.gen/SKILL.md`, `.gen/README.md`), (5) update `core.toml` kit registrations. Rollback: if any step fails, restore from backup and report error. Runs automatically during `cfs update`.
+**Design Response**: The Layout Migrator is a component in the Kit Manager that detects the old directory layout and performs automatic restructuring (generated outputs from `.gen/kits/` to `config/kits/`). This is an internal v3 restructuring, not a version bump. Detection: if `{cf-studio-path}/.gen/kits/{slug}/` exists → old layout. Migration steps: (1) backup affected directories, (2) move `.gen/kits/{slug}/` → `config/kits/{slug}/` (generated outputs), (3) remove old `kits/{slug}/` reference copies if present, (4) remove `.gen/kits/` directory (preserve `.gen/AGENTS.md` and `.gen/README.md`), (5) update `core.toml` kit registrations. Rollback: if any step fails, restore from backup and report error. Runs automatically during `cfs update`.
 
 ##### Remaining SDLC Requirements (EXTRACTED — External Package)
 
@@ -722,7 +722,7 @@ Manages the kit lifecycle — installing, registering, and updating kits. Enable
 
 ##### Responsibility scope
 
-- Kit installation from GitHub or local directories: download kit from a GitHub source (`cfs kit install <owner/repo[@version]>`) or install from a local directory (`cfs kit install --path <dir>`), copy all kit files from source into `{cf-studio-path}/config/kits/{slug}/`, register in `core.toml` with source and version metadata plus kit tracking policy, regenerate `.gen/AGENTS.md` and `.gen/SKILL.md` to include the new kit's navigation and skill routing. In tracked mode, files in the kit's config directory are user-editable and preserved across updates via interactive diff; in ignored mode, they are generated/ephemeral and overwriteable
+- Kit installation from GitHub or local directories: download kit from a GitHub source (`cfs kit install <owner/repo[@version]>`) or install from a local directory (`cfs kit install --path <dir>`), copy all kit files from source into `{cf-studio-path}/config/kits/{slug}/`, register in `core.toml` with source and version metadata plus kit tracking policy, regenerate `.gen/AGENTS.md` for public rules, and generate skill/workflow entrypoints through agent integration files. In tracked mode, files in the kit's config directory are user-editable and preserved across updates via interactive diff; in ignored mode, they are generated/ephemeral and overwriteable
 - Manifest-driven installation (see `cpt-studio-fr-core-kit-manifest`): the Kit Manager loads kit sources through a normalized `KitModel`. New kits use canonical `.cf-studio-kit.toml`; legacy `manifest.toml` v1/v2, ADR-0019 component manifests, and `conf.toml + layout` kits remain compatibility inputs. The Kit Manager validates the normalized model, reads all declared resources, prompts for effective destinations or local copy/register mode when required, copies or registers each resource, resolves template variables (`{identifier}`) from effective resource bindings, and registers resolved paths, install mode, hashes, provenance, and warnings in `core.toml` under `[kits.{slug}.resources]`. If no manifest-style input is present, it falls back to legacy predefined content directories and files.
 - Kit registration: add kit entry to `{cf-studio-path}/config/core.toml` with config output path, source provenance (`github`, `local_path`, or other explicit source type), requested source, effective source after mirror/fork override, version/ref, content identity, verification state, and resolved resource paths (`resources` map)
 - Version tracking: for GitHub-backed kits, resolve versions through the effective GitHub source's releases/tags; for local/path kits, record local provenance and content identity without GitHub update semantics. Kit source, version/ref, identity, and verification state are tracked in `core.toml`; kit-local metadata may also be stored in `{cf-studio-path}/config/kits/{slug}/conf.toml`
@@ -953,7 +953,7 @@ sequenceDiagram
         Config Manager->>Config Manager: write core.toml (root system, kit tracking, pinned metadata, no kits)
         Config Manager->>Config Manager: write artifacts.toml (root system, autodetect defaults)
         Config Manager->>Config Manager: write managed .gitignore block
-        Skill Engine->>Skill Engine: regenerate .gen/AGENTS.md, .gen/SKILL.md
+        Skill Engine->>Skill Engine: regenerate .gen/AGENTS.md
         Skill Engine->>Agent Generator: generate entry points
         Agent Generator->>Agent Generator: write .windsurf/, .cursor/, etc.
         Skill Engine->>Skill Engine: inject root AGENTS.md entry
@@ -977,8 +977,8 @@ sequenceDiagram
                 Kit Manager->>Kit Manager: copy files to config/kits/sdlc/
                 Kit Manager->>Config Manager: register kit in core.toml with source + version
             end
-            Kit Manager->>Kit Manager: compose SKILL.md and AGENTS.md extensions
-            Skill Engine->>Skill Engine: regenerate .gen/AGENTS.md, .gen/SKILL.md
+            Kit Manager->>Kit Manager: collect AGENTS.md extensions and public entrypoints
+            Skill Engine->>Skill Engine: regenerate .gen/AGENTS.md
             Skill Engine->>Agent Generator: regenerate entry points (include kit workflows)
             Skill Engine-->>User: "Studio initialized with SDLC kit"
         else user declines
@@ -1153,7 +1153,7 @@ sequenceDiagram
     Kit Manager->>Kit Manager: add source field to kits without one
     Skill Engine->>Config Manager: persist project-pinned Studio version/source metadata
     Skill Engine->>Config Manager: rewrite managed .gitignore block
-    Skill Engine->>Skill Engine: regenerate .gen/AGENTS.md, .gen/SKILL.md
+    Skill Engine->>Skill Engine: regenerate .gen/AGENTS.md
     Skill Engine->>Agent Generator: regenerate entry points
     alt --with-kits yes|true
         Skill Engine->>Kit Manager: update kit files using tracking policy safety contract

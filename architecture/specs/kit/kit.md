@@ -89,7 +89,7 @@ Top-level `.gen/` retains only aggregate files: `AGENTS.md`, `SKILL.md`, `README
    - **If `manifest.toml` present**: validate manifest, prompt user for `user_modifiable` resource paths (offering defaults), copy each resource to its resolved path, resolve `{identifier}` template variables in kit files, register all resource bindings in `core.toml` under `[kits.{slug}.resources]`
    - **If no `manifest.toml`**: copy all kit files from source to `{cf-studio-path}/config/kits/{slug}/` (legacy behavior)
    - Register kit in `core.toml`
-2. Regenerate `.gen/AGENTS.md` and `.gen/SKILL.md` to include the new kit's navigation and skill routing
+2. Regenerate `.gen/AGENTS.md` to include public kit rules; generate skill/workflow entrypoints through agent integration files
 3. Users may freely edit any kit file at any time
 4. On kit update, the system compares new files against user's installed copies via file-level diff (using registered resource paths for manifest-driven kits), then regenerates `.gen/` aggregate files. New resources in the updated manifest trigger a path prompt; removed resources produce a warning
 

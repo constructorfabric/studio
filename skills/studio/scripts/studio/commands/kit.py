@@ -811,8 +811,8 @@ def _collect_kit_metadata(
         agents_content — raw content of kit's AGENTS.md for ``.gen/AGENTS.md``
     """
     # @cpt-begin:cpt-studio-algo-kit-content-mgmt:p1:inst-collect-metadata
+    del kit_slug, registered_kit_path
     result: Dict[str, str] = {"skill_nav": "", "agents_content": ""}
-    kit_rel_path = _normalize_registered_kit_path(registered_kit_path, kit_slug)
 
     agents_path = config_kit_dir / _KIT_AGENTS_FILE if config_kit_dir is not None else None
     if agents_path is not None and agents_path.is_file():
@@ -833,12 +833,6 @@ def _binding_is_public_metadata_resource(binding: Dict[str, Any], kind: str) -> 
     if isinstance(public_value, str):
         return public_value.strip().lower() in {"1", "true", "yes", "on"}
     return kind in {"skill", "rule"}
-
-
-def _registered_metadata_target(binding_path: str) -> str:
-    if _is_registered_kit_path_absolute(binding_path):
-        return binding_path
-    return f"{{cf-studio-path}}/{binding_path}"
 
 
 def _collect_registered_kit_metadata(
