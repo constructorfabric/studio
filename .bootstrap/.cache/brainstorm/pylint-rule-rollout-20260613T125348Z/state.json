@@ -1,0 +1,65 @@
+{
+  "decisions": {
+    "adopt_two_step_rollout_sequence": "Use a two-step sequence: Step 1 enable the clean-pass E set plus the clean defect-oriented W subset now; Step 2 fix and then enable W1514,W1309,W0107; leave deferred items out of this cycle.",
+    "defer_noisy_or_policy_debate_rules": "Defer W0108 and W0621, and hold W0640 for a targeted correctness review instead of bundling it into the next broad tranche.",
+    "enable_clean_error_family_now": "Enable E1120,E1121,E1123,E1124,E1125,E1126,E1130,E1131,E1133,E1136 now.",
+    "fix_small_obvious_warning_set_first": "Treat W1514,W1309,W0107 as the fix-first tranche and clear the known small set before enabling them repo-wide.",
+    "keep_defect_warnings_in_enable_now": "Add W0102,W0106,W0120,W0123,W0125,W0133,W0150,W0201,W0231,W0237 now."
+  },
+  "open_questions": [
+    "Should W0640 be patched immediately as a one-off correctness fix?",
+    "Should the fix-first tranche be one combined patch or split into cleanup/config steps?"
+  ],
+  "panel": [
+    {
+      "focus": [
+        "Promote rules that already pass clean across the repo",
+        "Reject candidates likely to create immediate CI churn",
+        "Prefer additions that keep make pylint stable and boring"
+      ],
+      "id": "E1",
+      "persona": "Signal-First Maintainer"
+    },
+    {
+      "focus": [
+        "Prioritize error-class and call-signature checks with high bug-finding value",
+        "Highlight control-flow and operand misuse rules that catch real failures",
+        "Separate defect-prevention rules from style-only warnings"
+      ],
+      "id": "E2",
+      "persona": "Runtime Defect Hunter"
+    },
+    {
+      "focus": [
+        "Select warning rules with few obvious violations and trivial fixes",
+        "Bundle quick remediations like missing encodings, stray pass, and useless f-strings",
+        "Estimate whether a rule can be enabled in one short cleanup pass"
+      ],
+      "id": "E3",
+      "persona": "Low-Effort Cleanup Lead"
+    },
+    {
+      "focus": [
+        "Screen out warning families known to explode across a dynamic codebase",
+        "Challenge rules with ambiguous value such as broader lambda or naming-related warnings",
+        "Recommend deferral thresholds for rules that need policy debate or wide refactors"
+      ],
+      "id": "E4",
+      "persona": "Noise Budget Auditor"
+    },
+    {
+      "focus": [
+        "Group candidates into enable-now, fix-then-enable, and defer buckets",
+        "Define the smallest sensible next tranche rather than a maximal sweep",
+        "Check that each chosen rule has a clear rollout path in existing CI"
+      ],
+      "id": "E5",
+      "persona": "Incremental Adoption Planner"
+    }
+  ],
+  "rounds_count": 1,
+  "session_id": "pylint-rule-rollout-20260613T125348Z",
+  "status": "checkpointed",
+  "topic": "Given the current clean pass for all E and F checks plus the small obvious warning set already identified, which exact rules should go into the next enable-now tranche versus the fix-first tranche so we maximize real defect coverage and keep CI noise near zero?"
+}
+

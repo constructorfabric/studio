@@ -237,7 +237,7 @@ def result(
     elif status in ("FAIL", "ERROR"):
         error(message or status)
     elif status == "ABORTED":
-        warn(f"Aborted" + (f": {message}" if message else ""))
+        warn("Aborted" + (f": {message}" if message else ""))
     else:
         info(f"Status: {status}" + (f" — {message}" if message else ""))
     # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-result-human

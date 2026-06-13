@@ -101,8 +101,6 @@ class AgentEntry(ComponentEntry):
 @dataclass(frozen=True)
 class SkillEntry(ComponentEntry):
     """Skill component entry."""
-
-    pass
 # @cpt-end:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-skill-entry
 
 
@@ -110,8 +108,6 @@ class SkillEntry(ComponentEntry):
 @dataclass(frozen=True)
 class WorkflowEntry(ComponentEntry):
     """Workflow component entry."""
-
-    pass
 # @cpt-end:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-workflow-entry
 
 
@@ -119,8 +115,6 @@ class WorkflowEntry(ComponentEntry):
 @dataclass(frozen=True)
 class RuleEntry(ComponentEntry):
     """Rule component entry."""
-
-    pass
 # @cpt-end:cpt-studio-dod-project-extensibility-manifest-v2-schema:p1:inst-rule-entry
 
 
