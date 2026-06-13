@@ -24,7 +24,7 @@ def cmd_where_used(argv: List[str]) -> int:
         return 1
 
     if not artifacts_to_scan:
-        ui.result({"id": target_id, "artifacts_scanned": 0, "count": 0, "references": []}, human_fn=lambda d: _human_where_used(d))
+        ui.result({"id": target_id, "artifacts_scanned": 0, "count": 0, "references": []}, human_fn=_human_where_used)
         return 0
     # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-resolve
 
@@ -56,7 +56,10 @@ def cmd_where_used(argv: List[str]) -> int:
     references = sorted(references, key=lambda r: (str(r.get("artifact", "")), int(r.get("line", 0))))
 
     # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-if-where-used
-    ui.result({"id": target_id, "artifacts_scanned": len(artifacts_to_scan), "count": len(references), "references": references}, human_fn=lambda d: _human_where_used(d))
+    ui.result(
+        {"id": target_id, "artifacts_scanned": len(artifacts_to_scan), "count": len(references), "references": references},
+        human_fn=_human_where_used,
+    )
     return 0
 
 # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-format

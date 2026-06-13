@@ -499,7 +499,7 @@ def cmd_validate_kits(argv: List[str]) -> int:
     # @cpt-begin:cpt-studio-flow-kit-validate-cli:p1:inst-path-mode
     if args.path:
         rc, result = _validate_kit_by_path(Path(args.path), verbose=bool(args.verbose))
-        ui.result(result, human_fn=lambda d: _human_validate_kits(d))
+        ui.result(result, human_fn=_human_validate_kits)
         return rc
     # @cpt-end:cpt-studio-flow-kit-validate-cli:p1:inst-path-mode
 
@@ -519,7 +519,7 @@ def cmd_validate_kits(argv: List[str]) -> int:
     # @cpt-end:cpt-studio-flow-kit-validate-cli:p1:inst-registered-mode
 
     # @cpt-begin:cpt-studio-flow-kit-validate-cli:p1:inst-output-result
-    ui.result(result, human_fn=lambda d: _human_validate_kits(d))
+    ui.result(result, human_fn=_human_validate_kits)
     return rc
     # @cpt-end:cpt-studio-flow-kit-validate-cli:p1:inst-output-result
 

@@ -335,10 +335,6 @@ def _is_legacy_generator_toml_stub(content: str) -> bool:
     # appear at top level. Multi-line block strings (`"""..."""`) are handled
     # natively, removing the brittle hand-rolled parser path.
     try:
-        import tomllib  # type: ignore[unused-ignore]
-    except ImportError:
-        return False
-    try:
         data = tomllib.loads(content)
     except tomllib.TOMLDecodeError:
         return False

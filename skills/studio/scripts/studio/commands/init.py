@@ -1059,7 +1059,7 @@ def _repair_existing_install(
                 "errors": errors,
                 "actions": actions,
             },
-            human_fn=lambda d: _human_init_error(d),
+            human_fn=_human_init_error,
         )
         return 1
 
@@ -1484,7 +1484,7 @@ def cmd_init(argv: List[str]) -> int:
                 }
                 if backups:
                     err_result["backups"] = backups
-                ui.result(err_result, human_fn=lambda d: _human_init_error(d))
+                ui.result(err_result, human_fn=_human_init_error)
                 return 1
         # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-install-kit-accepted
         # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-skip-kit-declined
@@ -1569,7 +1569,7 @@ def cmd_init(argv: List[str]) -> int:
         }
         if backups:
             err_result["backups"] = backups
-        ui.result(err_result, human_fn=lambda d: _human_init_error(d))
+        ui.result(err_result, human_fn=_human_init_error)
         return 1
 
     # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-return-init-ok

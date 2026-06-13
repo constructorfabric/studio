@@ -42,7 +42,7 @@ def cmd_get_content(argv: List[str]) -> int:
             ui.result({"status": "NOT_FOUND", "id": args.id, "inst": args.inst})
             return 2
 
-        ui.result({"status": "FOUND", "id": args.id, "inst": args.inst, "text": content}, human_fn=lambda d: _human_get_content(d))
+        ui.result({"status": "FOUND", "id": args.id, "inst": args.inst, "text": content}, human_fn=_human_get_content)
         return 0
 
     # Handle artifact path
@@ -95,7 +95,7 @@ def cmd_get_content(argv: List[str]) -> int:
         "kind": artifact_meta.kind,
         "system": system.name,
         "traceability": artifact_meta.traceability,
-    }, human_fn=lambda d: _human_get_content(d))
+    }, human_fn=_human_get_content)
     # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-if-get-content
     return 0
 
