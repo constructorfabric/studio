@@ -601,6 +601,43 @@ class TestUpdateKitLegacyMigration(unittest.TestCase):
             # Original binding preserved
             self.assertIn("adr_artifacts", kit_entry["resources"])
 
+    def test_update_stops_same_version_fast_path_when_manifest_migration_fails(self):
+        """Failed migration must not fall through to invented resource bindings."""
+        from studio.commands.kit import update_kit
+        from studio.utils import toml_utils
+
+        with TemporaryDirectory() as td:
+            td_path = Path(td)
+            kit_src = _make_kit_source_with_manifest(td_path, "mykit")
+            adapter = _setup_legacy_project(td_path, "mykit")
+            config = adapter / "config"
+            with open(config / "core.toml", "rb") as f:
+                data = tomllib.load(f)
+            data["kits"]["mykit"]["version"] = "2.0"
+            toml_utils.dump(data, config / "core.toml")
+
+            with patch(
+                "studio.commands.kit.migrate_legacy_kit_to_manifest",
+                return_value={"status": "FAIL", "errors": ["migration failed"]},
+            ) as migrate_mock, patch(
+                "studio.commands.kit._sync_manifest_resource_bindings",
+            ) as sync_mock, patch(
+                "studio.commands.kit._register_kit_in_core_toml",
+            ) as register_mock:
+                result = update_kit(
+                    "mykit",
+                    kit_src,
+                    adapter,
+                    interactive=False,
+                    auto_approve=True,
+                )
+
+        migrate_mock.assert_called_once()
+        sync_mock.assert_not_called()
+        register_mock.assert_not_called()
+        self.assertEqual(result["version"], {"status": "failed"})
+        self.assertEqual(result["errors"], ["migration failed"])
+
     def test_update_no_manifest_no_migration(self):
         """update_kit without manifest in source → no migration attempt."""
         from studio.commands.kit import update_kit

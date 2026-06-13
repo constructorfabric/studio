@@ -202,7 +202,9 @@ class TestManifestInstallAdapter(unittest.TestCase):
 
             self.assertIsNotNone(manifest)
             assert manifest is not None
-            ruleset = [res for res in manifest.resources if res.id == "ruleset"][0]
+            ruleset = next((res for res in manifest.resources if res.id == "ruleset"), None)
+            self.assertIsNotNone(ruleset)
+            assert ruleset is not None
             self.assertEqual(ruleset.kind, "constraints")
             self.assertEqual(ruleset.artifact_bindings, {"FEATURE": {"template": "feature-template"}})
 

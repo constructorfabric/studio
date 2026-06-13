@@ -371,10 +371,12 @@ class TestValidateKitsResourcePaths(unittest.TestCase):
             finally:
                 set_context(None)
 
-        feature = [
-            item for item in result.get("self_check_results", [])
-            if item.get("kind") == "FEATURE"
-        ][0]
+        feature = next(
+            (item for item in result.get("self_check_results", []) if item.get("kind") == "FEATURE"),
+            None,
+        )
+        self.assertIsNotNone(feature)
+        assert feature is not None
         self.assertEqual(feature.get("status"), "FAIL")
         messages = [err.get("message", "") for err in feature.get("errors", [])]
         self.assertTrue(any("Template missing ID placeholder" in msg for msg in messages), messages)
@@ -401,11 +403,13 @@ class TestValidateKitsResourcePaths(unittest.TestCase):
                 set_context(None)
 
         self.assertEqual(rc, 0)
-        self.assertEqual(result.get("templates_checked"), 0)
-        feature = [
-            item for item in result.get("self_check_results", [])
-            if item.get("kind") == "FEATURE"
-        ][0]
+        self.assertEqual(result.get("templates_checked"), 1)
+        feature = next(
+            (item for item in result.get("self_check_results", []) if item.get("kind") == "FEATURE"),
+            None,
+        )
+        self.assertIsNotNone(feature)
+        assert feature is not None
         self.assertEqual(feature.get("status"), "PASS")
         warnings = [warn.get("message", "") for warn in feature.get("warnings", [])]
         self.assertTrue(any("no manifest resource binding" in msg for msg in warnings), warnings)
@@ -481,11 +485,13 @@ class TestValidateKitsResourcePaths(unittest.TestCase):
                 set_context(None)
 
         self.assertEqual(rc, 2)
-        self.assertEqual(result.get("templates_checked"), 1)
-        feature = [
-            item for item in result.get("self_check_results", [])
-            if item.get("kind") == "FEATURE"
-        ][0]
+        self.assertEqual(result.get("templates_checked"), 2)
+        feature = next(
+            (item for item in result.get("self_check_results", []) if item.get("kind") == "FEATURE"),
+            None,
+        )
+        self.assertIsNotNone(feature)
+        assert feature is not None
         messages = [err.get("message", "") for err in feature.get("errors", [])]
         self.assertTrue(any("Template missing ID placeholder" in msg for msg in messages), messages)
 
@@ -1132,10 +1138,12 @@ class TestValidateKitByPathManifest(unittest.TestCase):
 
         self.assertEqual(rc, 2)
         self.assertEqual(result.get("templates_checked"), 1)
-        feature = [
-            item for item in result.get("self_check_results", [])
-            if item.get("kind") == "FEATURE"
-        ][0]
+        feature = next(
+            (item for item in result.get("self_check_results", []) if item.get("kind") == "FEATURE"),
+            None,
+        )
+        self.assertIsNotNone(feature)
+        assert feature is not None
         messages = [err.get("message", "") for err in feature.get("errors", [])]
         self.assertTrue(any("Template missing ID placeholder" in msg for msg in messages), messages)
 
@@ -1174,11 +1182,13 @@ class TestValidateKitByPathManifest(unittest.TestCase):
             rc, result = _validate_kit_by_path(kit_dir, verbose=True)
 
         self.assertEqual(rc, 0)
-        self.assertEqual(result.get("templates_checked"), 0)
-        feature = [
-            item for item in result.get("self_check_results", [])
-            if item.get("kind") == "FEATURE"
-        ][0]
+        self.assertEqual(result.get("templates_checked"), 1)
+        feature = next(
+            (item for item in result.get("self_check_results", []) if item.get("kind") == "FEATURE"),
+            None,
+        )
+        self.assertIsNotNone(feature)
+        assert feature is not None
         warnings = [warn.get("message", "") for warn in feature.get("warnings", [])]
         self.assertTrue(any("no manifest resource binding" in msg for msg in warnings), warnings)
 

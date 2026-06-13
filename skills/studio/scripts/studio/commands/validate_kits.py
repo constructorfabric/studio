@@ -181,9 +181,13 @@ def _synthesized_meta_from_resource_bindings(
         if spec:
             artifacts[kind] = spec
 
+    known_kinds = _known_constraint_kinds(loaded_kit)
+    for kind in sorted(known_kinds):
+        artifacts.setdefault(kind, {})
+
     warnings = _missing_bound_artifact_warnings(
         kit_id=kit_id,
-        known_kinds=_known_constraint_kinds(loaded_kit),
+        known_kinds=known_kinds,
         artifacts=artifacts,
     )
     if not artifacts:

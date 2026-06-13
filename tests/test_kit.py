@@ -5174,12 +5174,16 @@ class TestCollectKitMetadataOsError(unittest.TestCase):
             project_root = Path(td) / "project"
             studio_dir = project_root / ".bootstrap"
             kit_source = project_root / "kits" / "sdlc"
+            external_dir = Path(td) / "external"
+            external_dir.mkdir()
+            external_constraints = external_dir / "constraints.toml"
+            external_constraints.write_text("", encoding="utf-8")
             kit_source.mkdir(parents=True)
             (kit_source / ".cf-studio-kit.toml").write_text("manifest\n", encoding="utf-8")
             manifest = SimpleNamespace(
                 root="/outside",
                 resources=[
-                    SimpleNamespace(id="absolute", source="/tmp/constraints.toml"),
+                    SimpleNamespace(id="absolute", source=external_constraints.as_posix()),
                     SimpleNamespace(id="escape", source="../../../outside.toml"),
                 ],
             )

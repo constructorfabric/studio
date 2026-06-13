@@ -4326,6 +4326,10 @@ def update_kit(
                         f"kit: warning: manifest migration for '{kit_slug}' failed: "
                         f"{_mig_result.get('errors', [])}\n"
                     )
+                    result["version"] = {"status": "failed"}
+                    result["gen"] = {"files_written": 0}
+                    result["errors"] = _mig_result.get("errors", [])
+                    return result
                 installed_kit_entry = _read_kits_from_core_toml(config_dir).get(kit_slug, installed_kit_entry)
             synced_resources = _sync_manifest_resource_bindings(_manifest, config_dir, kit_slug)
             resources_changed = False
