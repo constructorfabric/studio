@@ -40,6 +40,9 @@ class ManifestResource:
     type: str  # "file" or "directory"
     description: str = ""
     user_modifiable: bool = True
+    kind: str = ""
+    public: bool = False
+    artifact_bindings: Dict[str, Dict[str, str]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -1110,6 +1113,9 @@ def _load_canonical_kit_manifest(kit_source: Path, kit_slug: str = "") -> Option
                 type=res.type,
                 description=res.description,
                 user_modifiable=res.user_modifiable,
+                kind=res.kind,
+                public=res.public,
+                artifact_bindings=res.artifact_bindings,
             )
             for res in model.resources
         ],

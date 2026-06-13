@@ -76,6 +76,9 @@ class KitResource:
     context_window: Optional[str] = None
     subagents: List[Dict[str, Any]] = field(default_factory=list)
     target_configs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-artifact-bindings
+    artifact_bindings: Dict[str, Dict[str, str]] = field(default_factory=dict)
+    # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-artifact-bindings
 
 
 @dataclass(frozen=True)
@@ -242,6 +245,36 @@ def _config_table(raw: Dict[str, Any], key: str, field_name: str) -> Dict[str, D
     # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-agent-config
 
 
+def _artifact_bindings(value: Any, field_name: str) -> Dict[str, Dict[str, str]]:
+    # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-artifact-bindings
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"Field '{field_name}' must be a table")
+    result: Dict[str, Dict[str, str]] = {}
+    allowed = {"template", "rules", "checklist", "example", "examples"}
+    for kind, raw_binding in value.items():
+        kind_s = str(kind).strip().upper()
+        if not kind_s:
+            raise ValueError(f"Field '{field_name}' contains an empty artifact kind")
+        if not isinstance(raw_binding, dict):
+            raise ValueError(f"Field '{field_name}.{kind_s}' must be a table")
+        item: Dict[str, str] = {}
+        for key, raw_value in raw_binding.items():
+            key_s = str(key).strip()
+            if key_s not in allowed:
+                raise ValueError(
+                    f"Field '{field_name}.{kind_s}.{key_s}' is unsupported; expected one of {sorted(allowed)}",
+                )
+            if not isinstance(raw_value, str) or not raw_value.strip():
+                raise ValueError(f"Field '{field_name}.{kind_s}.{key_s}' must be a non-empty string")
+            item["examples" if key_s == "example" else key_s] = raw_value.strip()
+        if item:
+            result[kind_s] = item
+    return result
+    # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-artifact-bindings
+
+
 def _normalize_kind(kind: str, *, warnings: List[str], resource_id: str) -> str:
     cleaned = kind.strip().lower()
     # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-workflow-to-skill
@@ -405,6 +438,7 @@ def _semantic_resource_data(resource: KitResource) -> Dict[str, Any]:
         "context_window": resource.context_window,
         "subagents": resource.subagents,
         "target_configs": resource.target_configs,
+        "artifact_bindings": resource.artifact_bindings,
     }
     # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-resource-id-vs-generated-name
     return data
@@ -546,6 +580,9 @@ def _with_hashes(kit_source: Path, model: KitModel) -> KitModel:
             context_window=resource.context_window,
             subagents=resource.subagents,
             target_configs=resource.target_configs,
+            # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-artifact-bindings
+            artifact_bindings=resource.artifact_bindings,
+            # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-artifact-bindings
         )
         for resource in model.resources
     ]
@@ -635,7 +672,7 @@ def _canonical_model_from_entry(
                 "origin", "generated_name", "prefix_generated_name", "agent", "targets", "permissions",
                 "tools", "disallowed_tools", "mode", "isolation", "model",
                 "skills", "color", "memory_dir", "role", "target", "provider",
-                "reasoning_effort", "context_window", "subagents",
+                "reasoning_effort", "context_window", "subagents", "artifacts",
             },
             resource_context,
             warnings,
@@ -680,6 +717,13 @@ def _canonical_model_from_entry(
             raise ValueError(
                 f"Resource '{resource_id}': generated_targets is only allowed for public resources",
             )
+        # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-artifact-bindings
+        artifact_bindings = _artifact_bindings(raw.get("artifacts"), f"resources.{resource_id}.artifacts")
+        if artifact_bindings and kind != "constraints":
+            raise ValueError(
+                f"Resource '{resource_id}': artifacts bindings are only allowed for constraints resources",
+            )
+        # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-artifact-bindings
         permissions_config = raw.get("permissions") if isinstance(raw.get("permissions"), dict) else {}
         resource = KitResource(
             id=resource_id,
@@ -723,6 +767,7 @@ def _canonical_model_from_entry(
             context_window=_config_optional_string(raw, agent_config, "context_window"),
             subagents=_config_subagents(raw, agent_config, f"resources.{resource_id}.subagents"),
             target_configs=_config_table(raw, "targets", f"resources.{resource_id}.targets"),
+            artifact_bindings=artifact_bindings,
             # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-agent-fields
             # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-agent-config
         )
@@ -1150,6 +1195,11 @@ def _load_core_model(kit_source: Path) -> KitModel:
         origin = str(binding.get("origin", "")).strip() if isinstance(binding, dict) else ""
         if not origin and kind == "skill" and source.startswith("workflows/"):
             origin = "legacy-workflow"
+        artifact_bindings = _artifact_bindings(binding.get("artifacts") if isinstance(binding, dict) else None, f"resources.{resource_id}.artifacts")
+        if artifact_bindings and kind != "constraints":
+            raise ValueError(
+                f"Resource '{resource_id}': artifacts bindings are only allowed for constraints resources",
+            )
         resources.append(KitResource(
             id=str(resource_id),
             kind=kind,
@@ -1163,6 +1213,9 @@ def _load_core_model(kit_source: Path) -> KitModel:
             generated_targets=_string_list(binding.get("generated_targets") if isinstance(binding, dict) else None, f"resources.{resource_id}.generated_targets") or ["installed"],
             origin=origin,
             generated_name=_normalize_public_name(slug, str(resource_id)) if kind in _PUBLIC_KINDS else "",
+            # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-artifact-bindings
+            artifact_bindings=artifact_bindings,
+            # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-artifact-bindings
         ))
     if not resources:
         raise ValueError(f"No usable resource bindings found for kit '{slug}'")
@@ -1265,6 +1318,10 @@ def kit_model_to_toml_data(model: KitModel) -> Dict[str, Any]:
             item["subagents"] = resource.subagents
         if resource.target_configs:
             item["targets"] = resource.target_configs
+        # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-artifact-bindings
+        if resource.artifact_bindings:
+            item["artifacts"] = resource.artifact_bindings
+        # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-artifact-bindings
         resources.append(item)
     # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
 

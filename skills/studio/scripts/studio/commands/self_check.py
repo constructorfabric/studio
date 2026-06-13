@@ -39,7 +39,7 @@ def run_self_check_from_meta(
     It does NOT do studio/project discovery.
     """
     # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-user-self-check
-    from ..utils.constraints import load_constraints_toml
+    from ..utils.constraints import load_constraints_files, load_constraints_toml
 
     # @cpt-begin:cpt-studio-algo-developer-experience-self-check:p1:inst-validate-headings
     def _check_template_constraints_consistency(
@@ -50,6 +50,7 @@ def run_self_check_from_meta(
         kit_base: Path,
         kit_constraints,
         artifacts_meta: ArtifactsMeta,
+        constraints_path: Optional[Path] = None,
     ) -> Dict[str, List[Dict[str, object]]]:
         errs: List[Dict[str, object]] = []
         warns: List[Dict[str, object]] = []
@@ -65,11 +66,11 @@ def run_self_check_from_meta(
         if constraints_for_kind is None:
             return {"errors": errs, "warnings": warns}
 
-        constraints_path = None
-        try:
-            constraints_path = (kit_base / "constraints.toml").resolve()
-        except OSError:
-            constraints_path = None
+        if constraints_path is None:
+            try:
+                constraints_path = (kit_base / "constraints.toml").resolve()
+            except OSError:
+                constraints_path = None
 
         # 1) Heading contract must hold for templates too.
         rep = validate_headings_contract(
@@ -392,14 +393,31 @@ def run_self_check_from_meta(
         artifacts_dir = kit_base / "artifacts"
         # NOTE: With explicit kit.artifacts mapping, artifacts_dir may be absent.
 
-        kit_constraints, kit_constraint_errs = load_constraints_toml(kit_base)
+        explicit_constraints_paths = [
+            Path(p)
+            for p in (getattr(kit_obj, "constraints_paths", None) or [])
+            if p
+        ]
+        explicit_constraints_path = getattr(kit_obj, "constraints_path", None)
+        if explicit_constraints_path and not explicit_constraints_paths:
+            explicit_constraints_paths = [Path(explicit_constraints_path)]
+
+        constraints_path = explicit_constraints_paths[0] if explicit_constraints_paths else None
+        if explicit_constraints_paths:
+            kit_constraints, kit_constraint_errs = load_constraints_files(explicit_constraints_paths)
+        else:
+            kit_constraints, kit_constraint_errs = load_constraints_toml(kit_base)
+            try:
+                constraints_path = (kit_base / "constraints.toml").resolve()
+            except OSError:
+                constraints_path = None
         if kit_constraint_errs:
             results.append({
                 "kit": kit_id,
                 "kind": None,
                 "status": "FAIL",
                 "error_count": len(kit_constraint_errs),
-                "errors": [constraints_error("constraints", "Invalid constraints.toml", path=(kit_base / "constraints.toml"), line=1, errors=list(kit_constraint_errs))],
+                "errors": [constraints_error("constraints", "Invalid constraints.toml", path=(constraints_path or (kit_base / "constraints.toml")), line=1, errors=list(kit_constraint_errs))],
             })
             overall_status = "FAIL"
             kits_checked += 1
@@ -426,6 +444,9 @@ def run_self_check_from_meta(
             kind = str(kind).strip()
             if not kind:
                 continue
+            # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
+            explicit_kind = bool(isinstance(raw_map, dict) and str(kind).upper() in {str(k).strip().upper() for k in raw_map.keys()})
+            # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 
             template_path = None
             examples_dir = None
@@ -435,27 +456,31 @@ def run_self_check_from_meta(
                 # resolution.
                 try:
                     rel = kit_obj.get_template_path(kind)
-                    candidate = (adapter_dir / rel).resolve()
-                    if not candidate.is_file():
-                        candidate = (project_root / rel).resolve()
-                    template_path = candidate
+                    if str(rel or "").strip():
+                        candidate = (adapter_dir / rel).resolve()
+                        if not candidate.is_file():
+                            candidate = (project_root / rel).resolve()
+                        template_path = candidate
                 except (OSError, ValueError, KeyError):
                     template_path = None
                 try:
                     rel = kit_obj.get_examples_path(kind)
-                    candidate = (adapter_dir / rel).resolve()
-                    if not candidate.exists():
-                        candidate = (project_root / rel).resolve()
-                    examples_dir = candidate
+                    if str(rel or "").strip():
+                        candidate = (adapter_dir / rel).resolve()
+                        if not candidate.exists():
+                            candidate = (project_root / rel).resolve()
+                        examples_dir = candidate
                 except (OSError, ValueError, KeyError):
                     examples_dir = None
 
             # Fallback to legacy layout if explicit paths are unavailable.
+            # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
             kind_dir = artifacts_dir / kind
-            if template_path is None:
+            if template_path is None and not explicit_kind:
                 template_path = (kind_dir / "template.md").resolve()
-            if examples_dir is None:
+            if examples_dir is None and not explicit_kind:
                 examples_dir = (kind_dir / "examples").resolve()
+            # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 
             example_paths: List[Path] = []
             try:
@@ -493,6 +518,7 @@ def run_self_check_from_meta(
                     kit_base=kit_base,
                     kit_constraints=kit_constraints,
                     artifacts_meta=artifacts_meta,
+                    constraints_path=constraints_path,
                 )
                 errs.extend(list(trep.get("errors", []) or []))
                 warns.extend(list(trep.get("warnings", []) or []))
@@ -503,15 +529,6 @@ def run_self_check_from_meta(
                 constraints_for_kind = None
                 if kit_constraints is not None and getattr(kit_constraints, "by_kind", None) and str(kind).upper() in kit_constraints.by_kind:
                     constraints_for_kind = kit_constraints.by_kind[str(kind).upper()]
-                constraints_path = None
-                try:
-                    # NOTE: This assumes self-check constraints live at
-                    # kit_base / "constraints.toml". If self-check is unified
-                    # with loaded-kit semantics, use the shared authoritative
-                    # constraints-path resolver here.
-                    constraints_path = (kit_base / "constraints.toml").resolve()
-                except OSError:
-                    constraints_path = None
                 for example_path in example_paths:
                     rep = validate_artifact_file(
                         artifact_path=example_path,
@@ -548,5 +565,3 @@ def run_self_check_from_meta(
     # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-return-self-check
     return (0 if overall_status == "PASS" else 2), out
     # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-return-self-check
-
-

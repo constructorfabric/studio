@@ -39,6 +39,7 @@ class LoadedKit:
     kit_root: Optional[Path] = None
     constraints_path: Optional[Path] = None
     constraints_paths: Optional[List[Path]] = None
+    resource_entries: Optional[Dict[str, object]] = None
 
 @dataclass
 class StudioContext:
@@ -360,6 +361,7 @@ def _load_single_kit(kit_id, kit, adapter_dir, project_root):
         kit_root=kit_root,
         constraints_path=resolved_constraints_path,
         constraints_paths=resolved_constraints_paths,
+        resource_entries=resource_entries,
     )
     return loaded, errors
 
