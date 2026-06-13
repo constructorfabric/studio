@@ -1,0 +1,111 @@
+{
+  "attempt": 1,
+  "block_count": 2,
+  "blocks": [
+    {
+      "kind": "independent",
+      "row_count": 5,
+      "rows": [
+        {
+          "decision_key": "enable_clean_error_family_now",
+          "persona_id": "E1",
+          "proposed_default": "Enable the remaining clean-pass error rules now: all currently clean E checks plus the probed call-signature and operand/runtime subset E1120,E1121,E1123,E1124,E1125,E1126,E1130,E1131,E1133,E1136.",
+          "question_id": "Q1",
+          "rationale": "The repo already passes all E checks clean, CI already runs make pylint, and this is the lowest-noise way to expand coverage without destabilizing the existing staged rollout.",
+          "stance": "none",
+          "text": "Should the next tranche default to enabling the remaining clean-pass E rules immediately, rather than mixing in noisier warning families?"
+        },
+        {
+          "decision_key": "keep_defect_warnings_in_enable_now",
+          "persona_id": "E2",
+          "proposed_default": "Add the clean high-signal warning checks now: W0102,W0106,W0120,W0123,W0125,W0133,W0150,W0201,W0231,W0237.",
+          "question_id": "Q2",
+          "rationale": "These were explicitly probed and pass clean, and they sit in the defect-prevention bucket rather than style-only lint, so they increase bug-catching value at effectively zero immediate cost.",
+          "stance": "none",
+          "text": "Which clean warning rules belong in the same enable-now tranche because they target real runtime or control-flow mistakes instead of style concerns?"
+        },
+        {
+          "decision_key": "fix_small_obvious_warning_set_first",
+          "persona_id": "E3",
+          "proposed_default": "Treat W1514,W1309,W0107 as the fix-first tranche and clear the known small set before enabling them repo-wide.",
+          "question_id": "Q3",
+          "rationale": "The known violations are few and trivial: two unspecified encodings, four static f-strings in layout.py plus one in ui.py, and three unnecessary pass statements in dataclass subclasses. This is a short cleanup pass with clear edits.",
+          "stance": "none",
+          "text": "Should the next cleanup tranche focus on the tiny obvious warning set that can likely be fixed in one pass before those rules are enabled?"
+        },
+        {
+          "decision_key": "defer_noisy_or_policy_debate_rules",
+          "persona_id": "E4",
+          "proposed_default": "Defer W0108, defer W0621, and hold W0640 for a targeted correctness review instead of bundling them into the next broad tranche.",
+          "question_id": "Q4",
+          "rationale": "W0108 is likely noisy, W0621 appears lower leverage, and W0640 may indicate a real closure bug but should be inspected on its own rather than turning on a family that could widen review load unexpectedly.",
+          "stance": "none",
+          "text": "Which warning candidates should be explicitly deferred because they are either noisy, require policy discussion, or deserve targeted review instead of immediate rollout?"
+        },
+        {
+          "decision_key": "adopt_two_step_rollout_sequence",
+          "persona_id": "E5",
+          "proposed_default": "Use a two-step sequence: Step 1 enable the clean-pass E set plus the clean defect-oriented W subset now; Step 2 fix and then enable W1514,W1309,W0107; leave deferred items out of this cycle.",
+          "question_id": "Q5",
+          "rationale": "This expands defect coverage immediately, keeps CI noise near zero, and gives each remaining warning family a clear rollout path under the existing make pylint and CI job.",
+          "stance": "none",
+          "text": "What is the smallest rollout sequence that preserves boring CI while still moving the repository meaningfully forward on pylint coverage?"
+        }
+      ]
+    },
+    {
+      "kind": "critique",
+      "row_count": 5,
+      "rows": [
+        {
+          "persona_id": "E1",
+          "stance": "support",
+          "text": "Support enable_clean_error_family_now and adopt_two_step_rollout_sequence. Challenge any attempt to include W0108 in the next tranche."
+        },
+        {
+          "persona_id": "E2",
+          "stance": "mixed",
+          "text": "Agree that W0108 and W0621 can wait, but W0640 should get targeted inspection soon because the closure capture looks correctness-relevant."
+        },
+        {
+          "persona_id": "E3",
+          "stance": "support",
+          "text": "Support fix_small_obvious_warning_set_first as scoped; W1514, W1309, and W0107 are small enough for one cleanup pass."
+        },
+        {
+          "persona_id": "E4",
+          "stance": "caution",
+          "text": "Keep the enable-now warning subset exactly to the probed clean list; do not expand by analogy."
+        },
+        {
+          "persona_id": "E5",
+          "stance": "support",
+          "text": "The pragmatic split is coherent: enable-now clean checks, fix-first tiny warning set, defer noisy/policy-heavy items, and review W0640 separately."
+        }
+      ]
+    }
+  ],
+  "challenged_decisions": [
+    "defer_noisy_or_policy_debate_rules",
+    "keep_defect_warnings_in_enable_now"
+  ],
+  "envelope_version": "1",
+  "next_topic_proposals": [
+    {
+      "text": "Should W0640 be treated as a one-off correctness fix to patch immediately in commands/map/links.py without enabling the broader rule family yet?",
+      "why": "The summary identifies a specific closure-capture case that may have real behavioral impact and needs a targeted decision separate from noisy warning rollout."
+    },
+    {
+      "text": "What exact list of clean-pass E message IDs should be appended to pyproject.toml in the next tranche so the rollout is explicit and reviewable?",
+      "why": "The panel converged on enabling the clean error family now, but the commit still needs a concrete reviewed ID list."
+    },
+    {
+      "text": "Should the fix-first tranche be split into one commit for code cleanups and a second commit for enabling W1514,W1309,W0107 to keep CI attribution obvious?",
+      "why": "This determines the safest rollout mechanics under the existing CI job that runs make pylint."
+    }
+  ],
+  "panel_mode": true,
+  "protocol": "independent-then-critique",
+  "round_index": 1
+}
+

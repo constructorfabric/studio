@@ -59,35 +59,15 @@ def extract_file_links(nodes: Sequence[Node],
 
         targets_seen: set[str] = set()
 
-        def emit(resolved: str, match_start: int) -> None:
-            nonlocal edge_id
-            if resolved is None or resolved == src.rel_path or resolved in targets_seen:
-                return
-            tgt = by_rel.get(resolved)
-            if tgt is None:
-                return
-            targets_seen.add(resolved)
-            line_no = content[:match_start].count("\n") + 1
-            snippet = _line_at(content, match_start)
-            edges.append(Edge(
-                id=f"fl-{edge_id}",
-                from_id=src.id,
-                to_id=tgt.id,
-                type="file-link",
-                refs=[Ref(cpt_id=None, line=line_no, snippet=snippet,
-                          def_line=None, def_snippet=None)],
-                cross_repo=(src.source != tgt.source),
-                dangling=False,
-            ))
-            edge_id += 1
-
         # Pass 1: standard markdown [label](target) links — also handles
         # targets that contain template variables.
         for m in _LINK_RE.finditer(content):
             target = m.group("target").strip()
             expanded = _expand_vars(target, template_vars)
             resolved = _resolve(src.rel_path, expanded, known)
-            emit(resolved, m.start())
+            edge_id = _append_file_link_edge(
+                edges, edge_id, by_rel, src, resolved, targets_seen, content, m.start()
+            )
 
         # Pass 2: prose references like `{cf-studio-path}/.core/skills/foo.md`.
         for m in _VAR_PATH_RE.finditer(content):
@@ -95,10 +75,44 @@ def extract_file_links(nodes: Sequence[Node],
             expanded = _expand_vars(full, template_vars)
             # Treat as absolute project-root-relative.
             resolved = _resolve(src.rel_path, "/" + expanded.lstrip("/"), known)
-            emit(resolved, m.start())
+            edge_id = _append_file_link_edge(
+                edges, edge_id, by_rel, src, resolved, targets_seen, content, m.start()
+            )
 
     return edges
     # @cpt-end:cpt-studio-algo-map-file-links:p1:inst-extract-file-links
+
+
+def _append_file_link_edge(
+    edges: List[Edge],
+    edge_id: int,
+    by_rel: Dict[str, Node],
+    src: Node,
+    resolved: Optional[str],
+    targets_seen: set[str],
+    content: str,
+    match_start: int,
+) -> int:
+    """Append one resolved file-link edge and return the next edge id."""
+    if resolved is None or resolved == src.rel_path or resolved in targets_seen:
+        return edge_id
+    tgt = by_rel.get(resolved)
+    if tgt is None:
+        return edge_id
+    targets_seen.add(resolved)
+    line_no = content[:match_start].count("\n") + 1
+    snippet = _line_at(content, match_start)
+    edges.append(Edge(
+        id=f"fl-{edge_id}",
+        from_id=src.id,
+        to_id=tgt.id,
+        type="file-link",
+        refs=[Ref(cpt_id=None, line=line_no, snippet=snippet,
+                  def_line=None, def_snippet=None)],
+        cross_repo=(src.source != tgt.source),
+        dangling=False,
+    ))
+    return edge_id + 1
 
 
 def _expand_vars(target: str, template_vars: Dict[str, str]) -> str:

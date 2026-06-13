@@ -286,7 +286,7 @@ CI runs on every push to `main` and every PR targeting `main`. Nine parallel job
 1. **Test** — `make test` on Python 3.11, 3.12, 3.13, 3.14
 2. **Coverage** — `make test-coverage` on Python 3.14 (≥90% gate)
 3. **SonarQube** — SonarCloud scan with coverage reporting (requires `SONAR_TOKEN` secret)
-4. **Pylint** — `make pylint` static analysis (staged rollout — currently 12 checks enabled)
+4. **Pylint** — `make pylint` static analysis (staged rollout configured in `pyproject.toml`)
 5. **Vulture** — `make vulture-ci` dead code scan
 6. **Versions** — `make check-versions` (proxy sync, bootstrap sync)
 7. **Spec Coverage** — `make spec-coverage` (≥90% overall, ≥60% per file)

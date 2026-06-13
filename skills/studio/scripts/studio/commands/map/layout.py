@@ -508,9 +508,9 @@ def compute_layout(
             chosen_positions = repacked_positions
             chosen_metrics = repacked_metrics
             if verbose:
-                print(f"[layout] category repack kept")
+                print("[layout] category repack kept")
         elif verbose:
-            print(f"[layout] category repack rolled back")
+            print("[layout] category repack rolled back")
     # @cpt-end:cpt-studio-algo-map-layout:p1:inst-repack-across
 
     # --- Try affinity-ordered row-packs ---
@@ -578,9 +578,9 @@ def compute_layout(
             chosen_positions = best_affinity_positions
             chosen_metrics = best_affinity_metrics
             if verbose:
-                print(f"[layout] affinity layout kept")
+                print("[layout] affinity layout kept")
         elif verbose:
-            print(f"[layout] affinity layout rolled back")
+            print("[layout] affinity layout rolled back")
     # @cpt-end:cpt-studio-algo-map-layout:p1:inst-affinity-row-pack
 
     # --- Build output ---

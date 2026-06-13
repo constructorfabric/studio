@@ -1062,7 +1062,7 @@ def run_delegation(
         )
         sys.stderr.flush()
         try:
-            tty = open("/dev/tty", "r")  # noqa: SIM115
+            tty = open("/dev/tty", "r", encoding="utf-8")  # noqa: SIM115
             try:
                 answer = tty.readline().strip().lower()
             finally:
