@@ -252,7 +252,7 @@ def _with_core_toml_lock(core_toml_path: Path) -> Generator[None, None, None]:
         fh = None
         try:
             lock_file.parent.mkdir(parents=True, exist_ok=True)
-            fh = open(lock_file, "a", encoding="utf-8")  # noqa: WPS515
+            fh = open(lock_file, "a", encoding="utf-8")
             fcntl.flock(fh, fcntl.LOCK_EX)
             yield
         finally:
