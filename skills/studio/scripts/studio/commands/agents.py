@@ -2117,7 +2117,58 @@ def _list_public_component_skills(
         if getattr(component, "kind", "") == "skill":
             generated_name = str(getattr(component, "generated_name", "")).strip()
             components.append((source_path.name, source_path, kit_slug, generated_name))
+    registered_skills, registered_skill_kits = _list_registered_public_resource_skills(
+        studio_root,
+        project_root,
+    )
+    seen_paths = {entry[1].resolve().as_posix() for entry in components}
+    for entry in registered_skills:
+        if entry[1].resolve().as_posix() in seen_paths:
+            continue
+        components.append(entry)
+        seen_paths.add(entry[1].resolve().as_posix())
+    manifest_backed_kits.update(registered_skill_kits)
     return components, manifest_backed_kits
+
+
+def _list_registered_public_resource_skills(
+    studio_root: Path,
+    project_root: Optional[Path],
+) -> Tuple[List[KitWorkflowSkill], Set[str]]:
+    """Return public skill resources declared in core.toml kit registrations."""
+    if project_root is None:
+        return [], set()
+    cfg = load_project_config(project_root)
+    kits = cfg.get("kits") if isinstance(cfg, dict) else None
+    if not isinstance(kits, dict):
+        return [], set()
+
+    out: List[KitWorkflowSkill] = []
+    kit_slugs: Set[str] = set()
+    for slug, kit_entry in sorted(kits.items()):
+        if not isinstance(kit_entry, dict):
+            continue
+        resources = kit_entry.get("resources")
+        if not isinstance(resources, dict):
+            continue
+        kit_slug = str(slug)
+        for resource in resources.values():
+            if not isinstance(resource, dict):
+                continue
+            if resource.get("kind") != "skill" or resource.get("public") is not True:
+                continue
+            raw_path = resource.get("path")
+            if not isinstance(raw_path, str) or not raw_path.strip():
+                continue
+            source_path = Path(raw_path)
+            if not source_path.is_absolute():
+                source_path = studio_root / source_path
+            source_path = source_path.resolve()
+            if not source_path.is_file():
+                continue
+            out.append((source_path.name, source_path, kit_slug, None))
+            kit_slugs.add(kit_slug)
+    return out, kit_slugs
 
 # ---------------------------------------------------------------------------
 # Kit workflow → skill generation for skill-native tools

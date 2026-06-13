@@ -2378,6 +2378,59 @@ class TestKitWorkflowSharedSkills(unittest.TestCase):
             self.assertIn("{cf-studio-path}/config/kits/pub/SKILL.md", content)
             self.assertFalse((root / ".agents" / "skills" / "cf-pub-legacy" / "SKILL.md").exists())
 
+    def test_registered_public_skill_resource_generates_without_manifest(self):
+        """Registered public skill resources are authoritative even when the kit has no manifest."""
+        from studio.commands.agents import _process_single_agent, _default_agents_config
+
+        with TemporaryDirectory() as td:
+            root, cpt = self._make_project(td)
+            kit_dir = root / "studio-kit-gears"
+            workflow_dir = kit_dir / "workflows"
+            workflow_dir.mkdir(parents=True)
+            (workflow_dir / "pr-review.md").write_text(
+                "---\n"
+                "cf: true\n"
+                "type: workflow\n"
+                "name: cf-gears-pr-review\n"
+                "description: Review PRs\n"
+                "---\n"
+                "# PR Review\n",
+                encoding="utf-8",
+            )
+            (cpt / "config" / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    'project_root = ".."',
+                    "",
+                    "[kits.gears]",
+                    'format = "CFS"',
+                    'path = "../studio-kit-gears"',
+                    'version = "1.0"',
+                    "",
+                    "[kits.gears.resources.workflow_pr_review]",
+                    'path = "../studio-kit-gears/workflows/pr-review.md"',
+                    'kind = "skill"',
+                    "public = true",
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            result = _process_single_agent(
+                "cursor",
+                root,
+                cpt,
+                _default_agents_config(),
+                None,
+                dry_run=False,
+            )
+
+            self.assertEqual(result["status"], "PASS")
+            public_skill = root / ".agents" / "skills" / "cf-gears-pr-review" / "SKILL.md"
+            self.assertTrue(public_skill.exists())
+            content = public_skill.read_text(encoding="utf-8")
+            self.assertIn("name: cf-gears-pr-review", content)
+            self.assertIn("@/studio-kit-gears/workflows/pr-review.md", content)
+
     def test_legacy_manifest_workflow_renders_as_skill_without_alias_artifact(self):
         """Legacy manifest workflows render as public skills from KitModel."""
         from studio.commands.agents import _process_single_agent, _default_agents_config
