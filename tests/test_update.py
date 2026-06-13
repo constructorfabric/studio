@@ -1603,6 +1603,52 @@ class TestCmdUpdateWhatsnew(unittest.TestCase):
             finally:
                 os.chdir(cwd)
 
+    def test_update_reports_validate_kits_failures_inline(self):
+        """cmd_update surfaces validate-kits failures and records a warning."""
+        from studio.commands.update import cmd_update
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            root.mkdir()
+            cache = Path(td) / "cache"
+            _make_cache(cache)
+            _init_project(root, cache)
+
+            validate_report = {
+                "status": "FAIL",
+                "error_count": 7,
+                "errors": [
+                    {
+                        "path": "config/kits/sdlc/.cf-studio-kit.toml",
+                        "message": "invalid kit manifest",
+                        "errors": ["missing resources"],
+                    },
+                    "plain validation error",
+                ],
+            }
+
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                with (
+                    patch("studio.commands.update.CACHE_DIR", cache),
+                    patch(
+                        "studio.commands.validate_kits.run_validate_kits",
+                        return_value=(1, validate_report),
+                    ),
+                ):
+                    buf = io.StringIO()
+                    err = io.StringIO()
+                    with redirect_stdout(buf), redirect_stderr(err):
+                        rc = cmd_update(["-y"])
+
+                self.assertEqual(rc, 0)
+                out = json.loads(buf.getvalue())
+                self.assertIn("validate-kits: FAIL", out.get("warnings", []))
+                self.assertEqual(out.get("validate_kits", {}).get("status"), "FAIL")
+            finally:
+                os.chdir(cwd)
+
 
 # =========================================================================
 # _maybe_regenerate_agents
