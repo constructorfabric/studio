@@ -67,7 +67,7 @@ from ..utils.manifest import (
     resolve_includes as _resolve_includes,
     merge_components as _merge_components,
 )
-from ..utils.manifest import AgentEntry as _AgentEntry, RuleEntry as _RuleEntry, SkillEntry as _SkillEntry  # type: ignore
+from ..utils.manifest import AgentEntry as _AgentEntry, SkillEntry as _SkillEntry  # type: ignore
 from ..utils.manifest import (
     MergedComponents as _MergedComponents,
     ProvenanceRecord as _ProvenanceRecord,
@@ -2081,8 +2081,9 @@ def _list_public_components(
             continue
         # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-legacy-workflow-alias
         manifest_backed_kits.add(kit_slug)
+        # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-public-rule-gen-boundary
         for component in model.public_components:
-            if getattr(component, "kind", "") not in {"skill", "agent", "rule"}:
+            if getattr(component, "kind", "") not in {"skill", "agent"}:
                 continue
             if not _component_enabled_for_agent(component, agent):
                 continue
@@ -2096,6 +2097,7 @@ def _list_public_components(
             if not generated_name:
                 continue
             components.append((kit_slug, component, source_path, kit_root, kit_entry))
+        # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-public-rule-gen-boundary
     return components, manifest_backed_kits
     # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-no-workflow-scan
     # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
@@ -3089,6 +3091,11 @@ def _process_skills(
                             for kit_dir in sorted(config_kits.iterdir()):
                                 if kit_dir.name not in registered_dirs:
                                     continue
+                                if (
+                                    not (kit_dir / "manifest.toml").is_file()
+                                    or (kit_dir / ".cf-studio-kit.toml").is_file()
+                                ):
+                                    continue
                                 kit_skill = kit_dir / "SKILL.md"
                                 if kit_skill.is_file():
                                     kit_fm = _parse_frontmatter(kit_skill)
@@ -3273,17 +3280,15 @@ def _process_kit_public_agents_and_rules(
     studio_root: Path,
     dry_run: bool,
 ) -> Dict[str, Dict[str, Any]]:
-    """Generate canonical-kit public agent and rule components for one target."""
+    """Generate canonical-kit public agent components for one target."""
     public_components, _manifest_backed_kits = _list_public_components(
         studio_root,
         project_root,
         agent,
     )
     agent_entries: Dict[str, _AgentEntry] = {}
-    rule_entries: Dict[str, _RuleEntry] = {}
     entry_owners: Dict[Tuple[str, str], str] = {}
     agent_collision_errors: List[str] = []
-    rule_collision_errors: List[str] = []
     trusted_roots: List[Path] = []
 
     # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
@@ -3381,22 +3386,6 @@ def _process_kit_public_agents_and_rules(
                     context_window=_subagent_value(subagent, nested_target, "context_window", None),
                 )
             # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-subagent-config
-        elif getattr(component, "kind", "") == "rule":
-            identity = ("rule", generated_name)
-            owner = f"{kit_slug}:{source_path.as_posix()}"
-            previous_owner = entry_owners.get(identity)
-            if previous_owner is not None:
-                rule_collision_errors.append(
-                    f"duplicate public rule '{generated_name}' from {owner}; already provided by {previous_owner}",
-                )
-                continue
-            entry_owners[identity] = owner
-            rule_entries[generated_name] = _RuleEntry(
-                id=generated_name,
-                description=description or f"Constructor Studio {generated_name} rule",
-                source=source_path.as_posix(),
-                agents=_component_agent_targets(component),
-            )
     # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
 
     public_agents = generate_manifest_agents(
@@ -3408,15 +3397,7 @@ def _process_kit_public_agents_and_rules(
         trusted_roots=trusted_roots,
     )
     public_agents.setdefault("errors", []).extend(agent_collision_errors)
-    public_rules = generate_manifest_rules(
-        rule_entries,
-        agent,
-        project_root,
-        dry_run,
-        studio_root=studio_root,
-        trusted_roots=trusted_roots,
-    )
-    public_rules.setdefault("errors", []).extend(rule_collision_errors)
+    public_rules = {"created": [], "updated": [], "deleted": [], "outputs": [], "errors": []}
     return {"agents": public_agents, "rules": public_rules}
 
 
@@ -5437,91 +5418,6 @@ def generate_manifest_skills(
             result["outputs"].append(deleted_record)
 
     # Step 3: Return result dict
-    result["unchanged"] = [
-        o["path"] for o in result["outputs"] if o.get("action") == "unchanged"
-    ]
-    return result
-
-
-_RULE_OUTPUT_PATHS: Dict[str, str] = {
-    "claude": ".claude/rules/{id}.md",
-    "cursor": ".cursor/rules/{id}.mdc",
-    "copilot": ".github/instructions/{id}.instructions.md",
-    "openai": ".agents/rules/{id}.md",
-    "windsurf": ".agents/rules/{id}.md",
-}
-
-
-def _build_rule_content(
-    rule_id: str,
-    rule: Any,
-    source_content: str,
-    variables: Optional[Dict[str, str]],
-) -> str:
-    description = getattr(rule, "description", "") or f"Constructor Studio rule {rule_id}"
-    content = "\n".join([
-        "---",
-        f"name: {rule_id}",
-        f"description: {_yaml_double_quote(description)}",
-        "---",
-        _GENERATED_MARKER,
-        "",
-        source_content,
-    ])
-    append = getattr(rule, "append", "")
-    if append:
-        content = content.rstrip("\n") + "\n" + str(append)
-    if variables:
-        variables = {k: v.replace("\n", " ") for k, v in variables.items()}
-    return _apply_variables(content, variables)
-
-
-def generate_manifest_rules(
-    rules: Dict[str, "_RuleEntry"],
-    target: str,
-    project_root: Path,
-    dry_run: bool,
-    variables: Optional[Dict[str, str]] = None,
-    studio_root: Optional[Path] = None,
-    trusted_roots: Optional[List[Path]] = None,
-) -> Dict[str, Any]:
-    """Generate rule files from public manifest rule entries."""
-    result: Dict[str, Any] = {
-        "created": [],
-        "updated": [],
-        "unchanged": [],
-        "deleted": [],
-        "outputs": [],
-    }
-    path_template = _RULE_OUTPUT_PATHS.get(target)
-    if not path_template:
-        result["skipped"] = True
-        result["skip_reason"] = f"{target} does not support rule generation"
-        return result
-
-    for rule_id, rule in rules.items():
-        if rule.agents and target not in rule.agents:
-            continue
-        src_str = rule.source or rule.prompt_file
-        if not src_str:
-            sys.stderr.write(
-                f"WARNING: rule '{rule_id}' has no source or prompt_file, skipping\n"
-            )
-            continue
-        source_content = _read_source_content(
-            "rule",
-            rule_id,
-            src_str,
-            project_root,
-            studio_root=studio_root,
-            trusted_roots=trusted_roots,
-        )
-        if source_content is None:
-            continue
-        content = _build_rule_content(rule_id, rule, source_content, variables)
-        rel_out = path_template.replace("{id}", rule_id)
-        _write_or_skip(project_root / rel_out, content, result, project_root, dry_run)
-
     result["unchanged"] = [
         o["path"] for o in result["outputs"] if o.get("action") == "unchanged"
     ]

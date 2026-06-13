@@ -702,7 +702,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 **Output**: Result dict with status, resolved resource paths, files_copied
 
 **Steps**:
-1. [x] - `p1` - Read and validate canonical `.cf-studio-kit.toml` or normalize a legacy manifest/layout into `KitModel` - `inst-manifest-read`
+1. [x] - `p1` - Read and validate canonical `.cf-studio-kit.toml` or normalize a legacy `manifest.toml`/layout into `KitModel`; when a canonical or legacy manifest exists, its declared resources are the exclusive source file set and layout scanning is disabled - `inst-manifest-read`
 2. [x] - `p1` - Resolve effective install mode (`copy` or `register`) and effective resource destinations - `inst-manifest-resolve-install-mode`
 3. [x] - `p1` - Resolve the effective installed kit root from an explicit registered path or manifest root template - `inst-manifest-root-prompt`
 4. [x] - `p1` - **FOR EACH** resource declared in `KitModel.resources` - `inst-manifest-foreach-resource`
@@ -714,8 +714,9 @@ Enables users to install, update, and validate kit packages with interactive fil
    4. [x] - `p1` - **IF** register mode: leave files in place and bind the resource to its source path after containment validation - `inst-manifest-register-resource-in-place`
 5. [x] - `p1` - Preserve `{identifier}` template variables in copied kit source files; expose effective bindings for read-time resolution by consumers - `inst-manifest-resolve-vars`
 6. [x] - `p1` - Register effective resource paths, install mode, hashes, generated names, provenance, and warnings in `core.toml`; prefer paths relative to `{cf-studio-path}` or project root when deterministic, and fail the operation when registration cannot be persisted - `inst-manifest-register-bindings`
-7. [x] - `p1` - Collect public component metadata for `.gen/` aggregation and target-specific agent generation from `KitModel.public_components` - `inst-manifest-collect-meta`
-8. [x] - `p1` - **RETURN** result with status, install_mode, resource_bindings, files_copied, files_registered, generated_names, warnings, and risk fingerprint - `inst-manifest-return`
+7. [x] - `p1` - Collect public component metadata for `.gen/` aggregation from registered manifest resources only: public `skill` resources route through `.gen/SKILL.md`, public `rule` resources are injected into `.gen/AGENTS.md`, and undeclared root `AGENTS.md`/`SKILL.md` files are ignored - `inst-manifest-collect-meta`
+8. [x] - `p1` - Generate target-specific agent integration files only for public `agent` resources and nested subagents; public `rule` resources never generate per-agent rule/config files - `inst-manifest-public-rule-gen-boundary`
+9. [x] - `p1` - **RETURN** result with status, install_mode, resource_bindings, files_copied, files_registered, generated_names, warnings, and risk fingerprint - `inst-manifest-return`
 
 **Supporting**:
 - [x] - `p1` - Manifest/KitModel dataclass definitions (`KitModel`, `KitResource`, public component view, provenance, drift, risk) and imports - `inst-manifest-datamodel`
@@ -848,12 +849,13 @@ Enables users to install, update, and validate kit packages with interactive fil
 4. [x] - `p1` - TOC sections are stripped for diff comparison and regenerated post-write
 5. [x] - `p1` - Editor merge uses git-style conflict markers
 6. [x] - `p1` - **IF** manifest-driven kit with resource bindings: files are updated at their registered paths, not default `config/kits/{slug}/` paths
-7. [x] - `p1` - **IF** manifest-driven kit: new resources (in manifest but not in `core.toml` bindings) trigger path prompt and are registered
-8. [x] - `p1` - **IF** kit source contains `whatsnew.toml`: display new version entries before file-level diff; user can abort update after reviewing
-9. [x] - `p1` - GitHub-backed updates determine currentness from persisted/refreshed GitHub authority metadata, not `conf.toml`
-10. [x] - `p1` - Offline GitHub update fallback reports and uses last-known source state only; it does not guess versions from local files
-11. [x] - `p1` - Register-in-place updates re-read source files in place, revalidate containment, recompute hashes/risk, and update only bindings/state unless the user explicitly chooses copy or prune
-12. [x] - `p1` - Removed resources are not deleted by normal update; prune requires explicit confirmation/fingerprint and never deletes registered source files
+7. [x] - `p1` - **IF** manifest-driven kit: update diffs enumerate only files mapped to declared manifest resources; undeclared root files and sibling files are ignored even when present in the source tree
+8. [x] - `p1` - **IF** manifest-driven kit: new resources (in manifest but not in `core.toml` bindings) trigger path prompt and are registered
+9. [x] - `p1` - **IF** kit source contains `whatsnew.toml`: display new version entries before file-level diff; user can abort update after reviewing
+10. [x] - `p1` - GitHub-backed updates determine currentness from persisted/refreshed GitHub authority metadata, not `conf.toml`
+11. [x] - `p1` - Offline GitHub update fallback reports and uses last-known source state only; it does not guess versions from local files
+12. [x] - `p1` - Register-in-place updates re-read source files in place, revalidate containment, recompute hashes/risk, and update only bindings/state unless the user explicitly chooses copy or prune
+13. [x] - `p1` - Removed resources are not deleted by normal update; prune requires explicit confirmation/fingerprint and never deletes registered source files
 
 ### Kit Validate Checks Integrity
 
@@ -887,6 +889,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 - [x] `p1` - `cfs kit install` with `.cf-studio-kit.toml`: validates canonical manifest, prompts for `user_modifiable` paths and local copy/register mode, copies or registers resources at effective paths, and records bindings in `core.toml`
 - [x] `p1` - `cfs kit install --kit <slug>` selects one kit from a multi-kit `.cf-studio-kit.toml`; repeated `--kit`, comma-separated values, `--kit all`, and interactive selection install multiple selected kits with aggregate output
 - [x] `p1` - `.cf-studio-kit.toml` is sufficient by itself; `conf.toml` is not required and is ignored for canonical fields when the canonical manifest is present
+- [x] `p1` - For canonical `.cf-studio-kit.toml` and legacy `manifest.toml`, install/update/aggregation consume only files declared in the manifest; legacy layout fallback applies only when no manifest exists
 - [x] `p1` - `cfs kit normalize <path>` can generate a canonical `.cf-studio-kit.toml` from legacy `manifest.toml`, `conf.toml + layout`, or installed resource bindings without mutating resources
 - [x] `p1` - A local path kit whose manifest and resources are inside the current project root can be explicitly registered in place without copying files
 - [x] `p1` - `cfs kit update <path>` shows interactive diff and applies accepted changes

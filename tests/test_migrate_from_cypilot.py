@@ -900,6 +900,60 @@ def test_internal_migration_accepts_common_relative_from_dirs(tmp_path, legacy_d
     assert (tmp_path / ".cf-constructor" / "config" / "core.toml").is_file()
 
 
+def test_internal_migration_target_exists_error_keeps_source_target_context(tmp_path):
+    from studio.commands.migrate_from_cypilot import migrate_from_cypilot
+
+    _make_legacy_project(tmp_path, legacy_dir=".cypilot")
+    target_dir = tmp_path / ".cf-studio"
+    target_dir.mkdir()
+    sentinel = target_dir / "sentinel.txt"
+    sentinel.write_text("keep me", encoding="utf-8")
+
+    rc, out = migrate_from_cypilot(
+        project_root=tmp_path,
+        from_dir=".cypilot",
+        to_dir=".cf-studio",
+        skip_update=True,
+    )
+
+    assert rc == 1
+    assert out["status"] == "ERROR"
+    assert "Target directory already exists" in out["message"]
+    assert out["from_dir"] == ".cypilot"
+    assert out["studio_dir"] == target_dir.as_posix()
+    assert out["actions"]["target_dir"] == "exists"
+    assert "force" in out["hint"]
+    assert sentinel.read_text(encoding="utf-8") == "keep me"
+
+
+def test_internal_migration_target_exists_error_precedes_dirty_root_probe(tmp_path, monkeypatch):
+    import studio.commands.migrate_from_cypilot as migration
+
+    _make_legacy_project(tmp_path, legacy_dir=".cypilot")
+    target_dir = tmp_path / ".cf-studio"
+    target_dir.mkdir()
+
+    def fail_dirty_probe(*_args, **_kwargs):
+        raise AssertionError("target-exists abort should happen before dirty-root probe")
+
+    monkeypatch.setattr(migration, "_probe_root_files_dirty", fail_dirty_probe)
+
+    rc, out = migration.migrate_from_cypilot(
+        project_root=tmp_path,
+        from_dir=".cypilot",
+        to_dir=".cf-studio",
+        skip_update=True,
+    )
+
+    assert rc == 1
+    assert out["status"] == "ERROR"
+    assert "Target directory already exists" in out["message"]
+    assert out["from_dir"] == ".cypilot"
+    assert out["studio_dir"] == target_dir.as_posix()
+    assert out["actions"]["target_dir"] == "exists"
+    assert "force" in out["hint"]
+
+
 def test_init_migrate_yes_migrates_without_prompt(tmp_path, capsys, monkeypatch, followup_update_ok):
     from studio.cli import main
 
@@ -3187,6 +3241,34 @@ def test_human_migrate_ok_omits_warnings_when_none(capsys):
     # Header is printed without the [dry-run] prefix.
     assert "[dry-run]" not in combined
     assert "Migration" in combined
+
+
+def test_human_migrate_ok_surfaces_error_message_hint_and_context(capsys):
+    import studio.commands.migrate_from_cypilot as migration
+    import studio.utils.ui as ui_mod
+
+    ui_mod.set_json_mode(False)
+
+    data = {
+        "status": "ERROR",
+        "message": "Target directory already exists: /tmp/proj/.cf-studio",
+        "hint": "Re-run with --force to replace it, or pass --to-dir to choose another directory.",
+        "project_root": "/tmp/proj",
+        "from_dir": ".cypilot",
+        "studio_dir": "/tmp/proj/.cf-studio",
+        "actions": {"target_dir": "exists", "legacy_version": "supported"},
+    }
+
+    migration._human_migrate_ok(data)
+
+    out_err = capsys.readouterr()
+    combined = out_err.out + out_err.err
+    assert "Target directory already exists" in combined
+    assert "From: .cypilot" in combined
+    assert "To: /tmp/proj/.cf-studio" in combined
+    assert "target_dir (exists)" in combined
+    assert "legacy_version (supported)" in combined
+    assert "Re-run with --force" in combined
 
 
 def test_migrate_core_toml_appends_warning_when_system_section_removed(tmp_path):

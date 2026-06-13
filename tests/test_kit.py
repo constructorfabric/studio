@@ -110,6 +110,65 @@ def _make_canonical_kit_source(td: Path, slug: str = "canonicalkit") -> Path:
     return kit_src
 
 
+def _make_strict_canonical_kit_source(
+    td: Path,
+    slug: str = "strictkit",
+    *,
+    version: str = "1.0.0",
+    declared_text: str = "declared\n",
+) -> Path:
+    kit_src = td / slug
+    kit_src.mkdir(parents=True, exist_ok=True)
+    (kit_src / "declared.txt").write_text(declared_text, encoding="utf-8")
+    (kit_src / "AGENTS.md").write_text("# UNDECLARED ROOT AGENTS\n", encoding="utf-8")
+    (kit_src / "SKILL.md").write_text("# UNDECLARED ROOT SKILL\n", encoding="utf-8")
+    (kit_src / ".cf-studio-kit.toml").write_text(
+        "\n".join([
+            'manifest_version = "1.0"',
+            "",
+            "[[kits]]",
+            f'slug = "{slug}"',
+            f'name = "{slug}"',
+            f'version = "{version}"',
+            "",
+            "[[kits.resources]]",
+            'id = "declared"',
+            'kind = "other"',
+            'source = "declared.txt"',
+            'install_path = "declared.txt"',
+            'type = "file"',
+            "user_modifiable = false",
+        ]) + "\n",
+        encoding="utf-8",
+    )
+    return kit_src
+
+
+def _make_strict_legacy_manifest_kit_source(td: Path, slug: str = "strictlegacy") -> Path:
+    kit_src = td / slug
+    kit_src.mkdir(parents=True, exist_ok=True)
+    (kit_src / "declared.txt").write_text("declared\n", encoding="utf-8")
+    (kit_src / "AGENTS.md").write_text("# UNDECLARED ROOT AGENTS\n", encoding="utf-8")
+    (kit_src / "SKILL.md").write_text("# UNDECLARED ROOT SKILL\n", encoding="utf-8")
+    (kit_src / "manifest.toml").write_text(
+        "\n".join([
+            "[manifest]",
+            'version = "1"',
+            'root = "{cf-studio-path}/config/kits/{slug}"',
+            "user_modifiable = false",
+            "",
+            "[[resources]]",
+            'id = "declared"',
+            'source = "declared.txt"',
+            'default_path = "declared.txt"',
+            'type = "file"',
+            "user_modifiable = false",
+        ]) + "\n",
+        encoding="utf-8",
+    )
+    return kit_src
+
+
 def _make_multi_canonical_kit_source(td: Path) -> Path:
     kit_src = td / "multi-kit"
     kit_src.mkdir(parents=True, exist_ok=True)
@@ -299,6 +358,141 @@ class TestKitNormalize(unittest.TestCase):
             self.assertEqual(resources["repo-rule"]["kind"], "rule")
             self.assertEqual(resources["ship-flow"]["kind"], "skill")
             self.assertEqual(resources["ship-flow"]["origin"], "legacy-workflow")
+
+
+class TestManifestKitStrictResourceAuthority(unittest.TestCase):
+    """Manifest-backed kits install and aggregate only declared resources."""
+
+    def test_canonical_manifest_install_ignores_undeclared_root_metadata_files(self):
+        from studio.commands.kit import install_kit, regenerate_gen_aggregates
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "project"
+            adapter = _bootstrap_project(root)
+            kit_src = _make_strict_canonical_kit_source(Path(td), "strictkit")
+
+            result = install_kit(kit_src, adapter, "strictkit", interactive=False)
+            self.assertEqual(result["status"], "PASS")
+
+            installed = adapter / "config" / "kits" / "strictkit"
+            self.assertEqual((installed / "declared.txt").read_text(encoding="utf-8"), "declared\n")
+            self.assertFalse((installed / "AGENTS.md").exists())
+            self.assertFalse((installed / "SKILL.md").exists())
+
+            regenerate_gen_aggregates(adapter)
+            self.assertNotIn(
+                "UNDECLARED ROOT AGENTS",
+                (adapter / ".gen" / "AGENTS.md").read_text(encoding="utf-8"),
+            )
+            self.assertNotIn(
+                "UNDECLARED ROOT SKILL",
+                (adapter / ".gen" / "SKILL.md").read_text(encoding="utf-8"),
+            )
+
+    def test_legacy_manifest_install_ignores_undeclared_root_metadata_files(self):
+        from studio.commands.kit import install_kit, regenerate_gen_aggregates
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "project"
+            adapter = _bootstrap_project(root)
+            kit_src = _make_strict_legacy_manifest_kit_source(Path(td), "strictlegacy")
+
+            result = install_kit(kit_src, adapter, "strictlegacy", interactive=False)
+            self.assertEqual(result["status"], "PASS")
+
+            installed = adapter / "config" / "kits" / "strictlegacy"
+            self.assertEqual((installed / "declared.txt").read_text(encoding="utf-8"), "declared\n")
+            self.assertFalse((installed / "AGENTS.md").exists())
+            self.assertFalse((installed / "SKILL.md").exists())
+
+            regenerate_gen_aggregates(adapter)
+            self.assertNotIn(
+                "UNDECLARED ROOT AGENTS",
+                (adapter / ".gen" / "AGENTS.md").read_text(encoding="utf-8"),
+            )
+            self.assertNotIn(
+                "UNDECLARED ROOT SKILL",
+                (adapter / ".gen" / "SKILL.md").read_text(encoding="utf-8"),
+            )
+
+    def test_manifest_update_filters_undeclared_root_metadata_files(self):
+        from studio.commands.kit import install_kit, update_kit
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "project"
+            adapter = _bootstrap_project(root)
+            source_v1 = _make_strict_canonical_kit_source(
+                Path(td) / "v1",
+                "strictkit",
+                version="1.0.0",
+                declared_text="v1\n",
+            )
+            source_v2 = _make_strict_canonical_kit_source(
+                Path(td) / "v2",
+                "strictkit",
+                version="2.0.0",
+                declared_text="v2\n",
+            )
+
+            install = install_kit(source_v1, adapter, "strictkit", interactive=False)
+            self.assertEqual(install["status"], "PASS")
+            result = update_kit(
+                "strictkit",
+                source_v2,
+                adapter,
+                interactive=False,
+                auto_approve=True,
+                force=True,
+            )
+            self.assertIn(result["version"]["status"], {"updated", "current"})
+
+            installed = adapter / "config" / "kits" / "strictkit"
+            self.assertEqual((installed / "declared.txt").read_text(encoding="utf-8"), "v2\n")
+            self.assertFalse((installed / "AGENTS.md").exists())
+            self.assertFalse((installed / "SKILL.md").exists())
+
+    def test_public_rule_resource_injects_into_gen_agents_only(self):
+        from studio.commands.kit import install_kit, regenerate_gen_aggregates
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "project"
+            adapter = _bootstrap_project(root)
+            kit_src = Path(td) / "rulekit"
+            kit_src.mkdir()
+            (kit_src / "rules").mkdir()
+            (kit_src / "rules" / "public.md").write_text("# PUBLIC RULE SENTINEL\n", encoding="utf-8")
+            (kit_src / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "rulekit"',
+                    'name = "rulekit"',
+                    'version = "1.0.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "public-rule"',
+                    'kind = "rule"',
+                    'source = "rules/public.md"',
+                    'install_path = "rules/public.md"',
+                    'type = "file"',
+                    "public = true",
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            result = install_kit(kit_src, adapter, "rulekit", interactive=False)
+            self.assertEqual(result["status"], "PASS")
+            regenerate_gen_aggregates(adapter)
+
+            self.assertIn(
+                "PUBLIC RULE SENTINEL",
+                (adapter / ".gen" / "AGENTS.md").read_text(encoding="utf-8"),
+            )
+            self.assertNotIn(
+                "PUBLIC RULE SENTINEL",
+                (adapter / ".gen" / "SKILL.md").read_text(encoding="utf-8"),
+            )
 
 
 class TestKitUpdateCheckCoverage(unittest.TestCase):

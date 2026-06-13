@@ -242,7 +242,7 @@ Enables users to install Studio globally, initialize it in any project with sens
 
 **Error Scenarios**:
 - Legacy install is missing, outside project root, or not directly migratable → command returns structured error and avoids partial writes
-- Target Constructor Studio directory exists without `--force` → command returns structured error and preserves both directories
+- Target Constructor Studio directory exists without `--force` → command returns a structured error that includes the source directory, target directory, `target_dir = "exists"` action, and remediation hint while preserving both directories
 - Root managed block rewrite fails after backups → command restores root files from backups and reports the failed step
 - Host-integration cleanup MUST NOT touch `.github/workflows/` or any path outside the host-integration directories (`.claude/`, `.windsurf/`, `.cursor/`, `.github/copilot-instructions.md`, `.codex/`) — these paths are user-owned and preserved unconditionally
 
@@ -250,7 +250,7 @@ Enables users to install Studio globally, initialize it in any project with sens
 1. [x] - `p1` - Define migration constants and imports used by implicit init/update migration flows - `inst-migration-module`
 2. [x] - `p1` - Resolve legacy source and Constructor Studio target as child directories of the project root - `inst-resolve-dirs`
 3. [x] - `p1` - Reject missing legacy installs and unsafe absolute or parent-directory paths - `inst-validate-dirs`
-4. [x] - `p1` - **IF** target exists without force, return error without copying or deleting files - `inst-target-exists`
+4. [x] - `p1` - **IF** target exists without force, return an actionable structured error with source/target context without copying or deleting files - `inst-target-exists`
 5. [x] - `p1` - **IF** replacing target, create a backup, replace from legacy source, and restore backup on replace failure - `inst-replace-target`
 6. [x] - `p1` - **ELSE** create target from legacy source and clean up partial target on copy failure - `inst-create-target`
 7. [x] - `p1` - Reuse the legacy directory in-place when source and target are the same directory - `inst-reuse-target`
@@ -287,7 +287,7 @@ Enables users to install Studio globally, initialize it in any project with sens
 38. [x] - `p1` - Recursively walk `config/**/*.md` (via `rglob("*.md")`) and apply four conservative substitutions: `{cypilot_path}` → `{cf-studio-path}`, backtick-`cpt` → backtick-`cfs`, space-surrounded `cpt` → `cfs`, `Cypilot` → `Constructor Studio`; returns changed paths as POSIX strings relative to the config dir - `inst-migrate-config-markdown`
 39. [x] - `p1` - Rewrite the `{cypilot_path}` template placeholder to `{cf-studio-path}` across config TOML files (e.g. `pr-review.toml`) under the migrated config dir - `inst-migrate-config-toml-template-vars`
 40. [x] - `p1` - Run `cfs kit update` after migration so renamed kit sources pull their latest release from the canonical `constructorfabric/studio-kit-sdlc` (or the user's mirror); honor `--dry-run` by recording the planned action only; **in JSON mode** suppress `cfs kit update` sub-command stdout via `contextlib.redirect_stdout` so the outer migration JSON remains the sole document on the wire - `inst-followup-kit-update`
-41. [x] - `p1` - Render human migration summary with actions and warnings - `inst-human-output`
+41. [x] - `p1` - Render human migration summary with actions, warnings, and error/hint text when migration aborts before completion - `inst-human-output`
 42. [x] - `p1` - Defer-import cleanup helpers from `agents.py` (one source of truth for legacy-artifact recognition) and short-circuit with a warning if the import fails - `inst-cleanup-legacy-host-import`
 43. [x] - `p1` - Sweep each supported host (`claude`, `windsurf`, `cursor`, `copilot`, `openai`) and remove pre-rebrand `cypilot-*` / `cf-constructor-*` agent files, skill directories, install markers, and per-tool single-file legacy skill paths whose body is a pure generator stub; preserve user-edited files; collect `{agent: [relpath, ...]}` of removals - `inst-cleanup-legacy-host-sweep`
 44. [x] - `p1` - For every host with at least one removed artifact, regenerate fresh `cf-*` integration inline via `_process_single_agent`; surface per-host regeneration failure as a non-fatal warning; return `{"removed": {agent: [relpath, ...]}, "regenerated": [agent, ...]}` - `inst-cleanup-legacy-host-regen`

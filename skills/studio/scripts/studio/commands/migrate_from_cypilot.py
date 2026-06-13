@@ -114,6 +114,21 @@ def migrate_from_cypilot(
     warnings: List[str] = []
     # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-validate-dirs
 
+    if legacy_dir != target_dir:
+        if target_dir.exists():
+            # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-target-exists
+            if not force:
+                return 1, {
+                    "status": "ERROR",
+                    "message": f"Target directory already exists: {target_dir}",
+                    "hint": "Re-run with --force to replace it, or pass --to-dir to choose another directory.",
+                    "project_root": project_root.as_posix(),
+                    "from_dir": legacy_rel,
+                    "studio_dir": target_dir.as_posix(),
+                    "actions": {"target_dir": "exists"},
+                }
+            # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-target-exists
+
     if not dry_run and not force_overwrite_root:
         # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-probe-root-dirty
         dirty = _probe_root_files_dirty(
@@ -133,15 +148,6 @@ def migrate_from_cypilot(
 
     if legacy_dir != target_dir:
         if target_dir.exists():
-            # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-target-exists
-            if not force:
-                return 1, {
-                    "status": "ERROR",
-                    "message": f"Target directory already exists: {target_dir}",
-                    "hint": "Re-run with --force to replace it, or pass --to-dir to choose another directory.",
-                    "project_root": project_root.as_posix(),
-                }
-            # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-target-exists
             if not dry_run:
                 # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-replace-target
                 backup_path = create_backup(target_dir)
@@ -1313,11 +1319,16 @@ def _human_migrate_ok(data: Dict[str, Any]) -> None:  # pyright: ignore
     # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-human-output
     prefix = "[dry-run] " if data.get("dry_run") else ""
     ui.header(f"{prefix}Cyber Pilot -> Constructor Studio Migration")
+    status = data.get("status")
+    if status in ("ERROR", "FAIL"):
+        ui.error(str(data.get("message") or status))
     ui.detail("Project root", str(data.get("project_root", "")))
     ui.detail("From", str(data.get("from_dir", "")))
     ui.detail("To", str(data.get("studio_dir", "")))
     for key, value in (data.get("actions") or {}).items():
         ui.file_action(key, str(value))
+    if data.get("hint"):
+        ui.hint(str(data["hint"]))
     if data.get("warnings"):
         for warning in data["warnings"]:
             ui.warn(str(warning))
