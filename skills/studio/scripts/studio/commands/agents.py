@@ -4566,8 +4566,49 @@ def cmd_generate_agents(argv: List[str]) -> int:
         return 0
 
     # Step 2: Show preview and ask for confirmation (interactive)
+    preview_has_fatal_errors = any(
+        r.get("status") in {"PARTIAL", "CONFIG_ERROR"} and _result_has_fatal_errors(r)
+        for r in preview_results.values()
+    )
+    if preview_has_fatal_errors:
+        agents_result = _build_result(
+            preview_results,
+            agents_to_process,
+            project_root,
+            studio_root,
+            cfg_path,
+            copy_report,
+            dry_run=False,
+        )
+        ui.result(
+            agents_result,
+            human_fn=lambda d: _human_generate_agents_ok(
+                d, agents_to_process, preview_results, dry_run=False,
+            ),
+        )
+        return 1
+
     if total_create == 0 and total_update == 0 and total_delete == 0:
-        ui.info("No changes needed — agent files are up to date.")
+        from ..utils.ui import is_json_mode
+        if is_json_mode():
+            agents_result = _build_result(
+                preview_results,
+                agents_to_process,
+                project_root,
+                studio_root,
+                cfg_path,
+                copy_report,
+                dry_run=False,
+            )
+            ui.result(
+                agents_result,
+                human_fn=lambda d: _human_generate_agents_ok(
+                    d, agents_to_process, preview_results, dry_run=False,
+                ),
+            )
+        else:
+            ui.info("No changes needed — agent files are up to date.")
+        return 0
     else:
         from ..utils.ui import is_json_mode
         if not is_json_mode():

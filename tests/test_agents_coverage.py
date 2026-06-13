@@ -58,6 +58,73 @@ class TestStudioEndpointTarget(unittest.TestCase):
         self.assertIn("outside project root", buf.getvalue())
 
 
+class TestGenerateAgentsNoChangePreview(unittest.TestCase):
+    """Regression coverage for preview/apply control flow."""
+
+    def test_no_change_preview_does_not_run_apply(self):
+        from studio.commands.agents import cmd_generate_agents
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "project"
+            studio_root = root / ".cf-studio"
+            studio_root.mkdir(parents=True)
+            args = SimpleNamespace(
+                dry_run=False,
+                remove_cypilot="no",
+                discover=False,
+                show_layers=False,
+                yes=True,
+            )
+            cfg = {"agents": {"cursor": {"workflows": {}, "skills": {}}}}
+            empty_result = {
+                "status": "PASS",
+                "agent": "cursor",
+                "workflows": {
+                    "created": [],
+                    "updated": [],
+                    "unchanged": [],
+                    "renamed": [],
+                    "deleted": [],
+                    "errors": [],
+                },
+                "skills": {
+                    "created": [],
+                    "updated": [],
+                    "deleted": [],
+                    "skipped": [],
+                    "outputs": [],
+                },
+                "subagents": {
+                    "created": [],
+                    "updated": [],
+                    "deleted": [],
+                    "skipped": False,
+                    "skip_reason": "",
+                    "outputs": [],
+                },
+                "rules": {"created": [], "updated": [], "deleted": [], "outputs": []},
+                "errors": None,
+            }
+
+            def fake_process(*_args, **kwargs):
+                self.assertTrue(kwargs.get("dry_run"))
+                return empty_result
+
+            with (
+                patch(
+                    "studio.commands.agents._resolve_agents_context",
+                    return_value=(args, ["cursor"], root, studio_root, {}, None, cfg),
+                ),
+                patch("studio.commands.agents._discover_layers", return_value=[]),
+                patch("studio.commands.agents._layers_have_v2_manifests", return_value=False),
+                patch("studio.commands.agents._process_single_agent", side_effect=fake_process) as process,
+            ):
+                rc = cmd_generate_agents([])
+
+            self.assertEqual(rc, 0)
+            self.assertEqual(process.call_count, 1)
+
+
 class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
     """Canonical kit public components drive generated skills and agents."""
 

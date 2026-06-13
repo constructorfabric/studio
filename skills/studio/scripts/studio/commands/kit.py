@@ -800,6 +800,25 @@ def _resolve_installed_kit_root(
     return kit_dir, kit_rel_path, kit_entry, isinstance(registered_path, str) and bool(registered_path.strip())
 
 
+def _registered_slug_for_local_kit_path(
+    config_dir: Path,
+    studio_dir: Path,
+    kit_source: Path,
+) -> str:
+    kit_source_resolved = kit_source.resolve()
+    matches: List[str] = []
+    for kit_slug, kit_entry in _read_kits_from_core_toml(config_dir).items():
+        if not isinstance(kit_entry, dict):
+            continue
+        registered_path = kit_entry.get("path")
+        if not isinstance(registered_path, str) or not registered_path.strip():
+            continue
+        registered_dir = _resolve_registered_kit_dir(studio_dir, registered_path)
+        if registered_dir is not None and registered_dir.resolve() == kit_source_resolved:
+            matches.append(kit_slug)
+    return matches[0] if len(matches) == 1 else ""
+
+
 def _collect_kit_metadata(
     config_kit_dir: Optional[Path],
     kit_slug: str,
@@ -3118,7 +3137,12 @@ def cmd_kit_update(argv: List[str]) -> int:
             })
             return 2
         # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-read-slug
-        kit_slug = args.slug or _read_kit_slug(kit_source) or kit_source.name
+        kit_slug = (
+            args.slug
+            or _registered_slug_for_local_kit_path(config_dir, studio_dir, kit_source)
+            or _read_kit_slug(kit_source)
+            or kit_source.name
+        )
         # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-read-slug
         update_targets.append((kit_slug, kit_source, "", None, None))
     else:

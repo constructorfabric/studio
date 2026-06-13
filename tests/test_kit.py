@@ -5953,6 +5953,50 @@ class TestCmdKitUpdateCli(unittest.TestCase):
             finally:
                 os.chdir(cwd)
 
+    def test_update_local_path_uses_registered_slug_for_matching_path(self):
+        from studio.commands.kit import cmd_kit_update
+        from studio.utils import toml_utils
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            kit_src = root / "studio-kit-gears"
+            kit_src.mkdir(parents=True)
+            (kit_src / "AGENTS.md").write_text("# Kit agents\n", encoding="utf-8")
+            toml_utils.dump({
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {
+                    "gears": {
+                        "format": "CFS",
+                        "path": "../studio-kit-gears",
+                        "version": "1",
+                    }
+                },
+            }, adapter / "config" / "core.toml")
+
+            wrong_fallback = adapter / "config" / "kits" / "studio-kit-gears"
+            wrong_fallback.mkdir(parents=True)
+            (wrong_fallback / "obsolete.md").write_text("stale\n", encoding="utf-8")
+
+            cwd = os.getcwd()
+            try:
+                os.chdir(kit_src)
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = cmd_kit_update([
+                        "--path", ".",
+                        "--project-root", str(root),
+                        "--force",
+                        "-y",
+                    ])
+                self.assertEqual(rc, 0)
+                out = json.loads(buf.getvalue())
+                self.assertEqual(out["results"][0]["kit"], "gears")
+                self.assertTrue((wrong_fallback / "obsolete.md").is_file())
+            finally:
+                os.chdir(cwd)
+
     def test_update_local_path_not_found(self):
         from studio.commands.kit import cmd_kit_update
         with TemporaryDirectory() as td:
