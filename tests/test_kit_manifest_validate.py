@@ -410,6 +410,85 @@ class TestValidateKitsResourcePaths(unittest.TestCase):
         warnings = [warn.get("message", "") for warn in feature.get("warnings", [])]
         self.assertTrue(any("no manifest resource binding" in msg for msg in warnings), warnings)
 
+    def test_register_mode_self_check_uses_all_constraints_resources(self):
+        """Bound templates are checked against every constraints resource, not just one."""
+        from studio.utils import toml_utils
+        from studio.utils.context import StudioContext, set_context
+        from studio.commands.validate_kits import run_validate_kits
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root, ".cf-studio")
+            config = adapter / "config"
+            kit_root = root / "studio-kit"
+            kit_root.mkdir(parents=True)
+            (kit_root / "base.toml").write_text(
+                "[PRD.identifiers.fr]\nrequired = true\n",
+                encoding="utf-8",
+            )
+            (kit_root / "feature.toml").write_text(
+                "[FEATURE.identifiers.flow]\nrequired = true\n"
+                'template = "cpt-{system}-flow-{slug}"\n',
+                encoding="utf-8",
+            )
+            (kit_root / "feature-template.md").write_text(
+                "# Feature\n\nThis template intentionally omits the required flow placeholder.\n",
+                encoding="utf-8",
+            )
+            toml_utils.dump({
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {
+                    "multi": {
+                        "format": "CFS",
+                        "path": "../studio-kit",
+                        "resources": {
+                            "policy-a": {
+                                "path": "../studio-kit/base.toml",
+                                "kind": "constraints",
+                            },
+                            "policy-b": {
+                                "path": "../studio-kit/feature.toml",
+                                "kind": "constraints",
+                                "artifacts": {
+                                    "FEATURE": {"template": "feature-template"},
+                                },
+                            },
+                            "feature-template": {
+                                "path": "../studio-kit/feature-template.md",
+                                "kind": "template",
+                            },
+                        },
+                    },
+                },
+            }, config / "core.toml")
+            toml_utils.dump({
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {"multi": {"format": "CFS", "path": "../studio-kit"}},
+                "systems": [{"name": "Test", "slug": "test", "kit": "multi"}],
+            }, config / "artifacts.toml")
+
+            ctx = StudioContext.load(root)
+            set_context(ctx)
+            try:
+                rc, result = run_validate_kits(
+                    project_root=ctx.project_root,
+                    adapter_dir=ctx.adapter_dir,
+                    verbose=True,
+                )
+            finally:
+                set_context(None)
+
+        self.assertEqual(rc, 2)
+        self.assertEqual(result.get("templates_checked"), 1)
+        feature = [
+            item for item in result.get("self_check_results", [])
+            if item.get("kind") == "FEATURE"
+        ][0]
+        messages = [err.get("message", "") for err in feature.get("errors", [])]
+        self.assertTrue(any("Template missing ID placeholder" in msg for msg in messages), messages)
+
     def test_missing_resource_path_produces_error(self):
         """Registered kit with resource binding pointing to missing path → FAIL."""
         from studio.utils.context import StudioContext, set_context
@@ -995,6 +1074,114 @@ class TestValidateKitByPathManifest(unittest.TestCase):
             {"FEATURE": {"template": "feature-template", "examples": "feature-examples"}},
         )
 
+    def test_validate_kit_by_path_uses_canonical_artifact_bindings_outside_layout(self):
+        """Standalone canonical validation uses explicit bound resources outside artifacts/."""
+        from studio.commands.validate_kits import _validate_kit_by_path
+
+        with TemporaryDirectory() as td:
+            kit_dir = Path(td) / "mykit"
+            kit_dir.mkdir()
+            (kit_dir / "constraints.toml").write_text(
+                "[FEATURE.identifiers.flow]\nrequired = true\n"
+                'template = "cpt-{system}-flow-{slug}"\n',
+                encoding="utf-8",
+            )
+            (kit_dir / "feature-template.md").write_text(
+                "# Feature\n\nThis template intentionally omits the required flow placeholder.\n",
+                encoding="utf-8",
+            )
+            (kit_dir / "feature-examples").mkdir()
+            (kit_dir / "feature-examples" / "valid.md").write_text(
+                "# Feature\n\n- **ID**: `cpt-test-flow-valid`\n",
+                encoding="utf-8",
+            )
+            (kit_dir / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "mykit"',
+                    'version = "1.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "ruleset"',
+                    'kind = "constraints"',
+                    'source = "constraints.toml"',
+                    'type = "file"',
+                    "",
+                    "[kits.resources.artifacts.FEATURE]",
+                    'template = "feature-template"',
+                    'examples = "feature-examples"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "feature-template"',
+                    'kind = "template"',
+                    'source = "feature-template.md"',
+                    'type = "file"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "feature-examples"',
+                    'kind = "directory"',
+                    'source = "feature-examples"',
+                    'type = "directory"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            rc, result = _validate_kit_by_path(kit_dir, verbose=True)
+
+        self.assertEqual(rc, 2)
+        self.assertEqual(result.get("templates_checked"), 1)
+        feature = [
+            item for item in result.get("self_check_results", [])
+            if item.get("kind") == "FEATURE"
+        ][0]
+        messages = [err.get("message", "") for err in feature.get("errors", [])]
+        self.assertTrue(any("Template missing ID placeholder" in msg for msg in messages), messages)
+
+    def test_validate_kit_by_path_canonical_without_bindings_warns_and_skips_layout(self):
+        """Canonical path validation does not infer template bindings from artifacts/ layout."""
+        from studio.commands.validate_kits import _validate_kit_by_path
+
+        with TemporaryDirectory() as td:
+            kit_dir = Path(td) / "mykit"
+            kit_dir.mkdir()
+            (kit_dir / "constraints.toml").write_text(
+                "[FEATURE.identifiers.flow]\nrequired = true\n"
+                'template = "cpt-{system}-flow-{slug}"\n',
+                encoding="utf-8",
+            )
+            artifacts_feature = kit_dir / "artifacts" / "FEATURE"
+            artifacts_feature.mkdir(parents=True)
+            (artifacts_feature / "template.md").write_text("# Feature\n", encoding="utf-8")
+            (kit_dir / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "mykit"',
+                    'version = "1.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "ruleset"',
+                    'kind = "constraints"',
+                    'source = "constraints.toml"',
+                    'type = "file"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            rc, result = _validate_kit_by_path(kit_dir, verbose=True)
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(result.get("templates_checked"), 0)
+        feature = [
+            item for item in result.get("self_check_results", [])
+            if item.get("kind") == "FEATURE"
+        ][0]
+        warnings = [warn.get("message", "") for warn in feature.get("warnings", [])]
+        self.assertTrue(any("no manifest resource binding" in msg for msg in warnings), warnings)
+
     def test_canonical_constraints_artifact_bindings_reject_invalid_shapes(self):
         """Canonical artifact bindings fail closed on malformed explicit maps."""
         from studio.utils.kit_model import load_kit_model
@@ -1104,6 +1291,35 @@ class TestValidateKitByPathManifest(unittest.TestCase):
             constraints_resource.artifact_bindings,
             {"FEATURE": {"template": "feature-template"}},
         )
+
+    def test_core_resource_artifact_bindings_reject_non_constraints(self):
+        """Installed core.toml cannot attach artifact-kind maps to template resources."""
+        from studio.utils.kit_model import load_kit_model
+
+        with TemporaryDirectory() as td:
+            studio_root = Path(td) / "adapter"
+            kit_dir = studio_root / "config" / "kits" / "mykit"
+            kit_dir.mkdir(parents=True)
+            (kit_dir / "feature-template.md").write_text("# Feature\n", encoding="utf-8")
+            _write_core_toml(studio_root / "config", {
+                "kits": {
+                    "mykit": {
+                        "path": "config/kits/mykit",
+                        "resources": {
+                            "feature-template": {
+                                "path": "config/kits/mykit/feature-template.md",
+                                "kind": "template",
+                                "artifacts": {
+                                    "FEATURE": {"template": "feature-template"},
+                                },
+                            },
+                        },
+                    },
+                },
+            })
+
+            with self.assertRaisesRegex(ValueError, "only allowed for constraints"):
+                load_kit_model(kit_dir, source_hint="core")
 
     def test_malformed_manifest_produces_error(self):
         """Standalone kit with malformed manifest.toml → resource error reported."""

@@ -119,25 +119,25 @@ class Kit:
         out = out.replace(_TOKEN_PROJECT_ROOT, ".")
         return out
 
-    def get_template_path(self, kind: str) -> str:
+    def get_template_path(self, kind: str) -> Optional[str]:
         """Get template file path for a given artifact kind."""
         k = str(kind or "").strip().upper()
         if self.artifacts and k in self.artifacts:
             tpl = (self.artifacts.get(k) or {}).get("template")
             if isinstance(tpl, str) and tpl.strip():
                 return self._substitute_registry_tokens(tpl.strip())
-            return ""
+            return None
         # Backward compatible default: {path}/artifacts/{KIND}/template.md
         return f"{self.path.rstrip('/')}/artifacts/{kind}/template.md"
 
-    def get_examples_path(self, kind: str) -> str:
+    def get_examples_path(self, kind: str) -> Optional[str]:
         """Get examples directory path for a given artifact kind."""
         k = str(kind or "").strip().upper()
         if self.artifacts and k in self.artifacts:
             ex = (self.artifacts.get(k) or {}).get("examples")
             if isinstance(ex, str) and ex.strip():
                 return self._substitute_registry_tokens(ex.strip())
-            return ""
+            return None
         # Backward compatible default: {path}/artifacts/{KIND}/examples
         return f"{self.path.rstrip('/')}/artifacts/{kind}/examples"
 

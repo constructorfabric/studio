@@ -5039,12 +5039,225 @@ class TestCollectKitMetadataOsError(unittest.TestCase):
                 "ALWAYS invoke `C:/external-kits/sdlc/SKILL.md` FIRST",
             )
 
+    def test_registered_resource_metadata_uses_public_bindings_only(self):
+        from studio.commands.kit import _collect_registered_kit_metadata
+
+        with TemporaryDirectory() as td:
+            studio_dir = Path(td) / ".bootstrap"
+            public_skill = studio_dir / "custom" / "SKILL.md"
+            public_rule = studio_dir / "custom" / "AGENTS.md"
+            private_rule = studio_dir / "custom" / "PRIVATE.md"
+            public_skill.parent.mkdir(parents=True)
+            public_skill.write_text("# Skill\n", encoding="utf-8")
+            public_rule.write_text("PUBLIC RULE\n", encoding="utf-8")
+            private_rule.write_text("PRIVATE RULE\n", encoding="utf-8")
+
+            meta = _collect_registered_kit_metadata(
+                studio_dir,
+                "sdlc",
+                {
+                    "resources": {
+                        "skill": {"path": "custom/SKILL.md", "kind": "skill", "public": "yes"},
+                        "rule": {"path": "custom/AGENTS.md", "kind": "rule", "public": True},
+                        "private-rule": {"path": "custom/PRIVATE.md", "kind": "rule", "public": False},
+                        "constraints": {"path": "custom/constraints.toml", "kind": "constraints", "public": True},
+                        "missing": {"path": ""},
+                    },
+                },
+            )
+
+        self.assertEqual(
+            meta["skill_nav"],
+            "ALWAYS invoke `{cf-studio-path}/custom/SKILL.md` FIRST",
+        )
+        self.assertEqual(meta["agents_content"], "PUBLIC RULE\n")
+        self.assertNotIn("PRIVATE RULE", meta["agents_content"])
+
+    def test_registered_resource_metadata_infers_legacy_skill_and_rule_kinds(self):
+        from studio.commands.kit import _collect_registered_kit_metadata
+
+        with TemporaryDirectory() as td:
+            studio_dir = Path(td) / ".bootstrap"
+            kit_dir = studio_dir / "external"
+            kit_dir.mkdir(parents=True)
+            (kit_dir / "SKILL.md").write_text("# Legacy skill\n", encoding="utf-8")
+            (kit_dir / "AGENTS.md").write_text("LEGACY RULE\n", encoding="utf-8")
+
+            meta = _collect_registered_kit_metadata(
+                studio_dir,
+                "legacy",
+                {
+                    "resources": {
+                        "skill": "external/SKILL.md",
+                        "agents": "external/AGENTS.md",
+                    },
+                },
+            )
+
+        self.assertIn("{cf-studio-path}/external/SKILL.md", meta["skill_nav"])
+        self.assertEqual(meta["agents_content"], "LEGACY RULE\n")
+
+    def test_prompt_manifest_install_plan_allows_root_and_resource_overrides(self):
+        from studio.commands.kit import _prompt_manifest_install_plan
+
+        with TemporaryDirectory() as td:
+            studio_dir = Path(td) / ".bootstrap"
+            kit_root = studio_dir / "config" / "kits" / "sdlc"
+            studio_dir.mkdir(parents=True)
+            resource = SimpleNamespace(
+                id="constraints",
+                type="file",
+                source="constraints.toml",
+                default_path="constraints.toml",
+                install_path="constraints.toml",
+                user_modifiable=True,
+                public=False,
+                kind="constraints",
+                artifact_bindings={"FEATURE": {"template": "feature-template"}},
+            )
+            manifest = SimpleNamespace(user_modifiable=True, resources=[resource])
+
+            with patch("studio.commands.kit.sys.stdin.isatty", return_value=True), patch(
+                "studio.commands.kit._input_stderr",
+                side_effect=["yes", "1", "custom-root", "yes", "2", "overrides/constraints.toml", "done"],
+            ):
+                new_root, new_root_rel, bindings = _prompt_manifest_install_plan(
+                    "sdlc",
+                    studio_dir,
+                    kit_root,
+                    manifest,
+                    interactive=True,
+                )
+
+        self.assertEqual(new_root, (studio_dir / "custom-root").resolve())
+        self.assertEqual(new_root_rel, "custom-root")
+        self.assertEqual(bindings["constraints"]["path"], "custom-root/overrides/constraints.toml")
+        self.assertEqual(bindings["constraints"]["artifacts"], {"FEATURE": {"template": "feature-template"}})
+
+    def test_manifest_root_resolution_helpers_cover_fallbacks(self):
+        from studio.commands.kit import (
+            _resolve_declared_manifest_root,
+            _resolve_manifest_kit_root_rel,
+            _resolve_manifest_root_from_binding,
+        )
+
+        self.assertIsNone(_resolve_manifest_root_from_binding(None, "constraints.toml"))
+        self.assertIsNone(_resolve_manifest_root_from_binding("short.toml", "nested/constraints.toml"))
+        self.assertIsNone(_resolve_manifest_root_from_binding("kit/other.toml", "constraints.toml"))
+        self.assertEqual(_resolve_manifest_root_from_binding("kit/constraints.toml", "constraints.toml"), "kit")
+        self.assertEqual(_resolve_manifest_root_from_binding("constraints.toml", "constraints.toml"), "")
+
+        self.assertEqual(
+            _resolve_declared_manifest_root(SimpleNamespace(root="{cf-studio-path}/kits/{slug}"), "sdlc"),
+            "kits/sdlc",
+        )
+        self.assertEqual(_resolve_declared_manifest_root(SimpleNamespace(root="."), "sdlc"), "config/kits/sdlc")
+
+        manifest = SimpleNamespace(
+            root="fallback/{slug}",
+            resources=[SimpleNamespace(id="constraints", install_path="constraints.toml")],
+        )
+        self.assertEqual(
+            _resolve_manifest_kit_root_rel(
+                manifest,
+                {"constraints": {"path": "registered/constraints.toml"}},
+                "sdlc",
+            ),
+            "registered",
+        )
+        self.assertEqual(_resolve_manifest_kit_root_rel(manifest, {}, "sdlc"), "fallback/sdlc")
+
+    def test_validate_register_manifest_containment_reports_escape_branches(self):
+        from studio.commands.kit import _validate_register_manifest_containment
+
+        with TemporaryDirectory() as td:
+            project_root = Path(td) / "project"
+            studio_dir = project_root / ".bootstrap"
+            kit_source = project_root / "kits" / "sdlc"
+            kit_source.mkdir(parents=True)
+            (kit_source / ".cf-studio-kit.toml").write_text("manifest\n", encoding="utf-8")
+            manifest = SimpleNamespace(
+                root="/outside",
+                resources=[
+                    SimpleNamespace(id="absolute", source="/tmp/constraints.toml"),
+                    SimpleNamespace(id="escape", source="../../../outside.toml"),
+                ],
+            )
+
+            missing_root_errors = _validate_register_manifest_containment(
+                None,
+                studio_dir,
+                kit_source,
+                "sdlc",
+                manifest,
+            )
+            errors = _validate_register_manifest_containment(
+                project_root,
+                studio_dir,
+                kit_source,
+                "sdlc",
+                manifest,
+            )
+
+        self.assertEqual(missing_root_errors, ["Register install mode requires a resolved project root"])
+        self.assertTrue(any("Manifest root" in error for error in errors))
+        self.assertTrue(any("must be relative" in error for error in errors))
+        self.assertTrue(any("escapes the project root" in error for error in errors))
+
+    def test_project_root_from_core_toml_handles_relative_absolute_and_invalid(self):
+        from studio.commands.kit import _project_root_from_core_toml
+
+        with TemporaryDirectory() as td:
+            studio_dir = Path(td) / ".bootstrap"
+            config_dir = studio_dir / "config"
+            config_dir.mkdir(parents=True)
+
+            self.assertIsNone(_project_root_from_core_toml(config_dir, studio_dir))
+
+            core = config_dir / "core.toml"
+            core.write_text("project_root = \"..\"\n", encoding="utf-8")
+            self.assertEqual(_project_root_from_core_toml(config_dir, studio_dir), studio_dir.parent.resolve())
+
+            absolute_root = Path(td).resolve()
+            core.write_text(f"project_root = \"{absolute_root.as_posix()}\"\n", encoding="utf-8")
+            self.assertEqual(_project_root_from_core_toml(config_dir, studio_dir), absolute_root)
+
+            core.write_text("project_root = 123\n", encoding="utf-8")
+            self.assertIsNone(_project_root_from_core_toml(config_dir, studio_dir))
+
+            core.write_text("{{bad", encoding="utf-8")
+            self.assertIsNone(_project_root_from_core_toml(config_dir, studio_dir))
+
 
 # ---------------------------------------------------------------------------
 # _read_project_name_from_registry
 # ---------------------------------------------------------------------------
 
 class TestResolveRegisteredKitMetadataTarget(unittest.TestCase):
+    def test_uses_resource_binding_when_registered_kit_dir_has_no_metadata(self):
+        from studio.commands.kit import _resolve_registered_kit_metadata_target
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            resource_dir = adapter / "registered"
+            resource_dir.mkdir()
+            (resource_dir / "AGENTS.md").write_text("RULE\n", encoding="utf-8")
+
+            kit_dir, kit_rel_path = _resolve_registered_kit_metadata_target(
+                adapter,
+                "sdlc",
+                {
+                    "path": "config/kits/sdlc",
+                    "resources": {
+                        "rule": {"path": "registered/AGENTS.md", "kind": "rule", "public": True},
+                    },
+                },
+            )
+
+        self.assertEqual(kit_dir, resource_dir.resolve())
+        self.assertEqual(kit_rel_path, "registered")
+
     def test_uses_existing_raw_windows_backslash_registered_path(self):
         from studio.commands.kit import _resolve_registered_kit_metadata_target
         with TemporaryDirectory() as td:

@@ -1051,7 +1051,6 @@ def _path_is_within(path: Path, root: Path) -> bool:
     # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-register-containment
 
 
-# @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-register-bindings
 def _manifest_resource_target(
     kit_root: Path,
     res: Any,
@@ -1062,29 +1061,43 @@ def _manifest_resource_target(
     return (kit_root / _resource_install_path(res)).resolve()
 
 
+def _manifest_resource_binding_entry(
+    *,
+    res: Any,
+    path: str,
+) -> Dict[str, Any]:
+    # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-register-bindings
+    entry: Dict[str, Any] = {"path": path}
+    kind = str(getattr(res, "kind", "") or "").strip()
+    if kind:
+        entry["kind"] = kind
+    artifact_bindings = getattr(res, "artifact_bindings", None)
+    if isinstance(artifact_bindings, dict) and artifact_bindings:
+        entry["artifacts"] = artifact_bindings
+    entry["public"] = bool(getattr(res, "public", False))
+    return entry
+    # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-register-bindings
+
+
 def _manifest_resource_bindings(
     studio_dir: Path,
     kit_root: Path,
     resources: List[Any],
     resource_overrides: Dict[str, Path],
 ) -> Dict[str, Dict[str, Any]]:
+    # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-register-bindings
     bindings: Dict[str, Dict[str, Any]] = {}
     for res in resources:
-        entry = {
-            "path": _serialize_manifest_binding_path(
+        entry = _manifest_resource_binding_entry(
+            res=res,
+            path=_serialize_manifest_binding_path(
                 _manifest_resource_target(kit_root, res, resource_overrides),
                 studio_dir,
-            )
-        }
-        kind = str(getattr(res, "kind", "") or "").strip()
-        if kind:
-            entry["kind"] = kind
-        artifact_bindings = getattr(res, "artifact_bindings", None)
-        if isinstance(artifact_bindings, dict) and artifact_bindings:
-            entry["artifacts"] = artifact_bindings
-        entry["public"] = bool(getattr(res, "public", False))
+            ),
+        )
         bindings[res.id] = entry
     return bindings
+    # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-register-bindings
 
 
 def _manifest_register_resource_bindings(
@@ -1092,24 +1105,19 @@ def _manifest_register_resource_bindings(
     kit_source: Path,
     resources: List[Any],
 ) -> Dict[str, Dict[str, Any]]:
+    # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-register-bindings
     bindings: Dict[str, Dict[str, Any]] = {}
     for res in resources:
-        entry = {
-            "path": _serialize_manifest_binding_path(
+        entry = _manifest_resource_binding_entry(
+            res=res,
+            path=_serialize_manifest_binding_path(
                 (kit_source / res.source).resolve(),
                 studio_dir,
-            )
-        }
-        kind = str(getattr(res, "kind", "") or "").strip()
-        if kind:
-            entry["kind"] = kind
-        artifact_bindings = getattr(res, "artifact_bindings", None)
-        if isinstance(artifact_bindings, dict) and artifact_bindings:
-            entry["artifacts"] = artifact_bindings
-        entry["public"] = bool(getattr(res, "public", False))
+            ),
+        )
         bindings[res.id] = entry
     return bindings
-# @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-register-bindings
+    # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-register-bindings
 
 
 # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-hashes
@@ -2188,7 +2196,7 @@ def migrate_legacy_kit_to_manifest(
         if expected_path.exists():
             # File/directory already on disk — register silently
             binding_path = _serialize_manifest_binding_path(expected_path, studio_dir)
-            resource_bindings[res.id] = {"path": binding_path}
+            resource_bindings[res.id] = _manifest_resource_binding_entry(res=res, path=binding_path)
             migrated_count += 1
             continue
         # @cpt-end:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-register-existing
@@ -2215,7 +2223,7 @@ def migrate_legacy_kit_to_manifest(
 
         _copy_manifest_resource(kit_source, res, target_abs)
         binding_path = _serialize_manifest_binding_path(target_abs, studio_dir)
-        resource_bindings[res.id] = {"path": binding_path}
+        resource_bindings[res.id] = _manifest_resource_binding_entry(res=res, path=binding_path)
         new_count += 1
     # @cpt-end:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-prompt-new
     # @cpt-end:cpt-studio-algo-kit-manifest-legacy-migration:p1:inst-legacy-foreach-resource
@@ -4051,6 +4059,11 @@ def _sync_manifest_resource_bindings(
         if kind:
             merged[res.id]["kind"] = kind
         merged[res.id]["public"] = bool(getattr(res, "public", False))
+        artifact_bindings = getattr(res, "artifact_bindings", None)
+        if isinstance(artifact_bindings, dict) and artifact_bindings:
+            merged[res.id]["artifacts"] = artifact_bindings
+        else:
+            merged[res.id].pop("artifacts", None)
     return merged
 # @cpt-end:cpt-studio-algo-kit-update:p1:inst-sync-manifest-bindings
 
@@ -4303,7 +4316,38 @@ def update_kit(
             and not _authority_commit_changed(authority_metadata, installed_kit_entry)
             and not _risk_changed
         ):
-            result["version"] = {"status": "current"}
+            if _manifest is not None and not installed_kit_entry.get("resources"):
+                _mig_result = migrate_legacy_kit_to_manifest(
+                    source_dir, studio_dir, kit_slug, interactive=interactive,
+                )
+                result["manifest_migration"] = _mig_result
+                if _mig_result.get("status") == "FAIL":
+                    sys.stderr.write(
+                        f"kit: warning: manifest migration for '{kit_slug}' failed: "
+                        f"{_mig_result.get('errors', [])}\n"
+                    )
+                installed_kit_entry = _read_kits_from_core_toml(config_dir).get(kit_slug, installed_kit_entry)
+            synced_resources = _sync_manifest_resource_bindings(_manifest, config_dir, kit_slug)
+            resources_changed = False
+            if synced_resources is not None:
+                current_resources = installed_kit_entry.get("resources", {})
+                resources_changed = current_resources != synced_resources
+                if resources_changed:
+                    registration_errors = _register_kit_in_core_toml(
+                        config_dir,
+                        kit_slug,
+                        source_version,
+                        studio_dir,
+                        source=source or str(installed_kit_entry.get("source") or ""),
+                        resources=synced_resources,
+                        kit_path=_resolve_manifest_kit_root_rel(_manifest, synced_resources, kit_slug),
+                    )
+                    if registration_errors:
+                        result["version"] = {"status": "failed"}
+                        result["gen"] = {"files_written": 0}
+                        result["errors"] = registration_errors
+                        return result
+            result["version"] = {"status": "updated" if resources_changed else "current"}
             result["gen"] = {"files_written": 0}
             authority_source_type = str(authority_metadata.get("source_type") or "") if authority_metadata else ""
             authority_freshness = str(authority_metadata.get("freshness") or "") if authority_metadata else ""

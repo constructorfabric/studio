@@ -569,6 +569,7 @@ class TestCLIPyCoverageSelfCheckMoreBranches(unittest.TestCase):
 
     def test_self_check_falls_back_to_layout_when_kit_methods_return_empty_paths(self):
         from studio.commands.self_check import run_self_check_from_meta
+        from studio.utils.artifacts_meta import ArtifactsMeta
 
         class EmptyPathKit:
             format = "CFS"
@@ -588,7 +589,7 @@ class TestCLIPyCoverageSelfCheckMoreBranches(unittest.TestCase):
             examples_dir.mkdir(parents=True)
             (kit_root / "artifacts" / "REQ" / "template.md").write_text("# Template\n", encoding="utf-8")
             (examples_dir / "example.md").write_text("# Example\n", encoding="utf-8")
-            meta = types.SimpleNamespace(kits={"k": EmptyPathKit()})
+            meta = ArtifactsMeta(version="1.0", project_root=".", kits={"k": EmptyPathKit()}, systems=[])
 
             rc, out = run_self_check_from_meta(project_root=root, adapter_dir=(root / "adapter"), artifacts_meta=meta)
 

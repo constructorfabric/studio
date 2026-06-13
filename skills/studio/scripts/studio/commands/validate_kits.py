@@ -9,15 +9,16 @@ consistency against constraints.
 # @cpt-begin:cpt-studio-flow-kit-validate-cli:p1:inst-validate-kits-imports
 import argparse
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from ..utils.constraints import error as constraints_error
 from ..utils.ui import ui
 # @cpt-end:cpt-studio-flow-kit-validate-cli:p1:inst-validate-kits-imports
 
-# @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 def _constraint_artifact_bindings(loaded_kit: Any) -> Dict[str, Dict[str, str]]:
     """Return explicit artifact-kind bindings declared on constraints resources."""
+    # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
     entries = getattr(loaded_kit, "resource_entries", None)
     if not isinstance(entries, dict):
         return {}
@@ -42,9 +43,11 @@ def _constraint_artifact_bindings(loaded_kit: Any) -> Dict[str, Dict[str, str]]:
                 if isinstance(raw_ref, str) and raw_ref.strip():
                     spec["examples" if role == "example" else role] = raw_ref.strip()
     return artifact_bindings
+    # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 
 
 def _constraints_binding_path(loaded_kit: Any, resource_bindings: Dict[str, str]) -> str:
+    # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
     entries = getattr(loaded_kit, "resource_entries", None)
     if isinstance(entries, dict):
         for resource_id, raw_entry in sorted(entries.items()):
@@ -55,15 +58,20 @@ def _constraints_binding_path(loaded_kit: Any, resource_bindings: Dict[str, str]
                 if path:
                     return path
     return _resource_binding_path(resource_bindings, "constraints")
+    # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 
 
 def _known_constraint_kinds(loaded_kit: Any) -> Set[str]:
+    # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
     constraints = getattr(loaded_kit, "constraints", None)
     return {str(kind).strip().upper() for kind in (getattr(constraints, "by_kind", {}) or {}).keys() if str(kind).strip()}
+    # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 
 
 def _resource_binding_path(resource_bindings: Dict[str, str], resource_id: str) -> str:
+    # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
     return str(resource_bindings.get(resource_id, "") or "").strip()
+    # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 
 
 def _missing_bound_artifact_warnings(
@@ -72,15 +80,11 @@ def _missing_bound_artifact_warnings(
     known_kinds: Set[str],
     artifacts: Dict[str, Dict[str, str]],
 ) -> List[Dict[str, object]]:
+    # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
     results: List[Dict[str, object]] = []
     for kind in sorted(known_kinds):
         spec = artifacts.get(kind, {})
-        missing_roles = [
-            role
-            for role in ("template", "examples")
-            if not str(spec.get(role, "") or "").strip()
-        ]
-        if not missing_roles:
+        if str(spec.get("template", "") or "").strip() or str(spec.get("examples", "") or "").strip():
             continue
         warning = constraints_error(
             "template",
@@ -89,7 +93,7 @@ def _missing_bound_artifact_warnings(
             line=1,
             kit_id=str(kit_id),
             artifact_kind=kind,
-            missing_bindings=missing_roles,
+            missing_bindings=["template", "examples"],
         )
         results.append({
             "kit": str(kit_id),
@@ -103,6 +107,48 @@ def _missing_bound_artifact_warnings(
             "warnings": [warning],
         })
     return results
+    # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
+
+
+def _constraints_binding_paths(
+    loaded_kit: Any,
+    resource_bindings: Dict[str, str],
+) -> List[Path]:
+    # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
+    paths: List[Path] = []
+    loaded_paths = getattr(loaded_kit, "constraints_paths", None)
+    if isinstance(loaded_paths, list):
+        for path in loaded_paths:
+            if isinstance(path, Path):
+                paths.append(path)
+            elif isinstance(path, str) and path.strip():
+                paths.append(Path(path))
+
+    entries = getattr(loaded_kit, "resource_entries", None)
+    if isinstance(entries, dict):
+        for resource_id, raw_entry in sorted(entries.items()):
+            if not isinstance(raw_entry, dict):
+                continue
+            if str(raw_entry.get("kind", "") or "").strip().lower() != "constraints":
+                continue
+            path = _resource_binding_path(resource_bindings, str(resource_id))
+            if path:
+                paths.append(Path(path))
+
+    fallback = _resource_binding_path(resource_bindings, "constraints")
+    if fallback:
+        paths.append(Path(fallback))
+
+    unique: List[Path] = []
+    seen: Set[str] = set()
+    for path in paths:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(path)
+    return unique
+    # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 
 
 def _synthesized_meta_from_resource_bindings(
@@ -113,6 +159,7 @@ def _synthesized_meta_from_resource_bindings(
     loaded_kit: Any,
 ) -> Tuple[Optional[Any], List[Dict[str, object]]]:
     """Build self-check metadata from loaded manifest resource bindings."""
+    # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
     from ..utils.artifacts_meta import ArtifactsMeta, Kit
 
     rb = getattr(loaded_kit, "resource_bindings", None)
@@ -155,9 +202,11 @@ def _synthesized_meta_from_resource_bindings(
         path=str(kit_base),
         artifacts=artifacts,
     )
+    constraints_paths = _constraints_binding_paths(loaded_kit, rb)
     if constraints_path:
         setattr(kit, "constraints_path", Path(constraints_path))
-        setattr(kit, "constraints_paths", [Path(constraints_path)])
+    if constraints_paths:
+        setattr(kit, "constraints_paths", constraints_paths)
 
     return ArtifactsMeta(
         version=str(getattr(base_meta, "version", "1.0") or "1.0"),
@@ -166,6 +215,53 @@ def _synthesized_meta_from_resource_bindings(
         systems=list(getattr(base_meta, "systems", []) or []),
         ignore=list(getattr(base_meta, "ignore", []) or []),
     ), warnings
+    # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
+
+
+def _synthesized_meta_from_kit_model(
+    *,
+    base_meta: Any,
+    kit_dir: Path,
+    kit_id: str,
+    model: Any,
+    constraints: Any,
+) -> Tuple[Optional[Any], List[Dict[str, object]]]:
+    """Build self-check metadata from a standalone canonical KitModel."""
+    # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-build-artifacts-meta
+    resource_bindings: Dict[str, str] = {}
+    resource_entries: Dict[str, Dict[str, object]] = {}
+    constraints_paths: List[Path] = []
+    for resource in getattr(model, "resources", []) or []:
+        resource_id = str(getattr(resource, "id", "") or "").strip()
+        source = str(getattr(resource, "source", "") or "").strip()
+        if not resource_id or not source:
+            continue
+        resource_path = (kit_dir / source).resolve()
+        resource_bindings[resource_id] = str(resource_path)
+        entry: Dict[str, object] = {
+            "kind": str(getattr(resource, "kind", "") or "").strip(),
+        }
+        if entry["kind"].lower() == "constraints":
+            constraints_paths.append(resource_path)
+        artifact_bindings = getattr(resource, "artifact_bindings", None)
+        if isinstance(artifact_bindings, dict) and artifact_bindings:
+            entry["artifacts"] = artifact_bindings
+        resource_entries[resource_id] = entry
+
+    loaded_kit = SimpleNamespace(
+        resource_bindings=resource_bindings,
+        resource_entries=resource_entries,
+        constraints=constraints,
+        constraints_paths=constraints_paths,
+        kit_root=kit_dir,
+    )
+    return _synthesized_meta_from_resource_bindings(
+        base_meta=base_meta,
+        adapter_dir=kit_dir.parent,
+        kit_id=kit_id,
+        loaded_kit=loaded_kit,
+    )
+    # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-build-artifacts-meta
 
 
 def _merge_self_check_report(
@@ -173,6 +269,7 @@ def _merge_self_check_report(
     source: Dict[str, object],
 ) -> None:
     """Merge one self-check report into an aggregate report."""
+    # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
     if not source:
         return
     target.setdefault("results", [])
@@ -185,7 +282,7 @@ def _merge_self_check_report(
     results = source.get("results", [])
     if isinstance(results, list):
         target["results"].extend(results)  # type: ignore[union-attr]
-# @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
+    # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 
 
 # @cpt-dod:cpt-studio-dod-kit-validate:p1
@@ -514,42 +611,71 @@ def _validate_kit_by_path(kit_path: Path, *, verbose: bool = False) -> Tuple[int
 
     # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-build-artifacts-meta
     # ── Phase 2: Template & example validation ────────────────────────
-    # Build a synthetic ArtifactsMeta so run_self_check_from_meta can work
-    artifacts_dict: Dict[str, Dict[str, str]] = {}
-    artifacts_dir = kit_dir / "artifacts"
-    if artifacts_dir.is_dir():
-        for kind_dir in sorted(artifacts_dir.iterdir()):
-            if not kind_dir.is_dir():
-                continue
-            kind = kind_dir.name
-            tpl = kind_dir / "template.md"
-            examples = kind_dir / "examples"
-            if tpl.is_file():
-                artifacts_dict[kind] = {
-                    "template": str(tpl),
-                    "examples": str(examples),  # path may not exist; self_check handles that
-                }
-
-    meta = ArtifactsMeta.from_dict({
+    base_meta = ArtifactsMeta.from_dict({
         "version": "1.1",
         "project_root": str(kit_dir.parent),
-        "kits": {slug: {"format": "CFS", "path": str(kit_dir), "artifacts": artifacts_dict}},
+        "kits": {slug: {"format": "CFS", "path": str(kit_dir)}},
     })
+    meta = base_meta
+    binding_warnings: List[Dict[str, object]] = []
+    model_source = str(getattr(model, "manifest_source", "") or "") if model is not None else ""
+    if model is not None and model_source in {"canonical", "core"}:
+        bound_meta, binding_warnings = _synthesized_meta_from_kit_model(
+            base_meta=base_meta,
+            kit_dir=kit_dir,
+            kit_id=slug,
+            model=model,
+            constraints=_kc,
+        )
+        meta = bound_meta
+    else:
+        # Legacy package-layout fallback. Canonical manifests must use explicit
+        # constraints artifact bindings instead of this directory convention.
+        artifacts_dict: Dict[str, Dict[str, str]] = {}
+        artifacts_dir = kit_dir / "artifacts"
+        if artifacts_dir.is_dir():
+            for kind_dir in sorted(artifacts_dir.iterdir()):
+                if not kind_dir.is_dir():
+                    continue
+                kind = kind_dir.name
+                tpl = kind_dir / "template.md"
+                examples = kind_dir / "examples"
+                if tpl.is_file():
+                    artifacts_dict[kind] = {
+                        "template": str(tpl),
+                        "examples": str(examples),  # path may not exist; self_check handles that
+                    }
+
+        meta = ArtifactsMeta.from_dict({
+            "version": "1.1",
+            "project_root": str(kit_dir.parent),
+            "kits": {slug: {"format": "CFS", "path": str(kit_dir), "artifacts": artifacts_dict}},
+        })
     # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-build-artifacts-meta
 
     # @cpt-begin:cpt-studio-algo-kit-validate-by-path:p1:inst-template-check
     self_check_report: Dict[str, object] = {}
     if not kc_errs:  # Only run template checks if constraints parsed OK
         from .self_check import run_self_check_from_meta
-        _, sc_out = run_self_check_from_meta(
-            project_root=kit_dir.parent,
-            adapter_dir=kit_dir.parent,
-            artifacts_meta=meta,
-            kit_filter=slug,
-            verbose=verbose,
-        )
-        self_check_report = sc_out
-        for r in sc_out.get("results", []):
+        if binding_warnings:
+            self_check_report = {
+                "status": "PASS",
+                "project_root": kit_dir.parent.as_posix(),
+                "studio_dir": kit_dir.parent.as_posix(),
+                "kits_checked": 0,
+                "templates_checked": 0,
+                "results": list(binding_warnings),
+            }
+        if meta is not None:
+            _, sc_out = run_self_check_from_meta(
+                project_root=kit_dir.parent,
+                adapter_dir=kit_dir.parent,
+                artifacts_meta=meta,
+                kit_filter=slug,
+                verbose=verbose,
+            )
+            _merge_self_check_report(self_check_report, sc_out)
+        for r in self_check_report.get("results", []):
             if r.get("status") == "FAIL":
                 all_errors.extend(r.get("errors", []))
     # @cpt-end:cpt-studio-algo-kit-validate-by-path:p1:inst-template-check

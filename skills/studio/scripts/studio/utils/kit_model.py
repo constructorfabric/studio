@@ -1195,6 +1195,11 @@ def _load_core_model(kit_source: Path) -> KitModel:
         origin = str(binding.get("origin", "")).strip() if isinstance(binding, dict) else ""
         if not origin and kind == "skill" and source.startswith("workflows/"):
             origin = "legacy-workflow"
+        artifact_bindings = _artifact_bindings(binding.get("artifacts") if isinstance(binding, dict) else None, f"resources.{resource_id}.artifacts")
+        if artifact_bindings and kind != "constraints":
+            raise ValueError(
+                f"Resource '{resource_id}': artifacts bindings are only allowed for constraints resources",
+            )
         resources.append(KitResource(
             id=str(resource_id),
             kind=kind,
@@ -1209,7 +1214,7 @@ def _load_core_model(kit_source: Path) -> KitModel:
             origin=origin,
             generated_name=_normalize_public_name(slug, str(resource_id)) if kind in _PUBLIC_KINDS else "",
             # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-artifact-bindings
-            artifact_bindings=_artifact_bindings(binding.get("artifacts") if isinstance(binding, dict) else None, f"resources.{resource_id}.artifacts"),
+            artifact_bindings=artifact_bindings,
             # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-artifact-bindings
         ))
     if not resources:

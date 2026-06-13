@@ -14,6 +14,7 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
@@ -160,6 +161,51 @@ class TestManifestInstallAdapter(unittest.TestCase):
             assert manifest is not None
             self.assertEqual(manifest.resources[0].id, "skill")
 
+    def test_canonical_manifest_adapter_preserves_artifact_bindings(self):
+        from studio.commands.kit import _load_manifest_install_adapter
+
+        with TemporaryDirectory() as td:
+            kit_src = Path(td) / "kit"
+            kit_src.mkdir()
+            (kit_src / "constraints.toml").write_text("[FEATURE.identifiers.flow]\nrequired = true\n", encoding="utf-8")
+            (kit_src / "feature-template.md").write_text("# Feature\n", encoding="utf-8")
+            (kit_src / ".cf-studio-kit.toml").write_text(
+                textwrap.dedent(
+                    """\
+                    manifest_version = "1.0"
+
+                    [[kits]]
+                    slug = "mykit"
+                    name = "My Kit"
+                    version = "1.0"
+
+                    [[kits.resources]]
+                    id = "ruleset"
+                    kind = "constraints"
+                    source = "constraints.toml"
+                    type = "file"
+
+                    [kits.resources.artifacts.FEATURE]
+                    template = "feature-template"
+
+                    [[kits.resources]]
+                    id = "feature-template"
+                    kind = "template"
+                    source = "feature-template.md"
+                    type = "file"
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            manifest = _load_manifest_install_adapter(kit_src, kit_slug="mykit")
+
+            self.assertIsNotNone(manifest)
+            assert manifest is not None
+            ruleset = [res for res in manifest.resources if res.id == "ruleset"][0]
+            self.assertEqual(ruleset.kind, "constraints")
+            self.assertEqual(ruleset.artifact_bindings, {"FEATURE": {"template": "feature-template"}})
+
     def test_source_without_manifest_returns_none(self):
         from studio.commands.kit import _load_manifest_install_adapter
 
@@ -169,6 +215,89 @@ class TestManifestInstallAdapter(unittest.TestCase):
             (kit_src / "conf.toml").write_text('name = "legacy"\n', encoding="utf-8")
 
             self.assertIsNone(_load_manifest_install_adapter(kit_src, kit_slug="legacy"))
+
+    def test_sync_manifest_resource_bindings_preserves_artifact_bindings(self):
+        from studio.commands.kit import _sync_manifest_resource_bindings
+        from studio.utils import toml_utils
+
+        with TemporaryDirectory() as td:
+            config = Path(td) / "config"
+            config.mkdir()
+            toml_utils.dump({
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {
+                    "mykit": {
+                        "format": "CFS",
+                        "path": "config/kits/mykit",
+                        "resources": {
+                            "ruleset": {
+                                "path": "config/kits/mykit/constraints.toml",
+                                "kind": "constraints",
+                                "artifacts": {"OLD": {"template": "old-template"}},
+                            },
+                            "feature-template": {
+                                "path": "config/kits/mykit/feature-template.md",
+                                "kind": "template",
+                                "artifacts": {"OLD": {"template": "old-template"}},
+                            },
+                        },
+                    },
+                },
+            }, config / "core.toml")
+            manifest = SimpleNamespace(
+                root="{cf-studio-path}/config/kits/{slug}",
+                resources=[
+                    SimpleNamespace(
+                        id="ruleset",
+                        kind="constraints",
+                        install_path="constraints.toml",
+                        default_path="constraints.toml",
+                        public=False,
+                        artifact_bindings={"FEATURE": {"template": "feature-template"}},
+                    ),
+                    SimpleNamespace(
+                        id="feature-template",
+                        kind="template",
+                        install_path="feature-template.md",
+                        default_path="feature-template.md",
+                        public=False,
+                        artifact_bindings={},
+                    ),
+                ],
+            )
+
+            merged = _sync_manifest_resource_bindings(manifest, config, "mykit")
+
+        assert merged is not None
+        self.assertEqual(
+            merged["ruleset"]["artifacts"],
+            {"FEATURE": {"template": "feature-template"}},
+        )
+        self.assertNotIn("artifacts", merged["feature-template"])
+
+    def test_manifest_resource_bindings_writer_persists_artifact_bindings(self):
+        from studio.commands.kit import _manifest_resource_bindings
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            kit_root = root / "adapter" / "config" / "kits" / "mykit"
+            kit_root.mkdir(parents=True)
+            res = SimpleNamespace(
+                id="ruleset",
+                kind="constraints",
+                install_path="constraints.toml",
+                default_path="constraints.toml",
+                public=False,
+                artifact_bindings={"FEATURE": {"template": "feature-template"}},
+            )
+
+            bindings = _manifest_resource_bindings(root / "adapter", kit_root, [res], {})
+
+        self.assertEqual(
+            bindings["ruleset"]["artifacts"],
+            {"FEATURE": {"template": "feature-template"}},
+        )
 
 
 class TestInstallKitWithManifest(unittest.TestCase):

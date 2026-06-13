@@ -495,7 +495,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 1. [x] - `p1` - Resolve kit directory, verify exists - `inst-resolve-dir`
 2. [x] - `p1` - **Phase 1 — Structural**: load and validate all `kind = "constraints"` resources in manifest order, falling back to legacy `constraints.toml` only for legacy path validation - `inst-structural-check`
 3. [x] - `p1` - **Phase 1b — Manifest resources**: **IF** manifest-driven kit, verify all registered resource paths exist on disk - `inst-verify-resource-paths`
-4. [x] - `p1` - Build synthetic `ArtifactsMeta` from kit's artifacts/ directory - `inst-build-artifacts-meta`
+4. [x] - `p1` - Build synthetic `ArtifactsMeta` from explicit constraints artifact bindings for canonical/core KitModel inputs; use kit `artifacts/` directory only as the legacy layout fallback - `inst-build-artifacts-meta`
 5. [x] - `p1` - **Phase 2 — Templates**: run `self_check` for template/example validation - `inst-template-check`
 6. [x] - `p1` - Build result: aggregate errors, set PASS/FAIL - `inst-build-result`
 
@@ -879,7 +879,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 | `skills/studio/scripts/studio/utils/kit_model.py` | `cpt-studio-algo-kit-model-normalize`, `cpt-studio-algo-kit-canonical-manifest`, `cpt-studio-algo-kit-public-component-generation`, `cpt-studio-algo-kit-tool-permission-risk`, `cpt-studio-algo-kit-manifest-normalize` |
 | `skills/studio/scripts/studio/utils/manifest.py` | legacy manifest adapter, `cpt-studio-algo-kit-manifest-resolve`, `cpt-studio-algo-kit-manifest-source-mapping`, `cpt-studio-algo-kit-variable-resolution` |
 | `skills/studio/scripts/studio/utils/diff_engine.py` | `cpt-studio-algo-kit-file-update`, `cpt-studio-algo-kit-file-enumerate`, `cpt-studio-algo-kit-file-classify`, `cpt-studio-algo-kit-interactive-review`, `cpt-studio-algo-kit-diff-display`, `cpt-studio-algo-kit-conflict-merge`, `cpt-studio-algo-kit-toc-handling`, `cpt-studio-algo-kit-snapshot` |
-| `skills/studio/scripts/studio/commands/validate_kits.py` | `cpt-studio-algo-kit-validate`, `cpt-studio-algo-kit-validate-by-path`, `cpt-studio-flow-kit-validate-cli` |
+| `skills/studio/scripts/studio/commands/validate_kits.py`, `skills/studio/scripts/studio/commands/self_check.py` | `cpt-studio-algo-kit-validate`, `cpt-studio-algo-kit-validate-by-path`, `cpt-studio-flow-kit-validate-cli` |
 | `skills/studio/scripts/studio/commands/adapter_info.py` | `cpt-studio-algo-kit-info-model-output` |
 | `skills/studio/scripts/studio/commands/agents.py` | `cpt-studio-algo-kit-public-component-generation` |
 | `skills/studio/scripts/studio/utils/whatsnew.py` | `cpt-studio-algo-kit-whatsnew-display` |
