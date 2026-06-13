@@ -426,6 +426,176 @@ class TestCLIPyCoverageSelfCheckMoreBranches(unittest.TestCase):
             self.assertEqual(out.get("status"), "PASS")
             self.assertGreaterEqual(int(out.get("kits_checked", 0)), 1)
 
+    def test_explicit_examples_binding_does_not_fallback_to_layout_template(self):
+        from studio.commands.self_check import run_self_check_from_meta
+        from studio.utils.artifacts_meta import ArtifactsMeta
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            kit_root = root / "kits" / "k"
+            (kit_root / "artifacts" / "REQ").mkdir(parents=True)
+            (kit_root / "artifacts" / "REQ" / "template.md").write_text(
+                "# Legacy template without required placeholder\n",
+                encoding="utf-8",
+            )
+            examples_dir = root / "bound-examples"
+            examples_dir.mkdir()
+            (examples_dir / "example.md").write_text(
+                "- [x] `p1` - **ID**: `cpt-test-req-login`\n",
+                encoding="utf-8",
+            )
+            from _test_helpers import write_constraints_toml
+            write_constraints_toml(kit_root, {
+                "REQ": {
+                    "identifiers": {
+                        "req": {"required": True, "template": "cpt-{system}-req-{slug}"}
+                    }
+                }
+            })
+            meta = ArtifactsMeta.from_dict({
+                "version": "1.1",
+                "project_root": ".",
+                "systems": [],
+                "kits": {
+                    "k": {
+                        "format": "CFS",
+                        "path": "kits/k",
+                        "artifacts": {
+                            "REQ": {
+                                "examples": "{project_root}/bound-examples",
+                            }
+                        },
+                    }
+                },
+            })
+
+            rc, out = run_self_check_from_meta(project_root=root, adapter_dir=(root / "adapter"), artifacts_meta=meta)
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(out.get("status"), "PASS")
+        self.assertEqual(out["results"][0]["examples_checked"], 1)
+
+    def test_explicit_template_binding_does_not_fallback_to_layout_examples(self):
+        from studio.commands.self_check import run_self_check_from_meta
+        from studio.utils.artifacts_meta import ArtifactsMeta
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            kit_root = root / "kits" / "k"
+            examples_dir = kit_root / "artifacts" / "REQ" / "examples"
+            examples_dir.mkdir(parents=True)
+            (examples_dir / "example.md").write_text(
+                "- [x] `p1` - **ID**: `not-valid`\n",
+                encoding="utf-8",
+            )
+            template_path = root / "bound-template.md"
+            template_path.write_text(
+                "# Template\n\n- [ ] `p1` - **ID**: `cpt-{system}-req-{slug}`\n",
+                encoding="utf-8",
+            )
+            from _test_helpers import write_constraints_toml
+            write_constraints_toml(kit_root, {
+                "REQ": {
+                    "identifiers": {
+                        "req": {"required": True, "template": "cpt-{system}-req-{slug}"}
+                    }
+                }
+            })
+            meta = ArtifactsMeta.from_dict({
+                "version": "1.1",
+                "project_root": ".",
+                "systems": [],
+                "kits": {
+                    "k": {
+                        "format": "CFS",
+                        "path": "kits/k",
+                        "artifacts": {
+                            "REQ": {
+                                "template": "{project_root}/bound-template.md",
+                            }
+                        },
+                    }
+                },
+            })
+
+            rc, out = run_self_check_from_meta(project_root=root, adapter_dir=(root / "adapter"), artifacts_meta=meta)
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(out.get("status"), "PASS")
+        self.assertEqual(out["results"][0]["examples_checked"], 0)
+
+    def test_legacy_layout_without_explicit_artifact_map_uses_template_and_examples(self):
+        from studio.commands.self_check import run_self_check_from_meta
+        from studio.utils.artifacts_meta import ArtifactsMeta
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            kit_root = root / "kits" / "k"
+            examples_dir = kit_root / "artifacts" / "REQ" / "examples"
+            examples_dir.mkdir(parents=True)
+            (kit_root / "artifacts" / "REQ" / "template.md").write_text(
+                "# Template\n\n- [ ] `p1` - **ID**: `cpt-{system}-req-{slug}`\n",
+                encoding="utf-8",
+            )
+            (examples_dir / "example.md").write_text(
+                "- [x] `p1` - **ID**: `cpt-test-req-login`\n",
+                encoding="utf-8",
+            )
+            from _test_helpers import write_constraints_toml
+            write_constraints_toml(kit_root, {
+                "REQ": {
+                    "identifiers": {
+                        "req": {"required": True, "template": "cpt-{system}-req-{slug}"}
+                    }
+                }
+            })
+            meta = ArtifactsMeta.from_dict({
+                "version": "1.1",
+                "project_root": ".",
+                "systems": [],
+                "kits": {
+                    "k": {
+                        "format": "CFS",
+                        "path": "kits/k",
+                    }
+                },
+            })
+
+            rc, out = run_self_check_from_meta(project_root=root, adapter_dir=(root / "adapter"), artifacts_meta=meta)
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(out.get("status"), "PASS")
+        self.assertEqual(out["results"][0]["examples_checked"], 1)
+
+    def test_self_check_falls_back_to_layout_when_kit_methods_return_empty_paths(self):
+        from studio.commands.self_check import run_self_check_from_meta
+
+        class EmptyPathKit:
+            format = "CFS"
+            path = "kits/k"
+            artifacts = {}
+
+            def get_template_path(self, _kind):
+                return ""
+
+            def get_examples_path(self, _kind):
+                return ""
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            kit_root = root / "adapter" / "kits" / "k"
+            examples_dir = kit_root / "artifacts" / "REQ" / "examples"
+            examples_dir.mkdir(parents=True)
+            (kit_root / "artifacts" / "REQ" / "template.md").write_text("# Template\n", encoding="utf-8")
+            (examples_dir / "example.md").write_text("# Example\n", encoding="utf-8")
+            meta = types.SimpleNamespace(kits={"k": EmptyPathKit()})
+
+            rc, out = run_self_check_from_meta(project_root=root, adapter_dir=(root / "adapter"), artifacts_meta=meta)
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(out.get("status"), "PASS")
+        self.assertEqual(out["results"][0]["examples_checked"], 1)
+
     def test_run_self_check_fails_on_invalid_constraints(self):
         from studio.commands.self_check import run_self_check_from_meta
 

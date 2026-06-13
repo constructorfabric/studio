@@ -9,11 +9,183 @@ consistency against constraints.
 # @cpt-begin:cpt-studio-flow-kit-validate-cli:p1:inst-validate-kits-imports
 import argparse
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from ..utils.constraints import error as constraints_error
 from ..utils.ui import ui
 # @cpt-end:cpt-studio-flow-kit-validate-cli:p1:inst-validate-kits-imports
+
+# @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
+def _constraint_artifact_bindings(loaded_kit: Any) -> Dict[str, Dict[str, str]]:
+    """Return explicit artifact-kind bindings declared on constraints resources."""
+    entries = getattr(loaded_kit, "resource_entries", None)
+    if not isinstance(entries, dict):
+        return {}
+    artifact_bindings: Dict[str, Dict[str, str]] = {}
+    for _resource_id, raw_entry in sorted(entries.items()):
+        if not isinstance(raw_entry, dict):
+            continue
+        if str(raw_entry.get("kind", "") or "").strip().lower() != "constraints":
+            continue
+        raw_artifacts = raw_entry.get("artifacts")
+        if not isinstance(raw_artifacts, dict):
+            continue
+        for kind, raw_spec in raw_artifacts.items():
+            if not isinstance(raw_spec, dict):
+                continue
+            kind_s = str(kind or "").strip().upper()
+            if not kind_s:
+                continue
+            spec = artifact_bindings.setdefault(kind_s, {})
+            for role in ("template", "rules", "checklist", "examples", "example"):
+                raw_ref = raw_spec.get(role)
+                if isinstance(raw_ref, str) and raw_ref.strip():
+                    spec["examples" if role == "example" else role] = raw_ref.strip()
+    return artifact_bindings
+
+
+def _constraints_binding_path(loaded_kit: Any, resource_bindings: Dict[str, str]) -> str:
+    entries = getattr(loaded_kit, "resource_entries", None)
+    if isinstance(entries, dict):
+        for resource_id, raw_entry in sorted(entries.items()):
+            if not isinstance(raw_entry, dict):
+                continue
+            if str(raw_entry.get("kind", "") or "").strip().lower() == "constraints":
+                path = _resource_binding_path(resource_bindings, str(resource_id))
+                if path:
+                    return path
+    return _resource_binding_path(resource_bindings, "constraints")
+
+
+def _known_constraint_kinds(loaded_kit: Any) -> Set[str]:
+    constraints = getattr(loaded_kit, "constraints", None)
+    return {str(kind).strip().upper() for kind in (getattr(constraints, "by_kind", {}) or {}).keys() if str(kind).strip()}
+
+
+def _resource_binding_path(resource_bindings: Dict[str, str], resource_id: str) -> str:
+    return str(resource_bindings.get(resource_id, "") or "").strip()
+
+
+def _missing_bound_artifact_warnings(
+    *,
+    kit_id: str,
+    known_kinds: Set[str],
+    artifacts: Dict[str, Dict[str, str]],
+) -> List[Dict[str, object]]:
+    results: List[Dict[str, object]] = []
+    for kind in sorted(known_kinds):
+        spec = artifacts.get(kind, {})
+        missing_roles = [
+            role
+            for role in ("template", "examples")
+            if not str(spec.get(role, "") or "").strip()
+        ]
+        if not missing_roles:
+            continue
+        warning = constraints_error(
+            "template",
+            "Constraints declare artifact kind but no manifest resource binding is available for template/example self-check",
+            path=None,
+            line=1,
+            kit_id=str(kit_id),
+            artifact_kind=kind,
+            missing_bindings=missing_roles,
+        )
+        results.append({
+            "kit": str(kit_id),
+            "kind": kind,
+            "example_path": None,
+            "example_paths": [],
+            "examples_checked": 0,
+            "status": "PASS",
+            "error_count": 0,
+            "warning_count": 1,
+            "warnings": [warning],
+        })
+    return results
+
+
+def _synthesized_meta_from_resource_bindings(
+    *,
+    base_meta: Any,
+    adapter_dir: Path,
+    kit_id: str,
+    loaded_kit: Any,
+) -> Tuple[Optional[Any], List[Dict[str, object]]]:
+    """Build self-check metadata from loaded manifest resource bindings."""
+    from ..utils.artifacts_meta import ArtifactsMeta, Kit
+
+    rb = getattr(loaded_kit, "resource_bindings", None)
+    if not isinstance(rb, dict) or not rb:
+        return None, []
+
+    artifact_bindings = _constraint_artifact_bindings(loaded_kit)
+    artifacts: Dict[str, Dict[str, str]] = {}
+    for kind, binding_spec in sorted(artifact_bindings.items()):
+        spec: Dict[str, str] = {}
+        template = _resource_binding_path(rb, str(binding_spec.get("template", "") or ""))
+        if not template:
+            template = ""
+        if template:
+            spec["template"] = template
+        example_path = _resource_binding_path(rb, str(binding_spec.get("examples", "") or ""))
+        if example_path:
+            spec["examples"] = example_path
+        if spec:
+            artifacts[kind] = spec
+
+    warnings = _missing_bound_artifact_warnings(
+        kit_id=kit_id,
+        known_kinds=_known_constraint_kinds(loaded_kit),
+        artifacts=artifacts,
+    )
+    if not artifacts:
+        return None, warnings
+
+    constraints_path = _constraints_binding_path(loaded_kit, rb)
+    if constraints_path:
+        kit_base = Path(constraints_path).parent
+    else:
+        kit_root = getattr(loaded_kit, "kit_root", None)
+        kit_base = kit_root if isinstance(kit_root, Path) else adapter_dir
+
+    kit = Kit(
+        kit_id=kit_id,
+        format="CFS",
+        path=str(kit_base),
+        artifacts=artifacts,
+    )
+    if constraints_path:
+        setattr(kit, "constraints_path", Path(constraints_path))
+        setattr(kit, "constraints_paths", [Path(constraints_path)])
+
+    return ArtifactsMeta(
+        version=str(getattr(base_meta, "version", "1.0") or "1.0"),
+        project_root=str(getattr(base_meta, "project_root", "..") or ".."),
+        kits={kit_id: kit},
+        systems=list(getattr(base_meta, "systems", []) or []),
+        ignore=list(getattr(base_meta, "ignore", []) or []),
+    ), warnings
+
+
+def _merge_self_check_report(
+    target: Dict[str, object],
+    source: Dict[str, object],
+) -> None:
+    """Merge one self-check report into an aggregate report."""
+    if not source:
+        return
+    target.setdefault("results", [])
+    target["templates_checked"] = int(target.get("templates_checked", 0) or 0) + int(source.get("templates_checked", 0) or 0)
+    target["kits_checked"] = int(target.get("kits_checked", 0) or 0) + int(source.get("kits_checked", 0) or 0)
+    if source.get("status") == "FAIL":
+        target["status"] = "FAIL"
+    elif "status" not in target:
+        target["status"] = source.get("status", "PASS")
+    results = source.get("results", [])
+    if isinstance(results, list):
+        target["results"].extend(results)  # type: ignore[union-attr]
+# @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 
 
 # @cpt-dod:cpt-studio-dod-kit-validate:p1
@@ -130,19 +302,56 @@ def run_validate_kits(
     # @cpt-end:cpt-studio-flow-developer-experience-self-check:p1:inst-load-registry
     if artifacts_meta is not None and not meta_err:
         from .self_check import run_self_check_from_meta
-        _, sc_out = run_self_check_from_meta(
-            project_root=project_root,
-            adapter_dir=adapter_dir,
-            artifacts_meta=artifacts_meta,
-            kit_filter=kit_filter,
-            verbose=verbose,
-        )
-        self_check_report = sc_out
-        sc_results = sc_out.get("results", [])
-        for r in sc_results:
-            if r.get("status") == "FAIL":
+        manifest_checked_kits: Set[str] = set()
+        for kit_id, loaded_kit in (ctx.kits or {}).items():
+            kit_id_str = str(kit_id)
+            if kit_filter and kit_id_str != str(kit_filter):
+                continue
+            bound_meta, binding_warnings = _synthesized_meta_from_resource_bindings(
+                base_meta=artifacts_meta,
+                adapter_dir=adapter_dir,
+                kit_id=kit_id_str,
+                loaded_kit=loaded_kit,
+            )
+            if binding_warnings:
+                self_check_report.setdefault("results", [])
+                self_check_report["results"].extend(binding_warnings)  # type: ignore[union-attr]
+                self_check_report.setdefault("status", "PASS")
+                self_check_report.setdefault("templates_checked", 0)
+                self_check_report.setdefault("kits_checked", 0)
+            if getattr(loaded_kit, "resource_bindings", None):
+                manifest_checked_kits.add(kit_id_str)
+            if bound_meta is None:
+                continue
+            _, sc_out = run_self_check_from_meta(
+                project_root=project_root,
+                adapter_dir=adapter_dir,
+                artifacts_meta=bound_meta,
+                kit_filter=kit_id_str,
+                verbose=verbose,
+            )
+            _merge_self_check_report(self_check_report, sc_out)
+
+        for kit_id in (artifacts_meta.kits or {}).keys():
+            kit_id_str = str(kit_id)
+            if kit_filter and kit_id_str != str(kit_filter):
+                continue
+            if kit_id_str in manifest_checked_kits:
+                continue
+            _, sc_out = run_self_check_from_meta(
+                project_root=project_root,
+                adapter_dir=adapter_dir,
+                artifacts_meta=artifacts_meta,
+                kit_filter=kit_id_str,
+                verbose=verbose,
+            )
+            _merge_self_check_report(self_check_report, sc_out)
+
+        for r in self_check_report.get("results", []):
+            if isinstance(r, dict) and r.get("status") == "FAIL":
                 sc_errs = r.get("errors", [])
-                all_errors.extend(sc_errs)
+                if isinstance(sc_errs, list):
+                    all_errors.extend(sc_errs)
     # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-template-check
 
     # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-build-result

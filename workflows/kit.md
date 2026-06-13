@@ -242,6 +242,10 @@ WHEN:
   AND RESOURCE_CONTEXT == provided
 DO:
   RUN classify candidates from RESOURCE_CONTEXT into public skills, agents, and rules, plus supporting templates, checklists, scripts, directories, and other
+  RUN derive explicit artifact-kind bindings for every constraints resource from RESOURCE_CONTEXT evidence:
+    - template/checklist/rules/example files are bound to artifact kinds only when the kind is explicit in file metadata, constraints kind names, or an unambiguous per-kind layout such as `artifacts/<KIND>/template.md`
+    - bindings point to resource IDs, never filesystem paths
+    - ambiguous files remain unbound and are reported as ambiguities
   RUN synthesize a conservative canonical proposal using the discovered candidates and explicit local metadata only:
     - top-level `manifest_version = "1.0"` is required before any `[[kits]]` table
     - missing or unknown `manifest_version` is blocking; report that the user should update Constructor Studio with `pipx upgrade constructor-studio` and retry
@@ -253,6 +257,9 @@ DO:
     - version = explicit semantic-version-compatible metadata, else `0.1.0`
     - each `[[kits.resources]]` includes required `id`, `kind`, and `source`
     - `constraints.toml`, resource id `constraints`, and TOML files described as structural validation rules / heading outlines / ID kinds / cross-references are classified as `kind = "constraints"`; never classify them as `other`
+    - constraints resources that have known artifact kinds and known sibling resources MUST include an `artifacts` table that maps artifact kinds to resource IDs: `artifacts.<KIND>.template = "<template-resource-id>"`, `artifacts.<KIND>.examples = "<example-resource-id>"`, `artifacts.<KIND>.rules = "<rules-resource-id>"`, and `artifacts.<KIND>.checklist = "<checklist-resource-id>"` when each resource is known
+    - artifact binding values are resource IDs in the same kit namespace; never write paths in `artifacts.<KIND>.*`
+    - omit an artifact binding when the resource-kind relationship is not known; report that `validate-kits` will warn and skip template/example self-check for that artifact kind until the binding is added
     - `install_path` is included only when the path can be expressed as a normalized relative path under TARGET_DIR without symlink escape or absolute segments
     - `public = true` is used only for skills, agents, and rules; public resources become agent-facing generated skills/agents/rules, while non-public resources are installed/bound only
     - `prefix_generated_name = false` may be used only for public resources whose generated agent/skill/rule name must be exactly the resource `id`; the default is omitted/true and generates `cf-{kit-slug}-{id}`
@@ -267,6 +274,7 @@ DO:
 RULES:
   ALWAYS classify discovered candidates into the public and supporting groups before proposing a manifest
   ALWAYS classify structural validation rule files as `kind = "constraints"` when their source path, id, or evidence identifies constraints semantics
+  ALWAYS encode template/example/checklist/rules-to-artifact-kind relationships as explicit nested metadata on the constraints resource; never rely on resource ID naming conventions such as `<kind>_template`
   ALWAYS keep the proposal conservative and report ambiguity instead of guessing
   ALWAYS propose a default manifest before any write when no legacy manifest is present
   ALWAYS use top-level `manifest_version = "1.0"` plus `[[kits]]` + `[[kits.resources]]`; never emit `[kit]` or top-level `[[resources]]`
@@ -279,7 +287,7 @@ TITLE: Approve the proposed canonical manifest for this folder?
 OPTIONS:
   1 approve-default -> SET APPROVED_PREVIEW = CURRENT_PREVIEW_TOML; RUN write APPROVED_PREVIEW bytes exactly to `<target>/.cf-studio-kit.toml`; RUN verify the written file bytes equal APPROVED_PREVIEW; CONTINUE KitInitValidateWrittenManifest
   2 show-preview -> EMIT CURRENT_PREVIEW_TOML in a fenced `toml` block; EMIT CURRENT_PREVIEW_REPORT; EMIT_MENU KitInitDiscoveryApprovalMenu; WAIT user.reply; STOP_TURN
-  3 edit -> SET PENDING_EDIT_BRANCH = discovery; EMIT "Reply with edit commands such as `set metadata.name=<name>`, `add resource id=<id> kind=<kind> source=<path>`, `remove resource id=<id>`, `set resource <id>.aliases=<a,b>`, `set resource <id>.install_path=<path>`, `set resource <id>.prefix_generated_name=false`, or `exclude source=<path>`."; WAIT user.reply; STOP_TURN
+  3 edit -> SET PENDING_EDIT_BRANCH = discovery; EMIT "Reply with edit commands such as `set metadata.name=<name>`, `add resource id=<id> kind=<kind> source=<path>`, `remove resource id=<id>`, `set resource <id>.aliases=<a,b>`, `set resource <id>.install_path=<path>`, `set resource <id>.prefix_generated_name=false`, `bind artifact <KIND>.template=<resource-id>`, `bind artifact <KIND>.examples=<resource-id>`, or `exclude source=<path>`."; WAIT user.reply; STOP_TURN
   4 rerun-discovery -> CONTINUE KitInitDiscoveryRun
   5 cancel -> STOP_TURN
   INVALID -> EMIT "Reply 1-5." and EMIT_MENU KitInitDiscoveryApprovalMenu
@@ -292,7 +300,8 @@ WHEN:
   REQUIRE PENDING_MANUAL_GUIDANCE == true
 DO:
   RUN parse the user reply as manual candidate resources, optional multiple kit declarations, resource kinds, metadata defaults, aliases, install paths, generated targets, and exclusions
-  RUN reject guidance that references sources outside TARGET_DIR, uses unsupported resource kinds, creates duplicate IDs, proposes an unsupported `manifest_version`, or omits every candidate resource
+  RUN parse optional artifact binding guidance such as `bind artifact <KIND>.template=<resource-id>`, `bind artifact <KIND>.examples=<resource-id>`, `bind artifact <KIND>.rules=<resource-id>`, and `bind artifact <KIND>.checklist=<resource-id>`
+  RUN reject guidance that references sources outside TARGET_DIR, uses unsupported resource kinds, creates duplicate IDs, proposes an unsupported `manifest_version`, binds an artifact role to an unknown resource ID, binds artifact metadata outside a constraints resource, or omits every candidate resource
   EMIT rejected guidance with reasons and EMIT_MENU KitInitManualGuidanceRetryMenu WHEN guidance is invalid
   WAIT user.reply WHEN guidance is invalid
   STOP_TURN WHEN guidance is invalid
@@ -306,6 +315,7 @@ DO:
   STOP_TURN
 RULES:
   ALWAYS produce a fresh proposal from manual guidance before entering the approval menu
+  ALWAYS preserve user-provided artifact bindings as constraints-resource `artifacts.<KIND>.*` resource-ID references
   NEVER treat manual guidance as edits to a missing preview
   NEVER write from manual guidance directly
 MENU KitInitManualGuidanceRetryMenu
@@ -323,8 +333,8 @@ PURPOSE: Apply user-supplied manifest edits, re-render the preview, and return t
 WHEN:
   REQUIRE PENDING_EDIT_BRANCH != unset
 DO:
-  RUN parse the user reply as requested manifest edits: metadata changes, kit additions/removals for multi-kit manifests, resource additions/removals, kind changes, aliases, install paths, generated targets, and fields to preserve
-  RUN reject edits that would reference sources outside TARGET_DIR, introduce duplicate kit slugs, introduce duplicate resource IDs within the same kit, use unsupported resource kinds, set `prefix_generated_name = false` on a non-public resource, remove required `manifest_version = "1.0"`, set an unsupported `manifest_version`, or contradict canonical manifest shape
+  RUN parse the user reply as requested manifest edits: metadata changes, kit additions/removals for multi-kit manifests, resource additions/removals, kind changes, aliases, install paths, generated targets, artifact bindings, and fields to preserve
+  RUN reject edits that would reference sources outside TARGET_DIR, introduce duplicate kit slugs, introduce duplicate resource IDs within the same kit, use unsupported resource kinds, set `prefix_generated_name = false` on a non-public resource, bind an artifact role to an unknown resource ID, put artifact bindings on a non-constraints resource, remove required `manifest_version = "1.0"`, set an unsupported `manifest_version`, or contradict canonical manifest shape
   EMIT the rejected edits with reasons and EMIT_MENU KitInitEditRetryMenu WHEN any requested edit is invalid
   WAIT user.reply WHEN any requested edit is invalid
   STOP_TURN WHEN any requested edit is invalid
@@ -341,6 +351,7 @@ DO:
 RULES:
   ALWAYS return edited manifests to a preview approval menu before any write
   ALWAYS preserve top-level `manifest_version = "1.0"` after applying edits
+  ALWAYS preserve artifact bindings as resource-ID references under the constraints resource, not as paths or naming-derived links
   ALWAYS recompute and show the public generated-name preview after applying edits and before returning to approval
   ALWAYS reject unsafe or unsupported edits instead of guessing
   NEVER write from an edit reply directly
@@ -360,6 +371,7 @@ WHEN:
   REQUIRE TARGET_SOURCE == legacy_manifest OR TARGET_SOURCE == discovery
 DO:
   RUN `{cfs_cmd} kit normalize <target> --dry-run`
+  RUN inspect the normalized manifest report for constraints resources with artifact kinds but no explicit template/example bindings; report these as actionable warnings because `validate-kits` will skip self-check for unknown relationships
   EMIT the validation report, manifest summary, and any warnings WHEN the dry-run passes
   EMIT the validation findings and the path that needs revision WHEN the dry-run reports fail or error
   STOP_TURN

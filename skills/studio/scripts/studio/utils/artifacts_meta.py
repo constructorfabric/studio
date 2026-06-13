@@ -86,10 +86,13 @@ class Kit:
                     continue
                 if not isinstance(spec, dict):
                     continue
-                tpl = spec.get("template")
-                ex = spec.get("examples")
-                if isinstance(tpl, str) and tpl.strip() and isinstance(ex, str) and ex.strip():
-                    artifacts[kind.strip().upper()] = {"template": tpl.strip(), "examples": ex.strip()}
+                item: Dict[str, str] = {}
+                for key in ("template", "examples", "rules", "checklist"):
+                    value = spec.get(key)
+                    if isinstance(value, str) and value.strip():
+                        item[key] = value.strip()
+                if item:
+                    artifacts[kind.strip().upper()] = item
 
         raw_source = (data or {}).get("source", None)
         source = str(raw_source).strip() if isinstance(raw_source, str) and str(raw_source).strip() else None
@@ -123,6 +126,7 @@ class Kit:
             tpl = (self.artifacts.get(k) or {}).get("template")
             if isinstance(tpl, str) and tpl.strip():
                 return self._substitute_registry_tokens(tpl.strip())
+            return ""
         # Backward compatible default: {path}/artifacts/{KIND}/template.md
         return f"{self.path.rstrip('/')}/artifacts/{kind}/template.md"
 
@@ -133,6 +137,7 @@ class Kit:
             ex = (self.artifacts.get(k) or {}).get("examples")
             if isinstance(ex, str) and ex.strip():
                 return self._substitute_registry_tokens(ex.strip())
+            return ""
         # Backward compatible default: {path}/artifacts/{KIND}/examples
         return f"{self.path.rstrip('/')}/artifacts/{kind}/examples"
 

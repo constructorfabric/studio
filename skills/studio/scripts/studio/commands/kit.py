@@ -1079,6 +1079,9 @@ def _manifest_resource_bindings(
         kind = str(getattr(res, "kind", "") or "").strip()
         if kind:
             entry["kind"] = kind
+        artifact_bindings = getattr(res, "artifact_bindings", None)
+        if isinstance(artifact_bindings, dict) and artifact_bindings:
+            entry["artifacts"] = artifact_bindings
         entry["public"] = bool(getattr(res, "public", False))
         bindings[res.id] = entry
     return bindings
@@ -1100,6 +1103,9 @@ def _manifest_register_resource_bindings(
         kind = str(getattr(res, "kind", "") or "").strip()
         if kind:
             entry["kind"] = kind
+        artifact_bindings = getattr(res, "artifact_bindings", None)
+        if isinstance(artifact_bindings, dict) and artifact_bindings:
+            entry["artifacts"] = artifact_bindings
         entry["public"] = bool(getattr(res, "public", False))
         bindings[res.id] = entry
     return bindings

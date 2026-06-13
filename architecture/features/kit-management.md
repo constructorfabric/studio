@@ -479,8 +479,9 @@ Enables users to install, update, and validate kit packages with interactive fil
 1. [x] - `p1` - Get context and initialize validation state - `inst-init-context`
 2. [x] - `p1` - **Phase 1 — Structural**: for each registered Studio-format kit, load and validate all `kind = "constraints"` resources in manifest order, falling back to legacy `constraints.toml` only for legacy kits without constraints resources - `inst-structural-check`
 3. [x] - `p1` - **Phase 1b — Resource paths**: for manifest-driven kits, resolve paths to constraints resources, templates, and examples from resource bindings in `core.toml` via `cpt-studio-algo-kit-manifest-resolve` instead of assuming default kit directory structure - `inst-resolve-resource-paths`
-4. [x] - `p1` - **Phase 2 — Templates**: load `artifacts_meta`, run `self_check` for template/example consistency - `inst-template-check`
-5. [x] - `p1` - Build result: aggregate errors, set overall PASS/FAIL status - `inst-build-result`
+4. [x] - `p1` - **Phase 2 — Bound artifact map**: when a loaded kit exposes artifact-kind bindings on a `kind = "constraints"` resource, build self-check input only from those explicit resource IDs; if constraints declare artifact kinds but no template/example bindings are known, skip checking that kind and emit a warning rather than guessing from filenames or resource naming conventions - `inst-manifest-bound-artifact-map`
+5. [x] - `p1` - **Phase 2 — Templates**: load `artifacts_meta`, run `self_check` for template/example consistency - `inst-template-check`
+6. [x] - `p1` - Build result: aggregate errors, set overall PASS/FAIL status - `inst-build-result`
 
 ### Kit Validate by Path
 
@@ -575,6 +576,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 10. [x] - `p1` - Public resources and nested subagents generate agent-facing names as `cf-{kit-slug}-{resource-id}` by default; `prefix_generated_name = false` disables that prefix for a resource or subagent and uses its `id` as-is - `inst-canonical-public-name-prefix`
 11. [x] - `p1` - `generated_targets` defaults to `installed`, accepts an explicit target list or `all`, and controls which agent tools receive public component output - `inst-canonical-generated-targets`
 12. [x] - `p1` - The manifest MUST NOT expose author-facing `binding_path`; effective paths are installation state recorded in `core.toml` - `inst-canonical-no-binding-path`
+13. [x] - `p1` - A `kind = "constraints"` resource MAY declare nested `artifacts.<ARTIFACT_KIND>` bindings whose `template`, `examples`, `rules`, and `checklist` values are resource IDs; these bindings are authoritative for template/example self-check, may be partial, and are invalid on non-constraints resources - `inst-canonical-artifact-bindings`
 
 ### Local Path Install Mode
 
@@ -684,6 +686,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 5. [x] - `p1` - Preserve resource IDs, user-modifiable path defaults, aliases, generated targets, agent configuration, and source provenance wherever they can be inferred deterministically - `inst-normalize-preserve-fields`
 6. [x] - `p1` - Report fields that require user choice rather than guessing, including ambiguous resource kinds, conflicting aliases, missing source files, or unsafe paths - `inst-normalize-report-ambiguity`
 7. [x] - `p1` - Refuse to write a canonical manifest that would reference sources outside the selected kit root unless the user explicitly chooses a safe local registration root and containment passes - `inst-normalize-containment`
+8. [x] - `p1` - Preserve explicit constraints-to-artifact resource bindings when normalizing canonical manifests or installed `core.toml` bindings, without inferring missing template/example links from resource names or package layout - `inst-normalize-artifact-bindings`
 
 **Rollout Phases**:
 1. [x] - `p1` - Add parser/model/converter tests with no install behavior change - `inst-rollout-kitmodel-tests`

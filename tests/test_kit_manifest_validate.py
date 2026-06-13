@@ -225,6 +225,191 @@ class TestContextConstraintsResourceBinding(unittest.TestCase):
 class TestValidateKitsResourcePaths(unittest.TestCase):
     """Test that run_validate_kits verifies resource paths for manifest-driven kits."""
 
+    _BOUND_TEMPLATE_KINDS = {
+        "prd": "PRD",
+        "adr": "ADR",
+        "design": "DESIGN",
+        "decomposition": "DECOMPOSITION",
+        "feature": "FEATURE",
+        "upstream_reqs": "UPSTREAM_REQS",
+        "pr_code_review": "PR-CODE-REVIEW-TEMPLATE",
+        "pr_status_report": "PR-STATUS-REPORT-TEMPLATE",
+    }
+
+    def _write_register_mode_bound_template_project(
+        self,
+        root: Path,
+        *,
+        include_artifact_bindings: bool = True,
+    ) -> tuple[object, Path]:
+        from studio.utils.context import StudioContext
+        from studio.utils import toml_utils
+
+        adapter = _bootstrap_project(root, ".cf-studio")
+        config = adapter / "config"
+        kit_root = root / "studio-kit-gears"
+        kit_root.mkdir(parents=True)
+
+        template_root = root / "docs" / "spec-templates" / "gears-sdlc"
+        artifact_bindings = {}
+        constraints_resource = {
+            "path": "../studio-kit-gears/constraints.toml",
+            "kind": "constraints",
+        }
+        if include_artifact_bindings:
+            constraints_resource["artifacts"] = artifact_bindings
+        resources = {
+            "constraints": {
+                **constraints_resource,
+            },
+        }
+        for prefix, kind in self._BOUND_TEMPLATE_KINDS.items():
+            kind_dir = template_root / kind
+            kind_dir.mkdir(parents=True, exist_ok=True)
+            template = kind_dir / "template.md"
+            if kind == "FEATURE":
+                template.write_text(
+                    "# Feature\n\nThis template intentionally omits the required flow placeholder.\n",
+                    encoding="utf-8",
+                )
+            else:
+                template.write_text(f"# {kind}\n", encoding="utf-8")
+            resources[f"{prefix}_template"] = {
+                "path": f"../docs/spec-templates/gears-sdlc/{kind}/template.md",
+            }
+            artifact_bindings[kind] = {"template": f"{prefix}_template"}
+
+        feature_examples = template_root / "FEATURE" / "examples"
+        feature_examples.mkdir(parents=True)
+        (feature_examples / "valid.md").write_text(
+            "# Feature\n\n- **ID**: `cpt-test-flow-valid`\n",
+            encoding="utf-8",
+        )
+        resources["feature_example"] = {
+            "path": "../docs/spec-templates/gears-sdlc/FEATURE/examples",
+        }
+        artifact_bindings["FEATURE"]["examples"] = "feature_example"
+        prd_example = template_root / "PRD" / "example.md"
+        prd_example.write_text("# PRD\n", encoding="utf-8")
+        resources["prd_example"] = {
+            "path": "../docs/spec-templates/gears-sdlc/PRD/example.md",
+        }
+        artifact_bindings["PRD"]["examples"] = "prd_example"
+
+        (kit_root / "constraints.toml").write_text(
+            "\n".join([
+                "[FEATURE.identifiers.flow]",
+                "required = true",
+                'template = "cpt-{system}-flow-{slug}"',
+                "",
+            ]),
+            encoding="utf-8",
+        )
+
+        toml_utils.dump({
+            "version": "1.0",
+            "project_root": "..",
+            "kits": {
+                "gears": {
+                    "format": "CFS",
+                    "path": "../studio-kit-gears",
+                    "version": "1.0",
+                    "resources": resources,
+                },
+            },
+        }, config / "core.toml")
+        toml_utils.dump({
+            "version": "1.0",
+            "project_root": "..",
+            "kits": {
+                "gears": {"format": "CFS", "path": "../studio-kit-gears"},
+            },
+            "systems": [{"name": "Test", "slug": "test", "kit": "gears"}],
+        }, config / "artifacts.toml")
+
+        ctx = StudioContext.load(root)
+        self.assertIsNotNone(ctx)
+        return ctx, adapter
+
+    def test_register_mode_resource_bindings_self_check_all_templates(self):
+        """Local/register manifest kits self-check bound resources outside kit root."""
+        from studio.utils.context import set_context
+        from studio.commands.validate_kits import run_validate_kits
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            ctx, _adapter = self._write_register_mode_bound_template_project(root)
+            set_context(ctx)
+            try:
+                rc, result = run_validate_kits(
+                    project_root=ctx.project_root,
+                    adapter_dir=ctx.adapter_dir,
+                    verbose=True,
+                )
+            finally:
+                set_context(None)
+
+        self.assertEqual(rc, 2)
+        self.assertEqual(result.get("templates_checked"), 8)
+        self.assertEqual(len(result.get("self_check_results", [])), 8)
+
+    def test_register_mode_resource_bindings_surface_feature_template_mismatch(self):
+        """Bound FEATURE template mismatch is reported like copy-mode package layout."""
+        from studio.utils.context import set_context
+        from studio.commands.validate_kits import run_validate_kits
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            ctx, _adapter = self._write_register_mode_bound_template_project(root)
+            set_context(ctx)
+            try:
+                _rc, result = run_validate_kits(
+                    project_root=ctx.project_root,
+                    adapter_dir=ctx.adapter_dir,
+                    verbose=True,
+                )
+            finally:
+                set_context(None)
+
+        feature = [
+            item for item in result.get("self_check_results", [])
+            if item.get("kind") == "FEATURE"
+        ][0]
+        self.assertEqual(feature.get("status"), "FAIL")
+        messages = [err.get("message", "") for err in feature.get("errors", [])]
+        self.assertTrue(any("Template missing ID placeholder" in msg for msg in messages), messages)
+
+    def test_register_mode_without_artifact_bindings_warns_and_skips_templates(self):
+        """Manifest resources are not matched to artifact kinds by naming convention."""
+        from studio.utils.context import set_context
+        from studio.commands.validate_kits import run_validate_kits
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            ctx, _adapter = self._write_register_mode_bound_template_project(
+                root,
+                include_artifact_bindings=False,
+            )
+            set_context(ctx)
+            try:
+                rc, result = run_validate_kits(
+                    project_root=ctx.project_root,
+                    adapter_dir=ctx.adapter_dir,
+                    verbose=True,
+                )
+            finally:
+                set_context(None)
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(result.get("templates_checked"), 0)
+        feature = [
+            item for item in result.get("self_check_results", [])
+            if item.get("kind") == "FEATURE"
+        ][0]
+        self.assertEqual(feature.get("status"), "PASS")
+        warnings = [warn.get("message", "") for warn in feature.get("warnings", [])]
+        self.assertTrue(any("no manifest resource binding" in msg for msg in warnings), warnings)
+
     def test_missing_resource_path_produces_error(self):
         """Registered kit with resource binding pointing to missing path → FAIL."""
         from studio.utils.context import StudioContext, set_context
@@ -745,6 +930,180 @@ class TestValidateKitByPathManifest(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertEqual(result["kits"][0]["manifest_source"], "canonical")
             self.assertEqual(result["kits"][0]["kinds"], ["DESIGN", "PRD"])
+
+    def test_canonical_constraints_artifact_bindings_survive_model_load(self):
+        """Canonical constraints resources carry explicit artifact-kind bindings."""
+        from studio.utils.kit_model import kit_model_to_toml_data, load_kit_model
+
+        with TemporaryDirectory() as td:
+            kit_dir = Path(td) / "mykit"
+            kit_dir.mkdir()
+            (kit_dir / "constraints.toml").write_text(
+                "[FEATURE.identifiers.flow]\nrequired = true\n",
+                encoding="utf-8",
+            )
+            (kit_dir / "feature-template.md").write_text("# Feature\n", encoding="utf-8")
+            (kit_dir / "feature-examples").mkdir()
+            (kit_dir / "feature-examples" / "valid.md").write_text("# Feature\n", encoding="utf-8")
+            (kit_dir / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "mykit"',
+                    'version = "1.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "ruleset"',
+                    'kind = "constraints"',
+                    'source = "constraints.toml"',
+                    'type = "file"',
+                    "",
+                    "[kits.resources.artifacts.FEATURE]",
+                    'template = "feature-template"',
+                    'examples = "feature-examples"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "feature-template"',
+                    'kind = "template"',
+                    'source = "feature-template.md"',
+                    'type = "file"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "feature-examples"',
+                    'kind = "directory"',
+                    'source = "feature-examples"',
+                    'type = "directory"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            model = load_kit_model(kit_dir)
+
+        constraints_resource = [res for res in model.resources if res.id == "ruleset"][0]
+        self.assertEqual(
+            constraints_resource.artifact_bindings,
+            {"FEATURE": {"template": "feature-template", "examples": "feature-examples"}},
+        )
+        rendered = kit_model_to_toml_data(model)
+        rendered_constraints = [
+            res for res in rendered["kits"][0]["resources"]
+            if res["id"] == "ruleset"
+        ][0]
+        self.assertEqual(
+            rendered_constraints["artifacts"],
+            {"FEATURE": {"template": "feature-template", "examples": "feature-examples"}},
+        )
+
+    def test_canonical_constraints_artifact_bindings_reject_invalid_shapes(self):
+        """Canonical artifact bindings fail closed on malformed explicit maps."""
+        from studio.utils.kit_model import load_kit_model
+
+        cases = [
+            ("artifacts = []", "must be a table"),
+            ('[kits.resources.artifacts.""]\ntemplate = "feature-template"', "empty artifact kind"),
+            ('[kits.resources.artifacts]\nFEATURE = "feature-template"', "FEATURE' must be a table"),
+            ('[kits.resources.artifacts.FEATURE]\nunknown = "feature-template"', "unsupported"),
+            ('[kits.resources.artifacts.FEATURE]\ntemplate = ""', "non-empty string"),
+        ]
+        with TemporaryDirectory() as td:
+            base = Path(td)
+            for idx, (artifacts_toml, message) in enumerate(cases):
+                with self.subTest(message=message):
+                    kit_dir = base / f"case-{idx}"
+                    kit_dir.mkdir()
+                    (kit_dir / "constraints.toml").write_text("[artifacts]\n", encoding="utf-8")
+                    (kit_dir / "feature-template.md").write_text("# Feature\n", encoding="utf-8")
+                    (kit_dir / ".cf-studio-kit.toml").write_text(
+                        "\n".join([
+                            'manifest_version = "1.0"',
+                            "",
+                            "[[kits]]",
+                            'slug = "mykit"',
+                            'version = "1.0"',
+                            "",
+                            "[[kits.resources]]",
+                            'id = "ruleset"',
+                            'kind = "constraints"',
+                            'source = "constraints.toml"',
+                            'type = "file"',
+                            artifacts_toml,
+                        ]) + "\n",
+                        encoding="utf-8",
+                    )
+
+                    with self.assertRaisesRegex(ValueError, message):
+                        load_kit_model(kit_dir)
+
+    def test_canonical_artifact_bindings_only_allowed_on_constraints(self):
+        """Template resources cannot declare artifact-kind self-check bindings."""
+        from studio.utils.kit_model import load_kit_model
+
+        with TemporaryDirectory() as td:
+            kit_dir = Path(td) / "mykit"
+            kit_dir.mkdir()
+            (kit_dir / "feature-template.md").write_text("# Feature\n", encoding="utf-8")
+            (kit_dir / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "mykit"',
+                    'version = "1.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "feature-template"',
+                    'kind = "template"',
+                    'source = "feature-template.md"',
+                    'type = "file"',
+                    "",
+                    "[kits.resources.artifacts.FEATURE]",
+                    'template = "feature-template"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "only allowed for constraints"):
+                load_kit_model(kit_dir)
+
+    def test_core_resource_artifact_bindings_survive_model_load(self):
+        """Installed core.toml resource bindings carry artifact-kind maps too."""
+        from studio.utils.kit_model import load_kit_model
+
+        with TemporaryDirectory() as td:
+            studio_root = Path(td) / "adapter"
+            kit_dir = studio_root / "config" / "kits" / "mykit"
+            kit_dir.mkdir(parents=True)
+            (kit_dir / "constraints.toml").write_text("[artifacts]\n", encoding="utf-8")
+            (kit_dir / "feature-template.md").write_text("# Feature\n", encoding="utf-8")
+            _write_core_toml(studio_root / "config", {
+                "kits": {
+                    "mykit": {
+                        "path": "config/kits/mykit",
+                        "resources": {
+                            "ruleset": {
+                                "path": "config/kits/mykit/constraints.toml",
+                                "kind": "constraints",
+                                "artifacts": {
+                                    "FEATURE": {"template": "feature-template"},
+                                },
+                            },
+                            "feature-template": {
+                                "path": "config/kits/mykit/feature-template.md",
+                                "kind": "template",
+                            },
+                        },
+                    },
+                },
+            })
+
+            model = load_kit_model(kit_dir, source_hint="core")
+
+        constraints_resource = [res for res in model.resources if res.id == "ruleset"][0]
+        self.assertEqual(
+            constraints_resource.artifact_bindings,
+            {"FEATURE": {"template": "feature-template"}},
+        )
 
     def test_malformed_manifest_produces_error(self):
         """Standalone kit with malformed manifest.toml → resource error reported."""
