@@ -2113,7 +2113,73 @@ def _list_public_component_skills(
         if getattr(component, "kind", "") == "skill":
             generated_name = str(getattr(component, "generated_name", "")).strip()
             components.append((source_path.name, source_path, kit_slug, generated_name))
+    registered_skills, registered_skill_kits = _list_registered_public_resource_skills(
+        studio_root,
+        project_root,
+    )
+    seen_paths = {entry[1].resolve().as_posix() for entry in components}
+    for entry in registered_skills:
+        if entry[1].resolve().as_posix() in seen_paths:
+            continue
+        components.append(entry)
+        seen_paths.add(entry[1].resolve().as_posix())
+    manifest_backed_kits.update(registered_skill_kits)
     return components, manifest_backed_kits
+
+
+# @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-explicit-install
+def _list_registered_public_resource_skills(
+    studio_root: Path,
+    project_root: Optional[Path],
+) -> Tuple[List[KitWorkflowSkill], Set[str]]:
+    """Return public skill resources declared in core.toml kit registrations."""
+    if project_root is None:
+        return [], set()
+    cfg = load_project_config(project_root)
+    kits = cfg.get("kits") if isinstance(cfg, dict) else None
+    if not isinstance(kits, dict):
+        return [], set()
+
+    out: List[KitWorkflowSkill] = []
+    kit_slugs: Set[str] = set()
+    for slug, kit_entry in sorted(kits.items()):
+        if not isinstance(kit_entry, dict):
+            continue
+        resources = kit_entry.get("resources")
+        if not isinstance(resources, dict):
+            continue
+        kit_slug = str(slug)
+        for resource in resources.values():
+            if not isinstance(resource, dict):
+                continue
+            if resource.get("kind") != "skill" or resource.get("public") is not True:
+                continue
+            raw_path = resource.get("path")
+            if not isinstance(raw_path, str) or not raw_path.strip():
+                continue
+            source_path = Path(raw_path)
+            if not source_path.is_absolute():
+                source_path = studio_root / source_path
+            source_path = source_path.resolve()
+            allowed = False
+            for root in (studio_root, project_root):
+                try:
+                    source_path.relative_to(root.resolve())
+                    allowed = True
+                    break
+                except ValueError:
+                    pass
+            if not allowed:
+                sys.stderr.write(
+                    f"WARNING: kit {kit_slug!r} public skill source escapes project/studio root: {source_path}, skipping\n"
+                )
+                continue
+            if not source_path.is_file():
+                continue
+            out.append((source_path.name, source_path, kit_slug, None))
+            kit_slugs.add(kit_slug)
+    return out, kit_slugs
+# @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-explicit-install
 
 # ---------------------------------------------------------------------------
 # Kit workflow → skill generation for skill-native tools
@@ -4511,8 +4577,51 @@ def cmd_generate_agents(argv: List[str]) -> int:
         return 0
 
     # Step 2: Show preview and ask for confirmation (interactive)
+    # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-return-report
+    preview_has_fatal_errors = any(
+        r.get("status") in {"PARTIAL", "CONFIG_ERROR"} and _result_has_fatal_errors(r)
+        for r in preview_results.values()
+    )
+    if preview_has_fatal_errors:
+        agents_result = _build_result(
+            preview_results,
+            agents_to_process,
+            project_root,
+            studio_root,
+            cfg_path,
+            copy_report,
+            dry_run=False,
+        )
+        ui.result(
+            agents_result,
+            human_fn=lambda d: _human_generate_agents_ok(
+                d, agents_to_process, preview_results, dry_run=False,
+            ),
+        )
+        return 1
+
     if total_create == 0 and total_update == 0 and total_delete == 0:
-        ui.info("No changes needed — agent files are up to date.")
+        from ..utils.ui import is_json_mode
+        if is_json_mode():
+            agents_result = _build_result(
+                preview_results,
+                agents_to_process,
+                project_root,
+                studio_root,
+                cfg_path,
+                copy_report,
+                dry_run=False,
+            )
+            ui.result(
+                agents_result,
+                human_fn=lambda d: _human_generate_agents_ok(
+                    d, agents_to_process, preview_results, dry_run=False,
+                ),
+            )
+        else:
+            ui.info("No changes needed — agent files are up to date.")
+        return 0
+    # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-return-report
     else:
         from ..utils.ui import is_json_mode
         if not is_json_mode():
@@ -4566,6 +4675,7 @@ def cmd_generate_agents(argv: List[str]) -> int:
     # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-return-exit-code
 
 
+# @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-return-exit-code
 _OUTSIDE_SCOPE_MARKER = "resolves outside project_root and studio_root"
 
 
@@ -4597,6 +4707,7 @@ def _result_has_fatal_errors(result: Dict[str, Any]) -> bool:
         # Any other error (including non-string structured errors) is fatal.
         return True
     return False
+# @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-return-exit-code
 
 
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-format-output

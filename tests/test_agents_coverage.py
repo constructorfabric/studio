@@ -58,6 +58,73 @@ class TestStudioEndpointTarget(unittest.TestCase):
         self.assertIn("outside project root", buf.getvalue())
 
 
+class TestGenerateAgentsNoChangePreview(unittest.TestCase):
+    """Regression coverage for preview/apply control flow."""
+
+    def test_no_change_preview_does_not_run_apply(self):
+        from studio.commands.agents import cmd_generate_agents
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "project"
+            studio_root = root / ".cf-studio"
+            studio_root.mkdir(parents=True)
+            args = SimpleNamespace(
+                dry_run=False,
+                remove_cypilot="no",
+                discover=False,
+                show_layers=False,
+                yes=True,
+            )
+            cfg = {"agents": {"cursor": {"workflows": {}, "skills": {}}}}
+            empty_result = {
+                "status": "PASS",
+                "agent": "cursor",
+                "workflows": {
+                    "created": [],
+                    "updated": [],
+                    "unchanged": [],
+                    "renamed": [],
+                    "deleted": [],
+                    "errors": [],
+                },
+                "skills": {
+                    "created": [],
+                    "updated": [],
+                    "deleted": [],
+                    "skipped": [],
+                    "outputs": [],
+                },
+                "subagents": {
+                    "created": [],
+                    "updated": [],
+                    "deleted": [],
+                    "skipped": False,
+                    "skip_reason": "",
+                    "outputs": [],
+                },
+                "rules": {"created": [], "updated": [], "deleted": [], "outputs": []},
+                "errors": None,
+            }
+
+            def fake_process(*_args, **kwargs):
+                self.assertTrue(kwargs.get("dry_run"))
+                return empty_result
+
+            with (
+                patch(
+                    "studio.commands.agents._resolve_agents_context",
+                    return_value=(args, ["cursor"], root, studio_root, {}, None, cfg),
+                ),
+                patch("studio.commands.agents._discover_layers", return_value=[]),
+                patch("studio.commands.agents._layers_have_v2_manifests", return_value=False),
+                patch("studio.commands.agents._process_single_agent", side_effect=fake_process) as process,
+            ):
+                rc = cmd_generate_agents([])
+
+            self.assertEqual(rc, 0)
+            self.assertEqual(process.call_count, 1)
+
+
 class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
     """Canonical kit public components drive generated skills and agents."""
 
@@ -230,6 +297,35 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
             nested_content = (root / ".cursor" / "agents" / "auditor.mdc").read_text(encoding="utf-8")
             self.assertIn("Bound nested behavior.", nested_content)
             self.assertNotIn("Audit nested behavior.", nested_content)
+
+    def test_registered_public_skill_resource_outside_studio_root_is_skipped(self):
+        from studio.commands.agents import _list_registered_public_resource_skills
+
+        with TemporaryDirectory() as td:
+            root, studio_root = self._make_project(td)
+            outside_dir = Path(td) / "outside"
+            outside_dir.mkdir()
+            outside_skill = outside_dir / "escape.md"
+            outside_skill.write_text("# Escape\nDo not load this.\n", encoding="utf-8")
+            core_toml = studio_root / "config" / "core.toml"
+            core_toml.write_text(
+                core_toml.read_text(encoding="utf-8")
+                + "\n[kits.pubkit.resources.escape]\n"
+                + 'kind = "skill"\n'
+                + "public = true\n"
+                + f'path = "{outside_skill.as_posix()}"\n',
+                encoding="utf-8",
+            )
+
+            with patch("sys.stderr") as stderr:
+                components, kit_slugs = _list_registered_public_resource_skills(studio_root, root)
+
+            paths = [entry[1] for entry in components]
+            self.assertNotIn(outside_skill.resolve(), paths)
+            self.assertEqual(kit_slugs, set())
+            stderr.write.assert_any_call(
+                f"WARNING: kit 'pubkit' public skill source escapes project/studio root: {outside_skill.resolve()}, skipping\n"
+            )
 
     def test_list_public_components_skips_unresolvable_source(self):
         from studio.commands.agents import _list_public_components
@@ -2377,6 +2473,59 @@ class TestKitWorkflowSharedSkills(unittest.TestCase):
             self.assertIn("name: Public Release", content)
             self.assertIn("{cf-studio-path}/config/kits/pub/SKILL.md", content)
             self.assertFalse((root / ".agents" / "skills" / "cf-pub-legacy" / "SKILL.md").exists())
+
+    def test_registered_public_skill_resource_generates_without_manifest(self):
+        """Registered public skill resources are authoritative even when the kit has no manifest."""
+        from studio.commands.agents import _process_single_agent, _default_agents_config
+
+        with TemporaryDirectory() as td:
+            root, cpt = self._make_project(td)
+            kit_dir = root / "studio-kit-gears"
+            workflow_dir = kit_dir / "workflows"
+            workflow_dir.mkdir(parents=True)
+            (workflow_dir / "pr-review.md").write_text(
+                "---\n"
+                "cf: true\n"
+                "type: workflow\n"
+                "name: cf-gears-pr-review\n"
+                "description: Review PRs\n"
+                "---\n"
+                "# PR Review\n",
+                encoding="utf-8",
+            )
+            (cpt / "config" / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    'project_root = ".."',
+                    "",
+                    "[kits.gears]",
+                    'format = "CFS"',
+                    'path = "../studio-kit-gears"',
+                    'version = "1.0"',
+                    "",
+                    "[kits.gears.resources.workflow_pr_review]",
+                    'path = "../studio-kit-gears/workflows/pr-review.md"',
+                    'kind = "skill"',
+                    "public = true",
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            result = _process_single_agent(
+                "cursor",
+                root,
+                cpt,
+                _default_agents_config(),
+                None,
+                dry_run=False,
+            )
+
+            self.assertEqual(result["status"], "PASS")
+            public_skill = root / ".agents" / "skills" / "cf-gears-pr-review" / "SKILL.md"
+            self.assertTrue(public_skill.exists())
+            content = public_skill.read_text(encoding="utf-8")
+            self.assertIn("name: cf-gears-pr-review", content)
+            self.assertIn("@/studio-kit-gears/workflows/pr-review.md", content)
 
     def test_legacy_manifest_workflow_renders_as_skill_without_alias_artifact(self):
         """Legacy manifest workflows render as public skills from KitModel."""
