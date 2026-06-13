@@ -605,6 +605,7 @@ def file_level_kit_update(
     resource_bindings: Optional[Dict[str, Path]] = None,
     source_to_resource_id: Optional[Dict[str, str]] = None,
     resource_info: Optional[Dict[str, Any]] = None,
+    strict_resource_files: bool = False,
     approved_overwrites: Optional[List[str]] = None,
     prune_mode: bool = False,
     approved_prunes: Optional[List[str]] = None,
@@ -625,6 +626,7 @@ def file_level_kit_update(
         resource_bindings: For manifest-driven kits, maps resource_id -> absolute target path.
         source_to_resource_id: Maps source file rel_path -> resource_id.
         resource_info: Maps resource_id -> ResourceInfo (type, source_base).
+        strict_resource_files: If true, ignore source files that are not mapped to a resource.
 
     Returns dict::
 
@@ -647,6 +649,15 @@ def file_level_kit_update(
         enum_kw["content_files"] = content_files
 
     source_files = _enumerate_kit_files(source_dir, **enum_kw)
+    if strict_resource_files:
+        if not resource_bindings or not source_to_resource_id or not resource_info:
+            source_files = {}
+        else:
+            source_files = {
+                rel_path: content
+                for rel_path, content in source_files.items()
+                if rel_path in source_to_resource_id
+            }
     # @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-enumerate-files
 
     # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-build-target-mapping

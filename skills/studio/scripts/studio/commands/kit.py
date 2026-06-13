@@ -840,6 +840,73 @@ def _collect_kit_metadata(
 # @cpt-end:cpt-studio-algo-kit-content-mgmt:p1:inst-collect-metadata-fn
 
 
+def _binding_is_public_metadata_resource(binding: Dict[str, Any], kind: str) -> bool:
+    public_value = binding.get("public")
+    if isinstance(public_value, bool):
+        return public_value
+    if isinstance(public_value, str):
+        return public_value.strip().lower() in {"1", "true", "yes", "on"}
+    return kind in {"skill", "rule"}
+
+
+def _registered_metadata_target(binding_path: str) -> str:
+    if _is_registered_kit_path_absolute(binding_path):
+        return binding_path
+    return f"{{cf-studio-path}}/{binding_path}"
+
+
+def _collect_registered_kit_metadata(
+    studio_dir: Path,
+    kit_slug: str,
+    kit_entry: Any,
+) -> Dict[str, str]:
+    kit_data = kit_entry if isinstance(kit_entry, dict) else {}
+    resources = kit_data.get("resources")
+    if not isinstance(resources, dict) or not resources:
+        kit_dir, kit_rel_path = _resolve_registered_kit_metadata_target(
+            studio_dir,
+            kit_slug,
+            kit_entry,
+        )
+        return _collect_kit_metadata(kit_dir, kit_slug, kit_rel_path)
+
+    result: Dict[str, str] = {"skill_nav": "", "agents_content": ""}
+    agents_parts: List[str] = []
+    skill_nav_parts: List[str] = []
+    for _res_id, raw_binding in sorted(resources.items()):
+        if not isinstance(raw_binding, dict):
+            raw_binding = {"path": raw_binding} if isinstance(raw_binding, str) else {}
+        binding_path = _extract_registered_binding_path(raw_binding)
+        if not binding_path:
+            continue
+        kind = str(raw_binding.get("kind") or "").strip()
+        if not kind:
+            name = PurePosixPath(binding_path).name
+            if name == _KIT_SKILL_FILE:
+                kind = "skill"
+            elif name == _KIT_AGENTS_FILE:
+                kind = "rule"
+        if kind not in {"skill", "rule"}:
+            continue
+        if not _binding_is_public_metadata_resource(raw_binding, kind):
+            continue
+        binding_abs = _resolve_registered_kit_dir(studio_dir, binding_path)
+        if binding_abs is None or not binding_abs.is_file():
+            continue
+        if kind == "skill":
+            skill_nav_parts.append(
+                f"ALWAYS invoke `{_registered_metadata_target(binding_path)}` FIRST",
+            )
+        elif kind == "rule":
+            try:
+                agents_parts.append(binding_abs.read_text(encoding="utf-8"))
+            except OSError:
+                pass
+    result["skill_nav"] = "\n\n".join(skill_nav_parts)
+    result["agents_content"] = "\n\n".join(part for part in agents_parts if part)
+    return result
+
+
 # ---------------------------------------------------------------------------
 # .gen/ aggregation — single source of truth for all callers
 # ---------------------------------------------------------------------------
@@ -870,11 +937,8 @@ def regenerate_gen_aggregates(studio_dir: Path) -> Dict[str, Any]:
     gen_agents_parts: List[str] = []
     kits_map = _read_kits_from_core_toml(config_dir)
     for kit_slug in sorted(kits_map):
-        kit_dir, kit_rel_path = _resolve_registered_kit_metadata_target(
-            studio_dir, kit_slug, kits_map.get(kit_slug, {}),
-        )
         # @cpt-begin:cpt-studio-algo-kit-regen-gen:p1:inst-collect-all-metadata
-        meta = _collect_kit_metadata(kit_dir, kit_slug, kit_rel_path)
+        meta = _collect_registered_kit_metadata(studio_dir, kit_slug, kits_map.get(kit_slug, {}))
         if meta["skill_nav"]:
             gen_skill_nav_parts.append(meta["skill_nav"])
         if meta["agents_content"]:
@@ -1003,8 +1067,8 @@ def _manifest_resource_bindings(
     kit_root: Path,
     resources: List[Any],
     resource_overrides: Dict[str, Path],
-) -> Dict[str, Dict[str, str]]:
-    bindings: Dict[str, Dict[str, str]] = {}
+) -> Dict[str, Dict[str, Any]]:
+    bindings: Dict[str, Dict[str, Any]] = {}
     for res in resources:
         entry = {
             "path": _serialize_manifest_binding_path(
@@ -1015,6 +1079,7 @@ def _manifest_resource_bindings(
         kind = str(getattr(res, "kind", "") or "").strip()
         if kind:
             entry["kind"] = kind
+        entry["public"] = bool(getattr(res, "public", False))
         bindings[res.id] = entry
     return bindings
 
@@ -1023,8 +1088,8 @@ def _manifest_register_resource_bindings(
     studio_dir: Path,
     kit_source: Path,
     resources: List[Any],
-) -> Dict[str, Dict[str, str]]:
-    bindings: Dict[str, Dict[str, str]] = {}
+) -> Dict[str, Dict[str, Any]]:
+    bindings: Dict[str, Dict[str, Any]] = {}
     for res in resources:
         entry = {
             "path": _serialize_manifest_binding_path(
@@ -1035,6 +1100,7 @@ def _manifest_register_resource_bindings(
         kind = str(getattr(res, "kind", "") or "").strip()
         if kind:
             entry["kind"] = kind
+        entry["public"] = bool(getattr(res, "public", False))
         bindings[res.id] = entry
     return bindings
 # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-register-bindings
@@ -1536,7 +1602,11 @@ def install_kit(
 
     # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-collect-meta
     # Collect metadata for .gen/ aggregation
-    meta = _collect_kit_metadata(config_kit_dir, kit_slug, config_kit_rel)
+    meta = _collect_registered_kit_metadata(
+        studio_dir,
+        kit_slug,
+        {"path": config_kit_rel},
+    )
     # @cpt-end:cpt-studio-algo-kit-install:p1:inst-collect-meta
 
     # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-return-result
@@ -1705,7 +1775,11 @@ def install_kit_with_manifest(
                 "install_mode": install_mode,
                 "errors": registration_errors,
             }
-        meta = _collect_kit_metadata(kit_root, kit_slug, kit_root_rel)
+        meta = _collect_registered_kit_metadata(
+            studio_dir,
+            kit_slug,
+            {"path": kit_root_rel, "resources": resource_bindings},
+        )
         # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-register-core-only
         # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-register-resource-in-place
         return {
@@ -1830,7 +1904,11 @@ def install_kit_with_manifest(
 
     # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-collect-meta
     # Collect metadata for .gen/ aggregation
-    meta = _collect_kit_metadata(kit_root, kit_slug, kit_root_rel)
+    meta = _collect_registered_kit_metadata(
+        studio_dir,
+        kit_slug,
+        {"path": kit_root_rel, "resources": resource_bindings},
+    )
     # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-collect-meta
 
     # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-return
@@ -3940,7 +4018,7 @@ def _sync_manifest_resource_bindings(
     manifest: Any,
     config_dir: Path,
     kit_slug: str,
-) -> Optional[Dict[str, Dict[str, str]]]:
+) -> Optional[Dict[str, Dict[str, Any]]]:
     """Merge existing resource bindings with any new manifest resources.
 
     Returns merged bindings dict, or None if there is no manifest.
@@ -3948,7 +4026,7 @@ def _sync_manifest_resource_bindings(
     if manifest is None:
         return None
     existing_raw = _read_kits_from_core_toml(config_dir).get(kit_slug, {}).get("resources", {})
-    merged: Dict[str, Dict[str, str]] = {}
+    merged: Dict[str, Dict[str, Any]] = {}
     for res_id, binding in existing_raw.items():
         if isinstance(binding, dict):
             merged[res_id] = binding
@@ -3966,6 +4044,7 @@ def _sync_manifest_resource_bindings(
         kind = str(getattr(res, "kind", "") or "").strip()
         if kind:
             merged[res.id]["kind"] = kind
+        merged[res.id]["public"] = bool(getattr(res, "public", False))
     return merged
 # @cpt-end:cpt-studio-algo-kit-update:p1:inst-sync-manifest-bindings
 
@@ -4199,12 +4278,7 @@ def update_kit(
             key: value["path"] for key, value in resource_bindings.items()
         }
         _meta_entry = _read_kits_from_core_toml(config_dir).get(kit_slug, {})
-        _meta_dir, _meta_rel = _resolve_registered_kit_metadata_target(
-            studio_dir,
-            kit_slug,
-            _meta_entry,
-        )
-        meta = _collect_kit_metadata(_meta_dir, kit_slug, _meta_rel)
+        meta = _collect_registered_kit_metadata(studio_dir, kit_slug, _meta_entry)
         if meta["skill_nav"]:
             result["skill_nav"] = meta["skill_nav"]
         if meta["agents_content"]:
@@ -4251,10 +4325,7 @@ def update_kit(
                     return result
             # Still collect metadata for .gen/ aggregation
             _current_entry = _read_kits_from_core_toml(config_dir).get(kit_slug, installed_kit_entry)
-            _current_dir, _current_rel = _resolve_registered_kit_metadata_target(
-                studio_dir, kit_slug, _current_entry,
-            )
-            meta = _collect_kit_metadata(_current_dir, kit_slug, _current_rel)
+            meta = _collect_registered_kit_metadata(studio_dir, kit_slug, _current_entry)
             if meta["skill_nav"]:
                 result["skill_nav"] = meta["skill_nav"]
             if meta["agents_content"]:
@@ -4341,11 +4412,12 @@ def update_kit(
             source_dir, installed_kit_dir,
             interactive=interactive,
             auto_approve=auto_approve,
-            content_dirs=_KIT_CONTENT_DIRS,
-            content_files=_KIT_CONTENT_FILES,
+            content_dirs=None if _manifest is not None else _KIT_CONTENT_DIRS,
+            content_files=None if _manifest is not None else _KIT_CONTENT_FILES,
             resource_bindings=_resource_bindings,
             source_to_resource_id=_source_to_resource_id,
             resource_info=_resource_info,
+            strict_resource_files=_manifest is not None,
             approved_overwrites=approved_overwrites,
             prune_mode=prune_mode,
             approved_prunes=approved_prunes,
@@ -4418,10 +4490,7 @@ def update_kit(
     # @cpt-begin:cpt-studio-algo-kit-update:p1:inst-collect-metadata
     # ── 2. Collect metadata for .gen/ aggregation ────────────────────
     _meta_entry = _read_kits_from_core_toml(config_dir).get(kit_slug, {})
-    _meta_dir, _meta_rel = _resolve_registered_kit_metadata_target(
-        studio_dir, kit_slug, _meta_entry,
-    )
-    meta = _collect_kit_metadata(_meta_dir, kit_slug, _meta_rel)
+    meta = _collect_registered_kit_metadata(studio_dir, kit_slug, _meta_entry)
     if meta["skill_nav"]:
         result["skill_nav"] = meta["skill_nav"]
     if meta["agents_content"]:
@@ -4753,7 +4822,7 @@ def _register_kit_in_core_toml(
     kit_version: str,
     _studio_dir: Path,  # reserved for future studio-dir-relative path computation
     source: str = "",
-    resources: Optional[Dict[str, Dict[str, str]]] = None,
+    resources: Optional[Dict[str, Dict[str, Any]]] = None,
     kit_path: str = "",
     install_mode: str = "",
     authority_metadata: Optional[Dict[str, Any]] = None,

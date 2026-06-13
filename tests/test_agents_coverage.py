@@ -16,6 +16,8 @@ import unittest
 from contextlib import redirect_stderr
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "studio" / "scripts"))
 
@@ -57,7 +59,7 @@ class TestStudioEndpointTarget(unittest.TestCase):
 
 
 class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
-    """Canonical kit public components drive generated skills, agents, and rules."""
+    """Canonical kit public components drive generated skills and agents."""
 
     def _make_project(self, tmpdir):
         root = Path(tmpdir) / "project"
@@ -163,7 +165,7 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
         )
         return root, studio_root
 
-    def test_generate_agents_uses_kitmodel_public_skill_agent_and_rule(self):
+    def test_generate_agents_uses_kitmodel_public_skill_and_agent_but_not_rule(self):
         from studio.commands.agents import _default_agents_config, _process_single_agent
 
         with TemporaryDirectory() as td:
@@ -187,7 +189,7 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
             self.assertTrue(agent_path.is_file())
             self.assertTrue(nested_agent_path.is_file())
             self.assertFalse((root / ".cursor" / "agents" / "cf-pubkit-auditor.mdc").exists())
-            self.assertTrue(rule_path.is_file())
+            self.assertFalse(rule_path.exists())
             self.assertIn("skill.md", skill_path.read_text(encoding="utf-8"))
             agent_content = agent_path.read_text(encoding="utf-8")
             self.assertIn("Review carefully.", agent_content)
@@ -196,7 +198,6 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
             nested_content = nested_agent_path.read_text(encoding="utf-8")
             self.assertIn("Audit nested behavior.", nested_content)
             self.assertIn("readonly: true", nested_content)
-            self.assertIn("Follow the guard.", rule_path.read_text(encoding="utf-8"))
             self.assertFalse((root / ".cursor" / "agents" / "cf-pubkit-codexonly.mdc").exists())
             self.assertFalse((root / ".cursor" / "agents" / "cf-pubkit-codex-auditor.mdc").exists())
 
@@ -229,6 +230,75 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
             nested_content = (root / ".cursor" / "agents" / "auditor.mdc").read_text(encoding="utf-8")
             self.assertIn("Bound nested behavior.", nested_content)
             self.assertNotIn("Audit nested behavior.", nested_content)
+
+    def test_list_public_components_skips_unresolvable_source(self):
+        from studio.commands.agents import _list_public_components
+
+        with TemporaryDirectory() as td:
+            root, studio_root = self._make_project(td)
+            component = SimpleNamespace(
+                id="nosource",
+                kind="agent",
+                source="",
+                generated_name="cf-pubkit-nosource",
+                generated_targets=["cursor"],
+            )
+            with patch("studio.commands.agents.load_kit_model") as load_model:
+                load_model.return_value = SimpleNamespace(
+                    manifest_source="canonical",
+                    public_components=[component],
+                )
+
+                components, manifest_backed = _list_public_components(studio_root, root, "cursor")
+
+            self.assertEqual(components, [])
+            self.assertEqual(manifest_backed, {"pubkit"})
+
+    def test_list_public_components_skips_missing_source_file(self):
+        from studio.commands.agents import _list_public_components
+
+        with TemporaryDirectory() as td:
+            root, studio_root = self._make_project(td)
+            component = SimpleNamespace(
+                id="missing",
+                kind="agent",
+                source="missing.md",
+                generated_name="cf-pubkit-missing",
+                generated_targets=["cursor"],
+            )
+            with patch("studio.commands.agents.load_kit_model") as load_model:
+                load_model.return_value = SimpleNamespace(
+                    manifest_source="canonical",
+                    public_components=[component],
+                )
+
+                components, manifest_backed = _list_public_components(studio_root, root, "cursor")
+
+            self.assertEqual(components, [])
+            self.assertEqual(manifest_backed, {"pubkit"})
+
+    def test_list_public_components_skips_empty_generated_name(self):
+        from studio.commands.agents import _list_public_components
+
+        with TemporaryDirectory() as td:
+            root, studio_root = self._make_project(td)
+            component = SimpleNamespace(
+                id="reviewer",
+                kind="agent",
+                source="agent.md",
+                generated_name="",
+                generated_targets=["cursor"],
+            )
+            with patch("studio.commands.agents.load_kit_model") as load_model:
+                load_model.return_value = SimpleNamespace(
+                    manifest_source="canonical",
+                    public_components=[component],
+                )
+
+                components, manifest_backed = _list_public_components(studio_root, root, "cursor")
+
+            self.assertEqual(components, [])
+            self.assertEqual(manifest_backed, {"pubkit"})
 
     def test_generate_agents_reports_duplicate_public_agent_names(self):
         from studio.commands.agents import _default_agents_config, _process_single_agent
@@ -345,15 +415,12 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
             self.assertEqual(result["status"], "PARTIAL")
             errors = "\n".join(str(error) for error in result["errors"])
             self.assertIn("duplicate public skill 'cf-pubkit-helper'", errors)
-            self.assertIn("duplicate public rule 'cf-pubkit-guard'", errors)
+            self.assertNotIn("duplicate public rule 'cf-pubkit-guard'", errors)
             self.assertIn(
                 "config/kits/pubkit/skill.md",
                 (root / ".agents" / "skills" / "cf-pubkit-helper" / "SKILL.md").read_text(encoding="utf-8"),
             )
-            self.assertIn(
-                "Follow the guard.",
-                (root / ".cursor" / "rules" / "cf-pubkit-guard.mdc").read_text(encoding="utf-8"),
-            )
+            self.assertFalse((root / ".cursor" / "rules" / "cf-pubkit-guard.mdc").exists())
 
     def test_generate_agents_reports_duplicate_public_nested_agent_names(self):
         from studio.commands.agents import _default_agents_config, _process_single_agent
@@ -1078,6 +1145,20 @@ class TestProcessSingleAgentEdgeCases(unittest.TestCase):
             "---\nname: sdlc-skill\ndescription: SDLC-ENRICHMENT-SENTINEL\n---\nKit content\n",
             encoding="utf-8",
         )
+        (kit_skill.parent / "manifest.toml").write_text(
+            "\n".join([
+                "[manifest]",
+                'version = "1"',
+                'root = "{cf-studio-path}/config/kits/{slug}"',
+                "",
+                "[[resources]]",
+                'id = "skill"',
+                'source = "SKILL.md"',
+                'default_path = "SKILL.md"',
+                'type = "file"',
+            ]) + "\n",
+            encoding="utf-8",
+        )
         return root, cpt
 
     def test_kit_description_enrichment(self):
@@ -1108,6 +1189,40 @@ class TestProcessSingleAgentEdgeCases(unittest.TestCase):
 
             cfg = _default_agents_config()
             result = _process_single_agent("windsurf", root, cpt, cfg, None, dry_run=False)
+            agents_skill = root / ".agents" / "skills" / "cf" / "SKILL.md"
+            self.assertTrue(agents_skill.exists(), f"Expected {agents_skill} to exist")
+            content = agents_skill.read_text(encoding="utf-8")
+            self.assertNotIn("SDLC-ENRICHMENT-SENTINEL", content)
+
+    def test_canonical_kit_description_not_enriched_into_cf_skill(self):
+        """Canonical manifest skills are generated as skills, not injected into cf description."""
+        from studio.commands.agents import _process_single_agent, _default_agents_config
+
+        with TemporaryDirectory() as td:
+            root, cpt = self._make_project(td)
+            kit_dir = cpt / "config" / "kits" / "sdlc"
+            (kit_dir / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "sdlc"',
+                    'name = "sdlc"',
+                    'version = "1.0.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "skill"',
+                    'kind = "skill"',
+                    'source = "SKILL.md"',
+                    'install_path = "SKILL.md"',
+                    'type = "file"',
+                    "public = true",
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            cfg = _default_agents_config()
+            _process_single_agent("windsurf", root, cpt, cfg, None, dry_run=False)
             agents_skill = root / ".agents" / "skills" / "cf" / "SKILL.md"
             self.assertTrue(agents_skill.exists(), f"Expected {agents_skill} to exist")
             content = agents_skill.read_text(encoding="utf-8")
