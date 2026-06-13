@@ -653,7 +653,7 @@ def cmd_update(argv: List[str]) -> int:
             config_dir / "SKILL.md",
             "# Custom Skill Extensions\n\n"
             "Add your project-specific skill instructions here.\n"
-            "These are loaded alongside the generated skills in `{cf-studio-path}/.gen/SKILL.md`.\n",
+            "Agent-facing skills and workflows are generated into agent integration files.\n",
             actions, "config_skill",
         )
 

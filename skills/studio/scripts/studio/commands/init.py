@@ -1029,7 +1029,7 @@ def _repair_existing_install(
                 config_skill_path.write_text(
                     "# Custom Skill Extensions\n\n"
                     "Add your project-specific skill instructions here.\n"
-                    "These are loaded alongside the generated skills in `{cf-studio-path}/.gen/SKILL.md`.\n",
+                    "Agent-facing skills and workflows are generated into agent integration files.\n",
                     encoding="utf-8",
                 )
                 actions["config_skill"] = "created"
@@ -1519,7 +1519,7 @@ def cmd_init(argv: List[str]) -> int:
                 "# Custom Skill Extensions\n"
                 "\n"
                 "Add your project-specific skill instructions here.\n"
-                "These are loaded alongside the generated skills in `{cf-studio-path}/.gen/SKILL.md`.\n",
+                "Agent-facing skills and workflows are generated into agent integration files.\n",
                 encoding="utf-8",
             )
             actions["config_skill"] = "created"
