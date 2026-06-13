@@ -649,12 +649,15 @@ def file_level_kit_update(
         enum_kw["content_files"] = content_files
 
     source_files = _enumerate_kit_files(source_dir, **enum_kw)
-    if strict_resource_files and resource_bindings and source_to_resource_id and resource_info:
-        source_files = {
-            rel_path: content
-            for rel_path, content in source_files.items()
-            if rel_path in source_to_resource_id
-        }
+    if strict_resource_files:
+        if not resource_bindings or not source_to_resource_id or not resource_info:
+            source_files = {}
+        else:
+            source_files = {
+                rel_path: content
+                for rel_path, content in source_files.items()
+                if rel_path in source_to_resource_id
+            }
     # @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-enumerate-files
 
     # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-build-target-mapping

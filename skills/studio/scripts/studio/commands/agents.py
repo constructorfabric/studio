@@ -72,6 +72,10 @@ from ..utils.manifest import (
     MergedComponents as _MergedComponents,
     ProvenanceRecord as _ProvenanceRecord,
 )  # type: ignore
+try:
+    from ..utils.kit_model import load_kit_model
+except ImportError:  # pragma: no cover - defensive fallback for partial installs
+    load_kit_model = None  # type: ignore[assignment]
 from ..utils.layer_discovery import discover_layers as _discover_layers
 from ..commands.resolve_vars import add_layer_variables as _add_layer_variables
 
@@ -2062,9 +2066,7 @@ def _list_public_components(
         return [], set()
     # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-explicit-install
 
-    try:
-        from ..utils.kit_model import load_kit_model
-    except ImportError:
+    if load_kit_model is None:
         return [], set()
 
     components: List[KitPublicComponent] = []

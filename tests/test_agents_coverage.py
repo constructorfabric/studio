@@ -243,7 +243,7 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
                 generated_name="cf-pubkit-nosource",
                 generated_targets=["cursor"],
             )
-            with patch("studio.utils.kit_model.load_kit_model") as load_model:
+            with patch("studio.commands.agents.load_kit_model") as load_model:
                 load_model.return_value = SimpleNamespace(
                     manifest_source="canonical",
                     public_components=[component],
@@ -266,7 +266,7 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
                 generated_name="cf-pubkit-missing",
                 generated_targets=["cursor"],
             )
-            with patch("studio.utils.kit_model.load_kit_model") as load_model:
+            with patch("studio.commands.agents.load_kit_model") as load_model:
                 load_model.return_value = SimpleNamespace(
                     manifest_source="canonical",
                     public_components=[component],
@@ -289,7 +289,7 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
                 generated_name="",
                 generated_targets=["cursor"],
             )
-            with patch("studio.utils.kit_model.load_kit_model") as load_model:
+            with patch("studio.commands.agents.load_kit_model") as load_model:
                 load_model.return_value = SimpleNamespace(
                     manifest_source="canonical",
                     public_components=[component],
