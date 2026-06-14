@@ -11,7 +11,7 @@ import sys
 # Import main from parent studio.py during migration
 # This will be updated to import from cli.py after full migration
 sys.path.insert(0, str(__file__).rsplit('/', 2)[0])
-from studio import main
+from studio import main  # pylint: disable=wrong-import-position
 
 if __name__ == "__main__":
     raise SystemExit(main())

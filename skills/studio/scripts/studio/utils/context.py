@@ -20,12 +20,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
-if TYPE_CHECKING:
-    from .workspace import SourceEntry, WorkspaceConfig
-
+from ._tomllib_compat import tomllib
 from .artifacts_meta import Artifact, ArtifactsMeta, CodebaseEntry, Kit, load_artifacts_meta
 from .constraints import KitConstraints, error, load_constraints_files, load_constraints_toml
-from ._tomllib_compat import tomllib
+
+if TYPE_CHECKING:
+    from .workspace import SourceEntry, WorkspaceConfig
 
 _CONSTRAINTS_FILE = "constraints.toml"
 

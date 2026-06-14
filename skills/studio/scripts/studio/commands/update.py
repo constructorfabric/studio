@@ -1084,7 +1084,7 @@ def _migrate_kit_sources(config_dir: Path) -> Dict[str, str]:
 
 
 # Re-exported from kit.py — tests import it from here
-from .kit import _read_conf_version as _read_conf_version  # noqa: F401
+from .kit import _read_conf_version  # noqa: F401  # pylint: disable=unused-import,wrong-import-position
 # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-update-helpers
 
 # ---------------------------------------------------------------------------

@@ -832,7 +832,8 @@ def _layers_have_v2_manifests(layers: list) -> bool:
     for layer in layers:
         if layer.state == _ManifestLayerState.LOADED and layer.manifest is not None:
             m = layer.manifest
-            if m.version == "2.0" and (m.agents or m.skills or m.workflows or m.rules or m.includes):
+            has_v2_components = bool(m.agents or m.skills or m.workflows or m.rules or m.includes)
+            if m.version == "2.0" and has_v2_components:
                 return True
     return False
 # @cpt-end:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-v2-detect
@@ -5557,14 +5558,10 @@ def _build_openai_agent_file(
 
     Returns ``(content, rel_out)`` using the OpenAI/Codex ``.codex/agents/{id}.toml`` convention.
     """
-    if (
-        not agent_id
-        or "/" in agent_id
-        or "\\" in agent_id
-        or ".." in agent_id
-        or Path(agent_id).is_absolute()
-        or not _VALID_AGENT_NAME_RE.match(agent_id)
-    ):
+    has_path_separator = "/" in agent_id or "\\" in agent_id
+    has_unsafe_path = has_path_separator or ".." in agent_id or Path(agent_id).is_absolute()
+    has_valid_name = bool(_VALID_AGENT_NAME_RE.match(agent_id))
+    if not agent_id or has_unsafe_path or not has_valid_name:
         sys.stderr.write(
             f"WARNING: agent '{agent_id}' has unsafe id for OpenAI output path, skipping\n"
         )

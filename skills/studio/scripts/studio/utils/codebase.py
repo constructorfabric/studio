@@ -14,11 +14,11 @@ IDs in code that don't exist in artifacts = validation FAIL.
 from __future__ import annotations
 
 import re
-
-from . import error_codes as EC
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Set, Tuple
+
+from . import error_codes as EC
 
 # Scope marker: @cpt-{kind}:{full-id}:p{N}
 # {kind} is kit-defined; parser accepts any lowercase slug.

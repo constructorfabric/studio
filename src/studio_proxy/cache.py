@@ -660,14 +660,15 @@ def download_and_cache(
             metadata,
         ):
             cached_provenance = get_cache_provenance() or {}
-            if (
-                cached_provenance.get("freshness") != metadata.get("freshness")
-                or cached_provenance.get("verified") != metadata.get("verified")
-                or cached_provenance.get("resolver_mode") != metadata.get("resolver_mode")
-                or cached_provenance.get("resolution_basis") != metadata.get("resolution_basis")
-                or cached_provenance.get("default_branch") != metadata.get("default_branch")
-                or cached_provenance.get("commit_sha") != metadata.get("commit_sha")
-            ):
+            provenance_keys = (
+                "freshness",
+                "verified",
+                "resolver_mode",
+                "resolution_basis",
+                "default_branch",
+                "commit_sha",
+            )
+            if any(cached_provenance.get(key) != metadata.get(key) for key in provenance_keys):
                 metadata.update({
                     "download_url": asset_url,
                     "resolved_at": _utc_now_iso(),

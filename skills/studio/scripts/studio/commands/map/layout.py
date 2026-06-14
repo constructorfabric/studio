@@ -12,8 +12,9 @@ import math
 from pathlib import Path
 from typing import Any
 
-from .model import Edge, Node
 from studio.vendor import rectpack
+
+from .model import Edge, Node
 
 # ---------------------------------------------------------------------------
 # Layout constants (from md-fabric.py)
