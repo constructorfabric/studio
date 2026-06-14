@@ -293,9 +293,9 @@ WHEN:
 DO:
   RUN SubAgentSelectionRegistry WHEN the workflow has not already selected a dispatch group
   LOAD each sub-agent contract from {cf-studio-path}/.core/skills/studio/agents/{sub-agent-name}.md
-  EMIT_MENU SubAgentApprovalRequest WHEN SUB_AGENT_DISPATCH_MODE == unset
-  WAIT user.reply WHEN SUB_AGENT_DISPATCH_MODE == unset
-  STOP_TURN WHEN SUB_AGENT_DISPATCH_MODE == unset
+  EMIT_MENU SubAgentApprovalRequest WHEN SUB_AGENT_DISPATCH_MODE == unset AND SUB_AGENT_GROUP_DECISION == unset
+  WAIT user.reply WHEN SUB_AGENT_DISPATCH_MODE == unset AND SUB_AGENT_GROUP_DECISION == unset
+  STOP_TURN WHEN SUB_AGENT_DISPATCH_MODE == unset AND SUB_AGENT_GROUP_DECISION == unset
   REQUIRE SUB_AGENT_GROUP_DECISION != stop
   RUN synthesis of each initial prompt from the controller-selected `rules` plus that sub-agent contract
   DISPATCH the dispatch group natively WHEN SUB_AGENT_DISPATCH_MODE == approve-session OR SUB_AGENT_GROUP_DECISION == approve-once
@@ -312,7 +312,7 @@ RULES:
   NEVER allow the sub-agent to load any instructions (`rules`)
   NEVER dispatch a sub-agent silently; launching native work without this gate resolving to approve-once or approve-session is a protocol violation
 ON_ERROR:
-  EMIT_MENU SubAgentApprovalRequest WHEN SUB_AGENT_DISPATCH_MODE == unset
+  EMIT_MENU SubAgentApprovalRequest WHEN SUB_AGENT_DISPATCH_MODE == unset AND SUB_AGENT_GROUP_DECISION == unset
   EMIT_MENU SubAgentFallbackRequest WHEN native dispatch fails
 MENU SubAgentApprovalRequest
 TITLE: Approve this cf-* sub-agent dispatch group? Native sub-agents are preferred for this work; inline keeps execution in this chat. You can save either choice for the session.

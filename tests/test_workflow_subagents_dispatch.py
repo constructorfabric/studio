@@ -1309,6 +1309,14 @@ def test_skill_requires_dispatch_group_approval_before_native_subagent_dispatch(
     assert "MENU SubAgentApprovalRequest" in skill
     assert "SET SUB_AGENT_DISPATCH_MODE: unset | approve-session | inline-session" in skill
     assert "SET SUB_AGENT_GROUP_DECISION: unset | approve-once | inline-once | stop" in skill
+    assert (
+        "EMIT_MENU SubAgentApprovalRequest WHEN SUB_AGENT_DISPATCH_MODE == unset "
+        "AND SUB_AGENT_GROUP_DECISION == unset"
+    ) in skill
+    assert (
+        "STOP_TURN WHEN SUB_AGENT_DISPATCH_MODE == unset "
+        "AND SUB_AGENT_GROUP_DECISION == unset"
+    ) in skill
     assert "ALWAYS ask before every dispatch group unless SUB_AGENT_DISPATCH_MODE" in skill
     assert "NEVER dispatch a sub-agent silently" in skill
     assert "1 approve-once -> SET SUB_AGENT_GROUP_DECISION = approve-once" in skill
