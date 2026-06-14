@@ -143,7 +143,7 @@ OPTIONS:
   4 cancel -> write nothing and STOP_TURN
   INVALID -> EMIT "Reply with 1-4, save, skip, or folder: <path> (e.g., folder: /tmp/explore)." and EMIT_MENU ExploreSaveMenu
 NOTES:
-  After this gate resolves and control returns to the user, the studio's global NextActionsOffer rule synthesizes the next-step choices (e.g. brainstorm, plan, generate, analyze, or explore again) from the current resource_context.
+  After this gate resolves and control returns to the user, ConditionalModuleLoading loads {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md so NextActionsOffer can synthesize next-step choices (e.g. brainstorm, plan, generate, analyze, or explore again) from the current resource_context.
 ```
 
 ```pdsl

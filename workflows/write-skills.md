@@ -118,7 +118,7 @@ OPTIONS:
   3 per-layer -> SET REVIEW_GRANULARITY = per-layer; one reviewer per layer/category of each methodology, L1 through each methodology's last, in parallel (most thorough; suggested for new files or structural changes)
   INVALID -> EMIT_MENU ReviewGranularityMenu
 NOTES:
-  Aggregation merges every reviewer's findings into one report, dedupes by (LOCATION, category, ROOT_CAUSE), keeps the highest SEVERITY and CONFIDENCE when collapsing duplicates, and preserves each finding's full ReviewFindingContract fields.
+  ConditionalModuleLoading loads {cf-studio-path}/.core/skills/studio/modules/review/finding-contract.md before findings are emitted and {cf-studio-path}/.core/skills/studio/modules/review/fix-approval.md before fixes are applied. Aggregation merges every reviewer's findings into one report, dedupes by (LOCATION, category, ROOT_CAUSE), keeps the highest SEVERITY and CONFIDENCE when collapsing duplicates, preserves each ReviewFindingContract field, and gates fixes through ReviewFixApprovalGate.
 ```
 
 ```pdsl
