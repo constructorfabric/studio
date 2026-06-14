@@ -48,7 +48,7 @@ STATE:
 WHEN:
   REQUIRE CFS_INIT == true
 DO:
-  SET ORIGINAL_INTENT = the user's triggering generate request (verbatim or shortest faithful summary), or unset when activation-only
+  SET ORIGINAL_INTENT = the user's triggering generate request (verbatim or shortest faithful summary), or unset when activation-only, WHEN ORIGINAL_INTENT == unset
   RUN WorkflowResolution to resolve the available cf-* skills
   SET AVAILABLE_SKILLS = the resolved cf-* skills (name + its workflow description), excluding this router (cf-generate)
   CONTINUE GenerateNoMatch WHEN AVAILABLE_SKILLS is empty
@@ -59,6 +59,7 @@ DO:
   WAIT user.reply
   STOP_TURN
 RULES:
+  ALWAYS preserve ORIGINAL_INTENT when it was already set by GenerateDescribeIntent
   ALWAYS resolve cf-* skills via WorkflowResolution, never by guessing and never via a CLI skills-list command
   ALWAYS exclude the skill whose name equals this router (cf-generate) from AVAILABLE_SKILLS to prevent self-routing recursion
   ALWAYS pass ORIGINAL_INTENT into every invoked skill when an intent is present

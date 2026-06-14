@@ -131,13 +131,14 @@ PURPOSE: Dispatch phase compiler sub-agents through an explicit lifecycle instea
 DO:
   RUN select phase compiler isolation policy from plan lifecycle, gitignore state, and whether plan.toml, briefs, and declared output paths are worktree-visible
   EMIT "Selected phase compiler: {selected_phase_compiler}. Rationale: {phase_agent_isolation_rationale}. This determines whether phase files are written in-place or in a worktree-visible isolated context."
-  DISPATCH the selected compiler agent per brief (gated), with dispatch_group_id recorded in plan.toml
+  SET CF_PHASE_GATE = released_for_dispatch, DISPATCH the selected compiler agent per brief (gated), with dispatch_group_id recorded in plan.toml, SET CF_PHASE_GATE = armed
   SET plan.execution_status="phase_compilers_dispatched"
   STOP_TURN
 RULES:
   ALWAYS use cf-phase-compiler for gitignored or main-checkout-local plan state
   ALWAYS use cf-phase-compiler-isolated only when plan.toml, briefs, and declared output paths are tracked or otherwise worktree-visible
   ALWAYS tell the user which compiler variant was selected and why before dispatch, including when sub-agent approval is already saved for the session
+  ALWAYS set CF_PHASE_GATE released_for_dispatch before compiler dispatch and armed immediately after
   NEVER use WAIT as an async sub-agent join; resume validation only through PlanPhaseCompilerComplete
 ```
 ```pdsl

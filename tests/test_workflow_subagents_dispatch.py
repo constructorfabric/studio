@@ -1368,7 +1368,11 @@ def test_subagent_inline_fallback_is_explicit_and_can_be_saved() -> None:
     assert "inline-session" in dispatch
     assert "без саб агентов" in dispatch
     assert "RUN each contract inline WHEN SUB_AGENT_DISPATCH_MODE == inline-session" in dispatch
-    assert "1 inline -> SET SUB_AGENT_GROUP_DECISION = inline-once; RUN the contract inline" in dispatch
+    assert (
+        "1 inline -> SET SUB_AGENT_GROUP_DECISION = inline-once; "
+        "RUN each contract inline for this dispatch group"
+    ) in dispatch
+    assert "RUN the contract inline" not in dispatch
 
 
 def test_router_free_text_and_other_paths_are_explicit_units() -> None:
@@ -1388,6 +1392,8 @@ def test_router_free_text_and_other_paths_are_explicit_units() -> None:
 
     assert "UNIT GenerateDescribeIntent" in generate
     assert "UNIT GenerateOtherSkills" in generate
+    assert "ALWAYS preserve ORIGINAL_INTENT when it was already set by GenerateDescribeIntent" in generate
+    assert "WHEN ORIGINAL_INTENT == unset" in generate
     assert "2 other -> CONTINUE GenerateOtherSkills" in generate
     assert "2 describe-intent | help-me-choose -> CONTINUE GenerateDescribeIntent" in generate
     assert "EMIT_MENU listing" not in generate
@@ -1395,6 +1401,8 @@ def test_router_free_text_and_other_paths_are_explicit_units() -> None:
 
     assert "UNIT AnalyzeDescribeIntent" in analyze
     assert "UNIT AnalyzeOtherSkills" in analyze
+    assert "ALWAYS preserve ORIGINAL_INTENT when it was already set by AnalyzeDescribeIntent" in analyze
+    assert "WHEN ORIGINAL_INTENT == unset" in analyze
     assert "2 other -> CONTINUE AnalyzeOtherSkills" in analyze
     assert "2 describe-intent | help-me-choose -> CONTINUE AnalyzeDescribeIntent" in analyze
     assert "EMIT_MENU listing" not in analyze
@@ -1684,6 +1692,8 @@ def test_plan_phase_agent_dispatch_discloses_variant_and_uses_async_lifecycle() 
 
     assert "UNIT PlanPhaseCompilerDispatch" in plan
     assert "Selected phase compiler: {selected_phase_compiler}" in plan
+    assert "SET CF_PHASE_GATE = released_for_dispatch, DISPATCH the selected compiler agent per brief" in plan
+    assert "ALWAYS set CF_PHASE_GATE released_for_dispatch before compiler dispatch" in plan
     assert "STOP_TURN" in plan
     assert "UNIT PlanPhaseCompilerComplete" in plan
     assert "NEVER use WAIT as an async sub-agent join" in plan

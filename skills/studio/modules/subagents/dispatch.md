@@ -24,6 +24,7 @@ PURPOSE: Synthesize and dispatch cf-* sub-agents from `rules` plus a contract wh
 STATE:
   SET SUB_AGENT_DISPATCH_MODE: unset | approve-session | inline-session (default unset, scope session)
   SET SUB_AGENT_GROUP_DECISION: unset | approve-once | inline-once | stop (default unset, scope dispatch_group)
+  SET SUB_AGENT_RETRY_COUNT: integer 0..2 (default 0, scope dispatch_group)
 WHEN:
   REQUIRE one or more cf-* sub-agents must be launched as an immediate dispatch group
 DO:
@@ -49,7 +50,8 @@ RULES:
   NEVER dispatch a sub-agent silently; launching native work without this gate resolving to approve-once or approve-session is a protocol violation
 ON_ERROR:
   EMIT_MENU SubAgentApprovalRequest WHEN SUB_AGENT_DISPATCH_MODE == unset AND SUB_AGENT_GROUP_DECISION == unset
-  EMIT_MENU SubAgentFallbackRequest WHEN native dispatch fails
+  EMIT_MENU SubAgentFallbackRequest WHEN native dispatch fails AND SUB_AGENT_RETRY_COUNT < 2
+  EMIT_MENU SubAgentFallbackLimitRequest WHEN native dispatch fails AND SUB_AGENT_RETRY_COUNT >= 2
 MENU SubAgentApprovalRequest
 TITLE: Approve this cf-* sub-agent dispatch group? Native sub-agents are preferred for this work; inline keeps execution in this chat. You can save either choice for the session.
 OPTIONS:
@@ -62,8 +64,14 @@ OPTIONS:
 MENU SubAgentFallbackRequest
 TITLE: The sub-agent could not run natively — how should I proceed? (inline is suggested)
 OPTIONS:
-  1 inline -> SET SUB_AGENT_GROUP_DECISION = inline-once; RUN the contract inline
-  2 retry -> DISPATCH the sub-agent natively, at most 2 retries before this menu re-offers only inline or stop
+  1 inline -> SET SUB_AGENT_GROUP_DECISION = inline-once; RUN each contract inline for this dispatch group
+  2 retry -> SET SUB_AGENT_RETRY_COUNT = SUB_AGENT_RETRY_COUNT + 1; DISPATCH the sub-agent natively
   3 stop -> STOP_TURN
   INVALID -> EMIT_MENU SubAgentFallbackRequest
+MENU SubAgentFallbackLimitRequest
+TITLE: The sub-agent still could not run natively after 2 retries — how should I proceed? (inline is suggested)
+OPTIONS:
+  1 inline -> SET SUB_AGENT_GROUP_DECISION = inline-once; RUN each contract inline for this dispatch group
+  2 stop -> STOP_TURN
+  INVALID -> EMIT_MENU SubAgentFallbackLimitRequest
 ```
