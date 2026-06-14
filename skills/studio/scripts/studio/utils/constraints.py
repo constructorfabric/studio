@@ -12,6 +12,8 @@ from . import error_codes as EC
 
 @dataclass(frozen=True)
 class ReferenceRule:
+    """Per-reference validation requirements for a target ID kind."""
+
     coverage: Optional[bool] = None
     task: Optional[bool] = None
     priority: Optional[bool] = None
@@ -19,6 +21,8 @@ class ReferenceRule:
 
 @dataclass(frozen=True)
 class HeadingConstraint:
+    """Expected heading shape for an artifact kind."""
+
     level: int
     pattern: Optional[str] = None
     description: Optional[str] = None
@@ -32,6 +36,8 @@ class HeadingConstraint:
 
 @dataclass(frozen=True)
 class IdConstraint:
+    """ID validation contract for one artifact kind."""
+
     kind: str
     required: bool = True
     name: Optional[str] = None
@@ -62,6 +68,8 @@ def _parse_optional_bool(
 
 @dataclass(frozen=True)
 class ArtifactKindConstraints:
+    """Validation constraints attached to one artifact kind."""
+
     name: Optional[str]
     description: Optional[str]
     defined_id: List[IdConstraint]
@@ -70,6 +78,8 @@ class ArtifactKindConstraints:
 
 @dataclass(frozen=True)
 class KitConstraints:
+    """Loaded validation constraints for all artifact kinds in a kit."""
+
     by_kind: Dict[str, ArtifactKindConstraints]
 
 def error(kind: str, message: str, *, path: Path | str, line: int = 1, code: Optional[str] = None, **extra) -> Dict[str, object]:
@@ -279,6 +289,8 @@ def heading_constraint_ids_by_line(path: Path, heading_constraints: Sequence[Hea
 # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-structure-datamodel
 @dataclass(frozen=True)
 class ParsedStudioId:
+    """Parsed Studio traceability identifier components."""
+
     system: str
     kind: str
     slug: str
@@ -351,6 +363,8 @@ def parse_cpt(
 # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-structure-datamodel
 @dataclass(frozen=True)
 class ArtifactRecord:
+    """Artifact file plus its resolved validation constraints."""
+
     path: Path
     artifact_kind: str
     constraints: Optional[ArtifactKindConstraints] = None

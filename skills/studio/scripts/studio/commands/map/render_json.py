@@ -16,6 +16,8 @@ from .model import Edge, Node
 
 @dataclass(frozen=True)
 class RenderJsonInput:
+    """Inputs required to render the map JSON payload."""
+
     nodes: Sequence[Node]
     edges: Sequence[Edge]
     workspace: dict

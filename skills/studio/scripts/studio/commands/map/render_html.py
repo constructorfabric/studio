@@ -15,6 +15,8 @@ VENDOR = ASSETS / "vendor"
 
 @dataclass(frozen=True)
 class RenderHtmlInput:
+    """Inputs required to render the map HTML output."""
+
     json_payload: str
     inline_data: bool
     sidecar_basename: str

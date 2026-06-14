@@ -88,6 +88,8 @@ class GitSourceError(ValueError):
 # @cpt-begin:cpt-studio-state-generic-git-kit-installer-source:p1:inst-git-prov-schema-source
 @dataclass(frozen=True)
 class GitKitSource:
+    """Canonicalized git-backed kit source descriptor."""
+
     original_source: str
     canonical_source: str
     decoded_remote_url: str
@@ -100,6 +102,8 @@ class GitKitSource:
 
 @dataclass(frozen=True)
 class GitKitResolution:
+    """Resolved local checkout and source authority metadata."""
+
     kit_source_dir: Path
     tmp_dir: Path
     authority_metadata: Dict[str, Any]

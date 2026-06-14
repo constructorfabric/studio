@@ -16,6 +16,8 @@ from .model import Node
 
 @dataclass(frozen=True)
 class OverrideCategory:
+    """Category override loaded from map configuration."""
+
     name: str
     paths: List[str]
     color: Optional[str]
@@ -24,12 +26,16 @@ class OverrideCategory:
 
 @dataclass(frozen=True)
 class OverrideConfig:
+    """Collection of category overrides."""
+
     categories: List[OverrideCategory] = field(default_factory=list)
     show_uncategorized: bool = False
 
 
 @dataclass(frozen=True)
 class CategorizeOptions:
+    """Inputs for resolving node categories."""
+
     project_root: Path
     override: Optional[OverrideConfig]
     # Per-source project roots for federation: source_name → absolute root Path.

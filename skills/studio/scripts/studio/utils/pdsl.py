@@ -11,6 +11,8 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 # @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-validate-source-of-truth
 @dataclass(frozen=True)
 class PdslBlock:
+    """Extracted fenced PDSL block with source coordinates."""
+
     source: str
     block_index: int
     text: str
@@ -22,6 +24,8 @@ class PdslBlock:
 
 @dataclass(frozen=True)
 class PdslFinding:
+    """Deterministic validation finding for a PDSL block."""
+
     rule_id: str
     severity: str
     message: str
@@ -55,6 +59,8 @@ class PdslFinding:
 
 @dataclass(frozen=True)
 class PdslError:
+    """PDSL extraction or parsing error."""
+
     message: str
     source_path: str
     line: Optional[int] = None
@@ -76,6 +82,8 @@ class PdslError:
 
 @dataclass(frozen=True)
 class PdslSourceResult:
+    """Validation result for one PDSL source."""
+
     source: str
     status: str
     findings: Tuple[PdslFinding, ...]
@@ -92,6 +100,8 @@ class PdslSourceResult:
 
 @dataclass(frozen=True)
 class PdslSource:
+    """Named PDSL text source."""
+
     source: str
     text: str
 

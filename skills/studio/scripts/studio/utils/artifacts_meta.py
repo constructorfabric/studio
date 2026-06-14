@@ -240,6 +240,8 @@ class IgnoreBlock:
 
 @dataclass
 class AutodetectArtifactPattern:
+    """Autodetection pattern declared by a kit manifest."""
+
     pattern: str
     traceability: str
     required: bool = True

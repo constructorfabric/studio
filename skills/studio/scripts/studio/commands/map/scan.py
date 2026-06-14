@@ -125,6 +125,8 @@ _EXT_TO_LANG = {
 
 @dataclass
 class ScanOptions:
+    """Options controlling map repository scanning."""
+
     project_root: Path
     source_name: str
     no_source: bool = False

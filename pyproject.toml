@@ -57,6 +57,7 @@ enable = [
     "C0325",
     "C0103",
     "C0114",
+    "C0115",
     "C0411",
     "C0413",
     "C0414",
@@ -203,18 +204,17 @@ enable = [
 
 # Pylint rollout backlog, ordered by priority: useful/simple first,
 # noisy/architectural last. Keep commented until the rule is clean and enabled.
-# 01. C0115 - missing class docstring (25 findings, boilerplate risk)
-# 02. C0116 - missing function docstring (73 findings, boilerplate risk)
-# 03. R1702 - too many nested blocks (26 findings, refactor risk)
-# 04. R0911 - too many return statements (47 findings, refactor risk)
-# 05. R0914 - too many local variables (123 findings, extraction risk)
-# 06. R0801 - duplicate code (39 findings, ownership/refactor risk)
-# 07. R0912 - too many branches (84 findings, high refactor risk)
-# 08. R0915 - too many statements (52 findings, high refactor risk)
-# 09. R0913 - too many arguments (9 findings, API churn risk)
-# 10. R0917 - too many positional arguments (5 findings, API churn risk)
-# 11. R0902 - too many instance attributes (18 findings, data model risk)
-# 12. C0302 - too many lines in module (13 findings, module split risk)
-# 13. C0415 - import outside top-level (240 findings, lazy import risk)
-# 14. R0401 - cyclic imports (16 findings, architecture risk)
-# 15. C0301 - line too long (221 findings, noisy formatting pass)
+# 01. C0116 - missing function docstring (73 findings, boilerplate risk)
+# 02. R1702 - too many nested blocks (26 findings, refactor risk)
+# 03. R0911 - too many return statements (47 findings, refactor risk)
+# 04. R0914 - too many local variables (123 findings, extraction risk)
+# 05. R0801 - duplicate code (39 findings, ownership/refactor risk)
+# 06. R0912 - too many branches (84 findings, high refactor risk)
+# 07. R0915 - too many statements (52 findings, high refactor risk)
+# 08. R0913 - too many arguments (9 findings, API churn risk)
+# 09. R0917 - too many positional arguments (5 findings, API churn risk)
+# 10. R0902 - too many instance attributes (18 findings, data model risk)
+# 11. C0302 - too many lines in module (13 findings, module split risk)
+# 12. C0415 - import outside top-level (240 findings, lazy import risk)
+# 13. R0401 - cyclic imports (16 findings, architecture risk)
+# 14. C0301 - line too long (221 findings, noisy formatting pass)
