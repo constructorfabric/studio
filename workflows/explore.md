@@ -9,7 +9,7 @@ purpose: Discover task-relevant project resource context via a read-only sub-age
 
 # cf-explore
 
-This skill discovers task-relevant project resource context via one or more cf-explorer sub-agents — a single agent for small scope, or N parallel partition agents (each budgeted ~5-10 minutes) for large folders and repos, whose findings are then synthesized — running read-only over allowed search roots. It returns a controller-owned resource map plus a context summary that is kept as resource_context and never loaded into the shared context pack. After showing the map it optionally saves an exploration bundle; next-step choices are then offered by the studio's global Next Actions rule.
+This skill discovers task-relevant project resource context via one or more cf-explorer sub-agents — a single agent for small scope, or N parallel partition agents (each budgeted ~5-10 minutes) for large folders and repos, whose findings are then synthesized — running read-only over allowed search roots. It returns a controller-owned resource map plus a context summary that is kept as resource_context and never loaded into the shared context pack. After showing the map it optionally saves an exploration bundle; next-step choices are then offered by the conditionally loaded NextActionsOffer module.
 
 ```pdsl
 UNIT ExploreBootstrap
@@ -102,7 +102,7 @@ RULES:
   ALWAYS dispatch partition explorers in parallel bounded by EXPLORE_PARALLELISM, which defaults to the partition count capped at a safe max of 8 and MAY be overridden by the caller or user; run any overflow partitions in bounded waves
   ALWAYS synthesize and deduplicate every partition result into one resource_context before presenting, and reconcile exploration_status conservatively
   NEVER report sufficiency while any partition is unexplored or any wave is still pending
-  ALWAYS in return-context mode (return_context == true), skip the save offer and the global next-actions offer and RETURN resource_context to the calling skill
+  ALWAYS in return-context mode (return_context == true), skip the save offer and the NextActionsOffer handoff and RETURN resource_context to the calling skill
   NEVER put discovered source, docs, artifacts, diffs, or architecture files into the shared context pack — treat explorer output as resource_context only
   NEVER silently write files during an explore run
   ALWAYS keep every cf-explorer read-only
