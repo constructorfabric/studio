@@ -1,3 +1,5 @@
+"""Validate Studio traceability artifacts and code references."""
+
 # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-imports
 import argparse
 import json
@@ -1107,12 +1109,12 @@ def _format_issue(issue: object, *, is_error: bool) -> None:
         has_extra = True
 
     # Auto-format ALL remaining keys so nothing is ever lost
-    _HANDLED_KEYS = {
+    handled_keys = {
         "type", "message", "code", "line", "path", "location",
         "reasons", "fixing_prompt",
     }
     for k, v in issue.items():
-        if k in _HANDLED_KEYS or v is None or not v or v == []:
+        if k in handled_keys or v is None or not v or v == []:
             continue
         if isinstance(v, list):
             ui.substep(f"    {k}: {', '.join(str(x) for x in v)}")

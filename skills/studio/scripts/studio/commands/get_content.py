@@ -1,3 +1,5 @@
+"""Show content scoped to a Studio traceability identifier."""
+
 # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-imports
 import argparse
 from pathlib import Path

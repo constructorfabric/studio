@@ -30,16 +30,16 @@ from typing import Any, Callable, Dict, List, Optional
 # Global output mode
 # ---------------------------------------------------------------------------
 # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-json-mode-flag
-_json_mode: bool = False
+_JSON_MODE: bool = False
 
 
 def set_json_mode(enabled: bool) -> None:
-    global _json_mode  # pylint: disable=global-statement  # module-level output mode flag toggled once at CLI startup
-    _json_mode = enabled
+    global _JSON_MODE  # pylint: disable=global-statement  # module-level output mode flag toggled once at CLI startup
+    _JSON_MODE = enabled
 
 
 def is_json_mode() -> bool:
-    return _json_mode
+    return _JSON_MODE
 # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-json-mode-flag
 
 
@@ -76,7 +76,7 @@ def _c(code: str, text: str) -> str:
 # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-progress-header
 def header(title: str) -> None:
     """Print a bold section header."""
-    if _json_mode:
+    if _JSON_MODE:
         return
     sys.stderr.write(f"\n  {_c(_BOLD, title)}\n")
 # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-progress-header
@@ -84,14 +84,14 @@ def header(title: str) -> None:
 # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-progress-step
 def step(msg: str) -> None:
     """Print a step indicator."""
-    if _json_mode:
+    if _JSON_MODE:
         return
     sys.stderr.write(f"  {_c(_CYAN, '▸')} {msg}\n")
 
 
 def substep(msg: str) -> None:
     """Print an indented sub-step."""
-    if _json_mode:
+    if _JSON_MODE:
         return
     sys.stderr.write(f"    {msg}\n")
 # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-progress-step
@@ -99,28 +99,28 @@ def substep(msg: str) -> None:
 # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-status-messages
 def success(msg: str) -> None:
     """Print a success message."""
-    if _json_mode:
+    if _JSON_MODE:
         return
     sys.stderr.write(f"\n  {_c(_GREEN, '✓')} {_c(_GREEN, msg)}\n")
 
 
 def error(msg: str) -> None:
     """Print an error message."""
-    if _json_mode:
+    if _JSON_MODE:
         return
     sys.stderr.write(f"\n  {_c(_RED, '✗')} {_c(_RED, msg)}\n")
 
 
 def warn(msg: str) -> None:
     """Print a warning message."""
-    if _json_mode:
+    if _JSON_MODE:
         return
     sys.stderr.write(f"  {_c(_YELLOW, '⚠')} {msg}\n")
 
 
 def info(msg: str) -> None:
     """Print an informational line."""
-    if _json_mode:
+    if _JSON_MODE:
         return
     sys.stderr.write(f"  {msg}\n")
 # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-status-messages
@@ -128,28 +128,28 @@ def info(msg: str) -> None:
 # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-detail-hint
 def detail(key: str, value: str) -> None:
     """Print a key: value detail line."""
-    if _json_mode:
+    if _JSON_MODE:
         return
     sys.stderr.write(f"    {_c(_DIM, key + ':')} {value}\n")
 
 
 def hint(msg: str) -> None:
     """Print a dim hint/suggestion."""
-    if _json_mode:
+    if _JSON_MODE:
         return
     sys.stderr.write(f"    {_c(_DIM, msg)}\n")
 
 
 def blank() -> None:
     """Print a blank line."""
-    if _json_mode:
+    if _JSON_MODE:
         return
     sys.stderr.write("\n")
 
 
 def divider() -> None:
     """Print a thin divider."""
-    if _json_mode:
+    if _JSON_MODE:
         return
     sys.stderr.write(f"  {_c(_DIM, '─' * 50)}\n")
 # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-detail-hint
@@ -157,7 +157,7 @@ def divider() -> None:
 # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-table
 def table(headers: List[str], rows: List[List[str]], indent: int = 4) -> None:
     """Print a simple aligned table to stderr."""
-    if _json_mode:
+    if _JSON_MODE:
         return
     if not rows:
         return
@@ -186,7 +186,7 @@ def table(headers: List[str], rows: List[List[str]], indent: int = 4) -> None:
 # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-file-action
 def file_action(path: str, action: str) -> None:
     """Print a file action (created/updated/unchanged)."""
-    if _json_mode:
+    if _JSON_MODE:
         return
     icons = {
         "created": _c(_GREEN, "+"),
@@ -219,7 +219,7 @@ def result(
         human_fn: Optional formatter that renders *data* as human-friendly text
                   to stderr. If None, a generic fallback is used.
     """
-    if _json_mode:
+    if _JSON_MODE:
         print(json.dumps(data, indent=2, ensure_ascii=False))
         return
 # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-result-json
@@ -260,7 +260,7 @@ def relpath(path: str) -> str:
 # Convenience singleton
 # ---------------------------------------------------------------------------
 # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-ui-singleton
-class _UI:
+class _UI:  # pylint: disable=too-few-public-methods
     """Namespace object so commands can do ``from ..utils.ui import ui``."""
     header = staticmethod(header)
     step = staticmethod(step)

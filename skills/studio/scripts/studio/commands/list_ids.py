@@ -1,3 +1,5 @@
+"""List Studio traceability identifiers from artifacts and code."""
+
 # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-imports
 import argparse
 import re

@@ -194,7 +194,7 @@ def run_self_check_from_meta(
         # 2b) Reverse check: every definition/reference pattern in the template must
         #     have its kind registered in constraints.  We extract the kind token from
         #     the template pattern (the first non-placeholder segment after `cpt-{system}-`).
-        _TPL_PAT = re.compile(r"`(cpt-[^`]*\{[^`]*)`")
+        tpl_pat = re.compile(r"`(cpt-[^`]*\{[^`]*)`")
 
         def _kind_from_pattern(pat: str) -> Optional[str]:
             """Extract ID kind from a template pattern like cpt-{system}-KIND-{slug}."""
@@ -230,7 +230,7 @@ def run_self_check_from_meta(
                         known_all_kinds.add(k)
 
         for idx0, raw in enumerate(lines):
-            for m in _TPL_PAT.finditer(raw):
+            for m in tpl_pat.finditer(raw):
                 found = m.group(1)
                 found_kind = _kind_from_pattern(found)
                 if not found_kind:

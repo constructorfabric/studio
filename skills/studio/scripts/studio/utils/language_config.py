@@ -81,7 +81,7 @@ EXTENSION_COMMENT_DEFAULTS: Dict[str, Tuple[List[str], List[Dict[str, str]], Lis
 # @cpt-end:cpt-studio-algo-traceability-validation-language-config:p1:inst-lang-define-defaults
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-language-config:p1:inst-lang-datamodel
-class LanguageConfig:
+class LanguageConfig:  # pylint: disable=too-few-public-methods
     """Language configuration for code scanning."""
 
     def __init__(

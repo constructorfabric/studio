@@ -1,3 +1,5 @@
+"""Constraint models and validators for Studio traceability artifacts."""
+
 # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-structure-datamodel
 from __future__ import annotations
 

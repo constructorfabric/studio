@@ -1,3 +1,5 @@
+"""Initialize Constructor Studio project files."""
+
 # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-init-helpers
 import argparse
 import json

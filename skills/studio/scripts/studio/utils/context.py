@@ -874,8 +874,8 @@ def _collect_remote_artifacts(
 
 
 # Global context instance (set by CLI on startup)
-_global_context: Optional[Union[StudioContext, WorkspaceContext]] = None
-_workspace_upgrade_attempted: bool = False
+_global_context: Optional[Union[StudioContext, WorkspaceContext]] = None  # pylint: disable=invalid-name
+_workspace_upgrade_attempted: bool = False  # pylint: disable=invalid-name
 
 
 def get_context() -> Optional[Union[StudioContext, WorkspaceContext]]:

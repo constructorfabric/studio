@@ -898,7 +898,7 @@ _COPY_DIRS = ["workflows", "requirements", "schemas", "templates", "prompts", "k
 _COPY_ROOT_DIRS: list[str] = []
 _COPY_FILES: list = []
 _CORE_SUBDIR = ".core"
-_COPY_IGNORE = shutil.ignore_patterns(
+_copy_ignore = shutil.ignore_patterns(
     "__pycache__", "*.pyc", ".git", ".venv", "tests", ".pytest_cache", ".coverage", "coverage.json",
 )
 
@@ -947,14 +947,14 @@ def _ensure_studio_local(
             src = studio_root / dirname
             if src.is_dir():
                 dst = core_dst / dirname
-                shutil.copytree(src, dst, ignore=_COPY_IGNORE, dirs_exist_ok=True)
+                shutil.copytree(src, dst, ignore=_copy_ignore, dirs_exist_ok=True)
                 file_count += sum(1 for _ in dst.rglob("*") if _.is_file())
 
         for dirname in _COPY_ROOT_DIRS:
             src = studio_root / dirname
             if src.is_dir():
                 dst = local_dot / dirname
-                shutil.copytree(src, dst, ignore=_COPY_IGNORE, dirs_exist_ok=True)
+                shutil.copytree(src, dst, ignore=_copy_ignore, dirs_exist_ok=True)
                 file_count += sum(1 for _ in dst.rglob("*") if _.is_file())
 
         for fname in _COPY_FILES:
@@ -1450,7 +1450,7 @@ def _agents_skill_outputs() -> list:
     These templates are tool-agnostic — no ``{custom_content}`` because the
     same file is written identically regardless of which tool triggers it.
     """
-    _AGENTS_SKILL_TEMPLATE = [
+    agents_skill_template = [
         "---",
         "name: {name}",
         _TMPL_DESCRIPTION,
@@ -1459,7 +1459,7 @@ def _agents_skill_outputs() -> list:
         "",
         *_follow_protocol_lines("{target_skill_path}"),
     ]
-    _AGENTS_WORKFLOW_SKILL_TEMPLATE = [
+    agents_workflow_skill_template = [
         "---",
         "name: {name}",
         _TMPL_DESCRIPTION,
@@ -1471,32 +1471,32 @@ def _agents_skill_outputs() -> list:
     return [
         {
             "path": ".agents/skills/cf/SKILL.md",
-            "template": list(_AGENTS_SKILL_TEMPLATE),
+            "template": list(agents_skill_template),
         },
         {
             "path": ".agents/skills/cf-generate/SKILL.md",
             "target": "workflows/generate.md",
-            "template": list(_AGENTS_WORKFLOW_SKILL_TEMPLATE),
+            "template": list(agents_workflow_skill_template),
         },
         {
             "path": ".agents/skills/cf-analyze/SKILL.md",
             "target": "workflows/analyze.md",
-            "template": list(_AGENTS_WORKFLOW_SKILL_TEMPLATE),
+            "template": list(agents_workflow_skill_template),
         },
         {
             "path": ".agents/skills/cf-plan/SKILL.md",
             "target": "workflows/plan.md",
-            "template": list(_AGENTS_WORKFLOW_SKILL_TEMPLATE),
+            "template": list(agents_workflow_skill_template),
         },
         {
             "path": ".agents/skills/cf-explore/SKILL.md",
             "target": "workflows/explore.md",
-            "template": list(_AGENTS_WORKFLOW_SKILL_TEMPLATE),
+            "template": list(agents_workflow_skill_template),
         },
         {
             "path": ".agents/skills/cf-workspace/SKILL.md",
             "target": "workflows/workspace.md",
-            "template": list(_AGENTS_WORKFLOW_SKILL_TEMPLATE),
+            "template": list(agents_workflow_skill_template),
         },
     ]
 
@@ -5485,12 +5485,12 @@ def generate_manifest_skills(
         _write_or_skip(out_path, content, result, project_root, dry_run)
 
     # Step 2: Clean up legacy manifest-skill files from old per-tool paths
-    _LEGACY_SKILL_OUTPUT_PATHS: Dict[str, str] = {
+    legacy_skill_output_paths: Dict[str, str] = {
         "cursor":   ".cursor/rules/{id}.mdc",
         "copilot":  ".github/skills/{id}.md",
         "windsurf": ".windsurf/skills/{id}/SKILL.md",
     }
-    legacy_pattern = _LEGACY_SKILL_OUTPUT_PATHS.get(target)
+    legacy_pattern = legacy_skill_output_paths.get(target)
     if legacy_pattern:
         for skill_id, skill in skills.items():
             # Same agent-targeting filter as generation (empty = all targets)
