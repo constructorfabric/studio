@@ -4,17 +4,18 @@ type: workflow
 name: cf-analyze
 description: Invoke when the user asks to analyze, validate, review, inspect, audit, check, or compare any artifact, code, or instruction document.
 version: 2.0
-purpose: Backwards-compatible entry point that routes an analyze intent to the most relevant cf-* skill available in the session, or loads a chosen one when no intent is given.
+purpose: Backwards-compatible entry point that routes an analyze intent to the most relevant cf-* skill or companion skill group available in the session, or helps the user describe intent when none is given.
 ---
 
 # cf-analyze
 
 This workflow is kept as a stable, backwards-compatible entry point for the
 `analyze` verb. It performs no analysis itself. Instead it discovers the cf-*
-skills available to the current session (via the shared WorkflowResolution rule), matches the
-user's analyze intent against them, and offers the most relevant skill for
-invocation — passing the user's intent into it. When no intent is present it
-lists the available cf-* skills and loads the one the user picks. The legacy
+skills available to the current session (via the shared WorkflowResolution
+rule), matches the user's analyze intent against them, and offers the most
+relevant skill or companion skill group for invocation — passing the user's
+intent into it. When no intent is present it lists the available cf-* skills
+plus a `describe intent / help me choose` option. The legacy
 multi-phase analyze workflow has been retired; routing is the only behavior here.
 
 ```pdsl
@@ -47,37 +48,68 @@ STATE:
 WHEN:
   REQUIRE CFS_INIT == true
 DO:
-  SET ORIGINAL_INTENT = the user's triggering analyze request (verbatim or shortest faithful summary), or unset when activation-only
+  SET ORIGINAL_INTENT = the user's triggering analyze request (verbatim or shortest faithful summary), or unset when activation-only, WHEN ORIGINAL_INTENT == unset
   RUN WorkflowResolution to resolve the available cf-* skills
   SET AVAILABLE_SKILLS = the resolved cf-* skills (name + its workflow description), excluding this router (cf-analyze)
   CONTINUE AnalyzeNoMatch WHEN AVAILABLE_SKILLS is empty
-  RUN matching of ORIGINAL_INTENT against AVAILABLE_SKILLS by semantic relevance — score each skill's name and description against the intent, keep those clearly on-topic, rank them, and mark the top-ranked as suggested — WHEN ORIGINAL_INTENT != unset
+  RUN matching of ORIGINAL_INTENT against AVAILABLE_SKILLS by semantic relevance — score each skill's name and description against the intent, keep those clearly on-topic, rank them, synthesize compatible companion groups when the request spans domains, and mark the top-ranked skill or group as suggested — WHEN ORIGINAL_INTENT != unset
   EMIT_MENU AnalyzeIntentOffer WHEN ORIGINAL_INTENT != unset AND at least one relevant skill matched
   CONTINUE AnalyzeNoMatch WHEN ORIGINAL_INTENT != unset AND no relevant skill matched
   EMIT_MENU AnalyzeLoadOffer WHEN ORIGINAL_INTENT == unset
   WAIT user.reply
   STOP_TURN
 RULES:
+  ALWAYS preserve ORIGINAL_INTENT when it was already set by AnalyzeDescribeIntent
   ALWAYS resolve cf-* skills via WorkflowResolution, never by guessing and never via a CLI skills-list command
   ALWAYS exclude the skill whose name equals this router (cf-analyze) from AVAILABLE_SKILLS to prevent self-routing recursion
-  ALWAYS pass ORIGINAL_INTENT into the invoked skill when an intent is present
+  ALWAYS pass ORIGINAL_INTENT into every invoked skill when an intent is present
   ALWAYS render each offered skill as `<skill-name> — <short description>` from AVAILABLE_SKILLS
+  ALWAYS support compatible companion multi-select, invoking selected skills sequentially so each skill's prerequisites and gates run in order
+  NEVER let a companion or multi-select route bypass any selected skill's WAIT, STOP_TURN, approval, brainstorm, plan, validation, or sub-agent gate
   NEVER load or run any legacy analyze phase logic; routing is the only behavior
 NOTES:
   Empty-state ownership: WorkflowResolution STOP_TURNs when zero cf-* skills are discovered (a broken install), so that case never reaches this router; the CONTINUE AnalyzeNoMatch WHEN AVAILABLE_SKILLS is empty branch handles the distinct case where resolution succeeds but excluding this router (cf-analyze) leaves no other skill.
 MENU AnalyzeIntentOffer
-TITLE: Analyze intent matched these cf-* skills — pick one to run with your request.
+TITLE: Analyze intent matched these cf-* workflow(s) — pick one, or pick a companion group / comma-separated compatible skills.
 OPTIONS:
-  1 most-relevant (suggested) -> INVOKE the top-ranked matched cf-* skill (the one whose description best fits your intent), passing ORIGINAL_INTENT as its input
-  2 other -> EMIT_MENU listing every AVAILABLE_SKILLS entry as a numbered option (use this when the suggested match is not the one you want), then INVOKE the user-selected skill, passing ORIGINAL_INTENT
+  1 most-relevant (suggested) -> INVOKE the top-ranked matched cf-* skill or companion group, passing ORIGINAL_INTENT as its input to every invoked skill
+  2 other -> CONTINUE AnalyzeOtherSkills
   3 none -> STOP_TURN
   INVALID -> EMIT_MENU AnalyzeIntentOffer
 MENU AnalyzeLoadOffer
-TITLE: No analyze intent given — pick a cf-* skill to load.
+TITLE: No analyze intent given — pick a cf-* skill, or describe intent so I can match the right workflow(s).
 OPTIONS:
   1 skill -> INVOKE the user-selected cf-* skill from AVAILABLE_SKILLS with no intent so the skill prompts for its own input; the menu lists each available skill as `<skill-name> — <short description>`
-  2 cancel -> STOP_TURN
+  2 describe-intent | help-me-choose -> CONTINUE AnalyzeDescribeIntent
+  3 cancel -> STOP_TURN
   INVALID -> EMIT_MENU AnalyzeLoadOffer
+```
+
+```pdsl
+UNIT AnalyzeDescribeIntent
+PURPOSE: Capture an analyze intent as a separate turn before routing.
+DO:
+  EMIT "Describe what you want to analyze, review, validate, or compare. I will match the relevant cf-* workflow(s), including companions when needed."
+  WAIT user.reply
+  STOP_TURN
+RULES:
+  ALWAYS on the resumed reply set ORIGINAL_INTENT = user.reply and CONTINUE AnalyzeRoute
+```
+
+```pdsl
+UNIT AnalyzeOtherSkills
+PURPOSE: Offer every available cf-* skill after the suggested analyze match is not desired.
+DO:
+  EMIT_MENU AnalyzeOtherSkillsMenu
+  WAIT user.reply
+  STOP_TURN
+MENU AnalyzeOtherSkillsMenu
+TITLE: All available cf-* workflow(s) for analyze — pick one, or enter comma-separated compatible skills.
+OPTIONS:
+  1 skill -> INVOKE the user-selected cf-* skill, passing ORIGINAL_INTENT
+  2 companion-selection -> INVOKE each selected compatible cf-* skill sequentially, passing ORIGINAL_INTENT
+  3 cancel -> STOP_TURN
+  INVALID -> EMIT_MENU AnalyzeOtherSkillsMenu
 ```
 
 ```pdsl
@@ -91,11 +123,12 @@ DO:
   STOP_TURN
 RULES:
   NEVER fall back to legacy analyze phases when nothing matches
-  ALWAYS let the user pick a listed skill or cancel
+  ALWAYS let the user pick one or more compatible listed skills, describe clearer intent, or cancel
 MENU AnalyzeNoMatchMenu
-TITLE: No match — load a listed cf-* skill, or cancel.
+TITLE: No match — load listed cf-* skill(s), describe intent again, or cancel.
 OPTIONS:
-  1 skill -> INVOKE the user-selected cf-* skill, passing ORIGINAL_INTENT when present else load only
-  2 cancel -> STOP_TURN
+  1 skill -> INVOKE the user-selected cf-* skill(s), passing ORIGINAL_INTENT when present else load only
+  2 describe-intent | help-me-choose -> CONTINUE AnalyzeDescribeIntent
+  3 cancel -> STOP_TURN
   INVALID -> EMIT_MENU AnalyzeNoMatchMenu
 ```

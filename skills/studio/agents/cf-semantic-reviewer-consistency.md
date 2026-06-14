@@ -215,7 +215,7 @@ RULES:
   - ALWAYS Every finding object ALWAYS have a non-empty mechanical_rationale string
     (advisory — when missing, the orchestrator substitutes
     "<no rationale provided by {agent_name}>" and continues; fallback behavior
-    defined by ReviewFindingContract in {cf-studio-path}/.core/skills/studio/SKILL.md)
+    defined by ReviewFindingContract in {cf-studio-path}/.core/skills/studio/modules/review/finding-contract.md)
   - ALWAYS perform AP-001..AP-008 self-check before output;
     state results in a short trailer block
   - ALWAYS satisfy the SKILL.md invariant

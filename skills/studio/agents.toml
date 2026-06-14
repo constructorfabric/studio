@@ -38,6 +38,12 @@
 #                       when the matrix abstraction is insufficient); see
 #                       `_resolve_model_id` passthrough branch
 #
+#   reasoning_effort (string):
+#     Use "low" for execution agents that receive a resolved plan, phase brief,
+#     approved manifest, or narrow contract. Raise to "medium" or "high" only
+#     when the agent must decide what to do/how to do it, perform creative
+#     prompt/artifact design, handle ambiguity, or run semantic review.
+#
 # Navigation — model-matrix anchor markers in scripts/studio/commands/agents.py:
 #   inst-agents-datamodel            → Agent dataclass + field definitions
 #   inst-agent-field-validators      → allowed-value sets for mode/role/target/tier/effort/context
@@ -74,7 +80,7 @@ isolation = true
 model = "cf:tier:balanced"
 role = "generate"
 target = "codebase"
-reasoning_effort = "medium"
+reasoning_effort = "low"
 context_window = "high"
 
 [agents.cf-pr-review]
@@ -103,33 +109,65 @@ target = "any"
 reasoning_effort = "medium"
 context_window = "medium"
 
-# phase-runner intentionally does NOT load SKILL.md (its parent
-# plan supplies the contract); write access is bounded only by
-# host isolation. The Phase-Skip Gate does not apply.
+# Phase agents intentionally do NOT load SKILL.md (their parent plan supplies
+# the contract). The default variants operate in-place because canonical plan
+# state usually lives under gitignored `{cf-studio-path}/.plans/` in the main
+# checkout. Use the `*-isolated` variants only when the plan manifest, briefs,
+# phase files, and declared outputs are tracked or otherwise visible inside the
+# worktree. The Phase-Skip Gate does not apply.
 [agents.cf-phase-runner]
 description = """\
 Invoke when executing the next or a specific phase from a generated \
-Constructor Studio plan inside a dedicated agent context, without delegating \
-to ralphex."""
+Constructor Studio plan in-place against main-checkout-local plan state, \
+without delegating to ralphex."""
 mode = "readwrite"
-isolation = true
+isolation = false
 model = "cf:tier:balanced"
 role = "generate"
 target = "any"
-reasoning_effort = "high"
+reasoning_effort = "low"
 context_window = "high"
 
 [agents.cf-phase-compiler]
 description = """\
 Invoke when compiling exactly one generated plan phase from its compilation \
-brief in an isolated agent context, without delegating to ralphex or executing \
-the phase."""
+brief in-place against main-checkout-local plan state, without delegating to \
+ralphex or executing the phase."""
+mode = "readwrite"
+isolation = false
+model = "cf:tier:balanced"
+role = "planning"
+target = "artifacts"
+reasoning_effort = "low"
+context_window = "medium"
+
+[agents.cf-phase-runner-isolated]
+prompt_file = "agents/cf-phase-runner.md"
+description = """\
+Invoke when executing the next or a specific phase from a generated \
+Constructor Studio plan in a worktree-isolated agent context, only when \
+plan.toml, briefs, phase files, and declared outputs are tracked or otherwise \
+visible inside the worktree."""
+mode = "readwrite"
+isolation = true
+model = "cf:tier:balanced"
+role = "generate"
+target = "any"
+reasoning_effort = "low"
+context_window = "high"
+
+[agents.cf-phase-compiler-isolated]
+prompt_file = "agents/cf-phase-compiler.md"
+description = """\
+Invoke when compiling exactly one generated plan phase from its compilation \
+brief in a worktree-isolated agent context, only when the brief, output path, \
+and plan manifest are tracked or otherwise visible inside the worktree."""
 mode = "readwrite"
 isolation = true
 model = "cf:tier:balanced"
 role = "planning"
 target = "artifacts"
-reasoning_effort = "high"
+reasoning_effort = "low"
 context_window = "medium"
 
 # ---------------------------------------------------------------------------
@@ -223,8 +261,9 @@ context_window = "high"
 # Thin-orchestrator sub-agent pool (shared by generate + analyze workflows)
 #
 # Defined by the thin-orchestrator dispatch contract (see
-# {cf-studio-path}/.core/skills/studio/SKILL.md "Session Sub-Agent Approval Gate"
-# and the SubAgentDispatch UNIT in {cf-studio-path}/.core/skills/studio/SKILL.md).
+# {cf-studio-path}/.core/skills/studio/SKILL.md ConditionalModuleLoading rule
+# and the SubAgentDispatch UNIT in
+# {cf-studio-path}/.core/skills/studio/modules/subagents/dispatch.md).
 # The diff-scope resolver is analyze-only. The validator and semantic reviewers
 # are reusable across analyze and generate's Phase 5 review loop; brainstorm
 # agents drive generate's Phase 0.7 panel session; collector + planner + author
@@ -355,7 +394,7 @@ isolation = false
 model = "cf:tier:balanced"
 role = "generate"
 target = "any"
-reasoning_effort = "high"
+reasoning_effort = "medium"
 context_window = "high"
 
 [agents.cf-pdsl-transformer]
@@ -368,7 +407,7 @@ isolation = false
 model = "cf:tier:balanced"
 role = "generate"
 target = "any"
-reasoning_effort = "high"
+reasoning_effort = "medium"
 context_window = "high"
 
 [agents.cf-pdsl-reviewer]
@@ -565,7 +604,7 @@ isolation = false
 model = "cf:tier:balanced"
 role = "generate"
 target = "any"
-reasoning_effort = "medium"
+reasoning_effort = "low"
 context_window = "high"
 
 [agents.cf-generate-author-senior]
@@ -579,7 +618,7 @@ isolation = false
 model = "cf:tier:balanced"
 role = "generate"
 target = "any"
-reasoning_effort = "high"
+reasoning_effort = "medium"
 context_window = "high"
 
 [agents.cf-generate-author-lead]
@@ -608,7 +647,7 @@ isolation = false
 model = "cf:tier:cheap"
 role = "generate"
 target = "codebase"
-reasoning_effort = "medium"
+reasoning_effort = "low"
 context_window = "medium"
 
 [agents.cf-generate-coder-smart]
@@ -623,7 +662,7 @@ isolation = false
 model = "cf:tier:balanced"
 role = "generate"
 target = "codebase"
-reasoning_effort = "high"
+reasoning_effort = "medium"
 context_window = "high"
 
 [agents.cf-generate-prompt-engineer-casual]
@@ -637,7 +676,7 @@ isolation = false
 model = "cf:tier:cheap"
 role = "generate"
 target = "any"
-reasoning_effort = "medium"
+reasoning_effort = "low"
 context_window = "medium"
 
 [agents.cf-generate-prompt-engineer-smart]

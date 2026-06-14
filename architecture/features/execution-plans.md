@@ -140,6 +140,12 @@ Execution Plans solve this by moving decomposition from the user to the tool. Th
 **Success Scenarios**:
 - User asks to execute next phase → agent reads phase file, follows instructions, produces output
 - All acceptance criteria pass → phase marked done in manifest
+- Gitignored plan state under `{cf-studio-path}/.plans/` is executed with the
+  non-isolated phase runner so status updates and outputs land in the
+  authoritative main checkout
+- Tracked or worktree-visible plan state may use the isolated phase runner
+  variant when the plan manifest and declared outputs are present inside the
+  worktree
 
 **Error Scenarios**:
 - Phase depends on incomplete phase → agent reports dependency and stops
@@ -152,12 +158,17 @@ Execution Plans solve this by moving decomposition from the user to the tool. Th
 3. [x] - `p1` - **IF** target phase has unmet dependencies → **RETURN** error with dependency list - `inst-check-deps`
 4. [x] - `p1` - Agent updates phase status to `in_progress` in manifest - `inst-update-status-start`
 5. [x] - `p1` - Agent reads phase file content (self-contained instructions) - `inst-read-phase`
-6. [x] - `p1` - Agent follows phase instructions exactly (the phase file contains ALL needed context) - `inst-execute`
-7. [x] - `p1` - Agent self-checks against acceptance criteria in phase file - `inst-self-check`
-8. [x] - `p1` - **IF** all acceptance criteria pass - `inst-check-pass`
+6. [ ] - `p1` - Agent selects phase execution isolation policy: use
+   `cf-phase-runner` when plan state or declared outputs are gitignored or
+   main-checkout-local; use `cf-phase-runner-isolated` only when the plan
+   manifest and outputs are tracked or otherwise worktree-visible -
+   `inst-select-phase-runner-isolation`
+7. [x] - `p1` - Agent follows phase instructions exactly (the phase file contains ALL needed context) - `inst-execute`
+8. [x] - `p1` - Agent self-checks against acceptance criteria in phase file - `inst-self-check`
+9. [x] - `p1` - **IF** all acceptance criteria pass - `inst-check-pass`
    1. [x] - `p1` - Agent updates phase status to `done` in manifest - `inst-mark-done`
    2. [x] - `p1` - Agent reports phase completion and next phase - `inst-report-done`
-9. [x] - `p1` - **ELSE** - `inst-check-fail`
+10. [x] - `p1` - **ELSE** - `inst-check-fail`
    1. [x] - `p1` - Agent updates phase status to `failed` in manifest with details - `inst-mark-failed`
    2. [x] - `p1` - Agent reports failed criteria - `inst-report-failed`
 
@@ -227,7 +238,11 @@ Execution Plans solve this by moving decomposition from the user to the tool. Th
 7. [x] - `p1` - Write "Acceptance Criteria" section: binary pass/fail checklist for this phase - `inst-write-criteria`
 8. [x] - `p1` - Write "Output Format" section: exact expected output format and completion report template - `inst-write-output`
 9. [x] - `p1` - Resolve ALL template variables (`{variable}` → absolute paths) in the compiled content - `inst-resolve-vars`
-10. [x] - `p1` - **RETURN** compiled phase file content - `inst-return-compiled`
+10. [ ] - `p1` - Select phase compilation isolation policy: use
+    `cf-phase-compiler` when `.plans` is gitignored or main-checkout-local; use
+    `cf-phase-compiler-isolated` only when the brief, output path, and plan
+    manifest are worktree-visible - `inst-select-phase-compiler-isolation`
+11. [x] - `p1` - **RETURN** compiled phase file content - `inst-return-compiled`
 
 ### Enforce Line Budget
 

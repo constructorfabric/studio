@@ -145,15 +145,20 @@ def test_root_skill_entrypoint_bootstrap_has_fail_closed_unit():
 
 
 def test_root_skill_has_template_var_resolution():
-    """Template-variable resolution now lives in the consolidated root studio skill.
+    """Template-variable resolution is lazy-loaded from the root studio skill.
 
     Re-grounded from the deleted multi-phase generate template-resolution logic
-    onto skills/studio/SKILL.md UNIT TemplateVarResolution.
+    onto skills/studio/SKILL.md ConditionalModuleLoading plus the template-vars module.
     """
-    skill_path = Path(__file__).parent.parent / "skills" / "studio" / "SKILL.md"
-    content = skill_path.read_text(encoding="utf-8")
+    root = Path(__file__).parent.parent
+    content = (root / "skills" / "studio" / "SKILL.md").read_text(encoding="utf-8")
+    module = (
+        root / "skills" / "studio" / "modules" / "runtime" / "template-vars.md"
+    ).read_text(encoding="utf-8")
 
-    assert "UNIT TemplateVarResolution" in content, "SKILL.md should define TemplateVarResolution"
     assert "UNIT CommandResolution" in content, "SKILL.md should define CommandResolution"
-    assert "resolve-vars" in content, "TemplateVarResolution should use {cfs_cmd} resolve-vars"
-    assert "template variable" in content.lower(), "SKILL.md should reference template variables"
+    assert "modules/runtime/template-vars.md" in content
+    assert "unknown `{...}` template variable" in content
+    assert "UNIT TemplateVarResolution" in module
+    assert "resolve-vars" in module, "TemplateVarResolution should use {cfs_cmd} resolve-vars"
+    assert "template variable" in module.lower(), "module should reference template variables"

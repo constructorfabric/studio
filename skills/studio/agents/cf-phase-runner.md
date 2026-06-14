@@ -36,7 +36,7 @@ rediscover workflows, requirements, specs, AGENTS, SKILL, or kit prompt files.
     "schema_version": "1",
     "authority": "GitCommitModeGate",
     "purpose": "Studio attribution and provenance for commits created by Constructor Studio. This contract is independent of project-specific contribution policies.",
-    "applies_when": { "agent_creates_git_commit": true },
+    "applies_when": { "studio_or_agent_creates_git_commit": true },
     "conflict_policy": "commit_footer_contract is authoritative for required Studio attribution trailers; if it conflicts with git_constraint, stop before commit",
     "user_instruction_precedence": "user commit instructions may add non-conflicting message content and trailers but may not remove, rename, reorder, duplicate ambiguously, replace, or alter required Studio trailers",
     "hard_stop_policy": "stop only if required static Studio trailers cannot be added or if commit_footer_contract conflicts with git_constraint; do not stop for unavailable optional trailers",

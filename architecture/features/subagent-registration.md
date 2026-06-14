@@ -11,6 +11,7 @@
 - [2. Actor Flows (CDSL)](#2-actor-flows-cdsl)
   - [Generate Subagent Definitions](#generate-subagent-definitions)
   - [Invoke Studio Subagent](#invoke-studio-subagent)
+  - [Select Studio Subagent](#select-studio-subagent)
 - [3. Processes / Business Logic (CDSL)](#3-processes--business-logic-cdsl)
   - [Detect Tool Subagent Capability](#detect-tool-subagent-capability)
   - [Resolve Subagent Template](#resolve-subagent-template)
@@ -38,15 +39,21 @@
 
 ### 1.1 Overview
 
-Extend studio's multi-agent integration to generate two purpose-built subagent definitions for tools that support isolated agent contexts: Claude Code (`.claude/agents/`), Cursor (`.cursor/agents/`), GitHub Copilot (`.github/agents/`), and OpenAI Codex (`.codex/agents/`). Currently `cfs generate-agents --agent <name>` generates only skills, commands, and workflow proxies — missing the subagent integration surface that four of five supported tools now provide.
+Extend studio's multi-agent integration to generate purpose-built subagent definitions for tools that support native agent contexts: Claude Code (`.claude/agents/`), Cursor (`.cursor/agents/`), GitHub Copilot (`.github/agents/`), and OpenAI Codex (`.codex/agents/`). Currently `cfs generate-agents --agent <name>` generates skills, commands, workflow proxies, and a registry-backed subagent surface for Constructor Studio workflows.
 
-Problem: Studio workflows cannot run as isolated subagents with scoped tools, model selection, and dedicated prompts.
-Primary value: Users get two studio subagents (`cf-codegen` for fully-specified code generation, `cf-pr-review` for isolated PR review) that their IDE/agent tool can auto-delegate to, with appropriate read/write restrictions per workflow.
+Problem: Studio workflows cannot run as native subagents with scoped tools, model selection, isolation policy, and dedicated prompts.
+Primary value: Users get Studio subagents for code generation, review,
+planning, prompt authoring/review, exploration, deterministic validation, and
+workflow-specific specialist work that their IDE/agent tool can delegate to
+with appropriate read/write restrictions per workflow. Studio workflows prefer
+subagent dispatch for coding, authoring, scanning, validation, review,
+planning, and exploration unless the user explicitly selects inline execution
+or asks for no subagents.
 Key assumptions: Subagent formats across tools have stabilized sufficiently for code generation. Windsurf does not support subagents and is excluded from this feature. Subagents are purpose-built — not mirrors of existing skills.
 
 ### 1.2 Purpose
 
-Enable `cfs generate-agents` to generate tool-specific subagent definitions so that two purpose-built workflows (`cf-codegen` and `cf-pr-review`) run as isolated subagents with appropriate tool restrictions, model selection, and custom prompts.
+Enable `cfs generate-agents` to generate tool-specific subagent definitions from the canonical `skills/studio/agents.toml` registry so purpose-built workflows (`cf-codegen`, `cf-pr-review`, planners, reviewers, authors, validators, explorers, and workflow specialists) run with appropriate tool restrictions, model selection, isolation policy, and custom prompts.
 
 **Boundary clarification**: Subagents in this feature are **host-tool-native** — they run as isolated agent contexts within the IDE/chat tool (Claude Code, Cursor, Copilot, Codex). ralphex is **not** modeled as a subagent: it is an external autonomous executor that consumes exported plan files rather than operating within the host tool's agent framework. ralphex delegation is owned by `cpt-studio-feature-ralphex-delegation` and does not replace or overlap with the subagent registration surface (see `cpt-studio-adr-ralphex-delegation-skill`).
 
@@ -71,8 +78,8 @@ Enable `cfs generate-agents` to generate tool-specific subagent definitions so t
 **Actor**: Developer
 
 **Success Scenarios**:
-- Developer runs `cfs generate-agents --agent claude` and two subagent files (`cf-codegen.md`, `cf-pr-review.md`) are generated in `.claude/agents/` alongside existing skills/commands
-- Developer runs `cfs generate-agents --agent copilot` and two subagent files are generated in `.github/agents/` with `.agent.md` extension
+- Developer runs `cfs generate-agents --agent claude` and registered subagent files are generated in `.claude/agents/` alongside existing skills/commands
+- Developer runs `cfs generate-agents --agent copilot` and registered subagent files are generated in `.github/agents/` with `.agent.md` extension
 - Developer runs with `--dry-run` and sees planned output without file writes
 
 **Error Scenarios**:
@@ -99,7 +106,7 @@ Enable `cfs generate-agents` to generate tool-specific subagent definitions so t
 
 **Success Scenarios**:
 - Main session auto-delegates code generation to `cf-codegen` subagent when requirements are fully specified
-- Main session delegates PR review to `cf-pr-review` subagent for isolated checklist-based analysis
+- Main session delegates PR review to `cf-pr-review` subagent for read-only checklist-based analysis in a separate review flow
 
 **Error Scenarios**:
 - Subagent files not generated yet — main session falls back to skill invocation
@@ -107,10 +114,49 @@ Enable `cfs generate-agents` to generate tool-specific subagent definitions so t
 
 **Steps**:
 1. [ ] - `p2` - Main session receives task matching a studio subagent description - `inst-match-task`
-2. [ ] - `p2` - Host tool spawns isolated subagent context with scoped tools and prompt - `inst-spawn`
-3. [ ] - `p2` - Subagent reads referenced SKILL.md and follows workflow entry point - `inst-read-skill`
-4. [ ] - `p2` - Subagent completes work within isolated context - `inst-complete`
-5. [ ] - `p2` - **RETURN** results/summary to main session - `inst-return-results`
+2. [ ] - `p2` - Main session groups intended subagent dispatches by immediate
+   purpose and presents a dispatch-group approval menu with approve-once,
+   approve-session, inline-once, inline-session, and stop options -
+   `inst-approval-scope`
+3. [ ] - `p2` - Host tool spawns the approved native subagent context with
+   scoped tools and prompt, or executes the same contract inline when the user
+   selects inline fallback - `inst-spawn-or-inline`
+4. [ ] - `p2` - Subagent executes only the controller-synthesized final prompt;
+   prompt and methodology rules are injected by the controller rather than
+   reopened from disk by the subagent - `inst-final-prompt-only`
+5. [ ] - `p2` - Subagent completes work within the approved native or inline
+   scope - `inst-complete`
+6. [ ] - `p2` - **RETURN** results/summary to main session - `inst-return-results`
+
+### Select Studio Subagent
+
+- [ ] `p2` - **ID**: `cpt-studio-flow-subagent-reg-select`
+
+**Actor**: AI Assistant
+
+**Success Scenarios**:
+- Workflow chooses the cheapest capable author/reviewer/planner/explorer from
+  `skills/studio/agents.toml`
+- Workflow escalates to a stronger agent when task risk, ambiguity, scope, or
+  methodology requirements make the cheaper agent insufficient
+
+**Steps**:
+1. [ ] - `p2` - Load the available subagent registry from
+   `{cf-studio-path}/.core/skills/studio/agents.toml` - `inst-load-registry`
+2. [ ] - `p2` - Filter candidates by role, target, mode, description, model
+   tier, reasoning effort, and context window - `inst-filter-candidates`
+3. [ ] - `p2` - Choose the cheapest capable candidate first, escalating only
+   for task complexity, safety/security risk, broad write scope, prompt
+   semantics, strict methodology coverage, or insufficient context window -
+   `inst-cheapest-capable`
+4. [ ] - `p2` - Treat low reasoning effort as the default for agents that
+   execute a resolved plan, phase brief, approved manifest, or narrow contract;
+   use medium/high reasoning only when the agent must decide what to do/how to
+   do it, design creative prompt/artifact semantics, handle ambiguity, or run
+   semantic review - `inst-reasoning-effort-policy`
+5. [ ] - `p2` - Apply workflow-specific required agents when a methodology
+   contract demands a named reviewer, validator, planner, or author -
+   `inst-required-agent-override`
 
 ## 3. Processes / Business Logic (CDSL)
 
@@ -125,10 +171,10 @@ Enable `cfs generate-agents` to generate tool-specific subagent definitions so t
 **Steps**:
 1. [ ] - `p1` - Check `agent_cfg.subagents` for explicit config override - `inst-check-override`
 2. [ ] - `p1` - **IF** no override, look up tool name in `_default_subagents()` built-in map - `inst-lookup-defaults`
-3. [ ] - `p1` - **IF** tool is `claude` **RETURN** config with output_dir=`.claude/agents`, format=markdown, two definitions - `inst-claude`
-4. [ ] - `p1` - **IF** tool is `cursor` **RETURN** config with output_dir=`.cursor/agents`, format=markdown, two definitions - `inst-cursor`
-5. [ ] - `p1` - **IF** tool is `copilot` **RETURN** config with output_dir=`.github/agents`, filename_format=`{name}.agent.md`, two definitions - `inst-copilot`
-6. [ ] - `p1` - **IF** tool is `openai` **RETURN** config with output_dir=`.codex/agents`, format=toml, two definitions - `inst-openai`
+3. [ ] - `p1` - **IF** tool is `claude` **RETURN** config with output_dir=`.claude/agents`, format=markdown, and definitions from the registry - `inst-claude`
+4. [ ] - `p1` - **IF** tool is `cursor` **RETURN** config with output_dir=`.cursor/agents`, format=markdown, and definitions from the registry - `inst-cursor`
+5. [ ] - `p1` - **IF** tool is `copilot` **RETURN** config with output_dir=`.github/agents`, filename_format=`{name}.agent.md`, and definitions from the registry - `inst-copilot`
+6. [ ] - `p1` - **IF** tool is `openai` **RETURN** config with output_dir=`.codex/agents`, format=toml, and definitions from the registry - `inst-openai`
 7. [ ] - `p1` - **IF** tool is `windsurf` or unknown **RETURN** None (no subagent support) - `inst-windsurf`
 
 ### Resolve Subagent Template
@@ -180,7 +226,7 @@ Not applicable because this is a stateless code generation feature. The `cfs gen
 
 - [ ] `p1` - **ID**: `cpt-studio-dod-subagent-reg-claude`
 
-The system **MUST** generate two files in `.claude/agents/` when `cfs generate-agents --agent claude` is invoked:
+The system **MUST** generate one file per registered subagent in `.claude/agents/` when `cfs generate-agents --agent claude` is invoked, including:
 - `cf-codegen.md` — YAML frontmatter with tools (Bash, Read, Write, Edit, Glob, Grep), model (inherit), isolation (worktree), and prompt referencing SKILL.md for code generation workflow
 - `cf-pr-review.md` — YAML frontmatter with tools (Bash, Read, Glob, Grep), disallowedTools (Write, Edit), model (sonnet), and prompt referencing SKILL.md for PR review workflow
 
@@ -194,7 +240,7 @@ The system **MUST** generate two files in `.claude/agents/` when `cfs generate-a
 
 - [ ] `p1` - **ID**: `cpt-studio-dod-subagent-reg-cursor`
 
-The system **MUST** generate two files in `.cursor/agents/` when `cfs generate-agents --agent cursor` is invoked:
+The system **MUST** generate one file per registered subagent in `.cursor/agents/` when `cfs generate-agents --agent cursor` is invoked, including:
 - `cf-codegen.md` — YAML frontmatter with tools (grep, view, edit, bash), model (inherit), and prompt referencing SKILL.md for code generation workflow
 - `cf-pr-review.md` — YAML frontmatter with tools (grep, view, bash), readonly (true), model (fast), and prompt referencing SKILL.md for PR review workflow
 
@@ -207,7 +253,7 @@ The system **MUST** generate two files in `.cursor/agents/` when `cfs generate-a
 
 - [ ] `p1` - **ID**: `cpt-studio-dod-subagent-reg-copilot`
 
-The system **MUST** generate two files in `.github/agents/` with `.agent.md` extension when `cfs generate-agents --agent copilot` is invoked:
+The system **MUST** generate one file per registered subagent in `.github/agents/` with `.agent.md` extension when `cfs generate-agents --agent copilot` is invoked, including:
 - `cf-codegen.agent.md` — YAML frontmatter with tools (["*"]) and prompt referencing SKILL.md for code generation workflow
 - `cf-pr-review.agent.md` — YAML frontmatter with tools (["read", "search"]) and prompt referencing SKILL.md for PR review workflow
 
@@ -220,7 +266,7 @@ The system **MUST** generate two files in `.github/agents/` with `.agent.md` ext
 
 - [ ] `p1` - **ID**: `cpt-studio-dod-subagent-reg-openai`
 
-The system **MUST** generate a single `studio-agents.toml` file in `.codex/agents/` with two `[agents.<name>]` sections (studio_codegen and studio_pr_review) containing description and developer_instructions when `cfs generate-agents --agent openai` is invoked.
+The system **MUST** generate a single `studio-agents.toml` file in `.codex/agents/` with one `[agents.<name>]` section per registered subagent, containing description and developer_instructions when `cfs generate-agents --agent openai` is invoked.
 
 **Implements**:
 - `cpt-studio-flow-subagent-reg-generate`
@@ -260,10 +306,10 @@ The system **MUST** support `--dry-run` for subagent generation, showing planned
 
 ## 6. Acceptance Criteria
 
-- [ ] `cfs generate-agents --agent claude` generates two files in `.claude/agents/` (`cf-codegen.md`, `cf-pr-review.md`) with correct YAML frontmatter
-- [ ] `cfs generate-agents --agent cursor` generates two files in `.cursor/agents/` with correct YAML frontmatter including readonly for pr-review
-- [ ] `cfs generate-agents --agent copilot` generates two files in `.github/agents/` with `.agent.md` extension
-- [ ] `cfs generate-agents --agent openai` generates single `studio-agents.toml` with two agent sections in TOML format
+- [ ] `cfs generate-agents --agent claude` generates one file per registered subagent in `.claude/agents/`, including `cf-codegen.md` and `cf-pr-review.md`, with correct YAML frontmatter
+- [ ] `cfs generate-agents --agent cursor` generates one file per registered subagent in `.cursor/agents/` with correct YAML frontmatter including readonly for pr-review
+- [ ] `cfs generate-agents --agent copilot` generates one file per registered subagent in `.github/agents/` with `.agent.md` extension
+- [ ] `cfs generate-agents --agent openai` generates single `studio-agents.toml` with one TOML section per registered subagent
 - [ ] `cfs generate-agents --agent windsurf` skips subagent generation with skip reason in JSON output
 - [ ] Existing skills/commands/workflows generation is unchanged for all tools
 - [ ] `--dry-run` shows planned subagent files without writing
@@ -279,7 +325,7 @@ The system **MUST** support `--dry-run` for subagent generation, showing planned
 | Subagent | Purpose | Write Access | Isolation |
 |----------|---------|-------------|-----------|
 | `cf-codegen` | Code generation when requirements are 100% clear — no back-and-forth | Yes (full tools) | Yes (worktree on Claude Code) |
-| `cf-pr-review` | Structured PR review in isolated context — keeps detailed analysis separate | No (read-only) | No |
+| `cf-pr-review` | Structured PR review in a separate read-only review flow | No (read-only) | No |
 
 **Tool-specific property mapping**:
 

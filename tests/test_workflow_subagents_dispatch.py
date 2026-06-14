@@ -222,6 +222,10 @@ WORKFLOW_SUBAGENTS: tuple[str, ...] = (
     "cf-generate-coder-smart",
     "cf-generate-prompt-engineer-casual",
     "cf-generate-prompt-engineer-smart",
+    "cf-phase-runner",
+    "cf-phase-compiler",
+    "cf-phase-runner-isolated",
+    "cf-phase-compiler-isolated",
 )
 
 FINDING_EMITTING_SUBAGENTS = {
@@ -242,7 +246,7 @@ COMMIT_FOOTER_CONTRACT = {
         "Studio attribution and provenance for commits created by Constructor Studio. "
         "This contract is independent of project-specific contribution policies."
     ),
-    "applies_when": {"agent_creates_git_commit": True},
+    "applies_when": {"studio_or_agent_creates_git_commit": True},
     "conflict_policy": (
         "commit_footer_contract is authoritative for required Studio attribution "
         "trailers; if it conflicts with git_constraint, stop before commit"
@@ -312,27 +316,27 @@ COMMIT_FOOTER_CONTRACT = {
 
 GIT_CONSTRAINTS = {
     "commit": (
-        "May `git add` the files you authored this task and `git commit` them "
-        "with a concise Conventional-Commits message when commit is otherwise "
-        "allowed by the workflow or user request. Every git commit created by "
-        "the agent must satisfy commit_footer_contract. Every git commit created "
-        "by the agent must also satisfy mandatory CONTRIBUTING_GUIDE commit "
-        "requirements, including DCO/Signed-off-by when required. "
-        "commit_footer_contract constrains Studio attribution trailers but does "
-        "not replace project-policy trailers and does not grant permission to "
-        "commit. "
+        "May inspect git state, `git add` the files authored this task, and "
+        "`git commit` them with a concise Conventional-Commits message when "
+        "commit is otherwise allowed by the workflow or user request. Every git "
+        "commit created by Studio or its agents must satisfy commit_footer_contract "
+        "and mandatory CONTRIBUTING_GUIDE commit requirements, including "
+        "DCO/Signed-off-by when required. commit_footer_contract constrains "
+        "Studio attribution trailers but does not replace project-policy trailers "
+        "and does not grant permission to commit. "
         "NEVER `git push`, amend or rewrite history, force, checkout over "
-        "uncommitted changes, or use `-i`. Stage only paths you wrote."
+        "uncommitted changes, or use `-i`. Stage only paths authored by the "
+        "current task."
     ),
     "stage": (
-        "May `git add` the files you authored this task. NEVER `git commit`, "
-        "push, or rewrite history. Leave staged changes for the user to review "
-        "and commit. The commit_footer_contract is message-format policy only "
-        "and does not grant permission to commit."
+        "May inspect git state and `git add` files authored this task. NEVER "
+        "`git commit`, push, or rewrite history. Leave staged changes for the "
+        "user to review and commit. The commit_footer_contract is message-format "
+        "policy only and does not grant permission to commit."
     ),
     "none": (
-        "NEVER invoke any git command (no add, stage, commit, or push). Write "
-        "files only; the user manages all git operations. The "
+        "NEVER invoke any git command (no status, diff, add, stage, commit, or "
+        "push). Write files only; the user manages all git operations. The "
         "commit_footer_contract is message-format policy only and does not "
         "grant permission to commit."
     ),
@@ -625,6 +629,36 @@ DISPATCH_PAYLOADS: dict[str, dict] = {
         "git_constraint": "Do not invoke any git tool. Do not run git commit, git add, or git stage. Edit in place only.",
         "contributing_guide": None,
     },
+    "cf-phase-runner": {
+        "plan_dir": "fixture/.bootstrap/.plans/example",
+        "target_phase": 1,
+        "git_commit_mode": "none",
+        "git_constraint": "Do not invoke any git tool. Do not run git commit, git add, or git stage. Edit in place only.",
+        "contributing_guide": None,
+    },
+    "cf-phase-compiler": {
+        "brief_path": "fixture/.bootstrap/.plans/example/brief-01-example.md",
+        "output_path": "fixture/.bootstrap/.plans/example/phase-01-example.md",
+        "plan_dir": "fixture/.bootstrap/.plans/example",
+        "git_commit_mode": "none",
+        "git_constraint": "Do not invoke any git tool. Do not run git commit, git add, or git stage. Edit in place only.",
+        "contributing_guide": None,
+    },
+    "cf-phase-runner-isolated": {
+        "plan_dir": "fixture/.bootstrap/.plans/example",
+        "target_phase": 1,
+        "git_commit_mode": "none",
+        "git_constraint": "Do not invoke any git tool. Do not run git commit, git add, or git stage. Edit in place only.",
+        "contributing_guide": None,
+    },
+    "cf-phase-compiler-isolated": {
+        "brief_path": "fixture/.bootstrap/.plans/example/brief-01-example.md",
+        "output_path": "fixture/.bootstrap/.plans/example/phase-01-example.md",
+        "plan_dir": "fixture/.bootstrap/.plans/example",
+        "git_commit_mode": "none",
+        "git_constraint": "Do not invoke any git tool. Do not run git commit, git add, or git stage. Edit in place only.",
+        "contributing_guide": None,
+    },
 }
 
 AUTHOR_WORKER_SUBAGENTS = {
@@ -649,7 +683,7 @@ for _agent_id in ("cf-generate-author", *AUTHOR_WORKER_SUBAGENTS):
 def _assert_commit_footer_contract_shape(contract: dict) -> None:
     assert contract["schema_version"] == "1"
     assert contract["authority"] == "GitCommitModeGate"
-    assert contract["applies_when"] == {"agent_creates_git_commit": True}
+    assert contract["applies_when"] == {"studio_or_agent_creates_git_commit": True}
     assert "footer_lines_required" not in contract
     assert "footer_lines_optional" not in contract
 
@@ -708,6 +742,7 @@ def _assert_git_constraint_for_mode(mode: str, constraint: str) -> None:
         assert "does not grant permission to commit" in constraint
     elif mode == "none":
         assert "NEVER invoke any git command" in constraint
+        assert "no status, diff, add, stage, commit, or push" in constraint
         assert "does not grant permission to commit" in constraint
     else:
         raise AssertionError(f"unexpected git mode {mode!r}")
@@ -730,11 +765,20 @@ def test_git_commit_mode_payload_includes_footer_contract_without_granting_commi
 def test_git_commit_mode_gate_declares_studio_footer_contract_without_prompt_snapshot() -> None:
     """The canonical gate must name the non-bypassable footer policy."""
     skill_text = Path("skills/studio/SKILL.md").read_text(encoding="utf-8")
+    module_text = Path("skills/studio/modules/subagents/git-commit-mode.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "BEFORE any cf workflow, main session, or sub-agent invokes git or prepares git policy -> LOAD "
+        "{cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md"
+    ) in skill_text
 
     required_phrases = [
         "SET COMMIT_FOOTER_CONTRACT: object",
-        "agent_creates_git_commit: true",
-        "Every git commit created by the agent must satisfy commit_footer_contract",
+        "studio_or_agent_creates_git_commit: true",
+        "Every git commit created by Studio or its agents must satisfy commit_footer_contract",
+        "before any cf workflow, main session, or sub-agent invokes git",
         "mandatory CONTRIBUTING_GUIDE commit requirements",
         "DCO/Signed-off-by when required",
         "does not replace project-policy trailers",
@@ -755,15 +799,18 @@ def test_git_commit_mode_gate_declares_studio_footer_contract_without_prompt_sna
         "git log -1 --format=%B",
         "commit-trailer audit failure",
         "NEVER invoke `git commit` until the exact planned command passes trailer preflight",
+        "NEVER let the main session, any workflow, or any sub-agent invoke any git tool when GIT_COMMIT_MODE == none",
     ]
     for phrase in required_phrases:
-        assert phrase in skill_text
+        assert phrase in module_text
 
 
 def test_contributing_dco_is_required_commit_policy_not_studio_footer_contract() -> None:
     """DCO must be enforced from CONTRIBUTING without entering the Studio contract."""
     contributing_text = Path("CONTRIBUTING.md").read_text(encoding="utf-8")
-    skill_text = Path("skills/studio/SKILL.md").read_text(encoding="utf-8")
+    module_text = Path("skills/studio/modules/subagents/git-commit-mode.md").read_text(
+        encoding="utf-8"
+    )
     worker_text = Path("skills/studio/agents/cf-generate-author-worker.md").read_text(
         encoding="utf-8"
     )
@@ -771,7 +818,7 @@ def test_contributing_dco_is_required_commit_policy_not_studio_footer_contract()
     assert "All commits **must** include a `Signed-off-by` line" in contributing_text
     assert "DCO/Signed-off-by when required" in GIT_CONSTRAINTS["commit"]
     assert "CONTRIBUTING_GUIDE commit requirements" in GIT_CONSTRAINTS["commit"]
-    assert "CONTRIBUTING_GUIDE commit requirements" in skill_text
+    assert "CONTRIBUTING_GUIDE commit requirements" in module_text
     assert "DCO/Signed-off-by trailers" in worker_text
     assert "git commit --trailer token=value" in worker_text
 
@@ -1261,49 +1308,146 @@ def test_coding_dispatch_names_reviewers_and_valid_coder() -> None:
     assert any(coder in registered for coder in coder_priority)
 
 
-def test_skill_requires_session_approval_before_native_subagent_dispatch() -> None:
-    """Native sub-agent dispatch requires explicit user approval once per session.
+def test_skill_requires_dispatch_group_approval_before_native_subagent_dispatch() -> None:
+    """Native sub-agent dispatch requires explicit approval for each dispatch group.
 
     The approval gate moved into UNIT SubAgentDispatch in skills/studio/SKILL.md.
-    Dispatch is gated on SUB_AGENTS_APPROVED == true, asked once per session via
-    MENU SubAgentApprovalRequest, and remembered for the rest of the session.
+    Dispatch is asked per group by default, with explicit options to save either
+    native approval or inline fallback for the session.
     """
     repo_root = Path(__file__).resolve().parents[1]
     skill = (repo_root / "skills" / "studio" / "SKILL.md").read_text(encoding="utf-8")
+    dispatch = (
+        repo_root / "skills" / "studio" / "modules" / "subagents" / "dispatch.md"
+    ).read_text(encoding="utf-8")
 
-    assert "UNIT SubAgentDispatch" in skill
-    assert "MENU SubAgentApprovalRequest" in skill
-    assert "SET SUB_AGENTS_APPROVED: unset | true | false" in skill
-    # Gate: never dispatch without approval; ask when unset.
-    assert "NEVER dispatch a sub-agent unless SUB_AGENTS_APPROVED == true" in skill
-    assert "REQUIRE SUB_AGENTS_APPROVED == true" in skill
-    assert "EMIT_MENU SubAgentApprovalRequest WHEN SUB_AGENTS_APPROVED == unset" in skill
-    assert "WAIT user.reply WHEN SUB_AGENTS_APPROVED == unset" in skill
-    # Approval is session-wide and revocable.
     assert (
-        "ALWAYS treat SUB_AGENTS_APPROVED as a session-wide approval that applies "
-        "to every later dispatch until StudioShutdown" in skill
+        "BEFORE choosing or launching cf-* sub-agents -> LOAD "
+        "{cf-studio-path}/.core/skills/studio/modules/subagents/dispatch.md"
+    ) in skill
+    assert "UNIT SubAgentDispatch" in dispatch
+    assert "MENU SubAgentApprovalRequest" in dispatch
+    assert "SET SUB_AGENT_DISPATCH_MODE: unset | approve-session | inline-session" in dispatch
+    assert "SET SUB_AGENT_GROUP_DECISION: unset | approve-once | inline-once | stop" in dispatch
+    assert (
+        "EMIT_MENU SubAgentApprovalRequest WHEN SUB_AGENT_DISPATCH_MODE == unset "
+        "AND SUB_AGENT_GROUP_DECISION == unset"
+    ) in dispatch
+    assert (
+        "STOP_TURN WHEN SUB_AGENT_DISPATCH_MODE == unset "
+        "AND SUB_AGENT_GROUP_DECISION == unset"
+    ) in dispatch
+    assert "ALWAYS ask before every dispatch group unless SUB_AGENT_DISPATCH_MODE" in dispatch
+    assert "NEVER dispatch a sub-agent silently" in dispatch
+    assert "1 approve-once -> SET SUB_AGENT_GROUP_DECISION = approve-once" in dispatch
+    assert "2 approve-session -> SET SUB_AGENT_DISPATCH_MODE = approve-session" in dispatch
+    assert "3 inline-once -> SET SUB_AGENT_GROUP_DECISION = inline-once" in dispatch
+    assert "4 inline-session -> SET SUB_AGENT_DISPATCH_MODE = inline-session" in dispatch
+    assert "5 stop -> SET SUB_AGENT_GROUP_DECISION = stop; STOP_TURN" in dispatch
+    assert (
+        "LOAD each sub-agent contract from the selected registry entry's prompt_file when present"
+        in dispatch
     )
-    # The approve option flips the gate and continues dispatch.
-    assert "1 approve -> SET SUB_AGENTS_APPROVED = true; CONTINUE dispatch" in skill
 
 
-def test_subagent_fallback_never_defaults_from_unapproved_native_support() -> None:
-    """Denying native dispatch routes to an explicit inline fallback menu.
+def test_subagent_inline_fallback_is_explicit_and_can_be_saved() -> None:
+    """Inline fallback is explicit and can be selected once or for the session.
 
-    A host exposing native sub-agent tools does not silently inline: denial sets
-    SUB_AGENTS_APPROVED=false and offers MENU SubAgentFallbackRequest, where the
-    user explicitly picks inline / retry / stop.
+    A host exposing native sub-agent tools does not silently inline; the user
+    explicitly picks inline-once or inline-session, including via natural
+    language such as "без саб агентов".
     """
+    repo_root = Path(__file__).resolve().parents[1]
+    dispatch = (
+        repo_root / "skills" / "studio" / "modules" / "subagents" / "dispatch.md"
+    ).read_text(encoding="utf-8")
+
+    assert "MENU SubAgentFallbackRequest" in dispatch
+    assert "EMIT_MENU SubAgentFallbackRequest WHEN native dispatch fails" in dispatch
+    assert "inline-once" in dispatch
+    assert "inline-session" in dispatch
+    assert "без саб агентов" in dispatch
+    assert "RUN each contract inline WHEN SUB_AGENT_DISPATCH_MODE == inline-session" in dispatch
+    assert (
+        "1 inline -> SET SUB_AGENT_GROUP_DECISION = inline-once; "
+        "RUN each contract inline for this dispatch group"
+    ) in dispatch
+    assert "RUN the contract inline" not in dispatch
+
+
+def test_router_free_text_and_other_paths_are_explicit_units() -> None:
+    """Router follow-up paths must be executable units, not prose inside menu options."""
+    repo_root = Path(__file__).resolve().parents[1]
+    skill = (repo_root / "skills" / "studio" / "SKILL.md").read_text(encoding="utf-8")
+    generate = (repo_root / "workflows" / "generate.md").read_text(encoding="utf-8")
+    analyze = (repo_root / "workflows" / "analyze.md").read_text(encoding="utf-8")
+
+    assert "UNIT IntentDescribeCapture" in skill
+    assert (
+        "INVALID -> treat non-empty free text as ORIGINAL_INTENT, load companion-skills "
+        "module when the text spans domains, run matching, and EMIT_MENU MatchedIntentSkillMenu"
+    ) in skill
+    assert "UNIT IntentAllSkillsMenu" in skill
+    assert "EMIT_MENU listing" not in skill
+
+    assert "UNIT GenerateDescribeIntent" in generate
+    assert "UNIT GenerateOtherSkills" in generate
+    assert "ALWAYS preserve ORIGINAL_INTENT when it was already set by GenerateDescribeIntent" in generate
+    assert "WHEN ORIGINAL_INTENT == unset" in generate
+    assert "2 other -> CONTINUE GenerateOtherSkills" in generate
+    assert "2 describe-intent | help-me-choose -> CONTINUE GenerateDescribeIntent" in generate
+    assert "EMIT_MENU listing" not in generate
+    assert "WAIT user.reply; SET ORIGINAL_INTENT" not in generate
+
+    assert "UNIT AnalyzeDescribeIntent" in analyze
+    assert "UNIT AnalyzeOtherSkills" in analyze
+    assert "ALWAYS preserve ORIGINAL_INTENT when it was already set by AnalyzeDescribeIntent" in analyze
+    assert "WHEN ORIGINAL_INTENT == unset" in analyze
+    assert "2 other -> CONTINUE AnalyzeOtherSkills" in analyze
+    assert "2 describe-intent | help-me-choose -> CONTINUE AnalyzeDescribeIntent" in analyze
+    assert "EMIT_MENU listing" not in analyze
+    assert "WAIT user.reply; SET ORIGINAL_INTENT" not in analyze
+
+
+def test_root_skill_declares_fail_closed_conditional_module_loading() -> None:
+    """Every lazy module must have a short root trigger and visible load report."""
     repo_root = Path(__file__).resolve().parents[1]
     skill = (repo_root / "skills" / "studio" / "SKILL.md").read_text(encoding="utf-8")
 
-    assert "MENU SubAgentFallbackRequest" in skill
-    assert "EMIT_MENU SubAgentFallbackRequest WHEN SUB_AGENTS_APPROVED == false OR native dispatch fails" in skill
-    assert "2 deny -> SET SUB_AGENTS_APPROVED = false; EMIT_MENU SubAgentFallbackRequest" in skill
-    assert "1 inline -> SET SUB_AGENTS_INLINE = true; RUN the contract inline" in skill
-    # The inline path is opt-in, never an automatic default.
-    assert "SET SUB_AGENTS_INLINE: unset | true (default unset, scope session)" in skill
+    required_modules = (
+        "modules/routing/companion-skills.md",
+        "modules/gates/creative-brainstorm-offer.md",
+        "modules/gates/migrate-from-cypilot-offer.md",
+        "modules/gates/language-complexity.md",
+        "modules/gates/plan-first.md",
+        "modules/subagents/dispatch.md",
+        "modules/subagents/git-commit-mode.md",
+        "modules/runtime/template-vars.md",
+        "modules/review/finding-contract.md",
+        "modules/review/fix-approval.md",
+        "modules/ui/next-actions.md",
+        "modules/session/shutdown.md",
+    )
+
+    assert "UNIT ConditionalModuleLoading" in skill
+    assert "NEVER move a rule out of this root skill unless its trigger can be expressed" in skill
+    assert "conditional-module report that lists every module path" in skill
+    assert "include the conditional-module trigger table in the cf load report" in skill
+    for module in required_modules:
+        assert module in skill
+        assert (repo_root / "skills" / "studio" / module).is_file()
+
+
+def test_subagent_selection_contract_uses_reasoning_effort_for_ranking() -> None:
+    """Reasoning effort is an operative selection input, not inert metadata."""
+    repo_root = Path(__file__).resolve().parents[1]
+    dispatch = (
+        repo_root / "skills" / "studio" / "modules" / "subagents" / "dispatch.md"
+    ).read_text(encoding="utf-8")
+
+    assert "reasoning_effort, and context_window" in dispatch
+    assert "preferring low reasoning_effort for resolved plans/contracts" in dispatch
+    assert "escalating reasoning_effort or context_window only for task risk" in dispatch
 
 
 def test_diff_scope_resolver_agent_registered_and_prompt_contract() -> None:
@@ -1471,6 +1615,7 @@ def test_instruction_references_are_follow_directives() -> None:
     search_roots = [
         repo_root / "workflows",
         repo_root / "skills" / "studio" / "agents",
+        repo_root / "skills" / "studio" / "modules",
     ]
     standalone_files = [
         repo_root / "skills" / "studio" / "SKILL.md",
@@ -1521,6 +1666,44 @@ def test_brainstorm_expert_is_context_isolated() -> None:
         agents = tomllib.load(fh)["agents"]
 
     assert agents["cf-brainstorm-expert"]["isolation"] is True
+
+
+def test_phase_agents_have_default_and_isolated_variants() -> None:
+    """Gitignored plan state uses in-place agents; tracked state can opt into isolation."""
+    import tomllib
+
+    repo_root = Path(__file__).resolve().parents[1]
+    agents_toml = repo_root / "skills" / "studio" / "agents.toml"
+    with open(agents_toml, "rb") as fh:
+        agents = tomllib.load(fh)["agents"]
+
+    assert agents["cf-phase-runner"]["isolation"] is False
+    assert agents["cf-phase-compiler"]["isolation"] is False
+    assert agents["cf-phase-runner-isolated"]["isolation"] is True
+    assert agents["cf-phase-compiler-isolated"]["isolation"] is True
+    assert agents["cf-phase-runner-isolated"]["prompt_file"] == "agents/cf-phase-runner.md"
+    assert agents["cf-phase-compiler-isolated"]["prompt_file"] == "agents/cf-phase-compiler.md"
+
+
+def test_plan_phase_agent_dispatch_discloses_variant_and_uses_async_lifecycle() -> None:
+    """Phase sub-agent dispatch must announce variant selection and avoid WAIT as an async join."""
+    repo_root = Path(__file__).resolve().parents[1]
+    plan = (repo_root / "workflows" / "plan.md").read_text(encoding="utf-8")
+
+    assert "UNIT PlanPhaseCompilerDispatch" in plan
+    assert "Selected phase compiler: {selected_phase_compiler}" in plan
+    assert "SET CF_PHASE_GATE = released_for_dispatch, DISPATCH the selected compiler agent per brief" in plan
+    assert "ALWAYS set CF_PHASE_GATE released_for_dispatch before compiler dispatch" in plan
+    assert "STOP_TURN" in plan
+    assert "UNIT PlanPhaseCompilerComplete" in plan
+    assert "NEVER use WAIT as an async sub-agent join" in plan
+    assert "Selected phase runner: {selected_phase_runner}" in plan
+    assert "WAIT until every dispatched compiler" not in plan
+    assert (
+        "cf-phase-compiler-isolated only when plan.toml, briefs, and declared "
+        "output paths are tracked or otherwise worktree-visible"
+    ) in plan
+    assert "compiler-isolated only when plan.toml, briefs, phase outputs" not in plan
 
 
 def test_studio_agent_prompts_are_controller_side_generators() -> None:
@@ -1739,11 +1922,14 @@ def test_runtime_instruction_modules_stay_compact() -> None:
     workflow, and the code reviewer contract.
     """
     repo_root = Path(__file__).resolve().parents[1]
-    # Tuples of (path, line_budget).  SKILL.md carries the consolidated UNIT
-    # rules (incl. the GIT_COMMIT_MODE / SubAgentDispatch state machines); it
-    # gets a higher budget than the pure-routing workflow files.
+    # Tuples of (path, line_budget).  SKILL.md carries only always-on core
+    # rules; conditional gates live in compact lazy modules.
     compact_files = [
-        (repo_root / "skills" / "studio" / "SKILL.md", 478),
+        (repo_root / "skills" / "studio" / "SKILL.md", 260),
+        (repo_root / "skills" / "studio" / "modules" / "subagents" / "dispatch.md", 120),
+        (repo_root / "skills" / "studio" / "modules" / "subagents" / "git-commit-mode.md", 140),
+        (repo_root / "skills" / "studio" / "modules" / "gates" / "plan-first.md", 80),
+        (repo_root / "skills" / "studio" / "modules" / "routing" / "companion-skills.md", 60),
         (repo_root / "workflows" / "generate.md", 150),
         (repo_root / "workflows" / "analyze.md", 150),
         (repo_root / "workflows" / "coding.md", 150),

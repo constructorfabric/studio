@@ -121,9 +121,37 @@ TITLE: Brief package prepared (plan.toml + N briefs, 0/N phase files) — choose
 OPTIONS:
   1 inline -> compile each phase file inline from its on-disk brief (apply a context boundary, read brief from disk, WRITE phase-NN-*.md with CF_PHASE_GATE released/armed), then CONTINUE PlanPhase3Validate
   2 prompts -> emit one self-contained downstream compilation prompt per brief (no phase files written), SET plan.execution_status="prompts_emitted", and STOP_TURN (Phase 3.4 validation skipped in this mode)
-  3 subagents -> DISPATCH cf-phase-compiler per brief (gated), WAIT until every dispatched compiler has signalled completion and its phase-NN-*.md output exists on disk, then CONTINUE PlanPhase3Validate
+  3 subagents -> CONTINUE PlanPhaseCompilerDispatch
   4 stop -> SET plan.execution_status="briefs_only" and STOP_TURN
   INVALID -> EMIT_MENU BriefCheckpointMenu
+```
+```pdsl
+UNIT PlanPhaseCompilerDispatch
+PURPOSE: Dispatch phase compiler sub-agents through an explicit lifecycle instead of blocking on an async join.
+DO:
+  RUN select phase compiler isolation policy from plan lifecycle, gitignore state, and whether plan.toml, briefs, and declared output paths are worktree-visible
+  EMIT "Selected phase compiler: {selected_phase_compiler}. Rationale: {phase_agent_isolation_rationale}. This determines whether phase files are written in-place or in a worktree-visible isolated context."
+  SET CF_PHASE_GATE = released_for_dispatch, DISPATCH the selected compiler agent per brief (gated), with dispatch_group_id recorded in plan.toml, SET CF_PHASE_GATE = armed
+  SET plan.execution_status="phase_compilers_dispatched"
+  STOP_TURN
+RULES:
+  ALWAYS use cf-phase-compiler for gitignored or main-checkout-local plan state
+  ALWAYS use cf-phase-compiler-isolated only when plan.toml, briefs, and declared output paths are tracked or otherwise worktree-visible
+  ALWAYS tell the user which compiler variant was selected and why before dispatch, including when sub-agent approval is already saved for the session
+  ALWAYS set CF_PHASE_GATE released_for_dispatch before compiler dispatch and armed immediately after
+  NEVER use WAIT as an async sub-agent join; resume validation only through PlanPhaseCompilerComplete
+```
+```pdsl
+UNIT PlanPhaseCompilerComplete
+PURPOSE: Resume after phase compiler sub-agents complete and prove their outputs exist before validation.
+WHEN:
+  REQUIRE plan.execution_status == "phase_compilers_dispatched"
+DO:
+  RUN verify every dispatched compiler signalled completion and every expected phase-NN-*.md output exists on disk
+  SET plan.execution_status="phase_files_compiled"
+  CONTINUE PlanPhase3Validate
+ON_ERROR:
+  EMIT missing compiler completion or output file evidence and STOP_TURN
 ```
 ```pdsl
 UNIT PlanPhase3Validate
@@ -171,7 +199,9 @@ UNIT PlanNativeExecute
 PURPOSE: Run native same-chat phase execution via the phase runner when sub-agents are approved.
 DO:
   RUN re-probe sub-agent approval + inline-fallback
-  SET CF_PHASE_GATE = released_for_dispatch, DISPATCH cf-phase-runner with plan_dir, target_phase=1, git_commit_mode, contributing_guide, and git_constraint, SET CF_PHASE_GATE = armed, then STOP_TURN WHEN approved AND not inline-fallback
+  RUN select phase runner isolation policy from plan lifecycle, gitignore state, and whether plan.toml plus declared outputs are worktree-visible
+  EMIT "Selected phase runner: {selected_phase_runner}. Rationale: {phase_agent_isolation_rationale}. This determines whether execution writes against main-checkout plan state or an isolated worktree-visible surface."
+  SET CF_PHASE_GATE = released_for_dispatch, DISPATCH the selected phase runner with plan_dir, target_phase=1, git_commit_mode, contributing_guide, and git_constraint, SET CF_PHASE_GATE = armed, then STOP_TURN WHEN approved AND not inline-fallback
   EMIT "Native same-chat execution is unavailable (sub-agents not approved or inline fallback active) — use the handoff prompt instead." then EMIT the new-chat startup prompt in a single fenced code block and STOP_TURN WHEN not approved OR inline-fallback active
 RULES:
   NEVER dispatch without a successful sub-agent / inline-fallback re-probe — fall back to the handoff prompt instead
@@ -189,7 +219,9 @@ DO:
 UNIT PlanDispatch
 PURPOSE: Name the sub-agents used and guard the plan safety rails.
 RULES:
-  ALWAYS dispatch cf-phase-compiler from {cf-studio-path}/.core/skills/studio/agents/cf-phase-compiler.md to compile phase files (brief-checkpoint option 3), and cf-phase-runner from {cf-studio-path}/.core/skills/studio/agents/cf-phase-runner.md for native same-chat execution
+  ALWAYS use cf-phase-compiler and cf-phase-runner as the default non-isolated phase agents when the plan lifecycle is gitignore, plan state is gitignored, or declared outputs are main-checkout-local
+  ALWAYS use cf-phase-compiler-isolated only when plan.toml, briefs, and declared output paths are tracked or otherwise worktree-visible; use cf-phase-runner-isolated only when plan.toml, briefs, phase outputs, and declared target outputs are tracked or otherwise worktree-visible
+  ALWAYS tell the user which phase agent variant was selected and why before dispatch
   NEVER dispatch either without the sub-agent approval + inline-fallback re-probe resolving to approved-and-not-fallback
   ALWAYS synthesize each dispatch from the agent contract plus the needed slices and ALWAYS include git_commit_mode, contributing_guide, git_constraint, and (for the compiler) the {cf-studio-path}/.core/requirements/prompt-engineering.md slice
   NEVER let a sub-agent reopen prompt or instruction files from disk

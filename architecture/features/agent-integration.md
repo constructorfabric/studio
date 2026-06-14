@@ -107,6 +107,10 @@ Without this feature, users would need to manually create and maintain agent-spe
   delegation, phase compile/execute, brainstorm, PDSL, plan, explore, generate,
   analyze/explain, workspace, map, auto-config, migration, and installed-kit
   shortcut examples such as PR review/status.
+- Agent invokes `/cf` or a thin router for a cross-cutting request → the router
+  offers all relevant companion workflows, supports explicit multi-select, then
+  loads each selected workflow's prerequisites and gates in order without
+  bypassing approval or STOP_TURN boundaries.
 
 **Steps**:
 1. - `p1` - Agent loads SKILL.md navigation hub - `inst-load-skill`
@@ -116,6 +120,24 @@ Without this feature, users would need to manually create and maintain agent-spe
 5. - `p1` - If routing is ambiguous, agent presents every core route family
    plus direct installed-kit shortcut examples before asking the user to choose
    or restate a concrete request - `inst-clarify-full-route-family`
+6. [ ] - `p1` - If no concrete intent is supplied, agent first presents the full
+   workflow menu with a `describe intent / help me choose` option; when the
+   user supplies free-text intent, agent re-runs matching and presents a second
+   menu with suitable workflows and companion multi-skill choices -
+   `inst-cf-intent-clarify-after-menu`
+7. [ ] - `p1` - If a task maps to multiple domains, agent offers compatible
+   companion workflows as a multi-select menu and invokes every selected
+   workflow sequentially, preserving each workflow's prerequisites, gates,
+   STOP_TURN boundaries, and approval requirements - `inst-companion-multi-select`
+8. [ ] - `p1` - Root `cf` keeps only always-on bootstrap/routing/memory/command
+   rules; every conditional module is loaded through `ConditionalModuleLoading`
+   before use, and a rule may be moved out of the root skill only when its
+   trigger can be stated as one short stable `BEFORE`/`WHEN` loading rule -
+   `inst-cf-conditional-module-loading`
+9. [ ] - `p1` - During cf load, agent reports both loaded always-on sources and
+   the conditional-module trigger table so the user can see which modules will
+   load when their conditions fire - `inst-cf-module-load-report`
+   approvals, and terminal boundaries - `inst-companion-multiselect`
 
 ## 3. Processes / Business Logic (CDSL)
 

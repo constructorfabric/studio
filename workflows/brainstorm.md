@@ -70,7 +70,7 @@ RULES:
 MENU PanelEditMenu
 TITLE: Panel setup — reply start to begin, or edit one thing.
 OPTIONS:
-  1 start -> INVOKE skill `cf-explore` with intent=brainstorm and return_context=true (it returns resource_context and skips its save offer and the global next-actions offer), SET resource_context, then CONTINUE BrainstormRounds
+  1 start -> INVOKE skill `cf-explore` with intent=brainstorm and return_context=true (it returns resource_context and skips its save offer and NextActionsOffer handoff), SET resource_context, then CONTINUE BrainstormRounds
   2 seed:<topic> -> set the seed topic, re-render the panel, and EMIT_MENU PanelEditMenu
   3 drop E{N} -> REQUIRE min 3 remain, re-render the panel, and EMIT_MENU PanelEditMenu
   4 swap E{N}:<persona>(<focus>) -> replace the persona, re-render the panel, and EMIT_MENU PanelEditMenu

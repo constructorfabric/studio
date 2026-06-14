@@ -131,7 +131,7 @@ OPTIONS:
   3 per-layer -> SET REVIEW_GRANULARITY = per-layer; one reviewer per category of each methodology, run in parallel (most thorough but slowest; suggested for new documents or structural changes)
   INVALID -> EMIT_MENU ReviewGranularityMenu
 NOTES:
-  Aggregation merges every reviewer's findings into one report, dedupes by (LOCATION, category, ROOT_CAUSE), keeps the highest SEVERITY and CONFIDENCE when collapsing duplicates, and preserves each finding's full ReviewFindingContract fields. The session-wide ReviewFixApprovalGate gates whether fixes are applied (CRIT+MAJOR / all / partial / none). cf-semantic-reviewer-freeform is added only when the user supplies a custom review prompt.
+  ConditionalModuleLoading loads {cf-studio-path}/.core/skills/studio/modules/review/finding-contract.md before findings are emitted and {cf-studio-path}/.core/skills/studio/modules/review/fix-approval.md before fixes are applied. Aggregation merges every reviewer's findings into one report, dedupes by (LOCATION, category, ROOT_CAUSE), keeps the highest SEVERITY and CONFIDENCE when collapsing duplicates, preserves each ReviewFindingContract field, and gates fixes through ReviewFixApprovalGate (CRIT+MAJOR / all / partial / none). cf-semantic-reviewer-freeform is added only when the user supplies a custom review prompt.
 ```
 
 ```pdsl
