@@ -34,11 +34,13 @@ _JSON_MODE: bool = False
 
 
 def set_json_mode(enabled: bool) -> None:
+    """Set whether command output should be JSON."""
     global _JSON_MODE  # pylint: disable=global-statement  # module-level output mode flag toggled once at CLI startup
     _JSON_MODE = enabled
 
 
 def is_json_mode() -> bool:
+    """Return whether command output is JSON."""
     return _JSON_MODE
 # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-ui-json-mode-flag
 

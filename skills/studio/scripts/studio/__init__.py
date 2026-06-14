@@ -14,6 +14,7 @@ from .utils import *
 
 # Import CLI entry point
 def main(argv: Optional[List[str]] = None) -> int:
+    """Run the command-line entry point."""
     from .cli import main as _main
     return _main(argv)
 

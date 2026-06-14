@@ -27,6 +27,7 @@ _ANSI_RESET = "\033[0m"
 
 
 def strip_control_chars(text: str, *, preserve_newlines: bool = False) -> str:
+    """Strip ANSI and control characters from text."""
     sanitized = _ANSI_ESCAPE_RE.sub("", str(text))
     sanitized = sanitized.replace("\x1b", "")
     if preserve_newlines:

@@ -72,6 +72,7 @@ class Kit:
 
     @classmethod
     def from_dict(cls, kit_id: str, data: dict) -> "Kit":
+        """Build an instance from a dictionary."""
         raw_format = (data or {}).get("format", "")
         fmt = str(raw_format).strip() if isinstance(raw_format, str) else ""
 
@@ -154,10 +155,12 @@ class Artifact:
     # Backward compatibility property
     @property
     def type(self) -> str:
+        """Return the legacy artifact type alias."""
         return self.kind
 
     @classmethod
     def from_dict(cls, data: dict) -> "Artifact":
+        """Build an instance from a dictionary."""
         # Support both "kind" (new) and "type" (old) keys
         kind = str(data.get("kind", data.get("type", "")))
         name = data.get("name")
@@ -203,6 +206,7 @@ class CodebaseEntry:
 
     @classmethod
     def from_dict(cls, data: dict) -> "CodebaseEntry":
+        """Build an instance from a dictionary."""
         exts = data.get("extensions", [])
         if not isinstance(exts, list):
             exts = []
@@ -231,6 +235,7 @@ class IgnoreBlock:
 
     @classmethod
     def from_dict(cls, data: dict) -> "IgnoreBlock":
+        """Build an instance from a dictionary."""
         reason = str((data or {}).get("reason", "") or "").strip()
         raw_patterns = (data or {}).get("patterns", [])
         patterns: List[str] = []
@@ -248,6 +253,7 @@ class AutodetectArtifactPattern:
 
     @classmethod
     def from_dict(cls, data: dict) -> "AutodetectArtifactPattern":
+        """Build an instance from a dictionary."""
         return cls(
             pattern=str((data or {}).get("pattern", "") or "").strip(),
             traceability=str((data or {}).get("traceability", "FULL") or "FULL").strip(),
@@ -269,6 +275,7 @@ class AutodetectRule:
 
     @classmethod
     def from_dict(cls, data: dict) -> "AutodetectRule":
+        """Build an instance from a dictionary."""
         artifacts = _parse_autodetect_artifacts((data or {}).get("artifacts", {}))
         codebase = _parse_autodetect_codebase((data or {}).get("codebase", []))
 
@@ -330,6 +337,7 @@ class SystemNode:
 
     @classmethod
     def from_dict(cls, data: dict, parent: Optional["SystemNode"] = None) -> "SystemNode":
+        """Build an instance from a dictionary."""
         kit = str(data.get("kit", data.get("kits", "")))
         # For backward compatibility, generate slug from name if not provided
         name = str(data.get("name", ""))
@@ -600,6 +608,7 @@ class ArtifactsMeta:
         )
 
     def rebuild_indices(self) -> None:
+        """Rebuild lookup indices from the current artifacts."""
         self._artifacts_by_path = {}
         self._build_indices()
 

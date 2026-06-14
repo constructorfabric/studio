@@ -39,6 +39,7 @@ class PdslFinding:
     context: Optional[str] = None
 
     def to_dict(self, *, verbose: bool = False) -> Dict[str, object]:
+        """Return a serializable dictionary representation."""
         out: Dict[str, object] = {
             "rule_id": self.rule_id,
             "severity": self.severity,
@@ -68,6 +69,7 @@ class PdslError:
     kind: str = "ERROR"
 
     def to_dict(self) -> Dict[str, object]:
+        """Return a serializable dictionary representation."""
         out: Dict[str, object] = {
             "message": self.message,
             "source_path": self.source_path,
@@ -90,6 +92,7 @@ class PdslSourceResult:
     errors: Tuple[PdslError, ...]
 
     def to_dict(self, *, verbose: bool = False) -> Dict[str, object]:
+        """Return a serializable dictionary representation."""
         return {
             "source": self.source,
             "status": self.status,
@@ -299,6 +302,7 @@ def validate_source(source: PdslSource, *, verbose: bool = False) -> PdslSourceR
 
 # @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-return-source-error
 def error_result(source: str, error: PdslError) -> PdslSourceResult:
+    """Build a PDSL source result for a validation error."""
     return PdslSourceResult(source=source, status="ERROR", findings=(), errors=(error,))
 # @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-return-source-error
 
@@ -307,6 +311,7 @@ def error_result(source: str, error: PdslError) -> PdslSourceResult:
 # @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-summary:p1:inst-preserve-input-order
 # @cpt-begin:cpt-studio-algo-pdsl-validation-cli-helper-summary:p1:inst-count-statuses
 def build_envelope(results: Sequence[PdslSourceResult], *, command: str, verbose: bool = False) -> Dict[str, object]:
+    """Build envelope."""
     pass_count = sum(1 for r in results if r.status == "PASS")
     fail_count = sum(1 for r in results if r.status == "FAIL")
     error_count = sum(1 for r in results if r.status == "ERROR")
@@ -335,6 +340,7 @@ def build_envelope(results: Sequence[PdslSourceResult], *, command: str, verbose
 
 # @cpt-begin:cpt-studio-state-pdsl-validation-cli-result-status:p1:inst-state-error
 def exit_code_for_results(results: Sequence[PdslSourceResult]) -> int:
+    """Return the process exit code for PDSL validation results."""
     if any(r.status == "ERROR" for r in results):
         return 1
 # @cpt-begin:cpt-studio-state-pdsl-validation-cli-result-status:p1:inst-state-fail

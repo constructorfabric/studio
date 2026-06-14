@@ -170,6 +170,7 @@ def _cmd_map(argv: List[str]) -> int:
 
 # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-route-helpers
 def main(argv: Optional[List[str]] = None) -> int:
+    """Run the command-line entry point."""
     argv_list = list(argv) if argv is not None else sys.argv[1:]
 
     # Extract global --json flag (must come before command dispatch)

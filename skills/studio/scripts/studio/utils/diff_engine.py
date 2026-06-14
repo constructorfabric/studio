@@ -31,6 +31,7 @@ class DiffReport:
 
     @property
     def has_changes(self) -> bool:
+        """Return whether the diff contains any changes."""
         return bool(self.added or self.removed or self.modified)
 # @cpt-end:cpt-studio-algo-kit-diff-display:p1:inst-diff-datamodel
 

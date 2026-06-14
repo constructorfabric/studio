@@ -22,6 +22,7 @@ _DEFAULT_TTL_SECONDS = 6 * 60 * 60
 
 # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-bg-version-check
 def update_check_file() -> Path:
+    """Return the cache file path for update checks."""
     configured = os.environ.get("CFS_UPDATE_CHECK_FILE", "")
     if configured:
         return Path(configured).expanduser()
@@ -29,6 +30,7 @@ def update_check_file() -> Path:
 
 
 def read_cached_update_check() -> Optional[Dict[str, Any]]:
+    """Read cached update check."""
     path = update_check_file()
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -37,12 +39,14 @@ def read_cached_update_check() -> Optional[Dict[str, Any]]:
 
 
 def write_cached_update_check(data: Dict[str, Any]) -> None:
+    """Write cached update check."""
     path = update_check_file()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def should_refresh(cache: Optional[Dict[str, Any]], ttl_seconds: int = _DEFAULT_TTL_SECONDS) -> bool:
+    """Return whether the cached update check is stale."""
     if not cache:
         return True
     try:
@@ -93,6 +97,7 @@ def _proxy_latest_version() -> str:
 
 
 def check_proxy() -> Dict[str, Any]:
+    """Check whether the installed proxy package has an update."""
     current = _proxy_current_version()
     result: Dict[str, Any] = {
         "component": "constructor-studio-proxy",
@@ -114,6 +119,7 @@ def check_proxy() -> Dict[str, Any]:
 
 # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-bg-version-check
 def check_skill_engine(skill_path: Optional[Path]) -> Dict[str, Any]:
+    """Check whether the installed skill engine has an update."""
     result: Dict[str, Any] = {
         "component": "skill-engine",
         "command": "cfs update",
@@ -149,6 +155,7 @@ def check_skill_engine(skill_path: Optional[Path]) -> Dict[str, Any]:
 
 # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-version-mismatch
 def check_kits(skill_path: Optional[Path], project_root: str = "") -> Dict[str, Any]:
+    """Check whether configured kits have updates."""
     result: Dict[str, Any] = {
         "component": "kits",
         "action": "unknown",
@@ -202,6 +209,7 @@ def run_update_check(
     include_kits: bool = True,
     write_cache: bool = False,
 ) -> Dict[str, Any]:
+    """Run all configured update checks."""
     checks = {
         "proxy": check_proxy(),
         "skill_engine": check_skill_engine(skill_path),
@@ -230,6 +238,7 @@ def run_update_check(
 
 # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-show-update-notice
 def main(argv: Optional[list[str]] = None) -> int:
+    """Run the command-line entry point."""
     parser = argparse.ArgumentParser(prog="studio-proxy-update-check")
     parser.add_argument("--skill-path", default="")
     parser.add_argument("--project-root", default="")

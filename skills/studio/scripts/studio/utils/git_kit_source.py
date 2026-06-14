@@ -72,6 +72,7 @@ class GitSourceError(ValueError):
         self.sanitized_url_display = sanitized_url_display
 
     def to_result(self) -> Dict[str, str]:
+        """Return a serializable error result."""
         result = {"error_code": self.code, "message": str(self)}
         if self.component:
             result["component"] = self.component
@@ -684,5 +685,6 @@ def materialize_git_kit_source(
 
 # @cpt-begin:cpt-studio-algo-generic-git-kit-installer-source-parse:p1:inst-git-parse-prefix
 def source_is_generic_git(source: str) -> bool:
+    """Return whether a source string uses the generic git transport."""
     return source.startswith("git/") or source.startswith("git:")
 # @cpt-end:cpt-studio-algo-generic-git-kit-installer-source-parse:p1:inst-git-parse-prefix

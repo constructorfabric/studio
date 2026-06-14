@@ -348,6 +348,7 @@ def should_migrate_from_cypilot(
 
 
 def migration_declined_result(project_root: Path, legacy_rel: str, *, dry_run: bool = False) -> Dict[str, Any]:
+    """Build the result payload for a declined migration."""
     # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-declined-result
     return {
         "status": "ABORTED",
@@ -458,6 +459,7 @@ def ensure_supported_legacy_version(
 
 
 def merge_legacy_preflight_result(result: Dict[str, Any], preflight: Dict[str, Any]) -> Dict[str, Any]:
+    """Merge legacy preflight metadata into a migration result."""
     # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-merge-preflight
     for key in ("legacy_version", "normalized_legacy_version", "target_legacy_version"):
         if key in preflight:
@@ -475,6 +477,7 @@ def merge_legacy_preflight_result(result: Dict[str, Any], preflight: Dict[str, A
 
 
 def read_legacy_cypilot_version(legacy_dir: Path) -> Optional[str]:
+    """Read legacy cypilot version."""
     # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-read-version
     for init_file in (
         legacy_dir / ".core" / "skills" / "cypilot" / "scripts" / "cypilot" / "__init__.py",
@@ -496,6 +499,7 @@ def should_update_legacy_cypilot(
     legacy_rel: str,
     version: Optional[str],
 ) -> bool:
+    """Return whether the legacy Cypilot install should be updated."""
     # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-prompt-legacy-update
     normalized = (choice or "ask").strip().lower()
     if normalized == "yes":
@@ -515,6 +519,7 @@ def unsupported_legacy_version_result(
     *,
     declined: bool,
 ) -> Dict[str, Any]:
+    """Build the result payload for an unsupported legacy version."""
     # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-prompt-legacy-update
     status = "ABORTED" if declined else "ERROR"
     version_label = version or "unknown"

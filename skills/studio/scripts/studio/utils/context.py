@@ -108,6 +108,7 @@ class StudioContext:
 
     # @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-globals
     def get_known_id_kinds(self) -> Set[str]:
+        """Return known id kinds."""
         kinds: Set[str] = set()
         for loaded_kit in self.kits.values():
             kc = getattr(loaded_kit, "constraints", None)
@@ -477,25 +478,31 @@ class WorkspaceContext:
 
     @property
     def adapter_dir(self) -> Path:
+        """Return the primary adapter directory."""
         return self.primary.adapter_dir
 
     @property
     def project_root(self) -> Path:
+        """Return the primary project root."""
         return self.primary.project_root
 
     @property
     def meta(self) -> ArtifactsMeta:
+        """Return the primary artifacts metadata."""
         return self.primary.meta
 
     @property
     def kits(self) -> Dict[str, LoadedKit]:
+        """Return the primary loaded kits."""
         return self.primary.kits
 
     @property
     def registered_systems(self) -> Set[str]:
+        """Return the primary registered systems."""
         return self.primary.registered_systems
 
     def get_known_id_kinds(self) -> Set[str]:
+        """Return known id kinds."""
         kinds = self.primary.get_known_id_kinds()
         for sc in self.sources.values():
             if not sc.reachable:

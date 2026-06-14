@@ -39,6 +39,7 @@ class CptUse:
     marker_kind: MarkerKind
 
     def to_dict(self) -> dict:
+        """Return a serializable dictionary representation."""
         return {
             "cpt_id": self.cpt_id,
             "line": self.line,
@@ -60,6 +61,7 @@ class Ref:
     def_snippet: Optional[str]
 
     def to_dict(self) -> dict:
+        """Return a serializable dictionary representation."""
         return {
             "cpt_id": self.cpt_id,
             "line": self.line,
@@ -88,6 +90,7 @@ class Node:
     cpt_uses: List[CptUse] = field(default_factory=list)
 
     def to_dict(self) -> dict:
+        """Return a serializable dictionary representation."""
         return {
             "id": self.id,
             "rel_path": self.rel_path,
@@ -118,6 +121,7 @@ class Edge:
     dangling: bool
 
     def to_dict(self) -> dict:
+        """Return a serializable dictionary representation."""
         return {
             "id": self.id,
             "from": self.from_id,

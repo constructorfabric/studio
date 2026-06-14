@@ -26,6 +26,7 @@ from .scan import ScanOptions, scan_repo
 
 
 def cmd_map(argv: List[str]) -> int:
+    """Run the map command."""
     # @cpt-begin:cpt-studio-flow-map-cli:p1:inst-cmd-map
     p = argparse.ArgumentParser(
         prog="cfs map",

@@ -89,6 +89,7 @@ def split_by_section_letter(text: str, section_re: re.Pattern) -> Tuple[List[str
 def split_by_section_letter_with_offsets(
     text: str, section_re: re.Pattern
 ) -> Tuple[List[str], Dict[str, List[str]], Dict[str, int]]:
+    """Split text into sections and record starting line offsets."""
     lines = text.splitlines()
     found_order: List[str] = []
     sections: Dict[str, List[str]] = {}

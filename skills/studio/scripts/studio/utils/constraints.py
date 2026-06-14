@@ -83,6 +83,7 @@ class KitConstraints:
     by_kind: Dict[str, ArtifactKindConstraints]
 
 def error(kind: str, message: str, *, path: Path | str, line: int = 1, code: Optional[str] = None, **extra) -> Dict[str, object]:
+    """Build a structured constraint validation error."""
     out: Dict[str, object] = {"type": kind, "message": message, "line": int(line)}
     if code:
         out["code"] = code
@@ -304,6 +305,7 @@ def parse_cpt(
     where_defined: Optional[callable] = None,
     known_kinds: Optional[Iterable[str]] = None,
 ) -> Optional[ParsedStudioId]:
+    """Parse a Studio cpt identifier for an expected kind."""
     # @cpt-begin:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-parse-cpt
     if not cpt or not str(cpt).lower().startswith("cpt-"):
         return None
@@ -501,6 +503,7 @@ def validate_artifact_file(
     constraints_path: Optional[Path] = None,
     kit_id: Optional[str] = None,
 ) -> Dict[str, List[Dict[str, object]]]:
+    """Validate one artifact file against structural constraints."""
     from .document import headings_by_line, scan_cpt_ids, scan_cdsl_instructions
 
     errors: List[Dict[str, object]] = []
@@ -937,6 +940,7 @@ def cross_validate_artifacts(
     registered_systems: Optional[Iterable[str]] = None,
     known_kinds: Optional[Iterable[str]] = None,
 ) -> Dict[str, List[Dict[str, object]]]:
+    """Cross-validate references between artifact records."""
     from .document import headings_by_line, scan_cpt_ids
 
     _ = known_kinds
@@ -1904,6 +1908,7 @@ def _parse_identifiers_block(
 
 # @cpt-algo:cpt-studio-algo-traceability-validation-load-constraints:p1
 def parse_kit_constraints(data: object) -> Tuple[Optional[KitConstraints], List[str]]:
+    """Parse kit constraints."""
     # @cpt-begin:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-parse-kit
     if data is None:
         return None, []
@@ -2079,6 +2084,7 @@ def merge_kit_constraints_all_of(constraints: Sequence[KitConstraints]) -> Optio
 # @cpt-end:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-constraints-normalize
 
 def load_constraints_file(path: Path) -> Tuple[Optional[KitConstraints], List[str]]:
+    """Load constraints file."""
     # @cpt-begin:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-load-toml
     path = path.resolve()
     if not path.is_file():
@@ -2099,6 +2105,7 @@ def load_constraints_file(path: Path) -> Tuple[Optional[KitConstraints], List[st
 
 
 def load_constraints_files(paths: Sequence[Path]) -> Tuple[Optional[KitConstraints], List[str]]:
+    """Load constraints files."""
     loaded: List[KitConstraints] = []
     errors: List[str] = []
     for path in paths:
@@ -2115,6 +2122,7 @@ def load_constraints_files(paths: Sequence[Path]) -> Tuple[Optional[KitConstrain
 
 
 def load_constraints_toml(kit_root: Path) -> Tuple[Optional[KitConstraints], List[str]]:
+    """Load constraints toml."""
     return load_constraints_file((kit_root / "constraints.toml").resolve())
 
 

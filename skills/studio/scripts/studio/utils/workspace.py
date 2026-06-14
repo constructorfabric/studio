@@ -69,6 +69,7 @@ class SourceEntry:
 
     @classmethod
     def from_dict(cls, name: str, data: dict) -> "SourceEntry":
+        """Build an instance from a dictionary."""
         raw_path = str((data or {}).get("path", "")).strip() or None
         raw_adapter = (data or {}).get("adapter", None)
         # Omitted key means no adapter (TOML has no null)
@@ -81,6 +82,7 @@ class SourceEntry:
         return cls(name=name, path=raw_path, adapter=adapter, role=raw_role, url=url, branch=branch)
 
     def to_dict(self) -> dict:
+        """Return a serializable dictionary representation."""
         d: dict = {}
         if self.url is not None:
             d["url"] = self.url
@@ -106,12 +108,14 @@ class TraceabilityConfig:
 
     @classmethod
     def from_dict(cls, data: dict) -> "TraceabilityConfig":
+        """Build an instance from a dictionary."""
         return cls(
             cross_repo=bool((data or {}).get("cross_repo", True)),
             resolve_remote_ids=bool((data or {}).get("resolve_remote_ids", True)),
         )
 
     def to_dict(self) -> dict:
+        """Return a serializable dictionary representation."""
         return {
             "cross_repo": self.cross_repo,
             "resolve_remote_ids": self.resolve_remote_ids,
@@ -126,6 +130,7 @@ class NamespaceRule:
     template: str  # e.g. "{org}/{repo}"
 
     def to_dict(self) -> dict:
+        """Return a serializable dictionary representation."""
         return {"host": self.host, "template": self.template}
 
 
@@ -138,6 +143,7 @@ class ResolveConfig:
 
     @classmethod
     def from_dict(cls, data: dict) -> "ResolveConfig":
+        """Build an instance from a dictionary."""
         workdir = str((data or {}).get("workdir", ".workspace-sources")).strip()
         raw_ns = (data or {}).get("namespace", {})
         namespace: List[NamespaceRule] = []
@@ -148,6 +154,7 @@ class ResolveConfig:
         return cls(workdir=workdir, namespace=namespace)
 
     def to_dict(self) -> dict:
+        """Return a serializable dictionary representation."""
         d: dict = {"workdir": self.workdir}
         if self.namespace:
             d["namespace"] = {r.host: r.template for r in self.namespace}
@@ -173,6 +180,7 @@ class ValidationConfig:
 
     @classmethod
     def from_dict(cls, data: dict) -> "ValidationConfig":
+        """Build an instance from a dictionary."""
         raw = (data or {}).get("allowed_content_languages", [])
         if isinstance(raw, list):
             langs = [str(x).strip().lower() for x in raw if str(x).strip()]
@@ -183,6 +191,7 @@ class ValidationConfig:
         return cls(allowed_content_languages=langs, ignore_paths=ignore)
 
     def to_dict(self) -> dict:
+        """Return a serializable dictionary representation."""
         result: dict = {}
         if self.allowed_content_languages:
             result["allowed_content_languages"] = list(self.allowed_content_languages)
@@ -214,6 +223,7 @@ class WorkspaceConfig:
         is_inline: bool = False,
         resolution_base: Optional[Path] = None,
     ) -> "WorkspaceConfig":
+        """Build an instance from a dictionary."""
         version = str((data or {}).get("version", "1.0")).strip()
         sources: Dict[str, SourceEntry] = {}
         raw_sources = (data or {}).get("sources", {})
@@ -252,6 +262,7 @@ class WorkspaceConfig:
         )
 
     def to_dict(self) -> dict:
+        """Return a serializable dictionary representation."""
         d: dict = {"version": self.version}
         d["sources"] = {name: src.to_dict() for name, src in self.sources.items()}
         trace = self.traceability.to_dict()
