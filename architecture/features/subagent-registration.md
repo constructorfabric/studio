@@ -149,7 +149,12 @@ Enable `cfs generate-agents` to generate tool-specific subagent definitions so t
    for task complexity, safety/security risk, broad write scope, prompt
    semantics, strict methodology coverage, or insufficient context window -
    `inst-cheapest-capable`
-4. [ ] - `p2` - Apply workflow-specific required agents when a methodology
+4. [ ] - `p2` - Treat low reasoning effort as the default for agents that
+   execute a resolved plan, phase brief, approved manifest, or narrow contract;
+   use medium/high reasoning only when the agent must decide what to do/how to
+   do it, design creative prompt/artifact semantics, handle ambiguity, or run
+   semantic review - `inst-reasoning-effort-policy`
+5. [ ] - `p2` - Apply workflow-specific required agents when a methodology
    contract demands a named reviewer, validator, planner, or author -
    `inst-required-agent-override`
 

@@ -38,6 +38,12 @@
 #                       when the matrix abstraction is insufficient); see
 #                       `_resolve_model_id` passthrough branch
 #
+#   reasoning_effort (string):
+#     Use "low" for execution agents that receive a resolved plan, phase brief,
+#     approved manifest, or narrow contract. Raise to "medium" or "high" only
+#     when the agent must decide what to do/how to do it, perform creative
+#     prompt/artifact design, handle ambiguity, or run semantic review.
+#
 # Navigation — model-matrix anchor markers in scripts/studio/commands/agents.py:
 #   inst-agents-datamodel            → Agent dataclass + field definitions
 #   inst-agent-field-validators      → allowed-value sets for mode/role/target/tier/effort/context
@@ -74,7 +80,7 @@ isolation = true
 model = "cf:tier:balanced"
 role = "generate"
 target = "codebase"
-reasoning_effort = "medium"
+reasoning_effort = "low"
 context_window = "high"
 
 [agents.cf-pr-review]
@@ -119,7 +125,7 @@ isolation = false
 model = "cf:tier:balanced"
 role = "generate"
 target = "any"
-reasoning_effort = "high"
+reasoning_effort = "low"
 context_window = "high"
 
 [agents.cf-phase-compiler]
@@ -132,7 +138,7 @@ isolation = false
 model = "cf:tier:balanced"
 role = "planning"
 target = "artifacts"
-reasoning_effort = "high"
+reasoning_effort = "low"
 context_window = "medium"
 
 [agents.cf-phase-runner-isolated]
@@ -147,7 +153,7 @@ isolation = true
 model = "cf:tier:balanced"
 role = "generate"
 target = "any"
-reasoning_effort = "high"
+reasoning_effort = "low"
 context_window = "high"
 
 [agents.cf-phase-compiler-isolated]
@@ -161,7 +167,7 @@ isolation = true
 model = "cf:tier:balanced"
 role = "planning"
 target = "artifacts"
-reasoning_effort = "high"
+reasoning_effort = "low"
 context_window = "medium"
 
 # ---------------------------------------------------------------------------
@@ -387,7 +393,7 @@ isolation = false
 model = "cf:tier:balanced"
 role = "generate"
 target = "any"
-reasoning_effort = "high"
+reasoning_effort = "medium"
 context_window = "high"
 
 [agents.cf-pdsl-transformer]
@@ -400,7 +406,7 @@ isolation = false
 model = "cf:tier:balanced"
 role = "generate"
 target = "any"
-reasoning_effort = "high"
+reasoning_effort = "medium"
 context_window = "high"
 
 [agents.cf-pdsl-reviewer]
@@ -597,7 +603,7 @@ isolation = false
 model = "cf:tier:balanced"
 role = "generate"
 target = "any"
-reasoning_effort = "medium"
+reasoning_effort = "low"
 context_window = "high"
 
 [agents.cf-generate-author-senior]
@@ -611,7 +617,7 @@ isolation = false
 model = "cf:tier:balanced"
 role = "generate"
 target = "any"
-reasoning_effort = "high"
+reasoning_effort = "medium"
 context_window = "high"
 
 [agents.cf-generate-author-lead]
@@ -640,7 +646,7 @@ isolation = false
 model = "cf:tier:cheap"
 role = "generate"
 target = "codebase"
-reasoning_effort = "medium"
+reasoning_effort = "low"
 context_window = "medium"
 
 [agents.cf-generate-coder-smart]
@@ -655,7 +661,7 @@ isolation = false
 model = "cf:tier:balanced"
 role = "generate"
 target = "codebase"
-reasoning_effort = "high"
+reasoning_effort = "medium"
 context_window = "high"
 
 [agents.cf-generate-prompt-engineer-casual]
@@ -669,7 +675,7 @@ isolation = false
 model = "cf:tier:cheap"
 role = "generate"
 target = "any"
-reasoning_effort = "medium"
+reasoning_effort = "low"
 context_window = "medium"
 
 [agents.cf-generate-prompt-engineer-smart]
