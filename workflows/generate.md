@@ -72,16 +72,43 @@ MENU GenerateIntentOffer
 TITLE: Generate intent matched these cf-* workflow(s) — pick one, or pick a companion group / comma-separated compatible skills.
 OPTIONS:
   1 most-relevant (suggested) -> INVOKE the top-ranked matched cf-* skill or companion group, passing ORIGINAL_INTENT as its input to every invoked skill
-  2 other -> EMIT_MENU listing every AVAILABLE_SKILLS entry as a numbered option with compatible multi-select allowed, then INVOKE the user-selected skill(s), passing ORIGINAL_INTENT
+  2 other -> CONTINUE GenerateOtherSkills
   3 none -> STOP_TURN
   INVALID -> EMIT_MENU GenerateIntentOffer
 MENU GenerateLoadOffer
 TITLE: No generate intent given — pick a cf-* skill, or describe intent so I can match the right workflow(s).
 OPTIONS:
   1 skill -> INVOKE the user-selected cf-* skill from AVAILABLE_SKILLS with no intent so the skill prompts for its own input; the menu lists each available skill as `<skill-name> — <short description>`
-  2 describe-intent | help-me-choose -> EMIT "Describe what you want to generate, change, or fix. I will match the relevant cf-* workflow(s), including companions when needed."; WAIT user.reply; SET ORIGINAL_INTENT = user.reply; CONTINUE GenerateRoute
+  2 describe-intent | help-me-choose -> CONTINUE GenerateDescribeIntent
   3 cancel -> STOP_TURN
   INVALID -> EMIT_MENU GenerateLoadOffer
+```
+
+```pdsl
+UNIT GenerateDescribeIntent
+PURPOSE: Capture a generate intent as a separate turn before routing.
+DO:
+  EMIT "Describe what you want to generate, change, or fix. I will match the relevant cf-* workflow(s), including companions when needed."
+  WAIT user.reply
+  STOP_TURN
+RULES:
+  ALWAYS on the resumed reply set ORIGINAL_INTENT = user.reply and CONTINUE GenerateRoute
+```
+
+```pdsl
+UNIT GenerateOtherSkills
+PURPOSE: Offer every available cf-* skill after the suggested generate match is not desired.
+DO:
+  EMIT_MENU GenerateOtherSkillsMenu
+  WAIT user.reply
+  STOP_TURN
+MENU GenerateOtherSkillsMenu
+TITLE: All available cf-* workflow(s) for generate — pick one, or enter comma-separated compatible skills.
+OPTIONS:
+  1 skill -> INVOKE the user-selected cf-* skill, passing ORIGINAL_INTENT
+  2 companion-selection -> INVOKE each selected compatible cf-* skill sequentially, passing ORIGINAL_INTENT
+  3 cancel -> STOP_TURN
+  INVALID -> EMIT_MENU GenerateOtherSkillsMenu
 ```
 
 ```pdsl
@@ -100,7 +127,7 @@ MENU GenerateNoMatchMenu
 TITLE: No match — load listed cf-* skill(s), describe intent again, or cancel.
 OPTIONS:
   1 skill -> INVOKE the user-selected cf-* skill(s), passing ORIGINAL_INTENT when present else load only
-  2 describe-intent | help-me-choose -> WAIT user.reply; SET ORIGINAL_INTENT = user.reply; CONTINUE GenerateRoute
+  2 describe-intent | help-me-choose -> CONTINUE GenerateDescribeIntent
   3 cancel -> STOP_TURN
   INVALID -> EMIT_MENU GenerateNoMatchMenu
 ```

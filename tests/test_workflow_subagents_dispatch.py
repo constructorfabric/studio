@@ -1324,6 +1324,10 @@ def test_skill_requires_dispatch_group_approval_before_native_subagent_dispatch(
     assert "3 inline-once -> SET SUB_AGENT_GROUP_DECISION = inline-once" in skill
     assert "4 inline-session -> SET SUB_AGENT_DISPATCH_MODE = inline-session" in skill
     assert "5 stop -> SET SUB_AGENT_GROUP_DECISION = stop; STOP_TURN" in skill
+    assert (
+        "LOAD each sub-agent contract from the selected registry entry's prompt_file when present"
+        in skill
+    )
 
 
 def test_subagent_inline_fallback_is_explicit_and_can_be_saved() -> None:
@@ -1343,6 +1347,46 @@ def test_subagent_inline_fallback_is_explicit_and_can_be_saved() -> None:
     assert "без саб агентов" in skill
     assert "RUN each contract inline WHEN SUB_AGENT_DISPATCH_MODE == inline-session" in skill
     assert "1 inline -> SET SUB_AGENT_GROUP_DECISION = inline-once; RUN the contract inline" in skill
+
+
+def test_router_free_text_and_other_paths_are_explicit_units() -> None:
+    """Router follow-up paths must be executable units, not prose inside menu options."""
+    repo_root = Path(__file__).resolve().parents[1]
+    skill = (repo_root / "skills" / "studio" / "SKILL.md").read_text(encoding="utf-8")
+    generate = (repo_root / "workflows" / "generate.md").read_text(encoding="utf-8")
+    analyze = (repo_root / "workflows" / "analyze.md").read_text(encoding="utf-8")
+
+    assert "UNIT IntentDescribeCapture" in skill
+    assert (
+        "INVALID -> treat non-empty free text as ORIGINAL_INTENT, run matching, "
+        "and EMIT_MENU MatchedIntentSkillMenu"
+    ) in skill
+    assert "UNIT IntentAllSkillsMenu" in skill
+    assert "EMIT_MENU listing" not in skill
+
+    assert "UNIT GenerateDescribeIntent" in generate
+    assert "UNIT GenerateOtherSkills" in generate
+    assert "2 other -> CONTINUE GenerateOtherSkills" in generate
+    assert "2 describe-intent | help-me-choose -> CONTINUE GenerateDescribeIntent" in generate
+    assert "EMIT_MENU listing" not in generate
+    assert "WAIT user.reply; SET ORIGINAL_INTENT" not in generate
+
+    assert "UNIT AnalyzeDescribeIntent" in analyze
+    assert "UNIT AnalyzeOtherSkills" in analyze
+    assert "2 other -> CONTINUE AnalyzeOtherSkills" in analyze
+    assert "2 describe-intent | help-me-choose -> CONTINUE AnalyzeDescribeIntent" in analyze
+    assert "EMIT_MENU listing" not in analyze
+    assert "WAIT user.reply; SET ORIGINAL_INTENT" not in analyze
+
+
+def test_subagent_selection_contract_uses_reasoning_effort_for_ranking() -> None:
+    """Reasoning effort is an operative selection input, not inert metadata."""
+    repo_root = Path(__file__).resolve().parents[1]
+    skill = (repo_root / "skills" / "studio" / "SKILL.md").read_text(encoding="utf-8")
+
+    assert "reasoning_effort, and context_window" in skill
+    assert "preferring low reasoning_effort for resolved plans/contracts" in skill
+    assert "escalating reasoning_effort or context_window only for task risk" in skill
 
 
 def test_diff_scope_resolver_agent_registered_and_prompt_contract() -> None:
@@ -1577,6 +1621,20 @@ def test_phase_agents_have_default_and_isolated_variants() -> None:
     assert agents["cf-phase-compiler-isolated"]["isolation"] is True
     assert agents["cf-phase-runner-isolated"]["prompt_file"] == "agents/cf-phase-runner.md"
     assert agents["cf-phase-compiler-isolated"]["prompt_file"] == "agents/cf-phase-compiler.md"
+
+
+def test_plan_phase_agent_dispatch_discloses_variant_and_uses_async_lifecycle() -> None:
+    """Phase sub-agent dispatch must announce variant selection and avoid WAIT as an async join."""
+    repo_root = Path(__file__).resolve().parents[1]
+    plan = (repo_root / "workflows" / "plan.md").read_text(encoding="utf-8")
+
+    assert "UNIT PlanPhaseCompilerDispatch" in plan
+    assert "Selected phase compiler: {selected_phase_compiler}" in plan
+    assert "STOP_TURN" in plan
+    assert "UNIT PlanPhaseCompilerComplete" in plan
+    assert "NEVER use WAIT as an async sub-agent join" in plan
+    assert "Selected phase runner: {selected_phase_runner}" in plan
+    assert "WAIT until every dispatched compiler" not in plan
 
 
 def test_studio_agent_prompts_are_controller_side_generators() -> None:

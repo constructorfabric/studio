@@ -56,8 +56,7 @@ RULES:
   ALWAYS render IntentSkillMenu with every offered cf-* skill on its own numbered line so the user selects one by replying with the number
   ALWAYS for activation-only cf, show all available workflows first and include a `describe intent / help me choose` option before asking for intent or entering explore, brainstorm, plan, or any substantive workflow gate
   ALWAYS when the user replies with free text instead of a listed workflow number, treat that reply as ORIGINAL_INTENT, run matching, and emit MatchedIntentSkillMenu
-  ALWAYS populate MatchedIntentSkillMenu with relevant single skills and compatible companion skill groups when the prompt contains a task intent
-  ALWAYS tag exactly one skill or companion group (suggested) when the prompt contains a task intent
+  ALWAYS populate MatchedIntentSkillMenu with relevant single skills and compatible companion groups, tagging exactly one option `(suggested)`, when the prompt contains a task intent
   NEVER tag a skill (suggested) when the prompt contains no task intent
   ALWAYS allow multi-select replies for compatible companion skills, formatted as comma-separated menu numbers, and invoke selected skills sequentially so each selected skill loads its prerequisites and gates in order
   NEVER let multi-select bypass any selected skill's WAIT, STOP_TURN, approval, brainstorm, plan, validation, or sub-agent gate
@@ -65,19 +64,46 @@ MENU IntentSkillMenu
 TITLE: Pick a cf-* workflow by number, or choose describe intent / help me choose so I can match the right workflow(s).
 OPTIONS:
   1 skill -> INVOKE the selected cf-* skill with no intent so the skill prompts for its own input
-  2 describe-intent | help-me-choose -> EMIT "Describe what you want to do. I will match the relevant cf-* workflow(s), including companion skills when the task spans domains."; WAIT user.reply; SET ORIGINAL_INTENT = user.reply; RUN matching; EMIT_MENU MatchedIntentSkillMenu
+  2 describe-intent | help-me-choose -> CONTINUE IntentDescribeCapture
   3 none -> STOP_TURN
-  INVALID -> EMIT_MENU IntentSkillMenu
+  INVALID -> treat non-empty free text as ORIGINAL_INTENT, run matching, and EMIT_MENU MatchedIntentSkillMenu; otherwise EMIT_MENU IntentSkillMenu
 MENU MatchedIntentSkillMenu
 TITLE: Matched cf-* workflow(s) for your intent — pick one, or pick a companion group / comma-separated skills when the task spans domains.
 OPTIONS:
   1 skill -> INVOKE the selected cf-* skill, passing ORIGINAL_INTENT
   2 companion-group -> INVOKE each listed companion cf-* skill sequentially, passing ORIGINAL_INTENT and preserving every selected skill's prerequisites and gates
-  3 other -> EMIT_MENU listing every available cf-* skill as a numbered option with multi-select allowed for compatible companions, then INVOKE the user-selected skill(s)
+  3 other -> CONTINUE IntentAllSkillsMenu
   4 none -> STOP_TURN
   INVALID -> EMIT_MENU MatchedIntentSkillMenu
 NOTES:
   The activation-only rendered menu enumerates every available cf-* skill on its own line as `N <skill-name> — <what it does>`, includes a `describe intent / help me choose` option, and appends a final `none` option. The matched rendered menu enumerates every matched skill or companion group as `N <skill-or-group> — <why it matches>`, tags exactly one `(suggested)`, allows comma-separated compatible multi-select, and appends a final `none` option.
+```
+
+```pdsl
+UNIT IntentDescribeCapture
+PURPOSE: Capture free-text intent after activation-only cf without falling through the current turn.
+DO:
+  EMIT "Describe what you want to do. I will match the relevant cf-* workflow(s), including companion skills when the task spans domains."
+  WAIT user.reply
+  STOP_TURN
+RULES:
+  ALWAYS on the resumed reply set ORIGINAL_INTENT = user.reply, run matching, EMIT_MENU MatchedIntentSkillMenu, WAIT user.reply, and STOP_TURN
+```
+
+```pdsl
+UNIT IntentAllSkillsMenu
+PURPOSE: Let the user choose from every available cf-* skill after rejecting the matched suggestion.
+DO:
+  EMIT_MENU AllCfSkillsMenu
+  WAIT user.reply
+  STOP_TURN
+MENU AllCfSkillsMenu
+TITLE: All available cf-* workflow(s) — pick one, or enter comma-separated compatible skills for a companion route.
+OPTIONS:
+  1 skill -> INVOKE the selected cf-* skill, passing ORIGINAL_INTENT when present else load only
+  2 companion-selection -> INVOKE each selected compatible cf-* skill sequentially, passing ORIGINAL_INTENT when present else load only
+  3 none -> STOP_TURN
+  INVALID -> treat non-empty free text as ORIGINAL_INTENT, run matching, and EMIT_MENU MatchedIntentSkillMenu; otherwise EMIT_MENU AllCfSkillsMenu
 ```
 
 ```pdsl
@@ -125,8 +151,8 @@ WHEN:
 DO:
   LOAD the available sub-agent registry from {cf-studio-path}/.core/skills/studio/agents.toml
   RUN build a selection table with id, description, mode, isolation, role, target, model tier, reasoning_effort, context_window, and prompt_file when present
-  RUN filter candidate agents by role, target, mode, and workflow-specific required methodology
-  RUN choose the cheapest capable candidate first, escalating only for task risk, ambiguity, scope, prompt semantics, security/concurrency/data concerns, strict methodology coverage, or context-window need
+  RUN filter candidate agents by role, target, mode, workflow-specific required methodology, reasoning_effort, and context_window
+  RUN choose the cheapest capable candidate first, preferring low reasoning_effort for resolved plans/contracts and escalating reasoning_effort or context_window only for task risk, ambiguity, scope, prompt semantics, security/concurrency/data concerns, strict methodology coverage, or context-window need
 RULES:
   ALWAYS treat agents.toml as the canonical registry of available cf-* sub-agents
   ALWAYS prefer native sub-agent dispatch for coding, authoring, scanning, validation, review, planning, exploration, phase work, and migration unless the user explicitly requests inline/no sub-agents or selects inline fallback
@@ -292,7 +318,7 @@ WHEN:
   REQUIRE one or more cf-* sub-agents must be launched as an immediate dispatch group
 DO:
   RUN SubAgentSelectionRegistry WHEN the workflow has not already selected a dispatch group
-  LOAD each sub-agent contract from {cf-studio-path}/.core/skills/studio/agents/{sub-agent-name}.md
+  LOAD each sub-agent contract from the selected registry entry's prompt_file when present, else from {cf-studio-path}/.core/skills/studio/agents/{sub-agent-name}.md
   EMIT_MENU SubAgentApprovalRequest WHEN SUB_AGENT_DISPATCH_MODE == unset AND SUB_AGENT_GROUP_DECISION == unset
   WAIT user.reply WHEN SUB_AGENT_DISPATCH_MODE == unset AND SUB_AGENT_GROUP_DECISION == unset
   STOP_TURN WHEN SUB_AGENT_DISPATCH_MODE == unset AND SUB_AGENT_GROUP_DECISION == unset
