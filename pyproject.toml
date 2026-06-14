@@ -52,8 +52,18 @@ disable = [
     "all",
 ]
 enable = [
+    "C0303",
+    "C0305",
+    "C0325",
+    "C1804",
+    "C1805",
     "E",
     "F",
+    "R1716",
+    "R1705",
+    "R1721",
+    "R1724",
+    "R1732",
     "W0101",
     "W0102",
     "W0104",
@@ -183,3 +193,28 @@ enable = [
     "W4905",
     "W4906",
 ]
+
+# Pylint rollout backlog, ordered by priority: useful/simple first,
+# noisy/architectural last. Keep commented until the rule is clean and enabled.
+# 01. C0414 - useless import alias (1 finding, low risk)
+# 02. C0411 - wrong import order (5 findings, medium risk)
+# 03. C0413 - import position (5 findings, medium risk)
+# 04. R0916 - too many boolean expressions (3 findings, medium risk)
+# 05. C0103 - invalid naming style (13 findings, medium risk)
+# 06. R0903 - too few public methods (2 findings, medium risk)
+# 07. C0114 - missing module docstring (7 findings, low value)
+# 08. C0115 - missing class docstring (25 findings, boilerplate risk)
+# 09. C0116 - missing function docstring (73 findings, boilerplate risk)
+# 10. R1702 - too many nested blocks (26 findings, refactor risk)
+# 11. R0911 - too many return statements (47 findings, refactor risk)
+# 12. R0914 - too many local variables (123 findings, extraction risk)
+# 13. R0801 - duplicate code (39 findings, ownership/refactor risk)
+# 14. R0912 - too many branches (84 findings, high refactor risk)
+# 15. R0915 - too many statements (52 findings, high refactor risk)
+# 16. R0913 - too many arguments (9 findings, API churn risk)
+# 17. R0917 - too many positional arguments (5 findings, API churn risk)
+# 18. R0902 - too many instance attributes (18 findings, data model risk)
+# 19. C0302 - too many lines in module (13 findings, module split risk)
+# 20. C0415 - import outside top-level (240 findings, lazy import risk)
+# 21. R0401 - cyclic imports (16 findings, architecture risk)
+# 22. C0301 - line too long (221 findings, noisy formatting pass)

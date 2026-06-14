@@ -103,7 +103,7 @@ def scan_cpt_ids(path: Path) -> List[Dict[str, object]]:
                 "type": "definition",
                 "checked": checked,
                 "has_task": m.group("task") is not None,
-                "has_priority": priority is not None and str(priority).strip() != "",
+                "has_priority": priority is not None and str(priority).strip(),
             }
             if priority:
                 h["priority"] = priority
@@ -128,7 +128,7 @@ def scan_cpt_ids(path: Path) -> List[Dict[str, object]]:
                 "type": "reference",
                 "checked": checked,
                 "has_task": mref.group("task") is not None,
-                "has_priority": priority is not None and str(priority).strip() != "",
+                "has_priority": priority is not None and str(priority).strip(),
             }
             if priority:
                 h["priority"] = priority
@@ -300,7 +300,7 @@ def get_content_scoped(
             text_lines = text_lines[:-1]
             end_idx -= 1
         text = "\n".join(text_lines).strip()
-        if text == "":
+        if not text:
             return None
         return (text, start_idx + 1, end_idx + 1)
 
@@ -427,52 +427,52 @@ def iter_text_files(
 ) -> List[Path]:
     """
     Iterate over text files in directory.
-    
+
     Args:
         root: Root directory to search
         includes: Glob patterns to include
         excludes: Glob patterns to exclude
         max_bytes: Maximum file size in bytes
-    
+
     Returns:
         List of file paths
     """
     import os
     import fnmatch
-    
+
     if excludes is None:
         excludes = []
-    
+
     skip_dirs = {
         ".git", ".hg", ".svn", ".idea", ".vscode", "__pycache__",
         ".pytest_cache", ".mypy_cache", ".ruff_cache",
         "node_modules", "target", "dist", "build", ".venv", "venv",
     }
-    
+
     out: List[Path] = []
     root = root.resolve()
-    
+
     for dirpath, dirnames, filenames in os.walk(root):
         # Filter out skip directories
         dirnames[:] = sorted([d for d in dirnames if d not in skip_dirs and not d.startswith(".")])
-        
+
         for fn in sorted(filenames):
             fp = Path(dirpath) / fn
-            
+
             # Get relative path for pattern matching
             try:
                 rel = fp.relative_to(root).as_posix()
             except ValueError:
                 continue
-            
+
             # Check excludes
             if excludes and any(fnmatch.fnmatch(rel, ex) for ex in excludes):
                 continue
-            
+
             # Check includes (when provided)
             if includes is not None and not any(fnmatch.fnmatch(rel, inc) for inc in includes):
                 continue
-            
+
             # Check file size
             try:
                 st = fp.stat()
@@ -480,18 +480,18 @@ def iter_text_files(
                     continue
             except OSError:
                 continue
-            
+
             out.append(fp)
-    
+
     return out
 
 def read_text_safe(path: Path) -> Optional[List[str]]:
     """
     Safely read text file to lines.
-    
+
     Args:
         path: File path to read
-    
+
     Returns:
         List of lines or None if error
     """
@@ -518,11 +518,11 @@ def read_text_safe(path: Path) -> Optional[List[str]]:
 def to_relative_posix(path: Path, root: Path) -> str:
     """
     Convert path to relative POSIX string from root.
-    
+
     Args:
         path: Path to convert
         root: Root path
-    
+
     Returns:
         Relative POSIX path string
     """

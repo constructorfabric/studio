@@ -379,7 +379,7 @@ def run_self_check_from_meta(
             continue
         if kit_obj is None:
             continue
-    
+
         kit_path_str = str(getattr(kit_obj, "path", "") or "").strip()
         if not kit_path_str:
             continue

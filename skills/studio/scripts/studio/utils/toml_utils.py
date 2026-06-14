@@ -105,7 +105,7 @@ def dumps(data: TomlData, header_comment: Optional[str] = None) -> str:
     _write_body(lines, data, prefix=[])
 
     # Strip trailing blank lines, ensure single trailing newline
-    while lines and lines[-1] == "":
+    while lines and not lines[-1]:
         lines.pop()
     return "\n".join(lines) + "\n"
 

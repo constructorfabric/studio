@@ -119,7 +119,7 @@ def _clone_if_missing(url: str, local_path: Path, branch: str) -> Optional[Path]
         clone_args.extend(["--branch", branch])
     clone_args.extend([url, str(local_path)])
     rc, _out, err = _run_git(clone_args)
-    if rc != 0:
+    if rc:
         print(f"Warning: git clone failed for {_redact_url(url)}: {err}", file=sys.stderr)
         return None
     return local_path
@@ -265,7 +265,7 @@ def is_worktree_dirty(local_path: Path) -> bool:
     Returns True if there are staged, unstaged, or untracked changes.
     """
     rc, out, _err = _run_git(["status", "--porcelain"], cwd=local_path)
-    if rc != 0:
+    if rc:
         return True  # Assume dirty on error (safe default)
     return bool(out.strip())
 
@@ -312,7 +312,7 @@ def sync_git_source(
     if branch != "HEAD":
         fetch_args.append(branch)
     rc, _out, err = _run_git(fetch_args, cwd=local_path)
-    if rc != 0:
+    if rc:
         return {"status": "failed", "error": f"git fetch failed: {err}"}
 
     # Update worktree
@@ -323,7 +323,7 @@ def sync_git_source(
             ["checkout", "--quiet", "-B", branch, f"origin/{branch}"],
             cwd=local_path,
         )
-    if rc != 0:
+    if rc:
         return {"status": "failed", "error": f"git update failed: {err}"}
 
     return {"status": "synced"}

@@ -261,7 +261,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(json.dumps({
                 "usage": "cfs <command> [options]",
                 "commands": _cmd_descriptions,
-                "sections": {name: cmds for name, cmds in _sections},
+                "sections": dict(_sections),
             }, indent=2, ensure_ascii=False))
         else:
             ui.header("Constructor Studio CLI")
@@ -317,77 +317,76 @@ def main(argv: Optional[List[str]] = None) -> int:
     # Dispatch to appropriate command handler
     if cmd == "validate":
         return _cmd_validate(rest)
-    elif cmd == "validate-code":
+    if cmd == "validate-code":
         # Legacy alias: keep for compatibility.
         return _cmd_validate(rest)
-    elif cmd in ("validate-kits", "validate-rules", "self-check"):
+    if cmd in ("validate-kits", "validate-rules", "self-check"):
         return _cmd_validate_kits(rest)
-    elif cmd == "init":
+    if cmd == "init":
         return _cmd_init(rest)
-    elif cmd == "update":
+    if cmd == "update":
         return _cmd_update(rest)
-    elif cmd == "list-ids":
+    if cmd == "list-ids":
         return _cmd_list_ids(rest)
-    elif cmd == "list-id-kinds":
+    if cmd == "list-id-kinds":
         return _cmd_list_id_kinds(rest)
-    elif cmd == "get-content":
+    if cmd == "get-content":
         return _cmd_get_content(rest)
-    elif cmd == "where-defined":
+    if cmd == "where-defined":
         return _cmd_where_defined(rest)
-    elif cmd == "where-used":
+    if cmd == "where-used":
         return _cmd_where_used(rest)
-    elif cmd == "info":
+    if cmd == "info":
         return _cmd_studio_info(rest)
-    elif cmd == "resolve-vars":
+    if cmd == "resolve-vars":
         return _cmd_resolve_vars(rest)
-    elif cmd == "agents":
+    if cmd == "agents":
         return _cmd_agents(rest)
-    elif cmd == "generate-agents":
+    if cmd == "generate-agents":
         return _cmd_generate_agents(rest)
-    elif cmd == "kit":
+    if cmd == "kit":
         return _cmd_kit(rest)
-    elif cmd == "generate-resources":
+    if cmd == "generate-resources":
         return _cmd_generate_resources(rest)
-    elif cmd == "toc":
+    if cmd == "toc":
         return _cmd_toc(rest)
-    elif cmd == "validate-toc":
+    if cmd == "validate-toc":
         return _cmd_validate_toc(rest)
-    elif cmd == "spec-coverage":
+    if cmd == "spec-coverage":
         return _cmd_spec_coverage(rest)
-    elif cmd == "chunk-input":
+    if cmd == "chunk-input":
         return _cmd_chunk_input(rest)
-    elif cmd == "workspace-init":
+    if cmd == "workspace-init":
         return _cmd_workspace_init(rest)
-    elif cmd == "workspace-add":
+    if cmd == "workspace-add":
         return _cmd_workspace_add(rest)
-    elif cmd == "workspace-info":
+    if cmd == "workspace-info":
         return _cmd_workspace_info(rest)
-    elif cmd == "workspace-sync":
+    if cmd == "workspace-sync":
         return _cmd_workspace_sync(rest)
-    elif cmd == "delegate":
+    if cmd == "delegate":
         return _cmd_delegate(rest)
-    elif cmd == "doctor":
+    if cmd == "doctor":
         return _cmd_doctor(rest)
-    elif cmd == "check-language":
+    if cmd == "check-language":
         return _cmd_check_language(rest)
-    elif cmd == "pdsl":
+    if cmd == "pdsl":
         return _cmd_pdsl(rest)
-    elif cmd == "map":
+    if cmd == "map":
         return _cmd_map(rest)
-    else:
-        # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-if-no-handler
-        # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-return-unknown
-        from .utils.ui import ui
-        ui.result(
-            {"status": "ERROR", "message": f"Unknown command: {cmd}", "available": all_commands},
-            human_fn=lambda d: (
-                ui.error(f"Unknown command: {cmd}"),
-                ui.hint(f"Available commands: {', '.join(all_commands)}"),
-                ui.hint("Run 'cfs --help' for usage."),
-            ),
-        )
-        return 1
-        # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-return-unknown
+    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-if-no-handler
+    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-return-unknown
+    from .utils.ui import ui
+    ui.result(
+        {"status": "ERROR", "message": f"Unknown command: {cmd}", "available": all_commands},
+        human_fn=lambda d: (
+            ui.error(f"Unknown command: {cmd}"),
+            ui.hint(f"Available commands: {', '.join(all_commands)}"),
+            ui.hint("Run 'cfs --help' for usage."),
+        ),
+    )
+    return 1
+    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-return-unknown
         # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-if-no-handler
     # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-return-code
     # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-serialize-json

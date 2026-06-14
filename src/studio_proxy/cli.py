@@ -133,9 +133,8 @@ def _handle_mirror(args: List[str]) -> int:
         if removed:
             print(f"Removed: {old_url}")
             return 0
-        else:
-            sys.stderr.write(f"Not found: {old_url}\n")
-            return 1
+        sys.stderr.write(f"Not found: {old_url}\n")
+        return 1
 
     if sub == "clear":
         yes = "--yes" in args or "-y" in args

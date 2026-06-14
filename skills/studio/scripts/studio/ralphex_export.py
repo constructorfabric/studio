@@ -532,7 +532,7 @@ def check_review_precondition(default_branch: str = "main", repo_root: str | Non
             "message": f"Failed to check git history: {exc}",
         }
 
-    if proc.returncode != 0:
+    if proc.returncode:
         logger.warning("git rev-list failed: %s", proc.stderr.strip())
         return {
             "ok": False,
@@ -565,7 +565,7 @@ def check_review_precondition(default_branch: str = "main", repo_root: str | Non
 
 def _classify_exit_status(exit_code: int, partial: bool) -> str:
     """Return ``"success"``, ``"partial"``, or ``"failed"`` from *exit_code*."""
-    if exit_code == 0:
+    if not exit_code:
         return "success"
     return "partial" if partial else "failed"
 
@@ -681,7 +681,7 @@ def run_validation_commands(commands: list[str], cwd: Optional[str] = None) -> d
             entry["returncode"] = proc.returncode
             entry["stdout"] = proc.stdout
             entry["stderr"] = proc.stderr
-            if proc.returncode != 0:
+            if proc.returncode:
                 all_passed = False
         except subprocess.TimeoutExpired:
             entry["error"] = f"Timeout after 120s: {cmd}"
@@ -1062,7 +1062,11 @@ def run_delegation(
         )
         sys.stderr.flush()
         try:
-            tty = open("/dev/tty", "r", encoding="utf-8")  # noqa: SIM115
+            tty = open(  # pylint: disable=consider-using-with
+                "/dev/tty",
+                "r",
+                encoding="utf-8",
+            )
             try:
                 answer = tty.readline().strip().lower()
             finally:
@@ -1081,9 +1085,11 @@ def run_delegation(
 
     try:
         if stream_output:
-            proc = subprocess.Popen(command)
+            proc = subprocess.Popen(  # pylint: disable=consider-using-with
+                command,
+            )
         else:
-            proc = subprocess.Popen(
+            proc = subprocess.Popen(  # pylint: disable=consider-using-with
                 command,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
@@ -1092,48 +1098,49 @@ def run_delegation(
             )
 
         timeout_seconds = 3600
-        while True:
-            try:
-                stdout, stderr = proc.communicate(timeout=timeout_seconds)
-                break
-            except subprocess.TimeoutExpired:
-                if _should_continue_after_timeout(timeout_seconds):
-                    continue
-                proc.terminate()
+        with proc:
+            while True:
                 try:
-                    stdout, stderr = proc.communicate(timeout=10)
+                    stdout, stderr = proc.communicate(timeout=timeout_seconds)
+                    break
                 except subprocess.TimeoutExpired:
-                    proc.kill()
-                    stdout, stderr = proc.communicate()
+                    if _should_continue_after_timeout(timeout_seconds):
+                        continue
+                    proc.terminate()
+                    try:
+                        stdout, stderr = proc.communicate(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        stdout, stderr = proc.communicate()
+                    lifecycle.fail()
+                    result["status"] = "error"
+                    result["lifecycle_state"] = lifecycle.state
+                    result["returncode"] = proc.returncode
+                    result["stdout"] = None if stream_output else stdout
+                    result["stderr"] = None if stream_output else stderr
+                    result["error"] = (
+                        f"ralphex timed out after {timeout_seconds} seconds and was stopped"
+                    )
+                    return result
+
+            result["stdout"] = None if stream_output else stdout
+            result["stderr"] = None if stream_output else stderr
+            result["returncode"] = proc.returncode
+            if not proc.returncode:
+                lifecycle.complete()
+                result["status"] = "delegated"
+                result["lifecycle_state"] = lifecycle.state
+            else:
                 lifecycle.fail()
                 result["status"] = "error"
                 result["lifecycle_state"] = lifecycle.state
-                result["returncode"] = proc.returncode
-                result["stdout"] = None if stream_output else stdout
-                result["stderr"] = None if stream_output else stderr
-                result["error"] = (
-                    f"ralphex timed out after {timeout_seconds} seconds and was stopped"
-                )
-                return result
-
-        result["stdout"] = None if stream_output else stdout
-        result["stderr"] = None if stream_output else stderr
-        result["returncode"] = proc.returncode
-        if proc.returncode == 0:
-            lifecycle.complete()
-            result["status"] = "delegated"
-            result["lifecycle_state"] = lifecycle.state
-        else:
-            lifecycle.fail()
-            result["status"] = "error"
-            result["lifecycle_state"] = lifecycle.state
-            if stream_output:
-                result["error"] = f"ralphex exited with code {proc.returncode}"
-            else:
-                result["error"] = (
-                    f"ralphex exited with code {proc.returncode}: "
-                    f"{(stderr or '').strip() or (stdout or '').strip()}"
-                )
+                if stream_output:
+                    result["error"] = f"ralphex exited with code {proc.returncode}"
+                else:
+                    result["error"] = (
+                        f"ralphex exited with code {proc.returncode}: "
+                        f"{(stderr or '').strip() or (stdout or '').strip()}"
+                    )
     except FileNotFoundError:
         lifecycle.fail()
         result["status"] = "error"

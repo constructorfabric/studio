@@ -151,7 +151,7 @@ def scan_file_coverage(path: Path) -> Optional[FileCoverage]:
             effective_line_set.add(line_no)
     # @cpt-end:cpt-studio-algo-spec-coverage-scan:p1:inst-scan-count-lines
 
-    if effective_lines == 0:
+    if not effective_lines:
         return FileCoverage(
             path=str(path),
             total_lines=total_lines,
@@ -193,7 +193,7 @@ def scan_file_coverage(path: Path) -> Optional[FileCoverage]:
 
     scope_count = len(scope_markers)
     block_count = len(block_ranges)
-    has_scope_only = scope_count > 0 and block_count == 0
+    has_scope_only = scope_count > 0 and not block_count
 
     # @cpt-begin:cpt-studio-algo-spec-coverage-scan:p1:inst-scan-calc-ranges
     covered_set: Set[int] = set()
@@ -218,7 +218,7 @@ def scan_file_coverage(path: Path) -> Optional[FileCoverage]:
 
     if has_scope_only:
         granularity = 0.0
-    elif block_count == 0:
+    elif not block_count:
         granularity = 0.0
     else:
         ideal_blocks = max(1.0, effective_lines / 10.0)
@@ -352,7 +352,7 @@ def generate_report(report: CoverageReport, *, verbose: bool = False, project_ro
             "granularity": fc.granularity,
         }
 
-        if fc.covered_lines == 0:
+        if not fc.covered_lines:
             uncovered_file_list.append(_rel(fc.path))
 
         if fc.has_scope_only:

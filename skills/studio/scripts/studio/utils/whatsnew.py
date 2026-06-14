@@ -100,7 +100,7 @@ def compare_versions(v1: str, v2: str) -> int:
     t2 = parse_semver(v2)
     if t1 < t2:
         return -1
-    elif t1 > t2:
+    if t1 > t2:
         return 1
     return 0
 # @cpt-end:cpt-studio-algo-kit-whatsnew-display:p1:inst-whatsnew-version-cmp

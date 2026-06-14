@@ -1611,7 +1611,7 @@ def _parse_heading_constraint(obj: object, *, pointer: Optional[str] = None) -> 
     next_s = _normalize_heading_identifier(nxt) or None
 
     level = obj.get("level")
-    if not isinstance(level, int) or not (1 <= level <= 6):
+    if not isinstance(level, int) or not 1 <= level <= 6:
         return None, "Heading constraint field 'level' must be integer 1-6"
 
     pattern = obj.get("pattern")

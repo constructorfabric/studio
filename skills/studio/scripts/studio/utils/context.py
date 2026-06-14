@@ -123,12 +123,12 @@ class StudioContext:
 # ---------------------------------------------------------------------------
 # Helpers extracted from load_from_dir for cognitive-complexity budget
 # ---------------------------------------------------------------------------
- 
- 
+
+
 _ARTIFACTS_TOML = "artifacts.toml"
 _CORE_TOML = "core.toml"
- 
- 
+
+
 def _resolve_registry_path(adapter_dir: Path) -> Path:
     """Resolve the artifacts registry path for error reporting."""
     cfg_dir = adapter_dir / "config"
