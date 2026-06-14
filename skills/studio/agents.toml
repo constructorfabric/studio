@@ -103,16 +103,19 @@ target = "any"
 reasoning_effort = "medium"
 context_window = "medium"
 
-# phase-runner intentionally does NOT load SKILL.md (its parent
-# plan supplies the contract); write access is bounded only by
-# host isolation. The Phase-Skip Gate does not apply.
+# Phase agents intentionally do NOT load SKILL.md (their parent plan supplies
+# the contract). The default variants operate in-place because canonical plan
+# state usually lives under gitignored `{cf-studio-path}/.plans/` in the main
+# checkout. Use the `*-isolated` variants only when the plan manifest, briefs,
+# phase files, and declared outputs are tracked or otherwise visible inside the
+# worktree. The Phase-Skip Gate does not apply.
 [agents.cf-phase-runner]
 description = """\
 Invoke when executing the next or a specific phase from a generated \
-Constructor Studio plan inside a dedicated agent context, without delegating \
-to ralphex."""
+Constructor Studio plan in-place against main-checkout-local plan state, \
+without delegating to ralphex."""
 mode = "readwrite"
-isolation = true
+isolation = false
 model = "cf:tier:balanced"
 role = "generate"
 target = "any"
@@ -122,8 +125,37 @@ context_window = "high"
 [agents.cf-phase-compiler]
 description = """\
 Invoke when compiling exactly one generated plan phase from its compilation \
-brief in an isolated agent context, without delegating to ralphex or executing \
-the phase."""
+brief in-place against main-checkout-local plan state, without delegating to \
+ralphex or executing the phase."""
+mode = "readwrite"
+isolation = false
+model = "cf:tier:balanced"
+role = "planning"
+target = "artifacts"
+reasoning_effort = "high"
+context_window = "medium"
+
+[agents.cf-phase-runner-isolated]
+prompt_file = "agents/cf-phase-runner.md"
+description = """\
+Invoke when executing the next or a specific phase from a generated \
+Constructor Studio plan in a worktree-isolated agent context, only when \
+plan.toml, briefs, phase files, and declared outputs are tracked or otherwise \
+visible inside the worktree."""
+mode = "readwrite"
+isolation = true
+model = "cf:tier:balanced"
+role = "generate"
+target = "any"
+reasoning_effort = "high"
+context_window = "high"
+
+[agents.cf-phase-compiler-isolated]
+prompt_file = "agents/cf-phase-compiler.md"
+description = """\
+Invoke when compiling exactly one generated plan phase from its compilation \
+brief in a worktree-isolated agent context, only when the brief, output path, \
+and plan manifest are tracked or otherwise visible inside the worktree."""
 mode = "readwrite"
 isolation = true
 model = "cf:tier:balanced"

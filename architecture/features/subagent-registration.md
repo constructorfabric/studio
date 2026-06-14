@@ -11,6 +11,7 @@
 - [2. Actor Flows (CDSL)](#2-actor-flows-cdsl)
   - [Generate Subagent Definitions](#generate-subagent-definitions)
   - [Invoke Studio Subagent](#invoke-studio-subagent)
+  - [Select Studio Subagent](#select-studio-subagent)
 - [3. Processes / Business Logic (CDSL)](#3-processes--business-logic-cdsl)
   - [Detect Tool Subagent Capability](#detect-tool-subagent-capability)
   - [Resolve Subagent Template](#resolve-subagent-template)
@@ -41,7 +42,13 @@
 Extend studio's multi-agent integration to generate two purpose-built subagent definitions for tools that support isolated agent contexts: Claude Code (`.claude/agents/`), Cursor (`.cursor/agents/`), GitHub Copilot (`.github/agents/`), and OpenAI Codex (`.codex/agents/`). Currently `cfs generate-agents --agent <name>` generates only skills, commands, and workflow proxies — missing the subagent integration surface that four of five supported tools now provide.
 
 Problem: Studio workflows cannot run as isolated subagents with scoped tools, model selection, and dedicated prompts.
-Primary value: Users get two studio subagents (`cf-codegen` for fully-specified code generation, `cf-pr-review` for isolated PR review) that their IDE/agent tool can auto-delegate to, with appropriate read/write restrictions per workflow.
+Primary value: Users get Studio subagents for code generation, review,
+planning, prompt authoring/review, exploration, deterministic validation, and
+workflow-specific specialist work that their IDE/agent tool can delegate to
+with appropriate read/write restrictions per workflow. Studio workflows prefer
+subagent dispatch for coding, authoring, scanning, validation, review,
+planning, and exploration unless the user explicitly selects inline execution
+or asks for no subagents.
 Key assumptions: Subagent formats across tools have stabilized sufficiently for code generation. Windsurf does not support subagents and is excluded from this feature. Subagents are purpose-built — not mirrors of existing skills.
 
 ### 1.2 Purpose
@@ -107,10 +114,44 @@ Enable `cfs generate-agents` to generate tool-specific subagent definitions so t
 
 **Steps**:
 1. [ ] - `p2` - Main session receives task matching a studio subagent description - `inst-match-task`
-2. [ ] - `p2` - Host tool spawns isolated subagent context with scoped tools and prompt - `inst-spawn`
-3. [ ] - `p2` - Subagent reads referenced SKILL.md and follows workflow entry point - `inst-read-skill`
-4. [ ] - `p2` - Subagent completes work within isolated context - `inst-complete`
-5. [ ] - `p2` - **RETURN** results/summary to main session - `inst-return-results`
+2. [ ] - `p2` - Main session groups intended subagent dispatches by immediate
+   purpose and presents a dispatch-group approval menu with approve-once,
+   approve-session, inline-once, inline-session, and stop options -
+   `inst-approval-scope`
+3. [ ] - `p2` - Host tool spawns the approved native subagent context with
+   scoped tools and prompt, or executes the same contract inline when the user
+   selects inline fallback - `inst-spawn-or-inline`
+4. [ ] - `p2` - Subagent executes only the controller-synthesized final prompt;
+   prompt and methodology rules are injected by the controller rather than
+   reopened from disk by the subagent - `inst-final-prompt-only`
+5. [ ] - `p2` - Subagent completes work within the approved native or inline
+   scope - `inst-complete`
+6. [ ] - `p2` - **RETURN** results/summary to main session - `inst-return-results`
+
+### Select Studio Subagent
+
+- [ ] `p2` - **ID**: `cpt-studio-flow-subagent-reg-select`
+
+**Actor**: AI Assistant
+
+**Success Scenarios**:
+- Workflow chooses the cheapest capable author/reviewer/planner/explorer from
+  `skills/studio/agents.toml`
+- Workflow escalates to a stronger agent when task risk, ambiguity, scope, or
+  methodology requirements make the cheaper agent insufficient
+
+**Steps**:
+1. [ ] - `p2` - Load the available subagent registry from
+   `{cf-studio-path}/.core/skills/studio/agents.toml` - `inst-load-registry`
+2. [ ] - `p2` - Filter candidates by role, target, mode, description, model
+   tier, reasoning effort, and context window - `inst-filter-candidates`
+3. [ ] - `p2` - Choose the cheapest capable candidate first, escalating only
+   for task complexity, safety/security risk, broad write scope, prompt
+   semantics, strict methodology coverage, or insufficient context window -
+   `inst-cheapest-capable`
+4. [ ] - `p2` - Apply workflow-specific required agents when a methodology
+   contract demands a named reviewer, validator, planner, or author -
+   `inst-required-agent-override`
 
 ## 3. Processes / Business Logic (CDSL)
 

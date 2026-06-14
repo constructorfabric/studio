@@ -41,29 +41,43 @@ NOTES:
 
 ```pdsl
 UNIT IntentRouting
-PURPOSE: After cf loads core rules, resolve the available cf-* skills via WorkflowResolution and present them as one numbered, directly selectable menu — the matched skill(s) when the prompt has a task intent, or all cf-* skills when it has none.
+PURPOSE: After cf loads core rules, resolve the available cf-* skills via WorkflowResolution and route by intent, showing all workflows first when no intent is known and supporting companion multi-skill selection when intent spans domains.
 WHEN:
   REQUIRE cf has loaded core rules
 DO:
   RUN WorkflowResolution to resolve the available cf-* skills
-  RUN matching of the intent against the resolved cf-* skill list to find the relevant skill(s) WHEN the prompt contains a task intent
-  EMIT_MENU IntentSkillMenu
+  EMIT_MENU IntentSkillMenu WHEN the prompt contains no task intent
+  RUN matching of the intent against the resolved cf-* skill list to find the relevant skill(s) and compatible companion skill groups WHEN the prompt contains a task intent
+  EMIT_MENU MatchedIntentSkillMenu WHEN the prompt contains a task intent
   WAIT user.reply
   STOP_TURN
 RULES:
   ALWAYS resolve the available cf-* skills via WorkflowResolution before populating IntentSkillMenu
   ALWAYS render IntentSkillMenu with every offered cf-* skill on its own numbered line so the user selects one by replying with the number
-  ALWAYS populate IntentSkillMenu with the matched skill(s) when the prompt contains a task intent and with all available cf-* skills when it contains none
-  ALWAYS tag exactly one skill (suggested) when the prompt contains a task intent
+  ALWAYS for activation-only cf, show all available workflows first and include a `describe intent / help me choose` option before asking for intent or entering explore, brainstorm, plan, or any substantive workflow gate
+  ALWAYS when the user replies with free text instead of a listed workflow number, treat that reply as ORIGINAL_INTENT, run matching, and emit MatchedIntentSkillMenu
+  ALWAYS populate MatchedIntentSkillMenu with relevant single skills and compatible companion skill groups when the prompt contains a task intent
+  ALWAYS tag exactly one skill or companion group (suggested) when the prompt contains a task intent
   NEVER tag a skill (suggested) when the prompt contains no task intent
+  ALWAYS allow multi-select replies for compatible companion skills, formatted as comma-separated menu numbers, and invoke selected skills sequentially so each selected skill loads its prerequisites and gates in order
+  NEVER let multi-select bypass any selected skill's WAIT, STOP_TURN, approval, brainstorm, plan, validation, or sub-agent gate
 MENU IntentSkillMenu
-TITLE: Pick a cf-* skill by number to run it (when matched to a request, the best match is tagged suggested).
+TITLE: Pick a cf-* workflow by number, or choose describe intent / help me choose so I can match the right workflow(s).
 OPTIONS:
-  1 skill -> INVOKE the selected cf-* skill, passing the original intent
-  2 none -> STOP_TURN
+  1 skill -> INVOKE the selected cf-* skill with no intent so the skill prompts for its own input
+  2 describe-intent | help-me-choose -> EMIT "Describe what you want to do. I will match the relevant cf-* workflow(s), including companion skills when the task spans domains."; WAIT user.reply; SET ORIGINAL_INTENT = user.reply; RUN matching; EMIT_MENU MatchedIntentSkillMenu
+  3 none -> STOP_TURN
   INVALID -> EMIT_MENU IntentSkillMenu
+MENU MatchedIntentSkillMenu
+TITLE: Matched cf-* workflow(s) for your intent — pick one, or pick a companion group / comma-separated skills when the task spans domains.
+OPTIONS:
+  1 skill -> INVOKE the selected cf-* skill, passing ORIGINAL_INTENT
+  2 companion-group -> INVOKE each listed companion cf-* skill sequentially, passing ORIGINAL_INTENT and preserving every selected skill's prerequisites and gates
+  3 other -> EMIT_MENU listing every available cf-* skill as a numbered option with multi-select allowed for compatible companions, then INVOKE the user-selected skill(s)
+  4 none -> STOP_TURN
+  INVALID -> EMIT_MENU MatchedIntentSkillMenu
 NOTES:
-  The rendered menu enumerates every offered cf-* skill on its own line as `N <skill-name> — <why it matches or what it does>`, tags exactly one `(suggested)` when there is a task intent, and appends a final `none` option; option `1 skill` above is the representative template for those numbered skill options.
+  The activation-only rendered menu enumerates every available cf-* skill on its own line as `N <skill-name> — <what it does>`, includes a `describe intent / help me choose` option, and appends a final `none` option. The matched rendered menu enumerates every matched skill or companion group as `N <skill-or-group> — <why it matches>`, tags exactly one `(suggested)`, allows comma-separated compatible multi-select, and appends a final `none` option.
 ```
 
 ```pdsl
@@ -82,6 +96,43 @@ RULES:
   ALWAYS resolve the cf-* skill list deterministically from the filesystem and kit registry, never from the host and never via a cfs CLI skills-list command
   ALWAYS map core workflows to cf-<name> and kit workflows to cf-<kit>-<base>
   NEVER guess the cf-* skill list
+```
+
+```pdsl
+UNIT CompanionSkillRouting
+PURPOSE: Let routers and workflows offer multiple compatible cf-* companion skills for cross-domain tasks without weakening each selected skill's protocol.
+WHEN:
+  REQUIRE a task intent clearly spans more than one cf-* skill domain
+DO:
+  RUN identify compatible companion skills from the resolved cf-* skill list by matching the task domains, required artifacts, and requested operations against each skill name and description
+  RUN rank companion groups by relevance, protocol compatibility, and minimal necessary scope
+  EMIT a menu that includes the best single skill and the best companion group, marking exactly one suggested option
+  WAIT user.reply
+  STOP_TURN
+RULES:
+  ALWAYS prefer the smallest companion group that covers the task domains
+  ALWAYS include write-docs/write-skills/coding/analyze/generate companions when the user request explicitly spans documentation, prompt/workflow authoring, source code, review, or implementation
+  ALWAYS invoke selected companion skills sequentially, not as a merged prompt, so each skill entry loads and follows its own prerequisites
+  NEVER load a companion skill silently; companion loading is always visible in a numbered menu or explicit user reply
+  NEVER let companion routing skip or reorder hard gates emitted by any selected skill
+```
+
+```pdsl
+UNIT SubAgentSelectionRegistry
+PURPOSE: Give every cf-* workflow a shared, cost-aware view of available cf-* sub-agents.
+WHEN:
+  REQUIRE a workflow must choose a cf-* sub-agent for planning, exploration, authoring, coding, validation, review, migration, phase execution, or storytelling
+DO:
+  LOAD the available sub-agent registry from {cf-studio-path}/.core/skills/studio/agents.toml
+  RUN build a selection table with id, description, mode, isolation, role, target, model tier, reasoning_effort, context_window, and prompt_file when present
+  RUN filter candidate agents by role, target, mode, and workflow-specific required methodology
+  RUN choose the cheapest capable candidate first, escalating only for task risk, ambiguity, scope, prompt semantics, security/concurrency/data concerns, strict methodology coverage, or context-window need
+RULES:
+  ALWAYS treat agents.toml as the canonical registry of available cf-* sub-agents
+  ALWAYS prefer native sub-agent dispatch for coding, authoring, scanning, validation, review, planning, exploration, phase work, and migration unless the user explicitly requests inline/no sub-agents or selects inline fallback
+  ALWAYS use workflow-specific required agents when correctness depends on a named methodology or contract
+  ALWAYS expose the selected sub-agent or dispatch group to SubAgentDispatch before launch
+  NEVER invent sub-agent names outside the loaded registry
 ```
 
 ```pdsl
@@ -233,39 +284,49 @@ RULES:
 
 ```pdsl
 UNIT SubAgentDispatch
-PURPOSE: Synthesize and dispatch cf-* sub-agents from `rules` plus a contract while gating on approval and providing a fallback.
+PURPOSE: Synthesize and dispatch cf-* sub-agents from `rules` plus a contract while gating every dispatch group on approval and providing inline fallback.
 STATE:
-  SET SUB_AGENTS_APPROVED: unset | true | false (default unset, scope session)
-  SET SUB_AGENTS_INLINE: unset | true (default unset, scope session)
+  SET SUB_AGENT_DISPATCH_MODE: unset | approve-session | inline-session (default unset, scope session)
+  SET SUB_AGENT_GROUP_DECISION: unset | approve-once | inline-once | stop (default unset, scope dispatch_group)
 WHEN:
-  REQUIRE a cf-* sub-agent must be launched
+  REQUIRE one or more cf-* sub-agents must be launched as an immediate dispatch group
 DO:
-  LOAD sub-agent contract from {cf-studio-path}/.core/skills/studio/agents/{sub-agent-name}.md
-  EMIT_MENU SubAgentApprovalRequest WHEN SUB_AGENTS_APPROVED == unset
-  WAIT user.reply WHEN SUB_AGENTS_APPROVED == unset
-  REQUIRE SUB_AGENTS_APPROVED == true
-  RUN synthesis of the initial prompt from the controller-selected `rules` plus the sub-agent contract
-  DISPATCH the sub-agent natively
+  RUN SubAgentSelectionRegistry WHEN the workflow has not already selected a dispatch group
+  LOAD each sub-agent contract from {cf-studio-path}/.core/skills/studio/agents/{sub-agent-name}.md
+  EMIT_MENU SubAgentApprovalRequest WHEN SUB_AGENT_DISPATCH_MODE == unset
+  WAIT user.reply WHEN SUB_AGENT_DISPATCH_MODE == unset
+  STOP_TURN WHEN SUB_AGENT_DISPATCH_MODE == unset
+  REQUIRE SUB_AGENT_GROUP_DECISION != stop
+  RUN synthesis of each initial prompt from the controller-selected `rules` plus that sub-agent contract
+  DISPATCH the dispatch group natively WHEN SUB_AGENT_DISPATCH_MODE == approve-session OR SUB_AGENT_GROUP_DECISION == approve-once
+  RUN each contract inline WHEN SUB_AGENT_DISPATCH_MODE == inline-session OR SUB_AGENT_GROUP_DECISION == inline-once
 RULES:
   ALWAYS synthesize the initial prompt from `rules` plus the sub-agent contract, with the controller deciding which `rules` the sub-agent needs and which it does not
   ALWAYS pass any needed `content` to the sub-agent as an absolute path or web reference/link, never inline
   ALWAYS allow the sub-agent to load any `content` it needs
-  ALWAYS treat SUB_AGENTS_APPROVED as a session-wide approval that applies to every later dispatch until StudioShutdown, and reset it to unset when the user asks to revoke it
+  ALWAYS ask before every dispatch group unless SUB_AGENT_DISPATCH_MODE is already approve-session or inline-session
+  ALWAYS let the user choose native once, native for session, inline once, inline for session, or stop
+  ALWAYS treat explicit user language such as "no sub-agents", "without subagents", or "без саб агентов" as inline-once unless the user asks to save it for the session
+  ALWAYS reset SUB_AGENT_DISPATCH_MODE to unset when the user asks to revoke or change the saved dispatch preference
+  ALWAYS prefer native dispatch over inline fallback when the user has not explicitly requested inline/no sub-agents
   NEVER allow the sub-agent to load any instructions (`rules`)
-  NEVER dispatch a sub-agent unless SUB_AGENTS_APPROVED == true
+  NEVER dispatch a sub-agent silently; launching native work without this gate resolving to approve-once or approve-session is a protocol violation
 ON_ERROR:
-  EMIT_MENU SubAgentApprovalRequest WHEN SUB_AGENTS_APPROVED == unset
-  EMIT_MENU SubAgentFallbackRequest WHEN SUB_AGENTS_APPROVED == false OR native dispatch fails
+  EMIT_MENU SubAgentApprovalRequest WHEN SUB_AGENT_DISPATCH_MODE == unset
+  EMIT_MENU SubAgentFallbackRequest WHEN native dispatch fails
 MENU SubAgentApprovalRequest
-TITLE: Approve dispatching cf-* sub-agents this session? Approve runs them natively (parallel, isolated); deny offers an inline fallback. (approve is suggested)
+TITLE: Approve this cf-* sub-agent dispatch group? Native sub-agents are preferred for this work; inline keeps execution in this chat. You can save either choice for the session.
 OPTIONS:
-  1 approve -> SET SUB_AGENTS_APPROVED = true; CONTINUE dispatch
-  2 deny -> SET SUB_AGENTS_APPROVED = false; EMIT_MENU SubAgentFallbackRequest
+  1 approve-once -> SET SUB_AGENT_GROUP_DECISION = approve-once; CONTINUE dispatch
+  2 approve-session -> SET SUB_AGENT_DISPATCH_MODE = approve-session; CONTINUE dispatch
+  3 inline-once -> SET SUB_AGENT_GROUP_DECISION = inline-once; RUN each contract inline for this dispatch group
+  4 inline-session -> SET SUB_AGENT_DISPATCH_MODE = inline-session; RUN each contract inline for this and later dispatch groups
+  5 stop -> SET SUB_AGENT_GROUP_DECISION = stop; STOP_TURN
   INVALID -> EMIT_MENU SubAgentApprovalRequest
 MENU SubAgentFallbackRequest
 TITLE: The sub-agent could not run natively — how should I proceed? (inline is suggested)
 OPTIONS:
-  1 inline -> SET SUB_AGENTS_INLINE = true; RUN the contract inline
+  1 inline -> SET SUB_AGENT_GROUP_DECISION = inline-once; RUN the contract inline
   2 retry -> DISPATCH the sub-agent natively, at most 2 retries before this menu re-offers only inline or stop
   3 stop -> STOP_TURN
   INVALID -> EMIT_MENU SubAgentFallbackRequest

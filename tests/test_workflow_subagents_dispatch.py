@@ -222,6 +222,10 @@ WORKFLOW_SUBAGENTS: tuple[str, ...] = (
     "cf-generate-coder-smart",
     "cf-generate-prompt-engineer-casual",
     "cf-generate-prompt-engineer-smart",
+    "cf-phase-runner",
+    "cf-phase-compiler",
+    "cf-phase-runner-isolated",
+    "cf-phase-compiler-isolated",
 )
 
 FINDING_EMITTING_SUBAGENTS = {
@@ -621,6 +625,36 @@ DISPATCH_PAYLOADS: dict[str, dict] = {
         "system": "fixture-system",
         "target_paths": ["fixture/prompt.md"],
         "findings": [],
+        "git_commit_mode": "none",
+        "git_constraint": "Do not invoke any git tool. Do not run git commit, git add, or git stage. Edit in place only.",
+        "contributing_guide": None,
+    },
+    "cf-phase-runner": {
+        "plan_dir": "fixture/.bootstrap/.plans/example",
+        "target_phase": 1,
+        "git_commit_mode": "none",
+        "git_constraint": "Do not invoke any git tool. Do not run git commit, git add, or git stage. Edit in place only.",
+        "contributing_guide": None,
+    },
+    "cf-phase-compiler": {
+        "brief_path": "fixture/.bootstrap/.plans/example/brief-01-example.md",
+        "output_path": "fixture/.bootstrap/.plans/example/phase-01-example.md",
+        "plan_dir": "fixture/.bootstrap/.plans/example",
+        "git_commit_mode": "none",
+        "git_constraint": "Do not invoke any git tool. Do not run git commit, git add, or git stage. Edit in place only.",
+        "contributing_guide": None,
+    },
+    "cf-phase-runner-isolated": {
+        "plan_dir": "fixture/.bootstrap/.plans/example",
+        "target_phase": 1,
+        "git_commit_mode": "none",
+        "git_constraint": "Do not invoke any git tool. Do not run git commit, git add, or git stage. Edit in place only.",
+        "contributing_guide": None,
+    },
+    "cf-phase-compiler-isolated": {
+        "brief_path": "fixture/.bootstrap/.plans/example/brief-01-example.md",
+        "output_path": "fixture/.bootstrap/.plans/example/phase-01-example.md",
+        "plan_dir": "fixture/.bootstrap/.plans/example",
         "git_commit_mode": "none",
         "git_constraint": "Do not invoke any git tool. Do not run git commit, git add, or git stage. Edit in place only.",
         "contributing_guide": None,
@@ -1261,49 +1295,46 @@ def test_coding_dispatch_names_reviewers_and_valid_coder() -> None:
     assert any(coder in registered for coder in coder_priority)
 
 
-def test_skill_requires_session_approval_before_native_subagent_dispatch() -> None:
-    """Native sub-agent dispatch requires explicit user approval once per session.
+def test_skill_requires_dispatch_group_approval_before_native_subagent_dispatch() -> None:
+    """Native sub-agent dispatch requires explicit approval for each dispatch group.
 
     The approval gate moved into UNIT SubAgentDispatch in skills/studio/SKILL.md.
-    Dispatch is gated on SUB_AGENTS_APPROVED == true, asked once per session via
-    MENU SubAgentApprovalRequest, and remembered for the rest of the session.
+    Dispatch is asked per group by default, with explicit options to save either
+    native approval or inline fallback for the session.
     """
     repo_root = Path(__file__).resolve().parents[1]
     skill = (repo_root / "skills" / "studio" / "SKILL.md").read_text(encoding="utf-8")
 
     assert "UNIT SubAgentDispatch" in skill
     assert "MENU SubAgentApprovalRequest" in skill
-    assert "SET SUB_AGENTS_APPROVED: unset | true | false" in skill
-    # Gate: never dispatch without approval; ask when unset.
-    assert "NEVER dispatch a sub-agent unless SUB_AGENTS_APPROVED == true" in skill
-    assert "REQUIRE SUB_AGENTS_APPROVED == true" in skill
-    assert "EMIT_MENU SubAgentApprovalRequest WHEN SUB_AGENTS_APPROVED == unset" in skill
-    assert "WAIT user.reply WHEN SUB_AGENTS_APPROVED == unset" in skill
-    # Approval is session-wide and revocable.
-    assert (
-        "ALWAYS treat SUB_AGENTS_APPROVED as a session-wide approval that applies "
-        "to every later dispatch until StudioShutdown" in skill
-    )
-    # The approve option flips the gate and continues dispatch.
-    assert "1 approve -> SET SUB_AGENTS_APPROVED = true; CONTINUE dispatch" in skill
+    assert "SET SUB_AGENT_DISPATCH_MODE: unset | approve-session | inline-session" in skill
+    assert "SET SUB_AGENT_GROUP_DECISION: unset | approve-once | inline-once | stop" in skill
+    assert "ALWAYS ask before every dispatch group unless SUB_AGENT_DISPATCH_MODE" in skill
+    assert "NEVER dispatch a sub-agent silently" in skill
+    assert "1 approve-once -> SET SUB_AGENT_GROUP_DECISION = approve-once" in skill
+    assert "2 approve-session -> SET SUB_AGENT_DISPATCH_MODE = approve-session" in skill
+    assert "3 inline-once -> SET SUB_AGENT_GROUP_DECISION = inline-once" in skill
+    assert "4 inline-session -> SET SUB_AGENT_DISPATCH_MODE = inline-session" in skill
+    assert "5 stop -> SET SUB_AGENT_GROUP_DECISION = stop; STOP_TURN" in skill
 
 
-def test_subagent_fallback_never_defaults_from_unapproved_native_support() -> None:
-    """Denying native dispatch routes to an explicit inline fallback menu.
+def test_subagent_inline_fallback_is_explicit_and_can_be_saved() -> None:
+    """Inline fallback is explicit and can be selected once or for the session.
 
-    A host exposing native sub-agent tools does not silently inline: denial sets
-    SUB_AGENTS_APPROVED=false and offers MENU SubAgentFallbackRequest, where the
-    user explicitly picks inline / retry / stop.
+    A host exposing native sub-agent tools does not silently inline; the user
+    explicitly picks inline-once or inline-session, including via natural
+    language such as "без саб агентов".
     """
     repo_root = Path(__file__).resolve().parents[1]
     skill = (repo_root / "skills" / "studio" / "SKILL.md").read_text(encoding="utf-8")
 
     assert "MENU SubAgentFallbackRequest" in skill
-    assert "EMIT_MENU SubAgentFallbackRequest WHEN SUB_AGENTS_APPROVED == false OR native dispatch fails" in skill
-    assert "2 deny -> SET SUB_AGENTS_APPROVED = false; EMIT_MENU SubAgentFallbackRequest" in skill
-    assert "1 inline -> SET SUB_AGENTS_INLINE = true; RUN the contract inline" in skill
-    # The inline path is opt-in, never an automatic default.
-    assert "SET SUB_AGENTS_INLINE: unset | true (default unset, scope session)" in skill
+    assert "EMIT_MENU SubAgentFallbackRequest WHEN native dispatch fails" in skill
+    assert "inline-once" in skill
+    assert "inline-session" in skill
+    assert "без саб агентов" in skill
+    assert "RUN each contract inline WHEN SUB_AGENT_DISPATCH_MODE == inline-session" in skill
+    assert "1 inline -> SET SUB_AGENT_GROUP_DECISION = inline-once; RUN the contract inline" in skill
 
 
 def test_diff_scope_resolver_agent_registered_and_prompt_contract() -> None:
@@ -1521,6 +1552,23 @@ def test_brainstorm_expert_is_context_isolated() -> None:
         agents = tomllib.load(fh)["agents"]
 
     assert agents["cf-brainstorm-expert"]["isolation"] is True
+
+
+def test_phase_agents_have_default_and_isolated_variants() -> None:
+    """Gitignored plan state uses in-place agents; tracked state can opt into isolation."""
+    import tomllib
+
+    repo_root = Path(__file__).resolve().parents[1]
+    agents_toml = repo_root / "skills" / "studio" / "agents.toml"
+    with open(agents_toml, "rb") as fh:
+        agents = tomllib.load(fh)["agents"]
+
+    assert agents["cf-phase-runner"]["isolation"] is False
+    assert agents["cf-phase-compiler"]["isolation"] is False
+    assert agents["cf-phase-runner-isolated"]["isolation"] is True
+    assert agents["cf-phase-compiler-isolated"]["isolation"] is True
+    assert agents["cf-phase-runner-isolated"]["prompt_file"] == "agents/cf-phase-runner.md"
+    assert agents["cf-phase-compiler-isolated"]["prompt_file"] == "agents/cf-phase-compiler.md"
 
 
 def test_studio_agent_prompts_are_controller_side_generators() -> None:
@@ -1743,7 +1791,7 @@ def test_runtime_instruction_modules_stay_compact() -> None:
     # rules (incl. the GIT_COMMIT_MODE / SubAgentDispatch state machines); it
     # gets a higher budget than the pure-routing workflow files.
     compact_files = [
-        (repo_root / "skills" / "studio" / "SKILL.md", 478),
+        (repo_root / "skills" / "studio" / "SKILL.md", 560),
         (repo_root / "workflows" / "generate.md", 150),
         (repo_root / "workflows" / "analyze.md", 150),
         (repo_root / "workflows" / "coding.md", 150),
