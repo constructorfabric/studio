@@ -128,6 +128,15 @@ Without this feature, users would need to manually create and maintain agent-spe
 7. [ ] - `p1` - If a task maps to multiple domains, agent offers compatible
    companion workflows as a multi-select menu and invokes every selected
    workflow sequentially, preserving each workflow's prerequisites, gates,
+   STOP_TURN boundaries, and approval requirements - `inst-companion-multi-select`
+8. [ ] - `p1` - Root `cf` keeps only always-on bootstrap/routing/memory/command
+   rules; every conditional module is loaded through `ConditionalModuleLoading`
+   before use, and a rule may be moved out of the root skill only when its
+   trigger can be stated as one short stable `BEFORE`/`WHEN` loading rule -
+   `inst-cf-conditional-module-loading`
+9. [ ] - `p1` - During cf load, agent reports both loaded always-on sources and
+   the conditional-module trigger table so the user can see which modules will
+   load when their conditions fire - `inst-cf-module-load-report`
    approvals, and terminal boundaries - `inst-companion-multiselect`
 
 ## 3. Processes / Business Logic (CDSL)

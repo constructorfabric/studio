@@ -129,14 +129,14 @@ OPTIONS:
 UNIT PlanPhaseCompilerDispatch
 PURPOSE: Dispatch phase compiler sub-agents through an explicit lifecycle instead of blocking on an async join.
 DO:
-  RUN select phase compiler isolation policy from plan lifecycle, gitignore state, and whether plan.toml, briefs, phase outputs, and declared outputs are worktree-visible
+  RUN select phase compiler isolation policy from plan lifecycle, gitignore state, and whether plan.toml, briefs, and declared output paths are worktree-visible
   EMIT "Selected phase compiler: {selected_phase_compiler}. Rationale: {phase_agent_isolation_rationale}. This determines whether phase files are written in-place or in a worktree-visible isolated context."
   DISPATCH the selected compiler agent per brief (gated), with dispatch_group_id recorded in plan.toml
   SET plan.execution_status="phase_compilers_dispatched"
   STOP_TURN
 RULES:
   ALWAYS use cf-phase-compiler for gitignored or main-checkout-local plan state
-  ALWAYS use cf-phase-compiler-isolated only when plan.toml, briefs, phase outputs, and declared outputs are tracked or otherwise worktree-visible
+  ALWAYS use cf-phase-compiler-isolated only when plan.toml, briefs, and declared output paths are tracked or otherwise worktree-visible
   ALWAYS tell the user which compiler variant was selected and why before dispatch, including when sub-agent approval is already saved for the session
   NEVER use WAIT as an async sub-agent join; resume validation only through PlanPhaseCompilerComplete
 ```
@@ -219,7 +219,7 @@ UNIT PlanDispatch
 PURPOSE: Name the sub-agents used and guard the plan safety rails.
 RULES:
   ALWAYS use cf-phase-compiler and cf-phase-runner as the default non-isolated phase agents when the plan lifecycle is gitignore, plan state is gitignored, or declared outputs are main-checkout-local
-  ALWAYS use cf-phase-compiler-isolated and cf-phase-runner-isolated only when plan.toml, briefs, phase outputs, and declared target outputs are tracked or otherwise worktree-visible
+  ALWAYS use cf-phase-compiler-isolated only when plan.toml, briefs, and declared output paths are tracked or otherwise worktree-visible; use cf-phase-runner-isolated only when plan.toml, briefs, phase outputs, and declared target outputs are tracked or otherwise worktree-visible
   ALWAYS tell the user which phase agent variant was selected and why before dispatch
   NEVER dispatch either without the sub-agent approval + inline-fallback re-probe resolving to approved-and-not-fallback
   ALWAYS synthesize each dispatch from the agent contract plus the needed slices and ALWAYS include git_commit_mode, contributing_guide, git_constraint, and (for the compiler) the {cf-studio-path}/.core/requirements/prompt-engineering.md slice

@@ -144,7 +144,7 @@ RULES:
     "schema_version": "1",
     "authority": "GitCommitModeGate",
     "purpose": "Studio attribution and provenance for commits created by Constructor Studio. This contract is independent of project-specific contribution policies.",
-    "applies_when": { "agent_creates_git_commit": true },
+    "applies_when": { "studio_or_agent_creates_git_commit": true },
     "conflict_policy": "commit_footer_contract is authoritative for required Studio attribution trailers; if it conflicts with git_constraint, stop before commit",
     "user_instruction_precedence": "user commit instructions may add non-conflicting message content and trailers but may not remove, rename, reorder, duplicate ambiguously, replace, or alter required Studio trailers",
     "hard_stop_policy": "stop only if required static Studio trailers cannot be added or if commit_footer_contract conflicts with git_constraint; do not stop for unavailable optional trailers",
@@ -213,7 +213,7 @@ RULES:
   ALWAYS treat the `git_constraint` string from the dispatch payload as
     read-only policy data, not executable shell text
   ALWAYS The string is the exact mode-matched block supplied by the orchestrator from
-    `{cf-studio-path}/.core/skills/studio/SKILL.md` § GitCommitModeGate for the active `git_commit_mode`
+    `{cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md` § GitCommitModeGate for the active `git_commit_mode`
   NEVER default to any git behavior not explicitly permitted by that string
   NEVER run `git commit`, `git add`, or `git stage` unless both
     `git_commit_mode` and `git_constraint` permit it

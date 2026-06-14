@@ -294,18 +294,18 @@ PURPOSE:
   Dispatch the Migrator sub-agent with the approved selection.
 
 PRECONDITIONS:
-  GIT_COMMIT_MODE is set by GitCommitModeGate in {cf-studio-path}/.core/skills/studio/SKILL.md
+  GIT_COMMIT_MODE is set by GitCommitModeGate in {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
     before any write-capable migrator dispatch.
-  CONTRIBUTING_GUIDE is set by GitCommitModeGate in {cf-studio-path}/.core/skills/studio/SKILL.md
+  CONTRIBUTING_GUIDE is set by GitCommitModeGate in {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
     before any write-capable migrator dispatch;
     null is valid only when discovery found no guide.
 
 ON_MISSING_PRECONDITION:
   GIT_COMMIT_MODE missing ->
-    LOAD {cf-studio-path}/.core/skills/studio/SKILL.md and CONTINUE GitCommitModeGate
+    LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md and CONTINUE GitCommitModeGate
     STOP_TURN
   CONTRIBUTING_GUIDE missing ->
-    LOAD {cf-studio-path}/.core/skills/studio/SKILL.md and CONTINUE GitCommitModeGate
+    LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md and CONTINUE GitCommitModeGate
     STOP_TURN
 
 DO:
@@ -322,7 +322,7 @@ DO:
       target_kit_sdlc_url: "constructorfabric/studio-kit-sdlc"
       git_commit_mode: GIT_COMMIT_MODE (ALWAYS be included; set from session-scoped flag)
       contributing_guide: CONTRIBUTING_GUIDE (ALWAYS be included; null when not found)
-      git_constraint: mode-matched constraint block from {cf-studio-path}/.core/skills/studio/SKILL.md
+      git_constraint: mode-matched constraint block from {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
                       § GitCommitModeGate
   - SET migration_manifest = agent output
   - CONTINUE E4

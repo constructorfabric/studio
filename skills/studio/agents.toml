@@ -261,8 +261,9 @@ context_window = "high"
 # Thin-orchestrator sub-agent pool (shared by generate + analyze workflows)
 #
 # Defined by the thin-orchestrator dispatch contract (see
-# {cf-studio-path}/.core/skills/studio/SKILL.md "Session Sub-Agent Approval Gate"
-# and the SubAgentDispatch UNIT in {cf-studio-path}/.core/skills/studio/SKILL.md).
+# {cf-studio-path}/.core/skills/studio/SKILL.md ConditionalModuleLoading rule
+# and the SubAgentDispatch UNIT in
+# {cf-studio-path}/.core/skills/studio/modules/subagents/dispatch.md).
 # The diff-scope resolver is analyze-only. The validator and semantic reviewers
 # are reusable across analyze and generate's Phase 5 review loop; brainstorm
 # agents drive generate's Phase 0.7 panel session; collector + planner + author
