@@ -33,15 +33,28 @@ DO:
   LOAD {cf-studio-path}/.core/requirements/prompt-engineering.md
   RUN verify both references loaded; EMIT "Required reference not found (PDSL spec or prompt-engineering methodology under {cf-studio-path}/.core) — cannot author or review; reinstall or sync the studio kit, then retry." and STOP_TURN WHEN either load fails
   CONTINUE WriteSkillsIntentCapture WHEN ORIGINAL_INTENT == unset
-  RUN classify ORIGINAL_INTENT by requested operation plus whether it evaluates an existing skill, prompt, workflow, agent instruction, or system prompt; SET REVIEW_LOOP_REQUESTED = true WHEN ORIGINAL_INTENT asks to review, audit, critique, inspect, check, validate, verify, analyze, compare behavior, or find issues/findings, bugs, risks, failures, regressions, bypasses, defects, root causes, routing problems, or behavioral-analysis concerns in an existing target, including review-and-fix wording
-  RUN default REVIEW_LOOP_REQUESTED = true WHEN REVIEW_LOOP_REQUESTED == unset AND ORIGINAL_INTENT primarily evaluates an existing skill, prompt, workflow, agent instruction, or system prompt rather than creating one
-  RUN classify ORIGINAL_INTENT; SET REVIEW_LOOP_REQUESTED = false WHEN REVIEW_LOOP_REQUESTED == unset
+  CONTINUE WriteSkillsIntentClassify
   SET PLAN_FIRST_CONTINUE = WriteSkillsDispatch, SET CURRENT_WORKFLOW = cf-write-skills, SET COMPANION_CONTINUE = WriteSkillsExploreGate, LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md, LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md, and CONTINUE CompanionSkillOffer WHEN ORIGINAL_INTENT != unset
 RULES:
   ALWAYS remember git-commit-mode so any later commit request in this active workflow session runs GitCommitModeGate before routing, authoring, git use, or delegation
   ALWAYS default to review-first routing when the request evaluates an existing skill, prompt, workflow, agent instruction, or system prompt rather than creating one
   ALWAYS route review/audit/critique/inspect/check/validate/verify/analyze/behavior-comparison/find-issues/bug-risk-failure-regression-bypass-defect-root-cause-routing-analysis intents through WriteSkillsReviewLoop first; any fixes must be gated by ReviewFindingsReportBrowser and ReviewFixApprovalGate, not by direct author dispatch
   NEVER author or review a skill after a required reference load failure
+```
+
+```pdsl
+UNIT WriteSkillsIntentClassify
+PURPOSE: Classify ORIGINAL_INTENT to set REVIEW_LOOP_REQUESTED before companion routing runs.
+WHEN:
+  REQUIRE ORIGINAL_INTENT != unset
+  REQUIRE REVIEW_LOOP_REQUESTED == unset
+DO:
+  RUN classify ORIGINAL_INTENT by requested operation plus whether it evaluates an existing skill, prompt, workflow, agent instruction, or system prompt; SET REVIEW_LOOP_REQUESTED = true WHEN ORIGINAL_INTENT asks to review, audit, critique, inspect, check, validate, verify, analyze, compare behavior, or find issues/findings, bugs, risks, failures, regressions, bypasses, defects, root causes, routing problems, or behavioral-analysis concerns in an existing target, including review-and-fix wording
+  RUN default REVIEW_LOOP_REQUESTED = true WHEN REVIEW_LOOP_REQUESTED == unset AND ORIGINAL_INTENT primarily evaluates an existing skill, prompt, workflow, agent instruction, or system prompt rather than creating one
+  RUN classify ORIGINAL_INTENT; SET REVIEW_LOOP_REQUESTED = false WHEN REVIEW_LOOP_REQUESTED == unset
+RULES:
+  ALWAYS run after ORIGINAL_INTENT is set and before companion routing
+  NEVER run when ORIGINAL_INTENT == unset
 ```
 
 ```pdsl
@@ -63,7 +76,7 @@ WHEN:
   REQUIRE ORIGINAL_INTENT == unset
 DO:
   SET ORIGINAL_INTENT = user.reply
-  RUN derive REVIEW_LOOP_REQUESTED from ORIGINAL_INTENT using the Bootstrap review-intent classification
+  CONTINUE WriteSkillsIntentClassify
   SET PLAN_FIRST_CONTINUE = WriteSkillsDispatch
   SET CURRENT_WORKFLOW = cf-write-skills
   SET COMPANION_CONTINUE = WriteSkillsExploreGate
@@ -125,12 +138,8 @@ RULES:
 ```
 
 ```pdsl
-UNIT WriteSkillsReviewLoop
-PURPOSE: Run a semantic review at the user-chosen granularity and iterate fixes until the skill is clean.
-STATE:
-  SET REVIEW_GRANULARITY: single-pass | per-methodology | per-layer (default unset, scope workflow_run)
-  SET SELECTED_REVIEW_FIX_AGENT: cf-generate-prompt-engineer-casual | cf-generate-prompt-engineer-smart | unset (default unset, scope workflow_run)
-  SET REVIEW_FIXES_APPLIED: true | false | unset (default unset, scope workflow_run)
+UNIT WriteSkillsReviewSetup
+PURPOSE: Load review modules, enforce anti-spin rules, and resolve review target paths before any reviewer is dispatched.
 WHEN:
   REQUIRE edits have been applied to the skill file OR REVIEW_LOOP_REQUESTED == true
 DO:
@@ -142,12 +151,34 @@ DO:
   RUN SemanticReviewNoSpinRules
   RUN resolve REVIEW_TARGET_PATHS to the declared read-only file path or paths under review, and REVIEW_TARGET_SLICES to the declared reviewed content slices for those targets, before reviewer dispatch or approved-fix dispatch
   EMIT "Review target resolution is required before reviewer dispatch. Provide the reviewed target path(s) and declared content slice(s) for the existing skill/prompt/workflow/agent instruction/system prompt under review." and STOP_TURN WHEN REVIEW_LOOP_REQUESTED == true AND (REVIEW_TARGET_PATHS == unset OR REVIEW_TARGET_SLICES == unset)
+  CONTINUE WriteSkillsReviewRun
+RULES:
+  ALWAYS run before any reviewer dispatch in this workflow
+  NEVER skip SemanticReviewNoSpinRules
+  NEVER proceed past the target-guard STOP_TURN when REVIEW_TARGET_PATHS or REVIEW_TARGET_SLICES is unset and REVIEW_LOOP_REQUESTED == true
+```
+
+```pdsl
+UNIT WriteSkillsReviewRun
+PURPOSE: Gate review granularity, dispatch reviewer sub-agents, and aggregate their findings into one deduplicated report.
+DO:
   SET REVIEW_GRANULARITY_SCOPE = "Skill/prompt review scope: single-pass covers prompt-engineering, prompt-bug-finding, and consistency-checklist together; per-methodology dispatches cf-pdsl-reviewer for prompt-engineering plus prompt-bug-finding and cf-semantic-reviewer-consistency separately; per-layer dispatches one reviewer per current layer/category."
   RUN SemanticReviewGranularityGate WHEN REVIEW_GRANULARITY == unset
   RUN SubAgentDispatch for the selected reviewer dispatch group before launching reviewer instances
   RUN read each methodology's current Layer Map (prompt-engineering layers, prompt-bug-finding layers, consistency-checklist categories) before per-layer or per-methodology dispatch, so added layers are covered automatically and never a fixed count
   RUN the chosen review at REVIEW_GRANULARITY: single-pass = dispatch cf-pdsl-reviewer from {cf-studio-path}/.core/skills/studio/agents/cf-pdsl-reviewer.md and cf-semantic-reviewer-consistency from {cf-studio-path}/.core/skills/studio/agents/cf-semantic-reviewer-consistency.md in one combined dispatch group, then aggregate one report; per-methodology = dispatch cf-pdsl-reviewer over prompt-engineering plus prompt-bug-finding layers and cf-semantic-reviewer-consistency over all consistency-checklist categories in parallel; per-layer = dispatch one reviewer per layer/category for every layer each methodology defines (L1 through its last), never a fixed count
   RUN aggregation of every reviewer's findings into one deduplicated ReviewFindingsReport with stable finding IDs and every ReviewFindingContract field
+  CONTINUE WriteSkillsFixGate
+RULES:
+  ALWAYS scope each reviewer to only its assigned slice (all methodologies / one methodology / one layer) and run independent reviewers in parallel
+  ALWAYS keep workflow-specific reviewer dispatches in this workflow
+  ALWAYS run SubAgentDispatch before every reviewer dispatch group
+```
+
+```pdsl
+UNIT WriteSkillsFixGate
+PURPOSE: Present review findings, gate fix approval, dispatch the fix agent, verify the returned manifest, and route to the next workflow step.
+DO:
   RUN render the interactive ReviewFindingsReportBrowser from fix-approval before any fix-scope menu WHEN findings remain and fixes are applicable
   RUN SemanticReviewFixApprovalGate WHEN findings remain and fixes are applicable
   RUN select SELECTED_REVIEW_FIX_AGENT from the approved findings and REVIEW_TARGET_PATHS using the cf-generate-author prompt-workflow selection rules; choose cf-generate-prompt-engineer-smart when fixes affect state, routing, handoffs, validation, sub-agent dispatch, or output contracts WHEN REVIEW_FIX_APPROVED == true
@@ -160,9 +191,22 @@ DO:
   CONTINUE WriteSkillsCompletion WHEN no review findings remain AND REVIEW_LOOP_REQUESTED == true
   CONTINUE WriteSkillsCompletion WHEN no review findings remain AND VALIDATION_STATUS == pass
 RULES:
-  ALWAYS scope each reviewer to only its assigned slice (all methodologies / one methodology / one layer) and run independent reviewers in parallel
-  ALWAYS keep workflow-specific reviewer dispatches in this workflow
-  ALWAYS select a concrete write-capable prompt-engineer worker inside WriteSkillsReviewLoop after REVIEW_FIX_APPROVED == true; NEVER dispatch cf-pdsl-author as a generic review-fix worker because its contract is for new PDSL authoring
+  ALWAYS select a concrete write-capable prompt-engineer worker after REVIEW_FIX_APPROVED == true; NEVER dispatch cf-pdsl-author as a generic review-fix worker because its contract is for new PDSL authoring
+  ALWAYS run SubAgentDispatch before the SELECTED_REVIEW_FIX_AGENT dispatch group
+```
+
+```pdsl
+UNIT WriteSkillsReviewLoop
+PURPOSE: Run a semantic review at the user-chosen granularity and iterate fixes until the skill is clean.
+STATE:
+  SET REVIEW_GRANULARITY: single-pass | per-methodology | per-layer (default unset, scope workflow_run)
+  SET SELECTED_REVIEW_FIX_AGENT: cf-generate-prompt-engineer-casual | cf-generate-prompt-engineer-smart | unset (default unset, scope workflow_run)
+  SET REVIEW_FIXES_APPLIED: true | false | unset (default unset, scope workflow_run)
+WHEN:
+  REQUIRE edits have been applied to the skill file OR REVIEW_LOOP_REQUESTED == true
+DO:
+  CONTINUE WriteSkillsReviewSetup
+RULES:
   NEVER declare an authored or edited skill done until BOTH the deterministic PDSL check `{cfs_cmd} pdsl validate` passes AND the semantic review has no remaining findings; ALWAYS re-run WriteSkillsValidate after any fix before re-reviewing
 ```
 
