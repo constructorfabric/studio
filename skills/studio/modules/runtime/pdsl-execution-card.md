@@ -27,6 +27,9 @@ RULES:
   - ALWAYS treat `WAIT` plus `STOP_TURN` as a hard assistant-turn boundary.
   - ALWAYS treat `CONTINUE <unit-or-phase>` as transfer of control to that target,
     not optional advice.
+  - ALWAYS after any `WAIT`/`STOP_TURN` resume at the exact active PDSL
+    continuation target; REQUIRED: do not reinterpret the user's reply as
+    broad permission for generic autonomous execution.
   - ALWAYS treat `DISPATCH` as invoking a named sub-agent or worker contract;
     concurrency, isolation, and join behavior come from explicit dispatch
     options or surrounding rules, not separate dispatch keywords.
