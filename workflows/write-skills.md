@@ -218,7 +218,7 @@ DO:
   CONTINUE WriteSkillsValidate WHEN REVIEW_FIXES_APPLIED == true
   STOP_TURN and report the remaining findings WHEN findings remain but no fixes were applied this iteration (none approved, none applicable, or the ReviewFixApprovalGate resolved to none) — re-reviewing unchanged skill files cannot change the result
   STOP_TURN and report that deterministic blockers remain WHEN REVIEW_FINDINGS_REMAINING == 0 AND VALIDATION_STATUS == fail
-  CONTINUE WriteSkillsCompletion WHEN REVIEW_FINDINGS_REMAINING == 0 AND REVIEW_LOOP_REQUESTED == true
+  CONTINUE WriteSkillsCompletion WHEN REVIEW_FINDINGS_REMAINING == 0 AND REVIEW_LOOP_REQUESTED == true AND VALIDATION_STATUS != fail
   CONTINUE WriteSkillsCompletion WHEN REVIEW_FINDINGS_REMAINING == 0 AND VALIDATION_STATUS == pass
 RULES:
   NEVER declare an authored or edited skill done until BOTH the deterministic PDSL check passes AND REVIEW_FINDINGS_REMAINING == 0; ALWAYS re-run WriteSkillsValidate after any fix before re-reviewing
