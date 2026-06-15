@@ -1,14 +1,6 @@
----
-cf: true
-type: requirement
-name: PDSL Execution Card
-version: 0.1
-purpose: Compact runtime semantics for LLMs executing or reviewing PDSL instruction blocks
----
-
 # PDSL Execution Card
 
-Use this card as the minimal runtime semantics slice when a prompt-consuming
+Use this module as the minimal runtime semantics slice when a prompt-consuming
 agent must execute, author, transform, or review PDSL instruction blocks.
 
 ```pdsl

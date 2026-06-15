@@ -13,26 +13,37 @@ This skill drives a phased planning workflow that assesses scope, decomposes a l
 
 ```pdsl
 UNIT PlanBootstrap
-PURPOSE: Ensure the cf skill is loaded before any plan work begins.
+PURPOSE: Load the runtime rules needed before any plan work begins.
 STATE:
-  SET CFS_INIT: true | false (default false, scope session)
+  SET ORIGINAL_INTENT: string | unset (default unset, scope workflow_run)
 DO:
-  EMIT_MENU LoadCfSkillConfirm WHEN CFS_INIT != true
-  STOP_TURN WHEN CFS_INIT != true
-  CONTINUE PlanPhase0Discover WHEN CFS_INIT == true
+  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/skill-invocation-art.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/pdsl-execution-card.md
+  RUN SkillInvocationArt
+  LOAD and REMEMBER rules from {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/studio-instructions-memory.md
+  RUN StudioInstructionsMemoryGate
+  SET ORIGINAL_INTENT = the user's triggering plan request (verbatim or shortest faithful summary), or unset when activation-only, WHEN ORIGINAL_INTENT == unset
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/command-resolution.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/template-vars.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/context-memory.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/dispatch.md
+  RUN CommandResolution to resolve {cfs_cmd}
+  SET CURRENT_WORKFLOW = cf-plan, SET COMPANION_CONTINUE = PlanPhase0Discover and LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md and CONTINUE CompanionSkillOffer WHEN ORIGINAL_INTENT != unset
+  CONTINUE PlanPhase0Discover WHEN ORIGINAL_INTENT == unset
 RULES:
-  ALWAYS verify the cf skill is loaded, CFS_INIT == true, before any plan work
-  ALWAYS treat CFS_INIT as false when its value is unknown, ambiguous, or unset
-  NEVER proceed past PlanBootstrap unless CFS_INIT == true is positively confirmed
+  ALWAYS run StudioInstructionsMemoryGate before plan discovery, decomposition, compilation, or execution
+  ALWAYS remember git-commit-mode so any later commit request in this active workflow session runs GitCommitModeGate before routing, phase dispatch, git use, or delegation
+  ALWAYS load command-resolution before invoking `{cfs_cmd}` plan-discovery commands
+  ALWAYS load template-vars before resolving plan paths or unknown template variables
+  ALWAYS load context-memory before carrying resource_context into phase assessment
+  ALWAYS load sub-agent dispatch before compiling or running phase agents
+  ALWAYS load git-commit-mode before passing git policy to phase compiler or phase runner agents
+  ALWAYS capture ORIGINAL_INTENT before planning gates, and offer companion cf-* workflows first when the request spans domains
   ALWAYS only generate execution plans here, never implement, and ALWAYS LOAD the relevant requirement doc per phase rather than all docs upfront
   NEVER hold all phase files in context at once — compile one at a time
   ALWAYS write plan.toml before compiling phase files
-MENU LoadCfSkillConfirm
-TITLE: The cf skill is not loaded. Load it now to continue?
-OPTIONS:
-  1 load -> INVOKE skill `cf` and CONTINUE PlanBootstrap
-  2 stop -> STOP_TURN
-  INVALID -> EMIT_MENU LoadCfSkillConfirm
+  NEVER require cf or CFS_INIT before plan; this workflow owns its prerequisite loads
 ```
 ```pdsl
 UNIT PlanPhase0Discover
@@ -52,6 +63,7 @@ RULES:
 UNIT PlanExploreBrainstormGate
 PURPOSE: Offer resource discovery or decision exploration before scope assessment (Phase 0.a).
 DO:
+  RUN ResourceContextMemory
   EMIT_MENU PlanGateMenu
   WAIT user.reply
   STOP_TURN
@@ -129,8 +141,11 @@ OPTIONS:
 UNIT PlanPhaseCompilerDispatch
 PURPOSE: Dispatch phase compiler sub-agents through an explicit lifecycle instead of blocking on an async join.
 DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
+  RUN GitCommitModeGate before preparing git policy for phase compiler dispatch
   RUN select phase compiler isolation policy from plan lifecycle, gitignore state, and whether plan.toml, briefs, and declared output paths are worktree-visible
   EMIT "Selected phase compiler: {selected_phase_compiler}. Rationale: {phase_agent_isolation_rationale}. This determines whether phase files are written in-place or in a worktree-visible isolated context."
+  RUN SubAgentDispatch for the selected phase compiler dispatch group
   SET CF_PHASE_GATE = released_for_dispatch, DISPATCH the selected compiler agent per brief (gated), with dispatch_group_id recorded in plan.toml, SET CF_PHASE_GATE = armed
   SET plan.execution_status="phase_compilers_dispatched"
   STOP_TURN
@@ -198,7 +213,9 @@ OPTIONS:
 UNIT PlanNativeExecute
 PURPOSE: Run native same-chat phase execution via the phase runner when sub-agents are approved.
 DO:
-  RUN re-probe sub-agent approval + inline-fallback
+  LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
+  RUN GitCommitModeGate before preparing git policy for phase runner dispatch
+  RUN SubAgentDispatch to re-probe sub-agent approval + inline-fallback for the selected phase runner dispatch group
   RUN select phase runner isolation policy from plan lifecycle, gitignore state, and whether plan.toml plus declared outputs are worktree-visible
   EMIT "Selected phase runner: {selected_phase_runner}. Rationale: {phase_agent_isolation_rationale}. This determines whether execution writes against main-checkout plan state or an isolated worktree-visible surface."
   SET CF_PHASE_GATE = released_for_dispatch, DISPATCH the selected phase runner with plan_dir, target_phase=1, git_commit_mode, contributing_guide, and git_constraint, SET CF_PHASE_GATE = armed, then STOP_TURN WHEN approved AND not inline-fallback
@@ -222,6 +239,8 @@ RULES:
   ALWAYS use cf-phase-compiler and cf-phase-runner as the default non-isolated phase agents when the plan lifecycle is gitignore, plan state is gitignored, or declared outputs are main-checkout-local
   ALWAYS use cf-phase-compiler-isolated only when plan.toml, briefs, and declared output paths are tracked or otherwise worktree-visible; use cf-phase-runner-isolated only when plan.toml, briefs, phase outputs, and declared target outputs are tracked or otherwise worktree-visible
   ALWAYS tell the user which phase agent variant was selected and why before dispatch
+  ALWAYS run GitCommitModeGate before preparing git policy for native phase compiler or phase runner dispatch
+  ALWAYS run SubAgentDispatch before native phase compiler or phase runner dispatch
   NEVER dispatch either without the sub-agent approval + inline-fallback re-probe resolving to approved-and-not-fallback
   ALWAYS synthesize each dispatch from the agent contract plus the needed slices and ALWAYS include git_commit_mode, contributing_guide, git_constraint, and (for the compiler) the {cf-studio-path}/.core/requirements/prompt-engineering.md slice
   NEVER let a sub-agent reopen prompt or instruction files from disk

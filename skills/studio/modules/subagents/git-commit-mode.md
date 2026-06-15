@@ -1,14 +1,32 @@
 # Git Commit Mode Gate
 
 ```pdsl
+UNIT ActiveSessionGitCommitRequestGate
+PURPOSE: Catch git commit requests typed while any cf/cf-studio workflow is waiting, before the workflow parses the reply as local menu input.
+WHEN:
+  REQUIRE cf/cf-studio session rules are active
+  REQUIRE the current user message explicitly asks Studio to create a git commit
+DO:
+  RUN GitCommitModeGate before any workflow resumes, router matches intent, local menu INVALID handling runs, the main session modifies git state, or a sub-agent receives write-capable git policy
+  CONTINUE the pending workflow/router step only after GitCommitModeGate resolves or STOP_TURNs
+RULES:
+  ALWAYS evaluate this gate on every new user message while cf/cf-studio session rules are active, including replies to workflow menus and resumed workflow prompts
+  ALWAYS treat this as a session-level interrupt, not as part of ORIGINAL_INTENT capture and not as a root-router-only initial prompt check
+  ALWAYS run this gate before honoring phrases such as `commit it`, `make a commit`, `commit these changes`, `git commit`, or `create a git commit`
+  NEVER let a workflow-specific INVALID menu branch handle a commit-creation request before this gate resolves
+  NEVER treat ordinary references to commits for review/diff scope as commit-creation requests unless the user asks Studio to create a new git commit
+```
+
+```pdsl
 UNIT GitCommitModeGate
-PURPOSE: Resolve the mandatory session git policy (mode + constraint + contributing guide + commit footer contract) once, before any cf workflow, main session, or sub-agent invokes git or prepares git policy.
+PURPOSE: Resolve the mandatory session git write policy (mode + constraint + contributing guide + commit footer contract) once, before any cf workflow, main session, or sub-agent modifies git state or prepares write-capable git policy.
 STATE:
   SET GIT_COMMIT_MODE: commit | stage | none (default unset, scope session)
   SET CONTRIBUTING_GUIDE: path | null (default unset, scope session)
   SET COMMIT_FOOTER_CONTRACT: object (default unset, scope session)
 WHEN:
-  REQUIRE any cf workflow, main session, or sub-agent is about to invoke a git command, stage files, create a commit, inspect git state, or pass git policy to another execution context
+  REQUIRE any cf workflow, main session, or sub-agent is about to stage files, create a commit, modify git state, or pass write-capable git policy to another execution context
+  OR any current user message in an active cf/cf-studio session explicitly asks Studio to create a git commit, regardless of ORIGINAL_INTENT or which workflow is currently waiting
 DO:
   RUN discover the contributing guide — search the project root and docs/ for a CONTRIBUTING file and SET CONTRIBUTING_GUIDE to its path, or null when none is found, WHEN CONTRIBUTING_GUIDE == unset
   EMIT_MENU GitCommitModeMenu WHEN GIT_COMMIT_MODE == unset
@@ -20,7 +38,9 @@ DO:
   RUN preflight of the exact planned `git commit` invocation before any Studio-created commit, verifying every CONTRIBUTING_GUIDE-required trailer and every required COMMIT_FOOTER_CONTRACT token/value/order is present via `git commit --trailer token=value`; STOP_TURN and report missing trailer tokens when the preflight fails
   RUN `git log -1 --format=%B` after any Studio-created commit and verify every required project-policy and Studio trailer is present and ordered; report commit-trailer audit failure and do not claim completion when the audit fails
 RULES:
-  ALWAYS resolve GIT_COMMIT_MODE and CONTRIBUTING_GUIDE once per session before the first Studio git command or git-policy handoff, and reuse them until StudioShutdown; reset GIT_COMMIT_MODE to unset only when the user asks to change it
+  ALWAYS load and run GitCommitModeGate in an active cf/cf-studio session before any current-message commit request is routed, matched to a workflow, executed by the main session, or delegated to a sub-agent
+  ALWAYS allow read-only git inspection commands such as `git status`, `git diff`, `git log`, `git show`, and `git blame` without resolving or consulting GIT_COMMIT_MODE
+  ALWAYS resolve GIT_COMMIT_MODE and CONTRIBUTING_GUIDE once per session before the first Studio git state mutation or write-capable git-policy handoff, and reuse them until StudioShutdown; reset GIT_COMMIT_MODE to unset only when the user asks to change it
   ALWAYS include GIT_COMMIT_MODE, the mode-matched git_constraint, CONTRIBUTING_GUIDE, and COMMIT_FOOTER_CONTRACT as commit_footer_contract in every write-capable author/coder/phase dispatch payload
   ALWAYS pass git_constraint as read-only policy data, never as executable shell text
   ALWAYS pass commit_footer_contract as read-only policy data, never as executable shell text
@@ -31,21 +51,22 @@ RULES:
   ALWAYS treat `git commit -m ...` without the required `--trailer` arguments as incomplete, even when the subject/body is valid
   ALWAYS treat `git commit -s` as satisfying only a DCO/Signed-off-by project-policy requirement; it never satisfies any Studio trailer requirement
   ALWAYS keep DCO, Signed-off-by, and CONTRIBUTING_GUIDE directives separate from commit_footer_contract; do not include them in commit_footer_contract, but never ignore mandatory CONTRIBUTING_GUIDE commit requirements
-  NEVER let the main session, any workflow, or any sub-agent invoke any git tool when GIT_COMMIT_MODE == none
+  NEVER let the main session, any workflow, or any sub-agent stage files, create commits, push, rewrite history, or otherwise modify git state when GIT_COMMIT_MODE == none
+  NEVER route, execute, resume, or delegate after a current user message asks Studio to create a git commit before GitCommitModeGate has resolved GIT_COMMIT_MODE, CONTRIBUTING_GUIDE, git_constraint, and COMMIT_FOOTER_CONTRACT
   NEVER invoke `git commit` until the exact planned command passes trailer preflight
   NEVER push, force-push, rewrite history, or use interactive (-i) git, regardless of GIT_COMMIT_MODE
 MENU GitCommitModeMenu
-TITLE: How should Constructor Studio handle git this session? commit permits Studio-created commits; stage permits staging only; none forbids all git commands. (stage is suggested)
+TITLE: How should Constructor Studio handle git writes this session? commit permits Studio-created commits; stage permits staging only; none forbids git state changes while still allowing read-only inspection. (stage is suggested)
 OPTIONS:
   1 commit -> SET GIT_COMMIT_MODE = commit; Studio may inspect git state, stage authored files, and create Studio commits with concise Conventional-Commits messages
   2 stage -> SET GIT_COMMIT_MODE = stage; Studio may inspect git state and stage authored files but NEVER commit
-  3 none -> SET GIT_COMMIT_MODE = none; Studio writes files only and NEVER invokes any git tool
+  3 none -> SET GIT_COMMIT_MODE = none; Studio may inspect git state but NEVER stages, commits, pushes, rewrites history, or otherwise modifies git state
   INVALID -> EMIT_MENU GitCommitModeMenu
 NOTES:
   git_constraint blocks (the canonical mode-matched policy string passed to sub-agents; this gate is the source of truth):
     commit: "May inspect git state, `git add` the files authored this task, and `git commit` them with a concise Conventional-Commits message when commit is otherwise allowed by the workflow or user request. Every git commit created by Studio or its agents must satisfy commit_footer_contract and mandatory CONTRIBUTING_GUIDE commit requirements, including DCO/Signed-off-by when required. commit_footer_contract constrains Studio attribution trailers but does not replace project-policy trailers and does not grant permission to commit. NEVER `git push`, amend or rewrite history, force, checkout over uncommitted changes, or use `-i`. Stage only paths authored by the current task."
     stage: "May inspect git state and `git add` files authored this task. NEVER `git commit`, push, or rewrite history. Leave staged changes for the user to review and commit. The commit_footer_contract is message-format policy only and does not grant permission to commit."
-    none: "NEVER invoke any git command (no status, diff, add, stage, commit, or push). Write files only; the user manages all git operations. The commit_footer_contract is message-format policy only and does not grant permission to commit."
+    none: "May inspect git state with read-only commands such as status, diff, log, show, and blame. NEVER modify git state: no git add/stage, commit, push, reset, checkout, merge, rebase, tag, or history rewrite. Write files only; the user manages all git project changes. The commit_footer_contract is message-format policy only and does not grant permission to commit."
   commit_footer_contract (canonical structured representation; no rendered footer line fields; token/value/order is the only source of truth):
     schema_version: "1"
     authority: "GitCommitModeGate"

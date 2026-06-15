@@ -12,15 +12,15 @@ Migration note (legacy multi-phase workflow removal + routing update):
 - test_workflows_continue_root_skill_entrypoint_bootstrap: REWRITTEN. The shared
   root-skill-entrypoint-bootstrap.md was deleted, so the old check passed vacuously
   (masking). Re-grounded on the per-router Bootstrap UNITs (GenerateBootstrap /
-  AnalyzeBootstrap) that fail-closed until the cf skill is loaded (CFS_INIT == true).
+  AnalyzeBootstrap) that own their runtime prerequisite loads without CFS_INIT.
 - test_root_skill_entrypoint_bootstrap_has_fail_closed_unit: REWRITTEN. The shared
-  bootstrap file was deleted; the fail-closed entrypoint gate now lives in
+  bootstrap file was deleted; the entrypoint prerequisite gate now lives in
   skills/studio/SKILL.md UNIT SessionInit (REQUIRE {cf-studio-path} resolved before
-  any LOAD) and the routers' LoadCfSkillConfirm menu (2 stop -> STOP_TURN).
+  any LOAD), with workflow-specific rule loading kept in concrete workflows.
 - test_generate_workflow_has_template_resolution: REWRITTEN to
-  test_root_skill_has_template_var_resolution. generate.md no longer does
-  template/artifact resolution; that behavior moved to skills/studio/SKILL.md
-  UNIT TemplateVarResolution (+ CommandResolution / resolve-vars).
+  test_runtime_modules_have_template_var_resolution. generate.md no longer does
+  template/artifact resolution; template resolution is owned by the runtime
+  template-vars module, which loads command-resolution before resolve-vars.
 - test_validate_all_workflows_have_required_structure: KEPT; removed the deleted
   pdsl.md from the no-steps exemption set.
 """
@@ -98,67 +98,92 @@ def test_validate_all_workflows_have_required_structure():
 
 
 def test_workflows_continue_root_skill_entrypoint_bootstrap():
-    """Top-level routers must fail closed until the cf skill is loaded.
+    """Top-level routers must own runtime prerequisites without requiring CFS_INIT.
 
     The shared root-skill-entrypoint-bootstrap.md was removed; the equivalent
-    behavior is now a per-router Bootstrap UNIT that requires CFS_INIT == true
-    before any routing work.
+    behavior is now per-router Bootstrap UNITs that load command-resolution,
+    workflow-resolution, and git-commit-mode directly before routing work.
     """
     workflows_dir = Path(__file__).parent.parent / "workflows"
 
     routers = {
-        "generate.md": ("UNIT GenerateBootstrap", "CONTINUE GenerateRoute"),
-        "analyze.md": ("UNIT AnalyzeBootstrap", "CONTINUE AnalyzeRoute"),
+        "generate.md": ("UNIT GenerateBootstrap", "CONTINUE GenerateRoute", "GenerateRoute"),
+        "analyze.md": ("UNIT AnalyzeBootstrap", "CONTINUE AnalyzeRoute", "AnalyzeRoute"),
     }
 
     missing = []
-    for name, (bootstrap_unit, continue_route) in routers.items():
+    for name, (bootstrap_unit, continue_route, route_unit) in routers.items():
         content = (workflows_dir / name).read_text(encoding="utf-8")
         if bootstrap_unit not in content:
             missing.append(f"{name}: {bootstrap_unit}")
-        if "CFS_INIT == true" not in content:
-            missing.append(f"{name}: CFS_INIT gate")
+        if "modules/runtime/command-resolution.md" not in content:
+            missing.append(f"{name}: command-resolution load")
+        if "modules/runtime/workflow-resolution.md" not in content:
+            missing.append(f"{name}: workflow-resolution load")
+        if "modules/subagents/git-commit-mode.md" not in content:
+            missing.append(f"{name}: git-commit-mode load")
+        if "RUN CommandResolution to resolve {cfs_cmd}" not in content:
+            missing.append(f"{name}: CommandResolution run")
         if continue_route not in content:
             missing.append(f"{name}: {continue_route}")
+        if f"NEVER require cf or CFS_INIT before routing" not in content:
+            missing.append(f"{name}: no CFS_INIT requirement removal")
+        if f"REQUIRE WorkflowResolution is loaded" not in content:
+            missing.append(f"{name}: {route_unit} requires WorkflowResolution")
 
-    assert not missing, "Router bootstrap gate missing: " + ", ".join(missing)
+    assert not missing, "Router bootstrap prerequisite contract missing: " + ", ".join(missing)
 
 
 def test_root_skill_entrypoint_bootstrap_has_fail_closed_unit():
-    """The session entrypoint must fail closed before doing any work.
+    """The session entrypoint must resolve cf-studio-path before runtime loads.
 
     Re-grounded from the deleted workflows/shared/root-skill-entrypoint-bootstrap.md
     onto skills/studio/SKILL.md UNIT SessionInit, which requires {cf-studio-path}
-    is resolved before any LOAD, and onto the routers' LoadCfSkillConfirm menu
-    which stops the turn when the user declines to load cf.
+    is resolved before any LOAD and delegates workflow-specific gates to concrete
+    workflows instead of reviving LoadCfSkillConfirm.
     """
     skill_path = Path(__file__).parent.parent / "skills" / "studio" / "SKILL.md"
     content = skill_path.read_text(encoding="utf-8")
 
     assert "UNIT SessionInit" in content
-    assert "REQUIRE {cf-studio-path} is resolved before CommandResolution and before any LOAD" in content
+    assert "REQUIRE {cf-studio-path} is resolved before any LOAD below" in content
+    assert "modules/runtime/command-resolution.md" in content
+    assert "modules/runtime/workflow-resolution.md" in content
+    assert "modules/routing/root-intent-routing.md" in content
+    assert "RUN CommandResolution to resolve {cfs_cmd}" in content
+    assert "CONTINUE IntentRouting" in content
+    assert "NEVER invoke a selected workflow" in content
+    assert "ALWAYS keep workflow-specific prerequisite loading inside the selected workflow" in content
+    assert "MENU LoadCfSkillConfirm" not in content
 
-    # Routers fail closed when the user declines to load cf.
     generate = (Path(__file__).parent.parent / "workflows" / "generate.md").read_text(encoding="utf-8")
-    assert "MENU LoadCfSkillConfirm" in generate
-    assert "2 stop -> STOP_TURN" in generate
+    assert "MENU LoadCfSkillConfirm" not in generate
+    assert "NEVER require cf or CFS_INIT before routing" in generate
 
 
-def test_root_skill_has_template_var_resolution():
-    """Template-variable resolution is lazy-loaded from the root studio skill.
+def test_runtime_modules_have_template_var_resolution():
+    """Template-variable resolution is lazy-loaded from the runtime module.
 
     Re-grounded from the deleted multi-phase generate template-resolution logic
-    onto skills/studio/SKILL.md ConditionalModuleLoading plus the template-vars module.
+    onto the standalone template-vars module plus concrete workflows that load it
+    before resolving templated paths.
     """
     root = Path(__file__).parent.parent
-    content = (root / "skills" / "studio" / "SKILL.md").read_text(encoding="utf-8")
+    command_resolution = (
+        root / "skills" / "studio" / "modules" / "runtime" / "command-resolution.md"
+    ).read_text(encoding="utf-8")
     module = (
         root / "skills" / "studio" / "modules" / "runtime" / "template-vars.md"
     ).read_text(encoding="utf-8")
 
-    assert "UNIT CommandResolution" in content, "SKILL.md should define CommandResolution"
-    assert "modules/runtime/template-vars.md" in content
-    assert "unknown `{...}` template variable" in content
+    assert "UNIT CommandResolution" in command_resolution
+    assert "ALWAYS resolve {cfs_cmd} before invoking any cfs command" in command_resolution
     assert "UNIT TemplateVarResolution" in module
+    assert "modules/runtime/command-resolution.md" in module
+    assert "RUN CommandResolution to resolve {cfs_cmd} WHEN {cfs_cmd} is unset" in module
     assert "resolve-vars" in module, "TemplateVarResolution should use {cfs_cmd} resolve-vars"
     assert "template variable" in module.lower(), "module should reference template variables"
+
+    for workflow_name in ("auto-config.md", "kit.md", "plan.md", "workspace.md", "map.md"):
+        workflow = (root / "workflows" / workflow_name).read_text(encoding="utf-8")
+        assert "modules/runtime/template-vars.md" in workflow

@@ -12,32 +12,36 @@ This skill authors and reviews skill/prompt files written in PDSL. It loads the 
 
 ```pdsl
 UNIT WriteSkillsBootstrap
-PURPOSE: Ensure the cf skill is loaded, then load the references needed to author and review PDSL skills.
+PURPOSE: Load the references needed to author and review PDSL skills.
 STATE:
-  SET CFS_INIT: true | false (default false, scope session)
   SET ORIGINAL_INTENT: string | unset (default unset, scope workflow_run)
+  SET REVIEW_LOOP_REQUESTED: true | false | unset (default unset, scope workflow_run)
+  SET REVIEW_TARGET_PATHS: list | unset (default unset, scope workflow_run)
+  SET REVIEW_TARGET_SLICES: list | unset (default unset, scope workflow_run)
 DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/skill-invocation-art.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/pdsl-execution-card.md
+  RUN SkillInvocationArt
+  LOAD and REMEMBER rules from {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/studio-instructions-memory.md
+  RUN StudioInstructionsMemoryGate
   SET ORIGINAL_INTENT = the user's triggering write-skills request (verbatim or shortest faithful summary), or unset when activation-only, WHEN ORIGINAL_INTENT == unset
-  EMIT_MENU LoadCfSkillConfirm WHEN CFS_INIT != true
-  STOP_TURN WHEN CFS_INIT != true
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/command-resolution.md
+  RUN CommandResolution to resolve {cfs_cmd} and remember CLI capabilities
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/context-memory.md
   LOAD {cf-studio-path}/.core/architecture/specs/PDSL.md
   LOAD {cf-studio-path}/.core/requirements/prompt-engineering.md
   RUN verify both references loaded; EMIT "Required reference not found (PDSL spec or prompt-engineering methodology under {cf-studio-path}/.core) — cannot author or review; reinstall or sync the studio kit, then retry." and STOP_TURN WHEN either load fails
   CONTINUE WriteSkillsIntentCapture WHEN ORIGINAL_INTENT == unset
-  CONTINUE WriteSkillsExploreGate WHEN ORIGINAL_INTENT != unset
+  RUN classify ORIGINAL_INTENT by requested operation plus whether it evaluates an existing skill, prompt, workflow, agent instruction, or system prompt; SET REVIEW_LOOP_REQUESTED = true WHEN ORIGINAL_INTENT asks to review, audit, critique, inspect, check, validate, verify, analyze, compare behavior, or find issues/findings, bugs, risks, failures, regressions, bypasses, defects, root causes, routing problems, or behavioral-analysis concerns in an existing target, including review-and-fix wording
+  RUN default REVIEW_LOOP_REQUESTED = true WHEN REVIEW_LOOP_REQUESTED == unset AND ORIGINAL_INTENT primarily evaluates an existing skill, prompt, workflow, agent instruction, or system prompt rather than creating one
+  RUN classify ORIGINAL_INTENT; SET REVIEW_LOOP_REQUESTED = false WHEN REVIEW_LOOP_REQUESTED == unset
+  SET PLAN_FIRST_CONTINUE = WriteSkillsDispatch, SET CURRENT_WORKFLOW = cf-write-skills, SET COMPANION_CONTINUE = WriteSkillsExploreGate, LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md, LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md, and CONTINUE CompanionSkillOffer WHEN ORIGINAL_INTENT != unset
 RULES:
-  ALWAYS verify the cf skill is loaded, CFS_INIT == true, before authoring or reviewing a skill
-  ALWAYS treat CFS_INIT as false when its value is unknown, ambiguous, or unset
-  NEVER proceed past WriteSkillsBootstrap unless CFS_INIT == true is positively confirmed
-  ALWAYS load the PDSL spec and the prompt-engineering requirement before authoring or reviewing a skill
-  ALWAYS capture ORIGINAL_INTENT before offering cf-explore, cf-brainstorm, or any write/review dispatch
-  NEVER author or review a skill when a required reference failed to load
-MENU LoadCfSkillConfirm
-TITLE: The cf skill is not loaded. It is the Constructor Studio core that loads the shared rules and routes to cf-* skills, so authoring/reviewing skills cannot run without it. Load it now to continue?
-OPTIONS:
-  1 load -> INVOKE skill `cf` and CONTINUE WriteSkillsBootstrap
-  2 stop -> STOP_TURN
-  INVALID -> EMIT_MENU LoadCfSkillConfirm
+  ALWAYS remember git-commit-mode so any later commit request in this active workflow session runs GitCommitModeGate before routing, authoring, git use, or delegation
+  ALWAYS default to review-first routing when the request evaluates an existing skill, prompt, workflow, agent instruction, or system prompt rather than creating one
+  ALWAYS route review/audit/critique/inspect/check/validate/verify/analyze/behavior-comparison/find-issues/bug-risk-failure-regression-bypass-defect-root-cause-routing-analysis intents through WriteSkillsReviewLoop first; any fixes must be gated by ReviewFindingsReportBrowser and ReviewFixApprovalGate, not by direct author dispatch
+  NEVER author or review a skill after a required reference load failure
 ```
 
 ```pdsl
@@ -48,25 +52,36 @@ DO:
   WAIT user.reply
   STOP_TURN
 RULES:
-  ALWAYS on the resumed reply set ORIGINAL_INTENT = user.reply and CONTINUE WriteSkillsExploreGate
   NEVER offer cf-explore, cf-brainstorm, or dispatch author/reviewer agents while ORIGINAL_INTENT == unset
+```
+
+```pdsl
+UNIT WriteSkillsIntentResume
+PURPOSE: Resume the workflow after the user provides the skill-writing target.
+WHEN:
+  REQUIRE user.reply exists
+  REQUIRE ORIGINAL_INTENT == unset
+DO:
+  SET ORIGINAL_INTENT = user.reply
+  RUN derive REVIEW_LOOP_REQUESTED from ORIGINAL_INTENT using the Bootstrap review-intent classification
+  SET PLAN_FIRST_CONTINUE = WriteSkillsDispatch
+  SET CURRENT_WORKFLOW = cf-write-skills
+  SET COMPANION_CONTINUE = WriteSkillsExploreGate
+  LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md
+  CONTINUE CompanionSkillOffer
 ```
 
 ```pdsl
 UNIT WriteSkillsExploreGate
 PURPOSE: Offer task-relevant context discovery before any skill file is authored or reviewed, after Bootstrap and before the first edit.
-STATE:
-  SET RESOURCE_CONTEXT: unset | provided (default unset, scope workflow_run)
 WHEN:
   REQUIRE ORIGINAL_INTENT != unset
 DO:
-  EMIT_MENU WriteSkillsExploreMenu
-  WAIT user.reply
-  STOP_TURN
-RULES:
-  ALWAYS offer cf-explore context discovery before authoring or reviewing a skill, and ALWAYS let the user skip it
-  ALWAYS default to skip when the skill target and its surrounding context are already fully specified
-  ALWAYS carry any returned resource_context into every author and reviewer dispatch payload as read-only context, NEVER as a gate on a verdict
+  SET WORKFLOW_PREP_EXPLORE_MENU = WriteSkillsExploreMenu
+  SET WORKFLOW_PREP_BRAINSTORM_GATE = WriteSkillsBrainstormGate
+  LOAD {cf-studio-path}/.core/skills/studio/modules/gates/workflow-prep.md
+  CONTINUE WorkflowPrepExploreGate
 MENU WriteSkillsExploreMenu
 TITLE: Before writing or reviewing a skill, discover task-relevant project context (sibling skills, workflows, agent contracts, referenced requirements, PDSL conventions) with cf-explore — or skip? Skip is the default when the target and its context are already clear; explore for unfamiliar or cross-cutting prompt work. Reply with a number.
 OPTIONS:
@@ -79,33 +94,34 @@ OPTIONS:
 UNIT WriteSkillsBrainstormGate
 PURPOSE: Offer decision/design exploration via cf-brainstorm as the next step after the explore gate, before any skill file is authored or reviewed.
 DO:
-  EMIT_MENU WriteSkillsBrainstormMenu
-  WAIT user.reply
-  STOP_TURN
-RULES:
-  ALWAYS offer cf-brainstorm decision exploration after the explore gate and before authoring or reviewing a skill, and ALWAYS let the user skip it
-  ALWAYS default to skip when the skill approach and its decisions are already clear and unambiguous
-  ALWAYS carry any brainstorm decisions into every author and reviewer dispatch payload as read-only context, NEVER as a gate on a verdict
+  SET WORKFLOW_PREP_BRAINSTORM_MENU = WriteSkillsBrainstormMenu
+  SET WORKFLOW_PREP_DISPATCH_UNIT = PlanFirstGate
+  LOAD {cf-studio-path}/.core/skills/studio/modules/gates/workflow-prep.md
+  CONTINUE WorkflowPrepBrainstormGate
 MENU WriteSkillsBrainstormMenu
 TITLE: Before writing or reviewing a skill, brainstorm ambiguous decisions or design options with cf-brainstorm — or skip? Skip is the default when the approach is already clear; brainstorm for ambiguous requirements or open design questions. Reply with a number.
 OPTIONS:
-  1 brainstorm -> INVOKE skill `cf-brainstorm`, then CONTINUE WriteSkillsDispatch
-  2 skip -> CONTINUE WriteSkillsDispatch
+  1 brainstorm -> INVOKE skill `cf-brainstorm`; require it to return brainstorm_decisions, SET BRAINSTORM_DECISIONS = provided, then SET PLAN_FIRST_CONTINUE = WriteSkillsDispatch, LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md, and CONTINUE PlanFirstGate
+  2 skip -> SET PLAN_FIRST_CONTINUE = WriteSkillsDispatch, LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md, and CONTINUE PlanFirstGate
   INVALID -> EMIT_MENU WriteSkillsBrainstormMenu
 ```
 
 ```pdsl
 UNIT WriteSkillsValidate
 PURPOSE: Validate authored PDSL with the deterministic validator.
+STATE:
+  SET VALIDATION_STATUS: pass | fail | not-run (default not-run, scope workflow_run)
 WHEN:
   REQUIRE a skill file has been written or edited
 DO:
-  RUN `{cfs_cmd} pdsl validate` on the written skill file
-  EMIT the validation findings and CONTINUE WriteSkillsReviewLoop to fix them before proceeding WHEN validation reports fail or error
-  CONTINUE WriteSkillsReviewLoop WHEN validation passes
+  LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/dispatch.md
+  RUN SubAgentDispatch for the cf-deterministic-validator dispatch group before launching deterministic PDSL validation
+  RUN the deterministic PDSL check — dispatch cf-deterministic-validator for `{cfs_cmd} pdsl validate` on the written skill file
+  EMIT the validation findings
+  SET VALIDATION_STATUS = fail and CONTINUE WriteSkillsReviewLoop to fix them before proceeding WHEN validation reports fail or error
+  SET VALIDATION_STATUS = pass and CONTINUE WriteSkillsReviewLoop WHEN validation passes
 RULES:
-  ALWAYS run `{cfs_cmd} pdsl validate` after writing or editing a skill file
-  NEVER treat a skill as done before BOTH `{cfs_cmd} pdsl validate` passes AND the semantic review-fix loop has been offered and completed
+  NEVER treat a skill as done before BOTH the deterministic PDSL check `{cfs_cmd} pdsl validate` passes AND the semantic review-fix loop has been offered and completed
 ```
 
 ```pdsl
@@ -113,53 +129,74 @@ UNIT WriteSkillsReviewLoop
 PURPOSE: Run a semantic review at the user-chosen granularity and iterate fixes until the skill is clean.
 STATE:
   SET REVIEW_GRANULARITY: single-pass | per-methodology | per-layer (default unset, scope workflow_run)
+  SET SELECTED_REVIEW_FIX_AGENT: cf-generate-prompt-engineer-casual | cf-generate-prompt-engineer-smart | unset (default unset, scope workflow_run)
+  SET REVIEW_FIXES_APPLIED: true | false | unset (default unset, scope workflow_run)
 WHEN:
-  REQUIRE edits have been applied to the skill file OR the user requested review of an existing target without edits
+  REQUIRE edits have been applied to the skill file OR REVIEW_LOOP_REQUESTED == true
 DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/dispatch.md
   LOAD {cf-studio-path}/.core/requirements/prompt-bug-finding.md
   LOAD {cf-studio-path}/.core/requirements/consistency-checklist.md
-  EMIT_MENU ReviewGranularityMenu WHEN REVIEW_GRANULARITY == unset
-  RUN the chosen review at REVIEW_GRANULARITY, dispatching cf-pdsl-reviewer (prompt-engineering + prompt-bug-finding) and cf-semantic-reviewer-consistency (consistency-checklist) instances in parallel
-  RUN aggregation of every reviewer's findings into one deduplicated review report
-  LOAD {cf-studio-path}/.core/skills/studio/modules/review/fix-approval.md and RUN ReviewFixApprovalGate WHEN findings remain and fixes are applicable
-  RUN cf-pdsl-author to apply the ReviewFixApprovalGate-approved review fixes WHEN review fixes were approved
-  CONTINUE WriteSkillsValidate WHEN review fixes were approved and applied this iteration
+  LOAD {cf-studio-path}/.core/skills/studio/modules/review/finding-contract.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/review/semantic-loop-skeleton.md
+  RUN SemanticReviewNoSpinRules
+  RUN resolve REVIEW_TARGET_PATHS to the declared read-only file path or paths under review, and REVIEW_TARGET_SLICES to the declared reviewed content slices for those targets, before reviewer dispatch or approved-fix dispatch
+  EMIT "Review target resolution is required before reviewer dispatch. Provide the reviewed target path(s) and declared content slice(s) for the existing skill/prompt/workflow/agent instruction/system prompt under review." and STOP_TURN WHEN REVIEW_LOOP_REQUESTED == true AND (REVIEW_TARGET_PATHS == unset OR REVIEW_TARGET_SLICES == unset)
+  SET REVIEW_GRANULARITY_SCOPE = "Skill/prompt review scope: single-pass covers prompt-engineering, prompt-bug-finding, and consistency-checklist together; per-methodology dispatches cf-pdsl-reviewer for prompt-engineering plus prompt-bug-finding and cf-semantic-reviewer-consistency separately; per-layer dispatches one reviewer per current layer/category."
+  RUN SemanticReviewGranularityGate WHEN REVIEW_GRANULARITY == unset
+  RUN SubAgentDispatch for the selected reviewer dispatch group before launching reviewer instances
+  RUN read each methodology's current Layer Map (prompt-engineering layers, prompt-bug-finding layers, consistency-checklist categories) before per-layer or per-methodology dispatch, so added layers are covered automatically and never a fixed count
+  RUN the chosen review at REVIEW_GRANULARITY: single-pass = dispatch cf-pdsl-reviewer from {cf-studio-path}/.core/skills/studio/agents/cf-pdsl-reviewer.md and cf-semantic-reviewer-consistency from {cf-studio-path}/.core/skills/studio/agents/cf-semantic-reviewer-consistency.md in one combined dispatch group, then aggregate one report; per-methodology = dispatch cf-pdsl-reviewer over prompt-engineering plus prompt-bug-finding layers and cf-semantic-reviewer-consistency over all consistency-checklist categories in parallel; per-layer = dispatch one reviewer per layer/category for every layer each methodology defines (L1 through its last), never a fixed count
+  RUN aggregation of every reviewer's findings into one deduplicated ReviewFindingsReport with stable finding IDs and every ReviewFindingContract field
+  RUN render the interactive ReviewFindingsReportBrowser from fix-approval before any fix-scope menu WHEN findings remain and fixes are applicable
+  RUN SemanticReviewFixApprovalGate WHEN findings remain and fixes are applicable
+  RUN select SELECTED_REVIEW_FIX_AGENT from the approved findings and REVIEW_TARGET_PATHS using the cf-generate-author prompt-workflow selection rules; choose cf-generate-prompt-engineer-smart when fixes affect state, routing, handoffs, validation, sub-agent dispatch, or output contracts WHEN REVIEW_FIX_APPROVED == true
+  RUN SubAgentDispatch for the SELECTED_REVIEW_FIX_AGENT review-fix dispatch group WHEN REVIEW_FIX_APPROVED == true
+  DISPATCH SELECTED_REVIEW_FIX_AGENT with mode=fix, kind=prompt, target_paths=REVIEW_TARGET_PATHS, REVIEW_TARGET_SLICES, APPROVED_REVIEW_FINDING_IDS, REVIEW_FIX_SCOPE, git_commit_mode, contributing_guide, git_constraint, commit_footer_contract, and resource_context to apply only approved review fixes WHEN REVIEW_FIX_APPROVED == true
+  RUN verify the returned fix manifest accounts for every APPROVED_REVIEW_FINDING_IDS entry as applied or not-fixable; SET REVIEW_FIXES_APPLIED = true WHEN one or more approved fixes changed skill/prompt/workflow files; SET REVIEW_FIXES_APPLIED = false WHEN no files changed
+  CONTINUE WriteSkillsValidate WHEN REVIEW_FIXES_APPLIED == true
   STOP_TURN and report the remaining findings WHEN findings remain but no fixes were applied this iteration (none approved, none applicable, or the ReviewFixApprovalGate resolved to none) — re-reviewing unchanged skill files cannot change the result
-  STOP_TURN WHEN no review findings remain
+  STOP_TURN and report that deterministic blockers remain WHEN no review findings remain AND VALIDATION_STATUS == fail
+  CONTINUE WriteSkillsCompletion WHEN no review findings remain AND REVIEW_LOOP_REQUESTED == true
+  CONTINUE WriteSkillsCompletion WHEN no review findings remain AND VALIDATION_STATUS == pass
 RULES:
-  ALWAYS offer the granularity choice with a suggested level by change size: tiny edit (≤10 changed lines) -> single-pass, moderate edit (11–50 changed lines) -> per-methodology, new file or large/structural change (>50 changed lines) -> per-layer
-  ALWAYS read each methodology's current Layer Map (prompt-engineering layers, prompt-bug-finding layers, consistency-checklist categories) to determine its full set of layers before a per-layer or per-methodology dispatch, so added layers are covered automatically and never a fixed count
   ALWAYS scope each reviewer to only its assigned slice (all methodologies / one methodology / one layer) and run independent reviewers in parallel
-  ALWAYS aggregate and deduplicate all findings into one report before iterating fixes
-  ALWAYS iterate the review-fix loop until no findings remain
-  NEVER re-loop the review when no fixes were applied this iteration — STOP_TURN reporting the remaining findings so the loop cannot spin on unchanged skill files; only an applied fix re-runs WriteSkillsValidate and re-reviews
-MENU ReviewGranularityMenu
-TITLE: Choose review depth — the suggested level fits the change size.
-OPTIONS:
-  1 single-pass -> SET REVIEW_GRANULARITY = single-pass; all three methodologies (prompt-engineering, prompt-bug-finding, consistency-checklist) are reviewed in one combined pass (fastest; suggested for tiny edits)
-  2 per-methodology -> SET REVIEW_GRANULARITY = per-methodology; one cf-pdsl-reviewer for all prompt-engineering + prompt-bug-finding layers and one cf-semantic-reviewer-consistency for all consistency-checklist categories (balanced; suggested for moderate edits)
-  3 per-layer -> SET REVIEW_GRANULARITY = per-layer; one reviewer per layer/category of each methodology, L1 through each methodology's last, in parallel (most thorough; suggested for new files or structural changes)
-  INVALID -> EMIT_MENU ReviewGranularityMenu
-NOTES:
-  ConditionalModuleLoading loads {cf-studio-path}/.core/skills/studio/modules/review/finding-contract.md before findings are emitted and {cf-studio-path}/.core/skills/studio/modules/review/fix-approval.md before fixes are applied. Aggregation merges every reviewer's findings into one report, dedupes by (LOCATION, category, ROOT_CAUSE), keeps the highest SEVERITY and CONFIDENCE when collapsing duplicates, preserves each ReviewFindingContract field, and gates fixes through ReviewFixApprovalGate.
+  ALWAYS keep workflow-specific reviewer dispatches in this workflow
+  ALWAYS select a concrete write-capable prompt-engineer worker inside WriteSkillsReviewLoop after REVIEW_FIX_APPROVED == true; NEVER dispatch cf-pdsl-author as a generic review-fix worker because its contract is for new PDSL authoring
+  NEVER declare an authored or edited skill done until BOTH the deterministic PDSL check `{cfs_cmd} pdsl validate` passes AND the semantic review has no remaining findings; ALWAYS re-run WriteSkillsValidate after any fix before re-reviewing
+```
+
+```pdsl
+UNIT WriteSkillsCompletion
+PURPOSE: Emit a concise completion report, then offer context-grounded next actions after skill authoring/review completes cleanly.
+WHEN:
+  REQUIRE no review findings remain
+DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-resolution.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md
+  EMIT a concise completion report covering work done, deterministic validation outcome (including review-only flows with no deterministic validation run), and semantic review outcome with no remaining findings
+  RUN NextActionsOffer
+RULES:
+  ALWAYS use this unit only after the skill author/review loop is complete and control is about to return to the user
+  NEVER bypass NextActionsOffer on a clean terminal path that returns control to the user
 ```
 
 ```pdsl
 UNIT WriteSkillsDispatch
 PURPOSE: Dispatch the sub-agents that write, fix, and review skills.
 DO:
-  CONTINUE WriteSkillsReviewLoop WHEN the user requested review of an existing target without edits
+  CONTINUE WriteSkillsReviewLoop WHEN REVIEW_LOOP_REQUESTED == true
+  LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/dispatch.md WHEN requested skill/prompt/workflow/agent instruction writes or fixes OR reviewer dispatch is needed
   LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md WHEN requested skill/prompt/workflow/agent instruction writes or fixes
   RUN GitCommitModeGate before preparing git policy for author dispatch WHEN requested skill/prompt/workflow/agent instruction writes or fixes
-  RUN cf-pdsl-author for requested skill/prompt/workflow/agent instruction writes or fixes WHEN requested skill/prompt/workflow/agent instruction writes or fixes
+  RUN resolve git_commit_mode (probe once per session), contributing_guide (discover; use null for no discovered guide), and the mode-matched git_constraint WHEN requested skill/prompt/workflow/agent instruction writes or fixes
+  RUN SubAgentDispatch for the selected cf-pdsl-author dispatch group WHEN requested skill/prompt/workflow/agent instruction writes or fixes
+  DISPATCH cf-pdsl-author from {cf-studio-path}/.core/skills/studio/agents/cf-pdsl-author.md with git_commit_mode, contributing_guide, git_constraint, commit_footer_contract, and any WriteSkillsExploreGate-resolved resource_context as read-only context (absolute path or reference, never inline prompt text) for requested skill/prompt/workflow/agent instruction writes or fixes WHEN requested skill/prompt/workflow/agent instruction writes or fixes
   CONTINUE WriteSkillsValidate WHEN a skill file has been written or edited
 RULES:
-  ALWAYS dispatch cf-pdsl-author from {cf-studio-path}/.core/skills/studio/agents/cf-pdsl-author.md to write skills and apply review fixes
-  ALWAYS run GitCommitModeGate before any write-capable author dispatch, even when the task itself did not ask to commit
-  ALWAYS after any author/fix dispatch changes content, run deterministic validation and then offer ReviewGranularityMenu before semantic review
+  ALWAYS use a concrete cf-generate-prompt-engineer-* worker for approved review fixes to existing prompt/workflow/agent instruction files
+  ALWAYS run SubAgentDispatch before every native author, validator, reviewer, or review-fix dispatch group; inline fallback executes the same selected contract without native dispatch
   NEVER stop after content generation or deterministic validation before the semantic review-fix loop is offered
-  ALWAYS resolve git_commit_mode (probe once per session), contributing_guide (discover; null when none found), and the mode-matched git_constraint before any write-capable cf-pdsl-author dispatch, and ALWAYS include all three in that dispatch payload
-  ALWAYS include the WriteSkillsExploreGate-resolved resource_context (when RESOURCE_CONTEXT == provided) in every cf-pdsl-author and reviewer dispatch payload as read-only context (an absolute path or reference, never inline prompt text), NEVER as a gate on an author or reviewer verdict
-  ALWAYS dispatch cf-pdsl-reviewer from {cf-studio-path}/.core/skills/studio/agents/cf-pdsl-reviewer.md (prompt-engineering + prompt-bug-finding) and cf-semantic-reviewer-consistency from {cf-studio-path}/.core/skills/studio/agents/cf-semantic-reviewer-consistency.md (consistency-checklist) per the chosen REVIEW_GRANULARITY: single-pass = one reviewer over all three methodologies; per-methodology = cf-pdsl-reviewer over its prompt-engineering + prompt-bug-finding layers and cf-semantic-reviewer-consistency over all consistency-checklist categories; per-layer = one reviewer per layer/category for every layer each methodology defines (L1 through its last), never a fixed count
   ALWAYS synthesize into each reviewer instance only its assigned slice for the chosen granularity, never more than its scope
+  NEVER let a sub-agent rediscover or reopen prompt or instruction assets from disk outside the declared REVIEW_TARGET_PATHS, REVIEW_TARGET_SLICES, and any explicit read-only resource_context
 ```

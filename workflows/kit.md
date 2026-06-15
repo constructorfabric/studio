@@ -15,27 +15,30 @@ Executor contract: the controller owns filesystem writes, exact-byte preview che
 
 ```pdsl
 UNIT KitInitBootstrap
-PURPOSE: Ensure the cf skill is loaded before any kit work.
-STATE:
-  SET CFS_INIT: true | false (default false, scope session)
+PURPOSE: Load the runtime rules and verify kit CLI support before any kit work.
 DO:
-  EMIT_MENU LoadCfSkillConfirm WHEN CFS_INIT != true
-  STOP_TURN WHEN CFS_INIT != true
+  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/skill-invocation-art.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/pdsl-execution-card.md
+  RUN SkillInvocationArt
+  LOAD and REMEMBER rules from {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/studio-instructions-memory.md
+  RUN StudioInstructionsMemoryGate
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/command-resolution.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/template-vars.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/context-memory.md
+  RUN CommandResolution to resolve {cfs_cmd}
   RUN verify `{cfs_cmd} kit normalize --help` supports `--from`, `--output`, `--dry-run`, and `--stdout`
   EMIT "Required kit normalization command is unavailable; update Constructor Studio, then retry cf-kit." WHEN the normalize capability check fails
   STOP_TURN WHEN the normalize capability check fails
-  CONTINUE KitInitEntry WHEN CFS_INIT == true
+  CONTINUE KitInitEntry
 RULES:
-  ALWAYS verify the cf skill is loaded, CFS_INIT == true, before any kit work
+  ALWAYS run StudioInstructionsMemoryGate before kit target routing, preflight, discovery, or writes
+  ALWAYS remember git-commit-mode so any later commit request in this active workflow session runs GitCommitModeGate before routing, writes, git use, or delegation
+  ALWAYS load command-resolution before invoking `{cfs_cmd}` kit commands
+  ALWAYS load template-vars before resolving kit resource paths or unknown template variables
+  ALWAYS load context-memory before storing or consuming kit discovery resource_context
   ALWAYS verify the kit normalize command surface before previewing, writing, or validating a kit manifest
-  ALWAYS treat CFS_INIT as false when its value is unknown, ambiguous, or unset
-  NEVER proceed past KitInitBootstrap unless CFS_INIT == true is positively confirmed
-MENU LoadCfSkillConfirm
-TITLE: The cf skill is not loaded. It is the Constructor Studio core that loads the shared rules and routes to cf-* skills, so cf-kit cannot run without it. Load it now to continue?
-OPTIONS:
-  1 load -> INVOKE skill `cf` and CONTINUE KitInitBootstrap
-  2 stop -> STOP_TURN
-  INVALID -> EMIT_MENU LoadCfSkillConfirm
+  NEVER require cf or CFS_INIT before kit; this workflow owns its prerequisite loads
 ```
 
 ```pdsl
@@ -63,7 +66,7 @@ DO:
   CONTINUE KitInitManualGuidanceProposal WHEN PENDING_MANUAL_GUIDANCE == true AND the user reply contains manual resource guidance
   SET TARGET_DIR = the target folder path from the user request WHEN the request already names a concrete folder
   CONTINUE KitInitAskTarget WHEN TARGET_DIR == unset
-  CONTINUE KitInitPreflight WHEN TARGET_DIR != unset
+  SET PLAN_FIRST_CONTINUE = KitInitPreflight, SET CURRENT_WORKFLOW = cf-kit, SET COMPANION_CONTINUE = PlanFirstGate, LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md, LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md, and CONTINUE CompanionSkillOffer WHEN TARGET_DIR != unset
 RULES:
   ALWAYS capture the original intent before routing any cf-kit branch
   ALWAYS resolve the target folder before discovery, preview, validation, or write work
@@ -86,9 +89,9 @@ RULES:
 MENU KitInitTargetMenu
 TITLE: Which folder should become or be checked as a kit root? Reply with a number, or send the folder path directly.
 OPTIONS:
-  1 path:<folder> | path -> Reply `path: <folder>` or send the folder path alone, then CONTINUE KitInitPreflight
+  1 path:<folder> | path -> Reply `path: <folder>` or send the folder path alone, then SET TARGET_DIR, SET PLAN_FIRST_CONTINUE = KitInitPreflight, SET CURRENT_WORKFLOW = cf-kit, SET COMPANION_CONTINUE = PlanFirstGate, LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md, LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md, and CONTINUE CompanionSkillOffer
   2 cancel -> STOP_TURN
-  INVALID -> treat non-empty path-like free text as TARGET_DIR and CONTINUE KitInitPreflight; handle `cancel`, `help`, or non-path text by EMIT "Reply with `path: <folder>`, a path-like folder value, or 2 to cancel." and EMIT_MENU KitInitTargetMenu
+  INVALID -> treat non-empty path-like free text as TARGET_DIR, SET PLAN_FIRST_CONTINUE = KitInitPreflight, SET CURRENT_WORKFLOW = cf-kit, SET COMPANION_CONTINUE = PlanFirstGate, LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md, LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md, and CONTINUE CompanionSkillOffer; handle `cancel`, `help`, or non-path text by EMIT "Reply with `path: <folder>`, a path-like folder value, or 2 to cancel." and EMIT_MENU KitInitTargetMenu
 ```
 
 ```pdsl
@@ -241,6 +244,7 @@ WHEN:
   REQUIRE TARGET_SOURCE == discovery
   AND RESOURCE_CONTEXT == provided
 DO:
+  RUN ResourceContextMemory
   RUN classify candidates from RESOURCE_CONTEXT into public skills, agents, and rules, plus supporting templates, checklists, scripts, directories, and other
   RUN derive explicit artifact-kind bindings for every constraints resource from RESOURCE_CONTEXT evidence:
     - template/checklist/rules/example files are bound to artifact kinds only when the kind is explicit in file metadata, constraints kind names, or an unambiguous per-kind layout such as `artifacts/<KIND>/template.md`
@@ -374,9 +378,20 @@ DO:
   RUN inspect the normalized manifest report for constraints resources with artifact kinds but no explicit template/example bindings; report these as actionable warnings because `validate-kits` will skip self-check for unknown relationships
   EMIT the validation report, manifest summary, and any warnings WHEN the dry-run passes
   EMIT the validation findings and the path that needs revision WHEN the dry-run reports fail or error
-  STOP_TURN
+  CONTINUE KitInitNextActions WHEN the dry-run passes
+  STOP_TURN WHEN the dry-run reports fail or error
 RULES:
   ALWAYS validate a newly written `.cf-studio-kit.toml` through dry-run normalization before reporting completion
   NEVER skip validation after a write
   NEVER report success when the dry-run reports fail or error
+```
+
+```pdsl
+UNIT KitInitNextActions
+PURPOSE: Offer context-grounded next actions after a kit manifest write validates successfully.
+DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md
+  RUN NextActionsOffer
+RULES:
+  ALWAYS run only after KitInitValidateWrittenManifest reports a passing dry-run validation
 ```

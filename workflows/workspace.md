@@ -13,25 +13,27 @@ This skill drives the `{cfs_cmd}` workspace CLI to set up multi-repo federation 
 
 ```pdsl
 UNIT WorkspaceBootstrap
-PURPOSE: Ensure the cf skill is loaded before any workspace work begins.
-STATE:
-  SET CFS_INIT: true | false (default false, scope session)
+PURPOSE: Load the runtime and workspace setup rules before any workspace work begins.
 DO:
-  EMIT_MENU LoadCfSkillConfirm WHEN CFS_INIT != true
-  STOP_TURN WHEN CFS_INIT != true
+  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/skill-invocation-art.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/pdsl-execution-card.md
+  RUN SkillInvocationArt
+  LOAD and REMEMBER rules from {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/studio-instructions-memory.md
+  RUN StudioInstructionsMemoryGate
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/command-resolution.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/template-vars.md
+  RUN CommandResolution to resolve {cfs_cmd}
   LOAD {cf-studio-path}/.core/requirements/workspace-setup.md as the setup detail reference (framing, source fields, storage modes, validation checks, terminal-record shapes)
-  CONTINUE WorkspaceIntentRouter WHEN CFS_INIT == true
+  SET ORIGINAL_INTENT = the user's triggering workspace request (verbatim or shortest faithful summary)
+  SET CURRENT_WORKFLOW = cf-workspace, SET COMPANION_CONTINUE = WorkspaceIntentRouter and LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md and CONTINUE CompanionSkillOffer
 RULES:
-  ALWAYS verify the cf skill is loaded, CFS_INIT == true, before any workspace work
-  ALWAYS treat CFS_INIT as false when its value is unknown, ambiguous, or unset
-  NEVER proceed past WorkspaceBootstrap unless CFS_INIT == true is positively confirmed
+  ALWAYS run StudioInstructionsMemoryGate before workspace routing, setup, validation, or writes
+  ALWAYS remember git-commit-mode so any later commit request in this active workflow session runs GitCommitModeGate before routing, writes, git use, or delegation
+  ALWAYS load command-resolution before invoking `{cfs_cmd}` workspace commands
+  ALWAYS load template-vars before resolving workspace source paths or unknown template variables
   ALWAYS load and follow the workspace-setup reference for field lists, decision framing, suggested defaults, and terminal-record shapes
-MENU LoadCfSkillConfirm
-TITLE: The cf skill is not loaded. Load it now to continue?
-OPTIONS:
-  1 load -> INVOKE skill `cf` and CONTINUE WorkspaceBootstrap
-  2 stop -> STOP_TURN
-  INVALID -> EMIT_MENU LoadCfSkillConfirm
+  NEVER require cf or CFS_INIT before workspace; this workflow owns its prerequisite loads
 ```
 ```pdsl
 UNIT WorkspaceIntentRouter
@@ -43,7 +45,7 @@ DO:
 MENU WorkspaceIntentMenu
 TITLE: What would you like to do — setup, quick-command, or status? (see loaded setup reference for what each does) Reply with a number or the option name.
 OPTIONS:
-  1 setup -> CONTINUE WorkspaceDiscover
+  1 setup -> SET PLAN_FIRST_CONTINUE = WorkspaceDiscover, LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md, and CONTINUE PlanFirstGate
   2 quick-command | quick -> CONTINUE WorkspaceQuickCommand
   3 status -> CONTINUE {cf-studio-path}/.core/workflows/analyze.md with the workspace as target
   INVALID -> EMIT_MENU WorkspaceIntentMenu

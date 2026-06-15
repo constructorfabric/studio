@@ -13,23 +13,19 @@ This skill answers help requests by presetting a `cf-explain` storytelling walkt
 
 ```pdsl
 UNIT HelpBootstrap
-PURPOSE: Ensure the cf skill is loaded before presetting the help session.
-STATE:
-  SET CFS_INIT: true | false (default false, scope session)
+PURPOSE: Preset the help session without requiring the root cf router.
 DO:
-  EMIT_MENU LoadCfSkillConfirm WHEN CFS_INIT != true
-  STOP_TURN WHEN CFS_INIT != true
-  CONTINUE HelpPreset WHEN CFS_INIT == true
+  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/skill-invocation-art.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/pdsl-execution-card.md
+  RUN SkillInvocationArt
+  LOAD and REMEMBER rules from {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/studio-instructions-memory.md
+  RUN StudioInstructionsMemoryGate
+  CONTINUE HelpPreset
 RULES:
-  ALWAYS verify the cf skill is loaded, CFS_INIT == true, before presetting the help session
-  ALWAYS treat CFS_INIT as false when its value is unknown, ambiguous, or unset
-  NEVER proceed past HelpBootstrap unless CFS_INIT == true is positively confirmed
-MENU LoadCfSkillConfirm
-TITLE: The cf skill is not loaded. It is the Constructor Studio core that loads the shared rules and routes to cf-* skills, so help cannot run without it. Load it now to continue?
-OPTIONS:
-  1 load -> INVOKE skill `cf` and CONTINUE HelpBootstrap
-  2 stop -> STOP_TURN
-  INVALID -> EMIT_MENU LoadCfSkillConfirm
+  ALWAYS run StudioInstructionsMemoryGate before applying the help preset
+  ALWAYS remember git-commit-mode so any later commit request in this active workflow session runs GitCommitModeGate before routing, git use, or delegation
+  NEVER require cf or CFS_INIT before presetting help; cf-explain owns its own prerequisite loads
 ```
 ```pdsl
 UNIT HelpPreset

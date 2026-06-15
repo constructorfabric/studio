@@ -15,8 +15,11 @@ This is a thin alias: `cf-studio` behaves identically to `cf` — same skill, sa
 UNIT StudioAlias
 PURPOSE: Delegate cf-studio to the cf skill — they are the same skill.
 DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/skill-invocation-art.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/pdsl-execution-card.md
+  RUN SkillInvocationArt
   INVOKE skill `cf` to initialize the session and route the request, then STOP_TURN
 RULES:
   ALWAYS treat cf-studio as an exact alias of cf — same skill, same routing, same gates
-  NEVER perform any work, render any output, or apply any gate here beyond delegating to the cf skill
+  NEVER perform any work, render any output, or apply any gate here beyond the SkillInvocationArt entry banner and delegating to the cf skill
 ```

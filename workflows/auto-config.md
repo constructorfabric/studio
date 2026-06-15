@@ -13,26 +13,31 @@ This skill scans a brownfield project — via the cf-explore skill — and gener
 
 ```pdsl
 UNIT AutoConfigBootstrap
-PURPOSE: Ensure the cf skill is loaded, then load the auto-config methodology before any auto-config work.
-STATE:
-  SET CFS_INIT: true | false (default false, scope session)
+PURPOSE: Load the runtime rules and auto-config methodology before any auto-config work.
 DO:
-  EMIT_MENU LoadCfSkillConfirm WHEN CFS_INIT != true
-  STOP_TURN WHEN CFS_INIT != true
+  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/skill-invocation-art.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/pdsl-execution-card.md
+  RUN SkillInvocationArt
+  LOAD and REMEMBER rules from {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/studio-instructions-memory.md
+  RUN StudioInstructionsMemoryGate
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/command-resolution.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/template-vars.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/context-memory.md
+  RUN CommandResolution to resolve {cfs_cmd}
   LOAD {cf-studio-path}/.core/requirements/auto-config.md as the phase-by-phase methodology reference
   RUN verify the methodology loaded; RETURN a failed AUTO_CONFIG_RESULT with reason="Auto-config methodology not found at {cf-studio-path}/.core/requirements/auto-config.md" and recovery="reinstall or sync the studio kit, then retry auto-config" and STOP_TURN WHEN the load fails
+  SET ORIGINAL_INTENT = the user's triggering auto-config request (verbatim or shortest faithful summary)
+  SET PLAN_FIRST_CONTINUE = AutoConfigPrecheckGate, SET CURRENT_WORKFLOW = cf-auto-config, SET COMPANION_CONTINUE = PlanFirstGate, LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md, LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md, and CONTINUE CompanionSkillOffer
 RULES:
-  ALWAYS verify the cf skill is loaded, CFS_INIT == true, before any auto-config work
-  ALWAYS treat CFS_INIT as false when its value is unknown, ambiguous, or unset
-  NEVER proceed past AutoConfigBootstrap unless CFS_INIT == true is positively confirmed
+  ALWAYS run StudioInstructionsMemoryGate before auto-config prechecks, routing, scanning, or writes
+  ALWAYS remember git-commit-mode so any later commit request in this active workflow session runs GitCommitModeGate before routing, writes, or delegation
+  ALWAYS load command-resolution before invoking `{cfs_cmd}` auto-config prechecks
+  ALWAYS load template-vars before resolving config paths or unknown template variables
+  ALWAYS load context-memory before storing scan output as resource_context
   ALWAYS load and follow the auto-config methodology for phase detail
   NEVER continue past bootstrap when the methodology reference fails to load
-MENU LoadCfSkillConfirm
-TITLE: The cf skill is not loaded. It is the Constructor Studio core that loads the shared rules and routes to cf-* skills, so auto-config cannot run without it. Load it now to continue?
-OPTIONS:
-  1 load -> INVOKE skill `cf` and CONTINUE AutoConfigBootstrap
-  2 stop -> RETURN a blocked AUTO_CONFIG_RESULT with reason="cf skill load declined; auto-config cannot run without it" and next_action="run `cf` to load the cf skill, then retry auto-config" and STOP_TURN
-  INVALID -> EMIT_MENU LoadCfSkillConfirm
+  NEVER require cf or CFS_INIT before auto-config; this workflow owns its prerequisite loads
 ```
 ```pdsl
 UNIT AutoConfigPrecheckGate
@@ -63,6 +68,7 @@ PURPOSE: Scan the project read-only via cf-explore and confirm the scan summary 
 STATE:
   SET resource_context: object (default empty, scope workflow_run)
 DO:
+  RUN ResourceContextMemory
   INVOKE skill `cf-explore` with intent=analyze and return_context=true to scan the project read-only and return resource_context (it handles large repos via parallel partitioning)
   SET resource_context = the resource_context returned by cf-explore
   RUN extract project surface, entry points, structure, conventions, and a documentation inventory from the returned resource_context
@@ -185,7 +191,7 @@ DO:
   RUN quality validation: prompt-engineering L2 no ambiguity, L5 no AP-VAGUE/AP-CONTEXT-BLOAT/AP-HALLUCINATION-PRONE, L6 compactness — each generated rule file within the 120-line generation target
   EMIT the validation report: systems detected, topic files generated, WHEN rules added, registry entries, per-check PASS/WARN/FAIL
   RETURN the AUTO_CONFIG_RESULT envelope
-  STOP_TURN
+  CONTINUE AutoConfigNextActions
 RULES:
   ALWAYS emit the validation report and RETURN the AUTO_CONFIG_RESULT envelope on every terminal exit
   ALWAYS treat the terminal state as auto-config completion, not generation
@@ -193,6 +199,17 @@ NOTES:
   complete: { "type": "AUTO_CONFIG_RESULT", "status": "complete", "paths_written": [], "validation_status": "PASS|WARN|FAIL|SKIPPED" }
   blocked: { "type": "AUTO_CONFIG_RESULT", "status": "blocked", "reason": "<one-line>", "next_action": "<user action>" }
   failed: { "type": "AUTO_CONFIG_RESULT", "status": "failed", "reason": "<one-line>", "recovery": "<next action>" }
+```
+
+```pdsl
+UNIT AutoConfigNextActions
+PURPOSE: Offer context-grounded next actions after auto-config completes and returns its completion envelope.
+DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-resolution.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md
+  RUN NextActionsOffer
+RULES:
+  ALWAYS run only after AutoConfigValidate has emitted validation results and returned the AUTO_CONFIG_RESULT envelope
 ```
 ```pdsl
 UNIT AutoConfigDispatch

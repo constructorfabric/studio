@@ -19,8 +19,9 @@ workflow load until you turn debug off.
 The LLM controller is the interpreter, so this file is the contract that tells
 the controller to stop at each step instead of running straight through.
 
-This skill is fully self-contained: it loads no other prompt files, bootstrap,
-protocol, or routing assets. Invoking it goes straight to DebugActivate.
+This skill is self-contained for bootstrap, protocol, and routing: invoking it
+goes straight to DebugActivate. It may load small runtime/UI modules needed for
+the debugger console and export helpers.
 
 ```pdsl
 UNIT DebugState
@@ -64,7 +65,7 @@ STATE:
 NOTES:
   step mode pauses before every gated action. run mode pauses only at a
   breakpoint, a WAIT/menu, an error, or an explicit user interrupt.
-  instruction grain gates each PDSL action; unit grain gates each UNIT/skill load.
+  instruction grain gates each PDSL action; unit grain gates each UNIT, MENU, skill load, or workflow load.
   Each breakpoint has a stable short id (b1, b2, ...) and one of four types:
     line  -> a filename.md:N (or filename.md:N-M span)
     unit  -> a UNIT or MENU name
@@ -78,6 +79,10 @@ PURPOSE: Arm the debugger overlay and hand the user the debugger console.
 WHEN:
   - REQUIRE the user invoked cf-debug-skill (or asked to debug skills)
 DO:
+  - LOAD {cf-studio-path}/.core/skills/studio/modules/ui/skill-invocation-art.md
+  - LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/pdsl-execution-card.md
+  - RUN SkillInvocationArt
+  - LOAD and REMEMBER rules from {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
   - SET CF_DEBUG = on
   - SET DEBUG_MODE = step
   - SET DEBUG_GRAIN = instruction
@@ -89,22 +94,23 @@ DO:
   - STOP_TURN
 RULES:
   - ALWAYS keep CF_DEBUG = on until the user explicitly turns debug off.
+  - ALWAYS remember git-commit-mode so any later commit request in this active debugger session runs GitCommitModeGate before routing, git use, or delegation.
   - ALWAYS treat a later skill/workflow load as a debugging target, not as a reason to drop the overlay.
 ```
 
 ```pdsl
 UNIT DebugOverlayInvariants
 PURPOSE: Make the breakpoint gate mandatory and global while debug is on.
+WHEN:
+  - REQUIRE CF_DEBUG == on
 INVARIANTS:
-  - ALWAYS WHEN CF_DEBUG == on the controller RUNs DebugStepGate before performing ANY
-    prospective action (LOAD, RUN, CONTINUE, DISPATCH, SET, EMIT_MENU, file write, shell
-    exec, or sub-agent dispatch) in this or any other cf skill or workflow.
-  - ALWAYS the gate applies across skill and workflow boundaries until CF_DEBUG == off.
-  - ALWAYS record every gated action in DEBUG_TRACE with its resolved status (executed | skipped | replayed).
-  - NEVER perform a gated action while CF_DEBUG == on without first passing DebugStepGate and receiving user approval.
+  - ALWAYS run DebugStepGate before performing ANY prospective target action (LOAD, RUN, CONTINUE, DISPATCH, SET, EMIT_MENU, file write, shell exec, or sub-agent dispatch) in a non-debug cf skill or workflow.
+  - ALWAYS apply the gate across target skill and workflow boundaries.
+  - ALWAYS record every gated target action in DEBUG_TRACE with its resolved status (executed | skipped | replayed).
+  - NEVER perform a gated target action while CF_DEBUG == on without first passing DebugStepGate and receiving user approval.
   - NEVER silently disarm the overlay because a target workflow defines its own menus or gates;
     those gates are themselves stepped through.
-  - ALWAYS fail closed: if it is unclear whether an action is gated, treat it as gated and pause.
+  - ALWAYS fail closed by treating unclear gate status as gated and pausing.
   - ALWAYS attach a filename.md:N locator (per DebugLocators) to every action, menu, unit, and
     instruction the debugger names, in any unit's output, while CF_DEBUG == on.
   - ALWAYS keep DEBUG_SLUG = the basename without extension of the skill/workflow file currently being stepped.
@@ -114,6 +120,7 @@ INVARIANTS:
   - NEVER record cf-debug-skill's own activity in DEBUG_TRACE: its instructions, units, menus, frames,
     breakpoint commands, or the user's debugger-console choices (step/over/back/continue/where/grain/off/stop/bp/dump).
   - ALWAYS keep DEBUG_TRACE limited to non-debug (target) activity only.
+  - NEVER gate cf-debug-skill's own debugger-console actions through DebugStepGate.
 ```
 
 ```pdsl
@@ -122,7 +129,8 @@ PURPOSE: The breakpoint. Stop before a pending action, explain it, and wait for 
 WHEN:
   - REQUIRE CF_DEBUG == on
   - AND a prospective gated action is pending
-  - AND DEBUG_MODE == step
+  - AND DEBUG_MODE == step AND DEBUG_GRAIN == instruction
+    OR DEBUG_MODE == step AND DEBUG_GRAIN == unit AND the pending action enters a UNIT, MENU, skill load, or workflow load
     OR the pending action is a WAIT/menu or an error handler
     OR DebugBreakpointMatch returns a hit for the pending action
 DO:
@@ -138,14 +146,14 @@ DO:
     - "WHY    : <one-line rationale: the owning PURPOSE or rule this action serves; condense a multi-sentence PURPOSE to its core reason in one line>"
     - "NEXT   : <the immediate next action(s) if this one runs; for a branch, the first action of each branch; cap the list at 3 and append `(+N more)` when longer, each suffixed with its filename.md:N>"
     - "BREAKPT: <id+type+spec of the breakpoint that fired, or `(stepping)` when paused by step mode>"
-    - "METRICS: this +<this_lines> LoC +<this_chars> chars ~<this_tok_est> tok | total <DEBUG_LOC_TOTAL> LoC <DEBUG_CHARS_TOTAL> chars ~<DEBUG_TOKENS_EST> tok (est)"
+    - "METRICS: this +<this_lines> LoC +<this_chars> chars <this_token_display> | total <DEBUG_LOC_TOTAL> LoC <DEBUG_CHARS_TOTAL> chars <total_token_display>"
     - "STATE  : debug=on mode=<DEBUG_MODE> grain=<DEBUG_GRAIN> cursor=<DEBUG_CURSOR> bps=<count of enabled breakpoints>"
   - RUN DebugCheatsheet
   - WAIT user.reply
   - STOP_TURN
 RULES:
   - ALWAYS show all eight frame lines (WHERE, TARGET, NOW, WHY, NEXT, BREAKPT, METRICS, STATE) on every pause, followed by the cheatsheet.
-  - ALWAYS mark the token figure as an estimate (~/est) per DebugMetrics.
+  - ALWAYS use the token display values prepared by DebugMetrics.
   - ALWAYS attach a filename.md:N locator to every action, menu, unit, and instruction the frame names, per DebugLocators.
   - ALWAYS quote the pending action faithfully; never summarize it into something vaguer.
   - NEVER run the pending action inside this gate; running it is the explicit job of the `step` choice.
@@ -160,15 +168,18 @@ DO:
   - SET SOURCE_LOC = LOCATOR(the PDSL instruction currently at the breakpoint)
   - SET TARGET_LOC = LOCATOR(the file and line the pending action reads, writes, edits, or runs against)
     WHEN the action touches a concrete path; otherwise SET TARGET_LOC = "(no file touched)"
+  - RUN append filename.md:N for each emitted MENU and each option's target unit/menu
+  - RUN prepend a relative path to basename locators WHEN two referenced files share a basename
+  - RUN set TARGET_LOC to the precise affected line for file read, write, edit, and shell command targets
+  - RUN use the matched pre-change line and note it is about to change WHEN an edit's post-change line is not yet known
 RULES:
   - ALWAYS suffix every emitted action, menu reference, unit reference, and instruction
     reference with its locator in the form filename.md:N.
-  - ALWAYS when emitting a MENU, append filename.md:N for the menu and for each option's target unit/menu.
+  - ALWAYS include locators for every emitted MENU and each option's target unit/menu.
   - ALWAYS resolve real 1-based line numbers from the live file before emitting; NEVER guess or use a placeholder line.
-  - ALWAYS use the basename filename.md:N; prepend a relative path only when two referenced files share a basename.
-  - ALWAYS for TARGET_LOC point N at the precise affected line (the edited/written/read line,
-    or the line of the script or command under a shell action).
-  - ALWAYS for an edit whose post-change line is not yet known, use the matched pre-change line and note it is about to change.
+  - ALWAYS use the basename filename.md:N as the default locator form.
+  - ALWAYS point TARGET_LOC at the most precise known affected line.
+  - ALWAYS identify pending edit locators from stable pre-change evidence.
   - NEVER omit the locator on any action, menu, unit, or instruction the debugger names.
 ```
 
@@ -183,11 +194,14 @@ DO:
   - SET DEBUG_LOC_TOTAL = DEBUG_LOC_TOTAL + this_lines
   - SET DEBUG_CHARS_TOTAL = DEBUG_CHARS_TOTAL + this_chars
   - SET DEBUG_TOKENS_EST = DEBUG_TOKENS_EST + this_tok_est
+  - SET this_token_display = "~<this_tok_est> tok est"
+  - SET total_token_display = "~<DEBUG_TOKENS_EST> tok est"
+  - SET this_token_display and total_token_display from the host-exposed real token or usage figure, marked as measured, WHEN the host exposes a real token or usage figure
 RULES:
   - ALWAYS count real lines/characters from the content the action actually loads; these are exact.
-  - ALWAYS label DEBUG_TOKENS_EST and tok_est as an ESTIMATE; the model cannot read its true context-window token count.
-  - ALWAYS if the host exposes a real token/usage figure, prefer it and mark the value as measured rather than estimated.
-  - NEVER present the token estimate as an exact or authoritative usage number.
+  - ALWAYS label token displays as measured or estimated.
+  - ALWAYS prefer measured token and usage figures over estimated displays.
+  - NEVER present an estimated token display as exact or authoritative.
 NOTES:
   lines/chars cover content loaded into context (file reads, LOADs, dispatched
   context). The token figure is approximate (~chars/4) unless a real usage
@@ -210,8 +224,8 @@ RULES:
 UNIT DebugCommandRouter
 PURPOSE: Map a typed debugger command (from the cheatsheet) to its handler at any pause.
 DO:
-  - RUN step | s -> execute the pending action, then RUN DebugStepGate on the next action
-  - RUN over | o -> skip the pending action, then RUN DebugStepGate on the next action
+  - RUN step | s -> execute the pending action now, mark its DEBUG_TRACE entry executed, then RUN DebugStepGate on the next action
+  - RUN over | o -> skip the pending action without executing it, mark its DEBUG_TRACE entry skipped, then RUN DebugStepGate on the next action
   - RUN back -> CONTINUE DebugStepBack
   - RUN cont | c | continue -> CONTINUE DebugContinue
   - RUN where | w -> CONTINUE DebugWhere
@@ -275,12 +289,14 @@ PURPOSE: Run without pausing at every action until the next breakpoint or natura
 DO:
   - SET DEBUG_MODE = run
   - EMIT "Continuing. The debugger runs subsequent actions without pausing until the next breakpoint hit, a WAIT/menu, an error, or you interrupt."
+  - RUN before each action in run mode: RUN DebugBreakpointMatch and pause via DebugStepGate on a hit
   - RUN resume executing the target workflow under DebugOverlayInvariants in run mode
+  - RUN pause via DebugStepGate WHEN reaching a WAIT/menu or an error
 RULES:
   - ALWAYS keep CF_DEBUG = on while in run mode; continue does not disarm the debugger.
-  - ALWAYS before each action in run mode RUN DebugBreakpointMatch and pause via DebugStepGate on a hit.
-  - ALWAYS also pause via DebugStepGate when reaching a WAIT/menu or an error.
-  - ALWAYS switch DEBUG_MODE back to step the moment the user asks to step again.
+  - ALWAYS evaluate breakpoints before run-mode actions.
+  - ALWAYS route WAIT/menu/error pauses through DebugStepGate.
+  - ALWAYS honor user requests to return to step mode.
 ```
 
 ```pdsl
@@ -288,10 +304,12 @@ UNIT DebugBreakpointMatch
 PURPOSE: Decide whether the pending action hits an enabled breakpoint.
 DO:
   - SET BP_HIT = the first enabled breakpoint in DEBUG_BREAKPOINTS that matches the pending action; else none
+  - RUN skip disabled breakpoints during matching
+  - RUN pause via DebugStepGate with the breakpoint id in the BREAKPT frame line WHEN BP_HIT != none AND DEBUG_MODE == run
   - RETURN BP_HIT
 RULES:
-  - ALWAYS ignore disabled breakpoints when evaluating a hit.
-  - ALWAYS in run mode a hit forces a pause via DebugStepGate, tagged with the breakpoint id in the BREAKPT frame line.
+  - ALWAYS evaluate only enabled breakpoints for hits.
+  - ALWAYS route run-mode breakpoint hits through DebugStepGate.
   - ALWAYS remove a oneshot breakpoint from DEBUG_BREAKPOINTS immediately after it fires once.
   - NEVER let breakpoint matching execute, skip, or mutate the pending action; it only decides whether to pause.
 NOTES:
@@ -333,8 +351,8 @@ DO:
 RULES:
   - ALWAYS accept both short commands and plain-language equivalents for every action.
   - ALWAYS assign a stable short id (b1, b2, ...) and reuse it for later enable/disable/clear.
-  - ALWAYS echo each change with the affected breakpoint and its filename.md:N when applicable.
-  - NEVER drop or renumber existing breakpoints when adding or toggling another.
+  - ALWAYS echo each breakpoint change with the affected breakpoint id and locator context.
+  - NEVER drop or renumber existing breakpoints during add or toggle operations.
 NOTES:
   Short commands (also expressible in plain language):
     b <spec>      set     (line: b debug-skill.md:108 | unit: b DebuggerMenu | kind: b kind:write | cond: b cond:DEBUG_GRAIN==unit)
@@ -363,7 +381,7 @@ PURPOSE: Switch between instruction-level and unit-level stepping.
 DO:
   - REQUIRE DEBUG_GRAIN == instruction:
     - SET DEBUG_GRAIN = unit
-    - EMIT "Grain set to unit: the debugger now pauses before each UNIT or skill/workflow load, not every instruction."
+    - EMIT "Grain set to unit: the debugger now pauses before each UNIT, MENU, skill load, or workflow load, not every instruction."
   - RUN otherwise:
     - SET DEBUG_GRAIN = instruction
     - EMIT "Grain set to instruction: the debugger now pauses before every PDSL action."
@@ -399,6 +417,8 @@ RULES:
 UNIT DebugExportTrace
 PURPOSE: Write the current debug trace to a timestamped Markdown file.
 DO:
+  - LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/template-vars.md
+  - RUN TemplateVarResolution before resolving DUMP_PATH
   - SET DUMP_PATH = "{cf-studio-path}/.debug-skill/<DEBUG_SLUG>-<YYYY-MM-DD>-<HHMMSS>.md"
   - RUN ensure the directory {cf-studio-path}/.debug-skill/ exists, creating it if missing
   - RUN render the trace report (see DebugTraceReport) into DUMP_PATH
@@ -408,6 +428,7 @@ DO:
   - WAIT user.reply
   - STOP_TURN
 RULES:
+  - ALWAYS load template-vars before resolving the debug trace dump path or unknown template variables.
   - ALWAYS resolve <YYYY-MM-DD> and <HHMMSS> from the current local date and time at dump time.
   - ALWAYS slugify DEBUG_SLUG to lowercase kebab-case before building the filename.
   - ALWAYS write a fresh file per dump; NEVER overwrite an earlier dump (the timestamp keeps each unique).
@@ -435,7 +456,7 @@ NOTES:
 RULES:
   - ALWAYS keep every loc and where value in filename.md:N form so the report is navigable.
   - ALWAYS quote each action faithfully, matching what the breakpoint frame showed.
-  - ALWAYS render "(no breakpoints)" or "(empty trace)" when a section has no rows.
+  - ALWAYS render empty breakpoints sections as "(no breakpoints)" and empty trace sections as "(empty trace)".
 ```
 
 ```pdsl
@@ -452,7 +473,7 @@ ON_ERROR:
 MENU DebugStepFailureMenu:
   TITLE: "Stepped action failed."
   OPTIONS:
-    1 retry -> RUN re-attempt the failed action, then RUN DebugStepGate on the next action
+    1 retry -> RUN re-attempt the failed action, mark its DEBUG_TRACE entry replayed, then RUN DebugStepGate on the next action
     2 over -> RUN skip the failed action, mark its DEBUG_TRACE entry skipped, then RUN DebugStepGate on the next action
     3 off -> CONTINUE DebugDisable
     4 stop -> CONTINUE DebugStop

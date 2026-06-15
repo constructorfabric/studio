@@ -13,23 +13,27 @@ This skill drives the `{cfs_cmd} map` CLI to scan markdown files and source code
 
 ```pdsl
 UNIT MapBootstrap
-PURPOSE: Ensure the cf skill is loaded before any map work begins.
-STATE:
-  SET CFS_INIT: true | false (default false, scope session)
+PURPOSE: Load the runtime rules needed before any map work begins.
 DO:
-  EMIT_MENU LoadCfSkillConfirm WHEN CFS_INIT != true
-  STOP_TURN WHEN CFS_INIT != true
-  CONTINUE MapIntentRouter WHEN CFS_INIT == true
+  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/skill-invocation-art.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/pdsl-execution-card.md
+  RUN SkillInvocationArt
+  LOAD and REMEMBER rules from {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/studio-instructions-memory.md
+  RUN StudioInstructionsMemoryGate
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/command-resolution.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/template-vars.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/context-memory.md
+  RUN CommandResolution to resolve {cfs_cmd}
+  SET ORIGINAL_INTENT = the user's triggering map request (verbatim or shortest faithful summary)
+  SET CURRENT_WORKFLOW = cf-map, SET COMPANION_CONTINUE = MapIntentRouter and LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md and CONTINUE CompanionSkillOffer
 RULES:
-  ALWAYS verify the cf skill is loaded, CFS_INIT == true, before any map work
-  ALWAYS treat CFS_INIT as false when its value is unknown, ambiguous, or unset
-  NEVER proceed past MapBootstrap unless CFS_INIT == true is positively confirmed
-MENU LoadCfSkillConfirm
-TITLE: The cf skill is not loaded. It is the Constructor Studio core that loads the shared rules and routes to cf-* skills, so the map tool cannot run without it. Load it now to continue?
-OPTIONS:
-  1 load -> INVOKE skill `cf` and CONTINUE MapBootstrap
-  2 stop -> STOP_TURN
-  INVALID -> EMIT_MENU LoadCfSkillConfirm
+  ALWAYS run StudioInstructionsMemoryGate before map routing, preflight, scanning, config assist, or handoff
+  ALWAYS remember git-commit-mode so any later commit request in this active workflow session runs GitCommitModeGate before routing, writes, git use, or delegation
+  ALWAYS load command-resolution before invoking `{cfs_cmd}` map/info commands
+  ALWAYS load template-vars before resolving map output paths or unknown template variables
+  ALWAYS load context-memory before passing a generated map artifact as resource_context to another workflow
+  NEVER require cf or CFS_INIT before map; this workflow owns its prerequisite loads
 ```
 
 ```pdsl
@@ -46,8 +50,8 @@ MENU MapIntentMenu
 TITLE: What would you like to do with the map tool? Generate builds the map; analyze-dangling diagnoses missing refs; export-json produces machine-readable output; config-assist builds md-map.toml category rules. Reply with a number or the option name.
 OPTIONS:
   1 generate-map -> CONTINUE MapPreflight
-  2 analyze-dangling | analyze -> ensure a map artifact exists first (CONTINUE MapPreflight to generate one WHEN no ./md-map.json or ./md-map.html[.js] is present), then CONTINUE {cf-studio-path}/.core/workflows/analyze.md passing ORIGINAL_INTENT="analyze the dependency map for dangling and phantom references" and resource_context = the generated map artifact path
-  3 export-json | json -> SET format = json and CONTINUE MapPreflight
+  2 analyze-dangling | analyze -> RUN ResourceContextMemory, ensure a map artifact exists first (CONTINUE MapPreflight to generate one WHEN no ./md-map.json or ./md-map.html[.js] is present), then CONTINUE {cf-studio-path}/.core/workflows/analyze.md passing ORIGINAL_INTENT="analyze the dependency map for dangling and phantom references" and resource_context = the generated map artifact path
+  3 export-json | json -> SET format = json, CONTINUE MapPreflight
   4 config-assist | config -> CONTINUE MapConfigAssist
   INVALID -> EMIT_MENU MapIntentMenu
 NOTES:

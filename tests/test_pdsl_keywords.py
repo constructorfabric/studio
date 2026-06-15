@@ -66,6 +66,33 @@ RUNTIME_CREATED_CF_ROOTS = (
 BARE_ALLOWED_CF_ROOTS = frozenset(root.rstrip("/") for root in ALLOWED_CF_ROOTS)
 
 FENCE_RE = re.compile(r"^```(?P<lang>[A-Za-z0-9_-]+)?\s*$")
+PDSL_SECTION_RE = re.compile(
+    r"^\s*(UNIT|PURPOSE|INPUT|OUTPUT|STATE|WHEN|DO|MENU\b.*|TITLE|OPTIONS|INVALID|RULES|ON_ERROR|INVARIANTS|NOTES|PATTERNS)\b"
+)
+PDSL_RULE_ITEM_RE = re.compile(r"^\s*-\s+(ALWAYS|NEVER)\b.*$")
+CONDITIONAL_RULE_MARKER_RE = re.compile(
+    r"\b("
+    r"ONLY\s+WHEN|WHENEVER|WHEN|IF|UNLESS|OTHERWISE|PROVIDED\s+THAT|AS\s+LONG\s+AS|"
+    r"only\s+when|whenever|when|if|unless|otherwise|provided\s+that|as\s+long\s+as"
+    r")\b"
+)
+
+CONDITIONAL_RULE_ROOTS = (
+    REPO_ROOT / "workflows",
+    REPO_ROOT / "skills" / "studio" / "modules",
+)
+
+CONDITIONAL_RULE_EXEMPTIONS = {
+    REPO_ROOT / "skills" / "studio" / "modules" / "runtime" / "pdsl-execution-card.md",
+}
+
+PDSL_EXECUTION_CARD_LOAD = (
+    "LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/pdsl-execution-card.md"
+)
+PDSL_EXECUTION_CARD_REMEMBER_LOAD = (
+    "LOAD and REMEMBER rules from "
+    "{cf-studio-path}/.core/skills/studio/modules/runtime/pdsl-execution-card.md"
+)
 
 
 def _prompt_files() -> list[Path]:
@@ -161,6 +188,59 @@ def _iter_pdsl_blocks(path: Path) -> list[tuple[int, list[str]]]:
     return blocks
 
 
+def _conditional_rules_in_block(path: Path, block_start: int, block: list[str]) -> list[str]:
+    failures: list[str] = []
+    in_rules = False
+    current: list[tuple[int, str]] = []
+
+    def flush_current() -> None:
+        if not current:
+            return
+        text = " ".join(line.strip() for _, line in current)
+        match = CONDITIONAL_RULE_MARKER_RE.search(text)
+        if match:
+            line_no = next(
+                (line_no for line_no, line in current if CONDITIONAL_RULE_MARKER_RE.search(line)),
+                current[0][0],
+            )
+            rel = path.relative_to(REPO_ROOT)
+            failures.append(f"{rel}:{line_no}: conditional marker `{match.group(0)}` in RULES item: {text}")
+
+    for offset, line in enumerate(block):
+        line_no = block_start + offset
+        section = PDSL_SECTION_RE.match(line)
+        if section and not line.lstrip().startswith("-"):
+            keyword = section.group(1).split()[0]
+            if keyword == "RULES":
+                flush_current()
+                current = []
+                in_rules = True
+                continue
+            if keyword in {
+                "UNIT", "PURPOSE", "INPUT", "OUTPUT", "STATE", "WHEN", "DO", "MENU",
+                "TITLE", "OPTIONS", "INVALID", "ON_ERROR", "INVARIANTS", "NOTES", "PATTERNS",
+            }:
+                if in_rules:
+                    flush_current()
+                current = []
+                in_rules = False
+                continue
+        if not in_rules:
+            continue
+        if PDSL_RULE_ITEM_RE.match(line):
+            flush_current()
+            current = [(line_no, line)]
+        elif current and (not line.strip() or line.startswith((" ", "\t"))):
+            current.append((line_no, line))
+        elif current:
+            flush_current()
+            current = []
+
+    if in_rules:
+        flush_current()
+    return failures
+
+
 def test_prompt_pdsl_blocks_pass_cfs_pdsl_validate() -> None:
     """Prompt PDSL validation is covered by the production `pdsl validate` command."""
     cmd = [
@@ -186,6 +266,56 @@ def test_prompt_pdsl_blocks_pass_cfs_pdsl_validate() -> None:
     assert payload["summary"]["error_count"] == 0
     assert payload["summary"]["fail_count"] == 0
     assert payload["summary"]["finding_count"] == 0
+
+
+def test_workflow_and_module_rules_are_unconditional() -> None:
+    """RULES in workflow/module prompts should not encode IF/WHEN-style branches."""
+    failures: list[str] = []
+
+    for root in CONDITIONAL_RULE_ROOTS:
+        for path in sorted(root.rglob("*.md")):
+            if path in CONDITIONAL_RULE_EXEMPTIONS:
+                continue
+            for block_start, block in _iter_pdsl_blocks(path):
+                failures.extend(_conditional_rules_in_block(path, block_start, block))
+
+    assert not failures, "\n".join(failures)
+
+
+def test_pdsl_workflows_load_execution_card_during_bootstrap() -> None:
+    """Every PDSL workflow must load the runtime semantics card in bootstrap."""
+    failures: list[str] = []
+
+    for path in sorted((REPO_ROOT / "workflows").glob("*.md")):
+        blocks = _iter_pdsl_blocks(path)
+        if not blocks:
+            continue
+        executable_blocks = [
+            (block_start, block)
+            for block_start, block in blocks
+            if re.search(r"^DO:", "\n".join(block), re.MULTILINE)
+        ]
+        if not executable_blocks:
+            continue
+        block_start, block = executable_blocks[0]
+        body = "\n".join(block)
+        if PDSL_EXECUTION_CARD_LOAD not in body:
+            rel = path.relative_to(REPO_ROOT)
+            failures.append(
+                f"{rel}:{block_start}: first executable PDSL block must load "
+                "modules/runtime/pdsl-execution-card.md during bootstrap"
+            )
+
+    root_skill = REPO_ROOT / "skills" / "studio" / "SKILL.md"
+    root_blocks = _iter_pdsl_blocks(root_skill)
+    root_body = "\n".join(root_blocks[0][1]) if root_blocks else ""
+    if PDSL_EXECUTION_CARD_REMEMBER_LOAD not in root_body:
+        failures.append(
+            "skills/studio/SKILL.md: first PDSL block must load and remember "
+            "modules/runtime/pdsl-execution-card.md during router bootstrap"
+        )
+
+    assert not failures, "\n".join(failures)
 
 
 def test_named_pdsl_units_and_menus_are_not_exact_duplicates() -> None:

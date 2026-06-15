@@ -267,3 +267,4 @@ RULES:
     assert any("STATE item must start with one of: SET; got LOAD" in msg for msg in messages)
     assert any("WHEN item must start with one of:" in msg and "got SET" in msg for msg in messages)
     assert any("RULES item must start with one of:" in msg and "got RUN" in msg for msg in messages)
+

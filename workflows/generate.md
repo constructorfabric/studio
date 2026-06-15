@@ -20,23 +20,20 @@ legacy multi-phase generate workflow has been retired; routing is the only behav
 
 ```pdsl
 UNIT GenerateBootstrap
-PURPOSE: Ensure the cf skill is loaded before any routing work.
-STATE:
-  SET CFS_INIT: true | false (default false, scope session)
+PURPOSE: Load the runtime routing rules needed before any generate routing work.
 DO:
-  EMIT_MENU LoadCfSkillConfirm WHEN CFS_INIT != true
-  STOP_TURN WHEN CFS_INIT != true
-  CONTINUE GenerateRoute WHEN CFS_INIT == true
+  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/skill-invocation-art.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/pdsl-execution-card.md
+  RUN SkillInvocationArt
+  LOAD and REMEMBER rules from {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/command-resolution.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-resolution.md
+  RUN CommandResolution to resolve {cfs_cmd}
+  CONTINUE GenerateRoute
 RULES:
-  ALWAYS verify the cf skill is loaded, CFS_INIT == true, before any routing work
-  ALWAYS treat CFS_INIT as false when its value is unknown, ambiguous, or unset
-  NEVER proceed past GenerateBootstrap unless CFS_INIT == true is positively confirmed
-MENU LoadCfSkillConfirm
-TITLE: The cf skill is not loaded. It is the Constructor Studio core that loads the shared rules and routes to cf-* skills, so this generate entry point cannot run without it. Load it now to continue?
-OPTIONS:
-  1 load -> INVOKE skill `cf` and CONTINUE GenerateBootstrap
-  2 stop -> STOP_TURN
-  INVALID -> EMIT_MENU LoadCfSkillConfirm
+  ALWAYS load command-resolution and workflow-resolution before GenerateRoute
+  ALWAYS remember git-commit-mode so any later commit request in this active workflow session runs GitCommitModeGate before routing or delegation
+  NEVER require cf or CFS_INIT before routing; this workflow owns its prerequisite loads
 ```
 
 ```pdsl
@@ -46,12 +43,13 @@ STATE:
   SET ORIGINAL_INTENT: string (default unset, scope workflow_run)
   SET AVAILABLE_SKILLS: list (default unset, scope workflow_run)
 WHEN:
-  REQUIRE CFS_INIT == true
+  REQUIRE WorkflowResolution is loaded
 DO:
   SET ORIGINAL_INTENT = the user's triggering generate request (verbatim or shortest faithful summary), or unset when activation-only, WHEN ORIGINAL_INTENT == unset
   RUN WorkflowResolution to resolve the available cf-* skills
-  SET AVAILABLE_SKILLS = the resolved cf-* skills (name + its workflow description), excluding this router (cf-generate)
+  SET AVAILABLE_SKILLS = the resolved cf-* skills (name + its workflow description), excluding `cf`, `cf-analyze`, and `cf-generate`
   CONTINUE GenerateNoMatch WHEN AVAILABLE_SKILLS is empty
+  LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md WHEN the request spans more than one cf-* domain
   RUN matching of ORIGINAL_INTENT against AVAILABLE_SKILLS by semantic relevance — score each skill's name and description against the intent, keep those clearly on-topic, rank them, synthesize compatible companion groups when the request spans domains, and mark the top-ranked skill or group as suggested — WHEN ORIGINAL_INTENT != unset
   EMIT_MENU GenerateIntentOffer WHEN ORIGINAL_INTENT != unset AND at least one relevant skill matched
   CONTINUE GenerateNoMatch WHEN ORIGINAL_INTENT != unset AND no relevant skill matched
@@ -61,9 +59,10 @@ DO:
 RULES:
   ALWAYS preserve ORIGINAL_INTENT when it was already set by GenerateDescribeIntent
   ALWAYS resolve cf-* skills via WorkflowResolution, never by guessing and never via a CLI skills-list command
-  ALWAYS exclude the skill whose name equals this router (cf-generate) from AVAILABLE_SKILLS to prevent self-routing recursion
+  ALWAYS exclude `cf`, `cf-analyze`, and `cf-generate` from AVAILABLE_SKILLS and companion groups; these are routers/entrypoints and must never be offered as companions
   ALWAYS pass ORIGINAL_INTENT into every invoked skill when an intent is present
   ALWAYS render each offered skill as `<skill-name> — <short description>` from AVAILABLE_SKILLS
+  ALWAYS load companion-skills before synthesizing companion groups
   ALWAYS support compatible companion multi-select, invoking selected skills sequentially so each skill's prerequisites and gates run in order
   NEVER let a companion or multi-select route bypass any selected skill's WAIT, STOP_TURN, approval, brainstorm, plan, validation, or sub-agent gate
   NEVER load or run any legacy generate phase logic; routing is the only behavior

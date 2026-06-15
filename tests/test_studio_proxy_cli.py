@@ -1076,9 +1076,16 @@ def test_version_output_uses_cache_provenance(monkeypatch, capsys):
 
 def test_local_cache_version_does_not_warn_as_project_update(monkeypatch, capsys, tmp_path):
     from studio_proxy import cli
+    import studio_proxy.update_check as update_check
 
     project_skill = tmp_path / "studio.py"
     project_skill.write_text("", encoding="utf-8")
+    monkeypatch.setenv("CFS_UPDATE_CHECK_FILE", str(tmp_path / "update-check.json"))
+    update_check.write_cached_update_check({
+        "checked_at": int(time.time()),
+        "updates_available": 0,
+        "checks": {},
+    })
     monkeypatch.setattr(cli, "get_cached_version", lambda: "local:v1.0.0")
     monkeypatch.setattr(cli, "get_project_version", lambda _path: "v1.0.0")
 
