@@ -73,6 +73,67 @@ def _collect_cross_repo_artifacts(
     return result
 
 
+# @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-if-code
+def _collect_artifact_code_expectations(
+    artifacts: List[ArtifactRecord],
+    traceability_by_path: Dict[str, str],
+) -> Tuple[Set[str], Set[str], Set[str]]:
+    """Collect artifact IDs and to-code expectations for strict validation."""
+    artifact_ids: Set[str] = set()
+    to_code_ids: Set[str] = set()
+    to_code_ids_task_unchecked: Set[str] = set()
+    for art in artifacts:
+        art_traceability = traceability_by_path.get(str(art.path), "FULL")
+        for hit in scan_cpt_ids(art.path):
+            if hit.get("type") != "definition" or not hit.get("id"):
+                continue
+            did = str(hit["id"])
+            artifact_ids.add(did)
+            if art_traceability != "FULL":
+                continue
+            constraints_for_kind = getattr(art, "constraints", None)
+            if constraints_for_kind is None:
+                continue
+            for id_constraint in getattr(constraints_for_kind, "defined_id", []) or []:
+                kind = str(getattr(id_constraint, "kind", "") or "").strip().lower()
+                if not kind or f"-{kind}-" not in did.lower() or not bool(getattr(id_constraint, "to_code", False)):
+                    continue
+                if bool(hit.get("has_task", False)) and not bool(hit.get("checked", False)):
+                    to_code_ids_task_unchecked.add(did)
+                else:
+                    to_code_ids_task_unchecked.discard(did)
+                    to_code_ids.add(did)
+                break
+    return artifact_ids, to_code_ids, to_code_ids_task_unchecked
+
+
+def _collect_full_artifact_instances(
+    artifacts: List[ArtifactRecord],
+    traceability_by_path: Dict[str, str],
+) -> Tuple[Dict[str, Set[str]], Dict[str, Set[str]]]:
+    """Collect checked and all CDSL instruction instances from FULL artifacts."""
+    artifact_instances: Dict[str, Set[str]] = {}
+    artifact_instances_all: Dict[str, Set[str]] = {}
+    for art in artifacts:
+        art_traceability = traceability_by_path.get(str(art.path), "FULL")
+        if art_traceability != "FULL":
+            continue
+        try:
+            steps = scan_cdsl_instructions(art.path)
+        except (OSError, ValueError):
+            continue
+        for step in steps:
+            pid = str(step.get("parent_id") or "")
+            inst = str(step.get("inst") or "")
+            if not pid or not inst:
+                continue
+            artifact_instances_all.setdefault(pid, set()).add(inst)
+            if bool(step.get("checked", False)):
+                artifact_instances.setdefault(pid, set()).add(inst)
+    return artifact_instances, artifact_instances_all
+# @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-if-code
+
+
 # @cpt-flow:cpt-studio-flow-traceability-validation-validate:p1
 # @cpt-dod:cpt-studio-dod-traceability-validation-cross-refs:p1
 # @cpt-dod:cpt-studio-dod-traceability-validation-cdsl:p1
@@ -502,34 +563,10 @@ def cmd_validate(argv: List[str]) -> int:
 
     if strict_code_validation and len(all_artifacts_for_cross) > 0:
         # Build complete set of defined artifact IDs for orphan checks.
-        for art in all_artifacts_for_cross:
-            art_traceability = traceability_by_path.get(str(art.path), "FULL")
-            for h in scan_cpt_ids(art.path):
-                if h.get("type") != "definition" or not h.get("id"):
-                    continue
-                did = str(h["id"])
-                artifact_ids.add(did)
-                if art_traceability == "FULL":
-                    # Best-effort: assume to_code when any constraint says so for inferred kind.
-                    constraints_for_kind = getattr(art, "constraints", None)
-                    if constraints_for_kind is not None:
-                        # infer kind token for to_code lookup: use first constrained kind found in id.
-                        for ic in getattr(constraints_for_kind, "defined_id", []) or []:
-                            k = str(getattr(ic, "kind", "") or "").strip().lower()
-                            if not k:
-                                continue
-                            if f"-{k}-" in did.lower() and bool(getattr(ic, "to_code", False)):
-                                has_task = bool(h.get("has_task", False))
-                                checked = bool(h.get("checked", False))
-                                if has_task:
-                                    if checked:
-                                        to_code_ids_task_unchecked.discard(did)
-                                        to_code_ids.add(did)
-                                    else:
-                                        to_code_ids_task_unchecked.add(did)
-                                else:
-                                    to_code_ids.add(did)
-                                break
+        artifact_ids, to_code_ids, to_code_ids_task_unchecked = _collect_artifact_code_expectations(
+            all_artifacts_for_cross,
+            traceability_by_path,
+        )
 
     # Workspace: expand artifact_ids with IDs from all workspace sources (primary + remote)
     if not args.local_only and ws_ctx is not None:
@@ -613,23 +650,10 @@ def cmd_validate(argv: List[str]) -> int:
 
         if strict_code_validation and parsed_code_files_full:
             # Collect CDSL instructions per ID from FULL-traceability artifacts
-            artifact_instances: Dict[str, Set[str]] = {}
-            artifact_instances_all: Dict[str, Set[str]] = {}
-            for art in all_artifacts_for_cross:
-                art_traceability = traceability_by_path.get(str(art.path), "FULL")
-                if art_traceability != "FULL":
-                    continue
-                try:
-                    for step in scan_cdsl_instructions(art.path):
-                        pid = str(step.get("parent_id") or "")
-                        inst = str(step.get("inst") or "")
-                        checked = bool(step.get("checked", False))
-                        if pid and inst:
-                            artifact_instances_all.setdefault(pid, set()).add(inst)
-                            if checked:
-                                artifact_instances.setdefault(pid, set()).add(inst)
-                except (OSError, ValueError):
-                    continue
+            artifact_instances, artifact_instances_all = _collect_full_artifact_instances(
+                all_artifacts_for_cross,
+                traceability_by_path,
+            )
 
             cv = cross_validate_code(
                 parsed_code_files_full,

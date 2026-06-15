@@ -841,6 +841,36 @@ class ArtifactsMeta:
 
             return discovered_artifacts, discovered_codebase, system_root_str, list(rule.children or [])
 
+        def _merge_discovered_child_entries(
+            child_node: SystemNode,
+            disc_artifacts: List[Artifact],
+            disc_codebase: List[CodebaseEntry],
+        ) -> None:
+            """Merge autodetected entries into a child node."""
+            existing_child_artifacts_by_path: Dict[str, Artifact] = {
+                self._normalize_path(a.path): a for a in child_node.artifacts
+            }
+            existing_child_codebase_by_path: Dict[str, CodebaseEntry] = {
+                self._normalize_path(c.path): c for c in child_node.codebase
+            }
+            for da in disc_artifacts:
+                np = self._normalize_path(da.path)
+                if np in existing_child_artifacts_by_path:
+                    if str(existing_child_artifacts_by_path[np].kind) != str(da.kind):
+                        errors.append(
+                            f"Autodetect conflict on path with different kind: path={da.path} explicit={existing_child_artifacts_by_path[np].kind} detected={da.kind}"
+                        )
+                    continue
+                existing_child_artifacts_by_path[np] = da
+                child_node.artifacts.append(da)
+
+            for dc in disc_codebase:
+                np = self._normalize_path(dc.path)
+                if np in existing_child_codebase_by_path:
+                    continue
+                existing_child_codebase_by_path[np] = dc
+                child_node.codebase.append(dc)
+
         def _expand_node(node: SystemNode, inherited_rules: List[Tuple[AutodetectRule, str]]) -> List[Tuple[AutodetectRule, str]]:
             effective: List[Tuple[AutodetectRule, str]] = list(inherited_rules)
             default_parent_root = inherited_rules[0][1] if inherited_rules else str(self.project_root)
@@ -868,26 +898,7 @@ class ArtifactsMeta:
                             system_root_override=(child_root_str, child_root_abs),
                         )
 
-                        existing_child_artifacts_by_path: Dict[str, Artifact] = {self._normalize_path(a.path): a for a in child_node.artifacts}
-                        existing_child_codebase_by_path: Dict[str, CodebaseEntry] = {self._normalize_path(c.path): c for c in child_node.codebase}
-
-                        for da in disc_artifacts:
-                            np = self._normalize_path(da.path)
-                            if np in existing_child_artifacts_by_path:
-                                if str(existing_child_artifacts_by_path[np].kind) != str(da.kind):
-                                    errors.append(
-                                        f"Autodetect conflict on path with different kind: path={da.path} explicit={existing_child_artifacts_by_path[np].kind} detected={da.kind}"
-                                    )
-                                continue
-                            existing_child_artifacts_by_path[np] = da
-                            child_node.artifacts.append(da)
-
-                        for dc in disc_codebase:
-                            np = self._normalize_path(dc.path)
-                            if np in existing_child_codebase_by_path:
-                                continue
-                            existing_child_codebase_by_path[np] = dc
-                            child_node.codebase.append(dc)
+                        _merge_discovered_child_entries(child_node, disc_artifacts, disc_codebase)
 
                         # Detect system slug from artifact IDs (autodetect only).
                         # Strategy: extract the full system prefix from each ID

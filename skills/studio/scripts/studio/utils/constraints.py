@@ -935,6 +935,268 @@ def validate_artifact_file(
 
 # @cpt-algo:cpt-studio-algo-traceability-validation-cross-validate:p1
 # @cpt-begin:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-datamodel
+def _id_kind_rule_metadata(ic: object) -> Dict[str, object]:
+    """Return user-facing metadata for one ID kind rule."""
+    return {
+        "id_kind_name": str(getattr(ic, "name", "") or "").strip() or None,
+        "id_kind_description": str(getattr(ic, "description", "") or "").strip() or None,
+        "id_kind_template": str(getattr(ic, "template", "") or "").strip() or None,
+    }
+
+
+def _common_ref_error_fields(
+    *,
+    did: str,
+    ak: str,
+    tk: str,
+    id_kind: str,
+    id_meta: Dict[str, object],
+) -> Dict[str, object]:
+    """Return common fields for reference rule validation errors."""
+    return {
+        "id": did,
+        "artifact_kind": ak,
+        "target_kind": tk,
+        "id_kind": id_kind,
+        **id_meta,
+    }
+
+
+def _validate_required_reference_coverage(
+    *,
+    errors: List[Dict[str, object]],
+    warnings: List[Dict[str, object]],
+    drow: Dict[str, object],
+    refs_in_kind: List[Dict[str, object]],
+    system_present_kinds: Iterable[str],
+    did: str,
+    ak: str,
+    tk: str,
+    id_kind: str,
+    id_meta: Dict[str, object],
+    allowed_headings: Iterable[str],
+    allowed_headings_sorted: List[str],
+    allowed_headings_info: List[Dict[str, object]],
+) -> bool:
+    """Validate required reference coverage and return whether to skip later checks."""
+    if bool(drow.get("has_task", False)) and not bool(drow.get("checked", False)):
+        return True
+    if tk not in system_present_kinds:
+        warnings.append(error(
+            "constraints",
+            f"`{did}` (defined in {ak}) requires reference in `{tk}` artifact but no `{tk}` artifact exists in scope",
+            code=EC.REF_TARGET_NOT_IN_SCOPE,
+            path=drow.get("artifact_path"),
+            line=int(drow.get("line", 1) or 1),
+            id=did,
+            artifact_kind=ak,
+            target_kind=tk,
+        ))
+        return True
+    if not refs_in_kind:
+        errors.append(error(
+            "constraints",
+            f"`{did}` (defined in {ak}, kind `{id_kind}`) is not referenced from any `{tk}` artifact",
+            code=EC.REF_MISSING_FROM_KIND,
+            path=drow.get("artifact_path"),
+            line=int(drow.get("line", 1) or 1),
+            target_headings=allowed_headings_sorted if allowed_headings else None,
+            target_headings_info=allowed_headings_info if allowed_headings else None,
+            **_common_ref_error_fields(did=did, ak=ak, tk=tk, id_kind=id_kind, id_meta=id_meta),
+        ))
+        return True
+    if not allowed_headings:
+        return False
+    if any(any(h in allowed_headings for h in (rr.get("headings") or [])) for rr in refs_in_kind):
+        return False
+
+    first = refs_in_kind[0]
+    errors.append(error(
+        "constraints",
+        f"Reference to `{did}` in `{tk}` artifact is under {first.get('headings') or []} but must be under one of {allowed_headings_sorted}",
+        code=EC.REF_WRONG_HEADINGS,
+        path=first.get("artifact_path"),
+        line=int(first.get("line", 1) or 1),
+        headings=allowed_headings_sorted,
+        headings_info=allowed_headings_info,
+        found_headings=first.get("headings") or [],
+        **_common_ref_error_fields(did=did, ak=ak, tk=tk, id_kind=id_kind, id_meta=id_meta),
+    ))
+    return False
+
+
+def _validate_prohibited_reference_coverage(
+    *,
+    errors: List[Dict[str, object]],
+    refs_in_kind: List[Dict[str, object]],
+    did: str,
+    ak: str,
+    tk: str,
+    id_kind: str,
+    id_meta: Dict[str, object],
+) -> bool:
+    """Validate prohibited reference coverage and return whether it matched."""
+    if not refs_in_kind:
+        return False
+    first = refs_in_kind[0]
+    errors.append(error(
+        "constraints",
+        f"`{did}` is referenced in `{tk}` artifact but references from `{tk}` are prohibited for {ak} IDs",
+        code=EC.REF_FROM_PROHIBITED_KIND,
+        path=first.get("artifact_path"),
+        line=int(first.get("line", 1) or 1),
+        **_common_ref_error_fields(did=did, ak=ak, tk=tk, id_kind=id_kind, id_meta=id_meta),
+    ))
+    return True
+
+
+def _validate_reference_task_rule(
+    *,
+    errors: List[Dict[str, object]],
+    refs_in_kind: List[Dict[str, object]],
+    task_rule: Optional[bool],
+    did: str,
+    ak: str,
+    tk: str,
+    id_kind: str,
+    id_meta: Dict[str, object],
+) -> None:
+    """Validate reference task checkbox requirements."""
+    if task_rule is True:
+        rr = next((r for r in refs_in_kind if not bool(r.get("has_task", False))), None)
+        if rr is not None:
+            errors.append(error(
+                "constraints",
+                f"Reference to `{did}` in `{tk}` artifact is missing required task checkbox `- [ ]`",
+                code=EC.REF_MISSING_TASK,
+                path=rr.get("artifact_path"),
+                line=int(rr.get("line", 1) or 1),
+                **_common_ref_error_fields(did=did, ak=ak, tk=tk, id_kind=id_kind, id_meta=id_meta),
+            ))
+        return
+    if task_rule is False:
+        rr = next((r for r in refs_in_kind if bool(r.get("has_task", False))), None)
+        if rr is not None:
+            errors.append(error(
+                "constraints",
+                f"Reference to `{did}` in `{tk}` artifact has task checkbox but task tracking is prohibited",
+                code=EC.REF_PROHIBITED_TASK,
+                path=rr.get("artifact_path"),
+                line=int(rr.get("line", 1) or 1),
+                **_common_ref_error_fields(did=did, ak=ak, tk=tk, id_kind=id_kind, id_meta=id_meta),
+            ))
+
+
+def _validate_reference_priority_rule(
+    *,
+    errors: List[Dict[str, object]],
+    refs_in_kind: List[Dict[str, object]],
+    prio_rule: Optional[bool],
+    did: str,
+    ak: str,
+    tk: str,
+    id_kind: str,
+    id_meta: Dict[str, object],
+) -> None:
+    """Validate reference priority marker requirements."""
+    if prio_rule is True:
+        rr = next((r for r in refs_in_kind if not bool(r.get("has_priority", False))), None)
+        if rr is not None:
+            errors.append(error(
+                "constraints",
+                f"Reference to `{did}` in `{tk}` artifact is missing required priority marker",
+                code=EC.REF_MISSING_PRIORITY,
+                path=rr.get("artifact_path"),
+                line=int(rr.get("line", 1) or 1),
+                **_common_ref_error_fields(did=did, ak=ak, tk=tk, id_kind=id_kind, id_meta=id_meta),
+            ))
+        return
+    if prio_rule is False:
+        rr = next((r for r in refs_in_kind if bool(r.get("has_priority", False))), None)
+        if rr is not None:
+            errors.append(error(
+                "constraints",
+                f"Reference to `{did}` in `{tk}` artifact has priority marker but priority is prohibited",
+                code=EC.REF_PROHIBITED_PRIORITY,
+                path=rr.get("artifact_path"),
+                line=int(rr.get("line", 1) or 1),
+                **_common_ref_error_fields(did=did, ak=ak, tk=tk, id_kind=id_kind, id_meta=id_meta),
+            ))
+
+
+def _validate_reference_rule(
+    *,
+    errors: List[Dict[str, object]],
+    warnings: List[Dict[str, object]],
+    drow: Dict[str, object],
+    refs_in_kind: List[Dict[str, object]],
+    system_present_kinds: Iterable[str],
+    did: str,
+    ak: str,
+    tk: str,
+    id_kind: str,
+    id_meta: Dict[str, object],
+    rule: ReferenceRule,
+    allowed_headings: Iterable[str],
+    allowed_headings_sorted: List[str],
+    allowed_headings_info: List[Dict[str, object]],
+) -> None:
+    """Validate one reference rule for a definition row."""
+    cov = getattr(rule, "coverage", None)
+    if cov is True:
+        skip_rest = _validate_required_reference_coverage(
+            errors=errors,
+            warnings=warnings,
+            drow=drow,
+            refs_in_kind=refs_in_kind,
+            system_present_kinds=system_present_kinds,
+            did=did,
+            ak=ak,
+            tk=tk,
+            id_kind=id_kind,
+            id_meta=id_meta,
+            allowed_headings=allowed_headings,
+            allowed_headings_sorted=allowed_headings_sorted,
+            allowed_headings_info=allowed_headings_info,
+        )
+        if skip_rest:
+            return
+
+    if cov is False:
+        matched = _validate_prohibited_reference_coverage(
+            errors=errors,
+            refs_in_kind=refs_in_kind,
+            did=did,
+            ak=ak,
+            tk=tk,
+            id_kind=id_kind,
+            id_meta=id_meta,
+        )
+        if matched:
+            return
+
+    if not refs_in_kind:
+        return
+    _validate_reference_task_rule(
+        errors=errors,
+        refs_in_kind=refs_in_kind,
+        task_rule=getattr(rule, "task", None),
+        did=did,
+        ak=ak,
+        tk=tk,
+        id_kind=id_kind,
+        id_meta=id_meta,
+    )
+    _validate_reference_priority_rule(
+        errors=errors,
+        refs_in_kind=refs_in_kind,
+        prio_rule=getattr(rule, "priority", None),
+        did=did,
+        ak=ak,
+        tk=tk,
+        id_kind=id_kind,
+        id_meta=id_meta,
+    )
 def cross_validate_artifacts(
     artifacts: Sequence[ArtifactRecord],
     registered_systems: Optional[Iterable[str]] = None,
@@ -1368,9 +1630,7 @@ def cross_validate_artifacts(
     for ak, c in constraints_by_artifact_kind.items():
         for ic in getattr(c, "defined_id", []) or []:
             id_kind = str(getattr(ic, "kind", "")).strip().lower()
-            id_kind_name = str(getattr(ic, "name", "") or "").strip() or None
-            id_kind_description = str(getattr(ic, "description", "") or "").strip() or None
-            id_kind_template = str(getattr(ic, "template", "") or "").strip() or None
+            id_meta = _id_kind_rule_metadata(ic)
             refs_rules = getattr(ic, "references", None) or {}
             if not isinstance(refs_rules, dict):
                 continue
@@ -1390,171 +1650,27 @@ def cross_validate_artifacts(
 
                     for target_kind, rule in refs_rules.items():
                         tk = str(target_kind).strip().upper()
-                        cov = getattr(rule, "coverage", None)  # True=required, False=prohibited, None=optional
-                        def_has_task = bool(drow.get("has_task", False))
-                        def_checked = bool(drow.get("checked", False))
-                        task_rule = getattr(rule, "task", None)  # True=required, False=prohibited, None=allowed
-                        prio_rule = getattr(rule, "priority", None)  # True=required, False=prohibited, None=allowed
                         allowed_headings = set(_normalize_heading_identifiers(getattr(rule, "headings", None) or []))
                         allowed_headings_sorted = sorted(allowed_headings)
                         allowed_headings_info = headings_info_for_kind(tk, allowed_headings_sorted)
 
                         refs_in_kind = [r for r in system_refs_by_kind.get(tk, []) if str(r.get("id")) == did]
-
-                        if cov is True:
-                            if def_has_task and (not def_checked):
-                                continue
-                            if tk not in system_present_kinds:
-                                warnings.append(error(
-                                    "constraints",
-                                    f"`{did}` (defined in {ak}) requires reference in `{tk}` artifact but no `{tk}` artifact exists in scope",
-                                    code=EC.REF_TARGET_NOT_IN_SCOPE,
-                                    path=drow.get("artifact_path"),
-                                    line=int(drow.get("line", 1) or 1),
-                                    id=did,
-                                    artifact_kind=ak,
-                                    target_kind=tk,
-                                ))
-                                continue
-                            if not refs_in_kind:
-                                errors.append(error(
-                                    "constraints",
-                                    f"`{did}` (defined in {ak}, kind `{id_kind}`) is not referenced from any `{tk}` artifact",
-                                    code=EC.REF_MISSING_FROM_KIND,
-                                    path=drow.get("artifact_path"),
-                                    line=int(drow.get("line", 1) or 1),
-                                    id=did,
-                                    artifact_kind=ak,
-                                    target_kind=tk,
-                                    id_kind=id_kind,
-                                    id_kind_name=id_kind_name,
-                                    id_kind_description=id_kind_description,
-                                    id_kind_template=id_kind_template,
-                                    target_headings=allowed_headings_sorted if allowed_headings else None,
-                                    target_headings_info=allowed_headings_info if allowed_headings else None,
-                                ))
-                                continue
-
-                            if allowed_headings:
-                                if not any(
-                                    any(h in allowed_headings for h in (rr.get("headings") or []))
-                                    for rr in refs_in_kind
-                                ):
-                                    first = refs_in_kind[0]
-                                    errors.append(error(
-                                        "constraints",
-                                        f"Reference to `{did}` in `{tk}` artifact is under {first.get('headings') or []} but must be under one of {allowed_headings_sorted}",
-                                        code=EC.REF_WRONG_HEADINGS,
-                                        path=first.get("artifact_path"),
-                                        line=int(first.get("line", 1) or 1),
-                                        id=did,
-                                        artifact_kind=ak,
-                                        target_kind=tk,
-                                        headings=allowed_headings_sorted,
-                                        headings_info=allowed_headings_info,
-                                        found_headings=first.get("headings") or [],
-                                        id_kind=id_kind,
-                                        id_kind_name=id_kind_name,
-                                        id_kind_description=id_kind_description,
-                                        id_kind_template=id_kind_template,
-                                    ))
-
-                        if cov is False and refs_in_kind:
-                            first = refs_in_kind[0]
-                            errors.append(error(
-                                "constraints",
-                                f"`{did}` is referenced in `{tk}` artifact but references from `{tk}` are prohibited for {ak} IDs",
-                                code=EC.REF_FROM_PROHIBITED_KIND,
-                                path=first.get("artifact_path"),
-                                line=int(first.get("line", 1) or 1),
-                                id=did,
-                                artifact_kind=ak,
-                                target_kind=tk,
-                                id_kind=id_kind,
-                                id_kind_name=id_kind_name,
-                                id_kind_description=id_kind_description,
-                                id_kind_template=id_kind_template,
-                            ))
-                            continue
-
-                        if refs_in_kind:
-                            if task_rule is True:
-                                for rr in refs_in_kind:
-                                    if bool(rr.get("has_task", False)):
-                                        continue
-                                    errors.append(error(
-                                        "constraints",
-                                        f"Reference to `{did}` in `{tk}` artifact is missing required task checkbox `- [ ]`",
-                                        code=EC.REF_MISSING_TASK,
-                                        path=rr.get("artifact_path"),
-                                        line=int(rr.get("line", 1) or 1),
-                                        id=did,
-                                        artifact_kind=ak,
-                                        target_kind=tk,
-                                        id_kind=id_kind,
-                                        id_kind_name=id_kind_name,
-                                        id_kind_description=id_kind_description,
-                                        id_kind_template=id_kind_template,
-                                    ))
-                                    break
-                            elif task_rule is False:
-                                for rr in refs_in_kind:
-                                    if not bool(rr.get("has_task", False)):
-                                        continue
-                                    errors.append(error(
-                                        "constraints",
-                                        f"Reference to `{did}` in `{tk}` artifact has task checkbox but task tracking is prohibited",
-                                        code=EC.REF_PROHIBITED_TASK,
-                                        path=rr.get("artifact_path"),
-                                        line=int(rr.get("line", 1) or 1),
-                                        id=did,
-                                        artifact_kind=ak,
-                                        target_kind=tk,
-                                        id_kind=id_kind,
-                                        id_kind_name=id_kind_name,
-                                        id_kind_description=id_kind_description,
-                                        id_kind_template=id_kind_template,
-                                    ))
-                                    break
-
-                            if prio_rule is True:
-                                for rr in refs_in_kind:
-                                    if bool(rr.get("has_priority", False)):
-                                        continue
-                                    errors.append(error(
-                                        "constraints",
-                                        f"Reference to `{did}` in `{tk}` artifact is missing required priority marker",
-                                        code=EC.REF_MISSING_PRIORITY,
-                                        path=rr.get("artifact_path"),
-                                        line=int(rr.get("line", 1) or 1),
-                                        id=did,
-                                        artifact_kind=ak,
-                                        target_kind=tk,
-                                        id_kind=id_kind,
-                                        id_kind_name=id_kind_name,
-                                        id_kind_description=id_kind_description,
-                                        id_kind_template=id_kind_template,
-                                    ))
-                                    break
-                            elif prio_rule is False:
-                                for rr in refs_in_kind:
-                                    if not bool(rr.get("has_priority", False)):
-                                        continue
-                                    errors.append(error(
-                                        "constraints",
-                                        f"Reference to `{did}` in `{tk}` artifact has priority marker but priority is prohibited",
-                                        code=EC.REF_PROHIBITED_PRIORITY,
-                                        path=rr.get("artifact_path"),
-                                        line=int(rr.get("line", 1) or 1),
-                                        id=did,
-                                        artifact_kind=ak,
-                                        target_kind=tk,
-                                        id_kind=id_kind,
-                                        id_kind_name=id_kind_name,
-                                        id_kind_description=id_kind_description,
-                                        id_kind_template=id_kind_template,
-                                    ))
-                                    break
+                        _validate_reference_rule(
+                            errors=errors,
+                            warnings=warnings,
+                            drow=drow,
+                            refs_in_kind=refs_in_kind,
+                            system_present_kinds=system_present_kinds,
+                            did=did,
+                            ak=ak,
+                            tk=tk,
+                            id_kind=id_kind,
+                            id_meta=id_meta,
+                            rule=rule,
+                            allowed_headings=allowed_headings,
+                            allowed_headings_sorted=allowed_headings_sorted,
+                            allowed_headings_info=allowed_headings_info,
+                        )
     # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-cross-ref-coverage-rules
     # @cpt-end:cpt-studio-algo-traceability-validation-cross-validate:p1:inst-enforce-coverage
 

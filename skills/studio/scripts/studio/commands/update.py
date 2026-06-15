@@ -693,21 +693,7 @@ def cmd_update(argv: List[str]) -> int:
                 warnings.append(f"validate-kits: {vk_status}")
                 ui.warn(f"Validate kits: {vk_status}")
                 # Show top errors inline so the user doesn't have to re-run
-                for e in (vk_report.get("errors") or [])[:5]:
-                    if isinstance(e, dict):
-                        msg = e.get("message", "")
-                        path = e.get("path", "")
-                        if path:
-                            msg = f"{path}: {msg}"
-                        ui.substep(f"  ✗ {msg}")
-                        for detail in (e.get("errors") or []):
-                            ui.substep(f"      {detail}")
-                    else:
-                        ui.substep(f"  ✗ {e}")
-                n_err = int(vk_report.get("error_count", 0))
-                if n_err > 5:
-                    ui.substep(f"  ... and {n_err - 5} more error(s)")
-                ui.hint("Run 'cfs validate-kits --verbose' for full details.")
+                _show_validate_kits_failures(vk_report)
             else:
                 ui.step("Validate kits: PASS")
         except (OSError, ValueError, KeyError) as exc:
@@ -1087,6 +1073,129 @@ def _migrate_kit_sources(config_dir: Path) -> Dict[str, str]:
 from .kit import _read_conf_version  # noqa: F401  # pylint: disable=unused-import,wrong-import-position
 # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-update-helpers
 
+
+def _show_validate_kits_failures(vk_report: Dict[str, Any]) -> None:
+    """Render a compact validate-kits failure summary."""
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-update-format-output
+    for err in (vk_report.get("errors") or [])[:5]:
+        if not isinstance(err, dict):
+            ui.substep(f"  ✗ {err}")
+            continue
+        msg = err.get("message", "")
+        path = err.get("path", "")
+        if path:
+            msg = f"{path}: {msg}"
+        ui.substep(f"  ✗ {msg}")
+        for detail in (err.get("errors") or []):
+            ui.substep(f"      {detail}")
+    n_err = int(vk_report.get("error_count", 0))
+    if n_err > 5:
+        ui.substep(f"  ... and {n_err - 5} more error(s)")
+    ui.hint("Run 'cfs validate-kits --verbose' for full details.")
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-update-format-output
+
+
+def _show_file_action_group(title: str, values: List[str], action: str) -> None:
+    """Render a grouped list of file actions."""
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-update-format-output
+    if not values:
+        return
+    ui.blank()
+    ui.step(f"{title} ({len(values)})")
+    for key in values:
+        ui.file_action(key, action)
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-update-format-output
+
+
+def _show_update_action_groups(actions: Dict[str, Any]) -> None:
+    """Render simple created, updated, and unchanged action groups."""
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-update-format-output
+    created = [k for k, v in actions.items() if v == "created"]
+    updated = [k for k, v in actions.items() if v == "updated"]
+    unchanged = [k for k, v in actions.items() if v in ("unchanged", "preserved")]
+
+    _show_file_action_group("Created", created, "created")
+    _show_file_action_group("Updated", updated, "updated")
+    if unchanged:
+        ui.blank()
+        ui.step(f"Unchanged ({len(unchanged)})")
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-update-format-output
+
+
+def _show_core_update_actions(actions: Dict[str, Any]) -> None:
+    """Render core update action details."""
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-update-format-output
+    core_update = actions.get("core_update")
+    if not isinstance(core_update, dict):
+        return
+    ui.blank()
+    ui.step("Core:")
+    for sub_k, sub_v in core_update.items():
+        ui.file_action(sub_k, str(sub_v))
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-update-format-output
+
+
+def _show_kit_update_actions(kits_data: Dict[str, Any]) -> None:
+    """Render kit update action details."""
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-update-format-output
+    ui.blank()
+    if kits_data.get("status") == "skipped":
+        ui.step("Kits: skipped")
+        reason = kits_data.get("reason")
+        if reason:
+            ui.substep(f"  {reason}")
+        tracking = kits_data.get("kit_tracking")
+        if tracking:
+            ui.substep(f"  kit_tracking={tracking}")
+        return
+
+    ui.step(f"Kits ({len(kits_data)})")
+    for slug, kr in kits_data.items():
+        if not isinstance(kr, dict):
+            ui.substep(f"  {slug}: {kr}")
+            continue
+        ver = kr.get("version", {})
+        ver_status = ver.get("status", "") if isinstance(ver, dict) else str(ver)
+        gen = kr.get("gen", {})
+        fw = gen.get("files_written", 0) if isinstance(gen, dict) else 0
+        accepted_files = gen.get("accepted_files", []) if isinstance(gen, dict) else []
+        rejected = kr.get("gen_rejected", [])
+
+        if ver_status == "current":
+            ui.substep(f"  {slug}: up to date")
+            continue
+        parts = [f"{slug}: {ver_status}"]
+        if fw:
+            parts.append(f"{fw} file(s) accepted")
+        if rejected:
+            parts.append(f"{len(rejected)} declined")
+        ui.substep(f"  {'  '.join(parts)}")
+        for fp in accepted_files:
+            ui.substep(f"    ~ {fp}")
+        for fp in rejected:
+            ui.substep(f"    ✗ {fp} (declined)")
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-update-format-output
+
+
+def _show_complex_update_actions(actions: Dict[str, Any]) -> None:
+    """Render remaining non-scalar update actions."""
+    # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-update-format-output
+    skip = {"core_update", "kits", "agents_regenerated"}
+    for key, value in actions.items():
+        if key in skip or isinstance(value, str):
+            continue
+        ui.blank()
+        ui.step(f"{key}:")
+        if isinstance(value, dict):
+            for sub_k, sub_v in value.items():
+                label = "..." if isinstance(sub_v, (dict, list)) else sub_v
+                ui.substep(f"  {sub_k}: {label}")
+        elif isinstance(value, list):
+            for item in value:
+                ui.substep(f"  {item}")
+    # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-update-format-output
+
+
 # ---------------------------------------------------------------------------
 # Human-friendly formatter
 # ---------------------------------------------------------------------------
@@ -1105,89 +1214,18 @@ def _human_update_ok(data: Dict[str, Any]) -> None:
     actions = data.get("actions", {})
     if actions:
         # Summarize file actions
-        created = [k for k, v in actions.items() if v == "created"]
-        updated = [k for k, v in actions.items() if v == "updated"]
-        unchanged = [k for k, v in actions.items() if v in ("unchanged", "preserved")]
-
-        if created:
-            ui.blank()
-            ui.step(f"Created ({len(created)})")
-            for k in created:
-                ui.file_action(k, "created")
-        if updated:
-            ui.blank()
-            ui.step(f"Updated ({len(updated)})")
-            for k in updated:
-                ui.file_action(k, "updated")
-        if unchanged:
-            ui.blank()
-            ui.step(f"Unchanged ({len(unchanged)})")
+        _show_update_action_groups(actions)
 
         # Core update details
-        core_update = actions.get("core_update")
-        if isinstance(core_update, dict):
-            ui.blank()
-            ui.step("Core:")
-            for sub_k, sub_v in core_update.items():
-                ui.file_action(sub_k, str(sub_v))
+        _show_core_update_actions(actions)
 
         # Kit results
         kits_data = actions.get("kits")
         if isinstance(kits_data, dict):
-            ui.blank()
-            if kits_data.get("status") == "skipped":
-                ui.step("Kits: skipped")
-                reason = kits_data.get("reason")
-                if reason:
-                    ui.substep(f"  {reason}")
-                tracking = kits_data.get("kit_tracking")
-                if tracking:
-                    ui.substep(f"  kit_tracking={tracking}")
-            else:
-                ui.step(f"Kits ({len(kits_data)})")
-                for slug, kr in kits_data.items():
-                    if not isinstance(kr, dict):
-                        ui.substep(f"  {slug}: {kr}")
-                        continue
-                    ver = kr.get("version", {})
-                    ver_status = ver.get("status", "") if isinstance(ver, dict) else str(ver)
-                    gen = kr.get("gen", {})
-                    fw = gen.get("files_written", 0) if isinstance(gen, dict) else 0
-                    accepted_files = gen.get("accepted_files", []) if isinstance(gen, dict) else []
-                    rejected = kr.get("gen_rejected", [])
-
-                    if ver_status == "current":
-                        ui.substep(f"  {slug}: up to date")
-                    else:
-                        parts = [f"{slug}: {ver_status}"]
-                        if fw:
-                            parts.append(f"{fw} file(s) accepted")
-                        if rejected:
-                            parts.append(f"{len(rejected)} declined")
-                        ui.substep(f"  {'  '.join(parts)}")
-                        for fp in accepted_files:
-                            ui.substep(f"    ~ {fp}")
-                        for fp in rejected:
-                            ui.substep(f"    ✗ {fp} (declined)")
+            _show_kit_update_actions(kits_data)
 
         # Remaining dict/list actions (not already handled)
-        skip = {"core_update", "kits", "agents_regenerated"}
-        for k, v in actions.items():
-            if k in skip or isinstance(v, str):
-                continue
-            if isinstance(v, dict):
-                ui.blank()
-                ui.step(f"{k}:")
-                for sub_k, sub_v in v.items():
-                    if isinstance(sub_v, (dict, list)):
-                        ui.substep(f"  {sub_k}: ...")
-                    else:
-                        ui.substep(f"  {sub_k}: {sub_v}")
-            elif isinstance(v, list):
-                ui.blank()
-                ui.step(f"{k}:")
-                for item in v:
-                    ui.substep(f"  {item}")
+        _show_complex_update_actions(actions)
 
         agents_regen = actions.get("agents_regenerated")
         if isinstance(agents_regen, list) and agents_regen:

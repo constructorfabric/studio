@@ -24,6 +24,57 @@ from ..utils import error_codes as EC
 from ..utils.document import read_text_safe
 
 
+# @cpt-begin:cpt-studio-algo-developer-experience-self-check:p1:inst-locate-files
+def _resolve_kit_kind_paths(
+    *,
+    kit_obj: object,
+    kind: str,
+    adapter_dir: Path,
+    project_root: Path,
+    artifacts_dir: Path,
+    explicit_kind: bool,
+) -> Tuple[Optional[Path], Optional[Path]]:
+    """Resolve template and examples paths for one kit artifact kind."""
+    template_path: Optional[Path] = None
+    examples_dir: Optional[Path] = None
+    try:
+        rel = kit_obj.get_template_path(kind)
+        if str(rel or "").strip():
+            candidate = (adapter_dir / rel).resolve()
+            template_path = candidate if candidate.is_file() else (project_root / rel).resolve()
+    except (OSError, ValueError, KeyError):
+        template_path = None
+    try:
+        rel = kit_obj.get_examples_path(kind)
+        if str(rel or "").strip():
+            candidate = (adapter_dir / rel).resolve()
+            examples_dir = candidate if candidate.exists() else (project_root / rel).resolve()
+    except (OSError, ValueError, KeyError):
+        examples_dir = None
+
+    kind_dir = artifacts_dir / kind
+    if template_path is None and not explicit_kind:
+        template_path = (kind_dir / "template.md").resolve()
+    if examples_dir is None and not explicit_kind:
+        examples_dir = (kind_dir / "examples").resolve()
+    return template_path, examples_dir
+
+
+def _collect_example_paths(examples_dir: Optional[Path]) -> List[Path]:
+    """Return markdown example paths from a file or directory."""
+    if examples_dir is None:
+        return []
+    try:
+        if not examples_dir.exists():
+            return []
+        if examples_dir.is_file():
+            return [examples_dir]
+        return sorted([p for p in Path(examples_dir).glob("*.md") if p.is_file()])
+    except OSError:
+        return []
+# @cpt-end:cpt-studio-algo-developer-experience-self-check:p1:inst-locate-files
+
+
 # @cpt-begin:cpt-studio-flow-developer-experience-self-check:p1:inst-user-self-check
 def run_self_check_from_meta(
     *,
@@ -448,51 +499,21 @@ def run_self_check_from_meta(
             explicit_kind = bool(isinstance(raw_map, dict) and str(kind).upper() in {str(k).strip().upper() for k in raw_map.keys()})
             # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 
-            template_path = None
-            examples_dir = None
-            if kit_obj is not None:
-                # NOTE: These manual adapter/project fallbacks mirror older
-                # registry semantics rather than authoritative loaded-kit path
-                # resolution.
-                try:
-                    rel = kit_obj.get_template_path(kind)
-                    if str(rel or "").strip():
-                        candidate = (adapter_dir / rel).resolve()
-                        if not candidate.is_file():
-                            candidate = (project_root / rel).resolve()
-                        template_path = candidate
-                except (OSError, ValueError, KeyError):
-                    template_path = None
-                try:
-                    rel = kit_obj.get_examples_path(kind)
-                    if str(rel or "").strip():
-                        candidate = (adapter_dir / rel).resolve()
-                        if not candidate.exists():
-                            candidate = (project_root / rel).resolve()
-                        examples_dir = candidate
-                except (OSError, ValueError, KeyError):
-                    examples_dir = None
-
-            # Fallback to legacy layout if explicit paths are unavailable.
             # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
-            kind_dir = artifacts_dir / kind
-            if template_path is None and not explicit_kind:
-                template_path = (kind_dir / "template.md").resolve()
-            if examples_dir is None and not explicit_kind:
-                examples_dir = (kind_dir / "examples").resolve()
+            # NOTE: These manual adapter/project fallbacks mirror older
+            # registry semantics rather than authoritative loaded-kit path
+            # resolution.
+            template_path, examples_dir = _resolve_kit_kind_paths(
+                kit_obj=kit_obj,
+                kind=kind,
+                adapter_dir=adapter_dir,
+                project_root=project_root,
+                artifacts_dir=artifacts_dir,
+                explicit_kind=explicit_kind,
+            )
             # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 
-            example_paths: List[Path] = []
-            try:
-                if examples_dir is not None and examples_dir.exists():
-                    if examples_dir.is_file():
-                        example_paths = [examples_dir]
-                    else:
-                        example_paths = sorted(
-                            [p for p in Path(examples_dir).glob("*.md") if p.is_file()],
-                        )
-            except OSError:
-                example_paths = []
+            example_paths = _collect_example_paths(examples_dir)
 
             example_path = example_paths[0] if example_paths else None
 
