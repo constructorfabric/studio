@@ -10,7 +10,8 @@ and `skills/studio/sub-agent-dispatch.md` tree. `workflows/generate.md` and
 `workflows/analyze.md` are now thin routers; `workflows/coding.md` (and the
 other `workflows/<verb>.md` files) are single-file workflows; and the sub-agent
 approval gate + dispatch contract now live in `skills/studio/SKILL.md`
-(UNIT SubAgentDispatch). The canonical sub-agent inventory is
+(UNIT SubAgentSessionPermissionGate); the per-group gate (SubAgentDispatch)
+remains in `dispatch.md`. The canonical sub-agent inventory is
 `skills/studio/agents.toml` with per-agent contracts under
 `skills/studio/agents/<name>.md`.
 
@@ -25,8 +26,9 @@ Migration note (audit trail for the post-refactor rewrite of this file)
 REWRITTEN (re-grounded on the new architecture):
   * test_skill_requires_session_approval_before_native_subagent_dispatch —
     the session approval gate moved from the deleted
-    skills/studio/sub-agent-dispatch.md to UNIT SubAgentDispatch in
-    skills/studio/SKILL.md; re-grounded there.
+    skills/studio/sub-agent-dispatch.md to UNIT SubAgentSessionPermissionGate in
+    skills/studio/SKILL.md; the per-group gate (SubAgentDispatch) remains in
+    dispatch.md; re-grounded there.
   * test_subagent_fallback_never_defaults_from_unapproved_native_support —
     same move; now asserts the SubAgentFallbackRequest deny/inline path in
     SKILL.md instead of the deleted dispatch file.
@@ -1311,9 +1313,10 @@ def test_coding_dispatch_names_reviewers_and_valid_coder() -> None:
 def test_skill_requires_dispatch_group_approval_before_native_subagent_dispatch() -> None:
     """Native sub-agent dispatch requires explicit approval for each dispatch group.
 
-    The approval gate moved into UNIT SubAgentDispatch in skills/studio/SKILL.md.
-    Dispatch is asked per group by default, with explicit options to save either
-    native approval or inline fallback for the session.
+    The session-level approval gate moved into UNIT SubAgentSessionPermissionGate
+    in skills/studio/SKILL.md. The per-group gate (SubAgentDispatch) remains in
+    dispatch.md. Dispatch is asked per group by default, with explicit options to
+    save either native approval or inline fallback for the session.
     """
     repo_root = Path(__file__).resolve().parents[1]
     skill = (repo_root / "skills" / "studio" / "SKILL.md").read_text(encoding="utf-8")
@@ -1383,11 +1386,32 @@ def test_router_free_text_and_other_paths_are_explicit_units() -> None:
     analyze = (repo_root / "workflows" / "analyze.md").read_text(encoding="utf-8")
 
     assert "UNIT IntentDescribeCapture" in skill
+    assert "NEVER invoke a cf-* workflow with no intent from an activation-only menu" in skill
+    assert "1 skill -> SET SELECTED_WORKFLOW = selected cf-* skill; CONTINUE IntentDescribeCapture" in skill
+    assert "with no intent so the skill prompts for its own input" not in skill
+    assert "UNIT SubAgentSessionPermissionGate" in skill
+    assert "ALWAYS after ORIGINAL_INTENT is known through root routing, ask for session-level sub-agent permission" in skill
+    assert "ALWAYS prefer concrete non-router workflows over router entrypoints" in skill
+    assert "NEVER route an already-selected cf-* workflow's passed ORIGINAL_INTENT back through cf-analyze or cf-generate" in skill
+    assert "LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/dispatch.md" in skill
+    assert "MENU SubAgentSessionPermissionMenu" in skill
+    assert "SET SUB_AGENT_DISPATCH_MODE = approve-session" in skill
+    assert "SET SUB_AGENT_DISPATCH_MODE = inline-session" in skill
+    assert "SET SELECTED_COMPANION_SELECTION: unset | companion-selection" in skill
+    assert "SET POST_PERMISSION_ROUTE: unset | matched-menu | selected-workflow | selected-companion" in skill
+    assert "POST_PERMISSION_ROUTE = selected-companion" in skill
+    assert "INVOKE each skill in SELECTED_COMPANION_SELECTION sequentially" in skill
+    assert "CONTINUE SubAgentSessionPermissionGate WHEN the prompt contains a task intent" in skill
+    assert "EMIT_MENU MatchedIntentSkillMenu WHEN SUB_AGENT_DISPATCH_MODE != unset AND POST_PERMISSION_ROUTE == matched-menu" in skill
+    assert "WAIT user.reply WHEN SUB_AGENT_DISPATCH_MODE != unset AND POST_PERMISSION_ROUTE == matched-menu" in skill
+    assert "run matching, and emit MatchedIntentSkillMenu" not in skill
     assert (
         "INVALID -> treat non-empty free text as ORIGINAL_INTENT, load companion-skills "
-        "module when the text spans domains, run matching, and EMIT_MENU MatchedIntentSkillMenu"
+        "module when the text spans domains, run matching, SET POST_PERMISSION_ROUTE = matched-menu, "
+        "and CONTINUE SubAgentSessionPermissionGate"
     ) in skill
     assert "UNIT IntentAllSkillsMenu" in skill
+    assert "SET SELECTED_COMPANION_SELECTION = selected compatible cf-* skills and CONTINUE IntentDescribeCapture" in skill
     assert "EMIT_MENU listing" not in skill
 
     assert "UNIT GenerateDescribeIntent" in generate
@@ -1407,6 +1431,195 @@ def test_router_free_text_and_other_paths_are_explicit_units() -> None:
     assert "2 describe-intent | help-me-choose -> CONTINUE AnalyzeDescribeIntent" in analyze
     assert "EMIT_MENU listing" not in analyze
     assert "WAIT user.reply; SET ORIGINAL_INTENT" not in analyze
+
+
+def test_direct_workflows_capture_intent_before_explore_or_brainstorm() -> None:
+    """Activation-only workflow entry must not show cf-explore before a target exists."""
+    repo_root = Path(__file__).resolve().parents[1]
+    workflow_expectations = (
+        (
+            repo_root / "workflows" / "write-skills.md",
+            "UNIT WriteSkillsIntentCapture",
+            "CONTINUE WriteSkillsIntentCapture WHEN CFS_INIT == true AND both references loaded AND ORIGINAL_INTENT == unset",
+            "CONTINUE WriteSkillsExploreGate WHEN CFS_INIT == true AND both references loaded AND ORIGINAL_INTENT != unset",
+            "REQUIRE ORIGINAL_INTENT != unset",
+        ),
+        (
+            repo_root / "workflows" / "write-docs.md",
+            "UNIT WriteDocsIntentCapture",
+            "CONTINUE WriteDocsIntentCapture WHEN CFS_INIT == true AND the references loaded AND ORIGINAL_INTENT == unset",
+            "CONTINUE WriteDocsExploreGate WHEN CFS_INIT == true AND the references loaded AND ORIGINAL_INTENT != unset",
+            "REQUIRE ORIGINAL_INTENT != unset",
+        ),
+        (
+            repo_root / "workflows" / "coding.md",
+            "UNIT CodingIntentCapture",
+            "CONTINUE CodingIntentCapture WHEN CFS_INIT == true AND the references loaded AND ORIGINAL_INTENT == unset",
+            "CONTINUE CodingExploreGate WHEN CFS_INIT == true AND the references loaded AND ORIGINAL_INTENT != unset",
+            "REQUIRE ORIGINAL_INTENT != unset",
+        ),
+    )
+
+    for path, capture_unit, unset_route, set_route, explore_precondition in workflow_expectations:
+        text = path.read_text(encoding="utf-8")
+        assert "SET ORIGINAL_INTENT:" in text
+        assert "ALWAYS capture ORIGINAL_INTENT before offering cf-explore" in text
+        assert capture_unit in text
+        assert unset_route in text
+        assert set_route in text
+        assert explore_precondition in text
+
+
+def test_explore_is_resource_context_prep_not_review_execution() -> None:
+    """Explore must gather context for the selected workflow, not perform its review."""
+    repo_root = Path(__file__).resolve().parents[1]
+    explore = (repo_root / "workflows" / "explore.md").read_text(encoding="utf-8")
+    parent_workflows = (
+        repo_root / "workflows" / "write-skills.md",
+        repo_root / "workflows" / "write-docs.md",
+        repo_root / "workflows" / "coding.md",
+    )
+
+    assert "standalone | brainstorm | generate | analyze | plan | workflow-prep" in explore
+    assert "ALWAYS in workflow-prep or return-context mode, gather resource_context for the caller only" in explore
+    assert "NEVER execute the caller's authoring, review, validation, planning, or brainstorm task inside explore" in explore
+    assert "NEVER emit review findings, validation verdicts, bug reports, severity ratings, fix recommendations, or authored content from ExploreRun" in explore
+    assert "return-context/workflow-prep mode is resource discovery only" in explore
+
+    for path in parent_workflows:
+        text = path.read_text(encoding="utf-8")
+        assert "intent=workflow-prep" in text
+        assert "task=ORIGINAL_INTENT" in text
+        assert "return_context=true" in text
+        assert "intent=generate and return_context=true" not in text
+
+
+def test_write_skills_review_loop_matches_fix_then_validate_contract() -> None:
+    """Prompt review loops must not spin on unchanged findings."""
+    repo_root = Path(__file__).resolve().parents[1]
+    text = (repo_root / "workflows" / "write-skills.md").read_text(encoding="utf-8")
+
+    assert "RUN ReviewFixApprovalGate WHEN findings remain and fixes are applicable" in text
+    assert "RUN cf-pdsl-author to apply the ReviewFixApprovalGate-approved review fixes WHEN review fixes were approved" in text
+    assert "CONTINUE WriteSkillsValidate WHEN review fixes were approved and applied this iteration" in text
+    assert "STOP_TURN and report the remaining findings WHEN findings remain but no fixes were applied this iteration" in text
+    assert "NEVER re-loop the review when no fixes were applied this iteration" in text
+    assert "CONTINUE WriteSkillsReviewLoop WHEN review findings remain" not in text
+
+
+def test_content_generating_workflows_offer_semantic_review_after_writes() -> None:
+    """Generated content cannot stop before deterministic gates and semantic review."""
+    repo_root = Path(__file__).resolve().parents[1]
+    expectations = (
+        (
+            repo_root / "workflows" / "write-skills.md",
+            "CONTINUE WriteSkillsValidate WHEN a skill file has been written or edited",
+            "CONTINUE WriteSkillsReviewLoop WHEN validation passes",
+            "NEVER stop after content generation or deterministic validation before the semantic review-fix loop is offered",
+        ),
+        (
+            repo_root / "workflows" / "write-docs.md",
+            "CONTINUE WriteDocsValidate WHEN a document has been written or edited",
+            "SET GATE_STATUS = pass and CONTINUE WriteDocsReviewLoop WHEN the deterministic gate passes",
+            "NEVER stop after content generation or deterministic validation before the semantic review-fix loop is offered",
+        ),
+        (
+            repo_root / "workflows" / "coding.md",
+            "CONTINUE CodingValidate WHEN code has been written or edited",
+            "SET GATE_STATUS = pass and CONTINUE CodingReviewLoop WHEN the deterministic gate passes",
+            "NEVER stop after code generation or deterministic validation before the semantic review-fix loop is offered",
+        ),
+    )
+
+    for path, dispatch_to_validate, validate_to_review, no_early_stop in expectations:
+        text = path.read_text(encoding="utf-8")
+        assert dispatch_to_validate in text
+        assert validate_to_review in text
+        assert no_early_stop in text
+        assert "EMIT_MENU ReviewGranularityMenu WHEN REVIEW_GRANULARITY == unset" in text
+
+
+def test_review_loops_gate_fixes_on_explicit_user_menu() -> None:
+    """Review findings must not be applied without the fix-scope approval menu."""
+    repo_root = Path(__file__).resolve().parents[1]
+    workflows = (
+        repo_root / "workflows" / "write-skills.md",
+        repo_root / "workflows" / "write-docs.md",
+        repo_root / "workflows" / "coding.md",
+    )
+
+    for path in workflows:
+        text = path.read_text(encoding="utf-8")
+        assert "LOAD {cf-studio-path}/.core/skills/studio/modules/review/fix-approval.md" in text
+        assert "RUN ReviewFixApprovalGate WHEN findings remain and fixes are applicable" in text
+        assert "to apply the ReviewFixApprovalGate-approved review fixes WHEN review fixes were approved" in text
+        assert "review fixes were approved and applied this iteration" in text
+        assert "ReviewFixApprovalGate resolved to none" in text
+
+
+def test_review_only_dispatch_has_executable_review_loop_path() -> None:
+    """Review-only requests must not require prior edits or launch author dispatch first."""
+    repo_root = Path(__file__).resolve().parents[1]
+    expectations = (
+        (
+            repo_root / "workflows" / "write-skills.md",
+            "CONTINUE WriteSkillsReviewLoop WHEN the user requested review of an existing target without edits",
+            "REQUIRE edits have been applied to the skill file OR the user requested review of an existing target without edits",
+            "STOP_TURN WHEN no review findings remain",
+            "RUN cf-pdsl-author for requested skill/prompt/workflow/agent instruction writes or fixes",
+        ),
+        (
+            repo_root / "workflows" / "write-docs.md",
+            "CONTINUE WriteDocsReviewLoop WHEN the user requested review of an existing document without edits",
+            "REQUIRE edits have been applied to the document OR the user requested review of an existing document without edits",
+            "STOP_TURN WHEN no review findings remain AND the user requested review of an existing document without edits",
+            "RUN cf-generate-author for requested document writes or fixes",
+        ),
+        (
+            repo_root / "workflows" / "coding.md",
+            "CONTINUE CodingReviewLoop WHEN the user requested review of existing code without edits",
+            "REQUIRE edits have been applied to the code OR the user requested review of existing code without edits",
+            "STOP_TURN WHEN no review findings remain AND (the user requested review of existing code without edits OR GATE_STATUS == pass)",
+            "RUN selected coding author/fix agent for requested code writes or fixes",
+        ),
+    )
+
+    for path, review_branch, review_precondition, clean_review_stop, author_run in expectations:
+        text = path.read_text(encoding="utf-8")
+        assert review_branch in text
+        assert review_precondition in text
+        assert clean_review_stop in text
+        assert author_run in text
+        assert text.index(review_branch) < text.index(author_run)
+        assert f"{author_run} WHEN requested" in text
+
+
+def test_content_generating_workflows_run_git_gate_before_author_dispatch() -> None:
+    """Write-capable generation must resolve the git policy before dispatch."""
+    repo_root = Path(__file__).resolve().parents[1]
+    expectations = (
+        (
+            repo_root / "workflows" / "write-skills.md",
+            "RUN GitCommitModeGate before preparing git policy for author dispatch",
+            "ALWAYS run GitCommitModeGate before any write-capable author dispatch",
+        ),
+        (
+            repo_root / "workflows" / "write-docs.md",
+            "RUN GitCommitModeGate before preparing git policy for author dispatch",
+            "ALWAYS run GitCommitModeGate before any write-capable author dispatch",
+        ),
+        (
+            repo_root / "workflows" / "coding.md",
+            "RUN GitCommitModeGate before preparing git policy for coder dispatch",
+            "ALWAYS run GitCommitModeGate before any write-capable coder dispatch",
+        ),
+    )
+
+    for path, run_gate, rule in expectations:
+        text = path.read_text(encoding="utf-8")
+        assert "LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md" in text
+        assert run_gate in text
+        assert rule in text
 
 
 def test_root_skill_declares_fail_closed_conditional_module_loading() -> None:
@@ -1430,12 +1643,27 @@ def test_root_skill_declares_fail_closed_conditional_module_loading() -> None:
     )
 
     assert "UNIT ConditionalModuleLoading" in skill
-    assert "NEVER move a rule out of this root skill unless its trigger can be expressed" in skill
+    assert "PURPOSE: Fail closed for all REQUIRED optional rule modules" in skill
+    assert "ALWAYS REQUIRED: load and follow the module named by this table" in skill
+    assert "ALWAYS REQUIRED: STOP_TURN with the missing module path" in skill
+    assert "ALWAYS REQUIRED: load the module rather than skip it" in skill
+    assert "NEVER move a rule out of this root skill unless its trigger can be expressed as one stable REQUIRED BEFORE/WHEN rule" in skill
     assert "conditional-module report that lists every module path" in skill
     assert "include the conditional-module trigger table in the cf load report" in skill
     for module in required_modules:
         assert module in skill
         assert (repo_root / "skills" / "studio" / module).is_file()
+
+    conditional_module_block = skill.split("UNIT ConditionalModuleLoading", 1)[1].split(
+        "UNIT IntentRouting", 1
+    )[0]
+    trigger_lines = [
+        line.strip()
+        for line in conditional_module_block.splitlines()
+        if "-> LOAD {cf-studio-path}/.core/skills/studio/modules/" in line
+    ]
+    assert len(trigger_lines) == len(required_modules)
+    assert all(line.startswith("ALWAYS REQUIRED ") for line in trigger_lines)
 
 
 def test_subagent_selection_contract_uses_reasoning_effort_for_ranking() -> None:

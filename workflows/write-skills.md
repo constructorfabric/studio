@@ -15,18 +15,22 @@ UNIT WriteSkillsBootstrap
 PURPOSE: Ensure the cf skill is loaded, then load the references needed to author and review PDSL skills.
 STATE:
   SET CFS_INIT: true | false (default false, scope session)
+  SET ORIGINAL_INTENT: string | unset (default unset, scope workflow_run)
 DO:
+  SET ORIGINAL_INTENT = the user's triggering write-skills request (verbatim or shortest faithful summary), or unset when activation-only, WHEN ORIGINAL_INTENT == unset
   EMIT_MENU LoadCfSkillConfirm WHEN CFS_INIT != true
   STOP_TURN WHEN CFS_INIT != true
   LOAD {cf-studio-path}/.core/architecture/specs/PDSL.md
   LOAD {cf-studio-path}/.core/requirements/prompt-engineering.md
   RUN verify both references loaded; EMIT "Required reference not found (PDSL spec or prompt-engineering methodology under {cf-studio-path}/.core) — cannot author or review; reinstall or sync the studio kit, then retry." and STOP_TURN WHEN either load fails
-  CONTINUE WriteSkillsExploreGate WHEN CFS_INIT == true AND both references loaded
+  CONTINUE WriteSkillsIntentCapture WHEN ORIGINAL_INTENT == unset
+  CONTINUE WriteSkillsExploreGate WHEN ORIGINAL_INTENT != unset
 RULES:
   ALWAYS verify the cf skill is loaded, CFS_INIT == true, before authoring or reviewing a skill
   ALWAYS treat CFS_INIT as false when its value is unknown, ambiguous, or unset
   NEVER proceed past WriteSkillsBootstrap unless CFS_INIT == true is positively confirmed
   ALWAYS load the PDSL spec and the prompt-engineering requirement before authoring or reviewing a skill
+  ALWAYS capture ORIGINAL_INTENT before offering cf-explore, cf-brainstorm, or any write/review dispatch
   NEVER author or review a skill when a required reference failed to load
 MENU LoadCfSkillConfirm
 TITLE: The cf skill is not loaded. It is the Constructor Studio core that loads the shared rules and routes to cf-* skills, so authoring/reviewing skills cannot run without it. Load it now to continue?
@@ -37,10 +41,24 @@ OPTIONS:
 ```
 
 ```pdsl
+UNIT WriteSkillsIntentCapture
+PURPOSE: Capture the skill-writing target before any context discovery or design gate runs.
+DO:
+  EMIT "Describe the skill, prompt, workflow, agent instruction, or system prompt work you want done. I need the target and goal before cf-explore or brainstorm can search usefully."
+  WAIT user.reply
+  STOP_TURN
+RULES:
+  ALWAYS on the resumed reply set ORIGINAL_INTENT = user.reply and CONTINUE WriteSkillsExploreGate
+  NEVER offer cf-explore, cf-brainstorm, or dispatch author/reviewer agents while ORIGINAL_INTENT == unset
+```
+
+```pdsl
 UNIT WriteSkillsExploreGate
 PURPOSE: Offer task-relevant context discovery before any skill file is authored or reviewed, after Bootstrap and before the first edit.
 STATE:
   SET RESOURCE_CONTEXT: unset | provided (default unset, scope workflow_run)
+WHEN:
+  REQUIRE ORIGINAL_INTENT != unset
 DO:
   EMIT_MENU WriteSkillsExploreMenu
   WAIT user.reply
@@ -52,7 +70,7 @@ RULES:
 MENU WriteSkillsExploreMenu
 TITLE: Before writing or reviewing a skill, discover task-relevant project context (sibling skills, workflows, agent contracts, referenced requirements, PDSL conventions) with cf-explore — or skip? Skip is the default when the target and its context are already clear; explore for unfamiliar or cross-cutting prompt work. Reply with a number.
 OPTIONS:
-  1 explore -> INVOKE skill `cf-explore` with intent=generate and return_context=true, SET RESOURCE_CONTEXT = provided, then CONTINUE WriteSkillsBrainstormGate
+  1 explore -> INVOKE skill `cf-explore` with intent=workflow-prep, task=ORIGINAL_INTENT, return_context=true; require it to return resource_context only and not perform review/authoring, SET RESOURCE_CONTEXT = provided, then CONTINUE WriteSkillsBrainstormGate
   2 skip -> CONTINUE WriteSkillsBrainstormGate
   INVALID -> EMIT_MENU WriteSkillsExploreMenu
 ```
@@ -84,25 +102,29 @@ WHEN:
 DO:
   RUN `{cfs_cmd} pdsl validate` on the written skill file
   EMIT the validation findings and CONTINUE WriteSkillsReviewLoop to fix them before proceeding WHEN validation reports fail or error
+  CONTINUE WriteSkillsReviewLoop WHEN validation passes
 RULES:
   ALWAYS run `{cfs_cmd} pdsl validate` after writing or editing a skill file
-  NEVER treat a skill as done while `{cfs_cmd} pdsl validate` reports fail or error; loop fixes until it passes
+  NEVER treat a skill as done before BOTH `{cfs_cmd} pdsl validate` passes AND the semantic review-fix loop has been offered and completed
 ```
 
 ```pdsl
 UNIT WriteSkillsReviewLoop
-PURPOSE: After edits, run a semantic review at the user-chosen granularity and iterate fixes until the skill is clean.
+PURPOSE: Run a semantic review at the user-chosen granularity and iterate fixes until the skill is clean.
 STATE:
   SET REVIEW_GRANULARITY: single-pass | per-methodology | per-layer (default unset, scope workflow_run)
 WHEN:
-  REQUIRE edits have been applied to the skill file
+  REQUIRE edits have been applied to the skill file OR the user requested review of an existing target without edits
 DO:
   LOAD {cf-studio-path}/.core/requirements/prompt-bug-finding.md
   LOAD {cf-studio-path}/.core/requirements/consistency-checklist.md
   EMIT_MENU ReviewGranularityMenu WHEN REVIEW_GRANULARITY == unset
   RUN the chosen review at REVIEW_GRANULARITY, dispatching cf-pdsl-reviewer (prompt-engineering + prompt-bug-finding) and cf-semantic-reviewer-consistency (consistency-checklist) instances in parallel
   RUN aggregation of every reviewer's findings into one deduplicated review report
-  CONTINUE WriteSkillsReviewLoop WHEN review findings remain
+  LOAD {cf-studio-path}/.core/skills/studio/modules/review/fix-approval.md and RUN ReviewFixApprovalGate WHEN findings remain and fixes are applicable
+  RUN cf-pdsl-author to apply the ReviewFixApprovalGate-approved review fixes WHEN review fixes were approved
+  CONTINUE WriteSkillsValidate WHEN review fixes were approved and applied this iteration
+  STOP_TURN and report the remaining findings WHEN findings remain but no fixes were applied this iteration (none approved, none applicable, or the ReviewFixApprovalGate resolved to none) — re-reviewing unchanged skill files cannot change the result
   STOP_TURN WHEN no review findings remain
 RULES:
   ALWAYS offer the granularity choice with a suggested level by change size: tiny edit (≤10 changed lines) -> single-pass, moderate edit (11–50 changed lines) -> per-methodology, new file or large/structural change (>50 changed lines) -> per-layer
@@ -110,6 +132,7 @@ RULES:
   ALWAYS scope each reviewer to only its assigned slice (all methodologies / one methodology / one layer) and run independent reviewers in parallel
   ALWAYS aggregate and deduplicate all findings into one report before iterating fixes
   ALWAYS iterate the review-fix loop until no findings remain
+  NEVER re-loop the review when no fixes were applied this iteration — STOP_TURN reporting the remaining findings so the loop cannot spin on unchanged skill files; only an applied fix re-runs WriteSkillsValidate and re-reviews
 MENU ReviewGranularityMenu
 TITLE: Choose review depth — the suggested level fits the change size.
 OPTIONS:
@@ -124,8 +147,17 @@ NOTES:
 ```pdsl
 UNIT WriteSkillsDispatch
 PURPOSE: Dispatch the sub-agents that write, fix, and review skills.
+DO:
+  CONTINUE WriteSkillsReviewLoop WHEN the user requested review of an existing target without edits
+  LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md WHEN requested skill/prompt/workflow/agent instruction writes or fixes
+  RUN GitCommitModeGate before preparing git policy for author dispatch WHEN requested skill/prompt/workflow/agent instruction writes or fixes
+  RUN cf-pdsl-author for requested skill/prompt/workflow/agent instruction writes or fixes WHEN requested skill/prompt/workflow/agent instruction writes or fixes
+  CONTINUE WriteSkillsValidate WHEN a skill file has been written or edited
 RULES:
   ALWAYS dispatch cf-pdsl-author from {cf-studio-path}/.core/skills/studio/agents/cf-pdsl-author.md to write skills and apply review fixes
+  ALWAYS run GitCommitModeGate before any write-capable author dispatch, even when the task itself did not ask to commit
+  ALWAYS after any author/fix dispatch changes content, run deterministic validation and then offer ReviewGranularityMenu before semantic review
+  NEVER stop after content generation or deterministic validation before the semantic review-fix loop is offered
   ALWAYS resolve git_commit_mode (probe once per session), contributing_guide (discover; null when none found), and the mode-matched git_constraint before any write-capable cf-pdsl-author dispatch, and ALWAYS include all three in that dispatch payload
   ALWAYS include the WriteSkillsExploreGate-resolved resource_context (when RESOURCE_CONTEXT == provided) in every cf-pdsl-author and reviewer dispatch payload as read-only context (an absolute path or reference, never inline prompt text), NEVER as a gate on an author or reviewer verdict
   ALWAYS dispatch cf-pdsl-reviewer from {cf-studio-path}/.core/skills/studio/agents/cf-pdsl-reviewer.md (prompt-engineering + prompt-bug-finding) and cf-semantic-reviewer-consistency from {cf-studio-path}/.core/skills/studio/agents/cf-semantic-reviewer-consistency.md (consistency-checklist) per the chosen REVIEW_GRANULARITY: single-pass = one reviewer over all three methodologies; per-methodology = cf-pdsl-reviewer over its prompt-engineering + prompt-bug-finding layers and cf-semantic-reviewer-consistency over all consistency-checklist categories; per-layer = one reviewer per layer/category for every layer each methodology defines (L1 through its last), never a fixed count

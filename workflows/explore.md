@@ -37,7 +37,7 @@ UNIT ExploreEntry
 PURPOSE: Capture the original intent and route to clarify or directly to the explorer.
 STATE:
   SET ORIGINAL_INTENT: string (default unset, scope workflow_run)
-  SET intent: standalone | brainstorm | generate | analyze | plan (default standalone, scope workflow_run)
+  SET intent: standalone | brainstorm | generate | analyze | plan | workflow-prep (default standalone, scope workflow_run)
   SET return_context: true | false (default false, scope workflow_run)
 DO:
   SET ORIGINAL_INTENT = the user's triggering request (verbatim or shortest faithful summary)
@@ -49,6 +49,7 @@ RULES:
   ALWAYS capture ORIGINAL_INTENT before any cf-explorer dispatch
   ALWAYS default intent to standalone and return_context to false when explore is invoked on its own
   ALWAYS set return_context = true only when a calling skill/workflow requested resource_context back
+  ALWAYS when return_context == true or intent == workflow-prep, gather resource_context for the caller only; NEVER execute the caller's authoring, review, validation, planning, or brainstorm task inside explore
   ALWAYS route an activation-only request to ExploreClarify and a concrete request straight to ExploreRun
 ```
 
@@ -72,7 +73,7 @@ TITLE: What should I explore? Reply with a number or describe the topic directly
 OPTIONS:
   1 topic -> Topic/question — reply with the decision, feature, bug, or architecture question to explore, then CONTINUE ExploreRun
   2 path:<file-or-dir> | path -> Path-focused — reply `path: <file-or-dir>` plus what to understand, then CONTINUE ExploreRun
-  3 workflow-prep -> Workflow prep — reply `for brainstorm|plan|generate|analyze: <topic>`, then CONTINUE ExploreRun
+  3 workflow-prep -> Workflow prep — reply the calling workflow name and topic (e.g. `for coding|write-docs|write-skills|brainstorm|plan|generate|analyze: <topic>`), then CONTINUE ExploreRun
   4 saved-context -> Continue saved context — reply with a path to a saved exploration bundle (its result.json) or a prior session reference; LOAD it as resource_context, EMIT the rendered resource map and context summary, then RETURN resource_context and STOP_TURN WHEN return_context == true, else CONTINUE ExploreSaveOffer
   5 cancel -> Cancel — STOP_TURN
   INVALID -> treat non-empty free text as a topic and CONTINUE ExploreRun; else EMIT "Reply 1-5, or describe the topic directly, e.g. explore global install runtime resolution." and EMIT_MENU ExploreClarifyMenu
@@ -103,6 +104,8 @@ RULES:
   ALWAYS synthesize and deduplicate every partition result into one resource_context before presenting, and reconcile exploration_status conservatively
   NEVER report sufficiency while any partition is unexplored or any wave is still pending
   ALWAYS in return-context mode (return_context == true), skip the save offer and the NextActionsOffer handoff and RETURN resource_context to the calling skill
+  ALWAYS when ORIGINAL_INTENT asks to review, analyze, validate, audit, check, fix, write, or implement, treat that wording as the caller's downstream purpose and only discover relevant targets, context files, dependencies, conventions, and suggested slices
+  NEVER emit review findings, validation verdicts, bug reports, severity ratings, fix recommendations, or authored content from ExploreRun; those belong to the caller's review, validation, brainstorm, or authoring loop
   NEVER put discovered source, docs, artifacts, diffs, or architecture files into the shared context pack — treat explorer output as resource_context only
   NEVER silently write files during an explore run
   ALWAYS keep every cf-explorer read-only
@@ -153,6 +156,7 @@ RULES:
   ALWAYS dispatch cf-explorer from {cf-studio-path}/.core/skills/studio/agents/cf-explorer.md for read-only discovery
   ALWAYS dispatch cf-explorer as a single instance for small scope, or as N parallel partition-scoped instances (bounded by EXPLORE_PARALLELISM, in waves if needed) for large scope
   ALWAYS pass each cf-explorer only its task + (partition) paths + constraints including the per-agent time budget, never prompt or instruction files
+  ALWAYS tell each cf-explorer that return-context/workflow-prep mode is resource discovery only and must not perform review, validation, authoring, or fixing
   NEVER let cf-explorer load prompt or instruction files from disk
   ALWAYS treat every cf-explorer output as resource_context to be synthesized, never the shared context pack
 ```
