@@ -499,7 +499,7 @@ Advanced maintainer routes exist for prompt, skill, and workflow authors:
 - 💬 `cf-write-skills: ...`
 - 💬 `cf-debug-prompts`
 
-Some sessions also start with an interaction-mode gate: `simple`, `normal`, or `debug`. `Debug` uses the same debugger overlay as `cf-debug-prompts`, but starts in lighter run mode so traces/logs and breakpoints stay active while pauses happen only on breakpoints, WAIT/menu, or errors; switch back to `step mode` when you want per-action stepping again.
+Some sessions also start with an interaction-mode gate: `assistant`, `normal`, or `debug`. `Assistant` acts like a visible guide in chat: it explains where the workflow is, why the current step is happening, what each option does next, and which path is recommended. `Debug` uses the same debugger overlay as `cf-debug-prompts`, but starts in lighter run mode so traces/logs and breakpoints stay active while pauses happen only on breakpoints, WAIT/menu, or errors; switch back to `step mode` when you want per-action stepping again.
 
 Some hosts also expose slash-command aliases such as `/cf-plan` or route-specific skill aliases.
 
