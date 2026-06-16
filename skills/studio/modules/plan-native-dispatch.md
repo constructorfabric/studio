@@ -20,9 +20,10 @@ RULES:
 UNIT PlanReference
 PURPOSE: Load execution, status, storage-format, or execution-log reference on demand (post-creation).
 WHEN:
-  REQUIRE the user asks about plan execution, status, storage format, or the execution log
+  REQUIRE ORIGINAL_INTENT != unset AND ORIGINAL_INTENT matches plan execution | plan status | plan.toml | storage format | execution log
 DO:
-  LOAD {cf-studio-path}/.core/requirements/plan-template.md and follow it for plan.toml storage format, status fields, and the execution/handoff prompt
+  LOAD {cf-studio-path}/.core/requirements/plan-checklist.md and follow it for the plan.toml manifest contract, status fields, lifecycle, and handoff validation rules
+  LOAD {cf-studio-path}/.core/requirements/plan-template.md and follow it for the next-phase execution prompt and final handoff output shape
 ```
 
 ```pdsl

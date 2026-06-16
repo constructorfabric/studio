@@ -1,4 +1,5 @@
 # Kit Generated Name Preview
+
 ```pdsl
 UNIT KitGeneratedNamePreviewContract
 PURPOSE: Keep the generated-name preview wording and scope consistent across legacy and discovery proposal approvals.

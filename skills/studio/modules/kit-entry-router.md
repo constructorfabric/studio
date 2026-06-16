@@ -1,4 +1,5 @@
 # Kit Entry Router
+
 ```pdsl
 UNIT KitInitEntryRoute
 PURPOSE: Capture the target folder from the user request or ask for it before any discovery or write logic.

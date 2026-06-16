@@ -1,4 +1,5 @@
 # Debug Prompts State Session
+
 ```pdsl
 UNIT DebugState
 PURPOSE: Define the session-scoped state the debugger tracks.

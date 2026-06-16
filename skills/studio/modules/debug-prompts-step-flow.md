@@ -1,3 +1,5 @@
+# Debug Prompts Step Flow
+
 ```pdsl
 UNIT DebugStepGateRun
 PURPOSE: The breakpoint. Stop before a pending action, explain it, and wait for the user.
@@ -40,6 +42,6 @@ DO:
 RULES:
   ALWAYS use this unit only for non-debug target actions that are about to execute without a DebugStepGate pause
   ALWAYS mark the recorded trace entry executed after the action succeeds
-  ALWAYS leave the recorded trace entry available to DebugRunFailure when the action fails
+  ALWAYS leave the recorded trace entry available to DebugRunFailureRun when the action fails
   NEVER record cf-debug-prompts's own debugger-console actions
 ```

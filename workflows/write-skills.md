@@ -51,7 +51,7 @@ WHEN:
   REQUIRE SKILL_FILE_WRITTEN == true OR REVIEW_FIXES_APPLIED == true
 DO:
   RUN SubAgentDispatch for the cf-deterministic-validator dispatch group before launching deterministic PDSL validation
-  RUN the deterministic PDSL check — dispatch cf-deterministic-validator for `{cfs_cmd} pdsl validate` on REVIEW_TARGET_PATHS when review fixes were applied, otherwise on the written skill file
+  RUN the deterministic PDSL check — dispatch cf-deterministic-validator for `{cfs_cmd} pdsl validate` on REVIEW_TARGET_PATHS; author dispatch and later fix phases populate REVIEW_TARGET_PATHS before validation runs
   EMIT the validation findings
   SET VALIDATION_STATUS = fail and CONTINUE WriteSkillsReviewLoop to fix them before proceeding WHEN validation reports fail or error
   SET VALIDATION_STATUS = pass and CONTINUE WriteSkillsReviewLoop WHEN validation passes

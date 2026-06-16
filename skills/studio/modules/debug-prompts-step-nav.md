@@ -1,4 +1,5 @@
 # Debug Prompts Step Nav
+
 ```pdsl
 UNIT DebugStepBackRun
 PURPOSE: Move the cursor to a previous step and re-inspect it.
@@ -43,8 +44,8 @@ DO:
 RULES:
   ALWAYS evaluate breakpoints before run-mode actions
   ALWAYS route target WAIT/menu pauses through DebugTargetInputHandoff
-  ALWAYS route run-mode target-action failures through DebugRunFailure
+  ALWAYS route run-mode target-action failures through DebugRunFailureRun
   ALWAYS preserve cursor and trace state across breakpoint, handoff, and failure pauses
 ON_ERROR:
-  run_failed -> CONTINUE DebugRunFailure
+  run_failed -> CONTINUE DebugRunFailureRun
 ```

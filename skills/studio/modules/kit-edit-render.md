@@ -1,4 +1,5 @@
 # Kit Edit Render
+
 ```pdsl
 UNIT KitInitApplyUserEditsApplyValid
 PURPOSE: Apply valid edits and store the revised manifest preview artifacts.

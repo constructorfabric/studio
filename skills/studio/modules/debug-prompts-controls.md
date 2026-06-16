@@ -1,3 +1,5 @@
+# Debug Prompts Controls
+
 ```pdsl
 UNIT DebugWhereRun
 PURPOSE: Re-print the current debugger frame and a short trace summary.

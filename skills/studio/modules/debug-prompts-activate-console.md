@@ -1,4 +1,5 @@
 # Debug Prompts Activate Console
+
 ```pdsl
 UNIT DebugSessionConsoleOpen
 PURPOSE: Announce the debugger console after the debugger session state is initialized.
@@ -24,7 +25,7 @@ INVARIANTS:
   ALWAYS keep DEBUG_SLUG = the basename without extension of the skill/workflow file currently being stepped.
   ALWAYS append an actor=user entry to DEBUG_TRACE only for user replies the target skill/workflow consumes, recording the verbatim reply as action and the target prompt's filename.md:N as loc.
   ALWAYS route a run-mode target WAIT/menu pause through DebugTargetInputHandoff.
-  ALWAYS route run-mode target-action failures through DebugRunFailure while preserving cursor and trace state.
+  ALWAYS route run-mode target-action failures through DebugRunFailureRun while preserving cursor and trace state.
   NEVER record cf-debug-prompts's own activity in DEBUG_TRACE.
   ALWAYS keep DEBUG_TRACE limited to non-debug target activity only.
   NEVER gate cf-debug-prompts's own debugger-console actions through DebugStepGate.

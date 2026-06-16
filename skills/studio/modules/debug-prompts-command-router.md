@@ -1,4 +1,5 @@
 # Debug Prompts Command Router
+
 ```pdsl
 UNIT DebugCommandRouterRun
 PURPOSE: Map a typed debugger command (from the cheatsheet) to its handler at any pause.
@@ -24,7 +25,7 @@ RULES:
   ALWAYS record the handoff reply before the target workflow consumes it
   ALWAYS bypass normal debugger command parsing for this reply
 ON_ERROR:
-  run_failed -> CONTINUE DebugRunFailure
+  run_failed -> CONTINUE DebugRunFailureRun
 UNIT DebugCommandRouteExecution
 PURPOSE: Route debugger execution commands for the current pending action.
 DO:

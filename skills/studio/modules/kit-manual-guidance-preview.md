@@ -1,4 +1,5 @@
 # Kit Manual Guidance Preview
+
 ```pdsl
 UNIT KitInitManualGuidanceSynthesizePreview
 PURPOSE: Build and render the manual-guidance proposal preview after validation succeeds.
