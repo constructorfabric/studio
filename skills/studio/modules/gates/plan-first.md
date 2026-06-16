@@ -63,6 +63,7 @@ RULES:
   ALWAYS make every action list owner, input, output, dependency, and verification
   ALWAYS make plans detailed enough that each action is independently executable, reviewable, and has a named verification or validation check
   ALWAYS decompose large plans into named phases when the plan has more than 7 actions, spans multiple files/workflows, or needs more than one validation checkpoint; every phase lists its exit condition and validation command, review, or observable evidence
+  ALWAYS make every phase independently verifiable with an exit condition and validation command, review, or observable evidence
 ```
 
 ```pdsl
@@ -71,7 +72,10 @@ PURPOSE: Define the accepted execution-directive syntax for plan items.
 RULES:
   ALWAYS require every plan item to include exactly one execution directive: `DISPATCH:`, `INLINE:`, or `GIT_FINALIZATION:`
   ALWAYS use `DISPATCH: <sub-agent-name>` for delegated sub-agent work, prefer it over `INLINE:` when a registered cf-* sub-agent can materially perform the work, and include whether the dispatch is parallel or sequential in the plan item body
+  ALWAYS prefer `DISPATCH: <sub-agent-name>` over inline steps when a registered cf-* sub-agent can materially perform the planned action
+  ALWAYS choose `DISPATCH: <sub-agent-name>` over `INLINE:` for capable registered cf-* sub-agents
   ALWAYS use `INLINE: <controller reason>` only for controller-owned gates, simple probes, or tasks with no suitable registered sub-agent
+  ALWAYS state why it cannot be dispatched when a planned action uses `INLINE:` instead of a capable registered cf-* sub-agent
   ALWAYS use `GIT_FINALIZATION: inspect-only | stage | create-commit` as the only git-handling execution directive for accepted plans
   ALWAYS choose sub-agent names from the loaded `agents.toml` registry exposed by SubAgentSelectionRegistry; NEVER invent, alias, or infer unregistered sub-agent names
 ```
@@ -81,7 +85,9 @@ UNIT PlanGitFinalizationContract
 PURPOSE: Define git-finalization placement and gate requirements for file-writing plans.
 RULES:
   ALWAYS include at least one `GIT_FINALIZATION:` plan item or phase in every file-writing plan
+  ALWAYS include a git finalization action in every file-writing plan
   ALWAYS require any `GIT_FINALIZATION: stage` or `GIT_FINALIZATION: create-commit` action to run GitCommitModeGate before any git state change
+  ALWAYS route through GitCommitModeGate before git state changes in any `GIT_FINALIZATION: stage` or `GIT_FINALIZATION: create-commit` action
   ALWAYS place any `GIT_FINALIZATION: create-commit` action after file edits and required validation/review gates unless the owning workflow defines a stricter commit point
 ```
 

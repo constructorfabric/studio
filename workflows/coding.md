@@ -259,6 +259,7 @@ DO:
   EMIT a concise completion report covering work done, deterministic gate outcome (or "not run" when GATE_STATUS is unset), and semantic review outcome
   RUN NextActionsOffer
 RULES:
+  ALWAYS use this unit only after code validation/review is complete
   NEVER bypass NextActionsOffer on a clean terminal path
 ```
 

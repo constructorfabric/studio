@@ -188,6 +188,13 @@ def test_runtime_modules_have_template_var_resolution():
     assert "resolve-vars" in module, "TemplateVarResolution should use {cfs_cmd} resolve-vars"
     assert "template variable" in module.lower(), "module should reference template variables"
 
+    template_helpers = (
+        "RUN WorkflowBootstrapCommandTemplateContext",
+        "RUN WorkflowBootstrapDispatchTemplateContext",
+        "RUN WorkflowBootstrapCommandDispatchTemplateContext",
+    )
     for workflow_name in ("auto-config.md", "kit.md", "plan.md", "workspace.md", "map.md"):
         workflow = (root / "workflows" / workflow_name).read_text(encoding="utf-8")
-        assert "modules/runtime/template-vars.md" in workflow
+        assert "modules/runtime/template-vars.md" in workflow or any(
+            helper in workflow for helper in template_helpers
+        )

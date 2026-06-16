@@ -86,6 +86,7 @@ DO:
   STOP_TURN
 RULES:
   NEVER offer cf-explore, cf-brainstorm, or dispatch author/reviewer agents while ORIGINAL_INTENT == unset
+  ALWAYS capture ORIGINAL_INTENT before offering cf-explore, cf-brainstorm, plan-first, validation, authoring, review, or dispatch work
 ```
 
 ```pdsl
@@ -147,6 +148,8 @@ DO:
   SET VALIDATION_STATUS = pass and CONTINUE WriteSkillsReviewLoop WHEN validation passes
 RULES:
   ALWAYS re-run WriteSkillsValidate after any fix before re-reviewing
+  ALWAYS continue to WriteSkillsReviewLoop when validation passes
+  NEVER stop after content generation or deterministic validation before the semantic review-fix loop is offered
 ```
 
 ```pdsl
@@ -210,6 +213,7 @@ DO:
 RULES:
   ALWAYS scope each reviewer to only its assigned slice (all methodologies / one methodology / one layer) and run independent reviewers in parallel
   ALWAYS keep workflow-specific reviewer dispatches in this workflow
+  ALWAYS run SubAgentDispatch before every native author, validator, reviewer, or review-fix dispatch group
 ```
 
 ```pdsl
@@ -218,9 +222,10 @@ PURPOSE: Present review findings, gate fix approval, and route to fix dispatch o
 WHEN:
   REQUIRE REVIEW_TARGET_PATHS != unset
 DO:
+  CONTINUE WriteSkillsFixOutcomeClean WHEN REVIEW_FINDINGS_REMAINING == 0
   RUN SemanticReviewFixApprovalGate WHEN findings remain and fixes are applicable
   CONTINUE WriteSkillsFixDispatch WHEN REVIEW_FIX_APPROVED == true
-  CONTINUE WriteSkillsFixOutcome
+  CONTINUE WriteSkillsFixOutcomeNoChanges WHEN REVIEW_FIX_APPROVED != true
 RULES:
   NEVER dispatch cf-pdsl-author as a generic review-fix worker because its contract is for new PDSL authoring
 ```
@@ -253,14 +258,26 @@ DO:
   CONTINUE WriteSkillsFixOutcomeDeterministicBlocker WHEN REVIEW_FINDINGS_REMAINING == 0 AND VALIDATION_STATUS == fail
   RUN WriteSkillsCleanExitGate WHEN REVIEW_FINDINGS_REMAINING == 0 AND (SKILL_FILE_WRITTEN == true OR REVIEW_FIXES_APPLIED == true)
   CONTINUE WriteSkillsCompletion WHEN REVIEW_FINDINGS_REMAINING == 0 AND VALIDATION_STATUS == pass
-  CONTINUE WriteSkillsCompletion WHEN REVIEW_FINDINGS_REMAINING == 0 AND REVIEW_LOOP_REQUESTED == true AND VALIDATION_STATUS == not-run
 ```
 
 ```pdsl
 UNIT WriteSkillsFixOutcomeNoChanges
 PURPOSE: Stop when no approved fixes were applied and findings still remain.
 DO:
-  STOP_TURN and report the remaining findings — re-reviewing unchanged skill files cannot change the result
+  STOP_TURN and report the remaining findings WHEN findings remain but no fixes were applied this iteration — re-reviewing unchanged skill files cannot change the result
+RULES:
+  NEVER re-loop the review after an iteration with no applied fixes
+```
+
+```pdsl
+UNIT WriteSkillsFixOutcomeClean
+PURPOSE: Route a clean review report without requiring a fix manifest.
+WHEN:
+  REQUIRE REVIEW_FINDINGS_REMAINING == 0
+DO:
+  CONTINUE WriteSkillsCompletion WHEN SKILL_FILE_WRITTEN == false AND REVIEW_FIXES_APPLIED != true
+  RUN WriteSkillsCleanExitGate WHEN SKILL_FILE_WRITTEN == true OR REVIEW_FIXES_APPLIED == true
+  CONTINUE WriteSkillsCompletion WHEN VALIDATION_STATUS == pass
 ```
 
 ```pdsl
@@ -291,6 +308,7 @@ DO:
   RUN NextActionsOffer
 RULES:
   ALWAYS use this unit only after the skill author/review loop is complete and control is about to return to the user
+  ALWAYS reach WriteSkillsCompletion only when no review findings remain
   NEVER bypass NextActionsOffer on a clean terminal path that returns control to the user
 ```
 

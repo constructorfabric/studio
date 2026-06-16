@@ -93,6 +93,11 @@ PDSL_EXECUTION_CARD_REMEMBER_LOAD = (
     "LOAD and REMEMBER rules from "
     "{cf-studio-path}/.core/skills/studio/modules/runtime/pdsl-execution-card.md"
 )
+PDSL_EXECUTION_CARD_BOOTSTRAP_HELPERS = (
+    "RUN WorkflowBootstrapRouterPrelude",
+    "RUN WorkflowBootstrapCoreSession",
+    "RUN WorkflowBootstrapSimpleModeGate",
+)
 
 
 def _prompt_files() -> list[Path]:
@@ -299,11 +304,14 @@ def test_pdsl_workflows_load_execution_card_during_bootstrap() -> None:
             continue
         block_start, block = executable_blocks[0]
         body = "\n".join(block)
-        if PDSL_EXECUTION_CARD_LOAD not in body:
+        if (
+            PDSL_EXECUTION_CARD_LOAD not in body
+            and not any(helper in body for helper in PDSL_EXECUTION_CARD_BOOTSTRAP_HELPERS)
+        ):
             rel = path.relative_to(REPO_ROOT)
             failures.append(
                 f"{rel}:{block_start}: first executable PDSL block must load "
-                "modules/runtime/pdsl-execution-card.md during bootstrap"
+                "modules/runtime/pdsl-execution-card.md during bootstrap or run a bootstrap helper that loads it"
             )
 
     root_skill = REPO_ROOT / "skills" / "studio" / "SKILL.md"

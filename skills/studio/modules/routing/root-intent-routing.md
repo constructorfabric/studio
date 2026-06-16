@@ -2,20 +2,16 @@
 
 ```pdsl
 UNIT RootActiveSessionGitCommitRequestGate
-PURPOSE: Catch any git commit request typed during an active cf/cf-studio session before the current workflow or router continues.
+PURPOSE: Thin root wrapper for the canonical active-session git commit interrupt.
 WHEN:
   REQUIRE cf/cf-studio session rules are active
   REQUIRE the current user message, not only ORIGINAL_INTENT or the initial router prompt, explicitly asks Studio to create a git commit
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
-  RUN ActiveSessionGitCommitRequestGate from git-commit-mode before any workflow resumes, router matches intent, the main session modifies git state, or a sub-agent receives write-capable git policy
-  CONTINUE the pending workflow/router step only after GitCommitModeGate resolves or STOP_TURNs
+  RUN ActiveSessionGitCommitRequestGate from git-commit-mode before any workflow resumes, router matches intent, local menu INVALID handling runs, the main session modifies git state, or a sub-agent receives write-capable git policy
 RULES:
-  ALWAYS evaluate this gate on every new user message while cf/cf-studio session rules are active, including replies to menus, resumed workflow prompts, free-text follow-ups, and requests typed after a workflow has already started
-  ALWAYS treat this as a session-level interrupt, not as part of ORIGINAL_INTENT capture and not as a root-router-only initial prompt check
-  ALWAYS run this gate before honoring phrases such as `commit it`, `make a commit`, `commit these changes`, `git commit`, or `create a git commit`
-  NEVER wait for workflow matching, companion routing, author dispatch, or sub-agent dispatch before resolving this gate when the current user message asks Studio to create a git commit
-  NEVER treat ordinary references to commits for review/diff scope as commit-creation requests unless the user asks Studio to create a new git commit
+  ALWAYS delegate the substantive interrupt behavior, pending-continuation preservation, local menu INVALID precedence, and resume handling to ActiveSessionGitCommitRequestGate in git-commit-mode
+  NEVER duplicate or weaken ActiveSessionGitCommitRequestGate rules in this root wrapper
 ```
 
 ```pdsl

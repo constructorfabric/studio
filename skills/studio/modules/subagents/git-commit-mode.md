@@ -3,16 +3,22 @@
 ```pdsl
 UNIT ActiveSessionGitCommitRequestGate
 PURPOSE: Catch git commit requests typed while any cf/cf-studio workflow is waiting, before the workflow parses the reply as local menu input.
+STATE:
+  SET GIT_COMMIT_PENDING_CONTINUATION: workflow-or-router-step | unset (default unset, scope session)
+  SET GIT_COMMIT_PENDING_USER_MESSAGE: string | unset (default unset, scope session)
 WHEN:
   REQUIRE cf/cf-studio session rules are active
   REQUIRE the current user message explicitly asks Studio to create a git commit
 DO:
+  SET GIT_COMMIT_PENDING_CONTINUATION = the pending workflow/router step that would have consumed the current user message
+  SET GIT_COMMIT_PENDING_USER_MESSAGE = the current user message verbatim
   RUN GitCommitModeGate before any workflow resumes, router matches intent, local menu INVALID handling runs, the main session modifies git state, or a sub-agent receives write-capable git policy
-  CONTINUE the pending workflow/router step only after GitCommitModeGate resolves or STOP_TURNs
+  CONTINUE GIT_COMMIT_PENDING_CONTINUATION only after GitCommitModeGate resolves or STOP_TURNs, passing GIT_COMMIT_PENDING_USER_MESSAGE as preserved input
 RULES:
   ALWAYS evaluate this gate on every new user message while cf/cf-studio session rules are active, including replies to workflow menus and resumed workflow prompts
   ALWAYS treat this as a session-level interrupt, not as part of ORIGINAL_INTENT capture and not as a root-router-only initial prompt check
   ALWAYS run this gate before honoring phrases such as `commit it`, `make a commit`, `commit these changes`, `git commit`, or `create a git commit`
+  ALWAYS preserve both the interrupted continuation and the current commit-request message before running GitCommitModeGate
   NEVER let a workflow-specific INVALID menu branch handle a commit-creation request before this gate resolves
   NEVER treat ordinary references to commits for review/diff scope as commit-creation requests unless the user asks Studio to create a new git commit
 ```
@@ -54,15 +60,23 @@ RULES:
 ```pdsl
 UNIT GitCommitCommitAudit
 PURPOSE: Gate Studio-created commits on trailer preflight and post-commit trailer audit.
+STATE:
+  SET GIT_COMMIT_AUDIT_PHASE: none | preflight | postcommit (default none, scope session)
+  SET PLANNED_GIT_COMMIT_INVOCATION: string | unset (default unset, scope session)
+  SET STUDIO_CREATED_COMMIT_SHA: string | unset (default unset, scope session)
+WHEN:
+  REQUIRE GIT_COMMIT_MODE == commit
+  REQUIRE GIT_COMMIT_AUDIT_PHASE == preflight OR GIT_COMMIT_AUDIT_PHASE == postcommit
 DO:
-  RUN preflight of the exact planned `git commit` invocation before any Studio-created commit, verifying every CONTRIBUTING_GUIDE-required trailer and every required COMMIT_FOOTER_CONTRACT token/value/order is present via `git commit --trailer token=value`; STOP_TURN and report missing trailer tokens when the preflight fails
-  RUN `git log -1 --format=%B` after any Studio-created commit and verify every required project-policy and Studio trailer is present and ordered; report commit-trailer audit failure and do not claim completion when the audit fails
+  RUN preflight of PLANNED_GIT_COMMIT_INVOCATION before any Studio-created commit, verifying every CONTRIBUTING_GUIDE-required trailer and every required COMMIT_FOOTER_CONTRACT token/value/order is present via `git commit --trailer token=value`; STOP_TURN and report missing trailer tokens when GIT_COMMIT_AUDIT_PHASE == preflight and the preflight fails
+  RUN `git log -1 --format=%B` for STUDIO_CREATED_COMMIT_SHA after any Studio-created commit and verify every required project-policy and Studio trailer is present and ordered; report commit-trailer audit failure and do not claim completion when GIT_COMMIT_AUDIT_PHASE == postcommit and the audit fails
 RULES:
   ALWAYS when creating a git commit, satisfy every mandatory directive in CONTRIBUTING_GUIDE, including required DCO/Signed-off-by trailers, before adding Studio attribution trailers
   ALWAYS when creating a git commit, write a normal concise commit subject/body for the actual change, append any mandatory project-policy trailers from CONTRIBUTING_GUIDE, then append required Studio attribution trailers exactly in ascending order, adding optional Studio trailers only when their source value is already known and non-empty
   ALWAYS treat `git commit -m ...` without the required `--trailer` arguments as incomplete, even when the subject/body is valid
   ALWAYS treat `git commit -s` as satisfying only a DCO/Signed-off-by project-policy requirement; it never satisfies any Studio trailer requirement
   ALWAYS keep DCO, Signed-off-by, and CONTRIBUTING_GUIDE directives separate from commit_footer_contract; do not include them in commit_footer_contract, but never ignore mandatory CONTRIBUTING_GUIDE commit requirements
+  ALWAYS run this audit only on the commit execution path after a concrete planned commit invocation exists or after a Studio-created commit SHA exists
   NEVER invoke `git commit` until the exact planned command passes trailer preflight
 ```
 
@@ -74,6 +88,7 @@ STATE:
   SET CONTRIBUTING_GUIDE: path | null (default unset, scope session)
   SET GIT_CONSTRAINT: string | unset (default unset, scope session)
   SET COMMIT_FOOTER_CONTRACT: object (default unset, scope session)
+  SET GIT_COMMIT_AUDIT_PHASE: none | preflight | postcommit (default none, scope session)
 DO:
   RUN GitCommitModeGate before preparing git policy for the pending write-capable dispatch
   RUN derive GIT_CONSTRAINT from GIT_COMMIT_MODE using the constraint blocks in NOTES WHEN GIT_CONSTRAINT == unset
@@ -96,13 +111,14 @@ WHEN:
 DO:
   RUN GitCommitSessionPolicyResolve
   RUN GitCommitTrailerPrepare
-  RUN GitCommitCommitAudit
+  RUN GitCommitCommitAudit WHEN GIT_COMMIT_AUDIT_PHASE == preflight OR GIT_COMMIT_AUDIT_PHASE == postcommit
 RULES:
   ALWAYS load and run GitCommitModeGate in an active cf/cf-studio session before any current-message commit request is routed, matched to a workflow, executed by the main session, or delegated to a sub-agent
   ALWAYS allow read-only git inspection commands such as `git status`, `git diff`, `git log`, `git show`, and `git blame` without resolving or consulting GIT_COMMIT_MODE
   ALWAYS resolve GIT_COMMIT_MODE, CONTRIBUTING_GUIDE, GIT_CONSTRAINT, and COMMIT_FOOTER_CONTRACT once per session before the first Studio git state mutation or write-capable git-policy handoff, and reuse them until StudioShutdown; reset GIT_COMMIT_MODE to unset only when the user asks to change it
   ALWAYS pass GIT_CONSTRAINT and commit_footer_contract as read-only policy data, never as executable shell text
   ALWAYS treat commit_footer_contract as a constraint only; it never grants permission to commit when git_commit_mode or git_constraint forbids committing
+  ALWAYS defer GitCommitCommitAudit until the actual commit execution path sets GIT_COMMIT_AUDIT_PHASE to preflight or postcommit with a concrete planned invocation or created commit SHA
   NEVER let the main session, any workflow, or any sub-agent stage files, create commits, push, rewrite history, or otherwise modify git state when GIT_COMMIT_MODE == none
   NEVER route, execute, resume, or delegate after a current user message asks Studio to create a git commit before GitCommitModeGate has resolved GIT_COMMIT_MODE, CONTRIBUTING_GUIDE, GIT_CONSTRAINT, and COMMIT_FOOTER_CONTRACT
   NEVER push, force-push, rewrite history, or use interactive (-i) git, regardless of GIT_COMMIT_MODE
