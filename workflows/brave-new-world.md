@@ -30,16 +30,9 @@ WHEN:
   - REQUIRE user explicitly requests one of: cf-brave-new-world, brave-new-world, Brave New World, autonomous-default mode
   - NOT user requests disable, off, stop, turn off, or disable autonomous defaults
 DO:
-  - LOAD {cf-studio-path}/.core/skills/studio/modules/ui/skill-invocation-art.md
-  - LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/pdsl-execution-card.md
-  - RUN SkillInvocationArt
-  - LOAD and REMEMBER rules from {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
-  - SET BRAVE_NEW_WORLD_ENABLED = true
-  - SET BRAVE_NEW_WORLD_SCOPE = non-destructive-allow-by-default
-  - RUN initialize BRAVE_NEW_WORLD_DECISION_LOG as empty when it is unset
-  - SET BRAVE_NEW_WORLD_LAST_STATUS = enabled
-  - EMIT "Brave New World enabled: I will autonomously choose any non-destructive, reversible path. Say \"turn off Brave New World\" to disable it."
-  - STOP_TURN
+  - LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
+  - RUN WorkflowBootstrapRouterPrelude
+  - RUN BraveNewWorldSessionEnable
 RULES:
   - ALWAYS treat this workflow as an overlay on later workflow execution, not as a replacement workflow
   - ALWAYS remember git-commit-mode so any later commit request in this active overlay session runs GitCommitModeGate before routing, git use, or delegation
@@ -47,6 +40,18 @@ RULES:
   - ALWAYS keep BRAVE_NEW_WORLD_DECISION_LOG append-only for the session across disable and re-enable cycles
   - NEVER start substantive task work merely because this overlay was enabled
   - NEVER require `cf` or `CFS_INIT == true` merely to enable or disable this overlay
+```
+
+```pdsl
+UNIT BraveNewWorldSessionEnable
+PURPOSE: Initialize Brave New World session state and announce the overlay.
+DO:
+  - SET BRAVE_NEW_WORLD_ENABLED = true
+  - SET BRAVE_NEW_WORLD_SCOPE = non-destructive-allow-by-default
+  - RUN initialize BRAVE_NEW_WORLD_DECISION_LOG as empty when it is unset
+  - SET BRAVE_NEW_WORLD_LAST_STATUS = enabled
+  - EMIT "Brave New World enabled: I will autonomously choose any non-destructive, reversible path. Say \"turn off Brave New World\" to disable it."
+  - STOP_TURN
 ```
 
 ## Selection
@@ -61,12 +66,7 @@ DO:
   - REQUIRE BRAVE_NEW_WORLD_DECISION_LOG exists
   - RUN classify the pending choice with BraveNewWorldEligibilityChecklist
   - CONTINUE BraveNewWorldFallback WHEN classification_status != eligible
-  - RUN rank eligible options by current request advancement, project-damage risk, explicit defaults, and suggested labels WHEN multiple options are eligible
-  - RUN select the exactly one eligible original option identified by the classification record
-  - RUN append a decision record to BRAVE_NEW_WORLD_DECISION_LOG with menu_or_question, original_valid_options, chosen_option, chosen_option_action, criteria_results, blocked_match_result, rejected_option_summary, reason, source_context_summary, and next_stage
-  - SET BRAVE_NEW_WORLD_LAST_STATUS = autonomous-choice
-  - EMIT "Brave New World: chose <chosen_option> (<chosen_option_action>) because <short reason>; continuing to <next_stage>."
-  - CONTINUE the underlying workflow exactly as if the user had selected the chosen original option
+  - CONTINUE BraveNewWorldAutonomousPrepareSelection
 RULES:
   - ALWAYS require classification_status == eligible before autonomous selection
   - ALWAYS choose exactly one valid original option
@@ -81,6 +81,32 @@ ON_ERROR:
   conflicting_classification -> CONTINUE BraveNewWorldFallback
   no_valid_option -> CONTINUE BraveNewWorldFallback
   decision_log_unavailable -> CONTINUE BraveNewWorldFallback
+```
+
+```pdsl
+UNIT BraveNewWorldAutonomousPrepareSelection
+PURPOSE: Resolve the eligible option that Brave New World will select.
+DO:
+  - RUN rank eligible options by current request advancement, project-damage risk, explicit defaults, and suggested labels WHEN multiple options are eligible
+  - RUN select the exactly one eligible original option identified by the classification record
+  - CONTINUE BraveNewWorldAutonomousRecordDecision
+```
+
+```pdsl
+UNIT BraveNewWorldAutonomousRecordDecision
+PURPOSE: Persist the autonomous-choice decision record before the workflow continues.
+DO:
+  - RUN append a decision record to BRAVE_NEW_WORLD_DECISION_LOG with menu_or_question, original_valid_options, chosen_option, chosen_option_action, criteria_results, blocked_match_result, rejected_option_summary, reason, source_context_summary, and next_stage
+  - SET BRAVE_NEW_WORLD_LAST_STATUS = autonomous-choice
+  - CONTINUE BraveNewWorldAutonomousAnnounce
+```
+
+```pdsl
+UNIT BraveNewWorldAutonomousAnnounce
+PURPOSE: Announce the autonomous choice and continue with the original workflow semantics.
+DO:
+  - EMIT "Brave New World: chose <chosen_option> (<chosen_option_action>) because <short reason>; continuing to <next_stage>."
+  - CONTINUE the underlying workflow exactly as if the user had selected the chosen original option
 ```
 
 ```pdsl
@@ -119,6 +145,7 @@ INVARIANTS:
   - NEVER auto-answer prompts that authorize external delegation, deployment, publication, payments, account changes, cross-repository changes, or actions outside the current workspace
   - NEVER auto-answer git mode, staging, committing, pushing, force-pushing, branch deletion, checkout over uncommitted work, history rewrite, or any git-related permission prompt
   - NEVER auto-answer prompts that authorize deleting files, overwriting user changes, broad mechanical rewrites, dependency upgrades, migrations, generated artifact replacement, or edits whose blast radius is unknown
+  - NEVER auto-answer ReviewFindingsNavigation, ReviewFixScope, partial review-fix finding-ID capture, or any prompt that selects which review findings may be fixed
   - NEVER auto-answer prompts that forget, unload, disable, or shut down rules or session state
   - NEVER auto-answer missing prerequisites, unresolved template variables, unavailable required context, failed validation recovery that needs human judgment, validation-result acceptance, or final human-review prompts
   - NEVER auto-answer explicit approvals granting destructive, irreversible, external, permission-escalating, secret-bearing, financial, git-mutating, or unknown-blast-radius authority

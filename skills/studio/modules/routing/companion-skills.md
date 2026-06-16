@@ -29,10 +29,7 @@ STATE:
 WHEN:
   REQUIRE ORIGINAL_INTENT != unset
 DO:
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/command-resolution.md WHEN CommandResolution is not yet loaded
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-resolution.md WHEN WorkflowResolution is not yet loaded
-  RUN CommandResolution to resolve {cfs_cmd} WHEN {cfs_cmd} is unset
-  RUN WorkflowResolution to resolve the available cf-* skills
+  RUN CompanionSkillResolutionSetup
   RUN identify probable companion skills from ORIGINAL_INTENT, excluding `cf`, `cf-analyze`, `cf-generate`, and CURRENT_WORKFLOW, and rank minimal compatible groups
   CONTINUE COMPANION_CONTINUE WHEN no probable companion group is found
   EMIT_MENU CompanionSkillOfferMenu WHEN one or more probable companion groups are found
@@ -55,4 +52,14 @@ OPTIONS:
   1 add-companions (suggested when cross-domain) -> RETURN ordered launch list [CURRENT_WORKFLOW, selected companion cf-* workflow names] plus ORIGINAL_INTENT for launch by the host/user; STOP_TURN
   2 continue-single -> CONTINUE COMPANION_CONTINUE
   INVALID -> EMIT_MENU CompanionSkillOfferMenu
+```
+
+```pdsl
+UNIT CompanionSkillResolutionSetup
+PURPOSE: Resolve `{cfs_cmd}` and the available cf-* workflow registry before companion candidates are ranked.
+DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/command-resolution.md WHEN CommandResolution is not yet loaded
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-resolution.md WHEN WorkflowResolution is not yet loaded
+  RUN CommandResolution to resolve {cfs_cmd} WHEN {cfs_cmd} is unset
+  RUN WorkflowResolution to resolve the available cf-* skills
 ```

@@ -24,16 +24,9 @@ PURPOSE: Resolve available cf-* workflows, capture intent when needed, and prese
 WHEN:
   REQUIRE cf root routing is active
 DO:
-  LOAD {cf-studio-path}/.core/skills/studio/modules/session/shutdown.md WHEN the user intent is an unambiguous request to turn off, disable, or shut down Constructor Studio itself, not only an overlay/mode/debug feature
-  CONTINUE StudioShutdown WHEN the user intent is an unambiguous request to turn off, disable, or shut down Constructor Studio itself, not only an overlay/mode/debug feature
-  CONTINUE RootActiveSessionGitCommitRequestGate WHEN the current user message explicitly asks Studio to create a git commit
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-resolution.md WHEN WorkflowResolution is not yet loaded
-  RUN WorkflowResolution to resolve the available cf-* skills
+  RUN RootIntentSpecialCases
+  RUN RootIntentMatchSetup
   EMIT_MENU IntentSkillMenu WHEN the prompt contains no task intent
-  LOAD {cf-studio-path}/.core/skills/studio/modules/gates/migrate-from-cypilot-offer.md WHEN the prompt intent is migrating from cypilot
-  CONTINUE MigrateFromCypilotOffer WHEN the prompt intent is migrating from cypilot
-  LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md WHEN the prompt contains a task intent that spans more than one cf-* domain
-  RUN matching of the intent against the resolved cf-* skill list to find relevant skill(s) and any loaded compatible companion groups WHEN the prompt contains a task intent
   EMIT_MENU MatchedIntentSkillMenu WHEN the prompt contains a task intent
   WAIT user.reply
   STOP_TURN
@@ -76,21 +69,92 @@ NOTES:
 ```
 
 ```pdsl
+UNIT RootIntentSpecialCases
+PURPOSE: Resolve shutdown, commit-request, and cypilot-migration exceptions before generic workflow matching.
+DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/session/shutdown.md WHEN the user intent is an unambiguous request to turn off, disable, or shut down Constructor Studio itself, not only an overlay/mode/debug feature
+  CONTINUE StudioShutdown WHEN the user intent is an unambiguous request to turn off, disable, or shut down Constructor Studio itself, not only an overlay/mode/debug feature
+  CONTINUE RootActiveSessionGitCommitRequestGate WHEN the current user message explicitly asks Studio to create a git commit
+  LOAD {cf-studio-path}/.core/skills/studio/modules/gates/migrate-from-cypilot-offer.md WHEN the prompt intent is migrating from cypilot
+  CONTINUE MigrateFromCypilotOffer WHEN the prompt intent is migrating from cypilot
+```
+
+```pdsl
+UNIT RootIntentMatchSetup
+PURPOSE: Resolve the available workflow registry and any companion candidates before a root router menu is emitted.
+DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-resolution.md WHEN WorkflowResolution is not yet loaded
+  RUN WorkflowResolution to resolve the available cf-* skills
+  LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md WHEN the prompt contains a task intent that spans more than one cf-* domain
+  RUN matching of the intent against the resolved cf-* skill list to find relevant skill(s) and any loaded compatible companion groups WHEN the prompt contains a task intent
+```
+
+```pdsl
 UNIT IntentDescribeCapture
 PURPOSE: Capture free-text intent after activation-only cf without falling through the current turn.
 STATE:
   SET SELECTED_WORKFLOW: unset | cf-* skill (default unset, scope workflow_run)
   SET SELECTED_COMPANION_SELECTION: unset | companion-selection (default unset, scope workflow_run)
+  SET INTENT_CAPTURE_STATE: prompt | resume | unset (default unset, scope workflow_run)
 DO:
   EMIT "Describe what you want to do. If you already picked a workflow, I will pass this intent into that workflow before any explore, brainstorm, plan, or substantive gate; otherwise I will match the relevant cf-* workflow(s), including companion skills when the task spans domains."
+  SET INTENT_CAPTURE_STATE = resume
   WAIT user.reply
   STOP_TURN
 RULES:
-  ALWAYS on the resumed reply set ORIGINAL_INTENT = user.reply
-  ALWAYS when the resumed reply explicitly asks Studio to create a git commit, CONTINUE RootActiveSessionGitCommitRequestGate before returning, matching, or delegating the intent
-  ALWAYS when SELECTED_WORKFLOW != unset, RETURN SELECTED_WORKFLOW plus ORIGINAL_INTENT for launch by the host/user and STOP_TURN
-  ALWAYS when SELECTED_COMPANION_SELECTION != unset, filter out `cf`, `cf-analyze`, and `cf-generate`, then RETURN ordered launch list SELECTED_COMPANION_SELECTION plus ORIGINAL_INTENT for launch by the host/user and STOP_TURN
-  ALWAYS when SELECTED_WORKFLOW == unset AND SELECTED_COMPANION_SELECTION == unset, load companion-skills module when the reply spans domains, run matching, and EMIT_MENU MatchedIntentSkillMenu
+  ALWAYS stop the turn after capturing the free-text prompt so resumed intent routing runs explicitly
+```
+
+```pdsl
+UNIT IntentDescribeResume
+PURPOSE: Route the resumed free-text intent through git gating, deferred workflow returns, or fresh matching.
+STATE:
+  SET SELECTED_WORKFLOW: unset | cf-* skill (default unset, scope workflow_run)
+  SET SELECTED_COMPANION_SELECTION: unset | companion-selection (default unset, scope workflow_run)
+  SET INTENT_CAPTURE_STATE: prompt | resume | unset (default unset, scope workflow_run)
+WHEN:
+  REQUIRE INTENT_CAPTURE_STATE == resume
+DO:
+  SET ORIGINAL_INTENT = user.reply
+  SET INTENT_CAPTURE_STATE = unset
+  CONTINUE RootActiveSessionGitCommitRequestGate WHEN user.reply explicitly asks Studio to create a git commit
+  CONTINUE IntentDescribeReturnSelectedWorkflow WHEN SELECTED_WORKFLOW != unset
+  CONTINUE IntentDescribeReturnSelectedCompanions WHEN SELECTED_COMPANION_SELECTION != unset
+  CONTINUE IntentDescribeMatchReply WHEN SELECTED_WORKFLOW == unset AND SELECTED_COMPANION_SELECTION == unset
+```
+
+```pdsl
+UNIT IntentDescribeReturnSelectedWorkflow
+PURPOSE: Return the deferred single-workflow launch after free-text intent capture completes.
+WHEN:
+  REQUIRE SELECTED_WORKFLOW != unset
+DO:
+  RETURN SELECTED_WORKFLOW plus ORIGINAL_INTENT for launch by the host/user
+  STOP_TURN
+```
+
+```pdsl
+UNIT IntentDescribeReturnSelectedCompanions
+PURPOSE: Return the deferred companion workflow launch after free-text intent capture completes.
+STATE:
+  SET SELECTED_COMPANION_SELECTION: unset | companion-selection (default unset, scope workflow_run)
+WHEN:
+  REQUIRE SELECTED_COMPANION_SELECTION != unset
+DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md
+  RETURN ordered launch list of SELECTED_COMPANION_SELECTION excluding `cf`, `cf-analyze`, and `cf-generate`, plus ORIGINAL_INTENT for launch by the host/user
+  STOP_TURN
+```
+
+```pdsl
+UNIT IntentDescribeMatchReply
+PURPOSE: Match the resumed free-text intent when no deferred workflow selection is waiting.
+DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md WHEN the reply spans domains
+  RUN matching of the intent against the resolved cf-* skill list to find relevant skill(s) and any loaded compatible companion groups
+  EMIT_MENU MatchedIntentSkillMenu
+  WAIT user.reply
+  STOP_TURN
 ```
 
 ```pdsl

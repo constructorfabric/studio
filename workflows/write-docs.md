@@ -29,22 +29,11 @@ STATE:
   SET DOC_NARRATOR_DIMENSION: resolved | unset (default unset, scope workflow_run)
   SET DOC_DIAGRAM_DIMENSION: resolved | unset (default unset, scope workflow_run)
 DO:
-  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/skill-invocation-art.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/pdsl-execution-card.md
-  RUN SkillInvocationArt
-  LOAD and REMEMBER rules from {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/studio-instructions-memory.md
-  RUN StudioInstructionsMemoryGate
-  SET ORIGINAL_INTENT = the user's triggering write-docs request (verbatim or shortest faithful summary), or unset when activation-only, WHEN ORIGINAL_INTENT == unset
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/context-memory.md
-  LOAD {cf-studio-path}/.core/requirements/consistency-checklist.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/gates/language-complexity.md
-  RUN LanguageComplexityLoad
-  LOAD {cf-studio-path}/.core/requirements/storytelling-dimensions.md
-  LOAD {cf-studio-path}/.core/skills/studio/agents/cf-semantic-reviewer-artifact.md
-  RUN WriteDocsArtifactContextNormalize
-  RUN AudienceResolution, NarratorResolution, and DiagramResolution for the cf-write-docs flow class; SET DOC_AUDIENCE_DIMENSION = resolved, SET DOC_NARRATOR_DIMENSION = resolved, and SET DOC_DIAGRAM_DIMENSION = resolved before any author or reviewer dispatch
-  RUN verify the references loaded; EMIT "Required reference not found (consistency-checklist, language-complexity, storytelling-dimensions, or cf-semantic-reviewer-artifact under {cf-studio-path}/.core) — cannot author or review docs; reinstall or sync the studio kit, then retry." and STOP_TURN WHEN any load fails
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
+  RUN WorkflowBootstrapCoreSession
+  RUN WriteDocsBootstrapIntentContext
+  RUN WriteDocsBootstrapReferenceLoad
+  RUN WriteDocsBootstrapDimensions
   CONTINUE WriteDocsIntentCapture WHEN ORIGINAL_INTENT == unset
   CONTINUE WriteDocsIntentClassify WHEN ORIGINAL_INTENT != unset
 RULES:
@@ -59,25 +48,81 @@ RULES:
 ```
 
 ```pdsl
+UNIT WriteDocsBootstrapIntentContext
+PURPOSE: Resolve the initial doc-writing intent and load context-memory for downstream document work.
+DO:
+  SET ORIGINAL_INTENT = the user's triggering write-docs request (verbatim or shortest faithful summary), or unset when activation-only, WHEN ORIGINAL_INTENT == unset
+  RUN WorkflowBootstrapContextOnly
+```
+
+```pdsl
+UNIT WriteDocsBootstrapReferenceLoad
+PURPOSE: Load and verify the shared documentation references used by cf-write-docs.
+DO:
+  LOAD {cf-studio-path}/.core/requirements/consistency-checklist.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/gates/language-complexity.md
+  RUN LanguageComplexityLoad
+  LOAD {cf-studio-path}/.core/requirements/storytelling-dimensions.md
+  LOAD {cf-studio-path}/.core/skills/studio/agents/cf-semantic-reviewer-artifact.md
+  RUN verify the references loaded; EMIT "Required reference not found (consistency-checklist, language-complexity, storytelling-dimensions, or cf-semantic-reviewer-artifact under {cf-studio-path}/.core) — cannot author or review docs; reinstall or sync the studio kit, then retry." and STOP_TURN WHEN any load fails
+```
+
+```pdsl
+UNIT WriteDocsBootstrapDimensions
+PURPOSE: Normalize artifact context and resolve the storytelling dimensions applied to document authoring and review.
+DO:
+  RUN WriteDocsArtifactContextNormalize
+  RUN AudienceResolution, NarratorResolution, and DiagramResolution for the cf-write-docs flow class; SET DOC_AUDIENCE_DIMENSION = resolved, SET DOC_NARRATOR_DIMENSION = resolved, and SET DOC_DIAGRAM_DIMENSION = resolved before any author or reviewer dispatch
+```
+
+```pdsl
 UNIT WriteDocsArtifactContextNormalize
 PURPOSE: Normalize preset-bound artifact references into the payload field names required by author and artifact-reviewer contracts.
 DO:
+  RUN WriteDocsNormalizeArtifactKind
+  RUN WriteDocsNormalizeArtifactTemplateAndRules
+  RUN WriteDocsNormalizeArtifactChecklist
+  RUN WriteDocsNormalizeArtifactExample
+RULES:
+  ALWAYS keep preset-bound artifact references as read-only payload fields
+  NEVER invent artifact template, rules, checklist, or example paths when no preset supplied them
+```
+
+```pdsl
+UNIT WriteDocsNormalizeArtifactKind
+PURPOSE: Normalize the artifact kind into the review payload field.
+DO:
   SET ARTIFACT_REVIEW_KIND = ARTIFACT_KIND WHEN ARTIFACT_KIND is set
   SET ARTIFACT_REVIEW_KIND = null WHEN ARTIFACT_REVIEW_KIND == unset
+```
+
+```pdsl
+UNIT WriteDocsNormalizeArtifactTemplateAndRules
+PURPOSE: Normalize preset-bound template and rules references.
+DO:
   SET ARTIFACT_TEMPLATE_PATH = artifact_template WHEN artifact_template is set
   SET ARTIFACT_TEMPLATE_PATH = null WHEN ARTIFACT_TEMPLATE_PATH == unset
   SET ARTIFACT_RULES_PATH = artifact_rules WHEN artifact_rules is set
   SET ARTIFACT_RULES_PATH = null WHEN ARTIFACT_RULES_PATH == unset
+```
+
+```pdsl
+UNIT WriteDocsNormalizeArtifactChecklist
+PURPOSE: Normalize checklist references and whether checklist context is available.
+DO:
   SET ARTIFACT_CHECKLIST_PATH = artifact_checklist WHEN artifact_checklist is set
   SET ARTIFACT_CHECKLIST_PATH = checklist_path WHEN ARTIFACT_CHECKLIST_PATH == unset AND checklist_path is set
   SET ARTIFACT_CHECKLIST_PATH = null WHEN ARTIFACT_CHECKLIST_PATH == unset
-  SET ARTIFACT_EXAMPLE_PATH = artifact_example WHEN artifact_example is set
-  SET ARTIFACT_EXAMPLE_PATH = null WHEN ARTIFACT_EXAMPLE_PATH == unset
   SET ARTIFACT_CHECKLIST_CONTEXT = preset-bound WHEN ARTIFACT_CHECKLIST_PATH != null
   SET ARTIFACT_CHECKLIST_CONTEXT = unavailable WHEN ARTIFACT_CHECKLIST_PATH == null
-RULES:
-  ALWAYS keep preset-bound artifact references as read-only payload fields
-  NEVER invent artifact template, rules, checklist, or example paths when no preset supplied them
+```
+
+```pdsl
+UNIT WriteDocsNormalizeArtifactExample
+PURPOSE: Normalize the preset-bound example reference.
+DO:
+  SET ARTIFACT_EXAMPLE_PATH = artifact_example WHEN artifact_example is set
+  SET ARTIFACT_EXAMPLE_PATH = null WHEN ARTIFACT_EXAMPLE_PATH == unset
 ```
 
 ```pdsl
@@ -281,7 +326,7 @@ STATE:
 DO:
   RUN select SELECTED_REVIEW_FIX_AGENT from the approved findings and REVIEW_TARGET_PATHS using the cf-generate-author selection rules; choose only a concrete write-capable cf-generate-author-* worker tier
   RUN SubAgentDispatch for the SELECTED_REVIEW_FIX_AGENT review-fix dispatch group
-  DISPATCH SELECTED_REVIEW_FIX_AGENT with mode=fix, kind=ARTIFACT_REVIEW_KIND, rules_mode STRICT when ARTIFACT_CHECKLIST_CONTEXT == preset-bound else RELAXED, template_path=ARTIFACT_TEMPLATE_PATH, example_path=ARTIFACT_EXAMPLE_PATH, checklist_path=ARTIFACT_CHECKLIST_PATH, kit_rules_path=ARTIFACT_RULES_PATH, target_paths=REVIEW_TARGET_PATHS, REVIEW_TARGET_SLICES, APPROVED_REVIEW_FINDING_IDS, REVIEW_FIX_SCOPE, git_commit_mode, contributing_guide, git_constraint, commit_footer_contract, any WriteDocsExploreGate-resolved resource_context as read-only context, and the resolved audience/narrator/diagram policy data as read-only context to apply only approved review fixes
+  DISPATCH SELECTED_REVIEW_FIX_AGENT with mode=fix, kind=ARTIFACT_REVIEW_KIND, rules_mode STRICT when ARTIFACT_CHECKLIST_CONTEXT == preset-bound else RELAXED, template_path=ARTIFACT_TEMPLATE_PATH, example_path=ARTIFACT_EXAMPLE_PATH, checklist_path=ARTIFACT_CHECKLIST_PATH, kit_rules_path=ARTIFACT_RULES_PATH, target_paths=REVIEW_TARGET_PATHS, REVIEW_TARGET_SLICES, APPROVED_REVIEW_FINDING_IDS, REVIEW_FIX_SCOPE, git_commit_mode=GIT_COMMIT_MODE, contributing_guide=CONTRIBUTING_GUIDE, git_constraint=GIT_CONSTRAINT, commit_footer_contract=COMMIT_FOOTER_CONTRACT, any WriteDocsExploreGate-resolved resource_context as read-only context, and the resolved audience/narrator/diagram policy data as read-only context to apply only approved review fixes
   CONTINUE WriteDocsReviewFixOutcome
 RULES:
   NEVER dispatch the read-only cf-generate-author selector itself to write or fix documents
@@ -357,9 +402,7 @@ STATE:
 WHEN:
   REQUIRE WRITE_DISPATCH_KIND != unset
 DO:
-  RUN GitCommitModeGate before preparing git policy for any write-capable document author or approved review-fix dispatch
-  RUN resolve git_commit_mode (probe once per session), contributing_guide (discover; use null for no discovered guide), and the mode-matched git_constraint
-  RUN verify GIT_COMMIT_MODE, CONTRIBUTING_GUIDE, COMMIT_FOOTER_CONTRACT, and git_constraint are all resolved for the pending write-capable dispatch payload; STOP_TURN and report the unresolved write-policy field or fields WHEN any remain unresolved
+  RUN GitWriteDispatchPolicyResolve
   CONTINUE WriteDocsReviewFixDispatchRun WHEN WRITE_DISPATCH_KIND == review-fix
   CONTINUE WriteDocsAuthorDispatch WHEN WRITE_DISPATCH_KIND == author
 RULES:
@@ -373,15 +416,37 @@ STATE:
   SET SELECTED_DOC_AUTHOR_AGENT: cf-generate-author-junior | cf-generate-author-middle | cf-generate-author-senior | cf-generate-author-lead | unset (default unset, scope workflow_run)
   SET PATHS_WRITTEN: list | unset (default unset, scope workflow_run)
 DO:
-  LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/dispatch.md
-  RUN resolve AUTHOR_TARGET_PATHS from explicit output path(s), preset artifact path, or requested document path in ORIGINAL_INTENT before create-mode author dispatch
-  EMIT "Author target resolution is required before document creation can continue. Provide the output document path(s) to write." and STOP_TURN WHEN AUTHOR_TARGET_PATHS == unset OR AUTHOR_TARGET_PATHS is empty
+  RUN WriteDocsAuthorPrepareTarget
+  CONTINUE WriteDocsAuthorTargetMissing WHEN AUTHOR_TARGET_PATHS == unset OR AUTHOR_TARGET_PATHS is empty
   RUN select SELECTED_DOC_AUTHOR_AGENT using the cf-generate-author selection rules: junior for simple one-file low-risk prose, middle for standard artifacts with moderate cross-references, senior for complex multi-file or strict-rule docs, and lead for high-risk or broad cross-system documentation
   RUN SubAgentDispatch for the SELECTED_DOC_AUTHOR_AGENT dispatch group
-  DISPATCH SELECTED_DOC_AUTHOR_AGENT with mode=create, kind=ARTIFACT_REVIEW_KIND, rules_mode STRICT when ARTIFACT_CHECKLIST_CONTEXT == preset-bound else RELAXED, template_path=ARTIFACT_TEMPLATE_PATH, example_path=ARTIFACT_EXAMPLE_PATH, checklist_path=ARTIFACT_CHECKLIST_PATH, kit_rules_path=ARTIFACT_RULES_PATH, target_paths=AUTHOR_TARGET_PATHS, git_commit_mode, contributing_guide, git_constraint, commit_footer_contract, any WriteDocsExploreGate-resolved resource_context as read-only context, and the Bootstrap-resolved audience/narrator/diagram policy data as read-only context scoped per {cf-studio-path}/.core/requirements/storytelling-dimensions.md authoring flow-class rules
-  RUN capture PATHS_WRITTEN from the returned author manifest; SET REVIEW_TARGET_PATHS = PATHS_WRITTEN and SET REVIEW_TARGET_SLICES = full-document slices for every PATHS_WRITTEN entry WHEN PATHS_WRITTEN is not empty
+  DISPATCH SELECTED_DOC_AUTHOR_AGENT with mode=create, kind=ARTIFACT_REVIEW_KIND, rules_mode STRICT when ARTIFACT_CHECKLIST_CONTEXT == preset-bound else RELAXED, template_path=ARTIFACT_TEMPLATE_PATH, example_path=ARTIFACT_EXAMPLE_PATH, checklist_path=ARTIFACT_CHECKLIST_PATH, kit_rules_path=ARTIFACT_RULES_PATH, target_paths=AUTHOR_TARGET_PATHS, git_commit_mode=GIT_COMMIT_MODE, contributing_guide=CONTRIBUTING_GUIDE, git_constraint=GIT_CONSTRAINT, commit_footer_contract=COMMIT_FOOTER_CONTRACT, any WriteDocsExploreGate-resolved resource_context as read-only context, and the Bootstrap-resolved audience/narrator/diagram policy data as read-only context scoped per {cf-studio-path}/.core/requirements/storytelling-dimensions.md authoring flow-class rules
+  RUN WriteDocsAuthorCaptureManifest
   CONTINUE WriteDocsValidate WHEN a document has been written or edited
 RULES:
   NEVER dispatch cf-generate-author itself because it is a read-only selector, not a write-capable worker
   NEVER let resource_context or storytelling dimensions gate an author verdict
+```
+
+```pdsl
+UNIT WriteDocsAuthorPrepareTarget
+PURPOSE: Load dispatch support and resolve the create-mode author target paths.
+DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/dispatch.md
+  RUN resolve AUTHOR_TARGET_PATHS from explicit output path(s), preset artifact path, or requested document path in ORIGINAL_INTENT before create-mode author dispatch
+```
+
+```pdsl
+UNIT WriteDocsAuthorTargetMissing
+PURPOSE: Stop when create-mode author target paths are still missing.
+DO:
+  EMIT "Author target resolution is required before document creation can continue. Provide the output document path(s) to write."
+  STOP_TURN
+```
+
+```pdsl
+UNIT WriteDocsAuthorCaptureManifest
+PURPOSE: Capture the written document paths and normalize them for review routing.
+DO:
+  RUN capture PATHS_WRITTEN from the returned author manifest; SET REVIEW_TARGET_PATHS = PATHS_WRITTEN and SET REVIEW_TARGET_SLICES = full-document slices for every PATHS_WRITTEN entry WHEN PATHS_WRITTEN is not empty
 ```

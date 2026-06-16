@@ -28,15 +28,10 @@ STATE:
 WHEN:
   REQUIRE one or more cf-* sub-agents must be launched as an immediate dispatch group
 DO:
-  RUN SubAgentSelectionRegistry WHEN the workflow has not already selected a dispatch group
-  LOAD each sub-agent contract from the selected registry entry's prompt_file when present, else from {cf-studio-path}/.core/skills/studio/agents/{sub-agent-name}.md
-  EMIT_MENU SubAgentApprovalRequest WHEN SUB_AGENT_DISPATCH_MODE == unset AND SUB_AGENT_GROUP_DECISION == unset
-  WAIT user.reply WHEN SUB_AGENT_DISPATCH_MODE == unset AND SUB_AGENT_GROUP_DECISION == unset
-  STOP_TURN WHEN SUB_AGENT_DISPATCH_MODE == unset AND SUB_AGENT_GROUP_DECISION == unset
+  RUN SubAgentDispatchPrepare
+  RUN SubAgentDispatchApprovalGate
   REQUIRE SUB_AGENT_GROUP_DECISION != stop
-  RUN synthesis of each initial prompt from the controller-selected `rules` plus that sub-agent contract
-  DISPATCH the dispatch group natively WHEN SUB_AGENT_DISPATCH_MODE == approve-session OR SUB_AGENT_GROUP_DECISION == approve-once
-  RUN each contract inline WHEN SUB_AGENT_DISPATCH_MODE == inline-session OR SUB_AGENT_GROUP_DECISION == inline-once
+  RUN SubAgentDispatchExecute
 RULES:
   ALWAYS synthesize the initial prompt from `rules` plus the sub-agent contract, with the controller deciding which `rules` the sub-agent needs and which it does not
   ALWAYS pass any needed `content` to the sub-agent as an absolute path or web reference/link, never inline
@@ -74,4 +69,30 @@ OPTIONS:
   1 inline -> SET SUB_AGENT_GROUP_DECISION = inline-once; RUN each contract inline for this dispatch group
   2 stop -> STOP_TURN
   INVALID -> EMIT_MENU SubAgentFallbackLimitRequest
+```
+
+```pdsl
+UNIT SubAgentDispatchPrepare
+PURPOSE: Resolve the dispatch group and load each sub-agent contract before approval or execution.
+DO:
+  RUN SubAgentSelectionRegistry WHEN the workflow has not already selected a dispatch group
+  LOAD each sub-agent contract from the selected registry entry's prompt_file when present, else from {cf-studio-path}/.core/skills/studio/agents/{sub-agent-name}.md
+```
+
+```pdsl
+UNIT SubAgentDispatchApprovalGate
+PURPOSE: Ask for native-vs-inline dispatch approval when no saved session preference exists.
+DO:
+  EMIT_MENU SubAgentApprovalRequest WHEN SUB_AGENT_DISPATCH_MODE == unset AND SUB_AGENT_GROUP_DECISION == unset
+  WAIT user.reply WHEN SUB_AGENT_DISPATCH_MODE == unset AND SUB_AGENT_GROUP_DECISION == unset
+  STOP_TURN WHEN SUB_AGENT_DISPATCH_MODE == unset AND SUB_AGENT_GROUP_DECISION == unset
+```
+
+```pdsl
+UNIT SubAgentDispatchExecute
+PURPOSE: Synthesize the initial prompts and run the dispatch group using the resolved execution mode.
+DO:
+  RUN synthesis of each initial prompt from the controller-selected `rules` plus that sub-agent contract
+  DISPATCH the dispatch group natively WHEN SUB_AGENT_DISPATCH_MODE == approve-session OR SUB_AGENT_GROUP_DECISION == approve-once
+  RUN each contract inline WHEN SUB_AGENT_DISPATCH_MODE == inline-session OR SUB_AGENT_GROUP_DECISION == inline-once
 ```

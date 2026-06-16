@@ -17,19 +17,11 @@ PURPOSE: Load the local rules needed before any brainstorm work.
 STATE:
   SET ORIGINAL_INTENT: string | unset (default unset, scope workflow_run)
 DO:
-  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/skill-invocation-art.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/pdsl-execution-card.md
-  RUN SkillInvocationArt
-  LOAD and REMEMBER rules from {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/studio-instructions-memory.md
-  RUN StudioInstructionsMemoryGate
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
+  RUN WorkflowBootstrapCoreSession
   SET ORIGINAL_INTENT = the user's triggering brainstorm request (verbatim or shortest faithful summary), or unset when activation-only, WHEN ORIGINAL_INTENT == unset
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/command-resolution.md
+  RUN WorkflowBootstrapCommandDispatchTemplateContext
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-resolution.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/template-vars.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/context-memory.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/dispatch.md
-  RUN CommandResolution to resolve {cfs_cmd}
   SET CURRENT_WORKFLOW = cf-brainstorm, SET COMPANION_CONTINUE = BrainstormOffer and LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md and CONTINUE CompanionSkillOffer WHEN ORIGINAL_INTENT != unset
   CONTINUE BrainstormOffer WHEN ORIGINAL_INTENT == unset
 RULES:
@@ -50,14 +42,13 @@ STATE:
   SET BRAINSTORM_MAX_ROUNDS: int (default 10, scope session)
   SET PANEL_MODE: inline | single-agent | fan-out (default inline, scope session)
 DO:
-  EMIT a brief offer: "Want a brainstorm panel? I'll assemble a 3-6 expert panel for cross-discipline pushback when the design space is open, run one topic per round, and walk the resulting questions one by one."
-  EMIT reply grammar: `yes` (recommended when the design space is open or you want pushback), `no` (skip straight ahead), `save` (run the panel and persist transcript + design under {cf-studio-path}/.cache/brainstorm/{slug}-{ISO}/ — only when file writes are allowed)
-  EMIT modifiers (append whitespace-separated): `:N` custom round cap e.g. yes:15 (default 10); `mode=inline` (default; run facilitator and panel contracts inline without sub-agents); `mode=single-agent` (one cf-brainstorm-panel native dispatch per round); `mode=fan-out` (each expert a separate parallel cf-brainstorm-expert sub-agent, needs native parallelism). Examples: yes, yes:15, yes mode=single-agent, yes mode=fan-out, save:20 mode=fan-out
+  EMIT the brainstorm offer, reply grammar, and modifier examples: "Want a brainstorm panel? I'll assemble a 3-6 expert panel for cross-discipline pushback when the design space is open, run one topic per round, and walk the resulting questions one by one. Reply `yes` (recommended when the design space is open or you want pushback), `no` (skip straight ahead), or `save` (run the panel and persist transcript + design under {cf-studio-path}/.cache/brainstorm/{slug}-{ISO}/ — only when file writes are allowed). Optional modifiers: `:N` custom round cap e.g. yes:15 (default 10); `mode=inline` (default; run facilitator and panel contracts inline without sub-agents); `mode=single-agent` (one cf-brainstorm-panel native dispatch per round); `mode=fan-out` (each expert a separate parallel cf-brainstorm-expert sub-agent, needs native parallelism). Examples: yes, yes:15, yes mode=single-agent, yes mode=fan-out, save:20 mode=fan-out"
   WAIT user.reply
-  RUN parse: tokenize reply -> base_verb = first token, modifiers = remaining tokens
-  RUN on unknown or duplicate modifier: EMIT one-line error naming the token, re-EMIT the offer, WAIT user.reply, STOP_TURN
-  RUN on `no`: RETURN { "type": "BRAINSTORM_RESULT", "status": "cancelled", "decisions_count": 0, "open_questions_count": 0, "next_route": null }, STOP_TURN
-  RUN on `yes` / `save`: apply `:N` -> SET BRAINSTORM_MAX_ROUNDS = N; apply `mode=inline|single-agent|fan-out` -> SET PANEL_MODE; on `save` REQUIRE writes allowed else reject; then CONTINUE BrainstormPanel
+  RUN parse the reply into base_verb = first token, modifiers = remaining tokens, and reply_status = invalid | cancelled | save_rejected | accepted
+  CONTINUE BrainstormOfferInvalid WHEN reply_status == invalid
+  CONTINUE BrainstormOfferCancelled WHEN reply_status == cancelled
+  CONTINUE BrainstormOfferSaveRejected WHEN reply_status == save_rejected
+  CONTINUE BrainstormOfferAccepted WHEN reply_status == accepted
 RULES:
   ALWAYS reject an unknown or duplicate modifier with a one-line error naming the token, then re-emit the offer
   ALWAYS default to `mode=inline` when the user replies `yes` or `save` without a mode modifier
@@ -66,23 +57,77 @@ RULES:
 ```
 
 ```pdsl
+UNIT BrainstormOfferInvalid
+PURPOSE: Reject an invalid brainstorm-offer reply and re-show the offer.
+DO:
+  EMIT one-line error naming the unknown or duplicate modifier token
+  CONTINUE BrainstormOffer
+```
+
+```pdsl
+UNIT BrainstormOfferCancelled
+PURPOSE: Return a cancelled brainstorm result when the user declines the panel.
+DO:
+  RETURN { "type": "BRAINSTORM_RESULT", "status": "cancelled", "decisions_count": 0, "open_questions_count": 0, "next_route": null }
+  STOP_TURN
+```
+
+```pdsl
+UNIT BrainstormOfferSaveRejected
+PURPOSE: Reject `save` when no writable destination is available, then re-show the offer.
+DO:
+  EMIT "The `save` option needs a writable destination; reply `yes` to continue without saving, or retry in a writable context."
+  CONTINUE BrainstormOffer
+```
+
+```pdsl
+UNIT BrainstormOfferAccepted
+PURPOSE: Apply accepted brainstorm modifiers, then continue to panel setup.
+DO:
+  RUN apply `:N` -> SET BRAINSTORM_MAX_ROUNDS = N and apply `mode=inline|single-agent|fan-out` -> SET PANEL_MODE
+  CONTINUE BrainstormPanel
+```
+
+```pdsl
 UNIT BrainstormPanel
 PURPOSE: Propose, edit, and confirm the expert panel, then gather resource context before rounds.
 DO:
   RUN ResourceContextMemory
-  RUN the cf-brainstorm-facilitator contract inline to propose a 3-6 persona panel plus a seed topic for round 1 WHEN PANEL_MODE == inline
-  RUN SubAgentDispatch for the cf-brainstorm-facilitator dispatch group WHEN PANEL_MODE != inline
-  DISPATCH cf-brainstorm-facilitator to propose a 3-6 persona panel plus a seed topic for round 1 WHEN PANEL_MODE != inline
-  RUN RECEIVE the proposed panel and seed topic
-  EMIT the rendered panel (E1..E6: persona, focus, why) and the seed topic
-  EMIT_MENU PanelEditMenu
-  WAIT user.reply
-  STOP_TURN
+  CONTINUE BrainstormPanelInlineProposal WHEN PANEL_MODE == inline
+  CONTINUE BrainstormPanelDispatchProposal WHEN PANEL_MODE != inline
 RULES:
   ALWAYS refuse a compound reply with a one-line clarifier asking for a single edit form
   ALWAYS re-render the panel and seed topic after each edit until the user replies start
   ALWAYS keep min 3 and max 6 personas
   ALWAYS pass resource_context to every later panel/expert execution, whether inline or native
+```
+
+```pdsl
+UNIT BrainstormPanelInlineProposal
+PURPOSE: Build the panel proposal inline, then render it.
+DO:
+  RUN the cf-brainstorm-facilitator contract inline to propose a 3-6 persona panel plus a seed topic for round 1
+  CONTINUE BrainstormPanelRender
+```
+
+```pdsl
+UNIT BrainstormPanelDispatchProposal
+PURPOSE: Dispatch the facilitator natively, receive the proposal, then render it.
+DO:
+  RUN SubAgentDispatch for the cf-brainstorm-facilitator dispatch group
+  DISPATCH cf-brainstorm-facilitator to propose a 3-6 persona panel plus a seed topic for round 1
+  RUN RECEIVE the proposed panel and seed topic
+  CONTINUE BrainstormPanelRender
+```
+
+```pdsl
+UNIT BrainstormPanelRender
+PURPOSE: Present the proposed panel and wait for one edit or start command.
+DO:
+  EMIT the rendered panel (E1..E6: persona, focus, why) and the seed topic
+  EMIT_MENU PanelEditMenu
+  WAIT user.reply
+  STOP_TURN
 MENU PanelEditMenu
 TITLE: Panel setup — reply start to begin, or edit one thing.
 OPTIONS:

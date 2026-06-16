@@ -79,23 +79,35 @@ PURPOSE: Arm the debugger overlay and hand the user the debugger console.
 WHEN:
   - REQUIRE the user invoked cf-debug-skill (or asked to debug skills)
 DO:
-  - LOAD {cf-studio-path}/.core/skills/studio/modules/ui/skill-invocation-art.md
-  - LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/pdsl-execution-card.md
-  - RUN SkillInvocationArt
-  - LOAD and REMEMBER rules from {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
+  - LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
+  - RUN WorkflowBootstrapRouterPrelude
+  - RUN DebugSessionStateInit
+  - RUN DebugSessionConsoleOpen
+RULES:
+  - ALWAYS keep CF_DEBUG = on until the user explicitly turns debug off.
+  - ALWAYS remember git-commit-mode so any later commit request in this active debugger session runs GitCommitModeGate before routing, git use, or delegation.
+  - ALWAYS treat a later skill/workflow load as a debugging target, not as a reason to drop the overlay.
+```
+
+```pdsl
+UNIT DebugSessionStateInit
+PURPOSE: Initialize debugger session state before opening the debugger console.
+DO:
   - SET CF_DEBUG = on
   - SET DEBUG_MODE = step
   - SET DEBUG_GRAIN = instruction
   - SET DEBUG_CURSOR = 0
+```
+
+```pdsl
+UNIT DebugSessionConsoleOpen
+PURPOSE: Announce the debugger console after the debugger session state is initialized.
+DO:
   - EMIT "Debugger armed. From now on every cf skill/workflow instruction stops at a breakpoint before it runs. Load the skill you want to debug, then drive it from this console."
   - EMIT "Commands: step=run the pending action · over=skip it · back=re-inspect the previous step · cont=run to the next breakpoint · dump=export trace · off=disable · stop=halt · dbg=full menu. Breakpoints: b <spec>=set · bc <ref>=clear · bl=list · be/bd <id>=enable/disable · run to <loc>."
   - RUN DebugCheatsheet
   - WAIT user.reply
   - STOP_TURN
-RULES:
-  - ALWAYS keep CF_DEBUG = on until the user explicitly turns debug off.
-  - ALWAYS remember git-commit-mode so any later commit request in this active debugger session runs GitCommitModeGate before routing, git use, or delegation.
-  - ALWAYS treat a later skill/workflow load as a debugging target, not as a reason to drop the overlay.
 ```
 
 ```pdsl
@@ -134,20 +146,8 @@ WHEN:
     OR the pending action is a WAIT/menu or an error handler
     OR DebugBreakpointMatch returns a hit for the pending action
 DO:
-  - SET DEBUG_CURSOR = DEBUG_CURSOR + 1
-  - RUN append the pending action to DEBUG_TRACE with actor = controller, status = pending,
-    only when the action belongs to the target skill/workflow (never for cf-debug-skill's own actions)
-  - RUN resolve SOURCE_LOC and TARGET_LOC for the pending action (see DebugLocators)
-  - RUN DebugMetrics to record this action's loaded lines/chars and update totals
-  - EMIT the debugger frame:
-    - "WHERE  : <SOURCE_LOC> > <UNIT> > step <DEBUG_CURSOR>"
-    - "TARGET : <TARGET_LOC, or `(no file touched)` when the action reads/writes no file>"
-    - "NOW    : <the pending action, verbatim> (<SOURCE_LOC>)"
-    - "WHY    : <one-line rationale: the owning PURPOSE or rule this action serves; condense a multi-sentence PURPOSE to its core reason in one line>"
-    - "NEXT   : <the immediate next action(s) if this one runs; for a branch, the first action of each branch; cap the list at 3 and append `(+N more)` when longer, each suffixed with its filename.md:N>"
-    - "BREAKPT: <id+type+spec of the breakpoint that fired, or `(stepping)` when paused by step mode>"
-    - "METRICS: this +<this_lines> LoC +<this_chars> chars <this_token_display> | total <DEBUG_LOC_TOTAL> LoC <DEBUG_CHARS_TOTAL> chars <total_token_display>"
-    - "STATE  : debug=on mode=<DEBUG_MODE> grain=<DEBUG_GRAIN> cursor=<DEBUG_CURSOR> bps=<count of enabled breakpoints>"
+  - CONTINUE DebugStepGatePrepare
+  - CONTINUE DebugStepGateRenderFrame
   - RUN DebugCheatsheet
   - WAIT user.reply
   - STOP_TURN
@@ -157,6 +157,47 @@ RULES:
   - ALWAYS attach a filename.md:N locator to every action, menu, unit, and instruction the frame names, per DebugLocators.
   - ALWAYS quote the pending action faithfully; never summarize it into something vaguer.
   - NEVER run the pending action inside this gate; running it is the explicit job of the `step` choice.
+```
+
+```pdsl
+UNIT DebugStepGatePrepare
+PURPOSE: Record the pending target action and resolve the frame context before a pause is shown.
+DO:
+  - SET DEBUG_CURSOR = DEBUG_CURSOR + 1
+  - RUN append the pending action to DEBUG_TRACE with actor = controller, status = pending,
+    only when the action belongs to the target skill/workflow (never for cf-debug-skill's own actions)
+  - RUN resolve SOURCE_LOC and TARGET_LOC for the pending action (see DebugLocators)
+  - RUN DebugMetrics to record this action's loaded lines/chars and update totals
+```
+
+```pdsl
+UNIT DebugStepGateRenderFrame
+PURPOSE: Emit the full debugger frame for the current pending action.
+DO:
+  - CONTINUE DebugStepGateRenderFrameContext
+  - CONTINUE DebugStepGateRenderFrameSession
+```
+
+```pdsl
+UNIT DebugStepGateRenderFrameContext
+PURPOSE: Emit the debugger frame lines that describe the current action and its immediate context.
+DO:
+  - EMIT the debugger frame:
+    - "WHERE  : <SOURCE_LOC> > <UNIT> > step <DEBUG_CURSOR>"
+    - "TARGET : <TARGET_LOC, or `(no file touched)` when the action reads/writes no file>"
+    - "NOW    : <the pending action, verbatim> (<SOURCE_LOC>)"
+    - "WHY    : <one-line rationale: the owning PURPOSE or rule this action serves; condense a multi-sentence PURPOSE to its core reason in one line>"
+```
+
+```pdsl
+UNIT DebugStepGateRenderFrameSession
+PURPOSE: Emit the debugger frame lines that describe the next control point and session status.
+DO:
+  - EMIT the debugger frame:
+    - "NEXT   : <the immediate next action(s) if this one runs; for a branch, the first action of each branch; cap the list at 3 and append `(+N more)` when longer, each suffixed with its filename.md:N>"
+    - "BREAKPT: <id+type+spec of the breakpoint that fired, or `(stepping)` when paused by step mode>"
+    - "METRICS: this +<this_lines> LoC +<this_chars> chars <this_token_display> | total <DEBUG_LOC_TOTAL> LoC <DEBUG_CHARS_TOTAL> chars <total_token_display>"
+    - "STATE  : debug=on mode=<DEBUG_MODE> grain=<DEBUG_GRAIN> cursor=<DEBUG_CURSOR> bps=<count of enabled breakpoints>"
 ```
 
 ```pdsl
@@ -187,16 +228,9 @@ RULES:
 UNIT DebugMetrics
 PURPOSE: Count loaded LoC and characters per action and keep an approximate token estimate.
 DO:
-  - SET this_lines = the number of lines the pending action loads into context (0 when it loads no file/content)
-  - SET this_chars = the number of characters the pending action loads into context (0 when none)
-  - SET this_tok_est = round(this_chars / 4)  // coarse heuristic, English/code
-  - RUN store {lines: this_lines, chars: this_chars, tok_est: this_tok_est} on the action's DEBUG_TRACE entry
-  - SET DEBUG_LOC_TOTAL = DEBUG_LOC_TOTAL + this_lines
-  - SET DEBUG_CHARS_TOTAL = DEBUG_CHARS_TOTAL + this_chars
-  - SET DEBUG_TOKENS_EST = DEBUG_TOKENS_EST + this_tok_est
-  - SET this_token_display = "~<this_tok_est> tok est"
-  - SET total_token_display = "~<DEBUG_TOKENS_EST> tok est"
-  - SET this_token_display and total_token_display from the host-exposed real token or usage figure, marked as measured, WHEN the host exposes a real token or usage figure
+  - CONTINUE DebugMetricsMeasureAction
+  - CONTINUE DebugMetricsAccumulateTotals
+  - CONTINUE DebugMetricsPrepareDisplay
 RULES:
   - ALWAYS count real lines/characters from the content the action actually loads; these are exact.
   - ALWAYS label token displays as measured or estimated.
@@ -206,6 +240,34 @@ NOTES:
   lines/chars cover content loaded into context (file reads, LOADs, dispatched
   context). The token figure is approximate (~chars/4) unless a real usage
   number is available from the host.
+```
+
+```pdsl
+UNIT DebugMetricsMeasureAction
+PURPOSE: Measure the pending action's loaded context and store per-action counts.
+DO:
+  - SET this_lines = the number of lines the pending action loads into context (0 when it loads no file/content)
+  - SET this_chars = the number of characters the pending action loads into context (0 when none)
+  - SET this_tok_est = round(this_chars / 4)  // coarse heuristic, English/code
+  - RUN store {lines: this_lines, chars: this_chars, tok_est: this_tok_est} on the action's DEBUG_TRACE entry
+```
+
+```pdsl
+UNIT DebugMetricsAccumulateTotals
+PURPOSE: Roll the current action's counts into the debugger session totals.
+DO:
+  - SET DEBUG_LOC_TOTAL = DEBUG_LOC_TOTAL + this_lines
+  - SET DEBUG_CHARS_TOTAL = DEBUG_CHARS_TOTAL + this_chars
+  - SET DEBUG_TOKENS_EST = DEBUG_TOKENS_EST + this_tok_est
+```
+
+```pdsl
+UNIT DebugMetricsPrepareDisplay
+PURPOSE: Prepare measured or estimated token-display strings for the frame.
+DO:
+  - SET this_token_display = "~<this_tok_est> tok est"
+  - SET total_token_display = "~<DEBUG_TOKENS_EST> tok est"
+  - SET this_token_display and total_token_display from the host-exposed real token or usage figure, marked as measured, WHEN the host exposes a real token or usage figure
 ```
 
 ```pdsl
@@ -224,21 +286,67 @@ RULES:
 UNIT DebugCommandRouter
 PURPOSE: Map a typed debugger command (from the cheatsheet) to its handler at any pause.
 DO:
-  - RUN step | s -> execute the pending action now, mark its DEBUG_TRACE entry executed, then RUN DebugStepGate on the next action
-  - RUN over | o -> skip the pending action without executing it, mark its DEBUG_TRACE entry skipped, then RUN DebugStepGate on the next action
-  - RUN back -> CONTINUE DebugStepBack
-  - RUN cont | c | continue -> CONTINUE DebugContinue
-  - RUN where | w -> CONTINUE DebugWhere
-  - RUN grain | g -> CONTINUE DebugToggleGrain
-  - RUN off -> CONTINUE DebugDisable
-  - RUN stop -> CONTINUE DebugStop
-  - RUN dump -> CONTINUE DebugExportTrace
-  - RUN b | bc | bl | be | bd | run to -> CONTINUE DebugBreakpoints
-  - RUN dbg | menu | ? -> EMIT_MENU DebuggerMenu
-  - RUN otherwise -> RUN DebugCheatsheet; WAIT user.reply; STOP_TURN
+  - CONTINUE DebugCommandStep WHEN user.reply == step OR user.reply == s
+  - CONTINUE DebugCommandOver WHEN user.reply == over OR user.reply == o
+  - CONTINUE DebugCommandRouteNavigation WHEN user.reply == back OR user.reply == cont OR user.reply == c OR user.reply == continue OR user.reply == where OR user.reply == w OR user.reply == grain OR user.reply == g
+  - CONTINUE DebugCommandRouteSession WHEN user.reply == off OR user.reply == stop OR user.reply == dump
+  - CONTINUE DebugBreakpoints WHEN user.reply starts with b OR user.reply starts with bc OR user.reply == bl OR user.reply starts with be OR user.reply starts with bd OR user.reply starts with run to
+  - CONTINUE DebugCommandOpenMenu WHEN user.reply == dbg OR user.reply == menu OR user.reply == ?
+  - CONTINUE DebugCommandRouterFallback
 RULES:
   - ALWAYS accept the numeric choices from DebuggerMenu as equivalents (1 step ... 10 dump).
   - ALWAYS treat unrecognized input as a no-op that just re-shows the cheatsheet.
+```
+
+```pdsl
+UNIT DebugCommandStep
+PURPOSE: Execute the pending action from the debugger console.
+DO:
+  - RUN execute the pending action now, mark its DEBUG_TRACE entry executed, then RUN DebugStepGate on the next action
+```
+
+```pdsl
+UNIT DebugCommandOver
+PURPOSE: Skip the pending action from the debugger console.
+DO:
+  - RUN skip the pending action without executing it, mark its DEBUG_TRACE entry skipped, then RUN DebugStepGate on the next action
+```
+
+```pdsl
+UNIT DebugCommandRouteNavigation
+PURPOSE: Route debugger navigation commands that stay within the active session.
+DO:
+  - CONTINUE DebugStepBack WHEN user.reply == back
+  - CONTINUE DebugContinue WHEN user.reply == cont OR user.reply == c OR user.reply == continue
+  - CONTINUE DebugWhere WHEN user.reply == where OR user.reply == w
+  - CONTINUE DebugToggleGrain WHEN user.reply == grain OR user.reply == g
+```
+
+```pdsl
+UNIT DebugCommandRouteSession
+PURPOSE: Route debugger commands that change or export the current session.
+DO:
+  - CONTINUE DebugDisable WHEN user.reply == off
+  - CONTINUE DebugStop WHEN user.reply == stop
+  - CONTINUE DebugExportTrace WHEN user.reply == dump
+```
+
+```pdsl
+UNIT DebugCommandRouterFallback
+PURPOSE: Re-show the cheatsheet when the debugger command is not recognized.
+DO:
+  - RUN DebugCheatsheet
+  - WAIT user.reply
+  - STOP_TURN
+```
+
+```pdsl
+UNIT DebugCommandOpenMenu
+PURPOSE: Open the full debugger menu on demand from the compact console.
+DO:
+  - EMIT_MENU DebuggerMenu
+  - WAIT user.reply
+  - STOP_TURN
 ```
 
 ```pdsl
@@ -265,22 +373,34 @@ MENU DebuggerMenu:
 UNIT DebugStepBack
 PURPOSE: Move the cursor to a previous step and re-inspect it.
 DO:
-  - REQUIRE DEBUG_CURSOR > 1:
-    - SET DEBUG_CURSOR = DEBUG_CURSOR - 1
-    - EMIT "Stepped back. Re-showing the previous frame for inspection."
-    - RUN re-emit the debugger frame for the DEBUG_TRACE entry at DEBUG_CURSOR
-    - RUN DebugCheatsheet
-    - WAIT user.reply
-    - STOP_TURN
-  - RUN otherwise:
-    - EMIT "Already at the first step; cannot step back further."
-    - RUN DebugCheatsheet
-    - WAIT user.reply
-    - STOP_TURN
+  - CONTINUE DebugStepBackReinspect WHEN DEBUG_CURSOR > 1
+  - CONTINUE DebugStepBackAtStart WHEN DEBUG_CURSOR <= 1
 RULES:
   - ALWAYS warn that step back only repositions the cursor for inspection and re-narration.
   - NEVER claim that already-applied side effects (file writes, shell exec, sub-agent dispatch) were undone.
   - ALWAYS require an explicit fresh `step` confirmation before re-executing an action reached by stepping back.
+```
+
+```pdsl
+UNIT DebugStepBackReinspect
+PURPOSE: Move the cursor back one step and re-show that earlier frame.
+DO:
+  - SET DEBUG_CURSOR = DEBUG_CURSOR - 1
+  - EMIT "Stepped back. Re-showing the previous frame for inspection."
+  - RUN re-emit the debugger frame for the DEBUG_TRACE entry at DEBUG_CURSOR
+  - RUN DebugCheatsheet
+  - WAIT user.reply
+  - STOP_TURN
+```
+
+```pdsl
+UNIT DebugStepBackAtStart
+PURPOSE: Report that the debugger cannot step back before the first recorded action.
+DO:
+  - EMIT "Already at the first step; cannot step back further."
+  - RUN DebugCheatsheet
+  - WAIT user.reply
+  - STOP_TURN
 ```
 
 ```pdsl
@@ -323,31 +443,13 @@ NOTES:
 ```pdsl
 UNIT DebugBreakpoints
 PURPOSE: Set, clear, list, enable, disable, and run-to breakpoints via short commands or plain language.
+STATE:
+  - SET DEBUG_BREAKPOINT_ACTION: set | clear | list | enable | disable | run-to | invalid
+    default: invalid
+    scope: workflow_run
 DO:
-  - RUN parse the user's request into one action: set | clear | list | enable | disable | run-to
-  - REQUIRE set:
-    - RUN derive type+spec from the input (line: filename.md:N | unit: a UNIT/MENU name | kind: write|edit|exec|dispatch|menu|load | cond: VAR ==|!=|matches value)
-    - RUN append {id: next b<n>, type, spec, enabled: true, oneshot: false} to DEBUG_BREAKPOINTS
-    - EMIT "set <id> <type> <spec>" with its filename.md:N when the type is line or unit
-  - REQUIRE clear:
-    - RUN remove the breakpoint matching the given id or locator; remove all WHEN spec == all
-    - EMIT "cleared <id-or-spec>"
-  - REQUIRE list:
-    - EMIT each breakpoint as "<id> <type> <spec> <enabled|disabled>" with its filename.md:N where applicable, or "(no breakpoints)"
-  - REQUIRE enable:
-    - RUN set enabled = true on the breakpoint by id
-    - EMIT "enabled <id>"
-  - REQUIRE disable:
-    - RUN set enabled = false on the breakpoint by id
-    - EMIT "disabled <id>"
-  - REQUIRE run-to:
-    - RUN append {id: next b<n>, type: line, spec: <filename.md:N>, enabled: true, oneshot: true} to DEBUG_BREAKPOINTS
-    - SET DEBUG_MODE = run
-    - EMIT "running to <filename.md:N> (one-shot)"
-    - RUN resume executing the target workflow under DebugOverlayInvariants in run mode
-  - RUN DebugCheatsheet
-  - WAIT user.reply
-  - STOP_TURN
+  - RUN DebugBreakpointActionParse
+  - CONTINUE DebugBreakpointActionDispatch
 RULES:
   - ALWAYS accept both short commands and plain-language equivalents for every action.
   - ALWAYS assign a stable short id (b1, b2, ...) and reuse it for later enable/disable/clear.
@@ -361,6 +463,110 @@ NOTES:
     be <id>       enable
     bd <id>       disable
     run to <loc>  run until filename.md:N, then auto-remove (one-shot)
+```
+
+```pdsl
+UNIT DebugBreakpointActionDispatch
+PURPOSE: Route the parsed breakpoint action to the matching breakpoint handler.
+DO:
+  - CONTINUE DebugBreakpointActionDispatchPrimary WHEN DEBUG_BREAKPOINT_ACTION == set OR DEBUG_BREAKPOINT_ACTION == clear OR DEBUG_BREAKPOINT_ACTION == list
+  - CONTINUE DebugBreakpointActionDispatchSecondary WHEN DEBUG_BREAKPOINT_ACTION == enable OR DEBUG_BREAKPOINT_ACTION == disable OR DEBUG_BREAKPOINT_ACTION == run-to
+  - RUN DebugCheatsheet
+  - WAIT user.reply
+  - STOP_TURN
+```
+
+```pdsl
+UNIT DebugBreakpointActionDispatchPrimary
+PURPOSE: Route breakpoint creation, removal, and listing commands.
+DO:
+  - CONTINUE DebugBreakpointSet WHEN DEBUG_BREAKPOINT_ACTION == set
+  - CONTINUE DebugBreakpointClear WHEN DEBUG_BREAKPOINT_ACTION == clear
+  - CONTINUE DebugBreakpointList WHEN DEBUG_BREAKPOINT_ACTION == list
+```
+
+```pdsl
+UNIT DebugBreakpointActionDispatchSecondary
+PURPOSE: Route breakpoint enable, disable, and run-to commands.
+DO:
+  - CONTINUE DebugBreakpointEnable WHEN DEBUG_BREAKPOINT_ACTION == enable
+  - CONTINUE DebugBreakpointDisable WHEN DEBUG_BREAKPOINT_ACTION == disable
+  - CONTINUE DebugBreakpointRunTo WHEN DEBUG_BREAKPOINT_ACTION == run-to
+```
+
+```pdsl
+UNIT DebugBreakpointActionParse
+PURPOSE: Parse the user's breakpoint command into one canonical breakpoint action.
+DO:
+  - RUN parse the user's request into one action: set | clear | list | enable | disable | run-to
+```
+
+```pdsl
+UNIT DebugBreakpointSet
+PURPOSE: Append a normal breakpoint from a locator, unit, kind, or condition specification.
+DO:
+  - RUN derive type+spec from the input (line: filename.md:N | unit: a UNIT/MENU name | kind: write|edit|exec|dispatch|menu|load | cond: VAR ==|!=|matches value)
+  - RUN append {id: next b<n>, type, spec, enabled: true, oneshot: false} to DEBUG_BREAKPOINTS
+  - EMIT "set <id> <type> <spec>" with its filename.md:N when the type is line or unit
+  - RUN DebugCheatsheet
+  - WAIT user.reply
+  - STOP_TURN
+```
+
+```pdsl
+UNIT DebugBreakpointClear
+PURPOSE: Remove one breakpoint by id/locator or clear them all.
+DO:
+  - RUN remove the breakpoint matching the given id or locator; remove all WHEN spec == all
+  - EMIT "cleared <id-or-spec>"
+  - RUN DebugCheatsheet
+  - WAIT user.reply
+  - STOP_TURN
+```
+
+```pdsl
+UNIT DebugBreakpointList
+PURPOSE: Render the current breakpoint table.
+DO:
+  - EMIT each breakpoint as "<id> <type> <spec> <enabled|disabled>" with its filename.md:N where applicable, or "(no breakpoints)"
+  - RUN DebugCheatsheet
+  - WAIT user.reply
+  - STOP_TURN
+```
+
+```pdsl
+UNIT DebugBreakpointEnable
+PURPOSE: Re-enable a disabled breakpoint.
+DO:
+  - RUN set enabled = true on the breakpoint by id
+  - EMIT "enabled <id>"
+  - RUN DebugCheatsheet
+  - WAIT user.reply
+  - STOP_TURN
+```
+
+```pdsl
+UNIT DebugBreakpointDisable
+PURPOSE: Disable an existing breakpoint without removing it.
+DO:
+  - RUN set enabled = false on the breakpoint by id
+  - EMIT "disabled <id>"
+  - RUN DebugCheatsheet
+  - WAIT user.reply
+  - STOP_TURN
+```
+
+```pdsl
+UNIT DebugBreakpointRunTo
+PURPOSE: Add a one-shot line breakpoint and resume execution until it fires.
+DO:
+  - RUN append {id: next b<n>, type: line, spec: <filename.md:N>, enabled: true, oneshot: true} to DEBUG_BREAKPOINTS
+  - SET DEBUG_MODE = run
+  - EMIT "running to <filename.md:N> (one-shot)"
+  - RUN resume executing the target workflow under DebugOverlayInvariants in run mode
+  - RUN DebugCheatsheet
+  - WAIT user.reply
+  - STOP_TURN
 ```
 
 ```pdsl
@@ -379,12 +585,32 @@ DO:
 UNIT DebugToggleGrain
 PURPOSE: Switch between instruction-level and unit-level stepping.
 DO:
-  - REQUIRE DEBUG_GRAIN == instruction:
-    - SET DEBUG_GRAIN = unit
-    - EMIT "Grain set to unit: the debugger now pauses before each UNIT, MENU, skill load, or workflow load, not every instruction."
-  - RUN otherwise:
-    - SET DEBUG_GRAIN = instruction
-    - EMIT "Grain set to instruction: the debugger now pauses before every PDSL action."
+  - CONTINUE DebugToggleGrainToUnit WHEN DEBUG_GRAIN == instruction
+  - CONTINUE DebugToggleGrainToInstruction WHEN DEBUG_GRAIN != instruction
+```
+
+```pdsl
+UNIT DebugToggleGrainToUnit
+PURPOSE: Switch the debugger from instruction stepping to unit stepping.
+DO:
+  - SET DEBUG_GRAIN = unit
+  - EMIT "Grain set to unit: the debugger now pauses before each UNIT, MENU, skill load, or workflow load, not every instruction."
+  - CONTINUE DebugToggleGrainPause
+```
+
+```pdsl
+UNIT DebugToggleGrainToInstruction
+PURPOSE: Switch the debugger from unit stepping to instruction stepping.
+DO:
+  - SET DEBUG_GRAIN = instruction
+  - EMIT "Grain set to instruction: the debugger now pauses before every PDSL action."
+  - CONTINUE DebugToggleGrainPause
+```
+
+```pdsl
+UNIT DebugToggleGrainPause
+PURPOSE: Re-open the debugger prompt after a grain change.
+DO:
   - RUN DebugCheatsheet
   - WAIT user.reply
   - STOP_TURN
@@ -417,13 +643,9 @@ RULES:
 UNIT DebugExportTrace
 PURPOSE: Write the current debug trace to a timestamped Markdown file.
 DO:
-  - LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/template-vars.md
-  - RUN TemplateVarResolution before resolving DUMP_PATH
-  - SET DUMP_PATH = "{cf-studio-path}/.debug-skill/<DEBUG_SLUG>-<YYYY-MM-DD>-<HHMMSS>.md"
-  - RUN ensure the directory {cf-studio-path}/.debug-skill/ exists, creating it if missing
-  - RUN render the trace report (see DebugTraceReport) into DUMP_PATH
-  - EMIT "Trace written to <DUMP_PATH> (<count> steps)."
-  - EMIT the written file as a clickable reference: <ref_file file="<absolute DUMP_PATH>" />
+  - CONTINUE DebugExportTracePrepare
+  - CONTINUE DebugExportTraceWrite
+  - CONTINUE DebugExportTraceAnnounce
   - RUN DebugCheatsheet
   - WAIT user.reply
   - STOP_TURN
@@ -439,6 +661,31 @@ ON_ERROR:
     RUN DebugCheatsheet
     WAIT user.reply
     STOP_TURN
+```
+
+```pdsl
+UNIT DebugExportTracePrepare
+PURPOSE: Resolve the output path for the current debug trace export.
+DO:
+  - LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/template-vars.md
+  - RUN TemplateVarResolution before resolving DUMP_PATH
+  - SET DUMP_PATH = "{cf-studio-path}/.debug-skill/<DEBUG_SLUG>-<YYYY-MM-DD>-<HHMMSS>.md"
+```
+
+```pdsl
+UNIT DebugExportTraceWrite
+PURPOSE: Materialize the trace export file on disk.
+DO:
+  - RUN ensure the directory {cf-studio-path}/.debug-skill/ exists, creating it if missing
+  - RUN render the trace report (see DebugTraceReport) into DUMP_PATH
+```
+
+```pdsl
+UNIT DebugExportTraceAnnounce
+PURPOSE: Announce the completed trace export and surface the written file reference.
+DO:
+  - EMIT "Trace written to <DUMP_PATH> (<count> steps)."
+  - EMIT the written file as a clickable reference: <ref_file file="<absolute DUMP_PATH>" />
 ```
 
 ```pdsl

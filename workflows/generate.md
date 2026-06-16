@@ -22,13 +22,9 @@ legacy multi-phase generate workflow has been retired; routing is the only behav
 UNIT GenerateBootstrap
 PURPOSE: Load the runtime routing rules needed before any generate routing work.
 DO:
-  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/skill-invocation-art.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/pdsl-execution-card.md
-  RUN SkillInvocationArt
-  LOAD and REMEMBER rules from {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/command-resolution.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-resolution.md
-  RUN CommandResolution to resolve {cfs_cmd}
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
+  RUN WorkflowBootstrapRouterPrelude
+  RUN WorkflowBootstrapCommandWorkflowResolution
   CONTINUE GenerateRoute
 RULES:
   ALWAYS load command-resolution and workflow-resolution before GenerateRoute
@@ -49,25 +45,49 @@ DO:
   RUN WorkflowResolution to resolve the available cf-* skills
   SET AVAILABLE_SKILLS = the resolved cf-* skills (name + its workflow description), excluding `cf`, `cf-analyze`, and `cf-generate`
   CONTINUE GenerateNoMatch WHEN AVAILABLE_SKILLS is empty
-  LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md WHEN the request spans more than one cf-* domain
-  RUN matching of ORIGINAL_INTENT against AVAILABLE_SKILLS by semantic relevance — score each skill's name and description against the intent, keep those clearly on-topic, rank them, synthesize compatible companion groups when the request spans domains, and mark the top-ranked skill or group as suggested — WHEN ORIGINAL_INTENT != unset
-  EMIT_MENU GenerateIntentOffer WHEN ORIGINAL_INTENT != unset AND at least one relevant skill matched
-  CONTINUE GenerateNoMatch WHEN ORIGINAL_INTENT != unset AND no relevant skill matched
-  EMIT_MENU GenerateLoadOffer WHEN ORIGINAL_INTENT == unset
-  WAIT user.reply
-  STOP_TURN
+  CONTINUE GenerateRouteIntentFlow WHEN ORIGINAL_INTENT != unset
+  CONTINUE GenerateRouteLoadFlow WHEN ORIGINAL_INTENT == unset
 RULES:
   ALWAYS preserve ORIGINAL_INTENT when it was already set by GenerateDescribeIntent
   ALWAYS resolve cf-* skills via WorkflowResolution, never by guessing and never via a CLI skills-list command
   ALWAYS exclude `cf`, `cf-analyze`, and `cf-generate` from AVAILABLE_SKILLS and companion groups; these are routers/entrypoints and must never be offered as companions
   ALWAYS pass ORIGINAL_INTENT into every invoked skill when an intent is present
   ALWAYS render each offered skill as `<skill-name> — <short description>` from AVAILABLE_SKILLS
-  ALWAYS load companion-skills before synthesizing companion groups
   ALWAYS support compatible companion multi-select, invoking selected skills sequentially so each skill's prerequisites and gates run in order
   NEVER let a companion or multi-select route bypass any selected skill's WAIT, STOP_TURN, approval, brainstorm, plan, validation, or sub-agent gate
   NEVER load or run any legacy generate phase logic; routing is the only behavior
 NOTES:
   Empty-state ownership: WorkflowResolution STOP_TURNs when zero cf-* skills are discovered (a broken install), so that case never reaches this router; the CONTINUE GenerateNoMatch WHEN AVAILABLE_SKILLS is empty branch handles the distinct case where resolution succeeds but excluding this router (cf-generate) leaves no other skill.
+```
+
+```pdsl
+UNIT GenerateRouteIntentFlow
+PURPOSE: Load companion-skill context when needed, match the generate intent, and route to the correct offer.
+DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md WHEN the request spans more than one cf-* domain
+  RUN matching of ORIGINAL_INTENT against AVAILABLE_SKILLS by semantic relevance — score each skill's name and description against the intent, keep those clearly on-topic, rank them, synthesize compatible companion groups when the request spans domains, and mark the top-ranked skill or group as suggested
+  CONTINUE GenerateRouteIntentMenu WHEN at least one relevant skill matched
+  CONTINUE GenerateNoMatch WHEN no relevant skill matched
+RULES:
+  ALWAYS load companion-skills before synthesizing companion groups
+```
+
+```pdsl
+UNIT GenerateRouteIntentMenu
+PURPOSE: Present the matched generate routes and wait for the user's selection.
+DO:
+  EMIT_MENU GenerateIntentOffer
+  WAIT user.reply
+  STOP_TURN
+```
+
+```pdsl
+UNIT GenerateRouteLoadFlow
+PURPOSE: Present the generate load menu when no intent was provided.
+DO:
+  EMIT_MENU GenerateLoadOffer
+  WAIT user.reply
+  STOP_TURN
 MENU GenerateIntentOffer
 TITLE: Generate intent matched these cf-* workflow(s) — pick one, or pick a companion group / comma-separated compatible skills.
 OPTIONS:
@@ -87,12 +107,28 @@ OPTIONS:
 ```pdsl
 UNIT GenerateDescribeIntent
 PURPOSE: Capture a generate intent as a separate turn before routing.
+STATE:
+  SET GENERATE_INTENT_CAPTURE_STATE: prompt | resume | unset (default unset, scope workflow_run)
 DO:
   EMIT "Describe what you want to generate, change, or fix. I will match the relevant cf-* workflow(s), including companions when needed."
+  SET GENERATE_INTENT_CAPTURE_STATE = resume
   WAIT user.reply
   STOP_TURN
 RULES:
-  ALWAYS on the resumed reply set ORIGINAL_INTENT = user.reply and CONTINUE GenerateRoute
+  ALWAYS stop the turn after prompting so generate intent routing resumes in an explicit unit
+```
+
+```pdsl
+UNIT GenerateDescribeIntentResume
+PURPOSE: Route the resumed generate intent after the prompt turn completes.
+STATE:
+  SET GENERATE_INTENT_CAPTURE_STATE: prompt | resume | unset (default unset, scope workflow_run)
+WHEN:
+  REQUIRE GENERATE_INTENT_CAPTURE_STATE == resume
+DO:
+  SET ORIGINAL_INTENT = user.reply
+  SET GENERATE_INTENT_CAPTURE_STATE = unset
+  CONTINUE GenerateRoute
 ```
 
 ```pdsl

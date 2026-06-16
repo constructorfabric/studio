@@ -17,18 +17,10 @@ PURPOSE: Load the runtime rules needed before any plan work begins.
 STATE:
   SET ORIGINAL_INTENT: string | unset (default unset, scope workflow_run)
 DO:
-  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/skill-invocation-art.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/pdsl-execution-card.md
-  RUN SkillInvocationArt
-  LOAD and REMEMBER rules from {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/studio-instructions-memory.md
-  RUN StudioInstructionsMemoryGate
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
+  RUN WorkflowBootstrapCoreSession
   SET ORIGINAL_INTENT = the user's triggering plan request (verbatim or shortest faithful summary), or unset when activation-only, WHEN ORIGINAL_INTENT == unset
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/command-resolution.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/template-vars.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/context-memory.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/dispatch.md
-  RUN CommandResolution to resolve {cfs_cmd}
+  RUN WorkflowBootstrapCommandDispatchTemplateContext
   SET CURRENT_WORKFLOW = cf-plan, SET COMPANION_CONTINUE = PlanPhase0Discover and LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md and CONTINUE CompanionSkillOffer WHEN ORIGINAL_INTENT != unset
   CONTINUE PlanPhase0Discover WHEN ORIGINAL_INTENT == unset
 RULES:
@@ -146,8 +138,7 @@ DO:
   RUN select phase compiler isolation policy from plan lifecycle, gitignore state, and whether plan.toml, briefs, and declared output paths are worktree-visible
   EMIT "Selected phase compiler: {selected_phase_compiler}. Rationale: {phase_agent_isolation_rationale}. This determines whether phase files are written in-place or in a worktree-visible isolated context."
   RUN SubAgentDispatch for the selected phase compiler dispatch group
-  SET CF_PHASE_GATE = released_for_dispatch, DISPATCH the selected compiler agent per brief (gated), with dispatch_group_id recorded in plan.toml, SET CF_PHASE_GATE = armed
-  SET plan.execution_status="phase_compilers_dispatched"
+  RUN PlanPhaseCompilerDispatchRun
   STOP_TURN
 RULES:
   ALWAYS use cf-phase-compiler for gitignored or main-checkout-local plan state
@@ -155,6 +146,16 @@ RULES:
   ALWAYS tell the user which compiler variant was selected and why before dispatch, including when sub-agent approval is already saved for the session
   ALWAYS set CF_PHASE_GATE released_for_dispatch before compiler dispatch and armed immediately after
   NEVER use WAIT as an async sub-agent join; resume validation only through PlanPhaseCompilerComplete
+```
+
+```pdsl
+UNIT PlanPhaseCompilerDispatchRun
+PURPOSE: Open the phase gate, dispatch compiler agents, and persist the dispatched state.
+DO:
+  SET CF_PHASE_GATE = released_for_dispatch
+  DISPATCH the selected compiler agent per brief (gated), with dispatch_group_id recorded in plan.toml
+  SET CF_PHASE_GATE = armed
+  SET plan.execution_status="phase_compilers_dispatched"
 ```
 ```pdsl
 UNIT PlanPhaseCompilerComplete

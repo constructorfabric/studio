@@ -33,35 +33,17 @@ WHEN:
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/dispatch.md
   RUN SubAgentSelectionRegistry
-  RUN draft the plan at high granularity: decompose work into concrete actions with owner, input, output, dependency, and verification; group actions into phases when the plan has more than 7 actions or multiple validation checkpoints; define the sub-agent intent for each action; group actions into parallel, sequential, and inline execution; prefer `DISPATCH: <sub-agent-name>` for every task that a capable cf-* sub-agent can perform; reserve `INLINE:` for controller-only gates, simple probes, and operations with no suitable sub-agent; require every inline item to state why it cannot be dispatched; include a git finalization action or phase for any file-writing plan; and end the plan with `CONTINUE workflow protocol: CONTINUE PLAN_FIRST_CONTINUE`
+  RUN draft the plan at high granularity, following the PlanShapeContract, PlanExecutionDirectives, PlanGitFinalizationContract, PlanAcceptedExecutionContract, and PlanDeviationContract
   EMIT the drafted plan for user review
   EMIT_MENU PlanStorageChoice
   WAIT user.reply
   STOP_TURN
 RULES:
-  ALWAYS define the sub-agent intent for the planned work before execution
-  ALWAYS classify each action as a parallel sub-agent, a sequential sub-agent, or an inline task
-  ALWAYS make plans detailed enough that each action is independently executable, reviewable, and has a named verification or validation check
-  ALWAYS decompose large plans into named phases when the plan has more than 7 actions, spans multiple files/workflows, or needs more than one validation checkpoint
-  ALWAYS make every phase independently verifiable by listing its exit condition and validation command, review, or observable evidence
-  ALWAYS require every plan item to include an explicit execution directive; use `DISPATCH: <sub-agent-name>` for delegated sub-agent work and `INLINE:` only for controller-owned gates, simple probes, or tasks with no suitable sub-agent
-  ALWAYS choose sub-agent names from the loaded `agents.toml` registry exposed by SubAgentSelectionRegistry; NEVER invent, alias, or infer unregistered sub-agent names
-  ALWAYS choose `DISPATCH: <sub-agent-name>` over `INLINE:` when a registered cf-* sub-agent can materially perform the inspect, classify, review, validate, author, fix, plan, explore, or implementation work
-  ALWAYS include the selected sub-agent name and whether the delegated task is parallel or sequential in each `DISPATCH:` plan item
-  ALWAYS include a short reason in every `INLINE:` plan item explaining why the controller must do it directly
-  ALWAYS include a git finalization action for file-writing plans that states whether the workflow should inspect git state only, stage files, or create a commit; any planned staging or commit must explicitly route through GitCommitModeGate before git state changes
   ALWAYS recommend disk storage in the storage prompt when the plan is phase-decomposed, has more than 10 actions, or needs resume-safe execution
   ALWAYS end the reviewed plan with `CONTINUE workflow protocol: CONTINUE PLAN_FIRST_CONTINUE`
   ALWAYS present the plan for user review before executing it
   ALWAYS offer to save the plan to disk or keep it in session memory
   ALWAYS set accepted_plan_active before continuing planned work
-  ALWAYS after accepted_plan_active is set, treat the accepted plan as the controlling execution contract until it completes, is revised, or is explicitly cancelled
-  ALWAYS before executing each planned action, read and follow its execution directive: `DISPATCH`, `INLINE`, or git finalization
-  ALWAYS execute `DISPATCH: <sub-agent-name>` actions through SubAgentDispatch for the named sub-agent; NEVER perform a DISPATCH action inline merely because it appears small, local, faster, or easier
-  ALWAYS execute `INLINE:` actions directly only when the accepted plan labels that action INLINE
-  ALWAYS STOP_TURN and report a plan-deviation error when the next planned action cannot be executed as written
-  NEVER let an accepted plan silently start task work or bypass the owning workflow protocol; accepted exits must return through `CONTINUE PLAN_FIRST_CONTINUE`
-  NEVER execute the planned work before the user has reviewed the plan and chosen its storage
 MENU PlanStorageChoice
 TITLE: Plan ready — review it, then choose how to keep it before I start. Disk is suggested for large, phased, or resume-sensitive plans; memory is suggested for small plans.
 OPTIONS:
@@ -70,4 +52,55 @@ OPTIONS:
   3 revise -> revise the plan per user feedback and EMIT_MENU PlanStorageChoice
   4 stop -> STOP_TURN
   INVALID -> EMIT_MENU PlanStorageChoice
+```
+
+```pdsl
+UNIT PlanShapeContract
+PURPOSE: Define required structure for drafted execution plans.
+RULES:
+  ALWAYS define the sub-agent intent for each planned action before execution
+  ALWAYS classify each action as a parallel sub-agent, a sequential sub-agent, or an inline task
+  ALWAYS make every action list owner, input, output, dependency, and verification
+  ALWAYS make plans detailed enough that each action is independently executable, reviewable, and has a named verification or validation check
+  ALWAYS decompose large plans into named phases when the plan has more than 7 actions, spans multiple files/workflows, or needs more than one validation checkpoint; every phase lists its exit condition and validation command, review, or observable evidence
+```
+
+```pdsl
+UNIT PlanExecutionDirectives
+PURPOSE: Define the accepted execution-directive syntax for plan items.
+RULES:
+  ALWAYS require every plan item to include exactly one execution directive: `DISPATCH:`, `INLINE:`, or `GIT_FINALIZATION:`
+  ALWAYS use `DISPATCH: <sub-agent-name>` for delegated sub-agent work, prefer it over `INLINE:` when a registered cf-* sub-agent can materially perform the work, and include whether the dispatch is parallel or sequential in the plan item body
+  ALWAYS use `INLINE: <controller reason>` only for controller-owned gates, simple probes, or tasks with no suitable registered sub-agent
+  ALWAYS use `GIT_FINALIZATION: inspect-only | stage | create-commit` as the only git-handling execution directive for accepted plans
+  ALWAYS choose sub-agent names from the loaded `agents.toml` registry exposed by SubAgentSelectionRegistry; NEVER invent, alias, or infer unregistered sub-agent names
+```
+
+```pdsl
+UNIT PlanGitFinalizationContract
+PURPOSE: Define git-finalization placement and gate requirements for file-writing plans.
+RULES:
+  ALWAYS include at least one `GIT_FINALIZATION:` plan item or phase in every file-writing plan
+  ALWAYS require any `GIT_FINALIZATION: stage` or `GIT_FINALIZATION: create-commit` action to run GitCommitModeGate before any git state change
+  ALWAYS place any `GIT_FINALIZATION: create-commit` action after file edits and required validation/review gates unless the owning workflow defines a stricter commit point
+```
+
+```pdsl
+UNIT PlanAcceptedExecutionContract
+PURPOSE: Define how accepted plans execute after storage selection.
+RULES:
+  ALWAYS after accepted_plan_active is set, treat the accepted plan as the controlling execution contract until it completes, is revised, or is explicitly cancelled
+  ALWAYS before executing each planned action, read and follow its execution directive: `DISPATCH:`, `INLINE:`, or `GIT_FINALIZATION:`
+  ALWAYS execute `DISPATCH: <sub-agent-name>` actions through SubAgentDispatch for the named sub-agent; NEVER perform a DISPATCH action inline merely because it appears small, local, faster, or easier
+  ALWAYS execute `INLINE:` actions directly only when the accepted plan labels that action INLINE
+  ALWAYS execute `GIT_FINALIZATION:` actions exactly as labeled; `inspect-only` permits read-only git inspection, `stage` must run GitCommitModeGate before any git state change, and `create-commit` must run GitCommitModeGate before any git state change or commit preparation
+```
+
+```pdsl
+UNIT PlanDeviationContract
+PURPOSE: Fail closed when accepted plan execution cannot follow the reviewed plan.
+RULES:
+  ALWAYS STOP_TURN and report a plan-deviation error when the next planned action cannot be executed as written
+  NEVER let an accepted plan silently start task work or bypass the owning workflow protocol; accepted exits must return through `CONTINUE PLAN_FIRST_CONTINUE`
+  NEVER execute the planned work before the user has reviewed the plan and chosen its storage
 ```

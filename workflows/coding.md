@@ -17,25 +17,26 @@ STATE:
   SET ORIGINAL_INTENT: string | unset (default unset, scope workflow_run)
   SET REVIEW_LOOP_REQUESTED: true | false | unset (default unset, scope workflow_run)
 DO:
-  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/skill-invocation-art.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/pdsl-execution-card.md
-  RUN SkillInvocationArt
-  LOAD and REMEMBER rules from {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/studio-instructions-memory.md
-  RUN StudioInstructionsMemoryGate
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
+  RUN WorkflowBootstrapCoreSession
   SET ORIGINAL_INTENT = the user's triggering coding request (verbatim or shortest faithful summary), or unset when activation-only, WHEN ORIGINAL_INTENT == unset
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/command-resolution.md
-  RUN CommandResolution to resolve {cfs_cmd} and remember CLI capabilities
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/context-memory.md
-  LOAD {cf-studio-path}/.core/requirements/code-checklist.md
-  LOAD {cf-studio-path}/.core/requirements/bug-finding.md
-  LOAD {cf-studio-path}/.core/requirements/consistency-checklist.md
-  RUN verify the references loaded; EMIT "Required reference not found (code-checklist, bug-finding, or consistency-checklist methodology under {cf-studio-path}/.core) — cannot author or review code; reinstall or sync the studio kit, then retry." and STOP_TURN WHEN any load fails
+  RUN WorkflowBootstrapCommandContext
+  RUN CodingBootstrapMethodologies
   CONTINUE CodingIntentCapture WHEN ORIGINAL_INTENT == unset
   CONTINUE CodingIntentClassify WHEN ORIGINAL_INTENT != unset
 RULES:
   ALWAYS remember git-commit-mode so any later commit request in this active workflow session runs GitCommitModeGate before routing, authoring, git use, or delegation
   NEVER author or review code after a required reference load failure
+```
+
+```pdsl
+UNIT CodingBootstrapMethodologies
+PURPOSE: Load and verify the code review methodologies used by cf-coding.
+DO:
+  LOAD {cf-studio-path}/.core/requirements/code-checklist.md
+  LOAD {cf-studio-path}/.core/requirements/bug-finding.md
+  LOAD {cf-studio-path}/.core/requirements/consistency-checklist.md
+  RUN verify the references loaded; EMIT "Required reference not found (code-checklist, bug-finding, or consistency-checklist methodology under {cf-studio-path}/.core) — cannot author or review code; reinstall or sync the studio kit, then retry." and STOP_TURN WHEN any load fails
 ```
 
 ```pdsl
@@ -69,15 +70,22 @@ DO:
   RUN classify ORIGINAL_INTENT by requested operation plus whether it evaluates existing code; SET REVIEW_LOOP_REQUESTED = true WHEN ORIGINAL_INTENT asks to review, audit, critique, inspect, check, validate, verify, analyze, compare behavior, or find issues/findings, bugs, risks, failures, regressions, bypasses, defects, root causes, routing problems, or behavioral-analysis concerns in existing code, including review-and-fix wording
   RUN default REVIEW_LOOP_REQUESTED = true WHEN REVIEW_LOOP_REQUESTED == unset AND ORIGINAL_INTENT primarily evaluates existing code rather than creating or changing it
   RUN classify ORIGINAL_INTENT; SET REVIEW_LOOP_REQUESTED = false WHEN REVIEW_LOOP_REQUESTED == unset
+  RUN CodingCompanionSetup
+RULES:
+  ALWAYS route review/audit/critique/inspect/check/validate/verify/analyze/behavior-comparison/find-issues/bug-risk-failure-regression-bypass-defect-root-cause-routing-analysis intents through CodingReviewLoop first; any fixes must be gated by ReviewFindingsReportBrowser and ReviewFixApprovalGate, not by direct coder dispatch
+  NEVER run when ORIGINAL_INTENT == unset
+```
+
+```pdsl
+UNIT CodingCompanionSetup
+PURPOSE: Prepare the companion-skill and plan-first routing handoff for cf-coding.
+DO:
   SET PLAN_FIRST_CONTINUE = CodingDispatch
   SET CURRENT_WORKFLOW = cf-coding
   SET COMPANION_CONTINUE = CodingExploreGate
   LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md
   CONTINUE CompanionSkillOffer
-RULES:
-  ALWAYS route review/audit/critique/inspect/check/validate/verify/analyze/behavior-comparison/find-issues/bug-risk-failure-regression-bypass-defect-root-cause-routing-analysis intents through CodingReviewLoop first; any fixes must be gated by ReviewFindingsReportBrowser and ReviewFixApprovalGate, not by direct coder dispatch
-  NEVER run when ORIGINAL_INTENT == unset
 ```
 
 ```pdsl
@@ -199,11 +207,10 @@ STATE:
 WHEN:
   REQUIRE REVIEW_FIX_APPROVED == true
 DO:
-  RUN GitCommitModeGate before preparing git policy for approved review-fix dispatch
-  RUN resolve git_commit_mode (probe once per session), contributing_guide (discover; use null for no discovered guide), and the mode-matched git_constraint before approved review-fix dispatch
+  RUN GitWriteDispatchPolicyResolve
   RUN select SELECTED_REVIEW_FIX_AGENT from approved findings and target code paths using CodingAuthorDispatch priority
   RUN SubAgentDispatch for the SELECTED_REVIEW_FIX_AGENT review-fix dispatch group
-  DISPATCH SELECTED_REVIEW_FIX_AGENT with mode=fix, target_paths, APPROVED_REVIEW_FINDING_IDS, REVIEW_FIX_SCOPE, git_commit_mode, contributing_guide, git_constraint, commit_footer_contract, and resource_context to apply only approved review fixes
+  DISPATCH SELECTED_REVIEW_FIX_AGENT with mode=fix, target_paths, APPROVED_REVIEW_FINDING_IDS, REVIEW_FIX_SCOPE, git_commit_mode=GIT_COMMIT_MODE, contributing_guide=CONTRIBUTING_GUIDE, git_constraint=GIT_CONSTRAINT, commit_footer_contract=COMMIT_FOOTER_CONTRACT, and resource_context to apply only approved review fixes
   CONTINUE CodingReviewFixOutcome
 RULES:
   NEVER let approvals widen silently beyond APPROVED_REVIEW_FINDING_IDS and REVIEW_FIX_SCOPE
@@ -269,8 +276,7 @@ RULES:
 UNIT CodingAuthorGitSetup
 PURPOSE: Resolve git write policy before author dispatch.
 DO:
-  RUN GitCommitModeGate before preparing git policy for coder dispatch
-  RUN resolve git_commit_mode (probe once per session), contributing_guide (discover; use null for no discovered guide), and the mode-matched git_constraint
+  RUN GitWriteDispatchPolicyResolve
   CONTINUE CodingAuthorDispatch
 ```
 
@@ -283,7 +289,7 @@ DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/dispatch.md
   SET SELECTED_CODING_AGENT by this priority order (first match wins): (1) cf-codegen for fully specified tasks implementable in an isolated context with no clarification; else (2) cf-generate-coder-smart for changes involving behavior, tests, refactors, API boundaries, or any security/concurrency/data-model implication; else (3) cf-generate-coder-casual for small code-only tasks touching at most two source/test files with no security/concurrency/data-model risk; else cf-generate-coder-smart as the default
   RUN SubAgentDispatch for SELECTED_CODING_AGENT dispatch group
-  DISPATCH SELECTED_CODING_AGENT with git_commit_mode, contributing_guide, git_constraint, commit_footer_contract, and any CodingExploreGate-resolved resource_context as read-only context (absolute path or reference, never inline prompt text)
+  DISPATCH SELECTED_CODING_AGENT with git_commit_mode=GIT_COMMIT_MODE, contributing_guide=CONTRIBUTING_GUIDE, git_constraint=GIT_CONSTRAINT, commit_footer_contract=COMMIT_FOOTER_CONTRACT, and any CodingExploreGate-resolved resource_context as read-only context (absolute path or reference, never inline prompt text)
   CONTINUE CodingValidate WHEN code has been written or edited
 RULES:
   NEVER let resource_context gate a coder verdict

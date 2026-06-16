@@ -16,13 +16,8 @@ STATE:
 WHEN:
   REQUIRE ReviewFindingsReport exists and contains one or more findings
 DO:
-  SET REVIEW_FINDINGS_BROWSER_ENTRY = first WHEN REVIEW_FINDINGS_BROWSER_ENTRY == unset
-  SET SELECTED_FINDING_IDS = empty WHEN REVIEW_FINDINGS_BROWSER_ENTRY == first
-  SET CURRENT_FINDING_INDEX = 1 WHEN REVIEW_FINDINGS_BROWSER_ENTRY == first
-  SET REVIEW_REPORT_VIEW = detail WHEN REVIEW_FINDINGS_BROWSER_ENTRY == first
-  SET REVIEW_FINDINGS_BROWSER_ENTRY = rerender WHEN REVIEW_FINDINGS_BROWSER_ENTRY == first
-  EMIT the current finding in detail view WHEN REVIEW_REPORT_VIEW == detail: finding id, position N of total, SEVERITY, LOCATION, EVIDENCE, ROOT_CAUSE, IMPACT, SUGGESTED_FIX, VERIFICATION, and CONFIDENCE
-  EMIT the full findings table WHEN REVIEW_REPORT_VIEW == table: id, severity, location, one-line impact, selected-for-fix marker
+  RUN ReviewFindingsBrowserReset
+  RUN ReviewFindingsBrowserRender
   EMIT_MENU ReviewFindingsNavigation
   WAIT user.reply
   STOP_TURN
@@ -52,6 +47,25 @@ OPTIONS:
 ```
 
 ```pdsl
+UNIT ReviewFindingsBrowserReset
+PURPOSE: Normalize the first-entry state for the active review findings browser session.
+DO:
+  SET REVIEW_FINDINGS_BROWSER_ENTRY = first WHEN REVIEW_FINDINGS_BROWSER_ENTRY == unset
+  SET SELECTED_FINDING_IDS = empty WHEN REVIEW_FINDINGS_BROWSER_ENTRY == first
+  SET CURRENT_FINDING_INDEX = 1 WHEN REVIEW_FINDINGS_BROWSER_ENTRY == first
+  SET REVIEW_REPORT_VIEW = detail WHEN REVIEW_FINDINGS_BROWSER_ENTRY == first
+  SET REVIEW_FINDINGS_BROWSER_ENTRY = rerender WHEN REVIEW_FINDINGS_BROWSER_ENTRY == first
+```
+
+```pdsl
+UNIT ReviewFindingsBrowserRender
+PURPOSE: Emit the current browser view for the active review findings report.
+DO:
+  EMIT the current finding in detail view WHEN REVIEW_REPORT_VIEW == detail: finding id, position N of total, SEVERITY, LOCATION, EVIDENCE, ROOT_CAUSE, IMPACT, SUGGESTED_FIX, VERIFICATION, and CONFIDENCE
+  EMIT the full findings table WHEN REVIEW_REPORT_VIEW == table: id, severity, location, one-line impact, selected-for-fix marker
+```
+
+```pdsl
 UNIT ReviewFixApprovalGate
 PURPOSE: Gate every review-fix loop on explicit user approval and let the user choose the fix scope.
 STATE:
@@ -74,21 +88,54 @@ RULES:
   ALWAYS run only when continued from the browser-owned `fix-menu` in ReviewFindingsReportBrowser for the current review iteration
   ALWAYS treat REVIEW_FIX_MENU_TOKEN plus REVIEW_FIX_MENU_REPORT == current as a one-use continuation guard from the active ReviewFindingsReport
   ALWAYS offer the fix-scope options: only CRITICAL and MAJOR findings, all findings, or a user-selected partial subset
-  ALWAYS when REVIEW_FIX_SCOPE == partial and SELECTED_FINDING_IDS is non-empty, use only the current-report finding IDs from ReviewFindingsReportBrowser before returning to the caller
-  ALWAYS when REVIEW_FIX_SCOPE == partial and SELECTED_FINDING_IDS == empty, prompt for specific finding IDs, keep the active report guard, validate the reply against the active ReviewFindingsReport, and set APPROVED_REVIEW_FINDING_IDS only after at least one valid finding ID is provided
   ALWAYS set REVIEW_FIX_SCOPE and REVIEW_FIX_APPROVED from the resolved menu option before returning control to the calling review loop
-  ALWAYS set APPROVED_REVIEW_FINDING_IDS to all-critical-major, all, or the selected specific finding IDs before returning with REVIEW_FIX_APPROVED == true
   ALWAYS clear REVIEW_FIX_MENU_TOKEN and REVIEW_FIX_MENU_REPORT after ReviewFixApprovalGate resolves
   ALWAYS treat REVIEW_FIX_SCOPE == none and REVIEW_FIX_APPROVED == false as "no fixes approved" and let the calling review loop report the remaining findings
   NEVER apply review fixes without explicit user approval of the chosen scope
 MENU ReviewFixScope
 TITLE: Review found issues — what should I fix? (nothing is changed until you choose)
 OPTIONS:
-  1 crit-major -> SET REVIEW_FIX_SCOPE = critical-major; SET REVIEW_FIX_APPROVED = true; SET APPROVED_REVIEW_FINDING_IDS = all-critical-major; SET REVIEW_FIX_MENU_TOKEN = unset; SET REVIEW_FIX_MENU_REPORT = unset; RETURN to the calling review loop to fix only CRITICAL and MAJOR findings, then re-review (suggested)
-  2 all -> SET REVIEW_FIX_SCOPE = all; SET REVIEW_FIX_APPROVED = true; SET APPROVED_REVIEW_FINDING_IDS = all; SET REVIEW_FIX_MENU_TOKEN = unset; SET REVIEW_FIX_MENU_REPORT = unset; RETURN to the calling review loop to fix all findings, then re-review
+  1 crit-major -> CONTINUE ReviewFixScopeApproveCriticalMajor
+  2 all -> CONTINUE ReviewFixScopeApproveAll
   3 partial -> SET REVIEW_FIX_SCOPE = partial; SET REVIEW_FIX_APPROVED = true; CONTINUE ReviewFixPartialScopeResolve
-  4 none -> SET REVIEW_FIX_SCOPE = none; SET REVIEW_FIX_APPROVED = false; SET APPROVED_REVIEW_FINDING_IDS = empty; SET REVIEW_FIX_MENU_TOKEN = unset; SET REVIEW_FIX_MENU_REPORT = unset; RETURN to the calling review loop without applying fixes
+  4 none -> CONTINUE ReviewFixScopeApproveNone
   INVALID -> EMIT_MENU ReviewFixScope
+```
+
+```pdsl
+UNIT ReviewFixScopeApproveCriticalMajor
+PURPOSE: Approve only CRITICAL and MAJOR findings for the current review-fix iteration.
+DO:
+  SET REVIEW_FIX_SCOPE = critical-major
+  SET REVIEW_FIX_APPROVED = true
+  SET APPROVED_REVIEW_FINDING_IDS = all-critical-major
+  SET REVIEW_FIX_MENU_TOKEN = unset
+  SET REVIEW_FIX_MENU_REPORT = unset
+  RETURN to the calling review loop to fix only CRITICAL and MAJOR findings, then re-review (suggested)
+```
+
+```pdsl
+UNIT ReviewFixScopeApproveAll
+PURPOSE: Approve every finding from the current review report for the next fix iteration.
+DO:
+  SET REVIEW_FIX_SCOPE = all
+  SET REVIEW_FIX_APPROVED = true
+  SET APPROVED_REVIEW_FINDING_IDS = all
+  SET REVIEW_FIX_MENU_TOKEN = unset
+  SET REVIEW_FIX_MENU_REPORT = unset
+  RETURN to the calling review loop to fix all findings, then re-review
+```
+
+```pdsl
+UNIT ReviewFixScopeApproveNone
+PURPOSE: Return to the calling review loop with no fixes approved for the current report.
+DO:
+  SET REVIEW_FIX_SCOPE = none
+  SET REVIEW_FIX_APPROVED = false
+  SET APPROVED_REVIEW_FINDING_IDS = empty
+  SET REVIEW_FIX_MENU_TOKEN = unset
+  SET REVIEW_FIX_MENU_REPORT = unset
+  RETURN to the calling review loop without applying fixes
 ```
 
 ```pdsl
@@ -205,17 +252,36 @@ WHEN:
   REQUIRE REVIEW_FIX_MENU_TOKEN == ready
   REQUIRE REVIEW_FIX_MENU_REPORT == current
 DO:
-  EMIT "No valid finding IDs from the current review report were provided. Reply with one or more finding IDs from the current report." WHEN user.reply is empty OR user.reply names no finding IDs from the active ReviewFindingsReport
-  WAIT user.reply WHEN user.reply is empty OR user.reply names no finding IDs from the active ReviewFindingsReport
-  STOP_TURN WHEN user.reply is empty OR user.reply names no finding IDs from the active ReviewFindingsReport
-  SET APPROVED_REVIEW_FINDING_IDS = the specific finding IDs named in user.reply that match findings in the active ReviewFindingsReport
-  SET PARTIAL_IDS_CAPTURE_STATE = unset
-  SET REVIEW_FIX_MENU_TOKEN = unset
-  SET REVIEW_FIX_MENU_REPORT = unset
-  RETURN to the calling review loop to fix only those, then re-review
+  CONTINUE ReviewFixPartialIdsRetry WHEN user.reply is empty OR user.reply names no finding IDs from the active ReviewFindingsReport
+  CONTINUE ReviewFixPartialIdsReturn WHEN user.reply names one or more finding IDs from the active ReviewFindingsReport
 RULES:
   ALWAYS keep the active ReviewFindingsReport guard in place while waiting for explicit partial finding IDs
   ALWAYS retry partial ID capture when user.reply is missing, empty, or names no finding IDs from the active ReviewFindingsReport
   ALWAYS return from partial ID capture only after parsing at least one valid finding ID from the active ReviewFindingsReport
   ALWAYS set APPROVED_REVIEW_FINDING_IDS before clearing PARTIAL_IDS_CAPTURE_STATE, REVIEW_FIX_MENU_TOKEN, and REVIEW_FIX_MENU_REPORT
+```
+
+```pdsl
+UNIT ReviewFixPartialIdsRetry
+PURPOSE: Re-prompt for explicit finding IDs when the resumed reply does not name any valid current findings.
+DO:
+  EMIT "No valid finding IDs from the current review report were provided. Reply with one or more finding IDs from the current report."
+  WAIT user.reply
+  STOP_TURN
+```
+
+```pdsl
+UNIT ReviewFixPartialIdsReturn
+PURPOSE: Return the explicit partial finding-ID selection to the calling review loop.
+STATE:
+  SET APPROVED_REVIEW_FINDING_IDS: list | all-critical-major | all | empty (default empty, scope workflow_run)
+  SET PARTIAL_IDS_CAPTURE_STATE: prompt | validate | unset (default unset, scope workflow_run)
+  SET REVIEW_FIX_MENU_TOKEN: ready | unset (default unset, scope workflow_run)
+  SET REVIEW_FIX_MENU_REPORT: current | unset (default unset, scope workflow_run)
+DO:
+  SET APPROVED_REVIEW_FINDING_IDS = the specific finding IDs named in user.reply that match findings in the active ReviewFindingsReport
+  SET PARTIAL_IDS_CAPTURE_STATE = unset
+  SET REVIEW_FIX_MENU_TOKEN = unset
+  SET REVIEW_FIX_MENU_REPORT = unset
+  RETURN to the calling review loop to fix only those, then re-review
 ```

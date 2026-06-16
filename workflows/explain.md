@@ -18,24 +18,11 @@ STATE:
   SET EXPLAIN_EXPORT: true | false (default false, scope workflow_run)
   SET ORIGINAL_INTENT: string | unset (default unset, scope workflow_run)
 DO:
-  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/skill-invocation-art.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/pdsl-execution-card.md
-  RUN SkillInvocationArt
-  LOAD and REMEMBER rules from {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/studio-instructions-memory.md
-  RUN StudioInstructionsMemoryGate
-  SET ORIGINAL_INTENT = the user's triggering explain request (verbatim or shortest faithful summary), or unset when activation-only, WHEN ORIGINAL_INTENT == unset
-  LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/dispatch.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/context-memory.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/template-vars.md WHEN EXPLAIN_EXPORT == true
-  SET EXPLAIN_MODE = true
-  SET analyze_phase_2_deterministic_gate = SKIPPED
-  SET analyze_phase_3_standard_checklist = SKIPPED
-  SET analyze_phase_5_next_steps = SKIPPED
-  SET analyze_phase_4_output_schema = storytelling_output_schema
-  SET enforceRemediationPrompts = false
-  LOAD {cf-studio-path}/.core/requirements/storytelling.md (its router loads storytelling-shared, storytelling-phases, storytelling-modes, and storytelling-preferences)
-  LOAD {cf-studio-path}/.core/requirements/storytelling-export.md WHEN EXPLAIN_EXPORT == true
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
+  RUN WorkflowBootstrapCoreSession
+  RUN ExplainBootstrapIntentRuntime
+  RUN ExplainBootstrapModeState
+  RUN ExplainBootstrapStorytelling
   CONTINUE ExplainIntentCapture WHEN ORIGINAL_INTENT == unset
   CONTINUE ExplainExploreGate WHEN ORIGINAL_INTENT != unset
 RULES:
@@ -52,16 +39,61 @@ RULES:
   NEVER treat storytelling output as a validation report
   NEVER require cf or CFS_INIT before explain; this workflow owns its prerequisite loads
 ```
+
+```pdsl
+UNIT ExplainBootstrapIntentRuntime
+PURPOSE: Resolve the initial explain intent and runtime helpers before storytelling state is set.
+DO:
+  SET ORIGINAL_INTENT = the user's triggering explain request (verbatim or shortest faithful summary), or unset when activation-only, WHEN ORIGINAL_INTENT == unset
+  RUN WorkflowBootstrapDispatchContext
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/template-vars.md WHEN EXPLAIN_EXPORT == true
+```
+
+```pdsl
+UNIT ExplainBootstrapModeState
+PURPOSE: Set the explain-mode state that reuses the storytelling output contract.
+DO:
+  SET EXPLAIN_MODE = true
+  SET analyze_phase_2_deterministic_gate = SKIPPED
+  SET analyze_phase_3_standard_checklist = SKIPPED
+  SET analyze_phase_5_next_steps = SKIPPED
+  SET analyze_phase_4_output_schema = storytelling_output_schema
+  SET enforceRemediationPrompts = false
+```
+
+```pdsl
+UNIT ExplainBootstrapStorytelling
+PURPOSE: Load the storytelling requirements used by cf-explain.
+DO:
+  LOAD {cf-studio-path}/.core/requirements/storytelling.md (its router loads storytelling-shared, storytelling-phases, storytelling-modes, and storytelling-preferences)
+  LOAD {cf-studio-path}/.core/requirements/storytelling-export.md WHEN EXPLAIN_EXPORT == true
+```
 ```pdsl
 UNIT ExplainIntentCapture
 PURPOSE: Capture the explanation target before context discovery or storytelling preflight runs.
+STATE:
+  SET EXPLAIN_INTENT_CAPTURE_STATE: prompt | resume | unset (default unset, scope workflow_run)
 DO:
   EMIT "What should I explain? Provide the file, artifact, code area, decision, or topic to walk through."
+  SET EXPLAIN_INTENT_CAPTURE_STATE = resume
   WAIT user.reply
   STOP_TURN
 RULES:
-  ALWAYS on the resumed reply set ORIGINAL_INTENT = user.reply and CONTINUE ExplainExploreGate
+  ALWAYS stop the turn after prompting so explain routing resumes in an explicit unit
   NEVER run ExplainE0Preflight while ORIGINAL_INTENT is unset
+```
+
+```pdsl
+UNIT ExplainIntentCaptureResume
+PURPOSE: Route the resumed explanation target into the shared explore gate.
+STATE:
+  SET EXPLAIN_INTENT_CAPTURE_STATE: prompt | resume | unset (default unset, scope workflow_run)
+WHEN:
+  REQUIRE EXPLAIN_INTENT_CAPTURE_STATE == resume
+DO:
+  SET ORIGINAL_INTENT = user.reply
+  SET EXPLAIN_INTENT_CAPTURE_STATE = unset
+  CONTINUE ExplainExploreGate
 ```
 ```pdsl
 UNIT ExplainExploreGate

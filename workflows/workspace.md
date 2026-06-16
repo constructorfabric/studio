@@ -15,15 +15,9 @@ This skill drives the `{cfs_cmd}` workspace CLI to set up multi-repo federation 
 UNIT WorkspaceBootstrap
 PURPOSE: Load the runtime and workspace setup rules before any workspace work begins.
 DO:
-  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/skill-invocation-art.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/pdsl-execution-card.md
-  RUN SkillInvocationArt
-  LOAD and REMEMBER rules from {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/studio-instructions-memory.md
-  RUN StudioInstructionsMemoryGate
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/command-resolution.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/template-vars.md
-  RUN CommandResolution to resolve {cfs_cmd}
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
+  RUN WorkflowBootstrapCoreSession
+  RUN WorkflowBootstrapCommandTemplateContext
   LOAD {cf-studio-path}/.core/requirements/workspace-setup.md as the setup detail reference (framing, source fields, storage modes, validation checks, terminal-record shapes)
   SET ORIGINAL_INTENT = the user's triggering workspace request (verbatim or shortest faithful summary)
   SET CURRENT_WORKFLOW = cf-workspace, SET COMPANION_CONTINUE = WorkspaceIntentRouter and LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md and CONTINUE CompanionSkillOffer
@@ -135,15 +129,30 @@ WHEN:
 DO:
   RUN resolve workspace_config_path — standalone -> {project_root}/.studio-workspace.toml; inline -> {project_root}/config/core.toml
   EMIT the write plan and confirm
-  SET CF_PHASE_GATE = released_for_orchestrator_write (scope: workspace_config_path)
-  RUN `{cfs_cmd} --json workspace-init [--root <super-root>] [--output <path>] [--inline] [--force] [--dry-run]`
-  RUN `{cfs_cmd} --json workspace-add --name <name> (--path <path> | --url <url>) [--branch <branch>] [--role <role>] [--adapter <path>] [--inline]` per source
-  SET CF_PHASE_GATE = armed
-  RETURN a WORKSPACE_STATUS record (phase=generate, status=complete, next_route=validate) and CONTINUE WorkspaceValidate WHEN the CLI succeeded
+  RUN WorkspaceGenerateWrite
+  CONTINUE WorkspaceGenerateSuccess WHEN the CLI succeeded
   EMIT_MENU GenerateFailureMenu WHEN the CLI failed
 RULES:
   NEVER invoke the write CLI unless all_sources_confirmed == true and the location is valid; NEVER use --inline against a Git URL source set
   ALWAYS set CF_PHASE_GATE (an external protocol var; see the loaded reference) to released_for_orchestrator_write (scoped) before the CLI and armed immediately after it returns
+```
+
+```pdsl
+UNIT WorkspaceGenerateWrite
+PURPOSE: Open the write gate, run the workspace generation CLIs, and re-arm the gate.
+DO:
+  SET CF_PHASE_GATE = released_for_orchestrator_write (scope: workspace_config_path)
+  RUN `{cfs_cmd} --json workspace-init [--root <super-root>] [--output <path>] [--inline] [--force] [--dry-run]`
+  RUN `{cfs_cmd} --json workspace-add --name <name> (--path <path> | --url <url>) [--branch <branch>] [--role <role>] [--adapter <path>] [--inline]` per source
+  SET CF_PHASE_GATE = armed
+```
+
+```pdsl
+UNIT WorkspaceGenerateSuccess
+PURPOSE: Return the generate-phase success record and continue to validation.
+DO:
+  RETURN a WORKSPACE_STATUS record (phase=generate, status=complete, next_route=validate)
+  CONTINUE WorkspaceValidate
 MENU GenerateFailureMenu
 TITLE: The workspace generate CLI failed. Suggested: 1 for transient path-collision/locked-file errors; 2 for invalid config values. Reply with a number.
 OPTIONS:
@@ -160,14 +169,21 @@ DO:
   RUN per-source health — path exists; adapter found if expected; artifacts.toml valid when an adapter exists
   RUN `{cfs_cmd} --json list-ids` (cross-repo IDs)
   RUN `{cfs_cmd} --json validate` (cross-repo validation)
-  EMIT the report — total sources, reachable, with adapters, available cross-repo IDs
-  RETURN a WORKSPACE_VALIDATION record
+  RUN WorkspaceValidateSummarize
   EMIT_MENU ValidationFailureMenu WHEN critical failures are detected
   CONTINUE WorkspaceNextSteps WHEN no critical failures
 INVARIANTS:
   ALWAYS apply graceful degradation — missing repos emit warnings not errors and available sources keep working
 RULES:
   ALWAYS report all four checks before routing; critical failures = expected adapters not found OR cross-repo validation FAIL (distinct from expected degradation)
+```
+
+```pdsl
+UNIT WorkspaceValidateSummarize
+PURPOSE: Emit the validation summary and return the validation record before routing.
+DO:
+  EMIT the report — total sources, reachable, with adapters, available cross-repo IDs
+  RETURN a WORKSPACE_VALIDATION record
 MENU ValidationFailureMenu
 TITLE: Critical validation failures detected. Suggested: 1, since failures usually mean fixable source paths/adapters. Reply with a number.
 OPTIONS:

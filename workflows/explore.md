@@ -15,15 +15,9 @@ This skill discovers task-relevant project resource context via one or more cf-e
 UNIT ExploreBootstrap
 PURPOSE: Load the local rules needed before any explore work.
 DO:
-  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/skill-invocation-art.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/pdsl-execution-card.md
-  RUN SkillInvocationArt
-  LOAD and REMEMBER rules from {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/studio-instructions-memory.md
-  RUN StudioInstructionsMemoryGate
-  LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/dispatch.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/template-vars.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/context-memory.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
+  RUN WorkflowBootstrapCoreSession
+  RUN WorkflowBootstrapDispatchTemplateContext
   CONTINUE ExploreEntry
 RULES:
   ALWAYS run StudioInstructionsMemoryGate before explore entry routing, scanning, or saved-context handling
@@ -94,15 +88,8 @@ STATE:
 DO:
   SET task = ORIGINAL_INTENT (already captured by ExploreEntry)
   RUN scope estimation over search_roots (size, file and directory count, subtree breadth)
-  RUN SubAgentDispatch for the single cf-explorer dispatch group WHEN the scope fits one agent within PER_AGENT_BUDGET_MIN
-  DISPATCH a single cf-explorer with task, intent, known_paths, search_roots, and constraints WHEN the scope fits one agent within PER_AGENT_BUDGET_MIN
-  RUN partition search_roots into disjoint partitions, sizing each by file count, directory breadth, and total bytes so it finishes within PER_AGENT_BUDGET_MIN, WHEN the scope is too large for one agent
-  RUN SubAgentDispatch for the cf-explorer partition dispatch wave before each native partition wave WHEN partitions exist
-  DISPATCH one cf-explorer per partition in parallel, bounded by EXPLORE_PARALLELISM, each scoped to only its partition plus the per-agent budget, running overflow partitions in bounded waves, WHEN partitions exist
-  RUN synthesis of all partition EXPLORER_RESULTs into one deduplicated resource_context (consolidate resources by path, merge summaries, union missing-context questions, reconcile exploration_status to the worst partition status)
-  EMIT the rendered resource map and context summary
-  RETURN resource_context to the calling skill and STOP_TURN WHEN return_context == true
-  CONTINUE ExploreSaveOffer WHEN return_context != true
+  CONTINUE ExploreRunSingleAgent WHEN the scope fits one agent within PER_AGENT_BUDGET_MIN
+  CONTINUE ExploreRunPartitioned WHEN the scope is too large for one agent
 RULES:
   ALWAYS estimate scope and choose single-agent vs parallel-partition dispatch before exploring
   ALWAYS partition a large scope into disjoint, non-overlapping partitions each sized to complete within PER_AGENT_BUDGET_MIN (target 5 to 10 minutes per agent)
@@ -122,6 +109,35 @@ RULES:
 NOTES:
   Waves: overflow partitions run in sequential waves; each wave dispatches up to EXPLORE_PARALLELISM partitions in parallel, and wave N+1 starts only after every agent in wave N has returned.
   Synthesis: for each unique resource path keep one entry, merging duplicate partitions' summaries and taking the union of their suggested_slices (dropping identical slices); union all partitions' missing_context_questions; set merged exploration_status = insufficient if any partition is insufficient, else partial if any is partial, else sufficient.
+```
+
+```pdsl
+UNIT ExploreRunSingleAgent
+PURPOSE: Dispatch one explorer for a small scope, then synthesize the result.
+DO:
+  RUN SubAgentDispatch for the single cf-explorer dispatch group
+  DISPATCH a single cf-explorer with task, intent, known_paths, search_roots, and constraints
+  CONTINUE ExploreRunSynthesize
+```
+
+```pdsl
+UNIT ExploreRunPartitioned
+PURPOSE: Partition a large search scope, dispatch bounded explorer waves, then synthesize the results.
+DO:
+  RUN partition search_roots into disjoint partitions, sizing each by file count, directory breadth, and total bytes so it finishes within PER_AGENT_BUDGET_MIN
+  RUN SubAgentDispatch for the cf-explorer partition dispatch wave before each native partition wave
+  DISPATCH one cf-explorer per partition in parallel, bounded by EXPLORE_PARALLELISM, each scoped to only its partition plus the per-agent budget, running overflow partitions in bounded waves
+  CONTINUE ExploreRunSynthesize
+```
+
+```pdsl
+UNIT ExploreRunSynthesize
+PURPOSE: Merge explorer results, render the context summary, and route to return or save.
+DO:
+  RUN synthesis of all partition EXPLORER_RESULTs into one deduplicated resource_context (consolidate resources by path, merge summaries, union missing-context questions, reconcile exploration_status to the worst partition status)
+  EMIT the rendered resource map and context summary
+  RETURN resource_context to the calling skill and STOP_TURN WHEN return_context == true
+  CONTINUE ExploreSaveOffer WHEN return_context != true
 ```
 
 ```pdsl

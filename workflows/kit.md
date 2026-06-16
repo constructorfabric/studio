@@ -20,17 +20,10 @@ DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/ui/skill-invocation-art.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/pdsl-execution-card.md
   RUN SkillInvocationArt
-  LOAD and REMEMBER rules from {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/studio-instructions-memory.md
-  RUN StudioInstructionsMemoryGate
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/command-resolution.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/template-vars.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/context-memory.md
-  RUN CommandResolution to resolve {cfs_cmd}
-  RUN verify `{cfs_cmd} kit normalize --help` supports `--from`, `--output`, `--dry-run`, and `--stdout`
-  EMIT "Required kit normalization command is unavailable; update Constructor Studio, then retry cf-kit." WHEN the normalize capability check fails
-  STOP_TURN WHEN the normalize capability check fails
-  CONTINUE KitInitEntry
+  RUN KitInitBootstrapLoadRuntime
+  RUN KitInitBootstrapVerifyNormalize
+  CONTINUE KitInitBootstrapNormalizeUnavailable WHEN the normalize capability check fails
+  CONTINUE KitInitEntry WHEN the normalize capability check passes
 RULES:
   ALWAYS run StudioInstructionsMemoryGate before kit target routing, preflight, discovery, or writes
   ALWAYS remember git-commit-mode so any later commit request in this active workflow session runs GitCommitModeGate before routing, writes, git use, or delegation
@@ -39,6 +32,34 @@ RULES:
   ALWAYS load context-memory before storing or consuming kit discovery resource_context
   ALWAYS verify the kit normalize command surface before previewing, writing, or validating a kit manifest
   NEVER require cf or CFS_INIT before kit; this workflow owns its prerequisite loads
+```
+
+```pdsl
+UNIT KitInitBootstrapLoadRuntime
+PURPOSE: Load the kit runtime support modules before any target routing or CLI work.
+DO:
+  LOAD and REMEMBER rules from {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/studio-instructions-memory.md
+  RUN StudioInstructionsMemoryGate
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/command-resolution.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/template-vars.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/context-memory.md
+  RUN CommandResolution to resolve {cfs_cmd}
+```
+
+```pdsl
+UNIT KitInitBootstrapVerifyNormalize
+PURPOSE: Verify that the kit normalize command surface is available.
+DO:
+  RUN verify `{cfs_cmd} kit normalize --help` supports `--from`, `--output`, `--dry-run`, and `--stdout`
+```
+
+```pdsl
+UNIT KitInitBootstrapNormalizeUnavailable
+PURPOSE: Stop early when the required kit normalize capability is unavailable.
+DO:
+  EMIT "Required kit normalization command is unavailable; update Constructor Studio, then retry cf-kit."
+  STOP_TURN
 ```
 
 ```pdsl
@@ -101,18 +122,32 @@ WHEN:
   REQUIRE TARGET_DIR != unset
 DO:
   RUN resolve TARGET_DIR to an absolute normalized path
-  EMIT "Target folder not found or not a directory: {TARGET_DIR}" WHEN the resolved path does not exist or is not a directory
-  EMIT_MENU KitInitTargetRetryMenu WHEN the resolved path does not exist or is not a directory
-  WAIT user.reply WHEN the resolved path does not exist or is not a directory
-  STOP_TURN WHEN the resolved path does not exist or is not a directory
-  SET CANONICAL_MANIFEST = `<target>/.cf-studio-kit.toml`
-  SET LEGACY_MANIFEST = `<target>/manifest.toml`
-  SET LEGACY_CONF = `<target>/conf.toml`
+  CONTINUE KitInitPreflightInvalidTarget WHEN the resolved path does not exist or is not a directory
+  RUN KitInitPreflightSetManifestPaths
   CONTINUE KitInitRoute WHEN the resolved path exists and is a directory
 RULES:
   ALWAYS block missing paths and non-directories before any preview or discovery work
   ALWAYS compute the canonical and legacy manifest paths from the resolved target folder
   NEVER attempt to discover or write resources outside a valid target directory
+```
+
+```pdsl
+UNIT KitInitPreflightInvalidTarget
+PURPOSE: Report an invalid target folder and wait for a replacement or cancel.
+DO:
+  EMIT "Target folder not found or not a directory: {TARGET_DIR}"
+  EMIT_MENU KitInitTargetRetryMenu
+  WAIT user.reply
+  STOP_TURN
+```
+
+```pdsl
+UNIT KitInitPreflightSetManifestPaths
+PURPOSE: Compute the canonical and legacy manifest paths from the resolved target folder.
+DO:
+  SET CANONICAL_MANIFEST = `<target>/.cf-studio-kit.toml`
+  SET LEGACY_MANIFEST = `<target>/manifest.toml`
+  SET LEGACY_CONF = `<target>/conf.toml`
 MENU KitInitTargetRetryMenu
 TITLE: The target path is missing or is not a directory. Reply with a number, or send another folder path directly.
 OPTIONS:
@@ -127,12 +162,8 @@ PURPOSE: Apply folder-init source precedence and route to the correct read-only 
 WHEN:
   REQUIRE TARGET_DIR != unset
 DO:
-  SET TARGET_SOURCE = canonical WHEN CANONICAL_MANIFEST exists
-  SET TARGET_SOURCE = legacy_manifest WHEN CANONICAL_MANIFEST does not exist AND LEGACY_MANIFEST exists
-  SET TARGET_SOURCE = legacy_layout WHEN CANONICAL_MANIFEST does not exist AND LEGACY_MANIFEST does not exist AND (LEGACY_CONF exists OR recognized kit layout directories exist)
-  SET TARGET_SOURCE = discovery WHEN CANONICAL_MANIFEST does not exist AND LEGACY_MANIFEST does not exist AND TARGET_SOURCE == unset
-  SET NORMALIZE_SOURCE_HINT = manifest WHEN TARGET_SOURCE == legacy_manifest
-  SET NORMALIZE_SOURCE_HINT = layout WHEN TARGET_SOURCE == legacy_layout
+  RUN KitInitRouteDetectSource
+  RUN KitInitRouteSetNormalizeHint
   CONTINUE KitInitExistingManifestOffer WHEN TARGET_SOURCE == canonical
   CONTINUE KitInitLegacySourcePreview WHEN TARGET_SOURCE == legacy_manifest OR TARGET_SOURCE == legacy_layout
   CONTINUE KitInitDiscoveryRun WHEN TARGET_SOURCE == discovery
@@ -141,6 +172,24 @@ RULES:
   ALWAYS keep an existing canonical manifest read-only
   NEVER route a folder with `manifest.toml` and no canonical manifest straight to discovery
   NEVER write `.cf-studio-kit.toml` before a clear approval menu resolves
+```
+
+```pdsl
+UNIT KitInitRouteDetectSource
+PURPOSE: Detect which init source branch applies to the target folder.
+DO:
+  SET TARGET_SOURCE = canonical WHEN CANONICAL_MANIFEST exists
+  SET TARGET_SOURCE = legacy_manifest WHEN CANONICAL_MANIFEST does not exist AND LEGACY_MANIFEST exists
+  SET TARGET_SOURCE = legacy_layout WHEN CANONICAL_MANIFEST does not exist AND LEGACY_MANIFEST does not exist AND (LEGACY_CONF exists OR recognized kit layout directories exist)
+  SET TARGET_SOURCE = discovery WHEN CANONICAL_MANIFEST does not exist AND LEGACY_MANIFEST does not exist AND TARGET_SOURCE == unset
+```
+
+```pdsl
+UNIT KitInitRouteSetNormalizeHint
+PURPOSE: Set the legacy-source normalize hint after source detection.
+DO:
+  SET NORMALIZE_SOURCE_HINT = manifest WHEN TARGET_SOURCE == legacy_manifest
+  SET NORMALIZE_SOURCE_HINT = layout WHEN TARGET_SOURCE == legacy_layout
 ```
 
 ```pdsl
@@ -170,6 +219,22 @@ PURPOSE: Convert a legacy manifest.toml or conf.toml + layout source into a cano
 WHEN:
   REQUIRE TARGET_SOURCE == legacy_manifest OR TARGET_SOURCE == legacy_layout
 DO:
+  RUN KitInitLegacySourcePreviewGenerate
+  CONTINUE KitInitLegacySourcePreviewSuccess WHEN PREVIEW_STATUS == pass
+  CONTINUE KitInitLegacySourcePreviewFailure WHEN PREVIEW_STATUS != pass
+RULES:
+  ALWAYS treat `<target>/manifest.toml` as the selected legacy input when it exists and `<target>/.cf-studio-kit.toml` does not
+  ALWAYS treat `conf.toml + layout` as the selected legacy input when no canonical or legacy manifest exists and layout evidence exists
+  ALWAYS preview the normalized canonical manifest before any write
+  ALWAYS verify the normalized preview contains top-level `manifest_version = "1.0"`; never approve or write an unversioned manifest
+  ALWAYS follow KitGeneratedNamePreviewContract before the approval menu renders any public generated-name preview
+  NEVER write the canonical manifest before the approval menu resolves
+```
+
+```pdsl
+UNIT KitInitLegacySourcePreviewGenerate
+PURPOSE: Generate the legacy-source preview and classify its status.
+DO:
   RUN `{cfs_cmd} kit normalize <target> --from <NORMALIZE_SOURCE_HINT> --dry-run` for validation findings, report, and public generated-name preview
   RUN `{cfs_cmd} kit normalize <target> --from <NORMALIZE_SOURCE_HINT> --stdout` for the exact proposed canonical `.cf-studio-kit.toml` bytes
   SET PREVIEW_STATUS = pass WHEN dry-run passes AND stdout returns valid TOML with top-level `manifest_version = "1.0"` before any `[[kits]]` table
@@ -177,22 +242,26 @@ DO:
   SET PREVIEW_STATUS = error WHEN dry-run cannot parse/load the legacy manifest, stdout cannot render the generated TOML, or stdout omits/changes `manifest_version`
   SET CURRENT_PREVIEW_TOML = the stdout canonical `.cf-studio-kit.toml` text WHEN PREVIEW_STATUS == pass
   SET CURRENT_PREVIEW_REPORT = the dry-run migration report WHEN PREVIEW_STATUS == pass
-  EMIT the migration report, public generated-name preview, and proposed canonical `.cf-studio-kit.toml` WHEN PREVIEW_STATUS == pass
-  EMIT_MENU KitInitLegacyApprovalMenu WHEN PREVIEW_STATUS == pass
-  EMIT the normalization findings and blocking error details WHEN PREVIEW_STATUS != pass
-  EMIT_MENU KitInitPreviewFailureMenu WHEN PREVIEW_STATUS != pass
+```
+
+```pdsl
+UNIT KitInitLegacySourcePreviewSuccess
+PURPOSE: Render a successful legacy-source preview and wait for approval input.
+DO:
+  EMIT the migration report, public generated-name preview, and proposed canonical `.cf-studio-kit.toml`
+  EMIT_MENU KitInitLegacyApprovalMenu
   WAIT user.reply
   STOP_TURN
-RULES:
-  ALWAYS treat `<target>/manifest.toml` as the selected legacy input when it exists and `<target>/.cf-studio-kit.toml` does not
-  ALWAYS treat `conf.toml + layout` as the selected legacy input when no canonical or legacy manifest exists and layout evidence exists
-  ALWAYS preview the normalized canonical manifest before any write
-  ALWAYS verify the normalized preview contains top-level `manifest_version = "1.0"`; never approve or write an unversioned manifest
-  <!-- @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-public-name-preview -->
-  ALWAYS show a generated-name preview before approval for every public skill, agent, rule, and nested subagent: include resource/subagent id, kind, final generated name, and whether it is default-prefixed or `prefix_generated_name = false` as-is
-  ALWAYS call out that `prefix_generated_name = false` is the manifest option to publish a public resource or nested subagent name as-is
-  <!-- @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-public-name-preview -->
-  NEVER write the canonical manifest before the approval menu resolves
+```
+
+```pdsl
+UNIT KitInitLegacySourcePreviewFailure
+PURPOSE: Render a failed legacy-source preview and wait for retry or cancel.
+DO:
+  EMIT the normalization findings and blocking error details
+  EMIT_MENU KitInitPreviewFailureMenu
+  WAIT user.reply
+  STOP_TURN
 MENU KitInitLegacyApprovalMenu
 TITLE: Approve the legacy-source conversion?
 OPTIONS:
@@ -216,18 +285,32 @@ WHEN:
   REQUIRE TARGET_SOURCE == discovery
 DO:
   INVOKE skill `cf-explore` with intent=discover candidate kit resources for a read-only manifest proposal and return_context=true, scoped to TARGET_DIR and known_paths = TARGET_DIR
-  SET DISCOVERY_STATUS = provided WHEN cf-explore returns resource_context with one or more candidate resource paths and evidence summaries
-  SET DISCOVERY_STATUS = empty WHEN cf-explore returns no candidate resources
-  SET DISCOVERY_STATUS = error WHEN cf-explore fails or returns no usable resource_context
-  SET RESOURCE_CONTEXT = provided WHEN DISCOVERY_STATUS == provided
+  RUN KitInitDiscoveryRunClassifyResult
   CONTINUE KitInitDiscoveryProposal WHEN DISCOVERY_STATUS == provided
-  EMIT_MENU KitInitDiscoveryFailureMenu WHEN DISCOVERY_STATUS != provided
-  WAIT user.reply WHEN DISCOVERY_STATUS != provided
-  STOP_TURN WHEN DISCOVERY_STATUS != provided
+  CONTINUE KitInitDiscoveryRunFailure WHEN DISCOVERY_STATUS != provided
 RULES:
   ALWAYS use cf-explore in return-context mode for discovery instead of direct filesystem prompt guessing
   ALWAYS keep discovery read-only
   NEVER synthesize a new manifest proposal without verified non-empty resource_context
+```
+
+```pdsl
+UNIT KitInitDiscoveryRunClassifyResult
+PURPOSE: Classify the discovery result and persist whether resource context is usable.
+DO:
+  SET DISCOVERY_STATUS = provided WHEN cf-explore returns resource_context with one or more candidate resource paths and evidence summaries
+  SET DISCOVERY_STATUS = empty WHEN cf-explore returns no candidate resources
+  SET DISCOVERY_STATUS = error WHEN cf-explore fails or returns no usable resource_context
+  SET RESOURCE_CONTEXT = provided WHEN DISCOVERY_STATUS == provided
+```
+
+```pdsl
+UNIT KitInitDiscoveryRunFailure
+PURPOSE: Present the discovery failure menu and wait for the next choice.
+DO:
+  EMIT_MENU KitInitDiscoveryFailureMenu
+  WAIT user.reply
+  STOP_TURN
 MENU KitInitDiscoveryFailureMenu
 TITLE: Discovery did not return candidate kit resources. Retry, provide manual guidance, or cancel.
 OPTIONS:
@@ -244,37 +327,10 @@ WHEN:
   REQUIRE TARGET_SOURCE == discovery
   AND RESOURCE_CONTEXT == provided
 DO:
-  RUN ResourceContextMemory
-  RUN classify candidates from RESOURCE_CONTEXT into public skills, agents, and rules, plus supporting templates, checklists, scripts, directories, and other
-  RUN derive explicit artifact-kind bindings for every constraints resource from RESOURCE_CONTEXT evidence:
-    - template/checklist/rules/example files are bound to artifact kinds only when the kind is explicit in file metadata, constraints kind names, or an unambiguous per-kind layout such as `artifacts/<KIND>/template.md`
-    - bindings point to resource IDs, never filesystem paths
-    - ambiguous files remain unbound and are reported as ambiguities
-  RUN synthesize a conservative canonical proposal using the discovered candidates and explicit local metadata only:
-    - top-level `manifest_version = "1.0"` is required before any `[[kits]]` table
-    - missing or unknown `manifest_version` is blocking; report that the user should update Constructor Studio with `pipx upgrade constructor-studio` and retry
-    - canonical shape is always `[[kits]]` + nested `[[kits.resources]]`, even when the file declares exactly one kit
-    - add multiple `[[kits]]` entries only when the user explicitly asks for several kits or discovery returns clearly separate kit packages under TARGET_DIR
-    - multi-kit proposals require unique kit slugs; each kit owns its own resource ID namespace
-    - slug = explicit kit slug from discovered metadata, else target folder basename normalized to kebab-case
-    - name = explicit kit display name from discovered metadata, else the slug
-    - version = explicit semantic-version-compatible metadata, else `0.1.0`
-    - each `[[kits.resources]]` includes required `id`, `kind`, and `source`
-    - `constraints.toml`, resource id `constraints`, and TOML files described as structural validation rules / heading outlines / ID kinds / cross-references are classified as `kind = "constraints"`; never classify them as `other`
-    - constraints resources that have known artifact kinds and known sibling resources MUST include an `artifacts` table that maps artifact kinds to resource IDs: `artifacts.<KIND>.template = "<template-resource-id>"`, `artifacts.<KIND>.examples = "<example-resource-id>"`, `artifacts.<KIND>.rules = "<rules-resource-id>"`, and `artifacts.<KIND>.checklist = "<checklist-resource-id>"` when each resource is known
-    - artifact binding values are resource IDs in the same kit namespace; never write paths in `artifacts.<KIND>.*`
-    - omit an artifact binding when the resource-kind relationship is not known; report that `validate-kits` will warn and skip template/example self-check for that artifact kind until the binding is added
-    - `install_path` is included only when the path can be expressed as a normalized relative path under TARGET_DIR without symlink escape or absolute segments
-    - `public = true` is used only for skills, agents, and rules; public resources become agent-facing generated skills/agents/rules, while non-public resources are installed/bound only
-    - `prefix_generated_name = false` may be used only for public resources whose generated agent/skill/rule name must be exactly the resource `id`; the default is omitted/true and generates `cf-{kit-slug}-{id}`
-    - `generated_targets = ["installed"]` is used only for public resources with no explicit target
-    - workflow-like public entry points are normalized to `kind = "skill"` only when file content or discovered metadata identifies them as cf-* entry points
-  SET CURRENT_PREVIEW_TOML = the proposed `.cf-studio-kit.toml` text
-  SET CURRENT_PREVIEW_REPORT = the discovery classification and proposal ambiguity report
-  EMIT the discovery classification, proposal ambiguities, public generated-name preview, and proposed `.cf-studio-kit.toml` preview
-  EMIT_MENU KitInitDiscoveryApprovalMenu
-  WAIT user.reply
-  STOP_TURN
+  RUN KitInitDiscoveryClassifyCandidates
+  RUN KitInitDiscoveryBindArtifacts
+  RUN KitInitDiscoverySynthesizeProposal
+  RUN KitInitDiscoveryPreviewRender
 RULES:
   ALWAYS classify discovered candidates into the public and supporting groups before proposing a manifest
   ALWAYS classify structural validation rule files as `kind = "constraints"` when their source path, id, or evidence identifies constraints semantics
@@ -282,8 +338,7 @@ RULES:
   ALWAYS keep the proposal conservative and report ambiguity instead of guessing
   ALWAYS propose a default manifest before any write when no legacy manifest is present
   ALWAYS use top-level `manifest_version = "1.0"` plus `[[kits]]` + `[[kits.resources]]`; never emit `[kit]` or top-level `[[resources]]`
-  ALWAYS show a generated-name preview before approval for every public skill, agent, rule, and nested subagent: include resource/subagent id, kind, final generated name, and whether it is default-prefixed or `prefix_generated_name = false` as-is
-  ALWAYS call out that `prefix_generated_name = false` is the manifest option to publish a public resource or nested subagent name as-is
+  ALWAYS follow KitGeneratedNamePreviewContract before the approval menu renders any public generated-name preview
   ALWAYS treat missing or unsupported canonical `manifest_version` as a blocking validation failure, not a recoverable warning
   NEVER write `.cf-studio-kit.toml` before the approval menu resolves
 MENU KitInitDiscoveryApprovalMenu
@@ -298,30 +353,153 @@ OPTIONS:
 ```
 
 ```pdsl
+UNIT KitGeneratedNamePreviewContract
+PURPOSE: Keep the generated-name preview wording and scope consistent across legacy and discovery proposal approvals.
+RULES:
+  <!-- @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-public-name-preview -->
+  ALWAYS show a generated-name preview before approval for every public skill, agent, rule, and nested subagent: include resource/subagent id, kind, final generated name, and whether it is default-prefixed or `prefix_generated_name = false` as-is
+  ALWAYS call out that `prefix_generated_name = false` is the manifest option to publish a public resource or nested subagent name as-is
+  <!-- @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-public-name-preview -->
+```
+
+```pdsl
+UNIT KitInitDiscoveryClassifyCandidates
+PURPOSE: Load the discovery context and classify candidate resources before proposal synthesis.
+DO:
+  RUN ResourceContextMemory
+  RUN classify candidates from RESOURCE_CONTEXT into public skills, agents, and rules, plus supporting templates, checklists, scripts, directories, and other
+```
+
+```pdsl
+UNIT KitInitDiscoveryBindArtifacts
+PURPOSE: Derive explicit artifact-kind bindings for discovered constraints resources before manifest synthesis.
+DO:
+  RUN derive explicit artifact-kind bindings for every constraints resource from RESOURCE_CONTEXT evidence:
+    - template/checklist/rules/example files are bound to artifact kinds only when the kind is explicit in file metadata, constraints kind names, or an unambiguous per-kind layout such as `artifacts/<KIND>/template.md`
+    - bindings point to resource IDs, never filesystem paths
+    - ambiguous files remain unbound and are reported as ambiguities
+```
+
+```pdsl
+UNIT KitInitDiscoverySynthesizeProposal
+PURPOSE: Build the conservative canonical manifest proposal and its preview artifacts from discovery results.
+DO:
+  RUN KitInitDiscoveryProposalBaseShape
+  RUN KitInitDiscoveryProposalResourceMapping
+  RUN KitInitDiscoveryProposalPublicEntryPolicy
+  RUN KitInitDiscoveryProposalFinalizePreview
+```
+
+```pdsl
+UNIT KitInitDiscoveryProposalBaseShape
+PURPOSE: Synthesize the canonical kit-level manifest structure and default metadata.
+DO:
+  RUN synthesize the proposal's canonical top-level kit structure from discovered candidates and explicit local metadata only:
+    - top-level `manifest_version = "1.0"` is required before any `[[kits]]` table
+    - missing or unknown `manifest_version` is blocking; report that the user should update Constructor Studio with `pipx upgrade constructor-studio` and retry
+    - canonical shape is always `[[kits]]` + nested `[[kits.resources]]`, even when the file declares exactly one kit
+    - add multiple `[[kits]]` entries only when the user explicitly asks for several kits or discovery returns clearly separate kit packages under TARGET_DIR
+    - multi-kit proposals require unique kit slugs; each kit owns its own resource ID namespace
+    - slug = explicit kit slug from discovered metadata, else target folder basename normalized to kebab-case
+    - name = explicit kit display name from discovered metadata, else the slug
+    - version = explicit semantic-version-compatible metadata, else `0.1.0`
+```
+
+```pdsl
+UNIT KitInitDiscoveryProposalResourceMapping
+PURPOSE: Synthesize the resource-level manifest entries and artifact bindings for the proposal.
+DO:
+  RUN synthesize canonical resource entries and artifact bindings from discovered candidates:
+    - each `[[kits.resources]]` includes required `id`, `kind`, and `source`
+    - `constraints.toml`, resource id `constraints`, and TOML files described as structural validation rules / heading outlines / ID kinds / cross-references are classified as `kind = "constraints"`; never classify them as `other`
+    - constraints resources that have known artifact kinds and known sibling resources MUST include an `artifacts` table that maps artifact kinds to resource IDs: `artifacts.<KIND>.template = "<template-resource-id>"`, `artifacts.<KIND>.examples = "<example-resource-id>"`, `artifacts.<KIND>.rules = "<rules-resource-id>"`, and `artifacts.<KIND>.checklist = "<checklist-resource-id>"` when each resource is known
+    - artifact binding values are resource IDs in the same kit namespace; never write paths in `artifacts.<KIND>.*`
+    - omit an artifact binding when the resource-kind relationship is not known; report that `validate-kits` will warn and skip template/example self-check for that artifact kind until the binding is added
+    - `install_path` is included only when the path can be expressed as a normalized relative path under TARGET_DIR without symlink escape or absolute segments
+```
+
+```pdsl
+UNIT KitInitDiscoveryProposalPublicEntryPolicy
+PURPOSE: Apply public-resource generation policy to the synthesized manifest proposal.
+DO:
+  RUN apply public-resource generation policy to the synthesized proposal:
+    - `public = true` is used only for skills, agents, and rules; public resources become agent-facing generated skills/agents/rules, while non-public resources are installed/bound only
+    - `prefix_generated_name = false` may be used only for public resources whose generated agent/skill/rule name must be exactly the resource `id`; the default is omitted/true and generates `cf-{kit-slug}-{id}`
+    - `generated_targets = ["installed"]` is used only for public resources with no explicit target
+    - workflow-like public entry points are normalized to `kind = "skill"` only when file content or discovered metadata identifies them as cf-* entry points
+```
+
+```pdsl
+UNIT KitInitDiscoveryProposalFinalizePreview
+PURPOSE: Store the synthesized discovery manifest preview and ambiguity report for approval.
+DO:
+  SET CURRENT_PREVIEW_TOML = the proposed `.cf-studio-kit.toml` text
+  SET CURRENT_PREVIEW_REPORT = the discovery classification and proposal ambiguity report
+```
+
+```pdsl
+UNIT KitInitDiscoveryPreviewRender
+PURPOSE: Render the discovery proposal preview and gate the write on approval.
+DO:
+  EMIT the discovery classification, proposal ambiguities, public generated-name preview, and proposed `.cf-studio-kit.toml` preview
+  EMIT_MENU KitInitDiscoveryApprovalMenu
+  WAIT user.reply
+  STOP_TURN
+```
+
+```pdsl
 UNIT KitInitManualGuidanceProposal
 PURPOSE: Turn user-provided manual resource guidance into a fresh manifest proposal when discovery returned no usable context.
 WHEN:
   REQUIRE PENDING_MANUAL_GUIDANCE == true
 DO:
+  CONTINUE KitInitManualGuidanceParseAndValidate
+  CONTINUE KitInitManualGuidanceHandleInvalid
+  CONTINUE KitInitManualGuidanceSynthesizePreview
+```
+
+```pdsl
+UNIT KitInitManualGuidanceParseAndValidate
+PURPOSE: Parse manual guidance and determine whether it is valid enough to synthesize a proposal.
+DO:
   RUN parse the user reply as manual candidate resources, optional multiple kit declarations, resource kinds, metadata defaults, aliases, install paths, generated targets, and exclusions
   RUN parse optional artifact binding guidance such as `bind artifact <KIND>.template=<resource-id>`, `bind artifact <KIND>.examples=<resource-id>`, `bind artifact <KIND>.rules=<resource-id>`, and `bind artifact <KIND>.checklist=<resource-id>`
   RUN reject guidance that references sources outside TARGET_DIR, uses unsupported resource kinds, creates duplicate IDs, proposes an unsupported `manifest_version`, binds an artifact role to an unknown resource ID, binds artifact metadata outside a constraints resource, or omits every candidate resource
+```
+
+```pdsl
+UNIT KitInitManualGuidanceHandleInvalid
+PURPOSE: Re-prompt for manual guidance when the supplied guidance is invalid.
+DO:
   EMIT rejected guidance with reasons and EMIT_MENU KitInitManualGuidanceRetryMenu WHEN guidance is invalid
   WAIT user.reply WHEN guidance is invalid
   STOP_TURN WHEN guidance is invalid
+```
+
+```pdsl
+UNIT KitInitManualGuidanceSynthesizePreview
+PURPOSE: Build and render the manual-guidance proposal preview after validation succeeds.
+DO:
   RUN synthesize a conservative canonical proposal from the accepted manual guidance using the same canonical shape and containment rules as KitInitDiscoveryProposal, including top-level `manifest_version = "1.0"`
   SET CURRENT_PREVIEW_TOML = the proposed `.cf-studio-kit.toml` text
   SET CURRENT_PREVIEW_REPORT = the manual guidance classification and ambiguity report
   SET PENDING_MANUAL_GUIDANCE = unset
-  EMIT the manual classification, proposal ambiguities, public generated-name preview, and proposed `.cf-studio-kit.toml` preview
-  EMIT_MENU KitInitDiscoveryApprovalMenu
-  WAIT user.reply
-  STOP_TURN
+  CONTINUE KitInitManualGuidanceRenderPreview
 RULES:
   ALWAYS produce a fresh proposal from manual guidance before entering the approval menu
   ALWAYS preserve user-provided artifact bindings as constraints-resource `artifacts.<KIND>.*` resource-ID references
   NEVER treat manual guidance as edits to a missing preview
   NEVER write from manual guidance directly
+```
+
+```pdsl
+UNIT KitInitManualGuidanceRenderPreview
+PURPOSE: Render the manual-guidance proposal preview and wait for approval input.
+DO:
+  EMIT the manual classification, proposal ambiguities, public generated-name preview, and proposed `.cf-studio-kit.toml` preview
+  EMIT_MENU KitInitDiscoveryApprovalMenu
+  WAIT user.reply
+  STOP_TURN
 MENU KitInitManualGuidanceRetryMenu
 TITLE: Manual guidance could not produce a safe manifest proposal. Revise it, rerun discovery, or cancel.
 OPTIONS:
@@ -337,21 +515,10 @@ PURPOSE: Apply user-supplied manifest edits, re-render the preview, and return t
 WHEN:
   REQUIRE PENDING_EDIT_BRANCH != unset
 DO:
-  RUN parse the user reply as requested manifest edits: metadata changes, kit additions/removals for multi-kit manifests, resource additions/removals, kind changes, aliases, install paths, generated targets, artifact bindings, and fields to preserve
-  RUN reject edits that would reference sources outside TARGET_DIR, introduce duplicate kit slugs, introduce duplicate resource IDs within the same kit, use unsupported resource kinds, set `prefix_generated_name = false` on a non-public resource, bind an artifact role to an unknown resource ID, put artifact bindings on a non-constraints resource, remove required `manifest_version = "1.0"`, set an unsupported `manifest_version`, or contradict canonical manifest shape
-  EMIT the rejected edits with reasons and EMIT_MENU KitInitEditRetryMenu WHEN any requested edit is invalid
-  WAIT user.reply WHEN any requested edit is invalid
-  STOP_TURN WHEN any requested edit is invalid
-  RUN apply valid edits to CURRENT_PREVIEW_TOML
-  RUN re-render the proposed `.cf-studio-kit.toml`
-  SET CURRENT_PREVIEW_TOML = the revised `.cf-studio-kit.toml` text
-  SET CURRENT_PREVIEW_REPORT = the revised preview report and remaining ambiguities
-  EMIT the revised public generated-name preview, revised manifest preview, and remaining ambiguities
-  EMIT_MENU KitInitLegacyApprovalMenu WHEN PENDING_EDIT_BRANCH == legacy_manifest
-  EMIT_MENU KitInitDiscoveryApprovalMenu WHEN PENDING_EDIT_BRANCH == discovery
-  SET PENDING_EDIT_BRANCH = unset WHEN all valid edits were applied and an approval menu is emitted
-  WAIT user.reply
-  STOP_TURN
+  RUN KitInitApplyUserEditsValidate
+  CONTINUE KitInitApplyUserEditsInvalid WHEN any requested edit is invalid
+  RUN KitInitApplyUserEditsApplyValid
+  CONTINUE KitInitApplyUserEditsRender
 RULES:
   ALWAYS return edited manifests to a preview approval menu before any write
   ALWAYS preserve top-level `manifest_version = "1.0"` after applying edits
@@ -359,6 +526,63 @@ RULES:
   ALWAYS recompute and show the public generated-name preview after applying edits and before returning to approval
   ALWAYS reject unsafe or unsupported edits instead of guessing
   NEVER write from an edit reply directly
+```
+
+```pdsl
+UNIT KitInitApplyUserEditsValidate
+PURPOSE: Parse the requested manifest edits and reject unsafe or unsupported changes.
+DO:
+  RUN parse the user reply as requested manifest edits: metadata changes, kit additions/removals for multi-kit manifests, resource additions/removals, kind changes, aliases, install paths, generated targets, artifact bindings, and fields to preserve
+  RUN reject edits that would reference sources outside TARGET_DIR, introduce duplicate kit slugs, introduce duplicate resource IDs within the same kit, use unsupported resource kinds, set `prefix_generated_name = false` on a non-public resource, bind an artifact role to an unknown resource ID, put artifact bindings on a non-constraints resource, remove required `manifest_version = "1.0"`, set an unsupported `manifest_version`, or contradict canonical manifest shape
+```
+
+```pdsl
+UNIT KitInitApplyUserEditsInvalid
+PURPOSE: Present invalid edit reasons and wait for a revised edit choice.
+DO:
+  EMIT the rejected edits with reasons
+  EMIT_MENU KitInitEditRetryMenu
+  WAIT user.reply
+  STOP_TURN
+```
+
+```pdsl
+UNIT KitInitApplyUserEditsApplyValid
+PURPOSE: Apply valid edits and store the revised manifest preview artifacts.
+DO:
+  RUN apply valid edits to CURRENT_PREVIEW_TOML
+  RUN re-render the proposed `.cf-studio-kit.toml`
+  SET CURRENT_PREVIEW_TOML = the revised `.cf-studio-kit.toml` text
+  SET CURRENT_PREVIEW_REPORT = the revised preview report and remaining ambiguities
+```
+
+```pdsl
+UNIT KitInitApplyUserEditsRender
+PURPOSE: Render the revised preview and route back to the matching approval menu.
+DO:
+  EMIT the revised public generated-name preview, revised manifest preview, and remaining ambiguities
+  CONTINUE KitInitApplyUserEditsRenderLegacy WHEN PENDING_EDIT_BRANCH == legacy_manifest
+  CONTINUE KitInitApplyUserEditsRenderDiscovery WHEN PENDING_EDIT_BRANCH == discovery
+```
+
+```pdsl
+UNIT KitInitApplyUserEditsRenderLegacy
+PURPOSE: Return an edited legacy-source preview to its approval menu.
+DO:
+  EMIT_MENU KitInitLegacyApprovalMenu
+  SET PENDING_EDIT_BRANCH = unset
+  WAIT user.reply
+  STOP_TURN
+```
+
+```pdsl
+UNIT KitInitApplyUserEditsRenderDiscovery
+PURPOSE: Return an edited discovery preview to its approval menu.
+DO:
+  EMIT_MENU KitInitDiscoveryApprovalMenu
+  SET PENDING_EDIT_BRANCH = unset
+  WAIT user.reply
+  STOP_TURN
 MENU KitInitEditRetryMenu
 TITLE: Some edits cannot be applied safely. Revise the edit request, keep the previous preview, or cancel.
 OPTIONS:

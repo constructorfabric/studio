@@ -15,16 +15,9 @@ This skill drives the `{cfs_cmd} map` CLI to scan markdown files and source code
 UNIT MapBootstrap
 PURPOSE: Load the runtime rules needed before any map work begins.
 DO:
-  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/skill-invocation-art.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/pdsl-execution-card.md
-  RUN SkillInvocationArt
-  LOAD and REMEMBER rules from {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/studio-instructions-memory.md
-  RUN StudioInstructionsMemoryGate
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/command-resolution.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/template-vars.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/context-memory.md
-  RUN CommandResolution to resolve {cfs_cmd}
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
+  RUN WorkflowBootstrapCoreSession
+  RUN WorkflowBootstrapCommandTemplateContext
   SET ORIGINAL_INTENT = the user's triggering map request (verbatim or shortest faithful summary)
   SET CURRENT_WORKFLOW = cf-map, SET COMPANION_CONTINUE = MapIntentRouter and LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md and CONTINUE CompanionSkillOffer
 RULES:
@@ -62,10 +55,26 @@ NOTES:
 UNIT MapPreflight
 PURPOSE: Detect what will be scanned along the federation and source-scanning axes before generating.
 DO:
-  RUN `{cfs_cmd} --json info`; EMIT "Could not read studio info (`{cfs_cmd} --json info` failed) — ensure Studio is initialized with `cfs init`, then retry." and STOP_TURN WHEN it errors
+  RUN `{cfs_cmd} --json info`
+  CONTINUE MapPreflightInfoFailure WHEN it errors
   SET project_root = the absolute project root path reported by `{cfs_cmd} --json info`
   RUN CHECK for .studio-workspace.toml in the project root (federation axis)
   RUN CHECK for [[systems.codebase]] / [[systems.autodetect.codebase]] entries in {cf-studio-path}/config/artifacts.toml or <project_root>/artifacts.toml (source-scanning axis)
+  CONTINUE MapPreflightScopeOffer
+```
+
+```pdsl
+UNIT MapPreflightInfoFailure
+PURPOSE: Stop early when Studio info cannot be read.
+DO:
+  EMIT "Could not read studio info (`{cfs_cmd} --json info` failed) — ensure Studio is initialized with `cfs init`, then retry."
+  STOP_TURN
+```
+
+```pdsl
+UNIT MapPreflightScopeOffer
+PURPOSE: Present the discovered map-scope capabilities and wait for scope selection.
+DO:
   EMIT the discovered state — Federation: ".studio-workspace.toml present" OR "no workspace config — federation unavailable"; Source scanning: codebase entries found OR "no codebase entries found — source scanning unavailable"
   EMIT_MENU MapScopeMenu
   WAIT user.reply
@@ -157,18 +166,22 @@ STATE:
 DO:
   LOAD {cf-studio-path}/.core/requirements/map-config-assist.md for palettes, name normalization, and candidate thresholds
   SET scope = single-repo WHEN scope is unset (config-assist default scan scope; the user can re-scope via generate-map)
-  RUN locate the JSON payload — prefer ./md-map.json, else ./md-map.html.js with the leading `window.MAP_DATA = ` and trailing `;` stripped
-  RUN `{cfs_cmd} --json map --format json --out ./md-map.json --local-only` WHEN neither artifact exists AND scope == single-repo
-  RUN `{cfs_cmd} --json map --format json --out ./md-map.json` WHEN neither artifact exists AND scope == with-workspace
-  RUN `{cfs_cmd} --json map --format json --out ./md-map.json --no-source` WHEN neither artifact exists AND scope == markdown-only
-  RUN read ./md-map.json
+  RUN locate the JSON payload — prefer ./md-map.json, else ./md-map.html.js with the leading `window.MAP_DATA = ` and trailing `;` stripped, else generate ./md-map.json for the chosen scope via `{cfs_cmd} --json map`
+  RUN read the located JSON payload
   RUN derive category candidates and names per the loaded reference
-  EMIT_MENU PaletteMenu
-  WAIT user.reply
-  STOP_TURN
+  CONTINUE MapConfigAssistPaletteOffer
 RULES:
   NEVER write ./md-map.toml without an explicit yes
   ALWAYS derive category names and pick palette colors per the loaded reference
+```
+
+```pdsl
+UNIT MapConfigAssistPaletteOffer
+PURPOSE: Present the derived category palette choices and wait for the user's selection.
+DO:
+  EMIT_MENU PaletteMenu
+  WAIT user.reply
+  STOP_TURN
 MENU PaletteMenu
 TITLE: Pick a color palette for the proposed categories — this affects visual distinction and accessibility in the rendered map.
 OPTIONS:

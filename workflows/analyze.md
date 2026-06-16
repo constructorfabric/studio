@@ -22,13 +22,9 @@ multi-phase analyze workflow has been retired; routing is the only behavior here
 UNIT AnalyzeBootstrap
 PURPOSE: Load the runtime routing rules needed before any analyze routing work.
 DO:
-  LOAD {cf-studio-path}/.core/skills/studio/modules/ui/skill-invocation-art.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/pdsl-execution-card.md
-  RUN SkillInvocationArt
-  LOAD and REMEMBER rules from {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/command-resolution.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-resolution.md
-  RUN CommandResolution to resolve {cfs_cmd}
+  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
+  RUN WorkflowBootstrapRouterPrelude
+  RUN WorkflowBootstrapCommandWorkflowResolution
   CONTINUE AnalyzeRoute
 RULES:
   ALWAYS load command-resolution and workflow-resolution before AnalyzeRoute
@@ -49,25 +45,49 @@ DO:
   RUN WorkflowResolution to resolve the available cf-* skills
   SET AVAILABLE_SKILLS = the resolved cf-* skills (name + its workflow description), excluding `cf`, `cf-analyze`, and `cf-generate`
   CONTINUE AnalyzeNoMatch WHEN AVAILABLE_SKILLS is empty
-  LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md WHEN the request spans more than one cf-* domain
-  RUN matching of ORIGINAL_INTENT against AVAILABLE_SKILLS by semantic relevance — score each skill's name and description against the intent, keep those clearly on-topic, rank them, synthesize compatible companion groups when the request spans domains, and mark the top-ranked skill or group as suggested — WHEN ORIGINAL_INTENT != unset
-  EMIT_MENU AnalyzeIntentOffer WHEN ORIGINAL_INTENT != unset AND at least one relevant skill matched
-  CONTINUE AnalyzeNoMatch WHEN ORIGINAL_INTENT != unset AND no relevant skill matched
-  EMIT_MENU AnalyzeLoadOffer WHEN ORIGINAL_INTENT == unset
-  WAIT user.reply
-  STOP_TURN
+  CONTINUE AnalyzeRouteIntentFlow WHEN ORIGINAL_INTENT != unset
+  CONTINUE AnalyzeRouteLoadFlow WHEN ORIGINAL_INTENT == unset
 RULES:
   ALWAYS preserve ORIGINAL_INTENT when it was already set by AnalyzeDescribeIntent
   ALWAYS resolve cf-* skills via WorkflowResolution, never by guessing and never via a CLI skills-list command
   ALWAYS exclude `cf`, `cf-analyze`, and `cf-generate` from AVAILABLE_SKILLS and companion groups; these are routers/entrypoints and must never be offered as companions
   ALWAYS pass ORIGINAL_INTENT into every invoked skill when an intent is present
   ALWAYS render each offered skill as `<skill-name> — <short description>` from AVAILABLE_SKILLS
-  ALWAYS load companion-skills before synthesizing companion groups
   ALWAYS support compatible companion multi-select, invoking selected skills sequentially so each skill's prerequisites and gates run in order
   NEVER let a companion or multi-select route bypass any selected skill's WAIT, STOP_TURN, approval, brainstorm, plan, validation, or sub-agent gate
   NEVER load or run any legacy analyze phase logic; routing is the only behavior
 NOTES:
   Empty-state ownership: WorkflowResolution STOP_TURNs when zero cf-* skills are discovered (a broken install), so that case never reaches this router; the CONTINUE AnalyzeNoMatch WHEN AVAILABLE_SKILLS is empty branch handles the distinct case where resolution succeeds but excluding this router (cf-analyze) leaves no other skill.
+```
+
+```pdsl
+UNIT AnalyzeRouteIntentFlow
+PURPOSE: Load companion-skill context when needed, match the analyze intent, and route to the correct offer.
+DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md WHEN the request spans more than one cf-* domain
+  RUN matching of ORIGINAL_INTENT against AVAILABLE_SKILLS by semantic relevance — score each skill's name and description against the intent, keep those clearly on-topic, rank them, synthesize compatible companion groups when the request spans domains, and mark the top-ranked skill or group as suggested
+  CONTINUE AnalyzeRouteIntentMenu WHEN at least one relevant skill matched
+  CONTINUE AnalyzeNoMatch WHEN no relevant skill matched
+RULES:
+  ALWAYS load companion-skills before synthesizing companion groups
+```
+
+```pdsl
+UNIT AnalyzeRouteIntentMenu
+PURPOSE: Present the matched analyze routes and wait for the user's selection.
+DO:
+  EMIT_MENU AnalyzeIntentOffer
+  WAIT user.reply
+  STOP_TURN
+```
+
+```pdsl
+UNIT AnalyzeRouteLoadFlow
+PURPOSE: Present the analyze load menu when no intent was provided.
+DO:
+  EMIT_MENU AnalyzeLoadOffer
+  WAIT user.reply
+  STOP_TURN
 MENU AnalyzeIntentOffer
 TITLE: Analyze intent matched these cf-* workflow(s) — pick one, or pick a companion group / comma-separated compatible skills.
 OPTIONS:
@@ -87,12 +107,28 @@ OPTIONS:
 ```pdsl
 UNIT AnalyzeDescribeIntent
 PURPOSE: Capture an analyze intent as a separate turn before routing.
+STATE:
+  SET ANALYZE_INTENT_CAPTURE_STATE: prompt | resume | unset (default unset, scope workflow_run)
 DO:
   EMIT "Describe what you want to analyze, review, validate, or compare. I will match the relevant cf-* workflow(s), including companions when needed."
+  SET ANALYZE_INTENT_CAPTURE_STATE = resume
   WAIT user.reply
   STOP_TURN
 RULES:
-  ALWAYS on the resumed reply set ORIGINAL_INTENT = user.reply and CONTINUE AnalyzeRoute
+  ALWAYS stop the turn after prompting so analyze intent routing resumes in an explicit unit
+```
+
+```pdsl
+UNIT AnalyzeDescribeIntentResume
+PURPOSE: Route the resumed analyze intent after the prompt turn completes.
+STATE:
+  SET ANALYZE_INTENT_CAPTURE_STATE: prompt | resume | unset (default unset, scope workflow_run)
+WHEN:
+  REQUIRE ANALYZE_INTENT_CAPTURE_STATE == resume
+DO:
+  SET ORIGINAL_INTENT = user.reply
+  SET ANALYZE_INTENT_CAPTURE_STATE = unset
+  CONTINUE AnalyzeRoute
 ```
 
 ```pdsl
