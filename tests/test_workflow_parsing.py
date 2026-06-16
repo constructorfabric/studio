@@ -117,13 +117,17 @@ def test_workflows_continue_root_skill_entrypoint_bootstrap():
         if bootstrap_unit not in content:
             missing.append(f"{name}: {bootstrap_unit}")
         if "modules/runtime/command-resolution.md" not in content:
-            missing.append(f"{name}: command-resolution load")
+            if "RUN WorkflowBootstrapCommandWorkflowResolution" not in content:
+                missing.append(f"{name}: command-resolution load")
         if "modules/runtime/workflow-resolution.md" not in content:
-            missing.append(f"{name}: workflow-resolution load")
+            if "RUN WorkflowBootstrapCommandWorkflowResolution" not in content:
+                missing.append(f"{name}: workflow-resolution load")
         if "modules/subagents/git-commit-mode.md" not in content:
-            missing.append(f"{name}: git-commit-mode load")
+            if "RUN WorkflowBootstrapRouterPrelude" not in content:
+                missing.append(f"{name}: git-commit-mode load")
         if "RUN CommandResolution to resolve {cfs_cmd}" not in content:
-            missing.append(f"{name}: CommandResolution run")
+            if "RUN WorkflowBootstrapCommandWorkflowResolution" not in content:
+                missing.append(f"{name}: CommandResolution run")
         if continue_route not in content:
             missing.append(f"{name}: {continue_route}")
         if f"NEVER require cf or CFS_INIT before routing" not in content:

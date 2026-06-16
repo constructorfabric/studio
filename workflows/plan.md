@@ -18,7 +18,9 @@ STATE:
   SET ORIGINAL_INTENT: string | unset (default unset, scope workflow_run)
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
-  RUN WorkflowBootstrapCoreSession
+  RUN WorkflowBootstrapRouterPrelude
+  RUN WorkflowBootstrapSimpleModeGate
+  RUN WorkflowBootstrapStudioInstructionsMemory
   SET ORIGINAL_INTENT = the user's triggering plan request (verbatim or shortest faithful summary), or unset when activation-only, WHEN ORIGINAL_INTENT == unset
   RUN WorkflowBootstrapCommandDispatchTemplateContext
   SET CURRENT_WORKFLOW = cf-plan, SET COMPANION_CONTINUE = PlanPhase0Discover and LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md and CONTINUE CompanionSkillOffer WHEN ORIGINAL_INTENT != unset

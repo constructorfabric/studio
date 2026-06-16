@@ -32,6 +32,7 @@ WHEN:
 DO:
   - LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
   - RUN WorkflowBootstrapRouterPrelude
+  - RUN WorkflowBootstrapSimpleModeGate
   - RUN BraveNewWorldSessionEnable
 RULES:
   - ALWAYS treat this workflow as an overlay on later workflow execution, not as a replacement workflow

@@ -16,7 +16,9 @@ UNIT MapBootstrap
 PURPOSE: Load the runtime rules needed before any map work begins.
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
-  RUN WorkflowBootstrapCoreSession
+  RUN WorkflowBootstrapRouterPrelude
+  RUN WorkflowBootstrapSimpleModeGate
+  RUN WorkflowBootstrapStudioInstructionsMemory
   RUN WorkflowBootstrapCommandTemplateContext
   SET ORIGINAL_INTENT = the user's triggering map request (verbatim or shortest faithful summary)
   SET CURRENT_WORKFLOW = cf-map, SET COMPANION_CONTINUE = MapIntentRouter and LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md and CONTINUE CompanionSkillOffer

@@ -2320,8 +2320,13 @@ def test_studio_instruction_memory_runs_in_concrete_workflows() -> None:
         assert (
             "LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/studio-instructions-memory.md"
             in text
+            or "RUN WorkflowBootstrapStudioInstructionsMemory" in text
+            or "RUN WorkflowBootstrapCoreSession" in text
         ), f"{workflow_name} must load studio-instructions-memory"
-        assert "RUN StudioInstructionsMemoryGate" in text, (
+        assert "RUN StudioInstructionsMemoryGate" in text or (
+            "RUN WorkflowBootstrapStudioInstructionsMemory" in text
+            or "RUN WorkflowBootstrapCoreSession" in text
+        ), (
             f"{workflow_name} must run StudioInstructionsMemoryGate"
         )
 
@@ -2335,6 +2340,79 @@ def test_studio_instruction_memory_runs_in_concrete_workflows() -> None:
     for workflow_name in router_or_overlay_exceptions:
         text = (repo_root / "workflows" / workflow_name).read_text(encoding="utf-8")
         assert "StudioInstructionsMemoryGate" not in text
+
+
+def test_simple_mode_gate_runs_in_current_non_exempt_workflows() -> None:
+    """Current workflows opt into simple-mode session choice except help/debug."""
+    repo_root = Path(__file__).resolve().parents[1]
+    module = (
+        repo_root / "skills" / "studio" / "modules" / "gates" / "simple-mode.md"
+    ).read_text(encoding="utf-8")
+    rules_module = (
+        repo_root / "skills" / "studio" / "modules" / "gates" / "simple-mode-rules.md"
+    ).read_text(encoding="utf-8")
+    bootstrap = (
+        repo_root / "skills" / "studio" / "modules" / "runtime" / "workflow-bootstrap.md"
+    ).read_text(encoding="utf-8")
+
+    assert "UNIT SimpleModeGate" in module
+    assert "SET SIMPLE_MODE: unset | simple | normal" in module
+    assert "MENU SimpleModeChoice" in module
+    assert "1 simple -> SET SIMPLE_MODE = simple" in module
+    assert "2 normal -> SET SIMPLE_MODE = normal" in module
+    assert "UNIT SimpleModeLoadRules" in module
+    assert "modules/gates/simple-mode-rules.md" in module
+    assert "NEVER load `simple-mode-rules.md` when SIMPLE_MODE == normal" in module
+    assert "UNIT SimpleModeNormal" in module
+    assert "explain the current workflow/unit/menu" not in module
+    assert "UNIT SimpleModeRulesActive" in rules_module
+    assert "explain the current workflow/unit/menu" in rules_module
+    assert "non-destructive, reversible, low-impact, unambiguous" in rules_module
+    assert "NEVER override hard gates" in rules_module
+
+    assert "UNIT WorkflowBootstrapSimpleModeGate" in bootstrap
+    assert "modules/gates/simple-mode.md" in bootstrap
+    assert "RUN SimpleModeGate" in bootstrap
+    assert "NEVER run for `cf-debug-prompts` or `cf-help`" in bootstrap
+
+    simple_mode_workflows = (
+        "analyze.md",
+        "auto-config.md",
+        "brainstorm.md",
+        "brave-new-world.md",
+        "coding.md",
+        "explore.md",
+        "explain.md",
+        "generate.md",
+        "kit.md",
+        "map.md",
+        "plan.md",
+        "workspace.md",
+        "write-docs.md",
+        "write-skills.md",
+    )
+    for workflow_name in simple_mode_workflows:
+        text = (repo_root / "workflows" / workflow_name).read_text(encoding="utf-8")
+        assert "modules/gates/simple-mode.md" in text or "WorkflowBootstrapSimpleModeGate" in text, (
+            f"{workflow_name} must load or run the simple-mode gate"
+        )
+        assert "RUN SimpleModeGate" in text or "RUN WorkflowBootstrapSimpleModeGate" in text, (
+            f"{workflow_name} must run the simple-mode gate"
+        )
+
+    exempt_workflows = ("debug-prompts.md", "help.md")
+    for workflow_name in exempt_workflows:
+        text = (repo_root / "workflows" / workflow_name).read_text(encoding="utf-8")
+        assert "SimpleModeGate" not in text
+        assert "modules/gates/simple-mode.md" not in text
+
+    studio = (repo_root / "workflows" / "studio.md").read_text(encoding="utf-8")
+    explain = (repo_root / "workflows" / "explain.md").read_text(encoding="utf-8")
+    assert "RUN SimpleModeGate" not in studio
+    assert "RUN WorkflowBootstrapSimpleModeGate" not in studio
+    assert "SimpleModeGate owned by the resolved non-exempt workflow" in studio
+    assert "RUN WorkflowBootstrapSimpleModeGate WHEN CF_HELP_PRESET != true" in explain
+    assert "cf-help remains exempt after delegating to cf-explain" in explain
 
 
 def test_subagent_selection_contract_uses_reasoning_effort_for_ranking() -> None:
@@ -2827,6 +2905,8 @@ def test_runtime_instruction_modules_stay_compact() -> None:
         (repo_root / "skills" / "studio" / "SKILL.md", 260),
         (repo_root / "skills" / "studio" / "modules" / "subagents" / "dispatch.md", 120),
         (repo_root / "skills" / "studio" / "modules" / "subagents" / "git-commit-mode.md", 140),
+        (repo_root / "skills" / "studio" / "modules" / "gates" / "simple-mode.md", 60),
+        (repo_root / "skills" / "studio" / "modules" / "gates" / "simple-mode-rules.md", 40),
         (repo_root / "skills" / "studio" / "modules" / "gates" / "plan-first.md", 80),
         (repo_root / "skills" / "studio" / "modules" / "routing" / "companion-skills.md", 60),
         (repo_root / "workflows" / "generate.md", 150),

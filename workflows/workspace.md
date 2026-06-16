@@ -16,7 +16,9 @@ UNIT WorkspaceBootstrap
 PURPOSE: Load the runtime and workspace setup rules before any workspace work begins.
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
-  RUN WorkflowBootstrapCoreSession
+  RUN WorkflowBootstrapRouterPrelude
+  RUN WorkflowBootstrapSimpleModeGate
+  RUN WorkflowBootstrapStudioInstructionsMemory
   RUN WorkflowBootstrapCommandTemplateContext
   LOAD {cf-studio-path}/.core/requirements/workspace-setup.md as the setup detail reference (framing, source fields, storage modes, validation checks, terminal-record shapes)
   SET ORIGINAL_INTENT = the user's triggering workspace request (verbatim or shortest faithful summary)

@@ -19,13 +19,16 @@ STATE:
   SET ORIGINAL_INTENT: string | unset (default unset, scope workflow_run)
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
-  RUN WorkflowBootstrapCoreSession
+  RUN WorkflowBootstrapRouterPrelude
+  RUN WorkflowBootstrapSimpleModeGate WHEN CF_HELP_PRESET != true
+  RUN WorkflowBootstrapStudioInstructionsMemory
   RUN ExplainBootstrapIntentRuntime
   RUN ExplainBootstrapModeState
   RUN ExplainBootstrapStorytelling
   CONTINUE ExplainIntentCapture WHEN ORIGINAL_INTENT == unset
   CONTINUE ExplainExploreGate WHEN ORIGINAL_INTENT != unset
 RULES:
+  ALWAYS skip SimpleModeGate when CF_HELP_PRESET == true so cf-help remains exempt after delegating to cf-explain
   ALWAYS run StudioInstructionsMemoryGate before explain preflight, routing, storytelling gates, or delivery
   ALWAYS remember git-commit-mode so any later commit request in this active workflow session runs GitCommitModeGate before routing, export, or delegation
   ALWAYS load storytelling and sub-agent dispatch before any explain work

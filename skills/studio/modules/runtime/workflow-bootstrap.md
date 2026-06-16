@@ -17,6 +17,26 @@ UNIT WorkflowBootstrapCoreSession
 PURPOSE: Extend the shared router prelude with remembered Studio instruction files for full workflows.
 DO:
   RUN WorkflowBootstrapRouterPrelude
+  RUN WorkflowBootstrapStudioInstructionsMemory
+RULES:
+  ALWAYS run StudioInstructionsMemoryGate before workflow-specific routing, discovery, planning, validation, authoring, review, or writes
+```
+
+```pdsl
+UNIT WorkflowBootstrapSimpleModeGate
+PURPOSE: Load and run the once-per-session simple-mode choice for non-exempt workflows.
+DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/gates/simple-mode.md
+  RUN SimpleModeGate
+RULES:
+  ALWAYS run after WorkflowBootstrapRouterPrelude and before workflow-specific routing, discovery, planning, validation, authoring, review, or writes in non-exempt workflows
+  NEVER run for `cf-debug-prompts` or `cf-help`
+```
+
+```pdsl
+UNIT WorkflowBootstrapStudioInstructionsMemory
+PURPOSE: Load and run remembered Studio instruction files after workflow entry gates resolve.
+DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/studio-instructions-memory.md
   RUN StudioInstructionsMemoryGate
 RULES:

@@ -16,7 +16,9 @@ UNIT ExploreBootstrap
 PURPOSE: Load the local rules needed before any explore work.
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
-  RUN WorkflowBootstrapCoreSession
+  RUN WorkflowBootstrapRouterPrelude
+  RUN WorkflowBootstrapSimpleModeGate
+  RUN WorkflowBootstrapStudioInstructionsMemory
   RUN WorkflowBootstrapDispatchTemplateContext
   CONTINUE ExploreEntry
 RULES:

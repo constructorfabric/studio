@@ -16,7 +16,9 @@ UNIT AutoConfigBootstrap
 PURPOSE: Load the runtime rules and auto-config methodology before any auto-config work.
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
-  RUN WorkflowBootstrapCoreSession
+  RUN WorkflowBootstrapRouterPrelude
+  RUN WorkflowBootstrapSimpleModeGate
+  RUN WorkflowBootstrapStudioInstructionsMemory
   RUN WorkflowBootstrapCommandTemplateContext
   LOAD {cf-studio-path}/.core/requirements/auto-config.md as the phase-by-phase methodology reference
   RUN verify the methodology loaded; RETURN a failed AUTO_CONFIG_RESULT with reason="Auto-config methodology not found at {cf-studio-path}/.core/requirements/auto-config.md" and recovery="reinstall or sync the studio kit, then retry auto-config" and STOP_TURN WHEN the load fails

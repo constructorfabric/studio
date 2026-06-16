@@ -39,6 +39,8 @@ UNIT KitInitBootstrapLoadRuntime
 PURPOSE: Load the kit runtime support modules before any target routing or CLI work.
 DO:
   LOAD and REMEMBER rules from {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/gates/simple-mode.md
+  RUN SimpleModeGate
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/studio-instructions-memory.md
   RUN StudioInstructionsMemoryGate
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/command-resolution.md

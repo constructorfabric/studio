@@ -21,5 +21,6 @@ DO:
   INVOKE skill `cf` to initialize the session and route the request, then STOP_TURN
 RULES:
   ALWAYS treat cf-studio as an exact alias of cf — same skill, same routing, same gates
+  ALWAYS keep SimpleModeGate owned by the resolved non-exempt workflow, never by this alias
   NEVER perform any work, render any output, or apply any gate here beyond the SkillInvocationArt entry banner and delegating to the cf skill
 ```

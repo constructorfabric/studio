@@ -24,6 +24,7 @@ PURPOSE: Load the runtime routing rules needed before any analyze routing work.
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
   RUN WorkflowBootstrapRouterPrelude
+  RUN WorkflowBootstrapSimpleModeGate
   RUN WorkflowBootstrapCommandWorkflowResolution
   CONTINUE AnalyzeRoute
 RULES:

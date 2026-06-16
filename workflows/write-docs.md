@@ -30,7 +30,9 @@ STATE:
   SET DOC_DIAGRAM_DIMENSION: resolved | unset (default unset, scope workflow_run)
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
-  RUN WorkflowBootstrapCoreSession
+  RUN WorkflowBootstrapRouterPrelude
+  RUN WorkflowBootstrapSimpleModeGate
+  RUN WorkflowBootstrapStudioInstructionsMemory
   RUN WriteDocsBootstrapIntentContext
   RUN WriteDocsBootstrapReferenceLoad
   RUN WriteDocsBootstrapDimensions
