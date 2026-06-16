@@ -52,9 +52,8 @@ DO:
 ## Severity
 
 - CRITICAL: contradiction that misleads usage/compliance, broken dependency edge, or incompatible requirements.
-- HIGH: strong inconsistency or major ambiguity likely to cause wrong decisions.
-- MEDIUM: drift, duplication, outdated detail, or inconsistent terminology.
-- LOW: style/grammar issue that reduces clarity without changing meaning.
+- MAJOR: strong inconsistency, major ambiguity, drift, duplication, outdated detail, or inconsistent terminology likely to cause wrong decisions or review churn.
+- MINOR: style/grammar issue that reduces clarity without changing meaning.
 
 # MUST HAVE
 
@@ -66,7 +65,7 @@ DO:
 - [ ] Inventory is stable-sorted and reproducible.
 - [ ] Each included file has a 1–2 sentence purpose.
 
-### INV-DOC-002: Document type classification [HIGH]
+### INV-DOC-002: Document type classification [MAJOR]
 - [ ] Each document is classified by type.
 - [ ] Document structure matches its type.
 - [ ] Tutorial/how-to/reference/explanation intents are not mixed carelessly.
@@ -78,18 +77,18 @@ DO:
 - [ ] Edge types are classified.
 - [ ] Normative edges are identified.
 
-### DEP-DOC-002: Canonical sources defined [HIGH]
+### DEP-DOC-002: Canonical sources defined [MAJOR]
 - [ ] Each major concept has one canonical source.
 - [ ] Other documents link to the canonical source instead of restating it.
 
 ## Terminology & Naming (TERM)
 
-### TERM-DOC-001: Stable term glossary (implicit or explicit) [HIGH]
+### TERM-DOC-001: Stable term glossary (implicit or explicit) [MAJOR]
 - [ ] Project and product names stay consistent.
 - [ ] Key nouns do not drift without migration notes.
 - [ ] Acronyms are expanded on first use unless globally obvious.
 
-### TERM-DOC-002: Command and file names are exact [HIGH]
+### TERM-DOC-002: Command and file names are exact [MAJOR]
 - [ ] Command names match actual interfaces.
 - [ ] File paths use correct casing and separators.
 - [ ] Renamed paths are not left stale.
@@ -102,7 +101,7 @@ DO:
 - [ ] `MUST/SHOULD` statements align across documents.
 - [ ] Duplicate process descriptions match in steps and outcomes.
 
-### CLAIM-DOC-002: Normative statements have a source [HIGH]
+### CLAIM-DOC-002: Normative statements have a source [MAJOR]
 - [ ] `MUST/ALWAYS/NEVER` statements live in a canonical policy or protocol doc, or
 - [ ] they link to that canonical doc.
 
@@ -112,29 +111,29 @@ DO:
 - [ ] All relative links resolve to existing targets.
 - [ ] All referenced anchors and headings exist.
 
-### LINK-DOC-002: Reference hierarchy is explicit [MEDIUM]
+### LINK-DOC-002: Reference hierarchy is explicit [MAJOR]
 - [ ] When multiple style guides exist, precedence is explicit (`project > primary style guide > external`).
 
 ## Staleness & Drift (STALE)
 
-### STALE-DOC-001: Stale statements are flagged [HIGH]
+### STALE-DOC-001: Stale statements are flagged [MAJOR]
 - [ ] "Coming soon" or TODO-like promises are removed or tracked.
 - [ ] Old version requirements match current declared requirements.
 - [ ] Deprecated workflows and commands are labeled.
 - [ ] Deprecated workflows and commands link to replacements.
 
-### STALE-DOC-002: Duplicated content is controlled [MEDIUM]
+### STALE-DOC-002: Duplicated content is controlled [MAJOR]
 - [ ] Duplicated definitions are eliminated or explicitly synchronized.
 - [ ] Canonical sources are used for definitions and contracts.
 
 ## Style & Language Quality (STYLE)
 
-### STYLE-DOC-001: Voice and tone are consistent [LOW]
+### STYLE-DOC-001: Voice and tone are consistent [MINOR]
 - [ ] Writing is direct and clear.
 - [ ] Writing avoids unnecessary hype.
 - [ ] Imperatives are used consistently in procedures.
 
-### STYLE-DOC-002: Accessibility and readability basics [LOW]
+### STYLE-DOC-002: Accessibility and readability basics [MINOR]
 - [ ] Headings are descriptive and scannable.
 - [ ] Lists stay parallel.
 - [ ] Lists are not excessively nested.
@@ -145,14 +144,14 @@ DO:
 ### DOC-NO-001: Silent skipping of files in scope [CRITICAL]
 - [ ] No in-scope file is skipped without explicit exclusion rationale.
 
-### DOC-NO-002: Uncited contradictions [HIGH]
+### DOC-NO-002: Uncited contradictions [MAJOR]
 - [ ] No contradiction is claimed without quoting both sides.
 
-### DOC-NO-003: "Bulk PASS" language without evidence [HIGH]
+### DOC-NO-003: "Bulk PASS" language without evidence [MAJOR]
 
 - [ ] No broad pass claim is made without inventory and evidence.
 
-### DOC-NO-004: Multiple competing "sources of truth" without precedence [MEDIUM]
+### DOC-NO-004: Multiple competing "sources of truth" without precedence [MAJOR]
 
 - [ ] No concept has multiple sources of truth unless explicit precedence is documented.
 

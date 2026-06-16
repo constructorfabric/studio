@@ -4,6 +4,8 @@ import os
 import tempfile
 import time
 
+import pytest
+
 from overwork_alert.ipc import ControlRequest, ControlServer, send_request
 
 
@@ -17,7 +19,10 @@ def test_ipc_request_response_roundtrip() -> None:
             return {"ok": False, "error": "invalid_command"}
 
         server = ControlServer(socket_path=socket_path, request_handler=handler)
-        server.start()
+        try:
+            server.start()
+        except PermissionError:
+            pytest.skip("Unix socket creation not permitted in this environment (sandbox restriction)")
         try:
             # Give the server thread a moment to start.
             time.sleep(0.05)

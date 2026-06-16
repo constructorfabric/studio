@@ -1,14 +1,6 @@
----
-cf: true
-type: requirement
-name: PDSL Execution Card
-version: 0.1
-purpose: Compact runtime semantics for LLMs executing or reviewing PDSL instruction blocks
----
-
 # PDSL Execution Card
 
-Use this card as the minimal runtime semantics slice when a prompt-consuming
+Use this module as the minimal runtime semantics slice when a prompt-consuming
 agent must execute, author, transform, or review PDSL instruction blocks.
 
 ```pdsl
@@ -35,9 +27,20 @@ RULES:
   - ALWAYS treat `WAIT` plus `STOP_TURN` as a hard assistant-turn boundary.
   - ALWAYS treat `CONTINUE <unit-or-phase>` as transfer of control to that target,
     not optional advice.
+  - ALWAYS after any `WAIT`/`STOP_TURN` resume at the exact active PDSL
+    continuation target; REQUIRED: do not reinterpret the user's reply as
+    broad permission for generic autonomous execution.
   - ALWAYS treat `DISPATCH` as invoking a named sub-agent or worker contract;
     concurrency, isolation, and join behavior come from explicit dispatch
     options or surrounding rules, not separate dispatch keywords.
+  - ALWAYS treat an accepted plan's execution directives as binding control
+    flow, not advisory notes.
+  - ALWAYS treat `DISPATCH: <agent>` in an accepted plan as requiring
+    SubAgentDispatch before task work.
+  - NEVER reinterpret `DISPATCH` in an accepted plan as permission for inline
+    controller execution.
+  - NEVER let generic assistant editing rules override an active accepted
+    workflow plan.
   - ALWAYS treat `RETURN` as the declared terminal handoff or output shape.
   - ALWAYS treat `RULES` as mandatory constraints for the owning unit.
   - ALWAYS treat `INVARIANTS` as always active while the owning unit, workflow,

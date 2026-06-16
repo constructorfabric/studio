@@ -54,11 +54,14 @@ Then emit:
       "id": "pcd-001",
       "path": "<path>",
       "line": 1,
-      "severity": "critical|high|medium|low",
+      "severity": "CRITICAL|MAJOR|MINOR",
       "category": "state|menu|stop-turn|hidden-rule|error-handling|authority|compactness|handoff|keyword-registry",
       "evidence": "<quote or summary>",
+      "root_cause": "<why the PDSL contract permits the failure>",
       "impact": "<why it matters>",
-      "suggested_fix": "<specific fix>"
+      "suggested_fix": "<specific fix>",
+      "verification": "<how to confirm the fix resolves it>",
+      "confidence": "CONFIRMED|HIGH|MEDIUM|LOW"
     }
   ],
   "unread_paths": [],
@@ -75,6 +78,7 @@ RULES:
   - ALWAYS account for every target path
   - ALWAYS include the six report sections
   - ALWAYS include findings JSON
+  - ALWAYS ensure every finding satisfies ReviewFindingContract fields: id, severity, location/path plus line or range, evidence, root_cause, impact, suggested_fix, verification, and confidence
   - ALWAYS flag unknown PDSL line/action keywords and classify each as
     spec-extension candidate, normalization candidate, or scanner noise
   - ALWAYS flag structured section items that are not list items or do not start

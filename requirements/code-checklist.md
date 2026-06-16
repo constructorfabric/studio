@@ -53,9 +53,8 @@ RULES:
 ## Severity
 
 - CRITICAL: unsafe/broken/security issue; blocks merge.
-- HIGH: major quality issue; fix before merge.
-- MEDIUM: meaningful improvement; fix when feasible.
-- LOW: minor improvement; optional.
+- MAJOR: material quality issue or meaningful improvement; fix before merge when it affects correctness, maintainability, security, or test confidence.
+- MINOR: minor improvement; optional.
 
 ## Review Modes
 
@@ -75,91 +74,91 @@ DO:
 
 RULES:
   - ALWAYS check SEC-CODE-001/002/003, SEC-CODE-NO-001/002, ERR-CODE-001/003, ERR-CODE-NO-001, QUAL-CODE-NO-002 in Quick mode; spot-check ENG-CODE-001 and QUAL-CODE-001; mark the rest NOT REVIEWED
-  - ALWAYS check all CRITICAL and HIGH items plus all MUST NOT items in Standard mode
+  - ALWAYS check all CRITICAL and MAJOR items plus all MUST NOT items in Standard mode
   - ALWAYS check all items in Full mode; triage order is SEC, ERR, QUAL/TEST, ENG/QUAL, PERF, OBS
 ```
 
 # MUST HAVE
 ## Engineering Best Practices (ENG)
-### ENG-CODE-001: Test-Driven Development (TDD) [HIGH]
+### ENG-CODE-001: Test-Driven Development (TDD) [MAJOR]
 - [ ] New behavior has corresponding tests.
 - [ ] Tests were written before or alongside implementation.
 - [ ] Tests fail if implementation is removed.
 - [ ] Tests verify outcomes, not just no-crash behavior.
 - [ ] Test names describe the behavior under test.
 - [ ] Tests run independently.
-### ENG-CODE-002: Single Responsibility Principle (SRP) [HIGH]
+### ENG-CODE-002: Single Responsibility Principle (SRP) [MAJOR]
 - [ ] Each module, class, or function has one reason to change.
 - [ ] Functions do one thing well.
 - [ ] Classes have a single clear purpose.
 - [ ] No god objects or kitchen-sink modules exist.
 - [ ] UI, business logic, and data access responsibilities are separated.
-### ENG-CODE-003: Open/Closed Principle (OCP) [MEDIUM]
+### ENG-CODE-003: Open/Closed Principle (OCP) [MAJOR]
 - [ ] Behavior is extended through composition or configuration.
 - [ ] New functionality does not require unrelated working code to change.
 - [ ] Extension points are clear and intentional.
 - [ ] Existing working code is not modified just to add unrelated features.
-### ENG-CODE-004: Liskov Substitution Principle (LSP) [HIGH]
+### ENG-CODE-004: Liskov Substitution Principle (LSP) [MAJOR]
 - [ ] Implementations honor interface contracts.
 - [ ] Subtypes remain substitutable for their base types.
 - [ ] Polymorphic use does not cause surprising behavior.
 - [ ] Subtypes do not strengthen preconditions.
 - [ ] Subtypes do not weaken postconditions.
-### ENG-CODE-005: Interface Segregation Principle (ISP) [MEDIUM]
+### ENG-CODE-005: Interface Segregation Principle (ISP) [MAJOR]
 - [ ] Interfaces are small and purpose-driven.
 - [ ] Fat interfaces are avoided.
 - [ ] Clients depend only on the methods they use.
 - [ ] Role interfaces are preferred over header interfaces.
-### ENG-CODE-006: Dependency Inversion Principle (DIP) [HIGH]
+### ENG-CODE-006: Dependency Inversion Principle (DIP) [MAJOR]
 - [ ] High-level modules do not depend directly on low-level modules.
 - [ ] Both layers depend on abstractions.
 - [ ] Dependencies are injectable.
 - [ ] Core logic is testable without heavy integration setup.
 - [ ] External dependencies sit behind interfaces.
-### ENG-CODE-007: Don't Repeat Yourself (DRY) [MEDIUM]
+### ENG-CODE-007: Don't Repeat Yourself (DRY) [MAJOR]
 - [ ] Copy-paste duplication is absent.
 - [ ] Shared logic is extracted with clear ownership.
 - [ ] Abstraction happens only after a real repeated pattern appears.
 - [ ] Constants are defined once.
 - [ ] Common patterns are abstracted appropriately.
-### ENG-CODE-008: Keep It Simple, Stupid (KISS) [HIGH]
+### ENG-CODE-008: Keep It Simple, Stupid (KISS) [MAJOR]
 - [ ] The simplest correct solution was chosen.
 - [ ] Unnecessary complexity was avoided.
 - [ ] Code remains readable without heavy explanation.
 - [ ] Clever tricks were avoided in favor of clarity.
 - [ ] Standard patterns were preferred over novelty.
-### ENG-CODE-009: You Aren't Gonna Need It (YAGNI) [HIGH]
+### ENG-CODE-009: You Aren't Gonna Need It (YAGNI) [MAJOR]
 - [ ] No speculative features were added.
 - [ ] No unused abstractions remain.
 - [ ] No configuration exists only for hypothetical scenarios.
 - [ ] No unused extension points were introduced.
 - [ ] Capability was added only for current use cases.
-### ENG-CODE-010: Refactoring Discipline [MEDIUM]
+### ENG-CODE-010: Refactoring Discipline [MAJOR]
 - [ ] Refactoring happens only after tests pass.
 - [ ] Behavior stays unchanged during refactoring.
 - [ ] Structure improves without introducing features.
 - [ ] Refactoring occurs in small incremental steps.
 - [ ] Refactoring and feature work are not mixed in one commit.
 ## Code Quality (QUAL)
-### QUAL-CODE-001: Readability [HIGH]
+### QUAL-CODE-001: Readability [MAJOR]
 - [ ] Naming is clear and descriptive.
 - [ ] Naming conventions stay consistent.
 - [ ] Code reads clearly.
 - [ ] Complex logic is explained when needed.
 - [ ] Misleading names and abbreviations are absent.
-### QUAL-CODE-002: Maintainability [HIGH]
+### QUAL-CODE-002: Maintainability [MAJOR]
 - [ ] Code is easy to modify.
 - [ ] Changes stay localized.
 - [ ] Dependencies are explicit and minimal.
 - [ ] Hidden coupling is absent.
 - [ ] Module boundaries are clear.
-### QUAL-CODE-003: Testability [HIGH]
+### QUAL-CODE-003: Testability [MAJOR]
 - [ ] Core logic is testable without external systems.
 - [ ] Dependencies are injectable for tests.
 - [ ] Side effects are isolated and mockable.
 - [ ] Behavior is deterministic.
 - [ ] Outcomes are observable.
-### QUAL-CODE-004: Complexity Control [HIGH]
+### QUAL-CODE-004: Complexity Control [MAJOR]
 - [ ] Cyclomatic and cognitive complexity stay proportionate to the problem being solved.
 - [ ] Deep nesting and long branching chains are simplified or extracted.
 - [ ] Complex logic hotspots are isolated behind clear abstractions with focused tests.
@@ -173,7 +172,7 @@ Optional: Quantitative guidance — advisory calibration only, not hard limits. 
 - [ ] Exceptions are not swallowed.
 - [ ] Error messages are actionable.
 - [ ] Stack traces remain available for debugging without leaking into production UI.
-### ERR-CODE-002: Graceful Degradation [HIGH]
+### ERR-CODE-002: Graceful Degradation [MAJOR]
 - [ ] Partial failures are handled.
 - [ ] Recovery actions are defined.
 - [ ] Fallback behavior is defined.
@@ -205,26 +204,26 @@ Optional: Quantitative guidance — advisory calibration only, not hard limits. 
 - [ ] Encryption is used where required.
 - [ ] Sensitive data is transmitted securely.
 ## Performance (PERF)
-### PERF-CODE-001: Efficiency [MEDIUM]
+### PERF-CODE-001: Efficiency [MAJOR]
 - [ ] Obvious performance anti-patterns are absent.
 - [ ] N+1 query patterns are avoided.
 - [ ] Unnecessary allocations are avoided.
 - [ ] Resources are cleaned up properly.
 - [ ] Appropriate data structures are chosen.
-### PERF-CODE-002: Scalability [MEDIUM]
+### PERF-CODE-002: Scalability [MAJOR]
 - [ ] Algorithmic complexity matches expected data size.
 - [ ] Hot paths avoid blocking operations.
 - [ ] Caching is used where beneficial.
 - [ ] Batch operations are used where appropriate.
 - [ ] Large datasets use pagination where appropriate.
 ## Observability (OBS)
-### OBS-CODE-001: Logging [MEDIUM]
+### OBS-CODE-001: Logging [MAJOR]
 - [ ] Meaningful boundary events are logged.
 - [ ] Log levels are used appropriately.
 - [ ] Secrets are not logged.
 - [ ] Correlation IDs are propagated.
 - [ ] Logs include enough debugging context.
-### OBS-CODE-002: Metrics & Tracing [LOW]
+### OBS-CODE-002: Metrics & Tracing [MINOR]
 - [ ] Key operations expose metrics when applicable.
 - [ ] Tracing is integrated where beneficial.
 - [ ] Health checks exist.
@@ -232,26 +231,29 @@ Optional: Quantitative guidance — advisory calibration only, not hard limits. 
 - [ ] Performance baselines are established.
 - [ ] `N/A` is used only when the service has no long-running or SLO/SLA requirements.
 ## Testing (TEST)
-### TEST-CODE-001: Test Coverage [HIGH]
+### TEST-CODE-001: Test Coverage [MAJOR]
 - [ ] Public APIs are covered.
 - [ ] Happy paths are covered.
 - [ ] Error paths are covered.
 - [ ] Edge cases are covered.
 - [ ] Boundary conditions are covered.
-### TEST-CODE-002: Test Quality [HIGH]
+### TEST-CODE-002: Test Quality [MAJOR]
 - [ ] Tests are fast.
 - [ ] Tests are reliable.
 - [ ] Tests are independent.
 - [ ] Tests are readable.
 - [ ] Assertions are clear.
-### TEST-CODE-003: Test Completeness [MEDIUM]
+### TEST-CODE-003: Test Completeness [MAJOR]
 - [ ] Business logic has unit tests.
 - [ ] External dependencies have integration tests.
 - [ ] Critical paths have E2E tests when applicable.
 - [ ] Regression scenarios are covered.
 - [ ] Tests document expected behavior.
 # MUST NOT HAVE
-### QUAL-CODE-NO-001: No Incomplete Work Markers [HIGH]
+
+## Code Quality and Risk Prohibitions
+
+### QUAL-CODE-NO-001: No Incomplete Work Markers [MAJOR]
 - [ ] Untracked TODO markers are absent.
 - [ ] FIXME markers are absent.
 - [ ] XXX markers are absent.
@@ -272,14 +274,14 @@ Optional: Quantitative guidance — advisory calibration only, not hard limits. 
 - [ ] `_ = might_fail()` patterns without handling are absent.
 - [ ] `try/except: pass` patterns are absent.
 - [ ] Errors are handled or propagated explicitly.
-### ERR-CODE-NO-002: No Unsafe Panic Patterns [HIGH]
+### ERR-CODE-NO-002: No Unsafe Panic Patterns [MAJOR]
 - [ ] Bare `unwrap()` is absent from production paths.
 - [ ] Bare `panic!()` is absent from production paths.
 - [ ] `expect()` calls have meaningful messages.
 - [ ] Force-unwrapping without guards is absent.
 - [ ] Assertions are absent from production paths.
 - [ ] Proper error handling is used instead.
-### TEST-CODE-NO-001: No Ignored Tests [MEDIUM]
+### TEST-CODE-NO-001: No Ignored Tests [MAJOR]
 - [ ] Ignored tests have documented reasons.
 - [ ] Disabled tests have documented reasons.
 - [ ] Skip markers have explanations.

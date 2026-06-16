@@ -125,7 +125,9 @@ Use this small keyword set before inventing new words.
 | `NOTES` | Non-executable explanation |
 
 Use `ALWAYS` inside `RULES` and `INVARIANTS`. Use `NEVER` inside `DO`,
-`RULES`, or `INVARIANTS` for absolute prohibitions.
+`RULES`, or `INVARIANTS` for absolute prohibitions. Keep unit-local
+execution-path prohibitions in `DO`; move remaining always-on constraints into
+`RULES` or `INVARIANTS`.
 
 Structured execution sections use list items. Each top-level item starts with
 one of the section's allowed starter keywords:
@@ -170,10 +172,11 @@ controller or sub-agent interpreting PDSL applies these rules:
 - `NOTES` are explanatory only; they do not create executable obligations
   unless an active rule references them.
 
-The root `{cf-studio-path}/.core/skills/studio/SKILL.md` owns loading the compact runtime card at
-`requirements/pdsl-execution-card.md` once into the shared context pack.
-Workflow and agent prompts should rely on that root-skill slice instead of
-re-declaring the card path locally.
+Every workflow that contains PDSL control flow owns loading the compact runtime
+card from `{cf-studio-path}/.core/skills/studio/modules/runtime/pdsl-execution-card.md`
+during its bootstrap before later actions depend on PDSL runtime semantics.
+Shared modules and agent prompts may rely on the workflow/controller-provided
+slice instead of re-declaring the card path locally.
 
 ---
 
@@ -243,6 +246,44 @@ DO:
 
 Use `SET` only for state changes. Use `EMIT` or `EMIT_MENU` only for visible
 UX output. Use `STOP_TURN` whenever the next step must wait for the user.
+
+Prefer `DO` for mandatory behavior whenever the requirement can be written as
+an ordered action. Use `RULES` only for constraints that cannot be represented
+cleanly as `DO` steps without losing meaning or introducing fake sequencing.
+
+Keep each `UNIT` compact. Count this limit as top-level `DO` actions only; do
+not count continuation lines under the same action. If a unit needs more than
+7 top-level `DO` actions, refactor it into narrower `UNIT`s, use `RUN` for
+reusable helper behavior, and use `CONTINUE` for phase or ownership transfer.
+
+Do not redundantly restate behavior between `DO` and `RULES` on the same
+behavior path. Put imperative execution in `DO`, then use `RULES` only for the
+non-redundant constraints that remain; factor shared constraints when
+practical.
+
+---
+
+## Rules
+
+`RULES` declare mandatory constraints that stay active for the owning unit.
+
+```pdsl
+RULES:
+  - ALWAYS load required references before review
+  - NEVER dispatch authoring work after a required bootstrap failure
+```
+
+Major authoring rules:
+
+- Define `RULES` only when the behavior cannot be represented cleanly as `DO`
+  actions.
+- Keep `RULES` compact. A `RULES` block may contain at most 5 rules; if more
+  are needed, refactor into narrower units with the correct rule scope, or
+  elevate truly cross-cutting constraints to `INVARIANTS`.
+- Do not redundantly restate the same behavior on the same behavior path
+  across `RULES` blocks; factor shared constraints when practical.
+- Do not restate a `DO` action as a `RULES` item unless the rule adds a
+  distinct always-on constraint that the action alone cannot express.
 
 ---
 
@@ -417,12 +458,26 @@ When converting prose instructions to PDSL:
 2. Convert every "when/if/unless" sentence into `WHEN` or `ON_ERROR`.
 3. Convert every visible user interaction into `MENU`, `EMIT`, `WAIT`, and
    `STOP_TURN`.
-4. Convert every "must/never/always" sentence into `RULES` or `INVARIANTS`.
-5. Keep rationale in `NOTES`.
-6. Do not hide required behavior in paragraphs after the DSL block.
+4. Convert imperative required behavior into `DO` first; define `RULES` only
+   when the constraint cannot be represented cleanly as `DO` actions.
+5. Convert remaining always-on "must/always" constraints into `RULES` or
+   `INVARIANTS`; keep unit-local `NEVER` constraints in `DO` when they apply
+   only to a specific execution path.
+6. Keep each `UNIT` compact: maximum 7 top-level `DO` actions. Continuation
+   lines under one action do not increase the count. If more are needed,
+   refactor into narrower `UNIT`s.
+7. Keep each `RULES` block compact: maximum 5 rules. If more are needed,
+   refactor into narrower units with the correct rule scope, or elevate truly
+   cross-cutting constraints to `INVARIANTS`.
+8. Do not redundantly restate behavior on the same behavior path between
+   `RULES` blocks or between `RULES` and `DO`; factor shared constraints when
+   practical.
+9. Keep rationale in `NOTES`.
+10. Do not hide required behavior in paragraphs after the DSL block.
 
-If behavior is too complex for one unit, split it into multiple `UNIT` blocks
-and connect them with `CONTINUE <unit-name>`.
+If behavior is too complex for one unit, split it into multiple `UNIT` blocks.
+Use `RUN <unit-name>` for reusable helper behavior and `CONTINUE <unit-name>`
+for phase or ownership transfer.
 
 ---
 

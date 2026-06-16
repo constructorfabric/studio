@@ -13,6 +13,7 @@ purpose: Migrate from cypilot directly to Constructor Studio after the determini
 <!-- toc -->
 
 - [Goal](#goal)
+- [Bootstrap](#bootstrap)
 - [Preconditions](#preconditions)
 - [Hard Rules](#hard-rules)
 - [Phases](#phases)
@@ -23,7 +24,7 @@ purpose: Migrate from cypilot directly to Constructor Studio after the determini
   - [E4: Verifier dispatch (user-gated)](#e4-verifier-dispatch-user-gated)
   - [E5: Migrator ↔ Verifier loop](#e5-migrator--verifier-loop)
   - [E6: Final report](#e6-final-report)
-- [Sub-agent dispatch contract](#sub-agent-dispatch-contract)
+- [Migration Dispatch Contract](#migration-dispatch-contract)
 - [Validation Criteria](#validation-criteria)
 
 <!-- /toc -->
@@ -31,6 +32,33 @@ purpose: Migrate from cypilot directly to Constructor Studio after the determini
 ALWAYS open and follow `{cf-studio-path}/.core/skills/studio/SKILL.md` FIRST WHEN `{cfs_mode}` is `off`
 
 **Type**: Orchestrator skill (loaded by the workflow-routing keyword `migrate from cypilot` / `migrate-from-cypilot`)
+
+## Bootstrap
+
+```pdsl
+UNIT MigrateFromCypilotBootstrap
+
+PURPOSE:
+  Load shared Studio runtime and dispatch rules before migration-specific phases run.
+
+DO:
+  - LOAD {cf-studio-path}/.core/skills/studio/modules/ui/skill-invocation-art.md
+  - RUN SkillInvocationArt
+  - LOAD and REMEMBER rules from {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
+  - LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/studio-instructions-memory.md
+  - RUN StudioInstructionsMemoryGate
+  - LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/dispatch.md
+  - LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/context-memory.md
+  - SET verifier_iteration = 0
+  - CONTINUE E0_PreconditionsCheck
+
+RULES:
+  - ALWAYS run MigrateFromCypilotBootstrap before E0, precondition checks, scanner dispatch, planner dispatch, migrator dispatch, verifier dispatch, or final reporting
+  - ALWAYS run StudioInstructionsMemoryGate before migration-specific scanning, planning, writing, verification, or reporting
+  - ALWAYS remember git-commit-mode so any later commit request in this active workflow session runs GitCommitModeGate before routing, writes, git use, or delegation
+  - ALWAYS load SubAgentDispatch before any native cf-migrate-* dispatch group
+  - NEVER dispatch cf-migrate-scanner, cf-migrate-planner, cf-migrate-migrator, or cf-migrate-verifier before SubAgentDispatch has resolved approval or inline fallback for that dispatch group
+```
 
 ## Goal
 
@@ -62,42 +90,9 @@ NOTES:
 
 ## Preconditions
 
-```pdsl
-UNIT PreconditionsCheck
-
-PURPOSE:
-  Verify that the deterministic migration has completed before this skill runs.
-
-REQUIRE:
-  - Root AGENTS.md contains <!-- @cf:root-agents --> (not <!-- @cpt:root-agents -->)
-  - {cf-studio-path}/config/core.toml exists
-
-DO:
-  - RUN WHEN preconditions are unclear:
-    - EMIT_MENU DeterministicMigrationStatusMenu
-    - WAIT user.reply
-    - STOP_TURN
-
-MENU DeterministicMigrationStatusMenu:
-  TITLE: Deterministic migration status
-  OPTIONS:
-    1 yes -> Continue; deterministic migration already completed successfully
-    2 no -> CONTINUE preconditions_fail
-  INVALID:
-    EMIT "Reply with 1 for yes or 2 for no."
-    WAIT user.reply
-    STOP_TURN
-
-ON_ERROR:
-  preconditions_fail ->
-    EMIT:
-      "The deterministic migration has not completed (or was not detected).
-Run one of:
-    cfs init --migrate-from-cypilot=yes              # fresh install
-    cfs update --migrate-from-cypilot=yes            # existing install
-Then re-invoke this skill: cf migrate from cypilot"
-    STOP_TURN
-```
+Preconditions are executed by `E0_PreconditionsCheck`. The workflow proceeds
+only when the root managed block has already migrated to `@cf:root-agents` and
+`{cf-studio-path}/config/core.toml` exists.
 
 ## Hard Rules
 
@@ -156,7 +151,7 @@ DO:
     - EMIT "- [migrate-from-cypilot]: E0 preconditions PASS"
     - CONTINUE E1
   - RUN WHEN either fails:
-    - EMIT preconditions_fail message (see HardRules ON_ERROR)
+    - EMIT "The deterministic migration has not completed (or was not detected). Run `cfs init --migrate-from-cypilot=yes` for a fresh install or `cfs update --migrate-from-cypilot=yes` for an existing install, then re-invoke this skill: cf migrate from cypilot"
     - STOP_TURN
 ```
 
@@ -177,13 +172,15 @@ MENU E1_ScannerMenu:
   TITLE: Phase E1 — Scanner
   OPTIONS:
     1 y ->
-      DISPATCH cf-migrate-scanner with:
+      RUN SubAgentDispatch for the cf-migrate-scanner dispatch group
+      DISPATCH cf-migrate-scanner WHEN SubAgentDispatch resolved native dispatch with:
         prompt = content of {cf-studio-path}/.core/skills/studio/agents/cf-migrate-scanner.md
                  + ## Task Inputs section with:
                    project_root: absolute path
                    studio_path: absolute path
                    exclude_dirs: [".git", "{cf-studio-path}", ".studio-workspace", build caches]
       SET scan_findings = agent output
+      SET scan_findings_ref = controller-owned reference to Scanner phase output
       CONTINUE E2
     2 N ->
       EMIT "E1 declined. Re-invoke when you want to scan."
@@ -209,8 +206,8 @@ UNIT E2_PlannerDispatch
 PURPOSE:
   Categorize scan findings into auto-fixable, needs-review, and cascade groups.
 
-REQUIRE:
-  scan_findings is set (E1 completed)
+WHEN:
+  - REQUIRE scan_findings_ref is set (E1 completed)
 
 DO:
   - EMIT_MENU E2_PlannerMenu
@@ -223,10 +220,12 @@ MENU E2_PlannerMenu:
      Produces structured plan grouped by A/B/C. No files modified.)
   OPTIONS:
     1 y ->
-      DISPATCH cf-migrate-planner with:
+      RUN SubAgentDispatch for the cf-migrate-planner dispatch group
+      DISPATCH cf-migrate-planner WHEN SubAgentDispatch resolved native dispatch with:
         prompt = content of cf-migrate-planner.md + ## Task Inputs with:
-                   scan_findings: full output of Scanner phase
+                   scan_findings_ref: controller-owned reference to Scanner phase output
       SET plan = agent output
+      SET plan_ref = controller-owned reference to Planner phase output
       CONTINUE E3
     2 N ->
       EMIT "E2 declined. Re-invoke to run Planner."
@@ -254,8 +253,8 @@ UNIT E3_MigratorDispatch
 PURPOSE:
   Apply the Planner's plan to disk with Constructor Studio as the target.
 
-REQUIRE:
-  plan is set (E2 completed)
+WHEN:
+  - REQUIRE plan_ref is set (E2 completed)
 
 DO:
   - EMIT plan IN FULL (the entire output from Planner)
@@ -293,25 +292,16 @@ UNIT E3_RunMigrator
 PURPOSE:
   Dispatch the Migrator sub-agent with the approved selection.
 
-PRECONDITIONS:
-  GIT_COMMIT_MODE is set by GitCommitModeGate in {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
-    before any write-capable migrator dispatch.
-  CONTRIBUTING_GUIDE is set by GitCommitModeGate in {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
-    before any write-capable migrator dispatch;
-    null is valid only when discovery found no guide.
-
-ON_MISSING_PRECONDITION:
-  GIT_COMMIT_MODE missing ->
-    LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md and CONTINUE GitCommitModeGate
-    STOP_TURN
-  CONTRIBUTING_GUIDE missing ->
-    LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md and CONTINUE GitCommitModeGate
-    STOP_TURN
+WHEN:
+  - REQUIRE plan_ref is set
+  - REQUIRE selection is set
 
 DO:
-  - DISPATCH cf-migrate-migrator with:
+  - RUN GitCommitModeGate before preparing git policy for migrator dispatch
+  - RUN SubAgentDispatch for the cf-migrate-migrator dispatch group
+  - DISPATCH cf-migrate-migrator WHEN SubAgentDispatch resolved native dispatch with:
     prompt = content of cf-migrate-migrator.md + ## Task Inputs with:
-      plan: full Planner output
+      plan_ref: controller-owned reference to Planner phase output
       selection: which categories/items the user approved (A / AB / ABC / explicit list)
       project_root, studio_path
       target_workspace_file: ".studio-workspace.toml"
@@ -324,14 +314,19 @@ DO:
       contributing_guide: CONTRIBUTING_GUIDE (ALWAYS be included; null when not found)
       git_constraint: mode-matched constraint block from {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
                       § GitCommitModeGate
+      commit_footer_contract: COMMIT_FOOTER_CONTRACT
   - SET migration_manifest = agent output
+  - SET migration_manifest_ref = controller-owned reference to Migrator phase output
   - CONTINUE E4
 
 RULES:
   - NEVER dispatch Migrator without explicit user approval from E3_MigratorMenu
   - NEVER dispatch Migrator without plan set from E2
+  - ALWAYS run GitCommitModeGate before preparing git policy for write-capable migrator dispatch
   - ALWAYS include git_commit_mode in dispatch inputs
   - ALWAYS include contributing_guide in dispatch inputs
+  - ALWAYS include git_constraint in dispatch inputs
+  - ALWAYS include commit_footer_contract in dispatch inputs
 
 NOTES:
   Menu options:
@@ -352,8 +347,8 @@ UNIT E4_VerifierDispatch
 PURPOSE:
   Re-scan and diff against the migration manifest to detect residue.
 
-REQUIRE:
-  migration_manifest is set (E3 completed)
+WHEN:
+  - REQUIRE migration_manifest_ref is set (E3 completed)
 
 DO:
   - EMIT_MENU E4_VerifierMenu
@@ -366,13 +361,15 @@ MENU E4_VerifierMenu:
      Re-runs Scanner patterns and diffs against migration manifest.)
   OPTIONS:
     1 y ->
-      DISPATCH cf-migrate-verifier with:
+      RUN SubAgentDispatch for the cf-migrate-verifier dispatch group
+      DISPATCH cf-migrate-verifier WHEN SubAgentDispatch resolved native dispatch with:
         prompt = content of cf-migrate-verifier.md + ## Task Inputs with:
-                   plan: full Planner output
-                   migration_manifest: Migrator's output
+                   plan_ref: controller-owned reference to Planner phase output
+                   migration_manifest_ref: controller-owned reference to Migrator phase output
                    project_root, studio_path
-      INCREMENT verifier_iteration by 1
+      SET verifier_iteration = verifier_iteration + 1
       SET verification_result = agent output
+      SET verification_result_ref = controller-owned reference to Verifier phase output
       CONTINUE E5
     2 N ->
       EMIT "E4 declined. Continuing to final report without verification."
@@ -419,8 +416,20 @@ MENU E5_MigratorMenu:
      <truncated preview, max 10 items>)
   OPTIONS:
     1 y ->
-      DISPATCH cf-migrate-migrator with verifier's residue as new task
+      RUN GitCommitModeGate before preparing git policy for migrator dispatch
+      RUN SubAgentDispatch for the cf-migrate-migrator dispatch group
+      DISPATCH cf-migrate-migrator WHEN SubAgentDispatch resolved native dispatch with:
+        prompt = content of cf-migrate-migrator.md + ## Task Inputs with:
+          plan_ref: controller-owned reference to Planner phase output
+          verification_result_ref: controller-owned reference to Verifier phase output
+          residue_ref: controller-owned reference to verifier residue
+          project_root, studio_path
+          git_commit_mode: GIT_COMMIT_MODE
+          contributing_guide: CONTRIBUTING_GUIDE
+          git_constraint: mode-matched constraint block from {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md § GitCommitModeGate
+          commit_footer_contract: COMMIT_FOOTER_CONTRACT
       SET migration_manifest = agent output
+      SET migration_manifest_ref = controller-owned reference to Migrator phase output
       CONTINUE E4
     2 N ->
       EMIT residue list
@@ -481,29 +490,31 @@ RULES:
   - ALWAYS list cascade operations when any C-category items were not applied
 ```
 
-## Sub-agent dispatch contract
+## Migration Dispatch Contract
 
 ```pdsl
-UNIT SubAgentDispatchContract
+UNIT MigrationDispatchContract
 
 PURPOSE:
-  Define the standard dispatch mechanism for all four sub-agents.
+  Define migration-specific dispatch facts while deferring generic dispatch mechanics to the shared SubAgentDispatch module.
 
 RULES:
-  - ALWAYS use Agent tool for all sub-agent dispatches
-  - ALWAYS use subagent_type matching the phase:
+  - ALWAYS treat {cf-studio-path}/.core/skills/studio/modules/subagents/dispatch.md as the generic dispatch authority for registry lookup, contract loading, user approval, native dispatch, inline fallback, and stop handling
+  - ALWAYS load that shared dispatch module during MigrateFromCypilotBootstrap before any cf-migrate-* dispatch group
+  - ALWAYS run SubAgentDispatch before every scanner, planner, migrator, or verifier dispatch group
+  - ALWAYS select the registered cf-migrate-* agent matching the phase:
       E1: "cf-migrate-scanner"
       E2: "cf-migrate-planner"
       E3: "cf-migrate-migrator"
       E4/E5: "cf-migrate-verifier" / "cf-migrate-migrator"
-    (use the dedicated registered type; each is registered in agents.toml with role-scoped prompts)
-  - ALWAYS construct prompt as: {role-file-content} + \n\n## Task Inputs\n\n{role-specific JSON}
-  - ALWAYS run in foreground (default) so orchestrator can chain to next phase
+    (use the dedicated registered agent; each is registered in agents.toml with role-scoped prompts)
+  - ALWAYS pass phase artifacts as controller-owned references or state handles, not inline full outputs, unless the artifact is being visibly shown to the user for approval
+  - NEVER duplicate or override SubAgentDispatch approval, native-dispatch, inline-fallback, or stop semantics in this local contract
 
 NOTES:
   Each role file is self-contained: it declares purpose, expected inputs, procedure,
-  output format, and hard rules. The orchestrator does not interpret the agent's internal
-  logic; it passes inputs and consumes the structured output.
+  output format, and hard rules. The orchestrator selects the migration phase and task
+  inputs; the shared dispatch module owns how the selected agent contract runs.
 ```
 
 ## Validation Criteria

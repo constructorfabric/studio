@@ -224,7 +224,7 @@ WHEN:
   AND (security OR privacy OR concurrency OR data integrity OR migration OR compatibility risk
        OR mixed workflow/prompt/code/config changes that do not fit a pure specialist domain
        OR cross-system architecture OR unclear domain boundaries
-       OR len(target_paths) > 5 OR len(findings) > 10 OR high-severity findings
+       OR len(target_paths) > 5 OR len(findings) > 10 OR CRITICAL/MAJOR-severity findings
        OR previous author tier escalated OR returned AUTHOR_ESCALATION_REQUIRED)
 ```
 

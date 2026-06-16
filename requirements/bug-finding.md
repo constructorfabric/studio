@@ -198,10 +198,11 @@ RULES:
   - ALWAYS count a companion as checked only after its inspected slice resolved the hotspot-relevant normative effect or proved the dependency non-material; otherwise it stays unresolved and forces PARTIAL
 
 DO:
-  - EMIT finding report per finding: bug class, severity, confidence (CONFIRMED/HIGH/MEDIUM/LOW), location, violated invariant or contract, minimal trigger or counterexample, impact, evidence, proposed fix, best validation step
+  - EMIT finding report per finding: bug class, severity (CRITICAL/MAJOR/MINOR only), confidence (CONFIRMED/HIGH/MEDIUM/LOW), location, violated invariant or contract, minimal trigger or counterexample, impact, evidence, proposed fix, best validation step
   - EMIT residual uncertainty: unproven high-risk areas, required dynamic checks not yet run, bug classes checked vs. only partially checked, reason for PARTIAL or FAIL status
 
 RULES:
+  - ALWAYS reject any finding severity value outside CRITICAL, MAJOR, or MINOR
   - NEVER collapse uncertainty into a blanket PASS
   - ALWAYS produce final review output
   - ALWAYS use standalone four-section order or map into host workflow wrapper; never introduce competing top-level headings

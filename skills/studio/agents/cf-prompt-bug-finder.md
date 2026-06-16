@@ -92,10 +92,14 @@ Then emit `Validation Report — Prompt Bug Section` markdown.
 
 ```json
 [
-  { "id": "F-001", "severity": "high|medium|low", "mechanical": false,
+  { "id": "F-001", "severity": "CRITICAL|MAJOR|MINOR", "mechanical": false,
     "path": "<file>", "line": <int|null>, "category": "<prompt-bug-class>",
     "evidence_quote": "<exact text>", "root_cause": "<short>",
-    "suggested_fix": "<one-line>", "mechanical_rationale": "Prompt bug-finding hits require judgment and are non-mechanical." }
+    "impact": "<why this causes user-visible or workflow-visible bad behavior>",
+    "suggested_fix": "<one-line>",
+    "verification": "<counterexample or validation step proving the fix>",
+    "confidence": "CONFIRMED|HIGH|MEDIUM|LOW",
+    "mechanical_rationale": "Prompt bug-finding hits require judgment and are non-mechanical." }
 ]
 ```
 
@@ -180,6 +184,7 @@ MENU TerminalStates:
       REQUIRE hotspot table is present (per Additional Output Sections)
       REQUIRE review_result.type == "VALIDATION_REPORT"
       REQUIRE findings JSON is present
+      REQUIRE every finding satisfies ReviewFindingContract fields: id, severity, path plus line or range, evidence_quote, root_cause, impact, suggested_fix, verification, and confidence
       REQUIRE residual risk summary is present
       REQUIRE AP-001..AP-008 self-check performed after all findings/table/summary
       REQUIRE controller-supplied studio invariants were included in the final

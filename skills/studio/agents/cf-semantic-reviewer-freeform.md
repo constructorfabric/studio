@@ -103,9 +103,9 @@ DO:
     addition to freeform_prompt criteria
   - RUN For each finding:
     - Cite exact file, line range, and evidence quote from the file as read
-    - Assign severity: high (blocks correct behavior or violates explicit
-      constraint), medium (degrades quality or usability), low (style, clarity,
-      or minor inconsistency)
+    - Assign severity: CRITICAL (blocks safe or correct behavior), MAJOR
+      (violates an explicit constraint or materially degrades quality or
+      usability), MINOR (style, clarity, or minor inconsistency)
     - Provide a concrete, actionable recommended fix
   - NEVER invent findings not supported by read file content
   - NEVER hallucinate file contents; all evidence quotes ALWAYS come from a fresh
@@ -155,10 +155,14 @@ DO:
     }
   - EMIT findings JSON block for evidence already covered (empty array if none):
     [
-      { "id": "Rf-001", "severity": "high|medium|low", "path": "<file>",
+      { "id": "Rf-001", "severity": "CRITICAL|MAJOR|MINOR", "path": "<file>",
         "line_range": "<start>-<end>", "category": "<criterion-derived label>",
         "evidence_quote": "<exact text from file>",
-        "root_cause": "<short>", "suggested_fix": "<actionable one-line fix>" }
+        "root_cause": "<short>",
+        "impact": "<why this violates the freeform criteria in a user-visible or workflow-visible way>",
+        "suggested_fix": "<actionable one-line fix>",
+        "verification": "<how to confirm the criterion is satisfied after the fix>",
+        "confidence": "CONFIRMED|HIGH|MEDIUM|LOW" }
     ]
   - STOP_TURN
 
@@ -191,10 +195,14 @@ DO:
     - Verification Checklist (per-target coverage confirmation)
   - EMIT findings JSON block:
     [
-      { "id": "Rf-001", "severity": "high|medium|low", "path": "<file>",
+      { "id": "Rf-001", "severity": "CRITICAL|MAJOR|MINOR", "path": "<file>",
         "line_range": "<start>-<end>", "category": "<criterion-derived label>",
         "evidence_quote": "<exact text from file>",
-        "root_cause": "<short>", "suggested_fix": "<actionable one-line fix>" }
+        "root_cause": "<short>",
+        "impact": "<why this violates the freeform criteria in a user-visible or workflow-visible way>",
+        "suggested_fix": "<actionable one-line fix>",
+        "verification": "<how to confirm the criterion is satisfied after the fix>",
+        "confidence": "CONFIRMED|HIGH|MEDIUM|LOW" }
     ]
 
 RULES:
@@ -211,6 +219,13 @@ NOTES:
 
   Freeform findings use the `Rf` namespace prefix. Finding ids ALWAYS start from
   Rf-001 and are renumbered by the orchestrator after merge.
+
+  Freeform findings deliberately use `line_range` rather than single-line `line`
+  because the custom criteria may span multi-line evidence blocks. Freeform
+  reviews follow ReviewFindingContract for id, severity, location, evidence,
+  root_cause, impact, suggested_fix, verification, and confidence; they do not
+  require `mechanical` or `mechanical_rationale` because this reviewer does not
+  perform deterministic-vs-judgmental classification.
 
 
 ## Response Completion Gate
@@ -233,7 +248,7 @@ RULES:
       NEVER emit a PASS or complete status for unread files
   - ALWAYS emit the `findings` JSON block (empty array when all targets PASS)
   - ALWAYS every finding object ALWAYS have: id, severity, path, line_range,
-    category, evidence_quote, root_cause, suggested_fix
+    category, evidence_quote, root_cause, impact, suggested_fix, verification, confidence
   - NEVER emit a finding without an evidence_quote sourced from a direct file read
     performed this turn
   - ALWAYS all target_paths and cross_ref_paths used as authoritative evidence

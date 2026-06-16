@@ -37,7 +37,7 @@ drivers:
 - Kit file — user-editable, preserved across kit updates via file-level diff
 - Organized by expertise domain (e.g., Business, Architecture, Security, Testing)
 - Each domain has MUST HAVE and MUST NOT HAVE sections
-- Severity levels: CRITICAL, HIGH, MEDIUM, LOW
+- Severity levels: CRITICAL, MAJOR, MINOR
 - Used by analyze workflows for semantic quality review
 
 ---
@@ -66,7 +66,7 @@ drivers:
 **Artifact**: PRD
 **Kit**: sdlc
 
-**Severity levels**: CRITICAL > HIGH > MEDIUM > LOW
+**Severity levels**: CRITICAL > MAJOR > MINOR
 **Review priority**: BIZ → ARCH → SEC → TEST
 
 ---
@@ -85,7 +85,7 @@ drivers:
 
 > **Ref**: ISO/IEC/IEEE 29148 §5.2.5
 
-#### BIZ-PRD-002 — Scope Boundaries [HIGH]
+#### BIZ-PRD-002 — Scope Boundaries [MAJOR]
 
 - [ ] In-scope items explicitly listed
 - [ ] Out-of-scope items explicitly listed
@@ -138,7 +138,7 @@ Each check item is rendered as:
 > **Belongs to**: {belongs_to}      # if belongs_to is set (must_not_have items)
 ```
 
-Checks within each kind section are sorted by severity (CRITICAL → HIGH → MEDIUM → LOW), then by definition order within the same severity.
+Checks within each kind section are sorted by severity (CRITICAL → MAJOR → MINOR), then by definition order within the same severity.
 
 ---
 
@@ -163,7 +163,7 @@ Example checklist structure using TOML notation:
 ```toml
 # @cpt:checklist
 [severity]
-levels = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+levels = ["CRITICAL", "MAJOR", "MINOR"]
 [review]
 priority = ["BIZ", "ARCH"]
 [[domain]]

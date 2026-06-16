@@ -171,14 +171,18 @@ DO:
     [
       {
         "id": "F-001",
-        "severity": "high|medium|low",
+        "severity": "CRITICAL|MAJOR|MINOR",
         "mechanical": true|false,
         "path": "<file>",
         "line": <int|null>,
+        "range": {"startLine": <int>, "endLine": <int>} | null,
         "category": "<consistency-category>",
         "evidence_quote": "<exact text>",
         "root_cause": "<short>",
+        "impact": "<why the inconsistency changes behavior, interpretation, or downstream implementation>",
         "suggested_fix": "<one-line>",
+        "verification": "<how to confirm the documents are consistent after the fix>",
+        "confidence": "CONFIRMED|HIGH|MEDIUM|LOW",
         "mechanical_rationale": "<one-sentence justification>"
       }
     ]
@@ -188,6 +192,7 @@ RULES:
       List the primary deviator in path/line
       Quote other locations inside evidence_quote with <file>:<line> prefixes
   - ALWAYS Emit findings: [] when all categories PASS
+  - ALWAYS every finding satisfies ReviewFindingContract fields: id, severity, path plus line or range, evidence_quote, root_cause, impact, suggested_fix, verification, and confidence
 ```
 
 ## Response Completion Gate
@@ -212,10 +217,10 @@ RULES:
   - ALWAYS have per-category status with evidence for every applicable
     consistency-checklist category
   - ALWAYS Every Finding ALWAYS cite every involved document location
-  - ALWAYS Every finding object ALWAYS have a non-empty mechanical_rationale string
-    (advisory — when missing, the orchestrator substitutes
-    "<no rationale provided by {agent_name}>" and continues; fallback behavior
-    defined by ReviewFindingContract in {cf-studio-path}/.core/skills/studio/modules/review/finding-contract.md)
+  - ALWAYS Every finding object ALWAYS have a non-empty mechanical_rationale string;
+    this is the contract requirement, and the orchestrator fallback of
+    "<no rationale provided by {agent_name}>" exists only as a last-resort
+    containment path when the agent violates that requirement
   - ALWAYS perform AP-001..AP-008 self-check before output;
     state results in a short trailer block
   - ALWAYS satisfy the SKILL.md invariant

@@ -516,6 +516,7 @@ def _finding(block: PdslBlock, rule_id: str, line_no: int, raw_line: str, messag
         hint=hint,
         context=raw_line,
     )
+
 # @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-no-scaffold-output
 # @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-normalize-findings
 # @cpt-end:cpt-studio-algo-pdsl-validation-cli-helper-validate:p1:inst-run-structural-checks

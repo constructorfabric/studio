@@ -383,9 +383,8 @@ RULES:
 | Severity | Criteria | Action |
 |---|---|---|
 | `CRITICAL` | Blocks task completion | Fix immediately |
-| `HIGH` | Causes incorrect or inconsistent output | Fix before deployment |
-| `MEDIUM` | Reduces quality or efficiency | Fix next iteration |
-| `LOW` | Minor improvement opportunity | Backlog |
+| `MAJOR` | Causes incorrect or inconsistent output, or materially reduces quality or efficiency | Fix before deployment or next iteration depending on risk |
+| `MINOR` | Minor improvement opportunity | Backlog |
 
 **Effort**:
 
@@ -430,7 +429,7 @@ PURPOSE:
 DO:
   - RUN layers 1 through 10 in sequence
   - RUN size check with wc -l path/to/document.md before beginning; use pass budget from the work budgeting table
-  - EMIT report in this section order: Summary, Context Budget & Evidence, Compact-Prompts Findings, Layer Summaries, Issues Found (Critical / High / Medium / Low tables), Recommended Fixes (Immediate / Next Iteration / Backlog), and Verification Checklist
+  - EMIT report in this section order: Summary, Context Budget & Evidence, Compact-Prompts Findings, Layer Summaries, Issues Found (CRITICAL / MAJOR / MINOR tables), Recommended Fixes (Immediate / Next Iteration / Backlog), and Verification Checklist
 
 RULES:
   - ALWAYS execute all 10 layers in sequence; checkpoint findings after each layer before continuing
