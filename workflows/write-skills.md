@@ -6,7 +6,7 @@ description: "Invoke when user intent is writing, revising, or reviewing skills,
 version: 0.1
 ---
 # cf-write-skills
-This skill authors and reviews skill/prompt files written in PDSL. It loads the PDSL spec and prompt-engineering guidance, optionally discovers task-relevant project context via cf-explore after bootstrap, validates authored files, and runs a semantic review-fix loop at a selectable depth — single-pass, per-methodology, or per-layer (one reviewer sub-agent per layer, every layer each methodology defines, L1 through its last) — over the prompt-engineering, prompt-bug-finding, and consistency-checklist methodologies, driven by author and reviewer sub-agents.
+This skill authors and reviews skill/prompt files written in PDSL. It loads the PDSL spec and prompt-engineering guidance on authoring/review-capable paths, optionally discovers task-relevant project context via cf-explore after bootstrap, validates authored files, and runs a semantic review-fix loop at a selectable depth — single-pass, per-methodology, or per-layer (one reviewer sub-agent per layer, every layer each methodology defines, L1 through its last) — over the prompt-engineering, prompt-bug-finding, and consistency-checklist methodologies, driven by author and reviewer sub-agents.
 
 ```pdsl
 UNIT WriteSkillsBootstrap
@@ -31,9 +31,6 @@ DO:
   RUN WorkflowBootstrapSimpleModeGate
   RUN WorkflowBootstrapStudioInstructionsMemory
   SET ORIGINAL_INTENT = the user's triggering write-skills request (verbatim or shortest faithful summary), or unset when activation-only, WHEN ORIGINAL_INTENT == unset
-  RUN WorkflowBootstrapCommandDispatchContext
-  LOAD {cf-studio-path}/.core/skills/studio/modules/write-skills-bootstrap-refs.md
-  RUN WriteSkillsBootstrapReferences
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-skills-intent-routing.md
   CONTINUE WriteSkillsIntentCapture WHEN ORIGINAL_INTENT == unset
   CONTINUE WriteSkillsIntentClassify WHEN ORIGINAL_INTENT != unset
@@ -50,6 +47,8 @@ PURPOSE: Validate authored PDSL with the deterministic validator.
 WHEN:
   REQUIRE SKILL_FILE_WRITTEN == true OR REVIEW_FIXES_APPLIED == true
 DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/write-skills-bootstrap-refs.md
+  RUN WriteSkillsExecutionContextPrep
   RUN SubAgentDispatch for the cf-deterministic-validator dispatch group before launching deterministic PDSL validation
   RUN the deterministic PDSL check — dispatch cf-deterministic-validator for `{cfs_cmd} pdsl validate` on REVIEW_TARGET_PATHS; author dispatch and later fix phases populate REVIEW_TARGET_PATHS before validation runs
   EMIT the validation findings
@@ -67,6 +66,9 @@ PURPOSE: Run a semantic review at the user-chosen granularity and iterate fixes 
 WHEN:
   REQUIRE SKILL_FILE_WRITTEN == true OR REVIEW_LOOP_REQUESTED == true
 DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/write-skills-bootstrap-refs.md
+  RUN WriteSkillsExecutionContextPrep
+  RUN WriteSkillsExecutionReferenceLoad
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-skills-review-setup.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-skills-review-run-fix.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-skills-fix-outcomes.md
@@ -96,6 +98,9 @@ WHEN:
   REQUIRE ORIGINAL_INTENT != unset
 DO:
   CONTINUE WriteSkillsReviewLoop WHEN REVIEW_LOOP_REQUESTED == true
+  LOAD {cf-studio-path}/.core/skills/studio/modules/write-skills-bootstrap-refs.md
+  RUN WriteSkillsExecutionContextPrep
+  RUN WriteSkillsExecutionReferenceLoad
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-skills-author-dispatch.md
   CONTINUE WriteSkillsAuthorGitSetup
 ```

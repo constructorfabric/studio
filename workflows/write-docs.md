@@ -6,7 +6,7 @@ description: "Invoke when user intent is writing, revising, or reviewing documen
 version: 0.1
 ---
 # cf-write-docs
-This skill authors and reviews project documents using the consistency-checklist and artifact-checklist semantic review methodologies. After bootstrap it optionally discovers task-relevant project context via cf-explore, applies language-complexity as bootstrap/output policy and as a deterministic gate (artifact validation, TOC, language checks), and runs a semantic review-fix loop at a selectable depth — single-pass, per-methodology, or per-layer — driven by author and reviewer sub-agents.
+This skill authors and reviews project documents using the consistency-checklist and artifact-checklist semantic review methodologies. After bootstrap it optionally discovers task-relevant project context via cf-explore, applies language-complexity on write-capable document paths and as a deterministic gate (artifact validation, TOC, language checks), and runs a semantic review-fix loop at a selectable depth — single-pass, per-methodology, or per-layer — driven by author and reviewer sub-agents.
 
 ```pdsl
 UNIT WriteDocsBootstrap
@@ -29,13 +29,10 @@ STATE:
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-docs-bootstrap-intent.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/write-docs-artifact-normalize.md
   RUN WorkflowBootstrapRouterPrelude
   RUN WorkflowBootstrapSimpleModeGate
   RUN WorkflowBootstrapStudioInstructionsMemory
   RUN WriteDocsBootstrapIntentContext
-  RUN WriteDocsBootstrapReferenceLoad
-  RUN WriteDocsBootstrapDimensions
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-docs-intent-routing.md
   CONTINUE WriteDocsIntentCapture WHEN ORIGINAL_INTENT == unset
   CONTINUE WriteDocsIntentClassify WHEN ORIGINAL_INTENT != unset
@@ -43,10 +40,10 @@ RULES:
   ALWAYS run StudioInstructionsMemoryGate before document context discovery, authoring, validation, or review
   ALWAYS remember git-commit-mode so any later commit request in this active workflow session runs GitCommitModeGate before routing, authoring, git use, or delegation
   ALWAYS load context-memory before carrying resource_context or rule references into author/reviewer dispatches
-  ALWAYS apply the resolved language-complexity level to every chat message and document write, rewriting breaching drafts before emitting them (source quotes verbatim/exempt)
-  ALWAYS resolve and apply the audience dimension per {cf-studio-path}/.core/requirements/storytelling-dimensions.md at Bootstrap — the review flow class scopes emphasis, the authoring flow class sets the document level — never as a gate on the verdict
-  ALWAYS resolve and apply the narrator dimension per {cf-studio-path}/.core/requirements/storytelling-dimensions.md at Bootstrap — map it onto the selected reviewer/author sub-agents and the document voice — never overriding the verdict
-  ALWAYS resolve and apply the diagram dimension per {cf-studio-path}/.core/requirements/storytelling-dimensions.md at Bootstrap — the review flow class flags a missing or unclear diagram, the authoring flow class embeds a warranted one — never auto-generating outside the authored document
+  ALWAYS apply the resolved language-complexity level on every write-capable document path and resulting document write, rewriting breaching drafts before emitting them (source quotes verbatim/exempt)
+  ALWAYS resolve and apply the audience dimension per {cf-studio-path}/.core/requirements/storytelling-dimensions.md before any author or reviewer dispatch — the review flow class scopes emphasis, the authoring flow class sets the document level — never as a gate on the verdict
+  ALWAYS resolve and apply the narrator dimension per {cf-studio-path}/.core/requirements/storytelling-dimensions.md before any author or reviewer dispatch — map it onto the selected reviewer/author sub-agents and the document voice — never overriding the verdict
+  ALWAYS resolve and apply the diagram dimension per {cf-studio-path}/.core/requirements/storytelling-dimensions.md before any author or reviewer dispatch — the review flow class flags a missing or unclear diagram, the authoring flow class embeds a warranted one — never auto-generating outside the authored document
   NEVER author or review docs after a required reference load failure
 ```
 ```pdsl
@@ -74,6 +71,8 @@ PURPOSE: Run a semantic review at the user-chosen granularity and iterate fixes 
 WHEN:
   REQUIRE edits have been applied to the document OR REVIEW_LOOP_REQUESTED == true
 DO:
+  RUN WriteDocsExecutionContextPrep
+  RUN WriteDocsReviewReferenceLoad
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-docs-review-setup.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-docs-review-run.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-docs-write-policy-fix.md
@@ -90,6 +89,7 @@ WHEN:
 DO:
   CONTINUE WriteDocsReviewLoop WHEN REVIEW_LOOP_REQUESTED == true
   SET WRITE_DISPATCH_KIND = author
+  RUN WriteDocsExecutionContextPrep
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-docs-write-policy-fix.md
   CONTINUE WriteDocsWritePolicySetup
 RULES:

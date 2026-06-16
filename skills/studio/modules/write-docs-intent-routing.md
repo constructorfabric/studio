@@ -54,6 +54,5 @@ DO:
   SET COMPANION_CONTINUE = WriteDocsExploreGate
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-docs-prep-gates.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md
   CONTINUE CompanionSkillOffer
 ```

@@ -1,8 +1,22 @@
 # Coding Bootstrap Methodologies
 
 ```pdsl
-UNIT CodingBootstrapMethodologies
-PURPOSE: Load and verify the code review methodologies used by cf-coding.
+UNIT CodingExecutionContextPrep
+PURPOSE: Load context-memory only on review-capable or author-capable coding paths.
+DO:
+  RUN WorkflowBootstrapContextOnly
+```
+
+```pdsl
+UNIT CodingValidationContextPrep
+PURPOSE: Resolve command and context helpers only on deterministic validation paths.
+DO:
+  RUN WorkflowBootstrapCommandContext
+```
+
+```pdsl
+UNIT CodingReviewReferenceLoad
+PURPOSE: Load and verify the code review methodologies used by cf-coding before reviewer dispatch.
 DO:
   LOAD {cf-studio-path}/.core/requirements/code-checklist.md
   LOAD {cf-studio-path}/.core/requirements/bug-finding.md

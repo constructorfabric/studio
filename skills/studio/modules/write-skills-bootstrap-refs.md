@@ -1,8 +1,15 @@
 # Write Skills Bootstrap Refs
 
 ```pdsl
-UNIT WriteSkillsBootstrapReferences
-PURPOSE: Load and verify the PDSL authoring references used by cf-write-skills.
+UNIT WriteSkillsExecutionContextPrep
+PURPOSE: Load command, dispatch, and context helpers only on authoring/review-capable paths.
+DO:
+  RUN WorkflowBootstrapCommandDispatchContext
+```
+
+```pdsl
+UNIT WriteSkillsExecutionReferenceLoad
+PURPOSE: Load and verify the PDSL authoring references used by cf-write-skills before author or reviewer dispatch.
 DO:
   LOAD {cf-studio-path}/.core/architecture/specs/PDSL.md
   LOAD {cf-studio-path}/.core/requirements/prompt-engineering.md

@@ -8,6 +8,7 @@ WHEN:
   REQUIRE WRITE_DISPATCH_KIND != unset
 DO:
   RUN GitWriteDispatchPolicyResolve
+  RUN WriteDocsWriteReferenceLoad
   CONTINUE WriteDocsReviewFixDispatchRun WHEN WRITE_DISPATCH_KIND == review-fix
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-docs-author-dispatch.md WHEN WRITE_DISPATCH_KIND == author
   CONTINUE WriteDocsAuthorDispatch WHEN WRITE_DISPATCH_KIND == author
