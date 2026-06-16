@@ -32,13 +32,13 @@ A single CLI call performs the fixed-scope transforms: directory copy, managed-b
 
 ## Stage 2 — Post-Deterministic Cleanup (`cf migrate from cypilot`)
 
-The orchestrator dispatches four subagents and **requires explicit user approval before every dispatch**. It cleans up everything the mechanical step does not touch: source code, CI configs, build files, docs outside the fixed list, shell scripts, agent integrations (`.claude/`, `.cursor/`, `.codex/`, `.windsurf/`), and workspaces.
+The orchestrator loads the shared Studio runtime first, then dispatches scanner, planner, migrator, and verifier subagents through the standard dispatch gate. You can approve a dispatch once, approve subagents for the session, run the work inline, or stop. It cleans up everything the mechanical step does not touch: source code, CI configs, build files, docs outside the fixed list, shell scripts, agent integrations (`.claude/`, `.cursor/`, `.codex/`, `.windsurf/`), and workspaces.
 
 **Step 4. E0 — Preconditions.** The orchestrator re-validates the marker and `core.toml`. If it fails, re-run Stage 1.
 
-**Step 5. E1 — Scanner (read-only).** Reply `y`. Subagent `cf-migrate-scanner` emits a structured findings list of residual `cypilot / cpt / Cypilot / Cyber Pilot` references. No files are modified.
+**Step 5. E1 — Scanner (read-only).** Approve the scanner dispatch when prompted. Subagent `cf-migrate-scanner` emits a structured findings list of residual `cypilot / cpt / Cypilot / Cyber Pilot` references. No files are modified.
 
-**Step 6. E2 — Planner (read-only).** Reply `y`. `cf-migrate-planner` groups findings into three categories:
+**Step 6. E2 — Planner (read-only).** Approve the planner dispatch when prompted. `cf-migrate-planner` groups findings into three categories:
 - **A** — auto-fixable (unambiguous string substitutions);
 - **B** — needs-review (context-sensitive);
 - **C** — cascade (rename to `.studio-workspace.toml`, cascade migration into workspace member repos, regenerate IDE integrations via `cfs generate-agents`).
@@ -52,7 +52,9 @@ The orchestrator dispatches four subagents and **requires explicit user approval
 
 A safe starting choice is `1`. The migrator writes using Constructor Studio target identifiers: `.studio-workspace.toml`, `skills/studio/`, CLI `cfs`, cache `~/.cf-studio/cache/`, registry `constructorfabric/studio`.
 
-**Step 8. E4 — Verifier (read-only).** Reply `y`. Re-scans and diffs against the migration manifest. Returns either *All clean* or a residue list.
+Before the write-capable migrator runs, Studio resolves the session git write policy. Choose `commit`, `stage`, or `none`. The migration can still inspect git state in `none` mode, but it must not stage or commit unless the selected policy permits it and the workflow asks for that action.
+
+**Step 8. E4 — Verifier (read-only).** Approve the verifier dispatch when prompted. Re-scans and diffs against the migration manifest. Returns either *All clean* or a residue list.
 
 Normal `cfs generate-agents` now preserves legacy Cypilot / Cyber Constructor artifacts. During migration cleanup, use the explicit cleanup path:
 
@@ -94,4 +96,4 @@ Inside a chat with the `cf` skill active, type:
 cf migrate from cypilot
 ```
 
-(or `migrate-from-cypilot`). The orchestrator will walk you through phases E0–E6, asking for explicit approval at each subagent dispatch.
+(or `migrate-from-cypilot`). The orchestrator will walk you through phases E0–E6, using the shared subagent approval gate for each dispatch group unless you approve subagents for the session.

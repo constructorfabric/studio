@@ -20,7 +20,7 @@ Constructor Studio is an organizational workflow layer for AI-assisted software 
 
 **Keep AI process-backed.** Constructor Studio helps an organization put AI into its existing delivery process instead of replacing that process with unstructured chat. It gives teams repository-backed artifacts, templates, skills, checklists, deterministic validation rules, and traceability through Canonical Provenance Trace IDs (CPT IDs). Traceability means you can follow a requirement, decision, or task through later documents, code, tests, and reviews. An artifact is a reviewable project document such as a requirement, design, decision record, feature specification, or plan. Deterministic validation means the same files and rules produce the same check result. A CPT ID can connect a requirement to a design decision, a feature specification, implementation code, tests, and review evidence.
 
-**Separate focused AI roles.** Constructor Studio is sub-agent driven where the AI coding tool supports sub-agents. It separates work into focused roles such as context discovery, planning, writing, review, and validation, so one long chat does not have to hold every responsibility at once.
+**Separate focused AI roles.** Constructor Studio is sub-agent driven where the AI coding tool supports sub-agents. It separates work into focused roles such as context discovery, planning, writing, review, and validation, so one long chat does not have to hold every responsibility at once. Sub-agent dispatch is user-gated: you can approve a dispatch, run work inline when supported, or stop before the role runs.
 
 **Make collaboration inspectable.** The core idea is simple: make collaboration inspectable. Product Requirements Documents (PRDs), Architecture Decision Records (ADRs), DESIGN documents, decompositions, FEATURE specifications, code markers, checklists, and validation outputs can all become part of one connected set of files and checks. Different experts can review the part they own, while `cfs` checks structure, links, required sections, and configured consistency rules.
 
@@ -191,7 +191,7 @@ cf-brainstorm: map the options for the new billing workflow
 cf-sdlc-doc-prd: write the Product Requirements Document for the billing workflow
 ```
 
-The Product Requirements Document is reviewed against the configured methodology and checklist. Deterministic validation checks the artifact shape, required sections, references, and CPT ID structure:
+The Product Requirements Document is reviewed against the configured methodology and checklist. Review findings are shown before fixes are applied, and the user approves the fix scope. Deterministic validation checks the artifact shape, required sections, references, and CPT ID structure:
 
 🖥 Validate the repository:
 
@@ -240,6 +240,8 @@ cf-coding: review the changed code for correctness, regression risk, and missing
 ```
 
 Quality assurance, performance, security, DevOps, and delivery coordination teams use the same connected files and checks. They can review artifacts, create focused test plans, inspect deployment constraints, check operational risks, and validate whether the implementation still matches approved scope. They do not need to read the same document in the same way; each team can use the skill and checklist that matches its responsibility.
+
+Concrete workflows may pause for shared gates before the main work starts: companion workflow selection, optional context discovery with `cf-explore`, optional structured brainstorming, plan-first for multi-step work, and sub-agent dispatch approval. These gates keep discovery, planning, writing, review, and validation inspectable instead of hiding them inside one prompt.
 
 Architects and leads can render a dependency map across documents and code:
 
@@ -308,11 +310,12 @@ Implemented:
 - [x] Minimal repository footprint with generated Studio and agent integration files ignored by git by default.
 - [x] AI coding tool integration generation.
 - [x] Concrete `cf-*` skill routing instead of generic prompts.
-- [x] Sub-agent driven workflows where the AI coding tool supports sub-agents.
+- [x] User-gated sub-agent driven workflows where the AI coding tool supports sub-agents.
 - [x] Core skills for help, exploration, brainstorming, planning, coding, documentation, skill authoring, explanation, maps, kits, workspaces, and prompt debugging.
 - [x] Software Development Life Cycle (SDLC) kit with Product Requirements Document, Architecture Decision Record, DESIGN, DECOMPOSITION, FEATURE, implementation, impact analysis, reverse engineering, OpenSpec migration, pull request review, and pull request status skills.
 - [x] Customizable templates, rules, checklists, artifact formats, and skill behavior.
 - [x] Canonical Provenance Trace ID (CPT ID) traceability across documents, code, tests, and reviews.
+- [x] Review loops with findings browsing and explicit fix-scope approval before fix-writing dispatch.
 - [x] Deterministic validation for configured artifacts, structure, references, language policy, and guide tables of contents.
 - [x] Dependency map across documents and code.
 - [x] Multi-repository workspace support.

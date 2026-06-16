@@ -99,9 +99,11 @@ Constructor Studio configuration has three main jobs. Use this table first, then
 
 ## 2. Agent Behavior — Navigation, Skills, Rules
  
- These settings control **what context and instructions Constructor Studio loads** when the agent works on your project. Without them, the agent relies more heavily on generic defaults. With them, it consistently applies your team's domain knowledge, coding standards, and project-specific context.
+These settings control **what context and instructions Constructor Studio loads** when the agent works on your project. Without them, the agent relies more heavily on generic defaults. With them, it consistently applies your team's domain knowledge, coding standards, and project-specific context.
 
 **Use cases**: a fintech team needs the agent to always consider compliance docs; a platform team wants every generated service to follow their internal SDK patterns; a solo developer wants consistent naming conventions across sessions.
+
+Workflow routes now capture the concrete target before they search, plan, write, or review. Project navigation rules and topic rules are loaded before those gates, then any `cf-explore` result is carried as read-only `resource_context` into later authors, reviewers, and validators. Use project rules to point Studio at the right sources; do not rely on an explorer or reviewer to rediscover prompt instructions on its own.
 
 ### Navigation rules (`config/AGENTS.md`)
  
@@ -334,6 +336,8 @@ These settings control **how the agent writes and reviews code**. Code rules app
 
 **Why configure this**: prevent common mistakes before they happen. If your team has had incidents with SQL injection, add a rule forbidding string interpolation in queries. If secrets have leaked, add a review checklist item. These rules act as a persistent safety net that applies to every code change.
 
+Review workflows aggregate findings before fixes are approved. The user sees the findings browser first, then chooses a fix scope from the fix menu. A checklist item should be written so it can produce clear evidence and a concrete suggested fix; broad checklist items are harder to browse, approve partially, and verify after a fix pass.
+
 ### Code generation rules
  
  Apply when the agent writes or modifies source code. Use these for security policies, style enforcement, and antipattern prevention.
@@ -356,11 +360,13 @@ These settings control **how the agent writes and reviews code**. Code rules app
 
  Workflow resources are **configuration inputs for specific `cf-*` skills**. They do not replace the workflow model from the README; they customize how those skills behave for your installed kits and project rules.
 
-**Why configure this**: if the default workflow misses a step your team cares about (e.g., checking for migration files, asking about backward compatibility), you can add it. If a step is unnecessary for your project, you can remove it.
+**Why configure this**: if the default workflow misses a project-specific step your team cares about (e.g., checking for migration files, asking about backward compatibility), you can add it. If an additive project-specific step is unnecessary for your project, you can remove it. Do not remove shared contractual gates just because they feel unnecessary; revise those only when you are intentionally changing the workflow contract and reviewing that change with `cf-write-skills`.
 
  **What it affects**: skill requests such as `cf-plan: ...`, `cf-write-skills: ...`, `cf-coding: ...`, and SDLC routes use these workflow resources when the active kit or project configuration routes to them. Changes here affect the agent's behavior globally for that skill type.
 
  Paths are in `core.toml` as `kits.sdlc.resources.workflow_*`.
+
+Shared workflow mechanics are intentionally centralized. Before the first write or review dispatch, concrete workflows may offer companion-skill routing, optional `cf-explore`, optional `cf-brainstorm`, plan-first gating, and subagent dispatch approval. After review findings are aggregated, review-fix approval happens through the findings browser and fix-scope menu before any fix-writing dispatch. Customize workflow resources to add project-specific checks or prompts, but keep those shared gates in order unless you are deliberately changing the workflow contract and reviewing it with `cf-write-skills`.
  
 - 💬 `cf-write-skills: update the PR review workflow so it checks whether migration files changed after fetching the diff`
 - 💬 `cf-write-skills: update the coding workflow resource so it always asks about backward compatibility before writing`
@@ -488,6 +494,8 @@ For generic Git kits, updates compare resolved commit identity. If online resolu
 Manifest-backed kits also store resource bindings and content hashes. Updates use those bindings when writing files, do not silently overwrite changed user-modifiable resources, and require explicit prune approval before deleting a manifest-bound resource that disappeared upstream.
 
 Public kit components are generated from the manifest, not from loose workflow directory scans. Public `skill`, `agent`, and `rule` resources can be surfaced by `cfs generate-agents`; generated names default to `cf-{kit-slug}-{name}` unless the manifest opts out.
+
+Workflow resources from kits should reference shared runtime behavior instead of copying it. For example, use the shared workflow-prep gate when a route needs optional discovery or brainstorm, and use the shared review-fix modules when findings must be browsed and approved before fixes. This keeps generated host integrations consistent across kits.
 
 ---
 

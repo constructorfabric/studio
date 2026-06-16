@@ -132,6 +132,8 @@ Good kit contents:
 
 Do not put generated runtime files in a kit. Generated Studio files and generated AI coding tool integration files should remain repairable outputs.
 
+When a kit provides workflow resources, treat shared Studio gates as part of the contract. Context discovery should flow through the workflow-prep gate, brainstorming should remain an explicit choice, plan-first should run before substantive multi-step work, and review fixes should go through the findings browser and fix-scope approval. Project kits can add domain-specific prompts and checks around those gates, but should not silently bypass them.
+
 ## 6. Register Mode vs Copy Mode
 
 Use register mode when the kit is part of the project or workspace and should remain editable in place.
@@ -236,6 +238,8 @@ cfs map
 ```
 
 Registered local kits are normal project files. Review them in pull requests, run deterministic checks in continuous integration, and keep changes small enough that product, architecture, quality, security, operations, and development reviewers can understand what changed.
+
+For workflow or review changes, include one manual chat dry run in addition to deterministic checks. Confirm that the route captures the target before discovery, offers optional explore/brainstorm when appropriate, asks for a plan on multi-step work, and shows review findings before any fix approval. These are user-facing behavior checks, not just file-format checks.
 
 ## 9. Migrating from Old Manifest-Based Extensibility
 

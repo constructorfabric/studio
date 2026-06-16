@@ -431,6 +431,8 @@ If you only need a quick route for the less-obvious cases:
 - need prompt / workflow / agent contract work -> use [`write-skills`](#use-write-skills-when)
 - need a rendered graph of docs, links, and code references -> use [`cfs map` / `cf-map`](#17-dependency-map-cfs-map--cf-map)
 
+After a concrete workflow captures your request, it may still pause before doing the work. Common gates are companion workflow selection for cross-domain tasks, optional `cf-explore` context discovery, optional `cf-brainstorm` for unclear decisions, and a plan-first prompt for multi-step work. These prompts are part of the workflow contract, not extra side conversations.
+
 ### Use `plan` when
 
 - the task is large
@@ -526,6 +528,8 @@ Use `explore` for **project and artifact discovery before editing**. It is the r
 - 💬 `cf-explore: gather the main artifacts and code paths for the deployment story`
 
 Use `explore` before planning, coding, documenting, writing skills, or reviewing when the codebase is unfamiliar or the relevant surfaces are not yet clear.
+
+Concrete writing and review routes may offer `cf-explore` automatically before dispatch. In that helper mode, exploration returns read-only `resource_context` to the owning workflow. It should find relevant files, source material, and suggested slices; it should not author, review, validate, or fix the target itself.
 
 ### Use `auto-config` when
 
@@ -660,6 +664,8 @@ Use `write-docs` for **writing, revising, or reviewing documentation** — guide
 
 Use `cf-write-docs` when the target is a human-facing document and you want documentation-quality checks, consistency review, and deterministic gate checks as part of the same flow.
 
+For review-first document work, `cf-write-docs` shows the aggregated findings before any fix is applied. Browse the findings, mark specific items if needed, then open the fix menu to approve the scope: critical/major findings, all findings, selected findings, or no fixes. The workflow should not jump from findings directly into edits without that approval step.
+
 ### Default routing rule
 
 If a request is both **large** and **output-producing**, prefer:
@@ -683,6 +689,8 @@ Common examples:
 
 If the host supports subagents well, Constructor Studio may split those roles across specialized helpers such as explorer, planner, author, reviewer, validator, or a brainstorm panel. If the host does not, ask for the same separation manually through separate chats or explicit phased passes. In both cases, delegation improves task fit and discipline; it does not replace human approval or prove correctness.
 
+Subagent dispatch is user-gated. You may approve one dispatch group, approve subagents for the session, run the same work inline, or stop. Read-only discovery and review agents should not write files. Write-capable agents receive the active git write policy before they edit.
+
 ### Recommended execution loop for artifacts and code
 
 For most non-trivial work on artifacts or code, the safest default loop is:
@@ -690,6 +698,7 @@ For most non-trivial work on artifacts or code, the safest default loop is:
 - **plan or generate**
 - **validate**
 - **review**
+- **inspect findings and approve the fix scope**
 - **fix errors and gaps**
 - **validate again**
 - **repeat until no remaining known issues are outstanding**
