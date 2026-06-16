@@ -71,6 +71,7 @@ PURPOSE: Run a semantic review at the user-chosen granularity and iterate fixes 
 WHEN:
   REQUIRE edits have been applied to the document OR REVIEW_LOOP_REQUESTED == true
 DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/write-docs-bootstrap-intent.md
   RUN WriteDocsExecutionContextPrep
   RUN WriteDocsReviewReferenceLoad
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-docs-review-setup.md
@@ -87,6 +88,7 @@ PURPOSE: Route to review-first or author-first document execution paths.
 WHEN:
   REQUIRE ORIGINAL_INTENT != unset
 DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/write-docs-bootstrap-intent.md
   CONTINUE WriteDocsReviewLoop WHEN REVIEW_LOOP_REQUESTED == true
   SET WRITE_DISPATCH_KIND = author
   RUN WriteDocsExecutionContextPrep

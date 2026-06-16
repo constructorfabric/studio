@@ -16,7 +16,9 @@ DO:
   LOAD {cf-studio-path}/.core/requirements/storytelling-dimensions.md
   RUN verify the references loaded; EMIT "Required reference not found (write-docs-artifact-normalize or storytelling-dimensions under {cf-studio-path}/.core) — cannot author or review docs; reinstall or sync the studio kit, then retry." and STOP_TURN WHEN any load fails
   RUN WriteDocsArtifactContextNormalize
-  RUN AudienceResolution, NarratorResolution, and DiagramResolution for the cf-write-docs flow class; SET DOC_AUDIENCE_DIMENSION = resolved, SET DOC_NARRATOR_DIMENSION = resolved, and SET DOC_DIAGRAM_DIMENSION = resolved before any author or reviewer dispatch
+  RUN AudienceResolution for the cf-write-docs flow class; SET DOC_AUDIENCE_DIMENSION = resolved before any author or reviewer dispatch
+  RUN NarratorResolution for the cf-write-docs flow class; SET DOC_NARRATOR_DIMENSION = resolved before any author or reviewer dispatch
+  RUN DiagramResolution for the cf-write-docs flow class; SET DOC_DIAGRAM_DIMENSION = resolved before any author or reviewer dispatch
 ```
 
 ```pdsl
