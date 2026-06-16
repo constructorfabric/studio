@@ -42,6 +42,7 @@ DO:
   RUN SubAgentDispatch for SELECTED_REVIEWER_DISPATCH_GROUP before launching reviewer instances
   RUN SELECTED_REVIEWER_DISPATCH_GROUP with REVIEWER_SCOPE_MANIFEST
   RUN AggregateReviewFindings
+  LOAD {cf-studio-path}/.core/skills/studio/modules/coding-review-fix.md
   CONTINUE CodingReviewFixGate
 RULES:
   ALWAYS scope each reviewer to only its assigned slice (all methodologies / one methodology / one category-or-layer) and run independent reviewers in parallel

@@ -10,7 +10,7 @@ This skill authors and reviews project documents using the consistency-checklist
 
 ```pdsl
 UNIT WriteDocsBootstrap
-PURPOSE: Load the methodologies needed to author and review project documents.
+PURPOSE: Initialize document workflow state and route into the appropriate execution path.
 STATE:
   SET ORIGINAL_INTENT: string | unset (default unset, scope workflow_run)
   SET REVIEW_LOOP_REQUESTED: true | false | unset (default unset, scope workflow_run)
@@ -71,12 +71,9 @@ PURPOSE: Run a semantic review at the user-chosen granularity and iterate fixes 
 WHEN:
   REQUIRE edits have been applied to the document OR REVIEW_LOOP_REQUESTED == true
 DO:
-  LOAD {cf-studio-path}/.core/skills/studio/modules/write-docs-bootstrap-intent.md
-  RUN WriteDocsExecutionContextPrep
-  RUN WriteDocsReviewReferenceLoad
+  LOAD {cf-studio-path}/.core/skills/studio/modules/write-docs-execution-refs.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-docs-review-setup.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-docs-review-run.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/write-docs-write-policy-fix.md
   CONTINUE WriteDocsReviewSetup
 RULES:
   NEVER declare an authored or edited document done until BOTH the deterministic gate passes AND the semantic review has no remaining findings
@@ -88,10 +85,9 @@ PURPOSE: Route to review-first or author-first document execution paths.
 WHEN:
   REQUIRE ORIGINAL_INTENT != unset
 DO:
-  LOAD {cf-studio-path}/.core/skills/studio/modules/write-docs-bootstrap-intent.md
   CONTINUE WriteDocsReviewLoop WHEN REVIEW_LOOP_REQUESTED == true
   SET WRITE_DISPATCH_KIND = author
-  RUN WriteDocsExecutionContextPrep
+  LOAD {cf-studio-path}/.core/skills/studio/modules/write-docs-execution-refs.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-docs-write-policy-fix.md
   CONTINUE WriteDocsWritePolicySetup
 RULES:

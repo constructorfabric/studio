@@ -12,7 +12,7 @@ This skill authors and reviews source code using the code-checklist, bug-finding
 
 ```pdsl
 UNIT CodingBootstrap
-PURPOSE: Load the methodologies needed to author and review source code.
+PURPOSE: Initialize coding workflow state and route into the appropriate execution path.
 STATE:
   SET ORIGINAL_INTENT: string | unset (default unset, scope workflow_run)
   SET REVIEW_LOOP_REQUESTED: true | false | unset (default unset, scope workflow_run)
@@ -61,7 +61,6 @@ DO:
   RUN CodingExecutionContextPrep
   RUN CodingReviewReferenceLoad
   LOAD {cf-studio-path}/.core/skills/studio/modules/coding-review-setup-run.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/coding-review-fix.md
   CONTINUE CodingReviewSetup
 RULES:
   NEVER declare authored or edited code done until BOTH the deterministic gate (tests/lint/typecheck/build) passes AND the semantic review has no remaining findings

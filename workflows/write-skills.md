@@ -10,7 +10,7 @@ This skill authors and reviews skill/prompt files written in PDSL. It loads the 
 
 ```pdsl
 UNIT WriteSkillsBootstrap
-PURPOSE: Load the references needed to author and review PDSL skills.
+PURPOSE: Initialize skill-writing workflow state and route into the appropriate execution path.
 STATE:
   SET ORIGINAL_INTENT: string | unset (default unset, scope workflow_run)
   SET REVIEW_LOOP_REQUESTED: true | false | unset (default unset, scope workflow_run)
@@ -71,7 +71,6 @@ DO:
   RUN WriteSkillsExecutionReferenceLoad
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-skills-review-setup.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-skills-review-run-fix.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/write-skills-fix-outcomes.md
   CONTINUE WriteSkillsReviewSetup
 ```
 

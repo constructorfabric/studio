@@ -34,6 +34,8 @@ STATE:
   SET SELECTED_REVIEWER_DISPATCH_GROUP: dispatch-group | unset (default unset, scope workflow_run)
   SET REVIEWER_SCOPE_MANIFEST: manifest | unset (default unset, scope workflow_run)
 DO:
+  RUN WriteDocsExecutionContextPrep
+  RUN WriteDocsReviewReferenceLoad
   SET REVIEW_GRANULARITY_SCOPE = "Docs review scope: single-pass covers consistency-checklist and artifact-checklist together; per-methodology dispatches cf-semantic-reviewer-consistency and cf-semantic-reviewer-artifact separately, plus cf-semantic-reviewer-freeform only for a custom review prompt; per-layer dispatches one reviewer per current category."
   RUN SemanticReviewGranularityGate WHEN REVIEW_GRANULARITY == unset
   RUN read the current consistency-checklist category map and the preset-bound ARTIFACT_CHECKLIST_PATH category map WHEN ARTIFACT_CHECKLIST_CONTEXT == preset-bound before a per-layer or per-methodology dispatch, so added categories/sections are covered automatically and never a fixed count
