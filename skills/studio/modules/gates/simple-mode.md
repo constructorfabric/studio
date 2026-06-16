@@ -6,6 +6,7 @@ PURPOSE: Ask once per session which workflow interaction mode Studio should use,
 STATE:
   - SET SIMPLE_MODE: unset | simple | normal | debug (default unset, scope session)
   - SET SIMPLE_MODE_BRAVE_NEW_WORLD_DECISION: unset | enable | skip (default unset, scope session)
+  - SET ASSISTANT_MODE_NAME: string | unset (default unset, scope session)
 WHEN:
   - REQUIRE a non-exempt cf workflow is loading
 DO:

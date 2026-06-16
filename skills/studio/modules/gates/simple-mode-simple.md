@@ -7,11 +7,28 @@ WHEN:
   - REQUIRE SIMPLE_MODE == simple
 DO:
   - LOAD {cf-studio-path}/.core/skills/studio/modules/gates/simple-mode-rules.md
+  - CONTINUE SimpleModeAssistantNameInit WHEN ASSISTANT_MODE_NAME == unset
   - RUN SimpleModeRulesActive
   - CONTINUE SimpleModeBraveNewWorldGate
 RULES:
   - ALWAYS keep assistant-mode behavior rules in `simple-mode-rules.md` so normal mode does not load them
   - NEVER load `simple-mode-rules.md` for normal mode or unset mode
+```
+
+```pdsl
+UNIT SimpleModeAssistantNameInit
+PURPOSE: Initialize a stable assistant display name once per session before assistant-mode guidance is emitted.
+WHEN:
+  - REQUIRE SIMPLE_MODE == simple
+  - REQUIRE ASSISTANT_MODE_NAME == unset
+DO:
+  - SET ASSISTANT_MODE_NAME = derive one short human first name from a stable curated assistant-name pool
+  - RUN SimpleModeRulesActive
+  - CONTINUE SimpleModeBraveNewWorldGate
+RULES:
+  - ALWAYS keep ASSISTANT_MODE_NAME stable for the whole session once it is set
+  - ALWAYS choose a short plain given name suitable for the prefix `**<name> (assistant):**`
+  - NEVER choose a username, a title, a role label, a multi-word name, or a joke name
 ```
 
 ```pdsl
