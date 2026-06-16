@@ -2257,6 +2257,29 @@ def test_context_memory_governs_resource_context_users() -> None:
             assert phrase in text, f"{workflow_name} must contain {phrase}"
 
 
+def test_workflow_prep_recommends_skip_when_resource_context_exists() -> None:
+    """Workflow-prep asks before repeating explore when resource_context already exists."""
+    repo_root = Path(__file__).resolve().parents[1]
+    workflow_prep = (
+        repo_root / "skills" / "studio" / "modules" / "gates" / "workflow-prep.md"
+    ).read_text(encoding="utf-8")
+
+    assert "inspect current workflow state and session resource_context memory" in workflow_prep
+    assert "CONTINUE WorkflowPrepExploreRepeatGate WHEN RESOURCE_CONTEXT == provided" in workflow_prep
+    assert "UNIT WorkflowPrepExploreRepeatGate" in workflow_prep
+    assert "Existing cf-explore resource_context is already available" in workflow_prep
+    assert "skip/reuse is suggested" in workflow_prep
+    assert "1 skip-reuse -> CONTINUE WORKFLOW_PREP_BRAINSTORM_GATE" in workflow_prep
+    assert (
+        "2 explore-again -> SET RESOURCE_CONTEXT = unset; "
+        "EMIT_MENU WORKFLOW_PREP_EXPLORE_MENU; WAIT user.reply; STOP_TURN"
+    ) in workflow_prep
+    assert (
+        "NEVER discard existing RESOURCE_CONTEXT unless the user chooses to run "
+        "cf-explore again"
+    ) in workflow_prep
+
+
 def test_studio_instruction_memory_runs_in_concrete_workflows() -> None:
     """Concrete workflows load generated/project Studio instructions before work."""
     repo_root = Path(__file__).resolve().parents[1]
