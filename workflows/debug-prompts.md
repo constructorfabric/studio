@@ -7,7 +7,7 @@ version: 0.1
 purpose: Session-global step debugger overlay that intercepts and gates PDSL execution across all cf skills and workflows
 ---
 
-# Debug Skill Workflow
+# Debug Prompts Workflow
 
 This workflow installs a **session-global debugger overlay**. Once loaded it
 behaves like a classic step debugger: before any subsequent skill or workflow
@@ -44,7 +44,7 @@ STATE:
     scope: session
     NOTE: the trace holds only NON-debug (target) activity. actor is "controller"
           for gated target PDSL actions and "user" for the user's replies that the
-          target skill/workflow consumes. cf-debug-skill's own actions are never traced.
+          target skill/workflow consumes. cf-debug-prompts's own actions are never traced.
           lines/chars are the LoC and character count this action loaded (0 if it loads nothing);
           tok_est is an APPROXIMATE token estimate for this action (see DebugMetrics).
   - SET DEBUG_LOC_TOTAL: cumulative lines of target content loaded so far
@@ -62,9 +62,15 @@ STATE:
   - SET DEBUG_SLUG: slug of the skill/workflow under debug (basename without extension), or "session"
     default: session
     scope: session
+  - SET DEBUG_TARGET_INPUT_HANDOFF: off | awaiting-user
+    default: off
+    scope: session
+  - SET DEBUG_TARGET_INPUT_LOC: string | unset
+    default: unset
+    scope: session
 NOTES:
   step mode pauses before every gated action. run mode pauses only at a
-  breakpoint, a WAIT/menu, an error, or an explicit user interrupt.
+  breakpoint, a WAIT/menu, or an error.
   instruction grain gates each PDSL action; unit grain gates each UNIT, MENU, skill load, or workflow load.
   Each breakpoint has a stable short id (b1, b2, ...) and one of four types:
     line  -> a filename.md:N (or filename.md:N-M span)
@@ -77,7 +83,7 @@ NOTES:
 UNIT DebugActivate
 PURPOSE: Arm the debugger overlay and hand the user the debugger console.
 WHEN:
-  - REQUIRE the user invoked cf-debug-skill (or asked to debug skills)
+  - REQUIRE the user invoked cf-debug-prompts (or asked to debug skills)
 DO:
   - LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
   - RUN WorkflowBootstrapRouterPrelude
@@ -100,11 +106,43 @@ DO:
 ```
 
 ```pdsl
+UNIT DebugSessionRunModeInit
+PURPOSE: Arm or reuse the debugger overlay in run mode without opening the standalone debugger console.
+DO:
+  - CONTINUE DebugSessionRunModeArm WHEN CF_DEBUG != on
+  - CONTINUE DebugSessionRunModeReuse WHEN CF_DEBUG == on
+RULES:
+  - ALWAYS keep the existing debug trace and breakpoints when reusing an active debugger session
+  - NEVER stop the turn or open the standalone debugger console from this init path
+```
+
+```pdsl
+UNIT DebugSessionRunModeArm
+PURPOSE: Initialize a fresh debugger session in run mode for simple-mode debug.
+DO:
+  - SET CF_DEBUG = on
+  - SET DEBUG_MODE = run
+  - SET DEBUG_GRAIN = instruction
+  - SET DEBUG_CURSOR = 0
+  - EMIT "Debugger armed in run mode. Tracing, logs, and breakpoints stay active; pauses happen on breakpoints, WAIT/menu, or errors. Use `step mode` later to return to per-action stepping."
+```
+
+```pdsl
+UNIT DebugSessionRunModeReuse
+PURPOSE: Reuse the active debugger session without resetting its current trace or breakpoint state.
+DO:
+  - REQUIRE CF_DEBUG == on
+  - SET DEBUG_MODE = run
+RULES:
+  - ALWAYS preserve the existing trace, cursor, grain, and breakpoints while converging reuse to run mode
+```
+
+```pdsl
 UNIT DebugSessionConsoleOpen
 PURPOSE: Announce the debugger console after the debugger session state is initialized.
 DO:
   - EMIT "Debugger armed. From now on every cf skill/workflow instruction stops at a breakpoint before it runs. Load the skill you want to debug, then drive it from this console."
-  - EMIT "Commands: step=run the pending action · over=skip it · back=re-inspect the previous step · cont=run to the next breakpoint · dump=export trace · off=disable · stop=halt · dbg=full menu. Breakpoints: b <spec>=set · bc <ref>=clear · bl=list · be/bd <id>=enable/disable · run to <loc>."
+  - EMIT "Commands: step=run the pending action · over=skip it · back=re-inspect the previous step · cont=run to the next breakpoint · step mode=return to per-action pauses · dump=export trace · off=disable · stop=halt · dbg=full menu. Breakpoints: b <spec>=set · bc <ref>=clear · bl=list · be/bd <id>=enable/disable · run to <loc>."
   - RUN DebugCheatsheet
   - WAIT user.reply
   - STOP_TURN
@@ -116,10 +154,11 @@ PURPOSE: Make the breakpoint gate mandatory and global while debug is on.
 WHEN:
   - REQUIRE CF_DEBUG == on
 INVARIANTS:
-  - ALWAYS run DebugStepGate before performing ANY prospective target action (LOAD, RUN, CONTINUE, DISPATCH, SET, EMIT_MENU, file write, shell exec, or sub-agent dispatch) in a non-debug cf skill or workflow.
+  - ALWAYS run DebugStepGate before performing any prospective target action (LOAD, RUN, CONTINUE, DISPATCH, SET, EMIT_MENU, file write, shell exec, or sub-agent dispatch) in a non-debug cf skill or workflow when step mode, breakpoint, WAIT/menu, or error conditions require a pause.
   - ALWAYS apply the gate across target skill and workflow boundaries.
   - ALWAYS record every gated target action in DEBUG_TRACE with its resolved status (executed | skipped | replayed).
-  - NEVER perform a gated target action while CF_DEBUG == on without first passing DebugStepGate and receiving user approval.
+  - ALWAYS record every run-mode target action through DebugRunModeActionRecord before execution when DebugStepGate does not pause.
+  - NEVER perform a target action while CF_DEBUG == on without either passing DebugStepGate or recording it through DebugRunModeActionRecord.
   - NEVER silently disarm the overlay because a target workflow defines its own menus or gates;
     those gates are themselves stepped through.
   - ALWAYS fail closed by treating unclear gate status as gated and pausing.
@@ -129,10 +168,12 @@ INVARIANTS:
   - ALWAYS append an actor=user entry to DEBUG_TRACE only for user replies the TARGET skill/workflow
     consumes (answers to the target's own prompts or menus), recording the verbatim reply as action
     and the target prompt's filename.md:N as loc.
-  - NEVER record cf-debug-skill's own activity in DEBUG_TRACE: its instructions, units, menus, frames,
+  - ALWAYS route a run-mode target WAIT/menu pause through DebugTargetInputHandoff so the next reply goes to the target workflow
+  - ALWAYS route run-mode target-action failures through DebugRunFailure while preserving cursor and trace state
+  - NEVER record cf-debug-prompts's own activity in DEBUG_TRACE: its instructions, units, menus, frames,
     breakpoint commands, or the user's debugger-console choices (step/over/back/continue/where/grain/off/stop/bp/dump).
   - ALWAYS keep DEBUG_TRACE limited to non-debug (target) activity only.
-  - NEVER gate cf-debug-skill's own debugger-console actions through DebugStepGate.
+  - NEVER gate cf-debug-prompts's own debugger-console actions through DebugStepGate.
 ```
 
 ```pdsl
@@ -146,6 +187,7 @@ WHEN:
     OR the pending action is a WAIT/menu or an error handler
     OR DebugBreakpointMatch returns a hit for the pending action
 DO:
+  - CONTINUE DebugTargetInputHandoff WHEN DEBUG_MODE == run AND the pending action is a target WAIT/menu
   - CONTINUE DebugStepGatePrepare
   - CONTINUE DebugStepGateRenderFrame
   - RUN DebugCheatsheet
@@ -165,9 +207,44 @@ PURPOSE: Record the pending target action and resolve the frame context before a
 DO:
   - SET DEBUG_CURSOR = DEBUG_CURSOR + 1
   - RUN append the pending action to DEBUG_TRACE with actor = controller, status = pending,
-    only when the action belongs to the target skill/workflow (never for cf-debug-skill's own actions)
+    only when the action belongs to the target skill/workflow (never for cf-debug-prompts's own actions)
   - RUN resolve SOURCE_LOC and TARGET_LOC for the pending action (see DebugLocators)
   - RUN DebugMetrics to record this action's loaded lines/chars and update totals
+```
+
+```pdsl
+UNIT DebugRunModeActionRecord
+PURPOSE: Log a target action immediately before it runs without pausing while DEBUG_MODE == run.
+WHEN:
+  - REQUIRE CF_DEBUG == on
+  - REQUIRE DEBUG_MODE == run
+DO:
+  - SET DEBUG_CURSOR = DEBUG_CURSOR + 1
+  - RUN append the pending target action to DEBUG_TRACE with actor = controller and status = pending
+  - RUN resolve SOURCE_LOC and TARGET_LOC for the pending action (see DebugLocators)
+  - RUN DebugMetrics to record this action's loaded lines/chars and update totals
+RULES:
+  - ALWAYS use this unit only for non-debug target actions that are about to execute without a DebugStepGate pause
+  - ALWAYS mark the recorded trace entry executed after the action succeeds
+  - ALWAYS leave the recorded trace entry available to DebugRunFailure when the action fails
+  - NEVER record cf-debug-prompts's own debugger-console actions
+```
+
+```pdsl
+UNIT DebugTargetInputHandoff
+PURPOSE: Hand target WAIT/menu input to the target workflow while staying in run mode.
+DO:
+  - CONTINUE DebugStepGatePrepare
+  - SET DEBUG_TARGET_INPUT_HANDOFF = awaiting-user
+  - SET DEBUG_TARGET_INPUT_LOC = SOURCE_LOC
+  - EMIT "Run-mode pause at <SOURCE_LOC>: the target workflow needs input. Executing its prompt/menu now; your next reply goes to the target workflow and will be traced."
+  - RUN execute the pending target WAIT/menu now, mark its DEBUG_TRACE entry executed, and surface the target prompt/menu exactly as authored
+  - WAIT user.reply
+  - STOP_TURN
+RULES:
+  - ALWAYS bypass the debugger console for this handoff while DEBUG_MODE == run
+  - ALWAYS preserve the current cursor and breakpoints across the handoff
+  - NEVER treat the next reply as a debugger command while DEBUG_TARGET_INPUT_HANDOFF == awaiting-user
 ```
 
 ```pdsl
@@ -274,8 +351,9 @@ DO:
 UNIT DebugCheatsheet
 PURPOSE: Show a compact command hint at every debugger pause instead of the full menu.
 DO:
-  - EMIT "dbg> step over back cont · dump · off stop · dbg=full menu"
+  - EMIT "dbg> step over back cont · step mode · dump · off stop"
   - EMIT "    bp: b <spec> · bc <ref> · bl · be/bd <id> · run to <loc> · grain"
+  - EMIT "    dbg=full menu"
 RULES:
   - ALWAYS keep the cheatsheet to at most three lines.
   - ALWAYS interpret the next reply via DebugCommandRouter; on unrecognized input re-emit this cheatsheet.
@@ -286,16 +364,39 @@ RULES:
 UNIT DebugCommandRouter
 PURPOSE: Map a typed debugger command (from the cheatsheet) to its handler at any pause.
 DO:
-  - CONTINUE DebugCommandStep WHEN user.reply == step OR user.reply == s
-  - CONTINUE DebugCommandOver WHEN user.reply == over OR user.reply == o
-  - CONTINUE DebugCommandRouteNavigation WHEN user.reply == back OR user.reply == cont OR user.reply == c OR user.reply == continue OR user.reply == where OR user.reply == w OR user.reply == grain OR user.reply == g
+  - CONTINUE DebugTargetInputResume WHEN DEBUG_TARGET_INPUT_HANDOFF == awaiting-user
+  - CONTINUE DebugCommandRouteExecution WHEN user.reply == step OR user.reply == s OR user.reply == over OR user.reply == o
+  - CONTINUE DebugCommandRouteNavigation WHEN user.reply == back OR user.reply == cont OR user.reply == c OR user.reply == continue OR user.reply == where OR user.reply == w OR user.reply == grain OR user.reply == g OR user.reply == step mode
   - CONTINUE DebugCommandRouteSession WHEN user.reply == off OR user.reply == stop OR user.reply == dump
   - CONTINUE DebugBreakpoints WHEN user.reply starts with b OR user.reply starts with bc OR user.reply == bl OR user.reply starts with be OR user.reply starts with bd OR user.reply starts with run to
   - CONTINUE DebugCommandOpenMenu WHEN user.reply == dbg OR user.reply == menu OR user.reply == ?
   - CONTINUE DebugCommandRouterFallback
 RULES:
-  - ALWAYS accept the numeric choices from DebuggerMenu as equivalents (1 step ... 10 dump).
+  - ALWAYS accept the numeric choices from DebuggerMenu as equivalents (1 step ... 11 step mode).
   - ALWAYS treat unrecognized input as a no-op that just re-shows the cheatsheet.
+```
+
+```pdsl
+UNIT DebugTargetInputResume
+PURPOSE: Route a run-mode handoff reply into the paused target workflow instead of the debugger console.
+DO:
+  - RUN append the user's reply to DEBUG_TRACE with actor = user, loc = DEBUG_TARGET_INPUT_LOC, where = "reply to <DEBUG_TARGET_INPUT_LOC>", action = user.reply, why = the paused target workflow requested input, status = consumed
+  - SET DEBUG_TARGET_INPUT_HANDOFF = off
+  - SET DEBUG_TARGET_INPUT_LOC = unset
+  - RUN resume the paused target workflow from its WAIT/menu using user.reply under DebugOverlayInvariants
+RULES:
+  - ALWAYS record the handoff reply before the target workflow consumes it
+  - ALWAYS bypass normal debugger command parsing for this reply
+ON_ERROR:
+  run_failed -> CONTINUE DebugRunFailure
+```
+
+```pdsl
+UNIT DebugCommandRouteExecution
+PURPOSE: Route debugger execution commands for the current pending action.
+DO:
+  - CONTINUE DebugCommandStep WHEN user.reply == step OR user.reply == s
+  - CONTINUE DebugCommandOver WHEN user.reply == over OR user.reply == o
 ```
 
 ```pdsl
@@ -320,6 +421,7 @@ DO:
   - CONTINUE DebugContinue WHEN user.reply == cont OR user.reply == c OR user.reply == continue
   - CONTINUE DebugWhere WHEN user.reply == where OR user.reply == w
   - CONTINUE DebugToggleGrain WHEN user.reply == grain OR user.reply == g
+  - CONTINUE DebugStepModeEnable WHEN user.reply == step mode
 ```
 
 ```pdsl
@@ -363,8 +465,9 @@ MENU DebuggerMenu:
     8 stop -> CONTINUE DebugStop
     9 bp -> CONTINUE DebugBreakpoints
     10 dump -> CONTINUE DebugExportTrace
+    11 step mode -> CONTINUE DebugStepModeEnable
   INVALID:
-    EMIT "Reply with 1 (step), 2 (over), 3 (back), 4 (continue), 5 (where), 6 (grain), 7 (off), 8 (stop), 9 (bp), or 10 (dump). Breakpoint commands also work directly: b <spec>, bc <ref>, bl, be <id>, bd <id>, run to <loc>."
+    EMIT "Reply with 1 (step), 2 (over), 3 (back), 4 (continue), 5 (where), 6 (grain), 7 (off), 8 (stop), 9 (bp), 10 (dump), or 11 (step mode). Breakpoint commands also work directly: b <spec>, bc <ref>, bl, be <id>, bd <id>, run to <loc>."
     WAIT user.reply
     STOP_TURN
 ```
@@ -408,15 +511,26 @@ UNIT DebugContinue
 PURPOSE: Run without pausing at every action until the next breakpoint or natural stop.
 DO:
   - SET DEBUG_MODE = run
-  - EMIT "Continuing. The debugger runs subsequent actions without pausing until the next breakpoint hit, a WAIT/menu, an error, or you interrupt."
-  - RUN before each action in run mode: RUN DebugBreakpointMatch and pause via DebugStepGate on a hit
-  - RUN resume executing the target workflow under DebugOverlayInvariants in run mode
-  - RUN pause via DebugStepGate WHEN reaching a WAIT/menu or an error
+  - EMIT "Continuing. The debugger runs subsequent actions without pausing until the next breakpoint hit, target input handoff (WAIT/menu), or failure."
+  - RUN DebugRunModeResume
 RULES:
   - ALWAYS keep CF_DEBUG = on while in run mode; continue does not disarm the debugger.
-  - ALWAYS evaluate breakpoints before run-mode actions.
-  - ALWAYS route WAIT/menu/error pauses through DebugStepGate.
   - ALWAYS honor user requests to return to step mode.
+```
+
+```pdsl
+UNIT DebugRunModeResume
+PURPOSE: Resume target execution under run mode until the next breakpoint, target-input handoff, or failure.
+DO:
+  - RUN before each action in run mode: RUN DebugBreakpointMatch and pause via DebugStepGate on a hit
+  - RUN resume executing the target workflow under DebugOverlayInvariants in run mode
+RULES:
+  - ALWAYS evaluate breakpoints before run-mode actions
+  - ALWAYS route target WAIT/menu pauses through DebugTargetInputHandoff
+  - ALWAYS route run-mode target-action failures through DebugRunFailure
+  - ALWAYS preserve cursor and trace state across breakpoint, handoff, and failure pauses
+ON_ERROR:
+  run_failed -> CONTINUE DebugRunFailure
 ```
 
 ```pdsl
@@ -457,7 +571,7 @@ RULES:
   - NEVER drop or renumber existing breakpoints during add or toggle operations.
 NOTES:
   Short commands (also expressible in plain language):
-    b <spec>      set     (line: b debug-skill.md:108 | unit: b DebuggerMenu | kind: b kind:write | cond: b cond:DEBUG_GRAIN==unit)
+    b <spec>      set     (line: b debug-prompts.md:108 | unit: b DebuggerMenu | kind: b kind:write | cond: b cond:DEBUG_GRAIN==unit)
     bc <ref>      clear   (by id `bc b2`, by locator, or `bc all`)
     bl            list
     be <id>       enable
@@ -563,10 +677,7 @@ DO:
   - RUN append {id: next b<n>, type: line, spec: <filename.md:N>, enabled: true, oneshot: true} to DEBUG_BREAKPOINTS
   - SET DEBUG_MODE = run
   - EMIT "running to <filename.md:N> (one-shot)"
-  - RUN resume executing the target workflow under DebugOverlayInvariants in run mode
-  - RUN DebugCheatsheet
-  - WAIT user.reply
-  - STOP_TURN
+  - RUN DebugRunModeResume
 ```
 
 ```pdsl
@@ -617,12 +728,25 @@ DO:
 ```
 
 ```pdsl
+UNIT DebugStepModeEnable
+PURPOSE: Return the debugger to per-action stepping without executing the pending action.
+DO:
+  - SET DEBUG_MODE = step
+  - EMIT "Step mode on. The debugger now pauses before every gated action until you switch back to run mode."
+  - RUN DebugCheatsheet
+  - WAIT user.reply
+  - STOP_TURN
+```
+
+```pdsl
 UNIT DebugDisable
 PURPOSE: Turn the debugger off and hand control back to normal cf execution.
 DO:
   - SET CF_DEBUG = off
   - SET DEBUG_MODE = step
-  - EMIT "Debugger off. Skills and workflows now run normally with no per-step breakpoints. Re-invoke cf-debug-skill to arm it again."
+  - SET DEBUG_TARGET_INPUT_HANDOFF = off
+  - SET DEBUG_TARGET_INPUT_LOC = unset
+  - EMIT "Debugger off. Skills and workflows now run normally with no per-step breakpoints. Re-invoke cf-debug-prompts to arm it again."
   - RUN resume the target workflow normally, or end the turn if there is no active target
 RULES:
   - ALWAYS leave DEBUG_TRACE intact after disabling so the session history stays inspectable.
@@ -722,6 +846,30 @@ MENU DebugStepFailureMenu:
   OPTIONS:
     1 retry -> RUN re-attempt the failed action, mark its DEBUG_TRACE entry replayed, then RUN DebugStepGate on the next action
     2 over -> RUN skip the failed action, mark its DEBUG_TRACE entry skipped, then RUN DebugStepGate on the next action
+    3 off -> CONTINUE DebugDisable
+    4 stop -> CONTINUE DebugStop
+  INVALID:
+    EMIT "Reply `1`, `2`, `3`, or `4`."
+    WAIT user.reply
+    STOP_TURN
+```
+
+```pdsl
+UNIT DebugRunFailure
+PURPOSE: Recover when a target action fails while run mode is executing without per-action pauses.
+ON_ERROR:
+  run_failed ->
+    EMIT "A run-mode target action failed. Reporting the error verbatim and staying paused at the failed action with cursor and trace preserved."
+    EMIT "ERROR: <the raw error from the failed action>"
+    EMIT_MENU DebugRunFailureMenu
+    WAIT user.reply
+    STOP_TURN
+
+MENU DebugRunFailureMenu:
+  TITLE: "Run-mode action failed."
+  OPTIONS:
+    1 retry -> RUN re-attempt the failed action, mark its DEBUG_TRACE entry replayed, then RUN DebugRunModeResume
+    2 over -> RUN skip the failed action, mark its DEBUG_TRACE entry skipped, then RUN DebugRunModeResume
     3 off -> CONTINUE DebugDisable
     4 stop -> CONTINUE DebugStop
   INVALID:
