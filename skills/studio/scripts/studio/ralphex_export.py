@@ -223,7 +223,7 @@ def _find_project_root(start_path: Path) -> Path:
     for parent in [resolved_start] + list(resolved_start.parents):
         if (parent / ".git").exists() or (parent / ".bootstrap").exists():
             return parent
-        if (parent / "studio").exists() or (parent / ".cf").exists() or (parent / ".cpt").exists():
+        if (parent / ".cf").exists() or (parent / ".cpt").exists():
             return parent
     return resolved_start.parent
 

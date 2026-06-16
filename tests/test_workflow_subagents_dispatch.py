@@ -2575,6 +2575,9 @@ def test_simple_mode_gate_runs_in_current_non_exempt_workflows() -> None:
     module = (
         repo_root / "skills" / "studio" / "modules" / "gates" / "simple-mode.md"
     ).read_text(encoding="utf-8")
+    simple_module = (
+        repo_root / "skills" / "studio" / "modules" / "gates" / "simple-mode-simple.md"
+    ).read_text(encoding="utf-8")
     rules_module = (
         repo_root / "skills" / "studio" / "modules" / "gates" / "simple-mode-rules.md"
     ).read_text(encoding="utf-8")
@@ -2585,15 +2588,17 @@ def test_simple_mode_gate_runs_in_current_non_exempt_workflows() -> None:
     assert "UNIT SimpleModeGate" in module
     assert "SET SIMPLE_MODE: unset | simple | normal" in module
     assert "MENU SimpleModeChoice" in module
-    assert "1 simple -> SET SIMPLE_MODE = simple" in module
-    assert "2 normal -> SET SIMPLE_MODE = normal" in module
-    assert "UNIT SimpleModeLoadRules" in module
-    assert "modules/gates/simple-mode-rules.md" in module
-    assert "NEVER load `simple-mode-rules.md` for normal mode or unset mode" in module
-    assert "UNIT SimpleModeNormal" in module
+    assert "1 assistant" in module
+    assert "SET SIMPLE_MODE = simple" in module
+    assert "2 normal" in module
+    assert "SET SIMPLE_MODE = normal" in module
+    assert "SimpleModeSimpleEntry" in module
+    assert "modules/gates/simple-mode-rules.md" in simple_module
+    assert "NEVER load `simple-mode-rules.md` for normal mode or unset mode" in simple_module
+    assert "SimpleModeNormal" in module
     assert "explain the current workflow/unit/menu" not in module
     assert "UNIT SimpleModeRulesActive" in rules_module
-    assert "explain the current workflow/unit/menu" in rules_module
+    assert "explain the current state" in rules_module
     assert "non-destructive, reversible, low-impact, unambiguous" in rules_module
     assert "NEVER override hard gates" in rules_module
 
