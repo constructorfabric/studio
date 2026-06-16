@@ -942,7 +942,7 @@ def _fake_invoke(agent_id: str, payload: dict) -> dict:
         }
         response["result"]["findings"] = [{
             "id": "F-001",
-            "severity": "low",
+            "severity": "MINOR",
             "mechanical": False,
             "path": "fixture/path.md",
             "line": None,
@@ -1293,7 +1293,7 @@ class TestSubagentDispatch:
                 },
                 "findings": [{
                     "id": "F-001",
-                    "severity": "low",
+                    "severity": "MINOR",
                     "mechanical": False,
                     "path": "fixture/path.md",
                     "line": None,

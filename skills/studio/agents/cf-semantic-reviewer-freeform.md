@@ -103,9 +103,9 @@ DO:
     addition to freeform_prompt criteria
   - RUN For each finding:
     - Cite exact file, line range, and evidence quote from the file as read
-    - Assign severity: high (blocks correct behavior or violates explicit
-      constraint), medium (degrades quality or usability), low (style, clarity,
-      or minor inconsistency)
+    - Assign severity: CRITICAL (blocks safe or correct behavior), MAJOR
+      (violates an explicit constraint or materially degrades quality or
+      usability), MINOR (style, clarity, or minor inconsistency)
     - Provide a concrete, actionable recommended fix
   - NEVER invent findings not supported by read file content
   - NEVER hallucinate file contents; all evidence quotes ALWAYS come from a fresh
@@ -155,7 +155,7 @@ DO:
     }
   - EMIT findings JSON block for evidence already covered (empty array if none):
     [
-      { "id": "Rf-001", "severity": "high|medium|low", "path": "<file>",
+      { "id": "Rf-001", "severity": "CRITICAL|MAJOR|MINOR", "path": "<file>",
         "line_range": "<start>-<end>", "category": "<criterion-derived label>",
         "evidence_quote": "<exact text from file>",
         "root_cause": "<short>", "suggested_fix": "<actionable one-line fix>" }
@@ -191,7 +191,7 @@ DO:
     - Verification Checklist (per-target coverage confirmation)
   - EMIT findings JSON block:
     [
-      { "id": "Rf-001", "severity": "high|medium|low", "path": "<file>",
+      { "id": "Rf-001", "severity": "CRITICAL|MAJOR|MINOR", "path": "<file>",
         "line_range": "<start>-<end>", "category": "<criterion-derived label>",
         "evidence_quote": "<exact text from file>",
         "root_cause": "<short>", "suggested_fix": "<actionable one-line fix>" }

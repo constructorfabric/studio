@@ -79,7 +79,7 @@ Emit `Validation Report — Code Bug Section` markdown followed by findings JSON
 
 ```json
 [
-  { "id": "F-001", "severity": "high|medium|low", "mechanical": false,
+  { "id": "F-001", "severity": "CRITICAL|MAJOR|MINOR", "mechanical": false,
     "path": "<file>", "line": <int|null>, "category": "<bug-class>",
     "evidence_quote": "<exact text>", "root_cause": "<short>",
     "suggested_fix": "<one-line>", "mechanical_rationale": "Bug-finding hits require judgment and are non-mechanical." }

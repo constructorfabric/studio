@@ -884,7 +884,7 @@ The plugin MUST delegate all validation logic to the installed Studio CLI to ens
 
 1. User requests PR status (e.g., "PR status 123")
 2. AI Agent fetches latest PR data and generates status report (SDLC kit capability)
-3. AI Agent assesses severity of unreplied comments (CRITICAL/HIGH/MEDIUM/LOW)
+3. AI Agent assesses severity of unreplied comments (CRITICAL/MAJOR/MINOR)
 4. AI Agent audits resolved comments: checks code for actual fixes, detects suspicious resolutions
 5. AI Agent reorders report by severity and presents summary
 

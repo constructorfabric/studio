@@ -54,7 +54,7 @@ Then emit:
       "id": "pcd-001",
       "path": "<path>",
       "line": 1,
-      "severity": "critical|high|medium|low",
+      "severity": "CRITICAL|MAJOR|MINOR",
       "category": "state|menu|stop-turn|hidden-rule|error-handling|authority|compactness|handoff|keyword-registry",
       "evidence": "<quote or summary>",
       "impact": "<why it matters>",

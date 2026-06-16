@@ -90,7 +90,7 @@ RULES:
               non-mechanical meaning changes, or three to five files
   ALWAYS lead:     mixed workflow/prompt/code/config work, security/concurrency/data
               integrity/migration risk, cross-system architecture, more than five files,
-              more than ten findings, or high-severity findings
+              more than ten findings, or CRITICAL/MAJOR-severity findings
   ALWAYS coder-casual:           code-only work, at most two source/test files, complete
                             behavior, no API redesign, no prompt/workflow files, no high-risk domain
   ALWAYS coder-smart:            code-only work with behavior changes, tests, refactors, API

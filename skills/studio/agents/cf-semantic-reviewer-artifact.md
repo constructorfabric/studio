@@ -68,7 +68,7 @@ DO:
        - EMIT review_result:
          {"type":"VALIDATION_REPORT","status":"FAIL","reviewer":"artifact"}
        - EMIT Findings:
-         [{"id":"F-CONTEXT-CHECKLIST","severity":"high","mechanical":false,
+         [{"id":"F-CONTEXT-CHECKLIST","severity":"MAJOR","mechanical":false,
            "path":null,"line":null,"category":"prompt-context",
            "evidence_quote":"artifact_review_checklist missing from final dispatch prompt",
            "root_cause":"orchestrator did not synthesize the checklist asset into the final dispatch prompt",
@@ -93,7 +93,7 @@ ON_ERROR:
       EMIT review_result:
         {"type":"VALIDATION_REPORT","status":"FAIL","reviewer":"artifact"}
       EMIT Findings:
-        [{"id":"F-CONTEXT-CHECKLIST","severity":"high","mechanical":false,
+        [{"id":"F-CONTEXT-CHECKLIST","severity":"MAJOR","mechanical":false,
           "path":null,"line":null,"category":"prompt-context",
           "evidence_quote":"artifact_review_checklist missing from final dispatch prompt",
           "root_cause":"orchestrator did not synthesize the checklist asset into the final dispatch prompt",
@@ -154,7 +154,7 @@ category table and counts, followed by a `findings` JSON block:
 
 ```json
 [
-  { "id": "F-001", "severity": "high|medium|low", "mechanical": true|false,
+  { "id": "F-001", "severity": "CRITICAL|MAJOR|MINOR", "mechanical": true|false,
     "path": "<file>", "line": <int|null>, "category": "<checklist-category>",
     "evidence_quote": "<exact text>",
     "root_cause": "<short>", "suggested_fix": "<one-line>", "mechanical_rationale": "<one-sentence justification for the mechanical classification — why this is deterministic-from-finding-alone vs. requires-judgment>" }

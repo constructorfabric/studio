@@ -111,7 +111,7 @@ PASS or FAIL.
 
 ```json
 [
-  { "id": "F-001", "severity": "high", "mechanical": true,
+  { "id": "F-001", "severity": "MAJOR", "mechanical": true,
     "path": "<file>", "line": <int|null>, "category": "<validator-code>",
     "evidence_quote": "<exact validator message>",
     "root_cause": "<short>", "suggested_fix": "<one-line>", "mechanical_rationale": "<one-sentence justification for the mechanical classification — why this is deterministic-from-finding-alone vs. requires-judgment>" }

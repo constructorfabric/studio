@@ -232,7 +232,7 @@ PURPOSE:
 
 DO:
   - EMIT Summary section with: review status (PASS/PARTIAL/FAIL), deterministic gate (PASS/FAIL/SKIPPED with reason if SKIPPED), scope reviewed, review basis (static/dynamic/static+dynamic), environment snapshot (model family, tool environment, conversation assumptions, loaded dependencies with sections/slices, runtime conditions), coverage summary (hotspots checked, dependencies checked, validations run/pending), constraint coverage (active instruction count, negative-only rules checked, forbidden-token constraints checked, critical rules in long-context middle positions)
-  - EMIT per-finding: bug class, severity, confidence (CONFIRMED/HIGH/MEDIUM/LOW), location, violated invariant or contract, minimal trigger or counterexample dialogue, likely bad behavior, evidence, proposed fix, best validation step
+  - EMIT per-finding: bug class, severity (CRITICAL/MAJOR/MINOR only), confidence (CONFIRMED/HIGH/MEDIUM/LOW), location, violated invariant or contract, minimal trigger or counterexample dialogue, likely bad behavior, evidence, proposed fix, best validation step
   - EMIT additional fields for Instruction density/Negative constraint failure/Long-context attention/Constraint realism findings: active constraint count, primary rule likely to fail, whether prompt gives positive replacement action, whether compliance can be checked mechanically/by self-check/only by human review
   - EMIT residual uncertainty: high-risk branches or dependencies not fully checked, dynamic validations not yet run, bug classes checked vs. only partially checked, reason for PARTIAL or FAIL status
 
@@ -242,6 +242,7 @@ RULES:
   - ALWAYS assign FAIL when: review path was invalid or at least one confirmed or high-confidence material defect remains open
   - ALWAYS assign PARTIAL when any dependency may still change hotspot behavior because its normative effect was not resolved
   - NEVER describe semantic review, checklist review, or manual inspection as deterministic, validator-backed, or tool-validated unless actual validator or tool output exists
+  - ALWAYS reject any finding severity value outside CRITICAL, MAJOR, or MINOR
   - NEVER collapse uncertainty into a blanket PASS
 
 NOTES:

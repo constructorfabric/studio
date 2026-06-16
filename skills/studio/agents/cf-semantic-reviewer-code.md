@@ -140,7 +140,7 @@ MENU OutputShape:
         [
           {
             "id": "F-001",
-            "severity": "high|medium|low",
+            "severity": "CRITICAL|MAJOR|MINOR",
             "mechanical": false,
             "path": "<file>",
             "line": null,

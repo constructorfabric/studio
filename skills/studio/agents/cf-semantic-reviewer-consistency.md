@@ -171,7 +171,7 @@ DO:
     [
       {
         "id": "F-001",
-        "severity": "high|medium|low",
+        "severity": "CRITICAL|MAJOR|MINOR",
         "mechanical": true|false,
         "path": "<file>",
         "line": <int|null>,

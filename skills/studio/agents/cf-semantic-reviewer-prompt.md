@@ -198,7 +198,7 @@ DO:
     - Verification Checklist
   - EMIT findings JSON block:
     [
-      { "id": "F-001", "severity": "high|medium|low", "mechanical": true|false,
+      { "id": "F-001", "severity": "CRITICAL|MAJOR|MINOR", "mechanical": true|false,
         "path": "<file>", "line": <int|null>, "category": "<layer-or-bugfind-category>",
         "evidence_quote": "<exact text>",
         "root_cause": "<short>", "suggested_fix": "<one-line>",
