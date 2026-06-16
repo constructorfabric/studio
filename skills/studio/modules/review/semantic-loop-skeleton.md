@@ -47,6 +47,7 @@ RULES:
   ALWAYS aggregate and deduplicate all findings into one report before iterating fixes
   ALWAYS preserve the sequence reviewers -> aggregate -> ReviewFindingsReportBrowser -> ReviewFixApprovalGate -> workflow-owned fix dispatch for each fixable iteration
   ALWAYS iterate the review-fix loop until no findings remain
+  NEVER enter SemanticReviewFixApprovalGate when the aggregated ReviewFindingsReport is empty; instead treat the review as complete and continue to workflow completion
   NEVER collapse aggregation directly into ReviewFixApprovalGate or a fix-scope approval menu before ReviewFindingsReportBrowser for the current ReviewFindingsReport
   NEVER re-loop the review when no fixes were applied this iteration; only an applied fix may continue to the workflow-specific validation or review continuation
 ```

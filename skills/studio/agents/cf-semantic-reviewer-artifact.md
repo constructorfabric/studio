@@ -68,11 +68,14 @@ DO:
        - EMIT review_result:
          {"type":"VALIDATION_REPORT","status":"FAIL","reviewer":"artifact"}
        - EMIT Findings:
-         [{"id":"F-CONTEXT-CHECKLIST","severity":"MAJOR","mechanical":false,
+        [{"id":"F-CONTEXT-CHECKLIST","severity":"MAJOR","mechanical":false,
            "path":null,"line":null,"category":"prompt-context",
            "evidence_quote":"artifact_review_checklist missing from final dispatch prompt",
            "root_cause":"orchestrator did not synthesize the checklist asset into the final dispatch prompt",
+           "impact":"The reviewer cannot apply the required artifact checklist, so any PASS verdict would be ungrounded.",
            "suggested_fix":"re-dispatch with artifact_review_checklist injected from SHARED_CONTEXT_PACK",
+           "verification":"Re-run the reviewer and confirm the final dispatch prompt includes artifact_review_checklist before category checks start.",
+           "confidence":"CONFIRMED",
            "mechanical_rationale":"This is an orchestration contract failure, not a deterministic file-local defect."}]
        - STOP_TURN
      Load `artifact_review_checklist` when it is present in the final dispatch prompt
@@ -97,7 +100,10 @@ ON_ERROR:
           "path":null,"line":null,"category":"prompt-context",
           "evidence_quote":"artifact_review_checklist missing from final dispatch prompt",
           "root_cause":"orchestrator did not synthesize the checklist asset into the final dispatch prompt",
+          "impact":"The reviewer cannot apply the required artifact checklist, so any PASS verdict would be ungrounded.",
           "suggested_fix":"re-dispatch with artifact_review_checklist injected from SHARED_CONTEXT_PACK",
+          "verification":"Re-run the reviewer and confirm the final dispatch prompt includes artifact_review_checklist before category checks start.",
+          "confidence":"CONFIRMED",
           "mechanical_rationale":"This is an orchestration contract failure, not a deterministic file-local defect."}]
       STOP_TURN
     Restrict review to placeholder / empty-section / ID-format sweep
@@ -157,7 +163,9 @@ category table and counts, followed by a `findings` JSON block:
   { "id": "F-001", "severity": "CRITICAL|MAJOR|MINOR", "mechanical": true|false,
     "path": "<file>", "line": <int|null>, "category": "<checklist-category>",
     "evidence_quote": "<exact text>",
-    "root_cause": "<short>", "suggested_fix": "<one-line>", "mechanical_rationale": "<one-sentence justification for the mechanical classification — why this is deterministic-from-finding-alone vs. requires-judgment>" }
+    "root_cause": "<short>", "impact": "<why this artifact defect changes interpretation, validation, or downstream use>",
+    "suggested_fix": "<one-line>", "verification": "<how to confirm the artifact requirement is satisfied after the fix>",
+    "confidence": "CONFIRMED|HIGH|MEDIUM|LOW", "mechanical_rationale": "<one-sentence justification for the mechanical classification — why this is deterministic-from-finding-alone vs. requires-judgment>" }
 ]
 ```
 

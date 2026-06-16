@@ -1935,7 +1935,7 @@ def test_write_skills_review_only_paths_have_resume_and_target_resolution_guards
         "UNIT WriteSkillsReviewTargetResolve",
         "SET REVIEW_TARGET_SLICES = full-file slices for every REVIEW_TARGET_PATHS entry",
         "UNIT WriteSkillsReviewTargetResume",
-        "require it to return brainstorm_decisions or BRAINSTORM_RESULT",
+        "require it to return brainstorm_decisions",
         "BRAINSTORM_DECISIONS",
         "SET PATHS_WRITTEN = paths_written returned by the author dispatch",
         "SET REVIEW_TARGET_PATHS = PATHS_WRITTEN",
@@ -2135,7 +2135,7 @@ def test_review_only_dispatch_has_executable_review_loop_path() -> None:
                 repo_root / "workflows" / "coding.md",
                 "CONTINUE CodingReviewLoop WHEN REVIEW_LOOP_REQUESTED == true",
                 "REQUIRE edits have been applied to the code OR REVIEW_LOOP_REQUESTED == true",
-                "CONTINUE CodingCompletion WHEN no review findings remain AND (REVIEW_LOOP_REQUESTED == true OR GATE_STATUS == pass)",
+                "CONTINUE CodingCompletion WHEN no review findings remain AND GATE_STATUS != fail AND (REVIEW_LOOP_REQUESTED == true OR GATE_STATUS == pass)",
                 "RUN SubAgentDispatch for SELECTED_CODING_AGENT dispatch group",
         ),
     )

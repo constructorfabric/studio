@@ -147,7 +147,10 @@ MENU OutputShape:
             "category": "<checklist-category>",
             "evidence_quote": "<exact text>",
             "root_cause": "<short>",
+            "impact": "<why this checklist failure changes behavior, maintainability, or confidence>",
             "suggested_fix": "<one-line>",
+            "verification": "<how to confirm the checklist requirement is satisfied after the fix>",
+            "confidence": "CONFIRMED|HIGH|MEDIUM|LOW",
             "mechanical_rationale": "<classification reason>"
           }
         ]

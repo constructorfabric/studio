@@ -7,7 +7,7 @@ DO:
   RUN `{cfs_cmd} --json map --local-only [--out PATH] [--format html|json] [--config PATH] [--inline-data]` WHEN scope == single-repo
   RUN `{cfs_cmd} --json map [--out PATH] [--format html|json] [--config PATH] [--inline-data]` WHEN scope == with-workspace
   RUN `{cfs_cmd} --json map --no-source [--out PATH] [--format html|json] [--config PATH] [--inline-data]` WHEN scope == markdown-only
-  RUN verify the output file exists and its size is reasonable
+  RUN verify the output file exists and its size matches the selected format: html output MUST be > 1024 bytes and json output MUST be > 100 bytes; treat smaller outputs as anomalies
   EMIT the output path — html opens in a browser; json can be piped to tools like jq
   CONTINUE MapValidate
 RULES:

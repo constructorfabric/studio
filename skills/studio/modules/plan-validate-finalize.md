@@ -36,7 +36,7 @@ RULES:
 MENU Phase4NextStepsMenu
 TITLE: Plan passed self-validation — what next? Option 1 (analyze) is the suggested default before execution. Reply with a number.
 OPTIONS:
-  1 analyze -> CONTINUE {cf-studio-path}/.core/workflows/analyze.md with target_paths=[plan.toml], cross_refs=[phase-*.md] to validate the plan
+  1 analyze -> CONTINUE {cf-studio-path}/.core/workflows/analyze.md with ORIGINAL_INTENT="analyze the generated plan at {cf-studio-path}/.plans/{task-slug}/ for validation issues"
   2 execute -> CONTINUE PlanNativeExecute (native same-chat execution; if sub-agents are unavailable it falls back to the handoff prompt)
   3 handoff -> EMIT the new-chat startup prompt in a single fenced code block (read plan.toml, execute Phase 1, then report and prompt for Phase 2), then STOP_TURN
   4 review -> EMIT the plan file paths to inspect, then STOP_TURN

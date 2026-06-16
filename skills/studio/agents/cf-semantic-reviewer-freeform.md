@@ -220,6 +220,13 @@ NOTES:
   Freeform findings use the `Rf` namespace prefix. Finding ids ALWAYS start from
   Rf-001 and are renumbered by the orchestrator after merge.
 
+  Freeform findings deliberately use `line_range` rather than single-line `line`
+  because the custom criteria may span multi-line evidence blocks. Freeform
+  reviews follow ReviewFindingContract for id, severity, location, evidence,
+  root_cause, impact, suggested_fix, verification, and confidence; they do not
+  require `mechanical` or `mechanical_rationale` because this reviewer does not
+  perform deterministic-vs-judgmental classification.
+
 
 ## Response Completion Gate
 

@@ -250,6 +250,9 @@ Optional: Quantitative guidance — advisory calibration only, not hard limits. 
 - [ ] Regression scenarios are covered.
 - [ ] Tests document expected behavior.
 # MUST NOT HAVE
+
+## Code Quality and Risk Prohibitions
+
 ### QUAL-CODE-NO-001: No Incomplete Work Markers [MAJOR]
 - [ ] Untracked TODO markers are absent.
 - [ ] FIXME markers are absent.

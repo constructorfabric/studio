@@ -21,7 +21,7 @@ UNIT DebugExportTracePrepare
 PURPOSE: Resolve the output path for the current debug trace export.
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/template-vars.md
-  RUN TemplateVarResolution before resolving DUMP_PATH
+  RUN TemplateVarResolution before resolving DUMP_PATH; this resolver is the mechanism that substitutes <YYYY-MM-DD> and <HHMMSS> from the current local timestamp and slugifies DEBUG_SLUG to lowercase kebab-case
   SET DUMP_PATH = "{cf-studio-path}/.debug-skill/<DEBUG_SLUG>-<YYYY-MM-DD>-<HHMMSS>.md"
 UNIT DebugExportTraceWrite
 PURPOSE: Materialize the trace export file on disk.

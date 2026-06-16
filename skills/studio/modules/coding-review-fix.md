@@ -42,7 +42,7 @@ DO:
   CONTINUE CodingValidate WHEN REVIEW_FIXES_APPLIED == true
   STOP_TURN and report the remaining findings WHEN findings remain but no fixes were applied this iteration (none approved, none applicable, or the ReviewFixApprovalGate resolved to none)
   STOP_TURN and report deterministic blockers WHEN no review findings remain AND GATE_STATUS == fail
-  CONTINUE CodingCompletion WHEN no review findings remain AND (REVIEW_LOOP_REQUESTED == true OR GATE_STATUS == pass)
+  CONTINUE CodingCompletion WHEN no review findings remain AND GATE_STATUS != fail AND (REVIEW_LOOP_REQUESTED == true OR GATE_STATUS == pass)
 RULES:
   NEVER re-loop the review after an iteration with no applied fixes — STOP_TURN reporting the remaining findings so the loop cannot spin on unchanged code; only an applied fix re-runs CodingValidate and re-reviews
 ```

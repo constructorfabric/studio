@@ -9,8 +9,8 @@ MENU DebugStepFailureMenu:
   OPTIONS:
     1 retry -> RUN re-attempt the failed action, mark its DEBUG_TRACE entry replayed, then RUN DebugStepGate on the next action
     2 over -> RUN skip the failed action, mark its DEBUG_TRACE entry skipped, then RUN DebugStepGate on the next action
-    3 off -> CONTINUE DebugDisable
-    4 stop -> CONTINUE DebugStop
+    3 off -> CONTINUE DebugDisableRun
+    4 stop -> CONTINUE DebugStopRun
   INVALID:
     EMIT "Reply `1`, `2`, `3`, or `4`."
     WAIT user.reply
@@ -24,8 +24,8 @@ MENU DebugRunFailureMenu:
   OPTIONS:
     1 retry -> LOAD {cf-studio-path}/.core/skills/studio/modules/debug-prompts-step-nav.md; RUN re-attempt the failed action, mark its DEBUG_TRACE entry replayed, then RUN DebugRunModeResume
     2 over -> LOAD {cf-studio-path}/.core/skills/studio/modules/debug-prompts-step-nav.md; RUN skip the failed action, mark its DEBUG_TRACE entry skipped, then RUN DebugRunModeResume
-    3 off -> CONTINUE DebugDisable
-    4 stop -> CONTINUE DebugStop
+    3 off -> CONTINUE DebugDisableRun
+    4 stop -> CONTINUE DebugStopRun
   INVALID:
     EMIT "Reply `1`, `2`, `3`, or `4`."
     WAIT user.reply

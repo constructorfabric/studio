@@ -41,8 +41,22 @@ DO:
   RUN CodingReviewerDispatchPolicy
   RUN SubAgentDispatch for SELECTED_REVIEWER_DISPATCH_GROUP before launching reviewer instances
   RUN SELECTED_REVIEWER_DISPATCH_GROUP with REVIEWER_SCOPE_MANIFEST
-  RUN aggregation of every reviewer's findings into one deduplicated ReviewFindingsReport with stable finding IDs and every ReviewFindingContract field
+  RUN AggregateReviewFindings
   CONTINUE CodingReviewFixGate
 RULES:
   ALWAYS scope each reviewer to only its assigned slice (all methodologies / one methodology / one category-or-layer) and run independent reviewers in parallel
+```
+
+```pdsl
+UNIT AggregateReviewFindings
+PURPOSE: Merge reviewer outputs into one deduplicated ReviewFindingsReport with stable finding IDs.
+DO:
+  RUN collect every finding emitted by the active reviewer dispatch group
+  RUN normalize each finding to ReviewFindingContract fields before merge, preserving agent-provided location, evidence, impact, verification, confidence, and any applicable mechanical classification fields
+  RUN deduplicate materially identical findings across reviewers by path, location, category, evidence, and root cause
+  RUN assign stable finding IDs in deterministic sorted order using ReviewFindingContract's ID format rules
+  RUN set ReviewFindingsReport = the deduplicated findings plus any aggregated metadata needed by ReviewFindingsReportBrowser and ReviewFixApprovalGate
+RULES:
+  ALWAYS preserve every surviving finding's ReviewFindingContract fields after deduplication
+  NEVER emit duplicate finding IDs inside the aggregated ReviewFindingsReport
 ```
