@@ -33,6 +33,14 @@ RULES:
   - ALWAYS treat `DISPATCH` as invoking a named sub-agent or worker contract;
     concurrency, isolation, and join behavior come from explicit dispatch
     options or surrounding rules, not separate dispatch keywords.
+  - ALWAYS treat an accepted plan's execution directives as binding control
+    flow, not advisory notes.
+  - ALWAYS treat `DISPATCH: <agent>` in an accepted plan as requiring
+    SubAgentDispatch before task work.
+  - NEVER reinterpret `DISPATCH` in an accepted plan as permission for inline
+    controller execution.
+  - NEVER let generic assistant editing rules override an active accepted
+    workflow plan.
   - ALWAYS treat `RETURN` as the declared terminal handoff or output shape.
   - ALWAYS treat `RULES` as mandatory constraints for the owning unit.
   - ALWAYS treat `INVARIANTS` as always active while the owning unit, workflow,

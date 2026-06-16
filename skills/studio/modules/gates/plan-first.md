@@ -55,6 +55,11 @@ RULES:
   ALWAYS present the plan for user review before executing it
   ALWAYS offer to save the plan to disk or keep it in session memory
   ALWAYS set accepted_plan_active before continuing planned work
+  ALWAYS after accepted_plan_active is set, treat the accepted plan as the controlling execution contract until it completes, is revised, or is explicitly cancelled
+  ALWAYS before executing each planned action, read and follow its execution directive: `DISPATCH`, `INLINE`, or git finalization
+  ALWAYS execute `DISPATCH: <sub-agent-name>` actions through SubAgentDispatch for the named sub-agent; NEVER perform a DISPATCH action inline merely because it appears small, local, faster, or easier
+  ALWAYS execute `INLINE:` actions directly only when the accepted plan labels that action INLINE
+  ALWAYS STOP_TURN and report a plan-deviation error when the next planned action cannot be executed as written
   NEVER let an accepted plan silently start task work or bypass the owning workflow protocol; accepted exits must return through `CONTINUE PLAN_FIRST_CONTINUE`
   NEVER execute the planned work before the user has reviewed the plan and chosen its storage
 MENU PlanStorageChoice
