@@ -2815,3 +2815,27 @@ def test_runtime_instruction_modules_stay_compact() -> None:
     for path, budget in compact_files:
         line_count = len(path.read_text(encoding="utf-8").splitlines())
         assert line_count <= budget, f"{path.relative_to(repo_root)} has {line_count} lines (budget {budget})"
+
+
+def test_plan_first_prefers_subagent_dispatch_over_inline_steps() -> None:
+    """Plan drafts should default to registered cf-* sub-agents when capable."""
+    repo_root = Path(__file__).resolve().parents[1]
+    plan_first = (
+        repo_root / "skills" / "studio" / "modules" / "gates" / "plan-first.md"
+    ).read_text(encoding="utf-8")
+
+    assert "prefer `DISPATCH: <sub-agent-name>`" in plan_first
+    assert "LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/dispatch.md" in plan_first
+    assert "RUN SubAgentSelectionRegistry" in plan_first
+    assert "choose `DISPATCH: <sub-agent-name>` over `INLINE:`" in plan_first
+    assert "choose sub-agent names from the loaded `agents.toml` registry" in plan_first
+    assert "when a registered cf-* sub-agent can materially perform" in plan_first
+    assert "state why it cannot be dispatched" in plan_first
+    assert "draft the plan at high granularity" in plan_first
+    assert "each action is independently executable, reviewable" in plan_first
+    assert "decompose large plans into named phases" in plan_first
+    assert "every phase independently verifiable" in plan_first
+    assert "include a git finalization action" in plan_first
+    assert "route through GitCommitModeGate before git state changes" in plan_first
+    assert "Disk is suggested for large, phased, or resume-sensitive plans" in plan_first
+    assert "`RUN:` for inline owner-executed work" not in plan_first
