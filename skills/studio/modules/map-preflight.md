@@ -22,6 +22,7 @@ DO:
   STOP_TURN
 ```
 
+
 ```pdsl
 UNIT MapPreflightScopeOffer
 PURPOSE: Present the discovered map-scope capabilities and wait for scope selection.

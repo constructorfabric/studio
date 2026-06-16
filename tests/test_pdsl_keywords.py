@@ -198,6 +198,21 @@ def _conditional_rules_in_block(path: Path, block_start: int, block: list[str]) 
     in_rules = False
     current: list[tuple[int, str]] = []
 
+    def is_rules_start(line: str) -> bool:
+        section = PDSL_SECTION_RE.match(line)
+        if not section or line.lstrip().startswith("-"):
+            return False
+        return section.group(1).split()[0] == "RULES"
+
+    def is_non_rules_section(line: str) -> bool:
+        section = PDSL_SECTION_RE.match(line)
+        if not section or line.lstrip().startswith("-"):
+            return False
+        return section.group(1).split()[0] in {
+            "UNIT", "PURPOSE", "INPUT", "OUTPUT", "STATE", "WHEN", "DO", "MENU",
+            "TITLE", "OPTIONS", "INVALID", "ON_ERROR", "INVARIANTS", "NOTES", "PATTERNS",
+        }
+
     def flush_current() -> None:
         if not current:
             return
@@ -211,35 +226,39 @@ def _conditional_rules_in_block(path: Path, block_start: int, block: list[str]) 
             rel = path.relative_to(REPO_ROOT)
             failures.append(f"{rel}:{line_no}: conditional marker `{match.group(0)}` in RULES item: {text}")
 
+    def start_rule_item(line_no: int, line: str) -> None:
+        nonlocal current
+        flush_current()
+        current = [(line_no, line)]
+
+    def extend_or_flush_current(line_no: int, line: str) -> None:
+        nonlocal current
+        if current and (not line.strip() or line.startswith((" ", "\t"))):
+            current.append((line_no, line))
+            return
+        if current:
+            flush_current()
+            current = []
+
     for offset, line in enumerate(block):
         line_no = block_start + offset
-        section = PDSL_SECTION_RE.match(line)
-        if section and not line.lstrip().startswith("-"):
-            keyword = section.group(1).split()[0]
-            if keyword == "RULES":
+        if is_rules_start(line):
+            flush_current()
+            current = []
+            in_rules = True
+            continue
+        if is_non_rules_section(line):
+            if in_rules:
                 flush_current()
-                current = []
-                in_rules = True
-                continue
-            if keyword in {
-                "UNIT", "PURPOSE", "INPUT", "OUTPUT", "STATE", "WHEN", "DO", "MENU",
-                "TITLE", "OPTIONS", "INVALID", "ON_ERROR", "INVARIANTS", "NOTES", "PATTERNS",
-            }:
-                if in_rules:
-                    flush_current()
-                current = []
-                in_rules = False
-                continue
+            current = []
+            in_rules = False
+            continue
         if not in_rules:
             continue
         if PDSL_RULE_ITEM_RE.match(line):
-            flush_current()
-            current = [(line_no, line)]
-        elif current and (not line.strip() or line.startswith((" ", "\t"))):
-            current.append((line_no, line))
-        elif current:
-            flush_current()
-            current = []
+            start_rule_item(line_no, line)
+            continue
+        extend_or_flush_current(line_no, line)
 
     if in_rules:
         flush_current()

@@ -15,6 +15,7 @@ DO:
   WAIT user.reply
   STOP_TURN
 RULES:
+  ALWAYS count changed lines for the granularity suggestion as the total review-surface delta across the target set: additions + deletions + modified lines, including comments and blank-line changes when they are part of the diff, aggregated across files rather than per-file; when a tiny textual diff hides a structural semantic rewrite, prefer the larger structural bucket
   ALWAYS offer the granularity choice with a suggested level by change size: tiny edit (≤10 changed lines) -> single-pass, moderate edit (11–50 changed lines) -> per-methodology, new file/module/document or large/structural change (>50 changed lines) -> per-layer
   ALWAYS explain the owning workflow's concrete methodologies or reviewer groups before showing the shared menu
   ALWAYS treat single-pass as fastest, per-methodology as balanced, and per-layer as most thorough

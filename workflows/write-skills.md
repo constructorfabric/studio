@@ -43,6 +43,7 @@ RULES:
   ALWAYS apply current PDSL compactness and anti-duplication rules when authoring or reviewing: compactness counts top-level DO actions per UNIT, and redundant restatement in the same behavior path should be removed or factored when practical
   NEVER author or review a skill after a required reference load failure
 ```
+
 ```pdsl
 UNIT WriteSkillsValidate
 PURPOSE: Validate authored PDSL with the deterministic validator.
@@ -59,6 +60,7 @@ RULES:
   ALWAYS continue to WriteSkillsReviewLoop when validation passes
   NEVER stop after content generation or deterministic validation before the semantic review-fix loop is offered
 ```
+
 ```pdsl
 UNIT WriteSkillsReviewLoop
 PURPOSE: Run a semantic review at the user-chosen granularity and iterate fixes until the skill is clean.
@@ -70,6 +72,7 @@ DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/write-skills-fix-outcomes.md
   CONTINUE WriteSkillsReviewSetup
 ```
+
 ```pdsl
 UNIT WriteSkillsCompletion
 PURPOSE: Emit a concise completion report, then offer context-grounded next actions after skill authoring/review completes cleanly.
@@ -85,6 +88,7 @@ RULES:
   ALWAYS reach WriteSkillsCompletion only when no review findings remain
   NEVER bypass NextActionsOffer on a clean terminal path that returns control to the user
 ```
+
 ```pdsl
 UNIT WriteSkillsDispatch
 PURPOSE: Route to review loop or author git setup.

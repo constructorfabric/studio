@@ -1,4 +1,5 @@
 # Kit Legacy Preview Flow
+
 ```pdsl
 UNIT KitInitLegacySourcePreviewStart
 PURPOSE: Convert a legacy manifest.toml or conf.toml + layout source into a canonical preview, then gate the write on approval.

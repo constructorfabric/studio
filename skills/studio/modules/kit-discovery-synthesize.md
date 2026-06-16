@@ -1,3 +1,5 @@
+# Kit Discovery Synthesize
+
 ```pdsl
 UNIT KitInitDiscoverySynthesizeProposal
 PURPOSE: Build the conservative canonical manifest proposal and its preview artifacts from discovery results.

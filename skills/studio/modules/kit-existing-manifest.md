@@ -1,4 +1,5 @@
 # Kit Existing Manifest
+
 ```pdsl
 UNIT KitInitExistingManifestOffer
 PURPOSE: Avoid silent overwrite when a canonical manifest already exists in the target folder.

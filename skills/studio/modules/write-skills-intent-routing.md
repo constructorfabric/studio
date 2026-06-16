@@ -1,4 +1,5 @@
 # Write Skills Intent Routing
+
 ```pdsl
 UNIT WriteSkillsIntentCapture
 PURPOSE: Capture the skill-writing target before any context discovery or design gate runs.
@@ -13,6 +14,7 @@ RULES:
   NEVER offer cf-explore, cf-brainstorm, or dispatch author/reviewer agents while ORIGINAL_INTENT == unset
   ALWAYS capture ORIGINAL_INTENT before offering cf-explore, cf-brainstorm, plan-first, validation, authoring, review, or dispatch work
 ```
+
 ```pdsl
 UNIT WriteSkillsIntentResume
 PURPOSE: Resume the workflow after the user provides the skill-writing target.
@@ -24,6 +26,7 @@ DO:
   SET WRITE_SKILLS_INTENT_CAPTURE_STATE = unset
   CONTINUE WriteSkillsIntentClassify
 ```
+
 ```pdsl
 UNIT WriteSkillsIntentClassify
 PURPOSE: Classify ORIGINAL_INTENT to set REVIEW_LOOP_REQUESTED, then set up routing vars and hand off to companion skill offer.
@@ -36,6 +39,7 @@ RULES:
   ALWAYS run after ORIGINAL_INTENT is set and before companion routing
   NEVER run when ORIGINAL_INTENT == unset
 ```
+
 ```pdsl
 UNIT WriteSkillsCompanionSetup
 PURPOSE: Prepare the companion-skill and plan-first routing handoff for cf-write-skills.

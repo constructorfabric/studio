@@ -1,4 +1,5 @@
 # Kit Discovery Proposal
+
 ```pdsl
 UNIT KitInitDiscoveryProposalRun
 PURPOSE: Classify discovered resources, build a conservative canonical proposal, and gate the write on approval.

@@ -1,24 +1,33 @@
 # Write Docs Intent Routing
+
 ```pdsl
 UNIT WriteDocsIntentCapture
 PURPOSE: Capture the documentation target before any context discovery or framing gate runs.
+STATE:
+  SET WRITE_DOCS_INTENT_CAPTURE_STATE: prompt | resume | unset (default unset, scope workflow_run)
 DO:
   EMIT "Describe the documentation work you want done: the document, audience, goal, and any source material you already know. I need that target before cf-explore or brainstorm can search usefully."
-  RUN register WriteDocsIntentResume as the resume continuation for the next user.reply
+  SET WRITE_DOCS_INTENT_CAPTURE_STATE = resume
   WAIT user.reply
   STOP_TURN
 RULES:
   NEVER offer cf-explore, cf-brainstorm, or dispatch author/reviewer agents while ORIGINAL_INTENT == unset
 ```
+
 ```pdsl
 UNIT WriteDocsIntentResume
 PURPOSE: Resume the workflow after the user provides the documentation target.
+STATE:
+  SET WRITE_DOCS_INTENT_CAPTURE_STATE: prompt | resume | unset (default unset, scope workflow_run)
 WHEN:
   REQUIRE user.reply exists
+  REQUIRE WRITE_DOCS_INTENT_CAPTURE_STATE == resume
 DO:
   SET ORIGINAL_INTENT = user.reply
+  SET WRITE_DOCS_INTENT_CAPTURE_STATE = unset
   CONTINUE WriteDocsIntentClassify
 ```
+
 ```pdsl
 UNIT WriteDocsIntentClassify
 PURPOSE: Classify ORIGINAL_INTENT to set review-first routing, then hand off to companion routing.
@@ -33,6 +42,7 @@ RULES:
   ALWAYS route review/audit/critique/inspect/check/validate/verify/analyze/behavior-comparison/find-issues/bug-risk-failure-regression-bypass-defect-root-cause-routing-analysis intents through WriteDocsReviewLoop first; any fixes must be gated by ReviewFindingsReportBrowser and ReviewFixApprovalGate, not by direct author dispatch
   NEVER run when ORIGINAL_INTENT == unset
 ```
+
 ```pdsl
 UNIT WriteDocsCompanionRouting
 PURPOSE: Centralize companion-skill and plan-first routing after intent classification.

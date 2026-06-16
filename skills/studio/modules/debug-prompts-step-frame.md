@@ -1,4 +1,5 @@
 # Debug Prompts Step Frame
+
 ```pdsl
 UNIT DebugStepGateRenderFrame
 PURPOSE: Emit the full debugger frame for the current pending action.

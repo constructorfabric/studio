@@ -1,5 +1,6 @@
 # Auto-Config Integrate
 
+
 ```pdsl
 UNIT AutoConfigIntegrate
 PURPOSE: Build AGENTS.md navigation rules and registry entries, writing only after explicit confirmation.

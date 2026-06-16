@@ -34,6 +34,7 @@ DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/dispatch.md
   RUN SubAgentSelectionRegistry
   RUN draft the plan at high granularity, following the PlanShapeContract, PlanExecutionDirectives, PlanGitFinalizationContract, PlanAcceptedExecutionContract, and PlanDeviationContract
+  RUN validate that every `DISPATCH:` directive in the drafted plan names a sub-agent present in the loaded SubAgentSelectionRegistry; fail fast with a clear error when any name is unregistered
   EMIT the drafted plan for user review
   EMIT_MENU PlanStorageChoice
   WAIT user.reply
@@ -61,6 +62,8 @@ RULES:
   ALWAYS define the sub-agent intent for each planned action before execution
   ALWAYS classify each action as a parallel sub-agent, a sequential sub-agent, or an inline task
   ALWAYS make every action list owner, input, output, dependency, and verification
+  ALWAYS ensure declared dependencies form a directed acyclic graph with no circular references between planned actions
+  ALWAYS ensure each action's declared inputs are satisfied by the outputs of its declared dependencies or by explicit workflow/bootstrap context already in scope
   ALWAYS make plans detailed enough that each action is independently executable, reviewable, and has a named verification or validation check
   ALWAYS decompose large plans into named phases when the plan has more than 7 actions, spans multiple files/workflows, or needs more than one validation checkpoint; every phase lists its exit condition and validation command, review, or observable evidence
   ALWAYS make every phase independently verifiable with an exit condition and validation command, review, or observable evidence
