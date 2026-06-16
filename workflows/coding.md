@@ -34,12 +34,7 @@ DO:
   CONTINUE CodingIntentCapture WHEN ORIGINAL_INTENT == unset
   CONTINUE CodingIntentClassify WHEN ORIGINAL_INTENT != unset
 RULES:
-  ALWAYS run StudioInstructionsMemoryGate before coding context discovery, authoring, validation, or review
   ALWAYS remember git-commit-mode so any later commit request in this active workflow session runs GitCommitModeGate before routing, authoring, git use, or delegation
-  ALWAYS load the code-checklist, bug-finding, and consistency-checklist methodologies before authoring or reviewing code
-  ALWAYS load command-resolution before using remembered {cfs_cmd}/project commands in deterministic gates
-  ALWAYS load context-memory before carrying resource_context or rule references into coder/reviewer dispatches
-  ALWAYS capture ORIGINAL_INTENT before offering cf-explore, cf-brainstorm, or any write/review dispatch
   NEVER author or review code after a required reference load failure
 ```
 
@@ -48,11 +43,21 @@ UNIT CodingIntentCapture
 PURPOSE: Capture the coding target before any context discovery or design gate runs.
 DO:
   EMIT "Describe the code work you want done: the behavior, bug, refactor, review target, or files if known. I need that target before cf-explore or brainstorm can search usefully."
+  CONTINUE CodingIntentResume after user.reply
   WAIT user.reply
   STOP_TURN
 RULES:
-  ALWAYS on the resumed reply set ORIGINAL_INTENT = user.reply, then CONTINUE CodingIntentClassify
   NEVER offer cf-explore, cf-brainstorm, or dispatch coder/reviewer agents while ORIGINAL_INTENT == unset
+```
+
+```pdsl
+UNIT CodingIntentResume
+PURPOSE: Resume the workflow after the user provides the coding target.
+WHEN:
+  REQUIRE user.reply exists
+DO:
+  SET ORIGINAL_INTENT = user.reply
+  CONTINUE CodingIntentClassify
 ```
 
 ```pdsl
@@ -71,8 +76,6 @@ DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md
   CONTINUE CompanionSkillOffer
 RULES:
-  ALWAYS derive REVIEW_LOOP_REQUESTED from ORIGINAL_INTENT before offering cf-explore, cf-brainstorm, planning, coder dispatch, reviewer dispatch, or validation
-  ALWAYS default to review-first routing when the request evaluates existing code rather than creating or changing it
   ALWAYS route review/audit/critique/inspect/check/validate/verify/analyze/behavior-comparison/find-issues/bug-risk-failure-regression-bypass-defect-root-cause-routing-analysis intents through CodingReviewLoop first; any fixes must be gated by ReviewFindingsReportBrowser and ReviewFixApprovalGate, not by direct coder dispatch
   NEVER run when ORIGINAL_INTENT == unset
 ```
@@ -87,8 +90,6 @@ DO:
   SET WORKFLOW_PREP_BRAINSTORM_GATE = CodingBrainstormGate
   LOAD {cf-studio-path}/.core/skills/studio/modules/gates/workflow-prep.md
   CONTINUE WorkflowPrepExploreGate
-RULES:
-  ALWAYS use WorkflowPrepExploreGate for the shared explore prompt mechanics
 MENU CodingExploreMenu
 TITLE: Before writing or reviewing code, discover task-relevant project context (existing conventions, related modules, call sites) with cf-explore — or skip? Skip is the default when the target and its context are already clear; explore for unfamiliar or cross-cutting code. Reply with a number.
 OPTIONS:
@@ -105,8 +106,6 @@ DO:
   SET WORKFLOW_PREP_DISPATCH_UNIT = PlanFirstGate
   LOAD {cf-studio-path}/.core/skills/studio/modules/gates/workflow-prep.md
   CONTINUE WorkflowPrepBrainstormGate
-RULES:
-  ALWAYS use WorkflowPrepBrainstormGate for the shared brainstorm prompt mechanics
 MENU CodingBrainstormMenu
 TITLE: Before writing or reviewing code, brainstorm ambiguous decisions or design options with cf-brainstorm — or skip? Skip is the default when the approach is already clear; brainstorm for ambiguous requirements or open design questions. Reply with a number.
 OPTIONS:
@@ -130,9 +129,7 @@ DO:
   SET GATE_STATUS = fail and CONTINUE CodingReviewLoop to fix them before proceeding WHEN any gate reports failures or errors
   SET GATE_STATUS = pass and CONTINUE CodingReviewLoop WHEN the deterministic gate passes
 RULES:
-  ALWAYS run tests, lint, typecheck, and build after writing or editing code
   NEVER treat code as done while any deterministic gate (tests/lint/typecheck/build) reports failures or errors; loop fixes until all pass
-  ALWAYS run the deterministic gate via cf-deterministic-validator from {cf-studio-path}/.core/skills/studio/agents/cf-deterministic-validator.md plus the project's test/lint/typecheck/build commands
   ALWAYS prefer the project's configured commands and skip only gates that the project genuinely lacks (state which)
 ```
 
@@ -147,9 +144,21 @@ DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/review/semantic-loop-skeleton.md
   RUN SemanticReviewNoSpinRules
   CONTINUE CodingReviewRun
+```
+
+```pdsl
+UNIT CodingReviewerDispatchPolicy
+PURPOSE: Prepare scoped reviewer payloads for the selected coding review granularity.
+STATE:
+  SET SELECTED_REVIEWER_DISPATCH_GROUP: dispatch-group | unset (default unset, scope workflow_run)
+  SET REVIEWER_SCOPE_MANIFEST: manifest | unset (default unset, scope workflow_run)
+DO:
+  RUN read each methodology's current category/layer map (code-checklist categories, bug-finding layers, consistency-checklist categories) before a per-layer or per-methodology dispatch, so added layers are covered automatically and never a fixed count
+  SET REVIEWER_SCOPE_MANIFEST = each reviewer instance with only its assigned methodology/category/layer slice and any CodingExploreGate-resolved resource_context as read-only context (an absolute path or reference, never inline prompt text)
+  SET SELECTED_REVIEWER_DISPATCH_GROUP for REVIEW_GRANULARITY: single-pass = cf-semantic-reviewer-code, cf-code-bug-finder, and cf-semantic-reviewer-consistency in one combined dispatch group; per-methodology = one reviewer per methodology; per-layer = one reviewer per category/layer for every category/layer each methodology defines, run in parallel
 RULES:
-  ALWAYS run before any reviewer dispatch in this workflow
-  NEVER skip SemanticReviewNoSpinRules
+  ALWAYS keep workflow-specific reviewer dispatches in this workflow
+  NEVER let resource_context gate a reviewer verdict
 ```
 
 ```pdsl
@@ -162,18 +171,13 @@ WHEN:
 DO:
   SET REVIEW_GRANULARITY_SCOPE = "Coding review scope: single-pass covers code-checklist, bug-finding, and consistency-checklist together; per-methodology dispatches cf-semantic-reviewer-code, cf-code-bug-finder, and cf-semantic-reviewer-consistency separately; per-layer dispatches one reviewer per current category/layer from those methodologies."
   RUN SemanticReviewGranularityGate WHEN REVIEW_GRANULARITY == unset
-  RUN SubAgentDispatch for the selected code reviewer dispatch group before launching reviewer instances
-  RUN the chosen review at REVIEW_GRANULARITY: single-pass = dispatch cf-semantic-reviewer-code, cf-code-bug-finder, and cf-semantic-reviewer-consistency in one combined dispatch group, then aggregate one report; per-methodology = dispatch cf-semantic-reviewer-code (code-checklist), cf-code-bug-finder (bug-finding), and cf-semantic-reviewer-consistency (consistency-checklist — cross-checks the change against surrounding docs/specs/comments, not the code logic) in parallel; per-layer = dispatch one reviewer per current category/layer for each applicable methodology
+  RUN CodingReviewerDispatchPolicy
+  RUN SubAgentDispatch for SELECTED_REVIEWER_DISPATCH_GROUP before launching reviewer instances
+  RUN SELECTED_REVIEWER_DISPATCH_GROUP with REVIEWER_SCOPE_MANIFEST
   RUN aggregation of every reviewer's findings into one deduplicated ReviewFindingsReport with stable finding IDs and every ReviewFindingContract field
   CONTINUE CodingReviewFixGate
 RULES:
-  ALWAYS read each methodology's current category/layer map (code-checklist categories, bug-finding layers, consistency-checklist categories) before a per-layer or per-methodology dispatch, so added layers are covered automatically and never a fixed count
   ALWAYS scope each reviewer to only its assigned slice (all methodologies / one methodology / one category-or-layer) and run independent reviewers in parallel
-  ALWAYS keep workflow-specific reviewer dispatches in this workflow
-  ALWAYS run SubAgentDispatch before every reviewer dispatch group
-  ALWAYS dispatch cf-semantic-reviewer-code (code-checklist), cf-code-bug-finder (bug-finding), and cf-semantic-reviewer-consistency (consistency-checklist) from {cf-studio-path}/.core/skills/studio/agents/ per the chosen REVIEW_GRANULARITY: single-pass = all three methodology reviewers in one combined dispatch group with one aggregated report; per-methodology = one cf-semantic-reviewer-code over all code-checklist categories, one cf-code-bug-finder over all bug-finding layers, and one cf-semantic-reviewer-consistency over all consistency-checklist categories; per-layer = one reviewer per category/layer for every category/layer each methodology defines, run in parallel, never a fixed count — read each methodology's current category/layer map before dispatch
-  ALWAYS synthesize into each reviewer instance only its assigned methodology/category/layer slice, never more than its scope
-  ALWAYS include any CodingExploreGate-resolved resource_context in every reviewer dispatch payload as read-only context (an absolute path or reference, never inline prompt text), NEVER as a gate on a reviewer verdict
 ```
 
 ```pdsl
@@ -185,8 +189,6 @@ DO:
   RUN SemanticReviewFixApprovalGate WHEN findings remain and fixes are applicable
   CONTINUE CodingReviewFixDispatch WHEN REVIEW_FIX_APPROVED == true
   CONTINUE CodingReviewFixOutcome
-RULES:
-  ALWAYS render the interactive ReviewFindingsReportBrowser from fix-approval before any fix-scope menu, so the user can inspect findings one by one, move next/previous, mark findings for fix, switch to a full table, and then choose a clear fix scope
 ```
 
 ```pdsl
@@ -204,11 +206,8 @@ DO:
   DISPATCH SELECTED_REVIEW_FIX_AGENT with mode=fix, target_paths, APPROVED_REVIEW_FINDING_IDS, REVIEW_FIX_SCOPE, git_commit_mode, contributing_guide, git_constraint, commit_footer_contract, and resource_context to apply only approved review fixes
   CONTINUE CodingReviewFixOutcome
 RULES:
-  ALWAYS after REVIEW_FIX_APPROVED == true, select a concrete write-capable coder and pass APPROVED_REVIEW_FINDING_IDS plus REVIEW_FIX_SCOPE so approvals cannot widen silently
-  ALWAYS run GitCommitModeGate before any write-capable coder dispatch, including approved review-fix dispatch
-  ALWAYS resolve git_commit_mode (probe once per session), contributing_guide (discover; use null for no discovered guide), and the mode-matched git_constraint before approved review-fix dispatch, and ALWAYS include all three in that dispatch payload
-  ALWAYS run SubAgentDispatch before every review-fix dispatch group
-  ALWAYS include any CodingExploreGate-resolved resource_context in the review-fix dispatch payload as read-only context (an absolute path or reference, never inline prompt text), NEVER as a gate on the fix verdict
+  NEVER let approvals widen silently beyond APPROVED_REVIEW_FINDING_IDS and REVIEW_FIX_SCOPE
+  NEVER let resource_context gate the fix verdict
   NEVER rely on a stale or implicit coder selection for approved review fixes
 ```
 
@@ -226,8 +225,6 @@ DO:
   STOP_TURN and report deterministic blockers WHEN no review findings remain AND GATE_STATUS == fail
   CONTINUE CodingCompletion WHEN no review findings remain AND (REVIEW_LOOP_REQUESTED == true OR GATE_STATUS == pass)
 RULES:
-  NEVER declare authored or edited code done until BOTH the deterministic gate (tests/lint/typecheck/build) passes AND the semantic review has no remaining findings
-  ALWAYS re-run CodingValidate after any fix before re-reviewing
   NEVER re-loop the review after an iteration with no applied fixes — STOP_TURN reporting the remaining findings so the loop cannot spin on unchanged code; only an applied fix re-runs CodingValidate and re-reviews
 ```
 
@@ -240,7 +237,6 @@ DO:
   CONTINUE CodingReviewSetup
 RULES:
   NEVER declare authored or edited code done until BOTH the deterministic gate (tests/lint/typecheck/build) passes AND the semantic review has no remaining findings
-  ALWAYS re-run CodingValidate after any fix before re-reviewing
 ```
 
 ```pdsl
@@ -251,10 +247,9 @@ WHEN:
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-resolution.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md
-  EMIT a concise completion report covering work done, gate outcome, and semantic review outcome
+  EMIT a concise completion report covering work done, deterministic gate outcome (or "not run" when GATE_STATUS is unset), and semantic review outcome
   RUN NextActionsOffer
 RULES:
-  ALWAYS use this unit only after code validation/review is complete, report the deterministic gate outcome (including review-only flows with no deterministic gate run), and state semantic review has no remaining findings before NextActionsOffer
   NEVER bypass NextActionsOffer on a clean terminal path
 ```
 
@@ -277,23 +272,19 @@ DO:
   RUN GitCommitModeGate before preparing git policy for coder dispatch
   RUN resolve git_commit_mode (probe once per session), contributing_guide (discover; use null for no discovered guide), and the mode-matched git_constraint
   CONTINUE CodingAuthorDispatch
-RULES:
-  ALWAYS run GitCommitModeGate before any write-capable coder dispatch, even for tasks that did not ask to commit
-  ALWAYS resolve git_commit_mode, contributing_guide, and the mode-matched git_constraint before any write-capable coder dispatch
 ```
 
 ```pdsl
 UNIT CodingAuthorDispatch
 PURPOSE: Select the coding author, dispatch it, and route written code into validation.
+STATE:
+  SET SELECTED_CODING_AGENT: cf-codegen | cf-generate-coder-smart | cf-generate-coder-casual | unset (default unset, scope workflow_run)
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/dispatch.md
-  RUN SubAgentDispatch for the selected coding author dispatch group
-  RUN selected coding author/fix agent for requested code writes or fixes
+  SET SELECTED_CODING_AGENT by this priority order (first match wins): (1) cf-codegen for fully specified tasks implementable in an isolated context with no clarification; else (2) cf-generate-coder-smart for changes involving behavior, tests, refactors, API boundaries, or any security/concurrency/data-model implication; else (3) cf-generate-coder-casual for small code-only tasks touching at most two source/test files with no security/concurrency/data-model risk; else cf-generate-coder-smart as the default
+  RUN SubAgentDispatch for SELECTED_CODING_AGENT dispatch group
+  DISPATCH SELECTED_CODING_AGENT with git_commit_mode, contributing_guide, git_constraint, commit_footer_contract, and any CodingExploreGate-resolved resource_context as read-only context (absolute path or reference, never inline prompt text)
   CONTINUE CodingValidate WHEN code has been written or edited
 RULES:
-  ALWAYS select the coding author/fix agent under {cf-studio-path}/.core/skills/studio/agents/ by this priority order (first match wins): (1) cf-codegen.md for fully specified tasks implementable in an isolated context with no clarification; else (2) cf-generate-coder-smart.md for changes involving behavior, tests, refactors, API boundaries, or any security/concurrency/data-model implication; else (3) cf-generate-coder-casual.md for small code-only tasks touching at most two source/test files with no security/concurrency/data-model risk; else cf-generate-coder-smart.md as the default
-  ALWAYS run SubAgentDispatch before every native coder dispatch group; inline fallback executes the same selected contract without native dispatch
-  ALWAYS include git_commit_mode, contributing_guide, and git_constraint in every write-capable coder dispatch payload
-  ALWAYS include any CodingExploreGate-resolved resource_context in every coder dispatch payload as read-only context (an absolute path or reference, never inline prompt text), NEVER as a gate on a coder verdict
-  ALWAYS after any coder dispatch changes code, run the deterministic gate and then offer review granularity before semantic review
+  NEVER let resource_context gate a coder verdict
 ```
