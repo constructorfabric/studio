@@ -16,6 +16,15 @@ PURPOSE: Load the methodologies needed to author and review project documents.
 STATE:
   SET ORIGINAL_INTENT: string | unset (default unset, scope workflow_run)
   SET REVIEW_LOOP_REQUESTED: true | false | unset (default unset, scope workflow_run)
+  SET AUTHOR_TARGET_PATHS: list | unset (default unset, scope workflow_run)
+  SET REVIEW_TARGET_PATHS: list | unset (default unset, scope workflow_run)
+  SET REVIEW_TARGET_SLICES: list | unset (default unset, scope workflow_run)
+  SET ARTIFACT_CHECKLIST_CONTEXT: preset-bound | unavailable | unset (default unset, scope workflow_run)
+  SET ARTIFACT_REVIEW_KIND: string | null | unset (default unset, scope workflow_run)
+  SET ARTIFACT_TEMPLATE_PATH: path | null | unset (default unset, scope workflow_run)
+  SET ARTIFACT_RULES_PATH: path | null | unset (default unset, scope workflow_run)
+  SET ARTIFACT_CHECKLIST_PATH: path | null | unset (default unset, scope workflow_run)
+  SET ARTIFACT_EXAMPLE_PATH: path | null | unset (default unset, scope workflow_run)
   SET DOC_AUDIENCE_DIMENSION: resolved | unset (default unset, scope workflow_run)
   SET DOC_NARRATOR_DIMENSION: resolved | unset (default unset, scope workflow_run)
   SET DOC_DIAGRAM_DIMENSION: resolved | unset (default unset, scope workflow_run)
@@ -32,22 +41,16 @@ DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/gates/language-complexity.md
   RUN LanguageComplexityLoad
   LOAD {cf-studio-path}/.core/requirements/storytelling-dimensions.md
+  LOAD {cf-studio-path}/.core/skills/studio/agents/cf-semantic-reviewer-artifact.md
+  RUN WriteDocsArtifactContextNormalize
   RUN AudienceResolution, NarratorResolution, and DiagramResolution for the cf-write-docs flow class; SET DOC_AUDIENCE_DIMENSION = resolved, SET DOC_NARRATOR_DIMENSION = resolved, and SET DOC_DIAGRAM_DIMENSION = resolved before any author or reviewer dispatch
-  RUN verify the references loaded; EMIT "Required reference not found (consistency-checklist, language-complexity, or storytelling-dimensions reference under {cf-studio-path}/.core) — cannot author or review docs; reinstall or sync the studio kit, then retry." and STOP_TURN WHEN any load fails
+  RUN verify the references loaded; EMIT "Required reference not found (consistency-checklist, language-complexity, storytelling-dimensions, or cf-semantic-reviewer-artifact under {cf-studio-path}/.core) — cannot author or review docs; reinstall or sync the studio kit, then retry." and STOP_TURN WHEN any load fails
   CONTINUE WriteDocsIntentCapture WHEN ORIGINAL_INTENT == unset
-  RUN classify ORIGINAL_INTENT by requested operation plus whether it evaluates an existing document, guide, report, README, or documentation artifact; SET REVIEW_LOOP_REQUESTED = true WHEN ORIGINAL_INTENT asks to review, audit, critique, inspect, check, validate, verify, analyze, compare behavior, or find issues/findings, bugs, risks, failures, regressions, bypasses, defects, root causes, routing problems, or behavioral-analysis concerns in an existing target, including review-and-fix wording
-  RUN default REVIEW_LOOP_REQUESTED = true WHEN REVIEW_LOOP_REQUESTED == unset AND ORIGINAL_INTENT primarily evaluates an existing document, guide, report, README, or documentation artifact rather than creating one
-  RUN classify ORIGINAL_INTENT; SET REVIEW_LOOP_REQUESTED = false WHEN REVIEW_LOOP_REQUESTED == unset
-  SET PLAN_FIRST_CONTINUE = WriteDocsDispatch, SET CURRENT_WORKFLOW = cf-write-docs, SET COMPANION_CONTINUE = WriteDocsExploreGate, LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md, LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md, and CONTINUE CompanionSkillOffer WHEN ORIGINAL_INTENT != unset
+  CONTINUE WriteDocsIntentClassify WHEN ORIGINAL_INTENT != unset
 RULES:
   ALWAYS run StudioInstructionsMemoryGate before document context discovery, authoring, validation, or review
   ALWAYS remember git-commit-mode so any later commit request in this active workflow session runs GitCommitModeGate before routing, authoring, git use, or delegation
-  ALWAYS load the consistency-checklist methodology, the language-complexity bootstrap/output policy and deterministic gate, and the storytelling-dimensions reference before authoring or reviewing docs
   ALWAYS load context-memory before carrying resource_context or rule references into author/reviewer dispatches
-  ALWAYS capture ORIGINAL_INTENT before offering cf-explore, cf-brainstorm, or any write/review dispatch
-  ALWAYS derive REVIEW_LOOP_REQUESTED from ORIGINAL_INTENT before offering cf-explore, cf-brainstorm, planning, author dispatch, reviewer dispatch, or validation
-  ALWAYS default to review-first routing when the request evaluates an existing document, guide, report, README, or documentation artifact rather than creating one
-  ALWAYS route review/audit/critique/inspect/check/validate/verify/analyze/behavior-comparison/find-issues/bug-risk-failure-regression-bypass-defect-root-cause-routing-analysis intents through WriteDocsReviewLoop first; any fixes must be gated by ReviewFindingsReportBrowser and ReviewFixApprovalGate, not by direct author dispatch
   ALWAYS apply the resolved language-complexity level to every chat message and document write, rewriting breaching drafts before emitting them (source quotes verbatim/exempt)
   ALWAYS resolve and apply the audience dimension per {cf-studio-path}/.core/requirements/storytelling-dimensions.md at Bootstrap — the review flow class scopes emphasis, the authoring flow class sets the document level — never as a gate on the verdict
   ALWAYS resolve and apply the narrator dimension per {cf-studio-path}/.core/requirements/storytelling-dimensions.md at Bootstrap — map it onto the selected reviewer/author sub-agents and the document voice — never overriding the verdict
@@ -56,15 +59,76 @@ RULES:
 ```
 
 ```pdsl
+UNIT WriteDocsArtifactContextNormalize
+PURPOSE: Normalize preset-bound artifact references into the payload field names required by author and artifact-reviewer contracts.
+DO:
+  SET ARTIFACT_REVIEW_KIND = ARTIFACT_KIND WHEN ARTIFACT_KIND is set
+  SET ARTIFACT_REVIEW_KIND = null WHEN ARTIFACT_REVIEW_KIND == unset
+  SET ARTIFACT_TEMPLATE_PATH = artifact_template WHEN artifact_template is set
+  SET ARTIFACT_TEMPLATE_PATH = null WHEN ARTIFACT_TEMPLATE_PATH == unset
+  SET ARTIFACT_RULES_PATH = artifact_rules WHEN artifact_rules is set
+  SET ARTIFACT_RULES_PATH = null WHEN ARTIFACT_RULES_PATH == unset
+  SET ARTIFACT_CHECKLIST_PATH = artifact_checklist WHEN artifact_checklist is set
+  SET ARTIFACT_CHECKLIST_PATH = checklist_path WHEN ARTIFACT_CHECKLIST_PATH == unset AND checklist_path is set
+  SET ARTIFACT_CHECKLIST_PATH = null WHEN ARTIFACT_CHECKLIST_PATH == unset
+  SET ARTIFACT_EXAMPLE_PATH = artifact_example WHEN artifact_example is set
+  SET ARTIFACT_EXAMPLE_PATH = null WHEN ARTIFACT_EXAMPLE_PATH == unset
+  SET ARTIFACT_CHECKLIST_CONTEXT = preset-bound WHEN ARTIFACT_CHECKLIST_PATH != null
+  SET ARTIFACT_CHECKLIST_CONTEXT = unavailable WHEN ARTIFACT_CHECKLIST_PATH == null
+RULES:
+  ALWAYS keep preset-bound artifact references as read-only payload fields
+  NEVER invent artifact template, rules, checklist, or example paths when no preset supplied them
+```
+
+```pdsl
 UNIT WriteDocsIntentCapture
 PURPOSE: Capture the documentation target before any context discovery or framing gate runs.
 DO:
   EMIT "Describe the documentation work you want done: the document, audience, goal, and any source material you already know. I need that target before cf-explore or brainstorm can search usefully."
+  RUN register WriteDocsIntentResume as the resume continuation for the next user.reply
   WAIT user.reply
   STOP_TURN
 RULES:
-  ALWAYS on the resumed reply set ORIGINAL_INTENT = user.reply, derive REVIEW_LOOP_REQUESTED from ORIGINAL_INTENT using the Bootstrap review-intent classification, SET PLAN_FIRST_CONTINUE = WriteDocsDispatch, SET CURRENT_WORKFLOW = cf-write-docs, SET COMPANION_CONTINUE = WriteDocsExploreGate, LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md, LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md, and CONTINUE CompanionSkillOffer
   NEVER offer cf-explore, cf-brainstorm, or dispatch author/reviewer agents while ORIGINAL_INTENT == unset
+```
+
+```pdsl
+UNIT WriteDocsIntentResume
+PURPOSE: Resume the workflow after the user provides the documentation target.
+WHEN:
+  REQUIRE user.reply exists
+DO:
+  SET ORIGINAL_INTENT = user.reply
+  CONTINUE WriteDocsIntentClassify
+```
+
+```pdsl
+UNIT WriteDocsIntentClassify
+PURPOSE: Classify ORIGINAL_INTENT to set review-first routing, then hand off to companion routing.
+WHEN:
+  REQUIRE ORIGINAL_INTENT != unset
+DO:
+  RUN classify ORIGINAL_INTENT by requested operation plus whether it evaluates an existing document, guide, report, README, or documentation artifact; SET REVIEW_LOOP_REQUESTED = true WHEN ORIGINAL_INTENT asks to review, audit, critique, inspect, check, validate, verify, analyze, compare behavior, or find issues/findings, bugs, risks, failures, regressions, bypasses, defects, root causes, routing problems, or behavioral-analysis concerns in an existing target, including review-and-fix wording
+  RUN default REVIEW_LOOP_REQUESTED = true WHEN REVIEW_LOOP_REQUESTED == unset AND ORIGINAL_INTENT primarily evaluates an existing document, guide, report, README, or documentation artifact rather than creating one
+  RUN classify ORIGINAL_INTENT; SET REVIEW_LOOP_REQUESTED = false WHEN REVIEW_LOOP_REQUESTED == unset
+  CONTINUE WriteDocsCompanionRouting
+RULES:
+  ALWAYS route review/audit/critique/inspect/check/validate/verify/analyze/behavior-comparison/find-issues/bug-risk-failure-regression-bypass-defect-root-cause-routing-analysis intents through WriteDocsReviewLoop first; any fixes must be gated by ReviewFindingsReportBrowser and ReviewFixApprovalGate, not by direct author dispatch
+  NEVER run when ORIGINAL_INTENT == unset
+```
+
+```pdsl
+UNIT WriteDocsCompanionRouting
+PURPOSE: Centralize companion-skill and plan-first routing after intent classification.
+WHEN:
+  REQUIRE ORIGINAL_INTENT != unset
+DO:
+  SET PLAN_FIRST_CONTINUE = WriteDocsDispatch
+  SET CURRENT_WORKFLOW = cf-write-docs
+  SET COMPANION_CONTINUE = WriteDocsExploreGate
+  LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md
+  CONTINUE CompanionSkillOffer
 ```
 
 ```pdsl
@@ -109,7 +173,7 @@ OPTIONS:
 UNIT WriteDocsValidate
 PURPOSE: Run the deterministic gate over authored or edited documents.
 STATE:
-  SET GATE_STATUS: pass | fail (default unset, scope workflow_run)
+  SET GATE_STATUS: pass | fail | not-run (default not-run, scope workflow_run)
 WHEN:
   REQUIRE a document has been written or edited
 DO:
@@ -126,12 +190,8 @@ RULES:
 ```
 
 ```pdsl
-UNIT WriteDocsReviewLoop
-PURPOSE: Run a semantic review at the user-chosen granularity and iterate fixes until the document is clean.
-STATE:
-  SET REVIEW_GRANULARITY: single-pass | per-methodology | per-layer (default unset, scope workflow_run)
-  SET SELECTED_REVIEW_FIX_AGENT: cf-generate-author-junior | cf-generate-author-middle | cf-generate-author-senior | cf-generate-author-lead | unset (default unset, scope workflow_run)
-  SET REVIEW_FIXES_APPLIED: true | false | unset (default unset, scope workflow_run)
+UNIT WriteDocsReviewSetup
+PURPOSE: Load review modules and anti-spin rules before reviewer dispatch.
 WHEN:
   REQUIRE edits have been applied to the document OR REVIEW_LOOP_REQUESTED == true
 DO:
@@ -139,32 +199,125 @@ DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/review/finding-contract.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/review/semantic-loop-skeleton.md
   RUN SemanticReviewNoSpinRules
+  CONTINUE WriteDocsReviewTargetResolution
+```
+
+```pdsl
+UNIT WriteDocsReviewTargetResolution
+PURPOSE: Resolve review target paths and reviewed slices before reviewer or approved-fix dispatch.
+WHEN:
+  REQUIRE edits have been applied to the document OR REVIEW_LOOP_REQUESTED == true
+DO:
+  RUN resolve REVIEW_TARGET_PATHS to the declared read-only document path or paths under review, and REVIEW_TARGET_SLICES to the declared reviewed content slices for those targets, before reviewer dispatch or approved review-fix dispatch
+  EMIT "Review target resolution is required before document review can continue. Provide the reviewed document path(s) and declared content slice(s) for the target under review." and STOP_TURN WHEN REVIEW_TARGET_PATHS == unset OR REVIEW_TARGET_SLICES == unset
+  CONTINUE WriteDocsReviewRun
+RULES:
+  NEVER dispatch reviewers or approved review-fix writers while REVIEW_TARGET_PATHS == unset OR REVIEW_TARGET_SLICES == unset
+```
+
+```pdsl
+UNIT WriteDocsReviewerDispatchPolicy
+PURPOSE: Prepare scoped reviewer payloads for the selected documentation review granularity.
+STATE:
+  SET REVIEW_GRANULARITY: single-pass | per-methodology | per-layer (default unset, scope workflow_run)
+  SET SELECTED_REVIEWER_DISPATCH_GROUP: dispatch-group | unset (default unset, scope workflow_run)
+  SET REVIEWER_SCOPE_MANIFEST: manifest | unset (default unset, scope workflow_run)
+DO:
   SET REVIEW_GRANULARITY_SCOPE = "Docs review scope: single-pass covers consistency-checklist and artifact-checklist together; per-methodology dispatches cf-semantic-reviewer-consistency and cf-semantic-reviewer-artifact separately, plus cf-semantic-reviewer-freeform only for a custom review prompt; per-layer dispatches one reviewer per current category."
   RUN SemanticReviewGranularityGate WHEN REVIEW_GRANULARITY == unset
-  RUN SubAgentDispatch for the selected document reviewer dispatch group before launching reviewer instances
-  RUN scoping of this review dispatch by the Bootstrap-resolved storytelling dimensions per {cf-studio-path}/.core/requirements/storytelling-dimensions.md review flow-class rules — scope each reviewer's emphasis by the resolved audience, map the resolved narrator onto the selected reviewer set, and instruct each reviewer to flag a warranted-but-missing or unclear diagram as a finding
-  RUN the chosen review at REVIEW_GRANULARITY: single-pass = dispatch cf-semantic-reviewer-consistency and cf-semantic-reviewer-artifact in one combined dispatch group, plus cf-semantic-reviewer-freeform only when the user supplied a custom review prompt, then aggregate one report; per-methodology = dispatch cf-semantic-reviewer-consistency and cf-semantic-reviewer-artifact in parallel (plus freeform only when the user supplied a custom review prompt); per-layer = dispatch one reviewer per current category for each applicable methodology
+  RUN read the current consistency-checklist category map and the preset-bound ARTIFACT_CHECKLIST_PATH category map WHEN ARTIFACT_CHECKLIST_CONTEXT == preset-bound before a per-layer or per-methodology dispatch, so added categories/sections are covered automatically and never a fixed count
+  RUN mark cf-semantic-reviewer-artifact scope as RELAXED/PARTIAL for generic documentation targets WHEN ARTIFACT_CHECKLIST_CONTEXT == unavailable
+  SET REVIEWER_SCOPE_MANIFEST = each reviewer instance with only its assigned methodology/category slice plus REVIEW_TARGET_PATHS, REVIEW_TARGET_SLICES, kind=ARTIFACT_REVIEW_KIND, template_path=ARTIFACT_TEMPLATE_PATH, checklist_path=ARTIFACT_CHECKLIST_PATH, example_path=ARTIFACT_EXAMPLE_PATH, kit_rules_path=ARTIFACT_RULES_PATH, rules_mode STRICT when ARTIFACT_CHECKLIST_CONTEXT == preset-bound else RELAXED, any WriteDocsExploreGate-resolved resource_context as read-only context (an absolute path or reference, never inline prompt text), and the Bootstrap-resolved audience/narrator/diagram policy data scoped per {cf-studio-path}/.core/requirements/storytelling-dimensions.md review flow-class rules; reviewers flag a warranted-but-missing or unclear diagram as a finding
+  SET SELECTED_REVIEWER_DISPATCH_GROUP for REVIEW_GRANULARITY: single-pass = cf-semantic-reviewer-consistency and cf-semantic-reviewer-artifact in one combined dispatch group, plus cf-semantic-reviewer-freeform only when the user supplied a custom review prompt; per-methodology = cf-semantic-reviewer-consistency and cf-semantic-reviewer-artifact in parallel, plus cf-semantic-reviewer-freeform only when the user supplied a custom review prompt; per-layer = one reviewer per current category for each applicable methodology
+RULES:
+  ALWAYS preserve the selected REVIEW_GRANULARITY for the remainder of the workflow run unless the user explicitly resets it
+  ALWAYS keep workflow-specific reviewer dispatches in this workflow
+  NEVER let resource_context or storytelling dimensions gate a reviewer verdict
+```
+
+```pdsl
+UNIT WriteDocsReviewRun
+PURPOSE: Dispatch reviewer sub-agents and aggregate their findings into one report.
+WHEN:
+  REQUIRE REVIEW_TARGET_PATHS != unset
+  REQUIRE REVIEW_TARGET_SLICES != unset
+DO:
+  RUN WriteDocsReviewerDispatchPolicy
+  RUN SubAgentDispatch for SELECTED_REVIEWER_DISPATCH_GROUP before launching reviewer instances
+  RUN SELECTED_REVIEWER_DISPATCH_GROUP with REVIEWER_SCOPE_MANIFEST
   RUN aggregation of every reviewer's findings into one deduplicated ReviewFindingsReport with stable finding IDs and every ReviewFindingContract field
+  CONTINUE WriteDocsReviewFixGate
+RULES:
+  ALWAYS scope each reviewer to only its assigned slice and run independent reviewers in parallel
+```
+
+```pdsl
+UNIT WriteDocsReviewFixGate
+PURPOSE: Present review findings, gate fix approval, and route to fix dispatch or outcome.
+WHEN:
+  REQUIRE REVIEW_TARGET_PATHS != unset
+  REQUIRE REVIEW_TARGET_SLICES != unset
+DO:
   RUN SemanticReviewFixApprovalGate WHEN findings remain and fixes are applicable
-  RUN select SELECTED_REVIEW_FIX_AGENT from the approved findings and target document paths using the cf-generate-author selection rules; choose only a concrete write-capable cf-generate-author-* worker tier WHEN REVIEW_FIX_APPROVED == true
-  RUN SubAgentDispatch for the SELECTED_REVIEW_FIX_AGENT review-fix dispatch group WHEN REVIEW_FIX_APPROVED == true
-  DISPATCH SELECTED_REVIEW_FIX_AGENT with mode=fix, target_paths, APPROVED_REVIEW_FINDING_IDS, REVIEW_FIX_SCOPE, git_commit_mode, contributing_guide, git_constraint, commit_footer_contract, resource_context, and the resolved audience/narrator/diagram policy data to apply only approved review fixes WHEN REVIEW_FIX_APPROVED == true
+  CONTINUE WriteDocsReviewFixDispatch WHEN REVIEW_FIX_APPROVED == true
+  CONTINUE WriteDocsReviewFixOutcome
+```
+
+```pdsl
+UNIT WriteDocsReviewFixDispatch
+PURPOSE: Resolve shared write policy before dispatching approved document review fixes.
+WHEN:
+  REQUIRE REVIEW_FIX_APPROVED == true
+DO:
+  SET WRITE_DISPATCH_KIND = review-fix
+  CONTINUE WriteDocsWritePolicySetup
+```
+
+```pdsl
+UNIT WriteDocsReviewFixDispatchRun
+PURPOSE: Select the approved-fix document author and dispatch only approved review fixes.
+STATE:
+  SET SELECTED_REVIEW_FIX_AGENT: cf-generate-author-junior | cf-generate-author-middle | cf-generate-author-senior | cf-generate-author-lead | unset (default unset, scope workflow_run)
+DO:
+  RUN select SELECTED_REVIEW_FIX_AGENT from the approved findings and REVIEW_TARGET_PATHS using the cf-generate-author selection rules; choose only a concrete write-capable cf-generate-author-* worker tier
+  RUN SubAgentDispatch for the SELECTED_REVIEW_FIX_AGENT review-fix dispatch group
+  DISPATCH SELECTED_REVIEW_FIX_AGENT with mode=fix, kind=ARTIFACT_REVIEW_KIND, rules_mode STRICT when ARTIFACT_CHECKLIST_CONTEXT == preset-bound else RELAXED, template_path=ARTIFACT_TEMPLATE_PATH, example_path=ARTIFACT_EXAMPLE_PATH, checklist_path=ARTIFACT_CHECKLIST_PATH, kit_rules_path=ARTIFACT_RULES_PATH, target_paths=REVIEW_TARGET_PATHS, REVIEW_TARGET_SLICES, APPROVED_REVIEW_FINDING_IDS, REVIEW_FIX_SCOPE, git_commit_mode, contributing_guide, git_constraint, commit_footer_contract, any WriteDocsExploreGate-resolved resource_context as read-only context, and the resolved audience/narrator/diagram policy data as read-only context to apply only approved review fixes
+  CONTINUE WriteDocsReviewFixOutcome
+RULES:
+  NEVER dispatch the read-only cf-generate-author selector itself to write or fix documents
+  NEVER let approvals widen silently beyond APPROVED_REVIEW_FINDING_IDS and REVIEW_FIX_SCOPE
+  NEVER let resource_context or storytelling dimensions gate the fix verdict
+```
+
+```pdsl
+UNIT WriteDocsReviewFixOutcome
+PURPOSE: Verify fix application, prevent no-spin loops, and route to validation or completion.
+STATE:
+  SET REVIEW_FIXES_APPLIED: true | false | unset (default unset, scope workflow_run)
+WHEN:
+  REQUIRE REVIEW_TARGET_PATHS != unset
+  REQUIRE REVIEW_TARGET_SLICES != unset
+DO:
   RUN verify the returned fix manifest accounts for every APPROVED_REVIEW_FINDING_IDS entry as applied or not-fixable; SET REVIEW_FIXES_APPLIED = true WHEN one or more approved fixes changed content; SET REVIEW_FIXES_APPLIED = false WHEN no content changed
-  CONTINUE WriteDocsValidate WHEN REVIEW_FIXES_APPLIED == true (re-run the deterministic gate before re-reviewing)
+  CONTINUE WriteDocsValidate WHEN REVIEW_FIXES_APPLIED == true
   STOP_TURN and report the remaining findings WHEN findings remain but no fixes were applied this iteration (none approved, none applicable, or the ReviewFixApprovalGate resolved to none) — re-reviewing unchanged content cannot change the result
   STOP_TURN and report that deterministic blockers remain WHEN no review findings remain AND GATE_STATUS == fail
-  CONTINUE WriteDocsCompletion WHEN no review findings remain AND (REVIEW_LOOP_REQUESTED == true OR GATE_STATUS == pass)
+  CONTINUE WriteDocsCompletion WHEN no review findings remain AND GATE_STATUS == pass
+  CONTINUE WriteDocsCompletion WHEN no review findings remain AND REVIEW_LOOP_REQUESTED == true AND GATE_STATUS == not-run
 RULES:
-  ALWAYS read each methodology's current category/section map (consistency-checklist categories, the kit/artifact checklist categories) before a per-layer or per-methodology dispatch, so added sections are covered automatically and never a fixed count
-  ALWAYS scope each reviewer to only its assigned slice and run independent reviewers in parallel
-  ALWAYS keep workflow-specific reviewer dispatches in this workflow
-  ALWAYS render the interactive ReviewFindingsReportBrowser from fix-approval before any fix-scope menu, so the user can inspect findings one by one, move next/previous, mark findings for fix, switch to a full table, and then choose a clear fix scope
-  ALWAYS select a concrete write-capable cf-generate-author-* worker inside WriteDocsReviewLoop after REVIEW_FIX_APPROVED == true; NEVER dispatch the read-only cf-generate-author selector itself to write or fix documents
-  ALWAYS pass APPROVED_REVIEW_FINDING_IDS and REVIEW_FIX_SCOPE to the selected fixer so partial and severity-scoped approvals cannot widen silently
-  NEVER declare an authored or edited document done until BOTH the deterministic gate passes AND the semantic review has no remaining findings; ALWAYS re-run WriteDocsValidate after any fix before re-reviewing
   NEVER re-loop the review after an iteration with no applied fixes — STOP_TURN reporting the remaining findings so the loop cannot spin on unchanged content; only an applied fix re-runs WriteDocsValidate and re-reviews
-  ALWAYS apply the resolved audience and narrator only to scope reviewer emphasis and map the narrator onto the selected reviewer set per storytelling-dimensions review flow-class rules, NEVER to change a finding's severity or the review verdict and NEVER as a separate storytelling reviewer
-  ALWAYS have reviewers flag a warranted-but-missing or unclear diagram as a finding, and NEVER auto-generate a diagram in the review loop
+```
+
+```pdsl
+UNIT WriteDocsReviewLoop
+PURPOSE: Run a semantic review at the user-chosen granularity and iterate fixes until the document is clean.
+WHEN:
+  REQUIRE edits have been applied to the document OR REVIEW_LOOP_REQUESTED == true
+DO:
+  CONTINUE WriteDocsReviewSetup
+RULES:
+  NEVER declare an authored or edited document done until BOTH the deterministic gate passes AND the semantic review has no remaining findings
+  NEVER declare a review-only document clean until semantic review has no remaining findings; REVIEW_GRANULARITY persists for the workflow run unless the user resets it
 ```
 
 ```pdsl
@@ -173,44 +326,62 @@ PURPOSE: Emit a concise completion report, then offer context-grounded next acti
 WHEN:
   REQUIRE no review findings remain
 DO:
-  LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-resolution.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md
-  EMIT a concise completion report covering work done, gate outcome, and semantic review outcome
+  EMIT a concise completion report covering work done, deterministic gate outcome (including "not run" when GATE_STATUS == not-run), and semantic review outcome with no remaining findings
   RUN NextActionsOffer
 RULES:
   ALWAYS use this unit only after document validation/review is complete and control is about to return to the user
-  ALWAYS report the deterministic gate outcome, including review-only flows with no deterministic gate run
-  ALWAYS state that semantic review completed with no remaining findings before offering next actions
   NEVER bypass NextActionsOffer on a clean terminal path that returns control to the user
 ```
 
 ```pdsl
 UNIT WriteDocsDispatch
-PURPOSE: Dispatch the sub-agents that write, fix, review, and gate project documents.
+PURPOSE: Route to review-first or author-first document execution paths.
+WHEN:
+  REQUIRE ORIGINAL_INTENT != unset
 DO:
   CONTINUE WriteDocsReviewLoop WHEN REVIEW_LOOP_REQUESTED == true
-  LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/dispatch.md WHEN requested document writes or fixes OR reviewer dispatch is needed OR deterministic validation is needed
-  LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md WHEN requested document writes or fixes
-  RUN GitCommitModeGate before preparing git policy for author dispatch WHEN requested document writes or fixes
-  RUN select a concrete write-capable cf-generate-author-* worker using the cf-generate-author selection rules WHEN requested document writes or fixes
-  RUN SubAgentDispatch for the selected concrete cf-generate-author-* worker dispatch group WHEN requested document writes or fixes
-  DISPATCH the selected concrete cf-generate-author-* worker for requested document writes or fixes WHEN requested document writes or fixes
-  CONTINUE WriteDocsValidate WHEN a document has been written or edited
+  SET WRITE_DISPATCH_KIND = author
+  CONTINUE WriteDocsWritePolicySetup
 RULES:
-  ALWAYS use cf-generate-author from {cf-studio-path}/.core/skills/studio/agents/cf-generate-author.md only as controller-side selection rules, then author and apply review fixes via the selected concrete write-capable worker tier (cf-generate-author-junior for simple one-file low-risk prose, cf-generate-author-middle for standard artifacts with moderate cross-references, cf-generate-author-senior for complex multi-file or strict-rule docs, cf-generate-author-lead for high-risk or broad cross-system documentation)
-  NEVER dispatch cf-generate-author itself to write or fix documents because it is a read-only selector, not a write-capable worker
-  ALWAYS run GitCommitModeGate before any write-capable author dispatch, even for tasks that did not ask to commit
-  ALWAYS run SubAgentDispatch before every native author, validator, reviewer, or review-fix dispatch group; inline fallback executes the same selected contract without native dispatch
-  ALWAYS after any author/fix dispatch changes content, run the deterministic gate and then offer ReviewGranularityMenu before semantic review
   ALWAYS prefer REVIEW_LOOP_REQUESTED == true over author/fix routing, so review-and-fix requests produce findings first and only apply fixes after the review fix-approval gate
   NEVER stop after content generation or deterministic validation before the semantic review-fix loop is offered
-  ALWAYS resolve git_commit_mode (probe once per session), contributing_guide (discover; use null for no discovered guide), and the mode-matched git_constraint before any write-capable author dispatch, and ALWAYS include all three in that dispatch payload
-  ALWAYS include any WriteDocsExploreGate-resolved resource_context in every author and reviewer dispatch payload as read-only context (an absolute path or reference, never inline prompt text), NEVER as a gate on an author or reviewer verdict
-  ALWAYS include the Bootstrap-resolved audience, narrator, and diagram dimensions in every reviewer and author dispatch payload as read-only policy data, scoped per {cf-studio-path}/.core/requirements/storytelling-dimensions.md review and authoring flow-class rules
-  NEVER pass any storytelling dimension as a gate on a reviewer or author verdict
-  ALWAYS dispatch cf-semantic-reviewer-consistency from {cf-studio-path}/.core/skills/studio/agents/cf-semantic-reviewer-consistency.md (consistency-checklist) and cf-semantic-reviewer-artifact from {cf-studio-path}/.core/skills/studio/agents/cf-semantic-reviewer-artifact.md (kit/artifact checklist) per the chosen REVIEW_GRANULARITY: single-pass = both methodology reviewers in one combined dispatch group with one aggregated report; per-methodology = one reviewer per methodology; per-layer = one reviewer per category for every category each methodology defines, run in parallel, never a fixed count
-  ALWAYS dispatch cf-semantic-reviewer-freeform from {cf-studio-path}/.core/skills/studio/agents/cf-semantic-reviewer-freeform.md only for user-supplied custom review prompts/questions
-  ALWAYS run the deterministic gate via cf-deterministic-validator from {cf-studio-path}/.core/skills/studio/agents/cf-deterministic-validator.md
-  ALWAYS synthesize into each reviewer instance only its assigned methodology/category slice, never more than its scope
   NEVER let a sub-agent reopen prompt or instruction files from disk
+```
+
+```pdsl
+UNIT WriteDocsWritePolicySetup
+PURPOSE: Resolve the shared git write policy before any write-capable document author or approved review-fix dispatch.
+STATE:
+  SET WRITE_DISPATCH_KIND: author | review-fix | unset (default unset, scope workflow_run)
+WHEN:
+  REQUIRE WRITE_DISPATCH_KIND != unset
+DO:
+  RUN GitCommitModeGate before preparing git policy for any write-capable document author or approved review-fix dispatch
+  RUN resolve git_commit_mode (probe once per session), contributing_guide (discover; use null for no discovered guide), and the mode-matched git_constraint
+  RUN verify GIT_COMMIT_MODE, CONTRIBUTING_GUIDE, COMMIT_FOOTER_CONTRACT, and git_constraint are all resolved for the pending write-capable dispatch payload; STOP_TURN and report the unresolved write-policy field or fields WHEN any remain unresolved
+  CONTINUE WriteDocsReviewFixDispatchRun WHEN WRITE_DISPATCH_KIND == review-fix
+  CONTINUE WriteDocsAuthorDispatch WHEN WRITE_DISPATCH_KIND == author
+RULES:
+  ALWAYS attach commit_footer_contract as read-only policy data to every write-capable dispatch payload
+```
+
+```pdsl
+UNIT WriteDocsAuthorDispatch
+PURPOSE: Select the document author, dispatch it, and route written content into deterministic validation.
+STATE:
+  SET SELECTED_DOC_AUTHOR_AGENT: cf-generate-author-junior | cf-generate-author-middle | cf-generate-author-senior | cf-generate-author-lead | unset (default unset, scope workflow_run)
+  SET PATHS_WRITTEN: list | unset (default unset, scope workflow_run)
+DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/dispatch.md
+  RUN resolve AUTHOR_TARGET_PATHS from explicit output path(s), preset artifact path, or requested document path in ORIGINAL_INTENT before create-mode author dispatch
+  EMIT "Author target resolution is required before document creation can continue. Provide the output document path(s) to write." and STOP_TURN WHEN AUTHOR_TARGET_PATHS == unset OR AUTHOR_TARGET_PATHS is empty
+  RUN select SELECTED_DOC_AUTHOR_AGENT using the cf-generate-author selection rules: junior for simple one-file low-risk prose, middle for standard artifacts with moderate cross-references, senior for complex multi-file or strict-rule docs, and lead for high-risk or broad cross-system documentation
+  RUN SubAgentDispatch for the SELECTED_DOC_AUTHOR_AGENT dispatch group
+  DISPATCH SELECTED_DOC_AUTHOR_AGENT with mode=create, kind=ARTIFACT_REVIEW_KIND, rules_mode STRICT when ARTIFACT_CHECKLIST_CONTEXT == preset-bound else RELAXED, template_path=ARTIFACT_TEMPLATE_PATH, example_path=ARTIFACT_EXAMPLE_PATH, checklist_path=ARTIFACT_CHECKLIST_PATH, kit_rules_path=ARTIFACT_RULES_PATH, target_paths=AUTHOR_TARGET_PATHS, git_commit_mode, contributing_guide, git_constraint, commit_footer_contract, any WriteDocsExploreGate-resolved resource_context as read-only context, and the Bootstrap-resolved audience/narrator/diagram policy data as read-only context scoped per {cf-studio-path}/.core/requirements/storytelling-dimensions.md authoring flow-class rules
+  RUN capture PATHS_WRITTEN from the returned author manifest; SET REVIEW_TARGET_PATHS = PATHS_WRITTEN and SET REVIEW_TARGET_SLICES = full-document slices for every PATHS_WRITTEN entry WHEN PATHS_WRITTEN is not empty
+  CONTINUE WriteDocsValidate WHEN a document has been written or edited
+RULES:
+  NEVER dispatch cf-generate-author itself because it is a read-only selector, not a write-capable worker
+  NEVER let resource_context or storytelling dimensions gate an author verdict
 ```
