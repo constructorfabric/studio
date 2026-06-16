@@ -110,7 +110,7 @@ The focus is operational behavior: how to use Constructor Studio well in real pr
 
 ## 2. Installation and setup reference
 
-> **Canonical source**: The core install sequence (`pipx install`, `cfs init`, `cfs generate-agents`, activation) is maintained in **[README §Installation and setup reference](../README.md#installation-and-setup-reference)**. This section is the detailed operating path and adds platform-specific troubleshooting, failure modes, and first-move guidance not covered in the README overview.
+> **Canonical source**: The core install sequence (`pipx install`, `cfs init`, `cfs generate-agents`, activation) is maintained in **[README §Install and Connect a Repository](../README.md#install-and-connect-a-repository)**. This section is the detailed operating path and adds platform-specific troubleshooting, failure modes, and first-move guidance not covered in the README overview.
 
 If you need the exact setup path, complete this once before the rest of the guide.
 
@@ -499,6 +499,8 @@ Advanced maintainer routes exist for prompt, skill, and workflow authors:
 - 💬 `cf-write-skills: ...`
 - 💬 `cf-debug-prompts`
 
+Some sessions also start with an interaction-mode gate: `simple`, `normal`, or `debug`. `Debug` uses the same debugger overlay as `cf-debug-prompts`, but starts in lighter run mode so traces/logs and breakpoints stay active while pauses happen only on breakpoints, WAIT/menu, or errors; switch back to `step mode` when you want per-action stepping again.
+
 Some hosts also expose slash-command aliases such as `/cf-plan` or route-specific skill aliases.
 
 Treat those as host-specific aliases, not separate capabilities.
@@ -644,6 +646,8 @@ Use `debug-prompts` when you need to inspect execution live instead of editing t
 - 💬 `cf-debug-prompts`
 - 💬 `cf-debug-prompts: step through cf-write-docs and pause before each instruction`
 
+The startup interaction-mode gate can also enable a lighter session debug mode without opening the standalone debugger console first. That path reuses `cf-debug-prompts` in run mode; use direct `cf-debug-prompts` when you want the full debugger console and immediate step-by-step control.
+
 This is an authoring/operating tool for the people who write Constructor Studio prompts and agents themselves; most end users will never need it.
 
 ### Use `coding` when
@@ -667,6 +671,8 @@ Use `cf-write-docs` when the target is a human-facing document and you want docu
 For review-first document work, `cf-write-docs` shows the aggregated findings before any fix is applied. Browse the findings, mark specific items if needed, then open the fix menu to approve the scope: critical/major findings, all findings, selected findings, or no fixes. The workflow should not jump from findings directly into edits without that approval step.
 
 ### Default routing rule
+
+`cf-analyze` and `cf-generate` are stable router entrypoints. They keep those verbs available, resolve the best matching `cf-*` skill or companion group for the request, and hand the intent off. They are not the concrete analysis or generation workers themselves.
 
 If a request is both **large** and **output-producing**, prefer:
 

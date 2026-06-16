@@ -241,7 +241,7 @@ cf-coding: review the changed code for correctness, regression risk, and missing
 
 Quality assurance, performance, security, DevOps, and delivery coordination teams use the same connected files and checks. They can review artifacts, create focused test plans, inspect deployment constraints, check operational risks, and validate whether the implementation still matches approved scope. They do not need to read the same document in the same way; each team can use the skill and checklist that matches its responsibility.
 
-Concrete workflows may pause for shared gates before the main work starts: companion workflow selection, optional context discovery with `cf-explore`, optional structured brainstorming, plan-first for multi-step work, and sub-agent dispatch approval. These gates keep discovery, planning, writing, review, and validation inspectable instead of hiding them inside one prompt.
+Concrete workflows may pause for shared gates before the main work starts: session interaction mode selection (`simple`, `normal`, or `debug`), companion workflow selection, optional context discovery with `cf-explore`, optional structured brainstorming, plan-first for multi-step work, and sub-agent dispatch approval. `Debug` mode reuses `cf-debug-prompts` in a lighter run mode so tracing and breakpoints stay active while pauses happen only on breakpoints, WAIT/menu, or errors until you switch back to step mode. These gates keep discovery, planning, writing, review, and validation inspectable instead of hiding them inside one prompt.
 
 Architects and leads can render a dependency map across documents and code:
 
@@ -283,8 +283,10 @@ Base Constructor Studio skills:
 | `cf-map: ...` | Render or inspect the dependency map across documents and code. |
 | `cf-workspace: ...` | Configure or work across multiple repositories. |
 | `cf-kit: ...` | Create, validate, or update kit configuration. |
-| `cf-debug-prompts: ...` | Step through skill or workflow behavior while debugging instructions. |
+| `cf-debug-prompts: ...` | Debug skill or workflow behavior live, either in full step mode or via the lighter session run-mode gate. |
 | `cf-brave-new-world` | Let Studio choose safe, reversible workflow defaults during a session. |
+
+`cf-analyze` and `cf-generate` are stable router entrypoints. They preserve the legacy verbs, resolve the best matching `cf-*` skill or companion group for the request, and pass the intent through; they are not the concrete analysis or generation workers themselves.
 
 Software Development Life Cycle (SDLC) kit skills from [`constructorfabric/studio-kit-sdlc`](https://github.com/constructorfabric/studio-kit-sdlc):
 
