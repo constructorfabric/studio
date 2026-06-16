@@ -26,9 +26,12 @@ PURPOSE: At any workflow intent-analysis point, look for probable companion cf-*
 STATE:
   SET COMPANION_CONTINUE: unit-name (default unset, scope workflow_run)
   SET CURRENT_WORKFLOW: cf-workflow-name (default unset, scope workflow_run)
+  SET COMPANION_OFFER_RESOLVED: true | false (default false, scope workflow_run)
+  SET COMPANION_SELECTION_APPLIED: true | false (default false, scope workflow_run)
 WHEN:
   REQUIRE ORIGINAL_INTENT != unset
 DO:
+  CONTINUE COMPANION_CONTINUE WHEN COMPANION_OFFER_RESOLVED == true OR COMPANION_SELECTION_APPLIED == true
   RUN CompanionSkillResolutionSetup
   RUN identify probable companion skills from ORIGINAL_INTENT, excluding `cf`, `cf-analyze`, `cf-generate`, and CURRENT_WORKFLOW, and rank minimal compatible groups
   CONTINUE COMPANION_CONTINUE WHEN no probable companion group is found
@@ -42,15 +45,16 @@ RULES:
   ALWAYS filter companion candidates so `cf`, `cf-analyze`, and `cf-generate` can never appear in companion groups, companion-selection, or add-companions output
   ALWAYS exclude CURRENT_WORKFLOW from companion candidates but include it first in the returned launch list when companions are selected
   ALWAYS mark exactly one option as suggested: the smallest group that covers the detected domains, or continue-single when no companion materially improves coverage
-  ALWAYS return an ordered launch list containing CURRENT_WORKFLOW followed by selected companion workflow names plus ORIGINAL_INTENT to the host/user for launch; NEVER silently invoke companions from inside this offer
+  ALWAYS return an ordered launch list containing CURRENT_WORKFLOW followed by selected companion workflow names plus ORIGINAL_INTENT to the host/user for launch, and mark COMPANION_SELECTION_APPLIED before returning; NEVER silently invoke companions from inside this offer
+  ALWAYS set COMPANION_OFFER_RESOLVED before continuing the single-workflow path so a resumed caller does not re-offer the same companions for the same ORIGINAL_INTENT
   NEVER block a single-workflow path when the user chooses continue-single
   NEVER run without CURRENT_WORKFLOW set by the caller
   NEVER run without COMPANION_CONTINUE set by the caller
 MENU CompanionSkillOfferMenu
-TITLE: This intent may benefit from companion cf-* workflow(s). Add companions before continuing, or keep this workflow only?
+TITLE: This intent may benefit from companion cf-* workflow(s). Return a launch list for the host/user to run in order, or keep this workflow only?
 OPTIONS:
-  1 add-companions (suggested when cross-domain) -> RETURN ordered launch list [CURRENT_WORKFLOW, selected companion cf-* workflow names] plus ORIGINAL_INTENT for launch by the host/user; STOP_TURN
-  2 continue-single -> CONTINUE COMPANION_CONTINUE
+  1 add-companions (suggested when cross-domain) -> SET COMPANION_SELECTION_APPLIED = true; RETURN ordered launch list [CURRENT_WORKFLOW, selected companion cf-* workflow names] plus ORIGINAL_INTENT for launch by the host/user; STOP_TURN
+  2 continue-single -> SET COMPANION_OFFER_RESOLVED = true; CONTINUE COMPANION_CONTINUE
   INVALID -> EMIT_MENU CompanionSkillOfferMenu
 ```
 

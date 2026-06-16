@@ -201,7 +201,11 @@ DO:
       { "id": "F-001", "severity": "CRITICAL|MAJOR|MINOR", "mechanical": true|false,
         "path": "<file>", "line": <int|null>, "category": "<layer-or-bugfind-category>",
         "evidence_quote": "<exact text>",
-        "root_cause": "<short>", "suggested_fix": "<one-line>",
+        "root_cause": "<short>",
+        "impact": "<why this changes behavior or user/workflow outcome>",
+        "suggested_fix": "<one-line>",
+        "verification": "<how to confirm the prompt behavior is fixed>",
+        "confidence": "CONFIRMED|HIGH|MEDIUM|LOW",
         "mechanical_rationale": "<one-sentence justification>" }
     ]
 ```
@@ -243,6 +247,7 @@ RULES:
     string (advisory — when missing, the orchestrator substitutes
     `<no rationale provided by {agent_name}>` and continues; fallback behavior is defined by
     ReviewFindingContract in `{cf-studio-path}/.core/skills/studio/modules/review/finding-contract.md`)
+  - ALWAYS every finding object satisfies ReviewFindingContract fields: id, severity, path plus line or range, evidence_quote, root_cause, impact, suggested_fix, verification, and confidence
   - ALWAYS perform AP-001..AP-008 self-check before output (state results in a short trailer block)
   - ALWAYS verify that the final dispatch prompt includes the required
     controller-supplied studio invariants; the dispatched reviewer NEVER

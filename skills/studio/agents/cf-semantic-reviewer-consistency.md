@@ -178,7 +178,10 @@ DO:
         "category": "<consistency-category>",
         "evidence_quote": "<exact text>",
         "root_cause": "<short>",
+        "impact": "<why the inconsistency changes behavior, interpretation, or downstream implementation>",
         "suggested_fix": "<one-line>",
+        "verification": "<how to confirm the documents are consistent after the fix>",
+        "confidence": "CONFIRMED|HIGH|MEDIUM|LOW",
         "mechanical_rationale": "<one-sentence justification>"
       }
     ]
@@ -188,6 +191,7 @@ RULES:
       List the primary deviator in path/line
       Quote other locations inside evidence_quote with <file>:<line> prefixes
   - ALWAYS Emit findings: [] when all categories PASS
+  - ALWAYS every finding satisfies ReviewFindingContract fields: id, severity, path plus line or range, evidence_quote, root_cause, impact, suggested_fix, verification, and confidence
 ```
 
 ## Response Completion Gate

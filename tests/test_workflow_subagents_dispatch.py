@@ -1769,7 +1769,7 @@ def test_workflows_offer_companion_skills_after_intent_analysis() -> None:
     assert "ordered launch list containing CURRENT_WORKFLOW" in companion
     assert "NEVER silently invoke companions from inside this offer" in companion
     assert "NEVER run without CURRENT_WORKFLOW set by the caller" in companion
-    assert "2 continue-single -> CONTINUE COMPANION_CONTINUE" in companion
+    assert "2 continue-single -> SET COMPANION_OFFER_RESOLVED = true; CONTINUE COMPANION_CONTINUE" in companion
 
     direct_expectations = {
         "write-skills.md": ("cf-write-skills", "WriteSkillsExploreGate"),
@@ -1888,6 +1888,76 @@ def test_write_skills_review_loop_matches_fix_then_validate_contract() -> None:
     assert "NEVER re-loop the review after an iteration with no applied fixes" in text
     assert "CONTINUE WriteSkillsReviewLoop WHEN review findings remain" not in text
     assert "DISPATCH cf-pdsl-author to apply only REVIEW_FIX_SCOPE-approved review fixes" not in text
+
+
+def test_write_skills_review_only_paths_have_resume_and_target_resolution_guards() -> None:
+    """Review-only write-skills flows must resolve targets and avoid stale replies."""
+    repo_root = Path(__file__).resolve().parents[1]
+    text = (repo_root / "workflows" / "write-skills.md").read_text(encoding="utf-8")
+
+    required = [
+        "SET WRITE_SKILLS_INTENT_CAPTURE_STATE: prompt | resume | unset",
+        "SET WRITE_SKILLS_INTENT_CAPTURE_STATE = resume",
+        "REQUIRE WRITE_SKILLS_INTENT_CAPTURE_STATE == resume",
+        "SET REVIEW_TARGET_CAPTURE_STATE: prompt | resume | unset",
+        "UNIT WriteSkillsReviewTargetResolve",
+        "SET REVIEW_TARGET_SLICES = full-file slices for every REVIEW_TARGET_PATHS entry",
+        "UNIT WriteSkillsReviewTargetResume",
+        "require it to return brainstorm_decisions or BRAINSTORM_RESULT",
+        "BRAINSTORM_DECISIONS",
+        "SET PATHS_WRITTEN = paths_written returned by the author dispatch",
+        "SET REVIEW_TARGET_PATHS = PATHS_WRITTEN",
+        "REQUIRE SKILL_FILE_WRITTEN == true OR REVIEW_FIXES_APPLIED == true",
+    ]
+    for phrase in required:
+        assert phrase in text
+    assert "VALIDATION_STATUS == not-run" not in text
+
+
+def test_context_companion_and_finding_contracts_are_stateful() -> None:
+    """Shared modules must expose state needed by review fix/browser flows."""
+    repo_root = Path(__file__).resolve().parents[1]
+    context = (
+        repo_root / "skills" / "studio" / "modules" / "runtime" / "context-memory.md"
+    ).read_text(encoding="utf-8")
+    prep = (
+        repo_root / "skills" / "studio" / "modules" / "gates" / "workflow-prep.md"
+    ).read_text(encoding="utf-8")
+    companion = (
+        repo_root / "skills" / "studio" / "modules" / "routing" / "companion-skills.md"
+    ).read_text(encoding="utf-8")
+    finding = (
+        repo_root / "skills" / "studio" / "modules" / "review" / "finding-contract.md"
+    ).read_text(encoding="utf-8")
+
+    for text in (context, prep):
+        assert "RESOURCE_CONTEXT_REF" in text
+        assert "RESOURCE_CONTEXT_TASK_KEY" in text
+        assert "RESOURCE_CONTEXT_PROVENANCE" in text
+        assert "exactly matches the current normalized workflow-prep task key" in text
+    assert "COMPANION_OFFER_RESOLVED" in companion
+    assert "COMPANION_SELECTION_APPLIED" in companion
+    assert "ID, SEVERITY" in finding
+    assert "stable unique finding identifier" in finding
+    assert "NEVER emit duplicate IDs" in finding
+
+
+def test_prompt_reviewer_finding_schemas_match_review_contract() -> None:
+    """Prompt reviewers must emit fields required by ReviewFindingContract."""
+    repo_root = Path(__file__).resolve().parents[1]
+    agent_paths = [
+        repo_root / "skills" / "studio" / "agents" / "cf-pdsl-reviewer.md",
+        repo_root / "skills" / "studio" / "agents" / "cf-prompt-bug-finder.md",
+        repo_root / "skills" / "studio" / "agents" / "cf-semantic-reviewer-consistency.md",
+        repo_root / "skills" / "studio" / "agents" / "cf-semantic-reviewer-prompt.md",
+        repo_root / "skills" / "studio" / "agents" / "cf-semantic-reviewer-freeform.md",
+    ]
+
+    for path in agent_paths:
+        text = path.read_text(encoding="utf-8")
+        assert "impact" in text, f"{path.name} missing impact"
+        assert "verification" in text, f"{path.name} missing verification"
+        assert "confidence" in text, f"{path.name} missing confidence"
 
 
 def test_content_generating_workflows_offer_semantic_review_after_writes() -> None:
@@ -2379,7 +2449,8 @@ def test_workflow_prep_recommends_skip_when_resource_context_exists() -> None:
     assert "1 skip-reuse -> CONTINUE WORKFLOW_PREP_BRAINSTORM_GATE" in workflow_prep
     assert (
         "2 explore-again -> SET RESOURCE_CONTEXT = unset; "
-        "EMIT_MENU WORKFLOW_PREP_EXPLORE_MENU; WAIT user.reply; STOP_TURN"
+        "SET RESOURCE_CONTEXT_REF = unset; SET RESOURCE_CONTEXT_TASK_KEY = unset; "
+        "SET RESOURCE_CONTEXT_PROVENANCE = unset; EMIT_MENU WORKFLOW_PREP_EXPLORE_MENU; WAIT user.reply; STOP_TURN"
     ) in workflow_prep
     assert (
         "NEVER discard existing RESOURCE_CONTEXT unless the user chooses to run "
