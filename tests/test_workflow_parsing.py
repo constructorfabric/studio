@@ -152,9 +152,9 @@ def test_workflows_continue_root_skill_entrypoint_bootstrap():
                 missing.append(f"{name}: CommandResolution run")
         if continue_route not in content:
             missing.append(f"{name}: {continue_route}")
-        if f"NEVER require cf or CFS_INIT before routing" not in content:
+        if "NEVER require cf or CFS_INIT before routing" not in content:
             missing.append(f"{name}: no CFS_INIT requirement removal")
-        if f"REQUIRE WorkflowResolution is loaded" not in content:
+        if "REQUIRE WorkflowResolution is loaded" not in content:
             missing.append(f"{name}: {route_unit} requires WorkflowResolution")
 
     assert not missing, "Router bootstrap prerequisite contract missing: " + ", ".join(missing)
