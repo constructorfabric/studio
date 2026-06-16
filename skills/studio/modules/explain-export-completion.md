@@ -20,6 +20,7 @@ PURPOSE: Write the finalized Markdown package when export mode is active.
 WHEN:
   REQUIRE EXPLAIN_EXPORT == true
 DO:
+  RUN ExplainExportContextPrep
   RUN TemplateVarResolution before resolving the export package path
   RUN SubAgentDispatch for the storytelling-export dispatch group before launching export
   DISPATCH storytelling-export to write the finalized package under {cf-studio-path}/.cache/explain/packages/{slug}-{ISO}/ (index.md, per-portion files, navigation, mode extras)

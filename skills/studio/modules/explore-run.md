@@ -7,6 +7,7 @@ STATE:
   SET PER_AGENT_BUDGET_MIN: integer (default 5..10, scope workflow_run)
   SET EXPLORE_PARALLELISM: integer (default auto, scope workflow_run)
 DO:
+  RUN ExploreExecutionContextPrep
   LOAD {cf-studio-path}/.core/skills/studio/modules/explore-synthesize.md
   SET task = ORIGINAL_INTENT (already captured by ExploreEntry)
   RUN scope estimation over search_roots (size, file and directory count, subtree breadth)

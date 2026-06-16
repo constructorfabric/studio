@@ -4,6 +4,7 @@
 UNIT BrainstormWrap
 PURPOSE: Consolidate the design, route to the next step, and always return the completion envelope.
 DO:
+  RUN BrainstormWrapPathPrep
   EMIT a consolidated design block: rounds count, panel personas, topics covered, Decisions list, Open questions list
   RUN WorkflowResolution to resolve the available cf-* skills
   RUN TemplateVarResolution before any disk checkpoint path is resolved
