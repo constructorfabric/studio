@@ -114,5 +114,5 @@ RULES:
   - ALWAYS reuse the canonical `cf-debug-prompts` workflow instead of duplicating debugger state here
   - ALWAYS arm the debugger in run mode on first activation so traces, logs, and breakpoints stay active without per-action stepping
   - NEVER open the standalone debugger console from the simple-mode gate
-  - NEVER clear an active debugger session when reusing it for later workflow entries
+  - NEVER clear an active debugger session during reuse for later workflow entries
 ```

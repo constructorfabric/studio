@@ -36,6 +36,28 @@ except ModuleNotFoundError:  # pragma: no cover
 from pathlib import Path
 
 
+LOAD_DIRECTIVE_RE = __import__("re").compile(
+    r"LOAD \{cf-studio-path\}/\.core/"
+    r"(skills/studio/(?:modules|agents)/[A-Za-z0-9_./-]+\.md|workflows/[A-Za-z0-9_./-]+\.md)"
+)
+
+
+def _workflow_contract_text(root: Path, workflow_name: str) -> str:
+    seen: set[Path] = set()
+
+    def _collect(path: Path) -> list[str]:
+        if path in seen or not path.is_file():
+            return []
+        seen.add(path)
+        text = path.read_text(encoding="utf-8")
+        parts = [text]
+        for rel in LOAD_DIRECTIVE_RE.findall(text):
+            parts.extend(_collect(root / rel))
+        return parts
+
+    return "\n".join(_collect(root / "workflows" / workflow_name))
+
+
 def test_parse_workflow_extracts_all_sections():
     """Parse the REAL generate.md thin router and verify its structure."""
     workflows_dir = Path(__file__).parent.parent / "workflows"
@@ -45,7 +67,7 @@ def test_parse_workflow_extracts_all_sections():
     workflow_path = workflows_dir / "generate.md"
     assert workflow_path.exists(), f"{workflow_path} not found"
 
-    content = workflow_path.read_text(encoding="utf-8")
+    content = _workflow_contract_text(workflows_dir.parent, "generate.md")
 
     # It uses PDSL fenced blocks with the router UNITs.
     assert "```pdsl" in content, "generate.md should use ```pdsl fenced blocks"
@@ -194,7 +216,8 @@ def test_runtime_modules_have_template_var_resolution():
         "RUN WorkflowBootstrapCommandDispatchTemplateContext",
     )
     for workflow_name in ("auto-config.md", "kit.md", "plan.md", "workspace.md", "map.md"):
-        workflow = (root / "workflows" / workflow_name).read_text(encoding="utf-8")
+        root_workflow = (root / "workflows" / workflow_name).read_text(encoding="utf-8")
+        workflow = _workflow_contract_text(root, workflow_name)
         assert "modules/runtime/template-vars.md" in workflow or any(
-            helper in workflow for helper in template_helpers
+            helper in root_workflow for helper in template_helpers
         )

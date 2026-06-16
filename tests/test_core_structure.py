@@ -30,6 +30,27 @@ except ModuleNotFoundError:  # pragma: no cover
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
+LOAD_DIRECTIVE_RE = re.compile(
+    r"LOAD \{cf-studio-path\}/\.core/"
+    r"(skills/studio/(?:modules|agents)/[A-Za-z0-9_./-]+\.md|workflows/[A-Za-z0-9_./-]+\.md)"
+)
+
+
+def _workflow_contract_text(workflow_path: Path) -> str:
+    seen: set[Path] = set()
+
+    def _collect(path: Path) -> list[str]:
+        if path in seen or not path.is_file():
+            return []
+        seen.add(path)
+        text = path.read_text(encoding="utf-8")
+        parts = [text]
+        for rel in LOAD_DIRECTIVE_RE.findall(text):
+            parts.extend(_collect(PROJECT_ROOT / rel))
+        return parts
+
+    return "\n".join(_collect(workflow_path))
+
 
 class TestDirectoriesExist:
     """Validate required directories exist."""
@@ -282,7 +303,7 @@ class TestWorkflowStructure:
         # "next steps" conclusion section.
         wf_files = [f for f in wf_dir.glob("*.md") if f.name not in ("README.md", "AGENTS.md", "explain.md", "auto-config.md", "brainstorm.md", "pdsl.md", "studio.md", "help.md", "analyze.md", "generate.md")]
         for f in wf_files:
-            text = f.read_text(encoding="utf-8").lower()
+            text = _workflow_contract_text(f).lower()
             has_conclusion = "next" in text or "after" in text or "complete" in text or "done" in text
             assert has_conclusion, f"{f.name} missing next steps / conclusion"
 

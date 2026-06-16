@@ -39,14 +39,20 @@ PURPOSE: Capture the analyze intent, resolve cf-* skills via WorkflowResolution,
 STATE:
   SET ORIGINAL_INTENT: string (default unset, scope workflow_run)
   SET AVAILABLE_SKILLS: list (default unset, scope workflow_run)
+  SET ANALYZE_INTENT_CAPTURE_STATE: prompt | resume | unset (default unset, scope workflow_run)
 WHEN:
   REQUIRE WorkflowResolution is loaded
 DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/analyze-intent-capture.md WHEN ANALYZE_INTENT_CAPTURE_STATE == resume
+  CONTINUE AnalyzeDescribeIntentResume WHEN ANALYZE_INTENT_CAPTURE_STATE == resume
   SET ORIGINAL_INTENT = the user's triggering analyze request (verbatim or shortest faithful summary), or unset when activation-only, WHEN ORIGINAL_INTENT == unset
   RUN WorkflowResolution to resolve the available cf-* skills
   SET AVAILABLE_SKILLS = the resolved cf-* skills (name + its workflow description), excluding `cf`, `cf-analyze`, and `cf-generate`
+  LOAD {cf-studio-path}/.core/skills/studio/modules/analyze-skill-fallbacks.md WHEN AVAILABLE_SKILLS is empty
   CONTINUE AnalyzeNoMatch WHEN AVAILABLE_SKILLS is empty
+  LOAD {cf-studio-path}/.core/skills/studio/modules/analyze-routing-menus.md WHEN ORIGINAL_INTENT != unset
   CONTINUE AnalyzeRouteIntentFlow WHEN ORIGINAL_INTENT != unset
+  LOAD {cf-studio-path}/.core/skills/studio/modules/analyze-routing-menus.md WHEN ORIGINAL_INTENT == unset
   CONTINUE AnalyzeRouteLoadFlow WHEN ORIGINAL_INTENT == unset
 RULES:
   ALWAYS preserve ORIGINAL_INTENT when it was already set by AnalyzeDescribeIntent
@@ -59,112 +65,4 @@ RULES:
   NEVER load or run any legacy analyze phase logic; routing is the only behavior
 NOTES:
   Empty-state ownership: WorkflowResolution STOP_TURNs when zero cf-* skills are discovered (a broken install), so that case never reaches this router; the CONTINUE AnalyzeNoMatch WHEN AVAILABLE_SKILLS is empty branch handles the distinct case where resolution succeeds but excluding this router (cf-analyze) leaves no other skill.
-```
-
-```pdsl
-UNIT AnalyzeRouteIntentFlow
-PURPOSE: Load companion-skill context when needed, match the analyze intent, and route to the correct offer.
-DO:
-  LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md WHEN the request spans more than one cf-* domain
-  RUN matching of ORIGINAL_INTENT against AVAILABLE_SKILLS by semantic relevance — score each skill's name and description against the intent, keep those clearly on-topic, rank them, synthesize compatible companion groups when the request spans domains, and mark the top-ranked skill or group as suggested
-  CONTINUE AnalyzeRouteIntentMenu WHEN at least one relevant skill matched
-  CONTINUE AnalyzeNoMatch WHEN no relevant skill matched
-RULES:
-  ALWAYS load companion-skills before synthesizing companion groups
-```
-
-```pdsl
-UNIT AnalyzeRouteIntentMenu
-PURPOSE: Present the matched analyze routes and wait for the user's selection.
-DO:
-  EMIT_MENU AnalyzeIntentOffer
-  WAIT user.reply
-  STOP_TURN
-```
-
-```pdsl
-UNIT AnalyzeRouteLoadFlow
-PURPOSE: Present the analyze load menu when no intent was provided.
-DO:
-  EMIT_MENU AnalyzeLoadOffer
-  WAIT user.reply
-  STOP_TURN
-MENU AnalyzeIntentOffer
-TITLE: Analyze intent matched these cf-* workflow(s) — pick one, or pick a companion group / comma-separated compatible skills.
-OPTIONS:
-  1 most-relevant (suggested) -> INVOKE the top-ranked matched cf-* skill or companion group, passing ORIGINAL_INTENT as its input to every invoked skill
-  2 other -> CONTINUE AnalyzeOtherSkills
-  3 none -> STOP_TURN
-  INVALID -> EMIT_MENU AnalyzeIntentOffer
-MENU AnalyzeLoadOffer
-TITLE: No analyze intent given — pick a cf-* skill, or describe intent so I can match the right workflow(s).
-OPTIONS:
-  1 skill -> INVOKE the user-selected cf-* skill from AVAILABLE_SKILLS with no intent so the skill prompts for its own input; the menu lists each available skill as `<skill-name> — <short description>`
-  2 describe-intent | help-me-choose -> CONTINUE AnalyzeDescribeIntent
-  3 cancel -> STOP_TURN
-  INVALID -> EMIT_MENU AnalyzeLoadOffer
-```
-
-```pdsl
-UNIT AnalyzeDescribeIntent
-PURPOSE: Capture an analyze intent as a separate turn before routing.
-STATE:
-  SET ANALYZE_INTENT_CAPTURE_STATE: prompt | resume | unset (default unset, scope workflow_run)
-DO:
-  EMIT "Describe what you want to analyze, review, validate, or compare. I will match the relevant cf-* workflow(s), including companions when needed."
-  SET ANALYZE_INTENT_CAPTURE_STATE = resume
-  WAIT user.reply
-  STOP_TURN
-RULES:
-  ALWAYS stop the turn after prompting so analyze intent routing resumes in an explicit unit
-```
-
-```pdsl
-UNIT AnalyzeDescribeIntentResume
-PURPOSE: Route the resumed analyze intent after the prompt turn completes.
-STATE:
-  SET ANALYZE_INTENT_CAPTURE_STATE: prompt | resume | unset (default unset, scope workflow_run)
-WHEN:
-  REQUIRE ANALYZE_INTENT_CAPTURE_STATE == resume
-DO:
-  SET ORIGINAL_INTENT = user.reply
-  SET ANALYZE_INTENT_CAPTURE_STATE = unset
-  CONTINUE AnalyzeRoute
-```
-
-```pdsl
-UNIT AnalyzeOtherSkills
-PURPOSE: Offer every available cf-* skill after the suggested analyze match is not desired.
-DO:
-  EMIT_MENU AnalyzeOtherSkillsMenu
-  WAIT user.reply
-  STOP_TURN
-MENU AnalyzeOtherSkillsMenu
-TITLE: All available cf-* workflow(s) for analyze — pick one, or enter comma-separated compatible skills.
-OPTIONS:
-  1 skill -> INVOKE the user-selected cf-* skill, passing ORIGINAL_INTENT
-  2 companion-selection -> INVOKE each selected compatible cf-* skill sequentially, passing ORIGINAL_INTENT
-  3 cancel -> STOP_TURN
-  INVALID -> EMIT_MENU AnalyzeOtherSkillsMenu
-```
-
-```pdsl
-UNIT AnalyzeNoMatch
-PURPOSE: Handle the case where no cf-* skill matches the intent (or none are available).
-DO:
-  EMIT a one-line note that no cf-* skill matched the analyze intent
-  EMIT the full AVAILABLE_SKILLS list as `<skill-name> — <short description>`, or a one-line note that no cf-* skills are available and the user can install one or refine the intent
-  EMIT_MENU AnalyzeNoMatchMenu
-  WAIT user.reply
-  STOP_TURN
-RULES:
-  NEVER fall back to legacy analyze phases when nothing matches
-  ALWAYS let the user pick one or more compatible listed skills, describe clearer intent, or cancel
-MENU AnalyzeNoMatchMenu
-TITLE: No match — load listed cf-* skill(s), describe intent again, or cancel.
-OPTIONS:
-  1 skill -> INVOKE the user-selected cf-* skill(s), passing ORIGINAL_INTENT when present else load only
-  2 describe-intent | help-me-choose -> CONTINUE AnalyzeDescribeIntent
-  3 cancel -> STOP_TURN
-  INVALID -> EMIT_MENU AnalyzeNoMatchMenu
 ```

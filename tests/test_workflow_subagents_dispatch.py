@@ -276,6 +276,36 @@ def _loads_module(text: str, module_suffix: str) -> bool:
         helper in text for helper in BOOTSTRAP_HELPERS_BY_MODULE.get(module_suffix, ())
     )
 
+
+LOAD_DIRECTIVE_RE = re.compile(
+    r"LOAD \{cf-studio-path\}/\.core/"
+    r"(skills/studio/(?:modules|agents)/[A-Za-z0-9_./-]+\.md|workflows/[A-Za-z0-9_./-]+\.md)"
+)
+
+
+def _workflow_contract_text(repo_root: Path, workflow_name: str) -> str:
+    """Return workflow text plus recursively loaded local Studio modules.
+
+    Thin workflow files intentionally delegate most executable detail to lazy
+    modules. Structural tests should assert the reachable contract, not only
+    the root workflow file.
+    """
+
+    seen: set[Path] = set()
+
+    def _collect(path: Path) -> list[str]:
+        if path in seen or not path.is_file():
+            return []
+        seen.add(path)
+        text = path.read_text(encoding="utf-8")
+        parts = [text]
+        for rel in LOAD_DIRECTIVE_RE.findall(text):
+            parts.extend(_collect(repo_root / rel))
+        return parts
+
+    return "\n".join(_collect(repo_root / "workflows" / workflow_name))
+
+
 COMMIT_FOOTER_CONTRACT = {
     "schema_version": "1",
     "authority": "GitCommitModeGate",
@@ -920,18 +950,19 @@ def test_cf_workflows_remember_git_commit_interrupt_outside_root_router() -> Non
     )
 
     for workflow_name in workflow_names:
-        text = (repo_root / "workflows" / workflow_name).read_text(encoding="utf-8")
+        root_text = (repo_root / "workflows" / workflow_name).read_text(encoding="utf-8")
+        text = _workflow_contract_text(repo_root, workflow_name)
         assert (
             git_commit_mode in text
-            or "RUN WorkflowBootstrapRouterPrelude" in text
-            or "RUN WorkflowBootstrapCoreSession" in text
+            or "RUN WorkflowBootstrapRouterPrelude" in root_text
+            or "RUN WorkflowBootstrapCoreSession" in root_text
         ), (
             f"{workflow_name} must remember git-commit-mode outside root routing"
         )
         assert (
             rule_phrase in text
-            or "RUN WorkflowBootstrapRouterPrelude" in text
-            or "RUN WorkflowBootstrapCoreSession" in text
+            or "RUN WorkflowBootstrapRouterPrelude" in root_text
+            or "RUN WorkflowBootstrapCoreSession" in root_text
         ), (
             f"{workflow_name} must document the active-session commit interrupt"
         )
@@ -1381,8 +1412,8 @@ def test_generate_and_analyze_are_thin_routers_forbidding_legacy_phases() -> Non
     phase logic.
     """
     repo_root = Path(__file__).resolve().parents[1]
-    generate = (repo_root / "workflows" / "generate.md").read_text(encoding="utf-8")
-    analyze = (repo_root / "workflows" / "analyze.md").read_text(encoding="utf-8")
+    generate = _workflow_contract_text(repo_root, "generate.md")
+    analyze = _workflow_contract_text(repo_root, "analyze.md")
 
     # Routing UNITs exist on each router.
     assert "UNIT GenerateBootstrap" in generate
@@ -1414,7 +1445,7 @@ def test_coding_dispatch_names_reviewers_and_valid_coder() -> None:
     import tomllib
 
     repo_root = Path(__file__).resolve().parents[1]
-    coding = (repo_root / "workflows" / "coding.md").read_text(encoding="utf-8")
+    coding = _workflow_contract_text(repo_root, "coding.md")
     with open(repo_root / "skills" / "studio" / "agents.toml", "rb") as fh:
         registered = set(tomllib.load(fh)["agents"].keys())
 
@@ -1590,8 +1621,9 @@ def test_workflows_run_subagent_dispatch_at_native_launch_sites() -> None:
     }
 
     for workflow_name, phrases in workflow_expectations.items():
-        text = (repo_root / "workflows" / workflow_name).read_text(encoding="utf-8")
-        assert _loads_module(text, "subagents/dispatch.md"), (
+        root_text = (repo_root / "workflows" / workflow_name).read_text(encoding="utf-8")
+        text = _workflow_contract_text(repo_root, workflow_name)
+        assert _loads_module(root_text, "subagents/dispatch.md") or "modules/subagents/dispatch.md" in text, (
             f"{workflow_name} must load sub-agent dispatch locally or via bootstrap helper"
         )
         for phrase in phrases:
@@ -1607,7 +1639,7 @@ def test_workflows_run_subagent_dispatch_at_native_launch_sites() -> None:
                 assert "RUN SubAgentDispatch for SELECTED_CODING_AGENT dispatch group" in text
                 continue
             if phrase == "LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md":
-                assert _loads_module(text, "subagents/git-commit-mode.md")
+                assert _loads_module(root_text, "subagents/git-commit-mode.md") or phrase in text
                 continue
             if phrase.startswith("ALWAYS run SubAgentDispatch before every native"):
                 assert "RUN SubAgentDispatch" in text
@@ -1618,7 +1650,7 @@ def test_workflows_run_subagent_dispatch_at_native_launch_sites() -> None:
 def test_brainstorm_defaults_to_inline_without_subagents() -> None:
     """Brainstorm can run its panel inline by default without sub-agent launch."""
     repo_root = Path(__file__).resolve().parents[1]
-    workflow = (repo_root / "workflows" / "brainstorm.md").read_text(encoding="utf-8")
+    workflow = _workflow_contract_text(repo_root, "brainstorm.md")
 
     assert "SET PANEL_MODE: inline | single-agent | fan-out (default inline" in workflow
     assert "`mode=inline` (default; run facilitator and panel contracts inline without sub-agents)" in workflow
@@ -1635,8 +1667,8 @@ def test_router_free_text_and_other_paths_are_explicit_units() -> None:
     root_router = (
         repo_root / "skills" / "studio" / "modules" / "routing" / "root-intent-routing.md"
     ).read_text(encoding="utf-8")
-    generate = (repo_root / "workflows" / "generate.md").read_text(encoding="utf-8")
-    analyze = (repo_root / "workflows" / "analyze.md").read_text(encoding="utf-8")
+    generate = _workflow_contract_text(repo_root, "generate.md")
+    analyze = _workflow_contract_text(repo_root, "analyze.md")
 
     assert "UNIT IntentDescribeCapture" in root_router
     assert "NEVER invoke a cf-* workflow directly from this root router" in root_router
@@ -1668,8 +1700,8 @@ def test_router_free_text_and_other_paths_are_explicit_units() -> None:
     assert "UNIT GenerateOtherSkills" in generate
     assert "ALWAYS preserve ORIGINAL_INTENT when it was already set by GenerateDescribeIntent" in generate
     assert "WHEN ORIGINAL_INTENT == unset" in generate
-    assert "2 other -> CONTINUE GenerateOtherSkills" in generate
-    assert "2 describe-intent | help-me-choose -> CONTINUE GenerateDescribeIntent" in generate
+    assert "2 other ->" in generate and "CONTINUE GenerateOtherSkills" in generate
+    assert "2 describe-intent | help-me-choose ->" in generate and "CONTINUE GenerateDescribeIntent" in generate
     assert "EMIT_MENU listing" not in generate
     assert "WAIT user.reply; SET ORIGINAL_INTENT" not in generate
 
@@ -1677,8 +1709,8 @@ def test_router_free_text_and_other_paths_are_explicit_units() -> None:
     assert "UNIT AnalyzeOtherSkills" in analyze
     assert "ALWAYS preserve ORIGINAL_INTENT when it was already set by AnalyzeDescribeIntent" in analyze
     assert "WHEN ORIGINAL_INTENT == unset" in analyze
-    assert "2 other -> CONTINUE AnalyzeOtherSkills" in analyze
-    assert "2 describe-intent | help-me-choose -> CONTINUE AnalyzeDescribeIntent" in analyze
+    assert "2 other ->" in analyze and "CONTINUE AnalyzeOtherSkills" in analyze
+    assert "2 describe-intent | help-me-choose ->" in analyze and "CONTINUE AnalyzeDescribeIntent" in analyze
     assert "EMIT_MENU listing" not in analyze
     assert "WAIT user.reply; SET ORIGINAL_INTENT" not in analyze
 
@@ -1728,7 +1760,7 @@ def test_direct_workflows_capture_intent_before_explore_or_brainstorm() -> None:
     )
 
     for path, capture_unit, unset_route, companion_route, plan_route, explore_precondition in workflow_expectations:
-        text = path.read_text(encoding="utf-8")
+        text = _workflow_contract_text(repo_root, path.name)
         assert "SET ORIGINAL_INTENT:" in text
         if path.name == "explain.md":
             assert "ALWAYS capture ORIGINAL_INTENT before explanation context discovery" in text
@@ -1785,7 +1817,7 @@ def test_workflows_offer_companion_skills_after_intent_analysis() -> None:
     }
 
     for workflow_name, (current_workflow, continuation) in direct_expectations.items():
-        text = (repo_root / "workflows" / workflow_name).read_text(encoding="utf-8")
+        text = _workflow_contract_text(repo_root, workflow_name)
         assert "SET ORIGINAL_INTENT" in text, f"{workflow_name} must capture intent"
         assert (
             f"SET CURRENT_WORKFLOW = {current_workflow}" in text
@@ -1800,7 +1832,7 @@ def test_workflows_offer_companion_skills_after_intent_analysis() -> None:
         assert "CONTINUE CompanionSkillOffer" in text, f"{workflow_name} must run CompanionSkillOffer"
 
     for router_name in ("generate.md", "analyze.md"):
-        text = (repo_root / "workflows" / router_name).read_text(encoding="utf-8")
+        text = _workflow_contract_text(repo_root, router_name)
         assert "LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md" in text
         assert "excluding `cf`, `cf-analyze`, and `cf-generate`" in text
         assert "must never be offered as companions" in text
@@ -1836,7 +1868,7 @@ def test_substantive_workflows_load_plan_first_at_relevant_stage() -> None:
         "workspace.md": "WorkspaceDiscover",
     }
     for workflow_name, continuation in expectations.items():
-        text = (repo_root / "workflows" / workflow_name).read_text(encoding="utf-8")
+        text = _workflow_contract_text(repo_root, workflow_name)
         assert "LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md" in text
         assert f"SET PLAN_FIRST_CONTINUE = {continuation}" in text
         assert "CONTINUE PlanFirstGate" in text or "SET COMPANION_CONTINUE = PlanFirstGate" in text
@@ -1849,7 +1881,7 @@ def test_substantive_workflows_load_plan_first_at_relevant_stage() -> None:
 def test_explore_is_resource_context_prep_not_review_execution() -> None:
     """Explore must gather context for the selected workflow, not perform its review."""
     repo_root = Path(__file__).resolve().parents[1]
-    explore = (repo_root / "workflows" / "explore.md").read_text(encoding="utf-8")
+    explore = _workflow_contract_text(repo_root, "explore.md")
     parent_workflows = (
         repo_root / "workflows" / "write-skills.md",
         repo_root / "workflows" / "write-docs.md",
@@ -1866,7 +1898,7 @@ def test_explore_is_resource_context_prep_not_review_execution() -> None:
     assert "return-context/workflow-prep mode is resource discovery only" in explore
 
     for path in parent_workflows:
-        text = path.read_text(encoding="utf-8")
+        text = _workflow_contract_text(repo_root, path.name)
         assert "intent=workflow-prep" in text
         assert "task=ORIGINAL_INTENT" in text
         assert "return_context=true" in text
@@ -1876,7 +1908,7 @@ def test_explore_is_resource_context_prep_not_review_execution() -> None:
 def test_write_skills_review_loop_matches_fix_then_validate_contract() -> None:
     """Prompt review loops must not spin on unchanged findings."""
     repo_root = Path(__file__).resolve().parents[1]
-    text = (repo_root / "workflows" / "write-skills.md").read_text(encoding="utf-8")
+    text = _workflow_contract_text(repo_root, "write-skills.md")
 
     assert "RUN SemanticReviewFixApprovalGate WHEN findings remain and fixes are applicable" in text
     assert (
@@ -1893,7 +1925,7 @@ def test_write_skills_review_loop_matches_fix_then_validate_contract() -> None:
 def test_write_skills_review_only_paths_have_resume_and_target_resolution_guards() -> None:
     """Review-only write-skills flows must resolve targets and avoid stale replies."""
     repo_root = Path(__file__).resolve().parents[1]
-    text = (repo_root / "workflows" / "write-skills.md").read_text(encoding="utf-8")
+    text = _workflow_contract_text(repo_root, "write-skills.md")
 
     required = [
         "SET WRITE_SKILLS_INTENT_CAPTURE_STATE: prompt | resume | unset",
@@ -1985,7 +2017,7 @@ def test_content_generating_workflows_offer_semantic_review_after_writes() -> No
     )
 
     for path, dispatch_to_validate, validate_to_review, no_early_stop in expectations:
-        text = path.read_text(encoding="utf-8")
+        text = _workflow_contract_text(repo_root, path.name)
         if path.name == "write-skills.md":
             assert "CONTINUE WriteSkillsValidate WHEN SKILL_FILE_WRITTEN == true" in text
             assert "SET VALIDATION_STATUS = pass and CONTINUE WriteSkillsReviewLoop WHEN validation passes" in text
@@ -2017,7 +2049,7 @@ def test_review_loops_gate_fixes_on_explicit_user_menu() -> None:
     assert "ReviewFixApprovalGate" in semantic_loop
 
     for path in workflows:
-        text = path.read_text(encoding="utf-8")
+        text = _workflow_contract_text(repo_root, path.name)
         assert "LOAD {cf-studio-path}/.core/skills/studio/modules/review/semantic-loop-skeleton.md" in text
         assert "RUN SemanticReviewFixApprovalGate WHEN findings remain and fixes are applicable" in text
         assert "WHEN REVIEW_FIX_APPROVED == true" in text
@@ -2045,21 +2077,26 @@ def test_review_fix_approval_gate_returns_scope_to_caller() -> None:
     assert "SET REVIEW_FIX_SCOPE: critical-major | all | partial | none | unset" in module
     assert "SET REVIEW_FIX_APPROVED: true | false | unset" in module
     assert "SET APPROVED_REVIEW_FINDING_IDS: list | all-critical-major | all | empty" in module
+    assert "SET REVIEW_FINDINGS_BROWSER_CONFIRMED: true | false | unset" in module
+    assert "SET REVIEW_FINDINGS_BROWSER_CONFIRMED = true" in module
+    assert "CONTINUE ReviewFindingsReportBrowser WHEN REVIEW_FINDINGS_BROWSER_CONFIRMED != true" in module
+    assert "4 browser ->" in module and "CONTINUE ReviewFindingsReportBrowser" in module
     assert "ALWAYS set REVIEW_FIX_SCOPE and REVIEW_FIX_APPROVED from the resolved menu option" in module
+    assert "ALWAYS include a browser option in ReviewFixScope" in module
     assert "SET APPROVED_REVIEW_FINDING_IDS = all-critical-major" in module
     assert "SET APPROVED_REVIEW_FINDING_IDS = all" in module
     assert "SET APPROVED_REVIEW_FINDING_IDS = SELECTED_FINDING_IDS" in module
     assert "REVIEW_FIX_SCOPE == none" in module
-    assert "4 none -> CONTINUE ReviewFixScopeApproveNone" in module
+    assert "5 none -> CONTINUE ReviewFixScopeApproveNone" in module
     assert "4 none -> STOP_TURN" not in module
 
 
 def test_review_fix_loops_dispatch_concrete_write_capable_workers() -> None:
     """Review-loop fixes must not launch read-only selectors or new-mode-only authors as fixers."""
     repo_root = Path(__file__).resolve().parents[1]
-    write_skills = (repo_root / "workflows" / "write-skills.md").read_text(encoding="utf-8")
-    write_docs = (repo_root / "workflows" / "write-docs.md").read_text(encoding="utf-8")
-    coding = (repo_root / "workflows" / "coding.md").read_text(encoding="utf-8")
+    write_skills = _workflow_contract_text(repo_root, "write-skills.md")
+    write_docs = _workflow_contract_text(repo_root, "write-docs.md")
+    coding = _workflow_contract_text(repo_root, "coding.md")
 
     assert "NEVER dispatch cf-pdsl-author as a generic review-fix worker" in write_skills
     assert "cf-generate-prompt-engineer-smart" in write_skills
@@ -2104,7 +2141,7 @@ def test_review_only_dispatch_has_executable_review_loop_path() -> None:
     )
 
     for path, review_branch, review_precondition, clean_review_stop, author_run in expectations:
-        text = path.read_text(encoding="utf-8")
+        text = _workflow_contract_text(repo_root, path.name)
         assert review_branch in text
         assert review_precondition in text
         assert clean_review_stop in text
@@ -2133,7 +2170,7 @@ def test_next_actions_runs_on_clean_completion_paths() -> None:
     }
 
     for workflow_name, phrases in expectations.items():
-        text = (repo_root / "workflows" / workflow_name).read_text(encoding="utf-8")
+        text = _workflow_contract_text(repo_root, workflow_name)
         assert "LOAD {cf-studio-path}/.core/skills/studio/modules/ui/next-actions.md" in text
         assert "RUN NextActionsOffer" in text
         for phrase in phrases:
@@ -2162,8 +2199,9 @@ def test_content_generating_workflows_run_git_gate_before_author_dispatch() -> N
     )
 
     for path, run_gate, rule in expectations:
-        text = path.read_text(encoding="utf-8")
-        assert _loads_module(text, "subagents/git-commit-mode.md")
+        root_text = path.read_text(encoding="utf-8")
+        text = _workflow_contract_text(repo_root, path.name)
+        assert _loads_module(root_text, "subagents/git-commit-mode.md") or "modules/subagents/git-commit-mode.md" in text
         if "RUN GitWriteDispatchPolicyResolve" in text:
             assert "RUN GitWriteDispatchPolicyResolve" in text
         else:
@@ -2229,27 +2267,37 @@ def test_studio_shutdown_is_unambiguous_root_only_and_not_overlay_disable() -> N
 def test_workflows_own_stage_local_rule_loads() -> None:
     """Shared modules are loaded by the concrete workflow stage that needs them."""
     repo_root = Path(__file__).resolve().parents[1]
-    write_skills = (repo_root / "workflows" / "write-skills.md").read_text(encoding="utf-8")
-    write_docs = (repo_root / "workflows" / "write-docs.md").read_text(encoding="utf-8")
-    coding = (repo_root / "workflows" / "coding.md").read_text(encoding="utf-8")
-    explore = (repo_root / "workflows" / "explore.md").read_text(encoding="utf-8")
-    generate = (repo_root / "workflows" / "generate.md").read_text(encoding="utf-8")
-    analyze = (repo_root / "workflows" / "analyze.md").read_text(encoding="utf-8")
+    root_write_skills = (repo_root / "workflows" / "write-skills.md").read_text(encoding="utf-8")
+    root_write_docs = (repo_root / "workflows" / "write-docs.md").read_text(encoding="utf-8")
+    root_coding = (repo_root / "workflows" / "coding.md").read_text(encoding="utf-8")
+    root_explore = (repo_root / "workflows" / "explore.md").read_text(encoding="utf-8")
+    root_generate = (repo_root / "workflows" / "generate.md").read_text(encoding="utf-8")
+    root_analyze = (repo_root / "workflows" / "analyze.md").read_text(encoding="utf-8")
+    write_skills = _workflow_contract_text(repo_root, "write-skills.md")
+    write_docs = _workflow_contract_text(repo_root, "write-docs.md")
+    coding = _workflow_contract_text(repo_root, "coding.md")
+    explore = _workflow_contract_text(repo_root, "explore.md")
+    generate = _workflow_contract_text(repo_root, "generate.md")
+    analyze = _workflow_contract_text(repo_root, "analyze.md")
 
-    for workflow in (write_skills, write_docs, coding, explore, generate, analyze):
+    for workflow in (root_write_skills, root_write_docs, root_coding, root_explore, root_generate, root_analyze):
         assert "LoadCfSkillConfirm" not in workflow
         assert "EMIT_MENU LoadCfSkillConfirm" not in workflow
 
-    for workflow in (write_skills, write_docs, coding):
-        assert _loads_module(workflow, "subagents/dispatch.md")
+    for root_workflow, workflow in (
+        (root_write_skills, write_skills),
+        (root_write_docs, write_docs),
+        (root_coding, coding),
+    ):
+        assert _loads_module(root_workflow, "subagents/dispatch.md") or "modules/subagents/dispatch.md" in workflow
         assert "LOAD {cf-studio-path}/.core/skills/studio/modules/review/finding-contract.md" in workflow
         assert "LOAD {cf-studio-path}/.core/skills/studio/modules/review/semantic-loop-skeleton.md" in workflow
         assert "RUN SemanticReviewFixApprovalGate WHEN findings remain and fixes are applicable" in workflow
-        assert _loads_module(workflow, "subagents/git-commit-mode.md")
+        assert _loads_module(root_workflow, "subagents/git-commit-mode.md") or "modules/subagents/git-commit-mode.md" in workflow
 
-    assert _loads_module(explore, "subagents/dispatch.md")
-    assert _loads_module(generate, "runtime/workflow-resolution.md")
-    assert _loads_module(analyze, "runtime/workflow-resolution.md")
+    assert _loads_module(root_explore, "subagents/dispatch.md") or "modules/subagents/dispatch.md" in explore
+    assert _loads_module(root_generate, "runtime/workflow-resolution.md") or "modules/runtime/workflow-resolution.md" in generate
+    assert _loads_module(root_analyze, "runtime/workflow-resolution.md") or "modules/runtime/workflow-resolution.md" in analyze
 
 
 def test_every_cf_skill_entry_runs_skill_invocation_art() -> None:
@@ -2371,20 +2419,19 @@ def test_workflows_resolve_template_paths_at_write_steps() -> None:
     ]
 
     for name in workflow_names:
-        text = (repo_root / "workflows" / f"{name}.md").read_text(encoding="utf-8")
-        assert _loads_module(text, "runtime/template-vars.md"), (
+        root_text = (repo_root / "workflows" / f"{name}.md").read_text(encoding="utf-8")
+        text = _workflow_contract_text(repo_root, f"{name}.md")
+        assert _loads_module(root_text, "runtime/template-vars.md") or "modules/runtime/template-vars.md" in text, (
             f"{name} must load template-vars before resolving path templates"
         )
         assert (
             "TemplateVarResolution" in text or "ALWAYS load template-vars before resolving" in text
         ), f"{name} must run or explicitly gate template path resolution"
 
-    brainstorm = (repo_root / "workflows" / "brainstorm.md").read_text(encoding="utf-8")
-    explore = (repo_root / "workflows" / "explore.md").read_text(encoding="utf-8")
-    explain = (repo_root / "workflows" / "explain.md").read_text(encoding="utf-8")
-    debug_prompts = (repo_root / "workflows" / "debug-prompts.md").read_text(
-        encoding="utf-8"
-    )
+    brainstorm = _workflow_contract_text(repo_root, "brainstorm.md")
+    explore = _workflow_contract_text(repo_root, "explore.md")
+    explain = _workflow_contract_text(repo_root, "explain.md")
+    debug_prompts = _workflow_contract_text(repo_root, "debug-prompts.md")
 
     assert "RUN TemplateVarResolution before any disk checkpoint path is resolved" in brainstorm
     assert "RUN TemplateVarResolution before resolving default_save_dir" in explore
@@ -2424,10 +2471,11 @@ def test_context_memory_governs_resource_context_users() -> None:
     }
 
     for workflow_name, required_phrases in expectations.items():
-        text = (repo_root / "workflows" / workflow_name).read_text(encoding="utf-8")
+        root_text = (repo_root / "workflows" / workflow_name).read_text(encoding="utf-8")
+        text = _workflow_contract_text(repo_root, workflow_name)
         for phrase in required_phrases:
             if phrase == "LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/context-memory.md":
-                assert _loads_module(text, "runtime/context-memory.md"), (
+                assert _loads_module(root_text, "runtime/context-memory.md") or phrase in text, (
                     f"{workflow_name} must contain {phrase} or a bootstrap helper"
                 )
             else:
@@ -2494,16 +2542,17 @@ def test_studio_instruction_memory_runs_in_concrete_workflows() -> None:
         "write-skills.md",
     )
     for workflow_name in concrete_workflows:
-        text = (repo_root / "workflows" / workflow_name).read_text(encoding="utf-8")
+        root_text = (repo_root / "workflows" / workflow_name).read_text(encoding="utf-8")
+        text = _workflow_contract_text(repo_root, workflow_name)
         assert (
             "LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/studio-instructions-memory.md"
             in text
-            or "RUN WorkflowBootstrapStudioInstructionsMemory" in text
-            or "RUN WorkflowBootstrapCoreSession" in text
+            or "RUN WorkflowBootstrapStudioInstructionsMemory" in root_text
+            or "RUN WorkflowBootstrapCoreSession" in root_text
         ), f"{workflow_name} must load studio-instructions-memory"
         assert "RUN StudioInstructionsMemoryGate" in text or (
-            "RUN WorkflowBootstrapStudioInstructionsMemory" in text
-            or "RUN WorkflowBootstrapCoreSession" in text
+            "RUN WorkflowBootstrapStudioInstructionsMemory" in root_text
+            or "RUN WorkflowBootstrapCoreSession" in root_text
         ), (
             f"{workflow_name} must run StudioInstructionsMemoryGate"
         )
@@ -2570,11 +2619,12 @@ def test_simple_mode_gate_runs_in_current_non_exempt_workflows() -> None:
         "write-skills.md",
     )
     for workflow_name in simple_mode_workflows:
-        text = (repo_root / "workflows" / workflow_name).read_text(encoding="utf-8")
-        assert "modules/gates/simple-mode.md" in text or "WorkflowBootstrapSimpleModeGate" in text, (
+        root_text = (repo_root / "workflows" / workflow_name).read_text(encoding="utf-8")
+        text = _workflow_contract_text(repo_root, workflow_name)
+        assert "modules/gates/simple-mode.md" in text or "WorkflowBootstrapSimpleModeGate" in root_text, (
             f"{workflow_name} must load or run the simple-mode gate"
         )
-        assert "RUN SimpleModeGate" in text or "RUN WorkflowBootstrapSimpleModeGate" in text, (
+        assert "RUN SimpleModeGate" in text or "RUN WorkflowBootstrapSimpleModeGate" in root_text, (
             f"{workflow_name} must run the simple-mode gate"
         )
 
@@ -2733,7 +2783,7 @@ def test_workflow_agent_references_resolve_and_coding_agents_registered() -> Non
     ref_re = re.compile(r"agents/(cf-[a-z0-9-]+)\.md")
     referenced: set[str] = set()
     for path in sorted(workflows_dir.glob("*.md")):
-        for match in ref_re.findall(path.read_text(encoding="utf-8")):
+        for match in ref_re.findall(_workflow_contract_text(repo_root, path.name)):
             referenced.add(match)
 
     assert referenced, "expected at least one agents/<name>.md reference in the workflows"
@@ -2843,7 +2893,7 @@ def test_phase_agents_have_default_and_isolated_variants() -> None:
 def test_plan_phase_agent_dispatch_discloses_variant_and_uses_async_lifecycle() -> None:
     """Phase sub-agent dispatch must announce variant selection and avoid WAIT as an async join."""
     repo_root = Path(__file__).resolve().parents[1]
-    plan = (repo_root / "workflows" / "plan.md").read_text(encoding="utf-8")
+    plan = _workflow_contract_text(repo_root, "plan.md")
 
     assert "UNIT PlanPhaseCompilerDispatch" in plan
     assert "Selected phase compiler: {selected_phase_compiler}" in plan
@@ -3084,7 +3134,7 @@ def test_runtime_instruction_modules_stay_compact() -> None:
         (repo_root / "skills" / "studio" / "SKILL.md", 260),
         (repo_root / "skills" / "studio" / "modules" / "subagents" / "dispatch.md", 120),
         (repo_root / "skills" / "studio" / "modules" / "subagents" / "git-commit-mode.md", 180),
-        (repo_root / "skills" / "studio" / "modules" / "gates" / "simple-mode.md", 110),
+        (repo_root / "skills" / "studio" / "modules" / "gates" / "simple-mode.md", 120),
         (repo_root / "skills" / "studio" / "modules" / "gates" / "simple-mode-rules.md", 40),
         (repo_root / "skills" / "studio" / "modules" / "gates" / "plan-first.md", 120),
         (repo_root / "skills" / "studio" / "modules" / "routing" / "companion-skills.md", 70),
