@@ -42,6 +42,5 @@ DO:
   SET COMPANION_CONTINUE = CodingExploreGate
   LOAD {cf-studio-path}/.core/skills/studio/modules/coding-prep-gates.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/routing/companion-skills.md
-  LOAD {cf-studio-path}/.core/skills/studio/modules/gates/plan-first.md
   CONTINUE CompanionSkillOffer
 ```

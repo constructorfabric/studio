@@ -7,6 +7,7 @@ WHEN:
   REQUIRE the synthesized resource_context has been received and summarized
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/explore-next-dispatch.md
+  RUN ExploreSaveContextPrep
   RUN TemplateVarResolution before resolving default_save_dir
   SET default_save_dir = {cf-studio-path}/.cache/explore/{slug}-{ISO}/
   EMIT "Save this exploration bundle?"

@@ -4,6 +4,7 @@
 UNIT ExplainE0Preflight
 PURPOSE: Resolve the explanation target and input access via preflight before any portion content (Phase E0).
 DO:
+  RUN ExplainExecutionContextPrep
   RUN SubAgentDispatch for the storytelling-preflight dispatch group before launching preflight
   DISPATCH storytelling-preflight with the raw target/path, user prompt, cf_studio_path, project_root, and RESOURCE_CONTEXT when provided to resolve the input-access tier, run the session-discovery scan, and enforce size guards (returns a lightweight handle, no bulk extraction)
   INVOKE skill `cf-explore` with intent=analyze and return_context=true to discover targets WHEN the explanation target is not explicit
@@ -20,6 +21,7 @@ PURPOSE: Resolve the four Discovery gates as separate user-interaction boundarie
 STATE:
   SET E1_GATE: mode | disposition | audience | plan | done (default mode, scope workflow_run)
 DO:
+  RUN ExplainStorytellingReferenceLoad
   LOAD {cf-studio-path}/.core/skills/studio/modules/explain-deliver-wrap.md
   RUN resolve mode/disposition/audience/plan from the STORYTELLING_* presets, represent those preset answers in the E0/E1 opener, SET E1_GATE = done, and CONTINUE ExplainE2Deliver WHEN CF_HELP_PRESET == true AND STORYTELLING_PLAN_APPROVED == true
   RUN SubAgentDispatch for the storytelling-gate dispatch group before launching each E1 gate WHEN CF_HELP_PRESET != true OR STORYTELLING_PLAN_APPROVED != true

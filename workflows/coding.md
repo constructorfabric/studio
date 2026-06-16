@@ -8,7 +8,7 @@ version: 0.1
 
 # cf-coding
 
-This skill authors and reviews source code using the code-checklist, bug-finding, and consistency-checklist methodologies. After bootstrap it optionally discovers task-relevant project context via cf-explore, runs a deterministic gate (tests, lint, typecheck, build), and runs a semantic review-fix loop at a selectable depth — single-pass, per-methodology, or per-layer — driven by coding and reviewer sub-agents.
+This skill authors and reviews source code using the code-checklist, bug-finding, and consistency-checklist methodologies. After bootstrap it optionally discovers task-relevant project context via cf-explore, loads code review methodologies only on review-capable paths, runs a deterministic gate (tests, lint, typecheck, build), and runs a semantic review-fix loop at a selectable depth — single-pass, per-methodology, or per-layer — driven by coding and reviewer sub-agents.
 
 ```pdsl
 UNIT CodingBootstrap
@@ -22,9 +22,6 @@ DO:
   RUN WorkflowBootstrapSimpleModeGate
   RUN WorkflowBootstrapStudioInstructionsMemory
   SET ORIGINAL_INTENT = the user's triggering coding request (verbatim or shortest faithful summary), or unset when activation-only, WHEN ORIGINAL_INTENT == unset
-  RUN WorkflowBootstrapCommandContext
-  LOAD {cf-studio-path}/.core/skills/studio/modules/coding-bootstrap-methodologies.md
-  RUN CodingBootstrapMethodologies
   LOAD {cf-studio-path}/.core/skills/studio/modules/coding-intent-companion.md
   CONTINUE CodingIntentCapture WHEN ORIGINAL_INTENT == unset
   CONTINUE CodingIntentClassify WHEN ORIGINAL_INTENT != unset
@@ -41,6 +38,8 @@ STATE:
 WHEN:
   REQUIRE code has been written or edited
 DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/coding-bootstrap-methodologies.md
+  RUN CodingValidationContextPrep
   LOAD {cf-studio-path}/.core/skills/studio/modules/subagents/dispatch.md
   RUN SubAgentDispatch for the cf-deterministic-validator dispatch group before launching studio-applicable deterministic validation
   RUN the project's deterministic gate — resolve the test, lint, typecheck, and build commands from the project's config (package.json / Makefile / pyproject.toml / build files) or the remembered {cfs_cmd}/project commands, run them in order, and dispatch cf-deterministic-validator for studio-applicable checks (validate / validate-toc / check-language)
@@ -58,6 +57,9 @@ PURPOSE: Run a semantic review at the user-chosen granularity and iterate fixes 
 WHEN:
   REQUIRE edits have been applied to the code OR REVIEW_LOOP_REQUESTED == true
 DO:
+  LOAD {cf-studio-path}/.core/skills/studio/modules/coding-bootstrap-methodologies.md
+  RUN CodingExecutionContextPrep
+  RUN CodingReviewReferenceLoad
   LOAD {cf-studio-path}/.core/skills/studio/modules/coding-review-setup-run.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/coding-review-fix.md
   CONTINUE CodingReviewSetup
@@ -85,6 +87,8 @@ UNIT CodingDispatch
 PURPOSE: Route to review-first or author-first code execution paths.
 DO:
   CONTINUE CodingReviewLoop WHEN REVIEW_LOOP_REQUESTED == true
+  LOAD {cf-studio-path}/.core/skills/studio/modules/coding-bootstrap-methodologies.md
+  RUN CodingExecutionContextPrep
   LOAD {cf-studio-path}/.core/skills/studio/modules/coding-author-dispatch.md
   CONTINUE CodingAuthorGitSetup
 RULES:

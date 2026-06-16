@@ -30,5 +30,6 @@ PURPOSE: Apply accepted brainstorm modifiers, then continue to panel setup.
 DO:
   RUN apply `:N` -> SET BRAINSTORM_MAX_ROUNDS = N and apply `mode=inline|single-agent|fan-out` -> SET PANEL_MODE
   LOAD {cf-studio-path}/.core/skills/studio/modules/brainstorm-panel.md
+  RUN BrainstormExecutionContextPrep
   CONTINUE BrainstormPanel
 ```

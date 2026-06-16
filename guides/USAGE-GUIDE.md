@@ -648,6 +648,34 @@ Use `debug-prompts` when you need to inspect execution live instead of editing t
 
 The startup interaction-mode gate can also enable a lighter session debug mode without opening the standalone debugger console first. That path reuses `cf-debug-prompts` in run mode; use direct `cf-debug-prompts` when you want the full debugger console and immediate step-by-step control.
 
+How to use it in practice:
+
+- start with 💬 `cf-debug-prompts`, then load or invoke the `cf-*` skill or workflow you want to inspect
+- use `step` to execute the next pending action, one action at a time
+- use `over` to skip the pending action and move to the next breakpoint frame
+- use `cont` or `continue` to stay in debug mode but run until the next breakpoint, WAIT/menu pause, or failure
+- use `step mode` after `continue` when you want to return to per-action pauses
+- use `where` to reprint the current debugger frame and a short recent trace
+- use `grain` to switch between instruction-level pauses and unit-level pauses
+
+Breakpoint commands:
+
+- `b <spec>` adds a breakpoint
+- `bl` lists breakpoints
+- `be <id>` enables a breakpoint and `bd <id>` disables one
+- `bc <ref>` clears a breakpoint
+- `run to <loc>` runs until a specific `filename.md:N` location, then removes that temporary breakpoint
+
+Important behavior to expect:
+
+- in run mode, if the target workflow reaches a real `WAIT` or menu, the debugger prints a handoff message and your next reply goes to the target workflow, not to the debugger console
+- `back` is inspection only: it moves the cursor to an earlier recorded step, but it does not undo file writes, shell commands, or other side effects that already happened
+- `off` disables the debugger and returns later `cf-*` workflows to normal execution
+- `stop` halts at the current breakpoint and keeps debug mode armed for the next message
+- `dump` writes the current trace to `{cf-studio-path}/.debug-skill/<debug-slug>-<YYYY-MM-DD>-<HHMMSS>.md`, which is useful when you need a shareable execution record
+
+Use the startup `debug` interaction mode when you want lighter tracing across a session. Use direct `cf-debug-prompts` when you want the full debugger console first, explicit stepping, and breakpoint control before loading the target workflow.
+
 This is an authoring/operating tool for the people who write Constructor Studio prompts and agents themselves; most end users will never need it.
 
 ### Use `coding` when

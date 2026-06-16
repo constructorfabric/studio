@@ -19,11 +19,11 @@ UNIT ExploreBootstrap
 PURPOSE: Load the local rules needed before any explore work.
 DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/workflow-bootstrap.md
+  LOAD {cf-studio-path}/.core/skills/studio/modules/explore-bootstrap-refs.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/explore-entry.md
   RUN WorkflowBootstrapRouterPrelude
   RUN WorkflowBootstrapSimpleModeGate
   RUN WorkflowBootstrapStudioInstructionsMemory
-  RUN WorkflowBootstrapDispatchTemplateContext
   CONTINUE ExploreEntry
 RULES:
   ALWAYS run StudioInstructionsMemoryGate before explore entry routing, scanning, or saved-context handling

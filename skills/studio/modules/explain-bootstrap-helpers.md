@@ -5,7 +5,6 @@ UNIT ExplainBootstrapIntentRuntime
 PURPOSE: Resolve the initial explain intent and runtime helpers before storytelling state is set.
 DO:
   SET ORIGINAL_INTENT = the user's triggering explain request (verbatim or shortest faithful summary), or unset when activation-only, WHEN ORIGINAL_INTENT == unset
-  RUN WorkflowBootstrapDispatchContext
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/template-vars.md WHEN EXPLAIN_EXPORT == true
 ```
 
@@ -25,6 +24,5 @@ DO:
 UNIT ExplainBootstrapStorytelling
 PURPOSE: Load the storytelling requirements used by cf-explain.
 DO:
-  LOAD {cf-studio-path}/.core/requirements/storytelling.md (its router loads storytelling-shared, storytelling-phases, storytelling-modes, and storytelling-preferences)
-  LOAD {cf-studio-path}/.core/requirements/storytelling-export.md WHEN EXPLAIN_EXPORT == true
+  RUN ExplainStorytellingReferenceLoad
 ```
