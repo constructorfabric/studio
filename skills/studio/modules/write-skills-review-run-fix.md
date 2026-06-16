@@ -11,6 +11,7 @@ DO:
   RUN prepare reviewer inputs for the chosen granularity: read each methodology's current Layer Map before per-layer or per-methodology dispatch, and synthesize into each reviewer instance only its assigned slice, declared REVIEW_TARGET_PATHS, REVIEW_TARGET_SLICES, BRAINSTORM_DECISIONS, and explicit read-only resource_context references
   RUN the chosen review at REVIEW_GRANULARITY: single-pass = dispatch cf-pdsl-reviewer from {cf-studio-path}/.core/skills/studio/agents/cf-pdsl-reviewer.md and cf-semantic-reviewer-consistency from {cf-studio-path}/.core/skills/studio/agents/cf-semantic-reviewer-consistency.md in one combined dispatch group, then aggregate one report; per-methodology = dispatch cf-pdsl-reviewer over prompt-engineering plus prompt-bug-finding layers and cf-semantic-reviewer-consistency over all consistency-checklist categories in parallel; per-layer = dispatch one reviewer per layer/category for every layer each methodology defines (L1 through its last), never a fixed count
   RUN aggregate every reviewer's findings into one deduplicated ReviewFindingsReport with stable finding IDs and every ReviewFindingContract field, then SET REVIEW_FINDINGS_REMAINING = count of findings in the deduplicated ReviewFindingsReport
+  LOAD {cf-studio-path}/.core/skills/studio/modules/write-skills-fix-outcomes.md
   CONTINUE WriteSkillsFixGate
 RULES:
   ALWAYS scope each reviewer to only its assigned slice (all methodologies / one methodology / one layer) and run independent reviewers in parallel

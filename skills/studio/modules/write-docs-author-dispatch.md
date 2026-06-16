@@ -9,9 +9,10 @@ STATE:
 DO:
   RUN WriteDocsAuthorPrepareTarget
   CONTINUE WriteDocsAuthorTargetMissing WHEN AUTHOR_TARGET_PATHS == unset OR AUTHOR_TARGET_PATHS is empty
+  RUN WriteDocsExecutionContextPrep
   RUN select SELECTED_DOC_AUTHOR_AGENT using the cf-generate-author selection rules: junior for simple one-file low-risk prose, middle for standard artifacts with moderate cross-references, senior for complex multi-file or strict-rule docs, and lead for high-risk or broad cross-system documentation
   RUN SubAgentDispatch for the SELECTED_DOC_AUTHOR_AGENT dispatch group
-  DISPATCH SELECTED_DOC_AUTHOR_AGENT with mode=create, kind=ARTIFACT_REVIEW_KIND, rules_mode STRICT when ARTIFACT_CHECKLIST_CONTEXT == preset-bound else RELAXED, template_path=ARTIFACT_TEMPLATE_PATH, example_path=ARTIFACT_EXAMPLE_PATH, checklist_path=ARTIFACT_CHECKLIST_PATH, kit_rules_path=ARTIFACT_RULES_PATH, target_paths=AUTHOR_TARGET_PATHS, git_commit_mode=GIT_COMMIT_MODE, contributing_guide=CONTRIBUTING_GUIDE, git_constraint=GIT_CONSTRAINT, commit_footer_contract=COMMIT_FOOTER_CONTRACT, any WriteDocsExploreGate-resolved resource_context as read-only context, and the Bootstrap-resolved audience/narrator/diagram policy data as read-only context scoped per {cf-studio-path}/.core/requirements/storytelling-dimensions.md authoring flow-class rules
+  DISPATCH SELECTED_DOC_AUTHOR_AGENT with mode=create, kind=ARTIFACT_REVIEW_KIND, rules_mode STRICT when ARTIFACT_CHECKLIST_CONTEXT == preset-bound else RELAXED, template_path=ARTIFACT_TEMPLATE_PATH, example_path=ARTIFACT_EXAMPLE_PATH, checklist_path=ARTIFACT_CHECKLIST_PATH, kit_rules_path=ARTIFACT_RULES_PATH, target_paths=AUTHOR_TARGET_PATHS, git_commit_mode=GIT_COMMIT_MODE, contributing_guide=CONTRIBUTING_GUIDE, git_constraint=GIT_CONSTRAINT, commit_footer_contract=COMMIT_FOOTER_CONTRACT, any WriteDocsExploreGate-resolved resource_context as read-only context, and the execution-prep-resolved audience/narrator/diagram policy data as read-only context scoped per {cf-studio-path}/.core/requirements/storytelling-dimensions.md authoring flow-class rules
   RUN WriteDocsAuthorCaptureManifest
   CONTINUE WriteDocsValidate WHEN a document has been written or edited
 RULES:
