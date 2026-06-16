@@ -13,11 +13,13 @@ STATE:
   SET APPROVED_REVIEW_FINDING_IDS: list | all-critical-major | all | empty (default empty, scope workflow_run)
   SET REVIEW_FIX_MENU_TOKEN: ready | unset (default unset, scope workflow_run)
   SET REVIEW_FIX_MENU_REPORT: current | unset (default unset, scope workflow_run)
+  SET REVIEW_FINDINGS_BROWSER_CONFIRMED: true | false | unset (default unset, scope workflow_run)
 WHEN:
   REQUIRE ReviewFindingsReport exists and contains one or more findings
 DO:
   RUN ReviewFindingsBrowserReset
   RUN ReviewFindingsBrowserRender
+  SET REVIEW_FINDINGS_BROWSER_CONFIRMED = true
   EMIT_MENU ReviewFindingsNavigation
   WAIT user.reply
   STOP_TURN
@@ -32,6 +34,7 @@ RULES:
   ALWAYS treat REVIEW_FINDINGS_BROWSER_ENTRY == rerender as navigation or rerender within the same browser session and preserve SELECTED_FINDING_IDS, CURRENT_FINDING_INDEX, and REVIEW_REPORT_VIEW except when menu options explicitly change them
   ALWAYS preserve SELECTED_FINDING_IDS for the calling review loop when REVIEW_FIX_SCOPE == partial
   NEVER apply fixes from this report browser; only ReviewFixApprovalGate can approve a fix scope
+  NEVER present ReviewFixScope before ReviewFindingsReportBrowser has rendered the current report and set REVIEW_FINDINGS_BROWSER_CONFIRMED = true
 MENU ReviewFindingsNavigation
 TITLE: Review findings — inspect them, mark specific items for fix, switch views, or continue to fix choices.
 OPTIONS:
@@ -54,6 +57,7 @@ DO:
   SET SELECTED_FINDING_IDS = empty WHEN REVIEW_FINDINGS_BROWSER_ENTRY == first
   SET CURRENT_FINDING_INDEX = 1 WHEN REVIEW_FINDINGS_BROWSER_ENTRY == first
   SET REVIEW_REPORT_VIEW = detail WHEN REVIEW_FINDINGS_BROWSER_ENTRY == first
+  SET REVIEW_FINDINGS_BROWSER_CONFIRMED = false WHEN REVIEW_FINDINGS_BROWSER_ENTRY == first
   SET REVIEW_FINDINGS_BROWSER_ENTRY = rerender WHEN REVIEW_FINDINGS_BROWSER_ENTRY == first
 ```
 
@@ -75,11 +79,13 @@ STATE:
   SET APPROVED_REVIEW_FINDING_IDS: list | all-critical-major | all | empty (default empty, scope workflow_run)
   SET REVIEW_FIX_MENU_TOKEN: ready | unset (default unset, scope workflow_run)
   SET REVIEW_FIX_MENU_REPORT: current | unset (default unset, scope workflow_run)
+  SET REVIEW_FINDINGS_BROWSER_CONFIRMED: true | false | unset (default unset, scope workflow_run)
 WHEN:
   REQUIRE a review-fix loop has produced findings and is about to apply fixes
   REQUIRE REVIEW_FIX_MENU_TOKEN == ready
   REQUIRE REVIEW_FIX_MENU_REPORT == current
 DO:
+  CONTINUE ReviewFindingsReportBrowser WHEN REVIEW_FINDINGS_BROWSER_CONFIRMED != true
   EMIT_MENU ReviewFixScope
   WAIT user.reply
   STOP_TURN
@@ -87,10 +93,13 @@ RULES:
   ALWAYS request user confirmation before applying any fixes in a review-fix loop
   ALWAYS run only when continued from the browser-owned `fix-menu` in ReviewFindingsReportBrowser for the current review iteration
   ALWAYS treat REVIEW_FIX_MENU_TOKEN plus REVIEW_FIX_MENU_REPORT == current as a one-use continuation guard from the active ReviewFindingsReport
+  ALWAYS return to ReviewFindingsReportBrowser instead of emitting ReviewFixScope when the current report has not been rendered by the browser in this workflow run
   ALWAYS offer the fix-scope options: only CRITICAL and MAJOR findings, all findings, or a user-selected partial subset
+  ALWAYS include a browser option in ReviewFixScope so the user can return from fix approval to the findings browser without applying fixes
   ALWAYS set REVIEW_FIX_SCOPE and REVIEW_FIX_APPROVED from the resolved menu option before returning control to the calling review loop
   ALWAYS clear REVIEW_FIX_MENU_TOKEN and REVIEW_FIX_MENU_REPORT after ReviewFixApprovalGate resolves
   ALWAYS treat REVIEW_FIX_SCOPE == none and REVIEW_FIX_APPROVED == false as "no fixes approved" and let the calling review loop report the remaining findings
+  NEVER present ReviewFixScope as a short findings table plus fix choices; the findings table belongs only to ReviewFindingsReportBrowser table view
   NEVER apply review fixes without explicit user approval of the chosen scope
 MENU ReviewFixScope
 TITLE: Review found issues — what should I fix? (nothing is changed until you choose)
@@ -98,7 +107,8 @@ OPTIONS:
   1 crit-major -> CONTINUE ReviewFixScopeApproveCriticalMajor
   2 all -> CONTINUE ReviewFixScopeApproveAll
   3 partial -> SET REVIEW_FIX_SCOPE = partial; SET REVIEW_FIX_APPROVED = true; CONTINUE ReviewFixPartialScopeResolve
-  4 none -> CONTINUE ReviewFixScopeApproveNone
+  4 browser -> SET REVIEW_FIX_MENU_TOKEN = unset; SET REVIEW_FIX_MENU_REPORT = unset; CONTINUE ReviewFindingsReportBrowser
+  5 none -> CONTINUE ReviewFixScopeApproveNone
   INVALID -> EMIT_MENU ReviewFixScope
 ```
 
