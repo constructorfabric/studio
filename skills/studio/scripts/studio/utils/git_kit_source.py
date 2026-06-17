@@ -39,6 +39,7 @@ from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 _KIT_SLUG_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
 _FULL_SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
+_SAFE_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/+@-]{0,254}$")
 _SCP_LIKE_RE = re.compile(r"^([A-Za-z0-9._-]+)@([A-Za-z0-9._-]+):(.+)$")
 _SSH_SHORTHAND_RE = re.compile(r"^ssh:([A-Za-z0-9._-]+):(.+)$")
 _SSH_SHORTHAND_WITH_PORT_RE = re.compile(r"^ssh:([A-Za-z0-9._-]+):([0-9]+)/(.+)$")
@@ -380,6 +381,35 @@ def _requested_ref_display(requested_ref: str) -> str:
 # @cpt-end:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-store-selector-identity
 
 
+# @cpt-begin:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-version-opaque
+def _validate_requested_ref(requested_ref: str) -> str:
+    normalized = str(requested_ref or "").strip()
+    if not normalized:
+        return ""
+    if normalized == "HEAD":
+        return ""
+    if _FULL_SHA_RE.fullmatch(normalized):
+        return normalized
+    if (
+        not _SAFE_REF_RE.fullmatch(normalized)
+        or normalized in {".", ".."}
+        or normalized.startswith("-")
+        or normalized.endswith(".")
+        or normalized.endswith(".lock")
+        or ".." in normalized
+        or "@{" in normalized
+        or "\\" in normalized
+        or "//" in normalized
+        or any(ord(ch) < 32 or ord(ch) == 127 for ch in normalized)
+    ):
+        raise GitSourceError(
+            "GIT_SOURCE_INVALID_REF",
+            "Git source ref must be a branch/tag-style name or full 40-character commit SHA",
+        )
+    return normalized
+# @cpt-end:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-version-opaque
+
+
 # @cpt-begin:cpt-studio-algo-generic-git-kit-installer-fetch-cache:p1:inst-git-cache-hash-components
 def _subdir_hash(subdir: str) -> str:
     return _hash_key(subdir or "__root__")
@@ -595,6 +625,7 @@ def materialize_git_kit_source(
     previous_metadata: Optional[Dict[str, Any]] = None,
 ) -> GitKitResolution:
     """Clone, checkout, and return a selected generic Git kit source directory."""
+    requested_ref = _validate_requested_ref(requested_ref)
     tmp_dir = Path(tempfile.mkdtemp(prefix="studio-git-kit-"))
     repo_dir = tmp_dir / "repo"
     env = {}

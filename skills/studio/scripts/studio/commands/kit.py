@@ -2434,7 +2434,7 @@ def cmd_kit_install(argv: List[str]) -> int:
     )
     p.add_argument(
         "--version", dest="version", default="",
-        help="For generic Git sources, resolve this tag, branch, ref, or commit",
+        help="For generic Git sources, resolve this tag, branch, or full 40-character commit SHA",
     )
     p.add_argument(
         "--install-mode",
@@ -3167,7 +3167,7 @@ def cmd_kit_update(argv: List[str]) -> int:
                    help="Skip version check and force update")
     p.add_argument(
         "--version", dest="version", default="",
-        help="For generic Git sources, resolve this tag, branch, ref, or commit",
+        help="For generic Git sources, resolve this tag, branch, or full 40-character commit SHA",
     )
     p.add_argument("--dry-run", action="store_true", help="Show what would be done")
     p.add_argument("--no-interactive", action="store_true",

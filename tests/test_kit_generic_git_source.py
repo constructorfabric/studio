@@ -343,6 +343,17 @@ class TestGenericGitKitInstallUpdate(unittest.TestCase):
             finally:
                 shutil.rmtree(resolution.tmp_dir, ignore_errors=True)
 
+    def test_materialize_rejects_unsafe_requested_ref(self):
+        from studio.utils.git_kit_source import GitSourceError, materialize_git_kit_source, parse_git_kit_source
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            repo, _first_sha = _make_git_kit_repo(root)
+            parsed = parse_git_kit_source("git/" + quote(repo.as_uri(), safe=""))
+            with self.assertRaises(GitSourceError) as ctx:
+                materialize_git_kit_source(parsed, requested_ref="main^{commit}")
+            self.assertEqual(ctx.exception.code, "GIT_SOURCE_INVALID_REF")
+
     def test_materialize_accepts_runtime_git_auth_options_without_persisting_them(self):
         from studio.utils.git_kit_source import materialize_git_kit_source, parse_git_kit_source
 
@@ -443,6 +454,28 @@ class TestGenericGitKitInstallUpdate(unittest.TestCase):
                 self.assertEqual(kit["source_provenance"]["requested_ref"], "HEAD")
                 self.assertEqual(kit["source_provenance"]["resolution_basis"], "default_branch")
                 self.assertEqual(kit["source_provenance"]["commit_sha"], first_sha)
+            finally:
+                os.chdir(cwd)
+
+    def test_install_from_file_git_source_rejects_unsafe_version_selector(self):
+        from studio.commands.kit import cmd_kit_install
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            project = root / "project"
+            _bootstrap_project(project)
+            repo, _first_sha = _make_git_kit_repo(root)
+            source = "git/" + quote(repo.as_uri(), safe="")
+            cwd = os.getcwd()
+            try:
+                os.chdir(project)
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = cmd_kit_install([source, "--version", "main^{commit}"])
+                self.assertEqual(rc, 2, buf.getvalue())
+                out = json.loads(buf.getvalue())
+                self.assertEqual(out["status"], "FAIL")
+                self.assertEqual(out["error_code"], "GIT_SOURCE_INVALID_REF")
             finally:
                 os.chdir(cwd)
 
