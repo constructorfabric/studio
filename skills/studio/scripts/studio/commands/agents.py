@@ -1239,6 +1239,9 @@ def _discover_kit_agents(
             out.append(entry)
 
     # 1. Installed kits — agents defined by kit packages
+    registered_kit_dirs = _registered_kit_dirs(project_root) if project_root is not None else set()
+    if not isinstance(registered_kit_dirs, set):
+        return []
     for _kit_slug, kit_root in sorted(_registered_kit_roots(studio_root, project_root).items()):
         _load_agents_toml(kit_root / "agents.toml", kit_root)
 
@@ -1933,6 +1936,12 @@ def _registered_kit_roots(
             continue
         raw_path = str(kit_cfg.get("path") or f"config/kits/{slug}").strip()
         resolved = _resolve_registered_project_relative_path(project_root_resolved, raw_path)
+        if resolved is None or not resolved.exists():
+            resolved = _resolve_registered_legacy_studio_path(
+                _studio_root.resolve(),
+                project_root_resolved,
+                raw_path,
+            )
         if resolved is not None:
             roots[str(slug)] = resolved
     return roots
@@ -2039,11 +2048,52 @@ def _resolve_registered_project_relative_path(
 # @cpt-end:cpt-studio-algo-agent-integration-discover-agents:p1:inst-resolve-kits
 
 
+def _resolve_registered_studio_relative_path(
+    studio_root: Path,
+    raw_path: str,
+) -> Optional[Path]:
+    return _resolve_registered_project_relative_path(studio_root, raw_path)
+
+
+def _resolve_registered_legacy_studio_path(
+    studio_root: Path,
+    project_root: Path,
+    raw_path: str,
+) -> Optional[Path]:
+    normalized = PurePosixPath(raw_path.strip().replace("\\", "/")).as_posix()
+    path_obj = PurePosixPath(normalized)
+    if not normalized or path_obj.is_absolute() or PureWindowsPath(normalized).is_absolute():
+        return None
+    resolved = (studio_root / Path(normalized)).resolve()
+    try:
+        resolved.relative_to(project_root.resolve())
+    except ValueError:
+        return None
+    return resolved
+
+
+def _registered_kit_dirs(project_root: Optional[Path]) -> Set[str]:
+    """Compatibility helper returning registered kit slugs."""
+    if project_root is None:
+        return set()
+    cfg = load_project_config(project_root)
+    kits = cfg.get("kits") if isinstance(cfg, dict) else None
+    if not isinstance(kits, dict):
+        return set()
+    return {str(slug) for slug, kit_entry in kits.items() if isinstance(kit_entry, dict)}
+
+
 def _resolve_registered_kit_path(project_root: Path, studio_root: Path, slug: str, kit_entry: object) -> Optional[Path]:
     if isinstance(kit_entry, dict):
         raw_path = kit_entry.get("path")
         if isinstance(raw_path, str) and raw_path.strip():
-            return _resolve_registered_project_relative_path(project_root, raw_path)
+            resolved = _resolve_registered_project_relative_path(project_root, raw_path)
+            if resolved is not None and resolved.exists():
+                return resolved
+            legacy_resolved = _resolve_registered_legacy_studio_path(studio_root, project_root, raw_path)
+            if legacy_resolved is not None:
+                return legacy_resolved
+            return resolved
     return studio_root / "config" / "kits" / slug
 
 
@@ -2060,7 +2110,13 @@ def _resolve_registered_resource_path(
     binding = resources.get(component_id) if isinstance(resources, dict) else None
     raw_path = binding.get("path") if isinstance(binding, dict) else None
     if isinstance(raw_path, str) and raw_path.strip():
-        return _resolve_registered_project_relative_path(project_root, raw_path)
+        resolved = _resolve_registered_project_relative_path(project_root, raw_path)
+        if resolved is not None and resolved.exists():
+            return resolved
+        legacy_resolved = _resolve_registered_legacy_studio_path(_studio_root, project_root, raw_path)
+        if legacy_resolved is not None:
+            return legacy_resolved
+        return resolved
     component_source = source if source is not None else str(getattr(component, "source", ""))
     if not component_source:
         return None
