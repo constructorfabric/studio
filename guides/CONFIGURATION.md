@@ -487,11 +487,11 @@ Do not put credentials in the URL. Studio rejects credential-bearing URLs, query
 
 ### Kit provenance and update behavior
 
-For remote-backed kits, `core.toml` can include structured `source_provenance` and `content_identity` metadata. These fields record the source type, requested ref, resolved commit, selected subdirectory, kit identity, freshness, and cache identity.
+For remote-backed kits, `core.toml` can include structured `source_provenance` metadata. It records the source type, requested ref, resolved ref or commit, selected subdirectory, kit identity, freshness, and cache identity needed for update and offline fallback decisions.
 
 For generic Git kits, updates compare resolved commit identity. If online resolution fails, Studio may reuse a matching last-known cache artifact only when the saved provenance proves the same remote, ref, subdirectory, kit identity, and commit.
 
-Manifest-backed kits also store resource bindings and content hashes. Updates use those bindings when writing files, do not silently overwrite changed user-modifiable resources, and require explicit prune approval before deleting a manifest-bound resource that disappeared upstream.
+Manifest-backed kits store effective resource bindings for non-register installs. Register-mode installs store only the authoritative kit root and re-derive resource paths from the manifest at runtime. Updates use those effective bindings when writing files, do not silently overwrite changed user-modifiable resources, and require explicit prune approval before deleting a manifest-bound resource that disappeared upstream.
 
 Public kit components are generated from the manifest, not from loose workflow directory scans. Public `skill`, `agent`, and `rule` resources can be surfaced by `cfs generate-agents`; generated names default to `cf-{kit-slug}-{name}` unless the manifest opts out.
 

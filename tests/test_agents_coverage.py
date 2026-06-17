@@ -161,11 +161,26 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
             "---\nname: helper\ndescription: Helper skill\n---\n# Helper\n",
             encoding="utf-8",
         )
-        (kit_root / "agent.md").write_text("# Reviewer\nReview carefully.\n", encoding="utf-8")
-        (kit_root / "auditor.md").write_text("# Auditor\nAudit nested behavior.\n", encoding="utf-8")
-        (kit_root / "openai-auditor.md").write_text("# OpenAI auditor\n", encoding="utf-8")
-        (kit_root / "rule.md").write_text("# Guard\nFollow the guard.\n", encoding="utf-8")
-        (kit_root / "openai-agent.md").write_text("# OpenAI only\n", encoding="utf-8")
+        (kit_root / "agent.md").write_text(
+            "---\nname: reviewer\ndescription: Reviewer agent\n---\n# Reviewer\nReview carefully.\n",
+            encoding="utf-8",
+        )
+        (kit_root / "auditor.md").write_text(
+            "---\nname: auditor\ndescription: Nested auditor\n---\n# Auditor\nAudit nested behavior.\n",
+            encoding="utf-8",
+        )
+        (kit_root / "openai-auditor.md").write_text(
+            "---\nname: codex-auditor\ndescription: OpenAI auditor\n---\n# OpenAI auditor\n",
+            encoding="utf-8",
+        )
+        (kit_root / "rule.md").write_text(
+            "---\nname: guard\ndescription: Guard rule\n---\n# Guard\nFollow the guard.\n",
+            encoding="utf-8",
+        )
+        (kit_root / "openai-agent.md").write_text(
+            "---\nname: codexonly\ndescription: OpenAI only\n---\n# OpenAI only\n",
+            encoding="utf-8",
+        )
         (kit_root / ".cf-studio-kit.toml").write_text(
             "\n".join([
                 'manifest_version = "1.0"',
@@ -275,7 +290,10 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
             root, studio_root = self._make_project(td)
             rebound_dir = studio_root / "config" / "rebound"
             rebound_dir.mkdir(parents=True)
-            (rebound_dir / "auditor.md").write_text("# Rebound auditor\nBound nested behavior.\n", encoding="utf-8")
+            (rebound_dir / "auditor.md").write_text(
+                "---\nname: auditor\ndescription: Rebound auditor\n---\n# Rebound auditor\nBound nested behavior.\n",
+                encoding="utf-8",
+            )
             core_toml = studio_root / "config" / "core.toml"
             core_toml.write_text(
                 core_toml.read_text(encoding="utf-8")
@@ -403,7 +421,10 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
             root, studio_root = self._make_project(td)
             kit_root = studio_root / "config" / "kits" / "zdupekit"
             kit_root.mkdir(parents=True)
-            (kit_root / "agent.md").write_text("# Duplicate\nDuplicate agent.\n", encoding="utf-8")
+            (kit_root / "agent.md").write_text(
+                "---\nname: cf-pubkit-reviewer\ndescription: Duplicate reviewer\n---\n# Duplicate\nDuplicate agent.\n",
+                encoding="utf-8",
+            )
             (kit_root / ".cf-studio-kit.toml").write_text(
                 "\n".join([
                     'manifest_version = "1.0"',
@@ -457,8 +478,14 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
             root, studio_root = self._make_project(td)
             kit_root = studio_root / "config" / "kits" / "zdupes"
             kit_root.mkdir(parents=True)
-            (kit_root / "skill.md").write_text("# Duplicate skill\n", encoding="utf-8")
-            (kit_root / "rule.md").write_text("# Duplicate rule\n", encoding="utf-8")
+            (kit_root / "skill.md").write_text(
+                "---\nname: cf-pubkit-helper\ndescription: Duplicate helper\n---\n# Duplicate skill\n",
+                encoding="utf-8",
+            )
+            (kit_root / "rule.md").write_text(
+                "---\nname: cf-pubkit-guard\ndescription: Duplicate guard\n---\n# Duplicate rule\n",
+                encoding="utf-8",
+            )
             (kit_root / ".cf-studio-kit.toml").write_text(
                 "\n".join([
                     'manifest_version = "1.0"',
@@ -525,8 +552,14 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
             root, studio_root = self._make_project(td)
             kit_root = studio_root / "config" / "kits" / "znesteddupe"
             kit_root.mkdir(parents=True)
-            (kit_root / "agent.md").write_text("# Owner\n", encoding="utf-8")
-            (kit_root / "auditor.md").write_text("# Duplicate nested auditor\n", encoding="utf-8")
+            (kit_root / "agent.md").write_text(
+                "---\nname: owner\ndescription: Owner agent\n---\n# Owner\n",
+                encoding="utf-8",
+            )
+            (kit_root / "auditor.md").write_text(
+                "---\nname: auditor\ndescription: Duplicate nested auditor\n---\n# Duplicate nested auditor\n",
+                encoding="utf-8",
+            )
             (kit_root / ".cf-studio-kit.toml").write_text(
                 "\n".join([
                     'manifest_version = "1.0"',
@@ -2378,7 +2411,7 @@ class TestKitWorkflowSharedSkills(unittest.TestCase):
         return root, cpt
 
     def test_cursor_generates_shared_kit_workflow_skills(self):
-        """Cursor must generate .agents/skills/cf-generate/SKILL.md for kit workflows."""
+        """Cursor must generate .agents/skills/cf-generate/SKILL.md for shared workflows."""
         from studio.commands.agents import _process_single_agent, _default_agents_config
 
         with TemporaryDirectory() as td:
@@ -2390,7 +2423,7 @@ class TestKitWorkflowSharedSkills(unittest.TestCase):
                 ".agents/skills/cf-generate/SKILL.md must be generated for cursor")
 
     def test_windsurf_generates_shared_kit_workflow_skills(self):
-        """Windsurf must generate .agents/skills/cf-generate/SKILL.md for kit workflows."""
+        """Windsurf must generate .agents/skills/cf-generate/SKILL.md for shared workflows."""
         from studio.commands.agents import _process_single_agent, _default_agents_config
 
         with TemporaryDirectory() as td:
@@ -2402,7 +2435,7 @@ class TestKitWorkflowSharedSkills(unittest.TestCase):
                 ".agents/skills/cf-generate/SKILL.md must be generated for windsurf")
 
     def test_copilot_generates_shared_kit_workflow_skills(self):
-        """Copilot must generate .agents/skills/cf-generate/SKILL.md for kit workflows."""
+        """Copilot must generate .agents/skills/cf-generate/SKILL.md for shared workflows."""
         from studio.commands.agents import _process_single_agent, _default_agents_config
 
         with TemporaryDirectory() as td:
@@ -2413,6 +2446,71 @@ class TestKitWorkflowSharedSkills(unittest.TestCase):
             self.assertTrue(shared_skill.exists(),
                 ".agents/skills/cf-generate/SKILL.md must be generated for copilot")
 
+    def test_workflow_skill_folder_uses_frontmatter_name(self):
+        """Workflow-skill folder naming follows parsed frontmatter name, not discovered ID."""
+        from studio.commands.agents import _generate_kit_workflow_skills
+
+        with TemporaryDirectory() as td:
+            root, cpt = self._make_project(td)
+            workflow = cpt / "config" / "kits" / "naming" / "workflows" / "surprise.md"
+            workflow.parent.mkdir(parents=True, exist_ok=True)
+            workflow.write_text(
+                "---\n"
+                "name: custom-workflow-folder\n"
+                "description: Surprise workflow\n"
+                "---\n"
+                "# Surprise\n",
+                encoding="utf-8",
+            )
+            skills_result = {"created": [], "updated": [], "unchanged": [], "deleted": [], "outputs": [], "errors": []}
+            _generate_kit_workflow_skills(
+                "cursor",
+                root,
+                cpt,
+                set(),
+                skills_result,
+                dry_run=False,
+                kit_workflows=[("surprise.md", workflow, "naming", None)],
+            )
+            self.assertTrue((root / ".agents" / "skills" / "custom-workflow-folder" / "SKILL.md").exists())
+            self.assertFalse((root / ".agents" / "skills" / "cf-naming-surprise" / "SKILL.md").exists())
+
+    def test_registered_external_kit_workflow_is_scanned_from_registered_root(self):
+        """Registered kits outside config/kits still contribute workflow skills."""
+        from studio.commands.agents import _process_single_agent, _default_agents_config
+
+        with TemporaryDirectory() as td:
+            root, cpt = self._make_project(td)
+            external_kit = root / "local-kits" / "gears"
+            workflow = external_kit / "workflows" / "review.md"
+            workflow.parent.mkdir(parents=True, exist_ok=True)
+            workflow.write_text(
+                "---\n"
+                "cf: true\n"
+                "type: workflow\n"
+                "name: cf-gears-review-skill\n"
+                "description: External review workflow\n"
+                "---\n"
+                "# Review\n",
+                encoding="utf-8",
+            )
+            (cpt / "config" / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    'project_root = ".."',
+                    "",
+                    "[kits.gears]",
+                    'format = "CFS"',
+                    'path = "../local-kits/gears"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            result = _process_single_agent("cursor", root, cpt, _default_agents_config(), None, dry_run=False)
+
+            self.assertEqual(result["status"], "PASS")
+            self.assertTrue((root / ".agents" / "skills" / "cf-gears-review-skill" / "SKILL.md").exists())
+
     def test_manifest_public_skill_generates_from_kit_model_without_workflow_scan(self):
         """Canonical kit public skills are generated from KitModel, not workflow folders."""
         from studio.commands.agents import _process_single_agent, _default_agents_config
@@ -2422,7 +2520,7 @@ class TestKitWorkflowSharedSkills(unittest.TestCase):
             kit_dir = cpt / "config" / "kits" / "pub"
             kit_dir.mkdir(parents=True)
             (kit_dir / "SKILL.md").write_text(
-                "---\nname: Public Release\ndescription: Release flow\n---\n# Release\n",
+                "---\nname: release\ndescription: Release flow\n---\n# Release\n",
                 encoding="utf-8",
             )
             workflow_dir = kit_dir / "workflows"
@@ -2470,7 +2568,7 @@ class TestKitWorkflowSharedSkills(unittest.TestCase):
             public_skill = root / ".agents" / "skills" / "cf-pub-release" / "SKILL.md"
             self.assertTrue(public_skill.exists())
             content = public_skill.read_text(encoding="utf-8")
-            self.assertIn("name: Public Release", content)
+            self.assertIn("name: cf-pub-release", content)
             self.assertIn("{cf-studio-path}/config/kits/pub/SKILL.md", content)
             self.assertFalse((root / ".agents" / "skills" / "cf-pub-legacy" / "SKILL.md").exists())
 
@@ -2536,7 +2634,7 @@ class TestKitWorkflowSharedSkills(unittest.TestCase):
             kit_dir = cpt / "config" / "kits" / "legacyv2"
             kit_dir.mkdir(parents=True)
             (kit_dir / "release.md").write_text(
-                "---\nname: Release Workflow\ndescription: Ship release\n---\n# Release\n",
+                "---\nname: release\ndescription: Ship release\n---\n# Release\n",
                 encoding="utf-8",
             )
             (kit_dir / "manifest.toml").write_text(
@@ -2570,7 +2668,7 @@ class TestKitWorkflowSharedSkills(unittest.TestCase):
             public_skill = root / ".agents" / "skills" / "cf-legacyv2-release" / "SKILL.md"
             self.assertTrue(public_skill.exists())
             content = public_skill.read_text(encoding="utf-8")
-            self.assertIn("Release Workflow", content)
+            self.assertIn("name: cf-legacyv2-release", content)
             self.assertIn("{cf-studio-path}/config/kits/legacyv2/release.md", content)
             self.assertFalse((root / ".agents" / "skills" / "release" / "SKILL.md").exists())
 

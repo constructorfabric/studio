@@ -52,7 +52,7 @@
 
 ### 1.1 Overview
 
-Extends `cfs generate-agents` with a four-layer manifest hierarchy (Core, Kit, Master Repo, Repo), enabling projects and orchestrator repos to declare skills, agents, workflows, and rules via `manifest.toml`. Adds an `includes` directive for subdirectory manifests (enabling component packages within a repo), `[[skills]]` generation, and an extended agent schema with fields for tool allowlists, model passthrough, color, and memory. Extends the existing `manifest.toml` schema to v2.0 with component sections (`[[agents]]`, `[[skills]]`, `[[workflows]]`, `[[rules]]`). Hook support (`[[hooks]]`) and permissions (`[[permissions]]`) are reserved in the schema but deferred to follow-up features.
+Extends `cfs generate-agents` with a four-layer manifest hierarchy (Core, Kit, Master Repo, Repo), enabling projects and orchestrator repos to declare skills, agents, workflows, and rules via `manifest.toml`. Adds an `includes` directive for subdirectory manifests (enabling component packages within a repo), `[[skills]]` generation, and an extended agent schema with fields for tool allowlists, model passthrough, color, and memory. Extends the existing `manifest.toml` schema to v2.0 with component sections (`[[agents]]`, `[[skills]]`, `[[workflows]]`, `[[rules]]`). OpenAI/Codex remains limited to shared `.agents/skills/` entry points in this MVP; manifest `[[agents]]` targeting `openai` are reported as skipped rather than translated into a separate agent-output surface. Hook support (`[[hooks]]`) and permissions (`[[permissions]]`) are reserved in the schema but deferred to follow-up features.
 
 The template composition model for MVP is section appending — inner layers can append content to generated templates. Full block-based template composition (replace, prepend, delete, insert operations) is deferred to a follow-up feature.
 
@@ -79,7 +79,7 @@ The first concrete consumer is the standctl integration into cyber-repo, which d
 - Section appending for template composition
 - Provenance traceability (`--show-layers`)
 - Component auto-discovery (`--discover`)
-- Cross-agent translation including OpenAI Codex
+- Cross-agent translation across the supported manifest-agent targets in this MVP; OpenAI/Codex remains on shared `.agents/skills/` entry points and `[[agents]]` targeting `openai` are skipped
 
 **Follow-up: Organization and Project Layers**:
 - Add Organization layer (git host root) and Project layer (parent of repo dir)
@@ -110,8 +110,8 @@ The first concrete consumer is the standctl integration into cyber-repo, which d
 
 | Actor | Role in Feature |
 |-------|-----------------|
-| Developer | Runs `cfs generate-agents` to generate agent-native entry points from multi-layer manifest hierarchy |
-| AI Assistant | Consumes generated entry points (skills, agents, workflows, rules) |
+| `cpt-studio-actor-user` | Runs `cfs generate-agents` to generate agent-native entry points from multi-layer manifest hierarchy |
+| `cpt-studio-actor-ai-agent` | Consumes generated entry points (skills, agents, workflows, rules) |
 
 ### 1.5 References
 
@@ -127,11 +127,11 @@ The first concrete consumer is the standctl integration into cyber-repo, which d
 
 - [ ] `p1` - **ID**: `cpt-studio-flow-project-extensibility-generate-with-multi-layer`
 
-**Actor**: Developer
+**Actor**: `cpt-studio-actor-user`
 
 **Success Scenarios**:
-- Developer runs `cfs generate-agents --agent claude` inside a repo under a master repo hierarchy and all layers are discovered, included manifests resolved, merged, and translated into agent-native entry points
-- Developer runs `cfs generate-agents --agent claude` in a standalone repo (no master repo) and only Core, Kit, and Repo layers apply — identical to current behavior
+- `cpt-studio-actor-user` runs `cfs generate-agents --agent claude` inside a repo under a master repo hierarchy and all layers are discovered, included manifests resolved, merged, and translated into agent-native entry points
+- `cpt-studio-actor-user` runs `cfs generate-agents --agent claude` in a standalone repo (no master repo) and only Core, Kit, and Repo layers apply — identical to current behavior
 
 **Error Scenarios**:
 - Manifest parse error at any layer — error reported with path and parse details, generation aborted
@@ -140,13 +140,13 @@ The first concrete consumer is the standctl integration into cyber-repo, which d
 - `tools` and `disallowed_tools` both specified on same agent — error reported, agent skipped
 
 **Steps**:
-1. [ ] - `p1` - Developer invokes `cfs generate-agents --agent <agent>` inside a repo - `inst-invoke-generate`
+1. [ ] - `p1` - `cpt-studio-actor-user` invokes `cfs generate-agents --agent <agent>` inside a repo - `inst-invoke-generate`
 2. [ ] - `p1` - Determine current repo root via existing `find_project_root()` - `inst-find-repo-root`
 3. [ ] - `p1` - Walk up filesystem to discover `manifest.toml` at each layer boundary (repo, master repo) - `inst-walk-up`
-4. [ ] - `p1` - Load kit `manifest.toml` files from `core.toml` kit registrations - `inst-load-kit-manifests`
+4. [ ] - `p1` - Load the Kit layer only from installed kit registrations and their public component metadata defined by Kit Management; unregistered kit files and arbitrary manifests do not contribute to this layer - `inst-load-kit-manifests`
 5. [ ] - `p1` - **FOR EACH** discovered manifest: resolve `includes` array, loading subdirectory manifests at the same layer (Process: Resolve Manifest Includes) - `inst-resolve-includes`
 6. [ ] - `p1` - Build base config from `_default_agents_config()` (core layer) - `inst-build-base-config`
-7. [ ] - `p1` - **FOR EACH** layer in resolution order (Core, Kit, Master Repo, Repo): collect components, inner layer wins on ID collision - `inst-merge-layers`
+7. [ ] - `p1` - Merge the Core base config from `_default_agents_config()` with the discovered overlay layers in precedence order (Kit, Master Repo, Repo); Core is the implicit baseline, not a manifest returned by walk-up discovery - `inst-merge-layers`
 8. [ ] - `p1` - **FOR EACH** merged agent: generate agent files in agent-native format (Process: Generate Agents) - `inst-generate-agents`
 9. [ ] - `p1` - **FOR EACH** merged skill: generate skill files in agent-native format (Process: Generate Skills) - `inst-generate-skills`
 10. [ ] - `p1` - **FOR EACH** component with `append` content: apply section appending to generated templates (Process: Section Appending) - `inst-apply-appends`
@@ -159,16 +159,16 @@ The first concrete consumer is the standctl integration into cyber-repo, which d
 
 - [ ] `p2` - **ID**: `cpt-studio-flow-project-extensibility-discover-register`
 
-**Actor**: Developer
+**Actor**: `cpt-studio-actor-user`
 
 **Success Scenarios**:
-- Developer runs `cfs generate-agents --agent claude --discover` and conventional directories are scanned, manifest populated, then generation proceeds
+- `cpt-studio-actor-user` runs `cfs generate-agents --agent claude --discover` and conventional directories are scanned, manifest populated, then generation proceeds
 
 **Error Scenarios**:
 - No components found in conventional directories — user informed, discovery skipped, generation proceeds without discovered components
 
 **Steps**:
-1. [ ] - `p2` - Developer invokes `cfs generate-agents --agent <agent> --discover` - `inst-invoke-discover`
+1. [ ] - `p2` - `cpt-studio-actor-user` invokes `cfs generate-agents --agent <agent> --discover` - `inst-invoke-discover`
 2. [ ] - `p2` - Scan conventional directories for components (`.claude/agents/*.md` for agents, `.claude/skills/*/SKILL.md` for skills, `.claude/commands/*.md` for workflows) — hook discovery deferred - `inst-scan-directories`
 3. [ ] - `p2` - **FOR EACH** discovered component: generate manifest entry - `inst-generate-entries`
 4. [ ] - `p2` - Write component sections into the appropriate `manifest.toml` for the current layer - `inst-write-manifest`
@@ -178,17 +178,17 @@ The first concrete consumer is the standctl integration into cyber-repo, which d
 
 - [ ] `p2` - **ID**: `cpt-studio-flow-project-extensibility-inspect-provenance`
 
-**Actor**: Developer
+**Actor**: `cpt-studio-actor-user`
 
 **Success Scenarios**:
-- Developer runs `cfs generate-agents --show-layers` and sees a provenance table showing all components and their layer origins
-- Developer runs `cfs generate-agents --show-layers --json` and receives machine-readable provenance
+- `cpt-studio-actor-user` runs `cfs generate-agents --show-layers` and sees a provenance table showing all components and their layer origins
+- `cpt-studio-actor-user` runs `cfs generate-agents --show-layers --json` and receives machine-readable provenance
 
 **Error Scenarios**:
 - No manifests found beyond core — report shows only Core and Kit layers
 
 **Steps**:
-1. [ ] - `p2` - Developer invokes `cfs generate-agents --show-layers [--json]` - `inst-invoke-show-layers`
+1. [ ] - `p2` - `cpt-studio-actor-user` invokes `cfs generate-agents --show-layers [--json]` - `inst-invoke-show-layers`
 2. [ ] - `p2` - Execute walk-up discovery (same as Generate flow steps 2-7) - `inst-execute-discovery`
 3. [ ] - `p2` - Build provenance table: component ID, winning layer (scope + path), overridden layers (scope + path each) - `inst-build-table`
 4. [ ] - `p2` - **RETURN** provenance report as JSON (`--json`) or human-readable table - `inst-return-provenance`
@@ -210,8 +210,8 @@ The first concrete consumer is the standctl integration into cyber-repo, which d
 4. [ ] - `p1` - At each directory, check for `manifest.toml` - `inst-check-manifest`
 5. [ ] - `p1` - Detect master repo boundary: presence of `CLAUDE.md` + `skills/` at same level, or presence of `git/` subdirectory - `inst-detect-master`
 6. [ ] - `p1` - **IF** master repo detected, load its `manifest.toml` and stop walk-up - `inst-stop-at-master`
-7. [ ] - `p1` - **IF** no master repo found, **RETURN** only kit + repo layers (backward compatible) - `inst-fallback-layers`
-8. [ ] - `p1` - **RETURN** layers in resolution order: [kit, master, repo] (missing layers omitted) - `inst-return-layers`
+7. [ ] - `p1` - **IF** no master repo found, **RETURN** only the discovered overlay layers kit + repo (backward compatible); Core still applies separately as the base config - `inst-fallback-layers`
+8. [ ] - `p1` - **RETURN** discovered overlay layers in resolution order: [kit, master, repo] (missing layers omitted); downstream merge/provenance logic prepends the implicit Core baseline separately - `inst-return-layers`
 
 ### Resolve Manifest Includes
 
@@ -244,11 +244,19 @@ The first concrete consumer is the standctl integration into cyber-repo, which d
 
 **Steps**:
 1. [ ] - `p1` - Initialize empty merged dict for each component type (agents, skills, workflows, rules) — hooks and permissions deferred - `inst-init-merged`
-2. [ ] - `p1` - **FOR EACH** layer in resolution order (Core, Kit, Master Repo, Repo) - `inst-iterate-layers`
+2. [ ] - `p1` - Materialize the Kit layer from installed `KitModel.public_components` only; installed-kit public components enter the merge as the Kit layer after Core and before Master Repo/Repo manifests, per Kit Management authority - `inst-materialize-kit-layer`
+3. [ ] - `p1` - **FOR EACH** layer in resolution order (Core, Kit, Master Repo, Repo) - `inst-iterate-layers`
    1. [ ] - `p1` - **FOR EACH** component in layer's manifest (after includes resolved) - `inst-iterate-components`
       1. [ ] - `p1` - Overwrite `merged[type][id]` with this component (last-writer-wins) - `inst-overwrite`
       2. [ ] - `p1` - Record provenance: layer scope, manifest path, whether it overwrote a previous definition - `inst-record-provenance`
-3. [ ] - `p1` - **RETURN** merged components with provenance metadata - `inst-return-merged`
+4. [ ] - `p1` - **RETURN** merged components with provenance metadata - `inst-return-merged`
+
+**Ownership and precedence contract**:
+
+- Kit Management is the canonical source for which installed-kit public components exist and are eligible to feed `generate-agents`; this feature does not rescan kit directories or infer kit-layer components from arbitrary manifests.
+- Installed-kit public components enter this feature only through the Kit layer, sourced from registered installed kits and their public component metadata.
+- Collision resolution across layers is deterministic and layer-based: Repo overrides Master Repo, Master Repo overrides Kit, and Kit overrides Core.
+- Same-layer kit public-name conflicts are prevented upstream by Kit Management; this feature assumes the Kit layer is already normalized before merge.
 
 ### Section Appending
 
@@ -277,13 +285,17 @@ The first concrete consumer is the standctl integration into cyber-repo, which d
 **Steps**:
 1. [ ] - `p1` - **FOR EACH** skill in merged components where target agent is in `agents` list - `inst-iterate-skills`
    1. [ ] - `p1` - Read `prompt_file` (or `source`) content from the skill's resolved path - `inst-read-skill-source`
-   2. [ ] - `p1` - Apply agent-specific frontmatter wrapper (Process: Translate Extended Agent Schema) - `inst-apply-skill-frontmatter`
-   3. [ ] - `p1` - Determine output path using agent-native conventions (see Cross-Agent Translation) - `inst-determine-skill-path`
-   4. [ ] - `p1` - Write skill file to output path - `inst-write-skill`
+   2. [ ] - `p1` - Parse skill frontmatter, including `name`, before output-path selection and file assembly - `inst-parse-skill-frontmatter`
+   3. [ ] - `p1` - Apply agent-specific frontmatter wrapper (Process: Translate Extended Agent Schema) - `inst-apply-skill-frontmatter`
+   4. [ ] - `p1` - **IF** generating workflow-skill entry points in `_generate_kit_workflow_skills(...)`, determine the skill folder path from the parsed frontmatter `name` rather than the manifest/discovered skill ID - `inst-determine-workflow-skill-path`
+   5. [ ] - `p1` - Otherwise determine output path using existing agent-native conventions (see Cross-Agent Translation) - `inst-determine-skill-path`
+   6. [ ] - `p1` - Write skill file to output path - `inst-write-skill`
 2. [ ] - `p1` - Track created/updated/unchanged in result dict - `inst-track-skill-results`
 3. [ ] - `p1` - **RETURN** list of generated skill files with status - `inst-return-skills`
 
 > **Note**: Manifest `[[skills]]` coexist with kit-composed skills (the existing `@cpt:skill` section mechanism). They use different code paths and different output directories. Manifest skills don't replace kit-composed skills.
+
+> **Non-goal**: This feature change is limited to workflow-skill folder naming in `_generate_kit_workflow_skills(...)`. It does not normalize naming for all `[[skills]]` entries, all public component outputs, or other generated paths.
 
 ### Generate Agents
 
@@ -339,9 +351,9 @@ The extended agent schema uses semantic fields that translate differently per to
 
 | Semantic Field | Claude Code | Cursor | GitHub Copilot | OpenAI Codex |
 |----------------|-------------|--------|----------------|--------------|
-| `mode: readonly` | `disallowedTools: Write, Edit` | `readonly: true` | `tools: ["read","search"]` | `sandbox_mode = "read-only"` |
-| `mode: readwrite` | `tools: Bash,Read,Write,Edit,Glob,Grep` | `tools: grep,view,edit,bash` | `tools: ["*"]` | `sandbox_mode = "workspace-write"` |
-| `model` | direct passthrough to `model:` | `model:` field | n/a | `model` field (developer maps to tool-specific names) |
+| `mode: readonly` | `disallowedTools: Write, Edit` | `readonly: true` | `tools: ["read","search"]` | n/a — no dedicated OpenAI agent output |
+| `mode: readwrite` | `tools: Bash,Read,Write,Edit,Glob,Grep` | `tools: grep,view,edit,bash` | `tools: ["*"]` | n/a — no dedicated OpenAI agent output |
+| `model` | direct passthrough to `model:` | `model:` field | n/a | n/a — no dedicated OpenAI agent output |
 | `isolation: true` | `isolation: worktree` | n/a | n/a | n/a (always sandboxed) |
 | `tools` | `tools:` list in frontmatter; skip generation if any declared tool is an unsupported `mcp__*` capability | limited tool strings | `tools` JSON array | n/a (MCP server level — noted in developer_instructions) |
 | `disallowed_tools` | `disallowedTools:` list; skip generation if any declared denylist entry is an unsupported `mcp__*` capability | n/a (ignored) | n/a (ignored) | n/a (ignored) |
@@ -350,10 +362,10 @@ The extended agent schema uses semantic fields that translate differently per to
 
 **Steps**:
 1. [ ] - `p1` - Validate mutual exclusivity of `tools` and `disallowed_tools` — error if both present - `inst-validate-tools`
-2. [ ] - `p1` - **IF** target is `claude`: build YAML frontmatter with all supported fields (tools, disallowedTools, model, isolation, color); if unsupported MCP tool capabilities would be omitted, skip with an explicit reason instead of narrowing access silently; inject memory_dir reference in prompt body if present - `inst-translate-claude`
+2. [ ] - `p1` - **IF** target is `claude`: build YAML frontmatter with all supported fields (tools, disallowedTools, model, isolation, color); if any declared `tools` or `disallowed_tools` entry is an unsupported MCP capability that Claude cannot express, skip generation with an explicit reason instead of emitting narrowed frontmatter; inject memory_dir reference in prompt body if present - `inst-translate-claude`
 3. [ ] - `p1` - **IF** target is `cursor`: build YAML frontmatter with mode/model; tools field has limited mapping (grep, view, edit, bash) — custom MCP tools not supported - `inst-translate-cursor`
 4. [ ] - `p1` - **IF** target is `copilot`: build YAML frontmatter with tools array; no model/isolation/color support - `inst-translate-copilot`
-5. [ ] - `p1` - **IF** target is `openai` (Codex): build TOML config with `sandbox_mode` (from mode), `model`, `developer_instructions`; per-agent tool restrictions are not supported (managed at MCP server level) - `inst-translate-codex`
+5. [ ] - `p1` - **IF** target is `openai` (Codex): skip manifest-agent generation with an explicit reason because the upstream design supports shared `.agents/skills/` outputs only and defines no dedicated OpenAI agent file contract - `inst-translate-codex`
 6. [ ] - `p1` - **IF** target is `windsurf`: skip agent generation (no subagent support) with skip reason - `inst-translate-windsurf`
 7. [ ] - `p1` - **RETURN** translated config dict - `inst-return-translated`
 
@@ -483,7 +495,7 @@ The system **MUST** support an `append` field on component definitions that appe
 
 - [ ] `p1` - **ID**: `cpt-studio-dod-project-extensibility-skills-generation`
 
-The system **MUST** generate skill files from `[[skills]]` manifest entries into agent-native output paths. Skills are generated for each target agent specified in the skill's `agents` list. Manifest skills coexist with kit-composed skills — they use different code paths and output directories. Generated skill files receive agent-specific frontmatter (e.g., YAML frontmatter with `description:` for Claude Code, `.mdc` format for Cursor).
+The system **MUST** generate skill files from `[[skills]]` manifest entries into agent-native output paths. Skills are generated for each target agent specified in the skill's `agents` list. For workflow-skill entry points generated by `_generate_kit_workflow_skills(...)`, the output folder name **MUST** come from the parsed skill frontmatter `name`, not from the skill ID sourced from `core.toml` or discovered workflow IDs. This path rule applies only to workflow-skill folder naming. Manifest skills coexist with kit-composed skills — they use different code paths and output directories. Generated skill files receive agent-specific frontmatter (e.g., YAML frontmatter with `description:` for Claude Code, `.mdc` format for Cursor).
 
 **Implements**:
 - `cpt-studio-algo-project-extensibility-generate-skills`
@@ -496,6 +508,8 @@ The system **MUST** generate skill files from `[[skills]]` manifest entries into
 
 The system **MUST** generate agent files from `[[agents]]` manifest entries into agent-native output paths. For each agent entry, `translate_agent_schema()` is called to produce tool-native frontmatter; if the result has `skip = True` (e.g., Windsurf has no subagent support, or Claude cannot represent declared MCP tool capabilities without omission), the agent is skipped with reason logged. Stale output cleanup is allowed only for byte-identical generator output, not locally customized generated files. The assembled file contains a YAML frontmatter block (`name:`, `description:`, plus all translated fields) followed by the body prefix and prompt content. Manifest agents use separate output paths from kit-composed agents.
 
+OpenAI/Codex is not part of this manifest-agent output surface. Per the upstream design, OpenAI uses shared `.agents/skills/` outputs only, so `[[agents]]` entries targeting `openai` are skipped with reason logged rather than generating a separate OpenAI agent file contract here.
+
 **Agent Output Paths**:
 
 | Target | Output Path |
@@ -503,7 +517,7 @@ The system **MUST** generate agent files from `[[agents]]` manifest entries into
 | `claude` | `.claude/agents/{id}.md` |
 | `cursor` | `.cursor/agents/{id}.mdc` |
 | `copilot` | `.github/agents/{id}.md` |
-| `openai` | `.agents/{id}/agent.md` |
+| `openai` | skipped — shared `.agents/skills/` only |
 | `windsurf` | skipped (no subagent support) |
 
 **Implements**:
@@ -516,17 +530,17 @@ The system **MUST** generate agent files from `[[agents]]` manifest entries into
 
 - [ ] `p1` - **ID**: `cpt-studio-dod-project-extensibility-extended-agent-schema`
 
-The system **MUST** translate extended agent schema fields to agent-native frontmatter for all five supported tools (Claude Code, Cursor, GitHub Copilot, OpenAI Codex, Windsurf). The extended fields are:
+The system **MUST** translate extended agent schema fields to agent-native frontmatter for the supported manifest-agent outputs (Claude Code, Cursor, GitHub Copilot) and return explicit skip outcomes for unsupported manifest-agent targets (OpenAI Codex, Windsurf). The extended fields are:
 
-- `tools` (string[], optional) — explicit tool allowlist; Claude → `tools:` unless any entry is an unsupported `mcp__*` capability, in which case generation skips with an explicit reason; Copilot → `tools`, Cursor/Codex → limited or n/a
+- `tools` (string[], optional) — explicit tool allowlist; Claude → `tools:` unless any entry is an unsupported `mcp__*` capability, in which case generation skips with an explicit reason; Copilot → `tools`, Cursor/OpenAI → limited or n/a
 - `disallowed_tools` (string[], optional) — explicit tool denylist; Claude → `disallowedTools:` unless any entry is an unsupported `mcp__*` capability, in which case generation skips with an explicit reason; others → n/a
 - `color` (string, optional) — Claude → `color:` frontmatter, others → ignored
 - `memory_dir` (string, optional) — Claude → injected in prompt body as persistent memory path, others → ignored
-- `model` (string, passthrough) — any string value; Claude → direct `model:`, Cursor → `model:`, Codex → `model` field, Copilot → n/a
+- `model` (string, passthrough) — any string value; Claude → direct `model:`, Cursor → `model:`, Copilot → n/a, OpenAI manifest-agent output → n/a because dedicated agent generation is unsupported
 
 The system **MUST** validate that `tools` and `disallowed_tools` are mutually exclusive and error if both are specified.
 
-For Codex specifically: `mode: readonly` → `sandbox_mode = "read-only"`, `mode: readwrite` → `sandbox_mode = "workspace-write"`. Per-agent tool restrictions are not supported in Codex (managed at MCP server level); this limitation should be noted in the generation report.
+For OpenAI/Codex specifically: this feature does not generate dedicated agent files. Shared `.agents/skills/` outputs remain the only OpenAI surface, and any `[[agents]]` entry targeting `openai` must be reported as skipped rather than translated into a conflicting per-agent file contract.
 
 **Implements**:
 - `cpt-studio-algo-project-extensibility-translate-agent-schema`
@@ -598,12 +612,15 @@ The system **MUST** produce identical output for standalone repos (no master rep
 - [ ] Circular includes are detected and produce a clear error with the include chain
 - [ ] Component ID collision between includer and includee produces an error (not silent override)
 - [ ] `[[skills]]` entries in a manifest produce agent-native skill files (e.g., `.claude/skills/{id}/SKILL.md`)
+- [ ] Workflow-skill entry points generated by `_generate_kit_workflow_skills(...)` use the parsed skill frontmatter `name` for the containing folder path, even when the discovered workflow skill ID differs
 - [ ] `[[agents]]` entries in a manifest produce agent-native agent files (e.g., `.claude/agents/{id}.md` for Claude Code)
-- [ ] An agent definition with `tools = ["mcp__standctl__*", "Bash"]` produces correct `tools:` frontmatter for Claude Code
+- [ ] An agent definition with `tools = ["mcp__standctl__*", "Bash"]` is skipped for Claude Code with an explicit unsupported-MCP reason; no narrowed `tools:` frontmatter is emitted
 - [ ] An agent definition with `tools` and `disallowed_tools` both set produces a validation error
 - [ ] An agent with `color = "pink"` and `memory_dir = ".claude/agent-memory/x"` produces correct Claude frontmatter and prompt body
-- [ ] An agent with `model = "sonnet"` translates to `model: sonnet` for Claude and `sandbox_mode = "workspace-write"` + `model = "..."` for Codex
+- [ ] An agent with `model = "sonnet"` translates to `model: sonnet` for Claude
+- [ ] An agent entry targeting `openai` is reported as skipped because OpenAI generation remains shared `.agents/skills/` only
 - [ ] A skill ID defined at both master and repo layers results in the repo-layer definition winning
+- [ ] An installed-kit public component enters the merge only through the Kit layer sourced from registered kit metadata, and a colliding master/repo manifest definition overrides it by normal layer precedence
 - [ ] Section appends from master and repo layers both appear in the generated output, stacked in order
 - [ ] `cfs generate-agents --show-layers` displays a table showing each component's winning layer, including components from included manifests
 - [ ] Running `cfs generate-agents` twice with same inputs produces identical output (diff is empty)
@@ -613,7 +630,7 @@ The system **MUST** produce identical output for standalone repos (no master rep
 
 **Non-applicable checklist domains**:
 - **PERF**: Not applicable — generation runs once on developer command, not in hot path. Walk-up discovery touches fewer than 10 directories.
-- **SEC**: Not applicable — local filesystem tool, no network, no auth, no user data. Manifest content is developer-authored.
+- **SEC**: Applicable and covered by the feature's tool allowlist/denylist translation, skipped-generation behavior for unsupported MCP capabilities, and manifest/path handling rules; no broader auth or secret-management system is introduced beyond those documented controls.
 - **REL**: Not applicable — CLI tool with no uptime requirements. Errors reported via exit codes.
 - **DATA**: Not applicable — no persistent data store. Manifests are user-authored files.
 - **INT**: Not applicable — no external API calls. All filesystem-based.

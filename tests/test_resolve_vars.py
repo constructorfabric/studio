@@ -289,6 +289,77 @@ class TestCollectAllVariables(unittest.TestCase):
             })
             self.assertEqual(len(result["kits"]), 0)
 
+    def test_register_mode_kit_uses_manifest_resources(self):
+        """Register-mode kits resolve variables from the manifest even without core resources."""
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            config = adapter / "config"
+            registered_kit = root / "kits" / "gears"
+            (registered_kit / "artifacts" / "ADR").mkdir(parents=True)
+            (registered_kit / "artifacts" / "ADR" / "template.md").write_text("# ADR\n", encoding="utf-8")
+            (registered_kit / "scripts").mkdir()
+            (registered_kit / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "gears"',
+                    'version = "1.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "adr_template"',
+                    'kind = "template"',
+                    'source = "artifacts/ADR/template.md"',
+                    'install_path = "artifacts/ADR/template.md"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "scripts"',
+                    'kind = "directory"',
+                    'type = "directory"',
+                    'source = "scripts"',
+                    'install_path = "scripts"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            _write_core_toml(config, {
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {
+                    "gears": {
+                        "format": "CFS",
+                        "install_mode": "register",
+                        "path": "../kits/gears",
+                        "version": "1.0",
+                    },
+                },
+            })
+
+            result = _collect_all_variables(root, adapter, {
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {
+                    "gears": {
+                        "format": "CFS",
+                        "install_mode": "register",
+                        "path": "../kits/gears",
+                        "version": "1.0",
+                    },
+                },
+            })
+
+            self.assertIn("gears", result["kits"])
+            self.assertTrue(result["kits"]["gears"]["adr_template"].endswith(
+                "kits/gears/artifacts/ADR/template.md"
+            ))
+            self.assertTrue(result["kits"]["gears"]["scripts"].endswith(
+                "kits/gears/scripts"
+            ))
+            self.assertEqual(
+                result["variables"]["adr_template"],
+                result["kits"]["gears"]["adr_template"],
+            )
+
     def test_multiple_kits_merged(self):
         """Resources from multiple kits merged into flat dict."""
         with TemporaryDirectory() as td:
@@ -309,6 +380,37 @@ class TestCollectAllVariables(unittest.TestCase):
             self.assertIn("var_b", result["variables"])
             self.assertIn("kit_a", result["kits"])
             self.assertIn("kit_b", result["kits"])
+
+    def test_structured_output_counts_use_per_kit_totals_not_merged_flat(self):
+        """Structured output reports exact system/kit counts even when flat merge deduplicates."""
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            config = adapter / "config"
+            _write_core_toml(config, {
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {
+                    "kit_a": {
+                        "resources": {"shared_var": {"path": "same/path"}},
+                    },
+                    "kit_b": {
+                        "resources": {"shared_var": {"path": "same/path"}},
+                    },
+                },
+            })
+
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = cmd_resolve_vars(["--root", str(root)])
+            self.assertEqual(rc, 0)
+            out = json.loads(buf.getvalue())
+            counts = out["counts"]
+            self.assertEqual(counts["system"], 5)
+            self.assertEqual(counts["kits"]["kit_a"], 1)
+            self.assertEqual(counts["kits"]["kit_b"], 1)
+            self.assertEqual(counts["derived"], 3)
+            self.assertEqual(counts["total_resolved"], 10)
 
     def test_string_binding_resolved(self):
         """Resource binding as plain string (not dict) is resolved."""
@@ -476,6 +578,55 @@ class TestCmdResolveVars(unittest.TestCase):
             self.assertIn("cf-studio-path", out["variables"])
             self.assertIn("adr_rules", out["variables"])
 
+    def test_cli_register_mode_kit_resolves_manifest_variables(self):
+        """resolve-vars returns manifest-backed variables for register-mode kits."""
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            config = adapter / "config"
+            registered_kit = root / "kits" / "gears"
+            (registered_kit / "artifacts" / "FEATURE").mkdir(parents=True)
+            (registered_kit / "artifacts" / "FEATURE" / "template.md").write_text("# Feature\n", encoding="utf-8")
+            (registered_kit / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "gears"',
+                    'version = "1.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "feature_template"',
+                    'kind = "template"',
+                    'source = "artifacts/FEATURE/template.md"',
+                    'install_path = "artifacts/FEATURE/template.md"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            _write_core_toml(config, {
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {
+                    "gears": {
+                        "format": "CFS",
+                        "install_mode": "register",
+                        "path": "../kits/gears",
+                        "version": "1.0",
+                    },
+                },
+            })
+
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = cmd_resolve_vars(["--root", str(root)])
+            self.assertEqual(rc, 0)
+            out = json.loads(buf.getvalue())
+            self.assertEqual(out["status"], "OK")
+            self.assertIn("feature_template", out["variables"])
+            self.assertTrue(out["variables"]["feature_template"].endswith(
+                "kits/gears/artifacts/FEATURE/template.md"
+            ))
+
     def test_flat_with_kit_filter(self):
         """--flat combined with --kit returns only filtered flat dict."""
         with TemporaryDirectory() as td:
@@ -584,11 +735,11 @@ class TestInfoVariablesIntegration(unittest.TestCase):
                     rc = cmd_adapter_info(["--root", str(root)])
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
-                variables = out.get("variables", {})
-                self.assertIn("cf-studio-path", variables)
-                self.assertIn("project_root", variables)
-                self.assertIn("adr_template", variables)
-                self.assertIn("scripts", variables)
+                self.assertNotIn("variables", out)
+                by_kit = out.get("variables_by_kit", {})
+                self.assertIn("sdlc", by_kit)
+                self.assertIn("adr_template", by_kit["sdlc"])
+                self.assertIn("scripts", by_kit["sdlc"])
             finally:
                 os.chdir(cwd)
 
@@ -698,7 +849,7 @@ class TestInfoVariablesIntegration(unittest.TestCase):
                 os.chdir(cwd)
 
     def test_info_variables_empty_when_no_kits(self):
-        """cpt info variables has only system vars when no kit resources."""
+        """cpt info does not emit merged variables when no kits are present."""
         from studio.commands.adapter_info import cmd_adapter_info
 
         with TemporaryDirectory() as td:
@@ -719,11 +870,8 @@ class TestInfoVariablesIntegration(unittest.TestCase):
                     rc = cmd_adapter_info(["--root", str(root)])
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
-                variables = out.get("variables", {})
-                self.assertIn("cf-studio-path", variables)
-                self.assertIn("project_root", variables)
-                # System variables: cf-studio-path, cf-path, studio_path, studio-path, project_root
-                self.assertEqual(len(variables), 5)
+                self.assertNotIn("variables", out)
+                self.assertEqual(out.get("variables_by_kit", {}), {})
             finally:
                 os.chdir(cwd)
 

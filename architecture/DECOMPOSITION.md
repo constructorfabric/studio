@@ -113,6 +113,7 @@ Studio DESIGN is decomposed into features organized around architectural layers 
 
 ### 2.2 [Kit Management](features/kit-management.md) ⏳ HIGH
 
+- [ ] `p1` - **ID**: `cpt-studio-feature-kit-management`
 - [ ] `p1` - **ID**: `cpt-studio-feature-blueprint-system`
 - [ ] `p1` - **ID**: `cpt-studio-feature-generic-git-kit-installer`
 
@@ -122,7 +123,7 @@ Studio DESIGN is decomposed into features organized around architectural layers 
 
 - **Scope**:
   - Kit Manager: install kits (copy files from source into `{cf-studio-path}/config/kits/{slug}/`), register in `core.toml`
-  - Manifest-driven installation: if kit contains `manifest.toml`, validate against `kit-manifest.schema.json`, read declared resources, prompt user for `user_modifiable` resource paths (offering defaults), copy resources to resolved paths, resolve `{identifier}` template variables in kit files, register all resource bindings in `core.toml` under `[kits.{slug}.resources]`. Kit root directory itself is relocatable when manifest permits. Falls back to legacy copy behavior when no manifest present
+  - Manifest-driven installation: if kit contains `manifest.toml`, validate against `kit-manifest.schema.json`, read declared resources, prompt user for `user_modifiable` resource paths (offering defaults), copy resources to resolved paths, resolve `{identifier}` template variables in kit files, and record effective install state in `core.toml`. Non-register installs persist `[kits.{slug}.resources]`; register installs persist only the authoritative kit root and re-derive resources from the canonical manifest. Kit root directory itself is relocatable when manifest permits. Falls back to legacy copy behavior when no manifest present
   - Legacy install migration: when updating a kit that was installed without a manifest and the new version introduces one, auto-populate all resource bindings from existing kit root + manifest `default_path` values without requiring re-installation
   - Update model: force mode (full overwrite) and interactive mode (file-level diff — compare each file in new version against user's installed copy, present unified diffs with accept/decline/accept-all/decline-all/modify prompts). For manifest-driven kits, updates use registered resource paths, detect new resources (prompt for path), warn about removed resources
   - Resource Diff Engine: interactive conflict resolution for kit file updates (`accept-file`, `reject-file`, `accept-all`, `reject-all`, `modify` with git-style conflict markers)
@@ -194,7 +195,7 @@ Studio DESIGN is decomposed into features organized around architectural layers 
 
 - **Scope**:
   - Traceability Engine: scan artifacts for ID definitions and references, scan code for `@cpt-*` tags, resolve cross-references, query commands (list-ids, list-id-kinds, where-defined, where-used, get-content), ID versioning (`-vN`)
-  - Validator: template structure compliance, ID format validation, priority markers, placeholder detection, cross-reference validation (covered_by, checked consistency), constraint enforcement from `constraints.toml`. For manifest-driven kits, resolves paths to constraints, templates, and examples from resource bindings in `core.toml` instead of assuming default kit directory structure
+  - Validator: template structure compliance, ID format validation, priority markers, placeholder detection, cross-reference validation (covered_by, checked consistency), constraint enforcement from `constraints.toml`. For manifest-driven kits, resolves paths to constraints, templates, and examples from effective bindings or the registered canonical manifest instead of assuming default kit directory structure
   - Cross-artifact validation: load all registered artifacts, compare definitions vs references per constraints rules
   - CDSL: parse instruction markers for implementation tracking
   - Single-pass scanning for ≤3s performance
@@ -717,7 +718,7 @@ Studio DESIGN is decomposed into features organized around architectural layers 
   - Four-layer walk-up discovery: Core → Kit → Master Repo → Repo (Organization and Project layers deferred)
   - Inner-scope-wins merge semantics across all layers
   - Extended agent schema: `tools`, `disallowed_tools`, `color`, `memory_dir`, model passthrough
-  - Cross-agent translation including OpenAI Codex (`sandbox_mode`, `developer_instructions`)
+  - Cross-agent translation across the supported manifest-agent targets in this phase; OpenAI/Codex remains on shared `.agents/skills/` entry points and `[[agents]]` targeting `openai` are skipped rather than translated
   - `[[skills]]` generation code path (coexists with kit-composed skills)
   - Section appending for template composition (full block-based composition deferred)
   - Layer variable resolution: `{base_dir}`, `{master_repo}`, `{repo}`

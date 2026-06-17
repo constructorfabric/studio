@@ -498,9 +498,6 @@ def _cache_artifact(
 # @cpt-begin:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-offline-last-known
 def _metadata_value(metadata: Dict[str, Any], key: str) -> str:
     provenance = metadata.get("source_provenance", {})
-    content_identity = metadata.get("content_identity", {})
-    if key == "commit_sha" and isinstance(content_identity, dict):
-        return str(content_identity.get("commit_sha") or metadata.get("commit_sha") or "")
     if isinstance(provenance, dict):
         return str(provenance.get(key) or metadata.get(key) or "")
     return str(metadata.get(key) or "")
@@ -575,12 +572,6 @@ def _materialize_offline_last_known(
         "cache_requested_ref_hash": _ref_hash(effective_requested_ref),
         "cache_subdir_hash": _subdir_hash(parsed.selected_subdirectory),
         "cache_kit_hash": _kit_hash(parsed.kit_identity),
-        "content_identity": {
-            "vcs": "git",
-            "commit_sha": commit_sha,
-            "subdirectory": parsed.selected_subdirectory,
-            "identity": identity,
-        },
     }
     return GitKitResolution(kit_source_dir=kit_source_dir, tmp_dir=tmp_dir, authority_metadata=authority)
 # @cpt-end:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-offline-last-known
@@ -667,12 +658,6 @@ def materialize_git_kit_source(
         "transport": parsed.transport,
         "sanitized_url_display": parsed.sanitized_url_display,
         **cache_metadata,
-        "content_identity": {
-            "vcs": "git",
-            "commit_sha": commit_sha,
-            "subdirectory": parsed.selected_subdirectory,
-            "identity": identity,
-        },
     }
     # @cpt-end:cpt-studio-state-generic-git-kit-installer-source:p1:inst-git-prov-schema-content
     return GitKitResolution(

@@ -22,7 +22,13 @@ from ..utils.files import (
     find_studio_directory,
     find_project_root,
 )
-from ..utils.manifest import ComponentEntry, ManifestLayer, ManifestLayerState, apply_section_appends
+from ..utils.manifest import (
+    ComponentEntry,
+    ManifestLayer,
+    ManifestLayerState,
+    apply_section_appends,
+    resolve_resource_bindings_with_errors,
+)
 from ..utils.ui import ui
 
 
@@ -75,36 +81,43 @@ def _resolve_kit_variables(
     kit_slug: str = "",
 ) -> Dict[str, str]:
     """Resolve resource bindings for a single kit to absolute paths."""
-    resources = core_kit.get("resources")
-    if not isinstance(resources, dict):
-        return _resolve_kit_variables_from_model(adapter_dir, core_kit, kit_slug)
-
     result: Dict[str, str] = {}
-    for identifier, binding in resources.items():
-        # @cpt-begin:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-resolve-binding
-        if isinstance(binding, dict):
-            raw_path = binding.get("path")
-            if not isinstance(raw_path, str):
+    resources = core_kit.get("resources")
+    install_mode = str(core_kit.get("install_mode", "") or "").strip()
+    if isinstance(resources, dict):
+        for identifier, binding in resources.items():
+            # @cpt-begin:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-resolve-binding
+            if isinstance(binding, dict):
+                raw_path = binding.get("path")
+                if not isinstance(raw_path, str):
+                    continue
+                rel_path = raw_path.strip()
+            elif isinstance(binding, str):
+                rel_path = binding.strip()
+            else:
                 continue
-            rel_path = raw_path.strip()
-        elif isinstance(binding, str):
-            rel_path = binding.strip()
-        else:
-            continue
-        if not rel_path:
-            continue
-        # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings
-        resolved_path = (adapter_dir / rel_path).resolve().as_posix()
-        result[identifier] = resolved_path
-        # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings
-        # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-aliases
-        aliases = binding.get("aliases", []) if isinstance(binding, dict) else []
-        if isinstance(aliases, list):
-            for alias in aliases:
-                if isinstance(alias, str) and alias.strip():
-                    result[alias.strip()] = resolved_path
-        # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-aliases
-        # @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-resolve-binding
+            if not rel_path:
+                continue
+            # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings
+            resolved_path = (adapter_dir / rel_path).resolve().as_posix()
+            result[identifier] = resolved_path
+            # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings
+            # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-aliases
+            aliases = binding.get("aliases", []) if isinstance(binding, dict) else []
+            if isinstance(aliases, list):
+                for alias in aliases:
+                    if isinstance(alias, str) and alias.strip():
+                        result[alias.strip()] = resolved_path
+            # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-aliases
+            # @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-resolve-binding
+    elif kit_slug and install_mode == "register":
+        bindings, _binding_errors = resolve_resource_bindings_with_errors(
+            adapter_dir / "config",
+            kit_slug,
+            adapter_dir,
+        )
+        for identifier, resolved_path in bindings.items():
+            result[identifier] = resolved_path.resolve().as_posix()
 
     # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings
     model_vars = _resolve_kit_variables_from_model(adapter_dir, core_kit, kit_slug)
@@ -121,6 +134,21 @@ def _resolve_kit_variables(
 # @cpt-end:cpt-studio-algo-developer-experience-resolve-vars:p1:inst-resolve-binding-path
 
 
+def _resolve_core_kit_root(
+    adapter_dir: Path,
+    core_kit: dict,
+    kit_slug: str,
+) -> Optional[Path]:
+    from ..commands.kit import _resolve_registered_kit_dir
+
+    raw_path = core_kit.get("path") if isinstance(core_kit, dict) else ""
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        if not kit_slug:
+            return None
+        raw_path = f"config/kits/{kit_slug}"
+    return _resolve_registered_kit_dir(adapter_dir, raw_path.strip())
+
+
 # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings
 def _resolve_kit_variables_from_model(
     adapter_dir: Path,
@@ -128,13 +156,8 @@ def _resolve_kit_variables_from_model(
     kit_slug: str,
 ) -> Dict[str, str]:
     """Resolve kit variables through KitModel when an installed kit root exists."""
-    raw_path = core_kit.get("path") if isinstance(core_kit, dict) else ""
-    if not isinstance(raw_path, str) or not raw_path.strip():
-        if not kit_slug:
-            return {}
-        raw_path = f"config/kits/{kit_slug}"
-    kit_root = (adapter_dir / raw_path.strip()).resolve()
-    if not kit_root.exists():
+    kit_root = _resolve_core_kit_root(adapter_dir, core_kit, kit_slug)
+    if kit_root is None or not kit_root.exists():
         return {}
     try:
         from ..utils.kit_model import load_kit_model
@@ -164,13 +187,8 @@ def _resolve_kit_aliases_from_model(
     kit_slug: str,
 ) -> Dict[str, str]:
     """Return alias -> resource_id mappings from KitModel metadata."""
-    raw_path = core_kit.get("path") if isinstance(core_kit, dict) else ""
-    if not isinstance(raw_path, str) or not raw_path.strip():
-        if not kit_slug:
-            return {}
-        raw_path = f"config/kits/{kit_slug}"
-    kit_root = (adapter_dir / raw_path.strip()).resolve()
-    if not kit_root.exists():
+    kit_root = _resolve_core_kit_root(adapter_dir, core_kit, kit_slug)
+    if kit_root is None or not kit_root.exists():
         return {}
     try:
         from ..utils.kit_model import load_kit_model
@@ -248,6 +266,41 @@ def _collect_all_variables(
         result["collisions"] = collisions
     return result
     # @cpt-end:cpt-studio-algo-developer-experience-resolve-vars:p1:inst-return-structured
+
+
+def _variable_counts(result: Dict[str, Any]) -> Dict[str, Any]:
+    system = result.get("system", {})
+    kits = result.get("kits", {})
+    flat = result.get("variables", {})
+    system_names = set(system) if isinstance(system, dict) else set()
+    kit_counts = {
+        str(slug): len(kvars)
+        for slug, kvars in kits.items()
+        if isinstance(kvars, dict)
+    }
+    kit_variable_names = {
+        key
+        for kvars in kits.values()
+        if isinstance(kvars, dict)
+        for key in kvars
+    }
+    derived_count = sum(
+        1
+        for key in flat
+        if key not in system_names and key not in kit_variable_names
+    ) if isinstance(flat, dict) else 0
+    total_resolved = (
+        (len(system) if isinstance(system, dict) else 0)
+        + sum(kit_counts.values())
+        + derived_count
+    )
+    counts: Dict[str, Any] = {
+        "system": len(system) if isinstance(system, dict) else 0,
+        "kits": kit_counts,
+        "derived": derived_count,
+        "total_resolved": total_resolved,
+    }
+    return counts
 
 
 # ---------------------------------------------------------------------------
@@ -522,6 +575,7 @@ def cmd_resolve_vars(argv: list[str]) -> int:
         output = {
             "status": "OK",
             **result,
+            "counts": _variable_counts(result),
         }
         ui.result(output, human_fn=_human_structured)
 
@@ -547,8 +601,13 @@ def _human_structured(data: dict) -> None:
 
     # System variables
     system = data.get("system", {})
+    counts = data.get("counts", {})
     if system:
-        ui.step("System")
+        system_count = counts.get("system")
+        if isinstance(system_count, int):
+            ui.step(f"System ({system_count} variables)")
+        else:
+            ui.step("System")
         for name, path in sorted(system.items()):
             ui.detail(f"  {{{name}}}", ui.relpath(path))
 
@@ -556,14 +615,23 @@ def _human_structured(data: dict) -> None:
     kits = data.get("kits", {})
     if kits:
         ui.blank()
+        kit_counts = counts.get("kits", {}) if isinstance(counts, dict) else {}
         for slug, kvars in sorted(kits.items()):
-            ui.step(f"Kit: {slug} ({len(kvars)} variables)")
+            kit_count = kit_counts.get(slug) if isinstance(kit_counts, dict) else None
+            if isinstance(kit_count, int):
+                ui.step(f"Kit: {slug} ({kit_count} variables)")
+            else:
+                ui.step(f"Kit: {slug} ({len(kvars)} variables)")
             for name, path in sorted(kvars.items()):
                 ui.detail(f"  {{{name}}}", ui.relpath(path))
 
     # Summary
-    flat = data.get("variables", {})
+    total_resolved = counts.get("total_resolved")
     ui.blank()
-    ui.info(f"Total: {len(flat)} variables resolved")
+    if isinstance(total_resolved, int):
+        ui.info(f"Total: {total_resolved} variables resolved")
+    else:
+        flat = data.get("variables", {})
+        ui.info(f"Total: {len(flat)} variables resolved")
     ui.blank()
 # @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-human-structured

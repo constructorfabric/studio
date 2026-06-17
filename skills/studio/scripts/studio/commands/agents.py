@@ -34,7 +34,7 @@ import json
 import re
 import shutil
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -1225,20 +1225,8 @@ def _discover_kit_agents(
             out.append(entry)
 
     # 1. Installed kits — agents defined by kit packages
-    config_kits = _resolve_config_kits(studio_root, project_root)
-    if config_kits.is_dir():
-        registered = _registered_kit_dirs(project_root)
-        registered_dirs: Set[str] = registered if isinstance(registered, set) else set()
-        try:
-            kit_dirs = sorted(config_kits.iterdir())
-        except OSError:
-            kit_dirs = []
-        for kit_dir in kit_dirs:
-            if not kit_dir.is_dir():
-                continue
-            if kit_dir.name not in registered_dirs:
-                continue
-            _load_agents_toml(kit_dir / "agents.toml", kit_dir)
+    for _kit_slug, kit_root in sorted(_registered_kit_roots(studio_root, project_root).items()):
+        _load_agents_toml(kit_root / "agents.toml", kit_root)
 
     # 2. Core skill area — fallback for agents not already defined by kits
     core_skill = core_subpath(studio_root, "skills", "studio")
@@ -1910,6 +1898,39 @@ def _resolve_config_kits(studio_root: Path, project_root: Optional[Path] = None)
                 return adapter_config_kits
     return config_kits
 
+def _registered_kit_roots(
+    studio_root: Path,
+    project_root: Optional[Path],
+) -> Dict[str, Path]:
+    """Return registered kit roots that stay project-relative and in-project."""
+    if project_root is None:
+        return {}
+    cfg = load_project_config(project_root)
+    if cfg is None:
+        return {}
+    kits = cfg.get("kits")
+    if not isinstance(kits, dict):
+        return {}
+
+    project_root_resolved = project_root.resolve()
+    roots: Dict[str, Path] = {}
+    for slug, kit_cfg in kits.items():
+        if not isinstance(kit_cfg, dict):
+            continue
+        raw_path = str(kit_cfg.get("path") or f"config/kits/{slug}").strip()
+        if not raw_path:
+            continue
+        normalized = PurePosixPath(raw_path.replace("\\", "/")).as_posix()
+        if PurePosixPath(normalized).is_absolute() or PureWindowsPath(normalized).is_absolute():
+            continue
+        resolved = (studio_root / Path(normalized)).resolve()
+        try:
+            resolved.relative_to(project_root_resolved)
+        except ValueError:
+            continue
+        roots[str(slug)] = resolved
+    return roots
+
 def _registered_kit_dirs(project_root: Optional[Path]) -> Set[str]:
     """Return kit directory names registered in core.toml."""
     if project_root is None:
@@ -1976,20 +1997,13 @@ def _list_workflow_files(
     # 1. Core workflows (kit_slug = None)
     _scan_dir(core_subpath(studio_root, "workflows"), None)
 
-    # 2. Kit workflows (config/kits/*/workflows/) — kit_slug = directory name
-    registered_dirs = _registered_kit_dirs(project_root)
+    # 2. Kit workflows (registered kit roots) — kit_slug = registry slug
+    registered_roots = _registered_kit_roots(studio_root, project_root)
     skip_slugs = skip_kit_slugs or set()
-    config_kits = _resolve_config_kits(studio_root, project_root)
-    if config_kits.is_dir():
-        try:
-            for kit_dir in sorted(config_kits.iterdir()):
-                if kit_dir.name not in registered_dirs:
-                    continue
-                if kit_dir.name in skip_slugs:
-                    continue
-                _scan_dir(kit_dir / "workflows", kit_dir.name)
-        except OSError:
-            pass
+    for kit_slug, kit_root in sorted(registered_roots.items()):
+        if kit_slug in skip_slugs:
+            continue
+        _scan_dir(kit_root / "workflows", kit_slug)
 
     out.sort(key=lambda t: t[0])
     return out
@@ -2017,8 +2031,10 @@ def _resolve_registered_kit_path(studio_root: Path, slug: str, kit_entry: object
     if isinstance(kit_entry, dict):
         raw_path = kit_entry.get("path")
         if isinstance(raw_path, str) and raw_path.strip():
-            path = Path(raw_path)
-            return path if path.is_absolute() else studio_root / path
+            normalized = PurePosixPath(raw_path.strip().replace("\\", "/")).as_posix()
+            if PurePosixPath(normalized).is_absolute() or PureWindowsPath(normalized).is_absolute():
+                return studio_root / "config" / "kits" / slug
+            return studio_root / Path(normalized)
     return studio_root / "config" / "kits" / slug
 
 
@@ -2034,8 +2050,10 @@ def _resolve_registered_resource_path(
     binding = resources.get(component_id) if isinstance(resources, dict) else None
     raw_path = binding.get("path") if isinstance(binding, dict) else None
     if isinstance(raw_path, str) and raw_path.strip():
-        path = Path(raw_path)
-        return path if path.is_absolute() else studio_root / path
+        normalized = PurePosixPath(raw_path.strip().replace("\\", "/")).as_posix()
+        if PurePosixPath(normalized).is_absolute() or PureWindowsPath(normalized).is_absolute():
+            return None
+        return studio_root / Path(normalized)
     component_source = source if source is not None else str(getattr(component, "source", ""))
     if not component_source:
         return None
@@ -2262,25 +2280,26 @@ def _generate_kit_workflow_skills(
         # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-prefix
         skill_id = explicit_skill_id or _compute_workflow_skill_id(wf_name, kit_slug)
         # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-prefix
+        fm = _parse_frontmatter(wf_full_path)
+        folder_skill_id = explicit_skill_id or str(fm.get("name", "")).strip() or skill_id
         owner = f"{kit_slug or 'core'}:{wf_full_path.as_posix()}"
-        previous_owner = seen_skill_ids.get(skill_id)
+        previous_owner = seen_skill_ids.get(folder_skill_id)
         if previous_owner is not None:
             skills_result["errors"].append(
-                f"duplicate public skill '{skill_id}' from {owner}; already provided by {previous_owner}",
+                f"duplicate public skill '{folder_skill_id}' from {owner}; already provided by {previous_owner}",
             )
             continue
-        seen_skill_ids[skill_id] = owner
+        seen_skill_ids[folder_skill_id] = owner
 
-        out_rel = path_pattern.format(skill_id=skill_id)
+        out_rel = path_pattern.format(skill_id=folder_skill_id)
         out_path = (project_root / out_rel).resolve()
 
         # Skip if already covered by a hardcoded skill output
         if out_path.as_posix() in skill_output_paths:
             continue
 
-        fm = _parse_frontmatter(wf_full_path)
         target_rel = _target_path_from_root(wf_full_path, project_root, studio_root)
-        name = fm.get("name", skill_id)
+        name = explicit_skill_id or fm.get("name", skill_id)
         description = fm.get("description", f"Constructor Studio {wf_name} workflow")
 
         content = _render_template(
@@ -3141,20 +3160,8 @@ def _skill_description_with_kit_context(
     studio_root: Path,
 ) -> str:
     """Append per-kit skill descriptions to the core skill description."""
-    registered = _registered_kit_dirs(project_root)
-    registered_dirs: Set[str] = registered if isinstance(registered, set) else set()
-    config_kits = _resolve_config_kits(studio_root, project_root)
-    if not config_kits.is_dir():
-        return description
-
     kit_descs: List[str] = []
-    try:
-        kit_dirs = sorted(config_kits.iterdir())
-    except OSError:
-        kit_dirs = []
-    for kit_dir in kit_dirs:
-        if kit_dir.name not in registered_dirs:
-            continue
+    for kit_name, kit_dir in sorted(_registered_kit_roots(studio_root, project_root).items()):
         if not (kit_dir / _MANIFEST_FILE).is_file() or (kit_dir / ".cf-studio-kit.toml").is_file():
             continue
         kit_skill = kit_dir / "SKILL.md"
@@ -3162,7 +3169,7 @@ def _skill_description_with_kit_context(
             continue
         kit_desc = _parse_frontmatter(kit_skill).get("description", "")
         if kit_desc:
-            kit_descs.append(f"Kit {kit_dir.name}: {kit_desc}")
+            kit_descs.append(f"Kit {kit_name}: {kit_desc}")
     if not kit_descs:
         return description
     return description.rstrip(".") + ". " + ". ".join(kit_descs) + "."
@@ -3501,6 +3508,43 @@ def _subagent_list(subagent: Dict[str, Any], target_config: Dict[str, Any], key:
     return list(value or []) if isinstance(value, list) else []
 
 
+def _validate_manifest_subagent_entry(
+    kit_slug: str,
+    subagent: Dict[str, Any],
+    kit_root: Path,
+    kit_entry: Dict[str, Any],
+    studio_root: Path,
+) -> Optional[Dict[str, Any]]:
+    """Normalize a canonical-manifest subagent through the legacy agents.toml validator."""
+    subagent_id = str(subagent.get("id", "")).strip()
+    if not subagent_id:
+        return None
+    subagent_source = str(subagent.get("source", subagent.get("prompt_file", ""))).strip()
+    if not subagent_source:
+        return None
+    generated_name = _public_component_generated_name(
+        kit_slug,
+        subagent_id,
+        prefix_generated_name=bool(subagent.get("prefix_generated_name", True)),
+    )
+    info = dict(subagent)
+    info["prompt_file"] = subagent_source
+    entry = _validate_agent_entry(generated_name, info, kit_root, set())
+    if entry is None:
+        return None
+    resolved_subagent_source = _resolve_registered_resource_path(
+        studio_root,
+        kit_root,
+        SimpleNamespace(id=subagent_id, source=subagent_source),
+        kit_entry,
+        source=subagent_source,
+    )
+    if resolved_subagent_source is not None:
+        entry["prompt_source_abs"] = resolved_subagent_source.resolve()
+        entry["prompt_file_abs"] = resolved_subagent_source.resolve()
+    return entry
+
+
 def _process_kit_public_agents_and_rules(
     agent: str,
     project_root: Path,
@@ -3559,31 +3603,20 @@ def _process_kit_public_agents_and_rules(
             for subagent in getattr(component, "subagents", []) or []:
                 if not isinstance(subagent, dict) or not _nested_subagent_enabled(subagent, agent):
                     continue
-                subagent_id = str(subagent.get("id", "")).strip()
-                if not subagent_id:
-                    continue
-                subagent_source = str(subagent.get("source", subagent.get("prompt_file", ""))).strip()
-                if not subagent_source:
-                    continue
-                resolved_subagent_source = _resolve_registered_resource_path(
-                    studio_root,
-                    kit_root,
-                    SimpleNamespace(id=subagent_id, source=subagent_source),
-                    kit_entry,
-                    source=subagent_source,
-                )
-                subagent_source_path = (
-                    resolved_subagent_source.resolve()
-                    if resolved_subagent_source is not None
-                    else (kit_root / subagent_source).resolve()
-                )
-                nested_target = _nested_subagent_config(subagent, agent)
-                nested_prefix = bool(subagent.get("prefix_generated_name", True))
-                nested_name = _public_component_generated_name(
+                entry = _validate_manifest_subagent_entry(
                     kit_slug,
-                    subagent_id,
-                    prefix_generated_name=nested_prefix,
+                    subagent,
+                    kit_root,
+                    kit_entry,
+                    studio_root,
                 )
+                if entry is None:
+                    continue
+                subagent_source_path = entry.get("prompt_source_abs")
+                if not isinstance(subagent_source_path, Path):
+                    continue
+                nested_target = _nested_subagent_config(subagent, agent)
+                nested_name = str(entry["name"])
                 identity = ("agent", nested_name)
                 owner = f"{kit_slug}:{subagent_source_path.as_posix()}"
                 previous_owner = entry_owners.get(identity)
@@ -3595,22 +3628,22 @@ def _process_kit_public_agents_and_rules(
                 entry_owners[identity] = owner
                 agent_entries[nested_name] = _AgentEntry(
                     id=nested_name,
-                    description=str(subagent.get("description", "") or f"Constructor Studio {nested_name} agent"),
+                    description=str(entry.get("description", "") or f"Constructor Studio {nested_name} agent"),
                     source=subagent_source_path.as_posix(),
                     agents=_nested_subagent_agents(subagent, nested_target),
                     tools=_subagent_list(subagent, nested_target, "tools"),
                     disallowed_tools=_subagent_list(subagent, nested_target, "disallowed_tools"),
-                    mode=str(_subagent_value(subagent, nested_target, "mode", "readwrite") or "readwrite"),
-                    isolation=bool(_subagent_value(subagent, nested_target, "isolation", False)),
-                    model=str(_subagent_value(subagent, nested_target, "model", "") or ""),
+                    mode=str(entry.get("mode", _subagent_value(subagent, nested_target, "mode", "readwrite")) or "readwrite"),
+                    isolation=bool(entry.get("isolation", _subagent_value(subagent, nested_target, "isolation", False))),
+                    model=str(entry.get("model", _subagent_value(subagent, nested_target, "model", "")) or ""),
                     skills=_subagent_list(subagent, nested_target, "skills"),
                     color=str(_subagent_value(subagent, nested_target, "color", "") or ""),
                     memory_dir=str(_subagent_value(subagent, nested_target, "memory_dir", "") or ""),
-                    role=str(_subagent_value(subagent, nested_target, "role", "any") or "any"),
-                    target=str(_subagent_value(subagent, nested_target, "target", "any") or "any"),
-                    provider=str(_subagent_value(subagent, nested_target, "provider", "anthropic") or "anthropic"),
-                    reasoning_effort=_subagent_value(subagent, nested_target, "reasoning_effort", None),
-                    context_window=_subagent_value(subagent, nested_target, "context_window", None),
+                    role=str(entry.get("role", _subagent_value(subagent, nested_target, "role", "any")) or "any"),
+                    target=str(entry.get("target", _subagent_value(subagent, nested_target, "target", "any")) or "any"),
+                    provider=str(entry.get("provider", _subagent_value(subagent, nested_target, "provider", "anthropic")) or "anthropic"),
+                    reasoning_effort=entry.get("reasoning_effort", _subagent_value(subagent, nested_target, "reasoning_effort", None)),
+                    context_window=entry.get("context_window", _subagent_value(subagent, nested_target, "context_window", None)),
                 )
             # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-subagent-config
     # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
@@ -5297,22 +5330,20 @@ def _translate_copilot_schema(agent: "_AgentEntry") -> Dict[str, Any]:
 
 
 def _translate_codex_schema(agent: "_AgentEntry") -> Dict[str, Any]:
-    """Translate AgentEntry to OpenAI Codex TOML config dict.
-
-    Maps mode to sandbox_mode. Per-agent tool restrictions not supported.
-    """
+    """Return an explicit skip for manifest OpenAI agent generation."""
     # @cpt-begin:cpt-studio-algo-project-extensibility-translate-agent-schema:p1:inst-step-codex
     sandbox_mode = "read-only" if agent.mode == "readonly" else "workspace-write"
-
     result: Dict[str, Any] = {
-        "sandbox_mode": sandbox_mode,
-        "developer_instructions": agent.description or "",
-        "skip": False,
-        "skip_reason": "",
         "frontmatter": [],
         "body_prefix": "",
+        "skip": True,
+        "skip_reason": (
+            "OpenAI/Codex manifest-agent generation is unsupported; OpenAI uses shared "
+            ".agents/skills/ outputs only"
+        ),
+        "sandbox_mode": sandbox_mode,
+        "developer_instructions": agent.description or "",
     }
-
     tier = agent.model or "cf:inherit"
     provider = getattr(agent, "provider", "anthropic")
     role = getattr(agent, "role", "any")
@@ -5320,19 +5351,16 @@ def _translate_codex_schema(agent: "_AgentEntry") -> Dict[str, Any]:
     model_id = _resolve_model_id("codex", provider, tier, role, target)
     if model_id is not None:
         result["model"] = model_id
-
     effort = getattr(agent, "reasoning_effort", None)
     if effort:
         result["model_reasoning_effort"] = _CODEX_EFFORT_MAP.get(effort, effort)
-
     context = getattr(agent, "context_window", None)
     if context:
         tokens = _CODEX_CONTEXT_TOKENS.get(context)
         if tokens is not None:
             result["model_context_window"] = tokens
-
-    # @cpt-end:cpt-studio-algo-project-extensibility-translate-agent-schema:p1:inst-step-codex
     return result
+    # @cpt-end:cpt-studio-algo-project-extensibility-translate-agent-schema:p1:inst-step-codex
 
 
 def _translate_windsurf_schema(_agent: "_AgentEntry") -> Dict[str, Any]:
@@ -5957,6 +5985,67 @@ def generate_manifest_agents(
                         expected_content=expected_content,
                         reason="skipped_agent_stale_artifact",
                     )
+            elif target == "openai":
+                has_unsafe_id = (
+                    not agent_id
+                    or Path(agent_id).is_absolute()
+                    or "/" in agent_id
+                    or "\\" in agent_id
+                )
+                if has_unsafe_id:
+                    continue
+                rel_out = path_template.replace("{id}", agent_id)
+                current_out = project_root / rel_out
+                legacy_out = project_root / ".agents" / agent_id / "agent.toml"
+                src_str = agent.source or agent.prompt_file
+                expected_content = None
+                legacy_content = None
+                if src_str:
+                    source_content = _read_source_content(
+                        "agent", agent_id, src_str, project_root,
+                        studio_root=studio_root, trusted_roots=trusted_roots,
+                    )
+                    if source_content is not None:
+                        expected_content, _ = _build_openai_agent_file(
+                            agent_id,
+                            agent,
+                            translated,
+                            source_content,
+                            path_template,
+                            variables,
+                        )
+                        legacy_content = _build_legacy_openai_agent_file(
+                            agent_id,
+                            agent,
+                            translated,
+                            source_content,
+                            variables,
+                        )
+                if expected_content is None:
+                    _preserve_unverifiable_generated_file(
+                        current_out,
+                        result,
+                        project_root,
+                        reason="unverifiable_skipped_agent_stale_artifact",
+                    )
+                else:
+                    _delete_generated_file_if_owned(
+                        current_out,
+                        result,
+                        project_root,
+                        dry_run,
+                        expected_content=expected_content,
+                        reason="skipped_agent_stale_artifact",
+                    )
+                _delete_generated_legacy_file(
+                    legacy_out,
+                    agent_id,
+                    result,
+                    project_root,
+                    dry_run,
+                    expected_content=legacy_content,
+                    reason="skipped_agent_stale_artifact",
+                )
             continue
         # @cpt-end:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-check-skip
         if not agent.description and target == "claude":

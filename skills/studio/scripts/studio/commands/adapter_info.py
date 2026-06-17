@@ -20,6 +20,7 @@ from ..utils.files import (
     load_studio_config,
 )
 from ..utils.git_utils import _redact_url
+from ..utils.manifest import resolve_resource_bindings_with_errors
 from ..utils.ui import ui
 
 def _load_json_file(path: Path) -> Optional[dict]:
@@ -105,11 +106,42 @@ def _read_kit_conf(conf_path: Path) -> dict:
 
 
 def _resolve_info_kit_root(adapter_dir: Path, slug: str, core_kit: dict) -> Path:
+    from .kit import _resolve_registered_kit_dir
+
     registered_path = core_kit.get("path") if isinstance(core_kit, dict) else None
     if isinstance(registered_path, str) and registered_path.strip():
+        resolved = _resolve_registered_kit_dir(adapter_dir, registered_path)
+        if resolved is not None:
+            return resolved
         path = Path(registered_path)
         return path if path.is_absolute() else adapter_dir / path
     return adapter_dir / "config" / "kits" / slug
+
+
+def _effective_info_resource_bindings(adapter_dir: Path, slug: str, core_kit: dict) -> dict:
+    resources = core_kit.get("resources") if isinstance(core_kit, dict) else {}
+    if isinstance(resources, dict) and resources:
+        return resources
+
+    install_mode = str(core_kit.get("install_mode", "") or "").strip() if isinstance(core_kit, dict) else ""
+    if install_mode != "register":
+        return {}
+
+    from .kit import _serialize_manifest_binding_path
+
+    # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-collect-resources
+    bindings, _binding_errors = resolve_resource_bindings_with_errors(
+        adapter_dir / "config",
+        slug,
+        adapter_dir,
+    )
+    result = {}
+    for resource_id, path in bindings.items():
+        result[str(resource_id)] = {
+            "path": _serialize_manifest_binding_path(path, adapter_dir),
+        }
+    return result
+    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-collect-resources
 
 
 def _kit_resource_to_info(resource: object, binding: object) -> dict:
@@ -261,34 +293,12 @@ def _kit_model_drift(
         for component in getattr(model, "public_components", [])
         if str(getattr(component, "id", "")) in set(missing_resources)
     )
-    stored_identity = core_kit.get("content_identity") if isinstance(core_kit, dict) else {}
-    if not isinstance(stored_identity, dict):
-        stored_identity = {}
-    semantic_drift = _hash_drift(
-        stored_identity.get("manifest_semantic_hash"),
-        getattr(model, "manifest_semantic_hash", None),
-    )
-    byte_drift = _hash_drift(
-        stored_identity.get("manifest_bytes_hash"),
-        getattr(model, "manifest_bytes_hash", None),
-    )
-    resource_drift = _resource_hash_drift(
-        stored_identity.get("resource_hashes"),
-        getattr(model, "resource_hashes", {}) or {},
-    )
     drift_flags = [
         bool(missing_resources),
         bool(stale_resources),
         bool(containment_violations),
-        semantic_drift.get("drifted") is True,
-        byte_drift.get("drifted") is True,
-        resource_drift.get("drifted") is True,
     ]
-    hash_recorded = any(
-        drift.get("drifted") is not None
-        for drift in (semantic_drift, byte_drift, resource_drift)
-    )
-    status = "drifted" if any(drift_flags) else ("current" if hash_recorded else "unknown")
+    status = "drifted" if any(drift_flags) else "unknown"
     containment_status = "contained"
     if containment_violations:
         containment_status = "external" if len(containment_violations) == len(model_resource_ids) else "mixed"
@@ -299,9 +309,6 @@ def _kit_model_drift(
             "status": containment_status,
             "violations": containment_violations,
         },
-        "manifest_semantic_hash": semantic_drift,
-        "manifest_bytes_hash": byte_drift,
-        "resource_hashes": resource_drift,
         "missing_resources": missing_resources,
         "stale_resources": stale_resources,
         "disabled_public_components": disabled_public_components,
@@ -315,8 +322,10 @@ def _kit_model_to_info(adapter_dir: Path, kit_root: Path, core_kit: dict) -> tup
     # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitmodel-source
     from ..utils.kit_model import load_kit_model
 
-    resources = core_kit.get("resources") if isinstance(core_kit, dict) else {}
-    resource_bindings = resources if isinstance(resources, dict) else {}
+    slug = str(core_kit.get("slug", "") or "") if isinstance(core_kit, dict) else ""
+    if not slug and kit_root.name:
+        slug = kit_root.name
+    resource_bindings = _effective_info_resource_bindings(adapter_dir, slug, core_kit)
     model = load_kit_model(kit_root)
     # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitmodel-source
 
@@ -364,12 +373,6 @@ def _kit_model_to_info(adapter_dir: Path, kit_root: Path, core_kit: dict) -> tup
         "provenance": {
             "source": core_kit.get("source", "") if isinstance(core_kit, dict) else "",
             "registered_path": core_kit.get("path", "") if isinstance(core_kit, dict) else "",
-        },
-        "content_identity": {
-            "manifest_semantic_hash": model.manifest_semantic_hash,
-            "manifest_bytes_hash": model.manifest_bytes_hash,
-            "resource_hashes": model.resource_hashes,
-            "tool_risk_fingerprint": model.tool_risk_fingerprint,
         },
         "legacy_compatibility": {
             "kit_details": True,
@@ -420,7 +423,7 @@ def _kit_model_to_info(adapter_dir: Path, kit_root: Path, core_kit: dict) -> tup
     return model_info, kit_detail
 
 
-def _legacy_kit_detail(slug: str, kit_root: Path, core_kit: dict) -> dict:
+def _legacy_kit_detail(adapter_dir: Path, slug: str, kit_root: Path, core_kit: dict) -> dict:
     kd: dict = {"slug": slug}
     if "version" in core_kit:
         kd["version"] = core_kit["version"]
@@ -443,8 +446,9 @@ def _legacy_kit_detail(slug: str, kit_root: Path, core_kit: dict) -> dict:
     wf_dir = kit_root / "workflows"
     if wf_dir.is_dir():
         kd["workflows"] = sorted(f.stem for f in wf_dir.iterdir() if _is_workflow_frontmatter_file(f))
-    if isinstance(core_kit.get("resources"), dict):
-        kd["resources"] = core_kit["resources"]
+    resource_bindings = _effective_info_resource_bindings(adapter_dir, slug, core_kit)
+    if resource_bindings:
+        kd["resources"] = resource_bindings
     return kd
 
 def cmd_adapter_info(argv: list[str]) -> int:
@@ -694,7 +698,7 @@ def cmd_adapter_info(argv: list[str]) -> int:
             kit_models[slug] = model_info
             kit_details[slug] = kit_detail
         except (OSError, ValueError) as exc:
-            kit_details[slug] = _legacy_kit_detail(slug, kit_dir, core_kit)
+            kit_details[slug] = _legacy_kit_detail(adapter_dir, slug, kit_dir, core_kit)
             if kit_details[slug]:
                 kit_details[slug]["model_error"] = str(exc)
     # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitdetails-derived
@@ -727,7 +731,6 @@ def cmd_adapter_info(argv: list[str]) -> int:
         try:
             from .resolve_vars import _collect_all_variables
             vars_result = _collect_all_variables(project_root, adapter_dir, core_data)
-            config["variables"] = vars_result["variables"]
             config["variables_by_kit"] = vars_result.get("kits", {})
             if vars_result.get("collisions"):
                 config["variables_collisions"] = vars_result["collisions"]
@@ -864,12 +867,16 @@ def _human_info(data: dict) -> None:
 
     # @cpt-begin:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-info-render-variables
     # Resolved variables
-    variables = data.get("variables") or {}
-    if variables:
+    variables_by_kit = data.get("variables_by_kit") or {}
+    if variables_by_kit:
         ui.blank()
-        ui.step(f"Variables ({len(variables)})")
-        for name, path in sorted(variables.items()):
-            ui.substep(f"  {{{name}}}: {ui.relpath(path)}")
+        ui.step(f"Variables By Kit ({len(variables_by_kit)})")
+        for slug, variables in sorted(variables_by_kit.items()):
+            if not isinstance(variables, dict) or not variables:
+                continue
+            ui.substep(f"  {slug}:")
+            for name, path in sorted(variables.items()):
+                ui.substep(f"    {{{name}}}: {ui.relpath(path)}")
     if data.get("variables_degraded"):
         ui.blank()
         ui.warn(f"Variables: {data.get('variables_error', 'unknown error')}")

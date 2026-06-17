@@ -477,7 +477,7 @@ Enables users to install Studio globally, initialize it in any project with sens
 
 ### Display Project Info
 
-- [ ] `p1` - **ID**: `cpt-studio-algo-core-infra-display-info`
+- [x] `p1` - **ID**: `cpt-studio-algo-core-infra-display-info`
 
 **Input**: Start path (default: current directory), optional studio-root override
 
@@ -496,7 +496,7 @@ Enables users to install Studio globally, initialize it in any project with sens
 8. [x] - `p1` - **IF** registry found — load and expand with autodetect data - `inst-info-expand-registry`
 9. [x] - `p1` - **ELSE** — set registry to null with error code - `inst-info-registry-missing`
 10. [x] - `p1` - Compute relative path and config presence - `inst-info-compute-metadata`
-11. [ ] - `p1` - **FOR EACH** installed kit with resource bindings: collect resolved resource variables from `core.toml` `[kits.{slug}.resources]` - `inst-info-collect-resources`
+11. [x] - `p1` - **FOR EACH** installed kit with effective resources: collect resolved resource variables from `core.toml` bindings for copy mode or from the registered canonical manifest root for `register` mode, and expose them as `variables_by_kit` - `inst-info-collect-resources`
 12. [x] - `p1` - Detect and display workspace config status in info output - `inst-info-workspace-section`
 13. [x] - `p1` - **RETURN** JSON: `{status: FOUND, project_root, config, registry, workspace}` (exit 0) - `inst-info-return-ok`
 

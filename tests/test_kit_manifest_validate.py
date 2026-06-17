@@ -414,6 +414,112 @@ class TestValidateKitsResourcePaths(unittest.TestCase):
         warnings = [warn.get("message", "") for warn in feature.get("warnings", [])]
         self.assertTrue(any("no manifest resource binding" in msg for msg in warnings), warnings)
 
+    def test_validate_kits_register_mode_uses_manifest_resource_entries(self):
+        """Register-mode kits self-check against manifest artifact bindings without persisted resources."""
+        from studio.utils.context import StudioContext, set_context
+        from studio.utils import toml_utils
+        from studio.commands.validate_kits import run_validate_kits
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root, ".cf-studio")
+            config = adapter / "config"
+            kit_root = root / "studio-kit-gears"
+            kit_root.mkdir(parents=True)
+
+            (kit_root / "feature-template.md").write_text(
+                "# Feature\n\nThis template intentionally omits the required flow placeholder.\n",
+                encoding="utf-8",
+            )
+            examples_dir = kit_root / "feature-examples"
+            examples_dir.mkdir()
+            (examples_dir / "valid.md").write_text(
+                "# Feature\n\n- **ID**: `cpt-test-flow-valid`\n",
+                encoding="utf-8",
+            )
+            (kit_root / "constraints.toml").write_text(
+                "[FEATURE.identifiers.flow]\nrequired = true\n"
+                'template = "cpt-{system}-flow-{slug}"\n',
+                encoding="utf-8",
+            )
+            (kit_root / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "gears"',
+                    'version = "1.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "constraints"',
+                    'kind = "constraints"',
+                    'source = "constraints.toml"',
+                    'type = "file"',
+                    "",
+                    '[kits.resources.artifacts.FEATURE]',
+                    'template = "feature_template"',
+                    'examples = "feature_examples"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "feature_template"',
+                    'kind = "template"',
+                    'source = "feature-template.md"',
+                    'type = "file"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "feature_examples"',
+                    'kind = "directory"',
+                    'source = "feature-examples"',
+                    'type = "directory"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            toml_utils.dump({
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {
+                    "gears": {
+                        "format": "CFS",
+                        "install_mode": "register",
+                        "path": "../studio-kit-gears",
+                        "version": "1.0",
+                    },
+                },
+            }, config / "core.toml")
+            toml_utils.dump({
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {
+                    "gears": {"format": "CFS", "path": "../studio-kit-gears"},
+                },
+                "systems": [{"name": "Test", "slug": "test", "kit": "gears"}],
+            }, config / "artifacts.toml")
+
+            ctx = StudioContext.load(root)
+            self.assertIsNotNone(ctx)
+            assert ctx is not None
+            set_context(ctx)
+            try:
+                rc, result = run_validate_kits(
+                    project_root=ctx.project_root,
+                    adapter_dir=ctx.adapter_dir,
+                    verbose=True,
+                )
+            finally:
+                set_context(None)
+
+        self.assertEqual(rc, 2)
+        self.assertEqual(result.get("templates_checked"), 1)
+        feature = next(
+            (item for item in result.get("self_check_results", []) if item.get("kind") == "FEATURE"),
+            None,
+        )
+        self.assertIsNotNone(feature)
+        assert feature is not None
+        warnings = [warn.get("message", "") for warn in feature.get("warnings", [])]
+        self.assertFalse(any("no manifest resource binding" in msg for msg in warnings), warnings)
+
     def test_register_mode_self_check_uses_all_constraints_resources(self):
         """Bound templates are checked against every constraints resource, not just one."""
         from studio.utils import toml_utils
