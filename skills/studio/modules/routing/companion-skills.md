@@ -1,5 +1,4 @@
 # Companion Skill Routing
-
 ```pdsl
 UNIT CompanionSkillRouting
 PURPOSE: Let routers and workflows offer multiple compatible cf-* companion skills for cross-domain tasks without weakening each selected skill's protocol.
