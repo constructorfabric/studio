@@ -478,7 +478,10 @@ class TestInstallKitWithManifest(unittest.TestCase):
             config = adapter / "config"
             existing = config / "kits" / "existing"
             existing.mkdir(parents=True)
-            (existing / "SKILL.md").write_text("# Existing\n", encoding="utf-8")
+            (existing / "SKILL.md").write_text(
+                "---\nname: shared\ndescription: Existing\n---\n# Existing\n",
+                encoding="utf-8",
+            )
             (existing / ".cf-studio-kit.toml").write_text(
                 textwrap.dedent(
                     """\
@@ -513,7 +516,10 @@ class TestInstallKitWithManifest(unittest.TestCase):
 
             kit_src = td_path / "incoming"
             kit_src.mkdir()
-            (kit_src / "SKILL.md").write_text("# Incoming\n", encoding="utf-8")
+            (kit_src / "SKILL.md").write_text(
+                "---\nname: shared\ndescription: Incoming\n---\n# Incoming\n",
+                encoding="utf-8",
+            )
             (kit_src / ".cf-studio-kit.toml").write_text(
                 textwrap.dedent(
                     """\

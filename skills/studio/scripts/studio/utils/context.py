@@ -168,14 +168,14 @@ def _resolve_loaded_kit_root(adapter_dir: Path, project_root: Path, kit_path: st
     from ..commands.kit import (
         _is_registered_kit_path_absolute,
         _normalize_path_string,
-        _resolve_registered_kit_dir,
+        _resolve_registered_kit_root_dir,
     )
 
     normalized = _normalize_path_string(str(kit_path or ""))
     if not normalized:
         return adapter_dir.resolve()
 
-    kit_root = _resolve_registered_kit_dir(adapter_dir, normalized)
+    kit_root = _resolve_registered_kit_root_dir(adapter_dir, normalized)
     if kit_root is None:
         return None
     if _is_registered_kit_path_absolute(normalized) or kit_root.is_dir():
@@ -276,12 +276,12 @@ def _load_core_resource_entries(adapter_dir: Path, kit_id: str) -> Dict[str, obj
         return {}
 
     try:
-        from ..commands.kit import _resolve_registered_kit_dir
+        from ..commands.kit import _resolve_registered_kit_root_dir
         from .manifest import load_manifest
     except (ImportError, OSError):
         return {}
 
-    kit_root = _resolve_registered_kit_dir(adapter_dir, registered_path)
+    kit_root = _resolve_registered_kit_root_dir(adapter_dir, registered_path)
     if kit_root is None or not kit_root.is_dir():
         return {}
 

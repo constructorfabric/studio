@@ -1200,24 +1200,43 @@ def validate_manifest(manifest: Manifest, kit_source: Path) -> list[str]:
 # Resource Resolution API
 # ---------------------------------------------------------------------------
 
-def _resolve_binding_path(studio_dir: Path, identifier: str, binding_path: str) -> Path:
+def _resolve_binding_path(
+    studio_dir: Path,
+    identifier: str,
+    binding_path: str,
+    *,
+    allowed_absolute_root: str = "",
+) -> Path:
     from ..commands.kit import (
         _is_registered_kit_path_absolute,
         _normalize_path_string,
         _path_is_within,
         _resolve_registered_kit_dir,
+        _resolve_same_os_absolute_path,
     )
 
     normalized_path = _normalize_path_string(binding_path)
     if _is_registered_kit_path_absolute(normalized_path):
-        raise ValueError(
-            f"Resource '{identifier}' binding path '{normalized_path}' is invalid state: "
-            "absolute paths must not be persisted in core.toml"
+        resolved_absolute = _resolve_same_os_absolute_path(normalized_path)
+        if resolved_absolute is None:
+            raise ValueError(
+                f"Resource '{identifier}' binding path '{normalized_path}' is not accessible on this OS"
+            )
+        normalized_root = _normalize_path_string(allowed_absolute_root)
+        resolved_root = (
+            _resolve_same_os_absolute_path(normalized_root)
+            if normalized_root else None
         )
+        if resolved_root is None or not _path_is_within(resolved_absolute, resolved_root):
+            raise ValueError(
+                f"Resource '{identifier}' binding path '{normalized_path}' is invalid state: "
+                "absolute paths must not be persisted in core.toml; use project-relative paths"
+            )
+        return resolved_absolute
     resolved_path = _resolve_registered_kit_dir(studio_dir, normalized_path)
     if resolved_path is None:
         raise ValueError(
-            f"Resource '{identifier}' binding path '{normalized_path}' is an absolute path that is not accessible on this OS"
+            f"Resource '{identifier}' binding path '{normalized_path}' is not accessible on this OS"
         )
     project_root = _project_root_from_core_toml(studio_dir / "config" / "core.toml", studio_dir)
     if project_root is not None and not _path_is_within(resolved_path, project_root):
@@ -1317,6 +1336,7 @@ def resolve_resource_bindings_with_errors(
                     studio_dir,
                     resource.id,
                     (Path(kit_root_value) / resource.source).as_posix(),
+                    allowed_absolute_root=kit_root_value,
                 )
             except ValueError as exc:
                 binding_errors.append(str(exc))
@@ -1340,7 +1360,12 @@ def resolve_resource_bindings_with_errors(
         if not binding_path:
             continue
         try:
-            result[identifier] = _resolve_binding_path(studio_dir, identifier, binding_path)
+            result[identifier] = _resolve_binding_path(
+                studio_dir,
+                identifier,
+                binding_path,
+                allowed_absolute_root=str(kit_entry.get("path", "") or ""),
+            )
         except ValueError as exc:
             binding_errors.append(str(exc))
     # @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-to-absolute

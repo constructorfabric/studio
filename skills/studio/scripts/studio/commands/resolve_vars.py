@@ -139,14 +139,14 @@ def _resolve_core_kit_root(
     core_kit: dict,
     kit_slug: str,
 ) -> Optional[Path]:
-    from ..commands.kit import _resolve_registered_kit_dir
+    from ..commands.kit import _resolve_registered_kit_root_dir
 
     raw_path = core_kit.get("path") if isinstance(core_kit, dict) else ""
     if not isinstance(raw_path, str) or not raw_path.strip():
         if not kit_slug:
             return None
         raw_path = f"config/kits/{kit_slug}"
-    return _resolve_registered_kit_dir(adapter_dir, raw_path.strip())
+    return _resolve_registered_kit_root_dir(adapter_dir, raw_path.strip())
 
 
 # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings

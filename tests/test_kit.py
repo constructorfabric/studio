@@ -4233,8 +4233,14 @@ class TestUpdateKitExistingBranch(unittest.TestCase):
             with patch.object(kit_module.os.path, "relpath", side_effect=_patched_relpath):
                 result = update_kit("manifestupdate", kit_src, adapter, auto_approve=True)
 
-            self.assertEqual(result["version"]["status"], "failed")
-            self.assertIn("absolute path", " ".join(result.get("errors", [])))
+            self.assertNotEqual(result["version"]["status"], "failed")
+            with open(adapter / "config" / "core.toml", "rb") as f:
+                data = tomllib.load(f)
+            resources = data["kits"]["manifestupdate"]["resources"]
+            self.assertEqual(data["kits"]["manifestupdate"]["path"], external_kit_dir.as_posix())
+            self.assertEqual(resources["skill"]["path"], f"{external_kit_dir.as_posix()}/SKILL.md")
+            self.assertEqual(resources["constraints"]["path"], f"{external_kit_dir.as_posix()}/constraints.toml")
+            self.assertEqual(resources["notes"]["path"], f"{external_kit_dir.as_posix()}/notes.txt")
 
     def test_update_kit_not_installed_coverage(self):
         """cmd_kit_update with valid source but kit not installed."""

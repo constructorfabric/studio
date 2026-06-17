@@ -117,11 +117,11 @@ def _read_kit_conf(conf_path: Path) -> dict:
 
 def _resolve_info_kit_root(adapter_dir: Path, slug: str, core_kit: dict) -> Path:
     # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-resolve-kit-root
-    from .kit import _resolve_registered_kit_dir
+    from .kit import _resolve_registered_kit_root_dir
 
     registered_path = core_kit.get("path") if isinstance(core_kit, dict) else None
     if isinstance(registered_path, str) and registered_path.strip():
-        resolved = _resolve_registered_kit_dir(adapter_dir, registered_path)
+        resolved = _resolve_registered_kit_root_dir(adapter_dir, registered_path)
         if resolved is not None:
             return resolved
         path = Path(registered_path)

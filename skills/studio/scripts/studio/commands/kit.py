@@ -696,13 +696,30 @@ def _resolve_registered_kit_dir(
     normalized = _normalize_path_string(registered_kit_path)
     if not normalized:
         return studio_dir.resolve()
-    is_windows_absolute = _is_windows_absolute_path(registered_kit_path)
-    is_posix_absolute = _is_posix_absolute_path(registered_kit_path)
-    if is_windows_absolute:
-        return Path(normalized).resolve() if os.name == "nt" else None
-    if is_posix_absolute:
-        return Path(normalized).resolve() if os.name != "nt" else None
+    if _is_registered_kit_path_absolute(normalized):
+        return None
     return (studio_dir / Path(normalized)).resolve()
+
+
+def _resolve_same_os_absolute_path(registered_kit_path: str) -> Optional[Path]:
+    normalized = _normalize_path_string(registered_kit_path)
+    if not normalized:
+        return None
+    if _is_windows_absolute_path(normalized):
+        return Path(normalized).resolve() if os.name == "nt" else None
+    if _is_posix_absolute_path(normalized):
+        return Path(normalized).resolve() if os.name != "nt" else None
+    return None
+
+
+def _resolve_registered_kit_root_dir(
+    studio_dir: Path,
+    registered_kit_path: str,
+) -> Optional[Path]:
+    resolved_absolute = _resolve_same_os_absolute_path(registered_kit_path)
+    if resolved_absolute is not None:
+        return resolved_absolute
+    return _resolve_registered_kit_dir(studio_dir, registered_kit_path)
 
 
 def _normalize_registered_kit_path(
@@ -744,17 +761,41 @@ def _validate_persisted_core_path(
     persisted_path: str,
     studio_dir: Path,
     project_root: Path,
+    *,
+    allow_same_os_absolute: bool = False,
+    allowed_absolute_root: str = "",
 ) -> Optional[str]:
     # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-persist-relative-only
     normalized = _normalize_path_string(persisted_path)
     if not normalized:
         return f"{label} cannot be empty"
     is_absolute = _is_registered_kit_path_absolute(normalized)
+    if is_absolute:
+        resolved_absolute = _resolve_same_os_absolute_path(normalized)
+        if resolved_absolute is None:
+            return (
+                f"{label} '{normalized}' is not accessible on this OS; "
+                "use project-relative paths for persisted core.toml state"
+            )
+        if allow_same_os_absolute:
+            return None
+        normalized_allowed_root = _normalize_path_string(allowed_absolute_root)
+        resolved_allowed_root = (
+            _resolve_same_os_absolute_path(normalized_allowed_root)
+            if normalized_allowed_root else None
+        )
+        if resolved_allowed_root is not None and _path_is_within(resolved_absolute, resolved_allowed_root):
+            return None
+        return (
+            f"{label} '{normalized}' is invalid state: "
+            "absolute paths must not be persisted in core.toml; use project-relative paths"
+        )
     resolved_path = _resolve_registered_kit_dir(studio_dir, normalized)
     if resolved_path is None:
-        return f"{label} '{normalized}' is not accessible on this OS"
-    if is_absolute:
-        return None
+        return (
+            f"{label} '{normalized}' is not accessible on this OS; "
+            "use project-relative paths for persisted core.toml state"
+        )
     if not _path_is_within(resolved_path, project_root):
         return (
             f"{label} '{normalized}' escapes the current project root '{project_root}'; "
@@ -820,7 +861,7 @@ def _resolve_registered_kit_metadata_target(
     kit_data = kit_entry if isinstance(kit_entry, dict) else {}
     registered_path = kit_data.get("path") if isinstance(kit_data.get("path"), str) else None
     kit_rel_path = _normalize_registered_kit_path(registered_path, kit_slug)
-    kit_dir = _resolve_registered_kit_dir(
+    kit_dir = _resolve_registered_kit_root_dir(
         studio_dir,
         registered_path if isinstance(registered_path, str) and registered_path.strip() else kit_rel_path,
     )
@@ -847,7 +888,7 @@ def _resolve_installed_kit_root(
     kit_entry = _read_kits_from_core_toml(config_dir).get(kit_slug, {})
     registered_path = kit_entry.get("path") if isinstance(kit_entry, dict) else None
     kit_rel_path = _normalize_registered_kit_path(registered_path, kit_slug)
-    kit_dir = _resolve_registered_kit_dir(
+    kit_dir = _resolve_registered_kit_root_dir(
         studio_dir,
         registered_path if isinstance(registered_path, str) and registered_path.strip() else kit_rel_path,
     )
@@ -867,7 +908,7 @@ def _registered_slug_for_local_kit_path(
         registered_path = kit_entry.get("path")
         if not isinstance(registered_path, str) or not registered_path.strip():
             continue
-        registered_dir = _resolve_registered_kit_dir(studio_dir, registered_path)
+        registered_dir = _resolve_registered_kit_root_dir(studio_dir, registered_path)
         if registered_dir is not None and registered_dir.resolve() == kit_source_resolved:
             matches.append(kit_slug)
     return matches[0] if len(matches) == 1 else ""
@@ -4999,6 +5040,7 @@ def _register_kit_in_core_toml(
             normalized_kit_path,
             _studio_dir,
             project_root,
+            allow_same_os_absolute=True,
         )
         if path_error:
             return [path_error]
@@ -5077,6 +5119,7 @@ def _register_kit_in_core_toml(
                 path_value,
                 _studio_dir,
                 project_root,
+                allowed_absolute_root=str(existing.get("path", "") or ""),
             )
             if path_error:
                 resource_errors.append(path_error)

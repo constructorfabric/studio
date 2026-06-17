@@ -166,7 +166,7 @@ class TestResolveResourceBindings(unittest.TestCase):
                 },
             })
 
-            with self.assertRaisesRegex(ValueError, "absolute paths must not be persisted"):
+            with self.assertRaisesRegex(ValueError, "not accessible on this OS"):
                 resolve_resource_bindings(config_dir, "mykit", cypilot_dir)
 
     def test_posix_absolute_binding_on_windows_fails_explicitly(self):
