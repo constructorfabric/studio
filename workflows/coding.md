@@ -27,6 +27,7 @@ DO:
   CONTINUE CodingIntentClassify WHEN ORIGINAL_INTENT != unset
 RULES:
   ALWAYS remember git-commit-mode so any later commit request in this active workflow session runs GitCommitModeGate before routing, authoring, git use, or delegation
+  ALWAYS keep later user follow-ups inside the active workflow state machine; if a message cannot be consumed by the current coding state, route it through visible companion-skill handoff or explicitly exit coding to free mode instead of acting inline
   NEVER author or review code after a required reference load failure
 ```
 

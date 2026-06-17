@@ -37,6 +37,7 @@ DO:
 RULES:
   ALWAYS default to review-first routing when the request evaluates an existing skill, prompt, workflow, agent instruction, or system prompt rather than creating one
   ALWAYS route review/audit/critique/inspect/check/validate/verify/analyze/behavior-comparison/find-issues/bug-risk-failure-regression-bypass-defect-root-cause-routing-analysis intents through WriteSkillsReviewLoop first; any fixes must be gated by ReviewFindingsReportBrowser and ReviewFixApprovalGate, not by direct author dispatch
+  ALWAYS keep later user follow-ups inside the active workflow state machine; if a message cannot be consumed by the current write-skills state, route it through visible companion-skill handoff or explicitly exit write-skills to free mode instead of acting inline
   ALWAYS apply current PDSL compactness and anti-duplication rules when authoring or reviewing: compactness counts top-level DO actions per UNIT, and redundant restatement in the same behavior path should be removed or factored when practical
   NEVER author or review a skill after a required reference load failure
 ```

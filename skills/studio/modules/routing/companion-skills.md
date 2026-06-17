@@ -1,5 +1,4 @@
 # Companion Skill Routing
-
 ```pdsl
 UNIT CompanionSkillRouting
 PURPOSE: Let routers and workflows offer multiple compatible cf-* companion skills for cross-domain tasks without weakening each selected skill's protocol.
@@ -14,6 +13,7 @@ DO:
 RULES:
   ALWAYS prefer the smallest companion group that covers the task domains
   ALWAYS include concrete write-docs/write-skills/coding companions when the user request explicitly spans documentation, prompt/workflow authoring, source code, review, or implementation
+  ALWAYS use companion routing visibly when an active workflow cannot absorb the current user message into one of its reachable states but another cf-* workflow clearly can
   NEVER include `cf`, `cf-analyze`, or `cf-generate` in a companion group; they are routers/entrypoints, not companion workflows
   ALWAYS invoke selected companion skills sequentially, not as a merged prompt, so each skill entry loads and follows its own prerequisites
   NEVER load a companion skill silently; companion loading is always visible in a numbered menu or explicit user reply
@@ -40,6 +40,7 @@ DO:
   STOP_TURN
 RULES:
   ALWAYS run this offer immediately after a workflow captures or derives ORIGINAL_INTENT and before explore, brainstorm, planning, validation, authoring, review, or dispatch work
+  ALWAYS when reused from an active workflow boundary, offer likely companions visibly before any free-mode exit when the current user message fits another workflow domain better than the current workflow state machine
   ALWAYS offer likely companions visibly when ORIGINAL_INTENT spans multiple workflow domains
   ALWAYS require the caller to set CURRENT_WORKFLOW to its concrete cf-* workflow name before calling CompanionSkillOffer
   ALWAYS filter companion candidates so `cf`, `cf-analyze`, and `cf-generate` can never appear in companion groups, companion-selection, or add-companions output
