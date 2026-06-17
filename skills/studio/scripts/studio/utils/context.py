@@ -158,6 +158,7 @@ def _build_inaccessible_kit_path_error(adapter_dir: Path, kit_id: str, kit_path:
     )
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-load-kits
 def _resolve_loaded_kit_root(adapter_dir: Path, project_root: Path, kit_path: str) -> Optional[Path]:
     """Resolve a kit root using shared registered-path semantics.
 
@@ -185,6 +186,7 @@ def _resolve_loaded_kit_root(adapter_dir: Path, project_root: Path, kit_path: st
     if project_relative_root.is_dir():
         return project_relative_root
     return kit_root
+# @cpt-end:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-load-kits
 
 
 def _resolve_loaded_kit_constraints_path(

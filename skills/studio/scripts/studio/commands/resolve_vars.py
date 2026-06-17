@@ -134,6 +134,7 @@ def _resolve_kit_variables(
 # @cpt-end:cpt-studio-algo-developer-experience-resolve-vars:p1:inst-resolve-binding-path
 
 
+# @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings
 def _resolve_core_kit_root(
     adapter_dir: Path,
     core_kit: dict,
@@ -147,6 +148,7 @@ def _resolve_core_kit_root(
             return None
         raw_path = f"config/kits/{kit_slug}"
     return _resolve_registered_kit_root_dir(adapter_dir, raw_path.strip())
+# @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings
 
 
 # @cpt-begin:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-effective-bindings

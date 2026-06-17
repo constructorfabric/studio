@@ -689,6 +689,7 @@ def _is_registered_kit_path_absolute(registered_kit_path: str) -> bool:
     )
 
 
+# @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-persist-relative-only
 def _resolve_registered_kit_dir(
     studio_dir: Path,
     registered_kit_path: str,
@@ -743,6 +744,7 @@ def _serialize_manifest_binding_path(target_path: Any, studio_dir: Path) -> str:
         )
     except ValueError:
         return _normalize_path_string(target_str)
+# @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-persist-relative-only
 
 
 def _project_root_for_core_paths(_config_dir: Path, studio_dir: Path, data: Dict[str, Any]) -> Path:

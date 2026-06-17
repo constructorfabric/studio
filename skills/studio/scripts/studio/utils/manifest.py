@@ -1200,6 +1200,7 @@ def validate_manifest(manifest: Manifest, kit_source: Path) -> list[str]:
 # Resource Resolution API
 # ---------------------------------------------------------------------------
 
+# @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-to-absolute
 def _resolve_binding_path(
     studio_dir: Path,
     identifier: str,
@@ -1244,8 +1245,10 @@ def _resolve_binding_path(
             f"Resource '{identifier}' binding path '{normalized_path}' escapes the current project root '{project_root}'"
         )
     return resolved_path
+# @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-to-absolute
 
 
+# @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-read-bindings
 def _project_root_from_core_toml(core_toml: Path, studio_dir: Path) -> Optional[Path]:
     if not core_toml.is_file():
         return None
@@ -1261,6 +1264,7 @@ def _project_root_from_core_toml(core_toml: Path, studio_dir: Path) -> Optional[
             return root_path.resolve()
         return (studio_dir / root_path).resolve()
     return studio_dir.parent.resolve()
+# @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-read-bindings
 
 
 # @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-read-bindings
