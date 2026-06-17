@@ -31,12 +31,15 @@ def phantom_id(cpt_id: str) -> str:
 # @cpt-begin:cpt-studio-algo-map-data-model:p1:inst-cpt-use
 @dataclass(frozen=True)
 class CptUse:
+    """A cpt identifier occurrence inside a node."""
+
     cpt_id: str
     line: int
     snippet: str
     marker_kind: MarkerKind
 
     def to_dict(self) -> dict:
+        """Return a serializable dictionary representation."""
         return {
             "cpt_id": self.cpt_id,
             "line": self.line,
@@ -49,6 +52,8 @@ class CptUse:
 # @cpt-begin:cpt-studio-algo-map-data-model:p1:inst-ref
 @dataclass(frozen=True)
 class Ref:
+    """Source reference metadata carried by a map edge."""
+
     cpt_id: Optional[str]
     line: int
     snippet: str
@@ -56,6 +61,7 @@ class Ref:
     def_snippet: Optional[str]
 
     def to_dict(self) -> dict:
+        """Return a serializable dictionary representation."""
         return {
             "cpt_id": self.cpt_id,
             "line": self.line,
@@ -69,6 +75,8 @@ class Ref:
 # @cpt-begin:cpt-studio-algo-map-data-model:p1:inst-node
 @dataclass
 class Node:
+    """Graph node emitted by the map scanner."""
+
     id: str
     rel_path: Optional[str]
     source: Optional[str]
@@ -82,6 +90,7 @@ class Node:
     cpt_uses: List[CptUse] = field(default_factory=list)
 
     def to_dict(self) -> dict:
+        """Return a serializable dictionary representation."""
         return {
             "id": self.id,
             "rel_path": self.rel_path,
@@ -101,6 +110,8 @@ class Node:
 # @cpt-begin:cpt-studio-algo-map-data-model:p1:inst-edge
 @dataclass
 class Edge:
+    """Graph edge between map nodes."""
+
     id: str
     from_id: str
     to_id: str
@@ -110,6 +121,7 @@ class Edge:
     dangling: bool
 
     def to_dict(self) -> dict:
+        """Return a serializable dictionary representation."""
         return {
             "id": self.id,
             "from": self.from_id,

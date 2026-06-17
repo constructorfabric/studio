@@ -16,6 +16,8 @@ from .model import Edge, Node
 
 @dataclass(frozen=True)
 class RenderJsonInput:
+    """Inputs required to render the map JSON payload."""
+
     nodes: Sequence[Node]
     edges: Sequence[Edge]
     workspace: dict
@@ -31,6 +33,7 @@ class RenderJsonInput:
 
 
 def render_json(inp: RenderJsonInput) -> str:
+    """Render json."""
     # @cpt-begin:cpt-studio-algo-map-render-json:p1:inst-render-json
     nodes_sorted = sorted([n.to_dict() for n in inp.nodes], key=lambda d: d["id"])
     edges_sorted = sorted([e.to_dict() for e in inp.edges], key=lambda d: d["id"])

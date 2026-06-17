@@ -20,12 +20,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
-if TYPE_CHECKING:
-    from .workspace import SourceEntry, WorkspaceConfig
-
+from ._tomllib_compat import tomllib
 from .artifacts_meta import Artifact, ArtifactsMeta, CodebaseEntry, Kit, load_artifacts_meta
 from .constraints import KitConstraints, error, load_constraints_files, load_constraints_toml
-from ._tomllib_compat import tomllib
+
+if TYPE_CHECKING:
+    from .workspace import SourceEntry, WorkspaceConfig
 
 _CONSTRAINTS_FILE = "constraints.toml"
 
@@ -108,6 +108,7 @@ class StudioContext:
 
     # @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-globals
     def get_known_id_kinds(self) -> Set[str]:
+        """Return known id kinds."""
         kinds: Set[str] = set()
         for loaded_kit in self.kits.values():
             kc = getattr(loaded_kit, "constraints", None)
@@ -477,25 +478,31 @@ class WorkspaceContext:
 
     @property
     def adapter_dir(self) -> Path:
+        """Return the primary adapter directory."""
         return self.primary.adapter_dir
 
     @property
     def project_root(self) -> Path:
+        """Return the primary project root."""
         return self.primary.project_root
 
     @property
     def meta(self) -> ArtifactsMeta:
+        """Return the primary artifacts metadata."""
         return self.primary.meta
 
     @property
     def kits(self) -> Dict[str, LoadedKit]:
+        """Return the primary loaded kits."""
         return self.primary.kits
 
     @property
     def registered_systems(self) -> Set[str]:
+        """Return the primary registered systems."""
         return self.primary.registered_systems
 
     def get_known_id_kinds(self) -> Set[str]:
+        """Return known id kinds."""
         kinds = self.primary.get_known_id_kinds()
         for sc in self.sources.values():
             if not sc.reachable:
@@ -874,8 +881,8 @@ def _collect_remote_artifacts(
 
 
 # Global context instance (set by CLI on startup)
-_global_context: Optional[Union[StudioContext, WorkspaceContext]] = None
-_workspace_upgrade_attempted: bool = False
+_global_context: Optional[Union[StudioContext, WorkspaceContext]] = None  # pylint: disable=invalid-name
+_workspace_upgrade_attempted: bool = False  # pylint: disable=invalid-name
 
 
 def get_context() -> Optional[Union[StudioContext, WorkspaceContext]]:

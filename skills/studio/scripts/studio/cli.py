@@ -170,14 +170,25 @@ def _cmd_map(argv: List[str]) -> int:
 
 # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-route-helpers
 def main(argv: Optional[List[str]] = None) -> int:
+    """Run the command-line entry point."""
     argv_list = list(argv) if argv is not None else sys.argv[1:]
 
     # Extract global --json flag (must come before command dispatch)
-    from .utils.ui import set_json_mode
-    if "--json" in argv_list:
+    from .utils.ui import is_json_mode, set_json_mode
+    previous_json_mode = is_json_mode()
+    json_mode = "--json" in argv_list
+    if json_mode:
         set_json_mode(True)
         while "--json" in argv_list:
             argv_list.remove("--json")
+    try:
+        return _main_impl(argv_list)
+    finally:
+        set_json_mode(previous_json_mode)
+
+
+def _main_impl(argv_list: List[str]) -> int:
+    """Dispatch a command after global flags have been handled."""
 
     # Load base Studio context on startup (templates, systems, etc.)
     # Workspace upgrade is deferred — get_context() will lazily attempt it

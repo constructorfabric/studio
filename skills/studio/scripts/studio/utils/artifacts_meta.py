@@ -72,6 +72,7 @@ class Kit:
 
     @classmethod
     def from_dict(cls, kit_id: str, data: dict) -> "Kit":
+        """Build an instance from a dictionary."""
         raw_format = (data or {}).get("format", "")
         fmt = str(raw_format).strip() if isinstance(raw_format, str) else ""
 
@@ -154,10 +155,12 @@ class Artifact:
     # Backward compatibility property
     @property
     def type(self) -> str:
+        """Return the legacy artifact type alias."""
         return self.kind
 
     @classmethod
     def from_dict(cls, data: dict) -> "Artifact":
+        """Build an instance from a dictionary."""
         # Support both "kind" (new) and "type" (old) keys
         kind = str(data.get("kind", data.get("type", "")))
         name = data.get("name")
@@ -203,6 +206,7 @@ class CodebaseEntry:
 
     @classmethod
     def from_dict(cls, data: dict) -> "CodebaseEntry":
+        """Build an instance from a dictionary."""
         exts = data.get("extensions", [])
         if not isinstance(exts, list):
             exts = []
@@ -231,6 +235,7 @@ class IgnoreBlock:
 
     @classmethod
     def from_dict(cls, data: dict) -> "IgnoreBlock":
+        """Build an instance from a dictionary."""
         reason = str((data or {}).get("reason", "") or "").strip()
         raw_patterns = (data or {}).get("patterns", [])
         patterns: List[str] = []
@@ -240,12 +245,15 @@ class IgnoreBlock:
 
 @dataclass
 class AutodetectArtifactPattern:
+    """Autodetection pattern declared by a kit manifest."""
+
     pattern: str
     traceability: str
     required: bool = True
 
     @classmethod
     def from_dict(cls, data: dict) -> "AutodetectArtifactPattern":
+        """Build an instance from a dictionary."""
         return cls(
             pattern=str((data or {}).get("pattern", "") or "").strip(),
             traceability=str((data or {}).get("traceability", "FULL") or "FULL").strip(),
@@ -267,6 +275,7 @@ class AutodetectRule:
 
     @classmethod
     def from_dict(cls, data: dict) -> "AutodetectRule":
+        """Build an instance from a dictionary."""
         artifacts = _parse_autodetect_artifacts((data or {}).get("artifacts", {}))
         codebase = _parse_autodetect_codebase((data or {}).get("codebase", []))
 
@@ -328,6 +337,7 @@ class SystemNode:
 
     @classmethod
     def from_dict(cls, data: dict, parent: Optional["SystemNode"] = None) -> "SystemNode":
+        """Build an instance from a dictionary."""
         kit = str(data.get("kit", data.get("kits", "")))
         # For backward compatibility, generate slug from name if not provided
         name = str(data.get("name", ""))
@@ -598,6 +608,7 @@ class ArtifactsMeta:
         )
 
     def rebuild_indices(self) -> None:
+        """Rebuild lookup indices from the current artifacts."""
         self._artifacts_by_path = {}
         self._build_indices()
 
@@ -830,6 +841,36 @@ class ArtifactsMeta:
 
             return discovered_artifacts, discovered_codebase, system_root_str, list(rule.children or [])
 
+        def _merge_discovered_child_entries(
+            child_node: SystemNode,
+            disc_artifacts: List[Artifact],
+            disc_codebase: List[CodebaseEntry],
+        ) -> None:
+            """Merge autodetected entries into a child node."""
+            existing_child_artifacts_by_path: Dict[str, Artifact] = {
+                self._normalize_path(a.path): a for a in child_node.artifacts
+            }
+            existing_child_codebase_by_path: Dict[str, CodebaseEntry] = {
+                self._normalize_path(c.path): c for c in child_node.codebase
+            }
+            for da in disc_artifacts:
+                np = self._normalize_path(da.path)
+                if np in existing_child_artifacts_by_path:
+                    if str(existing_child_artifacts_by_path[np].kind) != str(da.kind):
+                        errors.append(
+                            f"Autodetect conflict on path with different kind: path={da.path} explicit={existing_child_artifacts_by_path[np].kind} detected={da.kind}"
+                        )
+                    continue
+                existing_child_artifacts_by_path[np] = da
+                child_node.artifacts.append(da)
+
+            for dc in disc_codebase:
+                np = self._normalize_path(dc.path)
+                if np in existing_child_codebase_by_path:
+                    continue
+                existing_child_codebase_by_path[np] = dc
+                child_node.codebase.append(dc)
+
         def _expand_node(node: SystemNode, inherited_rules: List[Tuple[AutodetectRule, str]]) -> List[Tuple[AutodetectRule, str]]:
             effective: List[Tuple[AutodetectRule, str]] = list(inherited_rules)
             default_parent_root = inherited_rules[0][1] if inherited_rules else str(self.project_root)
@@ -857,26 +898,7 @@ class ArtifactsMeta:
                             system_root_override=(child_root_str, child_root_abs),
                         )
 
-                        existing_child_artifacts_by_path: Dict[str, Artifact] = {self._normalize_path(a.path): a for a in child_node.artifacts}
-                        existing_child_codebase_by_path: Dict[str, CodebaseEntry] = {self._normalize_path(c.path): c for c in child_node.codebase}
-
-                        for da in disc_artifacts:
-                            np = self._normalize_path(da.path)
-                            if np in existing_child_artifacts_by_path:
-                                if str(existing_child_artifacts_by_path[np].kind) != str(da.kind):
-                                    errors.append(
-                                        f"Autodetect conflict on path with different kind: path={da.path} explicit={existing_child_artifacts_by_path[np].kind} detected={da.kind}"
-                                    )
-                                continue
-                            existing_child_artifacts_by_path[np] = da
-                            child_node.artifacts.append(da)
-
-                        for dc in disc_codebase:
-                            np = self._normalize_path(dc.path)
-                            if np in existing_child_codebase_by_path:
-                                continue
-                            existing_child_codebase_by_path[np] = dc
-                            child_node.codebase.append(dc)
+                        _merge_discovered_child_entries(child_node, disc_artifacts, disc_codebase)
 
                         # Detect system slug from artifact IDs (autodetect only).
                         # Strategy: extract the full system prefix from each ID

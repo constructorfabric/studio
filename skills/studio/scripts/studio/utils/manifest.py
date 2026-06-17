@@ -911,13 +911,13 @@ def apply_section_appends(
     # @cpt-end:cpt-studio-algo-project-extensibility-section-appending:p1:inst-step1-base
 
     # @cpt-begin:cpt-studio-algo-project-extensibility-section-appending:p1:inst-step2-foreach-component
-    _TYPE_CLASS_MAP = {
+    type_class_map = {
         "agents": AgentEntry,
         "skills": SkillEntry,
         "workflows": WorkflowEntry,
         "rules": RuleEntry,
     }
-    expected_cls = _TYPE_CLASS_MAP.get(component_type) if component_type else None
+    expected_cls = type_class_map.get(component_type) if component_type else None
     for component in components:
         if expected_cls is not None and not isinstance(component, expected_cls):
             continue
@@ -974,8 +974,8 @@ def _validate_against_schema(data: Dict[str, Any]) -> List[str]:
         errors.append("[[resources]] must be a non-empty array")
         return errors
 
-    _VALID_TYPES = {"file", "directory"}
-    _ID_CHARS = set(string.ascii_lowercase + string.digits + "_")
+    valid_types = {"file", "directory"}
+    id_chars = set(string.ascii_lowercase + string.digits + "_")
 
     for idx, res in enumerate(resources):
         prefix = f"[[resources]][{idx}]"
@@ -987,7 +987,7 @@ def _validate_against_schema(data: Dict[str, Any]) -> List[str]:
         rid = res.get("id")
         if not isinstance(rid, str) or not rid.strip():
             errors.append(f"{prefix}.id is required and must be a non-empty string")
-        elif not rid[0].islower() or not all(c in _ID_CHARS for c in rid):
+        elif not rid[0].islower() or not all(c in id_chars for c in rid):
             errors.append(
                 f"{prefix}.id '{rid}' must match ^[a-z][a-z0-9_]*$ "
                 "(lowercase letter start, then lowercase alphanumeric or underscore)"
@@ -1005,8 +1005,8 @@ def _validate_against_schema(data: Dict[str, Any]) -> List[str]:
 
         # type
         rtype = res.get("type")
-        if not isinstance(rtype, str) or rtype not in _VALID_TYPES:
-            errors.append(f"{prefix}.type must be one of {sorted(_VALID_TYPES)}, got {rtype!r}")
+        if not isinstance(rtype, str) or rtype not in valid_types:
+            errors.append(f"{prefix}.type must be one of {sorted(valid_types)}, got {rtype!r}")
 
         # description (optional)
         desc = res.get("description")

@@ -31,6 +31,7 @@ class DiffReport:
 
     @property
     def has_changes(self) -> bool:
+        """Return whether the diff contains any changes."""
         return bool(self.added or self.removed or self.modified)
 # @cpt-end:cpt-studio-algo-kit-diff-display:p1:inst-diff-datamodel
 
@@ -591,6 +592,148 @@ def _regenerate_toc(content: bytes, toc_format: str) -> bytes:
     # @cpt-end:cpt-studio-algo-kit-toc-handling:p1:inst-regenerate
 
 
+# @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-build-target-mapping
+def _target_path_for_bound_resource(
+    src_rel_path: str,
+    user_dir: Path,
+    resource_bindings: Dict[str, Path],
+    source_to_resource_id: Dict[str, str],
+    resource_info: Dict[str, Any],
+) -> Path:
+    """Return the target path for a source file with optional resource binding."""
+    res_id = source_to_resource_id.get(src_rel_path)
+    if not res_id or res_id not in resource_bindings:
+        return user_dir / src_rel_path
+
+    binding_path = resource_bindings[res_id]
+    info = resource_info.get(res_id)
+    if not info or getattr(info, "type", "") != "directory":
+        if binding_path.is_dir():
+            sys.stderr.write(
+                f"    [warn] file resource binding is a directory: "
+                f"binding_path={binding_path}, src_rel_path={src_rel_path}\n"
+            )
+            return binding_path / src_rel_path.split("/")[-1]
+        return binding_path
+
+    source_base = getattr(info, "source_base", "")
+    if src_rel_path.startswith(source_base + "/"):
+        rel_within_dir = src_rel_path[len(source_base) + 1:]
+        return binding_path / rel_within_dir
+
+    try:
+        rel_within_dir = Path(src_rel_path).relative_to(source_base).as_posix()
+        return binding_path / rel_within_dir
+    except ValueError:
+        sys.stderr.write(
+            f"    [debug] directory resource fallback: "
+            f"source_base={source_base}, src_rel_path={src_rel_path}, "
+            f"binding_path={binding_path}\n"
+        )
+        return binding_path / src_rel_path.split("/")[-1]
+
+
+def _build_target_mapping(
+    source_files: Dict[str, bytes],
+    user_dir: Path,
+    resource_bindings: Optional[Dict[str, Path]],
+    source_to_resource_id: Optional[Dict[str, str]],
+    resource_info: Optional[Dict[str, Any]],
+) -> Dict[str, Path]:
+    """Build source-relative path to absolute target path mapping."""
+    if not resource_bindings or not source_to_resource_id or not resource_info:
+        return {src_rel_path: user_dir / src_rel_path for src_rel_path in source_files}
+    return {
+        src_rel_path: _target_path_for_bound_resource(
+            src_rel_path,
+            user_dir,
+            resource_bindings,
+            source_to_resource_id,
+            resource_info,
+        )
+        for src_rel_path in source_files
+    }
+
+
+def _read_file_if_available(path: Path) -> Optional[bytes]:
+    """Read a file path, returning None when it cannot be read."""
+    if not path.is_file():
+        return None
+    try:
+        return path.read_bytes()
+    except (OSError, IOError):
+        return None
+
+
+def _read_bound_directory_resource(
+    source_base: str,
+    binding_path: Path,
+    user_files: Dict[str, bytes],
+    target_mapping: Dict[str, Path],
+) -> None:
+    """Populate user files from a directory resource binding."""
+    for fpath in binding_path.rglob("*"):
+        content = _read_file_if_available(fpath)
+        if content is None:
+            continue
+        src_rel_path = f"{source_base}/{fpath.relative_to(binding_path).as_posix()}"
+        if src_rel_path in user_files:
+            continue
+        user_files[src_rel_path] = content
+        target_mapping[src_rel_path] = fpath
+
+
+def _read_bound_file_resource(
+    source_base: str,
+    binding_path: Path,
+    resource_type: str,
+    user_files: Dict[str, bytes],
+    target_mapping: Dict[str, Path],
+) -> None:
+    """Populate user files from a file-like resource binding."""
+    fpath = binding_path
+    if resource_type == "file" and binding_path.is_dir():
+        fpath = binding_path / source_base.split("/")[-1]
+    content = _read_file_if_available(fpath)
+    if content is None or source_base in user_files:
+        return
+    user_files[source_base] = content
+    target_mapping[source_base] = fpath
+
+
+def _read_bound_resource_files(
+    resource_bindings: Dict[str, Path],
+    resource_info: Dict[str, Any],
+    user_files: Dict[str, bytes],
+    target_mapping: Dict[str, Path],
+) -> None:
+    """Populate user files discovered through explicit resource bindings."""
+    for res_id, binding_path in resource_bindings.items():
+        info = resource_info.get(res_id)
+        if not info:
+            continue
+
+        source_base = getattr(info, "source_base", "")
+        resource_type = getattr(info, "type", "")
+        if resource_type == "directory" and binding_path.is_dir():
+            _read_bound_directory_resource(
+                source_base,
+                binding_path,
+                user_files,
+                target_mapping,
+            )
+            continue
+
+        _read_bound_file_resource(
+            source_base,
+            binding_path,
+            resource_type,
+            user_files,
+            target_mapping,
+        )
+# @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-build-target-mapping
+
+
 # @cpt-algo:cpt-studio-algo-kit-file-update:p1
 def file_level_kit_update(
     source_dir: Path,
@@ -661,52 +804,13 @@ def file_level_kit_update(
     # @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-enumerate-files
 
     # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-build-target-mapping
-    # Build target path mapping for resource bindings
-    target_mapping: Dict[str, Path] = {}  # source_rel_path -> absolute target path
-    if resource_bindings and source_to_resource_id and resource_info:
-        for src_rel_path in source_files:
-            res_id = source_to_resource_id.get(src_rel_path)
-            if res_id and res_id in resource_bindings:
-                binding_path = resource_bindings[res_id]
-                info = resource_info.get(res_id)
-                if info and info.type == "directory":
-                    # For directory resources, append relative path within directory
-                    source_base = info.source_base
-                    if src_rel_path.startswith(source_base + "/"):
-                        rel_within_dir = src_rel_path[len(source_base) + 1:]
-                        target_mapping[src_rel_path] = binding_path / rel_within_dir
-                    else:
-                        # Fallback: try to compute relative path within directory
-                        try:
-                            rel_within_dir = Path(src_rel_path).relative_to(info.source_base).as_posix()
-                            target_mapping[src_rel_path] = binding_path / rel_within_dir
-                        except ValueError:
-                            # Cannot compute relative path, use filename as last resort
-                            sys.stderr.write(
-                                f"    [debug] directory resource fallback: "
-                                f"source_base={info.source_base}, src_rel_path={src_rel_path}, "
-                                f"binding_path={binding_path}\n"
-                            )
-                            target_mapping[src_rel_path] = binding_path / src_rel_path.split("/")[-1]
-                else:
-                    # File resource: binding path is the target file
-                    # But if binding path is a directory, append the filename
-                    if binding_path.is_dir():
-                        sys.stderr.write(
-                            f"    [warn] file resource binding is a directory: "
-                            f"binding_path={binding_path}, src_rel_path={src_rel_path}\n"
-                        )
-                        filename = src_rel_path.split("/")[-1]
-                        target_mapping[src_rel_path] = binding_path / filename
-                    else:
-                        target_mapping[src_rel_path] = binding_path
-            else:
-                # No binding: default to user_dir / rel_path
-                target_mapping[src_rel_path] = user_dir / src_rel_path
-    else:
-        # No resource bindings: all files go to user_dir
-        for src_rel_path in source_files:
-            target_mapping[src_rel_path] = user_dir / src_rel_path
+    target_mapping = _build_target_mapping(
+        source_files,
+        user_dir,
+        resource_bindings,
+        source_to_resource_id,
+        resource_info,
+    )
     # @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-build-target-mapping
 
     # @cpt-begin:cpt-studio-algo-kit-file-update:p1:inst-enumerate-bound-user-files
@@ -714,51 +818,13 @@ def file_level_kit_update(
     user_files: Dict[str, bytes] = {}
     # First, read files at bound target paths (for files that exist in source)
     for src_rel_path, target_path in target_mapping.items():
-        if target_path.is_file():
-            try:
-                user_files[src_rel_path] = target_path.read_bytes()
-            except (OSError, IOError):
-                pass
+        content = _read_file_if_available(target_path)
+        if content is not None:
+            user_files[src_rel_path] = content
     # For directory resources and file resources with directory bindings,
     # enumerate existing files to detect files in user's bound path
     if resource_bindings and resource_info:
-        for res_id, binding_path in resource_bindings.items():
-            info = resource_info.get(res_id)
-            if not info:
-                continue
-            if info.type == "directory" and binding_path.is_dir():
-                # Directory resource: enumerate all files
-                source_base = info.source_base
-                for fpath in binding_path.rglob("*"):
-                    if fpath.is_file():
-                        rel_within_dir = fpath.relative_to(binding_path).as_posix()
-                        src_rel_path = f"{source_base}/{rel_within_dir}"
-                        if src_rel_path not in user_files:
-                            try:
-                                user_files[src_rel_path] = fpath.read_bytes()
-                                target_mapping[src_rel_path] = fpath
-                            except (OSError, IOError):
-                                pass
-            elif info.type == "file" and binding_path.is_file():
-                src_rel_path = info.source_base
-                if src_rel_path not in user_files:
-                    try:
-                        user_files[src_rel_path] = binding_path.read_bytes()
-                        target_mapping[src_rel_path] = binding_path
-                    except (OSError, IOError):
-                        pass
-            elif info.type == "file" and binding_path.is_dir():
-                # File resource but binding points to directory: check for file with same name
-                filename = info.source_base.split("/")[-1]
-                fpath = binding_path / filename
-                # Compute the source-relative path this file would have
-                src_rel_path = info.source_base
-                if fpath.is_file() and src_rel_path not in user_files:
-                    try:
-                        user_files[src_rel_path] = fpath.read_bytes()
-                        target_mapping[src_rel_path] = fpath
-                    except (OSError, IOError):
-                        pass
+        _read_bound_resource_files(resource_bindings, resource_info, user_files, target_mapping)
     # Also enumerate user_dir to detect removed files (files in user but not in source)
     user_dir_files = _enumerate_kit_files(user_dir, **enum_kw)
     for rel_path, content in user_dir_files.items():

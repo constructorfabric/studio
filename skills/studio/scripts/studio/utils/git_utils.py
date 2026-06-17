@@ -180,8 +180,8 @@ def _compute_local_path(
     # @cpt-end:cpt-studio-algo-workspace-resolve-git-url:p1:inst-git-if-no-rule
 
     # Apply template and compute local path
-    _DEFAULT_TEMPLATE = "{org}/{repo}"
-    template = getattr(rule, "template", _DEFAULT_TEMPLATE) if rule else _DEFAULT_TEMPLATE
+    default_template = "{org}/{repo}"
+    template = getattr(rule, "template", default_template) if rule else default_template
     try:
         templated = _apply_template(template, org, repo)
     except ValueError:

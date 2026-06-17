@@ -11,6 +11,8 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from studio.utils._tomllib_compat import tomllib
+
 from .categorize import (
     CategorizeOptions, OverrideCategory, OverrideConfig, categorize_nodes,
 )
@@ -21,10 +23,10 @@ from .links import extract_file_links
 from .render_html import RenderHtmlInput, render_html
 from .render_json import RenderJsonInput, render_json
 from .scan import ScanOptions, scan_repo
-from studio.utils._tomllib_compat import tomllib
 
 
 def cmd_map(argv: List[str]) -> int:
+    """Run the map command."""
     # @cpt-begin:cpt-studio-flow-map-cli:p1:inst-cmd-map
     p = argparse.ArgumentParser(
         prog="cfs map",

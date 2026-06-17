@@ -1,3 +1,5 @@
+"""Find where a Studio traceability identifier is defined."""
+
 # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-imports
 import argparse
 from typing import Dict, List

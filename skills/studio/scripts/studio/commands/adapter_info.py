@@ -32,6 +32,64 @@ def _load_json_file(path: Path) -> Optional[dict]:
     except (json.JSONDecodeError, OSError, IOError):
         return None
 
+
+# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-human-fmt
+def _show_system_artifacts(sys_info: dict) -> None:
+    """Render artifacts for one system."""
+    for artifact in sys_info.get("artifacts") or []:
+        if not isinstance(artifact, dict):
+            continue
+        path = artifact.get("path", "?")
+        kind = artifact.get("kind", "")
+        trace = artifact.get("traceability", "")
+        parts = [path]
+        if kind:
+            parts.append(kind)
+        if trace and trace != "DOCS-ONLY":
+            parts.append(trace)
+        ui.substep(f"      {parts[0]}  ({', '.join(parts[1:])})" if len(parts) > 1 else f"      {parts[0]}")
+
+
+def _show_system_codebase(sys_info: dict, *, indent: str = "      ") -> None:
+    """Render codebase entries for one system."""
+    for code_entry in sys_info.get("codebase") or []:
+        if not isinstance(code_entry, dict):
+            continue
+        cpath = code_entry.get("path", "?")
+        exts = code_entry.get("extensions") or []
+        ext_str = f"  [{', '.join(exts)}]" if exts else ""
+        ui.substep(f"{indent}{cpath}{ext_str}")
+
+
+def _show_child_systems(sys_info: dict) -> None:
+    """Render child system summaries."""
+    for child in sys_info.get("children") or []:
+        if not isinstance(child, dict):
+            continue
+        ch_name = child.get("name", "?")
+        ch_slug = child.get("slug", "")
+        ui.substep(f"    └ {ch_name} ({ch_slug})")
+        for artifact in child.get("artifacts") or []:
+            if isinstance(artifact, dict):
+                ui.substep(f"        {artifact.get('path', '?')}  ({artifact.get('kind', '')})")
+        _show_system_codebase(child, indent="        ")
+
+
+def _show_system_info(sys_info: dict) -> None:
+    """Render one system registry entry."""
+    name = sys_info.get("name", "?")
+    slug = sys_info.get("slug", "")
+    kit = sys_info.get("kit", "")
+    label = f"{name} ({slug})" if slug else name
+    if kit:
+        label += f"  kit={kit}"
+    ui.substep(f"  {label}")
+    _show_system_artifacts(sys_info)
+    _show_system_codebase(sys_info)
+    _show_child_systems(sys_info)
+# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-human-fmt
+
+
 def _read_kit_conf(conf_path: Path) -> dict:
     """Read kit conf.toml and return key fields."""
     try:
@@ -787,54 +845,7 @@ def _human_info(data: dict) -> None:
         for sys_info in display_systems:
             if not isinstance(sys_info, dict):
                 continue
-            name = sys_info.get("name", "?")
-            slug = sys_info.get("slug", "")
-            kit = sys_info.get("kit", "")
-            label = f"{name} ({slug})" if slug else name
-            if kit:
-                label += f"  kit={kit}"
-            ui.substep(f"  {label}")
-
-            # Artifacts
-            arts = sys_info.get("artifacts") or []
-            if arts:
-                for a in arts:
-                    if isinstance(a, dict):
-                        path = a.get("path", "?")
-                        kind = a.get("kind", "")
-                        trace = a.get("traceability", "")
-                        parts = [path]
-                        if kind:
-                            parts.append(kind)
-                        if trace and trace != "DOCS-ONLY":
-                            parts.append(trace)
-                        ui.substep(f"      {parts[0]}  ({', '.join(parts[1:])})" if len(parts) > 1 else f"      {parts[0]}")
-
-            # Codebase
-            codes = sys_info.get("codebase") or []
-            if codes:
-                for c in codes:
-                    if isinstance(c, dict):
-                        cpath = c.get("path", "?")
-                        exts = c.get("extensions") or []
-                        ext_str = f"  [{', '.join(exts)}]" if exts else ""
-                        ui.substep(f"      {cpath}{ext_str}")
-
-            # Children
-            for ch in (sys_info.get("children") or []):
-                if isinstance(ch, dict):
-                    ch_name = ch.get("name", "?")
-                    ch_slug = ch.get("slug", "")
-                    ui.substep(f"    └ {ch_name} ({ch_slug})")
-                    for a in (ch.get("artifacts") or []):
-                        if isinstance(a, dict):
-                            ui.substep(f"        {a.get('path', '?')}  ({a.get('kind', '')})")
-                    for c in (ch.get("codebase") or []):
-                        if isinstance(c, dict):
-                            cpath = c.get("path", "?")
-                            exts = c.get("extensions") or []
-                            ext_str = f"  [{', '.join(exts)}]" if exts else ""
-                            ui.substep(f"        {cpath}{ext_str}")
+            _show_system_info(sys_info)
 
     # Rules
     rules = data.get("rules", [])

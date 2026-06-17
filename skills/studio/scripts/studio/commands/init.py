@@ -1,3 +1,5 @@
+"""Initialize Constructor Studio project files."""
+
 # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-init-helpers
 import argparse
 import json
@@ -1093,6 +1095,7 @@ def _repair_existing_install(
     return 0
 
 def cmd_init(argv: List[str]) -> int:
+    """Run the init command."""
     # @cpt-dod:cpt-studio-dod-core-infra-init-config:p1
     # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-user-init
     p = argparse.ArgumentParser(prog="init", description="Initialize Constructor Studio in a project")

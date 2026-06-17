@@ -304,6 +304,7 @@ def load_studio_config(adapter_dir: Path) -> Dict[str, object]:
 
 # @cpt-begin:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-load-registry
 def load_artifacts_registry(adapter_dir: Path) -> Tuple[Optional[dict], Optional[str]]:
+    """Load artifacts registry."""
     path = adapter_dir / ARTIFACTS_REGISTRY_FILENAME
     # Fallback chain: config/artifacts.toml -> artifacts.json (legacy)
     if not path.is_file():
@@ -333,6 +334,7 @@ def load_artifacts_registry(adapter_dir: Path) -> Tuple[Optional[dict], Optional
 
 # @cpt-begin:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-helpers
 def iter_registry_entries(registry: dict) -> List[dict]:
+    """Iterate registry entries."""
     items = registry.get("artifacts")
     if not isinstance(items, list):
         return []
