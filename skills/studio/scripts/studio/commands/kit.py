@@ -958,6 +958,39 @@ def _collect_registered_kit_metadata(
 ) -> Dict[str, str]:
     kit_data = kit_entry if isinstance(kit_entry, dict) else {}
     resources = kit_data.get("resources")
+    install_mode = str(kit_data.get("install_mode", "") or "").strip()
+    if (not isinstance(resources, dict) or not resources) and install_mode == "register":
+        try:
+            from ..utils.kit_model import load_kit_model
+            from ..utils.manifest import resolve_resource_bindings_with_errors
+
+            kit_dir, _kit_rel_path = _resolve_registered_kit_metadata_target(
+                studio_dir,
+                kit_slug,
+                kit_entry,
+            )
+            model = load_kit_model(kit_dir, kit_slug=kit_slug)
+            bindings, _binding_errors = resolve_resource_bindings_with_errors(
+                studio_dir / "config",
+                kit_slug,
+                studio_dir,
+            )
+            resources = {}
+            public_by_id = {
+                str(getattr(component, "id", "")): component
+                for component in getattr(model, "public_components", []) or []
+            }
+            for resource_id, binding_path in bindings.items():
+                component = public_by_id.get(str(resource_id))
+                if component is None:
+                    continue
+                resources[str(resource_id)] = {
+                    "path": _serialize_manifest_binding_path(binding_path, studio_dir),
+                    "kind": str(getattr(component, "kind", "") or ""),
+                    "public": True,
+                }
+        except (OSError, ValueError):
+            resources = {}
     if not isinstance(resources, dict) or not resources:
         kit_dir, kit_rel_path = _resolve_registered_kit_metadata_target(
             studio_dir,
@@ -1976,6 +2009,7 @@ def install_kit_with_manifest(
         install_mode=install_mode,
         authority_metadata=authority_metadata,
         local_metadata=local_metadata or None,
+        tool_risk_fingerprint=str(getattr(manifest, "tool_risk_fingerprint", "") or ""),
     )
     if registration_errors:
         return {
@@ -2133,7 +2167,11 @@ def _tool_risk_approval_errors(
         return []
     fingerprint = str(getattr(kit_model, "tool_risk_fingerprint", "") or "")
     approvals = {token.strip() for token in (approved_tool_risks or []) if token.strip()}
-    _ = installed_kit_entry
+    installed_fingerprint = ""
+    if isinstance(installed_kit_entry, dict):
+        installed_fingerprint = str(installed_kit_entry.get("tool_risk_fingerprint", "") or "")
+    if fingerprint and installed_fingerprint and fingerprint == installed_fingerprint:
+        return []
     if fingerprint in approvals:
         return []
     dangerous = summary.get("dangerous_tools", {})
@@ -2296,6 +2334,7 @@ def migrate_legacy_kit_to_manifest(
         config_dir, kit_slug, "", studio_dir,
         resources=resource_bindings,
         kit_path=_resolve_manifest_kit_root_rel(manifest, resource_bindings, kit_slug),
+        tool_risk_fingerprint=str(getattr(manifest, "tool_risk_fingerprint", "") or ""),
     )
     if registration_errors:
         return {
@@ -3040,10 +3079,18 @@ def _kit_update_check_result(
 
     if source_type == "github":
         installed_ref = _kit_installed_resolved_ref(kit_data)
+        installed_commit = _kit_installed_commit_sha(kit_data)
         latest_ref = str(authority.get("resolved_ref") or "")
+        latest_commit = str(authority.get("commit_sha") or "")
         result["installed_ref"] = installed_ref
         result["latest_ref"] = latest_ref
-        if installed_ref and latest_ref and installed_ref != latest_ref:
+        result["installed_commit"] = installed_commit
+        result["latest_commit"] = latest_commit
+        ref_changed = bool(installed_ref and latest_ref and installed_ref != latest_ref)
+        commit_changed = bool(
+            installed_commit and latest_commit and installed_commit != latest_commit
+        )
+        if ref_changed or commit_changed:
             result["action"] = "update_available"
         return result
 
@@ -4285,7 +4332,13 @@ def update_kit(
             result["errors"] = [str(exc)]
             return result
         _risk_summary = getattr(_risk_model, "tool_risk_summary", {}) or {}
-        _risk_changed = bool(_risk_summary.get("requires_confirmation"))
+        installed_fingerprint = str(installed_kit_entry.get("tool_risk_fingerprint", "") or "")
+        current_fingerprint = str(getattr(_risk_model, "tool_risk_fingerprint", "") or "")
+        _risk_changed = bool(
+            _risk_summary.get("requires_confirmation")
+            and current_fingerprint
+            and current_fingerprint != installed_fingerprint
+        )
         risk_errors = _tool_risk_approval_errors(
             _risk_model,
             installed_kit_entry=installed_kit_entry,
@@ -5037,16 +5090,20 @@ def _register_kit_in_core_toml(
     existing["format"] = "CFS"
     if kit_path:
         normalized_kit_path = _normalize_registered_kit_path(kit_path, kit_slug)
+        existing_path = existing.get("path")
+        preserve_legacy_absolute = (
+            isinstance(existing_path, str)
+            and _normalize_path_string(existing_path) == normalized_kit_path
+        )
         path_error = _validate_persisted_core_path(
             f"Kit '{kit_slug}' path",
             normalized_kit_path,
             _studio_dir,
             project_root,
-            allow_same_os_absolute=True,
+            allow_same_os_absolute=preserve_legacy_absolute,
         )
         if path_error:
             return [path_error]
-        existing_path = existing.get("path")
         if (
             isinstance(existing_path, str)
             and _normalize_path_string(existing_path) == normalized_kit_path

@@ -105,6 +105,19 @@ _GENERATED_MARKER_RE = re.compile(
 _MANIFEST_FILE = "manifest.toml"
 
 
+# @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-determine-agent-path
+def _is_safe_generated_id(value: str) -> bool:
+    return bool(
+        value
+        and not Path(value).is_absolute()
+        and ".." not in value
+        and "/" not in value
+        and "\\" not in value
+        and _VALID_AGENT_NAME_RE.match(value)
+    )
+# @cpt-end:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-determine-agent-path
+
+
 def _follow_protocol_lines(target_path: str) -> List[str]:
     """Return the generated follow-link protocol block for workflow/skill shims."""
     return [
@@ -1077,6 +1090,7 @@ def _preserve_unverifiable_generated_file(
     result: Dict[str, Any],
     project_root: Path,
     *,
+    marker: str = _GENERATED_MARKER,
     reason: str,
 ) -> bool:
     """Report a generated file that cannot be safely deleted by byte match."""
@@ -1096,7 +1110,7 @@ def _preserve_unverifiable_generated_file(
         old = canonical.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):  # pragma: no cover - defensive filesystem error handling
         return False
-    if _GENERATED_MARKER not in old:
+    if marker not in old:
         return False
 
     rel = _safe_relpath(canonical, root_resolved)
@@ -1198,9 +1212,6 @@ def _discover_kit_agents(
     """
     seen_names: Set[str] = set()
     out: List[Dict[str, Any]] = []
-    registered_kit_dirs = _registered_kit_dirs(project_root)
-    if not isinstance(registered_kit_dirs, set):
-        return []
 
     def _load_agents_toml(toml_path: Path, source_dir: Path) -> None:
         if not toml_path.is_file():
@@ -1229,8 +1240,6 @@ def _discover_kit_agents(
 
     # 1. Installed kits — agents defined by kit packages
     for _kit_slug, kit_root in sorted(_registered_kit_roots(studio_root, project_root).items()):
-        if kit_root.name not in registered_kit_dirs:
-            continue
         _load_agents_toml(kit_root / "agents.toml", kit_root)
 
     # 2. Core skill area — fallback for agents not already defined by kits
@@ -1904,7 +1913,7 @@ def _resolve_config_kits(studio_root: Path, project_root: Optional[Path] = None)
     return config_kits
 
 def _registered_kit_roots(
-    studio_root: Path,
+    _studio_root: Path,
     project_root: Optional[Path],
 ) -> Dict[str, Path]:
     """Return registered kit roots that stay project-relative and in-project."""
@@ -1923,36 +1932,11 @@ def _registered_kit_roots(
         if not isinstance(kit_cfg, dict):
             continue
         raw_path = str(kit_cfg.get("path") or f"config/kits/{slug}").strip()
-        if not raw_path:
-            continue
-        normalized = PurePosixPath(raw_path.replace("\\", "/")).as_posix()
-        if PurePosixPath(normalized).is_absolute() or PureWindowsPath(normalized).is_absolute():
-            continue
-        resolved = (studio_root / Path(normalized)).resolve()
-        try:
-            resolved.relative_to(project_root_resolved)
-        except ValueError:
-            continue
-        roots[str(slug)] = resolved
+        resolved = _resolve_registered_project_relative_path(project_root_resolved, raw_path)
+        if resolved is not None:
+            roots[str(slug)] = resolved
     return roots
 
-def _registered_kit_dirs(project_root: Optional[Path]) -> Set[str]:
-    """Return kit directory names registered in core.toml."""
-    if project_root is None:
-        return set()
-    cfg = load_project_config(project_root)
-    if cfg is None:
-        return set()
-    kits = cfg.get("kits")
-    if not isinstance(kits, dict):
-        return set()
-    dirs: Set[str] = set()
-    for kit_cfg in kits.values():
-        if isinstance(kit_cfg, dict):
-            path = kit_cfg.get("path", "")
-            if path:
-                dirs.add(Path(path).name)
-    return dirs
 # @cpt-end:cpt-studio-algo-agent-integration-discover-agents:p1:inst-resolve-kits
 
 # @cpt-begin:cpt-studio-algo-agent-integration-list-workflows:p1:inst-scan-core-workflows
@@ -2032,19 +2016,40 @@ def _compute_workflow_skill_id(wf_name: str, kit_slug: Optional[str], prefix: st
 # @cpt-end:cpt-studio-algo-agent-integration-list-workflows:p1:inst-scan-core-workflows
 
 
-def _resolve_registered_kit_path(studio_root: Path, slug: str, kit_entry: object) -> Path:
+# @cpt-begin:cpt-studio-algo-agent-integration-discover-agents:p1:inst-resolve-kits
+def _resolve_registered_project_relative_path(
+    project_root: Path,
+    raw_path: str,
+) -> Optional[Path]:
+    normalized = PurePosixPath(raw_path.strip().replace("\\", "/")).as_posix()
+    path_obj = PurePosixPath(normalized)
+    if (
+        not normalized
+        or path_obj.is_absolute()
+        or PureWindowsPath(normalized).is_absolute()
+        or ".." in path_obj.parts
+    ):
+        return None
+    resolved = (project_root / Path(normalized)).resolve()
+    try:
+        resolved.relative_to(project_root.resolve())
+    except ValueError:
+        return None
+    return resolved
+# @cpt-end:cpt-studio-algo-agent-integration-discover-agents:p1:inst-resolve-kits
+
+
+def _resolve_registered_kit_path(project_root: Path, studio_root: Path, slug: str, kit_entry: object) -> Optional[Path]:
     if isinstance(kit_entry, dict):
         raw_path = kit_entry.get("path")
         if isinstance(raw_path, str) and raw_path.strip():
-            normalized = PurePosixPath(raw_path.strip().replace("\\", "/")).as_posix()
-            if PurePosixPath(normalized).is_absolute() or PureWindowsPath(normalized).is_absolute():
-                return studio_root / "config" / "kits" / slug
-            return studio_root / Path(normalized)
+            return _resolve_registered_project_relative_path(project_root, raw_path)
     return studio_root / "config" / "kits" / slug
 
 
 def _resolve_registered_resource_path(
-    studio_root: Path,
+    project_root: Path,
+    _studio_root: Path,
     kit_root: Path,
     component: object,
     kit_entry: object,
@@ -2055,10 +2060,7 @@ def _resolve_registered_resource_path(
     binding = resources.get(component_id) if isinstance(resources, dict) else None
     raw_path = binding.get("path") if isinstance(binding, dict) else None
     if isinstance(raw_path, str) and raw_path.strip():
-        normalized = PurePosixPath(raw_path.strip().replace("\\", "/")).as_posix()
-        if PurePosixPath(normalized).is_absolute() or PureWindowsPath(normalized).is_absolute():
-            return None
-        return studio_root / Path(normalized)
+        return _resolve_registered_project_relative_path(project_root, raw_path)
     component_source = source if source is not None else str(getattr(component, "source", ""))
     if not component_source:
         return None
@@ -2094,7 +2096,9 @@ def _list_public_components(
     manifest_backed_kits: Set[str] = set()
     for slug, kit_entry in sorted(kits.items()):
         kit_slug = str(slug)
-        kit_root = _resolve_registered_kit_path(studio_root, kit_slug, kit_entry)
+        kit_root = _resolve_registered_kit_path(project_root, studio_root, kit_slug, kit_entry)
+        if kit_root is None:
+            continue
         try:
             model = load_kit_model(kit_root)
         except (OSError, ValueError):
@@ -2110,7 +2114,7 @@ def _list_public_components(
                 continue
             if not _component_enabled_for_agent(component, agent):
                 continue
-            resolved_source_path = _resolve_registered_resource_path(studio_root, kit_root, component, kit_entry)
+            resolved_source_path = _resolve_registered_resource_path(project_root, studio_root, kit_root, component, kit_entry)
             if resolved_source_path is None:
                 continue
             source_path = resolved_source_path.resolve()
@@ -2287,6 +2291,11 @@ def _generate_kit_workflow_skills(
         # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-prefix
         fm = _parse_frontmatter(wf_full_path)
         folder_skill_id = explicit_skill_id or str(fm.get("name", "")).strip() or skill_id
+        if not _is_safe_generated_id(folder_skill_id):
+            skills_result["errors"].append(
+                f"unsafe public skill '{folder_skill_id}' from {(wf_full_path).as_posix()}",
+            )
+            continue
         owner = f"{kit_slug or 'core'}:{wf_full_path.as_posix()}"
         previous_owner = seen_skill_ids.get(folder_skill_id)
         if previous_owner is not None:
@@ -3518,6 +3527,7 @@ def _validate_manifest_subagent_entry(
     subagent: Dict[str, Any],
     kit_root: Path,
     kit_entry: Dict[str, Any],
+    project_root: Path,
     studio_root: Path,
 ) -> Optional[Dict[str, Any]]:
     """Normalize a canonical-manifest subagent through the legacy agents.toml validator."""
@@ -3538,6 +3548,7 @@ def _validate_manifest_subagent_entry(
     if entry is None:
         return None
     resolved_subagent_source = _resolve_registered_resource_path(
+        project_root,
         studio_root,
         kit_root,
         SimpleNamespace(id=subagent_id, source=subagent_source),
@@ -3613,6 +3624,7 @@ def _process_kit_public_agents_and_rules(
                     subagent,
                     kit_root,
                     kit_entry,
+                    project_root,
                     studio_root,
                 )
                 if entry is None:
@@ -3638,17 +3650,17 @@ def _process_kit_public_agents_and_rules(
                     agents=_nested_subagent_agents(subagent, nested_target),
                     tools=_subagent_list(subagent, nested_target, "tools"),
                     disallowed_tools=_subagent_list(subagent, nested_target, "disallowed_tools"),
-                    mode=str(entry.get("mode", _subagent_value(subagent, nested_target, "mode", "readwrite")) or "readwrite"),
-                    isolation=bool(entry.get("isolation", _subagent_value(subagent, nested_target, "isolation", False))),
-                    model=str(entry.get("model", _subagent_value(subagent, nested_target, "model", "")) or ""),
+                    mode=str(_subagent_value(subagent, nested_target, "mode", entry.get("mode", "readwrite")) or "readwrite"),
+                    isolation=bool(_subagent_value(subagent, nested_target, "isolation", entry.get("isolation", False))),
+                    model=str(_subagent_value(subagent, nested_target, "model", entry.get("model", "")) or ""),
                     skills=_subagent_list(subagent, nested_target, "skills"),
                     color=str(_subagent_value(subagent, nested_target, "color", "") or ""),
                     memory_dir=str(_subagent_value(subagent, nested_target, "memory_dir", "") or ""),
-                    role=str(entry.get("role", _subagent_value(subagent, nested_target, "role", "any")) or "any"),
-                    target=str(entry.get("target", _subagent_value(subagent, nested_target, "target", "any")) or "any"),
-                    provider=str(entry.get("provider", _subagent_value(subagent, nested_target, "provider", "anthropic")) or "anthropic"),
-                    reasoning_effort=entry.get("reasoning_effort", _subagent_value(subagent, nested_target, "reasoning_effort", None)),
-                    context_window=entry.get("context_window", _subagent_value(subagent, nested_target, "context_window", None)),
+                    role=str(_subagent_value(subagent, nested_target, "role", entry.get("role", "any")) or "any"),
+                    target=str(_subagent_value(subagent, nested_target, "target", entry.get("target", "any")) or "any"),
+                    provider=str(_subagent_value(subagent, nested_target, "provider", entry.get("provider", "anthropic")) or "anthropic"),
+                    reasoning_effort=_subagent_value(subagent, nested_target, "reasoning_effort", entry.get("reasoning_effort", None)),
+                    context_window=_subagent_value(subagent, nested_target, "context_window", entry.get("context_window", None)),
                 )
             # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-subagent-config
     # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
@@ -5713,10 +5725,7 @@ def _build_openai_agent_file(
 
     Returns ``(content, rel_out)`` using the OpenAI/Codex ``.codex/agents/{id}.toml`` convention.
     """
-    has_path_separator = "/" in agent_id or "\\" in agent_id
-    has_unsafe_path = has_path_separator or ".." in agent_id or Path(agent_id).is_absolute()
-    has_valid_name = bool(_VALID_AGENT_NAME_RE.match(agent_id))
-    if not agent_id or has_unsafe_path or not has_valid_name:
+    if not _is_safe_generated_id(agent_id):
         sys.stderr.write(
             f"WARNING: agent '{agent_id}' has unsafe id for OpenAI output path, skipping\n"
         )
@@ -5991,12 +6000,7 @@ def generate_manifest_agents(
                         reason="skipped_agent_stale_artifact",
                     )
             elif target == "openai":
-                has_unsafe_id = (
-                    not agent_id
-                    or Path(agent_id).is_absolute()
-                    or "/" in agent_id
-                    or "\\" in agent_id
-                )
+                has_unsafe_id = not _is_safe_generated_id(agent_id)
                 if has_unsafe_id:
                     continue
                 rel_out = path_template.replace("{id}", agent_id)
@@ -6031,6 +6035,7 @@ def generate_manifest_agents(
                         current_out,
                         result,
                         project_root,
+                        marker=_GENERATED_MARKER_TOML,
                         reason="unverifiable_skipped_agent_stale_artifact",
                     )
                 else:

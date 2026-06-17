@@ -395,8 +395,8 @@ class TestGenericGitKitInstallUpdate(unittest.TestCase):
                             "selected_subdirectory": "missing",
                             "kit_identity": "",
                             "requested_ref": first_sha,
+                            "commit_sha": first_sha,
                         },
-                        "source_provenance": {"commit_sha": first_sha},
                     },
                 )
 

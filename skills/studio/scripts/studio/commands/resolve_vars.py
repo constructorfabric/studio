@@ -84,7 +84,7 @@ def _resolve_kit_variables(
     result: Dict[str, str] = {}
     resources = core_kit.get("resources")
     install_mode = str(core_kit.get("install_mode", "") or "").strip()
-    if isinstance(resources, dict):
+    if isinstance(resources, dict) and resources:
         for identifier, binding in resources.items():
             # @cpt-begin:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-resolve-binding
             if isinstance(binding, dict):
@@ -111,11 +111,15 @@ def _resolve_kit_variables(
             # @cpt-end:cpt-studio-algo-kit-variable-resolution:p1:inst-vars-aliases
             # @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-resolve-binding
     elif kit_slug and install_mode == "register":
-        bindings, _binding_errors = resolve_resource_bindings_with_errors(
+        bindings, binding_errors = resolve_resource_bindings_with_errors(
             adapter_dir / "config",
             kit_slug,
             adapter_dir,
         )
+        if binding_errors:
+            messages = [str(err.get("message", "")).strip() for err in binding_errors if isinstance(err, dict)]
+            detail = "; ".join(msg for msg in messages if msg) or "unknown binding resolution error"
+            raise ValueError(f"Kit '{kit_slug}' resource binding resolution failed: {detail}")
         for identifier, resolved_path in bindings.items():
             result[identifier] = resolved_path.resolve().as_posix()
 

@@ -111,7 +111,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 **Actor**: `cpt-studio-actor-user`
 
-**Trigger**: User runs `cfs kit install <owner/repo[@version]> [--kit <slug>|--kit all] [--force] [--dry-run]`, `cfs kit install path/<dir> [--kit <slug>|--kit all] [--force] [--dry-run] [--install-mode copy|register]`, or `cfs kit install --path <dir> [--kit <slug>|--kit all] [--force] [--dry-run] [--install-mode copy|register]`
+**Trigger**: User runs `cfs kit install <owner/repo[@version]> [--kit <slug>|--kit all] [--force] [--dry-run]`, `cfs kit install path/... [--kit <slug>|--kit all] [--force] [--dry-run] [--install-mode copy|register]`, or `cfs kit install --path <dir> [--kit <slug>|--kit all] [--force] [--dry-run] [--install-mode copy|register]`
 
 **Steps**:
 1. [x] - `p1` - Parse CLI arguments (including positional `path/...` alias for local sources, `--path`, --force, --dry-run) - `inst-parse-args`
@@ -141,7 +141,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 **Actor**: `cpt-studio-actor-user`
 
-**Trigger**: User runs `cfs kit update <slug> [--force] [--dry-run] [--no-interactive] [-y]`, `cfs kit update path/<dir> [--force] [--dry-run] [--no-interactive] [-y]`, or `cfs kit update --path <dir> [--force] [--dry-run] [--no-interactive] [-y]`
+**Trigger**: User runs `cfs kit update <slug> [--force] [--dry-run] [--no-interactive] [-y]`, `cfs kit update path/... [--force] [--dry-run] [--no-interactive] [-y]`, or `cfs kit update --path <dir> [--force] [--dry-run] [--no-interactive] [-y]`
 
 **Steps**:
 1. [x] - `p1` - Parse CLI arguments (including positional `path/...` alias for local sources, `--path`, --force, --dry-run, --no-interactive, -y) - `inst-parse-args`

@@ -86,7 +86,7 @@ Top-level `.gen/` retains only aggregate files: `AGENTS.md`, `SKILL.md`, `README
 
 **Flow**:
 1. `cfs init` / `cfs kit install` installs kit files from source:
-   - **If `manifest.toml` present**: validate manifest, prompt user for `user_modifiable` resource paths (offering defaults), copy or register each resource at its effective path, resolve `{identifier}` template variables in kit files, and record effective install state in `core.toml` (`[kits.{slug}.resources]` only for non-register installs)
+   - **If `manifest.toml` present**: validate manifest, prompt user for `user_modifiable` resource paths (offering defaults), copy or register each resource at its effective path, preserve `{identifier}` template variables in kit files for read-time resolution, and record effective install state in `core.toml` (`[kits.{slug}.resources]` only for non-register installs)
    - **If no `manifest.toml`**: copy all kit files from source to `{cf-studio-path}/config/kits/{slug}/` (legacy behavior)
    - Register kit in `core.toml`
 2. Regenerate `.gen/AGENTS.md` to include public kit rules; generate skill/workflow entrypoints through agent integration files

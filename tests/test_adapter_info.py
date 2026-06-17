@@ -9,7 +9,6 @@ import tempfile
 import shutil
 import io
 import sys
-import hashlib
 from pathlib import Path
 from contextlib import redirect_stdout, redirect_stderr
 
@@ -418,9 +417,6 @@ class TestAdapterInfoCommand(unittest.TestCase):
                 ]) + "\n",
                 encoding="utf-8",
             )
-            skill_hash = hashlib.sha256(
-                b"---\nname: skill\ndescription: SDLC skill\n---\n# SDLC skill\n"
-            ).hexdigest()
             (config_dir / "core.toml").write_text(
                 "\n".join([
                     'version = "1.0"',

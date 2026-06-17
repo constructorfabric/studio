@@ -295,16 +295,13 @@ def _kit_model_drift(
     # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-drift
 
 
-def _kit_model_to_info(adapter_dir: Path, kit_root: Path, core_kit: dict) -> tuple[dict, dict]:
+def _kit_model_to_info(adapter_dir: Path, kit_slug: str, kit_root: Path, core_kit: dict) -> tuple[dict, dict]:
     """Return canonical kit model info plus legacy kit_details compatibility."""
     # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-rollout-info
     # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitmodel-source
     from ..utils.kit_model import load_kit_model
 
-    slug = str(core_kit.get("slug", "") or "") if isinstance(core_kit, dict) else ""
-    if not slug and kit_root.name:
-        slug = kit_root.name
-    resource_bindings = _effective_info_resource_bindings(adapter_dir, slug, core_kit)
+    resource_bindings = _effective_info_resource_bindings(adapter_dir, kit_slug, core_kit)
     model = load_kit_model(kit_root)
     # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitmodel-source
 
@@ -673,7 +670,7 @@ def cmd_adapter_info(argv: list[str]) -> int:
         core_kit = kit_entries[slug]
         kit_dir = _resolve_info_kit_root(adapter_dir, slug, core_kit)
         try:
-            model_info, kit_detail = _kit_model_to_info(adapter_dir, kit_dir, core_kit)
+            model_info, kit_detail = _kit_model_to_info(adapter_dir, slug, kit_dir, core_kit)
             kit_models[slug] = model_info
             kit_details[slug] = kit_detail
         except (OSError, ValueError) as exc:

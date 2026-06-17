@@ -3305,8 +3305,7 @@ class TestResolveRegisteredKitDir(unittest.TestCase):
         with TemporaryDirectory() as td:
             adapter = Path(td) / "cypilot"
             adapter.mkdir()
-            external = Path(td) / "external-kits" / "sdlc"
-            resolved = _resolve_registered_kit_dir(adapter, external.as_posix())
+            resolved = _resolve_registered_kit_dir(adapter, "/external-kits/sdlc")
             self.assertIsNone(resolved)
 
     def test_windows_drive_absolute_path_not_project_relative_on_non_windows(self):
@@ -3518,7 +3517,6 @@ class TestCmdKitInstall(unittest.TestCase):
     def test_install_with_force_uses_registered_custom_root(self):
         from studio.commands.kit import cmd_kit_install
         from studio.utils import toml_utils
-        import tomllib
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
@@ -3629,15 +3627,9 @@ class TestCmdKitInstall(unittest.TestCase):
                     with patch.object(kit_module.os.path, "relpath", side_effect=_patched_relpath):
                         result = install_kit(kit_src, adapter, "customroot", interactive=True)
 
-            self.assertEqual(result["status"], "PASS")
+            self.assertEqual(result["status"], "FAIL")
+            self.assertTrue(any("absolute paths must not be persisted in core.toml" in err for err in result.get("errors", [])))
             self.assertTrue((external_kit_dir / "SKILL.md").is_file())
-            with open(adapter / "config" / "core.toml", "rb") as f:
-                data = tomllib.load(f)
-            resources = data["kits"]["customroot"]["resources"]
-            self.assertEqual(data["kits"]["customroot"]["path"], external_kit_dir.as_posix())
-            self.assertEqual(resources["skill"]["path"], f"{external_kit_dir.as_posix()}/SKILL.md")
-            self.assertEqual(resources["agents"]["path"], f"{external_kit_dir.as_posix()}/AGENTS.md")
-            self.assertEqual(resources["constraints"]["path"], f"{external_kit_dir.as_posix()}/constraints.toml")
 
     def test_install_with_force_manifest_preserves_absolute_bindings_when_relpath_raises(self):
         import studio.commands.kit as kit_module
