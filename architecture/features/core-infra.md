@@ -485,6 +485,7 @@ Enables users to install Studio globally, initialize it in any project with sens
 
 **Steps**:
 1. [x] - `p1` - Parse arguments: `--root`, `--studio-root` - `inst-info-parse-args`
+2. [x] - `p1` - Load legacy JSON registry payloads when `artifacts.json` fallback files are present - `inst-info-load-json`
 2. [x] - `p1` - Find project root from start path - `inst-info-find-root`
 3. [x] - `p1` - **IF** project root not found - `inst-info-if-no-root`
    1. [x] - `p1` - **RETURN** JSON: `{status: NOT_FOUND, hint}` (exit 1) - `inst-info-return-no-root`
@@ -502,6 +503,10 @@ Enables users to install Studio globally, initialize it in any project with sens
 
 **Supporting**:
 - [x] - `p1` - Human-friendly output formatter for info command (callback passed to ui.result) - `inst-info-human-fmt`
+- [x] - `p1` - Render artifact rows for a single system in human output - `inst-info-show-system-artifacts`
+- [x] - `p1` - Render codebase rows for a single system in human output - `inst-info-show-system-codebase`
+- [x] - `p1` - Render nested child-system summaries in human output - `inst-info-show-child-systems`
+- [x] - `p1` - Render one complete system summary entry in human output - `inst-info-show-system-info`
 - [x] - `p1` - JSON mode flag: `_json_mode` global, `set_json_mode`, `is_json_mode` - `inst-ui-json-mode-flag`
 - [x] - `p1` - ANSI escape code constants and color availability/application helpers - `inst-ui-ansi-helpers`
 - [x] - `p1` - `header`: print bold section header to stderr (suppressed in JSON mode) - `inst-ui-progress-header`

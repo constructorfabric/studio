@@ -625,6 +625,13 @@ Enables users to install, update, and validate kit packages with interactive fil
 3. [x] - `p1` - Preserve legacy `kit_details` for one minor compatibility cycle, derived from `kit_models` rather than populated separately - `inst-info-kitdetails-derived`
 4. [x] - `p1` - Expose legacy `kit_details.workflows` only as derived skills where `origin = "legacy-workflow"` and mark the field deprecated - `inst-info-workflows-deprecated`
 5. [x] - `p1` - Report copy/register mode, containment status, stale/missing resources, and disabled public components - `inst-info-drift`
+6. [x] - `p1` - Read kit `conf.toml` display metadata for legacy compatibility output without bypassing normalized `KitModel` metadata - `inst-info-read-kit-conf`
+7. [x] - `p1` - Resolve the effective installed/register-mode kit root from `core.toml` path metadata before deriving compatibility output - `inst-info-resolve-kit-root`
+8. [x] - `p1` - Convert normalized resources plus effective bindings into `cfs info` resource rows, including `binding_path` when present - `inst-info-resource-to-info`
+9. [x] - `p1` - Resolve effective binding paths for drift/containment checks, rejecting cross-OS absolute paths that cannot exist locally - `inst-info-resolve-binding-path`
+10. [x] - `p1` - Check whether resolved binding paths stay inside the adapter root when computing containment drift - `inst-info-is-relative-to`
+11. [x] - `p1` - Parse markdown frontmatter `type` fields so legacy workflow compatibility output can distinguish workflow files from other markdown - `inst-info-frontmatter-type`
+12. [x] - `p1` - Treat a markdown file as a legacy workflow only when its frontmatter declares `type = "workflow"` - `inst-info-is-workflow-frontmatter`
 
 ### Public Component Generation
 
