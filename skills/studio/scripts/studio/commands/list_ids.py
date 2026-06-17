@@ -19,7 +19,7 @@ def _collect_workspace_source_artifacts(ctx, source_name: str) -> List[Tuple[Pat
 
     artifacts: List[Tuple[Path, str]] = []
     for sc in ctx.sources.values():
-        if not sc.reachable or sc.meta is None or sc.name != source_name:
+        if not sc.reachable or sc.meta is None or sc.path is None or sc.name != source_name:
             continue
         _meta = _get_expanded_meta(sc)
         if _meta is None:

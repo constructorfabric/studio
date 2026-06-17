@@ -665,6 +665,42 @@ def _read_file_if_available(path: Path) -> Optional[bytes]:
         return None
 
 
+def _read_bound_directory_resource(
+    source_base: str,
+    binding_path: Path,
+    user_files: Dict[str, bytes],
+    target_mapping: Dict[str, Path],
+) -> None:
+    """Populate user files from a directory resource binding."""
+    for fpath in binding_path.rglob("*"):
+        content = _read_file_if_available(fpath)
+        if content is None:
+            continue
+        src_rel_path = f"{source_base}/{fpath.relative_to(binding_path).as_posix()}"
+        if src_rel_path in user_files:
+            continue
+        user_files[src_rel_path] = content
+        target_mapping[src_rel_path] = fpath
+
+
+def _read_bound_file_resource(
+    source_base: str,
+    binding_path: Path,
+    resource_type: str,
+    user_files: Dict[str, bytes],
+    target_mapping: Dict[str, Path],
+) -> None:
+    """Populate user files from a file-like resource binding."""
+    fpath = binding_path
+    if resource_type == "file" and binding_path.is_dir():
+        fpath = binding_path / source_base.split("/")[-1]
+    content = _read_file_if_available(fpath)
+    if content is None or source_base in user_files:
+        return
+    user_files[source_base] = content
+    target_mapping[source_base] = fpath
+
+
 def _read_bound_resource_files(
     resource_bindings: Dict[str, Path],
     resource_info: Dict[str, Any],
@@ -678,26 +714,23 @@ def _read_bound_resource_files(
             continue
 
         source_base = getattr(info, "source_base", "")
-        if getattr(info, "type", "") == "directory" and binding_path.is_dir():
-            for fpath in binding_path.rglob("*"):
-                content = _read_file_if_available(fpath)
-                if content is None:
-                    continue
-                src_rel_path = f"{source_base}/{fpath.relative_to(binding_path).as_posix()}"
-                if src_rel_path in user_files:
-                    continue
-                user_files[src_rel_path] = content
-                target_mapping[src_rel_path] = fpath
+        resource_type = getattr(info, "type", "")
+        if resource_type == "directory" and binding_path.is_dir():
+            _read_bound_directory_resource(
+                source_base,
+                binding_path,
+                user_files,
+                target_mapping,
+            )
             continue
 
-        fpath = binding_path
-        if getattr(info, "type", "") == "file" and binding_path.is_dir():
-            fpath = binding_path / source_base.split("/")[-1]
-        content = _read_file_if_available(fpath)
-        if content is None or source_base in user_files:
-            continue
-        user_files[source_base] = content
-        target_mapping[source_base] = fpath
+        _read_bound_file_resource(
+            source_base,
+            binding_path,
+            resource_type,
+            user_files,
+            target_mapping,
+        )
 # @cpt-end:cpt-studio-algo-kit-file-update:p1:inst-build-target-mapping
 
 

@@ -77,6 +77,7 @@ def _collect_cross_repo_artifacts(
 def _collect_artifact_code_expectations(
     artifacts: List[ArtifactRecord],
     traceability_by_path: Dict[str, str],
+    registered_systems: Optional[Set[str]] = None,
 ) -> Tuple[Set[str], Set[str], Set[str]]:
     """Collect artifact IDs and to-code expectations for strict validation."""
     artifact_ids: Set[str] = set()
@@ -96,7 +97,11 @@ def _collect_artifact_code_expectations(
                 continue
             for id_constraint in getattr(constraints_for_kind, "defined_id", []) or []:
                 kind = str(getattr(id_constraint, "kind", "") or "").strip().lower()
-                if not kind or f"-{kind}-" not in did.lower() or not bool(getattr(id_constraint, "to_code", False)):
+                if (
+                    not kind
+                    or not _cpt_definition_matches_kind(did, kind, registered_systems)
+                    or not bool(getattr(id_constraint, "to_code", False))
+                ):
                     continue
                 if bool(hit.get("has_task", False)) and not bool(hit.get("checked", False)):
                     to_code_ids_task_unchecked.add(did)
@@ -105,6 +110,27 @@ def _collect_artifact_code_expectations(
                     to_code_ids.add(did)
                 break
     return artifact_ids, to_code_ids, to_code_ids_task_unchecked
+
+
+def _cpt_definition_matches_kind(
+    cpt_id: str,
+    kind: str,
+    registered_systems: Optional[Set[str]] = None,
+) -> bool:
+    """Return whether a CPT definition ID has *kind* in its structural kind slot."""
+    normalized_id = cpt_id.strip().lower()
+    normalized_kind = kind.strip().lower()
+    if not normalized_id.startswith("cpt-") or not normalized_kind:
+        return False
+
+    for system_name in sorted(registered_systems or set(), key=len, reverse=True):
+        prefix = f"cpt-{system_name.lower()}-"
+        if normalized_id.startswith(prefix):
+            remainder = normalized_id[len(prefix):]
+            return remainder.split("-", 1)[0] == normalized_kind
+
+    parts = normalized_id.split("-")
+    return len(parts) >= 3 and parts[2] == normalized_kind
 
 
 def _collect_full_artifact_instances(
@@ -566,6 +592,7 @@ def cmd_validate(argv: List[str]) -> int:
         artifact_ids, to_code_ids, to_code_ids_task_unchecked = _collect_artifact_code_expectations(
             all_artifacts_for_cross,
             traceability_by_path,
+            registered_systems,
         )
 
     # Workspace: expand artifact_ids with IDs from all workspace sources (primary + remote)
