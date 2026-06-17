@@ -35,7 +35,8 @@ def _make_kit_source(td: Path, slug: str = "testkit") -> Path:
     (kit_src / "workflows").mkdir(exist_ok=True)
     # Content files
     (kit_src / "SKILL.md").write_text(
-        f"# Kit {slug}\nKit skill instructions.\n", encoding="utf-8",
+        f"---\nname: skill\ndescription: Kit {slug}\n---\n# Kit {slug}\nKit skill instructions.\n",
+        encoding="utf-8",
     )
     (kit_src / "constraints.toml").write_text(
         "[naming]\npattern = '{slug}-*'\n", encoding="utf-8",
@@ -49,7 +50,8 @@ def _make_kit_source(td: Path, slug: str = "testkit") -> Path:
 def _make_manifest_kit_source(td: Path, slug: str = "testkit") -> Path:
     kit_src = _make_kit_source(td, slug)
     (kit_src / "AGENTS.md").write_text(
-        f"# Agents {slug}\n", encoding="utf-8",
+        f"---\nname: agents\ndescription: Agents {slug}\n---\n# Agents {slug}\n",
+        encoding="utf-8",
     )
     (kit_src / "manifest.toml").write_text(
         "\n".join([
@@ -1367,7 +1369,6 @@ class TestKitUpdateCheckCoverage(unittest.TestCase):
         with TemporaryDirectory() as td:
             kit_src = _make_canonical_kit_source(Path(td), "hashkit")
             model = load_kit_model(kit_src)
-            self.assertRegex(model.manifest_semantic_hash, r"^[0-9a-f]{64}$")
             self.assertRegex(model.manifest_bytes_hash, r"^[0-9a-f]{64}$")
             self.assertRegex(model.tool_risk_fingerprint, r"^[0-9a-f]{64}$")
             self.assertEqual(model.resources[0].content_hash, model.resource_hashes["skill"])

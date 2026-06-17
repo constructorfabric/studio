@@ -698,8 +698,10 @@ def _resolve_registered_kit_dir(
         return studio_dir.resolve()
     is_windows_absolute = _is_windows_absolute_path(registered_kit_path)
     is_posix_absolute = _is_posix_absolute_path(registered_kit_path)
-    if is_windows_absolute or is_posix_absolute:
-        return None
+    if is_windows_absolute:
+        return Path(normalized).resolve() if os.name == "nt" else None
+    if is_posix_absolute:
+        return Path(normalized).resolve() if os.name != "nt" else None
     return (studio_dir / Path(normalized)).resolve()
 
 
@@ -726,7 +728,8 @@ def _serialize_manifest_binding_path(target_path: Any, studio_dir: Path) -> str:
         return _normalize_path_string(target_str)
 
 
-def _project_root_for_core_paths(config_dir: Path, studio_dir: Path, data: Dict[str, Any]) -> Path:
+def _project_root_for_core_paths(_config_dir: Path, studio_dir: Path, data: Dict[str, Any]) -> Path:
+    studio_dir = Path(studio_dir)
     raw_root = data.get("project_root")
     if isinstance(raw_root, str) and raw_root.strip():
         root_path = Path(raw_root.strip())
@@ -746,17 +749,12 @@ def _validate_persisted_core_path(
     normalized = _normalize_path_string(persisted_path)
     if not normalized:
         return f"{label} cannot be empty"
-    if _is_registered_kit_path_absolute(normalized):
-        return (
-            f"{label} '{normalized}' is invalid: only relative paths inside the current project "
-            "may be persisted in core.toml"
-        )
+    is_absolute = _is_registered_kit_path_absolute(normalized)
     resolved_path = _resolve_registered_kit_dir(studio_dir, normalized)
     if resolved_path is None:
-        return (
-            f"{label} '{normalized}' is invalid on this OS: only relative paths inside the "
-            "current project may be persisted in core.toml"
-        )
+        return f"{label} '{normalized}' is not accessible on this OS"
+    if is_absolute:
+        return None
     if not _path_is_within(resolved_path, project_root):
         return (
             f"{label} '{normalized}' escapes the current project root '{project_root}'; "
@@ -1811,6 +1809,7 @@ def install_kit_with_manifest(
             source_provenance=_local_path_provenance(kit_source, install_mode, studio_dir),
             authority_metadata=authority_metadata,
             local_metadata=local_metadata or None,
+            tool_risk_fingerprint=str(getattr(kit_model, "tool_risk_fingerprint", "") or ""),
         )
         if registration_errors:
             return {
@@ -4310,6 +4309,7 @@ def update_kit(
             source_provenance=_local_path_provenance(source_dir, "register", studio_dir),
             authority_metadata=authority_metadata,
             local_metadata=local_metadata or None,
+            tool_risk_fingerprint=str(getattr(kit_model, "tool_risk_fingerprint", "") or ""),
         )
         if registration_errors:
             result["version"] = {"status": "failed"}
@@ -4397,13 +4397,20 @@ def update_kit(
                     kit_slug,
                     source_version,
                     studio_dir,
-                    source=source,
-                    authority_metadata=authority_metadata,
-                    local_metadata=(
-                        {"conf_version": local_conf_version}
-                        if local_conf_version else None
-                    ),
-                )
+                        source=source,
+                        authority_metadata=authority_metadata,
+                        local_metadata=(
+                            {"conf_version": local_conf_version}
+                            if local_conf_version else None
+                        ),
+                        tool_risk_fingerprint=str(
+                            getattr(
+                                (_risk_model if _risk_model is not None else _manifest),
+                                "tool_risk_fingerprint",
+                                "",
+                            ) or ""
+                        ),
+                    )
                 if registration_errors:
                     result["version"] = {"status": "failed"}
                     result["gen"] = {"files_written": 0}
@@ -4473,6 +4480,7 @@ def update_kit(
                         {"conf_version": local_conf_version}
                         if local_conf_version else None
                     ),
+                    tool_risk_fingerprint=str(getattr(_risk_model, "tool_risk_fingerprint", "") or ""),
                 )
                 if registration_errors:
                     result["version"] = {"status": "failed"}
@@ -4611,6 +4619,9 @@ def update_kit(
                 local_metadata=(
                     {"conf_version": local_conf_version}
                     if local_conf_version else None
+                ),
+                tool_risk_fingerprint=str(
+                    getattr((_risk_model if _risk_model is not None else _manifest), "tool_risk_fingerprint", "") or ""
                 ),
             )
             if registration_errors:
@@ -4960,6 +4971,7 @@ def _register_kit_in_core_toml(
     authority_metadata: Optional[Dict[str, Any]] = None,
     source_provenance: Optional[Dict[str, Any]] = None,
     local_metadata: Optional[Dict[str, Any]] = None,
+    tool_risk_fingerprint: str = "",
 ) -> List[str]:
     """Register or update a kit entry in config/core.toml."""
     # @cpt-begin:cpt-studio-algo-kit-config-helpers:p1:inst-register-core
@@ -5050,6 +5062,8 @@ def _register_kit_in_core_toml(
     existing.pop("content_identity", None)
     if local_metadata:
         existing["local_metadata"] = local_metadata
+    if tool_risk_fingerprint:
+        existing["tool_risk_fingerprint"] = tool_risk_fingerprint
     if install_mode == "register":
         existing.pop("resources", None)
     elif resources is not None:

@@ -121,7 +121,6 @@ class KitModel:
     resources: List[KitResource] = field(default_factory=list)
     public_components: List[PublicComponent] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
-    manifest_semantic_hash: str = ""
     manifest_bytes_hash: str = ""
     resource_hashes: Dict[str, str] = field(default_factory=dict)
     tool_risk_fingerprint: str = ""
@@ -644,9 +643,6 @@ def _with_hashes(kit_source: Path, model: KitModel) -> KitModel:
         resources=resources,
         public_components=_public_components(resources),
         warnings=model.warnings,
-        manifest_semantic_hash=_sha256_bytes(
-            json.dumps(semantic_data, sort_keys=True, separators=(",", ":")).encode("utf-8"),
-        ),
         manifest_bytes_hash=manifest_bytes_hash,
         resource_hashes=resource_hashes,
         tool_risk_fingerprint=_sha256_bytes(

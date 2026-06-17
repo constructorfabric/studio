@@ -1198,6 +1198,9 @@ def _discover_kit_agents(
     """
     seen_names: Set[str] = set()
     out: List[Dict[str, Any]] = []
+    registered_kit_dirs = _registered_kit_dirs(project_root)
+    if not isinstance(registered_kit_dirs, set):
+        return []
 
     def _load_agents_toml(toml_path: Path, source_dir: Path) -> None:
         if not toml_path.is_file():
@@ -1226,6 +1229,8 @@ def _discover_kit_agents(
 
     # 1. Installed kits — agents defined by kit packages
     for _kit_slug, kit_root in sorted(_registered_kit_roots(studio_root, project_root).items()):
+        if kit_root.name not in registered_kit_dirs:
+            continue
         _load_agents_toml(kit_root / "agents.toml", kit_root)
 
     # 2. Core skill area — fallback for agents not already defined by kits

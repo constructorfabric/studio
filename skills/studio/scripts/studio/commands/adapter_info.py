@@ -220,49 +220,6 @@ def _legacy_workflow_names_from_component(kit_root: Path, component: object) -> 
     # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-workflows-deprecated
 
 
-def _hash_drift(stored: object, current: object) -> dict:
-    if not isinstance(stored, str) or not stored:
-        return {
-            "stored": None,
-            "current": current if isinstance(current, str) else None,
-            "drifted": None,
-            "reason": "not_recorded",
-        }
-    return {
-        "stored": stored,
-        "current": current if isinstance(current, str) else None,
-        "drifted": stored != current,
-    }
-
-
-def _resource_hash_drift(stored: object, current: dict) -> dict:
-    if not isinstance(stored, dict):
-        return {
-            "drifted": None,
-            "reason": "not_recorded",
-            "changed": {},
-            "missing": [],
-            "stale": [],
-        }
-    changed: dict[str, dict[str, Optional[str]]] = {}
-    missing = sorted(resource_id for resource_id in current if resource_id not in stored)
-    stale = sorted(resource_id for resource_id in stored if resource_id not in current)
-    for resource_id in sorted(set(stored).intersection(current)):
-        stored_hash = stored.get(resource_id)
-        current_hash = current.get(resource_id)
-        if stored_hash != current_hash:
-            changed[str(resource_id)] = {
-                "stored": str(stored_hash) if stored_hash is not None else None,
-                "current": str(current_hash) if current_hash is not None else None,
-            }
-    return {
-        "drifted": bool(changed or missing or stale),
-        "changed": changed,
-        "missing": missing,
-        "stale": stale,
-    }
-
-
 def _kit_model_drift(
     adapter_dir: Path,
     model: object,

@@ -42,7 +42,10 @@ def _make_kit_with_manifest(td: Path, slug: str = "testkit") -> Path:
     (kit / "artifacts" / "ADR" / "template.md").write_text("# ADR Template\n", encoding="utf-8")
     (kit / "artifacts" / "ADR" / "rules.md").write_text("# ADR Rules\n", encoding="utf-8")
     (kit / "constraints.toml").write_text('[artifacts]\n', encoding="utf-8")
-    (kit / "SKILL.md").write_text(f"# Kit {slug}\nKit skill.\n", encoding="utf-8")
+    (kit / "SKILL.md").write_text(
+        f"---\nname: skill\ndescription: Kit {slug}\n---\n# Kit {slug}\nKit skill.\n",
+        encoding="utf-8",
+    )
 
     # conf.toml for version
     from studio.utils import toml_utils
