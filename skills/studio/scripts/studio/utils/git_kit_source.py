@@ -39,6 +39,7 @@ from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 _KIT_SLUG_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
 _FULL_SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
+_SAFE_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/+@-]{0,254}$")
 _SCP_LIKE_RE = re.compile(r"^([A-Za-z0-9._-]+)@([A-Za-z0-9._-]+):(.+)$")
 _SSH_SHORTHAND_RE = re.compile(r"^ssh:([A-Za-z0-9._-]+):(.+)$")
 _SSH_SHORTHAND_WITH_PORT_RE = re.compile(r"^ssh:([A-Za-z0-9._-]+):([0-9]+)/(.+)$")
@@ -380,6 +381,46 @@ def _requested_ref_display(requested_ref: str) -> str:
 # @cpt-end:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-store-selector-identity
 
 
+# @cpt-begin:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-version-opaque
+def _ref_contains_control_chars(value: str) -> bool:
+    return any(ord(ch) < 32 or ord(ch) == 127 for ch in value)
+
+
+def _ref_uses_forbidden_sequences(value: str) -> bool:
+    return any(token in value for token in ("..", "@{", "\\", "//"))
+
+
+def _ref_violates_name_rules(value: str) -> bool:
+    return (
+        value in {".", ".."}
+        or value.startswith("-")
+        or value.endswith(".")
+        or value.endswith(".lock")
+    )
+
+
+def _validate_requested_ref(requested_ref: str) -> str:
+    normalized = str(requested_ref or "").strip()
+    if not normalized:
+        return ""
+    if normalized == "HEAD":
+        return ""
+    if _FULL_SHA_RE.fullmatch(normalized):
+        return normalized
+    if (
+        not _SAFE_REF_RE.fullmatch(normalized)
+        or _ref_violates_name_rules(normalized)
+        or _ref_uses_forbidden_sequences(normalized)
+        or _ref_contains_control_chars(normalized)
+    ):
+        raise GitSourceError(
+            "GIT_SOURCE_INVALID_REF",
+            "Git source ref must be a branch/tag-style name or full 40-character commit SHA",
+        )
+    return normalized
+# @cpt-end:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-version-opaque
+
+
 # @cpt-begin:cpt-studio-algo-generic-git-kit-installer-fetch-cache:p1:inst-git-cache-hash-components
 def _subdir_hash(subdir: str) -> str:
     return _hash_key(subdir or "__root__")
@@ -498,9 +539,6 @@ def _cache_artifact(
 # @cpt-begin:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-offline-last-known
 def _metadata_value(metadata: Dict[str, Any], key: str) -> str:
     provenance = metadata.get("source_provenance", {})
-    content_identity = metadata.get("content_identity", {})
-    if key == "commit_sha" and isinstance(content_identity, dict):
-        return str(content_identity.get("commit_sha") or metadata.get("commit_sha") or "")
     if isinstance(provenance, dict):
         return str(provenance.get(key) or metadata.get(key) or "")
     return str(metadata.get(key) or "")
@@ -575,12 +613,6 @@ def _materialize_offline_last_known(
         "cache_requested_ref_hash": _ref_hash(effective_requested_ref),
         "cache_subdir_hash": _subdir_hash(parsed.selected_subdirectory),
         "cache_kit_hash": _kit_hash(parsed.kit_identity),
-        "content_identity": {
-            "vcs": "git",
-            "commit_sha": commit_sha,
-            "subdirectory": parsed.selected_subdirectory,
-            "identity": identity,
-        },
     }
     return GitKitResolution(kit_source_dir=kit_source_dir, tmp_dir=tmp_dir, authority_metadata=authority)
 # @cpt-end:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-offline-last-known
@@ -604,6 +636,7 @@ def materialize_git_kit_source(
     previous_metadata: Optional[Dict[str, Any]] = None,
 ) -> GitKitResolution:
     """Clone, checkout, and return a selected generic Git kit source directory."""
+    requested_ref = _validate_requested_ref(requested_ref)
     tmp_dir = Path(tempfile.mkdtemp(prefix="studio-git-kit-"))
     repo_dir = tmp_dir / "repo"
     env = {}
@@ -667,12 +700,6 @@ def materialize_git_kit_source(
         "transport": parsed.transport,
         "sanitized_url_display": parsed.sanitized_url_display,
         **cache_metadata,
-        "content_identity": {
-            "vcs": "git",
-            "commit_sha": commit_sha,
-            "subdirectory": parsed.selected_subdirectory,
-            "identity": identity,
-        },
     }
     # @cpt-end:cpt-studio-state-generic-git-kit-installer-source:p1:inst-git-prov-schema-content
     return GitKitResolution(

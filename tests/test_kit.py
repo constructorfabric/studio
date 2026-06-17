@@ -35,7 +35,8 @@ def _make_kit_source(td: Path, slug: str = "testkit") -> Path:
     (kit_src / "workflows").mkdir(exist_ok=True)
     # Content files
     (kit_src / "SKILL.md").write_text(
-        f"# Kit {slug}\nKit skill instructions.\n", encoding="utf-8",
+        f"---\nname: skill\ndescription: Kit {slug}\n---\n# Kit {slug}\nKit skill instructions.\n",
+        encoding="utf-8",
     )
     (kit_src / "constraints.toml").write_text(
         "[naming]\npattern = '{slug}-*'\n", encoding="utf-8",
@@ -49,7 +50,8 @@ def _make_kit_source(td: Path, slug: str = "testkit") -> Path:
 def _make_manifest_kit_source(td: Path, slug: str = "testkit") -> Path:
     kit_src = _make_kit_source(td, slug)
     (kit_src / "AGENTS.md").write_text(
-        f"# Agents {slug}\n", encoding="utf-8",
+        f"---\nname: agents\ndescription: Agents {slug}\n---\n# Agents {slug}\n",
+        encoding="utf-8",
     )
     (kit_src / "manifest.toml").write_text(
         "\n".join([
@@ -87,7 +89,10 @@ def _make_manifest_kit_source(td: Path, slug: str = "testkit") -> Path:
 def _make_canonical_kit_source(td: Path, slug: str = "canonicalkit") -> Path:
     kit_src = td / slug
     kit_src.mkdir(parents=True, exist_ok=True)
-    (kit_src / "SKILL.md").write_text("# Canonical kit\n", encoding="utf-8")
+    (kit_src / "SKILL.md").write_text(
+        "---\nname: skill\ndescription: Canonical kit\n---\n# Canonical kit\n",
+        encoding="utf-8",
+    )
     (kit_src / ".cf-studio-kit.toml").write_text(
         "\n".join([
             'manifest_version = "1.0"',
@@ -275,7 +280,7 @@ class TestKitNormalize(unittest.TestCase):
             self.assertTrue(out["dry_run"])
             self.assertEqual(out["kit"], "manifestkit")
             self.assertEqual(out["report"]["manifest_source"], "legacy_manifest")
-            self.assertRegex(out["report"]["content_identity"]["manifest_semantic_hash"], r"^[0-9a-f]{64}$")
+            self.assertNotIn("content_identity", out["report"])
             warnings = "\n".join(out["report"]["warnings"])
             self.assertIn("legacy manifest.toml is supported for migration", warnings)
             self.assertIn(".cf-studio-kit.toml", warnings)
@@ -573,7 +578,7 @@ class TestKitUpdateCheckCoverage(unittest.TestCase):
 
         git = _kit_update_check_result(
             "kit",
-            {"content_identity": {"commit_sha": "abc"}},
+            {"source_provenance": {"commit_sha": "abc"}},
             {"source_type": "git", "commit_sha": "def"},
         )
         self.assertEqual(git["action"], "update_available")
@@ -1207,7 +1212,7 @@ class TestKitUpdateCheckCoverage(unittest.TestCase):
             out = json.loads(buf.getvalue())
             components = out["report"]["public_components"]
             self.assertTrue(any(c["generated_name"] == "cf-previewkit-skill" for c in components))
-            self.assertIn("resource_hashes", out["report"]["content_identity"])
+            self.assertNotIn("content_identity", out["report"])
 
     def test_normalize_core_bindings_dry_run(self):
         from studio.commands.kit import cmd_kit_normalize
@@ -1220,7 +1225,7 @@ class TestKitUpdateCheckCoverage(unittest.TestCase):
             (kit_src / "SKILL.md").write_text("# SDLC\n", encoding="utf-8")
             (kit_src / "constraints.toml").write_text("[PRD.identifiers.fr]\nrequired = true\n", encoding="utf-8")
             (kit_src / "workflows" / "implement.md").write_text(
-                "---\ntype: workflow\n---\n# Implement\n",
+                "---\ntype: workflow\nname: implement\n---\n# Implement\n",
                 encoding="utf-8",
             )
             (config_dir / "core.toml").write_text(
@@ -1309,6 +1314,14 @@ class TestKitUpdateCheckCoverage(unittest.TestCase):
             warnings = "\n".join(reloaded.warnings)
             self.assertNotIn("generated_name", warnings)
 
+    def test_rendered_canonical_manifest_does_not_emit_generated_name(self):
+        from studio.utils.kit_model import load_kit_model, render_canonical_manifest
+
+        with TemporaryDirectory() as td:
+            kit_src = _make_canonical_kit_source(Path(td), "nogenerated")
+            rendered = render_canonical_manifest(load_kit_model(kit_src))
+            self.assertNotIn("generated_name", rendered)
+
     def test_kit_model_rejects_non_boolean_user_modifiable(self):
         from studio.utils.kit_model import load_kit_model
 
@@ -1356,7 +1369,6 @@ class TestKitUpdateCheckCoverage(unittest.TestCase):
         with TemporaryDirectory() as td:
             kit_src = _make_canonical_kit_source(Path(td), "hashkit")
             model = load_kit_model(kit_src)
-            self.assertRegex(model.manifest_semantic_hash, r"^[0-9a-f]{64}$")
             self.assertRegex(model.manifest_bytes_hash, r"^[0-9a-f]{64}$")
             self.assertRegex(model.tool_risk_fingerprint, r"^[0-9a-f]{64}$")
             self.assertEqual(model.resources[0].content_hash, model.resource_hashes["skill"])
@@ -1550,18 +1562,17 @@ class TestKitUpdateCheckCoverage(unittest.TestCase):
             self.assertEqual(resource["subagents"][0]["id"], "helper")
             self.assertEqual(resource["targets"]["cursor"]["reasoning_effort"], "high")
 
-    def test_kit_model_preserves_prefixed_public_name(self):
+    def test_kit_model_preserves_prefixed_public_name_from_frontmatter(self):
         from studio.utils.kit_model import load_kit_model
 
         with TemporaryDirectory() as td:
             kit_src = _make_canonical_kit_source(Path(td), "pubkit")
-            manifest = kit_src / ".cf-studio-kit.toml"
-            manifest.write_text(
-                manifest.read_text(encoding="utf-8").replace('id = "skill"', 'id = "cf-pubkit-skill"'),
+            (kit_src / "SKILL.md").write_text(
+                "---\nname: cf-pubkit-skill\ndescription: Canonical kit\n---\n# Canonical kit\n",
                 encoding="utf-8",
             )
             component = load_kit_model(kit_src).public_components[0]
-            self.assertEqual(component.id, "cf-pubkit-skill")
+            self.assertEqual(component.id, "skill")
             self.assertEqual(component.generated_name, "cf-pubkit-skill")
 
     def test_kit_model_canonical_workflow_kind_warns_and_normalizes_to_skill(self):
@@ -1585,7 +1596,10 @@ class TestKitUpdateCheckCoverage(unittest.TestCase):
         with TemporaryDirectory() as td:
             kit_src = Path(td) / "legacyv2"
             kit_src.mkdir()
-            (kit_src / "release.md").write_text("# Release workflow\n", encoding="utf-8")
+            (kit_src / "release.md").write_text(
+                "---\nname: release\ndescription: Ship release\n---\n# Release workflow\n",
+                encoding="utf-8",
+            )
             (kit_src / "manifest.toml").write_text(
                 "\n".join([
                     "[manifest]",
@@ -1812,14 +1826,12 @@ class TestKitSourceModeValidation(unittest.TestCase):
                 entry = core["kits"]["regkit"]
                 self.assertEqual(entry["install_mode"], "register")
                 self.assertTrue(entry["path"].endswith("local-kits/regkit"))
-                self.assertTrue(entry["resources"]["skill"]["path"].endswith("local-kits/regkit/SKILL.md"))
+                self.assertNotIn("resources", entry)
                 self.assertEqual(entry["source_provenance"]["source_type"], "local_path")
                 self.assertEqual(entry["source_provenance"]["resolver_mode"], "register")
                 self.assertTrue(entry["source_provenance"]["effective_source"].endswith("local-kits/regkit"))
-                self.assertRegex(entry["content_identity"]["manifest_semantic_hash"], r"^[0-9a-f]{64}$")
-                self.assertRegex(entry["content_identity"]["manifest_bytes_hash"], r"^[0-9a-f]{64}$")
-                self.assertRegex(entry["content_identity"]["resource_hashes"]["skill"], r"^[0-9a-f]{64}$")
-                self.assertRegex(entry["content_identity"]["tool_risk_fingerprint"], r"^[0-9a-f]{64}$")
+                self.assertFalse(Path(entry["source_provenance"]["effective_source"]).is_absolute())
+                self.assertNotIn("content_identity", entry)
                 self.assertFalse((adapter / "config" / "kits" / "regkit" / "SKILL.md").exists())
             finally:
                 os.chdir(cwd)
@@ -1874,7 +1886,7 @@ class TestKitSourceModeValidation(unittest.TestCase):
                 self.assertEqual(out["files_written"], 1)
                 self.assertEqual(
                     (adapter / "config" / "kits" / "prompt-copykit" / "SKILL.md").read_text(encoding="utf-8"),
-                    "# Canonical kit\n",
+                    "---\nname: skill\ndescription: Canonical kit\n---\n# Canonical kit\n",
                 )
             finally:
                 os.chdir(cwd)
@@ -1893,7 +1905,7 @@ class TestKitSourceModeValidation(unittest.TestCase):
                     rc = cmd_kit_install(["--path", str(kit_src), "--install-mode", "register"])
                 self.assertEqual(rc, 0)
                 with open(adapter / "config" / "core.toml", "rb") as f:
-                    before = tomllib.load(f)["kits"]["regupdate"]["content_identity"]["resource_hashes"]["skill"]
+                    before = tomllib.load(f)["kits"]["regupdate"]["version"]
 
                 (kit_src / "SKILL.md").write_text("# Registered update\n", encoding="utf-8")
                 result = update_kit(
@@ -1903,15 +1915,19 @@ class TestKitSourceModeValidation(unittest.TestCase):
                     project_root=root,
                 )
 
-                self.assertEqual(result["version"]["status"], "updated")
+                self.assertEqual(result["version"]["status"], "current")
                 self.assertEqual(result["gen"]["files_written"], 0)
                 self.assertFalse((adapter / "config" / "kits" / "regupdate" / "SKILL.md").exists())
                 with open(adapter / "config" / "core.toml", "rb") as f:
                     entry = tomllib.load(f)["kits"]["regupdate"]
-                after = entry["content_identity"]["resource_hashes"]["skill"]
-                self.assertNotEqual(after, before)
+                after = entry["version"]
+                self.assertEqual(after, before)
                 self.assertEqual(entry["install_mode"], "register")
-                self.assertTrue(entry["resources"]["skill"]["path"].endswith("local-kits/regupdate/SKILL.md"))
+                self.assertNotIn("resources", entry)
+                self.assertEqual(
+                    result["resource_bindings"]["skill"],
+                    "../local-kits/regupdate/SKILL.md",
+                )
             finally:
                 os.chdir(cwd)
 
@@ -2074,7 +2090,10 @@ class TestCanonicalKitMetadata(unittest.TestCase):
                 self.assertEqual(out["install_mode"], "copy")
 
                 installed_skill = adapter / "config" / "kits" / "canon-install" / "SKILL.md"
-                self.assertEqual(installed_skill.read_text(encoding="utf-8"), "# Canonical kit\n")
+                self.assertEqual(
+                    installed_skill.read_text(encoding="utf-8"),
+                    "---\nname: skill\ndescription: Canonical kit\n---\n# Canonical kit\n",
+                )
 
                 with open(adapter / "config" / "core.toml", "rb") as f:
                     core = tomllib.load(f)
@@ -2138,7 +2157,10 @@ class TestCanonicalKitMetadata(unittest.TestCase):
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
                 self.assertEqual(out["status"], "PASS")
-                self.assertEqual(installed_skill.read_text(encoding="utf-8"), "# Canonical kit\n")
+                self.assertEqual(
+                    installed_skill.read_text(encoding="utf-8"),
+                    "---\nname: skill\ndescription: Canonical kit\n---\n# Canonical kit\n",
+                )
             finally:
                 os.chdir(cwd)
 
@@ -2292,7 +2314,7 @@ class TestCanonicalKitMetadata(unittest.TestCase):
                 self.assertIn(result["version"]["status"], {"current", "updated"})
                 with open(adapter / "config" / "core.toml", "rb") as f:
                     entry = tomllib.load(f)["kits"]["risk-update"]
-                self.assertEqual(entry["content_identity"]["tool_risk_fingerprint"], fingerprint)
+                self.assertEqual(entry["tool_risk_fingerprint"], fingerprint)
             finally:
                 os.chdir(cwd)
 
@@ -2450,6 +2472,86 @@ class TestCmdKitUpdate(unittest.TestCase):
                 self.assertEqual(out["results"][0]["action"], "current")
             finally:
                 os.chdir(cwd)
+
+    def test_update_path_uses_canonical_manifest_for_registered_kit(self):
+        """cmd_kit_update --path honors .cf-studio-kit.toml for register-mode kits."""
+        from studio.commands.kit import cmd_kit_install, cmd_kit_update
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            kit_src = _make_canonical_kit_source(root / "local-kits", "pathmanifest")
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                with redirect_stdout(io.StringIO()):
+                    rc = cmd_kit_install(["--path", str(kit_src), "--install-mode", "register"])
+                self.assertEqual(rc, 0)
+
+                (kit_src / "SKILL.md").write_text("# Updated canonical kit\n", encoding="utf-8")
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = cmd_kit_update(["--path", str(kit_src)])
+                self.assertEqual(rc, 0)
+                out = json.loads(buf.getvalue())
+                self.assertEqual(out["results"][0]["action"], "current")
+                self.assertNotIn("resource_bindings", out["results"][0])
+
+                with open(adapter / "config" / "core.toml", "rb") as f:
+                    entry = tomllib.load(f)["kits"]["pathmanifest"]
+                self.assertEqual(entry["install_mode"], "register")
+                self.assertNotIn("resources", entry)
+            finally:
+                os.chdir(cwd)
+
+    def test_build_source_to_resource_mapping_uses_requested_canonical_slug(self):
+        """Manifest source mapping must select the requested canonical kit entry."""
+        from studio.utils.manifest import build_source_to_resource_mapping
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            kit_src = root / "multi-kit"
+            kit_src.mkdir()
+            (kit_src / "a-skill.md").write_text("# A\n", encoding="utf-8")
+            (kit_src / "b-skill.md").write_text("# B\n", encoding="utf-8")
+            (kit_src / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "kit-a"',
+                    'version = "1.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "skill_a"',
+                    'kind = "skill"',
+                    'source = "a-skill.md"',
+                    'install_path = "SKILL.md"',
+                    'type = "file"',
+                    "",
+                    "[[kits]]",
+                    'slug = "kit-b"',
+                    'version = "1.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "skill_b"',
+                    'kind = "skill"',
+                    'source = "b-skill.md"',
+                    'install_path = "SKILL.md"',
+                    'type = "file"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            mapping_a, info_a = build_source_to_resource_mapping(kit_src, kit_slug="kit-a")
+            mapping_b, info_b = build_source_to_resource_mapping(kit_src, kit_slug="kit-b")
+
+            self.assertEqual(mapping_a, {"a-skill.md": "skill_a"})
+            self.assertEqual(mapping_b, {"b-skill.md": "skill_b"})
+            self.assertIn("skill_a", info_a)
+            self.assertNotIn("skill_b", info_a)
+            self.assertIn("skill_b", info_b)
+            self.assertNotIn("skill_a", info_b)
 
     def test_update_force_bypasses_version_check(self):
         """--force skips version check even if versions match."""
@@ -2749,7 +2851,7 @@ class TestCmdKitUpdate(unittest.TestCase):
             "custom",
             {
                 "source": "git:https://example.com/org/repo.git",
-                "content_identity": {"commit_sha": "old123"},
+                "source_provenance": {"commit_sha": "old123"},
             },
             {
                 "source_type": "git",
@@ -3198,14 +3300,14 @@ class TestResolveRegisteredKitDir(unittest.TestCase):
             resolved = _resolve_registered_kit_dir(adapter, "custom-kits/sdlc")
             self.assertEqual(resolved, (adapter / "custom-kits" / "sdlc").resolve())
 
-    def test_posix_absolute_path_resolves_without_rebasing(self):
+    def test_posix_absolute_path_is_rejected(self):
         from studio.commands.kit import _resolve_registered_kit_dir
         with TemporaryDirectory() as td:
             adapter = Path(td) / "cypilot"
             adapter.mkdir()
             external = Path(td) / "external-kits" / "sdlc"
             resolved = _resolve_registered_kit_dir(adapter, external.as_posix())
-            self.assertEqual(resolved, external.resolve())
+            self.assertIsNone(resolved)
 
     def test_windows_drive_absolute_path_not_project_relative_on_non_windows(self):
         from studio.commands.kit import _resolve_registered_kit_dir
@@ -3585,19 +3687,12 @@ class TestCmdKitInstall(unittest.TestCase):
                     with patch.object(kit_module.os.path, "relpath", side_effect=_patched_relpath):
                         with redirect_stdout(buf):
                             rc = cmd_kit_install(["--path", str(kit_src), "--force", "--install-mode", "copy"])
-                self.assertEqual(rc, 0)
+                self.assertEqual(rc, 2)
                 out = json.loads(buf.getvalue())
-                self.assertEqual(out["status"], "PASS")
+                self.assertEqual(out["status"], "FAIL")
+                self.assertIn("relative paths", " ".join(out.get("errors", [])))
             finally:
                 os.chdir(cwd)
-
-            with open(adapter / "config" / "core.toml", "rb") as f:
-                data = tomllib.load(f)
-            resources = data["kits"]["testkit"]["resources"]
-            self.assertEqual(data["kits"]["testkit"]["path"], registered_path)
-            self.assertEqual(resources["skill"]["path"], f"{external_kit_dir.as_posix()}/SKILL.md")
-            self.assertEqual(resources["agents"]["path"], f"{external_kit_dir.as_posix()}/AGENTS.md")
-            self.assertEqual(resources["constraints"]["path"], f"{external_kit_dir.as_posix()}/constraints.toml")
 
     def test_install_slug_from_conf_toml(self):
         """Kit slug is read from conf.toml slug field."""
@@ -4144,7 +4239,6 @@ class TestUpdateKitExistingBranch(unittest.TestCase):
             resources = data["kits"]["manifestupdate"]["resources"]
             self.assertEqual(data["kits"]["manifestupdate"]["path"], external_kit_dir.as_posix())
             self.assertEqual(resources["skill"]["path"], f"{external_kit_dir.as_posix()}/SKILL.md")
-            self.assertEqual(resources["agents"]["path"], f"{external_kit_dir.as_posix()}/AGENTS.md")
             self.assertEqual(resources["constraints"]["path"], f"{external_kit_dir.as_posix()}/constraints.toml")
             self.assertEqual(resources["notes"]["path"], f"{external_kit_dir.as_posix()}/notes.txt")
 
@@ -4506,7 +4600,6 @@ class TestDownloadKitFromGithub(unittest.TestCase):
             self.assertTrue(result_dir.is_dir())
             self.assertEqual(ver, "v1.0")
             self.assertEqual(authority["commit_sha"], "abc123")
-            self.assertEqual(authority["content_identity"]["commit_sha"], "abc123")
             self.assertIn("#abc123", authority["identity"])
             shutil.rmtree(result_dir.parent, ignore_errors=True)
 
@@ -4715,8 +4808,8 @@ class TestResolveGithubRef(unittest.TestCase):
                 "resolved_ref": "v2.0",
                 "resolver_mode": "latest_release",
                 "resolution_basis": "github_release",
+                "commit_sha": "abc123",
             },
-            "content_identity": {"commit_sha": "abc123"},
             "version": "v2.0",
         }
 
@@ -4741,11 +4834,6 @@ class TestResolveGithubRef(unittest.TestCase):
             "canonical_source": "github:o/r",
             "effective_source": "github:mirror/r",
             "identity": "o/r@v2.0.0#abc123",
-            "content_identity": {
-                "resolved_ref": "v2.0.0",
-                "commit_sha": "abc123",
-                "identity": "o/r@v2.0.0#abc123",
-            },
             "freshness": "fresh",
             "verified": "verified",
         })
@@ -4754,7 +4842,7 @@ class TestResolveGithubRef(unittest.TestCase):
         self.assertEqual(summary["canonical_source"], "github:o/r")
         self.assertEqual(summary["effective_source"], "github:mirror/r")
         self.assertEqual(summary["identity"], "o/r@v2.0.0#abc123")
-        self.assertEqual(summary["content_identity"]["commit_sha"], "abc123")
+        self.assertEqual(summary["commit_sha"], "abc123")
 
 
 class TestKitUpdateAuthorityIdentity(unittest.TestCase):
@@ -4819,7 +4907,7 @@ class TestKitUpdateAuthorityIdentity(unittest.TestCase):
             with open(adapter / "config" / "core.toml", "rb") as f:
                 data = tomllib.load(f)
             self.assertEqual(
-                data["kits"]["driftkit"]["content_identity"]["commit_sha"],
+                data["kits"]["driftkit"]["source_provenance"]["commit_sha"],
                 "new456",
             )
 
@@ -5384,7 +5472,7 @@ class TestRegisterKitInCoreToml(unittest.TestCase):
             self.assertEqual(kit["source_provenance"]["requested_ref"], "latest")
             self.assertEqual(kit["source_provenance"]["resolved_ref"], "v2.0.0")
             self.assertEqual(kit["source_provenance"]["effective_source"], "github:mirror/r")
-            self.assertEqual(kit["content_identity"]["commit_sha"], "abc123")
+            self.assertEqual(kit["source_provenance"]["commit_sha"], "abc123")
 
     def test_install_kit_uses_github_version_not_conf_version_for_authority(self):
         from studio.commands.kit import install_kit
@@ -5953,6 +6041,58 @@ class TestCmdKitUpdateCli(unittest.TestCase):
             finally:
                 os.chdir(cwd)
 
+    def test_install_accepts_path_prefix_alias(self):
+        from studio.commands.kit import cmd_kit_install
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            kit_src = _make_kit_source(Path(td) / "src", "pathalias")
+
+            cwd = os.getcwd()
+            try:
+                os.chdir(root)
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = cmd_kit_install([f"path/{kit_src}", "--install-mode", "copy", "--force"])
+                self.assertEqual(rc, 0, buf.getvalue())
+                out = json.loads(buf.getvalue())
+                self.assertEqual(out["status"], "PASS")
+                with open(adapter / "config" / "core.toml", "rb") as f:
+                    core = tomllib.load(f)
+                self.assertIn("pathalias", core["kits"])
+            finally:
+                os.chdir(cwd)
+
+    def test_update_accepts_path_prefix_alias(self):
+        from studio.commands.kit import cmd_kit_update
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            kit_src = _make_kit_source(Path(td) / "src", "pathalias")
+            from studio.utils import toml_utils
+            toml_utils.dump({
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {"pathalias": {"format": "CFS", "path": "config/kits/pathalias"}},
+            }, adapter / "config" / "core.toml")
+            config_kit = adapter / "config" / "kits" / "pathalias"
+            config_kit.mkdir(parents=True)
+            (config_kit / "SKILL.md").write_text("old\n", encoding="utf-8")
+
+            cwd = os.getcwd()
+            try:
+                os.chdir(root)
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = cmd_kit_update([f"path/{kit_src}", "--force", "-y"])
+                self.assertEqual(rc, 0, buf.getvalue())
+                out = json.loads(buf.getvalue())
+                self.assertEqual(out["results"][0]["kit"], "pathalias")
+            finally:
+                os.chdir(cwd)
+
     def test_update_local_path_uses_registered_slug_for_matching_path(self):
         from studio.commands.kit import cmd_kit_update
         from studio.utils import toml_utils
@@ -6052,6 +6192,44 @@ class TestCmdKitUpdateCli(unittest.TestCase):
                 with redirect_stdout(buf):
                     rc = cmd_kit_update(["nosuchkit"])
                 self.assertEqual(rc, 2)
+            finally:
+                os.chdir(cwd)
+
+    def test_update_register_mode_kit_without_source_is_current(self):
+        from studio.commands.kit import cmd_kit_update
+        from studio.utils import toml_utils
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            kit_src = root / "kits" / "gears"
+            kit_src.mkdir(parents=True)
+            (kit_src / "SKILL.md").write_text("# Gears\n", encoding="utf-8")
+            toml_utils.dump({
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {
+                    "gears": {
+                        "format": "CFS",
+                        "path": "../kits/gears",
+                        "version": "1.0.0",
+                        "install_mode": "register",
+                    }
+                },
+            }, adapter / "config" / "core.toml")
+
+            cwd = os.getcwd()
+            try:
+                os.chdir(root)
+                for argv in (["gears"], ["gears", "--force"]):
+                    buf = io.StringIO()
+                    with redirect_stdout(buf):
+                        rc = cmd_kit_update(argv)
+                    self.assertEqual(rc, 0, (argv, buf.getvalue()))
+                    out = json.loads(buf.getvalue())
+                    self.assertEqual(out["status"], "PASS")
+                    self.assertEqual(out["results"][0]["kit"], "gears")
+                    self.assertEqual(out["results"][0]["action"], "current")
             finally:
                 os.chdir(cwd)
 

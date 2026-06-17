@@ -71,6 +71,49 @@ def _make_subdir_git_kit_repo(root: Path) -> tuple[Path, str]:
     return repo, _run_git(repo, "rev-parse", "HEAD")
 
 
+def _make_multi_canonical_git_kit_repo(root: Path) -> tuple[Path, str]:
+    repo = root / "repo"
+    repo.mkdir()
+    _run_git(repo, "init", "-q")
+    _run_git(repo, "config", "user.email", "test@example.com")
+    _run_git(repo, "config", "user.name", "Test User")
+    (repo / "alpha.md").write_text("# Alpha v1\n", encoding="utf-8")
+    (repo / "beta.md").write_text("# Beta v1\n", encoding="utf-8")
+    (repo / ".cf-studio-kit.toml").write_text(
+        "\n".join([
+            'manifest_version = "1.0"',
+            "",
+            "[[kits]]",
+            'slug = "alpha"',
+            'name = "Alpha"',
+            'version = "1.0.0"',
+            "",
+            "[[kits.resources]]",
+            'id = "skill"',
+            'kind = "skill"',
+            'source = "alpha.md"',
+            'install_path = "SKILL.md"',
+            'type = "file"',
+            "",
+            "[[kits]]",
+            'slug = "beta"',
+            'name = "Beta"',
+            'version = "1.0.0"',
+            "",
+            "[[kits.resources]]",
+            'id = "skill"',
+            'kind = "skill"',
+            'source = "beta.md"',
+            'install_path = "SKILL.md"',
+            'type = "file"',
+        ]) + "\n",
+        encoding="utf-8",
+    )
+    _run_git(repo, "add", ".")
+    _run_git(repo, "commit", "-q", "-m", "initial")
+    return repo, _run_git(repo, "rev-parse", "HEAD")
+
+
 class TestGenericGitKitSourceParser(unittest.TestCase):
     def test_parse_canonicalizes_encoded_file_url(self):
         from studio.utils.git_kit_source import parse_git_kit_source
@@ -296,9 +339,20 @@ class TestGenericGitKitInstallUpdate(unittest.TestCase):
                 self.assertEqual(resolution.kit_source_dir.name, "sdlc")
                 self.assertEqual(authority["selected_subdirectory"], "kits/sdlc")
                 self.assertEqual(authority["kit_identity"], "sdlc")
-                self.assertEqual(authority["content_identity"]["commit_sha"], first_sha)
+                self.assertEqual(authority["commit_sha"], first_sha)
             finally:
                 shutil.rmtree(resolution.tmp_dir, ignore_errors=True)
+
+    def test_materialize_rejects_unsafe_requested_ref(self):
+        from studio.utils.git_kit_source import GitSourceError, materialize_git_kit_source, parse_git_kit_source
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            repo, _first_sha = _make_git_kit_repo(root)
+            parsed = parse_git_kit_source("git/" + quote(repo.as_uri(), safe=""))
+            with self.assertRaises(GitSourceError) as ctx:
+                materialize_git_kit_source(parsed, requested_ref="main^{commit}")
+            self.assertEqual(ctx.exception.code, "GIT_SOURCE_INVALID_REF")
 
     def test_materialize_accepts_runtime_git_auth_options_without_persisting_them(self):
         from studio.utils.git_kit_source import materialize_git_kit_source, parse_git_kit_source
@@ -342,7 +396,7 @@ class TestGenericGitKitInstallUpdate(unittest.TestCase):
                             "kit_identity": "",
                             "requested_ref": first_sha,
                         },
-                        "content_identity": {"commit_sha": first_sha},
+                        "source_provenance": {"commit_sha": first_sha},
                     },
                 )
 
@@ -371,8 +425,8 @@ class TestGenericGitKitInstallUpdate(unittest.TestCase):
                 self.assertTrue(kit["source"].startswith("git:"))
                 self.assertEqual(kit["source_provenance"]["source_type"], "git")
                 self.assertEqual(kit["source_provenance"]["requested_ref"], "v1")
-                self.assertEqual(kit["content_identity"]["vcs"], "git")
-                self.assertEqual(kit["content_identity"]["commit_sha"], first_sha)
+                self.assertEqual(kit["source_provenance"]["source_type"], "git")
+                self.assertEqual(kit["source_provenance"]["commit_sha"], first_sha)
             finally:
                 os.chdir(cwd)
 
@@ -399,7 +453,29 @@ class TestGenericGitKitInstallUpdate(unittest.TestCase):
                 kit = core["kits"]["gitkit"]
                 self.assertEqual(kit["source_provenance"]["requested_ref"], "HEAD")
                 self.assertEqual(kit["source_provenance"]["resolution_basis"], "default_branch")
-                self.assertEqual(kit["content_identity"]["commit_sha"], first_sha)
+                self.assertEqual(kit["source_provenance"]["commit_sha"], first_sha)
+            finally:
+                os.chdir(cwd)
+
+    def test_install_from_file_git_source_rejects_unsafe_version_selector(self):
+        from studio.commands.kit import cmd_kit_install
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            project = root / "project"
+            _bootstrap_project(project)
+            repo, _first_sha = _make_git_kit_repo(root)
+            source = "git/" + quote(repo.as_uri(), safe="")
+            cwd = os.getcwd()
+            try:
+                os.chdir(project)
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = cmd_kit_install([source, "--version", "main^{commit}"])
+                self.assertEqual(rc, 2, buf.getvalue())
+                out = json.loads(buf.getvalue())
+                self.assertEqual(out["status"], "FAIL")
+                self.assertEqual(out["error_code"], "GIT_SOURCE_INVALID_REF")
             finally:
                 os.chdir(cwd)
 
@@ -433,11 +509,63 @@ class TestGenericGitKitInstallUpdate(unittest.TestCase):
                     core = tomllib.load(f)
                 kit = core["kits"]["gitkit"]
                 self.assertNotEqual(first_sha, second_sha)
-                self.assertEqual(kit["content_identity"]["commit_sha"], second_sha)
+                self.assertEqual(kit["source_provenance"]["commit_sha"], second_sha)
                 self.assertEqual(kit["source_provenance"]["source_type"], "git")
                 self.assertEqual(kit["source_provenance"]["requested_ref"], "HEAD")
             finally:
                 os.chdir(cwd)
+
+    def test_update_force_multi_kit_git_source_keeps_selected_manifest_resources(self):
+        from studio.commands.kit import cmd_kit_install, cmd_kit_update
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            project = root / "project"
+            adapter = _bootstrap_project(project)
+            repo, _first_sha = _make_multi_canonical_git_kit_repo(root)
+            source = "git/" + quote(repo.as_uri(), safe="")
+            cache_dir = root / "git-cache"
+            cwd = os.getcwd()
+            previous_cache_env = os.environ.get("CFS_GIT_KIT_CACHE_DIR")
+            os.environ["CFS_GIT_KIT_CACHE_DIR"] = str(cache_dir)
+            try:
+                os.chdir(project)
+                with redirect_stdout(io.StringIO()):
+                    self.assertEqual(cmd_kit_install([source + "@beta"]), 0)
+
+                installed_skill = adapter / "config" / "kits" / "beta" / "SKILL.md"
+                self.assertEqual(installed_skill.read_text(encoding="utf-8"), "# Beta v1\n")
+
+                (repo / "beta.md").write_text("# Beta v2\n", encoding="utf-8")
+                _run_git(repo, "add", ".")
+                _run_git(repo, "commit", "-q", "-m", "beta update")
+
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = cmd_kit_update([
+                        "beta",
+                        "--force",
+                        "--no-interactive",
+                        "-y",
+                        "--approve-overwrite",
+                        "skill",
+                    ])
+                self.assertEqual(rc, 0, buf.getvalue())
+                out = json.loads(buf.getvalue())
+                self.assertEqual(out["status"], "PASS")
+                self.assertEqual(out["results"][0]["action"], "updated")
+                self.assertTrue(installed_skill.is_file())
+                self.assertEqual(installed_skill.read_text(encoding="utf-8"), "# Beta v2\n")
+
+                with open(adapter / "config" / "core.toml", "rb") as f:
+                    core = tomllib.load(f)
+                self.assertEqual(core["kits"]["beta"]["source"], "git:" + quote(repo.as_uri(), safe="") + "@beta")
+            finally:
+                os.chdir(cwd)
+                if previous_cache_env is None:
+                    os.environ.pop("CFS_GIT_KIT_CACHE_DIR", None)
+                else:
+                    os.environ["CFS_GIT_KIT_CACHE_DIR"] = previous_cache_env
 
     def test_update_uses_offline_last_known_cache_when_remote_unavailable(self):
         from studio.commands.kit import cmd_kit_install, cmd_kit_update
@@ -479,7 +607,7 @@ class TestGenericGitKitInstallUpdate(unittest.TestCase):
                 with open(adapter / "config" / "core.toml", "rb") as f:
                     core = tomllib.load(f)
                 self.assertTrue(core["kits"]["gitkit"]["source"].startswith("git:"))
-                self.assertEqual(core["kits"]["gitkit"]["content_identity"]["commit_sha"], first_sha)
+                self.assertEqual(core["kits"]["gitkit"]["source_provenance"]["commit_sha"], first_sha)
                 self.assertEqual(core["kits"]["gitkit"]["source_provenance"]["freshness"], "last_known")
 
                 shutil.move(str(root / "repo-offline"), str(repo))
@@ -494,7 +622,7 @@ class TestGenericGitKitInstallUpdate(unittest.TestCase):
                 with open(adapter / "config" / "core.toml", "rb") as f:
                     core = tomllib.load(f)
                 self.assertEqual(core["kits"]["gitkit"]["source_provenance"]["freshness"], "fresh")
-                self.assertEqual(core["kits"]["gitkit"]["content_identity"]["commit_sha"], first_sha)
+                self.assertEqual(core["kits"]["gitkit"]["source_provenance"]["commit_sha"], first_sha)
             finally:
                 os.chdir(cwd)
                 if previous_cache_env is None:

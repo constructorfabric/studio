@@ -45,7 +45,13 @@ Instead of declaring project skills and agents through a standalone project `man
 cfs kit install --path <path> --install-mode register
 ```
 
-Register mode keeps the kit files where they already live in the project. Constructor Studio records the effective resource bindings in `core.toml`, then `cfs generate-agents`, `cfs validate`, and skill routing can use them.
+Equivalent positional form:
+
+```bash
+cfs kit install path/<path> --install-mode register
+```
+
+Register mode keeps the kit files where they already live in the project. Constructor Studio records the registered kit root in `core.toml` and re-derives effective resource paths from the manifest at runtime, so `cfs generate-agents`, `cfs validate`, `cfs info`, and skill routing can use them without persisting per-resource bindings.
 
 This gives you one clear unit of extension:
 
@@ -152,6 +158,8 @@ Use copy mode when you want to copy local kit resources into the Constructor Stu
 cfs kit install --path ./kits/company-sdlc --install-mode copy
 ```
 
+The `--path` flag remains supported for compatibility. The positional `path/...` alias is intended to mirror generic Git's `git/...` source style for install and update commands.
+
 Use a Git or GitHub kit when the kit is published and reused across repositories.
 
 🖥 Install a GitHub kit:
@@ -212,6 +220,15 @@ If each repository needs its own generated AI tool files, run `cfs generate-agen
 ## 8. Updating and Validating
 
 After changing a registered local kit, regenerate and validate.
+
+For local source updates you can use either syntax:
+
+```bash
+cfs kit update --path ./kits/company-sdlc
+cfs kit update path/./kits/company-sdlc
+```
+
+Manifest-backed updates compare resources by manifest identity, not by raw filename alone. If a resource is sourced from one filename but installed to another path, Studio updates the bound target in place and does not treat that installed target as `deleted upstream`.
 
 🖥 Regenerate AI coding tool files:
 

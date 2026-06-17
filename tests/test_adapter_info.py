@@ -108,7 +108,10 @@ class TestAdapterInfoCommand(unittest.TestCase):
             kit_dir = config_dir / "kits" / "sdlc"
             kit_dir.mkdir(parents=True)
             (config_dir / "AGENTS.md").write_text("# Constructor Studio Adapter: TestProject\n", encoding="utf-8")
-            (kit_dir / "SKILL.md").write_text("# SDLC skill\n", encoding="utf-8")
+            (kit_dir / "SKILL.md").write_text(
+                "---\nname: skill\ndescription: SDLC skill\n---\n# SDLC skill\n",
+                encoding="utf-8",
+            )
             (kit_dir / ".cf-studio-kit.toml").write_text(
                 "\n".join([
                     'manifest_version = "1.0"',
@@ -159,11 +162,75 @@ class TestAdapterInfoCommand(unittest.TestCase):
             self.assertEqual(kit_model["provenance"]["registered_path"], "config/kits/sdlc")
             self.assertIn("tool_fingerprint", kit_model["risk"])
             self.assertTrue(kit_model["legacy_compatibility"]["kit_details"])
-            self.assertRegex(kit_model["content_identity"]["manifest_semantic_hash"], r"^[0-9a-f]{64}$")
+            self.assertNotIn("content_identity", kit_model)
 
             kit_detail = output["kit_details"]["sdlc"]
             self.assertEqual(kit_detail["name"], "SDLC Kit")
             self.assertEqual(kit_detail["resources"]["skill"]["path"], "config/kits/sdlc/SKILL.md")
+
+    def test_adapter_info_register_mode_uses_manifest_resources(self):
+        """Info exposes manifest-backed resources for register-mode kits."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir) / "project"
+            project_root.mkdir()
+            (project_root / ".git").mkdir()
+            (project_root / "AGENTS.md").write_text(
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".cypilot-adapter"\n```\n<!-- /@cf:root-agents -->\n',
+                encoding="utf-8",
+            )
+            adapter_dir = project_root / ".cypilot-adapter"
+            config_dir = adapter_dir / "config"
+            config_dir.mkdir(parents=True)
+            kit_dir = project_root / "kits" / "gears"
+            kit_dir.mkdir(parents=True)
+            (config_dir / "AGENTS.md").write_text("# Constructor Studio Adapter: TestProject\n", encoding="utf-8")
+            (kit_dir / "SKILL.md").write_text("# Gears skill\n", encoding="utf-8")
+            (kit_dir / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "gears"',
+                    'name = "Gears Kit"',
+                    'version = "1.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "skill"',
+                    'kind = "skill"',
+                    'source = "SKILL.md"',
+                    'install_path = "SKILL.md"',
+                    'type = "file"',
+                    "public = true",
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            (config_dir / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    'project_root = ".."',
+                    "",
+                    "[kits.gears]",
+                    'format = "CFS"',
+                    'install_mode = "register"',
+                    'path = "../kits/gears"',
+                    'version = "1.0"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            stdout_capture = io.StringIO()
+            with redirect_stdout(stdout_capture):
+                exit_code = main(["info", "--root", str(project_root)])
+
+            output = json.loads(stdout_capture.getvalue())
+            self.assertEqual(exit_code, 0)
+            kit_model = output["kit_models"]["gears"]
+            self.assertEqual(kit_model["name"], "Gears Kit")
+            self.assertEqual(kit_model["install_mode"], "register")
+            self.assertEqual(kit_model["resources"]["skill"]["binding_path"], "../kits/gears/SKILL.md")
+
+            kit_detail = output["kit_details"]["gears"]
+            self.assertEqual(kit_detail["resources"]["skill"]["path"], "../kits/gears/SKILL.md")
 
     def test_adapter_info_ignores_unregistered_config_kit_dirs(self):
         """Info reports kits registered in core.toml, not loose config/kits dirs."""
@@ -288,7 +355,10 @@ class TestAdapterInfoCommand(unittest.TestCase):
                 encoding="utf-8",
             )
             (workflows_dir / "README.md").write_text("# Workflow notes\n", encoding="utf-8")
-            (kit_dir / "SKILL.md").write_text("# SDLC skill\n", encoding="utf-8")
+            (kit_dir / "SKILL.md").write_text(
+                "---\nname: skill\ndescription: SDLC skill\n---\n# SDLC skill\n",
+                encoding="utf-8",
+            )
             (config_dir / "core.toml").write_text(
                 "\n".join([
                     'version = "1.0"',
@@ -325,7 +395,10 @@ class TestAdapterInfoCommand(unittest.TestCase):
             kit_dir = config_dir / "kits" / "sdlc"
             kit_dir.mkdir(parents=True)
             (config_dir / "AGENTS.md").write_text("# Constructor Studio Adapter: TestProject\n", encoding="utf-8")
-            (kit_dir / "SKILL.md").write_text("# SDLC skill\n", encoding="utf-8")
+            (kit_dir / "SKILL.md").write_text(
+                "---\nname: skill\ndescription: SDLC skill\n---\n# SDLC skill\n",
+                encoding="utf-8",
+            )
             (kit_dir / ".cf-studio-kit.toml").write_text(
                 "\n".join([
                     'manifest_version = "1.0"',
@@ -345,7 +418,9 @@ class TestAdapterInfoCommand(unittest.TestCase):
                 ]) + "\n",
                 encoding="utf-8",
             )
-            skill_hash = hashlib.sha256(b"# SDLC skill\n").hexdigest()
+            skill_hash = hashlib.sha256(
+                b"---\nname: skill\ndescription: SDLC skill\n---\n# SDLC skill\n"
+            ).hexdigest()
             (config_dir / "core.toml").write_text(
                 "\n".join([
                     'version = "1.0"',
@@ -356,14 +431,6 @@ class TestAdapterInfoCommand(unittest.TestCase):
                     'path = "config/kits/sdlc"',
                     'version = "2.0"',
                     'install_mode = "copy"',
-                    "",
-                    "[kits.sdlc.content_identity]",
-                    'manifest_semantic_hash = "old-semantic"',
-                    'manifest_bytes_hash = "old-bytes"',
-                    "",
-                    "[kits.sdlc.content_identity.resource_hashes]",
-                    f'skill = "{skill_hash}"',
-                    'old = "stale"',
                     "",
                     "[kits.sdlc.resources.skill]",
                     'path = "config/kits/sdlc/MISSING.md"',
@@ -390,10 +457,9 @@ class TestAdapterInfoCommand(unittest.TestCase):
             self.assertEqual(drift["disabled_public_components"], ["skill"])
             self.assertEqual(kit_model["active_targets"], [])
             self.assertTrue(kit_model["public_components"][0]["disabled"])
-            self.assertTrue(drift["manifest_semantic_hash"]["drifted"])
-            self.assertTrue(drift["manifest_bytes_hash"]["drifted"])
-            self.assertTrue(drift["resource_hashes"]["drifted"])
-            self.assertEqual(drift["resource_hashes"]["stale"], ["old"])
+            self.assertNotIn("manifest_semantic_hash", drift)
+            self.assertNotIn("manifest_bytes_hash", drift)
+            self.assertNotIn("resource_hashes", drift)
 
     def test_adapter_info_expands_autodetect_systems(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -990,14 +1056,19 @@ class TestHumanInfoFormatterBranches(unittest.TestCase):
         from studio.commands.adapter_info import _human_info
         data = {
             "project_root": tempfile.gettempdir(),
-            "variables": {"cf-studio-path": tempfile.gettempdir() + "/test", "project_root": tempfile.gettempdir()},
+            "variables_by_kit": {
+                "sdlc": {
+                    "adr_template": tempfile.gettempdir() + "/test",
+                },
+            },
         }
         buf = io.StringIO()
         with redirect_stderr(buf):
             _human_info(data)
         output = buf.getvalue()
         self.assertIn("Variables", output)
-        self.assertIn("cf-studio-path", output)
+        self.assertIn("sdlc", output)
+        self.assertIn("adr_template", output)
 
     def test_variables_degraded_warning(self):
         from studio.commands.adapter_info import _human_info

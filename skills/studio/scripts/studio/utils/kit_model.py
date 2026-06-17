@@ -121,7 +121,6 @@ class KitModel:
     resources: List[KitResource] = field(default_factory=list)
     public_components: List[PublicComponent] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
-    manifest_semantic_hash: str = ""
     manifest_bytes_hash: str = ""
     resource_hashes: Dict[str, str] = field(default_factory=dict)
     tool_risk_fingerprint: str = ""
@@ -306,11 +305,47 @@ def _normalize_public_name(slug: str, resource_id: str) -> str:
     return generated_name
 
 
-def _resource_generated_name(slug: str, resource_id: str, public: bool, prefix_generated_name: bool) -> str:
+def _frontmatter_name(path: Path) -> str:
+    """Return YAML frontmatter ``name`` from a markdown file, if present."""
+    try:
+        content = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return ""
+    if not content.startswith("---\n"):
+        return ""
+    end = content.find("\n---", 4)
+    if end == -1:
+        return ""
+    for line in content[4:end].splitlines():
+        key, sep, value = line.partition(":")
+        if sep and key.strip() == "name":
+            return value.strip().strip("'\"")
+    return ""
+
+
+def _public_name_from_source(kit_source: Path, source: str, kind: str) -> str:
+    """Return an implicit public component name derived from source content."""
+    if kind not in _PUBLIC_KINDS:
+        return ""
+    source_path = kit_source / PurePosixPath(source)
+    if not source_path.is_file():
+        return ""
+    return _frontmatter_name(source_path)
+
+
+def _resource_generated_name(
+    slug: str,
+    public: bool,
+    prefix_generated_name: bool,
+    implicit_generated_name: str = "",
+) -> str:
     # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-public-name-prefix
     generated_name = ""
     if public:
-        generated_name = resource_id if not prefix_generated_name else _normalize_public_name(slug, resource_id)
+        base_name = implicit_generated_name.strip()
+        if not base_name:
+            return ""
+        generated_name = base_name if not prefix_generated_name else _normalize_public_name(slug, base_name)
     # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-public-name-prefix
     return generated_name
 
@@ -608,9 +643,6 @@ def _with_hashes(kit_source: Path, model: KitModel) -> KitModel:
         resources=resources,
         public_components=_public_components(resources),
         warnings=model.warnings,
-        manifest_semantic_hash=_sha256_bytes(
-            json.dumps(semantic_data, sort_keys=True, separators=(",", ":")).encode("utf-8"),
-        ),
         manifest_bytes_hash=manifest_bytes_hash,
         resource_hashes=resource_hashes,
         tool_risk_fingerprint=_sha256_bytes(
@@ -669,7 +701,7 @@ def _canonical_model_from_entry(
             {
                 "id", "kind", "source", "install_path", "type", "public",
                 "description", "user_modifiable", "aliases", "generated_targets",
-                "origin", "generated_name", "prefix_generated_name", "agent", "targets", "permissions",
+                "origin", "prefix_generated_name", "agent", "targets", "permissions",
                 "tools", "disallowed_tools", "mode", "isolation", "model",
                 "skills", "color", "memory_dir", "role", "target", "provider",
                 "reasoning_effort", "context_window", "subagents", "artifacts",
@@ -739,7 +771,12 @@ def _canonical_model_from_entry(
             generated_targets=generated_targets or (["installed"] if public else []),
             # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-generated-targets
             origin=_optional_string(raw, "origin"),
-            generated_name=_resource_generated_name(slug, resource_id, public, prefix_generated_name),
+            generated_name=_resource_generated_name(
+                slug,
+                public,
+                prefix_generated_name,
+                _public_name_from_source(kit_source, source, kind),
+            ),
             prefix_generated_name=prefix_generated_name,
             tools=_string_list(
                 agent_config.get("tools", raw.get("tools", permissions_config.get("tools"))),
@@ -910,7 +947,12 @@ def _resource_kind_from_path(source: str, resource_id: str) -> str:
     # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-resource-kinds
 
 
-def _from_manifest_resource(slug: str, res: ManifestResource, _warnings: List[str]) -> KitResource:
+def _from_manifest_resource(
+    kit_source: Path,
+    slug: str,
+    res: ManifestResource,
+    _warnings: List[str],
+) -> KitResource:
     # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-resource-id-vs-generated-name
     kind = _resource_kind_from_path(res.source, res.id)
     origin = "legacy-workflow" if kind == "skill" and res.source.startswith("workflows/") else ""
@@ -924,7 +966,12 @@ def _from_manifest_resource(slug: str, res: ManifestResource, _warnings: List[st
         description=res.description,
         user_modifiable=res.user_modifiable,
         origin=origin,
-        generated_name=_normalize_public_name(slug, res.id) if kind in _PUBLIC_KINDS else "",
+        generated_name=_resource_generated_name(
+            slug,
+            kind in _PUBLIC_KINDS,
+            True,
+            implicit_generated_name=_public_name_from_source(kit_source, res.source, kind),
+        ),
     )
     # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-resource-id-vs-generated-name
 
@@ -934,6 +981,7 @@ def _source_from_component(component: ComponentEntry) -> str:
 
 
 def _from_manifest_component(
+    kit_source: Path,
     slug: str,
     component: ComponentEntry,
     kind: str,
@@ -972,7 +1020,12 @@ def _from_manifest_component(
         user_modifiable=True,
         generated_targets=generated_targets,
         origin=origin,
-        generated_name=_normalize_public_name(slug, component.id),
+        generated_name=_resource_generated_name(
+            slug,
+            True,
+            True,
+            implicit_generated_name=_public_name_from_source(kit_source, source, kind),
+        ),
         **kwargs,
     )
 
@@ -1008,7 +1061,7 @@ def _load_legacy_manifest_model(kit_source: Path) -> Optional[KitModel]:
             _append_unique_legacy_resource(
                 resources,
                 seen_ids,
-                _from_manifest_resource(slug, res, warnings),
+                _from_manifest_resource(kit_source, slug, res, warnings),
             )
         version = manifest.version or conf_version
     elif isinstance(manifest, ManifestV2):
@@ -1017,10 +1070,11 @@ def _load_legacy_manifest_model(kit_source: Path) -> Optional[KitModel]:
             _append_unique_legacy_resource(
                 resources,
                 seen_ids,
-                _from_manifest_resource(slug, res, warnings),
+                _from_manifest_resource(kit_source, slug, res, warnings),
             )
         for workflow in manifest.workflows:
             resource = _from_manifest_component(
+                kit_source,
                 slug,
                 workflow,
                 "skill",
@@ -1038,15 +1092,15 @@ def _load_legacy_manifest_model(kit_source: Path) -> Optional[KitModel]:
                 # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-workflows-to-skills
                 # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-workflow-to-skill
         for skill in manifest.skills:
-            resource = _from_manifest_component(slug, skill, "skill")
+            resource = _from_manifest_component(kit_source, slug, skill, "skill")
             if resource is not None:
                 _append_unique_legacy_resource(resources, seen_ids, resource)
         for agent in manifest.agents:
-            resource = _from_manifest_component(slug, agent, "agent")
+            resource = _from_manifest_component(kit_source, slug, agent, "agent")
             if resource is not None:
                 _append_unique_legacy_resource(resources, seen_ids, resource)
         for rule in manifest.rules:
-            resource = _from_manifest_component(slug, rule, "rule")
+            resource = _from_manifest_component(kit_source, slug, rule, "rule")
             if resource is not None:
                 _append_unique_legacy_resource(resources, seen_ids, resource)
     else:
@@ -1092,7 +1146,12 @@ def _load_layout_model(kit_source: Path) -> KitModel:
                 public=dirname == "workflows",
                 user_modifiable=True,
                 origin="legacy-workflow" if dirname == "workflows" else "",
-                generated_name=_normalize_public_name(slug, dirname) if dirname == "workflows" else "",
+                generated_name=_resource_generated_name(
+                    slug,
+                    dirname == "workflows",
+                    True,
+                    implicit_generated_name=_public_name_from_source(kit_source, dirname, "skill"),
+                ),
             ))
     for filename in _LEGACY_CONTENT_FILES:
         path = kit_source / filename
@@ -1107,7 +1166,12 @@ def _load_layout_model(kit_source: Path) -> KitModel:
                 type="file",
                 public=kind in _PUBLIC_KINDS,
                 user_modifiable=True,
-                generated_name=_normalize_public_name(slug, resource_id) if kind in _PUBLIC_KINDS else "",
+                generated_name=_resource_generated_name(
+                    slug,
+                    kind in _PUBLIC_KINDS,
+                    True,
+                    implicit_generated_name=_public_name_from_source(kit_source, filename, kind),
+                ),
             ))
     if not resources:
         raise ValueError(f"No kit resources found under {kit_source}")
@@ -1128,7 +1192,11 @@ def _load_layout_model(kit_source: Path) -> KitModel:
 def _resolve_core_path(studio_root: Path, raw_path: str) -> Path:
     # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-core-bindings
     path = Path(raw_path)
-    return path.resolve() if path.is_absolute() else (studio_root / path).resolve()
+    if path.is_absolute():
+        raise ValueError(
+            f"Invalid persisted core.toml path '{raw_path}': only project-relative paths are supported",
+        )
+    return (studio_root / path).resolve()
     # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-core-bindings
 
 
@@ -1212,7 +1280,13 @@ def _load_core_model(kit_source: Path) -> KitModel:
             aliases=_string_list(binding.get("aliases") if isinstance(binding, dict) else None, f"resources.{resource_id}.aliases"),
             generated_targets=_string_list(binding.get("generated_targets") if isinstance(binding, dict) else None, f"resources.{resource_id}.generated_targets") or ["installed"],
             origin=origin,
-            generated_name=_normalize_public_name(slug, str(resource_id)) if kind in _PUBLIC_KINDS else "",
+            generated_name=_resource_generated_name(
+                slug,
+                kind in _PUBLIC_KINDS,
+                bool(binding.get("prefix_generated_name", True)) if isinstance(binding, dict) else True,
+                _public_name_from_source(kit_source, source, kind),
+            ),
+            prefix_generated_name=bool(binding.get("prefix_generated_name", True)) if isinstance(binding, dict) else True,
             # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-artifact-bindings
             artifact_bindings=artifact_bindings,
             # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-artifact-bindings
@@ -1284,8 +1358,6 @@ def kit_model_to_toml_data(model: KitModel) -> Dict[str, Any]:
             item["generated_targets"] = resource.generated_targets
         if resource.origin:
             item["origin"] = resource.origin
-        if resource.generated_name:
-            item["generated_name"] = resource.generated_name
         if not resource.prefix_generated_name:
             item["prefix_generated_name"] = False
         if resource.tools:

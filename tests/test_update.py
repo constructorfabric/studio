@@ -648,7 +648,7 @@ class TestCmdUpdatePipeline(unittest.TestCase):
                 "github_release",
             )
             self.assertEqual(
-                kit_data["content_identity"]["commit_sha"],
+                kit_data["source_provenance"]["commit_sha"],
                 "abc123",
             )
 
@@ -684,11 +684,7 @@ class TestCmdUpdatePipeline(unittest.TestCase):
                 "verified": "verified",
                 "freshness": "fresh",
             }
-            core_data["kits"]["sdlc"]["content_identity"] = {
-                "resolved_ref": "v1.0.0",
-                "commit_sha": "abc123",
-                "identity": "o/r@v1.0.0#abc123",
-            }
+            core_data["kits"]["sdlc"]["source_provenance"]["commit_sha"] = "abc123"
             toml_utils.dump(core_data, core_toml)
 
             cwd = os.getcwd()
@@ -718,7 +714,7 @@ class TestCmdUpdatePipeline(unittest.TestCase):
                 "latest_release",
             )
             self.assertEqual(
-                kit_data["content_identity"]["commit_sha"],
+                kit_data["source_provenance"]["commit_sha"],
                 "abc123",
             )
 

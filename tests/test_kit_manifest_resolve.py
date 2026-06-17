@@ -89,8 +89,8 @@ class TestResolveResourceBindings(unittest.TestCase):
                 (cypilot_dir / "config/kits/mykit/constraints.toml").resolve(),
             )
 
-    def test_same_os_absolute_binding_preserved(self):
-        """Same-OS absolute resource bindings stay absolute."""
+    def test_same_os_absolute_binding_is_rejected(self):
+        """Absolute resource bindings are invalid persisted state."""
         with TemporaryDirectory() as td:
             td_path = Path(td)
             cypilot_dir = td_path / "proj" / "cypilot"
@@ -109,12 +109,11 @@ class TestResolveResourceBindings(unittest.TestCase):
                 },
             })
 
-            result = resolve_resource_bindings(config_dir, "mykit", cypilot_dir)
+            with self.assertRaisesRegex(ValueError, "absolute paths must not be persisted"):
+                resolve_resource_bindings(config_dir, "mykit", cypilot_dir)
 
-            self.assertEqual(result["constraints"], absolute_target)
-
-    def test_preserves_absolute_binding_after_relpath_fallback_behavior(self):
-        """Absolute bindings serialized via relpath fallback stay absolute when resolved."""
+    def test_relpath_fallback_absolute_binding_is_rejected(self):
+        """Absolute bindings created by relpath fallback are rejected when read back."""
         import studio.commands.kit as kit_module
         from studio.commands.kit import _serialize_manifest_binding_path
 
@@ -143,9 +142,8 @@ class TestResolveResourceBindings(unittest.TestCase):
                 },
             })
 
-            result = resolve_resource_bindings(config_dir, "mykit", cypilot_dir)
-
-            self.assertEqual(result["skill"], absolute_target)
+            with self.assertRaisesRegex(ValueError, "absolute paths must not be persisted"):
+                resolve_resource_bindings(config_dir, "mykit", cypilot_dir)
 
     def test_windows_absolute_binding_on_non_windows_fails_explicitly(self):
         """Windows absolute bindings are rejected on non-Windows hosts."""
@@ -476,8 +474,8 @@ class TestLoadedKitResourceBindings(unittest.TestCase):
             self.assertNotEqual(ctx.kits["sdlc"].kit.path, stale_registry_path)
             self.assertIsNotNone(ctx.kits["sdlc"].constraints)
 
-    def test_context_load_preserves_same_os_absolute_binding(self):
-        """StudioContext.load() keeps same-OS absolute resource bindings absolute."""
+    def test_context_load_drops_invalid_absolute_binding(self):
+        """StudioContext.load() degrades invalid absolute resource bindings."""
         from studio.utils.context import StudioContext
 
         with TemporaryDirectory() as td:
@@ -520,10 +518,7 @@ class TestLoadedKitResourceBindings(unittest.TestCase):
             ctx = StudioContext.load(root)
 
             self.assertIsNotNone(ctx)
-            self.assertEqual(
-                ctx.kits["sdlc"].resource_bindings,
-                {"constraints": str(absolute_constraints)},
-            )
+            self.assertIsNone(ctx.kits["sdlc"].resource_bindings)
 
     def test_context_load_no_resources_is_none(self):
         """StudioContext.load() leaves resource_bindings as None for legacy kit."""

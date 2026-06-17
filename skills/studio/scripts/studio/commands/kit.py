@@ -78,6 +78,42 @@ def _parse_github_source(source: str) -> Tuple[str, str, str]:
 # @cpt-end:cpt-studio-algo-kit-github-helpers:p1:inst-parse-source
 
 
+def _parse_local_path_source(source: str) -> Optional[str]:
+    """Parse a positional ``path/...`` or ``path:...`` local source alias."""
+    if source.startswith("path/"):
+        return source[len("path/"):]
+    if source.startswith("path:"):
+        return source[len("path:"):]
+    return None
+
+
+def _normalize_local_path_source_arg(
+    *,
+    source_value: Optional[str],
+    local_path: Optional[str],
+    arg_name: str,
+) -> Tuple[Optional[str], Optional[str], Optional[Dict[str, str]]]:
+    """Translate positional ``path/...`` aliases into ``local_path``."""
+    if not source_value:
+        return source_value, local_path, None
+    parsed_local_path = _parse_local_path_source(source_value)
+    if parsed_local_path is None:
+        return source_value, local_path, None
+    if local_path:
+        return source_value, local_path, {
+            "status": "FAIL",
+            "message": f"Cannot use both positional {arg_name} and --path",
+            "hint": "Use either path/... or --path <dir>, but not both",
+        }
+    if not parsed_local_path:
+        return source_value, local_path, {
+            "status": "FAIL",
+            "message": "Local path source cannot be empty",
+            "hint": "Use path/<dir> or --path <dir>",
+        }
+    return None, parsed_local_path, None
+
+
 _GITHUB_TARBALL_MAX_MEMBERS = 4096
 _GITHUB_TARBALL_MAX_TOTAL_SIZE = 512 * 1024 * 1024
 _GITHUB_TARBALL_MAX_EXPANSION_RATIO = 200
@@ -158,7 +194,6 @@ def _resolve_github_ref(
         # @cpt-begin:cpt-studio-algo-kit-github-version-authority:p1:inst-offline-authority
         if previous_entry:
             previous_provenance = previous_entry.get("source_provenance", {})
-            previous_identity = previous_entry.get("content_identity", {})
             resolved_ref = str(
                 previous_provenance.get("resolved_ref")
                 or previous_entry.get("version")
@@ -170,7 +205,7 @@ def _resolve_github_ref(
                     "requested_ref": previous_provenance.get("requested_ref", "latest"),
                     "resolved_ref": resolved_ref,
                     "installed_version": resolved_ref,
-                    "commit_sha": previous_identity.get("commit_sha", ""),
+                    "commit_sha": previous_provenance.get("commit_sha", ""),
                     "canonical_source": previous_provenance.get("canonical_source", canonical_source),
                     "effective_source": previous_provenance.get("effective_source", canonical_source),
                     "resolver_mode": "offline_last_known",
@@ -210,7 +245,7 @@ def _derive_commit_sha_from_tar_root(extracted_dir: Path, owner: str, repo: str)
     return parts[-1] if len(parts) == 2 else ""
 
 
-def _enrich_authority_with_content_identity(
+def _enrich_authority_with_commit_metadata(
     authority_metadata: Dict[str, Any],
     extracted_dir: Path,
     owner: str,
@@ -227,11 +262,6 @@ def _enrich_authority_with_content_identity(
     if commit_sha:
         identity = f"{identity}#{commit_sha}"
     enriched["identity"] = identity
-    enriched["content_identity"] = {
-        "resolved_ref": resolved_ref,
-        **({"commit_sha": commit_sha} if commit_sha else {}),
-        "identity": identity,
-    }
     return enriched
 
 
@@ -240,10 +270,7 @@ def _authority_result_summary(
 ) -> Optional[Dict[str, Any]]:
     if not authority_metadata:
         return None
-    content_identity = authority_metadata.get("content_identity")
     identity = str(authority_metadata.get("identity") or "")
-    if isinstance(content_identity, dict):
-        identity = identity or str(content_identity.get("identity") or "")
     summary = {
         "source_type": str(authority_metadata.get("source_type") or ""),
         "resolver_mode": str(authority_metadata.get("resolver_mode") or ""),
@@ -254,7 +281,6 @@ def _authority_result_summary(
         "canonical_source": str(authority_metadata.get("canonical_source") or ""),
         "effective_source": str(authority_metadata.get("effective_source") or ""),
         "identity": identity,
-        "content_identity": content_identity if isinstance(content_identity, dict) else None,
         "freshness": str(authority_metadata.get("freshness") or ""),
         "verified": str(authority_metadata.get("verified") or ""),
     }
@@ -267,19 +293,17 @@ def _authority_commit_changed(
 ) -> bool:
     if not authority_metadata:
         return False
-    new_identity = authority_metadata.get("content_identity", {})
-    old_identity = installed_kit_entry.get("content_identity", {})
     new_commit = str(
         authority_metadata.get("commit_sha")
-        or (new_identity.get("commit_sha") if isinstance(new_identity, dict) else "")
         or ""
     )
     old_commit = str(
         (
-            old_identity.get("commit_sha")
-            if isinstance(old_identity, dict)
+            installed_kit_entry.get("source_provenance", {}).get("commit_sha")
+            if isinstance(installed_kit_entry.get("source_provenance"), dict)
             else ""
         )
+        or installed_kit_entry.get("commit_sha")
         or ""
     )
     return bool(new_commit and old_commit and new_commit != old_commit)
@@ -421,7 +445,7 @@ def _download_kit_from_github_with_authority(
     if resolved_version and not authority_metadata.get("resolved_ref"):
         authority_metadata["resolved_ref"] = resolved_version
         authority_metadata["installed_version"] = resolved_version
-    authority_metadata = _enrich_authority_with_content_identity(
+    authority_metadata = _enrich_authority_with_commit_metadata(
         authority_metadata,
         kit_source,
         owner,
@@ -665,6 +689,7 @@ def _is_registered_kit_path_absolute(registered_kit_path: str) -> bool:
     )
 
 
+# @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-persist-relative-only
 def _resolve_registered_kit_dir(
     studio_dir: Path,
     registered_kit_path: str,
@@ -672,19 +697,30 @@ def _resolve_registered_kit_dir(
     normalized = _normalize_path_string(registered_kit_path)
     if not normalized:
         return studio_dir.resolve()
-    is_windows_absolute = _is_windows_absolute_path(registered_kit_path)
-    is_posix_absolute = _is_posix_absolute_path(registered_kit_path)
-    if os.name == "nt":
-        if is_windows_absolute:
-            return Path(normalized).resolve()
-        if is_posix_absolute:
-            return None
-    else:
-        if is_posix_absolute:
-            return Path(normalized).resolve()
-        if is_windows_absolute:
-            return None
+    if _is_registered_kit_path_absolute(normalized):
+        return None
     return (studio_dir / Path(normalized)).resolve()
+
+
+def _resolve_same_os_absolute_path(registered_kit_path: str) -> Optional[Path]:
+    normalized = _normalize_path_string(registered_kit_path)
+    if not normalized:
+        return None
+    if _is_windows_absolute_path(normalized):
+        return Path(normalized).resolve() if os.name == "nt" else None
+    if _is_posix_absolute_path(normalized):
+        return Path(normalized).resolve() if os.name != "nt" else None
+    return None
+
+
+def _resolve_registered_kit_root_dir(
+    studio_dir: Path,
+    registered_kit_path: str,
+) -> Optional[Path]:
+    resolved_absolute = _resolve_same_os_absolute_path(registered_kit_path)
+    if resolved_absolute is not None:
+        return resolved_absolute
+    return _resolve_registered_kit_dir(studio_dir, registered_kit_path)
 
 
 def _normalize_registered_kit_path(
@@ -708,6 +744,67 @@ def _serialize_manifest_binding_path(target_path: Any, studio_dir: Path) -> str:
         )
     except ValueError:
         return _normalize_path_string(target_str)
+# @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-persist-relative-only
+
+
+def _project_root_for_core_paths(_config_dir: Path, studio_dir: Path, data: Dict[str, Any]) -> Path:
+    studio_dir = Path(studio_dir)
+    raw_root = data.get("project_root")
+    if isinstance(raw_root, str) and raw_root.strip():
+        root_path = Path(raw_root.strip())
+        if root_path.is_absolute():
+            return root_path.resolve()
+        return (studio_dir / root_path).resolve()
+    return studio_dir.parent.resolve()
+
+
+def _validate_persisted_core_path(
+    label: str,
+    persisted_path: str,
+    studio_dir: Path,
+    project_root: Path,
+    *,
+    allow_same_os_absolute: bool = False,
+    allowed_absolute_root: str = "",
+) -> Optional[str]:
+    # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-persist-relative-only
+    normalized = _normalize_path_string(persisted_path)
+    if not normalized:
+        return f"{label} cannot be empty"
+    is_absolute = _is_registered_kit_path_absolute(normalized)
+    if is_absolute:
+        resolved_absolute = _resolve_same_os_absolute_path(normalized)
+        if resolved_absolute is None:
+            return (
+                f"{label} '{normalized}' is not accessible on this OS; "
+                "use project-relative paths for persisted core.toml state"
+            )
+        if allow_same_os_absolute:
+            return None
+        normalized_allowed_root = _normalize_path_string(allowed_absolute_root)
+        resolved_allowed_root = (
+            _resolve_same_os_absolute_path(normalized_allowed_root)
+            if normalized_allowed_root else None
+        )
+        if resolved_allowed_root is not None and _path_is_within(resolved_absolute, resolved_allowed_root):
+            return None
+        return (
+            f"{label} '{normalized}' is invalid state: "
+            "absolute paths must not be persisted in core.toml; use project-relative paths"
+        )
+    resolved_path = _resolve_registered_kit_dir(studio_dir, normalized)
+    if resolved_path is None:
+        return (
+            f"{label} '{normalized}' is not accessible on this OS; "
+            "use project-relative paths for persisted core.toml state"
+        )
+    if not _path_is_within(resolved_path, project_root):
+        return (
+            f"{label} '{normalized}' escapes the current project root '{project_root}'; "
+            "core.toml may persist only in-project relative paths"
+        )
+    return None
+    # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-persist-relative-only
 
 
 def _extract_registered_binding_path(binding: Any) -> Optional[str]:
@@ -766,7 +863,7 @@ def _resolve_registered_kit_metadata_target(
     kit_data = kit_entry if isinstance(kit_entry, dict) else {}
     registered_path = kit_data.get("path") if isinstance(kit_data.get("path"), str) else None
     kit_rel_path = _normalize_registered_kit_path(registered_path, kit_slug)
-    kit_dir = _resolve_registered_kit_dir(
+    kit_dir = _resolve_registered_kit_root_dir(
         studio_dir,
         registered_path if isinstance(registered_path, str) and registered_path.strip() else kit_rel_path,
     )
@@ -793,7 +890,7 @@ def _resolve_installed_kit_root(
     kit_entry = _read_kits_from_core_toml(config_dir).get(kit_slug, {})
     registered_path = kit_entry.get("path") if isinstance(kit_entry, dict) else None
     kit_rel_path = _normalize_registered_kit_path(registered_path, kit_slug)
-    kit_dir = _resolve_registered_kit_dir(
+    kit_dir = _resolve_registered_kit_root_dir(
         studio_dir,
         registered_path if isinstance(registered_path, str) and registered_path.strip() else kit_rel_path,
     )
@@ -813,7 +910,7 @@ def _registered_slug_for_local_kit_path(
         registered_path = kit_entry.get("path")
         if not isinstance(registered_path, str) or not registered_path.strip():
             continue
-        registered_dir = _resolve_registered_kit_dir(studio_dir, registered_path)
+        registered_dir = _resolve_registered_kit_root_dir(studio_dir, registered_path)
         if registered_dir is not None and registered_dir.resolve() == kit_source_resolved:
             matches.append(kit_slug)
     return matches[0] if len(matches) == 1 else ""
@@ -1106,16 +1203,6 @@ def _manifest_register_resource_bindings(
 
 
 # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-hashes
-def _kit_model_content_identity(model: Any) -> Dict[str, Any]:
-    return {
-        "manifest_semantic_hash": getattr(model, "manifest_semantic_hash", ""),
-        "manifest_bytes_hash": getattr(model, "manifest_bytes_hash", ""),
-        "resource_hashes": getattr(model, "resource_hashes", {}) or {},
-        "tool_risk_fingerprint": getattr(model, "tool_risk_fingerprint", ""),
-    }
-# @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-hashes
-
-
 # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-prefix
 def _kit_model_public_component_names(model: Any) -> Dict[str, str]:
     names: Dict[str, str] = {}
@@ -1141,6 +1228,7 @@ def _kit_model_public_component_names(model: Any) -> Dict[str, str]:
             names[subagent_name] = f"{base_component_id}.subagents.{subagent_id}"
     return names
 # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-prefix
+# @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-hashes
 
 
 # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-prefix
@@ -1225,13 +1313,13 @@ def _public_component_name_conflicts(
 # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-prefix
 
 
-def _local_path_provenance(kit_source: Path, install_mode: str) -> Dict[str, str]:
+def _local_path_provenance(kit_source: Path, install_mode: str, studio_dir: Path) -> Dict[str, str]:
     # @cpt-begin:cpt-studio-state-kit-authority:p1:inst-local-authority-state
     return {
         "source_type": "local_path",
         "resolver_mode": install_mode,
         "resolution_basis": "local_path",
-        "effective_source": kit_source.resolve().as_posix(),
+        "effective_source": _serialize_manifest_binding_path(kit_source.resolve(), studio_dir),
         "verified": "local",
         "freshness": "local",
     }
@@ -1693,7 +1781,6 @@ def install_kit_with_manifest(
             "errors": [str(exc)],
         }
     model_resources = list(getattr(kit_model, "resources", []))
-    model_content_identity = _kit_model_content_identity(kit_model)
     risk_errors = _tool_risk_approval_errors(
         kit_model,
         interactive=interactive,
@@ -1762,10 +1849,10 @@ def install_kit_with_manifest(
             config_dir, kit_slug, kit_version, studio_dir,
             source=source, resources=resource_bindings, kit_path=kit_root_rel,
             install_mode=install_mode,
-            source_provenance=_local_path_provenance(kit_source, install_mode),
-            content_identity=model_content_identity,
+            source_provenance=_local_path_provenance(kit_source, install_mode, studio_dir),
             authority_metadata=authority_metadata,
             local_metadata=local_metadata or None,
+            tool_risk_fingerprint=str(getattr(kit_model, "tool_risk_fingerprint", "") or ""),
         )
         if registration_errors:
             return {
@@ -1887,7 +1974,6 @@ def install_kit_with_manifest(
         config_dir, kit_slug, kit_version, studio_dir,
         source=source, resources=resource_bindings, kit_path=kit_root_rel,
         install_mode=install_mode,
-        content_identity=model_content_identity,
         authority_metadata=authority_metadata,
         local_metadata=local_metadata or None,
     )
@@ -2047,17 +2133,8 @@ def _tool_risk_approval_errors(
         return []
     fingerprint = str(getattr(kit_model, "tool_risk_fingerprint", "") or "")
     approvals = {token.strip() for token in (approved_tool_risks or []) if token.strip()}
-    previous_identity = (
-        installed_kit_entry.get("content_identity", {})
-        if isinstance(installed_kit_entry, dict)
-        else {}
-    )
-    previous_fingerprint = (
-        str(previous_identity.get("tool_risk_fingerprint") or "")
-        if isinstance(previous_identity, dict)
-        else ""
-    )
-    if previous_fingerprint == fingerprint or fingerprint in approvals:
+    _ = installed_kit_entry
+    if fingerprint in approvals:
         return []
     dangerous = summary.get("dangerous_tools", {})
     if interactive and sys.stdin.isatty():
@@ -2357,7 +2434,7 @@ def cmd_kit_install(argv: List[str]) -> int:
     )
     p.add_argument(
         "--version", dest="version", default="",
-        help="For generic Git sources, resolve this tag, branch, ref, or commit",
+        help="For generic Git sources, resolve this tag, branch, or full 40-character commit SHA",
     )
     p.add_argument(
         "--install-mode",
@@ -2389,6 +2466,15 @@ def cmd_kit_install(argv: List[str]) -> int:
     p.add_argument("--force", action="store_true", help="Overwrite existing kit")
     p.add_argument("--dry-run", action="store_true", help="Show what would be done")
     args = p.parse_args(argv)
+
+    args.source, args.local_path, local_path_error = _normalize_local_path_source_arg(
+        source_value=args.source,
+        local_path=args.local_path,
+        arg_name="source",
+    )
+    if local_path_error:
+        ui.result(local_path_error)
+        return 2
 
     if not args.source and not args.local_path:
         p.error("Provide a GitHub source (owner/repo) or --path for a local directory")
@@ -2463,9 +2549,17 @@ def cmd_kit_install(argv: List[str]) -> int:
         if exit_code is not None:
             return exit_code
 
+    effective_requested_kits = list(args.kit)
+    if (
+        not effective_requested_kits
+        and authority_metadata
+        and str(authority_metadata.get("kit_identity") or "").strip()
+    ):
+        effective_requested_kits = [str(authority_metadata.get("kit_identity") or "").strip()]
+
     selected_models, selection_error = _select_canonical_kit_models_for_install(
         kit_source,
-        args.kit,
+        effective_requested_kits,
         interactive=sys.stdin.isatty(),
     )
     if selection_error is not None:
@@ -2839,6 +2933,17 @@ def _resolve_registered_update_targets(
             continue
         if not source_str.startswith("git:"):
             if not source_str:
+                install_mode = str(kit_data.get("install_mode") or "").strip().lower()
+                if install_mode == "register":
+                    msg = f"Kit '{slug}' is registered in place and has no remote source — current"
+                    ui.warn(msg)
+                    failures.append({
+                        "kit": slug,
+                        "action": "current",
+                        "message": msg,
+                        "source": source_str,
+                    })
+                    continue
                 msg = f"Kit '{slug}' has no registered source — skipping"
             else:
                 msg = f"Kit '{slug}': unsupported source type '{source_str}' — skipping"
@@ -2908,11 +3013,6 @@ def _kit_installed_resolved_ref(kit_data: Dict[str, Any]) -> str:
 
 def _kit_installed_commit_sha(kit_data: Dict[str, Any]) -> str:
     # @cpt-begin:cpt-studio-algo-kit-update:p1:inst-read-source-version
-    identity = kit_data.get("content_identity", {})
-    if isinstance(identity, dict):
-        commit_sha = str(identity.get("commit_sha") or "")
-        if commit_sha:
-            return commit_sha
     provenance = kit_data.get("source_provenance", {})
     if isinstance(provenance, dict):
         return str(provenance.get("commit_sha") or "")
@@ -3056,7 +3156,7 @@ def cmd_kit_update(argv: List[str]) -> int:
     )
     p.add_argument(
         "slug", nargs="?", default=None,
-        help="Kit slug to update (default: all installed kits)",
+        help="Kit slug to update, or path/... for a local directory (default: all installed kits)",
     )
     p.add_argument(
         "--path", dest="local_path", default=None,
@@ -3067,7 +3167,7 @@ def cmd_kit_update(argv: List[str]) -> int:
                    help="Skip version check and force update")
     p.add_argument(
         "--version", dest="version", default="",
-        help="For generic Git sources, resolve this tag, branch, ref, or commit",
+        help="For generic Git sources, resolve this tag, branch, or full 40-character commit SHA",
     )
     p.add_argument("--dry-run", action="store_true", help="Show what would be done")
     p.add_argument("--no-interactive", action="store_true",
@@ -3101,6 +3201,14 @@ def cmd_kit_update(argv: List[str]) -> int:
         help="Approve one manifest-bound resource deletion by prune fingerprint; repeat per path",
     )
     args = p.parse_args(argv)
+    args.slug, args.local_path, local_path_error = _normalize_local_path_source_arg(
+        source_value=args.slug,
+        local_path=args.local_path,
+        arg_name="slug",
+    )
+    if local_path_error:
+        ui.result(local_path_error)
+        return 2
     if args.local_path:
         conflict = _validate_kit_source_mode(
             local_path=args.local_path,
@@ -3611,12 +3719,6 @@ def _kit_normalize_report(model: Any) -> Dict[str, Any]:
             for component in model.public_components
         ],
         # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-public-name-preview
-        "content_identity": {
-            "manifest_semantic_hash": model.manifest_semantic_hash,
-            "manifest_bytes_hash": model.manifest_bytes_hash,
-            "resource_hashes": model.resource_hashes,
-            "tool_risk_fingerprint": model.tool_risk_fingerprint,
-        },
         "warnings": list(model.warnings),
     }
     # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-preserve-fields
@@ -4176,25 +4278,14 @@ def update_kit(
     if _manifest is not None:
         try:
             from ..utils.kit_model import load_kit_model
-            _risk_model = load_kit_model(source_dir)
+            _risk_model = load_kit_model(source_dir, kit_slug=kit_slug)
         except (OSError, ValueError) as exc:
             result["version"] = {"status": "failed"}
             result["gen"] = {"files_written": 0}
             result["errors"] = [str(exc)]
             return result
         _risk_summary = getattr(_risk_model, "tool_risk_summary", {}) or {}
-        _current_risk = str(getattr(_risk_model, "tool_risk_fingerprint", "") or "")
-        _previous_identity = (
-            installed_kit_entry.get("content_identity", {})
-            if isinstance(installed_kit_entry, dict)
-            else {}
-        )
-        _previous_risk = (
-            str(_previous_identity.get("tool_risk_fingerprint") or "")
-            if isinstance(_previous_identity, dict)
-            else ""
-        )
-        _risk_changed = bool(_risk_summary.get("requires_confirmation")) and _current_risk != _previous_risk
+        _risk_changed = bool(_risk_summary.get("requires_confirmation"))
         risk_errors = _tool_risk_approval_errors(
             _risk_model,
             installed_kit_entry=installed_kit_entry,
@@ -4231,19 +4322,15 @@ def update_kit(
         if kit_model is None:
             try:
                 from ..utils.kit_model import load_kit_model
-                kit_model = load_kit_model(source_dir)
+                # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-update-path-load-kitmodel
+                kit_model = load_kit_model(source_dir, kit_slug=kit_slug)
+                # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-update-path-load-kitmodel
             except (OSError, ValueError) as exc:
                 result["version"] = {"status": "failed"}
                 result["gen"] = {"files_written": 0}
                 result["errors"] = [str(exc)]
                 return result
 
-        new_identity = _kit_model_content_identity(kit_model)
-        previous_identity = (
-            installed_kit_entry.get("content_identity")
-            if isinstance(installed_kit_entry.get("content_identity"), dict)
-            else {}
-        )
         previous_version = str(installed_kit_entry.get("version") or "")
         resource_bindings = _manifest_register_resource_bindings(
             studio_dir,
@@ -4262,25 +4349,23 @@ def update_kit(
             resources=resource_bindings,
             kit_path=_serialize_manifest_binding_path(source_dir.resolve(), studio_dir),
             install_mode="register",
-            source_provenance=_local_path_provenance(source_dir, "register"),
-            content_identity=new_identity,
+            source_provenance=_local_path_provenance(source_dir, "register", studio_dir),
             authority_metadata=authority_metadata,
             local_metadata=local_metadata or None,
+            tool_risk_fingerprint=str(getattr(kit_model, "tool_risk_fingerprint", "") or ""),
         )
         if registration_errors:
             result["version"] = {"status": "failed"}
             result["gen"] = {"files_written": 0}
             result["errors"] = registration_errors
             return result
-        identity_changed = new_identity != previous_identity
         version_changed = bool(source_version and source_version != previous_version)
         result["version"] = {
-            "status": "updated" if identity_changed or version_changed else "current",
+            "status": "updated" if version_changed else "current",
         }
         result["gen"] = {"files_written": 0}
         result["drift"] = {
             "install_mode": "register",
-            "content_identity_changed": identity_changed,
             "version_changed": version_changed,
         }
         result["resource_bindings"] = {
@@ -4355,13 +4440,20 @@ def update_kit(
                     kit_slug,
                     source_version,
                     studio_dir,
-                    source=source,
-                    authority_metadata=authority_metadata,
-                    local_metadata=(
-                        {"conf_version": local_conf_version}
-                        if local_conf_version else None
-                    ),
-                )
+                        source=source,
+                        authority_metadata=authority_metadata,
+                        local_metadata=(
+                            {"conf_version": local_conf_version}
+                            if local_conf_version else None
+                        ),
+                        tool_risk_fingerprint=str(
+                            getattr(
+                                (_risk_model if _risk_model is not None else _manifest),
+                                "tool_risk_fingerprint",
+                                "",
+                            ) or ""
+                        ),
+                    )
                 if registration_errors:
                     result["version"] = {"status": "failed"}
                     result["gen"] = {"files_written": 0}
@@ -4397,18 +4489,67 @@ def update_kit(
     _resource_bindings = None
     _source_to_resource_id = None
     _resource_info = None
+    _preseeded_resources = None
     if _manifest is not None:
         from ..utils.manifest import (
             build_source_to_resource_mapping,
             resolve_resource_bindings,
         )
         try:
-            _source_to_resource_id, _resource_info = build_source_to_resource_mapping(source_dir)
+            _preseeded_resources = _sync_manifest_resource_bindings(
+                _risk_model if _risk_model is not None else _manifest,
+                config_dir,
+                kit_slug,
+            )
+            if _preseeded_resources is not None and not installed_kit_entry.get("resources"):
+                registration_errors = _register_kit_in_core_toml(
+                    config_dir,
+                    kit_slug,
+                    _read_kit_version_from_core(config_dir, kit_slug) or source_version,
+                    studio_dir,
+                    source=source or str(installed_kit_entry.get("source") or ""),
+                    resources=_preseeded_resources,
+                    kit_path=(
+                        registered_kit_path
+                        if has_registered_kit_path
+                        else _resolve_manifest_kit_root_rel(
+                            _risk_model if _risk_model is not None else _manifest,
+                            _preseeded_resources,
+                            kit_slug,
+                        )
+                    ),
+                    install_mode=str(installed_kit_entry.get("install_mode") or ""),
+                    local_metadata=(
+                        {"conf_version": local_conf_version}
+                        if local_conf_version else None
+                    ),
+                    tool_risk_fingerprint=str(getattr(_risk_model, "tool_risk_fingerprint", "") or ""),
+                )
+                if registration_errors:
+                    result["version"] = {"status": "failed"}
+                    result["gen"] = {"files_written": 0}
+                    result["errors"] = registration_errors
+                    return result
+                installed_kit_entry = _read_kits_from_core_toml(config_dir).get(kit_slug, installed_kit_entry)
+            _source_to_resource_id, _resource_info = build_source_to_resource_mapping(
+                source_dir,
+                kit_slug=kit_slug,
+            )
             _resource_bindings = resolve_resource_bindings(config_dir, kit_slug, studio_dir)
         except ValueError as exc:
             result["version"] = {"status": "failed"}
             result["gen"] = {"files_written": 0}
             result["errors"] = [str(exc)]
+            return result
+        if not _resource_bindings or not _source_to_resource_id or not _resource_info:
+            result["version"] = {"status": "failed"}
+            result["gen"] = {"files_written": 0}
+            result["errors"] = [
+                (
+                    f"Manifest-backed update for kit '{kit_slug}' could not resolve resource bindings "
+                    "from the source and installed metadata; refusing to treat all files as deleted upstream."
+                ),
+            ]
             return result
     # @cpt-end:cpt-studio-algo-kit-update:p1:inst-resolve-resource-bindings
 
@@ -4518,10 +4659,12 @@ def update_kit(
                 config_dir, kit_slug, preserved_version, studio_dir,
                 source=source, resources=_merged_resources, kit_path=_kit_root_rel,
                 authority_metadata=authority_metadata,
-                content_identity=_kit_model_content_identity(_risk_model) if _risk_model is not None else None,
                 local_metadata=(
                     {"conf_version": local_conf_version}
                     if local_conf_version else None
+                ),
+                tool_risk_fingerprint=str(
+                    getattr((_risk_model if _risk_model is not None else _manifest), "tool_risk_fingerprint", "") or ""
                 ),
             )
             if registration_errors:
@@ -4870,8 +5013,8 @@ def _register_kit_in_core_toml(
     install_mode: str = "",
     authority_metadata: Optional[Dict[str, Any]] = None,
     source_provenance: Optional[Dict[str, Any]] = None,
-    content_identity: Optional[Dict[str, Any]] = None,
     local_metadata: Optional[Dict[str, Any]] = None,
+    tool_risk_fingerprint: str = "",
 ) -> List[str]:
     """Register or update a kit entry in config/core.toml."""
     # @cpt-begin:cpt-studio-algo-kit-config-helpers:p1:inst-register-core
@@ -4884,6 +5027,7 @@ def _register_kit_in_core_toml(
             data = tomllib.load(f)
     except (OSError, ValueError) as exc:
         return [f"Cannot register kit '{kit_slug}' in {core_toml}: {exc}"]
+    project_root = _project_root_for_core_paths(config_dir, _studio_dir, data)
 
     kits = data.setdefault("kits", {})
     # Merge into existing entry to preserve fields like 'source'
@@ -4893,6 +5037,15 @@ def _register_kit_in_core_toml(
     existing["format"] = "CFS"
     if kit_path:
         normalized_kit_path = _normalize_registered_kit_path(kit_path, kit_slug)
+        path_error = _validate_persisted_core_path(
+            f"Kit '{kit_slug}' path",
+            normalized_kit_path,
+            _studio_dir,
+            project_root,
+            allow_same_os_absolute=True,
+        )
+        if path_error:
+            return [path_error]
         existing_path = existing.get("path")
         if (
             isinstance(existing_path, str)
@@ -4920,6 +5073,7 @@ def _register_kit_in_core_toml(
             "resolution_basis": authority_metadata.get("resolution_basis", ""),
             "requested_ref": authority_metadata.get("requested_ref", ""),
             "resolved_ref": authority_metadata.get("resolved_ref", ""),
+            "commit_sha": authority_metadata.get("commit_sha", ""),
             "canonical_source": authority_metadata.get("canonical_source", source),
             "effective_source": authority_metadata.get("effective_source", source),
             "original_source": authority_metadata.get("original_source", ""),
@@ -4938,16 +5092,6 @@ def _register_kit_in_core_toml(
         existing["source_provenance"] = {
             key: value for key, value in source_provenance.items() if value
         }
-        authority_content_identity = {
-            "vcs": authority_metadata.get("content_identity", {}).get("vcs", "") if isinstance(authority_metadata.get("content_identity"), dict) else "",
-            "commit_sha": authority_metadata.get("commit_sha", ""),
-            "resolved_ref": authority_metadata.get("resolved_ref", ""),
-            "subdirectory": authority_metadata.get("selected_subdirectory", ""),
-            "identity": authority_metadata.get("identity", ""),
-        }
-        existing["content_identity"] = {
-            key: value for key, value in authority_content_identity.items() if value
-        }
         authority_version = (
             authority_metadata.get("installed_version")
             or authority_metadata.get("version")
@@ -4959,14 +5103,30 @@ def _register_kit_in_core_toml(
         # @cpt-end:cpt-studio-algo-kit-github-version-authority:p1:inst-persist-authority-metadata
     elif kit_version:
         existing["version"] = kit_version
-    if content_identity:
-        existing["content_identity"] = {
-            **(existing.get("content_identity") if isinstance(existing.get("content_identity"), dict) else {}),
-            **{key: value for key, value in content_identity.items() if value not in ("", None, {})},
-        }
+    existing.pop("content_identity", None)
     if local_metadata:
         existing["local_metadata"] = local_metadata
-    if resources is not None:
+    if tool_risk_fingerprint:
+        existing["tool_risk_fingerprint"] = tool_risk_fingerprint
+    if install_mode == "register":
+        existing.pop("resources", None)
+    elif resources is not None:
+        resource_errors: List[str] = []
+        for res_id, binding in resources.items():
+            path_value = binding.get("path") if isinstance(binding, dict) else binding
+            if not isinstance(path_value, str) or not path_value.strip():
+                continue
+            path_error = _validate_persisted_core_path(
+                f"Kit '{kit_slug}' resource '{res_id}' path",
+                path_value,
+                _studio_dir,
+                project_root,
+                allowed_absolute_root=str(existing.get("path", "") or ""),
+            )
+            if path_error:
+                resource_errors.append(path_error)
+        if resource_errors:
+            return resource_errors
         existing["resources"] = resources
     kits[kit_slug] = existing
 

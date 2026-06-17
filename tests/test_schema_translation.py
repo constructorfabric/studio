@@ -262,12 +262,13 @@ class TestTranslateCodexSchema(unittest.TestCase):
         result = _translate_codex_schema(agent)
         self.assertIn("sandbox_mode", result)
         self.assertEqual(result["sandbox_mode"], "read-only")
-        self.assertFalse(result["skip"])
+        self.assertTrue(result["skip"])
 
     def test_codex_readwrite_sandbox_mode(self):
         agent = _make_agent(mode="readwrite")
         result = _translate_codex_schema(agent)
         self.assertEqual(result["sandbox_mode"], "workspace-write")
+        self.assertTrue(result["skip"])
 
     def test_codex_model_passthrough(self):
         agent = _make_agent(model="gpt-4o")
@@ -296,6 +297,7 @@ class TestTranslateCodexSchema(unittest.TestCase):
         agent = _make_agent(description="My codex agent")
         result = _translate_codex_schema(agent)
         self.assertIn("developer_instructions", result)
+        self.assertIn("unsupported", result["skip_reason"])
 
 
 # ---------------------------------------------------------------------------
@@ -348,6 +350,7 @@ class TestTranslateAgentSchemaDispatch(unittest.TestCase):
         agent = _make_agent()
         result = translate_agent_schema(agent, "openai")
         self.assertIn("sandbox_mode", result)
+        self.assertTrue(result["skip"])
 
     def test_dispatch_unknown_tool_raises(self):
         agent = _make_agent()

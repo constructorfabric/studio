@@ -825,10 +825,14 @@ def file_level_kit_update(
     # enumerate existing files to detect files in user's bound path
     if resource_bindings and resource_info:
         _read_bound_resource_files(resource_bindings, resource_info, user_files, target_mapping)
+    mapped_target_paths = {target_path.resolve() for target_path in target_mapping.values()}
     # Also enumerate user_dir to detect removed files (files in user but not in source)
     user_dir_files = _enumerate_kit_files(user_dir, **enum_kw)
     for rel_path, content in user_dir_files.items():
         if rel_path not in user_files:
+            candidate_target = (user_dir / rel_path).resolve()
+            if candidate_target in mapped_target_paths:
+                continue
             user_files[rel_path] = content
             # Add to target_mapping for deletion
             if rel_path not in target_mapping:

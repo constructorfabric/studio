@@ -465,7 +465,6 @@ def cmd_update(argv: List[str]) -> int:
                     if cache_kit.is_dir():
                         kit_src = cache_kit
                         previous_provenance = kit_data.get("source_provenance", {})
-                        previous_identity = kit_data.get("content_identity", {})
                         if isinstance(previous_provenance, dict):
                             resolved_ref = str(
                                 previous_provenance.get("resolved_ref")
@@ -480,6 +479,7 @@ def cmd_update(argv: List[str]) -> int:
                                 ),
                                 "resolved_ref": resolved_ref,
                                 "installed_version": resolved_ref,
+                                "commit_sha": previous_provenance.get("commit_sha", ""),
                                 "canonical_source": previous_provenance.get(
                                     "canonical_source",
                                     f"github:{owner}/{repo}" if owner and repo else source_str,
@@ -493,8 +493,6 @@ def cmd_update(argv: List[str]) -> int:
                                 "verified": "stale",
                                 "freshness": "last_known",
                             }
-                            if isinstance(previous_identity, dict) and previous_identity.get("commit_sha"):
-                                authority_metadata["commit_sha"] = previous_identity["commit_sha"]
                         ui.warn(f"{kit_slug}: download failed, using cached kit: {exc}")
                     else:
                         errors.append({"path": kit_slug, "error": f"Download failed: {exc}"})

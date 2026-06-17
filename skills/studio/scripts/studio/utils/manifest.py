@@ -1200,16 +1200,71 @@ def validate_manifest(manifest: Manifest, kit_source: Path) -> list[str]:
 # Resource Resolution API
 # ---------------------------------------------------------------------------
 
-def _resolve_binding_path(studio_dir: Path, identifier: str, binding_path: str) -> Path:
-    from ..commands.kit import _normalize_path_string, _resolve_registered_kit_dir
+# @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-to-absolute
+def _resolve_binding_path(
+    studio_dir: Path,
+    identifier: str,
+    binding_path: str,
+    *,
+    allowed_absolute_root: str = "",
+) -> Path:
+    from ..commands.kit import (
+        _is_registered_kit_path_absolute,
+        _normalize_path_string,
+        _path_is_within,
+        _resolve_registered_kit_dir,
+        _resolve_same_os_absolute_path,
+    )
 
     normalized_path = _normalize_path_string(binding_path)
+    if _is_registered_kit_path_absolute(normalized_path):
+        resolved_absolute = _resolve_same_os_absolute_path(normalized_path)
+        if resolved_absolute is None:
+            raise ValueError(
+                f"Resource '{identifier}' binding path '{normalized_path}' is not accessible on this OS"
+            )
+        normalized_root = _normalize_path_string(allowed_absolute_root)
+        resolved_root = (
+            _resolve_same_os_absolute_path(normalized_root)
+            if normalized_root else None
+        )
+        if resolved_root is None or not _path_is_within(resolved_absolute, resolved_root):
+            raise ValueError(
+                f"Resource '{identifier}' binding path '{normalized_path}' is invalid state: "
+                "absolute paths must not be persisted in core.toml; use project-relative paths"
+            )
+        return resolved_absolute
     resolved_path = _resolve_registered_kit_dir(studio_dir, normalized_path)
     if resolved_path is None:
         raise ValueError(
-            f"Resource '{identifier}' binding path '{normalized_path}' is an absolute path that is not accessible on this OS"
+            f"Resource '{identifier}' binding path '{normalized_path}' is not accessible on this OS"
+        )
+    project_root = _project_root_from_core_toml(studio_dir / "config" / "core.toml", studio_dir)
+    if project_root is not None and not _path_is_within(resolved_path, project_root):
+        raise ValueError(
+            f"Resource '{identifier}' binding path '{normalized_path}' escapes the current project root '{project_root}'"
         )
     return resolved_path
+# @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-to-absolute
+
+
+# @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-read-bindings
+def _project_root_from_core_toml(core_toml: Path, studio_dir: Path) -> Optional[Path]:
+    if not core_toml.is_file():
+        return None
+    try:
+        with open(core_toml, "rb") as f:
+            data = tomllib.load(f)
+    except (OSError, ValueError):
+        return None
+    raw_root = data.get("project_root")
+    if isinstance(raw_root, str) and raw_root.strip():
+        root_path = Path(raw_root.strip())
+        if root_path.is_absolute():
+            return root_path.resolve()
+        return (studio_dir / root_path).resolve()
+    return studio_dir.parent.resolve()
+# @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-read-bindings
 
 
 # @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-read-bindings
@@ -1264,6 +1319,33 @@ def resolve_resource_bindings_with_errors(
     kit_entry = kits.get(slug)
     if not isinstance(kit_entry, dict):
         return {}, []
+    install_mode = str(kit_entry.get("install_mode", "") or "").strip()
+    # @cpt-begin:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-register-from-manifest
+    if install_mode == "register":
+        kit_root_value = str(kit_entry.get("path") or "").strip()
+        if not kit_root_value:
+            return {}, [f"Kit '{slug}' is in register mode but has no registered manifest root path"]
+        try:
+            kit_root = _resolve_binding_path(studio_dir, f"{slug}.path", kit_root_value)
+        except ValueError as exc:
+            return {}, [str(exc)]
+        manifest = load_manifest(kit_root, kit_slug=slug)
+        if manifest is None:
+            return {}, [f"Kit '{slug}' is in register mode but no canonical or legacy manifest was found at {kit_root}"]
+        result: dict[str, Path] = {}
+        binding_errors: list[str] = []
+        for resource in manifest.resources:
+            try:
+                result[resource.id] = _resolve_binding_path(
+                    studio_dir,
+                    resource.id,
+                    (Path(kit_root_value) / resource.source).as_posix(),
+                    allowed_absolute_root=kit_root_value,
+                )
+            except ValueError as exc:
+                binding_errors.append(str(exc))
+        return result, binding_errors
+    # @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-register-from-manifest
     resources = kit_entry.get("resources")
     if not isinstance(resources, dict):
         return {}, []
@@ -1282,7 +1364,12 @@ def resolve_resource_bindings_with_errors(
         if not binding_path:
             continue
         try:
-            result[identifier] = _resolve_binding_path(studio_dir, identifier, binding_path)
+            result[identifier] = _resolve_binding_path(
+                studio_dir,
+                identifier,
+                binding_path,
+                allowed_absolute_root=str(kit_entry.get("path", "") or ""),
+            )
         except ValueError as exc:
             binding_errors.append(str(exc))
     # @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-to-absolute
@@ -1311,6 +1398,8 @@ class ResourceInfo:
 # @cpt-algo:cpt-studio-algo-kit-manifest-source-mapping:p1
 def build_source_to_resource_mapping(
     kit_source: Path,
+    *,
+    kit_slug: str = "",
 ) -> tuple[dict[str, str], dict[str, ResourceInfo]]:
     """Build mapping from source file paths to resource identifiers.
 
@@ -1332,7 +1421,7 @@ def build_source_to_resource_mapping(
 
     @cpt-begin:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-load-manifest
     """
-    manifest = load_manifest(kit_source)
+    manifest = load_manifest(kit_source, kit_slug=kit_slug)
     if manifest is None:
         return {}, {}
     # @cpt-end:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-load-manifest
@@ -1345,6 +1434,20 @@ def build_source_to_resource_mapping(
     # @cpt-begin:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-map-file-resources
     # @cpt-begin:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-expand-directories
     for res in manifest.resources:
+        # @cpt-begin:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-source-mapping-relative-only
+        source_rel = Path(res.source)
+        if source_rel.is_absolute():
+            raise ValueError(
+                f"Resource '{res.id}': source path '{res.source}' must be relative"
+            )
+        resolved_source = (kit_source / source_rel).resolve()
+        try:
+            resolved_source.relative_to(kit_source.resolve())
+        except ValueError as exc:
+            raise ValueError(
+                f"Resource '{res.id}': source path '{res.source}' escapes the kit root"
+            ) from exc
+        # @cpt-end:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-source-mapping-relative-only
         resource_info[res.id] = ResourceInfo(
             type=res.type,
             source_base=res.source,

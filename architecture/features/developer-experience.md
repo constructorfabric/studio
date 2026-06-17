@@ -152,7 +152,7 @@ Reduces friction in daily Studio usage. `doctor` catches environment issues befo
 **Success Scenarios**:
 - Agent runs `cfs resolve-vars` → all template variables resolved to absolute paths
 - Agent runs `cfs resolve-vars --kit sdlc` → only SDLC kit variables returned
-- Agent runs `cfs info` → `variables` dict included in output for automatic resolution during Protocol Guard
+- Agent runs `cfs info` → `variables_by_kit` included in output for automatic per-kit resolution during Protocol Guard
 
 **Error Scenarios**:
 - No project root → ERROR with searched path
@@ -164,14 +164,14 @@ Reduces friction in daily Studio usage. `doctor` catches environment issues befo
 2. [x] - `p1` - Discover project root and studio directory - `inst-resolve-vars-discover`
 3. [x] - `p1` - Load core.toml for kit resource bindings - `inst-resolve-vars-load-core`
 4. [x] - `p1` - Collect system variables (studio_path, project_root) - `inst-resolve-vars-system`
-5. [x] - `p1` - **FOR EACH** kit with resources in core.toml - `inst-resolve-vars-foreach-kit`
+5. [x] - `p1` - **FOR EACH** installed kit with effective resources (persisted bindings or register-mode manifest resources) - `inst-resolve-vars-foreach-kit`
    1. [x] - `p1` - Resolve each resource binding to absolute path - `inst-resolve-vars-resolve-binding`
 6. [x] - `p1` - Merge system + kit variables into flat dict - `inst-resolve-vars-merge`
 7. [x] - `p1` - **IF** `--kit` filter, restrict to that kit - `inst-resolve-vars-filter-kit`
-8. [x] - `p1` - **RETURN** JSON: `{status, system, kits, variables}` - `inst-resolve-vars-return`
+8. [x] - `p1` - **RETURN** JSON: `{status, system, kits, variables, counts}` - `inst-resolve-vars-return`
 
 **Supporting**:
-- [x] - `p1` - Render resolved variables in human-friendly `info` output - `inst-info-render-variables`
+- [x] - `p1` - Render resolved variables in human-friendly `info` output per kit - `inst-info-render-variables`
 - [x] - `p1` - Human-friendly flat variable formatter - `inst-resolve-vars-human-flat`
 - [x] - `p1` - Human-friendly structured variable formatter - `inst-resolve-vars-human-structured`
 

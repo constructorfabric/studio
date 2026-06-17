@@ -158,6 +158,7 @@ def _build_inaccessible_kit_path_error(adapter_dir: Path, kit_id: str, kit_path:
     )
 
 
+# @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-load-kits
 def _resolve_loaded_kit_root(adapter_dir: Path, project_root: Path, kit_path: str) -> Optional[Path]:
     """Resolve a kit root using shared registered-path semantics.
 
@@ -168,14 +169,14 @@ def _resolve_loaded_kit_root(adapter_dir: Path, project_root: Path, kit_path: st
     from ..commands.kit import (
         _is_registered_kit_path_absolute,
         _normalize_path_string,
-        _resolve_registered_kit_dir,
+        _resolve_registered_kit_root_dir,
     )
 
     normalized = _normalize_path_string(str(kit_path or ""))
     if not normalized:
         return adapter_dir.resolve()
 
-    kit_root = _resolve_registered_kit_dir(adapter_dir, normalized)
+    kit_root = _resolve_registered_kit_root_dir(adapter_dir, normalized)
     if kit_root is None:
         return None
     if _is_registered_kit_path_absolute(normalized) or kit_root.is_dir():
@@ -185,6 +186,7 @@ def _resolve_loaded_kit_root(adapter_dir: Path, project_root: Path, kit_path: st
     if project_relative_root.is_dir():
         return project_relative_root
     return kit_root
+# @cpt-end:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-load-kits
 
 
 def _resolve_loaded_kit_constraints_path(
@@ -264,7 +266,47 @@ def _load_core_resource_entries(adapter_dir: Path, kit_id: str) -> Dict[str, obj
     if not isinstance(kit_entry, dict):
         return {}
     resources = kit_entry.get("resources")
-    return dict(resources) if isinstance(resources, dict) else {}
+    if isinstance(resources, dict):
+        return dict(resources)
+
+    install_mode = str(kit_entry.get("install_mode", "") or "").strip()
+    if install_mode != "register":
+        return {}
+
+    registered_path = str(kit_entry.get("path", "") or "").strip()
+    if not registered_path:
+        return {}
+
+    try:
+        from ..commands.kit import _resolve_registered_kit_root_dir
+        from .manifest import load_manifest
+    except (ImportError, OSError):
+        return {}
+
+    kit_root = _resolve_registered_kit_root_dir(adapter_dir, registered_path)
+    if kit_root is None or not kit_root.is_dir():
+        return {}
+
+    try:
+        manifest = load_manifest(kit_root, kit_slug=kit_id)
+    except (OSError, ValueError, KeyError):
+        return {}
+    if manifest is None:
+        return {}
+
+    manifest_entries: Dict[str, object] = {}
+    for resource in getattr(manifest, "resources", []) or []:
+        resource_id = str(getattr(resource, "id", "") or "").strip()
+        if not resource_id:
+            continue
+        entry: Dict[str, object] = {
+            "kind": str(getattr(resource, "kind", "") or "").strip(),
+        }
+        artifact_bindings = getattr(resource, "artifact_bindings", None)
+        if isinstance(artifact_bindings, dict) and artifact_bindings:
+            entry["artifacts"] = artifact_bindings
+        manifest_entries[resource_id] = entry
+    return manifest_entries
 
 
 def _constraints_resource_paths(
