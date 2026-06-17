@@ -382,6 +382,23 @@ def _requested_ref_display(requested_ref: str) -> str:
 
 
 # @cpt-begin:cpt-studio-algo-generic-git-kit-installer-ref-resolution:p1:inst-git-ref-version-opaque
+def _ref_contains_control_chars(value: str) -> bool:
+    return any(ord(ch) < 32 or ord(ch) == 127 for ch in value)
+
+
+def _ref_uses_forbidden_sequences(value: str) -> bool:
+    return any(token in value for token in ("..", "@{", "\\", "//"))
+
+
+def _ref_violates_name_rules(value: str) -> bool:
+    return (
+        value in {".", ".."}
+        or value.startswith("-")
+        or value.endswith(".")
+        or value.endswith(".lock")
+    )
+
+
 def _validate_requested_ref(requested_ref: str) -> str:
     normalized = str(requested_ref or "").strip()
     if not normalized:
@@ -392,15 +409,9 @@ def _validate_requested_ref(requested_ref: str) -> str:
         return normalized
     if (
         not _SAFE_REF_RE.fullmatch(normalized)
-        or normalized in {".", ".."}
-        or normalized.startswith("-")
-        or normalized.endswith(".")
-        or normalized.endswith(".lock")
-        or ".." in normalized
-        or "@{" in normalized
-        or "\\" in normalized
-        or "//" in normalized
-        or any(ord(ch) < 32 or ord(ch) == 127 for ch in normalized)
+        or _ref_violates_name_rules(normalized)
+        or _ref_uses_forbidden_sequences(normalized)
+        or _ref_contains_control_chars(normalized)
     ):
         raise GitSourceError(
             "GIT_SOURCE_INVALID_REF",
