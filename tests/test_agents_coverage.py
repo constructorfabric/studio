@@ -316,6 +316,28 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
             self.assertIn("Bound nested behavior.", nested_content)
             self.assertNotIn("Audit nested behavior.", nested_content)
 
+    def test_nested_public_subagent_with_invalid_target_override_is_skipped(self):
+        from studio.commands.agents import _default_agents_config, _process_single_agent
+        from unittest.mock import patch
+
+        with TemporaryDirectory() as td:
+            root, studio_root = self._make_project(td)
+            with patch(
+                "studio.commands.agents._nested_subagent_config",
+                return_value={"mode": "bogus"},
+            ):
+                result = _process_single_agent(
+                    "cursor",
+                    root,
+                    studio_root,
+                    _default_agents_config(),
+                    None,
+                    dry_run=False,
+                )
+
+            self.assertEqual(result["status"], "PASS")
+            self.assertFalse((root / ".cursor" / "agents" / "auditor.mdc").exists())
+
     def test_registered_public_skill_resource_outside_studio_root_is_skipped(self):
         from studio.commands.agents import _list_registered_public_resource_skills
 

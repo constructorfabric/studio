@@ -302,7 +302,7 @@ def _kit_model_to_info(adapter_dir: Path, kit_slug: str, kit_root: Path, core_ki
     from ..utils.kit_model import load_kit_model
 
     resource_bindings = _effective_info_resource_bindings(adapter_dir, kit_slug, core_kit)
-    model = load_kit_model(kit_root)
+    model = load_kit_model(kit_root, kit_slug=kit_slug)
     # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitmodel-source
 
     # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitmodels-shape

@@ -85,6 +85,25 @@ class TestGenerateManifestAgentsBasic(unittest.TestCase):
             self.assertEqual(len(result["created"]), 0)
             self.assertEqual(len(result["updated"]), 0)
 
+    def test_agent_with_unsafe_id_is_skipped(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            src = project_root / "agents" / "my-agent.md"
+            src.parent.mkdir(parents=True)
+            src.write_text("# My Agent", encoding="utf-8")
+
+            agents = {
+                "../escape": _make_agent(
+                    id="../escape",
+                    description="A test agent",
+                    source=str(src),
+                    agents=["claude"],
+                )
+            }
+            result = generate_manifest_agents(agents, "claude", project_root, dry_run=False)
+            self.assertEqual(len(result["created"]), 0)
+            self.assertEqual(len(result["updated"]), 0)
+
     def test_claude_mcp_only_skip_removes_stale_generated_broad_agent(self):
         """MCP-only Claude entries skip generation and remove stale broad-access output."""
         with tempfile.TemporaryDirectory() as tmpdir:

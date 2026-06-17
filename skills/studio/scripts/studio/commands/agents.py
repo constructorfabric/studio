@@ -2089,7 +2089,7 @@ def _resolve_registered_kit_path(project_root: Path, studio_root: Path, slug: st
             if legacy_resolved is not None:
                 return legacy_resolved
             return resolved
-    return studio_root / "config" / "kits" / slug
+    return _resolve_registered_project_relative_path(project_root, f"config/kits/{slug}")
 
 
 def _resolve_registered_resource_path(
@@ -3573,6 +3573,43 @@ def _subagent_list(subagent: Dict[str, Any], target_config: Dict[str, Any], key:
     return list(value or []) if isinstance(value, list) else []
 
 
+# @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-rollout-generate-agents
+def _validate_subagent_scalar_overrides(
+    subagent_name: str,
+    resolved_values: Dict[str, Any],
+) -> bool:
+    mode = resolved_values.get("mode")
+    if mode not in _VALID_AGENT_MODES:
+        sys.stderr.write(f"WARNING: agent {subagent_name!r} has invalid mode {mode!r}, skipping\n")
+        return False
+    role = resolved_values.get("role")
+    if role not in _VALID_AGENT_ROLES:
+        sys.stderr.write(f"WARNING: agent {subagent_name!r} has invalid role {role!r}, skipping\n")
+        return False
+    target = resolved_values.get("target")
+    if target not in _VALID_AGENT_TARGETS:
+        sys.stderr.write(f"WARNING: agent {subagent_name!r} has invalid target {target!r}, skipping\n")
+        return False
+    provider = resolved_values.get("provider")
+    if provider not in _VALID_AGENT_PROVIDERS:
+        sys.stderr.write(f"WARNING: agent {subagent_name!r} has invalid provider {provider!r}, skipping\n")
+        return False
+    effort = resolved_values.get("reasoning_effort")
+    if effort is not None and effort not in _VALID_AGENT_EFFORTS:
+        sys.stderr.write(
+            f"WARNING: agent {subagent_name!r} has invalid reasoning_effort {effort!r}, skipping\n"
+        )
+        return False
+    context = resolved_values.get("context_window")
+    if context is not None and context not in _VALID_AGENT_CONTEXTS:
+        sys.stderr.write(
+            f"WARNING: agent {subagent_name!r} has invalid context_window {context!r}, skipping\n"
+        )
+        return False
+    return True
+# @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-rollout-generate-agents
+
+
 def _validate_manifest_subagent_entry(
     kit_slug: str,
     subagent: Dict[str, Any],
@@ -3606,9 +3643,10 @@ def _validate_manifest_subagent_entry(
         kit_entry,
         source=subagent_source,
     )
-    if resolved_subagent_source is not None:
-        entry["prompt_source_abs"] = resolved_subagent_source.resolve()
-        entry["prompt_file_abs"] = resolved_subagent_source.resolve()
+    if resolved_subagent_source is None:
+        return None
+    entry["prompt_source_abs"] = resolved_subagent_source.resolve()
+    entry["prompt_file_abs"] = resolved_subagent_source.resolve()
     return entry
 
 
@@ -3685,6 +3723,16 @@ def _process_kit_public_agents_and_rules(
                     continue
                 nested_target = _nested_subagent_config(subagent, agent)
                 nested_name = str(entry["name"])
+                resolved_values = {
+                    "mode": str(_subagent_value(subagent, nested_target, "mode", entry.get("mode", "readwrite")) or "readwrite"),
+                    "role": str(_subagent_value(subagent, nested_target, "role", entry.get("role", "any")) or "any"),
+                    "target": str(_subagent_value(subagent, nested_target, "target", entry.get("target", "any")) or "any"),
+                    "provider": str(_subagent_value(subagent, nested_target, "provider", entry.get("provider", "anthropic")) or "anthropic"),
+                    "reasoning_effort": _subagent_value(subagent, nested_target, "reasoning_effort", entry.get("reasoning_effort", None)),
+                    "context_window": _subagent_value(subagent, nested_target, "context_window", entry.get("context_window", None)),
+                }
+                if not _validate_subagent_scalar_overrides(nested_name, resolved_values):
+                    continue
                 identity = ("agent", nested_name)
                 owner = f"{kit_slug}:{subagent_source_path.as_posix()}"
                 previous_owner = entry_owners.get(identity)
@@ -3701,17 +3749,17 @@ def _process_kit_public_agents_and_rules(
                     agents=_nested_subagent_agents(subagent, nested_target),
                     tools=_subagent_list(subagent, nested_target, "tools"),
                     disallowed_tools=_subagent_list(subagent, nested_target, "disallowed_tools"),
-                    mode=str(_subagent_value(subagent, nested_target, "mode", entry.get("mode", "readwrite")) or "readwrite"),
+                    mode=resolved_values["mode"],
                     isolation=bool(_subagent_value(subagent, nested_target, "isolation", entry.get("isolation", False))),
                     model=str(_subagent_value(subagent, nested_target, "model", entry.get("model", "")) or ""),
                     skills=_subagent_list(subagent, nested_target, "skills"),
                     color=str(_subagent_value(subagent, nested_target, "color", "") or ""),
                     memory_dir=str(_subagent_value(subagent, nested_target, "memory_dir", "") or ""),
-                    role=str(_subagent_value(subagent, nested_target, "role", entry.get("role", "any")) or "any"),
-                    target=str(_subagent_value(subagent, nested_target, "target", entry.get("target", "any")) or "any"),
-                    provider=str(_subagent_value(subagent, nested_target, "provider", entry.get("provider", "anthropic")) or "anthropic"),
-                    reasoning_effort=_subagent_value(subagent, nested_target, "reasoning_effort", entry.get("reasoning_effort", None)),
-                    context_window=_subagent_value(subagent, nested_target, "context_window", entry.get("context_window", None)),
+                    role=resolved_values["role"],
+                    target=resolved_values["target"],
+                    provider=resolved_values["provider"],
+                    reasoning_effort=resolved_values["reasoning_effort"],
+                    context_window=resolved_values["context_window"],
                 )
             # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-subagent-config
     # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
@@ -5678,6 +5726,8 @@ def generate_manifest_skills(
         # Empty agents list means "generate for all targets" (consistent with agents behavior)
         if skill.agents and target not in skill.agents:
             continue
+        if not _is_safe_generated_id(skill_id):
+            continue
 
         # Step 1.1: Determine source path (prefer source over prompt_file)
         src_str = skill.source or skill.prompt_file
@@ -5998,6 +6048,8 @@ def generate_manifest_agents(
     # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-iterate-agents
     for agent_id, agent in agents.items():
         if agent.agents and target not in agent.agents:
+            continue
+        if not _is_safe_generated_id(agent_id):
             continue
         # Step 1.1: Call translate_agent_schema to get frontmatter dict + body_prefix
         # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-translate-schema

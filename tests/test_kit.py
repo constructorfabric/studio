@@ -5153,6 +5153,77 @@ class TestCollectKitMetadataOsError(unittest.TestCase):
         self.assertEqual(meta["skill_nav"], "")
         self.assertEqual(meta["agents_content"], "LEGACY RULE\n")
 
+    def test_registered_resource_metadata_returns_empty_when_target_unresolved(self):
+        from studio.commands.kit import _collect_registered_kit_metadata
+
+        with TemporaryDirectory() as td:
+            studio_dir = Path(td) / ".bootstrap"
+            studio_dir.mkdir(parents=True)
+            with patch(
+                "studio.commands.kit._resolve_registered_kit_metadata_target",
+                return_value=(None, "config/kits/sdlc"),
+            ):
+                meta = _collect_registered_kit_metadata(
+                    studio_dir,
+                    "sdlc",
+                    {"install_mode": "register"},
+                )
+
+        self.assertEqual(meta, {})
+
+    def test_register_kit_in_core_toml_clears_stale_tool_risk_fingerprint(self):
+        from studio.commands.kit import _register_kit_in_core_toml
+
+        with TemporaryDirectory() as td:
+            studio_dir = Path(td) / ".bootstrap"
+            config_dir = studio_dir / "config"
+            config_dir.mkdir(parents=True)
+            (config_dir / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    'project_root = ".."',
+                    "",
+                    "[kits.sdlc]",
+                    'format = "CFS"',
+                    'path = "config/kits/sdlc"',
+                    'tool_risk_fingerprint = "old-risk"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            errors = _register_kit_in_core_toml(
+                config_dir,
+                "sdlc",
+                "1.0",
+                studio_dir,
+                kit_path="config/kits/sdlc",
+                tool_risk_fingerprint="",
+            )
+
+            self.assertEqual(errors, [])
+            self.assertNotIn(
+                "tool_risk_fingerprint",
+                (config_dir / "core.toml").read_text(encoding="utf-8"),
+            )
+
+    def test_tool_risk_approval_errors_clears_stale_fingerprint_for_safe_kit(self):
+        from studio.commands.kit import _tool_risk_approval_errors
+
+        installed = {"tool_risk_fingerprint": "old-risk"}
+        kit_model = SimpleNamespace(
+            tool_risk_summary={"requires_confirmation": False},
+            tool_risk_fingerprint="",
+        )
+
+        errors = _tool_risk_approval_errors(
+            kit_model,
+            installed_kit_entry=installed,
+            interactive=False,
+        )
+
+        self.assertEqual(errors, [])
+        self.assertNotIn("tool_risk_fingerprint", installed)
+
     def test_prompt_manifest_install_plan_allows_root_and_resource_overrides(self):
         from studio.commands.kit import _prompt_manifest_install_plan
 

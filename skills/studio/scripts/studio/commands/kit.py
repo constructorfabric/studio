@@ -964,12 +964,16 @@ def _collect_registered_kit_metadata(
             from ..utils.kit_model import load_kit_model
             from ..utils.manifest import resolve_resource_bindings_with_errors
 
+            # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitmodel-source
             kit_dir, _kit_rel_path = _resolve_registered_kit_metadata_target(
                 studio_dir,
                 kit_slug,
                 kit_entry,
             )
+            if kit_dir is None:
+                return {}
             model = load_kit_model(kit_dir, kit_slug=kit_slug)
+            # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitmodel-source
             bindings, _binding_errors = resolve_resource_bindings_with_errors(
                 studio_dir / "config",
                 kit_slug,
@@ -2163,13 +2167,15 @@ def _tool_risk_approval_errors(
     approved_tool_risks: Optional[List[str]] = None,
 ) -> List[str]:
     summary = getattr(kit_model, "tool_risk_summary", {}) or {}
-    if not summary.get("requires_confirmation"):
-        return []
     fingerprint = str(getattr(kit_model, "tool_risk_fingerprint", "") or "")
     approvals = {token.strip() for token in (approved_tool_risks or []) if token.strip()}
     installed_fingerprint = ""
     if isinstance(installed_kit_entry, dict):
         installed_fingerprint = str(installed_kit_entry.get("tool_risk_fingerprint", "") or "")
+    if not fingerprint and installed_fingerprint and isinstance(installed_kit_entry, dict):
+        installed_kit_entry.pop("tool_risk_fingerprint", None)
+    if not summary.get("requires_confirmation"):
+        return []
     if fingerprint and installed_fingerprint and fingerprint == installed_fingerprint:
         return []
     if fingerprint in approvals:
@@ -5163,8 +5169,12 @@ def _register_kit_in_core_toml(
     existing.pop("content_identity", None)
     if local_metadata:
         existing["local_metadata"] = local_metadata
+    # @cpt-begin:cpt-studio-algo-kit-tool-permission-risk:p1:inst-risk-noninteractive-fingerprint
     if tool_risk_fingerprint:
         existing["tool_risk_fingerprint"] = tool_risk_fingerprint
+    else:
+        existing.pop("tool_risk_fingerprint", None)
+    # @cpt-end:cpt-studio-algo-kit-tool-permission-risk:p1:inst-risk-noninteractive-fingerprint
     if install_mode == "register":
         existing.pop("resources", None)
     elif resources is not None:

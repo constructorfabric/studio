@@ -41,7 +41,7 @@ A **Kit** is a file package that provides domain-specific artifact and codebase 
 - Optional: `manifest.toml` — declarative installation manifest (see below)
 
 **Key properties**:
-- Kit registration (slug, version, config path, resolved resource bindings) is stored in `{cf-studio-path}/config/core.toml`; resource binding paths are always relative to `{cf-studio-path}` (never absolute; `..` is used for resources outside the adapter tree)
+- Kit registration (slug, version, config path, resolved resource bindings) is stored in `{cf-studio-path}/config/core.toml`; persisted resource binding paths are always project-relative (never absolute), and register-mode kits re-derive effective resource locations from the manifest at runtime instead of relying on persisted path anchors
 - All kit files are user-editable after installation
 - User modifications are preserved across kit updates via file-level diff with interactive prompts
 - Kit version is stored in `{cf-studio-path}/config/kits/<slug>/conf.toml`

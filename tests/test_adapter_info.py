@@ -11,6 +11,7 @@ import io
 import sys
 from pathlib import Path
 from contextlib import redirect_stdout, redirect_stderr
+from unittest.mock import patch
 
 # Add studio.py to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "studio" / "scripts"))
@@ -230,6 +231,70 @@ class TestAdapterInfoCommand(unittest.TestCase):
 
             kit_detail = output["kit_details"]["gears"]
             self.assertEqual(kit_detail["resources"]["skill"]["path"], "../kits/gears/SKILL.md")
+
+    def test_adapter_info_passes_kit_slug_to_load_kit_model(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir) / "project"
+            project_root.mkdir()
+            (project_root / ".git").mkdir()
+            (project_root / "AGENTS.md").write_text(
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".cypilot-adapter"\n```\n<!-- /@cf:root-agents -->\n',
+                encoding="utf-8",
+            )
+            adapter_dir = project_root / ".cypilot-adapter"
+            config_dir = adapter_dir / "config"
+            kit_dir = config_dir / "kits" / "sdlc"
+            kit_dir.mkdir(parents=True)
+            (config_dir / "AGENTS.md").write_text("# Constructor Studio Adapter: TestProject\n", encoding="utf-8")
+            (kit_dir / "SKILL.md").write_text(
+                "---\nname: skill\ndescription: SDLC skill\n---\n# SDLC skill\n",
+                encoding="utf-8",
+            )
+            (kit_dir / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "sdlc"',
+                    'name = "SDLC Kit"',
+                    'version = "2.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "skill"',
+                    'kind = "skill"',
+                    'source = "SKILL.md"',
+                    'install_path = "SKILL.md"',
+                    'type = "file"',
+                    "public = true",
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            (config_dir / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    'project_root = ".."',
+                    "",
+                    "[kits.sdlc]",
+                    'format = "CFS"',
+                    'path = "config/kits/sdlc"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            seen: list[str] = []
+            from studio.utils.kit_model import load_kit_model as real_load_kit_model
+
+            def spy(path: Path, source_hint: str = "", kit_slug: str = ""):
+                seen.append(kit_slug)
+                return real_load_kit_model(path, source_hint=source_hint, kit_slug=kit_slug)
+
+            stdout_capture = io.StringIO()
+            with patch("studio.utils.kit_model.load_kit_model", side_effect=spy):
+                with redirect_stdout(stdout_capture):
+                    exit_code = main(["info", "--root", str(project_root)])
+
+            self.assertEqual(exit_code, 0)
+            self.assertIn("sdlc", seen)
 
     def test_adapter_info_ignores_unregistered_config_kit_dirs(self):
         """Info reports kits registered in core.toml, not loose config/kits dirs."""
