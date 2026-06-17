@@ -2048,13 +2048,7 @@ def _resolve_registered_project_relative_path(
 # @cpt-end:cpt-studio-algo-agent-integration-discover-agents:p1:inst-resolve-kits
 
 
-def _resolve_registered_studio_relative_path(
-    studio_root: Path,
-    raw_path: str,
-) -> Optional[Path]:
-    return _resolve_registered_project_relative_path(studio_root, raw_path)
-
-
+# @cpt-begin:cpt-studio-algo-agent-integration-discover-agents:p1:inst-resolve-kits
 def _resolve_registered_legacy_studio_path(
     studio_root: Path,
     project_root: Path,
@@ -2081,6 +2075,7 @@ def _registered_kit_dirs(project_root: Optional[Path]) -> Set[str]:
     if not isinstance(kits, dict):
         return set()
     return {str(slug) for slug, kit_entry in kits.items() if isinstance(kit_entry, dict)}
+# @cpt-end:cpt-studio-algo-agent-integration-discover-agents:p1:inst-resolve-kits
 
 
 def _resolve_registered_kit_path(project_root: Path, studio_root: Path, slug: str, kit_entry: object) -> Optional[Path]:
