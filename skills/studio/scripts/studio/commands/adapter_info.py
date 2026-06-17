@@ -24,6 +24,7 @@ from ..utils.manifest import resolve_resource_bindings_with_errors
 from ..utils.ui import ui
 
 def _load_json_file(path: Path) -> Optional[dict]:
+    # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-load-json
     if not path.is_file():
         return None
     try:
@@ -32,11 +33,12 @@ def _load_json_file(path: Path) -> Optional[dict]:
         return data if isinstance(data, dict) else None
     except (json.JSONDecodeError, OSError, IOError):
         return None
+    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-load-json
 
 
-# @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-human-fmt
 def _show_system_artifacts(sys_info: dict) -> None:
     """Render artifacts for one system."""
+    # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-show-system-artifacts
     for artifact in sys_info.get("artifacts") or []:
         if not isinstance(artifact, dict):
             continue
@@ -49,10 +51,12 @@ def _show_system_artifacts(sys_info: dict) -> None:
         if trace and trace != "DOCS-ONLY":
             parts.append(trace)
         ui.substep(f"      {parts[0]}  ({', '.join(parts[1:])})" if len(parts) > 1 else f"      {parts[0]}")
+    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-show-system-artifacts
 
 
 def _show_system_codebase(sys_info: dict, *, indent: str = "      ") -> None:
     """Render codebase entries for one system."""
+    # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-show-system-codebase
     for code_entry in sys_info.get("codebase") or []:
         if not isinstance(code_entry, dict):
             continue
@@ -60,10 +64,12 @@ def _show_system_codebase(sys_info: dict, *, indent: str = "      ") -> None:
         exts = code_entry.get("extensions") or []
         ext_str = f"  [{', '.join(exts)}]" if exts else ""
         ui.substep(f"{indent}{cpath}{ext_str}")
+    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-show-system-codebase
 
 
 def _show_child_systems(sys_info: dict) -> None:
     """Render child system summaries."""
+    # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-show-child-systems
     for child in sys_info.get("children") or []:
         if not isinstance(child, dict):
             continue
@@ -74,10 +80,12 @@ def _show_child_systems(sys_info: dict) -> None:
             if isinstance(artifact, dict):
                 ui.substep(f"        {artifact.get('path', '?')}  ({artifact.get('kind', '')})")
         _show_system_codebase(child, indent="        ")
+    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-show-child-systems
 
 
 def _show_system_info(sys_info: dict) -> None:
     """Render one system registry entry."""
+    # @cpt-begin:cpt-studio-algo-core-infra-display-info:p1:inst-info-show-system-info
     name = sys_info.get("name", "?")
     slug = sys_info.get("slug", "")
     kit = sys_info.get("kit", "")
@@ -88,11 +96,12 @@ def _show_system_info(sys_info: dict) -> None:
     _show_system_artifacts(sys_info)
     _show_system_codebase(sys_info)
     _show_child_systems(sys_info)
-# @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-human-fmt
+    # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-show-system-info
 
 
 def _read_kit_conf(conf_path: Path) -> dict:
     """Read kit conf.toml and return key fields."""
+    # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-read-kit-conf
     try:
         with open(conf_path, "rb") as f:
             data = tomllib.load(f)
@@ -103,9 +112,11 @@ def _read_kit_conf(conf_path: Path) -> dict:
         return out
     except (OSError, ValueError):
         return {}
+    # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-read-kit-conf
 
 
 def _resolve_info_kit_root(adapter_dir: Path, slug: str, core_kit: dict) -> Path:
+    # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-resolve-kit-root
     from .kit import _resolve_registered_kit_dir
 
     registered_path = core_kit.get("path") if isinstance(core_kit, dict) else None
@@ -116,6 +127,7 @@ def _resolve_info_kit_root(adapter_dir: Path, slug: str, core_kit: dict) -> Path
         path = Path(registered_path)
         return path if path.is_absolute() else adapter_dir / path
     return adapter_dir / "config" / "kits" / slug
+    # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-resolve-kit-root
 
 
 def _effective_info_resource_bindings(adapter_dir: Path, slug: str, core_kit: dict) -> dict:
@@ -145,6 +157,7 @@ def _effective_info_resource_bindings(adapter_dir: Path, slug: str, core_kit: di
 
 
 def _kit_resource_to_info(resource: object, binding: object) -> dict:
+    # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-resource-to-info
     data = {
         "id": str(getattr(resource, "id", "")),
         "kind": str(getattr(resource, "kind", "")),
@@ -160,26 +173,32 @@ def _kit_resource_to_info(resource: object, binding: object) -> dict:
     if isinstance(binding, dict) and "path" in binding:
         data["binding_path"] = binding["path"]
     return data
+    # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-resource-to-info
 
 
 def _resolve_info_binding_path(adapter_dir: Path, raw_path: object) -> Optional[Path]:
+    # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-resolve-binding-path
     if not isinstance(raw_path, str) or not raw_path.strip():
         return None
     if os.name != "nt" and PureWindowsPath(raw_path).is_absolute():
         return None
     path = Path(raw_path)
     return path if path.is_absolute() else adapter_dir / path
+    # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-resolve-binding-path
 
 
 def _is_relative_to(path: Path, parent: Path) -> bool:
+    # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-is-relative-to
     try:
         path.resolve().relative_to(parent.resolve())
         return True
     except ValueError:
         return False
+    # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-is-relative-to
 
 
 def _frontmatter_type(path: Path) -> str:
+    # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-frontmatter-type
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except (OSError, UnicodeDecodeError):
@@ -196,10 +215,13 @@ def _frontmatter_type(path: Path) -> str:
         if key.strip() == "type":
             return value.strip().strip('"\'')
     return ""
+    # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-frontmatter-type
 
 
 def _is_workflow_frontmatter_file(path: Path) -> bool:
+    # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-is-workflow-frontmatter
     return path.is_file() and path.suffix.lower() == ".md" and _frontmatter_type(path) == "workflow"
+    # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-is-workflow-frontmatter
 
 
 def _legacy_workflow_names_from_component(kit_root: Path, component: object) -> list[str]:
