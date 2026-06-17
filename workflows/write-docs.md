@@ -39,6 +39,7 @@ DO:
 RULES:
   ALWAYS run StudioInstructionsMemoryGate before document context discovery, authoring, validation, or review
   ALWAYS remember git-commit-mode so any later commit request in this active workflow session runs GitCommitModeGate before routing, authoring, git use, or delegation
+  ALWAYS keep later user follow-ups inside the active workflow state machine; if a message cannot be consumed by the current write-docs state, route it through visible companion-skill handoff or explicitly exit write-docs to free mode instead of acting inline
   ALWAYS load context-memory before carrying resource_context or rule references into author/reviewer dispatches
   ALWAYS apply the resolved language-complexity level on every write-capable document path and resulting document write, rewriting breaching drafts before emitting them (source quotes verbatim/exempt)
   ALWAYS resolve and apply the audience dimension per {cf-studio-path}/.core/requirements/storytelling-dimensions.md before any author or reviewer dispatch — the review flow class scopes emphasis, the authoring flow class sets the document level — never as a gate on the verdict

@@ -7,8 +7,10 @@ DO:
   LOAD {cf-studio-path}/.core/skills/studio/modules/ui/skill-invocation-art.md
   LOAD {cf-studio-path}/.core/skills/studio/modules/runtime/pdsl-execution-card.md
   RUN SkillInvocationArt
+  LOAD and REMEMBER rules from {cf-studio-path}/.core/skills/studio/modules/runtime/active-workflow-state-law.md
   LOAD and REMEMBER rules from {cf-studio-path}/.core/skills/studio/modules/subagents/git-commit-mode.md
 RULES:
+  ALWAYS remember active-workflow-state-law before a later user follow-up may resume, interrupt, reroute, or exit an active workflow
   ALWAYS remember git-commit-mode before a later commit request may be routed, delegated, or executed
 ```
 

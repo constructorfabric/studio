@@ -30,6 +30,12 @@ RULES:
   - ALWAYS after any `WAIT`/`STOP_TURN` resume at the exact active PDSL
     continuation target; REQUIRED: do not reinterpret the user's reply as
     broad permission for generic autonomous execution.
+  - ALWAYS while a workflow, gate, or menu remains active, treat each new user
+    message as candidate input to that active continuation or a loaded
+    session-level interrupt, not as permission for unrelated execution.
+  - ALWAYS when a new user message cannot be represented by the active
+    workflow's reachable states, prefer a visible workflow handoff or an
+    explicit workflow exit over silent protocol escape.
   - ALWAYS treat `DISPATCH` as invoking a named sub-agent or worker contract;
     concurrency, isolation, and join behavior come from explicit dispatch
     options or surrounding rules, not separate dispatch keywords.
