@@ -73,6 +73,62 @@ class TestStudioEndpointTarget(unittest.TestCase):
 
         self.assertIsNone(resolved)
 
+    def test_registered_project_relative_path_rejects_symlink_escape(self):
+        from studio.commands.agents import _resolve_registered_project_relative_path
+
+        with TemporaryDirectory() as td:
+            project_root = Path(td) / "project"
+            outside_root = Path(td) / "outside"
+            project_root.mkdir()
+            outside_root.mkdir()
+            (outside_root / "escaped.md").write_text("# outside\n", encoding="utf-8")
+            (project_root / "link").symlink_to(outside_root, target_is_directory=True)
+
+            resolved = _resolve_registered_project_relative_path(
+                project_root,
+                "link/escaped.md",
+            )
+
+        self.assertIsNone(resolved)
+
+    def test_registered_legacy_studio_path_rejects_symlink_escape(self):
+        from studio.commands.agents import _resolve_registered_legacy_studio_path
+
+        with TemporaryDirectory() as td:
+            project_root = Path(td) / "project"
+            studio_root = project_root / ".bootstrap"
+            outside_root = Path(td) / "outside"
+            studio_root.mkdir(parents=True)
+            outside_root.mkdir()
+            (outside_root / "escaped.md").write_text("# outside\n", encoding="utf-8")
+            (studio_root / "link").symlink_to(outside_root, target_is_directory=True)
+
+            resolved = _resolve_registered_legacy_studio_path(
+                studio_root,
+                project_root,
+                "link/escaped.md",
+            )
+
+        self.assertIsNone(resolved)
+
+    def test_registered_kit_path_prefers_legacy_studio_fallback(self):
+        from studio.commands.agents import _resolve_registered_kit_path
+
+        with TemporaryDirectory() as td:
+            project_root = Path(td) / "project"
+            studio_root = project_root / ".bootstrap"
+            legacy_kit_root = studio_root / "legacy-kit"
+            legacy_kit_root.mkdir(parents=True)
+
+            resolved = _resolve_registered_kit_path(
+                project_root,
+                studio_root,
+                "demo",
+                {"path": "legacy-kit"},
+            )
+
+        self.assertEqual(resolved, legacy_kit_root.resolve())
+
     def test_registered_resource_path_rejects_unsafe_component_source(self):
         from studio.commands.agents import _resolve_registered_resource_path
 
@@ -92,6 +148,52 @@ class TestStudioEndpointTarget(unittest.TestCase):
             )
 
         self.assertIsNone(resolved)
+
+    def test_registered_resource_path_uses_project_relative_binding(self):
+        from studio.commands.agents import _resolve_registered_resource_path
+
+        with TemporaryDirectory() as td:
+            project_root = Path(td) / "project"
+            studio_root = project_root / ".bootstrap"
+            kit_root = studio_root / "config" / "kits" / "demo"
+            bound_file = project_root / "docs" / "skill.md"
+            bound_file.parent.mkdir(parents=True)
+            kit_root.mkdir(parents=True)
+            bound_file.write_text("# skill\n", encoding="utf-8")
+            component = SimpleNamespace(id="skill", source="ignored.md")
+
+            resolved = _resolve_registered_resource_path(
+                project_root,
+                studio_root,
+                kit_root,
+                component,
+                {"resources": {"skill": {"path": "docs/skill.md"}}},
+            )
+
+        self.assertEqual(resolved, bound_file.resolve())
+
+    def test_registered_resource_path_uses_legacy_studio_fallback(self):
+        from studio.commands.agents import _resolve_registered_resource_path
+
+        with TemporaryDirectory() as td:
+            project_root = Path(td) / "project"
+            studio_root = project_root / ".bootstrap"
+            kit_root = studio_root / "config" / "kits" / "demo"
+            legacy_file = studio_root / "docs" / "skill.md"
+            legacy_file.parent.mkdir(parents=True)
+            kit_root.mkdir(parents=True)
+            legacy_file.write_text("# skill\n", encoding="utf-8")
+            component = SimpleNamespace(id="skill", source="ignored.md")
+
+            resolved = _resolve_registered_resource_path(
+                project_root,
+                studio_root,
+                kit_root,
+                component,
+                {"resources": {"skill": {"path": "docs/skill.md"}}},
+            )
+
+        self.assertEqual(resolved, legacy_file.resolve())
 
 
 class TestGenerateAgentsNoChangePreview(unittest.TestCase):

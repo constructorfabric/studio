@@ -1895,7 +1895,7 @@ class TestKitSourceModeValidation(unittest.TestCase):
                 buf = io.StringIO()
                 with (
                     patch("sys.stdin", fake_stdin),
-                    patch("builtins.input", side_effect=["", ""]),
+                    patch("builtins.input", side_effect=["", "", ""]),
                     redirect_stdout(buf),
                 ):
                     rc = cmd_kit_install(["--path", str(kit_src)])
@@ -3511,6 +3511,32 @@ class TestCmdKitInstall(unittest.TestCase):
                 out = json.loads(buf.getvalue())
                 self.assertEqual(out["status"], "PASS")
                 self.assertEqual(out["kit"], "testkit")
+            finally:
+                os.chdir(cwd)
+
+    def test_install_path_copy_can_mark_kit_ignored_in_git(self):
+        from studio.commands.kit import cmd_kit_install
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            kit_src = _make_kit_source(Path(td), "testkit")
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                with (
+                    patch("studio.commands.kit.sys.stdin.isatty", return_value=True),
+                    patch("builtins.input", side_effect=["i"]),
+                ):
+                    buf = io.StringIO()
+                    with redirect_stdout(buf):
+                        rc = cmd_kit_install(["--path", str(kit_src), "--install-mode", "copy"])
+                self.assertEqual(rc, 0)
+                with open(adapter / "config" / "core.toml", "rb") as fh:
+                    core = tomllib.load(fh)
+                self.assertEqual(core["kits"]["testkit"]["tracking"], "ignored")
+                gitignore = (root / ".gitignore").read_text(encoding="utf-8")
+                self.assertIn(f"{adapter.relative_to(root).as_posix()}/config/kits/testkit/", gitignore)
             finally:
                 os.chdir(cwd)
 
@@ -6081,6 +6107,38 @@ class TestCmdKitInstallGithubPath(unittest.TestCase):
                         rc = cmd_kit_install(["constructorfabric/studio-kit-sdlc", "--version", "main"])
                 self.assertEqual(rc, 0)
                 self.assertEqual(mocked_download.call_args.args[2], "main")
+            finally:
+                os.chdir(cwd)
+
+    def test_install_from_github_can_mark_kit_ignored_in_git(self):
+        from studio.commands.kit import cmd_kit_install
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            kit_src = _make_manifest_kit_source(Path(td) / "dl", "sdlc")
+
+            cwd = os.getcwd()
+            try:
+                os.chdir(root)
+                with (
+                    patch(
+                        "studio.commands.kit._resolve_install_source_github",
+                        return_value=(kit_src, "sdlc", "1.0", "github:constructorfabric/studio-kit-sdlc", None, None, {"source_type": "github"}),
+                    ),
+                    patch("studio.commands.kit.sys.stdin.isatty", return_value=True),
+                    patch("builtins.input", side_effect=["i", ""]),
+                    patch("studio.commands.kit._select_canonical_kit_models_for_install", return_value=([], None)),
+                ):
+                    buf = io.StringIO()
+                    with redirect_stdout(buf):
+                        rc = cmd_kit_install(["constructorfabric/studio-kit-sdlc"])
+                self.assertEqual(rc, 0)
+                with open(adapter / "config" / "core.toml", "rb") as fh:
+                    core = tomllib.load(fh)
+                self.assertEqual(core["kits"]["sdlc"]["tracking"], "ignored")
+                gitignore = (root / ".gitignore").read_text(encoding="utf-8")
+                self.assertIn(f"{adapter.relative_to(root).as_posix()}/config/kits/sdlc/", gitignore)
             finally:
                 os.chdir(cwd)
 

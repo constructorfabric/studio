@@ -1151,6 +1151,45 @@ def _input_stderr(prompt: str) -> str:
     # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
 
 
+def _prompt_git_tracking_for_installed_kit(core_toml_path: Path, kit_slug: str) -> str:
+    # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
+    from .init import _prompt_kit_tracking_policy, _read_kit_tracking
+
+    default_policy = _read_kit_tracking(core_toml_path, default="tracked")
+    return _prompt_kit_tracking_policy(kit_slug, default_policy, None, interactive=True)
+    # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
+
+
+def _persist_installed_kit_tracking(
+    project_root: Path,
+    studio_dir: Path,
+    kit_slug: str,
+    tracking: str,
+) -> None:
+    # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-delegate-install
+    from .init import _persist_install_metadata, _read_install_tracking, _read_kit_tracking, _write_gitignore_block
+
+    core_toml_path = studio_dir / "config" / _KIT_CORE_TOML
+    default_kit_tracking = _read_kit_tracking(core_toml_path, default="tracked")
+    runtime_tracking = _read_install_tracking(core_toml_path, "runtime_tracking", default="ignored")
+    agent_tracking = _read_install_tracking(core_toml_path, "agent_tracking", default="ignored")
+    _persist_install_metadata(
+        core_toml_path,
+        default_kit_tracking,
+        runtime_tracking=runtime_tracking,
+        agent_tracking=agent_tracking,
+        kit_tracking_overrides={kit_slug: tracking},
+    )
+    install_rel = studio_dir.resolve().relative_to(project_root.resolve()).as_posix()
+    _write_gitignore_block(
+        project_root,
+        install_rel,
+        core_toml_path,
+        default_kit_tracking,
+    )
+    # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-delegate-install
+
+
 def _resolve_manifest_user_path(base: Path, raw_path: str) -> Path:
     # @cpt-begin:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-register-containment
     user_path = Path(raw_path)
@@ -2401,7 +2440,7 @@ def _resolve_install_source_github(
     kit_slug = _read_kit_slug(kit_source)
     if not kit_slug and not _has_canonical_kit_models(kit_source):
         ui.result({"status": "FAIL", "message": f"Kit at {kit_source} is missing manifest.toml; cannot resolve slug."})
-        return (Path("."), "", "", "", None, 1, None)
+        return (Path("."), "", "", "", kit_source.parent, 1, None)
     kit_version = resolved_version
     github_source = f"github:{owner}/{repo}"
     ui.substep(f"Resolved: {(kit_slug or '(select kit)')}@{kit_version or '(dev)'}")
@@ -2463,8 +2502,10 @@ def cmd_kit_install(argv: List[str]) -> int:
     .gen/ aggregates.
 
     Usage:
-        cfs kit install owner/repo[@version]   (GitHub, default)
-        cfs kit install --path /local/dir       (local directory)
+        cfs kit install owner/repo[@version]                          (GitHub)
+        cfs kit install git/<url>[//<subdir>][@<kit>]                 (generic Git)
+        cfs kit install path/<dir>                                    (local directory)
+        cfs kit install --path /local/dir                             (local directory)
     """
     # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-parse-args
     p = argparse.ArgumentParser(
@@ -2473,7 +2514,7 @@ def cmd_kit_install(argv: List[str]) -> int:
     )
     p.add_argument(
         "source", nargs="?", default=None,
-        help="GitHub source owner/repo[@version] or generic Git source git/<encoded-url>[//<subdir>][@<kit>]",
+        help="GitHub owner/repo[@version], generic Git git/<url>[//<subdir>][@<kit>], or local path/<dir>",
     )
     p.add_argument(
         "--path", dest="local_path", default=None,
@@ -2594,6 +2635,8 @@ def cmd_kit_install(argv: List[str]) -> int:
         kit_source, kit_slug, kit_version, source_registration, tmp_dir_to_clean, exit_code, authority_metadata = resolved_source
         # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-read-slug-version
         if exit_code is not None:
+            if tmp_dir_to_clean:
+                shutil.rmtree(tmp_dir_to_clean, ignore_errors=True)
             return exit_code
 
     effective_requested_kits = list(args.kit)
@@ -2650,6 +2693,14 @@ def cmd_kit_install(argv: List[str]) -> int:
         # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-mode-always-ask
         # @cpt-end:cpt-studio-state-kit-install-mode:p1:inst-mode-copy-or-register
         # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
+        # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
+        selected_tracking: Optional[str] = None
+        if selected_install_mode != "register" and not args.dry_run and sys.stdin.isatty():
+            selected_tracking = _prompt_git_tracking_for_installed_kit(
+                config_dir / _KIT_CORE_TOML,
+                kit_slug,
+            )
+        # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
 
         if len(selected_specs) > 1:
             preflight_errors: List[str] = []
@@ -2705,6 +2756,10 @@ def cmd_kit_install(argv: List[str]) -> int:
                 )
                 if str(result.get("status", "")).upper() == "FAIL":
                     failed = True
+                # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-delegate-install
+                elif selected_tracking is not None:
+                    _persist_installed_kit_tracking(project_root, studio_dir, selected_slug, selected_tracking)
+                # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-delegate-install
                 results.append({
                     "status": result.get("status", "PASS"),
                     "action": result.get("action", "installed"),
@@ -2781,6 +2836,10 @@ def cmd_kit_install(argv: List[str]) -> int:
             approved_overwrites=args.approve_overwrite,
             approved_tool_risks=args.approve_tool_risk,
         )
+        # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-delegate-install
+        # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-delegate-install
+        if str(result.get("status", "")).upper() != "FAIL" and selected_tracking is not None:
+            _persist_installed_kit_tracking(project_root, studio_dir, kit_slug, selected_tracking)
         # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-delegate-install
 
         if str(result.get("status", "")).upper() == "FAIL":
@@ -3202,6 +3261,7 @@ def cmd_kit_update(argv: List[str]) -> int:
     Usage:
         cfs kit update                          (all kits from sources)
         cfs kit update sdlc                     (specific kit from source)
+        cfs kit update path/<dir>               (from local directory)
         cfs kit update --path /local/dir        (from local directory)
     """
     # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-parse-args
@@ -3211,7 +3271,7 @@ def cmd_kit_update(argv: List[str]) -> int:
     )
     p.add_argument(
         "slug", nargs="?", default=None,
-        help="Kit slug to update, or path/... for a local directory (default: all installed kits)",
+        help="Kit slug to update, or local directory alias path/<dir> (default: all installed kits)",
     )
     p.add_argument(
         "--path", dest="local_path", default=None,
@@ -4779,9 +4839,11 @@ def cmd_kit(argv: List[str]) -> int:
     descriptions = {
         "install": [
             ("<owner/repo[@ref]>", "Install a kit from GitHub"),
+            ("git/<url>[//<subdir>][@<kit>]", "Install a kit from generic Git"),
+            ("path/<dir>", "Install a kit from a local directory"),
             ("--path <dir>", "Install a kit from a local directory"),
         ],
-        "update": [("[slug|--path <dir>]", "Update installed kit files")],
+        "update": [("[slug|path/<dir>|--path <dir>]", "Update installed kit files")],
         "check-updates": [("[slug]", "Check git/GitHub kit sources for updates")],
         "validate": [("", "Validate kit structure and examples")],
         "normalize": [("<path> [--dry-run]", "Generate .cf-studio-kit.toml from a kit source")],

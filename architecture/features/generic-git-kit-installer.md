@@ -66,10 +66,10 @@ Studio kit installation currently supports GitHub repository shorthand and expli
 
 **Actor**: `cpt-studio-actor-user`
 
-**Trigger**: User runs `cfs kit install git/<encoded-url>[//<subdir>][@<kit>] [--version <ref>] [--force] [--dry-run]`
+**Trigger**: User runs `cfs kit install git/<url>[//<subdir>][@<kit>] [--version <ref>] [--force] [--dry-run]`
 
 **Success Scenarios**:
-- User installs from `git/https%3A%2F%2Fgit.example.com%2Forg%2Fkit.git --version v1.2.3` and Studio records the requested tag plus the resolved commit SHA.
+- User installs from `git/https://git.example.com/org/kit.git --version v1.2.3` and Studio records the requested tag plus the resolved commit SHA.
 - User installs from an SSH repository using ambient Git authentication and Studio records no credential material.
 - User installs from a repository subdirectory using `//kits/sdlc@custom-sdlc`; Studio validates only that subdirectory as the package root and registers the selected kit identity.
 
@@ -127,16 +127,16 @@ Studio kit installation currently supports GitHub repository shorthand and expli
 
 - [ ] `p1` - **ID**: `cpt-studio-algo-generic-git-kit-installer-source-parse`
 
-**Input**: User-facing source string `git/<encoded-url>[//<subdir>][@<kit>]` or persisted source string `git:<encoded-url>[//<subdir>][@<kit>]`
+**Input**: User-facing source string `git/<url>[//<subdir>][@<kit>]` or persisted source string `git:<encoded-url>[//<subdir>][@<kit>]`
 
 **Output**: Parsed source object with canonical persisted source, decoded remote URL, selected subdirectory, optional kit identity, transport kind, and redaction-safe display
 
 **Rules**:
 1. [ ] - `p1` - CLI input uses `git/`; persisted config uses `git:`; both parse to the same structured source object - `inst-git-parse-prefix`
 2. [ ] - `p1` - Decode the transport URL exactly once and reject malformed or lossy percent encodings - `inst-git-parse-decode-once`
-3. [ ] - `p1` - Accept percent-encoded absolute Git URLs for HTTPS, `ssh://`, encoded scp-like `git@host:org/repo.git`, and `file://` - `inst-git-parse-transports`
-4. [ ] - `p1` - Reject unencoded transport URLs that would make grammar boundaries ambiguous - `inst-git-parse-reject-lossy`
-5. [ ] - `p1` - Parse optional `//<subdir>` after the encoded URL and require a clean relative path with no empty segments, absolute roots, shell expansion, or `..` traversal - `inst-git-parse-subdir`
+3. [ ] - `p1` - Accept raw absolute Git URLs for HTTPS, `ssh://`, scp-like `git@host:org/repo.git`, `ssh:host:path`, and `file://`; also accept percent-encoded input for compatibility and normalize both forms to the same canonical persisted source - `inst-git-parse-transports`
+4. [ ] - `p1` - Reject only transport URLs whose raw form would make grammar boundaries ambiguous or lossy after canonical parsing - `inst-git-parse-reject-lossy`
+5. [ ] - `p1` - Parse optional `//<subdir>` after the raw or encoded URL and require a clean relative path with no empty segments, absolute roots, shell expansion, or `..` traversal - `inst-git-parse-subdir`
 6. [ ] - `p1` - Parse optional `@<kit>` identity and require a registry-safe slug - `inst-git-parse-kit-identity`
 7. [ ] - `p1` - Persist canonical percent encoding using uppercase percent hex and minimal required grammar encoding - `inst-git-parse-canonical-source`
 8. [ ] - `p1` - Build a redaction-safe display value that omits credentials, query, fragment, and raw rejected input - `inst-git-parse-safe-display`
@@ -274,7 +274,7 @@ Studio kit installation currently supports GitHub repository shorthand and expli
 
 - [x] `p1` - **ID**: `cpt-studio-dod-generic-git-kit-installer-source-grammar`
 
-The system **MUST** accept `git/<encoded-url>[//<subdir>][@<kit>]` at the CLI and persist equivalent sources as `git:<encoded-url>[//<subdir>][@<kit>]`.
+The system **MUST** accept `git/<url>[//<subdir>][@<kit>]` at the CLI and persist equivalent canonical sources as `git:<encoded-url>[//<subdir>][@<kit>]`.
 
 **Implements**:
 - `cpt-studio-flow-generic-git-kit-installer-install`
@@ -332,7 +332,7 @@ The system **MUST** keep Git credentials outside source grammar, cache identity,
 
 ## 7. Acceptance Criteria
 
-- [x] `cfs kit install git/<encoded-url> --version <ref>` installs a kit from a non-GitHub remote and records `source_type = "git"`, requested ref, and resolved commit SHA.
+- [x] `cfs kit install git/<url> --version <ref>` installs a kit from a non-GitHub remote and records `source_type = "git"`, requested ref, and resolved commit SHA.
 - [x] `cfs kit update <kit>` for a generic Git registered kit resolves mutable refs by commit SHA and runs the existing file-level diff/update path.
 - [x] Existing `github:` registrations and GitHub shorthand installs continue to use GitHub release/tag authority and are not migrated to generic Git.
 - [x] Local/path kits remain valid without `source_provenance` or `content_identity`.
