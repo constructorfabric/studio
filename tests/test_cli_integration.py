@@ -1471,7 +1471,6 @@ class TestCLIAgentsAtPathFormat(unittest.TestCase):
             ],
             "copilot": [
                 ".agents/skills/cf/SKILL.md",
-                ".github/copilot-instructions.md",
                 ".github/prompts/cf.prompt.md",
             ],
             "cursor": [

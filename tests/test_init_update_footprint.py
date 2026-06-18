@@ -186,7 +186,8 @@ def test_init_writes_minimal_gitignore_and_per_kit_ignored_policy():
         assert ".bootstrap/config/kits/sdlc/" in gitignore
         assert ".bootstrap/config/kits/\n" not in gitignore
         assert ".github/\n" not in gitignore
-        assert ".github/prompts/cf*.prompt.md" in gitignore
+        assert ".github/prompts/cf.prompt.md" in gitignore
+        assert ".github/copilot-instructions.md" not in gitignore
         core = (root / ".bootstrap" / "config" / "core.toml").read_text(encoding="utf-8")
         assert 'tracking = "ignored"' in core
         assert (root / ".bootstrap" / "whatsnew.toml").is_file()
@@ -226,8 +227,8 @@ def test_init_tracked_runtime_and_agents_are_not_gitignored():
         gitignore = (root / ".gitignore").read_text(encoding="utf-8")
         assert ".bootstrap/.core/" not in gitignore
         assert ".bootstrap/.gen/" not in gitignore
-        assert ".codex/agents/cf*.toml" not in gitignore
-        assert ".github/prompts/cf*.prompt.md" not in gitignore
+        assert ".codex/.cf-installed" not in gitignore
+        assert ".github/prompts/cf.prompt.md" not in gitignore
         core = (root / ".bootstrap" / "config" / "core.toml").read_text(encoding="utf-8")
         assert 'runtime_tracking = "tracked"' in core
         assert 'agent_tracking = "tracked"' in core

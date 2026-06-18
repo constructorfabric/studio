@@ -1966,8 +1966,8 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
             )
             self.assertIn("copilot", result)
 
-    def test_legacy_copilot_detected_via_managed_instructions(self):
-        """Legacy Copilot install detected via Constructor Studio-managed copilot-instructions.md."""
+    def test_legacy_copilot_instructions_do_not_trigger_detection(self):
+        """Legacy copilot-instructions.md alone must not trigger Copilot detection."""
         from studio.commands.update import _maybe_regenerate_agents
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
@@ -1984,7 +1984,7 @@ class TestMaybeRegenerateAgents(unittest.TestCase):
             result = _maybe_regenerate_agents(
                 {"skills": "updated"}, {}, root, cypilot_dir,
             )
-            self.assertIn("copilot", result)
+            self.assertNotIn("copilot", result)
 
     def test_user_copilot_instructions_does_not_trigger_detection(self):
         """User-authored .github/copilot-instructions.md must NOT trigger Copilot detection."""

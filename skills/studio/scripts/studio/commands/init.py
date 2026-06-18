@@ -14,6 +14,7 @@ from ..utils._tomllib_compat import tomllib
 from ..utils.artifacts_meta import create_backup, generate_default_registry, generate_slug
 from ..utils import toml_utils
 from ..utils.ui import ui
+from .agents import list_managed_agent_output_paths
 
 # Cache-managed install content: core directories go into .core/, root files go into the install root.
 # Full directories (copied entirely)
@@ -360,6 +361,7 @@ def _ignored_kit_paths(core_toml_path: Path, default: str = "tracked") -> List[s
 
 
 def _gitignore_patterns(
+    project_root: Path,
     install_dir: str,
     ignored_kit_paths: List[str],
     runtime_tracking: str = "ignored",
@@ -373,56 +375,9 @@ def _gitignore_patterns(
             f"{install_rel}/{GEN_SUBDIR}/",
         ])
     if agent_tracking == "ignored":
-        patterns.extend([
-            ".agents/skills/cf/",
-            ".agents/skills/cf-*/",
-            ".agents/skills/studio-*/",
-            ".agents/skills/cypilot-*/",
-            ".agents/skills/cf-constructor-*/",
-            ".codex/agents/cf*.toml",
-            ".codex/agents/studio-*.toml",
-            ".codex/agents/cypilot-*.toml",
-            ".codex/agents/cf-constructor-*.toml",
-            ".codex/agents/storytelling-*.toml",
-            ".codex/.cf-installed",
-            ".codex/.constructor-studio-installed",
-            ".claude/skills/cf/",
-            ".claude/skills/cf-*/",
-            ".claude/commands/cf*.md",
-            ".claude/commands/studio-*.md",
-            ".claude/commands/cypilot-*.md",
-            ".claude/commands/cf-constructor-*.md",
-            ".claude/agents/cf*.md",
-            ".claude/agents/studio-*.md",
-            ".claude/agents/cypilot-*.md",
-            ".claude/agents/cf-constructor-*.md",
-            ".claude/agents/storytelling-*.md",
-            ".cursor/commands/cf*.md",
-            ".cursor/commands/studio-*.md",
-            ".cursor/commands/cypilot-*.md",
-            ".cursor/commands/cf-constructor-*.md",
-            ".cursor/agents/cf*.md",
-            ".cursor/agents/studio-*.md",
-            ".cursor/agents/cypilot-*.md",
-            ".cursor/agents/cf-constructor-*.md",
-            ".cursor/agents/storytelling-*.md",
-            ".github/prompts/cf*.prompt.md",
-            ".github/prompts/studio-*.prompt.md",
-            ".github/prompts/cypilot-*.prompt.md",
-            ".github/prompts/cf-constructor-*.prompt.md",
-            ".github/agents/cf*.md",
-            ".github/agents/studio-*.md",
-            ".github/agents/cypilot-*.md",
-            ".github/agents/cf-constructor-*.md",
-            ".github/agents/storytelling-*.md",
-            ".github/.cf-installed",
-            ".github/.constructor-studio-installed",
-            ".github/copilot-instructions.md",
-            ".windsurf/workflows/cf*.md",
-            ".windsurf/workflows/studio-*.md",
-            ".windsurf/workflows/cypilot-*.md",
-            ".windsurf/workflows/cf-constructor-*.md",
-        ])
+        patterns.extend(
+            list_managed_agent_output_paths(project_root, project_root / install_rel)
+        )
     for kit_path in ignored_kit_paths:
         kit_rel = kit_path.strip().replace("\\", "/").strip("/")
         if kit_rel:
@@ -431,6 +386,7 @@ def _gitignore_patterns(
 
 
 def _compute_gitignore_block(
+    project_root: Path,
     install_dir: str,
     ignored_kit_paths: List[str],
     runtime_tracking: str = "ignored",
@@ -442,6 +398,7 @@ def _compute_gitignore_block(
         "# Generated Constructor Studio runtime and agent integration files.",
         "# Files matched here are owned by Constructor Studio and may be overwritten.",
         *_gitignore_patterns(
+            project_root,
             install_dir,
             ignored_kit_paths,
             runtime_tracking=runtime_tracking,
@@ -462,6 +419,7 @@ def _write_gitignore_block(
 ) -> str:
     gitignore_path = project_root / ".gitignore"
     expected_block = _compute_gitignore_block(
+        project_root,
         install_dir,
         _ignored_kit_paths(core_toml_path, default=default_kit_tracking),
         runtime_tracking=_read_install_tracking(core_toml_path, "runtime_tracking", default="ignored"),

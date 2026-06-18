@@ -1708,15 +1708,6 @@ def _default_agents_config() -> dict:
                     "custom_content": "",
                     "outputs": shared_skills + [
                         {
-                            "path": ".github/copilot-instructions.md",
-                            "template": [
-                                "# Constructor Studio",
-                                _GENERATED_MARKER,
-                                "",
-                                "{custom_content}",
-                            ],
-                        },
-                        {
                             "path": ".github/prompts/cf.prompt.md",
                             "template": [
                                 "---",
@@ -2471,15 +2462,6 @@ def _has_non_openai_install_signal(project_root: Path) -> bool:
     if _file_has_studio_follow_link(project_root / ".cursor" / "rules" / "studio.mdc"):
         return True
 
-    legacy_ci = project_root / ".github" / "copilot-instructions.md"
-    if legacy_ci.is_file():
-        try:
-            ci_text = legacy_ci.read_text(encoding="utf-8")
-            if ci_text.startswith("# Constructor Studio") or ci_text.startswith("# Studio"):
-                return True
-        except (OSError, UnicodeDecodeError):
-            pass
-
     return (
         (project_root / ".github" / "prompts" / "cf.prompt.md").is_file()
         or (project_root / ".github" / "prompts" / "studio.prompt.md").is_file()
@@ -2597,18 +2579,8 @@ def _is_agent_installed(agent: str, project_root: Path) -> bool:
                     return True
 
     # ── Legacy Copilot fallback ───────────────────────────────────────────
-    # A Constructor Studio-managed copilot-instructions.md (starts with
-    # "# Constructor Studio" or legacy "# Studio") is a valid signal from
-    # pre-marker installs.  Also detect via prompts file.
+    # Detect via prompts files and legacy install markers only.
     if agent == "copilot":
-        legacy_ci = project_root / ".github" / "copilot-instructions.md"
-        if legacy_ci.is_file():
-            try:
-                ci_text = legacy_ci.read_text(encoding="utf-8")
-                if ci_text.startswith("# Constructor Studio") or ci_text.startswith("# Studio"):
-                    return True
-            except (OSError, UnicodeDecodeError):
-                pass
         for prompt_name in ("cf.prompt.md", "studio.prompt.md", "cypilot.prompt.md"):
             if (project_root / ".github" / "prompts" / prompt_name).is_file():
                 return True
@@ -3381,21 +3353,6 @@ def _process_skills(
             continue
         out_path, rel_path, content = rendered
 
-        # Guard: skip overwriting user-authored copilot-instructions.md.
-        # The file is only Constructor Studio-managed when it starts with "# Constructor Studio" or legacy "# Studio".
-        if rel_path == ".github/copilot-instructions.md" and out_path.is_file():
-            try:
-                existing = out_path.read_text(encoding="utf-8")
-            except OSError:
-                existing = ""
-            if not existing.startswith("# Constructor Studio") and not existing.startswith("# Studio"):
-                rel = _safe_relpath(out_path.resolve(), project_root)
-                skills_result["skipped"].append(
-                    f"{rel} (user-authored, not overwriting)"
-                )
-                skills_result["_copilot_user_authored"] = True
-                continue
-
         _write_or_skip(out_path, content, skills_result, project_root, dry_run)
 
     return skills_result
@@ -3798,6 +3755,85 @@ def _process_kit_public_agents_and_rules(
     return {"agents": public_agents, "rules": public_rules}
 
 
+def _collect_managed_result_paths(
+    project_root: Path,
+    section: Dict[str, Any],
+) -> Set[str]:
+    """Collect normalized project-relative output paths from a generator result."""
+    paths: Set[str] = set()
+    for key in ("created", "updated", "unchanged", "deleted"):
+        values = section.get(key, [])
+        if not isinstance(values, list):
+            continue
+        for value in values:
+            if isinstance(value, tuple):
+                candidates = [value[-1]]
+            else:
+                candidates = [value]
+            for candidate in candidates:
+                if not isinstance(candidate, str) or not candidate.strip():
+                    continue
+                candidate_path = Path(candidate)
+                if candidate_path.is_absolute():
+                    paths.add(_safe_relpath(candidate_path, project_root))
+                else:
+                    paths.add(candidate.replace("\\", "/").strip("/"))
+    for output in section.get("outputs", []):
+        if not isinstance(output, dict):
+            continue
+        raw_path = output.get("path")
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            continue
+        candidate_path = Path(raw_path)
+        if candidate_path.is_absolute():
+            paths.add(_safe_relpath(candidate_path, project_root))
+        else:
+            paths.add(raw_path.replace("\\", "/").strip("/"))
+    return {path for path in paths if path}
+
+
+def list_managed_agent_output_paths(
+    project_root: Path,
+    studio_root: Path,
+) -> List[str]:
+    """Return exact CFS-managed agent integration paths for the current install."""
+    cfg = _default_agents_config()
+    managed_paths: Set[str] = set()
+
+    for marker_path, _marker_content in _INSTALL_MARKERS.values():
+        managed_paths.add(marker_path)
+
+    for agent in _ALL_RECOGNIZED_AGENTS:
+        agent_cfg = cfg.get("agents", {}).get(agent, {})
+        skills_cfg = agent_cfg.get("skills", {}) if isinstance(agent_cfg, dict) else {}
+        outputs = skills_cfg.get("outputs") if isinstance(skills_cfg, dict) else None
+        if isinstance(outputs, list):
+            for output in outputs:
+                if not isinstance(output, dict):
+                    continue
+                rel_path = output.get("path")
+                if isinstance(rel_path, str) and rel_path.strip():
+                    managed_paths.add(rel_path.replace("\\", "/").strip("/"))
+        sections: List[Dict[str, Any]] = []
+        sections.append(_process_workflows(agent, project_root, studio_root, cfg, None, dry_run=True))
+        sections.append(_process_skills(agent, project_root, studio_root, cfg, None, dry_run=True))
+        sections.append(_process_kit_workflow_skills(agent, project_root, studio_root, cfg, None, dry_run=True))
+        sections.append(_process_subagents(agent, project_root, studio_root, cfg, None, dry_run=True))
+        public_sections = _process_kit_public_agents_and_rules(
+            agent,
+            project_root,
+            studio_root,
+            dry_run=True,
+        )
+        sections.append(public_sections.get("agents", {}))
+        sections.append(public_sections.get("rules", {}))
+        for section in sections:
+            if isinstance(section, dict):
+                managed_paths.update(_collect_managed_result_paths(project_root, section))
+
+    return sorted(path for path in managed_paths if path)
+
+
 def _process_legacy_cleanup(
     agent: str,
     project_root: Path,
@@ -3924,9 +3960,8 @@ def _process_legacy_cleanup(
     # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-write-install-marker
     # Tools that share generic directories need a unique Constructor Studio-specific
     # marker so detection/regeneration can distinguish Constructor Studio installs from
-    # unrelated user files.  The marker is always created when the agent is
-    # processed — even if copilot-instructions.md was preserved as user-
-    # authored, the other generated outputs (prompts, shared skills, agents)
+    # unrelated user files. The marker is always created when the agent is
+    # processed because the other generated outputs (prompts, shared skills, agents)
     # still need to be managed by future `cfs update` runs.
     marker_info = _INSTALL_MARKERS.get(agent)
     if marker_info and not dry_run:

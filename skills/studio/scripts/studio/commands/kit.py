@@ -996,12 +996,7 @@ def _collect_registered_kit_metadata(
         except (OSError, ValueError):
             resources = {}
     if not isinstance(resources, dict) or not resources:
-        kit_dir, kit_rel_path = _resolve_registered_kit_metadata_target(
-            studio_dir,
-            kit_slug,
-            kit_entry,
-        )
-        return _collect_kit_metadata(kit_dir, kit_slug, kit_rel_path)
+        return {"skill_nav": "", "agents_content": ""}
 
     result: Dict[str, str] = {"skill_nav": "", "agents_content": ""}
     agents_parts: List[str] = []
