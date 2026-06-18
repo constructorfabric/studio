@@ -2061,10 +2061,12 @@ def _resolve_registered_legacy_studio_path(
 ) -> Optional[Path]:
     normalized = PurePosixPath(raw_path.strip().replace("\\", "/")).as_posix()
     path_obj = PurePosixPath(normalized)
+    has_parent_traversal = ".." in path_obj.parts
     if (
         not normalized
         or path_obj.is_absolute()
         or PureWindowsPath(normalized).is_absolute()
+        or (has_parent_traversal and normalized != "..")
     ):
         return None
     resolved = (studio_root / Path(normalized)).resolve()
