@@ -57,6 +57,42 @@ class TestStudioEndpointTarget(unittest.TestCase):
         self.assertEqual(result, target.as_posix())
         self.assertIn("outside project root", buf.getvalue())
 
+    def test_registered_legacy_studio_path_rejects_parent_traversal(self):
+        from studio.commands.agents import _resolve_registered_legacy_studio_path
+
+        with TemporaryDirectory() as td:
+            project_root = Path(td) / "project"
+            studio_root = project_root / ".bootstrap"
+            studio_root.mkdir(parents=True)
+
+            resolved = _resolve_registered_legacy_studio_path(
+                studio_root,
+                project_root,
+                "../escape.md",
+            )
+
+        self.assertIsNone(resolved)
+
+    def test_registered_resource_path_rejects_unsafe_component_source(self):
+        from studio.commands.agents import _resolve_registered_resource_path
+
+        with TemporaryDirectory() as td:
+            project_root = Path(td) / "project"
+            studio_root = project_root / ".bootstrap"
+            kit_root = studio_root / "config" / "kits" / "demo"
+            kit_root.mkdir(parents=True)
+            component = SimpleNamespace(id="skill", source="../escape.md")
+
+            resolved = _resolve_registered_resource_path(
+                project_root,
+                studio_root,
+                kit_root,
+                component,
+                {},
+            )
+
+        self.assertIsNone(resolved)
+
 
 class TestGenerateAgentsNoChangePreview(unittest.TestCase):
     """Regression coverage for preview/apply control flow."""
@@ -2372,6 +2408,26 @@ class TestLegacyManifestSkillCleanup(unittest.TestCase):
             deleted = [o["path"] for o in r.get("outputs", []) if o.get("action") == "deleted"]
             self.assertEqual(len(deleted), 0)
 
+    def test_manifest_cleanup_skips_unsafe_skill_ids_before_legacy_path_interpolation(self):
+        from studio.commands.agents import generate_manifest_skills
+        from studio.utils.manifest import SkillEntry
+
+        with TemporaryDirectory() as td:
+            root = Path(td).resolve()
+            legacy = root / ".cursor" / "escape.mdc"
+            legacy.parent.mkdir(parents=True)
+            legacy.write_text("ALWAYS open and follow `{cf-studio-path}/.core/skills/escape/SKILL.md`\n")
+            src = root / "skills" / "escape.md"
+            src.parent.mkdir(parents=True)
+            src.write_text("# Escape")
+            skills = {"../escape": SkillEntry(id="../escape", description="unsafe", prompt_file="", source=str(src), agents=["cursor"])}
+
+            r = generate_manifest_skills(skills, "cursor", root, dry_run=False)
+
+            self.assertTrue(legacy.exists(), "Unsafe skill id must not drive legacy cleanup path construction")
+            deleted = [o["path"] for o in r.get("outputs", []) if o.get("action") == "deleted"]
+            self.assertEqual(len(deleted), 0)
+
 
 class TestAtSlashPathNotTreatedAsCypilot(unittest.TestCase):
     """Files with @/ follow-link targets must NOT be treated as Cypilot-generated."""
@@ -2523,7 +2579,7 @@ class TestKitWorkflowSharedSkills(unittest.TestCase):
                     "",
                     "[kits.gears]",
                     'format = "CFS"',
-                    'path = "../local-kits/gears"',
+                    'path = "local-kits/gears"',
                 ]) + "\n",
                 encoding="utf-8",
             )
@@ -2620,11 +2676,11 @@ class TestKitWorkflowSharedSkills(unittest.TestCase):
                     "",
                     "[kits.gears]",
                     'format = "CFS"',
-                    'path = "../studio-kit-gears"',
+                    'path = "studio-kit-gears"',
                     'version = "1.0"',
                     "",
                     "[kits.gears.resources.workflow_pr_review]",
-                    'path = "../studio-kit-gears/workflows/pr-review.md"',
+                    'path = "studio-kit-gears/workflows/pr-review.md"',
                     'kind = "skill"',
                     "public = true",
                 ]) + "\n",

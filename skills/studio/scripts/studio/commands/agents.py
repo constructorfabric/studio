@@ -2056,7 +2056,12 @@ def _resolve_registered_legacy_studio_path(
 ) -> Optional[Path]:
     normalized = PurePosixPath(raw_path.strip().replace("\\", "/")).as_posix()
     path_obj = PurePosixPath(normalized)
-    if not normalized or path_obj.is_absolute() or PureWindowsPath(normalized).is_absolute():
+    if (
+        not normalized
+        or path_obj.is_absolute()
+        or PureWindowsPath(normalized).is_absolute()
+        or ".." in path_obj.parts
+    ):
         return None
     resolved = (studio_root / Path(normalized)).resolve()
     try:
@@ -2115,7 +2120,16 @@ def _resolve_registered_resource_path(
     component_source = source if source is not None else str(getattr(component, "source", ""))
     if not component_source:
         return None
-    return kit_root / component_source
+    normalized_source = PurePosixPath(component_source.strip().replace("\\", "/")).as_posix()
+    source_path_obj = PurePosixPath(normalized_source)
+    if (
+        not normalized_source
+        or source_path_obj.is_absolute()
+        or PureWindowsPath(normalized_source).is_absolute()
+        or ".." in source_path_obj.parts
+    ):
+        return None
+    return kit_root / Path(normalized_source)
 
 
 def _component_enabled_for_agent(component: object, agent: str) -> bool:
@@ -5763,6 +5777,8 @@ def generate_manifest_skills(
         for skill_id, skill in skills.items():
             # Same agent-targeting filter as generation (empty = all targets)
             if skill.agents and target not in skill.agents:
+                continue
+            if not _is_safe_generated_id(skill_id):
                 continue
             legacy_rel = legacy_pattern.replace("{id}", skill_id)
             legacy_path = project_root / legacy_rel

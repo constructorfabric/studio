@@ -1066,6 +1066,25 @@ class TestKitUpdateCheckCoverage(unittest.TestCase):
             tmp_dir = Path(td) / "tmp"
             kit_source = tmp_dir / "kit"
             kit_source.mkdir(parents=True)
+            resolution = SimpleNamespace(
+                kit_source_dir=kit_source,
+                tmp_dir=tmp_dir,
+                authority_metadata={"installed_version": "abc123"},
+            )
+
+            with patch("studio.commands.kit.parse_git_kit_source", return_value=parsed), \
+                    patch("studio.commands.kit.materialize_git_kit_source", return_value=resolution), \
+                    patch("studio.commands.kit._read_kit_slug", return_value=""), \
+                    patch("studio.commands.kit._has_canonical_kit_models", return_value=True):
+                canonical = _resolve_install_source_git("git:https://example.invalid/repo.git")
+            self.assertEqual(canonical[1], "")
+            self.assertEqual(canonical[2], "abc123")
+            self.assertEqual(canonical[4], tmp_dir)
+
+        with TemporaryDirectory() as td:
+            tmp_dir = Path(td) / "tmp"
+            kit_source = tmp_dir / "kit"
+            kit_source.mkdir(parents=True)
             parsed_with_identity = SimpleNamespace(
                 canonical_source="git:https://example.invalid/repo.git@wanted",
                 kit_identity="wanted",
@@ -6016,6 +6035,52 @@ class TestCmdKitInstallGithubPath(unittest.TestCase):
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
                 self.assertIn(out["status"], ["PASS", "OK"])
+            finally:
+                os.chdir(cwd)
+
+    def test_resolve_install_source_github_allows_canonical_source_without_legacy_slug(self):
+        from studio.commands.kit import _resolve_install_source_github
+
+        with TemporaryDirectory() as td:
+            kit_src = Path(td) / "dl"
+            kit_src.mkdir()
+            with (
+                patch(
+                    "studio.commands.kit._download_kit_from_github_with_authority",
+                    return_value=(kit_src, "1.0", {"source_type": "github"}),
+                ),
+                patch("studio.commands.kit._read_kit_slug", return_value=""),
+                patch("studio.commands.kit._has_canonical_kit_models", return_value=True),
+            ):
+                result = _resolve_install_source_github("constructorfabric/gears-rust")
+
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result[1], "")
+        self.assertEqual(result[2], "1.0")
+        self.assertEqual(result[5], None)
+
+    def test_install_from_github_shorthand_passes_version_flag_to_resolver(self):
+        from studio.commands.kit import cmd_kit_install
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            _bootstrap_project(root)
+            kit_src = _make_manifest_kit_source(Path(td) / "dl", "sdlc")
+
+            cwd = os.getcwd()
+            try:
+                os.chdir(root)
+                with (
+                    patch(
+                        "studio.commands.kit._download_kit_from_github_with_authority",
+                        return_value=(kit_src, "main", {"source_type": "github", "requested_ref": "main"}),
+                    ) as mocked_download,
+                ):
+                    buf = io.StringIO()
+                    with redirect_stdout(buf):
+                        rc = cmd_kit_install(["constructorfabric/studio-kit-sdlc", "--version", "main"])
+                self.assertEqual(rc, 0)
+                self.assertEqual(mocked_download.call_args.args[2], "main")
             finally:
                 os.chdir(cwd)
 

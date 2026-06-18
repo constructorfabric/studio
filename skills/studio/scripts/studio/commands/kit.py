@@ -2369,6 +2369,7 @@ def migrate_legacy_kit_to_manifest(
 # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-resolve-github-source
 def _resolve_install_source_github(
     source_arg: str,
+    requested_ref: str = "",
 ) -> Optional[Tuple[Path, str, str, str, Optional[Path], Optional[int], Optional[Dict[str, Any]]]]:
     """Parse and download a GitHub kit source for ``cmd_kit_install``.
 
@@ -2391,19 +2392,19 @@ def _resolve_install_source_github(
         kit_source, resolved_version, authority_metadata = _download_kit_from_github_with_authority(
             owner,
             repo,
-            version,
+            requested_ref or version,
         )
     except RuntimeError as exc:
         ui.result({"status": "FAIL", "message": str(exc)})
         return (Path("."), "", "", "", None, 1, None)
 
     kit_slug = _read_kit_slug(kit_source)
-    if not kit_slug:
+    if not kit_slug and not _has_canonical_kit_models(kit_source):
         ui.result({"status": "FAIL", "message": f"Kit at {kit_source} is missing manifest.toml; cannot resolve slug."})
         return (Path("."), "", "", "", None, 1, None)
     kit_version = resolved_version
     github_source = f"github:{owner}/{repo}"
-    ui.substep(f"Resolved: {kit_slug}@{kit_version or '(dev)'}")
+    ui.substep(f"Resolved: {(kit_slug or '(select kit)')}@{kit_version or '(dev)'}")
     return (kit_source, kit_slug, kit_version, github_source, kit_source.parent, None, authority_metadata)
 # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-resolve-github-source
 
@@ -2428,20 +2429,21 @@ def _resolve_install_source_git(
         return (Path("."), "", "", "", None, 1, None)
 
     kit_source = resolution.kit_source_dir
-    kit_slug = parsed.kit_identity or _read_kit_slug(kit_source)
-    if not kit_slug:
+    resolved_slug = _read_kit_slug(kit_source)
+    kit_slug = parsed.kit_identity or resolved_slug
+    if not kit_slug and not _has_canonical_kit_models(kit_source):
         ui.result({"status": "FAIL", "message": f"Kit at {kit_source} is missing conf.toml slug."})
         shutil.rmtree(resolution.tmp_dir, ignore_errors=True)
         return (Path("."), "", "", "", None, 1, None)
-    if parsed.kit_identity and _read_kit_slug(kit_source) not in ("", parsed.kit_identity):
+    if parsed.kit_identity and resolved_slug not in ("", parsed.kit_identity):
         ui.result({
             "status": "FAIL",
-            "message": f"Git source selected kit '{parsed.kit_identity}' but package slug is '{_read_kit_slug(kit_source)}'",
+            "message": f"Git source selected kit '{parsed.kit_identity}' but package slug is '{resolved_slug}'",
         })
         shutil.rmtree(resolution.tmp_dir, ignore_errors=True)
         return (Path("."), "", "", "", None, 1, None)
     kit_version = str(resolution.authority_metadata.get("installed_version") or "")
-    ui.substep(f"Resolved: {kit_slug}@{kit_version[:12] or '(git)'}")
+    ui.substep(f"Resolved: {(kit_slug or '(select kit)')}@{kit_version[:12] or '(git)'}")
     return (
         kit_source,
         kit_slug,
@@ -2479,7 +2481,7 @@ def cmd_kit_install(argv: List[str]) -> int:
     )
     p.add_argument(
         "--version", dest="version", default="",
-        help="For generic Git sources, resolve this tag, branch, or full 40-character commit SHA",
+        help="For GitHub and generic Git sources, resolve this tag, branch, or full 40-character commit SHA",
     )
     p.add_argument(
         "--install-mode",
@@ -2584,7 +2586,7 @@ def cmd_kit_install(argv: List[str]) -> int:
             resolved_source = _resolve_install_source_git(args.source, args.version)
         else:
             # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-resolve-github-authority
-            resolved_source = _resolve_install_source_github(args.source)
+            resolved_source = _resolve_install_source_github(args.source, args.version)
             # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-resolve-github-authority
         if resolved_source is None:
             return 2
@@ -4926,6 +4928,15 @@ def _read_kit_source_version(kit_source: Path) -> str:
 
     conf_toml = kit_source / _KIT_CONF_FILE
     return _read_kit_version(conf_toml) if conf_toml.is_file() else ""
+
+
+def _has_canonical_kit_models(kit_source: Path) -> bool:
+    """Return True when the source contains a valid canonical kit manifest."""
+    try:
+        from ..utils.kit_model import load_canonical_kit_models
+        return bool(load_canonical_kit_models(kit_source))
+    except ValueError:
+        return False
 
 
 def _split_kit_selectors(raw_values: List[str]) -> List[str]:
