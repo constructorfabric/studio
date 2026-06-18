@@ -2028,6 +2028,7 @@ def _compute_workflow_skill_id(wf_name: str, kit_slug: Optional[str], prefix: st
 # @cpt-end:cpt-studio-algo-agent-integration-list-workflows:p1:inst-scan-core-workflows
 
 
+# @cpt-begin:cpt-studio-algo-agent-integration-discover-agents:p1:inst-resolve-register-project-root-kit
 # @cpt-begin:cpt-studio-algo-agent-integration-discover-agents:p1:inst-resolve-kits
 def _resolve_registered_project_relative_path(
     project_root: Path,
@@ -2039,7 +2040,6 @@ def _resolve_registered_project_relative_path(
         not normalized
         or path_obj.is_absolute()
         or PureWindowsPath(normalized).is_absolute()
-        or ".." in path_obj.parts
     ):
         return None
     resolved = (project_root / Path(normalized)).resolve()
@@ -2049,8 +2049,10 @@ def _resolve_registered_project_relative_path(
         return None
     return resolved
 # @cpt-end:cpt-studio-algo-agent-integration-discover-agents:p1:inst-resolve-kits
+# @cpt-end:cpt-studio-algo-agent-integration-discover-agents:p1:inst-resolve-register-project-root-kit
 
 
+# @cpt-begin:cpt-studio-algo-agent-integration-discover-agents:p1:inst-resolve-register-project-root-kit
 # @cpt-begin:cpt-studio-algo-agent-integration-discover-agents:p1:inst-resolve-kits
 def _resolve_registered_legacy_studio_path(
     studio_root: Path,
@@ -2063,7 +2065,6 @@ def _resolve_registered_legacy_studio_path(
         not normalized
         or path_obj.is_absolute()
         or PureWindowsPath(normalized).is_absolute()
-        or ".." in path_obj.parts
     ):
         return None
     resolved = (studio_root / Path(normalized)).resolve()
@@ -2072,6 +2073,7 @@ def _resolve_registered_legacy_studio_path(
     except ValueError:
         return None
     return resolved
+# @cpt-end:cpt-studio-algo-agent-integration-discover-agents:p1:inst-resolve-register-project-root-kit
 
 
 def _registered_kit_dirs(project_root: Optional[Path]) -> Set[str]:

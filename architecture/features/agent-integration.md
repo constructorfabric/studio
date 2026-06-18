@@ -149,7 +149,8 @@ Without this feature, users would need to manually create and maintain agent-spe
 2. - `p1` - **IF** `--agent` flag provided, filter to single agent - `inst-if-filter`
 3. - `p1` - **RETURN** list of agents to generate for - `inst-return-agents`
 4. [x] - `p1` - Resolve config/kits/ directory and registered kit dirs from core.toml for workflow/skill discovery - `inst-resolve-kits`
-5. [x] - `p1` - Parse CLI arguments, resolve project root, studio root, load agent config (shared context for agents commands) - `inst-resolve-context`
+5. [x] - `p1` - Registered kit path resolution honors register-mode entries persisted as `..` when the resolved path stays inside the project root, so same-project canonical kits remain discoverable to `generate-agents` - `inst-resolve-register-project-root-kit`
+6. [x] - `p1` - Parse CLI arguments, resolve project root, studio root, load agent config (shared context for agents commands) - `inst-resolve-context`
 
 **Supporting**:
 - [x] - `p1` - Module-level constant for all recognized agent names - `inst-define-registry-const`
