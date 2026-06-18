@@ -1,6 +1,6 @@
-[whatsnew."v1.5.3"]
-summary = "v1.5.3"
-details = "## What's Changed\r\n* Refactor kit management and improve resource handling by @ainetx in https://github.com/constructorfabric/studio/pull/44\r\n* Add command validation for ralphex delegation and enhance skill entrypoint checks by @ainetx in https://github.com/constructorfabric/studio/pull/45\r\n\r\n\r\n**Full Changelog**: https://github.com/constructorfabric/studio/compare/v1.5.2...v1.5.3"
+[whatsnew."v1.5.4"]
+summary = "v1.5.4"
+details = "## What's Changed\r\n* Update version to v1.5.3 and add release notes by @ainetx in https://github.com/constructorfabric/studio/pull/46\r\n* Enhance agent path resolution for register mode project root kits by @ainetx in https://github.com/constructorfabric/studio/pull/47\r\n\r\n\r\n**Full Changelog**: https://github.com/constructorfabric/studio/compare/v1.5.3...v1.5.4"
 
 [whatsnew."v1.5.2"]
 summary = "v1.5.2"
