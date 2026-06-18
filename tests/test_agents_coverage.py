@@ -421,6 +421,140 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
             self.assertFalse((root / ".cursor" / "agents" / "cf-pubkit-codexonly.mdc").exists())
             self.assertFalse((root / ".cursor" / "agents" / "cf-pubkit-codex-auditor.mdc").exists())
 
+    def test_generate_agents_supports_register_mode_project_root_kit_path(self):
+        from studio.commands.agents import _default_agents_config, _process_single_agent
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "project"
+            root.mkdir()
+            (root / ".git").mkdir()
+            (root / "AGENTS.md").write_text(
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".cf-studio"\n```\n<!-- /@cf:root-agents -->\n',
+                encoding="utf-8",
+            )
+            studio_root = root / ".cf-studio"
+            (studio_root / ".core" / "skills" / "studio").mkdir(parents=True)
+            (studio_root / ".core" / "skills" / "studio" / "SKILL.md").write_text(
+                "---\nname: cf\ndescription: Constructor Studio\n---\nCore skill\n",
+                encoding="utf-8",
+            )
+            (studio_root / ".core" / "workflows").mkdir(parents=True)
+            (studio_root / "config").mkdir(parents=True)
+            (studio_root / "config" / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    'project_root = ".."',
+                    "",
+                    "[kits.gears]",
+                    'format = "CFS"',
+                    'path = ".."',
+                    'version = "0.1.0"',
+                    'install_mode = "register"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            (root / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "gears"',
+                    'name = "Gears"',
+                    'version = "0.1.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "workflow_doc_prd"',
+                    'kind = "skill"',
+                    'source = "studio-kit-gears/workflows/doc-prd.md"',
+                    'type = "file"',
+                    "public = true",
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            workflow_source = root / "studio-kit-gears" / "workflows" / "doc-prd.md"
+            workflow_source.parent.mkdir(parents=True)
+            workflow_source.write_text(
+                "---\nname: doc-prd\ndescription: Draft PRDs\n---\n# Doc PRD\n",
+                encoding="utf-8",
+            )
+
+            result = _process_single_agent(
+                "cursor",
+                root,
+                studio_root,
+                _default_agents_config(),
+                None,
+                dry_run=False,
+            )
+
+            self.assertEqual(result["status"], "PASS")
+            generated_skill = root / ".agents" / "skills" / "cf-gears-doc-prd" / "SKILL.md"
+            self.assertTrue(generated_skill.is_file())
+            generated_content = generated_skill.read_text(encoding="utf-8")
+            self.assertIn("cf-gears-doc-prd", generated_content)
+            self.assertIn("studio-kit-gears/workflows/doc-prd.md", generated_content)
+
+    def test_list_public_components_supports_register_mode_project_root_kit_path(self):
+        from studio.commands.agents import _list_public_components
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "project"
+            root.mkdir()
+            (root / ".git").mkdir()
+            (root / "AGENTS.md").write_text(
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".cf-studio"\n```\n<!-- /@cf:root-agents -->\n',
+                encoding="utf-8",
+            )
+            studio_root = root / ".cf-studio"
+            (studio_root / "config").mkdir(parents=True)
+            (studio_root / "config" / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    'project_root = ".."',
+                    "",
+                    "[kits.gears]",
+                    'format = "CFS"',
+                    'path = ".."',
+                    'version = "0.1.0"',
+                    'install_mode = "register"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            (root / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "gears"',
+                    'name = "Gears"',
+                    'version = "0.1.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "workflow_doc_prd"',
+                    'kind = "skill"',
+                    'source = "studio-kit-gears/workflows/doc-prd.md"',
+                    'type = "file"',
+                    "public = true",
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            workflow_source = root / "studio-kit-gears" / "workflows" / "doc-prd.md"
+            workflow_source.parent.mkdir(parents=True)
+            workflow_source.write_text(
+                "---\nname: doc-prd\ndescription: Draft PRDs\n---\n# Doc PRD\n",
+                encoding="utf-8",
+            )
+
+            components, manifest_backed = _list_public_components(studio_root, root, "cursor")
+
+            self.assertEqual(manifest_backed, {"gears"})
+            self.assertEqual(len(components), 1)
+            kit_slug, component, source_path, kit_root, _kit_entry = components[0]
+            self.assertEqual(kit_slug, "gears")
+            self.assertEqual(getattr(component, "generated_name", ""), "cf-gears-doc-prd")
+            self.assertEqual(source_path, workflow_source.resolve())
+            self.assertEqual(kit_root, root.resolve())
+
     def test_nested_public_subagent_uses_registered_resource_binding(self):
         from studio.commands.agents import _default_agents_config, _process_single_agent
 
