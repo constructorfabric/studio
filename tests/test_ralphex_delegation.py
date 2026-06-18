@@ -34,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "studio" / "scr
 
 from studio.ralphex_discover import discover, validate, persist_path, INSTALL_GUIDANCE
 from studio.ralphex_export import (
+    _validate_delegation_command,
     compile_delegation_plan,
     generate_review_artifacts,
     map_phase_to_task,
@@ -929,6 +930,38 @@ class TestRunDelegation:
             assert result["returncode"] == 0
             assert "capture_output" not in invoke_kwargs
             assert "text" not in invoke_kwargs
+
+    def test_validate_delegation_command_rejects_unknown_flag(self, tmp_path):
+        """Command validation rejects unexpected ralphex flags before launch."""
+        executable = tmp_path / "ralphex"
+        executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        executable.chmod(0o755)
+
+        error = _validate_delegation_command([str(executable), "--bad-flag"])
+
+        assert "unsupported flag" in error
+
+    def test_delegation_rejects_non_absolute_executable_path(self):
+        """Delegation refuses a non-absolute ralphex executable path before subprocess launch."""
+        with TemporaryDirectory() as tmp:
+            repo_root, plan_dir = self._make_delegatable_project(tmp)
+            config = {
+                "integrations": {
+                    "ralphex": {
+                        "executable_path": "ralphex",
+                    }
+                }
+            }
+            with patch("studio.ralphex_discover.shutil.which", return_value=None):
+                result = run_delegation(
+                    config=config,
+                    plan_dir=plan_dir,
+                    repo_root=repo_root,
+                    mode="execute",
+                    dry_run=True,
+                )
+            assert result["status"] == "error"
+            assert "not installed" in result["validation"]["message"]
 
     def test_nonzero_exit_sets_failed_lifecycle(self):
         """Regression: non-zero subprocess return code transitions lifecycle to failed."""

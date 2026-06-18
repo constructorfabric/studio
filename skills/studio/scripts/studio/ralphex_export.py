@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 # Rules subsections to include as bounded guidance
 _GUIDANCE_SUBSECTIONS = {"Engineering", "Quality"}
+_RALPHEX_ALLOWED_FLAGS = {"--review", "--tasks-only", "--worktree", "--serve"}
 
 
 def compile_delegation_plan(plan_dir: str) -> str:
@@ -496,6 +497,39 @@ def build_delegation_command(
         cmd.append("--serve")
 
     return cmd
+
+
+def _validate_delegation_command(command: list[str]) -> Optional[str]:
+    """Validate command arguments before invoking the external ralphex binary."""
+    if not command or not isinstance(command[0], str) or not command[0].strip():
+        return "Invalid delegation command: missing executable path"
+
+    executable = Path(command[0])
+    if not executable.is_absolute():
+        return f"Invalid delegation command: executable path must be absolute: {command[0]}"
+
+    seen_plan_file = False
+    for arg in command[1:]:
+        if not isinstance(arg, str) or not arg.strip():
+            return "Invalid delegation command: empty argument"
+        if arg.startswith("--"):
+            if arg not in _RALPHEX_ALLOWED_FLAGS:
+                return f"Invalid delegation command: unsupported flag {arg}"
+            continue
+        if seen_plan_file:
+            return f"Invalid delegation command: unexpected positional argument {arg}"
+        plan_file = Path(arg)
+        if not plan_file.is_absolute():
+            return f"Invalid delegation command: plan file path must be absolute: {arg}"
+        try:
+            plan_file = plan_file.resolve(strict=True)
+        except OSError as exc:
+            return f"Invalid delegation command: plan file is not accessible: {arg} ({exc})"
+        if not plan_file.is_file():
+            return f"Invalid delegation command: plan file is not a regular file: {plan_file}"
+        seen_plan_file = True
+
+    return None
 
 
 def check_review_precondition(default_branch: str = "main", repo_root: str | None = None) -> dict:
@@ -1025,6 +1059,10 @@ def run_delegation(
         ralphex_path, plan_file, mode, worktree=worktree, serve=serve,
     )
     result["command"] = command
+    command_error = _validate_delegation_command(command)
+    if command_error:
+        result["error"] = command_error
+        return result
     if serve and mode != "review":
         port = os.environ.get("RALPHEX_PORT", "8080").strip() or "8080"
         result["dashboard_url"] = f"http://localhost:{port}"
