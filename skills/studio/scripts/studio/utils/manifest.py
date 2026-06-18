@@ -1026,16 +1026,35 @@ def _validate_against_schema(data: Dict[str, Any]) -> List[str]:
 # Public API
 # ---------------------------------------------------------------------------
 
+def resolve_kit_manifest_path(kit_source: Path) -> Optional[Path]:
+    """Return the effective manifest path for a kit source.
+
+    Canonical ``.cf-studio-kit.toml`` always wins when both formats exist.
+    Legacy ``manifest.toml`` is only used as a fallback.
+    """
+    canonical_path = kit_source / ".cf-studio-kit.toml"
+    if canonical_path.is_file():
+        return canonical_path
+    legacy_path = kit_source / "manifest.toml"
+    if legacy_path.is_file():
+        return legacy_path
+    return None
+
+
 # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-read
 def load_manifest(kit_source: Path, kit_slug: str = "") -> Optional[Union[Manifest, ManifestV2]]:
-    """Read and parse ``manifest.toml`` from *kit_source*.
+    """Read and parse the effective kit manifest from *kit_source*.
 
-    Returns ``None`` if the file does not exist.  V2 manifests are delegated
-    to ``parse_manifest_v2`` and return a ``ManifestV2`` instance.
-    Raises ``ValueError`` if the file exists but is invalid.
+    Returns ``None`` if neither canonical nor legacy manifest exists.
+    Canonical ``.cf-studio-kit.toml`` takes precedence over legacy
+    ``manifest.toml`` when both are present. V2 manifests are delegated to
+    ``parse_manifest_v2`` and return a ``ManifestV2`` instance. Raises
+    ``ValueError`` if the selected manifest exists but is invalid.
     """
-    manifest_path = kit_source / "manifest.toml"
-    if not manifest_path.is_file():
+    manifest_path = resolve_kit_manifest_path(kit_source)
+    if manifest_path is None:
+        return None
+    if manifest_path.name == ".cf-studio-kit.toml":
         return _load_canonical_kit_manifest(kit_source, kit_slug=kit_slug)
 
     try:

@@ -194,6 +194,43 @@ class TestLoadManifest:
         assert m.resources[0].user_modifiable is True
         assert m.resources[0].description == ""
 
+    def test_canonical_manifest_wins_over_legacy_manifest(self, tmp_path: Path) -> None:
+        """When both manifests exist, load_manifest ignores legacy manifest.toml."""
+        kit = tmp_path / "dual-manifest-kit"
+        kit.mkdir()
+        (kit / "constraints.toml").write_text("[artifacts]\n", encoding="utf-8")
+        (kit / "feature-template.md").write_text("# Feature\n", encoding="utf-8")
+        (kit / ".cf-studio-kit.toml").write_text(
+            textwrap.dedent(
+                """\
+                manifest_version = "1.0"
+
+                [[kits]]
+                slug = "dual-manifest-kit"
+                version = "1.0"
+
+                [[kits.resources]]
+                id = "ruleset"
+                kind = "constraints"
+                source = "constraints.toml"
+                type = "file"
+
+                [[kits.resources]]
+                id = "feature-template"
+                kind = "template"
+                source = "feature-template.md"
+                type = "file"
+                """
+            ),
+            encoding="utf-8",
+        )
+        (kit / "manifest.toml").write_text("[broken\ninvalid", encoding="utf-8")
+
+        m = load_manifest(kit)
+
+        assert m is not None
+        assert [res.id for res in m.resources] == ["ruleset", "feature-template"]
+
 
 # ---------------------------------------------------------------------------
 # validate_manifest

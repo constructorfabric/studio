@@ -1404,11 +1404,11 @@ def _local_path_provenance(kit_source: Path, install_mode: str, studio_dir: Path
 
 def _load_manifest_install_adapter(kit_source: Path, kit_slug: str = "") -> Optional[Manifest]:
     """Load a manifest installer adapter only through a manifest-backed KitModel."""
-    if not ((kit_source / ".cf-studio-kit.toml").is_file() or (kit_source / "manifest.toml").is_file()):
-        return None
-
     from ..utils.kit_model import load_kit_model
-    from ..utils.manifest import load_manifest
+    from ..utils.manifest import load_manifest, resolve_kit_manifest_path
+
+    if resolve_kit_manifest_path(kit_source) is None:
+        return None
 
     model = load_kit_model(kit_source, source_hint="manifest", kit_slug=kit_slug)
     if getattr(model, "manifest_source", "") not in {"canonical", "legacy_manifest"}:
@@ -1432,10 +1432,10 @@ def _validate_register_manifest_containment(
     source_root = kit_source.resolve()
     if not _path_is_within(source_root, root):
         errors.append(f"Kit source '{kit_source}' must be inside project root '{root}' for register mode")
-    manifest_file = kit_source / "manifest.toml"
-    if not manifest_file.is_file():
-        manifest_file = kit_source / ".cf-studio-kit.toml"
-    if not manifest_file.is_file() or not _path_is_within(manifest_file, root):
+    from ..utils.manifest import resolve_kit_manifest_path
+
+    manifest_file = resolve_kit_manifest_path(kit_source)
+    if manifest_file is None or not manifest_file.is_file() or not _path_is_within(manifest_file, root):
         errors.append("Kit manifest must be inside the project root for register mode")
     manifest_root_value = manifest.root.replace(
         "{cf-studio-path}", ".",
