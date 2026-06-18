@@ -1,3 +1,7 @@
+[whatsnew."v1.5.6"]
+summary = "v1.5.6"
+details = "## What's Changed\r\n* Refactor gitignore patterns for generated agent resources by @ainetx in https://github.com/constructorfabric/studio/pull/49\r\n\r\n\r\n**Full Changelog**: https://github.com/constructorfabric/studio/compare/v1.5.5...v1.5.6"
+
 [whatsnew."v1.5.5"]
 summary = "v1.5.5"
 details = "## What's Changed\r\n* Refactor manifest path resolution to use centralized helper by @ainetx in https://github.com/constructorfabric/studio/pull/48\r\n\r\n\r\n**Full Changelog**: https://github.com/constructorfabric/studio/compare/v1.5.4...v1.5.5"
