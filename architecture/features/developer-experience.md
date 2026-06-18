@@ -214,7 +214,7 @@ Reduces friction in daily Studio usage. `doctor` catches environment issues befo
 2. [x] - `p1` - For each kit in core_data.kits, extract resources dict - `inst-extract-kit-resources`
 3. [x] - `p1` - For each resource binding, resolve relative path to absolute via adapter_dir - `inst-resolve-binding-path`
 4. [x] - `p1` - Merge system + all kit variables into flat dict (kit IDs are globally unique) - `inst-merge-flat-dict`
-5. [x] - `p1` - Return structured result: {system, kits, variables} - `inst-return-structured`
+5. [x] - `p1` - Return structured result: {status, system, kits, variables, counts} - `inst-return-structured`
 
 ## 4. States (CDSL)
 

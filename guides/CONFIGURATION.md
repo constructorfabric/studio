@@ -439,7 +439,7 @@ Each codebase entry tells Constructor Studio where source code lives and how to 
  
 Kits are direct file packages that provide templates, rules, checklists, constraints, workflows, scripts, and skill surfaces. New kits describe those resources in a canonical `.cf-studio-kit.toml` manifest. Studio normalizes canonical manifests, older `manifest.toml` files, and legacy directory layouts into one `KitModel` used by install, update, info, validation, variable resolution, and generated host integrations.
 
-Installed kit resources usually live under `config/kits/{slug}/`, but local kits can also be registered in place. Tracked kits are editable repository content and get file-level diffs on update. Ignored kits are generated local content and may be overwritten by Studio repair/update flows. Registered local kits keep their resources in their original project-contained paths, while `core.toml` stores the effective resource bindings.
+Installed kit resources usually live under `config/kits/{slug}/`, but local kits can also be registered in place. Tracked kits are editable repository content and get file-level diffs on update. Ignored kits are generated local content and may be overwritten by Studio repair/update flows. Registered local kits keep their resources in their original project-contained paths; `core.toml` stores effective resource bindings only for non-register installs, while register mode stores the authoritative kit root and re-derives bindings from the manifest at runtime.
 
  **Why configure this**: keep your artifact standards up to date with the latest kit version; install a custom kit for your organization; start from the SDLC kit and customize it into your own delivery model.
 
@@ -457,7 +457,7 @@ cfs update                           # update/repair Constructor Studio runtime,
 cfs update --with-kits yes           # update runtime and explicitly include kits
 ```
 
-`copy` mode copies local kit resources into the setup directory. `register` mode keeps a local kit in place and records each effective resource path in `core.toml`. Register mode is only valid for local paths contained by the project root after symlink resolution. In non-interactive use, local path installs must pass `--install-mode copy` or `--install-mode register`.
+`copy` mode copies local kit resources into the setup directory. `register` mode keeps a local kit in place and records only the authoritative kit root in `core.toml`; effective resource paths are re-derived from the manifest at runtime. Register mode is only valid for local paths contained by the project root after symlink resolution. In non-interactive use, local path installs must pass `--install-mode copy` or `--install-mode register`.
 
 `cfs kit normalize <path>` previews or writes the canonical manifest form for a kit source. Use it before publishing or registering a kit when you want to check the normalized `KitModel`. Add `--dry-run` when you want a preview without writing.
 

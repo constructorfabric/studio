@@ -57,6 +57,144 @@ class TestStudioEndpointTarget(unittest.TestCase):
         self.assertEqual(result, target.as_posix())
         self.assertIn("outside project root", buf.getvalue())
 
+    def test_registered_legacy_studio_path_rejects_parent_traversal(self):
+        from studio.commands.agents import _resolve_registered_legacy_studio_path
+
+        with TemporaryDirectory() as td:
+            project_root = Path(td) / "project"
+            studio_root = project_root / ".bootstrap"
+            studio_root.mkdir(parents=True)
+
+            resolved = _resolve_registered_legacy_studio_path(
+                studio_root,
+                project_root,
+                "../escape.md",
+            )
+
+        self.assertIsNone(resolved)
+
+    def test_registered_project_relative_path_rejects_symlink_escape(self):
+        from studio.commands.agents import _resolve_registered_project_relative_path
+
+        with TemporaryDirectory() as td:
+            project_root = Path(td) / "project"
+            outside_root = Path(td) / "outside"
+            project_root.mkdir()
+            outside_root.mkdir()
+            (outside_root / "escaped.md").write_text("# outside\n", encoding="utf-8")
+            (project_root / "link").symlink_to(outside_root, target_is_directory=True)
+
+            resolved = _resolve_registered_project_relative_path(
+                project_root,
+                "link/escaped.md",
+            )
+
+        self.assertIsNone(resolved)
+
+    def test_registered_legacy_studio_path_rejects_symlink_escape(self):
+        from studio.commands.agents import _resolve_registered_legacy_studio_path
+
+        with TemporaryDirectory() as td:
+            project_root = Path(td) / "project"
+            studio_root = project_root / ".bootstrap"
+            outside_root = Path(td) / "outside"
+            studio_root.mkdir(parents=True)
+            outside_root.mkdir()
+            (outside_root / "escaped.md").write_text("# outside\n", encoding="utf-8")
+            (studio_root / "link").symlink_to(outside_root, target_is_directory=True)
+
+            resolved = _resolve_registered_legacy_studio_path(
+                studio_root,
+                project_root,
+                "link/escaped.md",
+            )
+
+        self.assertIsNone(resolved)
+
+    def test_registered_kit_path_prefers_legacy_studio_fallback(self):
+        from studio.commands.agents import _resolve_registered_kit_path
+
+        with TemporaryDirectory() as td:
+            project_root = Path(td) / "project"
+            studio_root = project_root / ".bootstrap"
+            legacy_kit_root = studio_root / "legacy-kit"
+            legacy_kit_root.mkdir(parents=True)
+
+            resolved = _resolve_registered_kit_path(
+                project_root,
+                studio_root,
+                "demo",
+                {"path": "legacy-kit"},
+            )
+
+        self.assertEqual(resolved, legacy_kit_root.resolve())
+
+    def test_registered_resource_path_rejects_unsafe_component_source(self):
+        from studio.commands.agents import _resolve_registered_resource_path
+
+        with TemporaryDirectory() as td:
+            project_root = Path(td) / "project"
+            studio_root = project_root / ".bootstrap"
+            kit_root = studio_root / "config" / "kits" / "demo"
+            kit_root.mkdir(parents=True)
+            component = SimpleNamespace(id="skill", source="../escape.md")
+
+            resolved = _resolve_registered_resource_path(
+                project_root,
+                studio_root,
+                kit_root,
+                component,
+                {},
+            )
+
+        self.assertIsNone(resolved)
+
+    def test_registered_resource_path_uses_project_relative_binding(self):
+        from studio.commands.agents import _resolve_registered_resource_path
+
+        with TemporaryDirectory() as td:
+            project_root = Path(td) / "project"
+            studio_root = project_root / ".bootstrap"
+            kit_root = studio_root / "config" / "kits" / "demo"
+            bound_file = project_root / "docs" / "skill.md"
+            bound_file.parent.mkdir(parents=True)
+            kit_root.mkdir(parents=True)
+            bound_file.write_text("# skill\n", encoding="utf-8")
+            component = SimpleNamespace(id="skill", source="ignored.md")
+
+            resolved = _resolve_registered_resource_path(
+                project_root,
+                studio_root,
+                kit_root,
+                component,
+                {"resources": {"skill": {"path": "docs/skill.md"}}},
+            )
+
+        self.assertEqual(resolved, bound_file.resolve())
+
+    def test_registered_resource_path_uses_legacy_studio_fallback(self):
+        from studio.commands.agents import _resolve_registered_resource_path
+
+        with TemporaryDirectory() as td:
+            project_root = Path(td) / "project"
+            studio_root = project_root / ".bootstrap"
+            kit_root = studio_root / "config" / "kits" / "demo"
+            legacy_file = studio_root / "docs" / "skill.md"
+            legacy_file.parent.mkdir(parents=True)
+            kit_root.mkdir(parents=True)
+            legacy_file.write_text("# skill\n", encoding="utf-8")
+            component = SimpleNamespace(id="skill", source="ignored.md")
+
+            resolved = _resolve_registered_resource_path(
+                project_root,
+                studio_root,
+                kit_root,
+                component,
+                {"resources": {"skill": {"path": "docs/skill.md"}}},
+            )
+
+        self.assertEqual(resolved, legacy_file.resolve())
+
 
 class TestGenerateAgentsNoChangePreview(unittest.TestCase):
     """Regression coverage for preview/apply control flow."""
@@ -315,6 +453,28 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
             nested_content = (root / ".cursor" / "agents" / "auditor.mdc").read_text(encoding="utf-8")
             self.assertIn("Bound nested behavior.", nested_content)
             self.assertNotIn("Audit nested behavior.", nested_content)
+
+    def test_nested_public_subagent_with_invalid_target_override_is_skipped(self):
+        from studio.commands.agents import _default_agents_config, _process_single_agent
+        from unittest.mock import patch
+
+        with TemporaryDirectory() as td:
+            root, studio_root = self._make_project(td)
+            with patch(
+                "studio.commands.agents._nested_subagent_config",
+                return_value={"mode": "bogus"},
+            ):
+                result = _process_single_agent(
+                    "cursor",
+                    root,
+                    studio_root,
+                    _default_agents_config(),
+                    None,
+                    dry_run=False,
+                )
+
+            self.assertEqual(result["status"], "PASS")
+            self.assertFalse((root / ".cursor" / "agents" / "auditor.mdc").exists())
 
     def test_registered_public_skill_resource_outside_studio_root_is_skipped(self):
         from studio.commands.agents import _list_registered_public_resource_skills
@@ -2350,6 +2510,26 @@ class TestLegacyManifestSkillCleanup(unittest.TestCase):
             deleted = [o["path"] for o in r.get("outputs", []) if o.get("action") == "deleted"]
             self.assertEqual(len(deleted), 0)
 
+    def test_manifest_cleanup_skips_unsafe_skill_ids_before_legacy_path_interpolation(self):
+        from studio.commands.agents import generate_manifest_skills
+        from studio.utils.manifest import SkillEntry
+
+        with TemporaryDirectory() as td:
+            root = Path(td).resolve()
+            legacy = root / ".cursor" / "escape.mdc"
+            legacy.parent.mkdir(parents=True)
+            legacy.write_text("ALWAYS open and follow `{cf-studio-path}/.core/skills/escape/SKILL.md`\n")
+            src = root / "skills" / "escape.md"
+            src.parent.mkdir(parents=True)
+            src.write_text("# Escape")
+            skills = {"../escape": SkillEntry(id="../escape", description="unsafe", prompt_file="", source=str(src), agents=["cursor"])}
+
+            r = generate_manifest_skills(skills, "cursor", root, dry_run=False)
+
+            self.assertTrue(legacy.exists(), "Unsafe skill id must not drive legacy cleanup path construction")
+            deleted = [o["path"] for o in r.get("outputs", []) if o.get("action") == "deleted"]
+            self.assertEqual(len(deleted), 0)
+
 
 class TestAtSlashPathNotTreatedAsCypilot(unittest.TestCase):
     """Files with @/ follow-link targets must NOT be treated as Cypilot-generated."""
@@ -2501,7 +2681,7 @@ class TestKitWorkflowSharedSkills(unittest.TestCase):
                     "",
                     "[kits.gears]",
                     'format = "CFS"',
-                    'path = "../local-kits/gears"',
+                    'path = "local-kits/gears"',
                 ]) + "\n",
                 encoding="utf-8",
             )
@@ -2598,11 +2778,11 @@ class TestKitWorkflowSharedSkills(unittest.TestCase):
                     "",
                     "[kits.gears]",
                     'format = "CFS"',
-                    'path = "../studio-kit-gears"',
+                    'path = "studio-kit-gears"',
                     'version = "1.0"',
                     "",
                     "[kits.gears.resources.workflow_pr_review]",
-                    'path = "../studio-kit-gears/workflows/pr-review.md"',
+                    'path = "studio-kit-gears/workflows/pr-review.md"',
                     'kind = "skill"',
                     "public = true",
                 ]) + "\n",

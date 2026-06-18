@@ -41,7 +41,7 @@ A **Kit** is a file package that provides domain-specific artifact and codebase 
 - Optional: `manifest.toml` — declarative installation manifest (see below)
 
 **Key properties**:
-- Kit registration (slug, version, config path, resolved resource bindings) is stored in `{cf-studio-path}/config/core.toml`; resource binding paths are always relative to `{cf-studio-path}` (never absolute; `..` is used for resources outside the adapter tree)
+- Kit registration (slug, version, config path, resolved resource bindings) is stored in `{cf-studio-path}/config/core.toml`; persisted resource binding paths are always project-relative (never absolute), and register-mode kits re-derive effective resource locations from the manifest at runtime instead of relying on persisted path anchors
 - All kit files are user-editable after installation
 - User modifications are preserved across kit updates via file-level diff with interactive prompts
 - Kit version is stored in `{cf-studio-path}/config/kits/<slug>/conf.toml`
@@ -86,7 +86,7 @@ Top-level `.gen/` retains only aggregate files: `AGENTS.md`, `SKILL.md`, `README
 
 **Flow**:
 1. `cfs init` / `cfs kit install` installs kit files from source:
-   - **If `manifest.toml` present**: validate manifest, prompt user for `user_modifiable` resource paths (offering defaults), copy or register each resource at its effective path, resolve `{identifier}` template variables in kit files, and record effective install state in `core.toml` (`[kits.{slug}.resources]` only for non-register installs)
+   - **If `manifest.toml` present**: validate manifest, prompt user for `user_modifiable` resource paths (offering defaults), copy or register each resource at its effective path, preserve `{identifier}` template variables in kit files for read-time resolution, and record effective install state in `core.toml` (`[kits.{slug}.resources]` only for non-register installs)
    - **If no `manifest.toml`**: copy all kit files from source to `{cf-studio-path}/config/kits/{slug}/` (legacy behavior)
    - Register kit in `core.toml`
 2. Regenerate `.gen/AGENTS.md` to include public kit rules; generate skill/workflow entrypoints through agent integration files

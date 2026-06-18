@@ -1066,6 +1066,25 @@ class TestKitUpdateCheckCoverage(unittest.TestCase):
             tmp_dir = Path(td) / "tmp"
             kit_source = tmp_dir / "kit"
             kit_source.mkdir(parents=True)
+            resolution = SimpleNamespace(
+                kit_source_dir=kit_source,
+                tmp_dir=tmp_dir,
+                authority_metadata={"installed_version": "abc123"},
+            )
+
+            with patch("studio.commands.kit.parse_git_kit_source", return_value=parsed), \
+                    patch("studio.commands.kit.materialize_git_kit_source", return_value=resolution), \
+                    patch("studio.commands.kit._read_kit_slug", return_value=""), \
+                    patch("studio.commands.kit._has_canonical_kit_models", return_value=True):
+                canonical = _resolve_install_source_git("git:https://example.invalid/repo.git")
+            self.assertEqual(canonical[1], "")
+            self.assertEqual(canonical[2], "abc123")
+            self.assertEqual(canonical[4], tmp_dir)
+
+        with TemporaryDirectory() as td:
+            tmp_dir = Path(td) / "tmp"
+            kit_source = tmp_dir / "kit"
+            kit_source.mkdir(parents=True)
             parsed_with_identity = SimpleNamespace(
                 canonical_source="git:https://example.invalid/repo.git@wanted",
                 kit_identity="wanted",
@@ -1876,7 +1895,7 @@ class TestKitSourceModeValidation(unittest.TestCase):
                 buf = io.StringIO()
                 with (
                     patch("sys.stdin", fake_stdin),
-                    patch("builtins.input", side_effect=["", ""]),
+                    patch("builtins.input", side_effect=["", "", ""]),
                     redirect_stdout(buf),
                 ):
                     rc = cmd_kit_install(["--path", str(kit_src)])
@@ -3305,8 +3324,7 @@ class TestResolveRegisteredKitDir(unittest.TestCase):
         with TemporaryDirectory() as td:
             adapter = Path(td) / "cypilot"
             adapter.mkdir()
-            external = Path(td) / "external-kits" / "sdlc"
-            resolved = _resolve_registered_kit_dir(adapter, external.as_posix())
+            resolved = _resolve_registered_kit_dir(adapter, "/external-kits/sdlc")
             self.assertIsNone(resolved)
 
     def test_windows_drive_absolute_path_not_project_relative_on_non_windows(self):
@@ -3496,6 +3514,32 @@ class TestCmdKitInstall(unittest.TestCase):
             finally:
                 os.chdir(cwd)
 
+    def test_install_path_copy_can_mark_kit_ignored_in_git(self):
+        from studio.commands.kit import cmd_kit_install
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            kit_src = _make_kit_source(Path(td), "testkit")
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                with (
+                    patch("studio.commands.kit.sys.stdin.isatty", return_value=True),
+                    patch("builtins.input", side_effect=["i"]),
+                ):
+                    buf = io.StringIO()
+                    with redirect_stdout(buf):
+                        rc = cmd_kit_install(["--path", str(kit_src), "--install-mode", "copy"])
+                self.assertEqual(rc, 0)
+                with open(adapter / "config" / "core.toml", "rb") as fh:
+                    core = tomllib.load(fh)
+                self.assertEqual(core["kits"]["testkit"]["tracking"], "ignored")
+                gitignore = (root / ".gitignore").read_text(encoding="utf-8")
+                self.assertIn(f"{adapter.relative_to(root).as_posix()}/config/kits/testkit/", gitignore)
+            finally:
+                os.chdir(cwd)
+
     def test_install_with_force(self):
         from studio.commands.kit import cmd_kit_install
         with TemporaryDirectory() as td:
@@ -3518,7 +3562,6 @@ class TestCmdKitInstall(unittest.TestCase):
     def test_install_with_force_uses_registered_custom_root(self):
         from studio.commands.kit import cmd_kit_install
         from studio.utils import toml_utils
-        import tomllib
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             adapter = _bootstrap_project(root)
@@ -3629,15 +3672,9 @@ class TestCmdKitInstall(unittest.TestCase):
                     with patch.object(kit_module.os.path, "relpath", side_effect=_patched_relpath):
                         result = install_kit(kit_src, adapter, "customroot", interactive=True)
 
-            self.assertEqual(result["status"], "PASS")
+            self.assertEqual(result["status"], "FAIL")
+            self.assertTrue(any("absolute paths must not be persisted in core.toml" in err for err in result.get("errors", [])))
             self.assertTrue((external_kit_dir / "SKILL.md").is_file())
-            with open(adapter / "config" / "core.toml", "rb") as f:
-                data = tomllib.load(f)
-            resources = data["kits"]["customroot"]["resources"]
-            self.assertEqual(data["kits"]["customroot"]["path"], external_kit_dir.as_posix())
-            self.assertEqual(resources["skill"]["path"], f"{external_kit_dir.as_posix()}/SKILL.md")
-            self.assertEqual(resources["agents"]["path"], f"{external_kit_dir.as_posix()}/AGENTS.md")
-            self.assertEqual(resources["constraints"]["path"], f"{external_kit_dir.as_posix()}/constraints.toml")
 
     def test_install_with_force_manifest_preserves_absolute_bindings_when_relpath_raises(self):
         import studio.commands.kit as kit_module
@@ -5161,6 +5198,77 @@ class TestCollectKitMetadataOsError(unittest.TestCase):
         self.assertEqual(meta["skill_nav"], "")
         self.assertEqual(meta["agents_content"], "LEGACY RULE\n")
 
+    def test_registered_resource_metadata_returns_empty_when_target_unresolved(self):
+        from studio.commands.kit import _collect_registered_kit_metadata
+
+        with TemporaryDirectory() as td:
+            studio_dir = Path(td) / ".bootstrap"
+            studio_dir.mkdir(parents=True)
+            with patch(
+                "studio.commands.kit._resolve_registered_kit_metadata_target",
+                return_value=(None, "config/kits/sdlc"),
+            ):
+                meta = _collect_registered_kit_metadata(
+                    studio_dir,
+                    "sdlc",
+                    {"install_mode": "register"},
+                )
+
+        self.assertEqual(meta, {})
+
+    def test_register_kit_in_core_toml_clears_stale_tool_risk_fingerprint(self):
+        from studio.commands.kit import _register_kit_in_core_toml
+
+        with TemporaryDirectory() as td:
+            studio_dir = Path(td) / ".bootstrap"
+            config_dir = studio_dir / "config"
+            config_dir.mkdir(parents=True)
+            (config_dir / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    'project_root = ".."',
+                    "",
+                    "[kits.sdlc]",
+                    'format = "CFS"',
+                    'path = "config/kits/sdlc"',
+                    'tool_risk_fingerprint = "old-risk"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            errors = _register_kit_in_core_toml(
+                config_dir,
+                "sdlc",
+                "1.0",
+                studio_dir,
+                kit_path="config/kits/sdlc",
+                tool_risk_fingerprint="",
+            )
+
+            self.assertEqual(errors, [])
+            self.assertNotIn(
+                "tool_risk_fingerprint",
+                (config_dir / "core.toml").read_text(encoding="utf-8"),
+            )
+
+    def test_tool_risk_approval_errors_clears_stale_fingerprint_for_safe_kit(self):
+        from studio.commands.kit import _tool_risk_approval_errors
+
+        installed = {"tool_risk_fingerprint": "old-risk"}
+        kit_model = SimpleNamespace(
+            tool_risk_summary={"requires_confirmation": False},
+            tool_risk_fingerprint="",
+        )
+
+        errors = _tool_risk_approval_errors(
+            kit_model,
+            installed_kit_entry=installed,
+            interactive=False,
+        )
+
+        self.assertEqual(errors, [])
+        self.assertNotIn("tool_risk_fingerprint", installed)
+
     def test_prompt_manifest_install_plan_allows_root_and_resource_overrides(self):
         from studio.commands.kit import _prompt_manifest_install_plan
 
@@ -5953,6 +6061,84 @@ class TestCmdKitInstallGithubPath(unittest.TestCase):
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
                 self.assertIn(out["status"], ["PASS", "OK"])
+            finally:
+                os.chdir(cwd)
+
+    def test_resolve_install_source_github_allows_canonical_source_without_legacy_slug(self):
+        from studio.commands.kit import _resolve_install_source_github
+
+        with TemporaryDirectory() as td:
+            kit_src = Path(td) / "dl"
+            kit_src.mkdir()
+            with (
+                patch(
+                    "studio.commands.kit._download_kit_from_github_with_authority",
+                    return_value=(kit_src, "1.0", {"source_type": "github"}),
+                ),
+                patch("studio.commands.kit._read_kit_slug", return_value=""),
+                patch("studio.commands.kit._has_canonical_kit_models", return_value=True),
+            ):
+                result = _resolve_install_source_github("constructorfabric/gears-rust")
+
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result[1], "")
+        self.assertEqual(result[2], "1.0")
+        self.assertEqual(result[5], None)
+
+    def test_install_from_github_shorthand_passes_version_flag_to_resolver(self):
+        from studio.commands.kit import cmd_kit_install
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            _bootstrap_project(root)
+            kit_src = _make_manifest_kit_source(Path(td) / "dl", "sdlc")
+
+            cwd = os.getcwd()
+            try:
+                os.chdir(root)
+                with (
+                    patch(
+                        "studio.commands.kit._download_kit_from_github_with_authority",
+                        return_value=(kit_src, "main", {"source_type": "github", "requested_ref": "main"}),
+                    ) as mocked_download,
+                ):
+                    buf = io.StringIO()
+                    with redirect_stdout(buf):
+                        rc = cmd_kit_install(["constructorfabric/studio-kit-sdlc", "--version", "main"])
+                self.assertEqual(rc, 0)
+                self.assertEqual(mocked_download.call_args.args[2], "main")
+            finally:
+                os.chdir(cwd)
+
+    def test_install_from_github_can_mark_kit_ignored_in_git(self):
+        from studio.commands.kit import cmd_kit_install
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            kit_src = _make_manifest_kit_source(Path(td) / "dl", "sdlc")
+
+            cwd = os.getcwd()
+            try:
+                os.chdir(root)
+                with (
+                    patch(
+                        "studio.commands.kit._resolve_install_source_github",
+                        return_value=(kit_src, "sdlc", "1.0", "github:constructorfabric/studio-kit-sdlc", None, None, {"source_type": "github"}),
+                    ),
+                    patch("studio.commands.kit.sys.stdin.isatty", return_value=True),
+                    patch("builtins.input", side_effect=["i", ""]),
+                    patch("studio.commands.kit._select_canonical_kit_models_for_install", return_value=([], None)),
+                ):
+                    buf = io.StringIO()
+                    with redirect_stdout(buf):
+                        rc = cmd_kit_install(["constructorfabric/studio-kit-sdlc"])
+                self.assertEqual(rc, 0)
+                with open(adapter / "config" / "core.toml", "rb") as fh:
+                    core = tomllib.load(fh)
+                self.assertEqual(core["kits"]["sdlc"]["tracking"], "ignored")
+                gitignore = (root / ".gitignore").read_text(encoding="utf-8")
+                self.assertIn(f"{adapter.relative_to(root).as_posix()}/config/kits/sdlc/", gitignore)
             finally:
                 os.chdir(cwd)
 

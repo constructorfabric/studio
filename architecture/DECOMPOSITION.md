@@ -128,7 +128,7 @@ Studio DESIGN is decomposed into features organized around architectural layers 
   - Update model: force mode (full overwrite) and interactive mode (file-level diff — compare each file in new version against user's installed copy, present unified diffs with accept/decline/accept-all/decline-all/modify prompts). For manifest-driven kits, updates use registered resource paths, detect new resources (prompt for path), warn about removed resources
   - Resource Diff Engine: interactive conflict resolution for kit file updates (`accept-file`, `reject-file`, `accept-all`, `reject-all`, `modify` with git-style conflict markers)
   - Kit install/update from GitHub or local directories with manifest-aware resource registration
-  - Generic Git kit install/update from `git:<encoded-url>[//<subdir>][@<kit>]` sources with `--version` ref resolution, commit provenance, cache/offline behavior, and credential redaction (see `architecture/features/generic-git-kit-installer.md`)
+  - Generic Git kit install/update from CLI `git/<url>[//<subdir>][@<kit>]` sources with persisted canonical `git:<encoded-url>[//<subdir>][@<kit>]`, plus `--version` ref resolution, commit provenance, cache/offline behavior, and credential redaction (see `architecture/features/generic-git-kit-installer.md`)
   - SKILL composition: collect kit `SKILL.md` files and write to `{cf-studio-path}/config/SKILL.md`
   - System prompt composition: collect kit AGENTS.md content and append to `{cf-studio-path}/config/AGENTS.md`
   - Kit structural validation: verify required files (`conf.toml`, `constraints.toml`, `artifacts/` directory); for manifest-driven kits, verify all registered resource paths exist on disk

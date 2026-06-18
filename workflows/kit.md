@@ -88,6 +88,7 @@ Canonical manifest rules:
 Each `[[kits.resources]]` entry:
 
 - Required fields: `id`, `kind`, `source`
+- Public kinds (`skill`, `agent`, `rule`) also require `name`; supporting kinds may omit it
 - Optional fields: `install_path`, `type`, `public`, `description`, `user_modifiable`, `aliases`, `generated_targets`, `origin`
 - Optional nested config: `[kits.resources.agent]`, `[kits.resources.permissions]`, `[kits.resources.targets.<target>]`
 

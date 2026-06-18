@@ -3,8 +3,9 @@ Generic Git kit source resolution.
 
 Parses ``git/<url>[//<subdir>][@<kit>]`` CLI sources and persisted
 ``git:<encoded-url>[//<subdir>][@<kit>]`` sources, then materializes the
-selected commit into a temporary worktree for the kit installer. CLI URLs may
-be pasted raw from Git hosts; persisted sources keep the canonical encoded form.
+selected commit into a temporary worktree for the kit installer. CLI URLs are
+accepted in raw form (and encoded form for compatibility); persisted sources
+keep the canonical encoded form.
 
 @cpt-algo:cpt-studio-algo-generic-git-kit-installer-source-parse:p1
 @cpt-algo:cpt-studio-algo-generic-git-kit-installer-source-policy:p1

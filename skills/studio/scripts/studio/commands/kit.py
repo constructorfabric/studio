@@ -958,6 +958,43 @@ def _collect_registered_kit_metadata(
 ) -> Dict[str, str]:
     kit_data = kit_entry if isinstance(kit_entry, dict) else {}
     resources = kit_data.get("resources")
+    install_mode = str(kit_data.get("install_mode", "") or "").strip()
+    if (not isinstance(resources, dict) or not resources) and install_mode == "register":
+        try:
+            from ..utils.kit_model import load_kit_model
+            from ..utils.manifest import resolve_resource_bindings_with_errors
+
+            # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitmodel-source
+            kit_dir, _kit_rel_path = _resolve_registered_kit_metadata_target(
+                studio_dir,
+                kit_slug,
+                kit_entry,
+            )
+            if kit_dir is None:
+                return {}
+            model = load_kit_model(kit_dir, kit_slug=kit_slug)
+            # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitmodel-source
+            bindings, _binding_errors = resolve_resource_bindings_with_errors(
+                studio_dir / "config",
+                kit_slug,
+                studio_dir,
+            )
+            resources = {}
+            public_by_id = {
+                str(getattr(component, "id", "")): component
+                for component in getattr(model, "public_components", []) or []
+            }
+            for resource_id, binding_path in bindings.items():
+                component = public_by_id.get(str(resource_id))
+                if component is None:
+                    continue
+                resources[str(resource_id)] = {
+                    "path": _serialize_manifest_binding_path(binding_path, studio_dir),
+                    "kind": str(getattr(component, "kind", "") or ""),
+                    "public": True,
+                }
+        except (OSError, ValueError):
+            resources = {}
     if not isinstance(resources, dict) or not resources:
         kit_dir, kit_rel_path = _resolve_registered_kit_metadata_target(
             studio_dir,
@@ -1112,6 +1149,45 @@ def _input_stderr(prompt: str) -> str:
     except EOFError:
         return ""
     # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
+
+
+def _prompt_git_tracking_for_installed_kit(core_toml_path: Path, kit_slug: str) -> str:
+    # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
+    from .init import _prompt_kit_tracking_policy, _read_kit_tracking
+
+    default_policy = _read_kit_tracking(core_toml_path, default="tracked")
+    return _prompt_kit_tracking_policy(kit_slug, default_policy, None, interactive=True)
+    # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
+
+
+def _persist_installed_kit_tracking(
+    project_root: Path,
+    studio_dir: Path,
+    kit_slug: str,
+    tracking: str,
+) -> None:
+    # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-delegate-install
+    from .init import _persist_install_metadata, _read_install_tracking, _read_kit_tracking, _write_gitignore_block
+
+    core_toml_path = studio_dir / "config" / _KIT_CORE_TOML
+    default_kit_tracking = _read_kit_tracking(core_toml_path, default="tracked")
+    runtime_tracking = _read_install_tracking(core_toml_path, "runtime_tracking", default="ignored")
+    agent_tracking = _read_install_tracking(core_toml_path, "agent_tracking", default="ignored")
+    _persist_install_metadata(
+        core_toml_path,
+        default_kit_tracking,
+        runtime_tracking=runtime_tracking,
+        agent_tracking=agent_tracking,
+        kit_tracking_overrides={kit_slug: tracking},
+    )
+    install_rel = studio_dir.resolve().relative_to(project_root.resolve()).as_posix()
+    _write_gitignore_block(
+        project_root,
+        install_rel,
+        core_toml_path,
+        default_kit_tracking,
+    )
+    # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-delegate-install
 
 
 def _resolve_manifest_user_path(base: Path, raw_path: str) -> Path:
@@ -1976,6 +2052,7 @@ def install_kit_with_manifest(
         install_mode=install_mode,
         authority_metadata=authority_metadata,
         local_metadata=local_metadata or None,
+        tool_risk_fingerprint=str(getattr(manifest, "tool_risk_fingerprint", "") or ""),
     )
     if registration_errors:
         return {
@@ -2129,11 +2206,17 @@ def _tool_risk_approval_errors(
     approved_tool_risks: Optional[List[str]] = None,
 ) -> List[str]:
     summary = getattr(kit_model, "tool_risk_summary", {}) or {}
-    if not summary.get("requires_confirmation"):
-        return []
     fingerprint = str(getattr(kit_model, "tool_risk_fingerprint", "") or "")
     approvals = {token.strip() for token in (approved_tool_risks or []) if token.strip()}
-    _ = installed_kit_entry
+    installed_fingerprint = ""
+    if isinstance(installed_kit_entry, dict):
+        installed_fingerprint = str(installed_kit_entry.get("tool_risk_fingerprint", "") or "")
+    if not fingerprint and installed_fingerprint and isinstance(installed_kit_entry, dict):
+        installed_kit_entry.pop("tool_risk_fingerprint", None)
+    if not summary.get("requires_confirmation"):
+        return []
+    if fingerprint and installed_fingerprint and fingerprint == installed_fingerprint:
+        return []
     if fingerprint in approvals:
         return []
     dangerous = summary.get("dangerous_tools", {})
@@ -2296,6 +2379,7 @@ def migrate_legacy_kit_to_manifest(
         config_dir, kit_slug, "", studio_dir,
         resources=resource_bindings,
         kit_path=_resolve_manifest_kit_root_rel(manifest, resource_bindings, kit_slug),
+        tool_risk_fingerprint=str(getattr(manifest, "tool_risk_fingerprint", "") or ""),
     )
     if registration_errors:
         return {
@@ -2324,6 +2408,7 @@ def migrate_legacy_kit_to_manifest(
 # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-resolve-github-source
 def _resolve_install_source_github(
     source_arg: str,
+    requested_ref: str = "",
 ) -> Optional[Tuple[Path, str, str, str, Optional[Path], Optional[int], Optional[Dict[str, Any]]]]:
     """Parse and download a GitHub kit source for ``cmd_kit_install``.
 
@@ -2346,19 +2431,19 @@ def _resolve_install_source_github(
         kit_source, resolved_version, authority_metadata = _download_kit_from_github_with_authority(
             owner,
             repo,
-            version,
+            requested_ref or version,
         )
     except RuntimeError as exc:
         ui.result({"status": "FAIL", "message": str(exc)})
         return (Path("."), "", "", "", None, 1, None)
 
     kit_slug = _read_kit_slug(kit_source)
-    if not kit_slug:
+    if not kit_slug and not _has_canonical_kit_models(kit_source):
         ui.result({"status": "FAIL", "message": f"Kit at {kit_source} is missing manifest.toml; cannot resolve slug."})
-        return (Path("."), "", "", "", None, 1, None)
+        return (Path("."), "", "", "", kit_source.parent, 1, None)
     kit_version = resolved_version
     github_source = f"github:{owner}/{repo}"
-    ui.substep(f"Resolved: {kit_slug}@{kit_version or '(dev)'}")
+    ui.substep(f"Resolved: {(kit_slug or '(select kit)')}@{kit_version or '(dev)'}")
     return (kit_source, kit_slug, kit_version, github_source, kit_source.parent, None, authority_metadata)
 # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-resolve-github-source
 
@@ -2383,20 +2468,21 @@ def _resolve_install_source_git(
         return (Path("."), "", "", "", None, 1, None)
 
     kit_source = resolution.kit_source_dir
-    kit_slug = parsed.kit_identity or _read_kit_slug(kit_source)
-    if not kit_slug:
+    resolved_slug = _read_kit_slug(kit_source)
+    kit_slug = parsed.kit_identity or resolved_slug
+    if not kit_slug and not _has_canonical_kit_models(kit_source):
         ui.result({"status": "FAIL", "message": f"Kit at {kit_source} is missing conf.toml slug."})
         shutil.rmtree(resolution.tmp_dir, ignore_errors=True)
         return (Path("."), "", "", "", None, 1, None)
-    if parsed.kit_identity and _read_kit_slug(kit_source) not in ("", parsed.kit_identity):
+    if parsed.kit_identity and resolved_slug not in ("", parsed.kit_identity):
         ui.result({
             "status": "FAIL",
-            "message": f"Git source selected kit '{parsed.kit_identity}' but package slug is '{_read_kit_slug(kit_source)}'",
+            "message": f"Git source selected kit '{parsed.kit_identity}' but package slug is '{resolved_slug}'",
         })
         shutil.rmtree(resolution.tmp_dir, ignore_errors=True)
         return (Path("."), "", "", "", None, 1, None)
     kit_version = str(resolution.authority_metadata.get("installed_version") or "")
-    ui.substep(f"Resolved: {kit_slug}@{kit_version[:12] or '(git)'}")
+    ui.substep(f"Resolved: {(kit_slug or '(select kit)')}@{kit_version[:12] or '(git)'}")
     return (
         kit_source,
         kit_slug,
@@ -2416,8 +2502,10 @@ def cmd_kit_install(argv: List[str]) -> int:
     .gen/ aggregates.
 
     Usage:
-        cfs kit install owner/repo[@version]   (GitHub, default)
-        cfs kit install --path /local/dir       (local directory)
+        cfs kit install owner/repo[@version]                          (GitHub)
+        cfs kit install git/<url>[//<subdir>][@<kit>]                 (generic Git)
+        cfs kit install path/<dir>                                    (local directory)
+        cfs kit install --path /local/dir                             (local directory)
     """
     # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-parse-args
     p = argparse.ArgumentParser(
@@ -2426,7 +2514,7 @@ def cmd_kit_install(argv: List[str]) -> int:
     )
     p.add_argument(
         "source", nargs="?", default=None,
-        help="GitHub source owner/repo[@version] or generic Git source git/<encoded-url>[//<subdir>][@<kit>]",
+        help="GitHub owner/repo[@version], generic Git git/<url>[//<subdir>][@<kit>], or local path/<dir>",
     )
     p.add_argument(
         "--path", dest="local_path", default=None,
@@ -2434,7 +2522,7 @@ def cmd_kit_install(argv: List[str]) -> int:
     )
     p.add_argument(
         "--version", dest="version", default="",
-        help="For generic Git sources, resolve this tag, branch, or full 40-character commit SHA",
+        help="For GitHub and generic Git sources, resolve this tag, branch, or full 40-character commit SHA",
     )
     p.add_argument(
         "--install-mode",
@@ -2539,7 +2627,7 @@ def cmd_kit_install(argv: List[str]) -> int:
             resolved_source = _resolve_install_source_git(args.source, args.version)
         else:
             # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-resolve-github-authority
-            resolved_source = _resolve_install_source_github(args.source)
+            resolved_source = _resolve_install_source_github(args.source, args.version)
             # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-resolve-github-authority
         if resolved_source is None:
             return 2
@@ -2547,6 +2635,8 @@ def cmd_kit_install(argv: List[str]) -> int:
         kit_source, kit_slug, kit_version, source_registration, tmp_dir_to_clean, exit_code, authority_metadata = resolved_source
         # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-read-slug-version
         if exit_code is not None:
+            if tmp_dir_to_clean:
+                shutil.rmtree(tmp_dir_to_clean, ignore_errors=True)
             return exit_code
 
     effective_requested_kits = list(args.kit)
@@ -2603,6 +2693,14 @@ def cmd_kit_install(argv: List[str]) -> int:
         # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-mode-always-ask
         # @cpt-end:cpt-studio-state-kit-install-mode:p1:inst-mode-copy-or-register
         # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
+        # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
+        selected_tracking: Optional[str] = None
+        if selected_install_mode != "register" and not args.dry_run and sys.stdin.isatty():
+            selected_tracking = _prompt_git_tracking_for_installed_kit(
+                config_dir / _KIT_CORE_TOML,
+                kit_slug,
+            )
+        # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
 
         if len(selected_specs) > 1:
             preflight_errors: List[str] = []
@@ -2658,6 +2756,10 @@ def cmd_kit_install(argv: List[str]) -> int:
                 )
                 if str(result.get("status", "")).upper() == "FAIL":
                     failed = True
+                # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-delegate-install
+                elif selected_tracking is not None:
+                    _persist_installed_kit_tracking(project_root, studio_dir, selected_slug, selected_tracking)
+                # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-delegate-install
                 results.append({
                     "status": result.get("status", "PASS"),
                     "action": result.get("action", "installed"),
@@ -2734,6 +2836,10 @@ def cmd_kit_install(argv: List[str]) -> int:
             approved_overwrites=args.approve_overwrite,
             approved_tool_risks=args.approve_tool_risk,
         )
+        # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-delegate-install
+        # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-delegate-install
+        if str(result.get("status", "")).upper() != "FAIL" and selected_tracking is not None:
+            _persist_installed_kit_tracking(project_root, studio_dir, kit_slug, selected_tracking)
         # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-delegate-install
 
         if str(result.get("status", "")).upper() == "FAIL":
@@ -3040,10 +3146,18 @@ def _kit_update_check_result(
 
     if source_type == "github":
         installed_ref = _kit_installed_resolved_ref(kit_data)
+        installed_commit = _kit_installed_commit_sha(kit_data)
         latest_ref = str(authority.get("resolved_ref") or "")
+        latest_commit = str(authority.get("commit_sha") or "")
         result["installed_ref"] = installed_ref
         result["latest_ref"] = latest_ref
-        if installed_ref and latest_ref and installed_ref != latest_ref:
+        result["installed_commit"] = installed_commit
+        result["latest_commit"] = latest_commit
+        ref_changed = bool(installed_ref and latest_ref and installed_ref != latest_ref)
+        commit_changed = bool(
+            installed_commit and latest_commit and installed_commit != latest_commit
+        )
+        if ref_changed or commit_changed:
             result["action"] = "update_available"
         return result
 
@@ -3147,6 +3261,7 @@ def cmd_kit_update(argv: List[str]) -> int:
     Usage:
         cfs kit update                          (all kits from sources)
         cfs kit update sdlc                     (specific kit from source)
+        cfs kit update path/<dir>               (from local directory)
         cfs kit update --path /local/dir        (from local directory)
     """
     # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-parse-args
@@ -3156,7 +3271,7 @@ def cmd_kit_update(argv: List[str]) -> int:
     )
     p.add_argument(
         "slug", nargs="?", default=None,
-        help="Kit slug to update, or path/... for a local directory (default: all installed kits)",
+        help="Kit slug to update, or local directory alias path/<dir> (default: all installed kits)",
     )
     p.add_argument(
         "--path", dest="local_path", default=None,
@@ -4285,7 +4400,13 @@ def update_kit(
             result["errors"] = [str(exc)]
             return result
         _risk_summary = getattr(_risk_model, "tool_risk_summary", {}) or {}
-        _risk_changed = bool(_risk_summary.get("requires_confirmation"))
+        installed_fingerprint = str(installed_kit_entry.get("tool_risk_fingerprint", "") or "")
+        current_fingerprint = str(getattr(_risk_model, "tool_risk_fingerprint", "") or "")
+        _risk_changed = bool(
+            _risk_summary.get("requires_confirmation")
+            and current_fingerprint
+            and current_fingerprint != installed_fingerprint
+        )
         risk_errors = _tool_risk_approval_errors(
             _risk_model,
             installed_kit_entry=installed_kit_entry,
@@ -4718,9 +4839,11 @@ def cmd_kit(argv: List[str]) -> int:
     descriptions = {
         "install": [
             ("<owner/repo[@ref]>", "Install a kit from GitHub"),
+            ("git/<url>[//<subdir>][@<kit>]", "Install a kit from generic Git"),
+            ("path/<dir>", "Install a kit from a local directory"),
             ("--path <dir>", "Install a kit from a local directory"),
         ],
-        "update": [("[slug|--path <dir>]", "Update installed kit files")],
+        "update": [("[slug|path/<dir>|--path <dir>]", "Update installed kit files")],
         "check-updates": [("[slug]", "Check git/GitHub kit sources for updates")],
         "validate": [("", "Validate kit structure and examples")],
         "normalize": [("<path> [--dry-run]", "Generate .cf-studio-kit.toml from a kit source")],
@@ -4867,6 +4990,15 @@ def _read_kit_source_version(kit_source: Path) -> str:
 
     conf_toml = kit_source / _KIT_CONF_FILE
     return _read_kit_version(conf_toml) if conf_toml.is_file() else ""
+
+
+def _has_canonical_kit_models(kit_source: Path) -> bool:
+    """Return True when the source contains a valid canonical kit manifest."""
+    try:
+        from ..utils.kit_model import load_canonical_kit_models
+        return bool(load_canonical_kit_models(kit_source))
+    except ValueError:
+        return False
 
 
 def _split_kit_selectors(raw_values: List[str]) -> List[str]:
@@ -5037,16 +5169,20 @@ def _register_kit_in_core_toml(
     existing["format"] = "CFS"
     if kit_path:
         normalized_kit_path = _normalize_registered_kit_path(kit_path, kit_slug)
+        existing_path = existing.get("path")
+        preserve_legacy_absolute = (
+            isinstance(existing_path, str)
+            and _normalize_path_string(existing_path) == normalized_kit_path
+        )
         path_error = _validate_persisted_core_path(
             f"Kit '{kit_slug}' path",
             normalized_kit_path,
             _studio_dir,
             project_root,
-            allow_same_os_absolute=True,
+            allow_same_os_absolute=preserve_legacy_absolute,
         )
         if path_error:
             return [path_error]
-        existing_path = existing.get("path")
         if (
             isinstance(existing_path, str)
             and _normalize_path_string(existing_path) == normalized_kit_path
@@ -5106,8 +5242,12 @@ def _register_kit_in_core_toml(
     existing.pop("content_identity", None)
     if local_metadata:
         existing["local_metadata"] = local_metadata
+    # @cpt-begin:cpt-studio-algo-kit-tool-permission-risk:p1:inst-risk-noninteractive-fingerprint
     if tool_risk_fingerprint:
         existing["tool_risk_fingerprint"] = tool_risk_fingerprint
+    else:
+        existing.pop("tool_risk_fingerprint", None)
+    # @cpt-end:cpt-studio-algo-kit-tool-permission-risk:p1:inst-risk-noninteractive-fingerprint
     if install_mode == "register":
         existing.pop("resources", None)
     elif resources is not None:

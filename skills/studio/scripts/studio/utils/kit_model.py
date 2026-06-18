@@ -308,26 +308,47 @@ def _normalize_public_name(slug: str, resource_id: str) -> str:
 def _frontmatter_name(path: Path) -> str:
     """Return YAML frontmatter ``name`` from a markdown file, if present."""
     try:
-        content = path.read_text(encoding="utf-8")
+        content = path.read_text(encoding="utf-8").lstrip("\ufeff")
     except (OSError, UnicodeDecodeError):
         return ""
-    if not content.startswith("---\n"):
+    if content.startswith("---\r\n"):
+        start_len = 5
+        end = content.find("\r\n---", start_len)
+    elif content.startswith("---\n"):
+        start_len = 4
+        end = content.find("\n---", start_len)
+    else:
         return ""
-    end = content.find("\n---", 4)
     if end == -1:
         return ""
-    for line in content[4:end].splitlines():
+    for line in content[start_len:end].splitlines():
         key, sep, value = line.partition(":")
         if sep and key.strip() == "name":
             return value.strip().strip("'\"")
     return ""
 
 
+# @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-any-layout
+def _resolved_source_path_within_kit(kit_source: Path, source: str) -> Optional[Path]:
+    source_path = PurePosixPath(source)
+    if source_path.is_absolute() or ".." in source_path.parts:
+        return None
+    resolved = (kit_source / source).resolve()
+    try:
+        resolved.relative_to(kit_source.resolve())
+    except ValueError:
+        return None
+    return resolved
+# @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-any-layout
+
+
 def _public_name_from_source(kit_source: Path, source: str, kind: str) -> str:
     """Return an implicit public component name derived from source content."""
     if kind not in _PUBLIC_KINDS:
         return ""
-    source_path = kit_source / PurePosixPath(source)
+    source_path = _resolved_source_path_within_kit(kit_source, source)
+    if source_path is None:
+        return ""
     if not source_path.is_file():
         return ""
     return _frontmatter_name(source_path)

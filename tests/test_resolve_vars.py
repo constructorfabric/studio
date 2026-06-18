@@ -14,6 +14,7 @@ import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
@@ -114,6 +115,32 @@ class TestCollectAllVariables(unittest.TestCase):
             # Check structured output
             self.assertIn("sdlc", result["kits"])
             self.assertIn("adr_template", result["kits"]["sdlc"])
+
+    def test_register_mode_binding_string_errors_are_reported(self):
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            config = adapter / "config"
+            _write_core_toml(config, {
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {
+                    "sdlc": {
+                        "format": "CFS",
+                        "path": "config/kits/sdlc",
+                        "install_mode": "register",
+                    },
+                },
+            })
+
+            with mock.patch(
+                "studio.commands.resolve_vars.resolve_resource_bindings_with_errors",
+                return_value=({}, ["Resource 'x' binding path 'bad' is invalid"]),
+            ):
+                with self.assertRaisesRegex(ValueError, "binding path 'bad' is invalid"):
+                    _collect_all_variables(root, adapter, {
+                        "kits": {"sdlc": {"install_mode": "register", "path": "config/kits/sdlc"}}
+                    })
 
     def test_installed_kit_resources_prefer_effective_bindings_over_kit_model(self):
         """Installed core.toml bindings win over KitModel source paths."""
@@ -577,6 +604,34 @@ class TestCmdResolveVars(unittest.TestCase):
             self.assertIn("variables", out)
             self.assertIn("cf-studio-path", out["variables"])
             self.assertIn("adr_rules", out["variables"])
+
+    def test_binding_resolution_error_returns_structured_error(self):
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_project(root)
+            _write_core_toml(adapter / "config", {
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {
+                    "sdlc": {
+                        "format": "CFS",
+                        "path": "config/kits/sdlc",
+                        "install_mode": "register",
+                    },
+                },
+            })
+
+            buf = io.StringIO()
+            with mock.patch(
+                "studio.commands.resolve_vars.resolve_resource_bindings_with_errors",
+                return_value=({}, ["binding exploded"]),
+            ):
+                with redirect_stdout(buf):
+                    rc = cmd_resolve_vars(["--root", str(root)])
+            self.assertEqual(rc, 1)
+            out = json.loads(buf.getvalue())
+            self.assertEqual(out["status"], "ERROR")
+            self.assertIn("binding exploded", out["message"])
 
     def test_cli_register_mode_kit_resolves_manifest_variables(self):
         """resolve-vars returns manifest-backed variables for register-mode kits."""
