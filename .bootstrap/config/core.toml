@@ -174,10 +174,6 @@ examples = "feature_example"
 template = "prd_template"
 examples = "prd_example"
 
-[kits.sdlc.resources.skill]
-path = "config/kits/sdlc/SKILL.md"
-kind = "skill"
-
 [kits.sdlc.resources.agents]
 path = "config/kits/sdlc/AGENTS.md"
 kind = "rule"

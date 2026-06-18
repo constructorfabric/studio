@@ -5092,57 +5092,7 @@ class TestCopyKitContentOverwrite(unittest.TestCase):
             self.assertFalse((dst / "artifacts" / "PRD" / "old.md").exists())
 
 
-# ---------------------------------------------------------------------------
-# _collect_kit_metadata OSError
-# ---------------------------------------------------------------------------
-
-class TestCollectKitMetadataOsError(unittest.TestCase):
-    def test_agents_read_oserror(self):
-        from studio.commands.kit import _collect_kit_metadata
-        with TemporaryDirectory() as td:
-            kit_dir = Path(td) / "sdlc"
-            kit_dir.mkdir()
-            agents = kit_dir / "AGENTS.md"
-            agents.mkdir()  # directory, not file — read will fail
-            meta = _collect_kit_metadata(kit_dir, "sdlc")
-            self.assertEqual(meta["agents_content"], "")
-
-    def test_skill_nav_ignores_registered_custom_path(self):
-        from studio.commands.kit import _collect_kit_metadata
-        with TemporaryDirectory() as td:
-            kit_dir = Path(td) / "custom-kits" / "sdlc"
-            kit_dir.mkdir(parents=True)
-            (kit_dir / "SKILL.md").write_text("# Skill\n", encoding="utf-8")
-            meta = _collect_kit_metadata(kit_dir, "sdlc", "custom-kits/sdlc")
-            self.assertEqual(meta["skill_nav"], "")
-
-    def test_skill_nav_ignores_absolute_registered_custom_path(self):
-        from studio.commands.kit import _collect_kit_metadata
-        with TemporaryDirectory() as td:
-            kit_dir = Path(td) / "custom-kits" / "sdlc"
-            kit_dir.mkdir(parents=True)
-            (kit_dir / "SKILL.md").write_text("# Skill\n", encoding="utf-8")
-            meta = _collect_kit_metadata(kit_dir, "sdlc", kit_dir.as_posix())
-            self.assertEqual(meta["skill_nav"], "")
-
-    def test_skill_nav_ignores_windows_drive_registered_custom_path(self):
-        from studio.commands.kit import _collect_kit_metadata
-        with TemporaryDirectory() as td:
-            kit_dir = Path(td) / "custom-kits" / "sdlc"
-            kit_dir.mkdir(parents=True)
-            (kit_dir / "SKILL.md").write_text("# Skill\n", encoding="utf-8")
-            meta = _collect_kit_metadata(kit_dir, "sdlc", "C:/external-kits/sdlc")
-            self.assertEqual(meta["skill_nav"], "")
-
-    def test_skill_nav_ignores_windows_backslash_registered_custom_path(self):
-        from studio.commands.kit import _collect_kit_metadata
-        with TemporaryDirectory() as td:
-            kit_dir = Path(td) / "custom-kits" / "sdlc"
-            kit_dir.mkdir(parents=True)
-            (kit_dir / "SKILL.md").write_text("# Skill\n", encoding="utf-8")
-            meta = _collect_kit_metadata(kit_dir, "sdlc", r"C:\external-kits\sdlc")
-            self.assertEqual(meta["skill_nav"], "")
-
+class TestCollectRegisteredKitMetadata(unittest.TestCase):
     def test_registered_resource_metadata_uses_public_bindings_only(self):
         from studio.commands.kit import _collect_registered_kit_metadata
 

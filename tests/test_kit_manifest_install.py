@@ -281,6 +281,46 @@ class TestManifestInstallAdapter(unittest.TestCase):
         )
         self.assertNotIn("artifacts", merged["feature-template"])
 
+    def test_sync_manifest_resource_bindings_drops_removed_resources(self):
+        from studio.commands.kit import _sync_manifest_resource_bindings
+        from studio.utils import toml_utils
+
+        with TemporaryDirectory() as td:
+            config = Path(td) / "config"
+            config.mkdir()
+            toml_utils.dump({
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {
+                    "mykit": {
+                        "format": "CFS",
+                        "path": "config/kits/mykit",
+                        "resources": {
+                            "skill": {"path": "config/kits/mykit/SKILL.md"},
+                            "stale": {"path": "config/kits/mykit/stale.md"},
+                        },
+                    },
+                },
+            }, config / "core.toml")
+            manifest = SimpleNamespace(
+                root="{cf-studio-path}/config/kits/{slug}",
+                resources=[
+                    SimpleNamespace(
+                        id="skill",
+                        kind="skill",
+                        install_path="SKILL.md",
+                        default_path="SKILL.md",
+                        public=False,
+                        artifact_bindings={},
+                    ),
+                ],
+            )
+
+            merged = _sync_manifest_resource_bindings(manifest, config, "mykit")
+
+        assert merged is not None
+        self.assertEqual(set(merged.keys()), {"skill"})
+
     def test_manifest_resource_bindings_writer_persists_artifact_bindings(self):
         from studio.commands.kit import _manifest_resource_bindings
 
