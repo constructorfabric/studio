@@ -223,11 +223,19 @@ def test_check_kits_unknown_on_nonzero_subprocess(monkeypatch):
 
     monkeypatch.setattr(update_check.subprocess, "run", fake_run)
 
-    result = update_check.check_kits(Path("/tmp/studio.py"))
+    from tempfile import TemporaryDirectory
 
-    assert result["action"] == "unknown"
-    assert result["returncode"] == 1
-    assert "boom" in result["message"]
+    with TemporaryDirectory() as tmp:
+        skill_dir = Path(tmp)
+        (skill_dir / "studio").mkdir()
+        (skill_dir / "studio" / "__init__.py").write_text("__version__ = '1.0.0'\n", encoding="utf-8")
+        skill_path = skill_dir / "studio.py"
+        skill_path.write_text("print('ok')\n", encoding="utf-8")
+        result = update_check.check_kits(skill_path)
+
+        assert result["action"] == "unknown"
+        assert result["returncode"] == 1
+        assert "boom" in result["message"]
 
 
 def test_update_check_kits_parses_skill_engine_json(monkeypatch):
@@ -245,11 +253,31 @@ def test_update_check_kits_parses_skill_engine_json(monkeypatch):
 
     monkeypatch.setattr(update_check.subprocess, "run", lambda *_args, **_kwargs: Proc())
 
-    result = update_check.check_kits(Path("/tmp/studio.py"))
+    from tempfile import TemporaryDirectory
 
-    assert result["action"] == "update_available"
-    assert result["updates_available"] == 1
-    assert result["commands"] == ["cfs kit update sdlc"]
+    with TemporaryDirectory() as tmp:
+        skill_dir = Path(tmp)
+        (skill_dir / "studio").mkdir()
+        (skill_dir / "studio" / "__init__.py").write_text("__version__ = '1.0.0'\n", encoding="utf-8")
+        skill_path = skill_dir / "studio.py"
+        skill_path.write_text("print('ok')\n", encoding="utf-8")
+        result = update_check.check_kits(skill_path)
+
+        assert result["action"] == "update_available"
+        assert result["updates_available"] == 1
+        assert result["commands"] == ["cfs kit update sdlc"]
+
+
+def test_check_kits_rejects_untrusted_skill_entrypoint(tmp_path):
+    import studio_proxy.update_check as update_check
+
+    skill_path = tmp_path / "evil.py"
+    skill_path.write_text("print('bad')\n", encoding="utf-8")
+
+    result = update_check.check_kits(skill_path)
+
+    assert result["action"] == "unknown"
+    assert "not trusted" in result["message"]
 
 
 def test_download_and_cache_writes_github_provenance(monkeypatch, tmp_path):

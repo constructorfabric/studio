@@ -17,6 +17,7 @@ from urllib.request import Request, urlopen
 
 
 _DEFAULT_TTL_SECONDS = 6 * 60 * 60
+_ALLOWED_SKILL_ENTRYPOINTS = {"studio.py", "cypilot.py"}
 # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
 
 
@@ -165,6 +166,10 @@ def check_kits(skill_path: Optional[Path], project_root: str = "") -> Dict[str, 
     if skill_path is None:
         result["message"] = "Skill engine not found"
         return result
+    validation_error = _validate_skill_entrypoint(skill_path)
+    if validation_error:
+        result["message"] = validation_error
+        return result
 
     args = [sys.executable, str(skill_path), "--json", "kit", "check-updates"]
     if project_root:
@@ -199,6 +204,22 @@ def check_kits(skill_path: Optional[Path], project_root: str = "") -> Dict[str, 
     })
     return result
 # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-version-mismatch
+
+
+def _validate_skill_entrypoint(skill_path: Path) -> Optional[str]:
+    """Validate that a subprocess target matches the expected skill entrypoint shape."""
+    try:
+        resolved = skill_path.expanduser().resolve(strict=True)
+    except OSError as exc:
+        return f"Skill engine entry point is not accessible: {skill_path} ({exc})"
+    if not resolved.is_file():
+        return f"Skill engine entry point is not a file: {resolved}"
+    if resolved.name not in _ALLOWED_SKILL_ENTRYPOINTS:
+        return f"Skill engine entry point is not trusted: {resolved}"
+    package_dir = resolved.parent / resolved.stem
+    if not (package_dir / "__init__.py").is_file():
+        return f"Skill engine package is incomplete next to entry point: {resolved}"
+    return None
 
 
 # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-bg-version-check
