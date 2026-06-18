@@ -1,3 +1,7 @@
+[whatsnew."v1.5.5"]
+summary = "v1.5.5"
+details = "## What's Changed\r\n* Refactor manifest path resolution to use centralized helper by @ainetx in https://github.com/constructorfabric/studio/pull/48\r\n\r\n\r\n**Full Changelog**: https://github.com/constructorfabric/studio/compare/v1.5.4...v1.5.5"
+
 [whatsnew."v1.5.4"]
 summary = "v1.5.4"
 details = "## What's Changed\r\n* Update version to v1.5.3 and add release notes by @ainetx in https://github.com/constructorfabric/studio/pull/46\r\n* Enhance agent path resolution for register mode project root kits by @ainetx in https://github.com/constructorfabric/studio/pull/47\r\n\r\n\r\n**Full Changelog**: https://github.com/constructorfabric/studio/compare/v1.5.3...v1.5.4"
