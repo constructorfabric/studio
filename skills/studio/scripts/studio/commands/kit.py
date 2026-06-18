@@ -687,6 +687,7 @@ def _is_registered_kit_path_absolute(registered_kit_path: str) -> bool:
         _is_posix_absolute_path(registered_kit_path)
         or _is_windows_absolute_path(registered_kit_path)
     )
+# @cpt-end:cpt-studio-algo-kit-content-mgmt:p1:inst-collect-metadata-fn
 
 
 # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-persist-relative-only
@@ -916,32 +917,6 @@ def _registered_slug_for_local_kit_path(
     return matches[0] if len(matches) == 1 else ""
 
 
-def _collect_kit_metadata(
-    config_kit_dir: Optional[Path],
-    kit_slug: str,
-    registered_kit_path: Optional[str] = None,
-) -> Dict[str, str]:
-    """Read installed kit files and return metadata for .gen/ aggregation.
-
-    Returns dict with:
-        agents_content — raw content of kit's AGENTS.md for ``.gen/AGENTS.md``
-    """
-    # @cpt-begin:cpt-studio-algo-kit-content-mgmt:p1:inst-collect-metadata
-    del kit_slug, registered_kit_path
-    result: Dict[str, str] = {"skill_nav": "", "agents_content": ""}
-
-    agents_path = config_kit_dir / _KIT_AGENTS_FILE if config_kit_dir is not None else None
-    if agents_path is not None and agents_path.is_file():
-        try:
-            result["agents_content"] = agents_path.read_text(encoding="utf-8")
-        except OSError:
-            pass
-
-    return result
-    # @cpt-end:cpt-studio-algo-kit-content-mgmt:p1:inst-collect-metadata
-# @cpt-end:cpt-studio-algo-kit-content-mgmt:p1:inst-collect-metadata-fn
-
-
 def _binding_is_public_metadata_resource(binding: Dict[str, Any], kind: str) -> bool:
     public_value = binding.get("public")
     if isinstance(public_value, bool):
@@ -951,6 +926,7 @@ def _binding_is_public_metadata_resource(binding: Dict[str, Any], kind: str) -> 
     return kind in {"skill", "rule"}
 
 
+# @cpt-begin:cpt-studio-algo-kit-content-mgmt:p1:inst-collect-metadata
 def _collect_registered_kit_metadata(
     studio_dir: Path,
     kit_slug: str,
@@ -996,12 +972,7 @@ def _collect_registered_kit_metadata(
         except (OSError, ValueError):
             resources = {}
     if not isinstance(resources, dict) or not resources:
-        kit_dir, kit_rel_path = _resolve_registered_kit_metadata_target(
-            studio_dir,
-            kit_slug,
-            kit_entry,
-        )
-        return _collect_kit_metadata(kit_dir, kit_slug, kit_rel_path)
+        return {"skill_nav": "", "agents_content": ""}
 
     result: Dict[str, str] = {"skill_nav": "", "agents_content": ""}
     agents_parts: List[str] = []
@@ -1034,6 +1005,7 @@ def _collect_registered_kit_metadata(
                 pass
     result["agents_content"] = "\n\n".join(part for part in agents_parts if part)
     return result
+# @cpt-end:cpt-studio-algo-kit-content-mgmt:p1:inst-collect-metadata
 
 
 # ---------------------------------------------------------------------------
@@ -4240,19 +4212,23 @@ def _sync_manifest_resource_bindings(
     config_dir: Path,
     kit_slug: str,
 ) -> Optional[Dict[str, Dict[str, Any]]]:
-    """Merge existing resource bindings with any new manifest resources.
+    """Sync resource bindings to the current manifest declaration set.
 
-    Returns merged bindings dict, or None if there is no manifest.
+    Returns synced bindings dict, or None if there is no manifest.
     """
     if manifest is None:
         return None
     existing_raw = _read_kits_from_core_toml(config_dir).get(kit_slug, {}).get("resources", {})
-    merged: Dict[str, Dict[str, Any]] = {}
+    existing: Dict[str, Dict[str, Any]] = {}
     for res_id, binding in existing_raw.items():
         if isinstance(binding, dict):
-            merged[res_id] = binding
+            existing[res_id] = dict(binding)
         elif isinstance(binding, str):
-            merged[res_id] = {"path": binding}
+            existing[res_id] = {"path": binding}
+    merged: Dict[str, Dict[str, Any]] = {}
+    for res in getattr(manifest, "resources", []):
+        if getattr(res, "id", None) in existing:
+            merged[str(res.id)] = dict(existing[str(res.id)])
     kit_root_rel = _resolve_manifest_kit_root_rel(manifest, merged, kit_slug)
     for res in getattr(manifest, "resources", []):
         if res.id not in merged:

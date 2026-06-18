@@ -1152,7 +1152,7 @@ class TestHasNonOpenAIInstallSignal(unittest.TestCase):
 
             self.assertTrue(_has_non_openai_install_signal(root))
 
-    def test_detects_legacy_copilot_instructions(self):
+    def test_ignores_legacy_copilot_instructions(self):
         from studio.commands.agents import _has_non_openai_install_signal
 
         with TemporaryDirectory() as tmpdir:
@@ -1161,7 +1161,7 @@ class TestHasNonOpenAIInstallSignal(unittest.TestCase):
             legacy_ci.parent.mkdir(parents=True)
             legacy_ci.write_text("# Constructor Studio\nLegacy instructions\n", encoding="utf-8")
 
-            self.assertTrue(_has_non_openai_install_signal(root))
+            self.assertFalse(_has_non_openai_install_signal(root))
 
     def test_ignores_legacy_copilot_read_errors(self):
         from studio.commands.agents import _has_non_openai_install_signal
@@ -1263,8 +1263,8 @@ class TestHumanAgentsList(unittest.TestCase):
 
         results = {
             "copilot": {
-                "workflows": {"updated": [], "created": ["/p/.github/prompts/cypilot-generate.prompt.md"]},
-                "skills": {"updated": [], "created": ["/p/.github/copilot-instructions.md"]},
+                "workflows": {"updated": [], "created": ["/p/.github/prompts/cf-generate.prompt.md"]},
+                "skills": {"updated": [], "created": ["/p/.github/prompts/cf.prompt.md"]},
             },
         }
         err = io.StringIO()
@@ -2185,8 +2185,8 @@ class TestCopilotDetection(unittest.TestCase):
         from studio.commands.agents import _AGENT_MARKERS
         self.assertIn(".github/.cf-installed", _AGENT_MARKERS.get("copilot", []))
 
-    def test_copilot_generates_repo_wide_instructions(self):
-        """Copilot generation must produce .github/copilot-instructions.md (always-on)."""
+    def test_copilot_generates_prompt_entrypoint(self):
+        """Copilot generation must produce the shared prompt entrypoint and marker."""
         from studio.commands.agents import _process_single_agent, _default_agents_config
 
         with TemporaryDirectory() as td:
@@ -2201,44 +2201,14 @@ class TestCopilotDetection(unittest.TestCase):
             (cpt / ".core" / "workflows").mkdir(parents=True, exist_ok=True)
             cfg = _default_agents_config()
             _process_single_agent("copilot", root, cpt, cfg, None, dry_run=False)
-            instructions = root / ".github" / "copilot-instructions.md"
-            self.assertTrue(instructions.exists(), ".github/copilot-instructions.md must be generated")
-            content = instructions.read_text(encoding="utf-8")
-            self.assertNotIn("ALWAYS open and follow", content)
+            prompt = root / ".github" / "prompts" / "cf.prompt.md"
+            self.assertTrue(prompt.exists(), ".github/prompts/cf.prompt.md must be generated")
             # Marker file must also be created
             marker = root / ".github" / ".cf-installed"
             self.assertTrue(marker.exists(), ".github/.cf-installed marker must be created")
 
-    def test_copilot_cleanup_removes_legacy_skill_follow_line(self):
-        """Regeneration must clean the old generated follow-line from copilot-instructions.md."""
-        from studio.commands.agents import _process_single_agent, _default_agents_config
-
-        with TemporaryDirectory() as td:
-            root = (Path(td) / "proj").resolve()
-            root.mkdir()
-            (root / ".git").mkdir()
-            cpt = root / "cypilot"
-            cpt.mkdir()
-            core_skill = cpt / ".core" / "skills" / "studio" / "SKILL.md"
-            core_skill.parent.mkdir(parents=True)
-            core_skill.write_text("---\nname: studio\ndescription: Test\n---\nContent\n")
-            (cpt / ".core" / "workflows").mkdir(parents=True, exist_ok=True)
-
-            instructions = root / ".github" / "copilot-instructions.md"
-            instructions.parent.mkdir(parents=True, exist_ok=True)
-            instructions.write_text(
-                "# Constructor Studio\n\nALWAYS open and follow `{cf-studio-path}/.core/skills/studio/SKILL.md`\n",
-                encoding="utf-8",
-            )
-
-            cfg = _default_agents_config()
-            _process_single_agent("copilot", root, cpt, cfg, None, dry_run=False)
-
-            content = instructions.read_text(encoding="utf-8")
-            self.assertNotIn("ALWAYS open and follow", content)
-
     def test_user_authored_copilot_instructions_preserved(self):
-        """User-authored copilot-instructions.md must NOT be overwritten by generation."""
+        """User-authored copilot-instructions.md must be left untouched by generation."""
         from studio.commands.agents import _process_single_agent, _default_agents_config
 
         with TemporaryDirectory() as td:
@@ -2263,12 +2233,8 @@ class TestCopilotDetection(unittest.TestCase):
 
             # User content must be preserved
             self.assertEqual(instructions.read_text(encoding="utf-8"), user_content)
-            # Should appear in skipped
             skipped = result.get("skills", {}).get("skipped", [])
-            self.assertTrue(
-                any("user-authored" in s for s in skipped),
-                f"Expected user-authored skip notice, got: {skipped}",
-            )
+            self.assertFalse(skipped, f"Did not expect copilot-instructions handling, got: {skipped}")
             # Marker IS created even when copilot-instructions.md is user-authored,
             # because other Copilot outputs (prompts, shared skills) are still managed.
             marker = root / ".github" / ".cf-installed"
@@ -2324,12 +2290,12 @@ class TestCopilotDetection(unittest.TestCase):
             self.assertFalse(_is_agent_installed("windsurf", root))
 
     def test_legacy_copilot_fallback_detection(self):
-        """Shared _is_agent_installed has legacy Copilot fallback via Constructor Studio-managed copilot-instructions.md."""
+        """Shared _is_agent_installed must no longer rely on copilot-instructions.md."""
         import importlib
         src = importlib.util.find_spec("studio.commands.agents").origin
         source = Path(src).read_text(encoding="utf-8")
-        self.assertIn("legacy_ci", source)
-        self.assertIn('startswith("# Constructor Studio")', source)
+        self.assertNotIn("legacy_ci", source)
+        self.assertNotIn('startswith("# Constructor Studio")', source)
 
     def test_openai_legacy_requires_codex_agents_content(self):
         """Shared _is_agent_installed requires .codex/agents/ with content, not bare .codex/ directory."""
