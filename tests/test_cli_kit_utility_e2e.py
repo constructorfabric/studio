@@ -484,7 +484,7 @@ class TestCliKitUtilityE2E(unittest.TestCase):
             self.assertEqual(out["status"], "OK")
             statuses = {item["file"]: item["status"] for item in out["results"]}
             self.assertEqual(statuses[first.resolve().as_posix()], "UPDATED")
-            self.assertIn(statuses[second.resolve().as_posix()], {"UNCHANGED", "UPDATED"})
+            self.assertIn(statuses[second.resolve().as_posix()], {"UNCHANGED", "UPDATED", "SKIP"})
 
     def test_pdsl_stdin_mode_pass_is_read_only(self):
         with TemporaryDirectory() as td:

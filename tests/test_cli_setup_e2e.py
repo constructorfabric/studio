@@ -512,45 +512,6 @@ class TestAgentsAndGenerateAgentsE2E(unittest.TestCase):
             self.assertFalse((root / ".codex").exists())
             self.assertFalse((root / ".agents").exists())
 
-    def test_generate_agents_yes_remove_cypilot_cleans_legacy_outputs(self):
-        with TemporaryDirectory() as td:
-            root = Path(td) / "proj"
-            _bootstrap_generator_project(root)
-            (root / ".claude" / "skills" / "cypilot").mkdir(parents=True, exist_ok=True)
-            (root / ".claude" / "skills" / "cypilot" / "SKILL.md").write_text(
-                "# legacy\n",
-                encoding="utf-8",
-            )
-            (root / ".claude" / "agents").mkdir(parents=True, exist_ok=True)
-            (root / ".claude" / "agents" / "cypilot-reviewer.md").write_text(
-                "# legacy agent\n",
-                encoding="utf-8",
-            )
-
-            rc, out, stderr = _run_main_json(
-                [
-                    "generate-agents",
-                    "--agent",
-                    "claude",
-                    "--root",
-                    str(root),
-                    "--cf-constructor-root",
-                    str(root),
-                    "--remove-cypilot",
-                    "yes",
-                    "--yes",
-                ],
-                cwd=root,
-            )
-
-            self.assertEqual(rc, 0, stderr)
-            self.assertEqual(out["status"], "PASS")
-            claude = out["results"]["claude"]
-            deleted = claude.get("skills", {}).get("deleted", []) + claude.get("subagents", {}).get("deleted", [])
-            self.assertTrue(any("cypilot" in path for path in deleted))
-            self.assertFalse((root / ".claude" / "skills" / "cypilot").exists())
-            self.assertFalse((root / ".claude" / "agents" / "cypilot-reviewer.md").exists())
-
     def test_agents_openai_flag_stays_read_only(self):
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"

@@ -62,13 +62,16 @@ class TestCLIRouterE2E(unittest.TestCase):
     def test_self_check_alias_routes_to_validate_kits(self):
         with TemporaryDirectory() as td:
             root = Path(td)
-            rc, stdout, stderr = _run_main(["--json", "self-check"], cwd=root)
+            alias_rc, alias_stdout, alias_stderr = _run_main(["--json", "self-check"], cwd=root)
+            canonical_rc, canonical_stdout, canonical_stderr = _run_main(
+                ["--json", "validate-kits"],
+                cwd=root,
+            )
 
-            self.assertEqual(rc, 0)
-            self.assertEqual(stderr, "")
-            payload = json.loads(stdout)
-            self.assertIn(payload["status"], {"PASS", "OK"})
-            self.assertIn("summary", payload)
+            self.assertEqual(alias_rc, canonical_rc)
+            self.assertEqual(alias_stderr, "")
+            self.assertEqual(canonical_stderr, "")
+            self.assertEqual(json.loads(alias_stdout), json.loads(canonical_stdout))
 
 
 if __name__ == "__main__":
