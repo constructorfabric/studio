@@ -391,12 +391,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
 
     # @cpt-dod:cpt-studio-dod-core-infra-agents-integrity:p1
-    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-verify-agents
+    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-read-root-agents
     # Project-installed skill resolution is anchored on the managed root
     # AGENTS.md block (`@cf:root-agents`) and its `cf-studio-path` variable.
     # If that block is absent or unreadable, routing falls back to cache rather
     # than mutating repository state during ordinary command dispatch.
-    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-verify-agents
+    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-read-root-agents
     # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-check-project-skill
     # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-project-skill
     # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-else-no-project

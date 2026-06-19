@@ -163,7 +163,7 @@ These flows may refresh or recreate:
 - root `AGENTS.md` managed block
 - root `CLAUDE.md` managed block
 - `{cf-studio-path}/.core/`
-- `{cf-studio-path}/.gen/`
+- `{cf-studio-path}/.gen/AGENTS.md`
 - managed `.gitignore` block
 - generated agent integration outputs
 
