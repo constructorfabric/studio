@@ -3105,6 +3105,7 @@ class TestKitHelpers(unittest.TestCase):
     def test_build_kit_update_result_normalizes_errors_and_authority(self):
         from studio.commands.kit import (
             _build_kit_update_result,
+            _collect_kit_update_partial_reasons,
             _normalize_kit_update_action,
         )
 
@@ -3133,6 +3134,13 @@ class TestKitHelpers(unittest.TestCase):
         self.assertEqual(result["errors"], ["boom"])
         self.assertEqual(result["authority"]["resolved_ref"], "v1")
         self.assertEqual(result["prune_required"][0]["prune_fingerprint"], "abc123")
+        partials = _collect_kit_update_partial_reasons([result])
+        self.assertEqual(partials[0]["kit"], "sdlc")
+        self.assertIn("errors", partials[0]["categories"])
+        self.assertIn("declined_files", partials[0]["categories"])
+        self.assertIn("declined_prunes", partials[0]["categories"])
+        self.assertIn("failed", partials[0]["categories"])
+        self.assertEqual(partials[0]["declined"], ["AGENTS.md"])
 
     def test_resolve_github_update_targets_covers_source_branches(self):
         import studio.commands.kit as kit_module
@@ -4466,10 +4474,15 @@ class TestHumanKitUpdate(unittest.TestCase):
                 "kits_updated": 1,
                 "results": [{"kit": "sdlc", "action": "current"}],
                 "errors": ["oops", "fail"],
+                "partial_reasons": [
+                    {"kit": "sdlc", "categories": ["declined_files", "partial_update"]},
+                ],
             })
         out = buf.getvalue()
         self.assertIn("oops", out)
         self.assertIn("fail", out)
+        self.assertIn("partial reason for sdlc", out)
+        self.assertIn("declined_files", out)
         self.assertIn("warnings", out.lower())
 
     def test_unknown_status(self):

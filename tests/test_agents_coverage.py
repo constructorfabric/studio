@@ -57,7 +57,25 @@ class TestStudioEndpointTarget(unittest.TestCase):
         self.assertEqual(result, target.as_posix())
         self.assertIn("outside project root", buf.getvalue())
 
-    def test_registered_legacy_studio_path_rejects_parent_traversal(self):
+    def test_registered_legacy_studio_path_allows_parent_traversal_within_project(self):
+        from studio.commands.agents import _resolve_registered_legacy_studio_path
+
+        with TemporaryDirectory() as td:
+            project_root = Path(td) / "project"
+            studio_root = project_root / ".bootstrap"
+            local_kit = project_root / "local-kits" / "demo"
+            studio_root.mkdir(parents=True)
+            local_kit.mkdir(parents=True)
+
+            resolved = _resolve_registered_legacy_studio_path(
+                studio_root,
+                project_root,
+                "../local-kits/demo",
+            )
+
+        self.assertEqual(resolved, local_kit.resolve())
+
+    def test_registered_legacy_studio_path_rejects_parent_traversal_escape(self):
         from studio.commands.agents import _resolve_registered_legacy_studio_path
 
         with TemporaryDirectory() as td:
@@ -68,7 +86,7 @@ class TestStudioEndpointTarget(unittest.TestCase):
             resolved = _resolve_registered_legacy_studio_path(
                 studio_root,
                 project_root,
-                "../escape.md",
+                "../../escape.md",
             )
 
         self.assertIsNone(resolved)
@@ -301,6 +319,43 @@ class TestGenerateAgentsNoChangePreview(unittest.TestCase):
 
             self.assertEqual(rc, 0)
             self.assertEqual(process.call_count, 2)
+
+    def test_build_result_exposes_partial_reasons(self):
+        from studio.commands.agents import _build_result
+
+        result = _build_result(
+            {
+                "openai": {
+                    "status": "PARTIAL",
+                    "errors": ["missing prompt target"],
+                    "skills": {"outputs": []},
+                    "legacy_skills": {"outputs": []},
+                    "subagents": {
+                        "outputs": [{"path": ".codex/agents/demo.toml", "action": "preserved", "reason": "user_modified"}],
+                        "skipped": True,
+                        "skip_reason": "one or more agents missing prompt target",
+                    },
+                    "rules": {"outputs": []},
+                    "v2_agents": {"outputs": []},
+                },
+            },
+            ["openai"],
+            Path("/tmp/project"),
+            Path("/tmp/project/.bootstrap"),
+            None,
+            {},
+            dry_run=False,
+        )
+
+        self.assertEqual(result["status"], "PARTIAL")
+        self.assertIn("partial_reasons", result)
+        partial = result["partial_reasons"][0]
+        self.assertEqual(partial["agent"], "openai")
+        self.assertIn("errors", partial["categories"])
+        self.assertIn("preserved_outputs", partial["categories"])
+        self.assertIn("skipped_components", partial["categories"])
+        self.assertEqual(partial["errors"], ["missing prompt target"])
+        self.assertEqual(partial["preserved_outputs"][0]["path"], ".codex/agents/demo.toml")
 
     def test_dry_run_fatal_preview_returns_one(self):
         from studio.commands.agents import cmd_generate_agents
@@ -623,6 +678,99 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
             self.assertIn("readonly: true", nested_content)
             self.assertFalse((root / ".cursor" / "agents" / "cf-pubkit-codexonly.mdc").exists())
             self.assertFalse((root / ".cursor" / "agents" / "cf-pubkit-codex-auditor.mdc").exists())
+
+    def test_generate_agents_public_agent_falls_back_to_resource_id_when_frontmatter_missing(self):
+        from studio.commands.agents import _default_agents_config, _process_single_agent
+
+        with TemporaryDirectory() as td:
+            root, studio_root = self._make_project(td)
+            kit_root = studio_root / "config" / "kits" / "pubkit"
+            (kit_root / "agent.md").write_text(
+                "# Reviewer\nReview carefully without frontmatter.\n",
+                encoding="utf-8",
+            )
+
+            result = _process_single_agent(
+                "cursor",
+                root,
+                studio_root,
+                _default_agents_config(),
+                None,
+                dry_run=False,
+            )
+
+            self.assertEqual(result["status"], "PASS")
+            agent_path = root / ".cursor" / "agents" / "cf-pubkit-reviewer.mdc"
+            self.assertTrue(agent_path.is_file())
+            self.assertIn("Review carefully without frontmatter.", agent_path.read_text(encoding="utf-8"))
+
+    def test_generate_agents_openai_writes_public_agents_and_nested_subagents(self):
+        from studio.commands.agents import _default_agents_config, _process_single_agent
+
+        with TemporaryDirectory() as td:
+            root, studio_root = self._make_project(td)
+            kit_root = studio_root / "config" / "kits" / "pubkit-openai"
+            kit_root.mkdir(parents=True)
+            (kit_root / "agent.md").write_text(
+                "---\nname: codexonly\ndescription: OpenAI only\n---\n# OpenAI only\n",
+                encoding="utf-8",
+            )
+            (kit_root / "auditor.md").write_text(
+                "---\nname: codex-auditor\ndescription: OpenAI auditor\n---\n# OpenAI auditor\n",
+                encoding="utf-8",
+            )
+            (kit_root / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "pubkit-openai"',
+                    'name = "Public OpenAI Kit"',
+                    'version = "1.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "codexonly"',
+                    'kind = "agent"',
+                    'source = "agent.md"',
+                    'type = "file"',
+                    "public = true",
+                    'generated_targets = ["openai"]',
+                    "",
+                    "[kits.resources.agent]",
+                    'mode = "readonly"',
+                    "",
+                    "[[kits.resources.agent.subagents]]",
+                    'id = "codex-auditor"',
+                    'source = "auditor.md"',
+                    'generated_targets = ["openai"]',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            core_toml = studio_root / "config" / "core.toml"
+            core_toml.write_text(
+                core_toml.read_text(encoding="utf-8")
+                + "\n[kits.pubkit-openai]\n"
+                + 'path = "config/kits/pubkit-openai"\n'
+                + 'version = "1.0"\n',
+                encoding="utf-8",
+            )
+
+            result = _process_single_agent(
+                "openai",
+                root,
+                studio_root,
+                _default_agents_config(),
+                None,
+                dry_run=False,
+            )
+
+            self.assertEqual(result["status"], "PASS")
+            openai_agent = root / ".codex" / "agents" / "cf-pubkit-openai-codexonly.toml"
+            openai_nested = root / ".codex" / "agents" / "cf-pubkit-openai-codex-auditor.toml"
+            self.assertTrue(openai_agent.is_file())
+            self.assertTrue(openai_nested.is_file())
+            self.assertIn("OpenAI only", openai_agent.read_text(encoding="utf-8"))
+            self.assertIn("OpenAI auditor", openai_nested.read_text(encoding="utf-8"))
 
     def test_generate_agents_supports_register_mode_project_root_kit_path(self):
         from studio.commands.agents import _default_agents_config, _process_single_agent

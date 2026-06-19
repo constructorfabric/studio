@@ -1,0 +1,5 @@
+[ADR.identifiers.cpt]
+required = true
+
+[ADR.identifiers.adr]
+required = true

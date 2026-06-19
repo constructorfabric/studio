@@ -318,9 +318,29 @@ class TestCmdSpecCoverage(unittest.TestCase):
             with patch("studio.utils.context.get_context", return_value=ctx):
                 with patch("sys.stdout", new_callable=StringIO) as mock_out:
                     ret = cmd_spec_coverage(["--system", "other"])
-            self.assertEqual(ret, 0)
+            self.assertEqual(ret, 2)
             parsed = json.loads(mock_out.getvalue())
-            self.assertEqual(parsed["summary"]["total_files"], 0)
+            self.assertEqual(parsed["status"], "FAIL")
+            self.assertEqual(parsed["unknown_systems"], ["other"])
+
+    def test_system_filter_mixed_known_and_unknown_fails(self):
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            src = root / "src"
+            src.mkdir()
+            (src / "a.py").write_text("x = 1\n", encoding="utf-8")
+            ctx = self._make_context(root, systems=[
+                SystemNode(name="Only", slug="only", kit="test",
+                           artifacts=[], children=[],
+                           codebase=[CodebaseEntry(path="src", extensions=[".py"])]),
+            ])
+            with patch("studio.utils.context.get_context", return_value=ctx):
+                with patch("sys.stdout", new_callable=StringIO) as mock_out:
+                    ret = cmd_spec_coverage(["--system", "only", "--system", "other"])
+            self.assertEqual(ret, 2)
+            parsed = json.loads(mock_out.getvalue())
+            self.assertEqual(parsed["status"], "FAIL")
+            self.assertEqual(parsed["unknown_systems"], ["other"])
 
     def test_system_filter_multiple(self):
         with TemporaryDirectory() as d:

@@ -1205,6 +1205,66 @@ def _manifest_resource_binding_entry(
     if isinstance(artifact_bindings, dict) and artifact_bindings:
         entry["artifacts"] = artifact_bindings
     entry["public"] = bool(getattr(res, "public", False))
+    description = str(getattr(res, "description", "") or "").strip()
+    if description:
+        entry["description"] = description
+    if not bool(getattr(res, "user_modifiable", True)):
+        entry["user_modifiable"] = False
+    aliases = list(getattr(res, "aliases", []) or [])
+    if aliases:
+        entry["aliases"] = aliases
+    generated_targets = list(getattr(res, "generated_targets", []) or [])
+    if generated_targets:
+        entry["generated_targets"] = generated_targets
+    origin = str(getattr(res, "origin", "") or "").strip()
+    if origin:
+        entry["origin"] = origin
+    if not bool(getattr(res, "prefix_generated_name", True)):
+        entry["prefix_generated_name"] = False
+    tools = list(getattr(res, "tools", []) or [])
+    if tools:
+        entry["tools"] = tools
+    disallowed_tools = list(getattr(res, "disallowed_tools", []) or [])
+    if disallowed_tools:
+        entry["disallowed_tools"] = disallowed_tools
+    mode = str(getattr(res, "mode", "readwrite") or "readwrite").strip()
+    if mode and mode != "readwrite":
+        entry["mode"] = mode
+    if bool(getattr(res, "isolation", False)):
+        entry["isolation"] = True
+    model = str(getattr(res, "model", "") or "").strip()
+    if model:
+        entry["model"] = model
+    skills = list(getattr(res, "skills", []) or [])
+    if skills:
+        entry["skills"] = skills
+    color = str(getattr(res, "color", "") or "").strip()
+    if color:
+        entry["color"] = color
+    memory_dir = str(getattr(res, "memory_dir", "") or "").strip()
+    if memory_dir:
+        entry["memory_dir"] = memory_dir
+    role = str(getattr(res, "role", "any") or "any").strip()
+    if role and role != "any":
+        entry["role"] = role
+    target = str(getattr(res, "target", "any") or "any").strip()
+    if target and target != "any":
+        entry["target"] = target
+    provider = str(getattr(res, "provider", "anthropic") or "anthropic").strip()
+    if provider and provider != "anthropic":
+        entry["provider"] = provider
+    reasoning_effort = getattr(res, "reasoning_effort", None)
+    if reasoning_effort:
+        entry["reasoning_effort"] = reasoning_effort
+    context_window = getattr(res, "context_window", None)
+    if context_window:
+        entry["context_window"] = context_window
+    subagents = list(getattr(res, "subagents", []) or [])
+    if subagents:
+        entry["subagents"] = subagents
+    targets = dict(getattr(res, "target_configs", {}) or {})
+    if targets:
+        entry["targets"] = targets
     return entry
     # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-register-bindings
 
@@ -1248,6 +1308,30 @@ def _manifest_register_resource_bindings(
         bindings[res.id] = entry
     return bindings
     # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-register-bindings
+
+
+def _manifest_public_subagent_sources(resources: List[Any]) -> List[str]:
+    """Return unique relative prompt sources declared by canonical public subagents."""
+    sources: List[str] = []
+    seen: set[str] = set()
+    for res in resources:
+        if str(getattr(res, "kind", "") or "") != "agent":
+            continue
+        for subagent in getattr(res, "subagents", []) or []:
+            if not isinstance(subagent, dict):
+                continue
+            raw_source = str(subagent.get("source", "") or "").strip().replace("\\", "/")
+            if not raw_source:
+                continue
+            source_path = PurePosixPath(raw_source)
+            if source_path.is_absolute() or ".." in source_path.parts:
+                continue
+            normalized = source_path.as_posix()
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            sources.append(normalized)
+    return sources
 
 
 # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-hashes
@@ -1833,6 +1917,7 @@ def install_kit_with_manifest(
             "errors": [str(exc)],
         }
     model_resources = list(getattr(kit_model, "resources", []))
+    extra_subagent_sources = _manifest_public_subagent_sources(model_resources)
     risk_errors = _tool_risk_approval_errors(
         kit_model,
         interactive=interactive,
@@ -1997,6 +2082,11 @@ def install_kit_with_manifest(
         # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-copy-resource
         _copy_manifest_resource(kit_source, res, target_abs)
         # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-copy-resource
+        files_copied += 1
+    for subagent_source in extra_subagent_sources:
+        target_abs = (kit_root / Path(PurePosixPath(subagent_source))).resolve()
+        target_abs.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(kit_source / Path(PurePosixPath(subagent_source)), target_abs)
         files_copied += 1
     # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-foreach-resource
     # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-copy-resources
@@ -3226,6 +3316,43 @@ def _build_kit_update_result(kit_slug: str, kit_r: Dict[str, Any]) -> Dict[str, 
 # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-build-update-result
 
 
+def _collect_kit_update_partial_reasons(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Summarize non-pass kit update outcomes for JSON/human output."""
+    partials: List[Dict[str, Any]] = []
+    for result in results:
+        action = _normalize_kit_update_action(result.get("action"))
+        if action in {"current", "updated", "created", "dry_run"}:
+            continue
+        kit_slug = str(result.get("kit") or "?")
+        categories: List[str] = []
+        entry: Dict[str, Any] = {"kit": kit_slug}
+        errors = result.get("errors") or []
+        if errors:
+            categories.append("errors")
+            entry["errors"] = [str(err) for err in errors]
+        declined = result.get("declined") or []
+        if declined:
+            categories.append("declined_files")
+            entry["declined"] = list(declined)
+        prune_required = result.get("prune_required") or []
+        if prune_required:
+            categories.append("declined_prunes")
+            entry["declined_prunes"] = [
+                str(item.get("path") or "")
+                for item in prune_required
+                if isinstance(item, dict) and item.get("path")
+            ]
+        if action == "aborted":
+            categories.append("aborted")
+        elif action == "failed":
+            categories.append("failed")
+        elif action == "partial":
+            categories.append("partial_update")
+        entry["categories"] = categories or ["unspecified"]
+        partials.append(entry)
+    return partials
+
+
 # @cpt-flow:cpt-studio-flow-kit-update-cli:p1
 def cmd_kit_update(argv: List[str]) -> int:
     """Update installed kits from their registered sources or a local path.
@@ -3496,8 +3623,17 @@ def cmd_kit_update(argv: List[str]) -> int:
         not in ("current", "dry_run", "aborted", "failed")
     )
     command_failed = has_failed_updates
+    command_incomplete = any(
+        _normalize_kit_update_action(r.get("action")) == "partial"
+        for r in all_results
+    )
+    interactive_partial_success = bool(interactive and command_incomplete and not command_failed)
     if command_failed:
         status = "FAIL"
+    elif interactive_partial_success:
+        status = "PASS"
+    elif command_incomplete:
+        status = "WARN"
     elif not errors:
         status = "PASS"
     else:
@@ -3507,13 +3643,16 @@ def cmd_kit_update(argv: List[str]) -> int:
         "kits_updated": n_updated,
         "results": all_results,
     }
+    partial_reasons = _collect_kit_update_partial_reasons(all_results)
+    if partial_reasons:
+        output["partial_reasons"] = partial_reasons
     if errors:
         output["errors"] = errors
     if not n_updated and not errors:
         output["message"] = "All kits are up to date"
 
     ui.result(output, human_fn=_human_kit_update)
-    return 2 if command_failed else 0
+    return 2 if (command_failed or (command_incomplete and not interactive_partial_success)) else 0
     # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-format-output
 
 # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-human-output
@@ -3565,6 +3704,16 @@ def _human_kit_update(data: dict) -> None:
         ui.blank()
         for e in errs:
             ui.warn(str(e))
+    partial_reasons = data.get("partial_reasons", [])
+    if partial_reasons:
+        ui.blank()
+        for item in partial_reasons:
+            if not isinstance(item, dict):
+                continue
+            kit_slug = str(item.get("kit") or "?")
+            categories = item.get("categories") or []
+            category_text = ", ".join(str(category) for category in categories) if categories else "unspecified"
+            ui.warn(f"  partial reason for {kit_slug}: {category_text}")
 
     if status == "PASS":
         ui.success("Kit update complete.")
@@ -4788,10 +4937,10 @@ def update_kit(
         accepted = report.get("accepted", [])
         declined = report.get("declined", [])
 
-        if accepted:
-            ver_status = "updated"
-        elif declined:
+        if declined:
             ver_status = "partial"
+        elif accepted:
+            ver_status = "updated"
         else:
             ver_status = "current"
 

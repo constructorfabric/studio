@@ -1,0 +1,99 @@
+manifest_version = "1.0"
+
+[[kits]]
+slug = "example-v2"
+name = "Example V2"
+version = "2.0.0"
+
+[[kits.resources]]
+id = "prd-template"
+kind = "template"
+source = "artifacts/PRD/template.md"
+install_path = "artifacts/PRD/template.md"
+type = "file"
+
+[[kits.resources]]
+id = "prd-example"
+kind = "other"
+source = "artifacts/PRD/example.md"
+install_path = "artifacts/PRD/example.md"
+type = "file"
+
+[[kits.resources]]
+id = "feature-template"
+kind = "template"
+source = "artifacts/FEATURE/template.md"
+install_path = "artifacts/FEATURE/template.md"
+type = "file"
+
+[[kits.resources]]
+id = "feature-example"
+kind = "other"
+source = "artifacts/FEATURE/example.md"
+install_path = "artifacts/FEATURE/example.md"
+type = "file"
+
+[[kits.resources]]
+id = "constraints"
+kind = "constraints"
+source = "constraints.toml"
+install_path = "constraints.toml"
+type = "file"
+
+[[kits.resources]]
+id = "discovery"
+kind = "skill"
+source = "skills/discovery/SKILL.md"
+install_path = "skills/discovery/SKILL.md"
+type = "file"
+public = true
+generated_targets = ["openai"]
+
+[[kits.resources]]
+id = "review"
+kind = "skill"
+source = "skills/review/SKILL.md"
+install_path = "skills/review/SKILL.md"
+type = "file"
+public = true
+generated_targets = ["openai"]
+
+[[kits.resources]]
+id = "reviewer"
+kind = "agent"
+source = "agents/reviewer.md"
+install_path = "agents/reviewer.md"
+type = "file"
+public = true
+generated_targets = ["openai"]
+description = "Example V2 reviewer agent"
+
+[kits.resources.agent]
+mode = "readonly"
+
+[[kits.resources.agent.subagents]]
+id = "reviewer-helper"
+source = "agents/reviewer-helper.md"
+generated_targets = ["openai"]
+description = "Reviewer helper subagent"
+mode = "readonly"
+
+[[kits.resources]]
+id = "planner"
+kind = "agent"
+source = "agents/planner.md"
+install_path = "agents/planner.md"
+type = "file"
+public = true
+generated_targets = ["openai"]
+description = "Example V2 planner agent"
+
+[kits.resources.agent]
+mode = "readonly"
+
+[[kits.resources.agent.subagents]]
+id = "planner-helper"
+source = "agents/planner-helper.md"
+generated_targets = ["openai"]
+description = "Planner helper subagent"
+mode = "readonly"

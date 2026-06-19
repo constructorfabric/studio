@@ -1,0 +1,11 @@
+[PRD.identifiers.cpt]
+required = true
+
+[PRD.identifiers.fr]
+required = true
+
+[FEATURE.identifiers.cpt]
+required = true
+
+[FEATURE.identifiers.flow]
+required = true

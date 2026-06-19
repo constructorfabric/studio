@@ -1,0 +1,12 @@
+[manifest]
+version = "2.0"
+
+[[skills]]
+id = "legacy-discovery"
+description = "Legacy discovery skill"
+prompt_file = "skills/discovery/SKILL.md"
+
+[[workflows]]
+id = "legacy-release"
+description = "Legacy release workflow"
+prompt_file = "skills/review/SKILL.md"

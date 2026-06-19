@@ -74,8 +74,24 @@ def _emit_add_result(args: argparse.Namespace, replaced: bool, config_path: str,
     return 0
 
 
+def _validate_local_source_path(raw_path: str, base_dir: Path) -> str | None:
+    """Validate that a local workspace source path resolves to an existing directory."""
+    resolved = (base_dir / raw_path).resolve()
+    if not resolved.exists():
+        return f"Source path not reachable: {raw_path} (resolved to {resolved})"
+    if not resolved.is_dir():
+        return f"Source path is not a directory: {raw_path} (resolved to {resolved})"
+    return None
+
+
 def _add_to_standalone(args: argparse.Namespace, ws_cfg: WorkspaceConfig) -> int:
     """Add source to an existing standalone .cf-workspace.toml."""
+    if args.path:
+        base_dir = ws_cfg.workspace_file.parent if ws_cfg.workspace_file is not None else Path.cwd()
+        path_err = _validate_local_source_path(args.path, base_dir)
+        if path_err:
+            ui.result({"status": "ERROR", "message": path_err})
+            return 1
     # @cpt-begin:cpt-studio-flow-workspace-add:p1:inst-add-check-collision
     replaced = args.name in ws_cfg.sources
     if replaced and not args.force:
@@ -108,6 +124,11 @@ def _add_to_inline(args: argparse.Namespace, project_root: Path) -> int:
     if getattr(args, "url", None):
         ui.result({"status": "ERROR", "message": "Git URL sources are not supported in inline workspace config."})
         return 1
+    if args.path:
+        path_err = _validate_local_source_path(args.path, project_root)
+        if path_err:
+            ui.result({"status": "ERROR", "message": path_err})
+            return 1
 
     from ..utils.workspace import load_inline_config
     from ..utils import toml_utils

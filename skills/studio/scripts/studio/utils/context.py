@@ -515,6 +515,7 @@ class WorkspaceContext:
     primary: StudioContext
     sources: Dict[str, SourceContext] = field(default_factory=dict)
     workspace_file: Optional[Path] = None
+    primary_source_name: Optional[str] = None
     cross_repo: bool = True  # From traceability.cross_repo in workspace config
     resolve_remote_ids: bool = True  # From traceability.resolve_remote_ids
 
@@ -665,9 +666,51 @@ class WorkspaceContext:
         return result
         # @cpt-end:cpt-studio-algo-workspace-load-context:p1:inst-ctx-return
 
+    @classmethod
+    def load_from_workspace_root(cls, project_root: Path) -> Optional["WorkspaceContext"]:
+        """Load workspace context from a standalone workspace root.
+
+        This path is used when cwd has a workspace config but does not contain
+        a local Constructor Studio adapter. The first reachable source with a
+        loadable adapter becomes the primary context; all configured sources
+        remain addressable through ``sources``.
+        """
+        from .workspace import find_workspace_config
+
+        ws_cfg, ws_err = find_workspace_config(project_root)
+        if ws_cfg is None:
+            if ws_err:
+                print(f"Warning: workspace config error: {ws_err}", file=sys.stderr)
+            return None
+
+        sources = {name: _load_source(name, src_entry, ws_cfg) for name, src_entry in ws_cfg.sources.items()}
+
+        primary_ctx: Optional[StudioContext] = None
+        primary_source_name: Optional[str] = None
+        for sc in sources.values():
+            primary_ctx = resolve_adapter_context(sc, emit_warnings=False)
+            if primary_ctx is not None:
+                primary_source_name = sc.name
+                break
+        if primary_ctx is None:
+            return None
+
+        return cls(
+            primary=primary_ctx,
+            sources=sources,
+            workspace_file=ws_cfg.workspace_file,
+            primary_source_name=primary_source_name,
+            cross_repo=ws_cfg.traceability.cross_repo,
+            resolve_remote_ids=ws_cfg.traceability.resolve_remote_ids,
+        )
+
 
 # @cpt-dod:cpt-studio-dod-workspace-cross-repo-editing:p1
-def resolve_adapter_context(sc: "SourceContext") -> Optional["StudioContext"]:
+def resolve_adapter_context(
+    sc: "SourceContext",
+    *,
+    emit_warnings: bool = True,
+) -> Optional["StudioContext"]:
     """Load a source's own StudioContext from its adapter directory.
 
     Returns cached result on repeat calls. Returns None for unreachable
@@ -689,7 +732,8 @@ def resolve_adapter_context(sc: "SourceContext") -> Optional["StudioContext"]:
     # @cpt-begin:cpt-studio-algo-workspace-resolve-adapter-context:p1:inst-adapter-compute-path
     # @cpt-begin:cpt-studio-algo-workspace-resolve-adapter-context:p1:inst-adapter-if-missing
     if not sc.adapter_dir.is_dir():
-        print(f"Warning: adapter directory not found for source '{sc.name}': {sc.adapter_dir}", file=sys.stderr)
+        if emit_warnings:
+            print(f"Warning: adapter directory not found for source '{sc.name}': {sc.adapter_dir}", file=sys.stderr)
         sc._adapter_resolved = True  # pylint: disable=protected-access  # same impl scope as SourceContext
         return None
     # @cpt-end:cpt-studio-algo-workspace-resolve-adapter-context:p1:inst-adapter-if-missing
@@ -699,11 +743,13 @@ def resolve_adapter_context(sc: "SourceContext") -> Optional["StudioContext"]:
     try:
         loaded = StudioContext.load_from_dir(sc.adapter_dir)
     except (OSError, ValueError) as e:
-        print(f"Warning: failed to load adapter context for source '{sc.name}': {e}", file=sys.stderr)
+        if emit_warnings:
+            print(f"Warning: failed to load adapter context for source '{sc.name}': {e}", file=sys.stderr)
         sc._adapter_resolved = True  # pylint: disable=protected-access  # same impl scope as SourceContext
         return None
     if loaded is None:
-        print(f"Warning: adapter context could not be loaded for source '{sc.name}'", file=sys.stderr)
+        if emit_warnings:
+            print(f"Warning: adapter context could not be loaded for source '{sc.name}'", file=sys.stderr)
         sc._adapter_resolved = True  # pylint: disable=protected-access  # same impl scope as SourceContext
         return None
     # @cpt-end:cpt-studio-algo-workspace-resolve-adapter-context:p1:inst-adapter-if-load-fail
@@ -820,7 +866,23 @@ def _collect_source_definition_ids(sc: "SourceContext", ids: Set[str]) -> None:
 def _load_source(name: str, src_entry: "SourceEntry", ws_cfg: "WorkspaceConfig") -> "SourceContext":
     """Load a single workspace source, returning an unreachable stub or full context."""
     # @cpt-begin:cpt-studio-algo-workspace-load-context:p1:inst-ctx-resolve-path
-    resolved_path = ws_cfg.resolve_source_path(name)
+    if src_entry.url:
+        from .git_utils import peek_git_source_path
+        from .workspace import ResolveConfig
+
+        if ws_cfg.resolution_base is not None:
+            base = ws_cfg.resolution_base
+        elif ws_cfg.workspace_file is not None:
+            base = ws_cfg.workspace_file.parent
+        else:
+            base = None
+        resolved_path = (
+            peek_git_source_path(src_entry, ws_cfg.resolve or ResolveConfig(), base)
+            if base is not None
+            else None
+        )
+    else:
+        resolved_path = ws_cfg.resolve_source_path(name)
     # @cpt-end:cpt-studio-algo-workspace-load-context:p1:inst-ctx-resolve-path
     # @cpt-begin:cpt-studio-algo-workspace-load-context:p1:inst-ctx-if-unreachable
     # @cpt-begin:cpt-studio-state-workspace-source-reachability:p1:inst-source-becomes-unreachable
@@ -966,9 +1028,14 @@ def ensure_context(start_path: Optional[Path] = None) -> Optional[Union[StudioCo
             _global_context = ws_ctx if ws_ctx is not None else base_ctx
             # @cpt-end:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-return-workspace
         else:
-            # @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-return
-            _global_context = None
-            # @cpt-end:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-return
+            project_root = _find_project_root_for_workspace(start_path or Path.cwd())
+            if project_root is not None:
+                _workspace_upgrade_attempted = True
+                _global_context = WorkspaceContext.load_from_workspace_root(project_root)
+            else:
+                # @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-return
+                _global_context = None
+                # @cpt-end:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-return
     return _global_context
 
 
@@ -1010,8 +1077,11 @@ def collect_artifacts_to_scan(
         if artifact_path is not None and artifact_path.exists():
             artifacts.append((artifact_path, str(artifact_meta.kind)))
             src_name = getattr(artifact_meta, "source", None)
-            if is_ws and src_name:
-                path_to_source[str(artifact_path)] = src_name
+            if is_ws:
+                if src_name:
+                    path_to_source[str(artifact_path)] = src_name
+                elif getattr(ctx, "primary_source_name", None):
+                    path_to_source[str(artifact_path)] = str(ctx.primary_source_name)
 
     # Remote source artifacts (workspace mode with cross-repo and remote ID resolution enabled)
     if is_ws and ctx.cross_repo and ctx.resolve_remote_ids:
@@ -1112,6 +1182,13 @@ def resolve_target_and_artifacts(
         return None, None, [], {}, err
 
     return target_id, ctx, artifacts_to_scan, path_to_source, None
+
+
+def _find_project_root_for_workspace(start_path: Path) -> Optional[Path]:
+    """Find a git project root that may host a standalone workspace config."""
+    from .files import find_project_root
+
+    return find_project_root(start_path.resolve())
 
 
 __all__ = [

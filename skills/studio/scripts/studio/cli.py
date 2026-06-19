@@ -190,12 +190,12 @@ def main(argv: Optional[List[str]] = None) -> int:
 def _main_impl(argv_list: List[str]) -> int:
     """Dispatch a command after global flags have been handled."""
 
-    # Load base Studio context on startup (templates, systems, etc.)
-    # Workspace upgrade is deferred — get_context() will lazily attempt it
-    # on first access, so commands like --help and init avoid network I/O.
-    from .utils.context import StudioContext, set_context
-    ctx = StudioContext.load()
-    set_context(ctx)
+    # Load best-effort context on startup. This may resolve to a direct
+    # StudioContext, a WorkspaceContext discovered from a workspace root, or
+    # remain None when the current directory is not initialized.
+    from .utils.context import ensure_context, set_context
+    set_context(None)
+    ctx = ensure_context(Path.cwd())
     # Context may be None if Constructor Studio not initialized - that's OK for some commands like init
 
     # Define all available commands
@@ -302,23 +302,6 @@ def _main_impl(argv_list: List[str]) -> int:
         cmd = argv_list[0]
         rest = argv_list[1:]
     # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-parse-command
-
-    # @cpt-dod:cpt-studio-dod-core-infra-agents-integrity:p1
-    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-verify-agents
-    # Verify root AGENTS.md and CLAUDE.md integrity on every invocation (silent re-inject if stale)
-    if ctx is not None and cmd not in ("init", "update"):
-        try:
-            from .commands.init import _inject_root_agents, _inject_root_claude
-            from .utils.files import find_project_root, _read_studio_var
-            project_root = find_project_root(Path.cwd())
-            if project_root is not None:
-                install_rel = _read_studio_var(project_root)
-                if install_rel:
-                    _inject_root_agents(project_root, install_rel)
-                    _inject_root_claude(project_root, install_rel)
-        except (OSError, ValueError, KeyError):
-            pass  # Non-fatal: don't block command execution
-    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-verify-agents
 
     # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-lookup-handler
     # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-parse-args

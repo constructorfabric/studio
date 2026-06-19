@@ -345,7 +345,7 @@ class TestGenerateManifestAgentsOutputPaths(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = self._run_with_target("openai", tmpdir)
             out_path = project_root / ".codex" / "agents" / "my-agent.toml"
-            self.assertFalse(out_path.exists(), f"Did not expect {out_path} to exist")
+            self.assertTrue(out_path.exists(), f"Expected {out_path} to exist")
 
 
 # ---------------------------------------------------------------------------
@@ -728,7 +728,7 @@ class TestGenerateManifestAgentsOpenAI(unittest.TestCase):
         return src
 
     def test_openai_model_written_when_set(self):
-        """OpenAI manifest agents are skipped instead of generating TOML files."""
+        """OpenAI manifest agents emit dedicated TOML files with model metadata."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
             src = self._make_src(project_root)
@@ -742,11 +742,13 @@ class TestGenerateManifestAgentsOpenAI(unittest.TestCase):
                 )
             }
             result = generate_manifest_agents(agents, "openai", project_root, dry_run=False)
-            self.assertEqual(result["created"], [])
-            self.assertFalse((project_root / ".codex" / "agents" / "my-agent.toml").exists())
+            out_path = project_root / ".codex" / "agents" / "my-agent.toml"
+            self.assertEqual(result["created"], [out_path.as_posix()])
+            self.assertTrue(out_path.exists())
+            self.assertIn('model = "claude-opus-4"', out_path.read_text(encoding="utf-8"))
 
     def test_openai_variables_substituted(self):
-        """OpenAI manifest-agent skip does not emit a dedicated TOML output."""
+        """OpenAI manifest-agent output resolves template variables in TOML content."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
             src = project_root / "agents" / "sub-agent.md"
@@ -764,11 +766,14 @@ class TestGenerateManifestAgentsOpenAI(unittest.TestCase):
                 agents, "openai", project_root, dry_run=False,
                 variables={"project_name": "MyProject"},
             )
-            self.assertEqual(result["created"], [])
-            self.assertFalse((project_root / ".codex" / "agents" / "sub-agent.toml").exists())
+            out_path = project_root / ".codex" / "agents" / "sub-agent.toml"
+            self.assertEqual(result["created"], [out_path.as_posix()])
+            content = out_path.read_text(encoding="utf-8")
+            self.assertIn('description = "Agent with MyProject"', content)
+            self.assertIn("Hello MyProject.", content)
 
     def test_openai_developer_instructions_contains_source_body(self):
-        """OpenAI manifest-agent skip leaves no dedicated TOML payload behind."""
+        """OpenAI developer_instructions embed the prompt source body."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
             src = project_root / "agents" / "my-agent.md"
@@ -784,11 +789,14 @@ class TestGenerateManifestAgentsOpenAI(unittest.TestCase):
                 )
             }
             result = generate_manifest_agents(agents, "openai", project_root, dry_run=False)
-            self.assertEqual(result["created"], [])
-            self.assertFalse((project_root / ".codex" / "agents" / "my-agent.toml").exists())
+            out_path = project_root / ".codex" / "agents" / "my-agent.toml"
+            self.assertEqual(result["created"], [out_path.as_posix()])
+            content = out_path.read_text(encoding="utf-8")
+            self.assertIn('developer_instructions = """', content)
+            self.assertIn(prompt_body, content)
 
     def test_openai_append_included_in_output(self):
-        """OpenAI manifest-agent skip leaves no dedicated TOML output."""
+        """OpenAI manifest-agent output appends extra instructions."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
             src = self._make_src(project_root)
@@ -802,11 +810,12 @@ class TestGenerateManifestAgentsOpenAI(unittest.TestCase):
                 )
             }
             result = generate_manifest_agents(agents, "openai", project_root, dry_run=False)
-            self.assertEqual(result["created"], [])
-            self.assertFalse((project_root / ".codex" / "agents" / "my-agent.toml").exists())
+            out_path = project_root / ".codex" / "agents" / "my-agent.toml"
+            self.assertEqual(result["created"], [out_path.as_posix()])
+            self.assertIn("# extra section", out_path.read_text(encoding="utf-8"))
 
     def test_openai_output_contains_generator_ownership_marker(self):
-        """OpenAI manifest-agent entries are skipped with no dedicated output file."""
+        """OpenAI manifest-agent output includes generator ownership marker."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
             src = self._make_src(project_root)
@@ -820,11 +829,13 @@ class TestGenerateManifestAgentsOpenAI(unittest.TestCase):
             }
 
             result = generate_manifest_agents(agents, "openai", project_root, dry_run=False)
-            self.assertEqual(result["created"], [])
-            self.assertFalse((project_root / ".codex" / "agents" / "my-agent.toml").exists())
+            out_path = project_root / ".codex" / "agents" / "my-agent.toml"
+            self.assertEqual(result["created"], [out_path.as_posix()])
+            self.assertTrue(out_path.exists())
+            self.assertTrue(out_path.read_text(encoding="utf-8").startswith("# Generated by cf agents -- do not edit"))
 
     def test_openai_removes_generator_owned_legacy_agents_path(self):
-        """OpenAI skip removes old-format generator-owned .agents/{id}/agent.toml output.
+        """OpenAI generation removes old-format generator-owned .agents/{id}/agent.toml output.
 
         The legacy file is seeded with old-format content — has the _GENERATED_MARKER_TOML line
         but lacks new fields like model_reasoning_effort — to exercise the marker-presence ownership
@@ -859,13 +870,13 @@ class TestGenerateManifestAgentsOpenAI(unittest.TestCase):
 
             result = generate_manifest_agents(agents, "openai", project_root, dry_run=False)
 
-            self.assertFalse((project_root / ".codex" / "agents" / "my-agent.toml").exists())
+            self.assertTrue((project_root / ".codex" / "agents" / "my-agent.toml").exists())
             self.assertFalse(legacy_out.exists())
             self.assertEqual(len(result["deleted"]), 1)
             deleted_outputs = [o for o in result["outputs"] if o.get("action") == "deleted"]
             self.assertEqual(len(deleted_outputs), 1)
             self.assertEqual(deleted_outputs[0]["path"], ".agents/my-agent/agent.toml")
-            self.assertEqual(deleted_outputs[0]["reason"], "skipped_agent_stale_artifact")
+            self.assertEqual(deleted_outputs[0]["reason"], "migrated_openai_agent_output")
 
     def test_openai_does_not_delete_unrelated_legacy_file(self):
         """OpenAI generation does NOT delete a hand-written legacy file with no marker."""

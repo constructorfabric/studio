@@ -16,6 +16,22 @@ from ..utils.coverage import FileCoverage, calculate_metrics, generate_report, s
 from ..utils.ui import ui
 # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-coverage-imports
 
+
+def _collect_system_slugs(nodes: List[object]) -> set[str]:
+    """Return all known system slugs, including nested children."""
+    slugs: set[str] = set()
+
+    def _visit(node: object) -> None:
+        slug = getattr(node, "slug", "")
+        if slug:
+            slugs.add(slug)
+        for child in getattr(node, "children", []):
+            _visit(child)
+
+    for node in nodes:
+        _visit(node)
+    return slugs
+
 def cmd_spec_coverage(argv: List[str]) -> int:
     """Run spec coverage analysis on registered codebase files."""
     from ..utils.context import get_context
@@ -70,6 +86,19 @@ def cmd_spec_coverage(argv: List[str]) -> int:
             collect_codebase_files(child)
 
     system_slugs = set(args.systems) if args.systems else None
+    known_system_slugs = _collect_system_slugs(list(meta.systems))
+    if system_slugs is not None:
+        unknown_systems = sorted(system_slugs - known_system_slugs)
+        if unknown_systems:
+            _output(
+                {
+                    "status": "FAIL",
+                    "message": "Unknown system selector(s)",
+                    "unknown_systems": unknown_systems,
+                },
+                args,
+            )
+            return 2
 
     def _matches_system_filter(node: object) -> bool:
         """Check if a system node (or any ancestor) matches the --system filter."""

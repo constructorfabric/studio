@@ -29,6 +29,7 @@ composes SKILL.md from kit @cpt:skill sections, and creates workflow proxies.
 # order. Imports inside function bodies (deferred / lazy imports) remain in
 # place — see search for "    import " / "    from " inside this file.
 import argparse
+from dataclasses import dataclass
 import functools
 import json
 import re
@@ -413,6 +414,47 @@ def _is_pure_studio_generated_toml(content: str, expected_content: Optional[str]
         return False
     return data == expected_data
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-is-pure-studio-generated-toml
+
+
+def _is_studio_managed_toml_output(content: str) -> bool:
+    """Return True when *content* matches the generated Codex TOML output shape.
+
+    Unlike ``_is_pure_studio_generated_toml`` this is used only for ownership
+    enumeration (for managed ``.gitignore`` entries), not stale cleanup. It is
+    intentionally looser: the file must carry the generated marker and parse as
+    the known generated TOML top-level shape, but it does not need byte-for-byte
+    reconstruction.
+    """
+    if _GENERATED_MARKER_TOML not in content:
+        return False
+    try:
+        data = tomllib.loads(content)
+    except tomllib.TOMLDecodeError:
+        return False
+    if not isinstance(data, dict) or not data:
+        return False
+    required_keys = {"name", "description", "developer_instructions"}
+    allowed_keys = {
+        "name",
+        "description",
+        "sandbox_mode",
+        "developer_instructions",
+        "model",
+        "model_reasoning_effort",
+        "model_context_window",
+    }
+    keys = set(data.keys())
+    if not required_keys.issubset(keys):
+        return False
+    if not keys.issubset(allowed_keys):
+        return False
+    if not isinstance(data.get("name"), str) or not str(data.get("name")).strip():
+        return False
+    if not isinstance(data.get("description"), str):
+        return False
+    if not isinstance(data.get("developer_instructions"), str):
+        return False
+    return True
 
 
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-expected-stale-studio-generated-toml
@@ -2052,12 +2094,10 @@ def _resolve_registered_legacy_studio_path(
 ) -> Optional[Path]:
     normalized = PurePosixPath(raw_path.strip().replace("\\", "/")).as_posix()
     path_obj = PurePosixPath(normalized)
-    has_parent_traversal = ".." in path_obj.parts
     if (
         not normalized
         or path_obj.is_absolute()
         or PureWindowsPath(normalized).is_absolute()
-        or (has_parent_traversal and normalized != "..")
     ):
         return None
     resolved = (studio_root / Path(normalized)).resolve()
@@ -3796,16 +3836,142 @@ def _collect_managed_result_paths(
     return {path for path in paths if path}
 
 
-def list_managed_agent_output_paths(
+@dataclass(frozen=True)
+class ManagedOutput:
+    """Normalized metadata for one Constructor Studio-managed generated output."""
+
+    path: str
+    provider: str
+    owner_kind: str
+    owner_id: str = ""
+    bundle_id: str = ""
+    managed: bool = True
+    gitignore: bool = True
+
+
+def _normalize_managed_output_path(project_root: Path, raw_path: str) -> str:
+    candidate_path = Path(raw_path)
+    if candidate_path.is_absolute():
+        return _safe_relpath(candidate_path, project_root)
+    return raw_path.replace("\\", "/").strip("/")
+
+
+def _provider_for_output_path(path: str) -> str:
+    normalized = path.replace("\\", "/").strip("/")
+    if normalized.startswith(".claude/"):
+        return "claude"
+    if normalized.startswith(".cursor/"):
+        return "cursor"
+    if normalized.startswith(".github/"):
+        return "copilot"
+    if normalized.startswith(".codex/"):
+        return "openai"
+    if normalized.startswith(".windsurf/"):
+        return "windsurf"
+    if normalized.startswith(".agents/"):
+        return "studio"
+    return "unknown"
+
+
+def _bundle_id_for_output_path(path: str) -> str:
+    normalized = path.replace("\\", "/").strip("/")
+    name = Path(normalized).name
+    for suffix in (".agent.md", ".prompt.md", ".toml", ".md"):
+        if name.endswith(suffix):
+            return name[: -len(suffix)]
+    return name
+
+
+def _managed_outputs_from_section(
+    project_root: Path,
+    section: Dict[str, Any],
+    *,
+    owner_kind: str,
+) -> List[ManagedOutput]:
+    outputs: List[ManagedOutput] = []
+    for path in sorted(_collect_managed_result_paths(project_root, section)):
+        provider = _provider_for_output_path(path)
+        outputs.append(
+            ManagedOutput(
+                path=path,
+                provider=provider,
+                owner_kind=owner_kind,
+                owner_id=path,
+                bundle_id=_bundle_id_for_output_path(path),
+            )
+        )
+    return outputs
+
+
+def _scan_owned_generated_outputs(project_root: Path) -> List[ManagedOutput]:
+    """Return generated outputs provably owned by Constructor Studio on disk."""
+    scan_roots = {
+        "claude": [project_root / ".claude" / "agents", project_root / ".claude" / "skills"],
+        "cursor": [project_root / ".cursor" / "agents", project_root / ".cursor" / "commands"],
+        "copilot": [project_root / ".github" / "agents", project_root / ".github" / "prompts"],
+        "openai": [project_root / ".codex" / "agents"],
+        "windsurf": [project_root / ".windsurf" / "workflows"],
+        "studio": [project_root / ".agents" / "skills"],
+    }
+    outputs: List[ManagedOutput] = []
+    for provider, roots in scan_roots.items():
+        for root in roots:
+            if not root.is_dir():
+                continue
+            for path in sorted(p for p in root.rglob("*") if p.is_file()):
+                try:
+                    content = path.read_text(encoding="utf-8")
+                except (OSError, UnicodeDecodeError):
+                    continue
+                rel = _safe_relpath(path, project_root)
+                owner_kind = "generated"
+                owned = False
+                if rel.endswith(".toml"):
+                    owned = _is_studio_managed_toml_output(content)
+                    owner_kind = "agent"
+                else:
+                    owned = bool(
+                        _extract_studio_follow_target(content)
+                        or _extract_studio_endpoint_target(content)
+                        or _is_pure_studio_generated(content)
+                    )
+                    if "/agents/" in rel:
+                        owner_kind = "agent"
+                    elif "/skills/" in rel:
+                        owner_kind = "skill"
+                    elif "/workflows/" in rel or "/commands/" in rel or "/prompts/" in rel:
+                        owner_kind = "workflow"
+                if not owned:
+                    continue
+                outputs.append(
+                    ManagedOutput(
+                        path=rel,
+                        provider=provider,
+                        owner_kind=owner_kind,
+                        owner_id=rel,
+                        bundle_id=_bundle_id_for_output_path(rel),
+                    )
+                )
+    return outputs
+
+
+def collect_managed_outputs(
     project_root: Path,
     studio_root: Path,
-) -> List[str]:
-    """Return exact CFS-managed agent integration paths for the current install."""
+) -> List[ManagedOutput]:
+    """Return the normalized set of Constructor Studio-managed generated outputs."""
     cfg = _default_agents_config()
-    managed_paths: Set[str] = set()
+    managed: Dict[str, ManagedOutput] = {}
 
     for marker_path, _marker_content in _INSTALL_MARKERS.values():
-        managed_paths.add(marker_path)
+        normalized = marker_path.replace("\\", "/").strip("/")
+        managed[normalized] = ManagedOutput(
+            path=normalized,
+            provider=_provider_for_output_path(normalized),
+            owner_kind="marker",
+            owner_id=normalized,
+            bundle_id=_bundle_id_for_output_path(normalized),
+        )
 
     for agent in _ALL_RECOGNIZED_AGENTS:
         agent_cfg = cfg.get("agents", {}).get(agent, {})
@@ -3816,26 +3982,47 @@ def list_managed_agent_output_paths(
                 if not isinstance(output, dict):
                     continue
                 rel_path = output.get("path")
-                if isinstance(rel_path, str) and rel_path.strip():
-                    managed_paths.add(rel_path.replace("\\", "/").strip("/"))
-        sections: List[Dict[str, Any]] = []
-        sections.append(_process_workflows(agent, project_root, studio_root, cfg, None, dry_run=True))
-        sections.append(_process_skills(agent, project_root, studio_root, cfg, None, dry_run=True))
-        sections.append(_process_kit_workflow_skills(agent, project_root, studio_root, cfg, None, dry_run=True))
-        sections.append(_process_subagents(agent, project_root, studio_root, cfg, None, dry_run=True))
+                if not isinstance(rel_path, str) or not rel_path.strip():
+                    continue
+                normalized = rel_path.replace("\\", "/").strip("/")
+                managed[normalized] = ManagedOutput(
+                    path=normalized,
+                    provider=_provider_for_output_path(normalized),
+                    owner_kind="configured",
+                    owner_id=normalized,
+                    bundle_id=_bundle_id_for_output_path(normalized),
+                )
+
+        sections: List[Tuple[str, Dict[str, Any]]] = [
+            ("workflow", _process_workflows(agent, project_root, studio_root, cfg, None, dry_run=True)),
+            ("skill", _process_skills(agent, project_root, studio_root, cfg, None, dry_run=True)),
+            ("skill", _process_kit_workflow_skills(agent, project_root, studio_root, cfg, None, dry_run=True)),
+            ("subagent", _process_subagents(agent, project_root, studio_root, cfg, None, dry_run=True)),
+        ]
         public_sections = _process_kit_public_agents_and_rules(
             agent,
             project_root,
             studio_root,
             dry_run=True,
         )
-        sections.append(public_sections.get("agents", {}))
-        sections.append(public_sections.get("rules", {}))
-        for section in sections:
-            if isinstance(section, dict):
-                managed_paths.update(_collect_managed_result_paths(project_root, section))
+        sections.append(("agent", public_sections.get("agents", {})))
+        sections.append(("rule", public_sections.get("rules", {})))
+        for owner_kind, section in sections:
+            for output in _managed_outputs_from_section(project_root, section, owner_kind=owner_kind):
+                managed[output.path] = output
 
-    return sorted(path for path in managed_paths if path)
+    for output in _scan_owned_generated_outputs(project_root):
+        managed[output.path] = output
+
+    return sorted(managed.values(), key=lambda item: item.path)
+
+
+def list_managed_agent_output_paths(
+    project_root: Path,
+    studio_root: Path,
+) -> List[str]:
+    """Return exact CFS-managed agent integration paths for the current install."""
+    return [output.path for output in collect_managed_outputs(project_root, studio_root) if output.gitignore]
 
 
 def _process_legacy_cleanup(
@@ -4654,8 +4841,11 @@ def _run_v2_pipeline(
             remove_cypilot=remove_cypilot,
         )
         if agent in results:
+            results[agent]["status"] = legacy_result.get("status", "PASS")
             results[agent]["workflows"] = legacy_result.get("workflows", {})
             results[agent]["subagents"] = legacy_result.get("subagents", {})
+            results[agent]["rules"] = legacy_result.get("rules", {})
+            results[agent]["errors"] = legacy_result.get("errors")
             legacy_skills = legacy_result.get("skills", {})
             v2_skill_ids = {e.get("path", "") for e in results[agent].get("skills", {}).get("outputs", [])}
             if not any(agent in str(sk_path) for sk_path in v2_skill_ids):
@@ -5107,6 +5297,63 @@ def _result_has_fatal_errors(result: Dict[str, Any]) -> bool:
         # Any other error (including non-string structured errors) is fatal.
         return True
     return False
+
+
+def _output_actions_with_reason(section: Dict[str, Any], action: str) -> List[Dict[str, str]]:
+    """Return normalized output items from *section* matching *action*."""
+    outputs = section.get("outputs") if isinstance(section, dict) else None
+    if not isinstance(outputs, list):
+        return []
+    collected: List[Dict[str, str]] = []
+    for item in outputs:
+        if not isinstance(item, dict) or item.get("action") != action:
+            continue
+        path = item.get("path")
+        reason = item.get("reason")
+        if not isinstance(path, str) or not path:
+            continue
+        entry: Dict[str, str] = {"path": path}
+        if isinstance(reason, str) and reason:
+            entry["reason"] = reason
+        collected.append(entry)
+    return collected
+
+
+def _collect_partial_reasons(results: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Summarize why a generate-agents run ended in PARTIAL state."""
+    partials: List[Dict[str, Any]] = []
+    for agent_name, result in results.items():
+        if str(result.get("status", "PASS")).upper() == "PASS":
+            continue
+        categories: List[str] = []
+        errors = result.get("errors") or []
+        error_messages = [str(err) for err in errors]
+        if error_messages:
+            categories.append("errors")
+        preserved_outputs: List[Dict[str, str]] = []
+        for section_name in ("skills", "legacy_skills", "subagents", "rules", "v2_agents"):
+            preserved_outputs.extend(_output_actions_with_reason(result.get(section_name, {}), "preserved"))
+        if preserved_outputs:
+            categories.append("preserved_outputs")
+        skipped: List[str] = []
+        for label, section_name in (("subagents", "subagents"), ("rules", "rules")):
+            section = result.get(section_name, {})
+            if isinstance(section, dict) and section.get("skipped") and section.get("skip_reason"):
+                skipped.append(f"{label}: {section.get('skip_reason')}")
+        if skipped:
+            categories.append("skipped_components")
+        partial_entry: Dict[str, Any] = {
+            "agent": agent_name,
+            "categories": categories or ["unspecified"],
+        }
+        if error_messages:
+            partial_entry["errors"] = error_messages
+        if preserved_outputs:
+            partial_entry["preserved_outputs"] = preserved_outputs
+        if skipped:
+            partial_entry["skipped"] = skipped
+        partials.append(partial_entry)
+    return partials
 # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-return-exit-code
 
 
@@ -5122,6 +5369,7 @@ def _build_result(
     gitignore_action: Optional[str] = None,
 ) -> Dict[str, Any]:
     has_errors = any(r.get("status") != "PASS" for r in results.values())
+    partial_reasons = _collect_partial_reasons(results) if has_errors else []
     result = {
         "status": "PASS" if not has_errors else "PARTIAL",
         "agents": list(agents_to_process),
@@ -5134,6 +5382,8 @@ def _build_result(
     }
     if gitignore_action:
         result["gitignore"] = gitignore_action
+    if partial_reasons:
+        result["partial_reasons"] = partial_reasons
     return result
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-format-output
 
@@ -5436,6 +5686,15 @@ def _human_generate_agents_ok(
         ui.hint("• Recognize the Constructor Studio skill in chat")
     else:
         ui.warn("Agent setup finished with some errors (see above).")
+        partial_reasons = data.get("partial_reasons")
+        if isinstance(partial_reasons, list):
+            for item in partial_reasons:
+                if not isinstance(item, dict):
+                    continue
+                agent_name = str(item.get("agent") or "agent")
+                categories = item.get("categories") or []
+                category_text = ", ".join(str(category) for category in categories) if categories else "unspecified"
+                ui.warn(f"  partial reason for {agent_name}: {category_text}")
     ui.blank()
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-format-output
 
@@ -5626,17 +5885,14 @@ def _translate_copilot_schema(agent: "_AgentEntry") -> Dict[str, Any]:
 
 
 def _translate_codex_schema(agent: "_AgentEntry") -> Dict[str, Any]:
-    """Return an explicit skip for manifest OpenAI agent generation."""
+    """Translate an agent entry to the OpenAI/Codex TOML schema."""
     # @cpt-begin:cpt-studio-algo-project-extensibility-translate-agent-schema:p1:inst-step-codex
     sandbox_mode = "read-only" if agent.mode == "readonly" else "workspace-write"
     result: Dict[str, Any] = {
         "frontmatter": [],
         "body_prefix": "",
-        "skip": True,
-        "skip_reason": (
-            "OpenAI/Codex manifest-agent generation is unsupported; OpenAI uses shared "
-            ".agents/skills/ outputs only"
-        ),
+        "skip": False,
+        "skip_reason": "",
         "sandbox_mode": sandbox_mode,
         "developer_instructions": agent.description or "",
     }
