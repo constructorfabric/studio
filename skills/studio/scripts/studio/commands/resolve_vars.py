@@ -177,8 +177,8 @@ def _resolve_kit_variables_from_model(
     if kit_root is None or not kit_root.exists():
         return {}
     try:
-        from ..utils.kit_model import load_kit_model
-        model = load_kit_model(kit_root, source_hint="core")
+        from ..utils.kit_model import load_installed_kit_model
+        model = load_installed_kit_model(kit_root, core_kit, kit_slug=kit_slug)
     except (OSError, ValueError, KeyError):
         return {}
 
@@ -208,8 +208,8 @@ def _resolve_kit_aliases_from_model(
     if kit_root is None or not kit_root.exists():
         return {}
     try:
-        from ..utils.kit_model import load_kit_model
-        model = load_kit_model(kit_root, source_hint="core")
+        from ..utils.kit_model import load_installed_kit_model
+        model = load_installed_kit_model(kit_root, core_kit, kit_slug=kit_slug)
     except (OSError, ValueError, KeyError):
         return {}
 

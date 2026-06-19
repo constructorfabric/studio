@@ -73,9 +73,9 @@ from ..utils.manifest import (
     ProvenanceRecord as _ProvenanceRecord,
 )  # type: ignore
 try:
-    from ..utils.kit_model import load_kit_model
+    from ..utils.kit_model import load_installed_kit_model
 except ImportError:  # pragma: no cover - defensive fallback for partial installs
-    load_kit_model = None  # type: ignore[assignment]
+    load_installed_kit_model = None  # type: ignore[assignment]
 from ..utils.layer_discovery import discover_layers as _discover_layers
 from ..commands.resolve_vars import add_layer_variables as _add_layer_variables
 
@@ -2152,7 +2152,7 @@ def _list_public_components(
         return [], set()
     # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-explicit-install
 
-    if load_kit_model is None:
+    if load_installed_kit_model is None:
         return [], set()
 
     components: List[KitPublicComponent] = []
@@ -2163,11 +2163,15 @@ def _list_public_components(
         if kit_root is None:
             continue
         try:
-            model = load_kit_model(kit_root)
+            model = load_installed_kit_model(
+                kit_root,
+                kit_entry if isinstance(kit_entry, dict) else {},
+                kit_slug=kit_slug,
+            )
         except (OSError, ValueError):
             continue
         # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-legacy-workflow-alias
-        if model.manifest_source not in {"canonical", "legacy_manifest"}:
+        if model.manifest_source not in {"canonical", "legacy_manifest", "core"}:
             continue
         # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-legacy-workflow-alias
         manifest_backed_kits.add(kit_slug)

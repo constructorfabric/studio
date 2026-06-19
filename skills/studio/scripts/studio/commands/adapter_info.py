@@ -242,6 +242,18 @@ def _legacy_workflow_names_from_component(kit_root: Path, component: object) -> 
     # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-workflows-deprecated
 
 
+def _public_workflow_ids_from_resource(resource: object) -> list[str]:
+    # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-workflows-deprecated
+    kind = str(getattr(resource, "kind", "") or "")
+    if kind not in {"skill", "workflow"} or not bool(getattr(resource, "public", False)):
+        return []
+    resource_id = str(getattr(resource, "id", "") or "").strip()
+    if not resource_id:
+        return []
+    return [resource_id]
+    # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-workflows-deprecated
+
+
 def _kit_model_drift(
     adapter_dir: Path,
     model: object,
@@ -298,12 +310,14 @@ def _kit_model_drift(
 def _kit_model_to_info(adapter_dir: Path, kit_slug: str, kit_root: Path, core_kit: dict) -> tuple[dict, dict]:
     """Return canonical kit model info plus legacy kit_details compatibility."""
     # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-rollout-info
+    # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-installed-source-truth
     # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitmodel-source
-    from ..utils.kit_model import load_kit_model
+    from ..utils.kit_model import load_installed_kit_model
 
     resource_bindings = _effective_info_resource_bindings(adapter_dir, kit_slug, core_kit)
-    model = load_kit_model(kit_root, kit_slug=kit_slug)
+    model = load_installed_kit_model(kit_root, core_kit, kit_slug=kit_slug)
     # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitmodel-source
+    # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-installed-source-truth
 
     # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitmodels-shape
     drift = _kit_model_drift(adapter_dir, model, core_kit, resource_bindings)
@@ -385,6 +399,10 @@ def _kit_model_to_info(adapter_dir: Path, kit_slug: str, kit_root: Path, core_ki
         workflow
         for component in model.public_components
         for workflow in _legacy_workflow_names_from_component(kit_root, component)
+    } | {
+        workflow
+        for resource in model.resources
+        for workflow in _public_workflow_ids_from_resource(resource)
     })
     # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-workflows-deprecated
     if workflows:
@@ -420,8 +438,23 @@ def _legacy_kit_detail(adapter_dir: Path, slug: str, kit_root: Path, core_kit: d
     if art_dir.is_dir():
         kd["artifact_kinds"] = sorted(d.name for d in art_dir.iterdir() if d.is_dir())
     wf_dir = kit_root / "workflows"
+    workflows = set()
     if wf_dir.is_dir():
-        kd["workflows"] = sorted(f.stem for f in wf_dir.iterdir() if _is_workflow_frontmatter_file(f))
+        workflows.update(
+            f.stem for f in wf_dir.iterdir() if _is_workflow_frontmatter_file(f)
+        )
+    resources = core_kit.get("resources") if isinstance(core_kit, dict) else {}
+    if isinstance(resources, dict):
+        for resource_id, binding in resources.items():
+            if not isinstance(binding, dict):
+                continue
+            kind = str(binding.get("kind", "") or "")
+            public = bool(binding.get("public", False))
+            if public and kind in {"skill", "workflow"}:
+                workflows.add(str(resource_id))
+    if workflows:
+        kd["workflows"] = sorted(workflows)
+        kd["workflows_deprecated"] = True
     resource_bindings = _effective_info_resource_bindings(adapter_dir, slug, core_kit)
     if resource_bindings:
         kd["resources"] = resource_bindings

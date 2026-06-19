@@ -1356,85 +1356,171 @@ def load_kit_model(kit_source: Path, source_hint: str = "", kit_slug: str = "") 
     # @cpt-end:cpt-studio-state-kit-manifest:p1:inst-manifest-source-state
 
 
-def kit_model_to_toml_data(model: KitModel) -> Dict[str, Any]:
-    """Convert a KitModel to canonical manifest TOML data."""
+def _merge_core_authoritative_model(core_model: KitModel, source_model: KitModel) -> KitModel:
+    source_by_id = {resource.id: resource for resource in source_model.resources}
+    merged_resources: List[KitResource] = []
+    for core_resource in core_model.resources:
+        source_resource = source_by_id.get(core_resource.id)
+        if source_resource is None:
+            merged_resources.append(core_resource)
+            continue
+        inferred_core_kind = _resource_kind_from_path(core_resource.source, core_resource.id)
+        merged_kind = core_resource.kind
+        if core_resource.kind == inferred_core_kind and source_resource.kind != core_resource.kind:
+            merged_kind = source_resource.kind
+        merged_public = core_resource.public
+        if not merged_public and merged_kind == source_resource.kind and source_resource.public:
+            merged_public = True
+        merged_resources.append(KitResource(
+            id=core_resource.id,
+            kind=merged_kind,
+            source=core_resource.source,
+            install_path=core_resource.install_path,
+            type=core_resource.type,
+            public=merged_public,
+            description=source_resource.description,
+            user_modifiable=source_resource.user_modifiable,
+            aliases=list(source_resource.aliases),
+            generated_targets=list(source_resource.generated_targets),
+            origin=core_resource.origin or source_resource.origin,
+            generated_name=source_resource.generated_name or core_resource.generated_name,
+            prefix_generated_name=source_resource.prefix_generated_name,
+            content_hash=core_resource.content_hash,
+            tools=list(source_resource.tools),
+            disallowed_tools=list(source_resource.disallowed_tools),
+            mode=source_resource.mode,
+            isolation=source_resource.isolation,
+            model=source_resource.model,
+            skills=list(source_resource.skills),
+            color=source_resource.color,
+            memory_dir=source_resource.memory_dir,
+            role=source_resource.role,
+            target=source_resource.target,
+            provider=source_resource.provider,
+            reasoning_effort=source_resource.reasoning_effort,
+            context_window=source_resource.context_window,
+            subagents=list(source_resource.subagents),
+            target_configs=dict(source_resource.target_configs),
+            artifact_bindings=core_resource.artifact_bindings or source_resource.artifact_bindings,
+        ))
+
+    return KitModel(
+        slug=core_model.slug,
+        name=source_model.name or core_model.name,
+        version=core_model.version or source_model.version,
+        manifest_source="core",
+        resources=merged_resources,
+        warnings=list(dict.fromkeys(list(core_model.warnings) + list(source_model.warnings))),
+    )
+
+
+def load_installed_kit_model(
+    kit_source: Path,
+    core_kit: Dict[str, Any],
+    kit_slug: str = "",
+) -> KitModel:
+    """Load a registered installed kit using install-mode-aware source precedence."""
+    install_mode = str(core_kit.get("install_mode", "") or "").strip().lower()
+    if install_mode != "register":
+        try:
+            core_model = load_kit_model(kit_source, source_hint="core", kit_slug=kit_slug)
+        except ValueError:
+            core_model = None
+        if core_model is not None:
+            try:
+                source_model = load_kit_model(kit_source, kit_slug=kit_slug)
+            except ValueError:
+                return core_model
+            return _with_hashes(kit_source, _merge_core_authoritative_model(core_model, source_model))
+    return load_kit_model(kit_source, kit_slug=kit_slug)
+
+def kit_models_to_toml_data(models: List[KitModel]) -> Dict[str, Any]:
+    """Convert one or more KitModels to canonical manifest TOML data."""
+    if not models:
+        raise ValueError("At least one kit model is required")
     # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
-    resources: List[Dict[str, Any]] = []
-    for resource in model.resources:
-        item: Dict[str, Any] = {
-            "id": resource.id,
-            "kind": resource.kind,
-            "source": resource.source,
-            "install_path": resource.install_path,
-            "type": resource.type,
-            "user_modifiable": resource.user_modifiable,
-        }
-        if resource.public:
-            item["public"] = True
-        if resource.description:
-            item["description"] = resource.description
-        if resource.aliases:
-            item["aliases"] = resource.aliases
-        if resource.generated_targets:
-            item["generated_targets"] = resource.generated_targets
-        if resource.origin:
-            item["origin"] = resource.origin
-        if not resource.prefix_generated_name:
-            item["prefix_generated_name"] = False
-        if resource.tools:
-            item["tools"] = resource.tools
-        if resource.disallowed_tools:
-            item["disallowed_tools"] = resource.disallowed_tools
-        if resource.mode != "readwrite":
-            item["mode"] = resource.mode
-        if resource.isolation:
-            item["isolation"] = resource.isolation
-        if resource.model:
-            item["model"] = resource.model
-        if resource.skills:
-            item["skills"] = resource.skills
-        if resource.color:
-            item["color"] = resource.color
-        if resource.memory_dir:
-            item["memory_dir"] = resource.memory_dir
-        if resource.role != "any":
-            item["role"] = resource.role
-        if resource.target != "any":
-            item["target"] = resource.target
-        if resource.provider != "anthropic":
-            item["provider"] = resource.provider
-        if resource.reasoning_effort:
-            item["reasoning_effort"] = resource.reasoning_effort
-        if resource.context_window:
-            item["context_window"] = resource.context_window
-        if resource.subagents:
-            item["subagents"] = resource.subagents
-        if resource.target_configs:
-            item["targets"] = resource.target_configs
-        # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-artifact-bindings
-        if resource.artifact_bindings:
-            item["artifacts"] = resource.artifact_bindings
-        # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-artifact-bindings
-        resources.append(item)
+    kits: List[Dict[str, Any]] = []
+    for model in models:
+        resources: List[Dict[str, Any]] = []
+        for resource in model.resources:
+            item: Dict[str, Any] = {
+                "id": resource.id,
+                "kind": resource.kind,
+                "source": resource.source,
+                "install_path": resource.install_path,
+                "type": resource.type,
+                "user_modifiable": resource.user_modifiable,
+            }
+            if resource.public:
+                item["public"] = True
+            if resource.description:
+                item["description"] = resource.description
+            if resource.aliases:
+                item["aliases"] = resource.aliases
+            if resource.generated_targets:
+                item["generated_targets"] = resource.generated_targets
+            if resource.origin:
+                item["origin"] = resource.origin
+            if not resource.prefix_generated_name:
+                item["prefix_generated_name"] = False
+            if resource.tools:
+                item["tools"] = resource.tools
+            if resource.disallowed_tools:
+                item["disallowed_tools"] = resource.disallowed_tools
+            if resource.mode != "readwrite":
+                item["mode"] = resource.mode
+            if resource.isolation:
+                item["isolation"] = resource.isolation
+            if resource.model:
+                item["model"] = resource.model
+            if resource.skills:
+                item["skills"] = resource.skills
+            if resource.color:
+                item["color"] = resource.color
+            if resource.memory_dir:
+                item["memory_dir"] = resource.memory_dir
+            if resource.role != "any":
+                item["role"] = resource.role
+            if resource.target != "any":
+                item["target"] = resource.target
+            if resource.provider != "anthropic":
+                item["provider"] = resource.provider
+            if resource.reasoning_effort:
+                item["reasoning_effort"] = resource.reasoning_effort
+            if resource.context_window:
+                item["context_window"] = resource.context_window
+            if resource.subagents:
+                item["subagents"] = resource.subagents
+            if resource.target_configs:
+                item["targets"] = resource.target_configs
+            # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-artifact-bindings
+            if resource.artifact_bindings:
+                item["artifacts"] = resource.artifact_bindings
+            # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-artifact-bindings
+            resources.append(item)
+        kits.append({
+            "slug": model.slug,
+            "name": model.name,
+            "version": model.version,
+            "resources": resources,
+        })
     # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
 
     return {
         "manifest_version": _CANONICAL_MANIFEST_VERSION,
-        "kits": [
-            {
-                "slug": model.slug,
-                "name": model.name,
-                "version": model.version,
-                "resources": resources,
-            },
-        ],
+        "kits": kits,
     }
 
 
 def render_canonical_manifest(model: KitModel) -> str:
     """Render a normalized model as canonical ``.cf-studio-kit.toml``."""
+    return render_canonical_manifest_models([model])
+
+
+def render_canonical_manifest_models(models: List[KitModel]) -> str:
+    """Render one or more normalized models as canonical ``.cf-studio-kit.toml``."""
     return toml_utils.dumps(
-        kit_model_to_toml_data(model),
+        kit_models_to_toml_data(models),
         header_comment="Generated by cfs kit normalize. Review before publishing.",
     )
 

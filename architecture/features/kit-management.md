@@ -187,14 +187,15 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 **Actor**: `cpt-studio-actor-user`
 
-**Trigger**: User runs `cfs kit normalize <path> [--from manifest|layout|core] [--output <path>] [--dry-run]`
+**Trigger**: User runs `cfs kit normalize <path> [--from manifest|layout|core] [--kit <slug>|--kit all] [--output <path>] [--dry-run]`
 
 **Steps**:
-1. [x] - `p1` - Parse CLI arguments (path, --from, --output, --dry-run) - `inst-normalize-parse-args`
+1. [x] - `p1` - Parse CLI arguments (path, --from, repeated/comma-separated `--kit`, --output, --dry-run) - `inst-normalize-parse-args`
 2. [x] - `p1` - Validate source directory or installed resource binding source exists - `inst-normalize-validate-source`
-3. [x] - `p1` - Load source through `cpt-studio-algo-kit-manifest-normalize`, using the shared `KitModel` normalization pipeline - `inst-normalize-load-source`
-4. [x] - `p1` - **IF** --dry-run: output migration report and proposed `.cf-studio-kit.toml` without writing - `inst-normalize-dry-run`
-5. [x] - `p1` - **ELSE**: write canonical `.cf-studio-kit.toml` to the selected output path and output migration report - `inst-normalize-write-output`
+3. [x] - `p1` - **IF** canonical `.cf-studio-kit.toml` declares multiple kits: normalize all kits by default, or select a subset from repeated/comma-separated `--kit <slug>` / `--kit all`; reject unknown selections with available slugs - `inst-normalize-select-kit`
+4. [x] - `p1` - Load the selected source kit or kits through `cpt-studio-algo-kit-manifest-normalize`, using the shared `KitModel` normalization pipeline - `inst-normalize-load-source`
+5. [x] - `p1` - **IF** --dry-run: output migration report and proposed `.cf-studio-kit.toml` without writing - `inst-normalize-dry-run`
+6. [x] - `p1` - **ELSE**: write canonical `.cf-studio-kit.toml` to the selected output path and output migration report - `inst-normalize-write-output`
 
 ### Kit CLI Dispatcher
 
@@ -623,15 +624,16 @@ Enables users to install, update, and validate kit packages with interactive fil
 1. [x] - `p1` - Build `cfs info` from normalized `KitModel` data for kits registered in `core.toml`, not from independent ad hoc directory scans; unregistered `config/kits/*` directories never contribute kit output - `inst-info-kitmodel-source`
 2. [x] - `p1` - Add top-level `kit_models[slug]` objects containing metadata, manifest source, install mode, drift, resource counts, resources, public components, generated names, active targets, risk, provenance, legacy compatibility, and warnings - `inst-info-kitmodels-shape`
 3. [x] - `p1` - Preserve legacy `kit_details` for one minor compatibility cycle, derived from `kit_models` rather than populated separately - `inst-info-kitdetails-derived`
-4. [x] - `p1` - Expose legacy `kit_details.workflows` only as derived skills where `origin = "legacy-workflow"` and mark the field deprecated - `inst-info-workflows-deprecated`
+4. [x] - `p1` - Expose deprecated `kit_details.workflows` additively: preserve existing legacy-workflow-derived entries and also include ordered IDs of public normalized kit resources whose `kind` is `skill` or `workflow`, preserving compatibility for workflow enumeration from `cfs info --json` - `inst-info-workflows-deprecated`
 5. [x] - `p1` - Report copy/register mode, containment status, stale/missing resources, and disabled public components - `inst-info-drift`
-6. [x] - `p1` - Read kit `conf.toml` display metadata for legacy compatibility output without bypassing normalized `KitModel` metadata - `inst-info-read-kit-conf`
-7. [x] - `p1` - Resolve the effective installed/register-mode kit root from `core.toml` path metadata before deriving compatibility output - `inst-info-resolve-kit-root`
-8. [x] - `p1` - Convert normalized resources plus effective bindings into `cfs info` resource rows, including `binding_path` when present - `inst-info-resource-to-info`
-9. [x] - `p1` - Resolve effective binding paths for drift/containment checks, rejecting cross-OS absolute paths that cannot exist locally - `inst-info-resolve-binding-path`
-10. [x] - `p1` - Check whether resolved binding paths stay inside the adapter root when computing containment drift - `inst-info-is-relative-to`
-11. [x] - `p1` - Parse markdown frontmatter `type` fields so legacy workflow compatibility output can distinguish workflow files from other markdown - `inst-info-frontmatter-type`
-12. [x] - `p1` - Treat a markdown file as a legacy workflow only when its frontmatter declares `type = "workflow"` - `inst-info-is-workflow-frontmatter`
+6. [x] - `p1` - For registered installed kits, resolve `KitModel` by install mode: non-register/copy installs prefer `core.toml` resource bindings first, while register installs prefer the kit's own manifest/layout source because `core.toml` does not enumerate per-resource bindings - `inst-info-installed-source-truth`
+7. [x] - `p1` - Read kit `conf.toml` display metadata for legacy compatibility output without bypassing normalized `KitModel` metadata - `inst-info-read-kit-conf`
+8. [x] - `p1` - Resolve the effective installed/register-mode kit root from `core.toml` path metadata before deriving compatibility output - `inst-info-resolve-kit-root`
+9. [x] - `p1` - Convert normalized resources plus effective bindings into `cfs info` resource rows, including `binding_path` when present - `inst-info-resource-to-info`
+10. [x] - `p1` - Resolve effective binding paths for drift/containment checks, rejecting cross-OS absolute paths that cannot exist locally - `inst-info-resolve-binding-path`
+11. [x] - `p1` - Check whether resolved binding paths stay inside the adapter root when computing containment drift - `inst-info-is-relative-to`
+12. [x] - `p1` - Parse markdown frontmatter `type` fields so legacy workflow compatibility output can distinguish workflow files from other markdown - `inst-info-frontmatter-type`
+13. [x] - `p1` - Treat a markdown file as a legacy workflow only when its frontmatter declares `type = "workflow"` - `inst-info-is-workflow-frontmatter`
 
 ### Public Component Generation
 
@@ -704,11 +706,12 @@ Enables users to install, update, and validate kit packages with interactive fil
 1. [x] - `p1` - `cfs kit normalize <path>` loads the source through the same `KitModel` normalization pipeline used by install/update - `inst-normalize-load-kitmodel`
 2. [x] - `p1` - Convert legacy `manifest.toml` v1/v2 or `conf.toml + layout` inputs into canonical `.cf-studio-kit.toml` without changing source files - `inst-normalize-convert`
 3. [x] - `p1` - Convert installed `core.toml` resource bindings into canonical `.cf-studio-kit.toml` without changing installed resources - `inst-normalize-core-bindings`
-4. [x] - `p1` - Emit public legacy workflows as `kind = "skill"` resources with `origin = "legacy-workflow"` metadata and generated-name preview - `inst-normalize-workflows-to-skills`
-5. [x] - `p1` - Preserve resource IDs, user-modifiable path defaults, aliases, generated targets, agent configuration, and source provenance wherever they can be inferred deterministically - `inst-normalize-preserve-fields`
-6. [x] - `p1` - Report fields that require user choice rather than guessing, including ambiguous resource kinds, conflicting aliases, missing source files, or unsafe paths - `inst-normalize-report-ambiguity`
-7. [x] - `p1` - Refuse to write a canonical manifest that would reference sources outside the selected kit root unless the user explicitly chooses a safe local registration root and containment passes - `inst-normalize-containment`
-8. [x] - `p1` - Preserve explicit constraints-to-artifact resource bindings when normalizing canonical manifests or installed `core.toml` bindings, without inferring missing template/example links from resource names or package layout - `inst-normalize-artifact-bindings`
+4. [x] - `p1` - For canonical multi-kit manifests, normalize all declared `[[kits]]` entries by default and honor repeated/comma-separated `--kit <slug>` or `--kit all` selectors when provided - `inst-normalize-select-kit`
+5. [x] - `p1` - Emit public legacy workflows as `kind = "skill"` resources with `origin = "legacy-workflow"` metadata and generated-name preview - `inst-normalize-workflows-to-skills`
+6. [x] - `p1` - Preserve resource IDs, user-modifiable path defaults, aliases, generated targets, agent configuration, and source provenance wherever they can be inferred deterministically - `inst-normalize-preserve-fields`
+7. [x] - `p1` - Report fields that require user choice rather than guessing, including ambiguous resource kinds, conflicting aliases, missing source files, or unsafe paths - `inst-normalize-report-ambiguity`
+8. [x] - `p1` - Refuse to write a canonical manifest that would reference sources outside the selected kit root unless the user explicitly chooses a safe local registration root and containment passes - `inst-normalize-containment`
+9. [x] - `p1` - Preserve explicit constraints-to-artifact resource bindings when normalizing canonical manifests or installed `core.toml` bindings, without inferring missing template/example links from resource names or package layout - `inst-normalize-artifact-bindings`
 
 **Rollout Phases**:
 1. [x] - `p1` - Add parser/model/converter tests with no install behavior change - `inst-rollout-kitmodel-tests`
