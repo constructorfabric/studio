@@ -262,6 +262,209 @@ class TestGenerateAgentsNoChangePreview(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertEqual(process.call_count, 1)
 
+    def test_no_change_preview_with_gitignore_update_still_returns_without_apply(self):
+        from studio.commands.agents import cmd_generate_agents
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "project"
+            studio_root = root / ".cf-studio"
+            studio_root.mkdir(parents=True)
+            args = SimpleNamespace(
+                dry_run=False,
+                remove_cypilot="no",
+                discover=False,
+                show_layers=False,
+                yes=True,
+            )
+            cfg = {"agents": {"cursor": {"workflows": {}, "skills": {}}}}
+            empty_result = {
+                "status": "PASS",
+                "agent": "cursor",
+                "workflows": {"created": [], "updated": [], "unchanged": [], "renamed": [], "deleted": [], "errors": []},
+                "skills": {"created": [], "updated": [], "deleted": [], "skipped": [], "outputs": []},
+                "subagents": {"created": [], "updated": [], "deleted": [], "skipped": False, "skip_reason": "", "outputs": []},
+                "rules": {"created": [], "updated": [], "deleted": [], "outputs": []},
+                "errors": None,
+            }
+
+            with (
+                patch(
+                    "studio.commands.agents._resolve_agents_context",
+                    return_value=(args, ["cursor"], root, studio_root, {}, None, cfg),
+                ),
+                patch("studio.commands.agents._discover_layers", return_value=[]),
+                patch("studio.commands.agents._layers_have_v2_manifests", return_value=False),
+                patch("studio.commands.agents._process_single_agent", return_value=empty_result) as process,
+                patch("studio.commands.agents._refresh_managed_gitignore", return_value="updated"),
+            ):
+                rc = cmd_generate_agents([])
+
+            self.assertEqual(rc, 0)
+            self.assertEqual(process.call_count, 2)
+
+    def test_dry_run_fatal_preview_returns_one(self):
+        from studio.commands.agents import cmd_generate_agents
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "project"
+            studio_root = root / ".cf-studio"
+            studio_root.mkdir(parents=True)
+            args = SimpleNamespace(
+                dry_run=True,
+                remove_cypilot="no",
+                discover=False,
+                show_layers=False,
+                yes=True,
+            )
+            cfg = {"agents": {"cursor": {"workflows": {}, "skills": {}}}}
+            fatal_result = {
+                "status": "PARTIAL",
+                "agent": "cursor",
+                "workflows": {"created": [], "updated": [], "unchanged": [], "renamed": [], "deleted": [], "errors": []},
+                "skills": {"created": [], "updated": [], "deleted": [], "skipped": [], "outputs": []},
+                "subagents": {"created": [], "updated": [], "deleted": [], "skipped": False, "skip_reason": "", "outputs": []},
+                "rules": {"created": [], "updated": [], "deleted": [], "outputs": []},
+                "errors": ["fatal"],
+            }
+
+            with (
+                patch(
+                    "studio.commands.agents._resolve_agents_context",
+                    return_value=(args, ["cursor"], root, studio_root, {}, None, cfg),
+                ),
+                patch("studio.commands.agents._discover_layers", return_value=[]),
+                patch("studio.commands.agents._layers_have_v2_manifests", return_value=False),
+                patch("studio.commands.agents._process_single_agent", return_value=fatal_result),
+                patch("studio.commands.agents._refresh_managed_gitignore", return_value="updated"),
+            ):
+                rc = cmd_generate_agents([])
+
+            self.assertEqual(rc, 1)
+
+    def test_interactive_abort_returns_one(self):
+        from studio.commands.agents import cmd_generate_agents
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "project"
+            studio_root = root / ".cf-studio"
+            studio_root.mkdir(parents=True)
+            args = SimpleNamespace(
+                dry_run=False,
+                remove_cypilot="no",
+                discover=False,
+                show_layers=False,
+                yes=False,
+            )
+            cfg = {"agents": {"cursor": {"workflows": {}, "skills": {}}}}
+            preview_result = {
+                "status": "PASS",
+                "agent": "cursor",
+                "workflows": {"created": ["/p/.cursor/commands/cf.md"], "updated": [], "unchanged": [], "renamed": [], "deleted": [], "errors": []},
+                "skills": {"created": [], "updated": [], "deleted": [], "skipped": [], "outputs": []},
+                "subagents": {"created": [], "updated": [], "deleted": [], "skipped": False, "skip_reason": "", "outputs": []},
+                "rules": {"created": [], "updated": [], "deleted": [], "outputs": []},
+                "errors": None,
+            }
+
+            with (
+                patch(
+                    "studio.commands.agents._resolve_agents_context",
+                    return_value=(args, ["cursor"], root, studio_root, {}, None, cfg),
+                ),
+                patch("studio.commands.agents._discover_layers", return_value=[]),
+                patch("studio.commands.agents._layers_have_v2_manifests", return_value=False),
+                patch("studio.commands.agents._process_single_agent", return_value=preview_result) as process,
+                patch("studio.commands.agents._refresh_managed_gitignore", return_value=None),
+                patch("studio.commands.agents.sys.stdin.isatty", return_value=True),
+                patch("studio.utils.ui.is_json_mode", return_value=False),
+                patch("builtins.input", return_value="n"),
+            ):
+                rc = cmd_generate_agents([])
+
+            self.assertEqual(rc, 1)
+            self.assertEqual(process.call_count, 1)
+
+    def test_v2_confirm_declined_returns_zero(self):
+        from studio.commands.agents import cmd_generate_agents
+        from studio.utils.manifest import ManifestLayerState
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "project"
+            studio_root = root / ".cf-studio"
+            studio_root.mkdir(parents=True)
+            args = SimpleNamespace(
+                dry_run=False,
+                remove_cypilot="no",
+                discover=False,
+                show_layers=False,
+                yes=False,
+            )
+            cfg = {"agents": {"cursor": {"workflows": {}, "skills": {}}}}
+            merged = SimpleNamespace(agents={}, skills={})
+            layer = SimpleNamespace(path=studio_root / "config" / "manifest.toml", state=ManifestLayerState.LOADED, scope="kit")
+
+            with (
+                patch(
+                    "studio.commands.agents._resolve_agents_context",
+                    return_value=(args, ["cursor"], root, studio_root, {}, None, cfg),
+                ),
+                patch("studio.commands.agents._discover_layers", return_value=[layer]),
+                patch("studio.commands.agents._layers_have_v2_manifests", return_value=True),
+                patch("studio.commands.agents._resolve_includes_for_layers", return_value=([layer], False)),
+                patch("studio.commands.agents._merge_components", return_value=merged),
+                patch("studio.commands.agents.generate_manifest_agents", return_value={"created": [], "updated": [], "deleted": [], "outputs": []}),
+                patch("studio.commands.agents.generate_manifest_skills", return_value={"created": [], "updated": [], "deleted": [], "outputs": []}),
+                patch("studio.commands.agents._process_single_agent", return_value={"workflows": {}, "skills": {}, "subagents": {}, "status": "PASS", "errors": None}),
+                patch("studio.commands.agents._handle_show_layers_v2", return_value=None),
+                patch("studio.commands.agents._confirm_v2_generation", return_value=False),
+                patch("studio.commands.agents._refresh_managed_gitignore", return_value=None),
+            ):
+                rc = cmd_generate_agents([])
+
+            self.assertEqual(rc, 0)
+
+    def test_legacy_discover_writes_manifest_before_preview(self):
+        from studio.commands.agents import cmd_generate_agents
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "project"
+            studio_root = root / ".cf-studio"
+            studio_root.mkdir(parents=True)
+            args = SimpleNamespace(
+                dry_run=False,
+                remove_cypilot="no",
+                discover=True,
+                show_layers=False,
+                yes=True,
+            )
+            cfg = {"agents": {"cursor": {"workflows": {}, "skills": {}}}}
+            empty_result = {
+                "status": "PASS",
+                "agent": "cursor",
+                "workflows": {"created": [], "updated": [], "unchanged": [], "renamed": [], "deleted": [], "errors": []},
+                "skills": {"created": [], "updated": [], "deleted": [], "skipped": [], "outputs": []},
+                "subagents": {"created": [], "updated": [], "deleted": [], "skipped": False, "skip_reason": "", "outputs": []},
+                "rules": {"created": [], "updated": [], "deleted": [], "outputs": []},
+                "errors": None,
+            }
+
+            with (
+                patch(
+                    "studio.commands.agents._resolve_agents_context",
+                    return_value=(args, ["cursor"], root, studio_root, {}, None, cfg),
+                ),
+                patch("studio.commands.agents._discover_layers", return_value=[]),
+                patch("studio.commands.agents._layers_have_v2_manifests", return_value=False),
+                patch("studio.commands.agents.discover_components", return_value={"skills": []}),
+                patch("studio.commands.agents.write_discovered_manifest") as write_manifest,
+                patch("studio.commands.agents._process_single_agent", return_value=empty_result),
+                patch("studio.commands.agents._refresh_managed_gitignore", return_value=None),
+            ):
+                rc = cmd_generate_agents([])
+
+            self.assertEqual(rc, 0)
+            write_manifest.assert_called_once()
+
 
 class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
     """Canonical kit public components drive generated skills and agents."""
@@ -1358,6 +1561,29 @@ class TestHumanAgentsList(unittest.TestCase):
         output = err.getvalue()
         self.assertIn("cfs generate-agents", output)
 
+    @_with_human_mode
+    def test_unchanged_outputs_count_as_existing_files(self):
+        from studio.commands.agents import _human_agents_list
+        import io
+        from contextlib import redirect_stderr
+
+        results = {
+            "cursor": {
+                "workflows": {"updated": [], "unchanged": []},
+                "skills": {
+                    "updated": [],
+                    "created": [],
+                    "outputs": [{"path": "/p/.agents/skills/cf-extra/SKILL.md", "action": "unchanged"}],
+                },
+            },
+        }
+        err = io.StringIO()
+        with redirect_stderr(err):
+            _human_agents_list({}, ["cursor"], results, Path("/p"))
+        output = err.getvalue()
+        self.assertIn("installed", output)
+        self.assertIn("cf-extra/SKILL.md", output)
+
 
 class TestHumanGenerateAgentsPreview(unittest.TestCase):
     """Cover lines 1166-1191 (_human_generate_agents_preview formatter)."""
@@ -1482,6 +1708,29 @@ class TestHumanGenerateAgentsPreview(unittest.TestCase):
         self.assertIn("workflow renamed", output)
         self.assertIn("cypilot-codegen.md", output)
 
+    @_with_human_mode
+    def test_preview_renders_deleted_workflow_updates_and_gitignore(self):
+        from studio.commands.agents import _human_generate_agents_preview
+        import io
+        from contextlib import redirect_stderr
+
+        results = {
+            "claude": {
+                "workflows": {"created": [], "updated": [], "renamed": [], "deleted": ["/p/.claude/commands/cf-old.md"]},
+                "skills": {"created": [], "updated": ["/p/.agents/skills/cf-extra/SKILL.md"], "deleted": []},
+                "subagents": {"created": [], "updated": ["/p/.claude/agents/cf-sub.md"], "skipped": True, "skip_reason": "unsupported"},
+            },
+        }
+        err = io.StringIO()
+        with redirect_stderr(err):
+            _human_generate_agents_preview(["claude"], results, Path("/p"), gitignore_action="updated")
+        output = err.getvalue()
+        self.assertIn("cf-old.md", output)
+        self.assertIn("cf-extra/SKILL.md", output)
+        self.assertIn("cf-sub.md", output)
+        self.assertIn("subagents skipped: unsupported", output)
+        self.assertIn(".gitignore", output)
+
 
 class TestHumanGenerateAgentsOk(unittest.TestCase):
     """Cover lines 1194-1252 (_human_generate_agents_ok formatter)."""
@@ -1534,6 +1783,35 @@ class TestHumanGenerateAgentsOk(unittest.TestCase):
         self.assertIn("Dry run", output)
 
     @_with_human_mode
+    def test_ok_renders_legacy_skills_and_gitignore(self):
+        from studio.commands.agents import _human_generate_agents_ok
+        import io
+        from contextlib import redirect_stderr
+
+        results = {
+            "cursor": {
+                "status": "PASS",
+                "workflows": {"created": [], "updated": [], "deleted": [], "counts": {}},
+                "skills": {"created": [], "updated": [], "deleted": [], "counts": {"created": 0, "updated": 0, "deleted": 0, "skipped": 0}},
+                "legacy_skills": {
+                    "created": ["/p/.agents/skills/cf-extra/SKILL.md"],
+                    "updated": [],
+                    "deleted": [],
+                    "skipped": [],
+                    "counts": {"created": 1, "updated": 0, "deleted": 0, "skipped": 0},
+                },
+                "subagents": {"created": [], "updated": [], "deleted": [], "counts": {"created": 0, "updated": 0, "deleted": 0}},
+                "errors": [],
+            },
+        }
+        err = io.StringIO()
+        with redirect_stderr(err):
+            _human_generate_agents_ok({"status": "PASS", "gitignore": "updated"}, ["cursor"], results, dry_run=True)
+        output = err.getvalue()
+        self.assertIn("cf-extra/SKILL.md", output)
+        self.assertIn(".gitignore", output)
+
+    @_with_human_mode
     def test_ok_dry_run_uses_future_tense_and_reports_subagents(self):
         from studio.commands.agents import _human_generate_agents_ok
         import io
@@ -1574,6 +1852,101 @@ class TestHumanGenerateAgentsOk(unittest.TestCase):
         self.assertIn("would be removed", output)
         self.assertIn("would be preserved", output)
         self.assertIn("subagent file(s)", output)
+
+    @_with_human_mode
+    def test_ok_renders_extra_skill_and_subagent_branches_and_v2_fallback(self):
+        from studio.commands.agents import _human_generate_agents_ok
+        import io
+        from contextlib import redirect_stderr
+
+        results = {
+            "claude": {
+                "status": "PASS",
+                "workflows": {
+                    "created": [],
+                    "updated": [],
+                    "renamed": [],
+                    "deleted": ["/p/.claude/commands/cf-old.md"],
+                    "counts": {"created": 0, "updated": 0, "renamed": 0, "deleted": 1},
+                },
+                "skills": {
+                    "created": [],
+                    "updated": [],
+                    "deleted": [],
+                    "skipped": [],
+                    "counts": {"created": 0, "updated": 0, "deleted": 0, "skipped": 0},
+                },
+                "legacy_skills": {
+                    "created": [],
+                    "updated": ["/p/.agents/skills/cf-extra/SKILL.md"],
+                    "deleted": ["/p/.agents/skills/cf-legacy/SKILL.md"],
+                    "skipped": ["preserve me"],
+                    "counts": {"created": 0, "updated": 1, "deleted": 1, "skipped": 1},
+                },
+                "subagents": {
+                    "created": [],
+                    "updated": ["/p/.claude/agents/cf-sub.md"],
+                    "deleted": ["/p/.claude/agents/cf-old-sub.md"],
+                    "skipped": True,
+                    "skip_reason": "unsupported",
+                    "counts": {"created": 0, "updated": 1, "deleted": 1},
+                },
+                "v2_agents": {
+                    "created": ["/p/.claude/agents/cf-v2-new.md"],
+                    "updated": ["/p/.claude/agents/cf-v2-updated.md"],
+                    "deleted": ["/p/.claude/agents/cf-v2-old.md"],
+                    "warnings": ["plain warning"],
+                },
+                "errors": [],
+            },
+        }
+        err = io.StringIO()
+        with redirect_stderr(err):
+            _human_generate_agents_ok({"status": "PASS"}, ["claude"], results, dry_run=False)
+        output = err.getvalue()
+        self.assertIn("cf-extra/SKILL.md", output)
+        self.assertIn("cf-legacy/SKILL.md", output)
+        self.assertIn("cf-old-sub.md", output)
+        self.assertIn("subagents skipped: unsupported", output)
+        self.assertIn("cf-v2-new.md", output)
+        self.assertIn("cf-v2-updated.md", output)
+        self.assertIn("cf-v2-old.md", output)
+        self.assertIn("plain warning", output)
+
+    @_with_human_mode
+    def test_ok_skips_non_dict_v2_output_and_renders_warning_variants(self):
+        from studio.commands.agents import _human_generate_agents_ok
+        import io
+        from contextlib import redirect_stderr
+
+        results = {
+            "cursor": {
+                "status": "PASS",
+                "workflows": {"created": [], "updated": [], "renamed": [], "deleted": [], "counts": {}},
+                "skills": {"created": [], "updated": [], "deleted": [], "skipped": [], "counts": {"created": 0, "updated": 0, "deleted": 0, "skipped": 0}},
+                "subagents": {"created": [], "updated": [], "deleted": [], "counts": {"created": 0, "updated": 0, "deleted": 0}},
+                "v2_agents": {
+                    "outputs": [
+                        None,
+                        {"path": "/p/.cursor/agents/cf-preserved.md", "action": "preserved", "reason": "keep"},
+                    ],
+                    "warnings": [
+                        {"path": "/p/.cursor/agents/cf-other.md", "reason": "warned"},
+                        "string warning",
+                    ],
+                },
+                "errors": [],
+            },
+        }
+        err = io.StringIO()
+        with redirect_stderr(err):
+            _human_generate_agents_ok({"status": "PASS"}, ["cursor"], results, dry_run=True)
+        output = err.getvalue()
+        self.assertIn("cf-preserved.md", output)
+        self.assertIn("keep", output)
+        self.assertIn("cf-other.md", output)
+        self.assertIn("warned", output)
+        self.assertIn("string warning", output)
 
     @_with_human_mode
     def test_ok_with_errors(self):
@@ -4580,6 +4953,54 @@ class TestProcessWorkflowsRelativeContainment(unittest.TestCase):
             )
             # Should complete without exception; errors may or may not be present
             self.assertIn("errors", result)
+
+
+class TestManagedGitignoreRefresh(unittest.TestCase):
+    """Managed .gitignore refresh should pick up newly managed agent outputs."""
+
+    def test_refresh_managed_gitignore_updates_block(self):
+        from studio.commands.agents import _refresh_managed_gitignore
+        from studio.commands.init import _write_gitignore_block
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            root.mkdir()
+            studio_root = root / ".cf-studio"
+            (studio_root / "config").mkdir(parents=True)
+            core_toml = studio_root / "config" / "core.toml"
+            core_toml.write_text(
+                'version = "1.0"\nproject_root = ".."\n\n[install]\nkit_tracking = "tracked"\nruntime_tracking = "ignored"\nagent_tracking = "ignored"\n',
+                encoding="utf-8",
+            )
+
+            with patch("studio.commands.init.list_managed_agent_output_paths", return_value=[".agents/skills/cf-core/SKILL.md"]):
+                _write_gitignore_block(root, ".cf-studio", core_toml, "tracked", dry_run=False)
+
+            with patch(
+                "studio.commands.init.list_managed_agent_output_paths",
+                return_value=[".agents/skills/cf-core/SKILL.md", ".agents/skills/cf-extra/SKILL.md"],
+            ):
+                action = _refresh_managed_gitignore(root, studio_root, dry_run=False)
+
+            self.assertEqual(action, "updated")
+            gitignore = (root / ".gitignore").read_text(encoding="utf-8")
+            self.assertIn(".agents/skills/cf-extra/SKILL.md", gitignore)
+
+
+class TestResultHasFatalErrors(unittest.TestCase):
+    """Covers nested-section fallback in _result_has_fatal_errors."""
+
+    def test_fallback_scans_nested_sections_when_top_level_errors_missing(self):
+        from studio.commands.agents import _result_has_fatal_errors
+
+        result = {
+            "status": "PARTIAL",
+            "workflows": {"errors": []},
+            "skills": {"errors": ["fatal"]},
+            "subagents": {"errors": []},
+        }
+
+        self.assertTrue(_result_has_fatal_errors(result))
 
 
 if __name__ == "__main__":
