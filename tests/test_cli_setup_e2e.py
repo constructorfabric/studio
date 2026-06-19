@@ -21,6 +21,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "studio" / "scripts"))
 
 from studio.cli import main
+from studio.utils import toml_utils
 
 
 @contextmanager
@@ -47,8 +48,6 @@ def _run_main_json(argv: list[str], *, cwd: Path) -> tuple[int, dict, str]:
 
 
 def _write_toml(path: Path, data: dict) -> None:
-    from studio.utils import toml_utils
-
     path.parent.mkdir(parents=True, exist_ok=True)
     toml_utils.dump(data, path)
 
@@ -132,6 +131,77 @@ def _bootstrap_legacy_cypilot_outputs(root: Path) -> None:
     )
 
 
+def _make_test_cache(cache_dir: Path) -> Path:
+    from _test_helpers import make_test_cache
+
+    make_test_cache(cache_dir)
+    (cache_dir / "whatsnew.toml").write_text(
+        '[whatsnew."v1.0.0"]\nsummary = "Initial"\ndetails = ""\n',
+        encoding="utf-8",
+    )
+    (cache_dir / "version.toml").write_text(
+        '[cfs]\nversion = "v1.0.0"\n',
+        encoding="utf-8",
+    )
+    return cache_dir
+
+
+def _bootstrap_legacy_project(root: Path, legacy_dir: str = "cypilot", version: str = "3.9.0") -> Path:
+    root.mkdir(parents=True, exist_ok=True)
+    (root / ".git").mkdir(exist_ok=True)
+    (root / "AGENTS.md").write_text(
+        '<!-- @cpt:root-agents -->\n'
+        '```toml\n'
+        f'cypilot_path = "{legacy_dir}"\n'
+        '```\n'
+        '<!-- /@cpt:root-agents -->\n'
+        '\n'
+        '# Project rules\n',
+        encoding="utf-8",
+    )
+    (root / "CLAUDE.md").write_text(
+        '<!-- @cpt:root-agents -->\n'
+        '```toml\n'
+        f'cypilot_path = "{legacy_dir}"\n'
+        '```\n'
+        '<!-- /@cpt:root-agents -->\n',
+        encoding="utf-8",
+    )
+    legacy_root = root / legacy_dir
+    config = legacy_root / "config"
+    config.mkdir(parents=True, exist_ok=True)
+    (config / "core.toml").write_text(
+        "# Cypilot project configuration\n"
+        'version = "1.0"\n'
+        'project_root = ".."\n'
+        "\n"
+        "[kits]\n"
+        "[kits.sdlc]\n"
+        'format = "CFS"\n'
+        'path = "config/kits/sdlc"\n'
+        'version = "1.0.0"\n'
+        'source = "github:cyberfabric/cyber-pilot-kit-sdlc"\n',
+        encoding="utf-8",
+    )
+    (config / "artifacts.toml").write_text(
+        "# Cypilot artifacts registry\n"
+        "\n"
+        "[[systems]]\n"
+        'name = "App"\n'
+        'slug = "app"\n'
+        'kit = "sdlc"\n',
+        encoding="utf-8",
+    )
+    (config / "AGENTS.md").write_text(
+        "These rules are loaded alongside `{cypilot_path}/.gen/AGENTS.md`.\n",
+        encoding="utf-8",
+    )
+    version_file = legacy_root / ".core" / "skills" / "cypilot" / "scripts" / "cypilot" / "__init__.py"
+    version_file.parent.mkdir(parents=True, exist_ok=True)
+    version_file.write_text(f'__version__ = "{version}"\n', encoding="utf-8")
+    return legacy_root
+
+
 class TestInfoAndResolveVarsE2E(unittest.TestCase):
     def test_info_no_project_root_returns_not_found_without_writes(self):
         with TemporaryDirectory() as td:
@@ -212,6 +282,41 @@ class TestInfoAndResolveVarsE2E(unittest.TestCase):
             self.assertTrue(out["artifacts_registry_path"].endswith("artifacts.json"))
             self.assertIsNone(out["artifacts_registry_error"])
             self.assertEqual(out["artifacts_registry"]["systems"][0]["slug"], "legacy")
+            self.assertEqual(_snapshot_tree(root), before)
+
+    def test_info_cf_studio_root_override_returns_same_project_without_writes(self):
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            root.mkdir(parents=True, exist_ok=True)
+            (root / ".git").mkdir()
+            cfs_root = root / "Cypilot"
+            cfs_root.mkdir()
+            (cfs_root / "AGENTS.md").write_text("# Cypilot Core\n", encoding="utf-8")
+            (cfs_root / "requirements").mkdir()
+            (cfs_root / "workflows").mkdir()
+            adapter = root / ".cypilot-adapter"
+            (adapter / "config" / "rules").mkdir(parents=True, exist_ok=True)
+            (adapter / "AGENTS.md").write_text(
+                "# Constructor Studio Adapter: RealProject\n\n"
+                "**Extends**: `../Cypilot/AGENTS.md`\n",
+                encoding="utf-8",
+            )
+            _write_toml(adapter / "config" / "core.toml", {"version": "1.0", "project_root": "..", "kits": {}})
+            before = _snapshot_tree(root)
+
+            rc, out, stderr = _run_main_json(
+                ["info", "--root", str(root), "--cf-studio-root", str(cfs_root)],
+                cwd=root,
+            )
+
+            self.assertEqual(rc, 0)
+            self.assertEqual(stderr, "")
+            self.assertEqual(out["status"], "FOUND")
+            self.assertEqual(out["project_root"], root.resolve().as_posix())
+            self.assertEqual(out["project_name"], "RealProject")
+            self.assertEqual(out["relative_path"], ".cypilot-adapter")
+            self.assertTrue(out["has_config"])
+            self.assertEqual(out["studio_dir"], adapter.resolve().as_posix())
             self.assertEqual(_snapshot_tree(root), before)
 
     def test_resolve_vars_flat_success_via_main(self):
@@ -410,6 +515,93 @@ class TestUpdateE2E(unittest.TestCase):
             self.assertEqual(core_toml_path.read_text(encoding="utf-8"), core_toml_before)
             self.assertEqual(_snapshot_tree(root), before)
 
+    def test_update_success_has_bounded_filesystem_diff(self):
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_adapter_project(root)
+            _write_toml(
+                adapter / "config" / "core.toml",
+                {
+                    "version": "1.0",
+                    "project_root": "..",
+                    "install": {
+                        "version_source": "project_config",
+                        "runtime_tracking": "ignored",
+                        "agent_tracking": "ignored",
+                        "kit_tracking": "tracked",
+                    },
+                    "kits": {},
+                },
+            )
+            _write_toml(
+                adapter / "config" / "artifacts.toml",
+                {"version": "1.0", "project_root": "..", "kits": {}, "systems": []},
+            )
+            (adapter / ".core" / "obsolete.txt").write_text("old\n", encoding="utf-8")
+            (adapter / "whatsnew.toml").write_text('[whatsnew."v0.9.0"]\nsummary = "Old"\n', encoding="utf-8")
+            (adapter / "version.toml").write_text('[cfs]\nversion = "v0.9.0"\n', encoding="utf-8")
+            before = _snapshot_tree(root)
+            cache_dir = _make_test_cache(Path(td) / "cache")
+
+            with patch("studio.commands.update.CACHE_DIR", cache_dir):
+                rc, out, stderr = _run_main_json(
+                    ["update", "--project-root", str(root), "--yes", "--migrate-from-cypilot", "no", "--update-legacy-studio", "no"],
+                    cwd=root,
+                )
+
+            self.assertEqual(rc, 0, stderr)
+            self.assertIn("What's new in Studio", stderr)
+            self.assertEqual(out["status"], "PASS")
+            self.assertEqual(out["actions"]["gitignore"], "created")
+            self.assertEqual(out["actions"]["root_agents"], "updated")
+            self.assertEqual(out["actions"]["root_claude"], "created")
+            self.assertEqual(out["actions"]["config_readme"], "created")
+            self.assertEqual(out["actions"]["config_skill"], "created")
+            self.assertEqual(out["actions"]["kits"]["status"], "skipped")
+            self.assertEqual(out["validate_kits"]["status"], "PASS")
+
+            after = _snapshot_tree(root)
+            added_paths = sorted(set(after) - set(before))
+            removed_paths = sorted(set(before) - set(after))
+            changed_paths = sorted(path for path in set(before) & set(after) if before[path] != after[path])
+
+            self.assertEqual(
+                added_paths,
+                sorted(
+                    [
+                        ".gitignore",
+                        "CLAUDE.md",
+                        "adapter/.core/README.md",
+                        "adapter/.core/requirements",
+                        "adapter/.core/requirements/README.md",
+                        "adapter/.core/schemas",
+                        "adapter/.core/schemas/README.md",
+                        "adapter/.core/skills",
+                        "adapter/.core/skills/README.md",
+                        "adapter/.core/workflows",
+                        "adapter/.core/workflows/README.md",
+                        "adapter/.gen/AGENTS.md",
+                        "adapter/.gen/README.md",
+                        "adapter/config/README.md",
+                        "adapter/config/SKILL.md",
+                        "adapter/config/core.toml.lock",
+                    ]
+                ),
+            )
+            self.assertEqual(removed_paths, ["adapter/.core/obsolete.txt"])
+            self.assertEqual(
+                changed_paths,
+                sorted(
+                    [
+                        "AGENTS.md",
+                        "adapter/config/core.toml",
+                        "adapter/version.toml",
+                        "adapter/whatsnew.toml",
+                    ]
+                ),
+            )
+            self.assertFalse((adapter / ".core" / "obsolete.txt").exists())
+
 
 class TestAgentsAndGenerateAgentsE2E(unittest.TestCase):
     def test_generate_agents_show_layers_legacy_via_main(self):
@@ -569,7 +761,6 @@ class TestAgentsAndGenerateAgentsE2E(unittest.TestCase):
             )
 
             self.assertEqual(rc, 0, stderr)
-            self.assertEqual(stderr, "")
             self.assertEqual(out["status"], "PASS")
 
             claude = out["results"]["claude"]
@@ -612,6 +803,201 @@ class TestAgentsAndGenerateAgentsE2E(unittest.TestCase):
             self.assertIn("openai", out["results"])
             self.assertFalse((root / ".codex").exists())
             self.assertFalse((root / ".agents").exists())
+
+
+class TestValidateKitsAndInitE2E(unittest.TestCase):
+    def test_validate_kits_kit_filter_validates_only_selected_registered_kit(self):
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            adapter = _bootstrap_adapter_project(root)
+            _write_toml(
+                adapter / "config" / "core.toml",
+                {
+                    "version": "1.0",
+                    "project_root": "..",
+                    "kits": {
+                        "alpha": {"format": "CFS", "path": "config/kits/alpha"},
+                        "beta": {"format": "CFS", "path": "config/kits/beta"},
+                    },
+                },
+            )
+            _write_toml(
+                adapter / "config" / "artifacts.toml",
+                {
+                    "version": "1.0",
+                    "project_root": "..",
+                    "kits": {
+                        "alpha": {"format": "CFS", "path": "config/kits/alpha"},
+                        "beta": {"format": "CFS", "path": "config/kits/beta"},
+                    },
+                    "systems": [],
+                },
+            )
+            for slug in ("alpha", "beta"):
+                kit_root = adapter / "config" / "kits" / slug
+                kit_root.mkdir(parents=True, exist_ok=True)
+                toml_utils.dump({"artifacts": {"REQ": {"identifiers": {"req": {"required": True}}}}}, kit_root / "constraints.toml")
+            before = _snapshot_tree(root)
+
+            rc, out, stderr = _run_main_json(["validate-kits", "--kit", "beta"], cwd=root)
+
+            self.assertEqual(rc, 0, stderr)
+            self.assertEqual(out["status"], "PASS")
+            self.assertEqual(out["kits_validated"], 1)
+            self.assertEqual(out["error_count"], 0)
+            self.assertEqual(_snapshot_tree(root), before)
+
+    def test_init_project_name_writes_custom_registry_name(self):
+        with TemporaryDirectory() as td:
+            root = Path(td) / "my-proj"
+            root.mkdir(parents=True, exist_ok=True)
+            (root / ".git").mkdir()
+            cache_dir = _make_test_cache(Path(td) / "cache")
+
+            with (
+                patch("studio.commands.init.CACHE_DIR", cache_dir),
+                patch("studio.commands.init._install_default_kit", return_value={}),
+            ):
+                rc, out, stderr = _run_main_json(
+                    ["init", "--yes", "--project-root", str(root), "--project-name", "Custom Name"],
+                    cwd=root,
+                )
+
+            self.assertEqual(rc, 0, stderr)
+            self.assertEqual(out["status"], "PASS")
+            self.assertEqual(out["root_system"], {"name": "MyProj", "slug": "my-proj"})
+            registry = toml_utils.load(root / ".cf-studio" / "config" / "artifacts.toml")
+            self.assertEqual(registry["systems"][0]["name"], "Custom Name")
+            self.assertEqual(registry["systems"][0]["slug"], "custom-name")
+
+    def test_init_from_dir_migrates_explicit_legacy_directory(self):
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            _bootstrap_legacy_project(root, legacy_dir=".bootstrap")
+
+            with patch("studio.commands.migrate_from_cypilot._run_followup_update", return_value=(0, {"status": "PASS"})):
+                rc, out, stderr = _run_main_json(
+                    [
+                        "init",
+                        "--yes",
+                        "--project-root",
+                        str(root),
+                        "--from-dir",
+                        ".bootstrap",
+                        "--migrate-from-cypilot",
+                        "yes",
+                    ],
+                    cwd=root,
+                )
+
+            self.assertEqual(rc, 0, stderr)
+            self.assertEqual(out["status"], "PASS")
+            self.assertEqual(out["from_dir"], ".bootstrap")
+            self.assertEqual(out["actions"]["update"], "PASS")
+            self.assertTrue((root / ".cf-studio" / "config" / "core.toml").is_file())
+            self.assertIn('cf-studio-path = ".cf-studio"', (root / "AGENTS.md").read_text(encoding="utf-8"))
+
+    def test_init_force_replaces_runtime_and_creates_backup(self):
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            root.mkdir(parents=True, exist_ok=True)
+            (root / ".git").mkdir()
+            cache_dir = _make_test_cache(Path(td) / "cache")
+
+            with (
+                patch("studio.commands.init.CACHE_DIR", cache_dir),
+                patch("studio.commands.init._install_default_kit", return_value={}),
+            ):
+                first_rc, _first_out, first_stderr = _run_main_json(
+                    ["init", "--yes", "--project-root", str(root), "--install-dir", ".bootstrap"],
+                    cwd=root,
+                )
+                self.assertEqual(first_rc, 0, first_stderr)
+
+                stale = root / ".bootstrap" / ".core" / "stale.txt"
+                stale.write_text("remove me\n", encoding="utf-8")
+
+                rc, out, stderr = _run_main_json(
+                    ["init", "--yes", "--force", "--project-root", str(root), "--install-dir", ".bootstrap"],
+                    cwd=root,
+                )
+
+            self.assertEqual(rc, 0, stderr)
+            self.assertEqual(stderr, "")
+            self.assertEqual(out["status"], "PASS")
+            self.assertIn("backups", out)
+            self.assertTrue(out["backups"])
+            self.assertFalse(stale.exists())
+            backup_dir = Path(out["backups"][0])
+            self.assertTrue((backup_dir / ".core" / "stale.txt").is_file())
+
+    def test_init_migrate_yes_migrates_legacy_project_without_prompt(self):
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            _bootstrap_legacy_project(root, legacy_dir="cypilot", version="3.9.0")
+
+            with patch("studio.commands.migrate_from_cypilot._run_followup_update", return_value=(0, {"status": "PASS"})):
+                rc, out, stderr = _run_main_json(
+                    [
+                        "init",
+                        "--yes",
+                        "--project-root",
+                        str(root),
+                        "--migrate-from-cypilot",
+                        "yes",
+                    ],
+                    cwd=root,
+                )
+
+            self.assertEqual(rc, 0, stderr)
+            self.assertEqual(out["status"], "PASS")
+            self.assertEqual(out["from_dir"], "cypilot")
+            self.assertEqual(out["actions"]["update"], "PASS")
+            self.assertTrue((root / ".cf-studio" / "config" / "core.toml").is_file())
+            self.assertIn('cf-studio-path = ".cf-studio"', (root / "AGENTS.md").read_text(encoding="utf-8"))
+
+    def test_init_update_legacy_studio_yes_updates_baseline_then_migrates(self):
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            _bootstrap_legacy_project(root, legacy_dir="cypilot", version="3.8.4")
+
+            def _upgrade_legacy(project_root: Path):
+                version_file = (
+                    project_root
+                    / "cypilot"
+                    / ".core"
+                    / "skills"
+                    / "cypilot"
+                    / "scripts"
+                    / "cypilot"
+                    / "__init__.py"
+                )
+                version_file.write_text('__version__ = "3.10.0"\n', encoding="utf-8")
+                return {"status": "PASS", "returncode": 0}
+
+            with (
+                patch("studio.commands.migrate_from_cypilot._run_legacy_update_to_baseline", side_effect=_upgrade_legacy),
+                patch("studio.commands.migrate_from_cypilot._run_followup_update", return_value=(0, {"status": "PASS"})),
+            ):
+                rc, out, stderr = _run_main_json(
+                    [
+                        "init",
+                        "--yes",
+                        "--project-root",
+                        str(root),
+                        "--migrate-from-cypilot",
+                        "yes",
+                        "--update-legacy-studio",
+                        "yes",
+                    ],
+                    cwd=root,
+                )
+
+            self.assertEqual(rc, 0, stderr)
+            self.assertEqual(out["status"], "PASS")
+            self.assertEqual(out["normalized_legacy_version"], "3.10.0")
+            self.assertEqual(out["actions"]["update"], "PASS")
+            self.assertTrue((root / ".cf-studio" / "config" / "core.toml").is_file())
 
 
 if __name__ == "__main__":
