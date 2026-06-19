@@ -67,7 +67,7 @@ When `cfs init` offers to install the Software Development Life Cycle (SDLC) kit
 cfs generate-agents
 ```
 
-`cfs init` creates the repository-local Studio setup directory, normally `.cf-studio/`. The repository footprint is intentionally small: generated Studio runtime files, the local `cfs` support files, and generated AI coding tool agent configuration files are gitignored by default. `cfs generate-agents` writes those tool integration files when needed, and they can be repaired or regenerated. Project configuration and any kit content you choose to track are the parts your organization reviews and evolves.
+`cfs init` creates the repository-local Studio setup directory, normally `.cf-studio/`. The repository footprint is intentionally small: generated Studio runtime files, the local `cfs` support files, and generated AI coding tool agent configuration files are gitignored by default. `cfs generate-agents` writes or refreshes those tool integration files when needed, and they can be repaired or regenerated. Project configuration, project rules under `config/rules/`, and any kit content you choose to track are the parts your organization reviews and evolves.
 
 If a repository already contains Constructor Studio setup files, you can usually skip the install and initialization steps. Open that repository in your AI coding tool and activate Studio in chat:
 
