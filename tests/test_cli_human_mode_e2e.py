@@ -158,7 +158,7 @@ class TestCliHumanModeE2E(unittest.TestCase):
             after = _snapshot_tree(root)
             combined = stdout + stderr
 
-            self.assertEqual(rc, 1)
+            self.assertEqual(rc, 0)
             self.assertEqual(after, before)
             self.assertIn("Generate Agent Integration", combined)
             self.assertIn("Reply with `y` to write these generated files or `n` to abort.", combined)

@@ -356,7 +356,8 @@ class TestCliContractsE2E(unittest.TestCase):
 
             self.assertEqual(rc, 2)
             self.assertEqual(out["status"], "WARN")
-            self.assertEqual(out["kits_updated"], 1)
+            self.assertEqual(out["kits_updated"], 0)
+            self.assertEqual(out["kits_partially_updated"], 1)
             self.assertEqual(out["results"][0]["kit"], "example-v2")
             self.assertEqual(out["results"][0]["action"], "partial")
             self.assertEqual(out["results"][0]["declined"], ["artifacts/PRD/template.md"])
@@ -373,7 +374,7 @@ class TestCliContractsE2E(unittest.TestCase):
                 ],
             )
 
-    def test_kit_check_updates_warn_contract_keeps_exit_zero_for_mixed_degraded_results(self):
+    def test_kit_check_updates_fail_contract_uses_nonzero_exit_for_mixed_degraded_results(self):
         with TemporaryDirectory() as td:
             temp_root = Path(td)
             cache = _make_cache(temp_root)
@@ -411,9 +412,9 @@ class TestCliContractsE2E(unittest.TestCase):
                     cwd=project_root,
                 )
 
-            self.assertEqual(rc, 0)
+            self.assertEqual(rc, 2)
             self.assertEqual(stderr, "")
-            self.assertEqual(out["status"], "WARN")
+            self.assertEqual(out["status"], "FAIL")
             self.assertEqual(out["updates_available"], 1)
             self.assertEqual(out["message"], "Kit updates available")
             self.assertEqual(out["commands"], ["cfs kit update beta"])

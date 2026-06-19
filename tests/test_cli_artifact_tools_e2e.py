@@ -192,6 +192,127 @@ class TestCLIArtifactToolsE2E(unittest.TestCase):
             self.assertEqual(payload["inst"], "validate")
             self.assertIn("def validate():", payload["text"])
 
+    def test_get_content_code_mode_missing_inst_falls_back_to_id_without_writes(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _bootstrap_content_project(root)
+            baseline = _snapshot_tree(root)
+            code_path = root / "src" / "web" / "handlers.py"
+
+            exit_code, stdout, stderr = _run_main(
+                [
+                    "--json",
+                    "get-content",
+                    "--code",
+                    str(code_path),
+                    "--id",
+                    "cpt-web-flow-login",
+                    "--inst",
+                    "missing-inst",
+                ],
+                cwd=root,
+            )
+            after = _snapshot_tree(root)
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(stderr, "")
+            self.assertEqual(after, baseline)
+            payload = json.loads(stdout)
+            self.assertEqual(payload["status"], "FOUND")
+            self.assertEqual(payload["id"], "cpt-web-flow-login")
+            self.assertEqual(payload["inst"], "missing-inst")
+            self.assertIn("def validate():", payload["text"])
+
+    def test_get_content_code_mode_missing_inst_and_id_returns_not_found_without_writes(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _bootstrap_content_project(root)
+            baseline = _snapshot_tree(root)
+            code_path = root / "src" / "web" / "handlers.py"
+
+            exit_code, stdout, stderr = _run_main(
+                [
+                    "--json",
+                    "get-content",
+                    "--code",
+                    str(code_path),
+                    "--id",
+                    "cpt-web-flow-missing",
+                    "--inst",
+                    "missing-inst",
+                ],
+                cwd=root,
+            )
+            after = _snapshot_tree(root)
+
+            self.assertEqual(exit_code, 2)
+            self.assertEqual(stderr, "")
+            self.assertEqual(after, baseline)
+            payload = json.loads(stdout)
+            self.assertEqual(
+                payload,
+                {
+                    "status": "NOT_FOUND",
+                    "id": "cpt-web-flow-missing",
+                    "inst": "missing-inst",
+                },
+            )
+
+    def test_get_content_code_mode_missing_file_is_non_mutating_error(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _bootstrap_content_project(root)
+            baseline = _snapshot_tree(root)
+            code_path = root / "src" / "web" / "missing.py"
+
+            exit_code, stdout, stderr = _run_main(
+                ["--json", "get-content", "--code", str(code_path), "--id", "cpt-web-flow-login"],
+                cwd=root,
+            )
+            after = _snapshot_tree(root)
+
+            self.assertEqual(exit_code, 1)
+            self.assertEqual(stderr, "")
+            self.assertEqual(after, baseline)
+            payload = json.loads(stdout)
+            self.assertEqual(
+                payload,
+                {
+                    "status": "ERROR",
+                    "message": f"Code file not found: {code_path.resolve()}",
+                },
+            )
+
+    def test_get_content_code_mode_parse_failure_is_non_mutating_error(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _bootstrap_content_project(root)
+            code_path = root / "src" / "web" / "broken.py"
+            code_path.write_bytes(b"\xff\xfe\x00broken")
+            baseline = _snapshot_tree(root)
+
+            exit_code, stdout, stderr = _run_main(
+                ["--json", "get-content", "--code", str(code_path), "--id", "cpt-web-flow-login"],
+                cwd=root,
+            )
+            after = _snapshot_tree(root)
+
+            self.assertEqual(exit_code, 1)
+            self.assertEqual(stderr, "")
+            self.assertEqual(after, baseline)
+            payload = json.loads(stdout)
+            self.assertEqual(payload["status"], "ERROR")
+            self.assertIn("Failed to parse code file:", payload["message"])
+            self.assertIn("Failed to read", payload["message"])
+            self.assertIn(str(code_path.resolve()), payload["message"])
+
+    def test_get_content_code_mode_missing_id_returns_not_found_without_writes(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _bootstrap_content_project(root)
+            baseline = _snapshot_tree(root)
+            code_path = root / "src" / "web" / "handlers.py"
+
             exit_code, stdout, stderr = _run_main(
                 ["--json", "get-content", "--code", str(code_path), "--id", "cpt-web-flow-missing"],
                 cwd=root,
@@ -201,8 +322,14 @@ class TestCLIArtifactToolsE2E(unittest.TestCase):
             self.assertEqual(stderr, "")
             self.assertEqual(after, baseline)
             payload = json.loads(stdout)
-            self.assertEqual(payload["status"], "NOT_FOUND")
-            self.assertEqual(payload["id"], "cpt-web-flow-missing")
+            self.assertEqual(
+                payload,
+                {
+                    "status": "NOT_FOUND",
+                    "id": "cpt-web-flow-missing",
+                    "inst": None,
+                },
+            )
 
     def test_get_content_missing_selector_is_non_mutating_error(self):
         with TemporaryDirectory() as tmpdir:

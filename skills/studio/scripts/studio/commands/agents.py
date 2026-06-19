@@ -4845,13 +4845,17 @@ def _resolve_includes_for_layers(layers: List, project_root: Path) -> Tuple[List
 
 
 # @cpt-begin:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-discover-flag
-def _run_discover_flag(args: Any, project_root: Path, studio_root: Path) -> None:
+def _run_discover_flag(args: Any, project_root: Path, studio_root: Path) -> Optional[str]:
     """Run --discover: scan dirs and write new entries to manifest.toml."""
     discovered = discover_components(project_root)
     manifest_out = studio_root / "config" / "manifest.toml"
+    manifest_existed = manifest_out.exists()
     if not args.dry_run:
         write_discovered_manifest(discovered, manifest_out)
         sys.stderr.write(f"INFO: wrote discovered manifest to {manifest_out}\n")
+    if not manifest_existed and manifest_out.is_file():
+        return _safe_relpath(manifest_out, project_root)
+    return None
 # @cpt-end:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-discover-flag
 
 
@@ -4880,23 +4884,23 @@ def _confirm_v2_generation(
     preview_create: int,
     preview_update: int,
     preview_delete: int = 0,
-) -> bool:
-    """Return True if generation should proceed, False if user aborted.
+) -> str:
+    """Return the next generate-agents action after preview confirmation.
 
     Handles: dry_run short-circuit, no-changes case, JSON-mode bypass,
     --yes flag, and interactive prompt.
     """
     if args.dry_run:
-        return False
+        return "SKIP"
     if not preview_create and not preview_update and not preview_delete:
         ui.info("No changes needed — agent files are up to date.")
-        return False
+        return "NO_CHANGES"
     from ..utils.ui import is_json_mode
     if not is_json_mode():
         auto_approve = getattr(args, "yes", False)
         if not auto_approve:
             if not sys.stdin.isatty():
-                return True  # non-interactive: proceed
+                return "PROCEED"  # non-interactive: proceed
             sys.stdout.write(
                 f"Will create {preview_create} file(s), update {preview_update} file(s), "
                 f"delete {preview_delete} file(s).\n"
@@ -4908,9 +4912,8 @@ def _confirm_v2_generation(
             sys.stdout.flush()
             answer = sys.stdin.readline().strip().lower()
             if answer and answer not in ("y", "yes"):
-                ui.info("Aborted.")
-                return False
-    return True
+                return "ABORTED"
+    return "PROCEED"
 
 
 def _run_v2_pipeline(
@@ -5027,8 +5030,9 @@ def cmd_generate_agents(argv: List[str]) -> int:
 
         # Step 4: Handle --discover flag
         # @cpt-begin:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-step4-discover
+        discover_created_path = None
         if getattr(args, "discover", False):
-            _run_discover_flag(args, project_root, studio_root)
+            discover_created_path = _run_discover_flag(args, project_root, studio_root)
             discovered_layers = _discover_layers(project_root, studio_root)
             layers = [layer for layer in discovered_layers if layer.scope == "kit"]
             resolved_layers, has_v2_errors = _resolve_includes_for_layers(layers, project_root)
@@ -5076,7 +5080,12 @@ def cmd_generate_agents(argv: List[str]) -> int:
         preview_v2_create = 0
         preview_v2_update = 0
         preview_v2_delete = 0
-        preview_gitignore_action = _refresh_managed_gitignore(project_root, studio_root, dry_run=True)
+        preview_gitignore_action = _refresh_managed_gitignore(
+            project_root,
+            studio_root,
+            dry_run=True,
+            extra_paths=[discover_created_path] if discover_created_path else None,
+        )
         preview_agents: Dict[str, Dict[str, Any]] = {}
         preview_skills: Dict[str, Dict[str, Any]] = {}
         legacy_preview: Dict[str, Any] = {}
@@ -5148,7 +5157,10 @@ def cmd_generate_agents(argv: List[str]) -> int:
         # @cpt-end:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-step8-dry-run-report
 
         # @cpt-begin:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-step8-confirm-execute
-        if not _confirm_v2_generation(args, preview_v2_create, preview_v2_update, preview_v2_delete):
+        confirm_action = _confirm_v2_generation(args, preview_v2_create, preview_v2_update, preview_v2_delete)
+        if confirm_action == "ABORTED":
+            return _emit_generate_agents_aborted()
+        if confirm_action != "PROCEED":
             return 0
 
         results, has_errors = _run_v2_pipeline(
@@ -5164,7 +5176,12 @@ def cmd_generate_agents(argv: List[str]) -> int:
             trusted_roots=_trusted_roots,
             remove_cypilot=remove_cypilot,
         )
-        gitignore_action = _refresh_managed_gitignore(project_root, studio_root, dry_run=False)
+        gitignore_action = _refresh_managed_gitignore(
+            project_root,
+            studio_root,
+            dry_run=False,
+            extra_paths=[discover_created_path] if discover_created_path else None,
+        )
         agents_result = _build_result(
             results,
             agents_to_process,
@@ -5197,12 +5214,9 @@ def cmd_generate_agents(argv: List[str]) -> int:
         return 0
 
     # Handle --discover flag in legacy mode
+    discover_created_path = None
     if getattr(args, "discover", False):
-        discovered = discover_components(project_root)
-        manifest_out = studio_root / "config" / "manifest.toml"
-        if not args.dry_run:
-            write_discovered_manifest(discovered, manifest_out)
-            sys.stderr.write(f"INFO: wrote discovered manifest to {manifest_out}\n")
+        discover_created_path = _run_discover_flag(args, project_root, studio_root)
 
     # Step 1: Dry run to preview changes
     # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-for-each-agent
@@ -5223,7 +5237,12 @@ def cmd_generate_agents(argv: List[str]) -> int:
     total_create = 0
     total_update = 0
     total_delete = 0
-    preview_gitignore_action = _refresh_managed_gitignore(project_root, studio_root, dry_run=True)
+    preview_gitignore_action = _refresh_managed_gitignore(
+        project_root,
+        studio_root,
+        dry_run=True,
+        extra_paths=[discover_created_path] if discover_created_path else None,
+    )
     for r in preview_results.values():
         wf = r.get("workflows", {})
         sk = r.get("skills", {})
@@ -5339,11 +5358,7 @@ def cmd_generate_agents(argv: List[str]) -> int:
             except (EOFError, KeyboardInterrupt):
                 answer = "n"
             if answer and answer not in ("y", "yes"):
-                ui.result(
-                    {"status": "ABORTED", "message": "Cancelled by user"},
-                    human_fn=lambda d: (ui.warn("Aborted."), ui.blank()),
-                )
-                return 1
+                return _emit_generate_agents_aborted()
 
     # Step 3: Execute the actual write
     # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-for-each-agent
@@ -5365,7 +5380,12 @@ def cmd_generate_agents(argv: List[str]) -> int:
     # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-for-each-agent
 
     # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-return-report
-    gitignore_action = _refresh_managed_gitignore(project_root, studio_root, dry_run=False)
+    gitignore_action = _refresh_managed_gitignore(
+        project_root,
+        studio_root,
+        dry_run=False,
+        extra_paths=[discover_created_path] if discover_created_path else None,
+    )
     agents_result = _build_result(
         results,
         agents_to_process,
@@ -5508,24 +5528,146 @@ def _build_result(
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-format-output
 
 
+def _write_expected_gitignore_block(
+    project_root: Path,
+    expected_block: str,
+    *,
+    dry_run: bool,
+) -> str:
+    """Write or update the managed Constructor Studio .gitignore block."""
+    from .init import GITIGNORE_MARKER_END, GITIGNORE_MARKER_START
+
+    gitignore_path = project_root / ".gitignore"
+    if not gitignore_path.is_file():
+        if not dry_run:
+            gitignore_path.write_text(expected_block + "\n", encoding="utf-8")
+        return "created"
+
+    content = gitignore_path.read_text(encoding="utf-8")
+    has_start = GITIGNORE_MARKER_START in content
+    has_end = GITIGNORE_MARKER_END in content
+    if has_start != has_end:
+        raise ValueError(".gitignore contains a malformed Constructor Studio managed block")
+    if has_start and has_end:
+        start_idx = content.index(GITIGNORE_MARKER_START)
+        end_idx = content.index(GITIGNORE_MARKER_END)
+        if end_idx < start_idx:
+            raise ValueError(".gitignore contains a malformed Constructor Studio managed block")
+        end_idx += len(GITIGNORE_MARKER_END)
+        current_block = content[start_idx:end_idx]
+        if current_block == expected_block:
+            return "unchanged"
+        new_content = content[:start_idx] + expected_block + content[end_idx:]
+    else:
+        prefix = content.rstrip("\n")
+        new_content = (prefix + "\n\n" if prefix else "") + expected_block + "\n"
+
+    if not dry_run:
+        gitignore_path.write_text(new_content, encoding="utf-8")
+    return "updated"
+
+
+def _build_managed_gitignore_block(
+    paths: List[str],
+) -> Optional[str]:
+    """Return a managed .gitignore block for the supplied project-relative paths."""
+    from .init import GITIGNORE_MARKER_END, GITIGNORE_MARKER_START
+
+    normalized: List[str] = []
+    seen: Set[str] = set()
+    for raw_path in paths:
+        if not isinstance(raw_path, str):
+            continue
+        path = raw_path.replace("\\", "/").strip("/")
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        normalized.append(path)
+    if not normalized:
+        return None
+    return "\n".join(
+        [
+            GITIGNORE_MARKER_START,
+            "# Generated Constructor Studio runtime and agent integration files.",
+            "# Files matched here are owned by Constructor Studio and may be overwritten.",
+            *normalized,
+            GITIGNORE_MARKER_END,
+        ]
+    )
+
+
+def _merge_gitignore_extra_paths(
+    expected_block: str,
+    extra_paths: List[str],
+) -> str:
+    """Append extra managed file paths to an existing managed .gitignore block."""
+    lines = expected_block.splitlines()
+    if not lines:
+        return expected_block
+    merged_lines = list(lines[:-1])
+    seen = {line for line in merged_lines if line and not line.startswith("#")}
+    for raw_path in extra_paths:
+        path = raw_path.replace("\\", "/").strip("/")
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        merged_lines.append(path)
+    merged_lines.append(lines[-1])
+    return "\n".join(merged_lines)
+
+
 def _refresh_managed_gitignore(
     project_root: Path,
     studio_root: Path,
     dry_run: bool,
+    extra_paths: Optional[List[str]] = None,
 ) -> Optional[str]:
     """Refresh the managed Constructor Studio .gitignore block when possible."""
     core_toml_path = studio_root / "config" / "core.toml"
-    if not core_toml_path.is_file():
-        return None
-    from .init import _read_kit_tracking, _write_gitignore_block
+    extra_entries = [
+        _normalize_managed_output_path(project_root, path)
+        for path in (extra_paths or [])
+        if isinstance(path, str) and path.strip()
+    ]
+    if core_toml_path.is_file():
+        from .init import _compute_gitignore_block, _read_install_tracking, _read_kit_tracking, _ignored_kit_paths, _write_gitignore_block
 
-    return _write_gitignore_block(
-        project_root,
-        _safe_relpath(studio_root, project_root),
-        core_toml_path,
-        _read_kit_tracking(core_toml_path, default="tracked"),
-        dry_run=dry_run,
+        if not extra_entries:
+            return _write_gitignore_block(
+                project_root,
+                _safe_relpath(studio_root, project_root),
+                core_toml_path,
+                _read_kit_tracking(core_toml_path, default="tracked"),
+                dry_run=dry_run,
+            )
+        expected_block = _compute_gitignore_block(
+            project_root,
+            _safe_relpath(studio_root, project_root),
+            _ignored_kit_paths(project_root, core_toml_path, default=_read_kit_tracking(core_toml_path, default="tracked")),
+            runtime_tracking=_read_install_tracking(core_toml_path, "runtime_tracking", default="ignored"),
+            agent_tracking=_read_install_tracking(core_toml_path, "agent_tracking", default="ignored"),
+        )
+        return _write_expected_gitignore_block(
+            project_root,
+            _merge_gitignore_extra_paths(expected_block, extra_entries),
+            dry_run=dry_run,
+        )
+
+    expected_block = _build_managed_gitignore_block(
+        list_managed_agent_output_paths(project_root, studio_root) + extra_entries
     )
+    if expected_block is None:
+        return None
+    return _write_expected_gitignore_block(project_root, expected_block, dry_run=dry_run)
+
+
+def _emit_generate_agents_aborted() -> int:
+    """Emit the standard user-cancel contract for generate-agents."""
+    ui.result(
+        {"status": "ABORTED", "message": "Cancelled by user"},
+        human_fn=lambda _d: (ui.warn("Aborted."), ui.blank()),
+    )
+    return 0
 
 # ---------------------------------------------------------------------------
 # Human-friendly formatters

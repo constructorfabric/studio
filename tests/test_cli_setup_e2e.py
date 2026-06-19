@@ -674,7 +674,11 @@ class TestAgentsAndGenerateAgentsE2E(unittest.TestCase):
                 f'source = "{(root / ".claude" / "agents" / "local-reviewer.md").resolve().as_posix()}"',
                 manifest_text,
             )
-            self.assertFalse(gitignore_path.exists())
+            self.assertTrue(gitignore_path.exists())
+            gitignore_text = gitignore_path.read_text(encoding="utf-8")
+            self.assertIn("config/manifest.toml", gitignore_text)
+            self.assertIn(".claude/skills/cf/SKILL.md", gitignore_text)
+            self.assertIn(".claude/skills/cypilot-generate/SKILL.md", gitignore_text)
             after = _snapshot_tree(root)
             added_paths = sorted(set(after) - set(before))
             removed_paths = sorted(set(before) - set(after))
@@ -700,6 +704,7 @@ class TestAgentsAndGenerateAgentsE2E(unittest.TestCase):
                     ".claude/skills/cypilot-analyze/SKILL.md",
                     ".claude/skills/cypilot-generate",
                     ".claude/skills/cypilot-generate/SKILL.md",
+                    ".gitignore",
                     "config/manifest.toml",
                 ]
             )

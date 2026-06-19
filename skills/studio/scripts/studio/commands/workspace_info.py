@@ -12,6 +12,21 @@ from ..utils.ui import ui
 from ..utils.workspace import WorkspaceConfig
 
 
+def _source_warning_for_result(info: dict) -> Optional[str]:
+    """Return a normalized top-level warning string for a source info record."""
+    warning = info.get("warning")
+    if not warning:
+        return None
+    return f"{info.get('name', '?')}: {warning}"
+
+
+def _collect_workspace_warnings(sources_info: List[dict], config_warnings: List[str]) -> List[str]:
+    """Collect top-level workspace warnings from source and config degradation."""
+    warnings = [_source_warning_for_result(source) for source in sources_info]
+    warnings.extend(f"config: {warning}" for warning in config_warnings)
+    return [warning for warning in warnings if warning]
+
+
 def _probe_source_adapter(resolved: Path, explicit_adapter: Optional[Path]) -> Optional[Path]:
     """Find the adapter directory for a reachable source.
 
@@ -61,6 +76,8 @@ def _build_source_info(ws_cfg: WorkspaceConfig, name: str) -> dict:
     info["adapter_found"] = found_adapter is not None
     if found_adapter is not None:
         _enrich_with_artifact_counts(info, found_adapter)
+    elif src.adapter:
+        info["warning"] = f"Configured adapter not found: {src.adapter}"
 
     return info
 
@@ -147,9 +164,15 @@ def cmd_workspace_info(argv: List[str]) -> int:
         },
     }
 
-    config_errors = ws_cfg.validate()
-    if config_errors:
-        result["config_warnings"] = config_errors
+    config_warnings = ws_cfg.validate()
+    if config_warnings:
+        result["config_warnings"] = config_warnings
+
+    warnings = _collect_workspace_warnings(sources_info, config_warnings)
+    result["degraded"] = bool(warnings)
+    result["warning_count"] = len(warnings)
+    if warnings:
+        result["warnings"] = warnings
 
     # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-build-result
 
@@ -214,7 +237,9 @@ def _fmt_status(data: dict) -> None:
 
     ui.blank()
     status = data.get("status", "")
-    if status == "OK":
+    if status == "OK" and data.get("degraded"):
+        ui.warn(f"Workspace is degraded ({data.get('warning_count', 0)} warnings)")
+    elif status == "OK":
         ui.success("Workspace is configured")
     elif status == "ERROR":
         ui.error(data.get("message", ""))

@@ -3353,6 +3353,19 @@ def _collect_kit_update_partial_reasons(results: List[Dict[str, Any]]) -> List[D
     return partials
 
 
+def _count_kit_update_actions(
+    results: List[Dict[str, Any]],
+    *actions: str,
+) -> int:
+    """Count normalized kit update actions in ``results``."""
+    wanted = {action.strip().lower() for action in actions}
+    return sum(
+        1
+        for result in results
+        if _normalize_kit_update_action(result.get("action")) in wanted
+    )
+
+
 # @cpt-flow:cpt-studio-flow-kit-update-cli:p1
 def cmd_kit_update(argv: List[str]) -> int:
     """Update installed kits from their registered sources or a local path.
@@ -3616,17 +3629,10 @@ def cmd_kit_update(argv: List[str]) -> int:
     # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-regen-gen
 
     # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-format-output
-    n_updated = sum(
-        1
-        for r in all_results
-        if _normalize_kit_update_action(r.get("action"))
-        not in ("current", "dry_run", "aborted", "failed")
-    )
+    n_updated = _count_kit_update_actions(all_results, "updated", "created")
+    n_partial = _count_kit_update_actions(all_results, "partial")
     command_failed = has_failed_updates
-    command_incomplete = any(
-        _normalize_kit_update_action(r.get("action")) == "partial"
-        for r in all_results
-    )
+    command_incomplete = n_partial > 0
     interactive_partial_success = bool(interactive and command_incomplete and not command_failed)
     if command_failed:
         status = "FAIL"
@@ -3641,6 +3647,7 @@ def cmd_kit_update(argv: List[str]) -> int:
     output: Dict[str, Any] = {
         "status": status,
         "kits_updated": n_updated,
+        "kits_partially_updated": n_partial,
         "results": all_results,
     }
     partial_reasons = _collect_kit_update_partial_reasons(all_results)
@@ -3772,7 +3779,7 @@ def cmd_kit_check_updates(argv: List[str]) -> int:
         if _normalize_kit_update_action(r.get("action")) == "failed"
     ]
     output: Dict[str, Any] = {
-        "status": "WARN" if failures else "PASS",
+        "status": "FAIL" if failures else "PASS",
         "updates_available": len(updates),
         "results": results,
     }
@@ -3787,7 +3794,7 @@ def cmd_kit_check_updates(argv: List[str]) -> int:
             for r in failures
         ]
     ui.result(output, human_fn=_human_kit_check_updates)
-    return 0
+    return 2 if failures else 0
     # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-format-output
 
 
@@ -3915,8 +3922,9 @@ def cmd_kit_normalize(argv: List[str]) -> int:
             and not args.output
         ):
             raise ValueError(
-                "Refusing to overwrite the source multi-kit manifest with only a selected subset; "
-                "use --output, --dry-run, or --stdout",
+                "Refusing to overwrite the source multi-kit manifest with only the selected subset. "
+                "Use --stdout to print just that subset, --dry-run to preview it without writing, "
+                "or --output <path> to write it to a different file.",
             )
         # @cpt-end:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-load-source
     except ValueError as exc:

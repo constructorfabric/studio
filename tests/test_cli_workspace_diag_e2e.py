@@ -325,6 +325,9 @@ class TestCLIWorkspaceE2E(unittest.TestCase):
 
             info_payload = json.loads(stdout)
             self.assertEqual(info_payload["status"], "OK")
+            self.assertFalse(info_payload["degraded"])
+            self.assertEqual(info_payload["warning_count"], 0)
+            self.assertNotIn("warnings", info_payload)
             self.assertEqual(info_payload["sources_count"], 2)
             self.assertFalse(info_payload["is_inline"])
             self.assertFalse(info_payload["context_loaded"])
@@ -561,6 +564,12 @@ class TestCLIWorkspaceE2E(unittest.TestCase):
             self.assertEqual(after, before)
             payload = json.loads(stdout)
             self.assertEqual(payload["status"], "OK")
+            self.assertTrue(payload["degraded"])
+            self.assertEqual(payload["warning_count"], 1)
+            self.assertEqual(
+                payload["warnings"],
+                ["remote-docs: Source not cloned — run 'workspace-sync' to fetch: https://gitlab.com/acme/docs.git"],
+            )
             source = payload["sources"][0]
             self.assertFalse(source["reachable"])
             self.assertIn("Source not cloned", source["warning"])
@@ -593,15 +602,24 @@ class TestCLIWorkspaceE2E(unittest.TestCase):
             self.assertEqual(stderr, "")
             self.assertEqual(after, before)
             payload = json.loads(stdout)
+            self.assertEqual(payload["status"], "OK")
+            self.assertTrue(payload["degraded"])
+            self.assertEqual(payload["warning_count"], 1)
             source = payload["sources"][0]
             self.assertTrue(source["reachable"])
             self.assertFalse(source["adapter_found"])
+            self.assertEqual(source["warning"], "Configured adapter not found: missing-adapter")
+            self.assertEqual(
+                payload["warnings"],
+                ["docs-repo: Configured adapter not found: missing-adapter"],
+            )
 
     def test_workspace_info_config_warning_is_exposed(self):
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir) / "workspace-root"
             _make_repo(root)
             _write_core_config(root, '[project]\nname = "workspace-root"\n')
+            _make_adapter_repo(root / "docs-repo", role_dir="architecture")
 
             before = _snapshot_tree(root)
             with patch("studio.utils.workspace.find_workspace_config") as mock_find:
@@ -627,7 +645,10 @@ class TestCLIWorkspaceE2E(unittest.TestCase):
             self.assertEqual(after, before)
             payload = json.loads(stdout)
             self.assertEqual(payload["status"], "OK")
+            self.assertTrue(payload["degraded"])
+            self.assertEqual(payload["warning_count"], 1)
             self.assertEqual(payload["config_warnings"], ["synthetic warning from test"])
+            self.assertEqual(payload["warnings"], ["config: synthetic warning from test"])
 
     def test_workspace_info_no_workspace_error_is_read_only(self):
         with TemporaryDirectory() as tmpdir:

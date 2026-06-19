@@ -647,6 +647,9 @@ class TestCliExampleKitsE2E(unittest.TestCase):
             self.assertEqual(rc, 2, stderr)
             self.assertEqual(out["status"], "FAIL")
             self.assertIn("Refusing to overwrite the source multi-kit manifest", out["message"])
+            self.assertIn("--stdout", out["message"])
+            self.assertIn("--dry-run", out["message"])
+            self.assertIn("--output <path>", out["message"])
             self.assertEqual((multi / ".cf-studio-kit.toml").read_text(encoding="utf-8"), before)
 
     def test_kit_normalize_multi_kit_writes_full_manifest_when_all_selected(self):
@@ -2627,6 +2630,8 @@ class TestCliExampleKitsE2E(unittest.TestCase):
             self.assertEqual(rc, 2, stderr)
             self.assertEqual(out["status"], "WARN")
             result = out["results"][0]
+            self.assertEqual(out["kits_updated"], 0)
+            self.assertEqual(out["kits_partially_updated"], 1)
             self.assertEqual(result["action"], "partial")
             self.assertEqual(result["accepted"], ["agents/planner-helper.md", "agents/reviewer-helper.md"])
             self.assertEqual(result["declined"], ["artifacts/FEATURE/example.md"])
