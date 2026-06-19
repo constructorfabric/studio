@@ -937,7 +937,7 @@ def _collect_registered_kit_metadata(
     install_mode = str(kit_data.get("install_mode", "") or "").strip()
     if (not isinstance(resources, dict) or not resources) and install_mode == "register":
         try:
-            from ..utils.kit_model import load_kit_model
+            from ..utils.kit_model import load_installed_kit_model
             from ..utils.manifest import resolve_resource_bindings_with_errors
 
             # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitmodel-source
@@ -948,7 +948,7 @@ def _collect_registered_kit_metadata(
             )
             if kit_dir is None:
                 return {}
-            model = load_kit_model(kit_dir, kit_slug=kit_slug)
+            model = load_installed_kit_model(kit_dir, kit_entry if isinstance(kit_entry, dict) else {}, kit_slug=kit_slug)
             # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-kitmodel-source
             bindings, _binding_errors = resolve_resource_bindings_with_errors(
                 studio_dir / "config",
@@ -1330,7 +1330,7 @@ def _public_component_name_conflicts(
         return errors
 
     try:
-        from ..utils.kit_model import load_kit_model
+        from ..utils.kit_model import load_installed_kit_model
     except ImportError:
         return []
 
@@ -1346,7 +1346,11 @@ def _public_component_name_conflicts(
         if existing_root is None or not existing_root.is_dir():
             continue
         try:
-            existing_model = load_kit_model(existing_root)
+            existing_model = load_installed_kit_model(
+                existing_root,
+                kit_entry,
+                kit_slug=existing_slug_str,
+            )
         except (OSError, ValueError):
             continue
         for name, resource_id in incoming.items():
@@ -3690,6 +3694,12 @@ def cmd_kit_normalize(argv: List[str]) -> int:
         default="",
         help="Output path for .cf-studio-kit.toml (default: <path>/.cf-studio-kit.toml)",
     )
+    p.add_argument(
+        "--kit",
+        action="append",
+        default=[],
+        help="Select canonical kit slug(s) from a multi-kit manifest; repeat, comma-separate, or use 'all'",
+    )
     p.add_argument("--dry-run", action="store_true", help="Print the generated manifest without writing it")
     p.add_argument("--stdout", action="store_true", help="Write only the generated canonical manifest TOML to stdout")
     args = p.parse_args(argv)
@@ -3710,10 +3720,55 @@ def cmd_kit_normalize(argv: List[str]) -> int:
     # @cpt-end:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-validate-source
 
     try:
-        from ..utils.kit_model import normalize_kit_source
+        from ..utils.kit_model import (
+            load_canonical_kit_models,
+            normalize_kit_source,
+            render_canonical_manifest_models,
+        )
 
         # @cpt-begin:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-load-source
-        model, manifest_text = normalize_kit_source(kit_source, args.source_hint)
+        selected_models: List[Any] = []
+        all_canonical_models: List[Any] = []
+        if args.source_hint in ("", "manifest"):
+            all_canonical_models = load_canonical_kit_models(kit_source)
+        requested_kits = _split_kit_selectors(args.kit)
+        if all_canonical_models:
+            # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-select-kit
+            # @cpt-begin:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-select-kit
+            by_slug = {str(model.slug): model for model in all_canonical_models}
+            if requested_kits and not any(value == "all" for value in requested_kits):
+                missing = [value for value in requested_kits if value not in by_slug]
+                if missing:
+                    raise ValueError(
+                        f"Unknown kit selection: {', '.join(missing)}; available kits: {', '.join(sorted(by_slug))}",
+                    )
+                seen: set[str] = set()
+                for value in requested_kits:
+                    if value in seen:
+                        continue
+                    selected_models.append(by_slug[value])
+                    seen.add(value)
+            else:
+                selected_models = list(all_canonical_models)
+            # @cpt-end:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-select-kit
+            # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-select-kit
+            manifest_text = render_canonical_manifest_models(selected_models)
+        else:
+            if requested_kits:
+                raise ValueError("--kit can only select kits declared in .cf-studio-kit.toml")
+            model, manifest_text = normalize_kit_source(kit_source, args.source_hint)
+            selected_models = [model]
+        if (
+            all_canonical_models
+            and len(selected_models) < len(all_canonical_models)
+            and not args.dry_run
+            and not args.stdout
+            and not args.output
+        ):
+            raise ValueError(
+                "Refusing to overwrite the source multi-kit manifest with only a selected subset; "
+                "use --output, --dry-run, or --stdout",
+            )
         # @cpt-end:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-load-source
     except ValueError as exc:
         ui.result({
@@ -3723,7 +3778,24 @@ def cmd_kit_normalize(argv: List[str]) -> int:
         return 2
 
     # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-report-ambiguity
-    report = _kit_normalize_report(model)
+    if len(selected_models) == 1:
+        report = _kit_normalize_report(selected_models[0])
+    else:
+        report = {
+            "manifest_source": "canonical",
+            "resources": sum(len(model.resources) for model in selected_models),
+            "public_resources": sum(len([r for r in model.resources if r.public]) for model in selected_models),
+            "warnings": [warning for model in selected_models for warning in model.warnings],
+            "kits": [
+                {
+                    "slug": model.slug,
+                    "name": model.name,
+                    "version": model.version,
+                    "report": _kit_normalize_report(model),
+                }
+                for model in selected_models
+            ],
+        }
     # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-report-ambiguity
 
     if args.stdout:
@@ -3738,7 +3810,9 @@ def cmd_kit_normalize(argv: List[str]) -> int:
             "status": "PASS",
             "action": "normalized",
             "dry_run": True,
-            "kit": model.slug,
+            "kit": selected_models[0].slug if len(selected_models) == 1 else "",
+            "kits": [model.slug for model in selected_models],
+            "kits_normalized": len(selected_models),
             "output": output_path.as_posix(),
             "report": report,
             "manifest": manifest_text,
@@ -3753,7 +3827,9 @@ def cmd_kit_normalize(argv: List[str]) -> int:
         "status": "PASS",
         "action": "normalized",
         "dry_run": False,
-        "kit": model.slug,
+        "kit": selected_models[0].slug if len(selected_models) == 1 else "",
+        "kits": [model.slug for model in selected_models],
+        "kits_normalized": len(selected_models),
         "output": output_path.as_posix(),
         "report": report,
     }, human_fn=_human_kit_normalize)
@@ -3814,7 +3890,11 @@ def _kit_normalize_report(model: Any) -> Dict[str, Any]:
 
 def _human_kit_normalize(data: dict) -> None:
     ui.header("Kit Normalize")
-    ui.detail("Kit", str(data.get("kit", "?")))
+    kits = data.get("kits", [])
+    if isinstance(kits, list) and len(kits) > 1:
+        ui.detail("Kits", ", ".join(str(kit) for kit in kits))
+    else:
+        ui.detail("Kit", str(data.get("kit") or (kits[0] if isinstance(kits, list) and kits else "?")))
     ui.detail("Output", str(data.get("output", "?")))
     report = data.get("report", {})
     if isinstance(report, dict):

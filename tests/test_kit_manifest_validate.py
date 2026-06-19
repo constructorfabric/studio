@@ -1171,7 +1171,7 @@ class TestValidateKitByPathManifest(unittest.TestCase):
 
     def test_canonical_constraints_artifact_bindings_survive_model_load(self):
         """Canonical constraints resources carry explicit artifact-kind bindings."""
-        from studio.utils.kit_model import kit_model_to_toml_data, load_kit_model
+        from studio.utils.kit_model import kit_models_to_toml_data, load_kit_model
 
         with TemporaryDirectory() as td:
             kit_dir = Path(td) / "mykit"
@@ -1223,7 +1223,7 @@ class TestValidateKitByPathManifest(unittest.TestCase):
             constraints_resource.artifact_bindings,
             {"FEATURE": {"template": "feature-template", "examples": "feature-examples"}},
         )
-        rendered = kit_model_to_toml_data(model)
+        rendered = kit_models_to_toml_data([model])
         rendered_constraints = [
             res for res in rendered["kits"][0]["resources"]
             if res["id"] == "ruleset"

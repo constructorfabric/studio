@@ -155,7 +155,7 @@ class TestAdapterInfoCommand(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             kit_model = output["kit_models"]["sdlc"]
             self.assertEqual(kit_model["name"], "SDLC Kit")
-            self.assertEqual(kit_model["manifest_source"], "canonical")
+            self.assertEqual(kit_model["manifest_source"], "core")
             self.assertEqual(kit_model["resources"]["skill"]["binding_path"], "config/kits/sdlc/SKILL.md")
             self.assertEqual(kit_model["public_components"][0]["generated_name"], "cf-sdlc-skill")
             self.assertEqual(kit_model["active_targets"], ["installed"])
@@ -167,6 +167,8 @@ class TestAdapterInfoCommand(unittest.TestCase):
             kit_detail = output["kit_details"]["sdlc"]
             self.assertEqual(kit_detail["name"], "SDLC Kit")
             self.assertEqual(kit_detail["resources"]["skill"]["path"], "config/kits/sdlc/SKILL.md")
+            self.assertEqual(kit_detail["workflows"], ["skill"])
+            self.assertTrue(kit_detail["workflows_deprecated"])
 
     def test_adapter_info_register_mode_uses_manifest_resources(self):
         """Info exposes manifest-backed resources for register-mode kits."""
@@ -227,6 +229,7 @@ class TestAdapterInfoCommand(unittest.TestCase):
             kit_model = output["kit_models"]["gears"]
             self.assertEqual(kit_model["name"], "Gears Kit")
             self.assertEqual(kit_model["install_mode"], "register")
+            self.assertEqual(kit_model["manifest_source"], "canonical")
             self.assertEqual(kit_model["resources"]["skill"]["binding_path"], "../kits/gears/SKILL.md")
 
             kit_detail = output["kit_details"]["gears"]
@@ -442,7 +445,170 @@ class TestAdapterInfoCommand(unittest.TestCase):
 
             output = json.loads(stdout_capture.getvalue())
             self.assertEqual(exit_code, 0)
-            self.assertEqual(output["kit_details"]["sdlc"]["workflows"], ["implement"])
+            self.assertEqual(output["kit_details"]["sdlc"]["workflows"], ["implement", "skill", "workflows"])
+            self.assertTrue(output["kit_details"]["sdlc"]["workflows_deprecated"])
+
+    def test_adapter_info_lists_skill_resources_as_workflows(self):
+        """Canonical skill resources are exposed via deprecated kit_details.workflows."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir) / "project"
+            project_root.mkdir()
+            (project_root / ".git").mkdir()
+            (project_root / "AGENTS.md").write_text(
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".cypilot-adapter"\n```\n<!-- /@cf:root-agents -->\n',
+                encoding="utf-8",
+            )
+            adapter_dir = project_root / ".cypilot-adapter"
+            config_dir = adapter_dir / "config"
+            kit_dir = config_dir / "kits" / "skillskit"
+            kit_dir.mkdir(parents=True)
+            (config_dir / "AGENTS.md").write_text("# Constructor Studio Adapter: TestProject\n", encoding="utf-8")
+            (kit_dir / "SKILL.md").write_text(
+                "---\nname: skill\ndescription: Skill workflow\n---\n# Skill workflow\n",
+                encoding="utf-8",
+            )
+            (kit_dir / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "skillskit"',
+                    'name = "Skills Kit"',
+                    'version = "1.0.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "skill"',
+                    'kind = "skill"',
+                    'source = "SKILL.md"',
+                    'install_path = "SKILL.md"',
+                    'type = "file"',
+                    "public = true",
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            (config_dir / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    'project_root = ".."',
+                    "",
+                    "[kits.skillskit]",
+                    'format = "CFS"',
+                    'path = "config/kits/skillskit"',
+                    'version = "1.0.0"',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            stdout_capture = io.StringIO()
+            with redirect_stdout(stdout_capture):
+                exit_code = main(["info", "--root", str(project_root)])
+
+            output = json.loads(stdout_capture.getvalue())
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(output["kit_details"]["skillskit"]["workflows"], ["skill"])
+            self.assertTrue(output["kit_details"]["skillskit"]["workflows_deprecated"])
+
+    def test_adapter_info_copy_mode_prefers_core_resource_bindings(self):
+        """Copy-mode installed kits build kit_models from core.toml even without a manifest."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir) / "project"
+            project_root.mkdir()
+            (project_root / ".git").mkdir()
+            (project_root / "AGENTS.md").write_text(
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".cypilot-adapter"\n```\n<!-- /@cf:root-agents -->\n',
+                encoding="utf-8",
+            )
+            adapter_dir = project_root / ".cypilot-adapter"
+            config_dir = adapter_dir / "config"
+            kit_dir = config_dir / "kits" / "copykit"
+            skill_dir = kit_dir / ".claude" / "skills" / "deploy"
+            skill_dir.mkdir(parents=True)
+            (config_dir / "AGENTS.md").write_text("# Constructor Studio Adapter: TestProject\n", encoding="utf-8")
+            (skill_dir / "SKILL.md").write_text("# Deploy\n", encoding="utf-8")
+            (config_dir / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    'project_root = ".."',
+                    "",
+                    "[kits.copykit]",
+                    'path = "config/kits/copykit"',
+                    'install_mode = "copy"',
+                    'version = "0.2.0"',
+                    "",
+                    "[kits.copykit.resources.deploy]",
+                    'path = "config/kits/copykit/.claude/skills/deploy/SKILL.md"',
+                    'kind = "skill"',
+                    'public = true',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            stdout_capture = io.StringIO()
+            with redirect_stdout(stdout_capture):
+                exit_code = main(["info", "--root", str(project_root)])
+
+            output = json.loads(stdout_capture.getvalue())
+            self.assertEqual(exit_code, 0)
+            kit_model = output["kit_models"]["copykit"]
+            self.assertEqual(kit_model["manifest_source"], "core")
+            self.assertEqual(kit_model["install_mode"], "copy")
+            self.assertEqual(kit_model["resources"]["deploy"]["binding_path"], "config/kits/copykit/.claude/skills/deploy/SKILL.md")
+            self.assertEqual(output["kit_details"]["copykit"]["workflows"], ["deploy"])
+            self.assertNotIn("model_error", output["kit_details"]["copykit"])
+
+    def test_adapter_info_legacy_fallback_adds_public_skill_resources_to_workflows(self):
+        """Legacy fallback adds public skill/workflow resources to deprecated workflows."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir) / "project"
+            project_root.mkdir()
+            (project_root / ".git").mkdir()
+            (project_root / "AGENTS.md").write_text(
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".cypilot-adapter"\n```\n<!-- /@cf:root-agents -->\n',
+                encoding="utf-8",
+            )
+            adapter_dir = project_root / ".cypilot-adapter"
+            config_dir = adapter_dir / "config"
+            kit_dir = config_dir / "kits" / "fallbackkit"
+            workflows_dir = kit_dir / "workflows"
+            workflows_dir.mkdir(parents=True)
+            (config_dir / "AGENTS.md").write_text("# Constructor Studio Adapter: TestProject\n", encoding="utf-8")
+            (workflows_dir / "implement.md").write_text(
+                "---\ntype: workflow\n---\n# Implement\n",
+                encoding="utf-8",
+            )
+            (config_dir / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    'project_root = ".."',
+                    "",
+                    "[kits.fallbackkit]",
+                    'path = "config/kits/fallbackkit"',
+                    'version = "0.1.0"',
+                    "",
+                    "[kits.fallbackkit.resources.deploy]",
+                    'path = "config/kits/fallbackkit/.claude/skills/deploy/SKILL.md"',
+                    'kind = "skill"',
+                    'public = true',
+                    "",
+                    "[kits.fallbackkit.resources.notes]",
+                    'path = "config/kits/fallbackkit/notes.md"',
+                    'kind = "other"',
+                    'public = false',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            stdout_capture = io.StringIO()
+            with patch("studio.utils.kit_model.load_installed_kit_model", side_effect=ValueError("boom")):
+                with redirect_stdout(stdout_capture):
+                    exit_code = main(["info", "--root", str(project_root)])
+
+            output = json.loads(stdout_capture.getvalue())
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(output["kit_models"], {})
+            self.assertIn("model_error", output["kit_details"]["fallbackkit"])
+            self.assertEqual(output["kit_details"]["fallbackkit"]["workflows"], ["deploy", "implement"])
+            self.assertTrue(output["kit_details"]["fallbackkit"]["workflows_deprecated"])
 
     def test_adapter_info_reports_kit_model_drift(self):
         """Info reports installed resource and hash drift for canonical kits."""

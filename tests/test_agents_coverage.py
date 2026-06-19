@@ -555,6 +555,73 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
             self.assertEqual(source_path, workflow_source.resolve())
             self.assertEqual(kit_root, root.resolve())
 
+    def test_list_public_components_supports_copy_mode_core_first(self):
+        from studio.commands.agents import _list_public_components
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "project"
+            root.mkdir()
+            (root / ".git").mkdir()
+            (root / "AGENTS.md").write_text(
+                '<!-- @cf:root-agents -->\n```toml\ncf-studio-path = ".cf-studio"\n```\n<!-- /@cf:root-agents -->\n',
+                encoding="utf-8",
+            )
+            studio_root = root / ".cf-studio"
+            kit_root = studio_root / "config" / "kits" / "gears"
+            kit_root.mkdir(parents=True)
+            (studio_root / "config" / "core.toml").write_text(
+                "\n".join([
+                    'version = "1.0"',
+                    'project_root = ".."',
+                    "",
+                    "[kits.gears]",
+                    'format = "CFS"',
+                    'path = "config/kits/gears"',
+                    'version = "0.1.0"',
+                    'install_mode = "copy"',
+                    "",
+                    "[kits.gears.resources.workflow_doc_prd]",
+                    'path = "config/kits/gears/studio-kit-gears/workflows/doc-prd.md"',
+                    'kind = "skill"',
+                    'public = true',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            (kit_root / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "gears"',
+                    'name = "Gears"',
+                    'version = "0.1.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "workflow_doc_prd"',
+                    'kind = "skill"',
+                    'source = "different/path.md"',
+                    'type = "file"',
+                    "public = true",
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            workflow_source = kit_root / "studio-kit-gears" / "workflows" / "doc-prd.md"
+            workflow_source.parent.mkdir(parents=True)
+            workflow_source.write_text(
+                "---\nname: doc-prd\ndescription: Draft PRDs\n---\n# Doc PRD\n",
+                encoding="utf-8",
+            )
+
+            components, manifest_backed = _list_public_components(studio_root, root, "cursor")
+
+            self.assertEqual(manifest_backed, {"gears"})
+            self.assertEqual(len(components), 1)
+            kit_slug, component, source_path, resolved_kit_root, _kit_entry = components[0]
+            self.assertEqual(kit_slug, "gears")
+            self.assertEqual(getattr(component, "generated_name", ""), "cf-gears-doc-prd")
+            self.assertEqual(source_path, workflow_source.resolve())
+            self.assertEqual(resolved_kit_root, kit_root.resolve())
+
     def test_nested_public_subagent_uses_registered_resource_binding(self):
         from studio.commands.agents import _default_agents_config, _process_single_agent
 
@@ -651,7 +718,7 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
                 generated_name="cf-pubkit-nosource",
                 generated_targets=["cursor"],
             )
-            with patch("studio.commands.agents.load_kit_model") as load_model:
+            with patch("studio.commands.agents.load_installed_kit_model") as load_model:
                 load_model.return_value = SimpleNamespace(
                     manifest_source="canonical",
                     public_components=[component],
@@ -674,7 +741,7 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
                 generated_name="cf-pubkit-missing",
                 generated_targets=["cursor"],
             )
-            with patch("studio.commands.agents.load_kit_model") as load_model:
+            with patch("studio.commands.agents.load_installed_kit_model") as load_model:
                 load_model.return_value = SimpleNamespace(
                     manifest_source="canonical",
                     public_components=[component],
@@ -697,7 +764,7 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
                 generated_name="",
                 generated_targets=["cursor"],
             )
-            with patch("studio.commands.agents.load_kit_model") as load_model:
+            with patch("studio.commands.agents.load_installed_kit_model") as load_model:
                 load_model.return_value = SimpleNamespace(
                     manifest_source="canonical",
                     public_components=[component],
