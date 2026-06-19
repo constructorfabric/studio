@@ -2178,7 +2178,7 @@ def _component_enabled_for_agent(component: object, agent: str) -> bool:
 def _list_public_components(
     studio_root: Path,
     project_root: Optional[Path],
-    agent: str,
+    agent: Optional[str],
 ) -> Tuple[List[KitPublicComponent], Set[str]]:
     # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-rollout-generate-agents
     # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
@@ -2219,7 +2219,7 @@ def _list_public_components(
         for component in model.public_components:
             if getattr(component, "kind", "") not in {"skill", "agent"}:
                 continue
-            if not _component_enabled_for_agent(component, agent):
+            if agent is not None and not _component_enabled_for_agent(component, agent):
                 continue
             resolved_source_path = _resolve_registered_resource_path(project_root, studio_root, kit_root, component, kit_entry)
             if resolved_source_path is None:
@@ -3794,9 +3794,129 @@ def _process_kit_public_agents_and_rules(
         studio_root=studio_root,
         trusted_roots=trusted_roots,
     )
+    _merge_action_result(
+        public_agents,
+        _cleanup_disabled_public_agent_outputs(project_root, studio_root, dry_run),
+    )
     public_agents.setdefault("errors", []).extend(agent_collision_errors)
     public_rules = {"created": [], "updated": [], "deleted": [], "outputs": [], "errors": []}
     return {"agents": public_agents, "rules": public_rules}
+
+
+def _expected_public_agent_output_for_target(
+    agent_id: str,
+    agent_entry: "_AgentEntry",
+    target: str,
+    project_root: Path,
+    studio_root: Path,
+    trusted_roots: List[Path],
+) -> Optional[Tuple[str, str]]:
+    """Rebuild the exact output payload for one public agent target."""
+    if target not in _AGENT_OUTPUT_PATHS:
+        return None
+    translated = translate_agent_schema(agent_entry, target)
+    if translated.get("skip"):
+        return None
+    source_content = _read_source_content(
+        "agent",
+        agent_id,
+        agent_entry.source or agent_entry.prompt_file,
+        project_root,
+        studio_root=studio_root,
+        trusted_roots=trusted_roots,
+    )
+    if source_content is None:
+        return None
+    path_template = _AGENT_OUTPUT_PATHS[target]
+    if target == "openai":
+        return _build_openai_agent_file(
+            agent_id,
+            agent_entry,
+            translated,
+            source_content,
+            path_template,
+            None,
+        )
+    return _build_standard_agent_file(
+        agent_id,
+        agent_entry,
+        translated,
+        source_content,
+        path_template,
+        None,
+    )
+
+
+def _cleanup_disabled_public_agent_outputs(
+    project_root: Path,
+    studio_root: Path,
+    dry_run: bool,
+) -> Dict[str, Any]:
+    """Remove stale public-agent outputs for targets no longer enabled."""
+    result: Dict[str, Any] = {
+        "created": [],
+        "updated": [],
+        "deleted": [],
+        "outputs": [],
+        "errors": [],
+    }
+    public_components, _manifest_backed_kits = _list_public_components(
+        studio_root,
+        project_root,
+        None,
+    )
+    trusted_roots: List[Path] = []
+    for kit_slug, component, source_path, kit_root, _kit_entry in public_components:
+        if getattr(component, "kind", "") != "agent":
+            continue
+        generated_name = str(getattr(component, "generated_name", "")).strip()
+        if not generated_name:
+            continue
+        trusted_roots = [source_path.parent, kit_root]
+        description = str(getattr(component, "description", "") or "").strip()
+        for target in _AGENT_OUTPUT_PATHS:
+            if _component_enabled_for_agent(component, target):
+                continue
+            target_config = _component_target_config(component, target)
+            agent_entry = _AgentEntry(
+                id=generated_name,
+                description=description or f"Constructor Studio {generated_name} agent",
+                source=source_path.as_posix(),
+                agents=_component_agent_targets(component),
+                tools=_component_config_list(component, target_config, "tools"),
+                disallowed_tools=_component_config_list(component, target_config, "disallowed_tools"),
+                mode=str(_component_config_value(component, target_config, "mode", "readwrite") or "readwrite"),
+                isolation=bool(_component_config_value(component, target_config, "isolation", False)),
+                model=str(_component_config_value(component, target_config, "model", "") or ""),
+                skills=_component_config_list(component, target_config, "skills"),
+                color=str(_component_config_value(component, target_config, "color", "") or ""),
+                memory_dir=str(_component_config_value(component, target_config, "memory_dir", "") or ""),
+                role=str(_component_config_value(component, target_config, "role", "any") or "any"),
+                target=str(_component_config_value(component, target_config, "target", "any") or "any"),
+                provider=str(_component_config_value(component, target_config, "provider", "anthropic") or "anthropic"),
+                reasoning_effort=_component_config_value(component, target_config, "reasoning_effort", None),
+                context_window=_component_config_value(component, target_config, "context_window", None),
+            )
+            expected = _expected_public_agent_output_for_target(
+                generated_name,
+                agent_entry,
+                target,
+                project_root,
+                studio_root,
+                trusted_roots,
+            )
+            if expected is None:
+                continue
+            expected_content, rel_out = expected
+            _delete_generated_file_if_owned(
+                project_root / rel_out,
+                result,
+                project_root,
+                dry_run,
+                expected_content=expected_content,
+                reason=f"disabled_public_agent_target:{kit_slug}:{target}",
+            )
+    return result
 
 
 def _collect_managed_result_paths(

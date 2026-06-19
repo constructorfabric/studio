@@ -4466,16 +4466,16 @@ def _sync_manifest_resource_bindings(
                 resource_path = (PurePosixPath(kit_root_rel) / install_path).as_posix()
             else:
                 resource_path = PurePosixPath(install_path).as_posix()
-            merged[res.id] = {"path": resource_path}
-        kind = str(getattr(res, "kind", "") or "").strip()
-        if kind:
-            merged[res.id]["kind"] = kind
-        merged[res.id]["public"] = bool(getattr(res, "public", False))
-        artifact_bindings = getattr(res, "artifact_bindings", None)
-        if isinstance(artifact_bindings, dict) and artifact_bindings:
-            merged[res.id]["artifacts"] = artifact_bindings
-        else:
-            merged[res.id].pop("artifacts", None)
+            merged[res.id] = _manifest_resource_binding_entry(res=res, path=resource_path)
+            continue
+        binding_path = str(merged[res.id].get("path", "") or "")
+        if not binding_path:
+            install_path = _resource_install_path(res)
+            if kit_root_rel:
+                binding_path = (PurePosixPath(kit_root_rel) / install_path).as_posix()
+            else:
+                binding_path = PurePosixPath(install_path).as_posix()
+        merged[res.id] = _manifest_resource_binding_entry(res=res, path=binding_path)
     return merged
 # @cpt-end:cpt-studio-algo-kit-update:p1:inst-sync-manifest-bindings
 
@@ -4732,7 +4732,8 @@ def update_kit(
                     result["errors"] = _mig_result.get("errors", [])
                     return result
                 installed_kit_entry = _read_kits_from_core_toml(config_dir).get(kit_slug, installed_kit_entry)
-            synced_resources = _sync_manifest_resource_bindings(_manifest, config_dir, kit_slug)
+            sync_manifest_model = _risk_model if _risk_model is not None else _manifest
+            synced_resources = _sync_manifest_resource_bindings(sync_manifest_model, config_dir, kit_slug)
             resources_changed = False
             if synced_resources is not None:
                 current_resources = installed_kit_entry.get("resources", {})
