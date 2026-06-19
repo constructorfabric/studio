@@ -190,14 +190,17 @@ def main(argv: Optional[List[str]] = None) -> int:
 def _main_impl(argv_list: List[str]) -> int:
     """Dispatch a command after global flags have been handled."""
 
+    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-parse-command
     # Load best-effort context on startup. This may resolve to a direct
     # StudioContext, a WorkspaceContext discovered from a workspace root, or
     # remain None when the current directory is not initialized.
     from .utils.context import ensure_context, set_context
     set_context(None)
-    ctx = ensure_context(Path.cwd())
+    ensure_context(Path.cwd())
     # Context may be None if Constructor Studio not initialized - that's OK for some commands like init
+    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-parse-command
 
+    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-lookup-handler
     # Define all available commands
     analysis_commands = ["validate", "validate-kits", "validate-toc", "spec-coverage", "check-language"]
     legacy_aliases = ["validate-code", "validate-rules"]
@@ -223,10 +226,12 @@ def _main_impl(argv_list: List[str]) -> int:
         + workspace_commands + utility_commands + delegation_commands
         + diagnostics_commands + visualization_commands + legacy_aliases
     )
+    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-lookup-handler
 
     # Handle --help / -h at top level (or no subcommand)
     if not argv_list or argv_list[0] in ("-h", "--help"):
         from .utils.ui import ui, is_json_mode
+        # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-parse-args
         _cmd_descriptions = {
             "validate": "Validate artifacts and code traceability",
             "validate-kits": "Validate kit structure, templates, and examples",
@@ -256,6 +261,8 @@ def _main_impl(argv_list: List[str]) -> int:
             "doctor": "Run environment health checks",
             "map": "Build interactive markdown↔source dependency map via cpt identifiers",
         }
+        # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-parse-args
+        # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-execute-handler
         _sections = [
             ("Setup & Configuration", ["init", "update", "info", "resolve-vars", "generate-agents", "agents"]),
             ("Validation", ["validate", "validate-kits", "validate-toc", "spec-coverage", "check-language"]),
@@ -267,14 +274,18 @@ def _main_impl(argv_list: List[str]) -> int:
             ("Diagnostics", ["doctor"]),
             ("Visualization", ["map"]),
         ]
+        # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-execute-handler
         if is_json_mode():
+            # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-serialize-json
             import json  # pylint: disable=import-outside-toplevel  # lazy: only needed in JSON output mode
             print(json.dumps({
                 "usage": "cfs <command> [options]",
                 "commands": _cmd_descriptions,
                 "sections": dict(_sections),
             }, indent=2, ensure_ascii=False))
+            # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-serialize-json
         else:
+            # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-return-code
             ui.header("Constructor Studio CLI")
             ui.info("Artifact validation, traceability, and kit management tool.")
             ui.blank()
@@ -290,6 +301,7 @@ def _main_impl(argv_list: List[str]) -> int:
             ui.hint("Run 'cfs <command> --help' for command-specific options.")
             ui.hint("Legacy aliases: validate-code → validate, validate-rules/self-check → validate-kits")
             ui.blank()
+            # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-return-code
         return 0
     # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-route-helpers
 
@@ -309,6 +321,7 @@ def _main_impl(argv_list: List[str]) -> int:
     # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-serialize-json
     # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-return-code
     # Dispatch to appropriate command handler
+    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-route-helpers
     if cmd == "validate":
         return _cmd_validate(rest)
     if cmd == "validate-code":
@@ -320,6 +333,8 @@ def _main_impl(argv_list: List[str]) -> int:
         return _cmd_init(rest)
     if cmd == "update":
         return _cmd_update(rest)
+    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-route-helpers
+    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-parse-command
     if cmd == "list-ids":
         return _cmd_list_ids(rest)
     if cmd == "list-id-kinds":
@@ -338,6 +353,8 @@ def _main_impl(argv_list: List[str]) -> int:
         return _cmd_agents(rest)
     if cmd == "generate-agents":
         return _cmd_generate_agents(rest)
+    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-parse-command
+    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-route-helpers
     if cmd == "kit":
         return _cmd_kit(rest)
     if cmd == "generate-resources":
@@ -348,6 +365,8 @@ def _main_impl(argv_list: List[str]) -> int:
         return _cmd_validate_toc(rest)
     if cmd == "spec-coverage":
         return _cmd_spec_coverage(rest)
+    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-route-helpers
+    # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-parse-command
     if cmd == "chunk-input":
         return _cmd_chunk_input(rest)
     if cmd == "workspace-init":
@@ -368,6 +387,7 @@ def _main_impl(argv_list: List[str]) -> int:
         return _cmd_pdsl(rest)
     if cmd == "map":
         return _cmd_map(rest)
+    # @cpt-end:cpt-studio-algo-core-infra-route-command:p1:inst-parse-command
     # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-if-no-handler
     # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-return-unknown
     from .utils.ui import ui

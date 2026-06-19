@@ -338,7 +338,7 @@ class TestCLIWorkspaceE2E(unittest.TestCase):
             self.assertTrue(sources["shared-lib"]["reachable"])
             self.assertEqual(sources["shared-lib"]["adapter"], ".bootstrap")
 
-    def test_workspace_add_rejects_unreachable_path_without_writing(self):
+    def test_workspace_add_accepts_unreachable_path_and_persists_source(self):
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir) / "workspace-root"
             _make_repo(root)
@@ -366,12 +366,25 @@ class TestCLIWorkspaceE2E(unittest.TestCase):
             )
             after_add = _snapshot_tree(root)
 
-            self.assertEqual(exit_code, 1)
+            self.assertEqual(exit_code, 0)
             self.assertEqual(stderr, "")
-            self.assertEqual(after_add, before_add)
+            self.assertNotEqual(after_add, before_add)
             payload = json.loads(stdout)
-            self.assertEqual(payload["status"], "ERROR")
-            self.assertIn("Source path not reachable", payload["message"])
+            self.assertEqual(payload["status"], "ADDED")
+            self.assertEqual(payload["source"]["name"], "shared-lib")
+            self.assertEqual(payload["source"]["path"], "../shared-lib")
+            self.assertEqual(payload["source"]["role"], "codebase")
+            self.assertEqual(payload["source"]["adapter"], ".bootstrap")
+
+            ws_payload = toml_utils.load(root / ".cf-workspace.toml")
+            self.assertEqual(
+                ws_payload["sources"]["shared-lib"],
+                {
+                    "path": "../shared-lib",
+                    "role": "codebase",
+                    "adapter": ".bootstrap",
+                },
+            )
 
     def test_workspace_add_url_source_to_standalone_config(self):
         with TemporaryDirectory() as tmpdir:

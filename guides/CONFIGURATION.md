@@ -709,5 +709,5 @@ cfs mirror clear --yes
 | CDSL language | `architecture/specs/CDSL.md` |
 | CLI commands | `architecture/specs/cli.md` |
 | Mirror overrides | `architecture/ADR/0020-cpt-studio-adr-rebrand-and-mirror-override-v1.md` |
-| System prompts | `architecture/specs/sysprompts.md` |
+| Project rules and root navigation | `architecture/specs/sysprompts.md` |
 | Workspace config | `schemas/workspace.schema.json` |

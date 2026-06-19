@@ -3316,8 +3316,10 @@ def _build_kit_update_result(kit_slug: str, kit_r: Dict[str, Any]) -> Dict[str, 
 # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-build-update-result
 
 
+# @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-parse-args
 def _collect_kit_update_partial_reasons(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Summarize non-pass kit update outcomes for JSON/human output."""
+    # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-build-update-result
     partials: List[Dict[str, Any]] = []
     for result in results:
         action = _normalize_kit_update_action(result.get("action"))
@@ -3326,6 +3328,8 @@ def _collect_kit_update_partial_reasons(results: List[Dict[str, Any]]) -> List[D
         kit_slug = str(result.get("kit") or "?")
         categories: List[str] = []
         entry: Dict[str, Any] = {"kit": kit_slug}
+        # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-build-update-result
+        # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-format-output
         errors = result.get("errors") or []
         if errors:
             categories.append("errors")
@@ -3342,6 +3346,8 @@ def _collect_kit_update_partial_reasons(results: List[Dict[str, Any]]) -> List[D
                 for item in prune_required
                 if isinstance(item, dict) and item.get("path")
             ]
+        # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-format-output
+        # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-human-output
         if action == "aborted":
             categories.append("aborted")
         elif action == "failed":
@@ -3350,20 +3356,26 @@ def _collect_kit_update_partial_reasons(results: List[Dict[str, Any]]) -> List[D
             categories.append("partial_update")
         entry["categories"] = categories or ["unspecified"]
         partials.append(entry)
+        # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-human-output
     return partials
+# @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-parse-args
 
 
+# @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-resolve-project
 def _count_kit_update_actions(
     results: List[Dict[str, Any]],
     *actions: str,
 ) -> int:
     """Count normalized kit update actions in ``results``."""
+    # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-build-update-result
     wanted = {action.strip().lower() for action in actions}
     return sum(
         1
         for result in results
         if _normalize_kit_update_action(result.get("action")) in wanted
     )
+    # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-build-update-result
+# @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-resolve-project
 
 
 # @cpt-flow:cpt-studio-flow-kit-update-cli:p1
@@ -3732,6 +3744,7 @@ def _human_kit_update(data: dict) -> None:
 # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-human-output
 
 
+# @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-build-update-result
 def cmd_kit_check_updates(argv: List[str]) -> int:
     """Check registered git/GitHub kit sources for newer remote versions."""
     # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-format-output
@@ -3796,8 +3809,11 @@ def cmd_kit_check_updates(argv: List[str]) -> int:
     ui.result(output, human_fn=_human_kit_check_updates)
     return 2 if failures else 0
     # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-format-output
+    # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-build-update-result
 
 
+# @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-parse-args
+# @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-build-update-result
 def _human_kit_check_updates(data: dict) -> None:
     # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-human-output
     ui.header("Kit Update Check")
@@ -3824,6 +3840,8 @@ def _human_kit_check_updates(data: dict) -> None:
         ui.success("All checked kits are up to date.")
     ui.blank()
     # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-human-output
+# @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-build-update-result
+# @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-parse-args
 
 # ---------------------------------------------------------------------------
 # Kit Normalize

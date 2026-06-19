@@ -460,7 +460,7 @@ Validation rules cannot be bypassed or weakened in STRICT mode. The deterministi
 - **Identifiers & Traceability**: [traceability.md](./specs/traceability.md) — ID formats, naming conventions, task markers, code traceability markers, validation
 - **CDSL**: [CDSL.md](./specs/CDSL.md) — behavioral specification language syntax
 - **Artifacts registry**: [artifacts-registry.md](./specs/artifacts-registry.md) — artifacts.toml structure and agent operations
-- **System prompts**: [sysprompts.md](./specs/sysprompts.md) — `{cf-studio-path}/config/sysprompts/` and `config/AGENTS.md` format
+- **Project rules and root navigation**: [sysprompts.md](./specs/sysprompts.md) — `{cf-studio-path}/config/rules/`, `config/AGENTS.md`, and root managed block format
 - **Workspace**: core architecture in [DESIGN.md §1.2](#multi-repo-workspace-federation); implementation details in [features/workspace.md](./features/workspace.md) — workspace config, source resolution, algorithms (`resolve-git-url`, `resolve-adapter-context`, `determine-target`, `infer-role`)
 
 **Core Entities**:
@@ -986,9 +986,9 @@ sequenceDiagram
     end
 ```
 
-**Description**: User initializes Studio in a project. The skill engine asks for install directory, agent selection, and kit tracking policy. It defines a **root system** (name and slug derived from the project directory name), creates core configs (`core.toml` with root system, pinned Studio metadata, and kit tracking policy; `artifacts.toml` with default autodetect rules), writes the managed `.gitignore` block, generates agent entry points, and sets up `{cf-studio-path}/config/AGENTS.md` with default WHEN rules. After core setup, the tool prompts `Install SDLC kit? [a]ccept [d]ecline`. If accepted, the kit is downloaded from GitHub. If the kit source contains canonical `.cf-studio-kit.toml` or legacy `manifest.toml`, the Kit Manager normalizes and validates the model, reads declared resources, prompts the user for destination paths or copy/register mode when required, copies or registers each resource, preserves template variables in kit files, and records effective install state in `core.toml` for runtime resolution. If no manifest-style input is present, files are copied to the default kit config directory. If declined, the user can install kits later via `cfs kit install`. Repeat `cfs init` repairs generated surfaces using the pinned metadata and does not upgrade implicitly.
+**Description**: User initializes Studio in a project. The skill engine asks for install directory, agent selection, and kit tracking policy. It defines a **root system** (name and slug derived from the project directory name), creates core configs (`core.toml` with root system, pinned Studio metadata, and kit tracking policy; `artifacts.toml` with default autodetect rules), writes the managed `.gitignore` block, generates agent entry points, and sets up `{cf-studio-path}/config/AGENTS.md` with project navigation rules that point at `{cf-studio-path}/config/rules/*.md` and selected project docs. After core setup, the tool may offer default kit installation. If a kit is accepted, it is downloaded or copied from the selected source. If the kit source contains canonical `.cf-studio-kit.toml` or legacy `manifest.toml`, the Kit Manager normalizes and validates the model, reads declared resources, prompts the user for destination paths or copy/register mode when required, copies or registers each resource, preserves template variables in kit files, and records effective install state in `core.toml` for runtime resolution. If no manifest-style input is present, files are copied to the default kit config directory. Repeat `cfs init` repairs generated surfaces using the pinned metadata and does not upgrade implicitly.
 
-**Root AGENTS.md / CLAUDE.md injection**: During initialization (and verified on every CLI invocation), the engine ensures the project root `AGENTS.md` and `CLAUDE.md` files contain the same managed block with only the configured adapter path:
+**Root AGENTS.md / CLAUDE.md injection**: During initialization and other explicit setup or repair flows, the engine ensures the project root `AGENTS.md` and `CLAUDE.md` files contain the same managed block with only the configured adapter path:
 
 ````markdown
 <!-- @cf:root-agents -->
@@ -998,9 +998,9 @@ cf-studio-path = ".bootstrap"
 <!-- /@cf:root-agents -->
 ````
 
-The block is inserted at the **beginning** of each file. If a file does not exist, it is created. The managed content is a TOML fence that declares only `cf-studio-path`, and the path reflects the actual install directory. Content between the `<!-- @cf:root-agents -->` and `<!-- /@cf:root-agents -->` comment markers is fully managed by Studio — it is overwritten on every check, so manual edits inside the block are discarded.
+The block is inserted at the **beginning** of each file. If a file does not exist, it is created. The managed content is a TOML fence that declares only `cf-studio-path`, and the path reflects the actual install directory. Content between the `<!-- @cf:root-agents -->` and `<!-- /@cf:root-agents -->` comment markers is fully managed by Studio, so manual edits inside the block are discarded when a setup or repair flow rewrites it.
 
-**Integrity invariant**: every Studio CLI command (not just `init`) verifies the root `AGENTS.md` and `CLAUDE.md` blocks exist and are correct before proceeding. If a block is missing or the path is stale (e.g., install directory changed), the engine silently re-injects it. This guarantees that root agent files always expose the current `cf-studio-path` without duplicating navigation rules.
+**Integrity invariant**: project-skill routing depends on the root managed block, but ordinary read-only commands do not silently rewrite root files. Repair of missing or stale root blocks belongs to explicit setup flows such as `init`, repeat `init` repair mode, `update`, and legacy migration.
 
 #### Artifact Validation
 
@@ -1459,5 +1459,5 @@ The following design domains do not require dedicated architecture sections. Eac
 | Identifiers & Traceability | [specs/traceability.md](./specs/traceability.md) | `cpt-studio-fr-core-traceability`, `cpt-studio-component-traceability-engine` |
 | CDSL | [specs/CDSL.md](./specs/CDSL.md) | `cpt-studio-fr-core-cdsl` |
 | Artifacts Registry | [specs/artifacts-registry.md](./specs/artifacts-registry.md) | `cpt-studio-fr-core-config`, `cpt-studio-component-config-manager` |
-| System Prompts | [specs/sysprompts.md](./specs/sysprompts.md) | `cpt-studio-fr-core-config`, `cpt-studio-fr-core-workflows` |
+| Project Rules and Root Navigation | [specs/sysprompts.md](./specs/sysprompts.md) | `cpt-studio-fr-core-config`, `cpt-studio-fr-core-workflows`, `cpt-studio-fr-core-init` |
 | Workspace (inline) | [DESIGN.md §1.2 Multi-Repo Workspace Federation](#multi-repo-workspace-federation) | `cpt-studio-fr-core-workspace`, `cpt-studio-fr-core-workspace-git-sources`, `cpt-studio-fr-core-workspace-cross-repo-editing`; algorithms: `cpt-studio-algo-workspace-resolve-git-url`, `cpt-studio-algo-workspace-resolve-adapter-context`, `cpt-studio-algo-workspace-determine-target`, `cpt-studio-algo-workspace-infer-role` |

@@ -1000,7 +1000,10 @@ def get_context() -> Optional[Union[StudioContext, WorkspaceContext]]:
     global _global_context, _workspace_upgrade_attempted  # pylint: disable=global-statement  # module-level singleton pattern for CLI context
     if not _workspace_upgrade_attempted and isinstance(_global_context, StudioContext):
         _workspace_upgrade_attempted = True
-        ws_ctx = WorkspaceContext.load(_global_context)
+        try:
+            ws_ctx = WorkspaceContext.load(_global_context)
+        except (OSError, ValueError, KeyError, AttributeError):
+            ws_ctx = None
         if ws_ctx is not None:
             _global_context = ws_ctx
     return _global_context
@@ -1021,7 +1024,10 @@ def ensure_context(start_path: Optional[Path] = None) -> Optional[Union[StudioCo
         base_ctx = StudioContext.load(start_path)
         if base_ctx is not None:
             # @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-workspace-upgrade
-            ws_ctx = WorkspaceContext.load(base_ctx)
+            try:
+                ws_ctx = WorkspaceContext.load(base_ctx)
+            except (OSError, ValueError, KeyError, AttributeError):
+                ws_ctx = None
             _workspace_upgrade_attempted = True
             # @cpt-end:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-workspace-upgrade
             # @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-return-workspace

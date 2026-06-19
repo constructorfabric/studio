@@ -89,6 +89,8 @@ Claude Code is the **canonical full-fidelity format** for generated subagents.
 
 Other tools receive the best adaptation their host format supports, with **graceful degradation** where a capability has no equivalent.
 
+Read-only inspection uses `cfs agents`, which reports the same surface model without writing files. Write-capable generation uses `cfs generate-agents`, which may return a partial result when some host-specific capabilities are skipped or some generated outputs are intentionally preserved.
+
 Typical setup:
 
 🖥 **Terminal**:

@@ -31,19 +31,24 @@ drivers:
 
 A **Kit** is a file package that provides domain-specific artifact and codebase definitions for Studio. Each kit contains ready-to-use files — rules, templates, checklists, examples, constraints, workflows, and skill extensions — maintained directly by kit authors.
 
-**What a kit provides** (installed into `{cf-studio-path}/config/kits/<slug>/`):
+**What a kit provides** (installed into `{cf-studio-path}/config/kits/<slug>/` or
+registered in place via manifest-driven install modes):
 - Per-artifact files: `artifacts/<KIND>/` containing `template.md`, `rules.md`, `checklist.md`, `examples/example.md`
 - Codebase files: `codebase/` containing `rules.md`, `checklist.md`
 - Kit-wide: `constraints.toml` (structural validation rules), `conf.toml` (version metadata)
 - Workflow files: `workflows/{name}.md`
 - SKILL.md — kit skill extensions for AI agent discoverability
 - Scripts: `scripts/` — kit-specific scripts and prompts
-- Optional: `manifest.toml` — declarative installation manifest (see below)
+- Optional canonical `.cf-studio-kit.toml` — declarative installation manifest
+- Optional legacy `manifest.toml` — compatibility input normalized into the
+  canonical manifest model
 
 **Key properties**:
 - Kit registration (slug, version, config path, resolved resource bindings) is stored in `{cf-studio-path}/config/core.toml`; persisted resource binding paths are always project-relative (never absolute), and register-mode kits re-derive effective resource locations from the manifest at runtime instead of relying on persisted path anchors
-- All kit files are user-editable after installation
-- User modifications are preserved across kit updates via file-level diff with interactive prompts
+- Tracked kit files are user-editable after installation
+- Ignored kit files remain overwriteable generated surfaces
+- User modifications to tracked kit files are preserved across kit updates via
+  file-level diff with interactive prompts
 - Kit version is stored in `{cf-studio-path}/config/kits/<slug>/conf.toml`
 
 > **Plugin system** (CLI subcommands, validation hooks, generation hooks) is planned for p2 and not covered in this specification.
@@ -58,7 +63,8 @@ When a kit is installed, all files are copied to `{cf-studio-path}/config/kits/{
 
 ```
 {cf-studio-path}/config/kits/<slug>/
-├── manifest.toml                  # (optional) Declarative installation manifest
+├── .cf-studio-kit.toml            # (optional) Canonical declarative installation manifest
+├── manifest.toml                  # (optional) Legacy compatibility manifest
 ├── conf.toml                      # Kit version metadata (slug, version, name)
 ├── SKILL.md                       # Per-kit skill instructions (user-editable)
 ├── constraints.toml               # Kit-wide structural constraints (user-editable)
@@ -86,7 +92,7 @@ Top-level `.gen/` retains only aggregate files: `AGENTS.md`, `SKILL.md`, `README
 
 **Flow**:
 1. `cfs init` / `cfs kit install` installs kit files from source:
-   - **If `manifest.toml` present**: validate manifest, prompt user for `user_modifiable` resource paths (offering defaults), copy or register each resource at its effective path, preserve `{identifier}` template variables in kit files for read-time resolution, and record effective install state in `core.toml` (`[kits.{slug}.resources]` only for non-register installs)
+   - **If canonical `.cf-studio-kit.toml` or legacy `manifest.toml` is present**: normalize to the manifest model, validate resources, prompt for `user_modifiable` destinations when required, copy or register each resource at its effective path, preserve `{identifier}` template variables in installed files, and record effective install state in `core.toml` (`[kits.{slug}.resources]` only for non-register installs)
    - **If no `manifest.toml`**: copy all kit files from source to `{cf-studio-path}/config/kits/{slug}/` (legacy behavior)
    - Register kit in `core.toml`
 2. Regenerate `.gen/AGENTS.md` to include public kit rules; generate skill/workflow entrypoints through agent integration files
@@ -98,7 +104,27 @@ Top-level `.gen/` retains only aggregate files: `AGENTS.md`, `SKILL.md`, `README
 | Mode | Command | Behavior |
 |------|---------|----------|
 | **Force** | `cfs kit update --force` | Overwrites all kit files in `{cf-studio-path}/config/kits/{slug}/`. User edits are discarded. |
-| **Interactive** (default) | `cfs kit update` | File-level diff: for each file, compare new version against user's installed copy. **IF** identical → no action. **IF** different → present unified diff with `[a]ccept / [d]ecline / [A]ccept all / [D]ecline all / [m]odify` prompts. |
+| **Interactive** (default) | `cfs kit update` | File-level diff: for each file, compare new version against user's installed copy. **IF** identical → no action. **IF** different → present unified diff with `[a]ccept / [d]ecline / [A]ccept all / [D]ecline all / [m]odify` prompts. Files accepted by the user are counted as fully updated; declined files keep the kit in a partial-update outcome instead of being counted as fully updated. |
+
+**Interactive partial outcome semantics**:
+- When a user accepts some changes and declines others, the command reports a partial outcome rather than inflating `kits_updated`.
+- Machine-readable output distinguishes full and partial success via separate counters such as `kits_updated` and `kits_partially_updated`.
+- Interactive partial updates are user-confirmed outcomes, not write failures; the command surfaces the partial status explicitly so callers can distinguish it from a clean full update.
+
+**Canonical public-component semantics**:
+
+- Canonical manifests may declare `public = true` resources.
+- Public resources may declare `generated_targets = [...]` to constrain which
+  agent hosts receive generated outputs.
+- Public agent resources may declare nested `subagents`.
+- `generate-agents` consumes these public resources to produce shared
+  `.agents/skills/*`, host-native proxies, and supported subagent outputs.
+- Unsupported host capabilities are surfaced as partial/skip metadata rather
+  than silently dropped.
+
+**Check-updates semantics**:
+- `cfs kit check-updates` succeeds only when every inspected kit source check succeeds.
+- If at least one kit cannot be checked because its source is invalid, unreachable, or otherwise errors, the command returns a failing result and non-zero exit even if other kits were checked successfully.
 
 ---
 
@@ -118,7 +144,8 @@ Each kit file is authored directly by kit authors and user-editable after instal
 | `workflows/{name}.md` | `workflows/` | Workflow definitions | — |
 | `SKILL.md` | kit root | Kit skill extensions | — |
 | `conf.toml` | kit root | Kit version metadata | — |
-| `manifest.toml` | kit root (optional) | Declarative installation manifest: resource identifiers, default paths, types, user-modifiability flags. Governs installation and update when present | [kit.md](#kit-overview) |
+| `.cf-studio-kit.toml` | kit root (optional) | Canonical declarative installation manifest: resource identifiers, install paths, types, public generation settings, and user-modifiability flags | [kit.md](#kit-overview) |
+| `manifest.toml` | kit root (optional) | Legacy compatibility manifest normalized into the canonical model | [kit.md](#kit-overview) |
 
 ---
 

@@ -2988,9 +2988,9 @@ class TestCmdKitUpdate(unittest.TestCase):
                     buf = io.StringIO()
                     with redirect_stdout(buf):
                         rc = cmd_kit_check_updates([])
-                self.assertEqual(rc, 0)
+                self.assertEqual(rc, 2)
                 out = json.loads(buf.getvalue())
-                self.assertEqual(out["status"], "WARN")
+                self.assertEqual(out["status"], "FAIL")
                 self.assertEqual(out["updates_available"], 0)
                 self.assertEqual(out["results"][0]["action"], "failed")
                 self.assertIn("GitHub unavailable", out["errors"][0])

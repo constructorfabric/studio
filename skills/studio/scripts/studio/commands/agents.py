@@ -3963,8 +3963,6 @@ class ManagedOutput:
     path: str
     provider: str
     owner_kind: str
-    owner_id: str = ""
-    bundle_id: str = ""
     managed: bool = True
     gitignore: bool = True
 
@@ -3993,21 +3991,13 @@ def _provider_for_output_path(path: str) -> str:
     return "unknown"
 
 
-def _bundle_id_for_output_path(path: str) -> str:
-    normalized = path.replace("\\", "/").strip("/")
-    name = Path(normalized).name
-    for suffix in (".agent.md", ".prompt.md", ".toml", ".md"):
-        if name.endswith(suffix):
-            return name[: -len(suffix)]
-    return name
-
-
 def _managed_outputs_from_section(
     project_root: Path,
     section: Dict[str, Any],
     *,
     owner_kind: str,
 ) -> List[ManagedOutput]:
+    # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-agent-output-paths
     outputs: List[ManagedOutput] = []
     for path in sorted(_collect_managed_result_paths(project_root, section)):
         provider = _provider_for_output_path(path)
@@ -4016,15 +4006,15 @@ def _managed_outputs_from_section(
                 path=path,
                 provider=provider,
                 owner_kind=owner_kind,
-                owner_id=path,
-                bundle_id=_bundle_id_for_output_path(path),
             )
         )
     return outputs
+    # @cpt-end:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-agent-output-paths
 
 
 def _scan_owned_generated_outputs(project_root: Path) -> List[ManagedOutput]:
     """Return generated outputs provably owned by Constructor Studio on disk."""
+    # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-determine-agent-path
     scan_roots = {
         "claude": [project_root / ".claude" / "agents", project_root / ".claude" / "skills"],
         "cursor": [project_root / ".cursor" / "agents", project_root / ".cursor" / "commands"],
@@ -4033,7 +4023,9 @@ def _scan_owned_generated_outputs(project_root: Path) -> List[ManagedOutput]:
         "windsurf": [project_root / ".windsurf" / "workflows"],
         "studio": [project_root / ".agents" / "skills"],
     }
+    # @cpt-end:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-determine-agent-path
     outputs: List[ManagedOutput] = []
+    # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-iterate-agents
     for provider, roots in scan_roots.items():
         for root in roots:
             if not root.is_dir():
@@ -4046,6 +4038,7 @@ def _scan_owned_generated_outputs(project_root: Path) -> List[ManagedOutput]:
                 rel = _safe_relpath(path, project_root)
                 owner_kind = "generated"
                 owned = False
+                # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-check-skip
                 if rel.endswith(".toml"):
                     owned = _is_studio_managed_toml_output(content)
                     owner_kind = "agent"
@@ -4061,18 +4054,20 @@ def _scan_owned_generated_outputs(project_root: Path) -> List[ManagedOutput]:
                         owner_kind = "skill"
                     elif "/workflows/" in rel or "/commands/" in rel or "/prompts/" in rel:
                         owner_kind = "workflow"
+                # @cpt-end:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-check-skip
                 if not owned:
                     continue
+                # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-track-agent-results
                 outputs.append(
                     ManagedOutput(
                         path=rel,
                         provider=provider,
                         owner_kind=owner_kind,
-                        owner_id=rel,
-                        bundle_id=_bundle_id_for_output_path(rel),
                     )
                 )
+                # @cpt-end:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-track-agent-results
     return outputs
+    # @cpt-end:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-iterate-agents
 
 
 def collect_managed_outputs(
@@ -4083,20 +4078,21 @@ def collect_managed_outputs(
     cfg = _default_agents_config()
     managed: Dict[str, ManagedOutput] = {}
 
+    # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-agent-output-paths
     for marker_path, _marker_content in _INSTALL_MARKERS.values():
         normalized = marker_path.replace("\\", "/").strip("/")
         managed[normalized] = ManagedOutput(
             path=normalized,
             provider=_provider_for_output_path(normalized),
             owner_kind="marker",
-            owner_id=normalized,
-            bundle_id=_bundle_id_for_output_path(normalized),
         )
+    # @cpt-end:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-agent-output-paths
 
     for agent in _ALL_RECOGNIZED_AGENTS:
         agent_cfg = cfg.get("agents", {}).get(agent, {})
         skills_cfg = agent_cfg.get("skills", {}) if isinstance(agent_cfg, dict) else {}
         outputs = skills_cfg.get("outputs") if isinstance(skills_cfg, dict) else None
+        # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-assemble-agent-file
         if isinstance(outputs, list):
             for output in outputs:
                 if not isinstance(output, dict):
@@ -4109,10 +4105,10 @@ def collect_managed_outputs(
                     path=normalized,
                     provider=_provider_for_output_path(normalized),
                     owner_kind="configured",
-                    owner_id=normalized,
-                    bundle_id=_bundle_id_for_output_path(normalized),
                 )
+        # @cpt-end:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-assemble-agent-file
 
+        # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-generate-manifest-agents
         sections: List[Tuple[str, Dict[str, Any]]] = [
             ("workflow", _process_workflows(agent, project_root, studio_root, cfg, None, dry_run=True)),
             ("skill", _process_skills(agent, project_root, studio_root, cfg, None, dry_run=True)),
@@ -4130,9 +4126,12 @@ def collect_managed_outputs(
         for owner_kind, section in sections:
             for output in _managed_outputs_from_section(project_root, section, owner_kind=owner_kind):
                 managed[output.path] = output
+        # @cpt-end:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-generate-manifest-agents
 
+    # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-return-agents
     for output in _scan_owned_generated_outputs(project_root):
         managed[output.path] = output
+    # @cpt-end:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-return-agents
 
     return sorted(managed.values(), key=lambda item: item.path)
 

@@ -2430,17 +2430,18 @@ class TestCmdWorkspaceAddStandalone:
                     assert data["source"]["url"] == "https://x.com/a/b.git"
                     assert data["source"]["branch"] == "main"
 
-    def test_add_rejects_unreachable_local_path(self, capsys):
+    def test_add_accepts_unreachable_local_path(self, capsys):
         with TemporaryDirectory() as tmpdir:
             ws_cfg = _make_standalone_ws_mock(tmpdir)
             with patch("studio.utils.files.find_project_root", return_value=Path(tmpdir)):
                 with patch("studio.utils.workspace.find_workspace_config", return_value=(ws_cfg, None)):
                     rc = cmd_workspace_add(["--name", "docs", "--path", "../missing-docs"])
-                    assert rc == 1
-                    out = capsys.readouterr().out
-                    assert "Source path not reachable" in out
-                    ws_cfg.add_source.assert_not_called()
-                    ws_cfg.save.assert_not_called()
+                    assert rc == 0
+                    data = _parse_json(capsys)
+                    assert data["status"] == "ADDED"
+                    assert data["source"]["path"] == "../missing-docs"
+                    ws_cfg.add_source.assert_called_once()
+                    ws_cfg.save.assert_called_once()
 
     def test_no_workspace_found(self, capsys):
 

@@ -7,7 +7,7 @@ ARGUMENTS:
 OPTIONS:
   --project-root  <path>  Project root directory (default: current directory)
   --install-dir  <path>  Constructor Studio directory relative to project root (default: .cf-studio)
-  --project-name  <string>  Project name used in AGENTS.md (default: project root folder name)
+  --project-name  <string>  Project name used in generated config/navigation docs (default: project root folder name)
   --yes  <boolean>  Do not prompt; accept defaults
   --dry-run  <boolean>  Compute changes without writing files
   --force  <boolean>  Overwrite existing files
@@ -15,6 +15,14 @@ OPTIONS:
 EXIT CODES:
   0  Initialization successful
   1  Error (conflicts, invalid paths, etc.)
+
+OUTPUT:
+  JSON object with:
+  - status: PASS or ERROR
+  - install_dir: Relative install directory selected for this project
+  - kits_installed: List of kits installed during setup (may be empty when skipped)
+  - agents_configured: Generated agent targets
+  - systems: Root system definitions created in config
 
 EXAMPLE:
   $ cfs init
@@ -255,18 +263,21 @@ ARGUMENTS:
 
 OPTIONS:
   --root  <path>  Project root directory to search from (default: current directory)
-  --cf-root  <path>  Known Constructor Studio core location for enhanced validation
+  --cf-studio-root  <path>  Known Constructor Studio core location for enhanced validation
+  --cf-root  <path>  Legacy alias for --cf-studio-root
+  --cf-constructor-root  <path>  Legacy alias for --cf-studio-root
 
 EXIT CODES:
   0  Constructor Studio found
-  1  File system error
-  2  Constructor Studio not found
+  1  File system error or Constructor Studio not found
 
 OUTPUT:
   JSON object with:
   - status: FOUND or NOT_FOUND
   - project_root: Resolved project root path
-  - constructor_dir: Resolved Constructor Studio directory path
+  - relative_path: Constructor Studio directory relative to project root
+  - studio_dir: Resolved Constructor Studio directory path
+  - has_config: Whether config/core.toml was found
   - project_name: Name derived from project root directory
   - kit_details: Per-kit metadata (version, content_dirs, artifact_kinds, workflows, resources)
   - artifacts_registry: Parsed artifacts.toml contents
@@ -277,7 +288,7 @@ OUTPUT:
 EXAMPLE:
   $ cfs info
   $ cfs info --root /path/to/project
-  $ cfs info --root . --cf-root ../CyberConstructor
+  $ cfs info --root . --cf-studio-root ../CyberConstructor
 
 RELATED:
   - @CLI.init
@@ -302,7 +313,7 @@ EXIT CODES:
 
 OUTPUT:
   JSON object with:
-  - status: OK or ERROR
+  - status: OK or ERROR (omitted when --flat)
   - system: System-level variables (cf-path, project_root)
   - kits: Per-kit resource variables {slug: {var: path}}
   - variables: Flat merged dict of all variables for format_map() substitution
@@ -399,9 +410,15 @@ OUTPUT:
   - agents: Target agents processed
   - project_root: Resolved project root
   - studio_root: Resolved Constructor Studio root
-  - results: Per-agent generation results
+  - results: Per-agent generation results with workflows, skills, and subagents sections
+  - partial_reasons: Present when overall status is PARTIAL
   - provenance: Layer provenance report (when --show-layers)
   - dry_run: Present when previewing without writes
+
+NOTES:
+  - The command may return PARTIAL while still applying valid writes.
+  - Unsupported provider capabilities are reported via subagent/section skip metadata rather than silent omission.
+  - OpenAI generated outputs use `.codex/.cf-installed` as the current install marker.
 
 EXAMPLE:
   $ cfs generate-agents --agent windsurf
@@ -439,7 +456,7 @@ EXIT CODES:
 
 OUTPUT:
   JSON object with:
-  - status: OK
+  - status: OK, NOT_FOUND, or CONFIG_ERROR
   - agents: Target agents inspected
   - project_root: Resolved project root
   - studio_root: Resolved Constructor Studio root
@@ -633,9 +650,11 @@ OUTPUT:
   JSON object with:
   - status: PASS, WARN, ABORTED, or ERROR
   - project_root: Resolved project root path
+  - relative_path: Constructor Studio directory relative to project root
   - constructor_dir: Resolved Constructor Studio directory path
   - dry_run: Whether dry-run mode was used
-  - actions: Object describing `.core`, kit refresh, `.gen`, migration, and config refresh work
+  - actions: Object describing `.core`, `.gen`, migration, root metadata, gitignore, and config refresh work
+  - validate_kits: Kit validation summary when that check runs
   - errors: List of errors (if any)
   - warnings: List of warnings (if any)
 

@@ -274,6 +274,7 @@ class TestGenerateAgentsNoChangePreview(unittest.TestCase):
                 patch("studio.commands.agents._discover_layers", return_value=[]),
                 patch("studio.commands.agents._layers_have_v2_manifests", return_value=False),
                 patch("studio.commands.agents._process_single_agent", side_effect=fake_process) as process,
+                patch("studio.commands.agents._refresh_managed_gitignore", return_value=None),
             ):
                 rc = cmd_generate_agents([])
 
@@ -396,7 +397,7 @@ class TestGenerateAgentsNoChangePreview(unittest.TestCase):
 
             self.assertEqual(rc, 1)
 
-    def test_interactive_abort_returns_one(self):
+    def test_interactive_abort_returns_zero(self):
         from studio.commands.agents import cmd_generate_agents
 
         with TemporaryDirectory() as td:
@@ -436,7 +437,7 @@ class TestGenerateAgentsNoChangePreview(unittest.TestCase):
             ):
                 rc = cmd_generate_agents([])
 
-            self.assertEqual(rc, 1)
+            self.assertEqual(rc, 0)
             self.assertEqual(process.call_count, 1)
 
     def test_v2_confirm_declined_returns_zero(self):

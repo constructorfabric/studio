@@ -194,20 +194,20 @@ cfs init [--project-root ROOT] [--install-dir DIR] [--from-dir DIR] [--yes] [--d
    - Autodetect rules for standard artifact kinds: `PRD.md`, `DESIGN.md`, `ADR/*.md`, `DECOMPOSITION.md`, `features/*.md` — all with default traceability levels and glob patterns
    - Default codebase entry: `path = "src"`, common extensions
    - Default ignore patterns: `vendor/*`, `node_modules/*`, `.git/*`
-7. Install all available kits by copying kit files into `{cf-studio-path}/config/kits/<slug>/` (constraints, artifacts, workflows, SKILL.md) and registering in `core.toml`.
+7. Offer default kit installation according to the current setup flow. The command may install a default kit, skip kit installation, or leave kit installation for a later explicit `cfs kit install`.
 8. Generate agent entry points for selected agents.
 9. Inject root `AGENTS.md` entry: insert managed `<!-- @cf:root-agents -->` block at the beginning of `{project_root}/AGENTS.md` (create file if absent).
-10. Create `{cf-studio-path}/config/AGENTS.md` with default WHEN rules for standard system prompts.
+10. Create `{cf-studio-path}/config/AGENTS.md` with project navigation rules that point at `{cf-studio-path}/config/rules/*.md` and other relevant project docs.
 11. Output prompt suggestion: `cf on` or `cf help` (these are agent chat prompts, not CLI commands).
 
-**Root AGENTS.md integrity**: every CLI invocation (not just `init`) verifies the `<!-- @cf:root-agents -->` block in root `AGENTS.md` exists and contains the correct path. If missing or stale, the block is silently re-injected. See [sysprompts.md](./sysprompts.md) for full format.
+**Root AGENTS.md integrity**: project-skill routing reads the managed `<!-- @cf:root-agents -->` block in root `AGENTS.md` and uses its `cf-studio-path` value to locate the project install. Commands that explicitly repair or rewrite project runtime metadata (`init`, `update`, migration flows) refresh this block. Ordinary CLI dispatch does not silently rewrite root files. See [sysprompts.md](./sysprompts.md) for full format.
 
 **Output** (JSON):
 ```json
 {
-  "status": "ok",
+  "status": "PASS",
   "install_dir": ".cf-studio",
-  "kits_installed": ["sdlc"],
+  "kits_installed": [],
   "agents_configured": ["windsurf", "cursor", "claude", "copilot", "openai"],
   "systems": [{"name": "my-project", "slug": "my-project", "kit": "sdlc"}]
 }
@@ -235,12 +235,12 @@ cfs update [--project-root P] [--dry-run] [--no-interactive] [-y/--yes]
 **Behavior**:
 1. Resolve project root and Constructor Studio directory.
 2. Replace `.core/` from cache (always force-overwrite).
-3. For each kit in cache: compare kit version (skip same, file-level diff if newer, copy on first install), update kit files in `config/kits/{slug}/` via interactive diff prompts.
+3. Refresh project-owned runtime surfaces. Kit file updates are separate by default and only run when the update flow explicitly opts into them.
 4. Write aggregate `.gen/AGENTS.md` from collected kit rule parts.
 5. Ensure `config/` scaffold files exist (create only if missing).
 6. Re-inject root `AGENTS.md` and `CLAUDE.md` managed blocks.
 7. Auto-regenerate agent integration files if real changes happened.
-8. Run `validate-kits` to verify kit integrity; include result in report (WARN if failed).
+8. Run `validate-kits` to verify kit integrity; include result in report.
 9. Return update report.
 
 **Output** (JSON):
@@ -256,7 +256,7 @@ cfs update [--project-root P] [--dry-run] [--no-interactive] [-y/--yes]
     "gen_agents": "updated",
     "gen_readme": "updated"
   },
-  "self_check": {"status": "PASS", "kits_checked": 1, "templates_checked": 9}
+  "validate_kits": {"status": "PASS", "kits_checked": 1, "templates_checked": 9}
 }
 ```
 
@@ -471,16 +471,15 @@ cfs info
 **Output** (JSON):
 ```json
 {
+  "status": "FOUND",
+  "project_root": "/path/to/project",
   "relative_path": ".cf-studio",
-  "artifacts_toml": ".cf/config/artifacts.toml",
+  "has_config": true,
   "systems": [
     {
       "name": "MyApp",
       "slug": "my-app",
-      "kit": "sdlc",
-      "artifacts_root": "architecture",
-      "artifacts_found": 3,
-      "codebase_paths": ["src/"]
+      "kit": "sdlc"
     }
   ],
   "kits": [
@@ -516,7 +515,7 @@ cfs resolve-vars [--root ROOT] [--kit KIT] [--flat]
 Show generated agent integration files without writing anything.
 
 ```
-cfs agents [--agent AGENT | --openai] [--root PATH] [--cf-root PATH] [--config PATH]
+cfs agents [--agent AGENT | --openai] [--root PATH] [--cf-studio-root PATH] [--config PATH]
 ```
 
 | Option | Description |
@@ -524,7 +523,8 @@ cfs agents [--agent AGENT | --openai] [--root PATH] [--cf-root PATH] [--config P
 | `--agent AGENT` | Limit output to a specific agent: `windsurf`, `cursor`, `claude`, `copilot`, `openai` |
 | `--openai` | Shortcut for `--agent openai` |
 | `--root PATH` | Project root directory to search from (default: current directory) |
-| `--cf-root PATH` | Explicit Constructor Studio core root (optional override) |
+| `--cf-studio-root PATH` | Explicit Constructor Studio core root (optional override) |
+| `--cf-constructor-root PATH` | Legacy alias for `--cf-studio-root` |
 | `--config PATH` | Path to agents config JSON (optional; built-in defaults used when omitted) |
 
 **Behavior**:
@@ -532,6 +532,12 @@ cfs agents [--agent AGENT | --openai] [--root PATH] [--cf-root PATH] [--config P
 2. Load agent config (or built-in defaults).
 3. Inspect generated workflow proxies, skill shims, and subagent files for the selected agents.
 4. Return a read-only per-agent listing; no files are written.
+
+**Status contract**:
+
+- `OK` on success
+- `NOT_FOUND` when project root or Studio root cannot be resolved
+- `CONFIG_ERROR` when the explicit config file cannot be parsed
 
 **Exit**: 0.
 
@@ -542,7 +548,7 @@ cfs agents [--agent AGENT | --openai] [--root PATH] [--cf-root PATH] [--config P
 Generate or update agent integration files.
 
 ```
-cfs generate-agents [--agent AGENT | --openai] [--root PATH] [--cf-root PATH] [--config PATH] [--dry-run]
+cfs generate-agents [--agent AGENT | --openai] [--root PATH] [--cf-studio-root PATH] [--config PATH] [--dry-run]
 ```
 
 | Option | Description |
@@ -550,7 +556,8 @@ cfs generate-agents [--agent AGENT | --openai] [--root PATH] [--cf-root PATH] [-
 | `--agent AGENT` | Generate for a specific agent only: `windsurf`, `cursor`, `claude`, `copilot`, `openai` |
 | `--openai` | Shortcut for `--agent openai` |
 | `--root PATH` | Project root directory to search from (default: current directory) |
-| `--cf-root PATH` | Explicit Constructor Studio core root (optional override) |
+| `--cf-studio-root PATH` | Explicit Constructor Studio core root (optional override) |
+| `--cf-constructor-root PATH` | Legacy alias for `--cf-studio-root` |
 | `--config PATH` | Path to agents config JSON (optional; built-in defaults used when omitted) |
 | `--dry-run` | Compute planned changes without writing files |
 
@@ -562,7 +569,16 @@ cfs generate-agents [--agent AGENT | --openai] [--root PATH] [--cf-root PATH] [-
 3. Generate workflow entry points in each agent's native format.
 4. Generate skill shims referencing the composed SKILL.md.
 5. Generate tool-specific subagent files where supported.
-6. Full overwrite on each invocation (no merge with existing files).
+6. Refresh the managed `.gitignore` block so all generated paths are ignored consistently.
+7. Full overwrite on each invocation (no merge with existing files).
+
+**Discover mode**:
+- `--discover` may extend or create `config/manifest.toml` from discovered layers before generating outputs.
+- Any newly generated agent, skill, workflow, or subagent surface created by discover mode is also added to the managed `.gitignore` block.
+
+**Abort semantics**:
+- If the user explicitly declines the interactive confirmation step, the command returns `ABORTED`, writes nothing, and exits `0`.
+- A no-op preview or no-change run also exits `0`.
 
 **Generated surfaces**:
 | Agent | Generated files/directories |
@@ -571,7 +587,7 @@ cfs generate-agents [--agent AGENT | --openai] [--root PATH] [--cf-root PATH] [-
 | Cursor | `.cursor/commands/`, `.cursor/agents/`, `.agents/skills/` (shared) |
 | Claude | `.claude/skills/`, `.claude/agents/` |
 | Copilot | `.github/prompts/`, `.github/copilot-instructions.md`, `.github/agents/`, `.agents/skills/` (shared) |
-| OpenAI | `.agents/skills/` (shared), `.codex/.constructor-studio-installed` (marker), `.codex/agents/` |
+| OpenAI | `.agents/skills/` (shared), `.codex/.cf-installed` (marker), `.codex/agents/` |
 
 **Detection model** (used by `info` and `update --auto-regenerate`):
 Each agent is detected via Constructor Studio-specific generated files, not generic tool directories.
@@ -579,7 +595,7 @@ Each agent is detected via Constructor Studio-specific generated files, not gene
 - **Windsurf**: `.windsurf/workflows/cf.md` (primary) or legacy `.windsurf/skills/studio/SKILL.md` / `.windsurf/skills/cf/SKILL.md` with `{cf-studio-path}/` follow-link
 - **Cursor**: `.cursor/commands/cf.md` (primary) or legacy `.cursor/rules/studio.mdc` / `.cursor/rules/cf.mdc` with `{cf-studio-path}/` follow-link
 - **Copilot**: `.github/.constructor-studio-installed` (primary), `.github/prompts/cf.prompt.md` / legacy `.github/prompts/studio.prompt.md`, or `.github/copilot-instructions.md` starting with `# Constructor Studio` / `# Studio` (legacy). User-authored `copilot-instructions.md` files are never overwritten.
-- **OpenAI**: `.codex/.constructor-studio-installed` (primary; legacy `.codex/.studio-installed` still recognized), `.codex/agents/` with Constructor Studio content (legacy mixed-install), or `.agents/skills/cf/SKILL.md` only when no other agent's primary or legacy marker is present (legacy pure)
+- **OpenAI**: `.codex/.cf-installed` (primary), legacy Studio-owned Codex markers when present, `.codex/agents/` with Constructor Studio content, or `.agents/skills/cf/SKILL.md` only when no other agent's primary marker is present
 
 **Skill file model**:
 - **Kit workflow skills**: Generated as shared `.agents/skills/{id}/SKILL.md` for all non-Claude agents
@@ -588,6 +604,14 @@ Each agent is detected via Constructor Studio-specific generated files, not gene
 All non-Claude agents read from the shared `.agents/skills/` directory, but agent-specific manifest skills are filtered at generation time. This prevents Cursor-only skills from being offered to Copilot or OpenAI.
 
 Legacy per-tool manifest skill files are migrated away only when they match generated content or are pure generated stubs; customized legacy files are preserved.
+
+**Partial-result contract**:
+
+- `generate-agents` may return `PARTIAL` while still applying valid writes
+- partial results report per-agent section details for `workflows`, `skills`, and
+  `subagents`
+- unsupported provider capabilities are reported through skip metadata instead of
+  silent omission
 
 **Exit**: 0.
 
@@ -1007,7 +1031,7 @@ cfs workspace-add --name NAME (--path PATH | --url URL) [--branch BRANCH] [--rol
 | Option | Description |
 |--------|-------------|
 | `--name NAME` | Source name (human-readable key, required) |
-| `--path PATH` | Path to the source repo (relative to workspace file or project root). Validated at add-time; returns error if directory not found. |
+| `--path PATH` | Path to the source repo (relative to workspace file or project root). Stored as provided; reachability is checked later by `workspace-info` and `validate`. |
 | `--url URL` | Git remote URL (HTTPS or SSH) for the source |
 | `--branch BRANCH` | Git branch/ref to checkout |
 | `--role ROLE` | Source role: `artifacts`, `codebase`, `kits`, `full` (default: `full`) |
@@ -1063,6 +1087,12 @@ cfs workspace-info
 ```json
 {
   "status": "OK",
+  "degraded": true,
+  "warning_count": 2,
+  "warnings": [
+    "Source not cloned: repo-b",
+    "Config validation produced warnings"
+  ],
   "version": "1.0",
   "config_path": ".studio-workspace.toml",
   "is_inline": false,
@@ -1107,7 +1137,10 @@ cfs workspace-info
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `status` | string | `"OK"` on success, `"ERROR"` on failure |
+| `status` | string | `"OK"` on success, `"ERROR"` on failure; warning-only runs remain `"OK"` for compatibility |
+| `degraded` | bool | Present when success includes warnings or unreachable sources |
+| `warning_count` | int | Total warning count aggregated across config and sources |
+| `warnings` | string[] | Flattened top-level warning list for human and machine consumers |
 | `version` | string | Workspace config version |
 | `config_path` | string | Path to workspace config file |
 | `is_inline` | bool | Whether workspace is inline in `core.toml` |
@@ -1243,22 +1276,22 @@ CI pipelines should check for exit code 2 to detect validation failures.
 ### Project (per repository)
 
 ```
-{cf-studio-path}/             # Install directory (default: .cf-studio/, configurable via --dir)
+{cf-studio-path}/             # Install directory (default: .cf-studio/, configurable via init flags or root managed block)
   .core/                    # Read-only core files (copied from cache)
     skills/                 # Skill bundle
     workflows/              # Core workflows (generate.md, analyze.md)
     requirements/           # Core requirement specs
     schemas/                # JSON schemas
   .gen/                     # Auto-generated aggregate files (do not edit)
-    AGENTS.md               # Generated WHEN rules + system prompt content
+    AGENTS.md               # Generated navigation aggregates
     SKILL.md                # Navigation hub routing to per-kit skills
     README.md               # Generated README
   config/                   # User-editable configuration
-    AGENTS.md               # Project-level navigation (WHEN → sysprompt)
+    AGENTS.md               # Project-level navigation (WHEN → rules/docs)
     SKILL.md                # User-editable skill extensions
     core.toml               # Core config (systems, kits, ignore)
     artifacts.toml          # Artifact registry
-    sysprompts/             # Project-specific system prompts
+    rules/                  # Project-specific rule docs
     kits/
       sdlc/
         conf.toml           # Kit version metadata
@@ -1294,7 +1327,7 @@ CI pipelines should check for exit code 2 to detect validation failures.
 
 .codex/
   agents/                    # OpenAI Codex sub-agent files
-  .constructor-studio-installed
+  .cf-installed
 ```
 
 ---
