@@ -4705,14 +4705,18 @@ def cmd_generate_agents(argv: List[str]) -> int:
     layers = [layer for layer in discovered_layers if layer.scope == "kit"]
     # @cpt-end:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-step2-discover-layers
 
+    # @cpt-begin:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-step3-v2-pipeline
     if _layers_have_v2_manifests(layers):
         # ── NEW PATH: Multi-layer v2.0 manifest pipeline ─────────────────
         # Step 3: Resolve includes for each layer
+        # @cpt-begin:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-step3-resolve-includes
         resolved_layers, has_v2_errors = _resolve_includes_for_layers(layers, project_root)
         if has_v2_errors:
             return 1
+        # @cpt-end:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-step3-resolve-includes
 
         # Step 4: Handle --discover flag
+        # @cpt-begin:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-step4-discover
         if getattr(args, "discover", False):
             _run_discover_flag(args, project_root, studio_root)
             discovered_layers = _discover_layers(project_root, studio_root)
@@ -4720,6 +4724,7 @@ def cmd_generate_agents(argv: List[str]) -> int:
             resolved_layers, has_v2_errors = _resolve_includes_for_layers(layers, project_root)
             if has_v2_errors:
                 return 1
+        # @cpt-end:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-step4-discover
 
         # Step 5: Merge components from all layers
         # @cpt-begin:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-step6-merge
@@ -4729,12 +4734,16 @@ def cmd_generate_agents(argv: List[str]) -> int:
         # Collect trusted roots from discovered layer directories so that
         # master-layer source paths (rewritten to absolute) pass the
         # containment check in _read_source_content.
+        # @cpt-begin:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-step6-trusted-roots
         _trusted_roots = [layer.path.parent for layer in resolved_layers if layer.state == _ManifestLayerState.LOADED]
+        # @cpt-end:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-step6-trusted-roots
 
         # Step 6: Handle --show-layers flag
+        # @cpt-begin:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-step6-show-layers
         rc = _handle_show_layers_v2(args, merged, project_root)
         if rc is not None:
             return rc
+        # @cpt-end:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-step6-show-layers
 
         # Step 7: Extend variables with layer path variables
         # @cpt-begin:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-step9-layer-vars
@@ -4757,6 +4766,7 @@ def cmd_generate_agents(argv: List[str]) -> int:
         preview_v2_create = 0
         preview_v2_update = 0
         preview_v2_delete = 0
+        preview_gitignore_action = _refresh_managed_gitignore(project_root, studio_root, dry_run=True)
         preview_agents: Dict[str, Dict[str, Any]] = {}
         preview_skills: Dict[str, Dict[str, Any]] = {}
         legacy_preview: Dict[str, Any] = {}
@@ -4788,8 +4798,13 @@ def cmd_generate_agents(argv: List[str]) -> int:
                 preview_v2_create += len(sec.get("created", []))
                 preview_v2_update += len(sec.get("updated", [])) + len(sec.get("renamed", []))
                 preview_v2_delete += len(sec.get("deleted", []))
+        if preview_gitignore_action == "created":
+            preview_v2_create += 1
+        elif preview_gitignore_action == "updated":
+            preview_v2_update += 1
         # @cpt-end:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-step8-preview
 
+        # @cpt-begin:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-step8-dry-run-report
         if args.dry_run:
             # @cpt-begin:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-step8-dry-run
             dry_results: Dict[str, Any] = {}
@@ -4806,12 +4821,23 @@ def cmd_generate_agents(argv: List[str]) -> int:
                     "subagents": lp.get("subagents", {}),
                     "legacy_skills": lp.get("skills", {}),
                 }
-            dr = _build_result(dry_results, agents_to_process, project_root, studio_root, cfg_path, copy_report, dry_run=True)
+            dr = _build_result(
+                dry_results,
+                agents_to_process,
+                project_root,
+                studio_root,
+                cfg_path,
+                copy_report,
+                dry_run=True,
+                gitignore_action=preview_gitignore_action,
+            )
             dr["manifest_v2"] = True
             ui.result(dr, human_fn=lambda d: _human_generate_agents_ok(d, agents_to_process, dry_results, dry_run=True))
             return 0
             # @cpt-end:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-step8-dry-run
+        # @cpt-end:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-step8-dry-run-report
 
+        # @cpt-begin:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-step8-confirm-execute
         if not _confirm_v2_generation(args, preview_v2_create, preview_v2_update, preview_v2_delete):
             return 0
 
@@ -4828,11 +4854,23 @@ def cmd_generate_agents(argv: List[str]) -> int:
             trusted_roots=_trusted_roots,
             remove_cypilot=remove_cypilot,
         )
-        agents_result = _build_result(results, agents_to_process, project_root, studio_root, cfg_path, copy_report, dry_run=args.dry_run)
+        gitignore_action = _refresh_managed_gitignore(project_root, studio_root, dry_run=False)
+        agents_result = _build_result(
+            results,
+            agents_to_process,
+            project_root,
+            studio_root,
+            cfg_path,
+            copy_report,
+            dry_run=args.dry_run,
+            gitignore_action=gitignore_action,
+        )
         agents_result["manifest_v2"] = True
         agents_result["layers"] = len(resolved_layers)
         ui.result(agents_result, human_fn=lambda d: _human_generate_agents_ok(d, agents_to_process, results, dry_run=args.dry_run))
         return 0 if not has_errors else 1
+        # @cpt-end:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-step8-confirm-execute
+    # @cpt-end:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-step3-v2-pipeline
 
     # ── EXISTING PATH: Legacy agents.toml flow ────────────────────────────
     # @cpt-begin:cpt-studio-dod-project-extensibility-backward-compat:p1:inst-legacy-path
@@ -4875,6 +4913,7 @@ def cmd_generate_agents(argv: List[str]) -> int:
     total_create = 0
     total_update = 0
     total_delete = 0
+    preview_gitignore_action = _refresh_managed_gitignore(project_root, studio_root, dry_run=True)
     for r in preview_results.values():
         wf = r.get("workflows", {})
         sk = r.get("skills", {})
@@ -4895,10 +4934,23 @@ def cmd_generate_agents(argv: List[str]) -> int:
             + len(sk.get("deleted", []))
             + len(sub.get("deleted", []))
         )
+    if preview_gitignore_action == "created":
+        total_create += 1
+    elif preview_gitignore_action == "updated":
+        total_update += 1
 
     if args.dry_run:
         # Just show the preview and exit
-        agents_result = _build_result(preview_results, agents_to_process, project_root, studio_root, cfg_path, copy_report, dry_run=True)
+        agents_result = _build_result(
+            preview_results,
+            agents_to_process,
+            project_root,
+            studio_root,
+            cfg_path,
+            copy_report,
+            dry_run=True,
+            gitignore_action=preview_gitignore_action,
+        )
         ui.result(agents_result, human_fn=lambda d: _human_generate_agents_ok(d, agents_to_process, preview_results, dry_run=True))
         _failing = {"PARTIAL", "CONFIG_ERROR"}
         if any(
@@ -4923,6 +4975,7 @@ def cmd_generate_agents(argv: List[str]) -> int:
             cfg_path,
             copy_report,
             dry_run=False,
+            gitignore_action=preview_gitignore_action,
         )
         ui.result(
             agents_result,
@@ -4943,6 +4996,7 @@ def cmd_generate_agents(argv: List[str]) -> int:
                 cfg_path,
                 copy_report,
                 dry_run=False,
+                gitignore_action=preview_gitignore_action,
             )
             ui.result(
                 agents_result,
@@ -4958,7 +5012,12 @@ def cmd_generate_agents(argv: List[str]) -> int:
     if not is_json_mode():
         auto_approve = getattr(args, "yes", False)
         if not auto_approve:
-            _human_generate_agents_preview(agents_to_process, preview_results, project_root)
+            _human_generate_agents_preview(
+                agents_to_process,
+                preview_results,
+                project_root,
+                gitignore_action=preview_gitignore_action,
+            )
         if not auto_approve and sys.stdin.isatty():
             try:
                 answer = input(
@@ -4996,7 +5055,17 @@ def cmd_generate_agents(argv: List[str]) -> int:
     # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-for-each-agent
 
     # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-return-report
-    agents_result = _build_result(results, agents_to_process, project_root, studio_root, cfg_path, copy_report, dry_run=False)
+    gitignore_action = _refresh_managed_gitignore(project_root, studio_root, dry_run=False)
+    agents_result = _build_result(
+        results,
+        agents_to_process,
+        project_root,
+        studio_root,
+        cfg_path,
+        copy_report,
+        dry_run=False,
+        gitignore_action=gitignore_action,
+    )
     ui.result(agents_result, human_fn=lambda d: _human_generate_agents_ok(d, agents_to_process, results, dry_run=False))
 
     # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-return-report
@@ -5050,9 +5119,10 @@ def _build_result(
     cfg_path: Optional[Path],
     copy_report: dict,
     dry_run: bool,
+    gitignore_action: Optional[str] = None,
 ) -> Dict[str, Any]:
     has_errors = any(r.get("status") != "PASS" for r in results.values())
-    return {
+    result = {
         "status": "PASS" if not has_errors else "PARTIAL",
         "agents": list(agents_to_process),
         "project_root": project_root.as_posix(),
@@ -5062,11 +5132,36 @@ def _build_result(
         "studio_copy": copy_report,
         "results": results,
     }
+    if gitignore_action:
+        result["gitignore"] = gitignore_action
+    return result
+# @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-format-output
+
+
+def _refresh_managed_gitignore(
+    project_root: Path,
+    studio_root: Path,
+    dry_run: bool,
+) -> Optional[str]:
+    """Refresh the managed Constructor Studio .gitignore block when possible."""
+    core_toml_path = studio_root / "config" / "core.toml"
+    if not core_toml_path.is_file():
+        return None
+    from .init import _read_kit_tracking, _write_gitignore_block
+
+    return _write_gitignore_block(
+        project_root,
+        _safe_relpath(studio_root, project_root),
+        core_toml_path,
+        _read_kit_tracking(core_toml_path, default="tracked"),
+        dry_run=dry_run,
+    )
 
 # ---------------------------------------------------------------------------
 # Human-friendly formatters
 # ---------------------------------------------------------------------------
 
+# @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-format-output
 def _human_agents_list(
     _data: Dict[str, Any],
     _agents_to_process: List[str],
@@ -5112,6 +5207,7 @@ def _human_generate_agents_preview(
     agents_to_process: List[str],
     results: Dict[str, Any],
     _project_root: Path,
+    gitignore_action: Optional[str] = None,
 ) -> None:
     agent_label = ", ".join(agents_to_process)
     ui.header(f"Generate Agent Integration — {agent_label}")
@@ -5164,12 +5260,15 @@ def _human_generate_agents_preview(
             ui.file_action(path, "updated")
         if skipped_sub and skipped_sub_reason:
             ui.substep(f"subagents skipped: {skipped_sub_reason}")
+    if gitignore_action in {"created", "updated"}:
+        ui.file_action(".gitignore", gitignore_action)
     ui.blank()
 
 def _render_agent_file_actions(
     wf: Dict[str, Any],
     sk: Dict[str, Any],
     sub: Dict[str, Any],
+    extra_sk: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Emit ui.file_action calls for one agent's workflows, skills, and subagents."""
     for path in wf.get("created", []):
@@ -5188,6 +5287,15 @@ def _render_agent_file_actions(
         ui.file_action(path, "deleted")
     for item in sk.get("skipped", []):
         ui.warn(f"  skipped: {item}")
+    extra_sk = extra_sk or {}
+    for path in extra_sk.get("created", []):
+        ui.file_action(path, "created")
+    for path in extra_sk.get("updated", []):
+        ui.file_action(path, "updated")
+    for path in extra_sk.get("deleted", []):
+        ui.file_action(path, "deleted")
+    for item in extra_sk.get("skipped", []):
+        ui.warn(f"  skipped: {item}")
     for path in sub.get("created", []):
         ui.file_action(path, "created")
     for path in sub.get("updated", []):
@@ -5202,15 +5310,22 @@ def _build_agent_summary_parts(
     wf_counts: Dict[str, Any],
     sk_counts: Dict[str, Any],
     sub_counts: Dict[str, Any],
+    extra_sk_counts: Optional[Dict[str, Any]],
     dry_run: bool,
 ) -> List[str]:
     """Build summary parts list for one agent's result counts."""
     total_wf = wf_counts.get("created", 0) + wf_counts.get("updated", 0) + wf_counts.get("renamed", 0)
     total_wf_deleted = wf_counts.get("deleted", 0)
-    total_sk = sk_counts.get("created", 0) + sk_counts.get("updated", 0)
+    extra_sk_counts = extra_sk_counts or {}
+    total_sk = (
+        sk_counts.get("created", 0)
+        + sk_counts.get("updated", 0)
+        + extra_sk_counts.get("created", 0)
+        + extra_sk_counts.get("updated", 0)
+    )
     total_sub = sub_counts.get("created", 0) + sub_counts.get("updated", 0)
-    total_deleted = sk_counts.get("deleted", 0) + sub_counts.get("deleted", 0)
-    total_skipped = sk_counts.get("skipped", 0)
+    total_deleted = sk_counts.get("deleted", 0) + extra_sk_counts.get("deleted", 0) + sub_counts.get("deleted", 0)
+    total_skipped = sk_counts.get("skipped", 0) + extra_sk_counts.get("skipped", 0)
     parts: List[str] = []
     if total_wf:
         parts.append(f"{total_wf} workflow(s)")
@@ -5240,9 +5355,11 @@ def _human_generate_agents_ok(
         agent_status = r.get("status", "?")
         wf = r.get("workflows", {})
         sk = r.get("skills", {})
+        legacy_sk = r.get("legacy_skills", {})
         sub = r.get("subagents", {})
         wf_counts = wf.get("counts", {})
         sk_counts = sk.get("counts", {})
+        legacy_sk_counts = legacy_sk.get("counts", {})
         sub_counts = sub.get("counts", {})
 
         if agent_status == "PASS":
@@ -5250,7 +5367,7 @@ def _human_generate_agents_ok(
         else:
             ui.warn(f"{agent_name} ({agent_status})")
 
-        _render_agent_file_actions(wf, sk, sub)
+        _render_agent_file_actions(wf, sk, sub, legacy_sk)
 
         # V2 manifest agents
         v2_ag = r.get("v2_agents", {})
@@ -5294,7 +5411,7 @@ def _human_generate_agents_ok(
         else:
             total_v2_ag = len(created_v2_ag) + len(updated_v2_ag) + len(deleted_v2_ag)
         parts = _build_agent_summary_parts(
-            wf_counts, sk_counts, sub_counts, dry_run,
+            wf_counts, sk_counts, sub_counts, legacy_sk_counts, dry_run,
         )
         if total_v2_ag:
             parts.append(f"{total_v2_ag} agent file action(s)")
@@ -5305,6 +5422,9 @@ def _human_generate_agents_ok(
         errs = r.get("errors") or []
         for e in errs:
             ui.warn(f"  {e}")
+
+    if data.get("gitignore") in {"created", "updated"}:
+        ui.file_action(".gitignore", str(data.get("gitignore")))
 
     if dry_run:
         ui.success("Dry run complete — no files were written.")
@@ -5553,6 +5673,7 @@ def _translate_windsurf_schema(_agent: "_AgentEntry") -> Dict[str, Any]:
 # @cpt-end:cpt-studio-algo-project-extensibility-translate-agent-schema:p1:inst-per-tool-translators
 
 
+# @cpt-begin:cpt-studio-algo-project-extensibility-translate-agent-schema:p1:inst-dispatch-table
 # Dispatch table: maps target tool name to per-tool translator function.
 _SCHEMA_TRANSLATOR_MAP: Dict[str, Any] = {
     "claude": _translate_claude_schema,
@@ -5561,6 +5682,7 @@ _SCHEMA_TRANSLATOR_MAP: Dict[str, Any] = {
     "openai": _translate_codex_schema,
     "windsurf": _translate_windsurf_schema,
 }
+# @cpt-end:cpt-studio-algo-project-extensibility-translate-agent-schema:p1:inst-dispatch-table
 
 
 # @cpt-begin:cpt-studio-algo-project-extensibility-translate-agent-schema:p1:inst-translate-agent-schema
@@ -5600,6 +5722,7 @@ def translate_agent_schema(agent: "_AgentEntry", target: str) -> Dict[str, Any]:
 # @cpt-end:cpt-studio-algo-project-extensibility-translate-agent-schema:p1:inst-translate-agent-schema
 
 
+# @cpt-begin:cpt-studio-algo-project-extensibility-generate-skills:p1:inst-skill-output-paths
 # Skill output paths per agent tool
 # All skills go to shared .agents/skills/ directory (readable by all agents)
 # Agent targeting is enforced via frontmatter metadata in the generated file
@@ -5611,6 +5734,7 @@ _SKILL_OUTPUT_PATHS: Dict[str, str] = {
     "openai":   ".agents/skills/{id}/SKILL.md",
     "windsurf": ".agents/skills/{id}/SKILL.md",
 }
+# @cpt-end:cpt-studio-algo-project-extensibility-generate-skills:p1:inst-skill-output-paths
 
 
 # @cpt-begin:cpt-studio-algo-project-extensibility-generate-skills:p1:inst-read-source-content
