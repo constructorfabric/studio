@@ -99,6 +99,39 @@ def _bootstrap_generator_project(root: Path) -> None:
     )
 
 
+def _write_legacy_follow_stub(path: Path, follow_target: str, *, name: str | None = None) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frontmatter = ""
+    if name is not None:
+        frontmatter = f"---\nname: {name}\n---\n"
+    path.write_text(
+        frontmatter + f"ALWAYS open and follow `{follow_target}`\n",
+        encoding="utf-8",
+    )
+
+
+def _bootstrap_legacy_cypilot_outputs(root: Path) -> None:
+    _write_legacy_follow_stub(
+        root / ".claude" / "skills" / "cypilot" / "SKILL.md",
+        "{cypilot_path}/skills/cypilot/SKILL.md",
+        name="cypilot",
+    )
+    _write_legacy_follow_stub(
+        root / ".claude" / "skills" / "cypilot-analyze" / "SKILL.md",
+        "{cypilot_path}/workflows/analyze.md",
+        name="cypilot-analyze",
+    )
+    _write_legacy_follow_stub(
+        root / ".claude" / "skills" / "cypilot-generate" / "SKILL.md",
+        "{cypilot_path}/workflows/generate.md",
+        name="cypilot-generate",
+    )
+    _write_legacy_follow_stub(
+        root / ".claude" / "agents" / "cypilot-reviewer.md",
+        "{cypilot_path}/agents/reviewer.md",
+    )
+
+
 class TestInfoAndResolveVarsE2E(unittest.TestCase):
     def test_info_no_project_root_returns_not_found_without_writes(self):
         with TemporaryDirectory() as td:
@@ -511,6 +544,48 @@ class TestAgentsAndGenerateAgentsE2E(unittest.TestCase):
             self.assertIn("openai", out["results"])
             self.assertFalse((root / ".codex").exists())
             self.assertFalse((root / ".agents").exists())
+
+    def test_generate_agents_yes_remove_cypilot_cleans_legacy_outputs(self):
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            _bootstrap_generator_project(root)
+            _bootstrap_legacy_cypilot_outputs(root)
+            before = _snapshot_tree(root)
+
+            rc, out, stderr = _run_main_json(
+                [
+                    "generate-agents",
+                    "--agent",
+                    "claude",
+                    "--root",
+                    str(root),
+                    "--cf-constructor-root",
+                    str(root),
+                    "--remove-cypilot",
+                    "yes",
+                    "--yes",
+                ],
+                cwd=root,
+            )
+
+            self.assertEqual(rc, 0, stderr)
+            self.assertEqual(stderr, "")
+            self.assertEqual(out["status"], "PASS")
+
+            claude = out["results"]["claude"]
+            deleted = set(claude.get("skills", {}).get("deleted", [])) | set(
+                claude.get("subagents", {}).get("deleted", [])
+            )
+            self.assertIn(".claude/skills/cypilot/SKILL.md", deleted)
+            self.assertIn(".claude/agents/cypilot-reviewer.md", deleted)
+
+            self.assertFalse((root / ".claude" / "skills" / "cypilot" / "SKILL.md").exists())
+            self.assertFalse((root / ".claude" / "agents" / "cypilot-reviewer.md").exists())
+
+            after = _snapshot_tree(root)
+            self.assertNotEqual(after, before)
+            self.assertTrue((root / ".claude" / "skills" / "cf-analyze" / "SKILL.md").exists())
+            self.assertTrue((root / ".claude" / "skills" / "cf-plan" / "SKILL.md").exists())
 
     def test_agents_openai_flag_stays_read_only(self):
         with TemporaryDirectory() as td:
