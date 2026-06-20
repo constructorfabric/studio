@@ -1,3 +1,15 @@
+[whatsnew."v1.5.9"]
+summary = "v1.5.9"
+details = "## What's New\r\n\r\n  This release improves kit installation safety and makes several CLI diagnostics clearer.\r\n\r\n  ### Safer kit installs\r\n\r\n  - `kit install` now validates public subagent prompt/helper sources before writing any files.\r\n  - If a kit references a missing public subagent source, installation now fails cleanly instead of leaving a\r\n  partial install behind.\r\n  - This validation now applies consistently across both copy and register install modes.\r\n\r\n  ### Legacy kit manifest warnings\r\n\r\n  - Installing a kit that does not use `.cf-studio-kit.toml` now shows a warning.\r\n  - Kits still using `manifest.toml` or other legacy layouts will prompt users to ask kit authors to migrate to the\r\n  canonical manifest format.\r\n  - This helps surface legacy kits earlier without blocking installation.\r\n\r\n  ### Clearer validation output\r\n\r\n  - `spec-coverage --system ...` now fails fast with a clear error when an unknown system selector is provided.\r\n  - Human-readable output now explicitly lists invalid system selectors, making misconfigured commands easier to\r\n  fix.\r\n\r\n  ### Better workspace diagnostics\r\n\r\n  - `workspace info` now reports degraded workspace states more clearly when metadata or workspace upgrade issues\r\n  are detected.\r\n  - This makes partial workspace/configuration problems easier to spot during diagnosis.\r\n\r\n  ## Why it matters\r\n\r\n  - Fewer broken or partial kit installs\r\n  - Better visibility into legacy kit formats\r\n  - Clearer CLI feedback when configuration is invalid\r\n  - Easier troubleshooting for degraded workspace states\r\n\r\n## What's Changed\r\n* Enhance end-to-end tests and refactor CLI command handling by @ainetx in https://github.com/constructorfabric/studio/pull/52\r\n\r\n\r\n**Full Changelog**: https://github.com/constructorfabric/studio/compare/v1.5.8...v1.5.9"
+
+[whatsnew."v1.5.8"]
+summary = "v1.5.8"
+details = "## What's Changed\r\n* test: add coverage for gitignore updates and agent generation scenarios by @ainetx in https://github.com/constructorfabric/studio/pull/51\r\n\r\n\r\n**Full Changelog**: https://github.com/constructorfabric/studio/compare/v1.5.7...v1.5.8"
+
+[whatsnew."v1.5.7"]
+summary = "v1.5.7"
+details = "## What's Changed\r\n* Refactor kit model loading and enhance workflow handling by @ainetx in https://github.com/constructorfabric/studio/pull/50\r\n\r\n\r\n**Full Changelog**: https://github.com/constructorfabric/studio/compare/v1.5.6...v1.5.7"
+
 [whatsnew."v1.5.6"]
 summary = "v1.5.6"
 details = "## What's Changed\r\n* Refactor gitignore patterns for generated agent resources by @ainetx in https://github.com/constructorfabric/studio/pull/49\r\n\r\n\r\n**Full Changelog**: https://github.com/constructorfabric/studio/compare/v1.5.5...v1.5.6"
