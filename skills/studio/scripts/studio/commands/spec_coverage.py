@@ -100,17 +100,20 @@ def cmd_spec_coverage(argv: List[str]) -> int:
             )
             return 2
 
-    def _matches_system_filter(node: object) -> bool:
-        """Check if a system node (or any ancestor) matches the --system filter."""
+    def _collect_selected_system_files(node: object) -> None:
+        """Collect code files for the requested system slug(s), including children."""
         if system_slugs is None:
-            return True
+            collect_codebase_files(node)
+            return
         slug = getattr(node, "slug", "")
-        return slug in system_slugs
+        if slug in system_slugs:
+            collect_codebase_files(node)
+            return
+        for child in getattr(node, "children", []):
+            _collect_selected_system_files(child)
 
     for system_node in meta.systems:
-        if not _matches_system_filter(system_node):
-            continue
-        collect_codebase_files(system_node)
+        _collect_selected_system_files(system_node)
 
     filtered_files: List[Path] = []
     for fp in code_files_to_scan:

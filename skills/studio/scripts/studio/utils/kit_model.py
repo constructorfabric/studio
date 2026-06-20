@@ -1412,19 +1412,6 @@ def _merge_core_authoritative_model(core_model: KitModel, source_model: KitModel
         merged_public = core_resource.public
         if not merged_public and merged_kind == source_resource.kind and source_resource.public:
             merged_public = True
-        merged_mode = source_resource.mode
-        if merged_mode == "readwrite" and core_resource.mode != "readwrite":
-            merged_mode = core_resource.mode
-        merged_isolation = source_resource.isolation or core_resource.isolation
-        merged_role = source_resource.role
-        if merged_role == "any" and core_resource.role != "any":
-            merged_role = core_resource.role
-        merged_target = source_resource.target
-        if merged_target == "any" and core_resource.target != "any":
-            merged_target = core_resource.target
-        merged_provider = source_resource.provider
-        if merged_provider == "anthropic" and core_resource.provider != "anthropic":
-            merged_provider = core_resource.provider
         merged_resources.append(KitResource(
             id=core_resource.id,
             kind=merged_kind,
@@ -1440,21 +1427,21 @@ def _merge_core_authoritative_model(core_model: KitModel, source_model: KitModel
             generated_name=source_resource.generated_name or core_resource.generated_name,
             prefix_generated_name=source_resource.prefix_generated_name,
             content_hash=core_resource.content_hash,
-            tools=list(source_resource.tools or core_resource.tools),
-            disallowed_tools=list(source_resource.disallowed_tools or core_resource.disallowed_tools),
-            mode=merged_mode,
-            isolation=merged_isolation,
+            tools=list(source_resource.tools),
+            disallowed_tools=list(source_resource.disallowed_tools),
+            mode=source_resource.mode,
+            isolation=source_resource.isolation,
             model=source_resource.model or core_resource.model,
-            skills=list(source_resource.skills or core_resource.skills),
+            skills=list(source_resource.skills),
             color=source_resource.color or core_resource.color,
             memory_dir=source_resource.memory_dir or core_resource.memory_dir,
-            role=merged_role,
-            target=merged_target,
-            provider=merged_provider,
+            role=source_resource.role,
+            target=source_resource.target,
+            provider=source_resource.provider,
             reasoning_effort=source_resource.reasoning_effort or core_resource.reasoning_effort,
             context_window=source_resource.context_window or core_resource.context_window,
-            subagents=list(source_resource.subagents or core_resource.subagents),
-            target_configs=dict(source_resource.target_configs or core_resource.target_configs),
+            subagents=list(source_resource.subagents),
+            target_configs=dict(source_resource.target_configs),
             artifact_bindings=core_resource.artifact_bindings or source_resource.artifact_bindings,
         ))
 

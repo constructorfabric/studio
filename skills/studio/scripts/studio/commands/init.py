@@ -370,7 +370,7 @@ def _normalize_ignored_kit_path(
     try:
         return resolved.relative_to(project_resolved).as_posix()
     except ValueError:
-        return normalized.strip("/")
+        return resolved.as_posix()
 
 
 # @cpt-begin:cpt-studio-algo-core-infra-gitignore-footprint:p1:inst-ignore-kits-by-policy

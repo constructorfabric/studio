@@ -2440,7 +2440,14 @@ class TestCmdWorkspaceAddStandalone:
                     data = _parse_json(capsys)
                     assert data["status"] == "ADDED"
                     assert data["source"]["path"] == "../missing-docs"
-                    ws_cfg.add_source.assert_called_once()
+                    ws_cfg.add_source.assert_called_once_with(
+                        "docs",
+                        "../missing-docs",
+                        role="full",
+                        adapter=None,
+                        url=None,
+                        branch=None,
+                    )
                     ws_cfg.save.assert_called_once()
 
     def test_no_workspace_found(self, capsys):

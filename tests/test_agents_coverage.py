@@ -358,6 +358,39 @@ class TestGenerateAgentsNoChangePreview(unittest.TestCase):
         self.assertEqual(partial["errors"], ["missing prompt target"])
         self.assertEqual(partial["preserved_outputs"][0]["path"], ".codex/agents/demo.toml")
 
+    def test_build_result_collects_v2_partial_errors_when_legacy_passes(self):
+        from studio.commands.agents import _build_result
+
+        result = _build_result(
+            {
+                "openai": {
+                    "status": "PARTIAL",
+                    "errors": None,
+                    "skills": {
+                        "outputs": [
+                            {"path": ".agents/skills/demo/SKILL.md", "action": "preserved", "reason": "user_modified"},
+                        ],
+                    },
+                    "legacy_skills": {"outputs": []},
+                    "subagents": {"outputs": [], "skipped": False, "skip_reason": ""},
+                    "rules": {"outputs": []},
+                    "v2_agents": {"outputs": [], "errors": ["missing v2 prompt target"]},
+                },
+            },
+            ["openai"],
+            Path("/tmp/project"),
+            Path("/tmp/project/.bootstrap"),
+            None,
+            {},
+            dry_run=False,
+        )
+
+        self.assertEqual(result["status"], "PARTIAL")
+        partial = result["partial_reasons"][0]
+        self.assertIn("errors", partial["categories"])
+        self.assertIn("preserved_outputs", partial["categories"])
+        self.assertIn("missing v2 prompt target", partial["errors"])
+
     def test_dry_run_fatal_preview_returns_one(self):
         from studio.commands.agents import cmd_generate_agents
 
@@ -772,6 +805,91 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
             self.assertTrue(openai_nested.is_file())
             self.assertIn("OpenAI only", openai_agent.read_text(encoding="utf-8"))
             self.assertIn("OpenAI auditor", openai_nested.read_text(encoding="utf-8"))
+
+    def test_cleanup_disabled_public_agent_outputs_removes_nested_subagent_outputs(self):
+        from studio.commands.agents import _cleanup_disabled_public_agent_outputs, _default_agents_config, _process_single_agent
+
+        with TemporaryDirectory() as td:
+            root, studio_root = self._make_project(td)
+            kit_root = studio_root / "config" / "kits" / "pubkit-openai"
+            kit_root.mkdir(parents=True)
+            (kit_root / "agent.md").write_text(
+                "---\nname: codexonly\ndescription: OpenAI only\n---\n# OpenAI only\n",
+                encoding="utf-8",
+            )
+            (kit_root / "auditor.md").write_text(
+                "---\nname: codex-auditor\ndescription: OpenAI auditor\n---\n# OpenAI auditor\n",
+                encoding="utf-8",
+            )
+            (kit_root / ".cf-studio-kit.toml").write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "pubkit-openai"',
+                    'name = "Public OpenAI Kit"',
+                    'version = "1.0"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "codexonly"',
+                    'kind = "agent"',
+                    'source = "agent.md"',
+                    'type = "file"',
+                    "public = true",
+                    'generated_targets = ["openai"]',
+                    "",
+                    "[[kits.resources.agent.subagents]]",
+                    'id = "codex-auditor"',
+                    'source = "auditor.md"',
+                    'generated_targets = ["openai"]',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            core_toml = studio_root / "config" / "core.toml"
+            core_toml.write_text(
+                core_toml.read_text(encoding="utf-8")
+                + "\n[kits.pubkit-openai]\n"
+                + 'path = "config/kits/pubkit-openai"\n'
+                + 'version = "1.0"\n',
+                encoding="utf-8",
+            )
+
+            result = _process_single_agent(
+                "openai",
+                root,
+                studio_root,
+                _default_agents_config(),
+                None,
+                dry_run=False,
+            )
+            self.assertEqual(result["status"], "PASS")
+
+            nested_output = root / ".codex" / "agents" / "cf-pubkit-openai-codex-auditor.toml"
+            top_level_output = root / ".codex" / "agents" / "cf-pubkit-openai-codexonly.toml"
+            self.assertTrue(nested_output.is_file())
+            self.assertTrue(top_level_output.is_file())
+
+            manifest_path = kit_root / ".cf-studio-kit.toml"
+            manifest_path.write_text(
+                manifest_path.read_text(encoding="utf-8").replace(
+                    '[[kits.resources.agent.subagents]]\n'
+                    'id = "codex-auditor"\n'
+                    'source = "auditor.md"\n'
+                    'generated_targets = ["openai"]',
+                    '[[kits.resources.agent.subagents]]\n'
+                    'id = "codex-auditor"\n'
+                    'source = "auditor.md"\n'
+                    'generated_targets = ["cursor"]',
+                ),
+                encoding="utf-8",
+            )
+
+            cleanup = _cleanup_disabled_public_agent_outputs(root, studio_root, dry_run=False)
+            self.assertFalse(nested_output.exists())
+            self.assertTrue(top_level_output.exists())
+            self.assertTrue(
+                any(Path(path).resolve() == nested_output.resolve() for path in cleanup["deleted"])
+            )
 
     def test_generate_agents_supports_register_mode_project_root_kit_path(self):
         from studio.commands.agents import _default_agents_config, _process_single_agent

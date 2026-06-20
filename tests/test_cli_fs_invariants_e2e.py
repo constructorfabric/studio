@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "studio" / "scr
 from studio.cli import main
 from studio.commands.init import GITIGNORE_MARKER_END, GITIGNORE_MARKER_START
 from studio.utils import toml_utils
+from studio.utils.ui import is_json_mode, set_json_mode
 
 
 @contextmanager
@@ -30,11 +31,17 @@ def _chdir(path: Path):
 
 
 def _run_main(argv: list[str], *, cwd: Path) -> tuple[int, dict, str]:
+    from studio.utils.ui import is_json_mode, set_json_mode
+
     stdout = io.StringIO()
     stderr = io.StringIO()
-    with _chdir(cwd), redirect_stdout(stdout), redirect_stderr(stderr):
-        rc = main(["--json", *argv])
-    return rc, json.loads(stdout.getvalue()), stderr.getvalue()
+    saved_json_mode = is_json_mode()
+    try:
+        with _chdir(cwd), redirect_stdout(stdout), redirect_stderr(stderr):
+            rc = main(["--json", *argv])
+        return rc, json.loads(stdout.getvalue()), stderr.getvalue()
+    finally:
+        set_json_mode(saved_json_mode)
 
 
 def _make_cache(root: Path) -> Path:
@@ -81,6 +88,25 @@ def _make_cache(root: Path) -> Path:
         encoding="utf-8",
     )
     return cache
+
+
+class TestRunMainIsolation(unittest.TestCase):
+    def test_run_main_restores_json_mode(self):
+        with TemporaryDirectory() as td:
+            set_json_mode(True)
+
+            def _fake_main(_argv):
+                set_json_mode(False)
+                print('{"status":"PASS"}')
+                return 0
+
+            with patch(f"{__name__}.main", side_effect=_fake_main):
+                rc, out, _stderr = _run_main(["doctor"], cwd=Path(td))
+
+            self.assertEqual(rc, 0)
+            self.assertEqual(out["status"], "PASS")
+            self.assertTrue(is_json_mode())
+            set_json_mode(False)
 
 
 def _init_project(

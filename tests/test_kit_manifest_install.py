@@ -663,6 +663,54 @@ class TestInstallKitWithManifest(unittest.TestCase):
             self.assertEqual(result["status"], "PASS")
             self.assertEqual(result["files_copied"], 3)
 
+    def test_manifest_install_fails_when_public_subagent_source_is_missing(self):
+        from studio.commands.kit import install_kit_with_manifest
+
+        with TemporaryDirectory() as td:
+            td_path = Path(td)
+            kit_src = _make_kit_with_manifest(td_path, "mykit")
+            (kit_src / "reviewer.md").write_text("# Reviewer\n", encoding="utf-8")
+            (kit_src / ".cf-studio-kit.toml").write_text(
+                textwrap.dedent(
+                    """\
+                    manifest_version = "1.0"
+
+                    [[kits]]
+                    slug = "mykit"
+                    version = "2.0"
+
+                    [[kits.resources]]
+                    id = "reviewer"
+                    kind = "agent"
+                    source = "reviewer.md"
+                    type = "file"
+                    public = true
+
+                    [[kits.resources.agent.subagents]]
+                    id = "reviewer-helper"
+                    source = "missing-helper.md"
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            adapter = td_path / "adapter"
+            config = adapter / "config"
+            config.mkdir(parents=True)
+            from studio.utils import toml_utils
+            toml_utils.dump({
+                "version": "1.0", "project_root": "..", "kits": {},
+            }, config / "core.toml")
+
+            manifest = load_manifest(kit_src)
+            result = install_kit_with_manifest(
+                kit_src, adapter, "mykit", "2.0", manifest,
+                interactive=False,
+            )
+
+            self.assertEqual(result["status"], "FAIL")
+            self.assertIn("missing-helper.md", "\n".join(result["errors"]))
+
     def test_interactive_prompt_shows_locked_paths_but_edits_only_modifiable_paths(self):
         """Install plan shows all resources, edit menu contains only editable paths."""
         from studio.commands.kit import install_kit_with_manifest

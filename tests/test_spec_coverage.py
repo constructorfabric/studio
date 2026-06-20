@@ -367,6 +367,39 @@ class TestCmdSpecCoverage(unittest.TestCase):
             parsed = json.loads(mock_out.getvalue())
             self.assertEqual(parsed["summary"]["total_files"], 2)
 
+    def test_system_filter_matches_child_slug(self):
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            child_src = root / "child-src"
+            child_src.mkdir()
+            (child_src / "child.py").write_text("x = 1\n", encoding="utf-8")
+            ctx = self._make_context(root, systems=[
+                SystemNode(
+                    name="Parent",
+                    slug="parent",
+                    kit="test",
+                    artifacts=[],
+                    children=[
+                        SystemNode(
+                            name="Child",
+                            slug="child",
+                            kit="test",
+                            artifacts=[],
+                            children=[],
+                            codebase=[CodebaseEntry(path="child-src", extensions=[".py"])],
+                        ),
+                    ],
+                    codebase=[],
+                ),
+            ])
+            with patch("studio.utils.context.get_context", return_value=ctx):
+                with patch("sys.stdout", new_callable=StringIO) as mock_out:
+                    ret = cmd_spec_coverage(["--system", "child"])
+            self.assertEqual(ret, 0)
+            parsed = json.loads(mock_out.getvalue())
+            self.assertEqual(parsed["summary"]["total_files"], 1)
+            self.assertTrue(any("child-src" in path for path in parsed.get("files", {})))
+
     def test_min_file_coverage_pass(self):
         with TemporaryDirectory() as d:
             root = Path(d)

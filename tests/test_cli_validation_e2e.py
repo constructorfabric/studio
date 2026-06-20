@@ -59,6 +59,7 @@ def _run_main(argv: list[str], *, cwd: Path) -> tuple[int, str, str]:
     old_cwd = Path.cwd()
     saved_json_mode = is_json_mode()
     try:
+        set_json_mode(False)
         os.chdir(cwd)
         with redirect_stdout(stdout), redirect_stderr(stderr):
             exit_code = cli.main(argv)
@@ -66,6 +67,28 @@ def _run_main(argv: list[str], *, cwd: Path) -> tuple[int, str, str]:
     finally:
         set_json_mode(saved_json_mode)
         os.chdir(old_cwd)
+
+
+class TestRunMainIsolation(unittest.TestCase):
+    def test_run_main_starts_with_json_mode_disabled(self):
+        from studio.utils.ui import set_json_mode
+
+        with TemporaryDirectory() as td:
+            set_json_mode(True)
+
+            def _fake_main(_argv):
+                from studio.utils.ui import is_json_mode, set_json_mode as _set_json_mode
+
+                print(json.dumps({"json_mode": is_json_mode()}))
+                _set_json_mode(True)
+                return 0
+
+            with patch.object(cli, "main", side_effect=_fake_main):
+                rc, stdout, _stderr = _run_main(["--json", "validate"], cwd=Path(td))
+
+            self.assertEqual(rc, 0)
+            self.assertFalse(json.loads(stdout)["json_mode"])
+            set_json_mode(False)
 
 
 class TestCLIValidateTocE2E(unittest.TestCase):
@@ -697,12 +720,13 @@ class TestCLICheckLanguageE2E(unittest.TestCase):
             )
 
             self.assertEqual(exit_code, 2)
-            self.assertNotIn("Allowed languages", stdout)
-            self.assertNotIn("Files scanned", stdout)
-            self.assertIn("FAIL", stdout)
-            self.assertIn("PRD.md", stdout)
+            self.assertEqual(stdout, "")
+            self.assertNotIn("Allowed languages", stderr)
+            self.assertNotIn("Files scanned", stderr)
+            self.assertIn("FAIL", stderr)
+            self.assertIn("PRD.md", stderr)
             self.assertEqual(_snapshot_files(root), before)
-            self.assertEqual(stderr, "")
+            self.assertNotEqual(stderr, "")
 
     def test_check_language_real_violation_reports_details(self):
         with TemporaryDirectory() as tmpdir:

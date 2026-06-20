@@ -1318,20 +1318,26 @@ def _manifest_public_subagent_sources(resources: List[Any]) -> List[str]:
         if str(getattr(res, "kind", "") or "") != "agent":
             continue
         for subagent in getattr(res, "subagents", []) or []:
-            if not isinstance(subagent, dict):
+            normalized = _normalize_manifest_public_subagent_source(subagent)
+            if normalized is None:
                 continue
-            raw_source = str(subagent.get("source", "") or "").strip().replace("\\", "/")
-            if not raw_source:
-                continue
-            source_path = PurePosixPath(raw_source)
-            if source_path.is_absolute() or ".." in source_path.parts:
-                continue
-            normalized = source_path.as_posix()
             if normalized in seen:
                 continue
             seen.add(normalized)
             sources.append(normalized)
     return sources
+
+
+def _normalize_manifest_public_subagent_source(subagent: Any) -> Optional[str]:
+    if not isinstance(subagent, dict):
+        return None
+    raw_source = str(subagent.get("source", "") or "").strip().replace("\\", "/")
+    if not raw_source:
+        return None
+    source_path = PurePosixPath(raw_source)
+    if source_path.is_absolute() or ".." in source_path.parts:
+        return None
+    return source_path.as_posix()
 
 
 # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-hashes
@@ -2084,9 +2090,24 @@ def install_kit_with_manifest(
         # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-copy-resource
         files_copied += 1
     for subagent_source in extra_subagent_sources:
+        source_abs = kit_source / Path(PurePosixPath(subagent_source))
+        if not source_abs.exists():
+            return {
+                "status": "FAIL",
+                "kit": kit_slug,
+                "install_mode": install_mode,
+                "errors": [f"Manifest subagent source '{subagent_source}' does not exist in kit source"],
+            }
+        if not source_abs.is_file():
+            return {
+                "status": "FAIL",
+                "kit": kit_slug,
+                "install_mode": install_mode,
+                "errors": [f"Manifest subagent source '{subagent_source}' is not a file"],
+            }
         target_abs = (kit_root / Path(PurePosixPath(subagent_source))).resolve()
         target_abs.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(kit_source / Path(PurePosixPath(subagent_source)), target_abs)
+        shutil.copy2(source_abs, target_abs)
         files_copied += 1
     # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-foreach-resource
     # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-copy-resources
@@ -3328,36 +3349,48 @@ def _collect_kit_update_partial_reasons(results: List[Dict[str, Any]]) -> List[D
         kit_slug = str(result.get("kit") or "?")
         categories: List[str] = []
         entry: Dict[str, Any] = {"kit": kit_slug}
-        # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-build-update-result
-        # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-format-output
-        errors = result.get("errors") or []
-        if errors:
-            categories.append("errors")
-            entry["errors"] = [str(err) for err in errors]
-        declined = result.get("declined") or []
-        if declined:
-            categories.append("declined_files")
-            entry["declined"] = list(declined)
-        prune_required = result.get("prune_required") or []
-        if prune_required:
-            categories.append("declined_prunes")
-            entry["declined_prunes"] = [
-                str(item.get("path") or "")
-                for item in prune_required
-                if isinstance(item, dict) and item.get("path")
-            ]
-        # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-format-output
-        # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-human-output
-        if action == "aborted":
-            categories.append("aborted")
-        elif action == "failed":
-            categories.append("failed")
-        elif action == "partial":
-            categories.append("partial_update")
+        _append_kit_update_partial_errors(result, entry, categories)
+        _append_kit_update_partial_declined(result, entry, categories)
+        _append_kit_update_partial_prunes(result, entry, categories)
+        _append_kit_update_action_category(action, categories)
         entry["categories"] = categories or ["unspecified"]
         partials.append(entry)
-        # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-human-output
+    # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-build-update-result
     return partials
+
+
+def _append_kit_update_partial_errors(result: Dict[str, Any], entry: Dict[str, Any], categories: List[str]) -> None:
+    errors = result.get("errors") or []
+    if errors:
+        categories.append("errors")
+        entry["errors"] = [str(err) for err in errors]
+
+
+def _append_kit_update_partial_declined(result: Dict[str, Any], entry: Dict[str, Any], categories: List[str]) -> None:
+    declined = result.get("declined") or []
+    if declined:
+        categories.append("declined_files")
+        entry["declined"] = list(declined)
+
+
+def _append_kit_update_partial_prunes(result: Dict[str, Any], entry: Dict[str, Any], categories: List[str]) -> None:
+    prune_required = result.get("prune_required") or []
+    if prune_required:
+        categories.append("declined_prunes")
+        entry["declined_prunes"] = [
+            str(item.get("path") or "")
+            for item in prune_required
+            if isinstance(item, dict) and item.get("path")
+        ]
+
+
+def _append_kit_update_action_category(action: str, categories: List[str]) -> None:
+    if action == "aborted":
+        categories.append("aborted")
+    elif action == "failed":
+        categories.append("failed")
+    elif action == "partial":
+        categories.append("partial_update")
 # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-parse-args
 
 
@@ -3643,8 +3676,9 @@ def cmd_kit_update(argv: List[str]) -> int:
     # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-format-output
     n_updated = _count_kit_update_actions(all_results, "updated", "created")
     n_partial = _count_kit_update_actions(all_results, "partial")
+    n_aborted = _count_kit_update_actions(all_results, "aborted")
     command_failed = has_failed_updates
-    command_incomplete = n_partial > 0
+    command_incomplete = n_partial > 0 or n_aborted > 0
     interactive_partial_success = bool(interactive and command_incomplete and not command_failed)
     if command_failed:
         status = "FAIL"
@@ -3660,6 +3694,7 @@ def cmd_kit_update(argv: List[str]) -> int:
         "status": status,
         "kits_updated": n_updated,
         "kits_partially_updated": n_partial,
+        "kits_aborted": n_aborted,
         "results": all_results,
     }
     partial_reasons = _collect_kit_update_partial_reasons(all_results)
@@ -3667,7 +3702,7 @@ def cmd_kit_update(argv: List[str]) -> int:
         output["partial_reasons"] = partial_reasons
     if errors:
         output["errors"] = errors
-    if not n_updated and not errors:
+    if not n_updated and not errors and not n_aborted:
         output["message"] = "All kits are up to date"
 
     ui.result(output, human_fn=_human_kit_update)

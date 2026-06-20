@@ -15,6 +15,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "studio" / "scripts"))
 
 from studio.cli import main
+from studio.utils.ui import is_json_mode, set_json_mode
 
 
 VALID_PDSL = """UNIT Demo
@@ -41,16 +42,22 @@ def _chdir(path: Path):
 
 
 def _run_main(argv: list[str], *, cwd: Path, stdin_text: str | None = None) -> tuple[int, str, str]:
+    from studio.utils.ui import is_json_mode, set_json_mode
+
     stdout = io.StringIO()
     stderr = io.StringIO()
     stdin = io.StringIO(stdin_text) if stdin_text is not None else None
-    with _chdir(cwd), redirect_stdout(stdout), redirect_stderr(stderr):
-        if stdin is None:
-            rc = main(argv)
-        else:
-            with patch("sys.stdin", stdin):
+    saved_json_mode = is_json_mode()
+    try:
+        with _chdir(cwd), redirect_stdout(stdout), redirect_stderr(stderr):
+            if stdin is None:
                 rc = main(argv)
-    return rc, stdout.getvalue(), stderr.getvalue()
+            else:
+                with patch("sys.stdin", stdin):
+                    rc = main(argv)
+        return rc, stdout.getvalue(), stderr.getvalue()
+    finally:
+        set_json_mode(saved_json_mode)
 
 
 def _run_main_json(argv: list[str], *, cwd: Path, stdin_text: str | None = None) -> tuple[int, dict, str]:
@@ -110,6 +117,24 @@ def _make_cache(root: Path) -> Path:
         encoding="utf-8",
     )
     return cache
+
+
+class TestRunMainIsolation(unittest.TestCase):
+    def test_run_main_restores_json_mode(self):
+        with TemporaryDirectory() as td:
+            set_json_mode(True)
+
+            def _fake_main(_argv):
+                set_json_mode(False)
+                return 0
+
+            with patch(f"{__name__}.main", side_effect=_fake_main):
+                rc, stdout, _stderr = _run_main(["doctor"], cwd=Path(td))
+
+            self.assertEqual(rc, 0)
+            self.assertEqual(stdout, "")
+            self.assertTrue(is_json_mode())
+            set_json_mode(False)
 
 
 def _make_local_kit_source(root: Path, slug: str = "demo") -> Path:
