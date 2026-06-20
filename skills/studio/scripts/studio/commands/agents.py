@@ -391,6 +391,7 @@ def _is_pure_studio_generated_toml(content: str, expected_content: Optional[str]
     allowed_keys = {
         "name",
         "description",
+        "sandbox_mode",
         "developer_instructions",
         "model",
         "model_reasoning_effort",
@@ -482,7 +483,7 @@ def _expected_stale_studio_generated_toml(
         return None
 
     required_keys = {"name", "description", "developer_instructions"}
-    permitted_extra_keys = {"model", "model_reasoning_effort", "model_context_window"}
+    permitted_extra_keys = {"sandbox_mode", "model", "model_reasoning_effort", "model_context_window"}
     extra_keys = set(data.keys()) - required_keys
     if extra_keys and not extra_keys.issubset(permitted_extra_keys):
         return None
@@ -535,10 +536,10 @@ def _expected_stale_studio_generated_toml(
         # Append permitted extras in deterministic order, matching the generator's output ordering.
         # _render_toml_agent appends these same fields when present in the agent dict; preserve verbatim.
         extras_block_lines = []
-        for k in ("model", "model_reasoning_effort", "model_context_window"):
+        for k in ("sandbox_mode", "model", "model_reasoning_effort", "model_context_window"):
             if k in data:
                 v = data[k]
-                if k in ("model", "model_reasoning_effort") and isinstance(v, str):
+                if k in ("sandbox_mode", "model", "model_reasoning_effort") and isinstance(v, str):
                     extras_block_lines.append(f'{k} = "{_escape_toml_basic_string(v)}"')
                 elif k == "model_context_window" and isinstance(v, int) and not isinstance(v, bool):
                     extras_block_lines.append(f'{k} = {v}')

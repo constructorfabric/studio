@@ -1328,6 +1328,51 @@ def _manifest_public_subagent_sources(resources: List[Any]) -> List[str]:
     return sources
 
 
+def _validate_manifest_public_subagent_sources(
+    kit_source: Path,
+    subagent_sources: List[str],
+) -> Optional[str]:
+    """Return the first manifest public subagent source validation error, if any."""
+    for subagent_source in subagent_sources:
+        source_abs = kit_source / Path(PurePosixPath(subagent_source))
+        if not source_abs.exists():
+            return f"Manifest subagent source '{subagent_source}' does not exist in kit source"
+        if not source_abs.is_file():
+            return f"Manifest subagent source '{subagent_source}' is not a file"
+    return None
+
+
+def _augment_manifest_subagent_update_bindings(
+    model: Any,
+    installed_kit_dir: Path,
+    source_to_resource_id: Dict[str, str],
+    resource_info: Dict[str, Any],
+    resource_bindings: Dict[str, Path],
+) -> None:
+    """Teach manifest-backed updates to treat copied public subagent prompts as managed files."""
+    for res in list(getattr(model, "resources", []) or []):
+        if str(getattr(res, "kind", "") or "") != "agent":
+            continue
+        for subagent in getattr(res, "subagents", []) or []:
+            normalized = _normalize_manifest_public_subagent_source(subagent)
+            if normalized is None:
+                continue
+            synthetic_id = source_to_resource_id.get(normalized) or f"{res.id}.__subagent__.{normalized}"
+            source_to_resource_id[normalized] = synthetic_id
+            if synthetic_id not in resource_info:
+                resource_info[synthetic_id] = type(
+                    "SyntheticResourceInfo",
+                    (),
+                    {
+                        "type": "file",
+                        "source_base": normalized,
+                        "user_modifiable": bool(getattr(res, "user_modifiable", True)),
+                    },
+                )()
+            if synthetic_id not in resource_bindings:
+                resource_bindings[synthetic_id] = (installed_kit_dir / Path(PurePosixPath(normalized))).resolve()
+
+
 def _normalize_manifest_public_subagent_source(subagent: Any) -> Optional[str]:
     if not isinstance(subagent, dict):
         return None
@@ -1480,6 +1525,23 @@ def _load_manifest_install_adapter(kit_source: Path, kit_slug: str = "") -> Opti
     if getattr(model, "manifest_source", "") not in {"canonical", "legacy_manifest"}:
         return None
     return load_manifest(kit_source, kit_slug=kit_slug)
+
+
+def _legacy_manifest_install_warning(kit_source: Path) -> Optional[str]:
+    """Return a migration warning when install does not use canonical kit metadata."""
+    canonical_manifest = kit_source / ".cf-studio-kit.toml"
+    if canonical_manifest.is_file():
+        return None
+    legacy_manifest = kit_source / "manifest.toml"
+    if legacy_manifest.is_file():
+        return (
+            "Kit uses legacy manifest 'manifest.toml'. "
+            "Please ask the kit authors to migrate to '.cf-studio-kit.toml'."
+        )
+    return (
+        "Kit uses a legacy layout without '.cf-studio-kit.toml'. "
+        "Please ask the kit authors to migrate to '.cf-studio-kit.toml'."
+    )
 
 
 def _validate_register_manifest_containment(
@@ -1756,7 +1818,7 @@ def install_kit(
         }
     if manifest is not None:
         # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-manifest-install
-        return install_kit_with_manifest(
+        install_result = install_kit_with_manifest(
             kit_source, studio_dir, kit_slug, kit_version,
             manifest, interactive=interactive, source=source,
             install_mode=install_mode,
@@ -1770,6 +1832,12 @@ def install_kit(
                 else ""
             ),
         )
+        legacy_manifest_warning = _legacy_manifest_install_warning(kit_source)
+        if legacy_manifest_warning:
+            install_result.setdefault("errors", [])
+            install_result["errors"] = list(install_result.get("errors", []))
+            install_result["errors"].append(legacy_manifest_warning)
+        return install_result
         # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-manifest-install
     # @cpt-end:cpt-studio-algo-kit-install:p1:inst-manifest-install
 
@@ -1840,9 +1908,12 @@ def install_kit(
 
     # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-return-result
     files_copied = sum(1 for v in copy_actions.values() if v == "copied")
+    legacy_manifest_warning = _legacy_manifest_install_warning(kit_source)
+    if legacy_manifest_warning:
+        errors.append(legacy_manifest_warning)
 
     return {
-        "status": "PASS" if not errors else "WARN",
+        "status": "PASS",
         "action": "installed",
         "kit": kit_slug,
         "version": kit_version,
@@ -2075,6 +2146,17 @@ def install_kit_with_manifest(
             "install_mode": install_mode,
             "errors": overwrite_errors,
         }
+    subagent_source_error = _validate_manifest_public_subagent_sources(
+        kit_source,
+        extra_subagent_sources,
+    )
+    if subagent_source_error:
+        return {
+            "status": "FAIL",
+            "kit": kit_slug,
+            "install_mode": install_mode,
+            "errors": [subagent_source_error],
+        }
     # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-copy-no-silent-overwrite
     kit_root.mkdir(parents=True, exist_ok=True)
 
@@ -2091,20 +2173,6 @@ def install_kit_with_manifest(
         files_copied += 1
     for subagent_source in extra_subagent_sources:
         source_abs = kit_source / Path(PurePosixPath(subagent_source))
-        if not source_abs.exists():
-            return {
-                "status": "FAIL",
-                "kit": kit_slug,
-                "install_mode": install_mode,
-                "errors": [f"Manifest subagent source '{subagent_source}' does not exist in kit source"],
-            }
-        if not source_abs.is_file():
-            return {
-                "status": "FAIL",
-                "kit": kit_slug,
-                "install_mode": install_mode,
-                "errors": [f"Manifest subagent source '{subagent_source}' is not a file"],
-            }
         target_abs = (kit_root / Path(PurePosixPath(subagent_source))).resolve()
         target_abs.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source_abs, target_abs)
@@ -4930,6 +4998,13 @@ def update_kit(
                 kit_slug=kit_slug,
             )
             _resource_bindings = resolve_resource_bindings(config_dir, kit_slug, studio_dir)
+            _augment_manifest_subagent_update_bindings(
+                _risk_model if _risk_model is not None else _manifest,
+                installed_kit_dir,
+                _source_to_resource_id,
+                _resource_info,
+                _resource_bindings,
+            )
         except ValueError as exc:
             result["version"] = {"status": "failed"}
             result["gen"] = {"files_written": 0}

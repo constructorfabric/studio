@@ -1608,6 +1608,9 @@ class TestCliExampleKitsE2E(unittest.TestCase):
             self.assertEqual(rc, 0, stderr)
             self.assertEqual(out["status"], "PASS")
             self.assertEqual(out["files_written"], 3)
+            self.assertIn("errors", out)
+            self.assertIn("legacy manifest 'manifest.toml'", "\n".join(out["errors"]))
+            self.assertIn(".cf-studio-kit.toml", "\n".join(out["errors"]))
 
             rc, out, stderr = _run_main_json(["info", "--root", str(project_root)], cwd=project_root)
             self.assertEqual(rc, 0, stderr)
@@ -2633,8 +2636,18 @@ class TestCliExampleKitsE2E(unittest.TestCase):
             self.assertEqual(out["kits_updated"], 0)
             self.assertEqual(out["kits_partially_updated"], 1)
             self.assertEqual(result["action"], "partial")
-            self.assertEqual(result["accepted"], ["agents/planner-helper.md", "agents/reviewer-helper.md"])
+            self.assertEqual(result["accepted"], [])
             self.assertEqual(result["declined"], ["artifacts/FEATURE/example.md"])
+            self.assertTrue(
+                (
+                    project_root / ".bootstrap" / "config" / "kits" / "example-v2" / "agents" / "planner-helper.md"
+                ).is_file()
+            )
+            self.assertTrue(
+                (
+                    project_root / ".bootstrap" / "config" / "kits" / "example-v2" / "agents" / "reviewer-helper.md"
+                ).is_file()
+            )
             self.assertEqual(result["authority"]["commit_sha"], updated_commit)
             self.assertIn(
                 "cpt-example-v2-feature-flow",

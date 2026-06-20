@@ -76,6 +76,8 @@ def _make_adapter_repo(root: Path, *, adapter_rel: str = ".bootstrap", role_dir:
     adapter = root / adapter_rel / "config"
     adapter.mkdir(parents=True, exist_ok=True)
     (adapter / "AGENTS.md").write_text("# Test adapter\n", encoding="utf-8")
+    toml_utils.dump({"version": "1.0", "project_root": "..", "kits": {}}, adapter / "core.toml")
+    toml_utils.dump({"version": "1.0", "project_root": "..", "kits": {}, "systems": []}, adapter / "artifacts.toml")
     (root / role_dir).mkdir(parents=True, exist_ok=True)
 
 
@@ -330,7 +332,7 @@ class TestCLIWorkspaceE2E(unittest.TestCase):
             self.assertNotIn("warnings", info_payload)
             self.assertEqual(info_payload["sources_count"], 2)
             self.assertFalse(info_payload["is_inline"])
-            self.assertFalse(info_payload["context_loaded"])
+            self.assertTrue(info_payload["context_loaded"])
 
             sources = {source["name"]: source for source in info_payload["sources"]}
             self.assertTrue(sources["docs-repo"]["reachable"])
@@ -565,11 +567,7 @@ class TestCLIWorkspaceE2E(unittest.TestCase):
             )
 
             before = _snapshot_tree(root)
-            with patch(
-                "studio.utils.git_utils.resolve_git_source",
-                return_value=root / ".workspace-sources" / "acme" / "docs",
-            ):
-                exit_code, stdout, stderr = _run_main(["--json", "workspace-info"], cwd=root)
+            exit_code, stdout, stderr = _run_main(["--json", "workspace-info"], cwd=root)
             after = _snapshot_tree(root)
 
             self.assertEqual(exit_code, 0)
@@ -586,6 +584,66 @@ class TestCLIWorkspaceE2E(unittest.TestCase):
             source = payload["sources"][0]
             self.assertFalse(source["reachable"])
             self.assertIn("Source not cloned", source["warning"])
+
+    def test_workspace_info_metadata_error_marks_workspace_degraded(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "workspace-root"
+            _make_repo(root)
+            source_root = root / "docs-repo"
+            _make_adapter_repo(source_root, role_dir="architecture")
+            toml_utils.dump(
+                {
+                    "version": "1.0",
+                    "sources": {
+                        "docs-repo": {
+                            "path": "docs-repo",
+                            "role": "artifacts",
+                            "adapter": ".bootstrap",
+                        },
+                    },
+                },
+                root / ".cf-workspace.toml",
+            )
+
+            with patch("studio.utils.artifacts_meta.load_artifacts_meta", return_value=(None, "registry parse failed")):
+                exit_code, stdout, stderr = _run_main(["--json", "workspace-info"], cwd=root)
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(stderr, "")
+            payload = json.loads(stdout)
+            self.assertTrue(payload["degraded"])
+            self.assertEqual(payload["warning_count"], 1)
+            self.assertEqual(payload["warnings"], ["docs-repo: metadata: registry parse failed"])
+            self.assertEqual(payload["sources"][0]["metadata_error"], "registry parse failed")
+
+    def test_workspace_info_surfaces_workspace_context_upgrade_error(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "workspace-root"
+            _make_repo(root)
+            _make_adapter_repo(root, role_dir="architecture")
+            toml_utils.dump(
+                {
+                    "version": "1.0",
+                    "sources": {
+                        "docs-repo": {
+                            "path": ".",
+                            "role": "artifacts",
+                            "adapter": ".bootstrap",
+                        },
+                    },
+                },
+                root / ".cf-workspace.toml",
+            )
+
+            with patch("studio.utils.context.get_workspace_upgrade_error", return_value="workspace load boom"):
+                exit_code, stdout, stderr = _run_main(["--json", "workspace-info"], cwd=root)
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(stderr, "")
+            payload = json.loads(stdout)
+            self.assertTrue(payload["degraded"])
+            self.assertEqual(payload["workspace_context_error"], "workspace load boom")
+            self.assertIn("context: workspace load boom", payload["warnings"])
 
     def test_workspace_info_invalid_adapter_reports_adapter_found_false(self):
         with TemporaryDirectory() as tmpdir:

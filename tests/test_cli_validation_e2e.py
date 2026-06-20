@@ -346,6 +346,32 @@ class TestCLISpecCoverageE2E(unittest.TestCase):
             self.assertFalse((root / ".gitignore").exists())
             self.assertEqual(stderr, "")
 
+    def test_spec_coverage_unknown_system_human_output_names_invalid_selector(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _bootstrap_project(
+                root,
+                systems=[
+                    {
+                        "name": "Web",
+                        "slug": "web",
+                        "kit": "test",
+                        "codebase": [{"path": "src/web", "extensions": [".py"]}],
+                    },
+                ],
+            )
+
+            exit_code, stdout, stderr = _run_main(
+                ["spec-coverage", "--system", "missing"],
+                cwd=root,
+            )
+
+            self.assertEqual(exit_code, 2)
+            self.assertEqual(stdout, "")
+            self.assertIn("Unknown system selector(s)", stderr)
+            self.assertIn("unknown system: missing", stderr)
+            self.assertNotIn("Threshold check failed", stderr)
+
     def test_spec_coverage_output_writes_report_only(self):
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

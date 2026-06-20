@@ -7,9 +7,9 @@ import argparse
 from pathlib import Path
 from typing import List, Optional
 
-from ..utils.git_utils import _redact_url
+from ..utils.git_utils import _redact_url, peek_git_source_path
 from ..utils.ui import ui
-from ..utils.workspace import WorkspaceConfig
+from ..utils.workspace import ResolveConfig, WorkspaceConfig
 
 
 def _source_warning_for_result(info: dict) -> Optional[str]:
@@ -24,6 +24,11 @@ def _collect_workspace_warnings(sources_info: List[dict], config_warnings: List[
     """Collect top-level workspace warnings from source and config degradation."""
     warnings = [_source_warning_for_result(source) for source in sources_info]
     warnings.extend(f"config: {warning}" for warning in config_warnings)
+    warnings.extend(
+        f"{source.get('name', '?')}: metadata: {source['metadata_error']}"
+        for source in sources_info
+        if source.get("metadata_error")
+    )
     return [warning for warning in warnings if warning]
 
 
@@ -45,7 +50,20 @@ def _probe_source_adapter(resolved: Path, explicit_adapter: Optional[Path]) -> O
 def _build_source_info(ws_cfg: WorkspaceConfig, name: str) -> dict:
     """Build status dict for a single workspace source."""
     src = ws_cfg.sources[name]
-    resolved = ws_cfg.resolve_source_path(name)
+    if src.url:
+        if ws_cfg.resolution_base is not None:
+            base = ws_cfg.resolution_base
+        elif ws_cfg.workspace_file is not None:
+            base = ws_cfg.workspace_file.parent
+        else:
+            base = None
+        resolved = (
+            peek_git_source_path(src, ws_cfg.resolve or ResolveConfig(), base)
+            if base is not None
+            else None
+        )
+    else:
+        resolved = ws_cfg.resolve_source_path(name)
     reachable = resolved is not None and resolved.is_dir()
 
     info: dict = {
@@ -110,7 +128,7 @@ def cmd_workspace_info(argv: List[str]) -> int:
     p.parse_args(argv)
     # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-user-workspace-info
 
-    from ..utils.context import get_context, WorkspaceContext
+    from ..utils.context import WorkspaceContext, get_context, get_workspace_upgrade_error
     from ..utils.workspace import find_workspace_config, require_project_root
 
     # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-find-root
@@ -178,6 +196,13 @@ def cmd_workspace_info(argv: List[str]) -> int:
 
     # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-load-context
     ctx = get_context()
+    workspace_upgrade_error = get_workspace_upgrade_error()
+    if workspace_upgrade_error:
+        warnings.append(f"context: {workspace_upgrade_error}")
+        result["workspace_context_error"] = workspace_upgrade_error
+        result["degraded"] = True
+        result["warning_count"] = len(warnings)
+        result["warnings"] = warnings
     if isinstance(ctx, WorkspaceContext):
         reachable_count = sum(1 for sc in ctx.sources.values() if sc.reachable)
         result["context_loaded"] = True

@@ -736,7 +736,7 @@ cfs map [--out PATH] [--format html|json] [--config FILE] [--no-source] [--local
 Measure CDSL marker coverage in codebase files.
 
 ```
-cfs spec-coverage [--min-coverage N] [--min-file-coverage N] [--min-granularity N] [--min-file-granularity N] [--verbose] [--output PATH]
+cfs spec-coverage [--min-coverage N] [--min-file-coverage N] [--min-granularity N] [--min-file-granularity N] [--system SLUG]... [--verbose] [--output PATH]
 ```
 
 | Option | Description |
@@ -745,6 +745,7 @@ cfs spec-coverage [--min-coverage N] [--min-file-coverage N] [--min-granularity 
 | `--min-file-coverage N` | Minimum per-file coverage percentage; exit 2 if any file is below |
 | `--min-granularity N` | Minimum overall granularity score (0–1); exit 2 if below |
 | `--min-file-granularity N` | Minimum per-file granularity score; exit 2 if any covered file is below |
+| `--system SLUG` | Limit coverage to one or more system slugs; can be repeated and matches nested child systems |
 | `--verbose` | Include per-file marker details in output |
 | `--output PATH` | Write report to file instead of stdout |
 
@@ -755,7 +756,8 @@ cfs spec-coverage [--min-coverage N] [--min-file-coverage N] [--min-granularity 
 2. For each code file, scan for `@cpt-algo`, `@cpt-flow`, `@cpt-dod` scope markers and `@cpt-begin`/`@cpt-end` block markers.
 3. Calculate coverage percentage (ratio of spec-covered effective lines to total effective lines).
 4. Calculate granularity score: instruction density (`min(1.0, block_count / (effective_lines / 10))`). Files with only scope markers and no block markers receive 0.0.
-5. If any threshold flag is set and the metric is below threshold, exit 2.
+5. If `--system` is provided, validate each requested selector against the full registered system tree before scanning files; invalid selectors fail fast and report `unknown_systems`.
+6. If any threshold flag is set and the metric is below threshold, exit 2.
 
 **Stdout** (JSON):
 ```json
@@ -777,7 +779,7 @@ cfs spec-coverage [--min-coverage N] [--min-file-coverage N] [--min-granularity 
 **Exit codes**:
 - 0 — coverage meets all thresholds (or no thresholds specified)
 - 1 — error (no project found, no codebase entries configured)
-- 2 — coverage or granularity below a specified threshold
+- 2 — coverage or granularity below a specified threshold, or one or more `--system` selectors are invalid
 
 ---
 

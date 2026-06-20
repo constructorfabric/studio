@@ -710,6 +710,7 @@ class TestInstallKitWithManifest(unittest.TestCase):
 
             self.assertEqual(result["status"], "FAIL")
             self.assertIn("missing-helper.md", "\n".join(result["errors"]))
+            self.assertFalse((adapter / "config" / "kits" / "mykit").exists())
 
     def test_interactive_prompt_shows_locked_paths_but_edits_only_modifiable_paths(self):
         """Install plan shows all resources, edit menu contains only editable paths."""
@@ -1130,6 +1131,9 @@ class TestCmdKitInstallManifest(unittest.TestCase):
                 self.assertEqual(rc, 0)
                 out = json.loads(buf.getvalue())
                 self.assertEqual(out["status"], "PASS")
+                self.assertIn("errors", out)
+                self.assertIn("legacy layout", "\n".join(out["errors"]))
+                self.assertIn(".cf-studio-kit.toml", "\n".join(out["errors"]))
             finally:
                 os.chdir(cwd)
 

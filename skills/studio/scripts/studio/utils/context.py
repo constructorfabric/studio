@@ -987,6 +987,7 @@ def _collect_remote_artifacts(
 # Global context instance (set by CLI on startup)
 _global_context: Optional[Union[StudioContext, WorkspaceContext]] = None  # pylint: disable=invalid-name
 _workspace_upgrade_attempted: bool = False  # pylint: disable=invalid-name
+_workspace_upgrade_error: Optional[str] = None  # pylint: disable=invalid-name
 
 
 def get_context() -> Optional[Union[StudioContext, WorkspaceContext]]:
@@ -997,52 +998,69 @@ def get_context() -> Optional[Union[StudioContext, WorkspaceContext]]:
     operations for git URL sources) is deferred until a command actually
     needs the context.
     """
-    global _global_context, _workspace_upgrade_attempted  # pylint: disable=global-statement  # module-level singleton pattern for CLI context
+    global _global_context, _workspace_upgrade_attempted, _workspace_upgrade_error  # pylint: disable=global-statement  # module-level singleton pattern for CLI context
     if not _workspace_upgrade_attempted and isinstance(_global_context, StudioContext):
         _workspace_upgrade_attempted = True
         try:
             ws_ctx = WorkspaceContext.load(_global_context)
-        except (OSError, ValueError, KeyError, AttributeError):
+        except (OSError, ValueError, KeyError, AttributeError) as exc:
+            _workspace_upgrade_error = str(exc)
             ws_ctx = None
         if ws_ctx is not None:
+            _workspace_upgrade_error = None
             _global_context = ws_ctx
     return _global_context
 
 
 def set_context(ctx: Optional[Union[StudioContext, WorkspaceContext]]) -> None:
     """Set the global Studio context."""
-    global _global_context, _workspace_upgrade_attempted  # pylint: disable=global-statement  # module-level singleton pattern for CLI context
+    global _global_context, _workspace_upgrade_attempted, _workspace_upgrade_error  # pylint: disable=global-statement  # module-level singleton pattern for CLI context
     _global_context = ctx
+    _workspace_upgrade_error = None
     # If caller already provides a WorkspaceContext, skip lazy upgrade
     _workspace_upgrade_attempted = isinstance(ctx, WorkspaceContext) or ctx is None
 
 
 def ensure_context(start_path: Optional[Path] = None) -> Optional[Union[StudioContext, WorkspaceContext]]:
     """Ensure context is loaded, loading if necessary."""
-    global _global_context, _workspace_upgrade_attempted  # pylint: disable=global-statement  # module-level singleton pattern for CLI context
+    global _global_context, _workspace_upgrade_attempted, _workspace_upgrade_error  # pylint: disable=global-statement  # module-level singleton pattern for CLI context
     if _global_context is None:
         base_ctx = StudioContext.load(start_path)
         if base_ctx is not None:
             # @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-workspace-upgrade
             try:
                 ws_ctx = WorkspaceContext.load(base_ctx)
-            except (OSError, ValueError, KeyError, AttributeError):
+            except (OSError, ValueError, KeyError, AttributeError) as exc:
+                _workspace_upgrade_error = str(exc)
                 ws_ctx = None
             _workspace_upgrade_attempted = True
             # @cpt-end:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-workspace-upgrade
             # @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-return-workspace
+            if ws_ctx is not None:
+                _workspace_upgrade_error = None
             _global_context = ws_ctx if ws_ctx is not None else base_ctx
             # @cpt-end:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-return-workspace
         else:
             project_root = _find_project_root_for_workspace(start_path or Path.cwd())
             if project_root is not None:
                 _workspace_upgrade_attempted = True
-                _global_context = WorkspaceContext.load_from_workspace_root(project_root)
+                try:
+                    _global_context = WorkspaceContext.load_from_workspace_root(project_root)
+                except (OSError, ValueError, KeyError, AttributeError) as exc:
+                    _workspace_upgrade_error = str(exc)
+                    _global_context = None
+                else:
+                    _workspace_upgrade_error = None
             else:
                 # @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-return
                 _global_context = None
                 # @cpt-end:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-return
     return _global_context
+
+
+def get_workspace_upgrade_error() -> Optional[str]:
+    """Return the last workspace-upgrade error, if any."""
+    return _workspace_upgrade_error
 
 
 def is_workspace() -> bool:
@@ -1212,6 +1230,7 @@ __all__ = [
     "resolve_target_and_artifacts",
     "set_context",
     "ensure_context",
+    "get_workspace_upgrade_error",
     "is_workspace",
 ]
 # @cpt-end:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-globals

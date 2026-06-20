@@ -12,6 +12,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "studio" / "scripts"))
 
@@ -908,6 +909,66 @@ class TestGenerateManifestAgentsOpenAI(unittest.TestCase):
             self.assertTrue(legacy_out.exists())
             self.assertIn("My custom hand-written agent config", legacy_out.read_text(encoding="utf-8"))
             self.assertEqual(result.get("deleted", []), [])
+
+    def test_openai_stale_cleanup_accepts_current_toml_with_sandbox_mode(self):
+        from studio.commands.agents import _process_subagents, _render_toml_agent
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            output_dir = project_root / ".codex" / "agents"
+            output_dir.mkdir(parents=True)
+
+            prompt = project_root / "agents" / "worker.md"
+            prompt.parent.mkdir(parents=True)
+            prompt.write_text(
+                "---\n"
+                'description: "Worker"\n'
+                "---\n"
+                "# worker\n",
+                encoding="utf-8",
+            )
+
+            stale_prompt = project_root / "agents" / "cf-constructor-stale.md"
+            stale_prompt.write_text(
+                "---\n"
+                'description: "Stale"\n'
+                "---\n"
+                "# stale\n",
+                encoding="utf-8",
+            )
+
+            base_toml = _render_toml_agent(
+                {"name": "cf-constructor-stale", "description": "Stale"},
+                "{cf-studio-path}/agents/cf-constructor-stale.md",
+            )
+            stale = output_dir / "cf-constructor-stale.toml"
+            stale.write_text(
+                base_toml.rstrip("\n") + "\n" + 'sandbox_mode = "workspace-write"\n',
+                encoding="utf-8",
+            )
+
+            with patch(
+                "studio.commands.agents._discover_kit_agents",
+                return_value=[
+                    {
+                        "name": "worker",
+                        "description": "Worker",
+                        "prompt_file_abs": prompt,
+                    }
+                ],
+            ):
+                result = _process_subagents(
+                    "openai",
+                    project_root,
+                    project_root,
+                    {},
+                    None,
+                    dry_run=False,
+                )
+
+            self.assertFalse(stale.exists())
+            deleted_paths = {Path(path).resolve().as_posix() for path in result["deleted"]}
+            self.assertIn(stale.resolve().as_posix(), deleted_paths)
 
     def test_openai_preserves_marker_owned_legacy_agents_path_when_content_diverged(self):
         """OpenAI legacy cleanup preserves diverged marker-bearing legacy files."""

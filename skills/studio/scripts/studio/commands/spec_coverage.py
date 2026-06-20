@@ -255,9 +255,17 @@ def _format_ranges(ranges: list) -> str:
     return ", ".join(parts)
 
 def _human_spec_coverage(data: dict) -> None:
-    summary = data.get("summary", {})
     status = data.get("status", "")
+    unknown_systems = data.get("unknown_systems", [])
     ui.header("Spec Coverage")
+    if unknown_systems:
+        ui.error(data.get("message", "Unknown system selector(s)"))
+        for slug in unknown_systems:
+            ui.substep(f"  unknown system: {slug}")
+        ui.blank()
+        return
+
+    summary = data.get("summary", {})
     ui.detail("Files", f"{summary.get('covered_files', 0)}/{summary.get('total_files', 0)} covered")
     ui.detail("Coverage", f"{summary.get('coverage_pct', 0):.1f}%")
     ui.detail("Granularity", f"{summary.get('granularity_score', 0):.4f}")
