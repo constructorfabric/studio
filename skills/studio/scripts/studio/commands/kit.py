@@ -3673,10 +3673,13 @@ def cmd_kit_update(argv: List[str]) -> int:
         regenerate_gen_aggregates(studio_dir)
     # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-regen-gen
 
+    # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-regen-gen
     # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-format-output
     n_updated = _count_kit_update_actions(all_results, "updated", "created")
     n_partial = _count_kit_update_actions(all_results, "partial")
     n_aborted = _count_kit_update_actions(all_results, "aborted")
+    # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-regen-gen
+    # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-delegate-update
     command_failed = has_failed_updates
     command_incomplete = n_partial > 0 or n_aborted > 0
     interactive_partial_success = bool(interactive and command_incomplete and not command_failed)
@@ -3690,6 +3693,8 @@ def cmd_kit_update(argv: List[str]) -> int:
         status = "PASS"
     else:
         status = "WARN"
+    # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-delegate-update
+    # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-human-output
     output: Dict[str, Any] = {
         "status": status,
         "kits_updated": n_updated,
@@ -3704,6 +3709,7 @@ def cmd_kit_update(argv: List[str]) -> int:
         output["errors"] = errors
     if not n_updated and not errors and not n_aborted:
         output["message"] = "All kits are up to date"
+    # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-human-output
 
     ui.result(output, human_fn=_human_kit_update)
     return 2 if (command_failed or (command_incomplete and not interactive_partial_success)) else 0

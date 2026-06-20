@@ -1398,8 +1398,11 @@ def load_kit_model(kit_source: Path, source_hint: str = "", kit_slug: str = "") 
 
 
 def _merge_core_authoritative_model(core_model: KitModel, source_model: KitModel) -> KitModel:
+    # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
     source_by_id = {resource.id: resource for resource in source_model.resources}
     merged_resources: List[KitResource] = []
+    # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
+    # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
     for core_resource in core_model.resources:
         source_resource = source_by_id.get(core_resource.id)
         if source_resource is None:
@@ -1444,7 +1447,9 @@ def _merge_core_authoritative_model(core_model: KitModel, source_model: KitModel
             target_configs=dict(source_resource.target_configs),
             artifact_bindings=core_resource.artifact_bindings or source_resource.artifact_bindings,
         ))
+    # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
 
+    # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
     return KitModel(
         slug=core_model.slug,
         name=source_model.name or core_model.name,
@@ -1453,6 +1458,7 @@ def _merge_core_authoritative_model(core_model: KitModel, source_model: KitModel
         resources=merged_resources,
         warnings=list(dict.fromkeys(list(core_model.warnings) + list(source_model.warnings))),
     )
+    # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
 
 
 def load_installed_kit_model(

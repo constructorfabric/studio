@@ -19,18 +19,24 @@ from ..utils.ui import ui
 
 def _collect_system_slugs(nodes: List[object]) -> set[str]:
     """Return all known system slugs, including nested children."""
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-user-spec-coverage
     slugs: set[str] = set()
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-user-spec-coverage
 
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-load-context
     def _visit(node: object) -> None:
         slug = getattr(node, "slug", "")
         if slug:
             slugs.add(slug)
         for child in getattr(node, "children", []):
             _visit(child)
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-load-context
 
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-coverage-helpers
     for node in nodes:
         _visit(node)
     return slugs
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-coverage-helpers
 
 def cmd_spec_coverage(argv: List[str]) -> int:
     """Run spec coverage analysis on registered codebase files."""
@@ -64,9 +70,12 @@ def cmd_spec_coverage(argv: List[str]) -> int:
     # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-resolve-code-files
     code_files_to_scan: List[Path] = []
 
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-coverage-helpers
     def resolve_code_path(pth: str) -> Path:
         return (project_root / pth).resolve()
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-coverage-helpers
 
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-foreach-file
     def collect_codebase_files(system_node: object) -> None:
         for cb_entry in getattr(system_node, "codebase", []):
             path_str = getattr(cb_entry, "path", "") if not isinstance(cb_entry, dict) else cb_entry.get("path", "")
@@ -84,7 +93,9 @@ def cmd_spec_coverage(argv: List[str]) -> int:
 
         for child in getattr(system_node, "children", []):
             collect_codebase_files(child)
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-foreach-file
 
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-calc-metrics
     system_slugs = set(args.systems) if args.systems else None
     known_system_slugs = _collect_system_slugs(list(meta.systems))
     if system_slugs is not None:
@@ -99,7 +110,9 @@ def cmd_spec_coverage(argv: List[str]) -> int:
                 args,
             )
             return 2
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-calc-metrics
 
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-calc-granularity
     def _collect_selected_system_files(node: object) -> None:
         """Collect code files for the requested system slug(s), including children."""
         if system_slugs is None:
@@ -111,10 +124,14 @@ def cmd_spec_coverage(argv: List[str]) -> int:
             return
         for child in getattr(node, "children", []):
             _collect_selected_system_files(child)
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-calc-granularity
 
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-gen-report
     for system_node in meta.systems:
         _collect_selected_system_files(system_node)
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-gen-report
 
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-if-threshold
     filtered_files: List[Path] = []
     for fp in code_files_to_scan:
         try:
@@ -124,6 +141,7 @@ def cmd_spec_coverage(argv: List[str]) -> int:
         if rel and meta.is_ignored(rel):
             continue
         filtered_files.append(fp)
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-if-threshold
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-resolve-code-files
 
     # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-coverage-helpers

@@ -3887,6 +3887,7 @@ def _cleanup_disabled_public_agent_outputs(
     dry_run: bool,
 ) -> Dict[str, Any]:
     """Remove stale public-agent outputs for targets no longer enabled."""
+    # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
     result: Dict[str, Any] = {
         "created": [],
         "updated": [],
@@ -3894,6 +3895,8 @@ def _cleanup_disabled_public_agent_outputs(
         "outputs": [],
         "errors": [],
     }
+    # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
+    # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-subagent-config
     public_components, _manifest_backed_kits = _list_public_components(
         studio_root,
         project_root,
@@ -3908,6 +3911,7 @@ def _cleanup_disabled_public_agent_outputs(
             continue
         trusted_roots = [source_path.parent, kit_root]
         description = str(getattr(component, "description", "") or "").strip()
+        # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
         for target in _AGENT_OUTPUT_PATHS:
             if _component_enabled_for_agent(component, target):
                 continue
@@ -3950,6 +3954,8 @@ def _cleanup_disabled_public_agent_outputs(
                 expected_content=expected_content,
                 reason=f"disabled_public_agent_target:{kit_slug}:{target}",
             )
+        # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
+        # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
         for subagent in getattr(component, "subagents", []) or []:
             if not isinstance(subagent, dict):
                 continue
@@ -3988,6 +3994,8 @@ def _cleanup_disabled_public_agent_outputs(
                     expected_content=expected_content,
                     reason=f"disabled_public_agent_target:{kit_slug}:{target}",
                 )
+        # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
+    # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-subagent-config
     return result
 
 
