@@ -2033,6 +2033,18 @@ def install_kit_with_manifest(
         }
     # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-resolve-install-mode
 
+    subagent_source_error = _validate_manifest_public_subagent_sources(
+        kit_source,
+        extra_subagent_sources,
+    )
+    if subagent_source_error:
+        return {
+            "status": "FAIL",
+            "kit": kit_slug,
+            "install_mode": install_mode,
+            "errors": [subagent_source_error],
+        }
+
     if install_mode == "register":
         # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-register-resource-in-place
         # @cpt-begin:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-register-core-only
@@ -2151,17 +2163,6 @@ def install_kit_with_manifest(
             "kit": kit_slug,
             "install_mode": install_mode,
             "errors": overwrite_errors,
-        }
-    subagent_source_error = _validate_manifest_public_subagent_sources(
-        kit_source,
-        extra_subagent_sources,
-    )
-    if subagent_source_error:
-        return {
-            "status": "FAIL",
-            "kit": kit_slug,
-            "install_mode": install_mode,
-            "errors": [subagent_source_error],
         }
     # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-copy-no-silent-overwrite
     kit_root.mkdir(parents=True, exist_ok=True)

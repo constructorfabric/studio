@@ -712,6 +712,60 @@ class TestInstallKitWithManifest(unittest.TestCase):
             self.assertIn("missing-helper.md", "\n".join(result["errors"]))
             self.assertFalse((adapter / "config" / "kits" / "mykit").exists())
 
+    def test_manifest_register_install_fails_when_public_subagent_source_is_missing(self):
+        from studio.commands.kit import install_kit_with_manifest
+        import tomllib
+
+        with TemporaryDirectory() as td:
+            td_path = Path(td)
+            project_root = td_path / "project"
+            adapter = _bootstrap_project(project_root)
+            kit_src = project_root / "local-kits" / "mykit"
+            kit_src.mkdir(parents=True)
+            (kit_src / "reviewer.md").write_text("# Reviewer\n", encoding="utf-8")
+            (kit_src / ".cf-studio-kit.toml").write_text(
+                textwrap.dedent(
+                    """\
+                    manifest_version = "1.0"
+
+                    [[kits]]
+                    slug = "mykit"
+                    version = "2.0"
+
+                    [[kits.resources]]
+                    id = "reviewer"
+                    kind = "agent"
+                    source = "reviewer.md"
+                    type = "file"
+                    public = true
+
+                    [[kits.resources.agent.subagents]]
+                    id = "reviewer-helper"
+                    source = "missing-helper.md"
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            manifest = load_manifest(kit_src)
+            result = install_kit_with_manifest(
+                kit_src,
+                adapter,
+                "mykit",
+                "2.0",
+                manifest,
+                interactive=False,
+                install_mode="register",
+                project_root=project_root,
+            )
+
+            self.assertEqual(result["status"], "FAIL")
+            self.assertEqual(result["install_mode"], "register")
+            self.assertIn("missing-helper.md", "\n".join(result["errors"]))
+            with open(adapter / "config" / "core.toml", "rb") as fh:
+                core = tomllib.load(fh)
+            self.assertEqual(core["kits"], {})
+
     def test_interactive_prompt_shows_locked_paths_but_edits_only_modifiable_paths(self):
         """Install plan shows all resources, edit menu contains only editable paths."""
         from studio.commands.kit import install_kit_with_manifest
