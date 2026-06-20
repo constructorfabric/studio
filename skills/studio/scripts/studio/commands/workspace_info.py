@@ -186,11 +186,13 @@ def cmd_workspace_info(argv: List[str]) -> int:
     if config_warnings:
         result["config_warnings"] = config_warnings
 
+    # @cpt-begin:cpt-studio-flow-workspace-info:p1:inst-info-load-context
     warnings = _collect_workspace_warnings(sources_info, config_warnings)
     result["degraded"] = bool(warnings)
     result["warning_count"] = len(warnings)
     if warnings:
         result["warnings"] = warnings
+    # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-load-context
 
     # @cpt-end:cpt-studio-flow-workspace-info:p1:inst-info-build-result
 

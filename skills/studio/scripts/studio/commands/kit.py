@@ -1529,6 +1529,7 @@ def _load_manifest_install_adapter(kit_source: Path, kit_slug: str = "") -> Opti
 
 def _legacy_manifest_install_warning(kit_source: Path) -> Optional[str]:
     """Return a migration warning when install does not use canonical kit metadata."""
+    # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-validate-source
     canonical_manifest = kit_source / ".cf-studio-kit.toml"
     if canonical_manifest.is_file():
         return None
@@ -1542,6 +1543,7 @@ def _legacy_manifest_install_warning(kit_source: Path) -> Optional[str]:
         "Kit uses a legacy layout without '.cf-studio-kit.toml'. "
         "Please ask the kit authors to migrate to '.cf-studio-kit.toml'."
     )
+    # @cpt-end:cpt-studio-algo-kit-install:p1:inst-validate-source
 
 
 def _validate_register_manifest_containment(
@@ -1832,11 +1834,13 @@ def install_kit(
                 else ""
             ),
         )
+        # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-collect-meta
         legacy_manifest_warning = _legacy_manifest_install_warning(kit_source)
         if legacy_manifest_warning:
             install_result.setdefault("errors", [])
             install_result["errors"] = list(install_result.get("errors", []))
             install_result["errors"].append(legacy_manifest_warning)
+        # @cpt-end:cpt-studio-algo-kit-install:p1:inst-collect-meta
         return install_result
         # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-manifest-install
     # @cpt-end:cpt-studio-algo-kit-install:p1:inst-manifest-install
@@ -1908,9 +1912,11 @@ def install_kit(
 
     # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-return-result
     files_copied = sum(1 for v in copy_actions.values() if v == "copied")
+    # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-seed-configs
     legacy_manifest_warning = _legacy_manifest_install_warning(kit_source)
     if legacy_manifest_warning:
         errors.append(legacy_manifest_warning)
+    # @cpt-end:cpt-studio-algo-kit-install:p1:inst-seed-configs
 
     return {
         "status": "PASS",
