@@ -349,14 +349,46 @@ def _read_kit_tracking_state(
     return default_policy, kit_tracking, kit_paths
 
 
+def _normalize_ignored_kit_path(
+    project_root: Path,
+    studio_root: Path,
+    raw_path: str,
+) -> Optional[str]:
+    """Return a clean project-relative gitignore path for an ignored kit."""
+    normalized = raw_path.strip().replace("\\", "/")
+    if not normalized:
+        return None
+    candidate = Path(normalized)
+    if not candidate.is_absolute():
+        candidate = studio_root / candidate
+    try:
+        resolved = candidate.resolve()
+        project_resolved = project_root.resolve()
+    except OSError:
+        resolved = candidate
+        project_resolved = project_root
+    try:
+        return resolved.relative_to(project_resolved).as_posix()
+    except ValueError:
+        return resolved.as_posix()
+
+
 # @cpt-begin:cpt-studio-algo-core-infra-gitignore-footprint:p1:inst-ignore-kits-by-policy
-def _ignored_kit_paths(core_toml_path: Path, default: str = "tracked") -> List[str]:
+def _ignored_kit_paths(
+    project_root: Path,
+    core_toml_path: Path,
+    default: str = "tracked",
+) -> List[str]:
     _, kit_tracking, kit_paths = _read_kit_tracking_state(core_toml_path, default=default)
-    return [
-        kit_paths[slug]
-        for slug, tracking in sorted(kit_tracking.items())
-        if tracking == "ignored"
-    ]
+    studio_root = core_toml_path.parent.parent
+    ignored: List[str] = []
+    for slug, tracking in sorted(kit_tracking.items()):
+        if tracking != "ignored":
+            continue
+        normalized = _normalize_ignored_kit_path(project_root, studio_root, kit_paths[slug])
+        if normalized:
+            ignored.append(normalized)
+    return ignored
 # @cpt-end:cpt-studio-algo-core-infra-gitignore-footprint:p1:inst-ignore-kits-by-policy
 
 
@@ -381,7 +413,7 @@ def _gitignore_patterns(
     for kit_path in ignored_kit_paths:
         kit_rel = kit_path.strip().replace("\\", "/").strip("/")
         if kit_rel:
-            patterns.append(f"{install_rel}/{kit_rel}/")
+            patterns.append(kit_rel if kit_rel.endswith("/") else f"{kit_rel}/")
     return patterns
 
 
@@ -421,7 +453,7 @@ def _write_gitignore_block(
     expected_block = _compute_gitignore_block(
         project_root,
         install_dir,
-        _ignored_kit_paths(core_toml_path, default=default_kit_tracking),
+        _ignored_kit_paths(project_root, core_toml_path, default=default_kit_tracking),
         runtime_tracking=_read_install_tracking(core_toml_path, "runtime_tracking", default="ignored"),
         agent_tracking=_read_install_tracking(core_toml_path, "agent_tracking", default="ignored"),
     )

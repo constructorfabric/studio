@@ -342,7 +342,12 @@ def _resolved_source_path_within_kit(kit_source: Path, source: str) -> Optional[
 # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-any-layout
 
 
-def _public_name_from_source(kit_source: Path, source: str, kind: str) -> str:
+def _public_name_from_source(
+    kit_source: Path,
+    source: str,
+    kind: str,
+    resource_id: str = "",
+) -> str:
     """Return an implicit public component name derived from source content."""
     if kind not in _PUBLIC_KINDS:
         return ""
@@ -351,7 +356,12 @@ def _public_name_from_source(kit_source: Path, source: str, kind: str) -> str:
         return ""
     if not source_path.is_file():
         return ""
-    return _frontmatter_name(source_path)
+    frontmatter_name = _frontmatter_name(source_path)
+    if frontmatter_name:
+        return frontmatter_name
+    if kind == "agent":
+        return resource_id.strip()
+    return ""
 
 
 def _resource_generated_name(
@@ -796,7 +806,7 @@ def _canonical_model_from_entry(
                 slug,
                 public,
                 prefix_generated_name,
-                _public_name_from_source(kit_source, source, kind),
+                _public_name_from_source(kit_source, source, kind, resource_id),
             ),
             prefix_generated_name=prefix_generated_name,
             tools=_string_list(
@@ -991,7 +1001,7 @@ def _from_manifest_resource(
             slug,
             kind in _PUBLIC_KINDS,
             True,
-            implicit_generated_name=_public_name_from_source(kit_source, res.source, kind),
+            implicit_generated_name=_public_name_from_source(kit_source, res.source, kind, res.id),
         ),
     )
     # @cpt-end:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-resource-id-vs-generated-name
@@ -1045,7 +1055,7 @@ def _from_manifest_component(
             slug,
             True,
             True,
-            implicit_generated_name=_public_name_from_source(kit_source, source, kind),
+            implicit_generated_name=_public_name_from_source(kit_source, source, kind, component.id),
         ),
         **kwargs,
     )
@@ -1191,7 +1201,12 @@ def _load_layout_model(kit_source: Path) -> KitModel:
                     slug,
                     kind in _PUBLIC_KINDS,
                     True,
-                    implicit_generated_name=_public_name_from_source(kit_source, filename, kind),
+                    implicit_generated_name=_public_name_from_source(
+                        kit_source,
+                        filename,
+                        kind,
+                        resource_id,
+                    ),
                 ),
             ))
     if not resources:
@@ -1305,9 +1320,35 @@ def _load_core_model(kit_source: Path) -> KitModel:
                 slug,
                 kind in _PUBLIC_KINDS,
                 bool(binding.get("prefix_generated_name", True)) if isinstance(binding, dict) else True,
-                _public_name_from_source(kit_source, source, kind),
+                _public_name_from_source(kit_source, source, kind, resource_id),
             ),
             prefix_generated_name=bool(binding.get("prefix_generated_name", True)) if isinstance(binding, dict) else True,
+            tools=_string_list(binding.get("tools") if isinstance(binding, dict) else None, f"resources.{resource_id}.tools"),
+            disallowed_tools=_string_list(
+                binding.get("disallowed_tools") if isinstance(binding, dict) else None,
+                f"resources.{resource_id}.disallowed_tools",
+            ),
+            mode=str(binding.get("mode", "readwrite") or "readwrite") if isinstance(binding, dict) else "readwrite",
+            isolation=bool(binding.get("isolation", False)) if isinstance(binding, dict) else False,
+            model=str(binding.get("model", "") or "") if isinstance(binding, dict) else "",
+            skills=_string_list(binding.get("skills") if isinstance(binding, dict) else None, f"resources.{resource_id}.skills"),
+            color=str(binding.get("color", "") or "") if isinstance(binding, dict) else "",
+            memory_dir=str(binding.get("memory_dir", "") or "") if isinstance(binding, dict) else "",
+            role=str(binding.get("role", "any") or "any") if isinstance(binding, dict) else "any",
+            target=str(binding.get("target", "any") or "any") if isinstance(binding, dict) else "any",
+            provider=str(binding.get("provider", "anthropic") or "anthropic") if isinstance(binding, dict) else "anthropic",
+            reasoning_effort=str(binding.get("reasoning_effort", "") or "") if isinstance(binding, dict) and binding.get("reasoning_effort") else None,
+            context_window=str(binding.get("context_window", "") or "") if isinstance(binding, dict) and binding.get("context_window") else None,
+            subagents=_config_subagents(
+                binding if isinstance(binding, dict) else {},
+                {},
+                f"resources.{resource_id}.subagents",
+            ) if isinstance(binding, dict) else [],
+            target_configs=_config_table(
+                binding if isinstance(binding, dict) else {},
+                "targets",
+                f"resources.{resource_id}.targets",
+            ) if isinstance(binding, dict) else {},
             # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-artifact-bindings
             artifact_bindings=artifact_bindings,
             # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-artifact-bindings
@@ -1357,8 +1398,11 @@ def load_kit_model(kit_source: Path, source_hint: str = "", kit_slug: str = "") 
 
 
 def _merge_core_authoritative_model(core_model: KitModel, source_model: KitModel) -> KitModel:
+    # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
     source_by_id = {resource.id: resource for resource in source_model.resources}
     merged_resources: List[KitResource] = []
+    # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
+    # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
     for core_resource in core_model.resources:
         source_resource = source_by_id.get(core_resource.id)
         if source_resource is None:
@@ -1378,10 +1422,10 @@ def _merge_core_authoritative_model(core_model: KitModel, source_model: KitModel
             install_path=core_resource.install_path,
             type=core_resource.type,
             public=merged_public,
-            description=source_resource.description,
+            description=source_resource.description or core_resource.description,
             user_modifiable=source_resource.user_modifiable,
-            aliases=list(source_resource.aliases),
-            generated_targets=list(source_resource.generated_targets),
+            aliases=list(source_resource.aliases or core_resource.aliases),
+            generated_targets=list(source_resource.generated_targets or core_resource.generated_targets),
             origin=core_resource.origin or source_resource.origin,
             generated_name=source_resource.generated_name or core_resource.generated_name,
             prefix_generated_name=source_resource.prefix_generated_name,
@@ -1390,20 +1434,22 @@ def _merge_core_authoritative_model(core_model: KitModel, source_model: KitModel
             disallowed_tools=list(source_resource.disallowed_tools),
             mode=source_resource.mode,
             isolation=source_resource.isolation,
-            model=source_resource.model,
+            model=source_resource.model or core_resource.model,
             skills=list(source_resource.skills),
-            color=source_resource.color,
-            memory_dir=source_resource.memory_dir,
+            color=source_resource.color or core_resource.color,
+            memory_dir=source_resource.memory_dir or core_resource.memory_dir,
             role=source_resource.role,
             target=source_resource.target,
             provider=source_resource.provider,
-            reasoning_effort=source_resource.reasoning_effort,
-            context_window=source_resource.context_window,
+            reasoning_effort=source_resource.reasoning_effort or core_resource.reasoning_effort,
+            context_window=source_resource.context_window or core_resource.context_window,
             subagents=list(source_resource.subagents),
             target_configs=dict(source_resource.target_configs),
             artifact_bindings=core_resource.artifact_bindings or source_resource.artifact_bindings,
         ))
+    # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
 
+    # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
     return KitModel(
         slug=core_model.slug,
         name=source_model.name or core_model.name,
@@ -1412,6 +1458,7 @@ def _merge_core_authoritative_model(core_model: KitModel, source_model: KitModel
         resources=merged_resources,
         warnings=list(dict.fromkeys(list(core_model.warnings) + list(source_model.warnings))),
     )
+    # @cpt-end:cpt-studio-algo-kit-manifest-normalize:p1:inst-normalize-convert
 
 
 def load_installed_kit_model(

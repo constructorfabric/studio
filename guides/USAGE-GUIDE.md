@@ -206,11 +206,11 @@ For a first trial, it is usually safe to accept the default project root, keep t
 
 `cfs init` sets up Constructor Studio in the repository. If you run it again in a repository that is already initialized, it repairs generated Studio runtime files and agent integrations using the version already pinned in that project.
 
-`cfs generate-agents` adds the AI coding tool integration files for that repository.
+`cfs generate-agents` adds or refreshes the AI coding tool integration files for that repository.
 
-`cfs generate-agents` may preview the files it will create and ask you to confirm before writing them.
+`cfs generate-agents` may preview the files it will create and ask you to confirm before writing them. It can also report partial success when some provider-specific capabilities are skipped or some generated outputs are intentionally preserved.
 
-In a normal project, this creates a setup directory `.cf-studio/`, generated host integration files, and user-editable configuration under `config/` inside that setup directory.
+In a normal project, this creates a setup directory `.cf-studio/`, generated host integration files, and user-editable configuration under `config/` inside that setup directory. Project task guidance normally lives in `config/AGENTS.md`, `config/SKILL.md`, and `config/rules/`.
 
 Generated runtime files such as `.cf-studio/.core/` and `.cf-studio/.gen/` are gitignored by default. Generated host integration files are also gitignored by default. Kit files are tracked, ignored, or registered per kit: tracked kits are editable repository content, ignored kits are generated local content that Studio may repair or overwrite, and registered local kits stay in place with bindings recorded in `core.toml`.
 

@@ -766,6 +766,7 @@ class TestKitUpdateCheckCoverage(unittest.TestCase):
                             [],
                         ),
                     ), \
+                    patch("sys.stdin.isatty", return_value=True), \
                     patch("studio.commands.kit._read_kit_version_from_core", return_value="v1.0.0"), \
                     patch("studio.commands.kit.show_kit_whatsnew", return_value=False), \
                     patch("studio.commands.kit.regenerate_gen_aggregates") as regen_mock:
@@ -776,7 +777,9 @@ class TestKitUpdateCheckCoverage(unittest.TestCase):
         self.assertEqual(rc, 0)
         out = json.loads(buf.getvalue())
         self.assertEqual(out["status"], "PASS")
+        self.assertEqual(out["kits_aborted"], 1)
         self.assertEqual(out["results"][0]["action"], "aborted")
+        self.assertNotIn("message", out)
         self.assertFalse(tmp_dir.exists())
         regen_mock.assert_called_once_with(studio_dir)
 
@@ -1645,6 +1648,83 @@ class TestKitUpdateCheckCoverage(unittest.TestCase):
             self.assertEqual(resource["skills"], ["cf-agentkit-helper"])
             self.assertEqual(resource["subagents"][0]["id"], "helper")
             self.assertEqual(resource["targets"]["cursor"]["reasoning_effort"], "high")
+
+    def test_load_installed_kit_model_uses_source_owned_fields_verbatim(self):
+        from studio.utils.kit_model import load_installed_kit_model
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            kit_src = _make_canonical_kit_source(root, "mergekit")
+            manifest = kit_src / ".cf-studio-kit.toml"
+            manifest.write_text(
+                "\n".join([
+                    'manifest_version = "1.0"',
+                    "",
+                    "[[kits]]",
+                    'slug = "mergekit"',
+                    'name = "mergekit"',
+                    'version = "1.2.3"',
+                    "",
+                    "[[kits.resources]]",
+                    'id = "skill"',
+                    'kind = "agent"',
+                    'source = "SKILL.md"',
+                    'install_path = "SKILL.md"',
+                    'type = "file"',
+                    "public = true",
+                    "",
+                    "[kits.resources.agent]",
+                    'mode = "readonly"',
+                    "isolation = false",
+                    'role = "any"',
+                    'target = "any"',
+                    'provider = "openai"',
+                    'tools = []',
+                    'disallowed_tools = []',
+                    'skills = []',
+                    'subagents = []',
+                    "",
+                    "[kits.resources.targets.cursor]",
+                    'tools = ["Read"]',
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            merged = load_installed_kit_model(
+                kit_src,
+                {
+                    "path": "config/kits/mergekit",
+                    "resources": {
+                        "skill": {
+                            "path": "config/kits/mergekit/SKILL.md",
+                            "kind": "agent",
+                            "tools": ["Bash"],
+                            "disallowed_tools": ["Edit"],
+                            "skills": ["cf-legacy-helper"],
+                            "subagents": [{"id": "legacy-helper", "source": "legacy.md"}],
+                            "mode": "readwrite",
+                            "isolation": True,
+                            "role": "analyze",
+                            "target": "codebase",
+                            "provider": "anthropic",
+                            "targets": {"cursor": {"tools": ["Bash"]}},
+                        },
+                    },
+                },
+                kit_slug="mergekit",
+            )
+
+            resource = merged.resources[0]
+            self.assertEqual(resource.tools, [])
+            self.assertEqual(resource.disallowed_tools, [])
+            self.assertEqual(resource.skills, [])
+            self.assertEqual(resource.subagents, [])
+            self.assertEqual(resource.mode, "readonly")
+            self.assertFalse(resource.isolation)
+            self.assertEqual(resource.role, "any")
+            self.assertEqual(resource.target, "any")
+            self.assertEqual(resource.provider, "openai")
+            self.assertEqual(resource.target_configs, {"cursor": {"tools": ["Read"]}})
 
     def test_kit_model_preserves_prefixed_public_name_from_frontmatter(self):
         from studio.utils.kit_model import load_kit_model
@@ -2951,7 +3031,7 @@ class TestCmdKitUpdate(unittest.TestCase):
         self.assertEqual(result["installed_commit"], "old123")
         self.assertEqual(result["latest_commit"], "new456")
 
-    def test_check_updates_remote_failure_is_nonblocking_warn(self):
+    def test_check_updates_remote_failure_is_blocking_fail(self):
         import studio.commands.kit as kit_module
         from studio.commands.kit import cmd_kit_check_updates
         from studio.utils import toml_utils
@@ -2988,9 +3068,9 @@ class TestCmdKitUpdate(unittest.TestCase):
                     buf = io.StringIO()
                     with redirect_stdout(buf):
                         rc = cmd_kit_check_updates([])
-                self.assertEqual(rc, 0)
+                self.assertEqual(rc, 2)
                 out = json.loads(buf.getvalue())
-                self.assertEqual(out["status"], "WARN")
+                self.assertEqual(out["status"], "FAIL")
                 self.assertEqual(out["updates_available"], 0)
                 self.assertEqual(out["results"][0]["action"], "failed")
                 self.assertIn("GitHub unavailable", out["errors"][0])
@@ -3105,6 +3185,7 @@ class TestKitHelpers(unittest.TestCase):
     def test_build_kit_update_result_normalizes_errors_and_authority(self):
         from studio.commands.kit import (
             _build_kit_update_result,
+            _collect_kit_update_partial_reasons,
             _normalize_kit_update_action,
         )
 
@@ -3133,6 +3214,13 @@ class TestKitHelpers(unittest.TestCase):
         self.assertEqual(result["errors"], ["boom"])
         self.assertEqual(result["authority"]["resolved_ref"], "v1")
         self.assertEqual(result["prune_required"][0]["prune_fingerprint"], "abc123")
+        partials = _collect_kit_update_partial_reasons([result])
+        self.assertEqual(partials[0]["kit"], "sdlc")
+        self.assertIn("errors", partials[0]["categories"])
+        self.assertIn("declined_files", partials[0]["categories"])
+        self.assertIn("declined_prunes", partials[0]["categories"])
+        self.assertIn("failed", partials[0]["categories"])
+        self.assertEqual(partials[0]["declined"], ["AGENTS.md"])
 
     def test_resolve_github_update_targets_covers_source_branches(self):
         import studio.commands.kit as kit_module
@@ -4466,10 +4554,15 @@ class TestHumanKitUpdate(unittest.TestCase):
                 "kits_updated": 1,
                 "results": [{"kit": "sdlc", "action": "current"}],
                 "errors": ["oops", "fail"],
+                "partial_reasons": [
+                    {"kit": "sdlc", "categories": ["declined_files", "partial_update"]},
+                ],
             })
         out = buf.getvalue()
         self.assertIn("oops", out)
         self.assertIn("fail", out)
+        self.assertIn("partial reason for sdlc", out)
+        self.assertIn("declined_files", out)
         self.assertIn("warnings", out.lower())
 
     def test_unknown_status(self):

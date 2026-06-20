@@ -1,0 +1,85 @@
+manifest_version = "1.0"
+
+[[kits]]
+slug = "example-mixed"
+name = "Example Mixed"
+version = "2.1.0"
+
+[[kits.resources]]
+id = "adr-template"
+kind = "template"
+source = "artifacts/ADR/template.md"
+install_path = "artifacts/ADR/template.md"
+type = "file"
+
+[[kits.resources]]
+id = "adr-example"
+kind = "other"
+source = "artifacts/ADR/example.md"
+install_path = "artifacts/ADR/example.md"
+type = "file"
+
+[[kits.resources]]
+id = "constraints"
+kind = "constraints"
+source = "constraints.toml"
+install_path = "constraints.toml"
+type = "file"
+
+[[kits.resources]]
+id = "discovery"
+kind = "skill"
+source = "skills/discovery/SKILL.md"
+install_path = "skills/discovery/SKILL.md"
+type = "file"
+public = true
+generated_targets = ["openai"]
+
+[[kits.resources]]
+id = "review"
+kind = "skill"
+source = "skills/review/SKILL.md"
+install_path = "skills/review/SKILL.md"
+type = "file"
+public = true
+generated_targets = ["openai"]
+
+[[kits.resources]]
+id = "reviewer"
+kind = "agent"
+source = "agents/reviewer.md"
+install_path = "agents/reviewer.md"
+type = "file"
+public = true
+generated_targets = ["openai"]
+description = "Example mixed reviewer agent"
+
+[kits.resources.agent]
+mode = "readonly"
+
+[[kits.resources.agent.subagents]]
+id = "reviewer-helper"
+source = "agents/reviewer-helper.md"
+generated_targets = ["openai"]
+description = "Mixed reviewer helper subagent"
+mode = "readonly"
+
+[[kits.resources]]
+id = "planner"
+kind = "agent"
+source = "agents/planner.md"
+install_path = "agents/planner.md"
+type = "file"
+public = true
+generated_targets = ["openai"]
+description = "Example mixed planner agent"
+
+[kits.resources.agent]
+mode = "readonly"
+
+[[kits.resources.agent.subagents]]
+id = "planner-helper"
+source = "agents/planner-helper.md"
+generated_targets = ["openai"]
+description = "Mixed planner helper subagent"
+mode = "readonly"

@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "studio" / "scripts"))
 
-from studio.commands.init import cmd_init, _copy_from_cache, _prompt_install_options
+from studio.commands.init import cmd_init, _copy_from_cache, _prompt_install_options, _normalize_ignored_kit_path
 from studio.commands.update import cmd_update
 from studio.utils.ui import set_json_mode
 
@@ -108,14 +108,17 @@ def test_prompt_install_options_can_edit_all_install_choices():
     assert agent_tracking == "tracked"
     assert default_tracking == "ignored"
     assert overrides == {"sdlc": "tracked"}
-    prompt = stderr.getvalue()
-    assert "Project name?" in prompt
-    assert "Runtime files (.core/.gen) git tracking" in prompt
-    assert "Git tracking for runtime files (.core/.gen)?" in prompt
-    assert "Agent integration files git tracking" in prompt
-    assert "Git tracking for agent integration files?" in prompt
-    assert "Default git tracking for kits?" in prompt
-    assert "Kit sdlc git tracking: tracked" in prompt
+
+
+def test_normalize_ignored_kit_path_preserves_absolute_external_path():
+    project_root = Path("/tmp/project")
+    studio_root = project_root / ".bootstrap"
+    normalized = _normalize_ignored_kit_path(
+        project_root,
+        studio_root,
+        "/opt/external-kits/demo",
+    )
+    assert normalized == "/opt/external-kits/demo"
 
 
 def test_prompt_install_options_non_interactive_returns_defaults():

@@ -1205,6 +1205,66 @@ def _manifest_resource_binding_entry(
     if isinstance(artifact_bindings, dict) and artifact_bindings:
         entry["artifacts"] = artifact_bindings
     entry["public"] = bool(getattr(res, "public", False))
+    description = str(getattr(res, "description", "") or "").strip()
+    if description:
+        entry["description"] = description
+    if not bool(getattr(res, "user_modifiable", True)):
+        entry["user_modifiable"] = False
+    aliases = list(getattr(res, "aliases", []) or [])
+    if aliases:
+        entry["aliases"] = aliases
+    generated_targets = list(getattr(res, "generated_targets", []) or [])
+    if generated_targets:
+        entry["generated_targets"] = generated_targets
+    origin = str(getattr(res, "origin", "") or "").strip()
+    if origin:
+        entry["origin"] = origin
+    if not bool(getattr(res, "prefix_generated_name", True)):
+        entry["prefix_generated_name"] = False
+    tools = list(getattr(res, "tools", []) or [])
+    if tools:
+        entry["tools"] = tools
+    disallowed_tools = list(getattr(res, "disallowed_tools", []) or [])
+    if disallowed_tools:
+        entry["disallowed_tools"] = disallowed_tools
+    mode = str(getattr(res, "mode", "readwrite") or "readwrite").strip()
+    if mode and mode != "readwrite":
+        entry["mode"] = mode
+    if bool(getattr(res, "isolation", False)):
+        entry["isolation"] = True
+    model = str(getattr(res, "model", "") or "").strip()
+    if model:
+        entry["model"] = model
+    skills = list(getattr(res, "skills", []) or [])
+    if skills:
+        entry["skills"] = skills
+    color = str(getattr(res, "color", "") or "").strip()
+    if color:
+        entry["color"] = color
+    memory_dir = str(getattr(res, "memory_dir", "") or "").strip()
+    if memory_dir:
+        entry["memory_dir"] = memory_dir
+    role = str(getattr(res, "role", "any") or "any").strip()
+    if role and role != "any":
+        entry["role"] = role
+    target = str(getattr(res, "target", "any") or "any").strip()
+    if target and target != "any":
+        entry["target"] = target
+    provider = str(getattr(res, "provider", "anthropic") or "anthropic").strip()
+    if provider and provider != "anthropic":
+        entry["provider"] = provider
+    reasoning_effort = getattr(res, "reasoning_effort", None)
+    if reasoning_effort:
+        entry["reasoning_effort"] = reasoning_effort
+    context_window = getattr(res, "context_window", None)
+    if context_window:
+        entry["context_window"] = context_window
+    subagents = list(getattr(res, "subagents", []) or [])
+    if subagents:
+        entry["subagents"] = subagents
+    targets = dict(getattr(res, "target_configs", {}) or {})
+    if targets:
+        entry["targets"] = targets
     return entry
     # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-register-bindings
 
@@ -1248,6 +1308,81 @@ def _manifest_register_resource_bindings(
         bindings[res.id] = entry
     return bindings
     # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-register-bindings
+
+
+def _manifest_public_subagent_sources(resources: List[Any]) -> List[str]:
+    """Return unique relative prompt sources declared by canonical public subagents."""
+    sources: List[str] = []
+    seen: set[str] = set()
+    for res in resources:
+        if str(getattr(res, "kind", "") or "") != "agent":
+            continue
+        for subagent in getattr(res, "subagents", []) or []:
+            normalized = _normalize_manifest_public_subagent_source(subagent)
+            if normalized is None:
+                continue
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            sources.append(normalized)
+    return sources
+
+
+def _validate_manifest_public_subagent_sources(
+    kit_source: Path,
+    subagent_sources: List[str],
+) -> Optional[str]:
+    """Return the first manifest public subagent source validation error, if any."""
+    for subagent_source in subagent_sources:
+        source_abs = kit_source / Path(PurePosixPath(subagent_source))
+        if not source_abs.exists():
+            return f"Manifest subagent source '{subagent_source}' does not exist in kit source"
+        if not source_abs.is_file():
+            return f"Manifest subagent source '{subagent_source}' is not a file"
+    return None
+
+
+def _augment_manifest_subagent_update_bindings(
+    model: Any,
+    installed_kit_dir: Path,
+    source_to_resource_id: Dict[str, str],
+    resource_info: Dict[str, Any],
+    resource_bindings: Dict[str, Path],
+) -> None:
+    """Teach manifest-backed updates to treat copied public subagent prompts as managed files."""
+    for res in list(getattr(model, "resources", []) or []):
+        if str(getattr(res, "kind", "") or "") != "agent":
+            continue
+        for subagent in getattr(res, "subagents", []) or []:
+            normalized = _normalize_manifest_public_subagent_source(subagent)
+            if normalized is None:
+                continue
+            synthetic_id = source_to_resource_id.get(normalized) or f"{res.id}.__subagent__.{normalized}"
+            source_to_resource_id[normalized] = synthetic_id
+            if synthetic_id not in resource_info:
+                resource_info[synthetic_id] = type(
+                    "SyntheticResourceInfo",
+                    (),
+                    {
+                        "type": "file",
+                        "source_base": normalized,
+                        "user_modifiable": bool(getattr(res, "user_modifiable", True)),
+                    },
+                )()
+            if synthetic_id not in resource_bindings:
+                resource_bindings[synthetic_id] = (installed_kit_dir / Path(PurePosixPath(normalized))).resolve()
+
+
+def _normalize_manifest_public_subagent_source(subagent: Any) -> Optional[str]:
+    if not isinstance(subagent, dict):
+        return None
+    raw_source = str(subagent.get("source", "") or "").strip().replace("\\", "/")
+    if not raw_source:
+        return None
+    source_path = PurePosixPath(raw_source)
+    if source_path.is_absolute() or ".." in source_path.parts:
+        return None
+    return source_path.as_posix()
 
 
 # @cpt-begin:cpt-studio-algo-kit-model-normalize:p1:inst-kitmodel-hashes
@@ -1390,6 +1525,25 @@ def _load_manifest_install_adapter(kit_source: Path, kit_slug: str = "") -> Opti
     if getattr(model, "manifest_source", "") not in {"canonical", "legacy_manifest"}:
         return None
     return load_manifest(kit_source, kit_slug=kit_slug)
+
+
+def _legacy_manifest_install_warning(kit_source: Path) -> Optional[str]:
+    """Return a migration warning when install does not use canonical kit metadata."""
+    # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-validate-source
+    canonical_manifest = kit_source / ".cf-studio-kit.toml"
+    if canonical_manifest.is_file():
+        return None
+    legacy_manifest = kit_source / "manifest.toml"
+    if legacy_manifest.is_file():
+        return (
+            "Kit uses legacy manifest 'manifest.toml'. "
+            "Please ask the kit authors to migrate to '.cf-studio-kit.toml'."
+        )
+    return (
+        "Kit uses a legacy layout without '.cf-studio-kit.toml'. "
+        "Please ask the kit authors to migrate to '.cf-studio-kit.toml'."
+    )
+    # @cpt-end:cpt-studio-algo-kit-install:p1:inst-validate-source
 
 
 def _validate_register_manifest_containment(
@@ -1666,7 +1820,7 @@ def install_kit(
         }
     if manifest is not None:
         # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-manifest-install
-        return install_kit_with_manifest(
+        install_result = install_kit_with_manifest(
             kit_source, studio_dir, kit_slug, kit_version,
             manifest, interactive=interactive, source=source,
             install_mode=install_mode,
@@ -1680,6 +1834,14 @@ def install_kit(
                 else ""
             ),
         )
+        # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-collect-meta
+        legacy_manifest_warning = _legacy_manifest_install_warning(kit_source)
+        if legacy_manifest_warning:
+            install_result.setdefault("errors", [])
+            install_result["errors"] = list(install_result.get("errors", []))
+            install_result["errors"].append(legacy_manifest_warning)
+        # @cpt-end:cpt-studio-algo-kit-install:p1:inst-collect-meta
+        return install_result
         # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-manifest-install
     # @cpt-end:cpt-studio-algo-kit-install:p1:inst-manifest-install
 
@@ -1750,9 +1912,14 @@ def install_kit(
 
     # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-return-result
     files_copied = sum(1 for v in copy_actions.values() if v == "copied")
+    # @cpt-begin:cpt-studio-algo-kit-install:p1:inst-seed-configs
+    legacy_manifest_warning = _legacy_manifest_install_warning(kit_source)
+    if legacy_manifest_warning:
+        errors.append(legacy_manifest_warning)
+    # @cpt-end:cpt-studio-algo-kit-install:p1:inst-seed-configs
 
     return {
-        "status": "PASS" if not errors else "WARN",
+        "status": "PASS",
         "action": "installed",
         "kit": kit_slug,
         "version": kit_version,
@@ -1833,6 +2000,7 @@ def install_kit_with_manifest(
             "errors": [str(exc)],
         }
     model_resources = list(getattr(kit_model, "resources", []))
+    extra_subagent_sources = _manifest_public_subagent_sources(model_resources)
     risk_errors = _tool_risk_approval_errors(
         kit_model,
         interactive=interactive,
@@ -1864,6 +2032,18 @@ def install_kit_with_manifest(
             "errors": [f"Unsupported install mode: {install_mode}"],
         }
     # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-resolve-install-mode
+
+    subagent_source_error = _validate_manifest_public_subagent_sources(
+        kit_source,
+        extra_subagent_sources,
+    )
+    if subagent_source_error:
+        return {
+            "status": "FAIL",
+            "kit": kit_slug,
+            "install_mode": install_mode,
+            "errors": [subagent_source_error],
+        }
 
     if install_mode == "register":
         # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-register-resource-in-place
@@ -1997,6 +2177,12 @@ def install_kit_with_manifest(
         # @cpt-begin:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-copy-resource
         _copy_manifest_resource(kit_source, res, target_abs)
         # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-copy-resource
+        files_copied += 1
+    for subagent_source in extra_subagent_sources:
+        source_abs = kit_source / Path(PurePosixPath(subagent_source))
+        target_abs = (kit_root / Path(PurePosixPath(subagent_source))).resolve()
+        target_abs.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_abs, target_abs)
         files_copied += 1
     # @cpt-end:cpt-studio-algo-kit-manifest-install:p1:inst-manifest-foreach-resource
     # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-copy-resources
@@ -3226,6 +3412,80 @@ def _build_kit_update_result(kit_slug: str, kit_r: Dict[str, Any]) -> Dict[str, 
 # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-build-update-result
 
 
+# @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-parse-args
+def _collect_kit_update_partial_reasons(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Summarize non-pass kit update outcomes for JSON/human output."""
+    # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-build-update-result
+    partials: List[Dict[str, Any]] = []
+    for result in results:
+        action = _normalize_kit_update_action(result.get("action"))
+        if action in {"current", "updated", "created", "dry_run"}:
+            continue
+        kit_slug = str(result.get("kit") or "?")
+        categories: List[str] = []
+        entry: Dict[str, Any] = {"kit": kit_slug}
+        _append_kit_update_partial_errors(result, entry, categories)
+        _append_kit_update_partial_declined(result, entry, categories)
+        _append_kit_update_partial_prunes(result, entry, categories)
+        _append_kit_update_action_category(action, categories)
+        entry["categories"] = categories or ["unspecified"]
+        partials.append(entry)
+    # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-build-update-result
+    return partials
+
+
+def _append_kit_update_partial_errors(result: Dict[str, Any], entry: Dict[str, Any], categories: List[str]) -> None:
+    errors = result.get("errors") or []
+    if errors:
+        categories.append("errors")
+        entry["errors"] = [str(err) for err in errors]
+
+
+def _append_kit_update_partial_declined(result: Dict[str, Any], entry: Dict[str, Any], categories: List[str]) -> None:
+    declined = result.get("declined") or []
+    if declined:
+        categories.append("declined_files")
+        entry["declined"] = list(declined)
+
+
+def _append_kit_update_partial_prunes(result: Dict[str, Any], entry: Dict[str, Any], categories: List[str]) -> None:
+    prune_required = result.get("prune_required") or []
+    if prune_required:
+        categories.append("declined_prunes")
+        entry["declined_prunes"] = [
+            str(item.get("path") or "")
+            for item in prune_required
+            if isinstance(item, dict) and item.get("path")
+        ]
+
+
+def _append_kit_update_action_category(action: str, categories: List[str]) -> None:
+    if action == "aborted":
+        categories.append("aborted")
+    elif action == "failed":
+        categories.append("failed")
+    elif action == "partial":
+        categories.append("partial_update")
+# @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-parse-args
+
+
+# @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-resolve-project
+def _count_kit_update_actions(
+    results: List[Dict[str, Any]],
+    *actions: str,
+) -> int:
+    """Count normalized kit update actions in ``results``."""
+    # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-build-update-result
+    wanted = {action.strip().lower() for action in actions}
+    return sum(
+        1
+        for result in results
+        if _normalize_kit_update_action(result.get("action")) in wanted
+    )
+    # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-build-update-result
+# @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-resolve-project
+
+
 # @cpt-flow:cpt-studio-flow-kit-update-cli:p1
 def cmd_kit_update(argv: List[str]) -> int:
     """Update installed kits from their registered sources or a local path.
@@ -3488,32 +3748,46 @@ def cmd_kit_update(argv: List[str]) -> int:
         regenerate_gen_aggregates(studio_dir)
     # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-regen-gen
 
+    # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-regen-gen
     # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-format-output
-    n_updated = sum(
-        1
-        for r in all_results
-        if _normalize_kit_update_action(r.get("action"))
-        not in ("current", "dry_run", "aborted", "failed")
-    )
+    n_updated = _count_kit_update_actions(all_results, "updated", "created")
+    n_partial = _count_kit_update_actions(all_results, "partial")
+    n_aborted = _count_kit_update_actions(all_results, "aborted")
+    # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-regen-gen
+    # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-delegate-update
     command_failed = has_failed_updates
+    command_incomplete = n_partial > 0 or n_aborted > 0
+    interactive_partial_success = bool(interactive and command_incomplete and not command_failed)
     if command_failed:
         status = "FAIL"
+    elif interactive_partial_success:
+        status = "PASS"
+    elif command_incomplete:
+        status = "WARN"
     elif not errors:
         status = "PASS"
     else:
         status = "WARN"
+    # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-delegate-update
+    # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-human-output
     output: Dict[str, Any] = {
         "status": status,
         "kits_updated": n_updated,
+        "kits_partially_updated": n_partial,
+        "kits_aborted": n_aborted,
         "results": all_results,
     }
+    partial_reasons = _collect_kit_update_partial_reasons(all_results)
+    if partial_reasons:
+        output["partial_reasons"] = partial_reasons
     if errors:
         output["errors"] = errors
-    if not n_updated and not errors:
+    if not n_updated and not errors and not n_aborted:
         output["message"] = "All kits are up to date"
+    # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-human-output
 
     ui.result(output, human_fn=_human_kit_update)
-    return 2 if command_failed else 0
+    return 2 if (command_failed or (command_incomplete and not interactive_partial_success)) else 0
     # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-format-output
 
 # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-human-output
@@ -3565,6 +3839,16 @@ def _human_kit_update(data: dict) -> None:
         ui.blank()
         for e in errs:
             ui.warn(str(e))
+    partial_reasons = data.get("partial_reasons", [])
+    if partial_reasons:
+        ui.blank()
+        for item in partial_reasons:
+            if not isinstance(item, dict):
+                continue
+            kit_slug = str(item.get("kit") or "?")
+            categories = item.get("categories") or []
+            category_text = ", ".join(str(category) for category in categories) if categories else "unspecified"
+            ui.warn(f"  partial reason for {kit_slug}: {category_text}")
 
     if status == "PASS":
         ui.success("Kit update complete.")
@@ -3576,6 +3860,7 @@ def _human_kit_update(data: dict) -> None:
 # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-human-output
 
 
+# @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-build-update-result
 def cmd_kit_check_updates(argv: List[str]) -> int:
     """Check registered git/GitHub kit sources for newer remote versions."""
     # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-format-output
@@ -3623,7 +3908,7 @@ def cmd_kit_check_updates(argv: List[str]) -> int:
         if _normalize_kit_update_action(r.get("action")) == "failed"
     ]
     output: Dict[str, Any] = {
-        "status": "WARN" if failures else "PASS",
+        "status": "FAIL" if failures else "PASS",
         "updates_available": len(updates),
         "results": results,
     }
@@ -3638,10 +3923,13 @@ def cmd_kit_check_updates(argv: List[str]) -> int:
             for r in failures
         ]
     ui.result(output, human_fn=_human_kit_check_updates)
-    return 0
+    return 2 if failures else 0
     # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-format-output
+    # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-build-update-result
 
 
+# @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-parse-args
+# @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-build-update-result
 def _human_kit_check_updates(data: dict) -> None:
     # @cpt-begin:cpt-studio-flow-kit-update-cli:p1:inst-human-output
     ui.header("Kit Update Check")
@@ -3668,6 +3956,8 @@ def _human_kit_check_updates(data: dict) -> None:
         ui.success("All checked kits are up to date.")
     ui.blank()
     # @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-human-output
+# @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-build-update-result
+# @cpt-end:cpt-studio-flow-kit-update-cli:p1:inst-parse-args
 
 # ---------------------------------------------------------------------------
 # Kit Normalize
@@ -3766,8 +4056,9 @@ def cmd_kit_normalize(argv: List[str]) -> int:
             and not args.output
         ):
             raise ValueError(
-                "Refusing to overwrite the source multi-kit manifest with only a selected subset; "
-                "use --output, --dry-run, or --stdout",
+                "Refusing to overwrite the source multi-kit manifest with only the selected subset. "
+                "Use --stdout to print just that subset, --dry-run to preview it without writing, "
+                "or --output <path> to write it to a different file.",
             )
         # @cpt-end:cpt-studio-flow-kit-normalize-cli:p1:inst-normalize-load-source
     except ValueError as exc:
@@ -4317,16 +4608,16 @@ def _sync_manifest_resource_bindings(
                 resource_path = (PurePosixPath(kit_root_rel) / install_path).as_posix()
             else:
                 resource_path = PurePosixPath(install_path).as_posix()
-            merged[res.id] = {"path": resource_path}
-        kind = str(getattr(res, "kind", "") or "").strip()
-        if kind:
-            merged[res.id]["kind"] = kind
-        merged[res.id]["public"] = bool(getattr(res, "public", False))
-        artifact_bindings = getattr(res, "artifact_bindings", None)
-        if isinstance(artifact_bindings, dict) and artifact_bindings:
-            merged[res.id]["artifacts"] = artifact_bindings
-        else:
-            merged[res.id].pop("artifacts", None)
+            merged[res.id] = _manifest_resource_binding_entry(res=res, path=resource_path)
+            continue
+        binding_path = str(merged[res.id].get("path", "") or "")
+        if not binding_path:
+            install_path = _resource_install_path(res)
+            if kit_root_rel:
+                binding_path = (PurePosixPath(kit_root_rel) / install_path).as_posix()
+            else:
+                binding_path = PurePosixPath(install_path).as_posix()
+        merged[res.id] = _manifest_resource_binding_entry(res=res, path=binding_path)
     return merged
 # @cpt-end:cpt-studio-algo-kit-update:p1:inst-sync-manifest-bindings
 
@@ -4583,7 +4874,8 @@ def update_kit(
                     result["errors"] = _mig_result.get("errors", [])
                     return result
                 installed_kit_entry = _read_kits_from_core_toml(config_dir).get(kit_slug, installed_kit_entry)
-            synced_resources = _sync_manifest_resource_bindings(_manifest, config_dir, kit_slug)
+            sync_manifest_model = _risk_model if _risk_model is not None else _manifest
+            synced_resources = _sync_manifest_resource_bindings(sync_manifest_model, config_dir, kit_slug)
             resources_changed = False
             if synced_resources is not None:
                 current_resources = installed_kit_entry.get("resources", {})
@@ -4713,6 +5005,13 @@ def update_kit(
                 kit_slug=kit_slug,
             )
             _resource_bindings = resolve_resource_bindings(config_dir, kit_slug, studio_dir)
+            _augment_manifest_subagent_update_bindings(
+                _risk_model if _risk_model is not None else _manifest,
+                installed_kit_dir,
+                _source_to_resource_id,
+                _resource_info,
+                _resource_bindings,
+            )
         except ValueError as exc:
             result["version"] = {"status": "failed"}
             result["gen"] = {"files_written": 0}
@@ -4788,10 +5087,10 @@ def update_kit(
         accepted = report.get("accepted", [])
         declined = report.get("declined", [])
 
-        if accepted:
-            ver_status = "updated"
-        elif declined:
+        if declined:
             ver_status = "partial"
+        elif accepted:
+            ver_status = "updated"
         else:
             ver_status = "current"
 

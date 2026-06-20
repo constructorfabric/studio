@@ -1,438 +1,239 @@
 ---
 studio: true
 type: spec
-name: Project Extension Specification
-version: 1.0
-purpose: Define how projects extend Constructor Studio behavior through {cf-studio-path}/config/sysprompts and config/AGENTS.md with operation-scoped system prompts
+name: Project Rules and Root Navigation Specification
+version: 2.0
+purpose: Define the project-owned prompt-asset surfaces under {cf-studio-path}/config/, the managed root navigation blocks, and the read vs repair lifecycle observed by the CLI
 drivers:
   - cpt-studio-fr-core-config
   - cpt-studio-fr-core-workflows
+  - cpt-studio-fr-core-init
+  - cpt-studio-fr-core-agents
 ---
 
-# Project Extension Specification
-
+# Project Rules and Root Navigation Specification
 
 <!-- toc -->
 
 - [Overview](#overview)
 - [Runtime Contract](#runtime-contract)
-- [Extension Directory](#extension-directory)
-- [Root AGENTS.md Entry](#root-agentsmd-entry)
+- [Project-Owned Prompt Assets](#project-owned-prompt-assets)
+- [Root Managed Blocks](#root-managed-blocks)
+- [Read vs Repair Lifecycle](#read-vs-repair-lifecycle)
 - [config/AGENTS.md](#configagentsmd)
-  - [Required Structure](#required-structure)
-  - [WHEN Rule Format](#when-rule-format)
-- [System Prompt Files](#system-prompt-files)
-  - [Format](#format)
-  - [Standard System Prompts](#standard-system-prompts)
-  - [Content Principles](#content-principles)
-- [System Prompt Loading](#system-prompt-loading)
-  - [When Prompts Are Loaded](#when-prompts-are-loaded)
-  - [Loading Algorithm](#loading-algorithm)
-  - [Interaction with Kit Prompts](#interaction-with-kit-prompts)
-- [System Prompt Discovery](#system-prompt-discovery)
-- [Validation](#validation)
-  - [AGENTS.md Validation](#agentsmd-validation)
-  - [System Prompt File Validation](#system-prompt-file-validation)
-- [Error Handling](#error-handling)
-  - [System Prompt Not Found](#system-prompt-not-found)
-  - [AGENTS.md Not Found](#agentsmd-not-found)
-  - [Invalid WHEN Format](#invalid-when-format)
-- [Example](#example)
+- [Rule Files](#rule-files)
+- [Validation and Error Handling](#validation-and-error-handling)
 - [References](#references)
 
 <!-- /toc -->
 
----
----
-
 ## Overview
 
-Projects extend Constructor Studio behavior by placing **system prompts** in `{cf-studio-path}/config/sysprompts/` and registering them via `{cf-studio-path}/config/AGENTS.md`. These prompts are loaded by workflows during generate, analyze, and code operations, providing project-specific context without modifying kit files or core configuration.
+This spec defines the current project-extension model used by Constructor
+Studio.
 
-**Key properties**:
-- System prompts live in `{cf-studio-path}/config/sysprompts/*.md` — plain Markdown files
-- `AGENTS.md` at `{cf-studio-path}/config/AGENTS.md` maps prompts to operations via `WHEN` rules
-- Prompts are loaded at runtime — no code generation, no build step
-- Project-specific: conventions, tech stack, domain model, patterns, etc.
-- Complementary to kit files: kit rules define artifact structure, project system prompts define project context
+The legacy `config/sysprompts/` model is obsolete for this repository's
+documented runtime. Project-owned instruction assets now live primarily in:
+
+- `{cf-studio-path}/config/AGENTS.md`
+- `{cf-studio-path}/config/rules/*.md`
+- `{cf-studio-path}/config/SKILL.md`
+
+`config/AGENTS.md` declares action-scoped `ALWAYS open and follow ... WHEN ...`
+rules. Those rules point at project rule files and selected architecture or
+contributor docs. Root `AGENTS.md` and `CLAUDE.md` contain only the managed
+`cf-studio-path` handoff block and are not general-purpose prompt bundles.
 
 ## Runtime Contract
 
 ```pdsl
-UNIT SyspromptClassification
+UNIT ProjectRuleClassification
 
 PURPOSE:
-  Define project sysprompt surfaces as prompt assets with controller-owned
-  loading authority.
+  Define project-owned prompt assets as controller-loaded instruction surfaces.
 
 DO:
   - LOAD {cf-studio-path}/.core/architecture/specs/shared-context-pack.md
   - CONTINUE SharedContextPackLifecycle
 
 RULES:
-  - ALWAYS `{cf-studio-path}/config/AGENTS.md` and
-    `{cf-studio-path}/config/sysprompts/*.md` remain the project prompt-asset
-    family for this shared ownership contract
-  - ALWAYS When loaded into `SHARED_CONTEXT_PACK`, those assets ALWAYS be
-    recorded with `origin = "project"`
+  - ALWAYS treat `{cf-studio-path}/config/AGENTS.md`,
+    `{cf-studio-path}/config/rules/*.md`, and selected project docs referenced
+    from AGENTS rules as the project prompt-asset family
+  - ALWAYS record those assets with `origin = "project"` when loaded into
+    `SHARED_CONTEXT_PACK`
 ```
 
 ```pdsl
-UNIT SyspromptLoading
+UNIT ProjectRuleLoading
 
 PURPOSE:
-  Make project sysprompt selection explicit and shared-context-pack aware.
+  Make project-rule selection explicit and controller-owned.
 
 DO:
   - REQUIRE operation context is resolved
   - REQUIRE controller reads `{cf-studio-path}/config/AGENTS.md`
-  - REQUIRE controller evaluates action-based `WHEN` rules against the current context
-  - REQUIRE controller loads matching system prompt files in declaration order
-  - REQUIRE controller publishes matched prompt text into `SHARED_CONTEXT_PACK`
-  - REQUIRE controller synthesizes a final dispatch prompt for any
-    prompt-consuming sub-agent dispatch
+  - REQUIRE controller evaluates action-based `WHEN` rules in declaration order
+  - REQUIRE controller loads the referenced rule or doc files for matching rules
+  - REQUIRE controller publishes matched instruction text into `SHARED_CONTEXT_PACK`
 
 RULES:
-  - ALWAYS keep kit prompts and project sysprompts separate prompt-asset families
-  - ALWAYS load only the prompt assets required by the active operation
-  - ALWAYS treat missing required prompt context as a controller error rather than
-    a license for direct file reads
+  - ALWAYS keep controller-owned prompt loading separate from target task files
+  - ALWAYS load only the rule and doc assets relevant to the active operation
+  - NEVER allow prompt-consuming sub-agents to reopen those prompt files directly
 ```
 
-```pdsl
-UNIT SyspromptValidationAndErrors
+## Project-Owned Prompt Assets
 
-PURPOSE:
-  Define deterministic validation and warning behavior for project sysprompts.
-
-ON_ERROR:
-  orphaned_when_rule ->
-    EMIT "Orphaned WHEN rule: sysprompts/{name}.md not found"
-    CONTINUE without that rule
-
-  missing_project_agents ->
-    EMIT "Project AGENTS.md not found: {cf-studio-path}/config/AGENTS.md"
-    CONTINUE with kit-level prompts only
-
-  invalid_when_rule ->
-    EMIT "Invalid WHEN rule format in AGENTS.md"
-    CONTINUE after skipping the invalid rule
+```text
+{cf-studio-path}/
+  config/
+    AGENTS.md                # Project navigation rules
+    SKILL.md                 # Project skill extensions
+    core.toml
+    artifacts.toml
+    rules/
+      tech-stack.md
+      conventions.md
+      project-structure.md
+      domain-model.md
+      testing.md
+      build-deploy.md
+      architecture.md
+      patterns.md
+      anti-patterns.md
+      ...
 ```
 
-**What goes here vs. in kit files**:
+Typical division of responsibility:
 
 | Concern | Location |
 |---------|----------|
-| Artifact structure, ID kinds, heading rules | Kit files (`rules.md`, `constraints.toml`, `template.md`) |
-| Project tech stack, naming conventions | `{cf-studio-path}/config/sysprompts/tech-stack.md` |
-| Domain model, entity relationships | `{cf-studio-path}/config/sysprompts/domain-model.md` |
-| API contract format | `{cf-studio-path}/config/sysprompts/api-contracts.md` |
+| Project-level action routing | `{cf-studio-path}/config/AGENTS.md` |
+| Topic-focused project guidance | `{cf-studio-path}/config/rules/*.md` |
+| Project-specific skill extensions | `{cf-studio-path}/config/SKILL.md` |
+| Artifact structure and validation rules | kit files under `config/kits/<slug>/` |
 
----
+## Root Managed Blocks
 
-## Extension Directory
-
-```
-{cf-studio-path}/             # Install directory (default: .cf/)
-└── config/
-    ├── AGENTS.md              # Navigation rules (WHEN → spec file)
-    ├── core.toml              # Core config
-    ├── artifacts.toml         # Artifact registry
-    └── sysprompts/            # Project-specific system prompts
-        ├── tech-stack.md
-        ├── conventions.md
-        ├── domain-model.md
-        ├── patterns.md
-        ├── testing.md
-        └── ...
-```
-
-All sysprompt files are optional. Only files referenced in `AGENTS.md` are loaded.
-
----
-
-## Root AGENTS.md Entry
-
-Constructor Studio injects the same managed block into the **project root** `AGENTS.md` and `CLAUDE.md`, exposing only the configured install path:
+Constructor Studio injects a managed block into project-root `AGENTS.md` and
+`CLAUDE.md`:
 
 ````markdown
 <!-- @cf:root-agents -->
 ```toml
-cf-path = ".cf"
+cf-studio-path = ".bootstrap"
 ```
 <!-- /@cf:root-agents -->
 ````
 
-**Behavior**:
-- Inserted at the **beginning** of the root `AGENTS.md` and `CLAUDE.md` files
-- If a file does not exist, it is created
-- The path reflects the actual install directory via `cf-path`
-- Content between the `<!-- @cf:root-agents -->` and `<!-- /@cf:root-agents -->` markers is **fully managed** by Constructor Studio — overwritten on every check
-- Manual edits inside the block are discarded
+Rules:
 
-**Integrity check**: every Constructor Studio CLI invocation (not just `init`) verifies both blocks exist and the path is correct. If a block is missing or stale, it is silently re-injected. This ensures any agent that opens the project is immediately routed to Constructor Studio's navigation entry point.
+- The managed payload is only the TOML fence declaring `cf-studio-path`.
+- The block is inserted at the beginning of the file.
+- Missing root files may be created by setup or migration flows.
+- Manual edits inside the managed markers are discarded when a setup or repair
+  flow rewrites the block.
+- Project-skill routing reads this block; ordinary read-only commands do not
+  silently rewrite it.
 
----
+## Read vs Repair Lifecycle
+
+Observed CLI behavior splits cleanly into two modes.
+
+**Read-only / inspect flows**
+
+- `cfs info`
+- `cfs agents`
+- `cfs validate-toc`
+- ordinary project-skill routing
+
+These commands read root metadata and project config but are expected to leave
+the filesystem unchanged when no explicit write action was requested.
+
+**Repair / write flows**
+
+- `cfs init`
+- repeat `cfs init` repair mode
+- `cfs update`
+- legacy migration flows
+
+These flows may refresh or recreate:
+
+- root `AGENTS.md` managed block
+- root `CLAUDE.md` managed block
+- `{cf-studio-path}/.core/`
+- `{cf-studio-path}/.gen/AGENTS.md`
+- managed `.gitignore` block
+- generated agent integration outputs
+
+The architecture contract is therefore:
+
+- root managed blocks are refreshed by explicit setup/repair commands
+- root managed blocks are not silently repaired by unrelated read-only commands
 
 ## config/AGENTS.md
 
-**Location**: `{cf-studio-path}/config/AGENTS.md`
+`{cf-studio-path}/config/AGENTS.md` is the project navigation file. It declares
+which rule or doc files the controller should load for a given activity.
 
-`{cf-studio-path}/config/AGENTS.md` is the project-level navigation file. It declares which system prompts to load for which operations. Agents reach this file via the root `AGENTS.md` entry above.
-
-Kit workflow commands are **not** placed here — they are exposed via agent entry points (e.g., `.windsurf/workflows/cf-*.md`) generated from kit workflow files (see [kit.md](kit/kit.md)).
-
-### Required Structure
+Example:
 
 ```markdown
-# Constructor Studio: {Project Name}
+# Constructor Studio Adapter: Constructor Studio
 
-ALWAYS open and follow `{cf-studio-path}/config/sysprompts/tech-stack.md` WHEN writing code, choosing technologies, or adding dependencies
-ALWAYS open and follow `{cf-studio-path}/config/sysprompts/conventions.md` WHEN writing code, naming files/functions/variables, or reviewing code
-ALWAYS open and follow `{cf-studio-path}/config/sysprompts/domain-model.md` WHEN working with entities, data structures, or business logic
-ALWAYS open and follow `{cf-studio-path}/config/sysprompts/testing.md` WHEN writing tests, reviewing test coverage, or debugging
+ALWAYS open and follow `{cf-studio-path}/config/rules/tech-stack.md` WHEN writing code, choosing technologies, or adding dependencies
+ALWAYS open and follow `{cf-studio-path}/config/rules/conventions.md` WHEN writing code, naming files/functions/variables, or reviewing code
+ALWAYS open and follow `{cf-studio-path}/config/rules/architecture.md` WHEN modifying architecture, adding components, or refactoring module boundaries
+ALWAYS open and follow `CONTRIBUTING.md#making-changes` WHEN making code changes, architecture changes, or kit blueprint changes
 ```
 
-### WHEN Rule Format
+Requirements:
 
-```
-ALWAYS open and follow `{sysprompt-path}` WHEN {action-description}
-```
+- Rules must be action-based.
+- Paths may target project rule files or other project docs.
+- Declaration order matters for load order.
+- Kit workflow entry points are not declared here; they are exposed through
+  generated agent surfaces.
 
-- `{sysprompt-path}` — relative to `{cf-studio-path}/config/` (e.g., `sysprompts/tech-stack.md`)
-- `{action-description}` — action-based description of WHEN to load the system prompt
+## Rule Files
 
-**Rules MUST be action-based** — they describe what the agent is doing, not which artifact kind is active:
+Rule files are plain Markdown guidance documents under
+`{cf-studio-path}/config/rules/`.
 
-| Correct | Incorrect |
-|---------|-----------|
-| `WHEN writing code, choosing technologies` | `WHEN generating DESIGN` |
-| `WHEN working with entities, data structures` | `WHEN Constructor Studio uses kit sdlc` |
-| `WHEN writing tests, reviewing coverage` | `WHEN working on project` |
+Recommended topics match the auto-config output model:
 
----
+- `tech-stack.md`
+- `conventions.md`
+- `project-structure.md`
+- `domain-model.md`
+- `testing.md`
+- `build-deploy.md`
+- `architecture.md`
+- `patterns.md`
+- `anti-patterns.md`
 
-## System Prompt Files
+These files are project-owned guidance, not generated runtime-only shims.
 
-System prompt files are plain Markdown documents in `{cf-studio-path}/config/sysprompts/`. Each file provides project-specific context that agents load during operations.
+## Validation and Error Handling
 
-### Format
+Validation expectations:
 
-```markdown
-# {Spec Name}
+- `{cf-studio-path}/config/AGENTS.md` must exist in initialized projects.
+- Referenced `config/rules/*.md` files should exist for active project rules.
+- Missing rule files are configuration defects, not permission for a sub-agent to
+  read unrelated files directly.
 
-## Overview
-{Brief description of what this spec covers and why it matters}
+Relevant observed error/read contracts:
 
-## {Content Sections}
-{Domain-specific directives, constraints, and examples}
-
----
-**Source**: {Where this knowledge was discovered — DESIGN.md, ADRs, codebase, etc.}
-**Last Updated**: {Date}
-```
-
-### Standard System Prompts
-
-| System Prompt | WHEN Rule | Contains |
-|-----------|-----------|----------|
-| `tech-stack.md` | writing code, choosing technologies, adding dependencies | Languages, frameworks, databases, infrastructure constraints |
-| `conventions.md` | writing code, naming files/functions/variables, reviewing code | Naming conventions, code style, file organization |
-| `project-structure.md` | creating files, adding modules, navigating codebase | Directory layout, module organization, entry points |
-| `domain-model.md` | working with entities, data structures, business logic | Core concepts, entity relationships, invariants |
-| `testing.md` | writing tests, reviewing test coverage, debugging | Test frameworks, patterns, coverage requirements |
-| `patterns.md` | implementing features, designing components, refactoring | Architecture patterns, design patterns, state management |
-| `api-contracts.md` | creating/consuming APIs, defining endpoints, handling requests | Contract format, endpoint patterns, protocols |
-| `build-deploy.md` | building, deploying, configuring CI/CD | Build commands, CI/CD pipeline, deployment procedures |
-| `security.md` | handling authentication, authorization, sensitive data | Auth mechanisms, data classification, encryption |
-| `performance.md` | optimizing, caching, working with high-load components | SLAs, caching strategy, optimization patterns |
-| `reliability.md` | handling errors, implementing retries, adding health checks | Error handling, recovery, circuit breakers |
-
-Not all system prompts apply to all projects. Create only what is relevant.
-
-### Content Principles
-
-- **Actionable**: not just descriptions, but what to do
-- **Project-specific**: conventions that differ from kit defaults
-- **Source-referenced**: note where knowledge came from (DESIGN.md, ADRs, codebase)
-- **No artifact content**: no PRD requirements, no ADR rationale — those belong in artifacts
-
----
-
-## System Prompt Loading
-
-### When Prompts Are Loaded
-
-Workflows load project system prompts at specific points:
-
-| Operation | Loaded System Prompts (via WHEN matching) |
-|-----------|-------------------------------------------|
-| `cf generate PRD` | Prompts matching "working with entities", "writing requirements" |
-| `cf generate DESIGN` | Prompts matching "designing components", "choosing technologies" |
-| `{cfs_cmd} validate` | Prompts matching relevant artifact content |
-| Code generation/review | `tech-stack.md`, `conventions.md`, `patterns.md` |
-
-### Loading Algorithm
-
-1. Determine current operation context (generate, analyze, code, etc.)
-2. Read `{cf-studio-path}/config/AGENTS.md`
-3. For each `WHEN` rule, match the action description against current context
-4. Load matching system prompt files in declaration order
-5. Publish matching prompt text into `SHARED_CONTEXT_PACK` as `origin = "project"` assets
-6. Synthesize the final dispatch prompt for any prompt-consuming sub-agent
-
-### Interaction with Kit Prompts
-
-Project system prompts are **additive** — they don't replace kit-level prompts. Loading order:
-
-1. Kit rules and prompts (from `rules.md`, `SKILL.md`) — artifact-kind-level directives
-2. Project `{cf-studio-path}/config/sysprompts/*.md` (from AGENTS.md WHEN rules) — project-level context
-
-If a project system prompt contradicts a kit prompt, the project system prompt takes precedence (project-specific overrides generic).
-
-Prompt-consuming sub-agents receive the relevant project context through the
-controller-synthesized final dispatch prompt; they MUST NOT reopen project
-sysprompt files directly.
-
----
-
-## System Prompt Discovery
-
-For existing projects, Constructor Studio can auto-discover system prompt candidates:
-
-```bash
-{cfs_cmd} init --discover
-```
-
-**Discovery process**:
-1. Scan project for signals (config files, package manifests, CI configs, test directories)
-2. Propose system prompt files based on findings
-3. Generate draft system prompts with discovered information
-4. User reviews and confirms
-
-**Discovery signals**:
-
-| Signal | Produces |
-|--------|----------|
-| `package.json`, `pyproject.toml`, `go.mod`, `Cargo.toml` | `tech-stack.md` |
-| `.eslintrc`, `.prettierrc`, `ruff.toml`, `.editorconfig` | `conventions.md` |
-| Test directories, `pytest.ini`, `jest.config.js` | `testing.md` |
-| `Makefile`, `.github/workflows/`, `Dockerfile` | `build-deploy.md` |
-| `openapi.yml`, `*.proto` | `api-contracts.md` |
-| Schema/model directories, DESIGN.md domain section | `domain-model.md` |
-| Auth middleware, security configs | `security.md` |
-
----
-
-## Validation
-
-### AGENTS.md Validation
-
-| # | Check | Required | How to Verify |
-|---|-------|----------|---------------|
-| A.1 | `{cf-studio-path}/config/AGENTS.md` exists | YES | File exists |
-| A.2 | Has project name heading | YES | `# Constructor Studio: {name}` present |
-| A.3 | All WHEN rules use action-based format | YES | Pattern: `WHEN {verb}ing ...` |
-| A.4 | No orphaned WHEN rules | YES | All referenced system prompt files exist |
-
-### System Prompt File Validation
-
-| # | Check | Required | How to Verify |
-|---|-------|----------|---------------|
-| S.1 | Has H1 heading | YES | `# {name}` present |
-| S.2 | Has Overview section | YES | `## Overview` present |
-| S.3 | Has Source reference | YES | `**Source**:` present |
-| S.4 | No artifact content (PRD, ADR rationale) | YES | No requirement IDs, no decision rationale |
-| S.5 | Content is actionable | YES | Contains directives, not just descriptions |
-
-**Validation command**:
-```bash
-{cfs_cmd} validate --sysprompts
-```
-
----
-
-## Error Handling
-
-### System Prompt Not Found
-
-```
-⚠️ Orphaned WHEN rule: sysprompts/{name}.md not found
-→ Referenced in: {cf-studio-path}/config/AGENTS.md
-→ Fix: Create the sysprompt file OR remove the WHEN rule
-```
-**Action**: WARN — workflow continues without the missing spec.
-
-### AGENTS.md Not Found
-
-```
-⚠️ Project AGENTS.md not found: {cf-studio-path}/config/AGENTS.md
-→ No project-level system prompts will be loaded
-→ Fix: Run `cfs init` to create AGENTS.md
-```
-**Action**: WARN — workflows proceed with kit-level system prompts only.
-
-### Invalid WHEN Format
-
-```
-⚠️ Invalid WHEN rule format in AGENTS.md
-→ Line: "ALWAYS open and follow `specs/tech-stack.md` WHEN working on project"
-→ Expected: action-based description (WHEN writing code, WHEN designing, etc.)
-→ Fix: Use specific action verbs
-```
-**Action**: WARN — rule is skipped during loading.
-
----
-
-## Example
-
-A complete project extension for a TypeScript web application:
-
-`{cf-studio-path}/config/AGENTS.md`:
-```markdown
-# Constructor Studio: MyApp
-
-ALWAYS open and follow `{cf-studio-path}/config/sysprompts/tech-stack.md` WHEN writing code, choosing technologies, or adding dependencies
-ALWAYS open and follow `{cf-studio-path}/config/sysprompts/conventions.md` WHEN writing code, naming files/functions/variables, or reviewing code
-ALWAYS open and follow `{cf-studio-path}/config/sysprompts/domain-model.md` WHEN working with entities, data structures, or business logic
-ALWAYS open and follow `{cf-studio-path}/config/sysprompts/testing.md` WHEN writing tests, reviewing test coverage, or debugging
-ALWAYS open and follow `{cf-studio-path}/config/sysprompts/api-contracts.md` WHEN creating/consuming APIs, defining endpoints, or handling requests
-```
-
-`{cf-studio-path}/config/sysprompts/tech-stack.md`:
-```markdown
-# Tech Stack
-
-## Overview
-MyApp is a TypeScript monorepo using Next.js for the frontend and Fastify for the API.
-
-## Languages
-- **TypeScript** 5.x — all application code
-- **SQL** — database migrations (raw SQL, no ORM)
-
-## Frameworks
-- **Next.js** 14 — frontend (App Router, Server Components)
-- **Fastify** 4 — API server
-- **Drizzle ORM** — database access
-
-## Database
-- **PostgreSQL** 16 — primary datastore
-- **Redis** 7 — caching and sessions
-
-## Infrastructure
-- **Docker** — local development
-- **Vercel** — frontend deployment
-- **Fly.io** — API deployment
-
----
-**Source**: DESIGN.md (Section 2.1 Technology Stack)
-**Last Updated**: 2026-02-23
-```
-
----
+- read-only commands such as `info` return `FOUND` / `NOT_FOUND` style statuses
+  without mutating root files
+- `agents` returns `OK`, `NOT_FOUND`, or `CONFIG_ERROR` and remains read-only
+- setup/update flows own the responsibility for root-block repair
 
 ## References
 
-- **Kit specification**: `specs/kit/kit.md` — kit structure, file reference, update model
-- **Rules format**: `specs/kit/rules.md` — workflow entry point
-- **CLI**: `specs/cli.md` — `init`, `agents`, `validate --sysprompts` commands
+- [cli.md](./cli.md)
+- [shared-context-pack.md](./shared-context-pack.md)
+- [kit/kit.md](./kit/kit.md)
+- [../DESIGN.md](../DESIGN.md)

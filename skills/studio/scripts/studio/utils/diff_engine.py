@@ -939,6 +939,14 @@ def file_level_kit_update(
                 rel_path,
                 dest.as_posix(),
             }
+            # Manifest copy-mode updates commonly surface binding paths relative
+            # to the studio root (for example `config/kits/<slug>/...`).
+            # Accept those aliases in addition to the absolute resolved path.
+            if len(user_dir.parents) >= 3:
+                try:
+                    approval_tokens.add(dest.relative_to(user_dir.parents[2]).as_posix())
+                except ValueError:
+                    pass
             has_overwrite_approval = bool(overwrite_approvals.intersection(approval_tokens))
 
         if force or auto_approve:

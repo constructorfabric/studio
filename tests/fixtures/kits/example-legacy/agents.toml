@@ -1,0 +1,9 @@
+[agents.example-legacy-reviewer]
+description = "Example legacy reviewer"
+prompt_file = "agents/reviewer.md"
+mode = "readonly"
+
+[agents.example-legacy-planner]
+description = "Example legacy planner"
+prompt_file = "agents/planner.md"
+mode = "readonly"

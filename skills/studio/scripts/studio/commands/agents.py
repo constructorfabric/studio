@@ -29,6 +29,7 @@ composes SKILL.md from kit @cpt:skill sections, and creates workflow proxies.
 # order. Imports inside function bodies (deferred / lazy imports) remain in
 # place — see search for "    import " / "    from " inside this file.
 import argparse
+from dataclasses import dataclass
 import functools
 import json
 import re
@@ -103,6 +104,7 @@ _GENERATED_MARKER_RE = re.compile(
     re.MULTILINE,
 )
 _MANIFEST_FILE = "manifest.toml"
+GITIGNORE_FILENAME = ".gitignore"
 
 
 # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-determine-agent-path
@@ -389,6 +391,7 @@ def _is_pure_studio_generated_toml(content: str, expected_content: Optional[str]
     allowed_keys = {
         "name",
         "description",
+        "sandbox_mode",
         "developer_instructions",
         "model",
         "model_reasoning_effort",
@@ -415,6 +418,47 @@ def _is_pure_studio_generated_toml(content: str, expected_content: Optional[str]
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-is-pure-studio-generated-toml
 
 
+def _is_studio_managed_toml_output(content: str) -> bool:
+    """Return True when *content* matches the generated Codex TOML output shape.
+
+    Unlike ``_is_pure_studio_generated_toml`` this is used only for ownership
+    enumeration (for managed ``.gitignore`` entries), not stale cleanup. It is
+    intentionally looser: the file must carry the generated marker and parse as
+    the known generated TOML top-level shape, but it does not need byte-for-byte
+    reconstruction.
+    """
+    if _GENERATED_MARKER_TOML not in content:
+        return False
+    try:
+        data = tomllib.loads(content)
+    except tomllib.TOMLDecodeError:
+        return False
+    if not isinstance(data, dict) or not data:
+        return False
+    required_keys = {"name", "description", "developer_instructions"}
+    allowed_keys = {
+        "name",
+        "description",
+        "sandbox_mode",
+        "developer_instructions",
+        "model",
+        "model_reasoning_effort",
+        "model_context_window",
+    }
+    keys = set(data.keys())
+    if not required_keys.issubset(keys):
+        return False
+    if not keys.issubset(allowed_keys):
+        return False
+    if not isinstance(data.get("name"), str) or not str(data.get("name")).strip():
+        return False
+    if not isinstance(data.get("description"), str):
+        return False
+    if not isinstance(data.get("developer_instructions"), str):
+        return False
+    return True
+
+
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-expected-stale-studio-generated-toml
 def _expected_stale_studio_generated_toml(
     toml_file: Path,
@@ -439,7 +483,7 @@ def _expected_stale_studio_generated_toml(
         return None
 
     required_keys = {"name", "description", "developer_instructions"}
-    permitted_extra_keys = {"model", "model_reasoning_effort", "model_context_window"}
+    permitted_extra_keys = {"sandbox_mode", "model", "model_reasoning_effort", "model_context_window"}
     extra_keys = set(data.keys()) - required_keys
     if extra_keys and not extra_keys.issubset(permitted_extra_keys):
         return None
@@ -492,10 +536,10 @@ def _expected_stale_studio_generated_toml(
         # Append permitted extras in deterministic order, matching the generator's output ordering.
         # _render_toml_agent appends these same fields when present in the agent dict; preserve verbatim.
         extras_block_lines = []
-        for k in ("model", "model_reasoning_effort", "model_context_window"):
+        for k in ("sandbox_mode", "model", "model_reasoning_effort", "model_context_window"):
             if k in data:
                 v = data[k]
-                if k in ("model", "model_reasoning_effort") and isinstance(v, str):
+                if k in ("sandbox_mode", "model", "model_reasoning_effort") and isinstance(v, str):
                     extras_block_lines.append(f'{k} = "{_escape_toml_basic_string(v)}"')
                 elif k == "model_context_window" and isinstance(v, int) and not isinstance(v, bool):
                     extras_block_lines.append(f'{k} = {v}')
@@ -2052,12 +2096,10 @@ def _resolve_registered_legacy_studio_path(
 ) -> Optional[Path]:
     normalized = PurePosixPath(raw_path.strip().replace("\\", "/")).as_posix()
     path_obj = PurePosixPath(normalized)
-    has_parent_traversal = ".." in path_obj.parts
     if (
         not normalized
         or path_obj.is_absolute()
         or PureWindowsPath(normalized).is_absolute()
-        or (has_parent_traversal and normalized != "..")
     ):
         return None
     resolved = (studio_root / Path(normalized)).resolve()
@@ -2138,7 +2180,7 @@ def _component_enabled_for_agent(component: object, agent: str) -> bool:
 def _list_public_components(
     studio_root: Path,
     project_root: Optional[Path],
-    agent: str,
+    agent: Optional[str],
 ) -> Tuple[List[KitPublicComponent], Set[str]]:
     # @cpt-begin:cpt-studio-algo-kit-manifest-normalize:p1:inst-rollout-generate-agents
     # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
@@ -2179,7 +2221,7 @@ def _list_public_components(
         for component in model.public_components:
             if getattr(component, "kind", "") not in {"skill", "agent"}:
                 continue
-            if not _component_enabled_for_agent(component, agent):
+            if agent is not None and not _component_enabled_for_agent(component, agent):
                 continue
             resolved_source_path = _resolve_registered_resource_path(project_root, studio_root, kit_root, component, kit_entry)
             if resolved_source_path is None:
@@ -3632,6 +3674,71 @@ def _validate_manifest_subagent_entry(
     return entry
 
 
+def _build_public_nested_subagent_entry(
+    kit_slug: str,
+    subagent: Dict[str, Any],
+    kit_root: Path,
+    kit_entry: Dict[str, Any],
+    project_root: Path,
+    studio_root: Path,
+    agent: str,
+    *,
+    allow_disabled: bool = False,
+) -> Optional[Tuple[_AgentEntry, Path]]:
+    """Build a validated public nested subagent entry for one target."""
+    if not isinstance(subagent, dict):
+        return None
+    if not allow_disabled and not _nested_subagent_enabled(subagent, agent):
+        return None
+    entry = _validate_manifest_subagent_entry(
+        kit_slug,
+        subagent,
+        kit_root,
+        kit_entry,
+        project_root,
+        studio_root,
+    )
+    if entry is None:
+        return None
+    subagent_source_path = entry.get("prompt_source_abs")
+    if not isinstance(subagent_source_path, Path):
+        return None
+    nested_target = _nested_subagent_config(subagent, agent)
+    nested_name = str(entry["name"])
+    resolved_values = {
+        "mode": str(_subagent_value(subagent, nested_target, "mode", entry.get("mode", "readwrite")) or "readwrite"),
+        "role": str(_subagent_value(subagent, nested_target, "role", entry.get("role", "any")) or "any"),
+        "target": str(_subagent_value(subagent, nested_target, "target", entry.get("target", "any")) or "any"),
+        "provider": str(_subagent_value(subagent, nested_target, "provider", entry.get("provider", "anthropic")) or "anthropic"),
+        "reasoning_effort": _subagent_value(subagent, nested_target, "reasoning_effort", entry.get("reasoning_effort", None)),
+        "context_window": _subagent_value(subagent, nested_target, "context_window", entry.get("context_window", None)),
+    }
+    if not _validate_subagent_scalar_overrides(nested_name, resolved_values):
+        return None
+    return (
+        _AgentEntry(
+            id=nested_name,
+            description=str(entry.get("description", "") or f"Constructor Studio {nested_name} agent"),
+            source=subagent_source_path.as_posix(),
+            agents=_nested_subagent_agents(subagent, nested_target),
+            tools=_subagent_list(subagent, nested_target, "tools"),
+            disallowed_tools=_subagent_list(subagent, nested_target, "disallowed_tools"),
+            mode=resolved_values["mode"],
+            isolation=bool(_subagent_value(subagent, nested_target, "isolation", entry.get("isolation", False))),
+            model=str(_subagent_value(subagent, nested_target, "model", entry.get("model", "")) or ""),
+            skills=_subagent_list(subagent, nested_target, "skills"),
+            color=str(_subagent_value(subagent, nested_target, "color", "") or ""),
+            memory_dir=str(_subagent_value(subagent, nested_target, "memory_dir", "") or ""),
+            role=resolved_values["role"],
+            target=resolved_values["target"],
+            provider=resolved_values["provider"],
+            reasoning_effort=resolved_values["reasoning_effort"],
+            context_window=resolved_values["context_window"],
+        ),
+        subagent_source_path,
+    )
+
+
 def _process_kit_public_agents_and_rules(
     agent: str,
     project_root: Path,
@@ -3688,33 +3795,19 @@ def _process_kit_public_agents_and_rules(
             )
             # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-subagent-config
             for subagent in getattr(component, "subagents", []) or []:
-                if not isinstance(subagent, dict) or not _nested_subagent_enabled(subagent, agent):
-                    continue
-                entry = _validate_manifest_subagent_entry(
+                nested_entry = _build_public_nested_subagent_entry(
                     kit_slug,
                     subagent,
                     kit_root,
                     kit_entry,
                     project_root,
                     studio_root,
+                    agent,
                 )
-                if entry is None:
+                if nested_entry is None:
                     continue
-                subagent_source_path = entry.get("prompt_source_abs")
-                if not isinstance(subagent_source_path, Path):
-                    continue
-                nested_target = _nested_subagent_config(subagent, agent)
-                nested_name = str(entry["name"])
-                resolved_values = {
-                    "mode": str(_subagent_value(subagent, nested_target, "mode", entry.get("mode", "readwrite")) or "readwrite"),
-                    "role": str(_subagent_value(subagent, nested_target, "role", entry.get("role", "any")) or "any"),
-                    "target": str(_subagent_value(subagent, nested_target, "target", entry.get("target", "any")) or "any"),
-                    "provider": str(_subagent_value(subagent, nested_target, "provider", entry.get("provider", "anthropic")) or "anthropic"),
-                    "reasoning_effort": _subagent_value(subagent, nested_target, "reasoning_effort", entry.get("reasoning_effort", None)),
-                    "context_window": _subagent_value(subagent, nested_target, "context_window", entry.get("context_window", None)),
-                }
-                if not _validate_subagent_scalar_overrides(nested_name, resolved_values):
-                    continue
+                entry, subagent_source_path = nested_entry
+                nested_name = str(entry.id)
                 identity = ("agent", nested_name)
                 owner = f"{kit_slug}:{subagent_source_path.as_posix()}"
                 previous_owner = entry_owners.get(identity)
@@ -3724,25 +3817,7 @@ def _process_kit_public_agents_and_rules(
                     )
                     continue
                 entry_owners[identity] = owner
-                agent_entries[nested_name] = _AgentEntry(
-                    id=nested_name,
-                    description=str(entry.get("description", "") or f"Constructor Studio {nested_name} agent"),
-                    source=subagent_source_path.as_posix(),
-                    agents=_nested_subagent_agents(subagent, nested_target),
-                    tools=_subagent_list(subagent, nested_target, "tools"),
-                    disallowed_tools=_subagent_list(subagent, nested_target, "disallowed_tools"),
-                    mode=resolved_values["mode"],
-                    isolation=bool(_subagent_value(subagent, nested_target, "isolation", entry.get("isolation", False))),
-                    model=str(_subagent_value(subagent, nested_target, "model", entry.get("model", "")) or ""),
-                    skills=_subagent_list(subagent, nested_target, "skills"),
-                    color=str(_subagent_value(subagent, nested_target, "color", "") or ""),
-                    memory_dir=str(_subagent_value(subagent, nested_target, "memory_dir", "") or ""),
-                    role=resolved_values["role"],
-                    target=resolved_values["target"],
-                    provider=resolved_values["provider"],
-                    reasoning_effort=resolved_values["reasoning_effort"],
-                    context_window=resolved_values["context_window"],
-                )
+                agent_entries[nested_name] = entry
             # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-subagent-config
     # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
 
@@ -3754,9 +3829,175 @@ def _process_kit_public_agents_and_rules(
         studio_root=studio_root,
         trusted_roots=trusted_roots,
     )
+    _merge_action_result(
+        public_agents,
+        _cleanup_disabled_public_agent_outputs(project_root, studio_root, dry_run),
+    )
     public_agents.setdefault("errors", []).extend(agent_collision_errors)
     public_rules = {"created": [], "updated": [], "deleted": [], "outputs": [], "errors": []}
     return {"agents": public_agents, "rules": public_rules}
+
+
+def _expected_public_agent_output_for_target(
+    agent_id: str,
+    agent_entry: "_AgentEntry",
+    target: str,
+    project_root: Path,
+    studio_root: Path,
+    trusted_roots: List[Path],
+) -> Optional[Tuple[str, str]]:
+    """Rebuild the exact output payload for one public agent target."""
+    if target not in _AGENT_OUTPUT_PATHS:
+        return None
+    translated = translate_agent_schema(agent_entry, target)
+    if translated.get("skip"):
+        return None
+    source_content = _read_source_content(
+        "agent",
+        agent_id,
+        agent_entry.source or agent_entry.prompt_file,
+        project_root,
+        studio_root=studio_root,
+        trusted_roots=trusted_roots,
+    )
+    if source_content is None:
+        return None
+    path_template = _AGENT_OUTPUT_PATHS[target]
+    if target == "openai":
+        return _build_openai_agent_file(
+            agent_id,
+            agent_entry,
+            translated,
+            source_content,
+            path_template,
+            None,
+        )
+    return _build_standard_agent_file(
+        agent_id,
+        agent_entry,
+        translated,
+        source_content,
+        path_template,
+        None,
+    )
+
+
+def _cleanup_disabled_public_agent_outputs(
+    project_root: Path,
+    studio_root: Path,
+    dry_run: bool,
+) -> Dict[str, Any]:
+    """Remove stale public-agent outputs for targets no longer enabled."""
+    # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
+    result: Dict[str, Any] = {
+        "created": [],
+        "updated": [],
+        "deleted": [],
+        "outputs": [],
+        "errors": [],
+    }
+    # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
+    # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-subagent-config
+    public_components, _manifest_backed_kits = _list_public_components(
+        studio_root,
+        project_root,
+        None,
+    )
+    trusted_roots: List[Path] = []
+    for kit_slug, component, source_path, kit_root, kit_entry in public_components:
+        if getattr(component, "kind", "") != "agent":
+            continue
+        generated_name = str(getattr(component, "generated_name", "")).strip()
+        if not generated_name:
+            continue
+        trusted_roots = [source_path.parent, kit_root]
+        description = str(getattr(component, "description", "") or "").strip()
+        # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
+        for target in _AGENT_OUTPUT_PATHS:
+            if _component_enabled_for_agent(component, target):
+                continue
+            target_config = _component_target_config(component, target)
+            agent_entry = _AgentEntry(
+                id=generated_name,
+                description=description or f"Constructor Studio {generated_name} agent",
+                source=source_path.as_posix(),
+                agents=_component_agent_targets(component),
+                tools=_component_config_list(component, target_config, "tools"),
+                disallowed_tools=_component_config_list(component, target_config, "disallowed_tools"),
+                mode=str(_component_config_value(component, target_config, "mode", "readwrite") or "readwrite"),
+                isolation=bool(_component_config_value(component, target_config, "isolation", False)),
+                model=str(_component_config_value(component, target_config, "model", "") or ""),
+                skills=_component_config_list(component, target_config, "skills"),
+                color=str(_component_config_value(component, target_config, "color", "") or ""),
+                memory_dir=str(_component_config_value(component, target_config, "memory_dir", "") or ""),
+                role=str(_component_config_value(component, target_config, "role", "any") or "any"),
+                target=str(_component_config_value(component, target_config, "target", "any") or "any"),
+                provider=str(_component_config_value(component, target_config, "provider", "anthropic") or "anthropic"),
+                reasoning_effort=_component_config_value(component, target_config, "reasoning_effort", None),
+                context_window=_component_config_value(component, target_config, "context_window", None),
+            )
+            expected = _expected_public_agent_output_for_target(
+                generated_name,
+                agent_entry,
+                target,
+                project_root,
+                studio_root,
+                trusted_roots,
+            )
+            if expected is None:
+                continue
+            expected_content, rel_out = expected
+            _delete_generated_file_if_owned(
+                project_root / rel_out,
+                result,
+                project_root,
+                dry_run,
+                expected_content=expected_content,
+                reason=f"disabled_public_agent_target:{kit_slug}:{target}",
+            )
+        # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
+        # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
+        for subagent in getattr(component, "subagents", []) or []:
+            if not isinstance(subagent, dict):
+                continue
+            for target in _AGENT_OUTPUT_PATHS:
+                if _nested_subagent_enabled(subagent, target):
+                    continue
+                nested_entry = _build_public_nested_subagent_entry(
+                    kit_slug,
+                    subagent,
+                    kit_root,
+                    kit_entry,
+                    project_root,
+                    studio_root,
+                    target,
+                    allow_disabled=True,
+                )
+                if nested_entry is None:
+                    continue
+                agent_entry, subagent_source_path = nested_entry
+                expected = _expected_public_agent_output_for_target(
+                    agent_entry.id,
+                    agent_entry,
+                    target,
+                    project_root,
+                    studio_root,
+                    [subagent_source_path.parent, kit_root],
+                )
+                if expected is None:
+                    continue
+                expected_content, rel_out = expected
+                _delete_generated_file_if_owned(
+                    project_root / rel_out,
+                    result,
+                    project_root,
+                    dry_run,
+                    expected_content=expected_content,
+                    reason=f"disabled_public_agent_target:{kit_slug}:{target}",
+                )
+        # @cpt-end:cpt-studio-algo-kit-public-component-generation:p1:inst-public-generate-from-kitmodel
+    # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-subagent-config
+    return result
 
 
 def _collect_managed_result_paths(
@@ -3796,46 +4037,206 @@ def _collect_managed_result_paths(
     return {path for path in paths if path}
 
 
-def list_managed_agent_output_paths(
+@dataclass(frozen=True)
+class ManagedOutput:
+    """Normalized metadata for one Constructor Studio-managed generated output."""
+
+    path: str
+    provider: str
+    owner_kind: str
+    managed: bool = True
+    gitignore: bool = True
+
+
+def _normalize_managed_output_path(project_root: Path, raw_path: str) -> str:
+    candidate_path = Path(raw_path)
+    if candidate_path.is_absolute():
+        return _safe_relpath(candidate_path, project_root)
+    return raw_path.replace("\\", "/").strip("/")
+
+
+def _provider_for_output_path(path: str) -> str:
+    normalized = path.replace("\\", "/").strip("/")
+    if normalized.startswith(".claude/"):
+        return "claude"
+    if normalized.startswith(".cursor/"):
+        return "cursor"
+    if normalized.startswith(".github/"):
+        return "copilot"
+    if normalized.startswith(".codex/"):
+        return "openai"
+    if normalized.startswith(".windsurf/"):
+        return "windsurf"
+    if normalized.startswith(".agents/"):
+        return "studio"
+    return "unknown"
+
+
+def _managed_outputs_from_section(
     project_root: Path,
-    studio_root: Path,
-) -> List[str]:
-    """Return exact CFS-managed agent integration paths for the current install."""
-    cfg = _default_agents_config()
-    managed_paths: Set[str] = set()
+    section: Dict[str, Any],
+    *,
+    owner_kind: str,
+) -> List[ManagedOutput]:
+    # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-agent-output-paths
+    outputs: List[ManagedOutput] = []
+    for path in sorted(_collect_managed_result_paths(project_root, section)):
+        provider = _provider_for_output_path(path)
+        outputs.append(
+            ManagedOutput(
+                path=path,
+                provider=provider,
+                owner_kind=owner_kind,
+            )
+        )
+    return outputs
+    # @cpt-end:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-agent-output-paths
 
+
+def _scan_owned_generated_outputs(project_root: Path) -> List[ManagedOutput]:
+    """Return generated outputs provably owned by Constructor Studio on disk."""
+    # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-determine-agent-path
+    scan_roots = {
+        "claude": [project_root / ".claude" / "agents", project_root / ".claude" / "skills"],
+        "cursor": [project_root / ".cursor" / "agents", project_root / ".cursor" / "commands"],
+        "copilot": [project_root / ".github" / "agents", project_root / ".github" / "prompts"],
+        "openai": [project_root / ".codex" / "agents"],
+        "windsurf": [project_root / ".windsurf" / "workflows"],
+        "studio": [project_root / ".agents" / "skills"],
+    }
+    # @cpt-end:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-determine-agent-path
+    outputs: List[ManagedOutput] = []
+    # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-iterate-agents
+    for provider, roots in scan_roots.items():
+        for root in roots:
+            if not root.is_dir():
+                continue
+            for path in sorted(p for p in root.rglob("*") if p.is_file()):
+                content = _read_generated_output_text(path)
+                if content is None:
+                    continue
+                rel = _safe_relpath(path, project_root)
+                owner_kind = _classify_generated_output_owner(rel, content)
+                if owner_kind is None:
+                    continue
+                # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-track-agent-results
+                outputs.append(
+                    ManagedOutput(
+                        path=rel,
+                        provider=provider,
+                        owner_kind=owner_kind,
+                    )
+                )
+                # @cpt-end:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-track-agent-results
+    return outputs
+    # @cpt-end:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-iterate-agents
+
+
+def _read_generated_output_text(path: Path) -> Optional[str]:
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def _classify_generated_output_owner(rel: str, content: str) -> Optional[str]:
+    if rel.endswith(".toml"):
+        return "agent" if _is_studio_managed_toml_output(content) else None
+    if not (
+        _extract_studio_follow_target(content)
+        or _extract_studio_endpoint_target(content)
+        or _is_pure_studio_generated(content)
+    ):
+        return None
+    if "/agents/" in rel:
+        return "agent"
+    if "/skills/" in rel:
+        return "skill"
+    if "/workflows/" in rel or "/commands/" in rel or "/prompts/" in rel:
+        return "workflow"
+    return "generated"
+
+
+def _collect_marker_and_configured_outputs(cfg: Dict[str, Any]) -> Dict[str, ManagedOutput]:
+    managed: Dict[str, ManagedOutput] = {}
     for marker_path, _marker_content in _INSTALL_MARKERS.values():
-        managed_paths.add(marker_path)
-
+        normalized = marker_path.replace("\\", "/").strip("/")
+        managed[normalized] = ManagedOutput(
+            path=normalized,
+            provider=_provider_for_output_path(normalized),
+            owner_kind="marker",
+        )
     for agent in _ALL_RECOGNIZED_AGENTS:
         agent_cfg = cfg.get("agents", {}).get(agent, {})
         skills_cfg = agent_cfg.get("skills", {}) if isinstance(agent_cfg, dict) else {}
         outputs = skills_cfg.get("outputs") if isinstance(skills_cfg, dict) else None
-        if isinstance(outputs, list):
-            for output in outputs:
-                if not isinstance(output, dict):
-                    continue
-                rel_path = output.get("path")
-                if isinstance(rel_path, str) and rel_path.strip():
-                    managed_paths.add(rel_path.replace("\\", "/").strip("/"))
-        sections: List[Dict[str, Any]] = []
-        sections.append(_process_workflows(agent, project_root, studio_root, cfg, None, dry_run=True))
-        sections.append(_process_skills(agent, project_root, studio_root, cfg, None, dry_run=True))
-        sections.append(_process_kit_workflow_skills(agent, project_root, studio_root, cfg, None, dry_run=True))
-        sections.append(_process_subagents(agent, project_root, studio_root, cfg, None, dry_run=True))
+        if not isinstance(outputs, list):
+            continue
+        for output in outputs:
+            if not isinstance(output, dict):
+                continue
+            rel_path = output.get("path")
+            if not isinstance(rel_path, str) or not rel_path.strip():
+                continue
+            normalized = rel_path.replace("\\", "/").strip("/")
+            managed[normalized] = ManagedOutput(
+                path=normalized,
+                provider=_provider_for_output_path(normalized),
+                owner_kind="configured",
+            )
+    return managed
+
+
+def _collect_dry_run_generated_outputs(
+    cfg: Dict[str, Any],
+    project_root: Path,
+    studio_root: Path,
+) -> Dict[str, ManagedOutput]:
+    managed: Dict[str, ManagedOutput] = {}
+    for agent in _ALL_RECOGNIZED_AGENTS:
+        sections: List[Tuple[str, Dict[str, Any]]] = [
+            ("workflow", _process_workflows(agent, project_root, studio_root, cfg, None, dry_run=True)),
+            ("skill", _process_skills(agent, project_root, studio_root, cfg, None, dry_run=True)),
+            ("skill", _process_kit_workflow_skills(agent, project_root, studio_root, cfg, None, dry_run=True)),
+            ("subagent", _process_subagents(agent, project_root, studio_root, cfg, None, dry_run=True)),
+        ]
         public_sections = _process_kit_public_agents_and_rules(
             agent,
             project_root,
             studio_root,
             dry_run=True,
         )
-        sections.append(public_sections.get("agents", {}))
-        sections.append(public_sections.get("rules", {}))
-        for section in sections:
-            if isinstance(section, dict):
-                managed_paths.update(_collect_managed_result_paths(project_root, section))
+        sections.append(("agent", public_sections.get("agents", {})))
+        sections.append(("rule", public_sections.get("rules", {})))
+        for owner_kind, section in sections:
+            for output in _managed_outputs_from_section(project_root, section, owner_kind=owner_kind):
+                managed[output.path] = output
+    return managed
 
-    return sorted(path for path in managed_paths if path)
+
+def _collect_scanned_managed_outputs(project_root: Path) -> Dict[str, ManagedOutput]:
+    return {output.path: output for output in _scan_owned_generated_outputs(project_root)}
+
+
+def collect_managed_outputs(
+    project_root: Path,
+    studio_root: Path,
+) -> List[ManagedOutput]:
+    """Return the normalized set of Constructor Studio-managed generated outputs."""
+    cfg = _default_agents_config()
+    managed = _collect_marker_and_configured_outputs(cfg)
+    managed.update(_collect_dry_run_generated_outputs(cfg, project_root, studio_root))
+    managed.update(_collect_scanned_managed_outputs(project_root))
+
+    return sorted(managed.values(), key=lambda item: item.path)
+
+
+def list_managed_agent_output_paths(
+    project_root: Path,
+    studio_root: Path,
+) -> List[str]:
+    """Return exact CFS-managed agent integration paths for the current install."""
+    return [output.path for output in collect_managed_outputs(project_root, studio_root) if output.gitignore]
 
 
 def _process_legacy_cleanup(
@@ -4538,13 +4939,17 @@ def _resolve_includes_for_layers(layers: List, project_root: Path) -> Tuple[List
 
 
 # @cpt-begin:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-discover-flag
-def _run_discover_flag(args: Any, project_root: Path, studio_root: Path) -> None:
+def _run_discover_flag(args: Any, project_root: Path, studio_root: Path) -> Optional[str]:
     """Run --discover: scan dirs and write new entries to manifest.toml."""
     discovered = discover_components(project_root)
     manifest_out = studio_root / "config" / "manifest.toml"
+    manifest_existed = manifest_out.exists()
     if not args.dry_run:
         write_discovered_manifest(discovered, manifest_out)
         sys.stderr.write(f"INFO: wrote discovered manifest to {manifest_out}\n")
+    if not manifest_existed and manifest_out.is_file():
+        return _safe_relpath(manifest_out, project_root)
+    return None
 # @cpt-end:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-discover-flag
 
 
@@ -4573,23 +4978,23 @@ def _confirm_v2_generation(
     preview_create: int,
     preview_update: int,
     preview_delete: int = 0,
-) -> bool:
-    """Return True if generation should proceed, False if user aborted.
+) -> str:
+    """Return the next generate-agents action after preview confirmation.
 
     Handles: dry_run short-circuit, no-changes case, JSON-mode bypass,
     --yes flag, and interactive prompt.
     """
     if args.dry_run:
-        return False
+        return "SKIP"
     if not preview_create and not preview_update and not preview_delete:
         ui.info("No changes needed — agent files are up to date.")
-        return False
+        return "NO_CHANGES"
     from ..utils.ui import is_json_mode
     if not is_json_mode():
         auto_approve = getattr(args, "yes", False)
         if not auto_approve:
             if not sys.stdin.isatty():
-                return True  # non-interactive: proceed
+                return "PROCEED"  # non-interactive: proceed
             sys.stdout.write(
                 f"Will create {preview_create} file(s), update {preview_update} file(s), "
                 f"delete {preview_delete} file(s).\n"
@@ -4601,9 +5006,8 @@ def _confirm_v2_generation(
             sys.stdout.flush()
             answer = sys.stdin.readline().strip().lower()
             if answer and answer not in ("y", "yes"):
-                ui.info("Aborted.")
-                return False
-    return True
+                return "ABORTED"
+    return "PROCEED"
 
 
 def _run_v2_pipeline(
@@ -4654,13 +5058,16 @@ def _run_v2_pipeline(
             remove_cypilot=remove_cypilot,
         )
         if agent in results:
+            results[agent]["status"] = _merge_v2_status(legacy_result, results[agent])
             results[agent]["workflows"] = legacy_result.get("workflows", {})
             results[agent]["subagents"] = legacy_result.get("subagents", {})
+            results[agent]["rules"] = legacy_result.get("rules", {})
+            results[agent]["errors"] = legacy_result.get("errors")
             legacy_skills = legacy_result.get("skills", {})
             v2_skill_ids = {e.get("path", "") for e in results[agent].get("skills", {}).get("outputs", [])}
             if not any(agent in str(sk_path) for sk_path in v2_skill_ids):
                 results[agent]["legacy_skills"] = legacy_skills
-            if legacy_result.get("status") != "PASS":
+            if results[agent]["status"] != "PASS":
                 has_errors = True
         else:
             results[agent] = legacy_result
@@ -4717,8 +5124,9 @@ def cmd_generate_agents(argv: List[str]) -> int:
 
         # Step 4: Handle --discover flag
         # @cpt-begin:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-step4-discover
+        discover_created_path = None
         if getattr(args, "discover", False):
-            _run_discover_flag(args, project_root, studio_root)
+            discover_created_path = _run_discover_flag(args, project_root, studio_root)
             discovered_layers = _discover_layers(project_root, studio_root)
             layers = [layer for layer in discovered_layers if layer.scope == "kit"]
             resolved_layers, has_v2_errors = _resolve_includes_for_layers(layers, project_root)
@@ -4766,7 +5174,12 @@ def cmd_generate_agents(argv: List[str]) -> int:
         preview_v2_create = 0
         preview_v2_update = 0
         preview_v2_delete = 0
-        preview_gitignore_action = _refresh_managed_gitignore(project_root, studio_root, dry_run=True)
+        preview_gitignore_action = _refresh_managed_gitignore(
+            project_root,
+            studio_root,
+            dry_run=True,
+            extra_paths=[discover_created_path] if discover_created_path else None,
+        )
         preview_agents: Dict[str, Dict[str, Any]] = {}
         preview_skills: Dict[str, Dict[str, Any]] = {}
         legacy_preview: Dict[str, Any] = {}
@@ -4838,7 +5251,10 @@ def cmd_generate_agents(argv: List[str]) -> int:
         # @cpt-end:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-step8-dry-run-report
 
         # @cpt-begin:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-step8-confirm-execute
-        if not _confirm_v2_generation(args, preview_v2_create, preview_v2_update, preview_v2_delete):
+        confirm_action = _confirm_v2_generation(args, preview_v2_create, preview_v2_update, preview_v2_delete)
+        if confirm_action == "ABORTED":
+            return _emit_generate_agents_aborted()
+        if confirm_action != "PROCEED":
             return 0
 
         results, has_errors = _run_v2_pipeline(
@@ -4854,7 +5270,12 @@ def cmd_generate_agents(argv: List[str]) -> int:
             trusted_roots=_trusted_roots,
             remove_cypilot=remove_cypilot,
         )
-        gitignore_action = _refresh_managed_gitignore(project_root, studio_root, dry_run=False)
+        gitignore_action = _refresh_managed_gitignore(
+            project_root,
+            studio_root,
+            dry_run=False,
+            extra_paths=[discover_created_path] if discover_created_path else None,
+        )
         agents_result = _build_result(
             results,
             agents_to_process,
@@ -4887,12 +5308,9 @@ def cmd_generate_agents(argv: List[str]) -> int:
         return 0
 
     # Handle --discover flag in legacy mode
+    discover_created_path = None
     if getattr(args, "discover", False):
-        discovered = discover_components(project_root)
-        manifest_out = studio_root / "config" / "manifest.toml"
-        if not args.dry_run:
-            write_discovered_manifest(discovered, manifest_out)
-            sys.stderr.write(f"INFO: wrote discovered manifest to {manifest_out}\n")
+        discover_created_path = _run_discover_flag(args, project_root, studio_root)
 
     # Step 1: Dry run to preview changes
     # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-for-each-agent
@@ -4913,7 +5331,12 @@ def cmd_generate_agents(argv: List[str]) -> int:
     total_create = 0
     total_update = 0
     total_delete = 0
-    preview_gitignore_action = _refresh_managed_gitignore(project_root, studio_root, dry_run=True)
+    preview_gitignore_action = _refresh_managed_gitignore(
+        project_root,
+        studio_root,
+        dry_run=True,
+        extra_paths=[discover_created_path] if discover_created_path else None,
+    )
     for r in preview_results.values():
         wf = r.get("workflows", {})
         sk = r.get("skills", {})
@@ -5029,11 +5452,7 @@ def cmd_generate_agents(argv: List[str]) -> int:
             except (EOFError, KeyboardInterrupt):
                 answer = "n"
             if answer and answer not in ("y", "yes"):
-                ui.result(
-                    {"status": "ABORTED", "message": "Cancelled by user"},
-                    human_fn=lambda d: (ui.warn("Aborted."), ui.blank()),
-                )
-                return 1
+                return _emit_generate_agents_aborted()
 
     # Step 3: Execute the actual write
     # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-for-each-agent
@@ -5055,7 +5474,12 @@ def cmd_generate_agents(argv: List[str]) -> int:
     # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-for-each-agent
 
     # @cpt-begin:cpt-studio-flow-agent-integration-generate:p1:inst-return-report
-    gitignore_action = _refresh_managed_gitignore(project_root, studio_root, dry_run=False)
+    gitignore_action = _refresh_managed_gitignore(
+        project_root,
+        studio_root,
+        dry_run=False,
+        extra_paths=[discover_created_path] if discover_created_path else None,
+    )
     agents_result = _build_result(
         results,
         agents_to_process,
@@ -5107,6 +5531,107 @@ def _result_has_fatal_errors(result: Dict[str, Any]) -> bool:
         # Any other error (including non-string structured errors) is fatal.
         return True
     return False
+
+
+def _output_actions_with_reason(section: Dict[str, Any], action: str) -> List[Dict[str, str]]:
+    """Return normalized output items from *section* matching *action*."""
+    outputs = section.get("outputs") if isinstance(section, dict) else None
+    if not isinstance(outputs, list):
+        return []
+    collected: List[Dict[str, str]] = []
+    for item in outputs:
+        if not isinstance(item, dict) or item.get("action") != action:
+            continue
+        path = item.get("path")
+        reason = item.get("reason")
+        if not isinstance(path, str) or not path:
+            continue
+        entry: Dict[str, str] = {"path": path}
+        if isinstance(reason, str) and reason:
+            entry["reason"] = reason
+        collected.append(entry)
+    return collected
+
+
+def _collect_partial_reasons(results: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Summarize why a generate-agents run ended in PARTIAL state."""
+    partials: List[Dict[str, Any]] = []
+    for agent_name, result in results.items():
+        if str(result.get("status", "PASS")).upper() == "PASS":
+            continue
+        categories: List[str] = []
+        error_messages = _collect_partial_error_messages(result, categories)
+        preserved_outputs = _collect_partial_preserved_outputs(result, categories)
+        skipped = _collect_partial_skipped_components(result, categories)
+        partial_entry: Dict[str, Any] = {
+            "agent": agent_name,
+            "categories": categories or ["unspecified"],
+        }
+        if error_messages:
+            partial_entry["errors"] = error_messages
+        if preserved_outputs:
+            partial_entry["preserved_outputs"] = preserved_outputs
+        if skipped:
+            partial_entry["skipped"] = skipped
+        partials.append(partial_entry)
+    return partials
+
+
+def _collect_partial_error_messages(result: Dict[str, Any], categories: List[str]) -> List[str]:
+    errors: List[str] = [str(err) for err in (result.get("errors") or [])]
+    for section_name in ("workflows", "skills", "legacy_skills", "subagents", "rules", "v2_agents"):
+        section = result.get(section_name, {})
+        if not isinstance(section, dict):
+            continue
+        for err in section.get("errors") or []:
+            msg = str(err)
+            if msg not in errors:
+                errors.append(msg)
+    if errors:
+        categories.append("errors")
+    return errors
+
+
+def _collect_partial_preserved_outputs(result: Dict[str, Any], categories: List[str]) -> List[Dict[str, str]]:
+    preserved_outputs: List[Dict[str, str]] = []
+    for section_name in ("skills", "legacy_skills", "subagents", "rules", "v2_agents"):
+        preserved_outputs.extend(_output_actions_with_reason(result.get(section_name, {}), "preserved"))
+    if preserved_outputs:
+        categories.append("preserved_outputs")
+    return preserved_outputs
+
+
+def _collect_partial_skipped_components(result: Dict[str, Any], categories: List[str]) -> List[str]:
+    skipped: List[str] = []
+    for label, section_name in (("subagents", "subagents"), ("rules", "rules")):
+        section = result.get(section_name, {})
+        if isinstance(section, dict) and section.get("skipped") and section.get("skip_reason"):
+            skipped.append(f"{label}: {section.get('skip_reason')}")
+    if skipped:
+        categories.append("skipped_components")
+    return skipped
+
+
+def _section_has_partial_outputs(section: Dict[str, Any]) -> bool:
+    if not isinstance(section, dict):
+        return False
+    if section.get("errors"):
+        return True
+    return any(
+        isinstance(item, dict) and item.get("action") == "preserved"
+        for item in section.get("outputs", [])
+    )
+
+
+def _merge_v2_status(legacy_result: Dict[str, Any], current_result: Dict[str, Any]) -> str:
+    legacy_status = str(legacy_result.get("status", "PASS")).upper()
+    if legacy_status != "PASS":
+        return legacy_status
+    if _section_has_partial_outputs(current_result.get("v2_agents", {})):
+        return "PARTIAL"
+    if _section_has_partial_outputs(current_result.get("skills", {})):
+        return "PARTIAL"
+    return legacy_status
 # @cpt-end:cpt-studio-flow-agent-integration-generate:p1:inst-return-exit-code
 
 
@@ -5122,6 +5647,7 @@ def _build_result(
     gitignore_action: Optional[str] = None,
 ) -> Dict[str, Any]:
     has_errors = any(r.get("status") != "PASS" for r in results.values())
+    partial_reasons = _collect_partial_reasons(results) if has_errors else []
     result = {
         "status": "PASS" if not has_errors else "PARTIAL",
         "agents": list(agents_to_process),
@@ -5134,28 +5660,152 @@ def _build_result(
     }
     if gitignore_action:
         result["gitignore"] = gitignore_action
+    if partial_reasons:
+        result["partial_reasons"] = partial_reasons
     return result
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-format-output
+
+
+def _write_expected_gitignore_block(
+    project_root: Path,
+    expected_block: str,
+    *,
+    dry_run: bool,
+) -> str:
+    """Write or update the managed Constructor Studio .gitignore block."""
+    from .init import GITIGNORE_MARKER_END, GITIGNORE_MARKER_START
+
+    gitignore_path = project_root / GITIGNORE_FILENAME
+    if not gitignore_path.is_file():
+        if not dry_run:
+            gitignore_path.write_text(expected_block + "\n", encoding="utf-8")
+        return "created"
+
+    content = gitignore_path.read_text(encoding="utf-8")
+    has_start = GITIGNORE_MARKER_START in content
+    has_end = GITIGNORE_MARKER_END in content
+    if has_start != has_end:
+        raise ValueError(f"{GITIGNORE_FILENAME} contains a malformed Constructor Studio managed block")
+    if has_start and has_end:
+        start_idx = content.index(GITIGNORE_MARKER_START)
+        end_idx = content.index(GITIGNORE_MARKER_END)
+        if end_idx < start_idx:
+            raise ValueError(f"{GITIGNORE_FILENAME} contains a malformed Constructor Studio managed block")
+        end_idx += len(GITIGNORE_MARKER_END)
+        current_block = content[start_idx:end_idx]
+        if current_block == expected_block:
+            return "unchanged"
+        new_content = content[:start_idx] + expected_block + content[end_idx:]
+    else:
+        prefix = content.rstrip("\n")
+        new_content = (prefix + "\n\n" if prefix else "") + expected_block + "\n"
+
+    if not dry_run:
+        gitignore_path.write_text(new_content, encoding="utf-8")
+    return "updated"
+
+
+def _build_managed_gitignore_block(
+    paths: List[str],
+) -> Optional[str]:
+    """Return a managed .gitignore block for the supplied project-relative paths."""
+    from .init import GITIGNORE_MARKER_END, GITIGNORE_MARKER_START
+
+    normalized: List[str] = []
+    seen: Set[str] = set()
+    for raw_path in paths:
+        if not isinstance(raw_path, str):
+            continue
+        path = raw_path.replace("\\", "/").strip("/")
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        normalized.append(path)
+    if not normalized:
+        return None
+    return "\n".join(
+        [
+            GITIGNORE_MARKER_START,
+            "# Generated Constructor Studio runtime and agent integration files.",
+            "# Files matched here are owned by Constructor Studio and may be overwritten.",
+            *normalized,
+            GITIGNORE_MARKER_END,
+        ]
+    )
+
+
+def _merge_gitignore_extra_paths(
+    expected_block: str,
+    extra_paths: List[str],
+) -> str:
+    """Append extra managed file paths to an existing managed .gitignore block."""
+    lines = expected_block.splitlines()
+    if not lines:
+        return expected_block
+    merged_lines = list(lines[:-1])
+    seen = {line for line in merged_lines if line and not line.startswith("#")}
+    for raw_path in extra_paths:
+        path = raw_path.replace("\\", "/").strip("/")
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        merged_lines.append(path)
+    merged_lines.append(lines[-1])
+    return "\n".join(merged_lines)
 
 
 def _refresh_managed_gitignore(
     project_root: Path,
     studio_root: Path,
     dry_run: bool,
+    extra_paths: Optional[List[str]] = None,
 ) -> Optional[str]:
     """Refresh the managed Constructor Studio .gitignore block when possible."""
     core_toml_path = studio_root / "config" / "core.toml"
-    if not core_toml_path.is_file():
-        return None
-    from .init import _read_kit_tracking, _write_gitignore_block
+    extra_entries = [
+        _normalize_managed_output_path(project_root, path)
+        for path in (extra_paths or [])
+        if isinstance(path, str) and path.strip()
+    ]
+    if core_toml_path.is_file():
+        from .init import _compute_gitignore_block, _read_install_tracking, _read_kit_tracking, _ignored_kit_paths, _write_gitignore_block
 
-    return _write_gitignore_block(
-        project_root,
-        _safe_relpath(studio_root, project_root),
-        core_toml_path,
-        _read_kit_tracking(core_toml_path, default="tracked"),
-        dry_run=dry_run,
+        if not extra_entries:
+            return _write_gitignore_block(
+                project_root,
+                _safe_relpath(studio_root, project_root),
+                core_toml_path,
+                _read_kit_tracking(core_toml_path, default="tracked"),
+                dry_run=dry_run,
+            )
+        expected_block = _compute_gitignore_block(
+            project_root,
+            _safe_relpath(studio_root, project_root),
+            _ignored_kit_paths(project_root, core_toml_path, default=_read_kit_tracking(core_toml_path, default="tracked")),
+            runtime_tracking=_read_install_tracking(core_toml_path, "runtime_tracking", default="ignored"),
+            agent_tracking=_read_install_tracking(core_toml_path, "agent_tracking", default="ignored"),
+        )
+        return _write_expected_gitignore_block(
+            project_root,
+            _merge_gitignore_extra_paths(expected_block, extra_entries),
+            dry_run=dry_run,
+        )
+
+    expected_block = _build_managed_gitignore_block(
+        list_managed_agent_output_paths(project_root, studio_root) + extra_entries
     )
+    if expected_block is None:
+        return None
+    return _write_expected_gitignore_block(project_root, expected_block, dry_run=dry_run)
+
+
+def _emit_generate_agents_aborted() -> int:
+    """Emit the standard user-cancel contract for generate-agents."""
+    ui.result(
+        {"status": "ABORTED", "message": "Cancelled by user"},
+        human_fn=lambda _d: (ui.warn("Aborted."), ui.blank()),
+    )
+    return 0
 
 # ---------------------------------------------------------------------------
 # Human-friendly formatters
@@ -5436,6 +6086,15 @@ def _human_generate_agents_ok(
         ui.hint("• Recognize the Constructor Studio skill in chat")
     else:
         ui.warn("Agent setup finished with some errors (see above).")
+        partial_reasons = data.get("partial_reasons")
+        if isinstance(partial_reasons, list):
+            for item in partial_reasons:
+                if not isinstance(item, dict):
+                    continue
+                agent_name = str(item.get("agent") or "agent")
+                categories = item.get("categories") or []
+                category_text = ", ".join(str(category) for category in categories) if categories else "unspecified"
+                ui.warn(f"  partial reason for {agent_name}: {category_text}")
     ui.blank()
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-format-output
 
@@ -5626,17 +6285,14 @@ def _translate_copilot_schema(agent: "_AgentEntry") -> Dict[str, Any]:
 
 
 def _translate_codex_schema(agent: "_AgentEntry") -> Dict[str, Any]:
-    """Return an explicit skip for manifest OpenAI agent generation."""
+    """Translate an agent entry to the OpenAI/Codex TOML schema."""
     # @cpt-begin:cpt-studio-algo-project-extensibility-translate-agent-schema:p1:inst-step-codex
     sandbox_mode = "read-only" if agent.mode == "readonly" else "workspace-write"
     result: Dict[str, Any] = {
         "frontmatter": [],
         "body_prefix": "",
-        "skip": True,
-        "skip_reason": (
-            "OpenAI/Codex manifest-agent generation is unsupported; OpenAI uses shared "
-            ".agents/skills/ outputs only"
-        ),
+        "skip": False,
+        "skip_reason": "",
         "sandbox_mode": sandbox_mode,
         "developer_instructions": agent.description or "",
     }

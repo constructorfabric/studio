@@ -1,0 +1,23 @@
+[manifest]
+version = "1"
+
+[[resources]]
+ id = "feature_template"
+source = "artifacts/FEATURE/template.md"
+default_path = "artifacts/FEATURE/template.md"
+type = "file"
+user_modifiable = false
+
+[[resources]]
+ id = "feature_example"
+source = "artifacts/FEATURE/example.md"
+default_path = "artifacts/FEATURE/example.md"
+type = "file"
+user_modifiable = false
+
+[[resources]]
+id = "constraints"
+source = "constraints.toml"
+default_path = "constraints.toml"
+type = "file"
+user_modifiable = false

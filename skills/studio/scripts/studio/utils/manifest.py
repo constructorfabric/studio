@@ -1481,6 +1481,33 @@ def build_source_to_resource_mapping(
                     if fpath.is_file():
                         rel_path = fpath.relative_to(kit_source).as_posix()
                         source_to_resource_id[rel_path] = res.id
+        for subagent in getattr(res, "subagents", []) or []:
+            if not isinstance(subagent, dict):
+                continue
+            subagent_source = str(subagent.get("source", "") or "").strip().replace("\\", "/")
+            if not subagent_source:
+                continue
+            source_rel_subagent = Path(subagent_source)
+            if source_rel_subagent.is_absolute():
+                raise ValueError(
+                    f"Resource '{res.id}': subagent source path '{subagent_source}' must be relative"
+                )
+            resolved_subagent = (kit_source / source_rel_subagent).resolve()
+            try:
+                resolved_subagent.relative_to(kit_source.resolve())
+            except ValueError as exc:
+                raise ValueError(
+                    f"Resource '{res.id}': subagent source path '{subagent_source}' escapes the kit root"
+                ) from exc
+            if not resolved_subagent.is_file():
+                continue
+            synthetic_id = f"{res.id}.__subagent__.{subagent_source}"
+            resource_info[synthetic_id] = ResourceInfo(
+                type="file",
+                source_base=subagent_source,
+                user_modifiable=res.user_modifiable,
+            )
+            source_to_resource_id[subagent_source] = synthetic_id
     # @cpt-end:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-expand-directories
     # @cpt-end:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-map-file-resources
     # @cpt-end:cpt-studio-algo-kit-manifest-source-mapping:p1:inst-record-resource-info

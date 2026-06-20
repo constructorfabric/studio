@@ -755,6 +755,47 @@ class TestFileLevelKitUpdateResourceBindings(unittest.TestCase):
                 "resource removed upstream; explicit prune mode required",
             )
 
+    def test_overwrite_approval_accepts_studio_relative_binding_path(self):
+        """Overwrite approvals accept config/kits-relative aliases for bound files."""
+        from studio.utils.diff_engine import file_level_kit_update
+        from studio.utils.manifest import ResourceInfo
+
+        with TemporaryDirectory() as td:
+            src = Path(td) / "src"
+            studio = Path(td) / "studio"
+            usr = studio / "config" / "kits" / "demo"
+            src.mkdir()
+            usr.mkdir(parents=True)
+            (src / "agents").mkdir()
+            (src / "agents" / "reviewer-helper.md").write_text("new helper\n", encoding="utf-8")
+            (usr / "agents").mkdir()
+            (usr / "agents" / "reviewer-helper.md").write_text("old helper\n", encoding="utf-8")
+
+            result = file_level_kit_update(
+                src,
+                usr,
+                auto_approve=True,
+                content_dirs=("agents",),
+                resource_bindings={
+                    "reviewer.__subagent__.agents/reviewer-helper.md": usr / "agents" / "reviewer-helper.md",
+                },
+                source_to_resource_id={
+                    "agents/reviewer-helper.md": "reviewer.__subagent__.agents/reviewer-helper.md",
+                },
+                resource_info={
+                    "reviewer.__subagent__.agents/reviewer-helper.md": ResourceInfo(
+                        type="file",
+                        source_base="agents/reviewer-helper.md",
+                        user_modifiable=True,
+                    ),
+                },
+                approved_overwrites=["config/kits/demo/agents/reviewer-helper.md"],
+            )
+
+            self.assertEqual(result["accepted"], ["agents/reviewer-helper.md"])
+            self.assertEqual(result["declined"], [])
+            self.assertEqual((usr / "agents" / "reviewer-helper.md").read_text(encoding="utf-8"), "new helper\n")
+
     def test_prune_bound_resource_file_requires_fingerprint(self):
         """Non-interactive prune mode still requires the per-path fingerprint."""
         from studio.utils.diff_engine import file_level_kit_update

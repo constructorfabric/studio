@@ -1,0 +1,28 @@
+[manifest]
+version = "2.0"
+
+[[agents]]
+id = "reviewer"
+source = "agents/reviewer.md"
+
+[[agents.subagents]]
+id = "reviewer-helper"
+source = "agents/reviewer-helper.md"
+
+[[agents]]
+id = "planner"
+source = "agents/planner.md"
+
+[[agents.subagents]]
+id = "planner-helper"
+source = "agents/planner-helper.md"
+
+[[skills]]
+id = "discovery"
+description = "Legacy discovery skill"
+prompt_file = "skills/discovery/SKILL.md"
+
+[[workflows]]
+id = "review"
+description = "Legacy review workflow"
+prompt_file = "skills/review/SKILL.md"

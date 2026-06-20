@@ -1014,7 +1014,7 @@ extensions = [".ts"]
 **CLI**: `skills/studio/studio.clispec`
 
 **Related**:
-- `sysprompts.md` - Project system prompts (`{cf-studio-path}/config/sysprompts/` + `config/AGENTS.md`)
+- `sysprompts.md` - Project rules and root navigation (`{cf-studio-path}/config/rules/` + `config/AGENTS.md`)
 
 ---
 

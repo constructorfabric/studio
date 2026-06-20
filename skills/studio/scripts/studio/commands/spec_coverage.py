@@ -16,6 +16,28 @@ from ..utils.coverage import FileCoverage, calculate_metrics, generate_report, s
 from ..utils.ui import ui
 # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-coverage-imports
 
+
+def _collect_system_slugs(nodes: List[object]) -> set[str]:
+    """Return all known system slugs, including nested children."""
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-user-spec-coverage
+    slugs: set[str] = set()
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-user-spec-coverage
+
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-load-context
+    def _visit(node: object) -> None:
+        slug = getattr(node, "slug", "")
+        if slug:
+            slugs.add(slug)
+        for child in getattr(node, "children", []):
+            _visit(child)
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-load-context
+
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-coverage-helpers
+    for node in nodes:
+        _visit(node)
+    return slugs
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-coverage-helpers
+
 def cmd_spec_coverage(argv: List[str]) -> int:
     """Run spec coverage analysis on registered codebase files."""
     from ..utils.context import get_context
@@ -48,9 +70,12 @@ def cmd_spec_coverage(argv: List[str]) -> int:
     # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-resolve-code-files
     code_files_to_scan: List[Path] = []
 
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-coverage-helpers
     def resolve_code_path(pth: str) -> Path:
         return (project_root / pth).resolve()
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-coverage-helpers
 
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-foreach-file
     def collect_codebase_files(system_node: object) -> None:
         for cb_entry in getattr(system_node, "codebase", []):
             path_str = getattr(cb_entry, "path", "") if not isinstance(cb_entry, dict) else cb_entry.get("path", "")
@@ -68,21 +93,45 @@ def cmd_spec_coverage(argv: List[str]) -> int:
 
         for child in getattr(system_node, "children", []):
             collect_codebase_files(child)
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-foreach-file
 
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-calc-metrics
     system_slugs = set(args.systems) if args.systems else None
+    known_system_slugs = _collect_system_slugs(list(meta.systems))
+    if system_slugs is not None:
+        unknown_systems = sorted(system_slugs - known_system_slugs)
+        if unknown_systems:
+            _output(
+                {
+                    "status": "FAIL",
+                    "message": "Unknown system selector(s)",
+                    "unknown_systems": unknown_systems,
+                },
+                args,
+            )
+            return 2
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-calc-metrics
 
-    def _matches_system_filter(node: object) -> bool:
-        """Check if a system node (or any ancestor) matches the --system filter."""
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-calc-granularity
+    def _collect_selected_system_files(node: object) -> None:
+        """Collect code files for the requested system slug(s), including children."""
         if system_slugs is None:
-            return True
+            collect_codebase_files(node)
+            return
         slug = getattr(node, "slug", "")
-        return slug in system_slugs
+        if slug in system_slugs:
+            collect_codebase_files(node)
+            return
+        for child in getattr(node, "children", []):
+            _collect_selected_system_files(child)
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-calc-granularity
 
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-gen-report
     for system_node in meta.systems:
-        if not _matches_system_filter(system_node):
-            continue
-        collect_codebase_files(system_node)
+        _collect_selected_system_files(system_node)
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-gen-report
 
+    # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-if-threshold
     filtered_files: List[Path] = []
     for fp in code_files_to_scan:
         try:
@@ -92,6 +141,7 @@ def cmd_spec_coverage(argv: List[str]) -> int:
         if rel and meta.is_ignored(rel):
             continue
         filtered_files.append(fp)
+    # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-if-threshold
     # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-resolve-code-files
 
     # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-coverage-helpers
@@ -205,9 +255,17 @@ def _format_ranges(ranges: list) -> str:
     return ", ".join(parts)
 
 def _human_spec_coverage(data: dict) -> None:
-    summary = data.get("summary", {})
     status = data.get("status", "")
+    unknown_systems = data.get("unknown_systems", [])
     ui.header("Spec Coverage")
+    if unknown_systems:
+        ui.error(data.get("message", "Unknown system selector(s)"))
+        for slug in unknown_systems:
+            ui.substep(f"  unknown system: {slug}")
+        ui.blank()
+        return
+
+    summary = data.get("summary", {})
     ui.detail("Files", f"{summary.get('covered_files', 0)}/{summary.get('total_files', 0)} covered")
     ui.detail("Coverage", f"{summary.get('coverage_pct', 0):.1f}%")
     ui.detail("Granularity", f"{summary.get('granularity_score', 0):.4f}")
