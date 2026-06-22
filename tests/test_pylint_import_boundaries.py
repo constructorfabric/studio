@@ -9,6 +9,8 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from tests.pylint_plugin_fakes import Import, ImportFrom, Name, load_plugin_module, set_root
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PYTHONPATH = os.pathsep.join([
     str(REPO_ROOT / "src"),
@@ -45,6 +47,56 @@ def _run_pylint(code: str, *, relative_path: str) -> subprocess.CompletedProcess
 
 class TestImportBoundariesChecker(unittest.TestCase):
     """Exercise import-boundary enforcement between proxy and studio packages."""
+
+    def test_helper_functions_cover_paths_and_import_name_extraction(self) -> None:
+        module = load_plugin_module("import_boundaries")
+        proxy_import = set_root(Import([("studio.utils.files", None)]), r"src\studio_proxy\resolve.py")
+        studio_import = set_root(ImportFrom("studio_proxy.resolve"), "skills/studio/scripts/studio/commands/sample.py")
+
+        self.assertEqual(module._module_path(proxy_import), "src/studio_proxy/resolve.py")
+        self.assertTrue(module._is_proxy_module(proxy_import))
+        self.assertFalse(module._is_studio_module(proxy_import))
+        self.assertTrue(module._is_studio_module(studio_import))
+        self.assertEqual(module._import_name(proxy_import), "studio.utils.files")
+        self.assertEqual(module._import_name(studio_import), "studio_proxy.resolve")
+        self.assertIsNone(module._import_name(Import([])))
+        self.assertIsNone(module._import_name(Name("not_import")))
+        self.assertTrue(module._imports_proxy("studio_proxy.cli"))
+        self.assertFalse(module._imports_proxy("studio.cli"))
+        self.assertTrue(module._imports_studio("studio.utils.ui"))
+        self.assertFalse(module._imports_studio("studio_proxy.resolve"))
+
+    def test_checker_and_register_paths(self) -> None:
+        module = load_plugin_module("import_boundaries")
+        checker = module.ImportBoundariesChecker(linter=None)
+        messages: list[str] = []
+        checker.add_message = lambda msgid, node=None: messages.append(msgid)
+
+        checker.visit_import(set_root(Import([("studio.utils.files", None)]), "src/studio_proxy/resolve.py"))
+        checker.visit_importfrom(
+            set_root(ImportFrom("studio_proxy.resolve"), "skills/studio/scripts/studio/commands/sample.py")
+        )
+        checker.visit_import(set_root(Import([("studio_proxy.cli", None)]), "src/studio_proxy/resolve.py"))
+
+        self.assertEqual(messages, ["proxy-imports-studio", "studio-imports-proxy"])
+
+        existing = type("Existing", (), {"name": module.ImportBoundariesChecker.name})()
+        linter = type(
+            "Linter",
+            (),
+            {"_checkers": {"astroid": [existing]}, "register_checker": lambda self, checker: (_ for _ in ()).throw(AssertionError)},
+        )()
+        module.register(linter)
+
+        recorded: list[object] = []
+        fresh_linter = type(
+            "Linter",
+            (),
+            {"_checkers": {}, "register_checker": lambda self, checker: recorded.append(checker)},
+        )()
+        module.register(fresh_linter)
+        self.assertEqual(len(recorded), 1)
+        self.assertIsInstance(recorded[0], module.ImportBoundariesChecker)
 
     def test_flags_proxy_importing_studio_with_import(self) -> None:
         result = _run_pylint(

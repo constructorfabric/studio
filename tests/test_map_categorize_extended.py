@@ -162,6 +162,13 @@ def test_glob_match_question_mark():
     assert _glob_match("doc?/**", "documentation/a.md") is False
 
 
+def test_glob_match_single_star_inside_regex_branch():
+    """_glob_match handles single-segment * even when ** forces regex mode."""
+    assert _glob_match("docs/*/**", "docs/api/spec.md") is True
+    assert _glob_match("docs/*/**", "docs/api/internal/spec.md") is True
+    assert _glob_match("docs/*/**", "docs/spec.md") is False
+
+
 def test_glob_match_double_star():
     """_glob_match with ** matches any path segments."""
     assert _glob_match("docs/**", "docs/sub/a.md") is True
@@ -240,6 +247,52 @@ def test_build_registry_index_valid(tmp_path):
     assert "docs/spec.md" in paths or any("spec.md" in p for p in paths)
 
 
+def test_build_registry_index_logs_and_recovers_from_loader_failure(monkeypatch, tmp_path, capsys):
+    """Registry loader failures should warn and degrade to an empty index."""
+    from studio.commands.map import categorize as categorize_module
+
+    def _raise_loader(_project_root):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(categorize_module, "_load_registry_meta", _raise_loader)
+
+    result = _build_registry_index(tmp_path)
+
+    assert result == []
+    assert "registry category discovery failed" in capsys.readouterr().err
+
+
+def test_build_registry_index_skips_entries_without_paths(monkeypatch, tmp_path):
+    """Registry items without a path are ignored rather than added to the index."""
+    from studio.commands.map import categorize as categorize_module
+
+    class _Item:
+        def __init__(self, path):
+            self.path = path
+
+    class _SystemNode:
+        def __init__(self, slug, parent=None):
+            self.slug = slug
+            self.parent = parent
+
+    class _Meta:
+        def iter_all_artifacts(self):
+            root = _SystemNode("system")
+            return [
+                (_Item(""), root),
+                (_Item("docs/spec.md"), root),
+            ]
+
+        def iter_all_codebase(self):
+            return []
+
+    monkeypatch.setattr(categorize_module, "_load_registry_meta", lambda _project_root: _Meta())
+
+    result = _build_registry_index(tmp_path)
+
+    assert [entry.path_prefix for entry in result] == ["docs/spec.md"]
+
+
 # ---------------------------------------------------------------------------
 # _match_registry
 # ---------------------------------------------------------------------------
@@ -307,6 +360,36 @@ def test_categorize_with_per_source_roots():
     categorize_nodes(nodes, opts)
     by_id = {n.id: n for n in nodes}
     assert by_id["local:docs/cli.md"].category_origin == "registry"
+
+
+def test_categorize_builds_indexes_for_non_local_sources(monkeypatch):
+    """Non-local source roots are indexed and used for matching."""
+    from studio.commands.map import categorize as categorize_module
+    from studio.commands.map.categorize import _RegistryEntry
+
+    calls = []
+
+    def _fake_build_registry_index(project_root):
+        calls.append(project_root)
+        if project_root == REPO_BASIC:
+            return []
+        return [_RegistryEntry(path_prefix="pkg", category="remote-system")]
+
+    monkeypatch.setattr(categorize_module, "_build_registry_index", _fake_build_registry_index)
+
+    node = _make_node("remote:pkg/module.py", rel_path="pkg/module.py", source="remote")
+    categorize_nodes(
+        [node],
+        CategorizeOptions(
+            project_root=REPO_BASIC,
+            override=None,
+            source_roots={"remote": REPO_NO_REGISTRY},
+        ),
+    )
+
+    assert calls == [REPO_BASIC, REPO_NO_REGISTRY]
+    assert node.category == "remote-system"
+    assert node.category_origin == "registry"
 
 
 def test_categorize_with_unknown_source_falls_back_to_primary():

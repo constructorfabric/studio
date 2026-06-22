@@ -23,12 +23,15 @@ import tempfile
 import tomllib
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "cypilot" / "scripts"))
 
 from studio.utils.toml_utils import (
     _format_value,
     _with_core_toml_lock,
+    _with_windows_core_toml_lock,
+    _wait_for_windows_lock,
     dump,
     dumps,
     load,
@@ -186,6 +189,89 @@ class TestTomlLocking(unittest.TestCase):
                     pass
             except Exception as e:
                 self.fail(f"Sequential lock acquisition raised {type(e).__name__}: {e}")
+
+    def test_core_toml_lock_falls_back_to_windows_lock_when_fcntl_unavailable(self):
+        """ImportError for fcntl routes through the Windows-compatible lock context."""
+        core_toml_path = Path("/tmp/core.toml")
+        entered = False
+
+        def _fake_import(name, *args, **kwargs):
+            if name == "fcntl":
+                raise ImportError("no fcntl")
+            return _real_import(name, *args, **kwargs)
+
+        from builtins import __import__ as _real_import
+
+        with patch("builtins.__import__", side_effect=_fake_import):
+            with patch("studio.utils.toml_utils._with_windows_core_toml_lock") as win_lock:
+                win_lock.return_value.__enter__.side_effect = lambda: None
+                win_lock.return_value.__exit__.side_effect = lambda exc_type, exc, tb: None
+                with _with_core_toml_lock(core_toml_path):
+                    entered = True
+
+        self.assertTrue(entered)
+        win_lock.assert_called_once_with(core_toml_path)
+
+
+class TestWindowsTomlLocking(unittest.TestCase):
+    """Coverage for Windows/sentinel-lock fallback paths."""
+
+    def test_wait_for_windows_lock_acquires_fd_immediately(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lock_path = Path(tmpdir) / "core.toml.lock"
+            lock_fd = _wait_for_windows_lock(lock_path)
+            try:
+                self.assertIsInstance(lock_fd, int)
+                self.assertTrue(lock_path.exists())
+            finally:
+                if lock_fd is not None:
+                    import os
+                    os.close(lock_fd)
+                lock_path.unlink(missing_ok=True)
+
+    def test_wait_for_windows_lock_times_out_and_clears_stale_lock(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lock_path = Path(tmpdir) / "core.toml.lock"
+            lock_path.write_text("busy", encoding="utf-8")
+            import os
+            os.utime(lock_path, (0, 0))
+
+            with patch("studio.utils.toml_utils.os.open", side_effect=FileExistsError), \
+                 patch("studio.utils.toml_utils.time.monotonic", side_effect=[0.0, 11.0]), \
+                 patch("studio.utils.toml_utils.time.time", return_value=20.0), \
+                 patch("studio.utils.toml_utils.time.sleep") as sleep_mock:
+                lock_fd = _wait_for_windows_lock(lock_path)
+
+            self.assertIsNone(lock_fd)
+            self.assertFalse(lock_path.exists())
+            sleep_mock.assert_not_called()
+
+    def test_windows_core_toml_lock_removes_lock_file_on_exit(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            core_toml_path = Path(tmpdir) / "core.toml"
+            lock_path = Path(tmpdir) / "core.toml.lock"
+
+            with patch("studio.utils.toml_utils._wait_for_windows_lock", return_value=123), \
+                 patch("studio.utils.toml_utils.os.close") as close_mock, \
+                 patch("studio.utils.toml_utils.os.unlink") as unlink_mock:
+                with _with_windows_core_toml_lock(core_toml_path):
+                    self.assertTrue(lock_path.parent.exists())
+
+            close_mock.assert_called_once_with(123)
+            unlink_mock.assert_called_once_with(str(lock_path))
+
+    def test_windows_core_toml_lock_allows_none_lock_fd(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            core_toml_path = Path(tmpdir) / "core.toml"
+
+            with patch("studio.utils.toml_utils._wait_for_windows_lock", return_value=None), \
+                 patch("studio.utils.toml_utils.os.close") as close_mock, \
+                 patch("studio.utils.toml_utils.os.unlink") as unlink_mock:
+                with _with_windows_core_toml_lock(core_toml_path):
+                    pass
+
+            close_mock.assert_not_called()
+            unlink_mock.assert_not_called()
 
 
 class TestFormatValueControlCharRoundtrip(unittest.TestCase):

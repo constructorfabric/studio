@@ -10,6 +10,23 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from tests.pylint_plugin_fakes import (
+    AnnAssign,
+    Assign,
+    AssignName,
+    Attribute,
+    Call,
+    Const,
+    ExceptHandler,
+    Name,
+    Pass,
+    Raise,
+    Return,
+    Try,
+    Tuple,
+    load_plugin_module,
+)
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PYTHONPATH = os.pathsep.join([
     str(REPO_ROOT / "src"),
@@ -45,6 +62,84 @@ def _run_pylint(code: str) -> subprocess.CompletedProcess[str]:
 
 class TestSilentExceptionSwallowedChecker(unittest.TestCase):
     """Exercise the local Pylint checker on temporary files."""
+
+    def test_helper_functions_cover_exception_names_and_silent_values(self) -> None:
+        module = load_plugin_module("silent_exceptions")
+
+        self.assertEqual(module._exception_names(None), set())
+        self.assertEqual(module._exception_names(Name("OSError")), {"OSError"})
+        self.assertEqual(module._exception_names(Attribute(Name("mod"), "CustomError")), {"CustomError"})
+        self.assertEqual(module._exception_names(Tuple([Name("OSError"), Attribute(Name("mod"), "CustomError")])), {"OSError", "CustomError"})
+        self.assertEqual(module._exception_names(Const("unexpected")), set())
+        self.assertTrue(module._is_silent_value(None))
+        self.assertTrue(module._is_silent_value(Name("fallback"), {"fallback"}))
+        self.assertTrue(module._is_silent_value(Const("")))
+        self.assertTrue(module._is_silent_value(module.nodes.List([])))
+        self.assertTrue(module._is_silent_value(module.nodes.Dict([])))
+        self.assertFalse(module._is_silent_value(Const(1)))
+        self.assertFalse(module._is_silent_value(Call(Name("work"))))
+        self.assertTrue(module._is_silent_return(Return(Const(False))))
+        self.assertTrue(module._is_silent_statement(Pass()))
+        self.assertTrue(module._is_passive_assignment(AnnAssign(AssignName("value"), Const(None))))
+
+    def test_checker_helper_and_register_paths(self) -> None:
+        module = load_plugin_module("silent_exceptions")
+        handler = ExceptHandler(
+            type=Name("OSError"),
+            name="exc",
+            body=[
+                Assign([AssignName("fallback")], Const(None)),
+                AnnAssign(AssignName("typed_fallback"), Name("fallback")),
+                Return(Name("fallback")),
+            ],
+        )
+        used_handler = ExceptHandler(
+            type=Name("OSError"),
+            name=AssignName("exc"),
+            body=[Call(Name("print"), args=[Name("exc")])],
+        )
+
+        self.assertEqual(module._assigned_silent_names(handler), {"fallback", "typed_fallback"})
+        self.assertEqual(module._handler_exception_name(handler), "exc")
+        self.assertFalse(module._exception_name_used(handler))
+        self.assertTrue(module._exception_name_used(used_handler))
+        self.assertTrue(module._has_visible_signal(Raise()))
+        self.assertTrue(module._has_visible_signal(Call(Attribute(Name("ui"), "warn"))))
+        self.assertEqual(module._callee_name(Call(Attribute(Name("ui"), "warn"))), "warn")
+        self.assertIsNone(module._callee_name(Call(Const("unknown"))))
+        self.assertFalse(module._is_passive_statement(Call(Name("work"))))
+
+        checker = module.SilentExceptionSwallowedChecker(linter=None)
+        messages: list[str] = []
+        checker.add_message = lambda msgid, node=None: messages.append(msgid)
+        checker.visit_try(
+            Try([
+                ExceptHandler(type=Name("KeyboardInterrupt"), body=[Return(Const(False))]),
+                ExceptHandler(type=Name("OSError"), body=[]),
+                used_handler,
+                ExceptHandler(type=Name("OSError"), body=[Raise()]),
+                handler,
+            ])
+        )
+        self.assertEqual(messages, ["silent-exception-swallowed"])
+
+        existing = type("Existing", (), {"name": module.SilentExceptionSwallowedChecker.name})()
+        linter = type(
+            "Linter",
+            (),
+            {"_checkers": {"astroid": [existing]}, "register_checker": lambda self, checker: (_ for _ in ()).throw(AssertionError)},
+        )()
+        module.register(linter)
+
+        recorded: list[object] = []
+        fresh_linter = type(
+            "Linter",
+            (),
+            {"_checkers": {}, "register_checker": lambda self, checker: recorded.append(checker)},
+        )()
+        module.register(fresh_linter)
+        self.assertEqual(len(recorded), 1)
+        self.assertIsInstance(recorded[0], module.SilentExceptionSwallowedChecker)
 
     def test_flags_except_pass(self) -> None:
         result = _run_pylint(

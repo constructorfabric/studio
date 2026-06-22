@@ -10,6 +10,16 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from tests.pylint_plugin_fakes import (
+    Attribute,
+    Call,
+    Const,
+    Keyword,
+    Name,
+    load_plugin_module,
+    set_root,
+)
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PYTHONPATH = os.pathsep.join([
     str(REPO_ROOT / "src"),
@@ -46,6 +56,106 @@ def _run_pylint(code: str, *, relative_path: str = "sample.py") -> subprocess.Co
 
 class TestOutputChannelsChecker(unittest.TestCase):
     """Exercise the local Pylint checker on temporary files."""
+
+    def test_helper_functions_cover_attribute_and_stream_detection(self) -> None:
+        module = load_plugin_module("output_channels")
+        sys_stdout = Attribute(Name("sys"), "stdout")
+        sys_stderr = Attribute(Name("sys"), "stderr")
+        call = Call(Name("print"), keywords=[Keyword("file", sys_stdout)])
+        broken_attr = Attribute(Const("x"), "stdout")
+
+        self.assertEqual(module._attribute_chain(sys_stdout), ["sys", "stdout"])
+        self.assertIsNone(module._attribute_chain(broken_attr))
+        self.assertIsNone(module._attribute_chain(Const("x")))
+        self.assertTrue(module._is_sys_stream(sys_stdout, "stdout"))
+        self.assertFalse(module._is_sys_stream(sys_stderr, "stdout"))
+        self.assertTrue(module._is_print_call(call))
+        self.assertIs(module._keyword_value(call, "file"), sys_stdout)
+        self.assertIsNone(module._keyword_value(call, "missing"))
+        self.assertTrue(module._is_ui_module(set_root(Call(Name("noop")), "skills/studio/scripts/studio/utils/ui.py")))
+        self.assertTrue(module._is_proxy_module(set_root(Call(Name("noop")), "src/studio_proxy/cli.py")))
+
+    def test_checker_covers_print_stream_subprocess_and_register_paths(self) -> None:
+        module = load_plugin_module("output_channels")
+        checker = module.OutputChannelsChecker(linter=None)
+        messages: list[str] = []
+        checker.add_message = lambda msgid, node=None: messages.append(msgid)
+
+        checker.visit_call(set_root(Call(Name("print")), "pkg/sample.py"))
+        checker.visit_call(
+            set_root(Call(Name("print"), keywords=[Keyword("file", Attribute(Name("sys"), "stderr"))]), "pkg/sample.py")
+        )
+        checker.visit_call(
+            set_root(Call(Name("print"), keywords=[Keyword("file", Attribute(Name("sys"), "stdout"))]), "pkg/sample.py")
+        )
+        checker.visit_call(
+            set_root(Call(Attribute(Attribute(Name("sys"), "stdout"), "write")), "pkg/sample.py")
+        )
+        checker.visit_call(
+            set_root(Call(Attribute(Attribute(Name("sys"), "stderr"), "write")), "pkg/sample.py")
+        )
+        checker.visit_call(
+            set_root(
+                Call(
+                    Name("run"),
+                    keywords=[
+                        Keyword("stdout", Attribute(Name("sys"), "stdout")),
+                        Keyword("stdin", Attribute(Name("sys"), "stdin")),
+                    ],
+                ),
+                "pkg/sample.py",
+            )
+        )
+        checker.visit_call(
+            set_root(
+                Call(
+                    Name("run"),
+                    keywords=[Keyword("stderr", Attribute(Name("sys"), "stderr"))],
+                ),
+                "pkg/sample.py",
+            )
+        )
+        checker.visit_call(
+            set_root(
+                Call(
+                    Name("run"),
+                    keywords=[Keyword("stdout", Attribute(Name("sys"), "stdout"))],
+                ),
+                "src/studio_proxy/cli.py",
+            )
+        )
+        checker.visit_call(set_root(Call(Const("not a function")), "pkg/sample.py"))
+
+        self.assertEqual(
+            messages,
+            [
+                "stdout-bypass",
+                "stderr-bypass",
+                "stdout-bypass",
+                "stdout-bypass",
+                "stderr-bypass",
+                "stdout-bypass",
+                "stderr-bypass",
+            ],
+        )
+
+        existing = type("Existing", (), {"name": module.OutputChannelsChecker.name})()
+        linter = type(
+            "Linter",
+            (),
+            {"_checkers": {"astroid": [existing]}, "register_checker": lambda self, checker: (_ for _ in ()).throw(AssertionError)},
+        )()
+        module.register(linter)
+
+        recorded: list[object] = []
+        fresh_linter = type(
+            "Linter",
+            (),
+            {"_checkers": {}, "register_checker": lambda self, checker: recorded.append(checker)},
+        )()
+        module.register(fresh_linter)
+        self.assertEqual(len(recorded), 1)
+        self.assertIsInstance(recorded[0], module.OutputChannelsChecker)
 
     def test_flags_plain_print_to_stdout(self) -> None:
         result = _run_pylint(
