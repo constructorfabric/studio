@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import argparse
+import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -22,7 +24,7 @@ from .layout import compute_layout
 from .links import extract_file_links
 from .render_html import RenderHtmlInput, render_html
 from .render_json import RenderJsonInput, render_json
-from .scan import ScanOptions, scan_repo
+from .scan import ScanOptions, _OPTIONAL_MAP_DISCOVERY_ERRORS, scan_repo
 
 
 def _build_map_parser() -> argparse.ArgumentParser:
@@ -256,7 +258,7 @@ def _discover_sources(primary_root: Path, local_only: bool) -> List[dict]:
                 "reachable": reachable,
                 "role": src_entry.role,
             })
-    except Exception:  # pylint: disable=broad-exception-caught  # pragma: no cover
+    except _OPTIONAL_MAP_DISCOVERY_ERRORS:  # pragma: no cover
         pass
     return sources
     # @cpt-end:cpt-studio-flow-map-cli:p1:inst-discover-sources
@@ -274,7 +276,7 @@ def _load_override(primary_root: Path, explicit: Optional[str]) -> Optional[Over
     try:
         with path.open("rb") as f:
             data = tomllib.load(f)
-    except Exception as exc:  # pylint: disable=broad-exception-caught  # override config validation
+    except (OSError, ValueError) as exc:  # override config validation
         print(f"map: invalid {path}: {exc}", file=sys.stderr)
         sys.exit(2)
     show_uncategorized = bool(data.get("show_uncategorized", False))
@@ -303,9 +305,6 @@ def _load_template_vars(primary_root: Path) -> Dict[str, str]:
     ``studio_path``) are exposed at the top level.
     """
     # @cpt-begin:cpt-studio-flow-map-cli:p1:inst-load-template-vars
-    import json
-    import subprocess
-
     candidates = [
         ["cfs", "--json", "resolve-vars"],
         [sys.executable, "-m", "studio.cli", "--json", "resolve-vars"],
@@ -316,14 +315,14 @@ def _load_template_vars(primary_root: Path) -> Dict[str, str]:
             out = subprocess.run(
                 cmd, cwd=primary_root, capture_output=True, text=True, check=False, timeout=15,
             )
-        except Exception:  # pylint: disable=broad-exception-caught
+        except (OSError, subprocess.SubprocessError):
             continue
         if out.returncode or not out.stdout.strip():
             continue
         try:
             data = json.loads(out.stdout)
             break
-        except Exception:  # pylint: disable=broad-exception-caught
+        except json.JSONDecodeError:
             continue
     if data is None:
         return {}
@@ -404,7 +403,7 @@ def _resolve_artifacts_toml(primary_root: Path):
         if registry_path is None:
             return None, adapter_dir
         return registry_path, adapter_dir
-    except Exception:  # pylint: disable=broad-exception-caught  # pragma: no cover
+    except _OPTIONAL_MAP_DISCOVERY_ERRORS:  # pragma: no cover
         return None, primary_root
 
 
@@ -424,7 +423,7 @@ def _count_systems(adapter_dir: Optional[Path], docs_only: bool = False) -> int:
                 if getattr(s, "traceability_mode", "FULL") == "DOCS-ONLY"
             )
         return len(meta.systems)
-    except Exception:  # pylint: disable=broad-exception-caught  # pragma: no cover
+    except _OPTIONAL_MAP_DISCOVERY_ERRORS:  # pragma: no cover
         return 0
 
 

@@ -1337,11 +1337,8 @@ def _prompt_to_continue_waiting(timeout_seconds: int) -> bool:
     )
     sys.stderr.flush()
     try:
-        tty = open("/dev/tty", "r", encoding="utf-8")  # pylint: disable=consider-using-with
-        try:
+        with open("/dev/tty", "r", encoding="utf-8") as tty:
             answer = tty.readline().strip().lower()
-        finally:
-            tty.close()
     except OSError:
         try:
             answer = input().strip().lower()
@@ -1409,7 +1406,7 @@ _REVIEW_OVERRIDE_INTRO = (
 )
 
 
-def generate_review_artifacts(plan_dir: str, repo_root: str) -> dict:  # pylint: disable=unused-argument
+def generate_review_artifacts(plan_dir: str, repo_root: str) -> dict:
     """Generate derived review override artifacts for ralphex review mode.
 
     Injects a managed final analyze step into local ralphex review prompts.
@@ -1423,11 +1420,16 @@ def generate_review_artifacts(plan_dir: str, repo_root: str) -> dict:  # pylint:
         - ``artifacts``: list of absolute paths to generated artifacts
         - ``relative_paths``: list of project-root-relative paths
     """
+    plan_root = Path(plan_dir)
     root = Path(repo_root)
     analyze_workflow = _resolve_analyze_workflow_path(root)
     managed_prompt_paths = _sync_review_override_prompts(root, analyze_workflow)
 
-    logger.info("Injected Constructor Studio final analyze step into %d review prompt(s)", len(managed_prompt_paths))
+    logger.info(
+        "Injected Constructor Studio final analyze step into %d review prompt(s) for plan %s",
+        len(managed_prompt_paths),
+        plan_root,
+    )
 
     return {
         "artifacts": [str(path) for path in managed_prompt_paths],

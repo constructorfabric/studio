@@ -11,6 +11,7 @@ IMPORTANT: This module MUST NOT contain business logic.
 """
 
 # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-route-helpers
+import json
 import sys
 from pathlib import Path
 from typing import Callable, List, Optional
@@ -243,6 +244,38 @@ _COMMAND_HANDLERS: dict[str, str] = {
     "map": "_cmd_map",
 }
 
+# Keep explicit references so dead-code scanners see dynamic dispatch targets.
+_COMMAND_HANDLER_REFERENCES: tuple[CommandHandler, ...] = (
+    _cmd_validate,
+    _cmd_validate_kits,
+    _cmd_init,
+    _cmd_update,
+    _cmd_list_ids,
+    _cmd_list_id_kinds,
+    _cmd_get_content,
+    _cmd_where_defined,
+    _cmd_where_used,
+    _cmd_studio_info,
+    _cmd_resolve_vars,
+    _cmd_agents,
+    _cmd_generate_agents,
+    _cmd_kit,
+    _cmd_generate_resources,
+    _cmd_toc,
+    _cmd_validate_toc,
+    _cmd_spec_coverage,
+    _cmd_chunk_input,
+    _cmd_workspace_init,
+    _cmd_workspace_add,
+    _cmd_workspace_info,
+    _cmd_workspace_sync,
+    _cmd_delegate,
+    _cmd_doctor,
+    _cmd_check_language,
+    _cmd_pdsl,
+    _cmd_map,
+)
+
 _ALL_COMMANDS = list(_COMMAND_HANDLERS)
 
 # =============================================================================
@@ -295,8 +328,6 @@ def _render_top_level_help() -> int:
     from .utils.ui import is_json_mode, ui
 
     if is_json_mode():
-        import json  # pylint: disable=import-outside-toplevel
-
         print(json.dumps({
             "usage": "cfs <command> [options]",
             "commands": _COMMAND_DESCRIPTIONS,

@@ -22,7 +22,7 @@ def _run_doctor_checks(project_root: Path) -> list[dict]:
     for check_name, check_fn in [("ralphex", _check_ralphex)]:
         try:
             checks.append(check_fn(project_root))
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except (OSError, ValueError, KeyError, RuntimeError, TypeError) as exc:
             checks.append({
                 "level": "FAIL",
                 "name": check_name,

@@ -12,6 +12,15 @@ from typing import List, Optional, Sequence, Set, Tuple
 
 from .model import CptUse, Node, node_id
 
+_OPTIONAL_MAP_DISCOVERY_ERRORS = (
+    ImportError,
+    OSError,
+    ValueError,
+    KeyError,
+    AttributeError,
+    TypeError,
+)
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -330,7 +339,7 @@ def _resolve_registry_path_for_root(root: Path) -> Optional[Path]:
         # root is a sub-directory — use flat layout only.
         flat = root / "artifacts.toml"
         return flat if flat.is_file() else None
-    except Exception:  # pylint: disable=broad-exception-caught  # pragma: no cover
+    except _OPTIONAL_MAP_DISCOVERY_ERRORS:  # pragma: no cover
         pass
     # Final fallback: flat layout at root.
     flat = root / "artifacts.toml"
@@ -359,7 +368,7 @@ def _scan_sources(root: Path, source_name: str, skip_dirs: Set[str]) -> List[Nod
 
     try:
         meta = _load_registry(registry_path)
-    except Exception:  # pylint: disable=broad-exception-caught  # pragma: no cover
+    except _OPTIONAL_MAP_DISCOVERY_ERRORS:  # pragma: no cover
         return []
 
     if meta is None:  # pragma: no cover
@@ -373,7 +382,7 @@ def _scan_sources(root: Path, source_name: str, skip_dirs: Set[str]) -> List[Nod
     # picking up the parent project's adapter when scanning a fixture sub-dir.
     try:
         meta.expand_autodetect(adapter_dir=_adapter_dir_for_scan_root(root), project_root=root)
-    except Exception:  # pylint: disable=broad-exception-caught  # pragma: no cover
+    except _OPTIONAL_MAP_DISCOVERY_ERRORS:  # pragma: no cover
         pass
 
     nodes: List[Node] = []
