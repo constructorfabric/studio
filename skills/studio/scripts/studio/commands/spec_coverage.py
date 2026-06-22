@@ -74,22 +74,18 @@ def _collect_codebase_files(system_node: object, project_root: Path, code_files_
         _collect_codebase_files(child, project_root, code_files_to_scan)
 
 
-def _validate_selected_systems(args, meta) -> set[str] | None:
+def _validate_selected_systems(args, meta) -> tuple[set[str] | None, dict | None]:
     system_slugs = set(args.systems) if args.systems else None
     if system_slugs is None:
-        return None
+        return None, None
     unknown_systems = sorted(system_slugs - _collect_system_slugs(list(meta.systems)))
     if unknown_systems:
-        _output(
-            {
-                "status": "FAIL",
-                "message": "Unknown system selector(s)",
-                "unknown_systems": unknown_systems,
-            },
-            args,
-        )
-        return set()
-    return system_slugs
+        return set(), {
+            "status": "FAIL",
+            "message": "Unknown system selector(s)",
+            "unknown_systems": unknown_systems,
+        }
+    return system_slugs, None
 
 
 def _collect_selected_system_files(meta, project_root: Path, system_slugs: set[str] | None) -> List[Path]:
@@ -214,7 +210,9 @@ def _load_spec_coverage_context():
 
 
 def _generate_spec_coverage_report(args, meta, project_root: Path) -> tuple[dict, int]:
-    system_slugs = _validate_selected_systems(args, meta)
+    system_slugs, validation_error = _validate_selected_systems(args, meta)
+    if validation_error is not None:
+        return validation_error, 2
     if system_slugs == set():
         return {}, 2
     filtered_files = _filter_ignored_files(

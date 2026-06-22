@@ -208,38 +208,38 @@ _COMMAND_SECTIONS = [
     ("Visualization", ["map"]),
 ]
 
-_COMMAND_HANDLERS: dict[str, CommandHandler] = {
-    "validate": _cmd_validate,
-    "validate-code": _cmd_validate,
-    "validate-kits": _cmd_validate_kits,
-    "validate-rules": _cmd_validate_kits,
-    "self-check": _cmd_validate_kits,
-    "init": _cmd_init,
-    "update": _cmd_update,
-    "list-ids": _cmd_list_ids,
-    "list-id-kinds": _cmd_list_id_kinds,
-    "get-content": _cmd_get_content,
-    "where-defined": _cmd_where_defined,
-    "where-used": _cmd_where_used,
-    "info": _cmd_studio_info,
-    "resolve-vars": _cmd_resolve_vars,
-    "agents": _cmd_agents,
-    "generate-agents": _cmd_generate_agents,
-    "kit": _cmd_kit,
-    "generate-resources": _cmd_generate_resources,
-    "toc": _cmd_toc,
-    "validate-toc": _cmd_validate_toc,
-    "spec-coverage": _cmd_spec_coverage,
-    "chunk-input": _cmd_chunk_input,
-    "workspace-init": _cmd_workspace_init,
-    "workspace-add": _cmd_workspace_add,
-    "workspace-info": _cmd_workspace_info,
-    "workspace-sync": _cmd_workspace_sync,
-    "delegate": _cmd_delegate,
-    "doctor": _cmd_doctor,
-    "check-language": _cmd_check_language,
-    "pdsl": _cmd_pdsl,
-    "map": _cmd_map,
+_COMMAND_HANDLERS: dict[str, str] = {
+    "validate": "_cmd_validate",
+    "validate-code": "_cmd_validate",
+    "validate-kits": "_cmd_validate_kits",
+    "validate-rules": "_cmd_validate_kits",
+    "self-check": "_cmd_validate_kits",
+    "init": "_cmd_init",
+    "update": "_cmd_update",
+    "list-ids": "_cmd_list_ids",
+    "list-id-kinds": "_cmd_list_id_kinds",
+    "get-content": "_cmd_get_content",
+    "where-defined": "_cmd_where_defined",
+    "where-used": "_cmd_where_used",
+    "info": "_cmd_studio_info",
+    "resolve-vars": "_cmd_resolve_vars",
+    "agents": "_cmd_agents",
+    "generate-agents": "_cmd_generate_agents",
+    "kit": "_cmd_kit",
+    "generate-resources": "_cmd_generate_resources",
+    "toc": "_cmd_toc",
+    "validate-toc": "_cmd_validate_toc",
+    "spec-coverage": "_cmd_spec_coverage",
+    "chunk-input": "_cmd_chunk_input",
+    "workspace-init": "_cmd_workspace_init",
+    "workspace-add": "_cmd_workspace_add",
+    "workspace-info": "_cmd_workspace_info",
+    "workspace-sync": "_cmd_workspace_sync",
+    "delegate": "_cmd_delegate",
+    "doctor": "_cmd_doctor",
+    "check-language": "_cmd_check_language",
+    "pdsl": "_cmd_pdsl",
+    "map": "_cmd_map",
 }
 
 _ALL_COMMANDS = list(_COMMAND_HANDLERS)
@@ -274,9 +274,10 @@ def _main_impl(argv_list: List[str]) -> int:
         return _render_top_level_help()
 
     cmd, rest = _parse_command(argv_list)
-    handler = _COMMAND_HANDLERS.get(cmd)
-    if handler is None:
+    handler_name = _COMMAND_HANDLERS.get(cmd)
+    if handler_name is None:
         return _report_unknown_command(cmd)
+    handler = globals()[handler_name]
     return handler(rest)
 
 

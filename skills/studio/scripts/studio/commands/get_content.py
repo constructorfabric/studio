@@ -41,6 +41,7 @@ def _emit_artifact_content(args: argparse.Namespace) -> int:
         args.artifact,
         init_message="Constructor Studio not initialized",
         registry_message="Artifact not registered: {rel_path}",
+        outside_root_message="Artifact not under project root: {artifact}",
     )
     if resolved is None:
         return 1

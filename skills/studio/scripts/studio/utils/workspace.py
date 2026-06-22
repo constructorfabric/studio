@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Constructor Studio Workspace - Multi-repo federation support.
 

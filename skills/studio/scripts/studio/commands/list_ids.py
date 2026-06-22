@@ -90,6 +90,7 @@ def _resolve_registered_artifact_scan(
     *,
     init_message: str,
     registry_message: str,
+    outside_root_message: Optional[str] = None,
 ) -> Optional[Tuple[object, ArtifactScanList]]:
     """Load context for one artifact argument and return its registered scan entry."""
     artifact_path = Path(artifact_arg).resolve()
@@ -107,6 +108,9 @@ def _resolve_registered_artifact_scan(
     try:
         rel_path = artifact_path.relative_to(ctx.project_root).as_posix()
     except ValueError:
+        if outside_root_message:
+            ui.result({"status": "ERROR", "message": outside_root_message.format(artifact=artifact_path)})
+            return None
         rel_path = None
 
     artifacts_to_scan: ArtifactScanList = []

@@ -1002,6 +1002,15 @@ def _run_update_validation(
         return None
 
 
+def _ensure_core_toml_lock_sidecar(core_toml_path: Path) -> None:
+    """Create the advisory lock sidecar expected by update filesystem contracts."""
+    if not core_toml_path.is_file():
+        return
+    lock_path = core_toml_path.with_suffix(core_toml_path.suffix + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path.touch(exist_ok=True)
+
+
 def _build_update_result(
     *,
     args: argparse.Namespace,
@@ -1208,6 +1217,8 @@ def cmd_update(argv: List[str]) -> int:  # pylint: disable=too-many-locals
         studio_dir=context.studio_dir,
     )
     # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-self-check
+    if not args.dry_run:
+        _ensure_core_toml_lock_sidecar(context.core_toml_path)
 
     # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-return-report
     # ── Report ───────────────────────────────────────────────────────────
