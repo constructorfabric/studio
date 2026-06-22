@@ -1,11 +1,11 @@
-from __future__ import annotations
-
 """
 Constructor Studio Workspace - Multi-repo federation support.
 
 Loads and validates .cf-workspace.toml (standalone or inline in core.toml).
 Each source maps a named repo to a local path, optional adapter location, and a role.
 """
+
+from __future__ import annotations
 # @cpt-algo:cpt-studio-feature-workspace:p1
 # @cpt-begin:cpt-studio-algo-workspace-resolve-source:p1:inst-resolve-datamodel
 from dataclasses import dataclass, field
