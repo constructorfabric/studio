@@ -597,7 +597,8 @@ def _offline_cache_hit(
         )
         _write_cache_version_toml(cache_dir, offline_version, offline)
         return True, (
-            f"Using last-known cache state (version {offline.get('resolved_ref') or offline.get('installed_version')})\n"
+            "Using last-known cache state "
+            f"(version {offline.get('resolved_ref') or offline.get('installed_version')})\n"
             "  freshness: offline\n"
             "  reverify:  cfs update --force"
         )

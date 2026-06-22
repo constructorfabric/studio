@@ -700,7 +700,16 @@ class ArtifactsMeta:
             for ch in parent.children:
                 if str(ch.slug) == str(slug):
                     return ch
-            child = SystemNode(name=str(name), slug=str(slug), kit=str(kit), artifacts=[], codebase=[], children=[], autodetect=[], parent=parent)
+            child = SystemNode(
+                name=str(name),
+                slug=str(slug),
+                kit=str(kit),
+                artifacts=[],
+                codebase=[],
+                children=[],
+                autodetect=[],
+                parent=parent,
+            )
             parent.children.append(child)
             return child
 
@@ -764,7 +773,12 @@ class ArtifactsMeta:
                 system_root_str, system_root_abs = system_root_override
             else:
                 system_root_template = rule.system_root or _TOKEN_PROJECT_ROOT
-                system_root_str = _substitute(system_root_template, system=node.slug, system_root="", parent_root=parent_root_str)
+                system_root_str = _substitute(
+                    system_root_template,
+                    system=node.slug,
+                    system_root="",
+                    parent_root=parent_root_str,
+                )
                 system_root_abs = _resolve_path(system_root_str)
                 system_root_rel = _rel_to_project_root(system_root_abs)
                 if system_root_rel is None:
@@ -773,7 +787,12 @@ class ArtifactsMeta:
 
             # Resolve artifacts_root
             artifacts_root_template = rule.artifacts_root or "{system_root}"
-            artifacts_root_str = _substitute(artifacts_root_template, system=node.slug, system_root=system_root_str, parent_root=parent_root_str)
+            artifacts_root_str = _substitute(
+                artifacts_root_template,
+                system=node.slug,
+                system_root=system_root_str,
+                parent_root=parent_root_str,
+            )
             artifacts_root_abs = _resolve_path(artifacts_root_str)
 
             discovered_artifacts: List[Artifact] = []
@@ -784,14 +803,22 @@ class ArtifactsMeta:
                     continue
                 if ap.pattern:
                     used_patterns.append(str(ap.pattern))
-                if is_kind_registered is not None and bool(rule.validation.get("require_kind_registered_in_kit", False)):
+                if is_kind_registered is not None and bool(
+                    rule.validation.get("require_kind_registered_in_kit", False)
+                ):
                     if not is_kind_registered(str(kit_id), kind_s):
-                        errors.append(f"Autodetect kind not registered in kit: kit={kit_id} kind={kind_s} system={node.slug}")
+                        errors.append(
+                            "Autodetect kind not registered in kit: "
+                            f"kit={kit_id} kind={kind_s} system={node.slug}"
+                        )
                         continue
 
                 hits = _glob_files(artifacts_root_abs, ap.pattern)
                 if ap.required and not hits:
-                    errors.append(f"Required autodetect artifact missing: system={node.slug} kind={kind_s} pattern={ap.pattern}")
+                    errors.append(
+                        "Required autodetect artifact missing: "
+                        f"system={node.slug} kind={kind_s} pattern={ap.pattern}"
+                    )
                 for h in hits:
                     rel = _rel_to_project_root(h)
                     if not rel:
@@ -799,7 +826,13 @@ class ArtifactsMeta:
                     if bool(rule.validation.get("require_md_extension", False)) and not rel.lower().endswith(".md"):
                         errors.append(f"Autodetect artifact must be .md: {rel}")
                         continue
-                    discovered_artifacts.append(Artifact(path=rel, kind=kind_s, traceability=str(ap.traceability or "FULL")))
+                    discovered_artifacts.append(
+                        Artifact(
+                            path=rel,
+                            kind=kind_s,
+                            traceability=str(ap.traceability or "FULL"),
+                        )
+                    )
 
             if bool(rule.validation.get("fail_on_unmatched_markdown", False)):
                 md_files = _iter_markdown_files(artifacts_root_abs)
@@ -821,7 +854,12 @@ class ArtifactsMeta:
             discovered_codebase: List[CodebaseEntry] = []
             for cb in (rule.codebase or []):
                 cb_path_t = cb.path
-                cb_path_expanded = _substitute(cb_path_t, system=node.slug, system_root=system_root_str, parent_root=parent_root_str)
+                cb_path_expanded = _substitute(
+                    cb_path_t,
+                    system=node.slug,
+                    system_root=system_root_str,
+                    parent_root=parent_root_str,
+                )
                 cb_abs = _resolve_path(cb_path_expanded)
                 cb_rel = _rel_to_project_root(cb_abs)
                 if not cb_rel:
@@ -855,7 +893,9 @@ class ArtifactsMeta:
                 if np in existing_child_artifacts_by_path:
                     if str(existing_child_artifacts_by_path[np].kind) != str(da.kind):
                         errors.append(
-                            f"Autodetect conflict on path with different kind: path={da.path} explicit={existing_child_artifacts_by_path[np].kind} detected={da.kind}"
+                            "Autodetect conflict on path with different kind: "
+                            f"path={da.path} explicit={existing_child_artifacts_by_path[np].kind} "
+                            f"detected={da.kind}"
                         )
                     continue
                 existing_child_artifacts_by_path[np] = da
@@ -880,7 +920,9 @@ class ArtifactsMeta:
 
             # Apply rules in order
             existing_artifacts_by_path: Dict[str, Artifact] = {self._normalize_path(a.path): a for a in node.artifacts}
-            existing_codebase_by_path: Dict[str, CodebaseEntry] = {self._normalize_path(c.path): c for c in node.codebase}
+            existing_codebase_by_path: Dict[str, CodebaseEntry] = {
+                self._normalize_path(c.path): c for c in node.codebase
+            }
 
             next_inherited: List[Tuple[AutodetectRule, str]] = []
 
@@ -925,13 +967,21 @@ class ArtifactsMeta:
 
                     continue
 
-                disc_artifacts, disc_codebase, system_root_str, child_rules = _apply_rule(node, rule, parent_root_str=parent_root_str)
+                disc_artifacts, disc_codebase, system_root_str, child_rules = _apply_rule(
+                    node,
+                    rule,
+                    parent_root_str=parent_root_str,
+                )
                 for da in disc_artifacts:
                     np = self._normalize_path(da.path)
                     if np in existing_artifacts_by_path:
                         # explicit wins; if kind differs, keep explicit and record error
                         if str(existing_artifacts_by_path[np].kind) != str(da.kind):
-                            errors.append(f"Autodetect conflict on path with different kind: path={da.path} explicit={existing_artifacts_by_path[np].kind} detected={da.kind}")
+                            errors.append(
+                                "Autodetect conflict on path with different kind: "
+                                f"path={da.path} explicit={existing_artifacts_by_path[np].kind} "
+                                f"detected={da.kind}"
+                            )
                         continue
                     existing_artifacts_by_path[np] = da
                     node.artifacts.append(da)
@@ -1052,7 +1102,12 @@ class ArtifactsMeta:
     # @cpt-end:cpt-studio-algo-core-infra-registry-parsing:p1:inst-reg-query-methods
 
 # @cpt-begin:cpt-studio-algo-core-infra-registry-parsing:p1:inst-reg-locate
-def load_artifacts_meta(adapter_dir: Path) -> Tuple[Optional[ArtifactsMeta], Optional[str]]:  # pylint: disable=too-many-branches
+# Pylint branch count is acceptable here because this loader intentionally
+# centralizes the flat/legacy/config-path fallbacks and parse-time guards.
+# pylint: disable=too-many-branches
+def load_artifacts_meta(
+    adapter_dir: Path,
+) -> Tuple[Optional[ArtifactsMeta], Optional[str]]:
     """
     Load ArtifactsMeta from studio directory.
 
@@ -1087,7 +1142,13 @@ def load_artifacts_meta(adapter_dir: Path) -> Tuple[Optional[ArtifactsMeta], Opt
             data = json.loads(path.read_text(encoding="utf-8"))
 
         if not isinstance(data, dict):
-            return None, f"Failed to load artifacts registry {path}: expected mapping at root, got {type(data).__name__}"
+            return (
+                None,
+                (
+                    f"Failed to load artifacts registry {path}: expected mapping "
+                    f"at root, got {type(data).__name__}"
+                ),
+            )
 
         # Merge fields from core.toml into registry data (new layout)
         core_path = config_dir / "core.toml"

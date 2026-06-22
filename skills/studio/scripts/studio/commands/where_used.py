@@ -59,7 +59,12 @@ def cmd_where_used(argv: List[str]) -> int:
 
     # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-if-where-used
     ui.result(
-        {"id": target_id, "artifacts_scanned": len(artifacts_to_scan), "count": len(references), "references": references},
+        {
+            "id": target_id,
+            "artifacts_scanned": len(artifacts_to_scan),
+            "count": len(references),
+            "references": references,
+        },
         human_fn=_human_where_used,
     )
     return 0

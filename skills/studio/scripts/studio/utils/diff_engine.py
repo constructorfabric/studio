@@ -174,13 +174,17 @@ def _prompt_unresolved(rel_path: str) -> str:
     """
     # @cpt-begin:cpt-studio-algo-kit-conflict-merge:p1:inst-prompt-unresolved
     sys.stderr.write(
-        f"    \033[33m\u26a0 {rel_path}: unresolved conflict markers remain\033[0m\n"
-        "      Reply with `r`, `a`, or `d`.\n"
-        "      Suggested: `r` if you want to keep editing; use `a` to accept upstream or `d` to keep your current copy.\n"
-        "      `r` = reopen the editor. `a` = accept upstream content. `d` = decline this change and keep your installed copy.\n"
-        "      \033[1m[r]\033[0metry editing  "
-        "\033[1m[a]\033[0mccept upstream  "
-        "\033[1m[d]\033[0mecline (keep yours)  "
+        (
+            f"    \033[33m\u26a0 {rel_path}: unresolved conflict markers remain\033[0m\n"
+            "      Reply with `r`, `a`, or `d`.\n"
+            "      Suggested: `r` if you want to keep editing; use `a` to accept upstream "
+            "or `d` to keep your current copy.\n"
+            "      `r` = reopen the editor. `a` = accept upstream content. `d` = decline "
+            "this change and keep your installed copy.\n"
+            "      \033[1m[r]\033[0metry editing  "
+            "\033[1m[a]\033[0mccept upstream  "
+            "\033[1m[d]\033[0mecline (keep yours)  "
+        )
     )
     sys.stderr.flush()
     try:
@@ -406,15 +410,20 @@ def _prompt_kit_file(  # pylint: disable=too-many-return-statements
 
     # @cpt-begin:cpt-studio-algo-kit-interactive-review:p1:inst-prompt
     sys.stderr.write(
-        f"    {rel_path}\n"
-        "      Reply with `a`, `d`, `A`, `D`, or `m`.\n"
-        "      Suggested: `a` when the upstream change looks correct as shown; use `m` when you want to merge manually.\n"
-        "      `a` = accept this file. `d` = keep your copy. `A` = accept this and all remaining files. `D` = decline this and all remaining files. `m` = open an editor to merge manually.\n"
-        "      \033[1m[a]\033[0mccept  "
-        "\033[1m[d]\033[0mecline  "
-        "\033[1m[A]\033[0mccept all  "
-        "\033[1m[D]\033[0mecline all  "
-        "\033[1m[m]\033[0modify  "
+        (
+            f"    {rel_path}\n"
+            "      Reply with `a`, `d`, `A`, `D`, or `m`.\n"
+            "      Suggested: `a` when the upstream change looks correct as shown; use `m` "
+            "when you want to merge manually.\n"
+            "      `a` = accept this file. `d` = keep your copy. `A` = accept this and all "
+            "remaining files. `D` = decline this and all remaining files. `m` = open an "
+            "editor to merge manually.\n"
+            "      \033[1m[a]\033[0mccept  "
+            "\033[1m[d]\033[0mecline  "
+            "\033[1m[A]\033[0mccept all  "
+            "\033[1m[D]\033[0mecline all  "
+            "\033[1m[m]\033[0modify  "
+        )
     )
     sys.stderr.flush()
     try:

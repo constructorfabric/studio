@@ -39,10 +39,23 @@ _BLOCK_END_RE = re.compile(
 # Generic SID reference (backticked or in markers)
 _SID_RE = re.compile(r"cpt-[a-z0-9][a-z0-9-]+")
 
-def error(kind: str, message: str, *, path: Path, line: int = 1, code: Optional[str] = None, **extra) -> Dict[str, object]:
+def error(
+    kind: str,
+    message: str,
+    *,
+    path: Path,
+    line: int = 1,
+    code: Optional[str] = None,
+    **extra,
+) -> Dict[str, object]:
     """Uniform error factory for code validation."""
     path_s = str(path)
-    out: Dict[str, object] = {"type": kind, "message": message, "line": int(line), "path": path_s}
+    out: Dict[str, object] = {
+        "type": kind,
+        "message": message,
+        "line": int(line),
+        "path": path_s,
+    }
     if code:
         out["code"] = code
     out["location"] = f"{path_s}:{int(line)}" if (path_s and not path_s.startswith("<")) else path_s
@@ -161,15 +174,19 @@ class CodeFile:
             for m in _BLOCK_BEGIN_RE.finditer(line):
                 key = f"{m.group('id')}:{m.group('phase')}:{m.group('inst')}"
                 if key in open_blocks:
-                    self._errors.append(error(
-                        "marker",
-                        f"Duplicate @cpt-begin for `{m.group('id')}` inst `{m.group('inst')}` at line {line_no} in `{self.path.name}` — previous @cpt-begin not closed",
-                        code=EC.MARKER_DUP_BEGIN,
-                        path=self.path,
-                        line=line_no,
-                        id=m.group("id"),
-                        inst=m.group("inst"),
-                    ))
+                    self._errors.append(
+                        error(
+                            "marker",
+                            f"Duplicate @cpt-begin for `{m.group('id')}` inst "
+                            f"`{m.group('inst')}` at line {line_no} in "
+                            f"`{self.path.name}` — previous @cpt-begin not closed",
+                            code=EC.MARKER_DUP_BEGIN,
+                            path=self.path,
+                            line=line_no,
+                            id=m.group("id"),
+                            inst=m.group("inst"),
+                        )
+                    )
                 else:
                     # @cpt-begin:cpt-studio-algo-traceability-validation-scan-code:p1:inst-push-block
                     open_blocks[key] = (line_no, m.group("id"), int(m.group("phase")), m.group("inst"))
@@ -183,30 +200,38 @@ class CodeFile:
                 # @cpt-begin:cpt-studio-algo-traceability-validation-scan-code:p1:inst-pop-block
                 if key not in open_blocks:
                     # @cpt-begin:cpt-studio-algo-traceability-validation-scan-code:p1:inst-if-mismatch
-                    self._errors.append(error(
-                        "marker",
-                        f"@cpt-end for `{m.group('id')}` inst `{m.group('inst')}` at line {line_no} in `{self.path.name}` has no matching @cpt-begin",
-                        code=EC.MARKER_END_NO_BEGIN,
-                        path=self.path,
-                        line=line_no,
-                        id=m.group("id"),
-                        inst=m.group("inst"),
-                    ))
+                    self._errors.append(
+                        error(
+                            "marker",
+                            f"@cpt-end for `{m.group('id')}` inst "
+                            f"`{m.group('inst')}` at line {line_no} in "
+                            f"`{self.path.name}` has no matching @cpt-begin",
+                            code=EC.MARKER_END_NO_BEGIN,
+                            path=self.path,
+                            line=line_no,
+                            id=m.group("id"),
+                            inst=m.group("inst"),
+                        )
+                    )
                     # @cpt-end:cpt-studio-algo-traceability-validation-scan-code:p1:inst-if-mismatch
                 else:
                     start_line, cpt, phase, inst = open_blocks.pop(key)
                     content = tuple(lines[start_line:idx])  # lines between begin/end
 
                     if not content or all(not ln.strip() for ln in content):
-                        self._errors.append(error(
-                            "marker",
-                            f"Empty block for `{cpt}` inst `{inst}` (lines {start_line}–{line_no}) in `{self.path.name}` — no code between markers",
-                            code=EC.MARKER_EMPTY_BLOCK,
-                            path=self.path,
-                            line=start_line,
-                            id=cpt,
-                            inst=inst,
-                        ))
+                        self._errors.append(
+                            error(
+                                "marker",
+                                f"Empty block for `{cpt}` inst `{inst}` "
+                                f"(lines {start_line}–{line_no}) in "
+                                f"`{self.path.name}` — no code between markers",
+                                code=EC.MARKER_EMPTY_BLOCK,
+                                path=self.path,
+                                line=start_line,
+                                id=cpt,
+                                inst=inst,
+                            )
+                        )
 
                     block = BlockMarker(
                         id=cpt,
@@ -231,15 +256,18 @@ class CodeFile:
         # @cpt-begin:cpt-studio-algo-traceability-validation-scan-code:p1:inst-if-unclosed
         # Report unclosed blocks
         for key, (start_line, cpt, phase, inst) in open_blocks.items():
-            self._errors.append(error(
-                "marker",
-                f"@cpt-begin for `{cpt}` inst `{inst}` at line {start_line} in `{self.path.name}` was never closed with @cpt-end",
-                code=EC.MARKER_BEGIN_NO_END,
-                path=self.path,
-                line=start_line,
-                id=cpt,
-                inst=inst,
-            ))
+            self._errors.append(
+                error(
+                    "marker",
+                    f"@cpt-begin for `{cpt}` inst `{inst}` at line {start_line} "
+                    f"in `{self.path.name}` was never closed with @cpt-end",
+                    code=EC.MARKER_BEGIN_NO_END,
+                    path=self.path,
+                    line=start_line,
+                    id=cpt,
+                    inst=inst,
+                )
+            )
         # @cpt-end:cpt-studio-algo-traceability-validation-scan-code:p1:inst-if-unclosed
 
     # @cpt-begin:cpt-studio-algo-traceability-validation-scan-code:p1:inst-code-query-validate
@@ -291,15 +319,19 @@ class CodeFile:
         for scope in self.scope_markers:
             key = f"{scope.kind}:{scope.id}:{scope.phase}"
             if key in seen_scopes:
-                errors.append(error(
-                    "marker",
-                    f"Duplicate scope marker `{scope.kind}:{scope.id}:p{scope.phase}` in `{self.path.name}` at line {scope.line} — first seen at line {seen_scopes[key]}",
-                    code=EC.MARKER_DUP_SCOPE,
-                    path=self.path,
-                    line=scope.line,
-                    id=scope.id,
-                    first_occurrence=seen_scopes[key],
-                ))
+                errors.append(
+                    error(
+                        "marker",
+                        f"Duplicate scope marker `{scope.kind}:{scope.id}:p{scope.phase}` "
+                        f"in `{self.path.name}` at line {scope.line} — first seen "
+                        f"at line {seen_scopes[key]}",
+                        code=EC.MARKER_DUP_SCOPE,
+                        path=self.path,
+                        line=scope.line,
+                        id=scope.id,
+                        first_occurrence=seen_scopes[key],
+                    )
+                )
             else:
                 seen_scopes[key] = scope.line
 
@@ -402,13 +434,16 @@ def _collect_docs_only_errors(
     """Record DOCS-ONLY violations for files that still contain markers."""
     for cf in code_files:
         if cf.scope_markers or cf.block_markers:
-            errors.append(error(
-                "traceability",
-                f"@cpt markers found in `{cf.path.name}` but traceability mode is DOCS-ONLY — remove all markers or switch to FULL",
-                code=EC.CODE_DOCS_ONLY,
-                path=cf.path,
-                line=1,
-            ))
+            errors.append(
+                error(
+                    "traceability",
+                    f"@cpt markers found in `{cf.path.name}` but traceability mode "
+                    "is DOCS-ONLY — remove all markers or switch to FULL",
+                    code=EC.CODE_DOCS_ONLY,
+                    path=cf.path,
+                    line=1,
+                )
+            )
 
 
 def _collect_code_reference_errors(
@@ -424,14 +459,17 @@ def _collect_code_reference_errors(
             if forbidden_code_ids and ref.id in forbidden_code_ids and ref.id not in first_forbidden:
                 first_forbidden[ref.id] = (cf.path, int(ref.line))
             if ref.id not in artifact_ids:
-                errors.append(error(
-                    "traceability",
-                    f"Code marker references `{ref.id}` in `{cf.path.name}` at line {ref.line} but this ID is not defined in any artifact",
-                    code=EC.CODE_ORPHAN_REF,
-                    path=cf.path,
-                    line=ref.line,
-                    id=ref.id,
-                ))
+                errors.append(
+                    error(
+                        "traceability",
+                        f"Code marker references `{ref.id}` in `{cf.path.name}` "
+                        f"at line {ref.line} but this ID is not defined in any artifact",
+                        code=EC.CODE_ORPHAN_REF,
+                        path=cf.path,
+                        line=ref.line,
+                        id=ref.id,
+                    )
+                )
     return first_forbidden
 
 
@@ -460,14 +498,17 @@ def _collect_forbidden_code_errors(
         path, line = first_forbidden[fid]
         if all_instances and fid in all_instances and all_instances[fid] - code_inst_lookup.get(fid, set()):
             continue
-        errors.append(error(
-            "structure",
-            f"`{fid}` is marked to_code=\"true\" and referenced in code at line {line} but its task checkbox is not checked in the artifact",
-            code=EC.CODE_TASK_UNCHECKED,
-            path=path,
-            line=line,
-            id=fid,
-        ))
+        errors.append(
+            error(
+                "structure",
+                f"`{fid}` is marked to_code=\"true\" and referenced in code at "
+                f"line {line} but its task checkbox is not checked in the artifact",
+                code=EC.CODE_TASK_UNCHECKED,
+                path=path,
+                line=line,
+                id=fid,
+            )
+        )
 
 
 def _collect_instruction_errors(
@@ -484,26 +525,32 @@ def _collect_instruction_errors(
     for cid, art_insts in sorted(artifact_instances.items()):
         code_insts = set(code_inst_by_id.get(cid, {}).keys())
         for inst in sorted(art_insts - code_insts):
-            errors.append(error(
-                "coverage",
-                f"CDSL instruction `{inst}` of `{cid}` is defined in artifact but has no @cpt-begin/@cpt-end block in code",
-                code=EC.CODE_INST_MISSING,
-                path=Path("."),
-                line=1,
-                id=cid,
-                inst=inst,
-            ))
+            errors.append(
+                error(
+                    "coverage",
+                    f"CDSL instruction `{inst}` of `{cid}` is defined in artifact "
+                    "but has no @cpt-begin/@cpt-end block in code",
+                    code=EC.CODE_INST_MISSING,
+                    path=Path("."),
+                    line=1,
+                    id=cid,
+                    inst=inst,
+                )
+            )
         for inst in sorted(code_insts - art_insts):
             loc_path, loc_line = code_inst_by_id[cid][inst]
-            errors.append(error(
-                "traceability",
-                f"Code block `inst-{inst}` of `{cid}` in `{loc_path.name}` at line {loc_line} has no matching CDSL step in the artifact",
-                code=EC.CODE_INST_ORPHAN,
-                path=loc_path,
-                line=loc_line,
-                id=cid,
-                inst=inst,
-            ))
+            errors.append(
+                error(
+                    "traceability",
+                    f"Code block `inst-{inst}` of `{cid}` in `{loc_path.name}` "
+                    f"at line {loc_line} has no matching CDSL step in the artifact",
+                    code=EC.CODE_INST_ORPHAN,
+                    path=loc_path,
+                    line=loc_line,
+                    id=cid,
+                    inst=inst,
+                )
+            )
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-scan-code:p1:inst-code-wrappers
 def load_code_file(code_path: Path) -> Tuple[Optional[CodeFile], List[Dict[str, object]]]:
@@ -514,7 +561,19 @@ def validate_code_file(code_path: Path) -> Dict[str, List[Dict[str, object]]]:
     """Validate a single code file's marker structure."""
     cf, errs = CodeFile.from_path(code_path)
     if errs or cf is None:
-        return {"errors": errs or [error("file", f"Failed to load code file `{code_path}`", code=EC.FILE_LOAD_ERROR, path=code_path, line=1)], "warnings": []}
+        return {
+            "errors": errs
+            or [
+                error(
+                    "file",
+                    f"Failed to load code file `{code_path}`",
+                    code=EC.FILE_LOAD_ERROR,
+                    path=code_path,
+                    line=1,
+                )
+            ],
+            "warnings": [],
+        }
     return cf.validate()
 
 __all__ = [

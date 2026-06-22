@@ -76,7 +76,11 @@ def _constraints_binding_path(loaded_kit: Any, resource_bindings: Dict[str, str]
 def _known_constraint_kinds(loaded_kit: Any) -> Set[str]:
     # @cpt-begin:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
     constraints = getattr(loaded_kit, "constraints", None)
-    return {str(kind).strip().upper() for kind in (getattr(constraints, "by_kind", {}) or {}).keys() if str(kind).strip()}
+    return {
+        str(kind).strip().upper()
+        for kind in (getattr(constraints, "by_kind", {}) or {}).keys()
+        if str(kind).strip()
+    }
     # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 
 
@@ -100,7 +104,10 @@ def _missing_bound_artifact_warnings(
             continue
         warning = constraints_error(
             "template",
-            "Constraints declare artifact kind but no manifest resource binding is available for template/example self-check",
+            (
+                "Constraints declare artifact kind but no manifest resource "
+                "binding is available for template/example self-check"
+            ),
             path=None,
             line=1,
             kit_id=str(kit_id),
@@ -321,7 +328,9 @@ def _merge_self_check_report(
     if not source:
         return
     target.setdefault("results", [])
-    target["templates_checked"] = int(target.get("templates_checked", 0) or 0) + int(source.get("templates_checked", 0) or 0)
+    target["templates_checked"] = int(target.get("templates_checked", 0) or 0) + int(
+        source.get("templates_checked", 0) or 0
+    )
     target["kits_checked"] = int(target.get("kits_checked", 0) or 0) + int(source.get("kits_checked", 0) or 0)
     if source.get("status") == "FAIL":
         target["status"] = "FAIL"
@@ -333,7 +342,10 @@ def _merge_self_check_report(
     # @cpt-end:cpt-studio-algo-kit-validate:p1:inst-manifest-bound-artifact-map
 
 
-def _collect_context_kit_errors(ctx: Any, kit_filter: Optional[str]) -> Tuple[List[Dict[str, object]], Dict[str, List[Dict[str, object]]]]:
+def _collect_context_kit_errors(
+    ctx: Any,
+    kit_filter: Optional[str],
+) -> Tuple[List[Dict[str, object]], Dict[str, List[Dict[str, object]]]]:
     all_errors: List[Dict[str, object]] = []
     context_kit_errors: Dict[str, List[Dict[str, object]]] = {}
     for err in (getattr(ctx, "_errors", []) or []):
@@ -636,9 +648,26 @@ def run_validate_kits(
 def cmd_validate_kits(argv: List[str]) -> int:
     """Validate Studio kit packages (CLI entry point)."""
     # @cpt-begin:cpt-studio-flow-kit-validate-cli:p1:inst-parse-args
-    p = argparse.ArgumentParser(prog="validate-kits", description="Validate kit structure, templates, and examples")
-    p.add_argument("path", nargs="?", default=None, help="Path to a kit directory to validate (e.g. kits/sdlc). If omitted, validates registered kits.")
-    p.add_argument("--kit", "--rule", dest="kit", default=None, help="Kit ID to validate (if omitted, validates all kits)")
+    p = argparse.ArgumentParser(
+        prog="validate-kits",
+        description="Validate kit structure, templates, and examples",
+    )
+    p.add_argument(
+        "path",
+        nargs="?",
+        default=None,
+        help=(
+            "Path to a kit directory to validate (e.g. kits/sdlc). "
+            "If omitted, validates registered kits."
+        ),
+    )
+    p.add_argument(
+        "--kit",
+        "--rule",
+        dest="kit",
+        default=None,
+        help="Kit ID to validate (if omitted, validates all kits)",
+    )
     p.add_argument("--verbose", action="store_true", help="Print full validation report")
     args = p.parse_args(argv)
     # @cpt-end:cpt-studio-flow-kit-validate-cli:p1:inst-parse-args
@@ -832,7 +861,16 @@ def _new_path_kit_report(
         "error_count": len(kc_errs),
     }
     if kc_errs:
-        errs = [constraints_error("constraints", "Invalid constraints", path=constraints_error_path, line=1, errors=list(kc_errs), kit=slug)]
+        errs = [
+            constraints_error(
+                "constraints",
+                "Invalid constraints",
+                path=constraints_error_path,
+                line=1,
+                errors=list(kc_errs),
+                kit=slug,
+            )
+        ]
         if verbose:
             kit_report["errors"] = errs
         all_errors.extend(errs)

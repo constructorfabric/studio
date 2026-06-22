@@ -134,7 +134,15 @@ class HeadingValidationContext:
     kit_id: Optional[str]
     errors: List[Dict[str, object]]
 
-def error(kind: str, message: str, *, path: Path | str, line: int = 1, code: Optional[str] = None, **extra) -> Dict[str, object]:
+def error(
+    kind: str,
+    message: str,
+    *,
+    path: Path | str,
+    line: int = 1,
+    code: Optional[str] = None,
+    **extra,
+) -> Dict[str, object]:
     """Build a structured constraint validation error."""
     out: Dict[str, object] = {"type": kind, "message": message, "line": int(line)}
     if code:
@@ -702,21 +710,45 @@ def _validate_task_priority_constraints(
     base = ctx.base_fields()
 
     if tk is True and not has_task:
-        errors.append(error("constraints",
-            f"`{ctx.hid}` (kind `{ctx.id_kind}`) in {ctx.artifact_kind} artifact is missing required task checkbox `- [ ]`{hint}",
-            code=EC.DEF_MISSING_TASK, **base))
+        errors.append(error(
+            "constraints",
+            (
+                f"`{ctx.hid}` (kind `{ctx.id_kind}`) in {ctx.artifact_kind} artifact "
+                f"is missing required task checkbox `- [ ]`{hint}"
+            ),
+            code=EC.DEF_MISSING_TASK,
+            **base,
+        ))
     if tk is False and has_task:
-        errors.append(error("constraints",
-            f"`{ctx.hid}` (kind `{ctx.id_kind}`) in {ctx.artifact_kind} artifact has task checkbox but kind `{ctx.id_kind}` prohibits task tracking{hint}",
-            code=EC.DEF_PROHIBITED_TASK, **base))
+        errors.append(error(
+            "constraints",
+            (
+                f"`{ctx.hid}` (kind `{ctx.id_kind}`) in {ctx.artifact_kind} artifact has "
+                f"task checkbox but kind `{ctx.id_kind}` prohibits task tracking{hint}"
+            ),
+            code=EC.DEF_PROHIBITED_TASK,
+            **base,
+        ))
     if pr is True and not has_priority:
-        errors.append(error("constraints",
-            f"`{ctx.hid}` (kind `{ctx.id_kind}`) in {ctx.artifact_kind} artifact is missing required priority marker{hint}",
-            code=EC.DEF_MISSING_PRIORITY, **base))
+        errors.append(error(
+            "constraints",
+            (
+                f"`{ctx.hid}` (kind `{ctx.id_kind}`) in {ctx.artifact_kind} artifact "
+                f"is missing required priority marker{hint}"
+            ),
+            code=EC.DEF_MISSING_PRIORITY,
+            **base,
+        ))
     if pr is False and has_priority:
-        errors.append(error("constraints",
-            f"`{ctx.hid}` (kind `{ctx.id_kind}`) in {ctx.artifact_kind} artifact has priority marker but kind `{ctx.id_kind}` prohibits priority{hint}",
-            code=EC.DEF_PROHIBITED_PRIORITY, **base))
+        errors.append(error(
+            "constraints",
+            (
+                f"`{ctx.hid}` (kind `{ctx.id_kind}`) in {ctx.artifact_kind} artifact has "
+                f"priority marker but kind `{ctx.id_kind}` prohibits priority{hint}"
+            ),
+            code=EC.DEF_PROHIBITED_PRIORITY,
+            **base,
+        ))
 # @cpt-end:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-task-priority
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-validate-structure:p1:inst-validate-id-heading-constraint
@@ -741,7 +773,11 @@ def _validate_id_heading_constraint(
 
     errors.append(error(
         "constraints",
-        f"`{ctx.hid}` (kind `{ctx.id_kind}`) in {ctx.artifact_kind} artifact is under {active_raw} but must be under one of {allowed_headings}{_constraint_hint(ctx.constraint)}",
+        (
+            f"`{ctx.hid}` (kind `{ctx.id_kind}`) in {ctx.artifact_kind} artifact is under "
+            f"{active_raw} but must be under one of {allowed_headings}"
+            f"{_constraint_hint(ctx.constraint)}"
+        ),
         code=EC.DEF_WRONG_HEADINGS,
         **ctx.base_fields(),
         headings=allowed_headings,
@@ -927,7 +963,10 @@ def _append_parent_all_done_error(
 ) -> None:
     errors.append(error(
         "structure",
-        f"Parent `{parent_id}` is unchecked but all {child_count} nested task-tracked items are checked in {kind} artifact",
+        (
+            f"Parent `{parent_id}` is unchecked but all {child_count} nested "
+            f"task-tracked items are checked in {kind} artifact"
+        ),
         code=EC.PARENT_UNCHECKED_ALL_DONE,
         path=artifact_path,
         line=parent_line,
@@ -956,7 +995,10 @@ def _append_parent_nested_unchecked_error(
     first_id = str(first.get("id") or "") or parent_id
     errors.append(error(
         "structure",
-        f"Parent `{parent_id}` is checked but nested item `{first_id}` (and possibly others) is still unchecked in {kind} artifact",
+        (
+            f"Parent `{parent_id}` is checked but nested item `{first_id}` "
+            f"(and possibly others) is still unchecked in {kind} artifact"
+        ),
         code=EC.PARENT_CHECKED_NESTED_UNCHECKED,
         path=artifact_path,
         line=int(first.get("line", 1) or 1),
@@ -1124,7 +1166,10 @@ def _validate_unchecked_cdsl_steps(
         inst_s = str(hit.get("inst") or "").strip()
         errors.append(error(
             "structure",
-            f"CDSL step `{pid}`{(' inst ' + inst_s) if inst_s else ''} is unchecked but parent ID is already checked in {kind} artifact",
+            (
+                f"CDSL step `{pid}`{(' inst ' + inst_s) if inst_s else ''} is "
+                f"unchecked but parent ID is already checked in {kind} artifact"
+            ),
             code=EC.CDSL_STEP_UNCHECKED,
             path=artifact_path,
             line=int(hit.get("line", 1) or 1),
@@ -1215,7 +1260,10 @@ def _validate_definition_hits(
             hint = _id_kind_hint(rules.constraint_by_kind.get(id_kind))
             errors.append(error(
                 "constraints",
-                f"`{hid}` uses kind `{id_kind}` not allowed in {rules.kind} artifact (allowed: {sorted(rules.allowed_defs)}){hint}",
+                (
+                    f"`{hid}` uses kind `{id_kind}` not allowed in {rules.kind} artifact "
+                    f"(allowed: {sorted(rules.allowed_defs)}){hint}"
+                ),
                 code=EC.ID_KIND_NOT_ALLOWED,
                 path=rules.artifact_path,
                 line=line,
@@ -1419,7 +1467,10 @@ def _validate_required_reference_coverage(
     if tk not in system_present_kinds:
         warnings.append(error(
             "constraints",
-            f"`{ctx.did}` (defined in {ctx.artifact_kind}) requires reference in `{tk}` artifact but no `{tk}` artifact exists in scope",
+            (
+                f"`{ctx.did}` (defined in {ctx.artifact_kind}) requires reference in "
+                f"`{tk}` artifact but no `{tk}` artifact exists in scope"
+            ),
             code=EC.REF_TARGET_NOT_IN_SCOPE,
             path=drow.get("artifact_path"),
             line=int(drow.get("line", 1) or 1),
@@ -1431,7 +1482,10 @@ def _validate_required_reference_coverage(
     if not refs_in_kind:
         errors.append(error(
             "constraints",
-            f"`{ctx.did}` (defined in {ctx.artifact_kind}, kind `{ctx.id_kind}`) is not referenced from any `{tk}` artifact",
+            (
+                f"`{ctx.did}` (defined in {ctx.artifact_kind}, kind `{ctx.id_kind}`) "
+                f"is not referenced from any `{tk}` artifact"
+            ),
             code=EC.REF_MISSING_FROM_KIND,
             path=drow.get("artifact_path"),
             line=int(drow.get("line", 1) or 1),
@@ -1448,7 +1502,11 @@ def _validate_required_reference_coverage(
     first = refs_in_kind[0]
     errors.append(error(
         "constraints",
-        f"Reference to `{ctx.did}` in `{tk}` artifact is under {first.get('headings') or []} but must be under one of {allowed_headings.sorted_ids}",
+        (
+            f"Reference to `{ctx.did}` in `{tk}` artifact is under "
+            f"{first.get('headings') or []} but must be under one of "
+            f"{allowed_headings.sorted_ids}"
+        ),
         code=EC.REF_WRONG_HEADINGS,
         path=first.get("artifact_path"),
         line=int(first.get("line", 1) or 1),
@@ -1472,7 +1530,11 @@ def _validate_prohibited_reference_coverage(
     first = refs_in_kind[0]
     errors.append(error(
         "constraints",
-        f"`{ctx.did}` is referenced in `{ctx.target_kind}` artifact but references from `{ctx.target_kind}` are prohibited for {ctx.artifact_kind} IDs",
+        (
+            f"`{ctx.did}` is referenced in `{ctx.target_kind}` artifact but "
+            f"references from `{ctx.target_kind}` are prohibited for "
+            f"{ctx.artifact_kind} IDs"
+        ),
         code=EC.REF_FROM_PROHIBITED_KIND,
         path=first.get("artifact_path"),
         line=int(first.get("line", 1) or 1),
@@ -1506,7 +1568,10 @@ def _validate_reference_task_rule(
         if rr is not None:
             errors.append(error(
                 "constraints",
-                f"Reference to `{ctx.did}` in `{ctx.target_kind}` artifact has task checkbox but task tracking is prohibited",
+                (
+                    f"Reference to `{ctx.did}` in `{ctx.target_kind}` artifact has "
+                    "task checkbox but task tracking is prohibited"
+                ),
                 code=EC.REF_PROHIBITED_TASK,
                 path=rr.get("artifact_path"),
                 line=int(rr.get("line", 1) or 1),
@@ -1539,7 +1604,10 @@ def _validate_reference_priority_rule(
         if rr is not None:
             errors.append(error(
                 "constraints",
-                f"Reference to `{ctx.did}` in `{ctx.target_kind}` artifact has priority marker but priority is prohibited",
+                (
+                    f"Reference to `{ctx.did}` in `{ctx.target_kind}` artifact has "
+                    "priority marker but priority is prohibited"
+                ),
                 code=EC.REF_PROHIBITED_PRIORITY,
                 path=rr.get("artifact_path"),
                 line=int(rr.get("line", 1) or 1),
@@ -1642,7 +1710,10 @@ def _build_cross_constraint_indexes(
     if missing_constraints_kinds:
         errors.append(error(
             "constraints",
-            f"No constraints defined for artifact kinds: {sorted(missing_constraints_kinds)} — add them to constraints.toml",
+            (
+                "No constraints defined for artifact kinds: "
+                f"{sorted(missing_constraints_kinds)} — add them to constraints.toml"
+            ),
             code=EC.MISSING_CONSTRAINTS,
             path=Path("<constraints.toml>"),
             line=1,
@@ -1921,7 +1992,10 @@ def _validate_definition_completion_consistency(
                     continue
                 errors.append(error(
                     "structure",
-                    f"Definition of `{rid}` is checked [x] but reference in {row.get('artifact_kind', '?')} artifact is still unchecked",
+                    (
+                        f"Definition of `{rid}` is checked [x] but reference in "
+                        f"{row.get('artifact_kind', '?')} artifact is still unchecked"
+                    ),
                     code=EC.DEF_DONE_REF_NOT_DONE,
                     path=row.get("artifact_path"),
                     line=int(row.get("line", 1) or 1),
@@ -2038,7 +2112,11 @@ def _validate_artifact_required_id_kind(
             continue
         errors.append(error(
             "constraints",
-            f"`{drow.get('id')}` (kind `{id_kind}`) in {artifact_kind} artifact is under {drow.get('headings') or []} but must be under one of {allowed_sorted}",
+            (
+                f"`{drow.get('id')}` (kind `{id_kind}`) in {artifact_kind} artifact "
+                f"is under {drow.get('headings') or []} but must be under one of "
+                f"{allowed_sorted}"
+            ),
             code=EC.DEF_WRONG_HEADINGS,
             path=art.path,
             line=int(drow.get("line", 1) or 1),
@@ -2562,7 +2640,11 @@ def _parse_kind_toc(
     return toc_raw
 
 
-def _parse_heading_constraint(obj: object, *, pointer: Optional[str] = None) -> Tuple[Optional[HeadingConstraint], Optional[str]]:
+def _parse_heading_constraint(
+    obj: object,
+    *,
+    pointer: Optional[str] = None,
+) -> Tuple[Optional[HeadingConstraint], Optional[str]]:
     # @cpt-begin:cpt-studio-algo-traceability-validation-load-constraints:p1:inst-parse-heading
     if not isinstance(obj, dict):
         return None, "Heading constraint must be an object"
@@ -2737,7 +2819,13 @@ def _normalize_id_entry(
         if not isinstance(vv, str) or not vv.strip():
             return None, f"constraints for {kind} identifiers[{kkind}]: Constraint entry missing required 'kind'"
         if vv.strip().lower() != inferred_kind.lower():
-            return None, f"constraints for {kind} identifiers[{kkind}]: Constraint entry kind does not match identifiers key"
+            return (
+                None,
+                (
+                    f"constraints for {kind} identifiers[{kkind}]: Constraint entry "
+                    "kind does not match identifiers key"
+                ),
+            )
         return dict(entry), None
     normalized = dict(entry)
     normalized["kind"] = inferred_kind
@@ -3160,7 +3248,11 @@ def _check_heading_numbering_sequence(
                 expected_prefix = ".".join([*(str(x) for x in parent), str(expected)]) if parent else str(expected)
                 errors.append(error(
                     "structure",
-                    f"Heading `{prefix}` in {artifact_kind} artifact is not consecutive — expected `{expected_prefix}` after `{last_prefix_by_key.get(key)}`",
+                    (
+                        f"Heading `{prefix}` in {artifact_kind} artifact is not "
+                        f"consecutive — expected `{expected_prefix}` after "
+                        f"`{last_prefix_by_key.get(key)}`"
+                    ),
                     code=EC.HEADING_NUMBER_NOT_CONSECUTIVE,
                     path=path,
                     line=int(heading.get("line", 1) or 1),
@@ -3276,7 +3368,11 @@ def _append_missing_heading_error(
     desc_s = (f" ({hc_desc})" if hc_desc else "")
     heading_ctx.errors.append(error(
         "constraints",
-        f"Required level-{int(heading_constraint.level)} heading (pattern: `{heading_constraint.pattern}`) missing in {heading_ctx.artifact_kind} artifact{between_s}{desc_s}",
+        (
+            f"Required level-{int(heading_constraint.level)} heading "
+            f"(pattern: `{heading_constraint.pattern}`) missing in "
+            f"{heading_ctx.artifact_kind} artifact{between_s}{desc_s}"
+        ),
         code=EC.HEADING_MISSING,
         path=ctx.path,
         line=1,
@@ -3309,7 +3405,11 @@ def _append_multiple_heading_error(
     desc_s = (f" ({hc_desc})" if hc_desc else "")
     heading_ctx.errors.append(error(
         "constraints",
-        f"Heading `{ctx.heading_constraint.pattern}` (level {int(ctx.heading_constraint.level)}) appears {match_count} times in {ctx.artifact_kind} artifact but only 1 is allowed{desc_s}",
+        (
+            f"Heading `{ctx.heading_constraint.pattern}` "
+            f"(level {int(ctx.heading_constraint.level)}) appears {match_count} "
+            f"times in {ctx.artifact_kind} artifact but only 1 is allowed{desc_s}"
+        ),
         code=EC.HEADING_PROHIBITS_MULTIPLE,
         path=ctx.path,
         line=line,
@@ -3335,7 +3435,13 @@ def _append_numbering_mismatch_error(
     desc_s = (f" ({hc_desc})" if hc_desc else "")
     errors.append(error(
         "constraints",
-        f"Heading `{heading_constraint.pattern}` (level {int(heading_constraint.level)}) in {artifact_kind} artifact: numbering {'is required but missing' if heading_constraint.numbered is True else 'is prohibited but present'}{desc_s}",
+        (
+            f"Heading `{heading_constraint.pattern}` "
+            f"(level {int(heading_constraint.level)}) in {artifact_kind} artifact: "
+            "numbering "
+            f"{'is required but missing' if heading_constraint.numbered is True else 'is prohibited but present'}"
+            f"{desc_s}"
+        ),
         code=EC.HEADING_NUMBERING_MISMATCH,
         path=path,
         line=int(heading.get("line", 1) or 1),
@@ -3469,7 +3575,8 @@ def validate_headings_contract(
     *,
     path: Path,
     constraints: ArtifactKindConstraints,
-    registered_systems: Optional[Iterable[str]],  # pylint: disable=unused-argument  # public API; reserved for system-scoped heading validation
+    registered_systems: Optional[Iterable[str]],  # pylint: disable=unused-argument
+    # public API; reserved for system-scoped heading validation
     artifact_kind: str,
     constraints_path: Optional[Path] = None,
     kit_id: Optional[str] = None,

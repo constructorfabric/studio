@@ -61,7 +61,8 @@ _REASONS: Dict[str, List[str]] = {
 
     # Structure — heading numbering
     EC.HEADING_NUMBER_NOT_CONSECUTIVE: [
-        "A numbered heading was deleted or reordered in {artifact_kind} without renumbering — expected `{expected_prefix}` after `{previous_prefix}`",
+        "A numbered heading was deleted or reordered in {artifact_kind} without "
+        "renumbering — expected `{expected_prefix}` after `{previous_prefix}`",
         "LLM generated headings with non-sequential numbering in {artifact_kind} artifact",
     ],
 
@@ -126,11 +127,13 @@ _REASONS: Dict[str, List[str]] = {
         "LLM duplicated the `{heading_pattern}` section when expanding {artifact_kind}",
     ],
     EC.HEADING_REQUIRES_MULTIPLE: [
-        "Heading `{heading_pattern}` requires at least 2 occurrences in {artifact_kind} (e.g. repeated feature blocks)",
+        "Heading `{heading_pattern}` requires at least 2 occurrences in "
+        "{artifact_kind} (e.g. repeated feature blocks)",
         "Only one `{heading_pattern}` instance was generated when the template expects multiple",
     ],
     EC.HEADING_NUMBERING_MISMATCH: [
-        "Heading `{heading_pattern}` in {artifact_kind} has/lacks numbering prefix contrary to constraint (numbered={numbered})",
+        "Heading `{heading_pattern}` in {artifact_kind} has/lacks numbering "
+        "prefix contrary to constraint (numbered={numbered})",
         "LLM inconsistently applied numbered heading format in {artifact_kind}",
     ],
 
@@ -153,7 +156,8 @@ _REASONS: Dict[str, List[str]] = {
         "LLM referenced `{id}` as plain text instead of a task list item in `{target_kind}`",
     ],
     EC.REF_FROM_PROHIBITED_KIND: [
-        "Reference to `{id}` was placed in `{target_kind}` but references from `{target_kind}` are prohibited for {artifact_kind} IDs",
+        "Reference to `{id}` was placed in `{target_kind}` but references from "
+        "`{target_kind}` are prohibited for {artifact_kind} IDs",
         "LLM included a cross-reference to `{id}` in `{target_kind}` violating coverage rules",
     ],
     EC.REF_MISSING_TASK: [
@@ -331,7 +335,12 @@ def _kind_ctx(issue: Dict[str, object]) -> str:
     return (" (" + ", ".join(parts) + ")") if parts else ""
 
 
-def _headings_hint(issue: Dict[str, object], *, key: str = "target_headings", info_key: str = "target_headings_info") -> str:
+def _headings_hint(
+    issue: Dict[str, object],
+    *,
+    key: str = "target_headings",
+    info_key: str = "target_headings_info",
+) -> str:
     """Return a hint like ' Under section: `feature-capabilities` (Capabilities and features).'"""
     headings = issue.get(key) or []
     if not headings:
@@ -436,7 +445,8 @@ def _prompt_for_structure_references(ctx: _FixPromptContext) -> Optional[str]:
     if ctx.code == EC.DEF_DONE_REF_NOT_DONE:
         def_kind = str(ctx.issue.get("def_artifact_kind") or "source")
         return (
-            f"Open `{ctx.loc}`: check the reference to `{ctx.cpt_id}` as [x] to match the done definition in {def_kind}, "
+            f"Open `{ctx.loc}`: check the reference to `{ctx.cpt_id}` as [x] "
+            f"to match the done definition in {def_kind}, "
             f"or uncheck the definition if the work is not actually complete."
         )
     if ctx.code == EC.REF_TASK_DEF_NO_TASK:
@@ -558,7 +568,10 @@ def _prompt_for_cross_ref_coverage(ctx: _FixPromptContext) -> Optional[str]:
         EC.REF_MISSING_TASK: f"Open `{ctx.loc}`: add `- [ ]` before the reference to `{ctx.cpt_id}`{ctx.ctx}.",
         EC.REF_PROHIBITED_TASK: f"Open `{ctx.loc}`: remove task checkbox from reference to `{ctx.cpt_id}`{ctx.ctx}.",
         EC.REF_MISSING_PRIORITY: f"Open `{ctx.loc}`: add priority marker to reference of `{ctx.cpt_id}`{ctx.ctx}.",
-        EC.REF_PROHIBITED_PRIORITY: f"Open `{ctx.loc}`: remove priority marker from reference of `{ctx.cpt_id}`{ctx.ctx}.",
+        EC.REF_PROHIBITED_PRIORITY: (
+            f"Open `{ctx.loc}`: remove priority marker from reference of "
+            f"`{ctx.cpt_id}`{ctx.ctx}."
+        ),
     }
     return prompt_map.get(ctx.code)
 
@@ -604,7 +617,8 @@ def _prompt_for_code_traceability(ctx: _FixPromptContext) -> Optional[str]:
     if ctx.code == EC.CODE_INST_ORPHAN:
         inst = str(ctx.issue.get("inst") or "?")
         return (
-            f"Open `{ctx.loc}`: the code block `inst-{inst}` of `{ctx.cpt_id}` has no matching CDSL step in the artifact. "
+            f"Open `{ctx.loc}`: the code block `inst-{inst}` of `{ctx.cpt_id}` "
+            "has no matching CDSL step in the artifact. "
             f"Add the CDSL step in the artifact, or rename/remove the code marker if the instruction was renamed."
         )
     return None

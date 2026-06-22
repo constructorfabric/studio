@@ -76,7 +76,11 @@ def _parse_update_args(argv: List[str]) -> argparse.Namespace:
         description="Update Constructor Studio installation (refresh .core, regenerate .gen)",
     )
     p.add_argument("--project-root", default=None, help="Project root directory")
-    p.add_argument("--from-dir", default=None, help="Constructor Studio directory relative to project root when migrating")
+    p.add_argument(
+        "--from-dir",
+        default=None,
+        help="Constructor Studio directory relative to project root when migrating",
+    )
     p.add_argument("--dry-run", action="store_true", help="Show what would be done")
     p.add_argument("--no-interactive", action="store_true",
                    help="Disable interactive prompts (auto-skip customized markers)")
@@ -186,7 +190,9 @@ class _UpdateRunContext:
     kit_tracking: str
 
 
-def _failed_update_resolution(result: Optional[Dict[str, Any]] = None) -> tuple[int, Optional[Dict[str, Any]], Optional[Path], Optional[Path], Optional[str], bool]:
+def _failed_update_resolution(
+    result: Optional[Dict[str, Any]] = None,
+) -> tuple[int, Optional[Dict[str, Any]], Optional[Path], Optional[Path], Optional[str], bool]:
     resolution = _UpdateProjectResolution(rc=1, result=result)
     return (
         resolution.rc,
@@ -245,7 +251,9 @@ def _missing_install_update_result(
     return _failed_update_resolution()
 
 
-def _resolve_update_project(args: argparse.Namespace) -> tuple[int, Optional[Dict[str, Any]], Optional[Path], Optional[Path], Optional[str], bool]:
+def _resolve_update_project(
+    args: argparse.Namespace,
+) -> tuple[int, Optional[Dict[str, Any]], Optional[Path], Optional[Path], Optional[str], bool]:
     """Resolve update context or return an early result."""
     from ..utils.files import _read_studio_var
     from .migrate_from_cypilot import detect_legacy_cypilot_install
@@ -812,7 +820,7 @@ def _perform_registered_kit_update(  # pylint: disable=too-many-arguments,too-ma
     return kit_result
 
 
-def _update_single_registered_kit(
+def _update_single_registered_kit(  # pylint: disable=too-many-arguments
     *,
     args: argparse.Namespace,
     errors: List[Dict[str, str]],

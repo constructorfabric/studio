@@ -114,8 +114,15 @@ def cmd_list_id_kinds(argv: List[str]) -> int:
     that have at least one ID definition in the artifact(s).
     """
     # @cpt-begin:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-parse-args
-    p = argparse.ArgumentParser(prog="list-id-kinds", description="List ID kinds found in registered artifacts")
-    p.add_argument("--artifact", default=None, help="Scan specific artifact (if omitted, scans all registered artifacts)")
+    p = argparse.ArgumentParser(
+        prog="list-id-kinds",
+        description="List ID kinds found in registered artifacts",
+    )
+    p.add_argument(
+        "--artifact",
+        default=None,
+        help="Scan specific artifact (if omitted, scans all registered artifacts)",
+    )
     args = p.parse_args(argv)
     # @cpt-end:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-parse-args
 
@@ -126,7 +133,15 @@ def cmd_list_id_kinds(argv: List[str]) -> int:
         return 1
     ctx, artifacts_to_scan = resolved
     if not artifacts_to_scan:
-        ui.result({"kinds": [], "kind_counts": {}, "kind_to_templates": {}, "template_to_kinds": {}, "artifacts_scanned": 0})
+        ui.result(
+            {
+                "kinds": [],
+                "kind_counts": {},
+                "kind_to_templates": {},
+                "template_to_kinds": {},
+                "artifacts_scanned": 0,
+            }
+        )
         return 0
     # @cpt-end:cpt-studio-algo-traceability-validation-list-id-kinds:p1:inst-kinds-resolve-artifacts
 

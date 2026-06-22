@@ -126,7 +126,11 @@ def find_project_skill(start_dir: Optional[Path] = None) -> Optional[Path]:
     # Check .core/ layout first, then flat layout (new: studio; legacy: cypilot)
     for skill_name in ("studio", "cypilot"):
         core_skill_dir = project_root / install_dir / ".core" / "skills" / skill_name / "scripts"
-        skill_dir = core_skill_dir if core_skill_dir.is_dir() else project_root / install_dir / "skills" / skill_name / "scripts"
+        skill_dir = (
+            core_skill_dir
+            if core_skill_dir.is_dir()
+            else project_root / install_dir / "skills" / skill_name / "scripts"
+        )
         entry_point = skill_dir / f"{skill_name}.py"
         if entry_point.is_file():
             # @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-return-project-path

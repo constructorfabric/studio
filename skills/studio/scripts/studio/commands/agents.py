@@ -145,7 +145,11 @@ def _follow_protocol_lines(target_path: str) -> List[str]:
         "  - ALWAYS traverse declared steps/units in order",
         "  - ALWAYS load every required unconditional LOAD/CONTINUE before task work",
         "  - ALWAYS evaluate conditional gates and load every active branch",
-        "  - ALWAYS while the workflow is active, map each new user message to a current workflow state, a visible companion-skill handoff, or an explicit free-mode exit.",
+        (
+            "  - ALWAYS while the workflow is active, map each new user message to "
+            "a current workflow state, a visible companion-skill handoff, or an "
+            "explicit free-mode exit."
+        ),
         "  - NEVER treat a follow-up user prompt as permission to bypass the workflow state machine silently.",
         "  - NEVER skip, summarize, or defer required instructions",
         "  - ALWAYS stop if any required fragment or rule cannot be followed",
@@ -4077,7 +4081,11 @@ def _public_component_generated_name(
     if not prefix_generated_name:
         return component_id
     prefix = f"cf-{kit_slug}-"
-    return component_id if component_id == f"cf-{kit_slug}" or component_id.startswith(prefix) else f"{prefix}{component_id}"
+    return (
+        component_id
+        if component_id == f"cf-{kit_slug}" or component_id.startswith(prefix)
+        else f"{prefix}{component_id}"
+    )
 
 
 def _nested_subagent_enabled(subagent: Dict[str, Any], agent: str) -> bool:
@@ -4216,8 +4224,21 @@ def _build_public_nested_subagent_entry(  # pylint: disable=too-many-arguments,t
         "mode": str(_subagent_value(subagent, nested_target, "mode", entry.get("mode", "readwrite")) or "readwrite"),
         "role": str(_subagent_value(subagent, nested_target, "role", entry.get("role", "any")) or "any"),
         "target": str(_subagent_value(subagent, nested_target, "target", entry.get("target", "any")) or "any"),
-        "provider": str(_subagent_value(subagent, nested_target, "provider", entry.get("provider", "anthropic")) or "anthropic"),
-        "reasoning_effort": _subagent_value(subagent, nested_target, "reasoning_effort", entry.get("reasoning_effort", None)),
+        "provider": str(
+            _subagent_value(
+                subagent,
+                nested_target,
+                "provider",
+                entry.get("provider", "anthropic"),
+            )
+            or "anthropic"
+        ),
+        "reasoning_effort": _subagent_value(
+            subagent,
+            nested_target,
+            "reasoning_effort",
+            entry.get("reasoning_effort", None),
+        ),
         "context_window": _subagent_value(subagent, nested_target, "context_window", entry.get("context_window", None)),
     }
     if not _validate_subagent_scalar_overrides(nested_name, resolved_values):
@@ -5585,7 +5606,14 @@ def _build_agents_arg_parser(
 ) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog=prog, description=description)
     agent_group = parser.add_mutually_exclusive_group(required=False)
-    agent_group.add_argument("--agent", default=None, help="Agent/IDE key (e.g., windsurf, cursor, claude, copilot, openai). Omit to target all supported agents.")
+    agent_group.add_argument(
+        "--agent",
+        default=None,
+        help=(
+            "Agent/IDE key (e.g., windsurf, cursor, claude, copilot, openai). "
+            "Omit to target all supported agents."
+        ),
+    )
     agent_group.add_argument("--openai", action="store_true", help="Shortcut for --agent openai (OpenAI Codex)")
     parser.add_argument(
         "--root",
@@ -5603,12 +5631,23 @@ def _build_agents_arg_parser(
         dest="cf_studio_root",
         metavar="PATH",
         default=None,
-        help="Explicit Constructor Studio core root (optional override). Legacy aliases: --cf-root, --cf-constructor-root.",
+        help=(
+            "Explicit Constructor Studio core root (optional override). Legacy "
+            "aliases: --cf-root, --cf-constructor-root."
+        ),
     )
     parser.add_argument("--config", default=None, help="Path to agents config JSON (optional; defaults are built-in)")
     parser.add_argument("--dry-run", action="store_true", help="Compute changes without writing files")
-    parser.add_argument("--show-layers", action="store_true", help="Display layer provenance report instead of generating")
-    parser.add_argument("--discover", action="store_true", help="Scan conventional dirs and populate manifest.toml before generating")
+    parser.add_argument(
+        "--show-layers",
+        action="store_true",
+        help="Display layer provenance report instead of generating",
+    )
+    parser.add_argument(
+        "--discover",
+        action="store_true",
+        help="Scan conventional dirs and populate manifest.toml before generating",
+    )
     if not read_only:
         parser.add_argument(
             "--remove-cypilot",
@@ -5634,7 +5673,11 @@ def _resolve_requested_agents(args: argparse.Namespace) -> List[str]:
 
 def _emit_project_root_not_found(start_path: Path) -> None:
     ui.result(
-        {"status": "NOT_FOUND", "message": "No project root found (no AGENTS.md with @cf:root-agents or .git)", "searched_from": start_path.as_posix()},
+        {
+            "status": "NOT_FOUND",
+            "message": "No project root found (no AGENTS.md with @cf:root-agents or .git)",
+            "searched_from": start_path.as_posix(),
+        },
         human_fn=lambda d: (
             ui.error("No project root found."),
             ui.detail("Searched from", start_path.as_posix()),
@@ -5657,7 +5700,12 @@ def _resolve_copy_report(
     if copy_report.get("action") == "error":
         err_msg = f"Failed to copy cfs into project: {copy_report.get('message', 'unknown')}"
         ui.result(
-            {"status": "COPY_ERROR", "message": err_msg, "studio_root": studio_root.as_posix(), "project_root": project_root.as_posix()},
+            {
+                "status": "COPY_ERROR",
+                "message": err_msg,
+                "studio_root": studio_root.as_posix(),
+                "project_root": project_root.as_posix(),
+            },
             human_fn=lambda d: (
                 ui.error(err_msg),
                 ui.hint("Check permissions and disk space."),
@@ -5668,7 +5716,14 @@ def _resolve_copy_report(
     return studio_root, copy_report
 
 
-def _resolve_agents_context(argv: List[str], prog: str, description: str, *, allow_yes: bool = False, read_only: bool = False) -> Optional[tuple]:
+def _resolve_agents_context(
+    argv: List[str],
+    prog: str,
+    description: str,
+    *,
+    allow_yes: bool = False,
+    read_only: bool = False,
+) -> Optional[tuple]:
     """Shared argument parsing and project resolution for agents commands.
 
     When ``read_only=True``, this helper skips ``_ensure_studio_local`` so no
@@ -5714,7 +5769,12 @@ def _resolve_agents_context(argv: List[str], prog: str, description: str, *, all
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-cmd-agents-list
 def cmd_agents(argv: List[str]) -> int:
     """Read-only command: list generated agent integration files."""
-    ctx = _resolve_agents_context(argv, prog="agents", description="Show generated agent integration files", read_only=True)
+    ctx = _resolve_agents_context(
+        argv,
+        prog="agents",
+        description="Show generated agent integration files",
+        read_only=True,
+    )
     if ctx is None:
         return 1
     _args, agents_to_process, project_root, studio_root, _copy_report, cfg_path, cfg = ctx
@@ -6904,7 +6964,13 @@ def _refresh_managed_gitignore(
         if isinstance(path, str) and path.strip()
     ]
     if core_toml_path.is_file():
-        from .init import _compute_gitignore_block, _read_install_tracking, _read_kit_tracking, _ignored_kit_paths, _write_gitignore_block
+        from .init import (
+            _compute_gitignore_block,
+            _ignored_kit_paths,
+            _read_install_tracking,
+            _read_kit_tracking,
+            _write_gitignore_block,
+        )
 
         if not extra_entries:
             return _write_gitignore_block(
@@ -6917,7 +6983,11 @@ def _refresh_managed_gitignore(
         expected_block = _compute_gitignore_block(
             project_root,
             _safe_relpath(studio_root, project_root),
-            _ignored_kit_paths(project_root, core_toml_path, default=_read_kit_tracking(core_toml_path, default="tracked")),
+            _ignored_kit_paths(
+                project_root,
+                core_toml_path,
+                default=_read_kit_tracking(core_toml_path, default="tracked"),
+            ),
             runtime_tracking=_read_install_tracking(core_toml_path, "runtime_tracking", default="ignored"),
             agent_tracking=_read_install_tracking(core_toml_path, "agent_tracking", default="ignored"),
         )
@@ -7207,7 +7277,10 @@ def _render_generate_agents_footer(data: Dict[str, Any], dry_run: bool) -> None:
         ui.success("Agent integration complete!")
         ui.blank()
         ui.info("Your IDE will now:")
-        ui.hint("• Route /cf-generate, /cf-analyze, /cf-plan, /cf-explore, and /cf-workspace to Constructor Studio workflows")
+        ui.hint(
+            "• Route /cf-generate, /cf-analyze, /cf-plan, /cf-explore, and "
+            "/cf-workspace to Constructor Studio workflows"
+        )
         ui.hint("• Recognize the Constructor Studio skill in chat")
     else:
         ui.warn("Agent setup finished with some errors (see above).")

@@ -57,14 +57,26 @@ def cmd_where_defined(argv: List[str]) -> int:
 
     if not definitions:
         ui.result(
-            {"status": "NOT_FOUND", "id": target_id, "artifacts_scanned": len(artifacts_to_scan), "count": 0, "definitions": []},
+            {
+                "status": "NOT_FOUND",
+                "id": target_id,
+                "artifacts_scanned": len(artifacts_to_scan),
+                "count": 0,
+                "definitions": [],
+            },
             human_fn=_human_where_defined,
         )
         return 2
 
     status = "FOUND" if len(definitions) == 1 else "AMBIGUOUS"
     ui.result(
-        {"status": status, "id": target_id, "artifacts_scanned": len(artifacts_to_scan), "count": len(definitions), "definitions": definitions},
+        {
+            "status": status,
+            "id": target_id,
+            "artifacts_scanned": len(artifacts_to_scan),
+            "count": len(definitions),
+            "definitions": definitions,
+        },
         human_fn=_human_where_defined,
     )
     # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-if-where-def

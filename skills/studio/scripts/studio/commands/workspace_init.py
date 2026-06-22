@@ -327,7 +327,10 @@ def cmd_workspace_init(argv: List[str]) -> int:
     # @cpt-begin:cpt-studio-flow-workspace-init:p1:inst-user-workspace-init
     p = argparse.ArgumentParser(
         prog="workspace-init",
-        description="Initialize a new workspace: scan nested sub-dirs for repos with adapters, generate .cf-workspace.toml",
+        description=(
+            "Initialize a new workspace: scan nested sub-dirs for repos with "
+            "adapters, generate .cf-workspace.toml"
+        ),
     )
     p.add_argument(
         "--root", default=None,
@@ -350,12 +353,25 @@ def cmd_workspace_init(argv: List[str]) -> int:
         if n < 1:
             raise argparse.ArgumentTypeError(f"must be >= 1, got {n}")
         return n
-    p.add_argument("--max-depth", type=_positive_int, default=3, help="Maximum directory depth for nested repo scanning (default: 3, min: 1)")
+    p.add_argument(
+        "--max-depth",
+        type=_positive_int,
+        default=3,
+        help="Maximum directory depth for nested repo scanning (default: 3, min: 1)",
+    )
     p.add_argument("--dry-run", action="store_true", help="Print what would be generated without writing files")
     args = p.parse_args(argv)
 
     if args.inline and args.output:
-        ui.result({"status": "ERROR", "message": "--inline and --output are mutually exclusive. --inline always writes to config/core.toml."})
+        ui.result(
+            {
+                "status": "ERROR",
+                "message": (
+                    "--inline and --output are mutually exclusive. --inline "
+                    "always writes to config/core.toml."
+                ),
+            }
+        )
         return 1
     # @cpt-end:cpt-studio-flow-workspace-init:p1:inst-user-workspace-init
 

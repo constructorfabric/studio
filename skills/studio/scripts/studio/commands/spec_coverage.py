@@ -12,7 +12,12 @@ import json
 from pathlib import Path
 from typing import List
 
-from ..utils.coverage import FileCoverage, calculate_metrics, generate_report, scan_file_coverage
+from ..utils.coverage import (
+    FileCoverage,
+    calculate_metrics,
+    generate_report,
+    scan_file_coverage,
+)
 from ..utils.ui import ui
 # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-coverage-imports
 
@@ -22,11 +27,37 @@ def _build_spec_coverage_parser() -> argparse.ArgumentParser:
         prog="spec-coverage",
         description="Measure CDSL marker coverage in codebase files",
     )
-    parser.add_argument("--min-coverage", type=float, default=None, help="Minimum coverage percentage (0-100). Exit 2 if below.")
-    parser.add_argument("--min-file-coverage", type=float, default=None, help="Minimum per-file coverage percentage (0-100). Exit 2 if any file is below.")
-    parser.add_argument("--min-granularity", type=float, default=None, help="Minimum granularity score (0-1). Exit 2 if below.")
-    parser.add_argument("--min-file-granularity", type=float, default=None, help="Minimum per-file granularity score (0-1). Exit 2 if any covered file is below.")
-    parser.add_argument("--system", action="append", default=None, dest="systems", help="Limit to system slug(s). Can be repeated. Default: all systems.")
+    parser.add_argument(
+        "--min-coverage",
+        type=float,
+        default=None,
+        help="Minimum coverage percentage (0-100). Exit 2 if below.",
+    )
+    parser.add_argument(
+        "--min-file-coverage",
+        type=float,
+        default=None,
+        help="Minimum per-file coverage percentage (0-100). Exit 2 if any file is below.",
+    )
+    parser.add_argument(
+        "--min-granularity",
+        type=float,
+        default=None,
+        help="Minimum granularity score (0-1). Exit 2 if below.",
+    )
+    parser.add_argument(
+        "--min-file-granularity",
+        type=float,
+        default=None,
+        help="Minimum per-file granularity score (0-1). Exit 2 if any covered file is below.",
+    )
+    parser.add_argument(
+        "--system",
+        action="append",
+        default=None,
+        dest="systems",
+        help="Limit to system slug(s). Can be repeated. Default: all systems.",
+    )
     parser.add_argument("--verbose", action="store_true", help="Include per-file marker details and covered ranges")
     parser.add_argument("--output", default=None, help="Write report to file instead of stdout")
     return parser
@@ -58,10 +89,22 @@ def _resolve_code_path(project_root: Path, path_str: str) -> Path:
     return (project_root / path_str).resolve()
 
 
-def _collect_codebase_files(system_node: object, project_root: Path, code_files_to_scan: List[Path]) -> None:
+def _collect_codebase_files(
+    system_node: object,
+    project_root: Path,
+    code_files_to_scan: List[Path],
+) -> None:
     for cb_entry in getattr(system_node, "codebase", []):
-        path_str = getattr(cb_entry, "path", "") if not isinstance(cb_entry, dict) else cb_entry.get("path", "")
-        extensions = (getattr(cb_entry, "extensions", None) if not isinstance(cb_entry, dict) else cb_entry.get("extensions", None)) or [".py"]
+        path_str = (
+            getattr(cb_entry, "path", "")
+            if not isinstance(cb_entry, dict)
+            else cb_entry.get("path", "")
+        )
+        extensions = (
+            getattr(cb_entry, "extensions", None)
+            if not isinstance(cb_entry, dict)
+            else cb_entry.get("extensions", None)
+        ) or [".py"]
         code_path = _resolve_code_path(project_root, path_str)
         if not code_path.exists():
             continue
@@ -149,7 +192,12 @@ def _check_min_coverage(report, args, threshold_failures: List[str]) -> bool:
     return True
 
 
-def _check_min_file_coverage(report, args, project_root: Path, threshold_failures: List[str]) -> bool:
+def _check_min_file_coverage(
+    report,
+    args,
+    project_root: Path,
+    threshold_failures: List[str],
+) -> bool:
     failed = False
     if args.min_file_coverage is None:
         return failed
@@ -158,7 +206,10 @@ def _check_min_file_coverage(report, args, project_root: Path, threshold_failure
             continue
         failed = True
         rel = _rel_path(file_coverage.path, project_root)
-        threshold_failures.append(f"file {rel} coverage {file_coverage.coverage_pct:.2f}% < {args.min_file_coverage:.2f}%")
+        threshold_failures.append(
+            f"file {rel} coverage {file_coverage.coverage_pct:.2f}% < "
+            f"{args.min_file_coverage:.2f}%"
+        )
     return failed
 
 
@@ -169,7 +220,12 @@ def _check_min_granularity(report, args, threshold_failures: List[str]) -> bool:
     return True
 
 
-def _check_min_file_granularity(report, args, project_root: Path, threshold_failures: List[str]) -> bool:
+def _check_min_file_granularity(
+    report,
+    args,
+    project_root: Path,
+    threshold_failures: List[str],
+) -> bool:
     failed = False
     if args.min_file_granularity is None:
         return failed
@@ -180,7 +236,10 @@ def _check_min_file_granularity(report, args, project_root: Path, threshold_fail
             continue
         failed = True
         rel = _rel_path(file_coverage.path, project_root)
-        threshold_failures.append(f"file {rel} granularity {file_coverage.granularity:.4f} < {args.min_file_granularity:.4f}")
+        threshold_failures.append(
+            f"file {rel} granularity {file_coverage.granularity:.4f} < "
+            f"{args.min_file_granularity:.4f}"
+        )
     return failed
 
 

@@ -393,7 +393,10 @@ class WorkspaceConfig:
             if not src.path and not src.url:
                 errors.append(f"Source '{name}' must have either 'path' or 'url'")
             if src.role not in VALID_ROLES:
-                errors.append(f"Source '{name}' has invalid role '{src.role}' (valid: {', '.join(sorted(VALID_ROLES))})")
+                errors.append(
+                    f"Source '{name}' has invalid role '{src.role}' (valid: "
+                    f"{', '.join(sorted(VALID_ROLES))})"
+                )
         if self.validation is not None and self.validation.allowed_content_languages:
             try:
                 from .content_language import SUPPORTED_LANGUAGES as _SUPPORTED
@@ -548,7 +551,11 @@ def find_workspace_config(project_root: Path) -> Tuple[Optional[WorkspaceConfig]
 
     # @cpt-begin:cpt-studio-algo-workspace-find-config:p1:inst-find-return-none
     if ws_value is not None:
-        return None, f"Malformed 'workspace' in core.toml: expected string path or table, got {type(ws_value).__name__}: {ws_value!r}"
+        return (
+            None,
+            "Malformed 'workspace' in core.toml: expected string path or table, "
+            f"got {type(ws_value).__name__}: {ws_value!r}",
+        )
     return _find_standalone_workspace(project_root)
     # @cpt-end:cpt-studio-algo-workspace-find-config:p1:inst-find-return-none
 

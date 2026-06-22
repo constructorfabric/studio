@@ -178,8 +178,14 @@ def map_phase_to_task(
 
     lines.append("**Execution Prompt:**")
     lines.append("- [ ] Load the original phase file and use it as the authoritative source for this task.")
-    lines.append("- [ ] Prioritize the phase frontmatter plus `What`, `Rules`, `Input`, `Task`, `Acceptance Criteria`, and `Output Format`.")
-    lines.append("- [ ] Treat `Preamble` as boilerplate and use `Prior Context` only as supporting background, not as new requirements.")
+    lines.append(
+        "- [ ] Prioritize the phase frontmatter plus `What`, `Rules`, `Input`, `Task`, "
+        "`Acceptance Criteria`, and `Output Format`."
+    )
+    lines.append(
+        "- [ ] Treat `Preamble` as boilerplate and use `Prior Context` only as "
+        "supporting background, not as new requirements."
+    )
     lines.append("")
 
     _append_phase_focus(lines, phase_content)
@@ -191,8 +197,14 @@ def map_phase_to_task(
     _append_bulleted_section(lines, "**Guidance:**", _distill_guidance(phase_content))
 
     lines.append("**Ignore:**")
-    lines.append("- Other phases unless they are required by `depends_on` or explicitly referenced by the original phase file.")
-    lines.append("- Files outside this phase's declared scope unless the original phase explicitly tells you to read them at runtime.")
+    lines.append(
+        "- Other phases unless they are required by `depends_on` or explicitly "
+        "referenced by the original phase file."
+    )
+    lines.append(
+        "- Files outside this phase's declared scope unless the original phase "
+        "explicitly tells you to read them at runtime."
+    )
     lines.append("- Any compiled-plan summary text if it conflicts with the original phase file.")
     lines.append("")
 
@@ -414,10 +426,13 @@ def _build_lifecycle_details(
             "title": "Plan lifecycle — archive plan files",
             "execution": [
                 "- [ ] Run this task only after all prior delegated tasks complete successfully.",
-                "- [ ] Re-read `plan.toml` and treat `plan.lifecycle`, `plan.lifecycle_status`, `plan_dir`, and `active_plan_dir` as authoritative.",
+                "- [ ] Re-read `plan.toml` and treat `plan.lifecycle`, "
+                "`plan.lifecycle_status`, `plan_dir`, and `active_plan_dir` as "
+                "authoritative.",
                 "- [ ] Set `lifecycle_status = \"ready\"` before moving the completed plan directory.",
                 f"- [ ] Move the active plan directory from `{active_plan_ref}` to `{archive_ref}`.",
-                "- [ ] Update the moved `plan.toml` so `active_plan_dir` points at the archived location and `lifecycle_status = \"done\"`.",
+                "- [ ] Update the moved `plan.toml` so `active_plan_dir` points at "
+                "the archived location and `lifecycle_status = \"done\"`.",
                 "- [ ] If archiving fails, report the lifecycle task as failed and leave delivery outputs untouched.",
             ],
             "phase_focus": "- Finalize plan-file lifecycle handling by archiving the completed plan directory.",
@@ -436,8 +451,11 @@ def _build_lifecycle_details(
         "title": "Plan lifecycle — delete plan files",
         "execution": [
             "- [ ] Run this task only after all prior delegated tasks complete successfully.",
-            "- [ ] Re-read `plan.toml` and treat `plan.lifecycle`, `plan.lifecycle_status`, `plan_dir`, and `active_plan_dir` as authoritative.",
-            f"- [ ] Delete the active plan directory at `{active_plan_ref}` after confirming the delivery work is complete.",
+            "- [ ] Re-read `plan.toml` and treat `plan.lifecycle`, "
+            "`plan.lifecycle_status`, `plan_dir`, and `active_plan_dir` as "
+            "authoritative.",
+            f"- [ ] Delete the active plan directory at `{active_plan_ref}` after "
+            "confirming the delivery work is complete.",
             "- [ ] Remove only plan-tracking files; leave delivery outputs in the project intact.",
             "- [ ] Because the plan directory is deleted, do not attempt a follow-up manifest update on disk.",
         ],
@@ -1482,10 +1500,17 @@ def _compose_managed_review_block(analyze_workflow: str) -> str:
             f"- Final review step: load and follow `{analyze_workflow}`.",
             "- Run this after the standard ralphex review flow and before deciding the final outcome.",
             f"- Immediately before loading analyze, output exactly: `STUDIO_ANALYZE_START: {analyze_workflow}`.",
-            "- After the analyze step completes, output exactly one of: `STUDIO_ANALYZE_DONE: no_findings`, `STUDIO_ANALYZE_DONE: findings_found`, or `STUDIO_ANALYZE_DONE: unable_to_complete`.",
-            "- Treat actionable issues from analyze like normal review findings: fix them, validate, commit, and do not emit `<<<RALPHEX:REVIEW_DONE>>>` in that iteration.",
-            "- Never emit `<<<RALPHEX:REVIEW_DONE>>>` unless you already logged `STUDIO_ANALYZE_DONE: no_findings` in the same iteration.",
-            "- Emit `<<<RALPHEX:REVIEW_DONE>>>` only when both the standard ralphex review and the final analyze step find nothing to fix.",
+            "- After the analyze step completes, output exactly one of: "
+            "`STUDIO_ANALYZE_DONE: no_findings`, "
+            "`STUDIO_ANALYZE_DONE: findings_found`, or "
+            "`STUDIO_ANALYZE_DONE: unable_to_complete`.",
+            "- Treat actionable issues from analyze like normal review findings: "
+            "fix them, validate, commit, and do not emit "
+            "`<<<RALPHEX:REVIEW_DONE>>>` in that iteration.",
+            "- Never emit `<<<RALPHEX:REVIEW_DONE>>>` unless you already logged "
+            "`STUDIO_ANALYZE_DONE: no_findings` in the same iteration.",
+            "- Emit `<<<RALPHEX:REVIEW_DONE>>>` only when both the standard "
+            "ralphex review and the final analyze step find nothing to fix.",
             _REVIEW_OVERRIDE_END,
         ]
     )

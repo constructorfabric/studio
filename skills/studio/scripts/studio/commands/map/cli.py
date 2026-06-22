@@ -160,7 +160,16 @@ def _build_scan_meta(primary_root: Path, art_toml: Optional[Path], adapter_dir: 
     }
 
 
-def _render_map_json_payload(nodes_all, edges, sources, scan_meta, vis_nodes, bucket_rects, category_bands, override) -> str:
+def _render_map_json_payload(
+    nodes_all,
+    edges,
+    sources,
+    scan_meta,
+    vis_nodes,
+    bucket_rects,
+    category_bands,
+    override,
+) -> str:
     category_styles = _category_styles_from_override(override)
     return render_json(RenderJsonInput(
         nodes=nodes_all,

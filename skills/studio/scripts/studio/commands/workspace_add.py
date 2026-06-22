@@ -24,7 +24,10 @@ def _is_scp_style_ssh(url: str) -> bool:
 def _validate_add_args(args: argparse.Namespace) -> str | None:
     """Validate parsed workspace-add args. Return error message or None."""
     if args.inline and args.url:
-        return "Git URL sources are not supported in inline workspace config. Remove --inline to add to a standalone workspace file."
+        return (
+            "Git URL sources are not supported in inline workspace config. "
+            "Remove --inline to add to a standalone workspace file."
+        )
     if args.branch and args.path:
         return "--branch is only valid with --url sources. Path sources do not use branch."
     if args.url:
@@ -41,14 +44,26 @@ def _resolve_inline_workspace(existing: dict) -> tuple[dict, str | None]:
     """
     ws = existing.get("workspace")
     if isinstance(ws, str):
-        return {}, "Workspace is defined as external file reference. Run without --inline to add to standalone file."
+        return (
+            {},
+            "Workspace is defined as external file reference. Run without "
+            "--inline to add to standalone file.",
+        )
     if ws is not None and not isinstance(ws, dict):
-        return {}, f"Malformed 'workspace' in config: expected table, got {type(ws).__name__}"
+        return (
+            {},
+            f"Malformed 'workspace' in config: expected table, got "
+            f"{type(ws).__name__}",
+        )
     if ws is None:
         ws = {"version": "1.0", "sources": {}}
     sources = ws.get("sources")
     if sources is not None and not isinstance(sources, dict):
-        return {}, f"Malformed 'workspace.sources' in config: expected table, got {type(sources).__name__}"
+        return (
+            {},
+            f"Malformed 'workspace.sources' in config: expected table, got "
+            f"{type(sources).__name__}",
+        )
     if sources is None:
         ws["sources"] = {}
     return ws, None
@@ -67,7 +82,12 @@ def _emit_add_result(args: argparse.Namespace, replaced: bool, config_path: str,
     branch = getattr(args, "branch", None)
     if branch:
         source_info["branch"] = branch
-    result: dict = {"status": "ADDED", "message": message, "config_path": config_path, "source": source_info}
+    result: dict = {
+        "status": "ADDED",
+        "message": message,
+        "config_path": config_path,
+        "source": source_info,
+    }
     if replaced:
         result["replaced"] = True
     ui.result(result, human_fn=_human_workspace_add)
@@ -82,13 +102,38 @@ def _parse_workspace_add_args(argv: List[str]) -> argparse.Namespace:
     )
     parser.add_argument("--name", required=True, help="Source name (human-readable key)")
     source = parser.add_mutually_exclusive_group(required=True)
-    source.add_argument("--path", default="", help="Path to the source repo (relative to workspace file or project root)")
-    source.add_argument("--url", default=None, help="Git remote URL (HTTPS or SSH) for the source")
-    parser.add_argument("--role", default="full", choices=["artifacts", "codebase", "kits", "full"], help="Source role")
-    parser.add_argument("--adapter", default=None, help="Path to studio dir within the source (e.g., studio, .bootstrap)")
+    source.add_argument(
+        "--path",
+        default="",
+        help="Path to the source repo (relative to workspace file or project root)",
+    )
+    source.add_argument(
+        "--url",
+        default=None,
+        help="Git remote URL (HTTPS or SSH) for the source",
+    )
+    parser.add_argument(
+        "--role",
+        default="full",
+        choices=["artifacts", "codebase", "kits", "full"],
+        help="Source role",
+    )
+    parser.add_argument(
+        "--adapter",
+        default=None,
+        help="Path to studio dir within the source (e.g., studio, .bootstrap)",
+    )
     parser.add_argument("--branch", default=None, help="Git branch/ref to checkout")
-    parser.add_argument("--inline", action="store_true", help="Add source inline to config/core.toml instead of standalone workspace file")
-    parser.add_argument("--force", action="store_true", help="Replace existing source with the same name instead of returning an error")
+    parser.add_argument(
+        "--inline",
+        action="store_true",
+        help="Add source inline to config/core.toml instead of standalone workspace file",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Replace existing source with the same name instead of returning an error",
+    )
     return parser.parse_args(argv)
 
 
@@ -148,7 +193,15 @@ def _route_workspace_add(args: argparse.Namespace, project_root: Path):
         return 1
     if ws_cfg.is_inline:
         if args.url:
-            ui.result({"status": "ERROR", "message": "Git URL sources are not supported in inline workspace config. Use a standalone workspace file instead."})
+            ui.result(
+                {
+                    "status": "ERROR",
+                    "message": (
+                        "Git URL sources are not supported in inline workspace "
+                        "config. Use a standalone workspace file instead."
+                    ),
+                }
+            )
             return 1
         return _add_to_inline(args, project_root)
     return _add_to_standalone(args, ws_cfg)

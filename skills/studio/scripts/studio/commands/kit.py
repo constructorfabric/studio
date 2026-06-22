@@ -199,7 +199,7 @@ def _merge_install_context(
     )
 
 
-def _merge_update_context(
+def _merge_update_context(  # pylint: disable=too-many-arguments
     update_context: Optional[_UpdateContext],
     *,
     dry_run: Optional[bool] = None,
@@ -1354,9 +1354,15 @@ def regenerate_gen_aggregates(studio_dir: Path) -> Dict[str, Any]:
         "",
         "ALWAYS open and follow `{cf-studio-path}/config/artifacts.toml` WHEN working with artifacts or codebase",
         "",
-        "ALWAYS open and follow `{cf-studio-path}/.core/schemas/artifacts.schema.json` WHEN working with artifacts.toml",
+        (
+            "ALWAYS open and follow `{cf-studio-path}/.core/schemas/artifacts.schema.json` "
+            "WHEN working with artifacts.toml"
+        ),
         "",
-        "ALWAYS open and follow `{cf-studio-path}/.core/architecture/specs/artifacts-registry.md` WHEN working with artifacts.toml",
+        (
+            "ALWAYS open and follow `{cf-studio-path}/.core/architecture/specs/"
+            "artifacts-registry.md` WHEN working with artifacts.toml"
+        ),
         "",
     ])
     if gen_agents_parts:
@@ -1683,7 +1689,11 @@ def _kit_model_public_component_names(model: Any) -> Dict[str, str]:
             prefix_generated_name = bool(subagent.get("prefix_generated_name", True))
             if prefix_generated_name:
                 prefix = f"cf-{model.slug}-"
-                subagent_name = subagent_id if subagent_id == f"cf-{model.slug}" or subagent_id.startswith(prefix) else f"{prefix}{subagent_id}"
+                subagent_name = (
+                    subagent_id
+                    if subagent_id == f"cf-{model.slug}" or subagent_id.startswith(prefix)
+                    else f"{prefix}{subagent_id}"
+                )
             else:
                 subagent_name = subagent_id
             names[subagent_name] = f"{base_component_id}.subagents.{subagent_id}"
@@ -2723,7 +2733,7 @@ def _finalize_manifest_copy_install(  # pylint: disable=too-many-locals,too-many
 # @cpt-dod:cpt-studio-dod-kit-install:p1
 # @cpt-state:cpt-studio-state-kit-installation:p1
 # @cpt-algo:cpt-studio-algo-kit-install:p1
-def install_kit(
+def install_kit(  # pylint: disable=too-many-arguments,too-many-locals
     kit_source: Path,
     studio_dir: Path,
     kit_slug: str,
@@ -2808,7 +2818,7 @@ def install_kit(
 # ---------------------------------------------------------------------------
 
 # @cpt-algo:cpt-studio-algo-kit-manifest-install:p1
-def install_kit_with_manifest(
+def install_kit_with_manifest(  # pylint: disable=too-many-arguments,too-many-locals
     kit_source: Path,
     studio_dir: Path,
     kit_slug: str,
@@ -3103,7 +3113,8 @@ def _migrate_legacy_manifest_resource(
         try:
             user_input = input(
                 "Why this input is needed: choose where this resource should be installed.\n"
-                "Press Enter to accept the suggested path, or type a different absolute path or a path relative to the kit root.\n"
+                "Press Enter to accept the suggested path, or type a different absolute "
+                "path or a path relative to the kit root.\n"
                 "Suggested: keep the default unless this resource must live somewhere else in your project.\n"
                 f"New resource '{res.id}' path [{expected_path}]: "
             ).strip()
@@ -3366,7 +3377,10 @@ def _resolve_cmd_kit_install_source(args: argparse.Namespace) -> Tuple[Optional[
             ui.result({
                 "status": "FAIL",
                 "message": "Non-interactive local installs require --install-mode copy|register",
-                "hint": "Use --install-mode copy to copy resources into Studio storage, or --install-mode register for eligible in-project sources",
+                "hint": (
+                    "Use --install-mode copy to copy resources into Studio storage, or "
+                    "--install-mode register for eligible in-project sources"
+                ),
             })
             return None, 2
         return _KitInstallSourceState(
@@ -3531,7 +3545,11 @@ def _run_single_kit_install(
                 "status": "FAIL",
                 "kit": kit_slug,
                 "message": f"Kit '{kit_slug}' is already installed at {config_kit_dir}",
-                "hint": f"Use 'cfs kit update' to update, or 'cfs kit install {args.source or args.local_path} --force' to reinstall",
+                "hint": (
+                    "Use 'cfs kit update' to update, or "
+                    f"'cfs kit install {args.source or args.local_path} --force' "
+                    "to reinstall"
+                ),
             },
             human_fn=_human_kit_install,
         )
@@ -3625,7 +3643,10 @@ def _build_kit_install_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         metavar="RESOURCE_OR_PATH",
-        help="Approve overwriting one changed user-modifiable manifest resource by id or effective path; repeat per resource",
+        help=(
+            "Approve overwriting one changed user-modifiable manifest resource by id "
+            "or effective path; repeat per resource"
+        ),
     )
     parser.add_argument(
         "--approve-tool-risk",
@@ -4619,7 +4640,10 @@ def _build_kit_update_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         metavar="RESOURCE_OR_PATH",
-        help="Approve overwriting one changed user-modifiable manifest resource by id or effective path; repeat per resource",
+        help=(
+            "Approve overwriting one changed user-modifiable manifest resource by id "
+            "or effective path; repeat per resource"
+        ),
     )
     parser.add_argument(
         "--approve-tool-risk",
@@ -4948,7 +4972,11 @@ def _build_kit_normalize_parser() -> argparse.ArgumentParser:
         help="Select canonical kit slug(s) from a multi-kit manifest; repeat, comma-separate, or use 'all'",
     )
     parser.add_argument("--dry-run", action="store_true", help="Print the generated manifest without writing it")
-    parser.add_argument("--stdout", action="store_true", help="Write only the generated canonical manifest TOML to stdout")
+    parser.add_argument(
+        "--stdout",
+        action="store_true",
+        help="Write only the generated canonical manifest TOML to stdout",
+    )
     return parser
 
 
@@ -5130,7 +5158,11 @@ def _kit_normalize_report(model: Any) -> Dict[str, Any]:
             prefix_generated_name = bool(subagent.get("prefix_generated_name", True))
             if prefix_generated_name:
                 prefix = f"cf-{model.slug}-"
-                generated_name = subagent_id if subagent_id == f"cf-{model.slug}" or subagent_id.startswith(prefix) else f"{prefix}{subagent_id}"
+                generated_name = (
+                    subagent_id
+                    if subagent_id == f"cf-{model.slug}" or subagent_id.startswith(prefix)
+                    else f"{prefix}{subagent_id}"
+                )
             else:
                 generated_name = subagent_id
             previews.append({
@@ -6203,7 +6235,10 @@ def _prepare_kit_update_run_context(
         _result_with_failure(
             result,
             [
-                f"Kit '{kit_slug}' is registered at absolute path '{installed_kit_rel}' which is not accessible on this OS",
+                (
+                    f"Kit '{kit_slug}' is registered at absolute path "
+                    f"'{installed_kit_rel}' which is not accessible on this OS"
+                ),
             ],
         )
         return None, result
@@ -6279,7 +6314,7 @@ def _run_nonregistered_kit_update(
 
 # @cpt-dod:cpt-studio-dod-kit-update:p1
 # @cpt-algo:cpt-studio-algo-kit-update:p1
-def update_kit(
+def update_kit(  # pylint: disable=too-many-arguments,too-many-locals
     kit_slug: str,
     source_dir: Path,
     studio_dir: Path,
@@ -6508,7 +6543,10 @@ def _validate_kit_source_mode(
         return {
             "status": "FAIL",
             "message": "--version can only be used with Git or GitHub kit sources, not --path",
-            "hint": "For local --path installs or updates, omit --version; conf.toml version is treated as local metadata only.",
+            "hint": (
+                "For local --path installs or updates, omit --version; conf.toml "
+                "version is treated as local metadata only."
+            ),
         }
     # @cpt-end:cpt-studio-algo-kit-source-mode-validation:p1:inst-reject-mode-conflicts
 
@@ -6923,7 +6961,7 @@ def _persist_core_registration(core_toml: Path, data: Dict[str, Any], kit_slug: 
 
 
 # @cpt-begin:cpt-studio-algo-kit-config-helpers:p1:inst-register-core-fn
-def _register_kit_in_core_toml(
+def _register_kit_in_core_toml(  # pylint: disable=too-many-arguments,too-many-locals
     config_dir: Path,
     kit_slug: str,
     kit_version: str,

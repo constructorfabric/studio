@@ -6,7 +6,8 @@ Command-line interface for the Studio validation tool.
 IMPORTANT: This module MUST NOT contain business logic.
 
 - The CLI is responsible only for argv parsing and command dispatch.
-- All validation, scanning, and transformation logic MUST live in dedicated modules under studio.utils or command modules.
+- All validation, scanning, and transformation logic MUST live in dedicated
+  modules under studio.utils or command modules.
 """
 
 # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-route-helpers

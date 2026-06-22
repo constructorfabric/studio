@@ -131,12 +131,21 @@ def _load_workspace_info_context():
             "status": "ERROR",
             "message": "No workspace configuration found",
             "project_root": str(project_root),
-            "hint": "Run 'workspace-init' to scan and create a workspace, add [workspace] to config/core.toml, set workspace = \"<path>\" in core.toml, or place .cf-workspace.toml at project root",
+            "hint": (
+                "Run 'workspace-init' to scan and create a workspace, add "
+                "[workspace] to config/core.toml, set workspace = "
+                '"<path>" in core.toml, or place .cf-workspace.toml at '
+                "project root"
+            ),
         })
     return project_root, None
 
 
-def _build_workspace_info_result(project_root: Path, ws_cfg: WorkspaceConfig, sources_info: List[dict]) -> tuple[dict, list[str]]:
+def _build_workspace_info_result(
+    project_root: Path,
+    ws_cfg: WorkspaceConfig,
+    sources_info: List[dict],
+) -> tuple[dict, list[str]]:
     config_warnings = ws_cfg.validate()
     warnings = _collect_workspace_warnings(sources_info, config_warnings)
     result: dict = {

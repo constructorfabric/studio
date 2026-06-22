@@ -572,7 +572,11 @@ def _extract_autodetect_system(system_data: object) -> dict:
     if isinstance(system_data.get("autodetect"), list):
         out["autodetect"] = system_data.get("autodetect")
     children = system_data.get("children")
-    out["children"] = [_extract_autodetect_system(child) for child in (children or [])] if isinstance(children, list) else []
+    out["children"] = (
+        [_extract_autodetect_system(child) for child in (children or [])]
+        if isinstance(children, list)
+        else []
+    )
     return out
 
 
@@ -594,7 +598,10 @@ def _extract_autodetect_registry(raw: object, core_data: Optional[dict]) -> Opti
         "project_root": project_root,
         "kits": kits,
         "ignore": raw.get("ignore"),
-        "systems": [_extract_autodetect_system(system_data) for system_data in (raw.get("systems") or [])],
+        "systems": [
+            _extract_autodetect_system(system_data)
+            for system_data in (raw.get("systems") or [])
+        ],
     }
 
 
@@ -756,7 +763,15 @@ def _workspace_source_details(ws_cfg: object, name: str, src: object) -> dict:
 
         workspace_file = getattr(ws_cfg, "workspace_file", None)
         base = getattr(ws_cfg, "resolution_base", None) or (workspace_file.parent if workspace_file else None)
-        resolved = peek_git_source_path(src, getattr(ws_cfg, "resolve", None) or ResolveConfig(), base) if base else None
+        resolved = (
+            peek_git_source_path(
+                src,
+                getattr(ws_cfg, "resolve", None) or ResolveConfig(),
+                base,
+            )
+            if base
+            else None
+        )
     else:
         resolved = ws_cfg.resolve_source_path(name)
     return {

@@ -295,7 +295,8 @@ def _normalize_kind(kind: str, *, warnings: List[str], resource_id: str) -> str:
     valid = _PUBLIC_KINDS | _SUPPORTING_KINDS
     if cleaned not in valid:
         raise ValueError(
-            f"Resource '{resource_id}': invalid kind '{kind}', expected one of {sorted(valid | set(_LEGACY_KIND_ALIASES))}",
+            f"Resource '{resource_id}': invalid kind '{kind}', expected one of "
+            f"{sorted(valid | set(_LEGACY_KIND_ALIASES))}",
         )
     normalized = cleaned
     # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-resource-kinds
@@ -435,7 +436,8 @@ def _validate_install_path(resource: KitResource) -> None:
     install_path = PurePosixPath(resource.install_path)
     if install_path.is_absolute() or ".." in install_path.parts:
         raise ValueError(
-            f"Resource '{resource.id}': install_path '{resource.install_path}' must be relative and must not contain '..'",
+            f"Resource '{resource.id}': install_path '{resource.install_path}' "
+            "must be relative and must not contain '..'",
         )
     # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-resource-shape
 
@@ -730,7 +732,8 @@ def _canonical_model_from_entry(
         # @cpt-begin:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-no-binding-path
         if "binding_path" in raw:
             raise ValueError(
-                f"Resource '{resource_id}': binding_path is installed state and is not allowed in {_CANONICAL_MANIFEST}",
+                f"Resource '{resource_id}': binding_path is installed state and "
+                f"is not allowed in {_CANONICAL_MANIFEST}",
             )
         # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-no-binding-path
         _warn_unknown_keys(
@@ -1363,7 +1366,13 @@ def _core_binding_resource(
         description=str(binding_dict.get("description", "")).strip(),
         user_modifiable=bool(binding_dict.get("user_modifiable", True)),
         aliases=_string_list(binding_dict.get("aliases"), f"resources.{resource_id}.aliases"),
-        generated_targets=_string_list(binding_dict.get("generated_targets"), f"resources.{resource_id}.generated_targets") or ["installed"],
+        generated_targets=(
+            _string_list(
+                binding_dict.get("generated_targets"),
+                f"resources.{resource_id}.generated_targets",
+            )
+            or ["installed"]
+        ),
         origin=origin,
         generated_name=_resource_generated_name(
             slug,
@@ -1386,8 +1395,16 @@ def _core_binding_resource(
         role=str(binding_dict.get("role", _DEFAULT_ROLE) or _DEFAULT_ROLE),
         target=str(binding_dict.get("target", _DEFAULT_TARGET) or _DEFAULT_TARGET),
         provider=str(binding_dict.get("provider", _DEFAULT_PROVIDER) or _DEFAULT_PROVIDER),
-        reasoning_effort=str(binding_dict.get("reasoning_effort", _EMPTY_TEXT) or _EMPTY_TEXT) if binding_dict.get("reasoning_effort") else None,
-        context_window=str(binding_dict.get("context_window", _EMPTY_TEXT) or _EMPTY_TEXT) if binding_dict.get("context_window") else None,
+        reasoning_effort=(
+            str(binding_dict.get("reasoning_effort", _EMPTY_TEXT) or _EMPTY_TEXT)
+            if binding_dict.get("reasoning_effort")
+            else None
+        ),
+        context_window=(
+            str(binding_dict.get("context_window", _EMPTY_TEXT) or _EMPTY_TEXT)
+            if binding_dict.get("context_window")
+            else None
+        ),
         subagents=_config_subagents(binding_dict, {}, f"resources.{resource_id}.subagents"),
         target_configs=_config_table(binding_dict, "targets", f"resources.{resource_id}.targets"),
         artifact_bindings=artifact_bindings,

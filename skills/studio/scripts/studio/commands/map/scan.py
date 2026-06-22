@@ -475,8 +475,12 @@ def _block_marker_uses(block_markers, src_lines: List[str]) -> List[CptUse]:
             CptUse(
                 cpt_id=cpt_id,
                 line=block_marker.end_line,
-                snippet=_code_snippet(src_lines, max(block_marker.start_line, block_marker.end_line - 4), block_marker.end_line)
-                        or f"@cpt-end:{block_marker.id}:p{block_marker.phase}:inst-{block_marker.inst}",
+                snippet=_code_snippet(
+                    src_lines,
+                    max(block_marker.start_line, block_marker.end_line - 4),
+                    block_marker.end_line,
+                )
+                or f"@cpt-end:{block_marker.id}:p{block_marker.phase}:inst-{block_marker.inst}",
                 marker_kind="block-end",
             ),
         ])

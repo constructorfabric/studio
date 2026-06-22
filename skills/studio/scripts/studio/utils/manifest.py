@@ -472,7 +472,10 @@ def _parse_base_fields(raw: Dict[str, Any], manifest_path: Optional[Path] = None
     # Must be relative — absolute paths are rejected to prevent arbitrary file reads.
     if raw_append_file is not None:
         if not isinstance(raw_append_file, str):
-            raise ValueError(f"Component '{comp_id}': 'append_file' must be a string, got {type(raw_append_file).__name__}")
+            raise ValueError(
+                f"Component '{comp_id}': 'append_file' must be a string, got "
+                f"{type(raw_append_file).__name__}"
+            )
         if manifest_path is None:
             raise ValueError(f"Component '{comp_id}': 'append_file' requires manifest_path context")
         append_path = Path(raw_append_file)
@@ -1447,7 +1450,8 @@ def _resolve_binding_path(
     project_root = _project_root_from_core_toml(studio_dir / "config" / "core.toml", studio_dir)
     if project_root is not None and not _path_is_within(resolved_path, project_root):
         raise ValueError(
-            f"Resource '{identifier}' binding path '{normalized_path}' escapes the current project root '{project_root}'"
+            f"Resource '{identifier}' binding path '{normalized_path}' escapes "
+            f"the current project root '{project_root}'"
         )
     return resolved_path
 # @cpt-end:cpt-studio-algo-kit-manifest-resolve:p1:inst-resolve-to-absolute

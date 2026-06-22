@@ -21,8 +21,19 @@ def _build_sync_parser() -> argparse.ArgumentParser:
         "--source", default=None,
         help="Sync only the named source (default: all Git URL sources)",
     )
-    parser.add_argument("--dry-run", action="store_true", help="Show which sources would be synced without network operations")
-    parser.add_argument("--force", action="store_true", help="Skip dirty worktree check — WARNING: uncommitted changes will be discarded via git reset --hard")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show which sources would be synced without network operations",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "Skip dirty worktree check. WARNING: uncommitted changes "
+            "will be discarded via git reset --hard"
+        ),
+    )
     return parser
 
 

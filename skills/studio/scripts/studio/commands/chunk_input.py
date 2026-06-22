@@ -294,7 +294,10 @@ def _cleanup_chunk_swap(backup_dir: Path | None, output_dir: Path, preserve_ok: 
 def _parse_chunk_args(argv: List[str]):
     parser = _ChunkInputArgumentParser(
         prog="chunk-input",
-        description="Chunk workflow input into line-bounded files for plan execution; use --include-stdin to combine prompt text with file paths",
+        description=(
+            "Chunk workflow input into line-bounded files for plan execution; "
+            "use --include-stdin to combine prompt text with file paths"
+        ),
     )
     parser.add_argument(
         "paths",
@@ -316,7 +319,10 @@ def _parse_chunk_args(argv: List[str]):
         "--threshold-lines",
         type=int,
         default=DEFAULT_THRESHOLD_LINES,
-        help=f"Oversized-input threshold that should force planning (default: {DEFAULT_THRESHOLD_LINES})",
+        help=(
+            "Oversized-input threshold that should force planning "
+            f"(default: {DEFAULT_THRESHOLD_LINES})"
+        ),
     )
     parser.add_argument(
         "--stdin-label",
@@ -362,7 +368,12 @@ def _source_result(source: Dict[str, object], max_lines: int) -> Dict[str, objec
     }
 
 
-def _dry_run_result(args, output_dir: Path, sources: Sequence[Dict[str, object]], total_lines: int) -> Dict[str, object]:
+def _dry_run_result(
+    args,
+    output_dir: Path,
+    sources: Sequence[Dict[str, object]],
+    total_lines: int,
+) -> Dict[str, object]:
     input_signature, _ = _build_input_signature(sources)
     return {
         "status": "OK",
@@ -378,7 +389,15 @@ def _dry_run_result(args, output_dir: Path, sources: Sequence[Dict[str, object]]
     }
 
 
-def _written_chunk_result(args, output_dir: Path, sources, chunks, input_signature: str, package_manifest: str, total_lines: int) -> Dict[str, object]:
+def _written_chunk_result(
+    args,
+    output_dir: Path,
+    sources,
+    chunks,
+    input_signature: str,
+    package_manifest: str,
+    total_lines: int,
+) -> Dict[str, object]:
     return {
         "status": "OK",
         "output_dir": output_dir.as_posix(),

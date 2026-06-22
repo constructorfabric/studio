@@ -280,7 +280,11 @@ def cmd_list_ids(argv: List[str]) -> int:
     """
     # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-user-query
     p = argparse.ArgumentParser(prog="list-ids")
-    p.add_argument("--artifact", default=None, help="Path to a registered artifact file (if omitted, scans all registered artifacts)")
+    p.add_argument(
+        "--artifact",
+        default=None,
+        help="Path to a registered artifact file (if omitted, scans all registered artifacts)",
+    )
     p.add_argument("--pattern", default=None, help="Filter IDs by substring or regex pattern")
     p.add_argument("--regex", action="store_true", help="Treat pattern as regular expression")
     p.add_argument("--kind", default=None, help="Filter by inferred ID kind")

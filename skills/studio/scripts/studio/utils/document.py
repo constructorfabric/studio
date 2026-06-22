@@ -21,7 +21,8 @@ _ID_DEF_RE = re.compile(
     r"|"
     r"`(?P<priority_only>p\d+)`\s*-\s*\*\*ID\*\*:\s*`(?P<id2>cpt-[a-z0-9][a-z0-9-]+)`"
     r"|"
-    r"[-*]\s+(?P<task>\[\s*[xX]?\s*\])\s*(?:`(?P<priority>p\d+)`\s*-\s*)?\*\*ID\*\*:\s*`(?P<id3>cpt-[a-z0-9][a-z0-9-]+)`"
+    r"[-*]\s+(?P<task>\[\s*[xX]?\s*\])\s*(?:`(?P<priority>p\d+)`\s*-\s*)?"
+    r"\*\*ID\*\*:\s*`(?P<id3>cpt-[a-z0-9][a-z0-9-]+)`"
     r")\s*$"
 )
 _ID_REF_RE = re.compile(
@@ -32,7 +33,9 @@ _BACKTICK_ID_RE = re.compile(r"`(cpt-[a-z0-9][a-z0-9-]+)`")
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-scan-cdsl:p1:inst-scan-cdsl-datamodel
 _CDSL_LINE_RE = re.compile(
-    r"^\s*(?:\d+\.\s+|-\s+)\[\s*(?P<check>[xX ])\s*\]\s*-\s*`(?P<phase>(?:p\d+|ph-\d+))`\s*-\s*.+\s*-\s*`inst-(?P<inst>[a-z0-9-]+)`\s*$"
+    r"^\s*(?:\d+\.\s+|-\s+)\[\s*(?P<check>[xX ])\s*\]\s*-\s*"
+    r"`(?P<phase>(?:p\d+|ph-\d+))`\s*-\s*.+\s*-\s*"
+    r"`inst-(?P<inst>[a-z0-9-]+)`\s*$"
 )
 _CDSL_PHASE_NUM_RE = re.compile(r"^(?:p|ph-)(?P<num>\d+)$")
 # @cpt-end:cpt-studio-algo-traceability-validation-scan-cdsl:p1:inst-scan-cdsl-datamodel

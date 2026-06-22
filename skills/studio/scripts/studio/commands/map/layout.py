@@ -463,7 +463,16 @@ def _optimize_stacked_layout(category_inputs: list[dict[str, Any]], verbose: boo
     return best_choices, choice_by_cat, stacked_positions, stacked_metrics
 
 
-def _try_repacked_layout(best_choices, category_inputs, stacked_metrics, chosen_positions, chosen_metrics, category_links, choice_by_cat, verbose):
+def _try_repacked_layout(
+    best_choices,
+    category_inputs,
+    stacked_metrics,
+    chosen_positions,
+    chosen_metrics,
+    category_links,
+    choice_by_cat,
+    verbose,
+):
     repacked = rectpack.try_repack_rectangles(
         [
             (entry["cat_id"], candidate.width, candidate.height)
@@ -478,8 +487,16 @@ def _try_repacked_layout(best_choices, category_inputs, stacked_metrics, chosen_
     repacked_positions, _ = repacked
     repacked_metrics = _layout_metrics(best_choices, repacked_positions, category_inputs)
     improves = _layout_improves(stacked_metrics, repacked_metrics)
-    better_score = _layout_score(repacked_metrics, repacked_positions, category_links, choice_by_cat) < _layout_score(
-        chosen_metrics, chosen_positions, category_links, choice_by_cat
+    better_score = _layout_score(
+        repacked_metrics,
+        repacked_positions,
+        category_links,
+        choice_by_cat,
+    ) < _layout_score(
+        chosen_metrics,
+        chosen_positions,
+        category_links,
+        choice_by_cat,
     )
     if improves and better_score:
         if verbose:
@@ -524,7 +541,9 @@ def _affinity_order_candidates(layout_input: _AffinityLayoutInput) -> set[tuple[
 
 def _affinity_width_candidates(best_choices, stacked_metrics) -> tuple[int, list[int]]:
     max_cat_width = max(choice.width for choice in best_choices)
-    natural_cat_width = sum(choice.width for choice in best_choices) + CATEGORY_REPACK_GAP * max(0, len(best_choices) - 1)
+    natural_cat_width = sum(
+        choice.width for choice in best_choices
+    ) + CATEGORY_REPACK_GAP * max(0, len(best_choices) - 1)
     width_candidates = sorted(
         {
             max_cat_width,
@@ -553,14 +572,30 @@ def _try_affinity_layout(layout_input: _AffinityLayoutInput):
             metrics = _layout_metrics(layout_input.best_choices, positions, layout_input.category_inputs)
             if not _layout_improves(layout_input.stacked_metrics, metrics):
                 continue
-            if best_affinity_metrics is None or _layout_score(metrics, positions, layout_input.category_links, layout_input.choice_by_cat) < _layout_score(
-                best_affinity_metrics, best_affinity_positions, layout_input.category_links, layout_input.choice_by_cat  # type: ignore[arg-type]
+            if best_affinity_metrics is None or _layout_score(
+                metrics,
+                positions,
+                layout_input.category_links,
+                layout_input.choice_by_cat,
+            ) < _layout_score(
+                best_affinity_metrics,
+                best_affinity_positions,
+                layout_input.category_links,
+                layout_input.choice_by_cat,  # type: ignore[arg-type]
             ):
                 best_affinity_positions = positions
                 best_affinity_metrics = metrics
     if best_affinity_positions is not None and best_affinity_metrics is not None:
-        if _layout_score(best_affinity_metrics, best_affinity_positions, layout_input.category_links, layout_input.choice_by_cat) < _layout_score(
-            layout_input.chosen_metrics, layout_input.chosen_positions, layout_input.category_links, layout_input.choice_by_cat
+        if _layout_score(
+            best_affinity_metrics,
+            best_affinity_positions,
+            layout_input.category_links,
+            layout_input.choice_by_cat,
+        ) < _layout_score(
+            layout_input.chosen_metrics,
+            layout_input.chosen_positions,
+            layout_input.category_links,
+            layout_input.choice_by_cat,
         ):
             if layout_input.verbose:
                 print("[layout] affinity layout kept")
@@ -581,7 +616,13 @@ def _category_band(candidate, cat_id: str, cat_x: int, cat_y: int, category_styl
     }
 
 
-def _bucket_layout(candidate, cat_id: str, cat_nodes: list[Node], cat_x: int, cat_y: int) -> tuple[dict[str, Any], int, int, int]:
+def _bucket_layout(
+    candidate,
+    cat_id: str,
+    cat_nodes: list[Node],
+    cat_x: int,
+    cat_y: int,
+) -> tuple[dict[str, Any], int, int, int]:
     width, height, cols = _dims(len(cat_nodes), len(cat_nodes))
     bx_local, by_local = candidate.positions.get(cat_id, (CAT_PAD_SIDE, CATEGORY_HEADER_H + CAT_PAD_TOP))
     return {

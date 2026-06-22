@@ -23,7 +23,13 @@ def _definition_maps(nodes: Sequence[Node]) -> Tuple[Dict[str, Node], Dict[str, 
     return def_map, base_def_map
 
 
-def _resolve_cpt_target(src: Node, use, def_map: Dict[str, Node], base_def_map: Dict[str, Node], phantoms: Dict[str, Node]):
+def _resolve_cpt_target(
+    src: Node,
+    use,
+    def_map: Dict[str, Node],
+    base_def_map: Dict[str, Node],
+    phantoms: Dict[str, Node],
+):
     target = def_map.get(use.cpt_id) or base_def_map.get(use.cpt_id.split(":")[0])
     if target is None:
         phantom = phantoms.get(use.cpt_id)
@@ -48,7 +54,16 @@ def _resolve_cpt_target(src: Node, use, def_map: Dict[str, Node], base_def_map: 
     return target.id, False, src.source != target.source
 
 
-def _append_cpt_edge(edges: List[Edge], by_key: Dict[Tuple[str, str, str], Edge], edge_id: int, src: Node, use, to_id: str, dangling: bool, cross_repo: bool) -> int:
+def _append_cpt_edge(
+    edges: List[Edge],
+    by_key: Dict[Tuple[str, str, str], Edge],
+    edge_id: int,
+    src: Node,
+    use,
+    to_id: str,
+    dangling: bool,
+    cross_repo: bool,
+) -> int:
     edge_type = "cpt-doc" if src.kind == "markdown" else "cpt-impl"
     key = (src.id, to_id, use.cpt_id)
     ref = Ref(

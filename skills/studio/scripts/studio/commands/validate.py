@@ -9,7 +9,12 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from ..utils import error_codes as EC
 from ..utils.codebase import CodeFile, cross_validate_code
-from ..utils.constraints import ArtifactRecord, cross_validate_artifacts, error as constraints_error, validate_artifact_file
+from ..utils.constraints import (
+    ArtifactRecord,
+    cross_validate_artifacts,
+    error as constraints_error,
+    validate_artifact_file,
+)
 from ..utils.document import scan_cdsl_instructions, scan_cpt_ids
 from ..utils.fixing import enrich_issues
 from ..utils.ui import ui
@@ -195,14 +200,35 @@ def _parse_validate_args(argv: List[str]) -> argparse.Namespace:
     """Parse CLI args for the validate command."""
     parser = argparse.ArgumentParser(
         prog="validate",
-        description="Validate Constructor Studio artifacts and code traceability (structure + cross-references + traceability)",
+        description=(
+            "Validate Constructor Studio artifacts and code traceability "
+            "(structure + cross-references + traceability)"
+        ),
     )
-    parser.add_argument("--artifact", default=None, help="Path to specific Constructor Studio artifact (if omitted, validates all registered artifacts)")
+    parser.add_argument(
+        "--artifact",
+        default=None,
+        help=(
+            "Path to specific Constructor Studio artifact "
+            "(if omitted, validates all registered artifacts)"
+        ),
+    )
     parser.add_argument("--skip-code", action="store_true", help="Skip code traceability validation")
     parser.add_argument("--verbose", action="store_true", help="Print full validation report")
     parser.add_argument("--output", default=None, help="Write report to file instead of stdout")
-    parser.add_argument("--local-only", action="store_true", help="Skip cross-repo workspace validation (validate local repo only)")
-    parser.add_argument("--source", default=None, help="Target a specific workspace source for validation (uses that source's adapter context)")
+    parser.add_argument(
+        "--local-only",
+        action="store_true",
+        help="Skip cross-repo workspace validation (validate local repo only)",
+    )
+    parser.add_argument(
+        "--source",
+        default=None,
+        help=(
+            "Target a specific workspace source for validation "
+            "(uses that source's adapter context)"
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -429,7 +455,11 @@ def _maybe_emit_registry_failure(session: _ValidateSession, results: _ValidateRe
     return 2
 
 
-def _resolve_constraints_for_artifact(session: _ValidateSession, artifact_type: str, kit_id: str) -> Tuple[object, Optional[Path]]:
+def _resolve_constraints_for_artifact(
+    session: _ValidateSession,
+    artifact_type: str,
+    kit_id: str,
+) -> Tuple[object, Optional[Path]]:
     """Resolve artifact-kind constraints and the originating constraints path."""
     from ..utils.context import _resolve_loaded_kit_constraints_path
 
@@ -565,13 +595,22 @@ def _build_cross_validation_context(session: _ValidateSession, results: _Validat
             artifact_path = (session.project_root / artifact_meta.path).resolve()
         if artifact_path is None or not artifact_path.exists() or str(artifact_path) in validated_paths:
             continue
-        constraints_for_kind, _ = _resolve_constraints_for_artifact(session, str(artifact_meta.kind), str(system_node.kit))
+        constraints_for_kind, _ = _resolve_constraints_for_artifact(
+            session,
+            str(artifact_meta.kind),
+            str(system_node.kit),
+        )
         all_artifacts.append(ArtifactRecord(
             path=artifact_path,
             artifact_kind=str(artifact_meta.kind),
             constraints=constraints_for_kind,
         ))
-    if not session.args.local_only and session.ws_ctx is not None and session.ws_ctx.cross_repo and session.ws_ctx.resolve_remote_ids:
+    if (
+        not session.args.local_only
+        and session.ws_ctx is not None
+        and session.ws_ctx.cross_repo
+        and session.ws_ctx.resolve_remote_ids
+    ):
         seen_paths = {str(record.path) for record in all_artifacts}
         all_artifacts.extend(_collect_cross_repo_artifacts(session.ws_ctx, seen_paths))
     return all_artifacts
@@ -653,7 +692,11 @@ def _resolve_code_scan_targets(session: _ValidateSession, entry: object) -> List
         return []
     if code_path.is_file():
         return [code_path]
-    extensions = (getattr(entry, "extensions", None) if not isinstance(entry, dict) else entry.get("extensions", None)) or [".py"]
+    extensions = (
+        getattr(entry, "extensions", None)
+        if not isinstance(entry, dict)
+        else entry.get("extensions", None)
+    ) or [".py"]
     return [candidate for ext in extensions for candidate in code_path.rglob(f"*{ext}")]
 
 
@@ -675,7 +718,12 @@ def _scan_system_codebase(
             strict_code_validation=strict_code_validation,
         )
     for child in system_node.children:
-        _scan_system_codebase(child, session=session, results=results, strict_code_validation=strict_code_validation)
+        _scan_system_codebase(
+            child,
+            session=session,
+            results=results,
+            strict_code_validation=strict_code_validation,
+        )
 
 
 def _run_code_validation(
@@ -701,10 +749,18 @@ def _run_code_validation(
     if not should_scan_code:
         return
     for system_node in session.meta.systems:
-        _scan_system_codebase(system_node, session=session, results=results, strict_code_validation=strict_code_validation)
+        _scan_system_codebase(
+            system_node,
+            session=session,
+            results=results,
+            strict_code_validation=strict_code_validation,
+        )
     if not strict_code_validation or not results.parsed_code_files_full:
         return
-    artifact_instances, artifact_instances_all = _collect_full_artifact_instances(all_artifacts_for_cross, traceability_by_path)
+    artifact_instances, artifact_instances_all = _collect_full_artifact_instances(
+        all_artifacts_for_cross,
+        traceability_by_path,
+    )
     code_validation = cross_validate_code(
         results.parsed_code_files_full,
         artifact_ids,
@@ -889,7 +945,10 @@ def _emit_final_validate_report(session: _ValidateSession, results: _ValidateRes
         if results.to_code_ids:
             report["coverage"] = f"{len(results.code_ids_found & results.to_code_ids)}/{len(results.to_code_ids)}"
     if overall_status == "PASS":
-        report["next_step"] = "Deterministic validation passed. Now perform semantic validation: review content quality against checklist.md criteria."
+        report["next_step"] = (
+            "Deterministic validation passed. Now perform semantic validation: "
+            "review content quality against checklist.md criteria."
+        )
     if session.args.verbose:
         report["errors"] = results.all_errors
         report["warnings"] = results.all_warnings

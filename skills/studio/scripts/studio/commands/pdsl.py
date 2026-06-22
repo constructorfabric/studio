@@ -89,7 +89,11 @@ def _cmd_pdsl_validate(argv: Sequence[str]) -> int:
 
 # @cpt-begin:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-normalize-sources
 # @cpt-begin:cpt-studio-flow-pdsl-validation-cli-validate-input:p1:inst-input-safety
-    selector_count = int(args.text is not None) + int("-" in args.paths) + int(bool([p for p in args.paths if p != "-"]))
+    selector_count = (
+        int(args.text is not None)
+        + int("-" in args.paths)
+        + int(bool([p for p in args.paths if p != "-"]))
+    )
     if selector_count != 1:
         data = {
             "command": "pdsl validate",

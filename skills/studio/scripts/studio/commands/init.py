@@ -359,14 +359,21 @@ def _add_legacy_migration_args(parser: argparse.ArgumentParser) -> None:
         choices=LEGACY_MIGRATION_CHOICES,
         default="ask",
         metavar="{ask,yes,no}",
-        help="Migrate an existing Cyber Pilot (cypilot) project. Use --migrate-from-cypilot={ask,yes,no} (default: ask)",
+        help=(
+            "Migrate an existing Cyber Pilot (cypilot) project. Use "
+            "--migrate-from-cypilot={ask,yes,no} (default: ask)"
+        ),
     )
     parser.add_argument(
         "--update-legacy-studio",
         choices=LEGACY_MIGRATION_CHOICES,
         default="ask",
         metavar="{ask,yes,no}",
-        help="Update unsupported Constructor Studio installs to the migration baseline first. Use --update-legacy-studio={ask,yes,no} (default: ask)",
+        help=(
+            "Update unsupported Constructor Studio installs to the migration "
+            "baseline first. Use --update-legacy-studio={ask,yes,no} "
+            "(default: ask)"
+        ),
     )
 
 
@@ -541,8 +548,16 @@ def _parse_init_args(
 ) -> Tuple[argparse.Namespace, _InitTrackingOptions]:
     p = argparse.ArgumentParser(prog="init", description="Initialize Constructor Studio in a project")
     p.add_argument("--project-root", default=None, help="Project root directory")
-    p.add_argument("--install-dir", default=None, help="Constructor Studio directory relative to project root (default: .cf-studio)")
-    p.add_argument("--from-dir", default=None, help="Constructor Studio directory relative to project root when migrating")
+    p.add_argument(
+        "--install-dir",
+        default=None,
+        help="Constructor Studio directory relative to project root (default: .cf-studio)",
+    )
+    p.add_argument(
+        "--from-dir",
+        default=None,
+        help="Constructor Studio directory relative to project root when migrating",
+    )
     p.add_argument("--project-name", default=None, help="Project name (default: project root folder name)")
     p.add_argument(
         "--runtime-tracking",
@@ -1366,7 +1381,13 @@ def _compute_managed_block(install_dir: str) -> str:
     )
     # @cpt-end:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-compute-block
 
-def _inject_managed_block(target_file: Path, install_dir: str, dry_run: bool = False, *, project_root: Optional[Path] = None) -> str:
+def _inject_managed_block(
+    target_file: Path,
+    install_dir: str,
+    dry_run: bool = False,
+    *,
+    project_root: Optional[Path] = None,
+) -> str:
     """Inject or update a managed block into *target_file*. Returns action taken."""
     # @cpt-begin:cpt-studio-algo-core-infra-inject-root-agents:p1:inst-validate-path
     resolved_target = target_file.resolve()
@@ -1393,10 +1414,19 @@ def _prompt_kit_install_flag(interactive: bool) -> bool:
     # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-prompt-kit
     if interactive and sys.stdin.isatty():
         sys.stderr.write(f"\n  Install SDLC kit ({_DEFAULT_KIT_SOURCE})?\n")
-        sys.stderr.write("  This adds the default Constructor Studio SDLC templates, workflows, and rules for typical project setup.\n")
+        sys.stderr.write(
+            "  This adds the default Constructor Studio SDLC templates, "
+            "workflows, and rules for typical project setup.\n"
+        )
         sys.stderr.write("  Reply with `a` to install it now or `d` to skip it.\n")
-        sys.stderr.write("  Suggested: `a` for first-time setup; `d` only if you want to install or manage kits manually.\n")
-        sys.stderr.write("  `a` = download and install the default kit now. `d` = continue without installing the kit.\n")
+        sys.stderr.write(
+            "  Suggested: `a` for first-time setup; `d` only if you want to "
+            "install or manage kits manually.\n"
+        )
+        sys.stderr.write(
+            "  `a` = download and install the default kit now. `d` = continue "
+            "without installing the kit.\n"
+        )
         sys.stderr.write("  [a]ccept / [d]ecline: ")
         sys.stderr.flush()
         try:
@@ -1545,7 +1575,11 @@ def _emit_missing_cache_error(project_root: Path, *, studio_dir: Optional[Path] 
             ui.error("Constructor Studio cache not found."),
             ui.detail("Expected at", str(CACHE_DIR)),
             ui.blank(),
-            ui.hint("Install Constructor Studio first:  pipx install git+https://github.com/constructorfabric/studio.git && cfs update"),
+            ui.hint(
+                "Install Constructor Studio first:  "
+                "pipx install git+https://github.com/constructorfabric/studio.git "
+                "&& cfs update"
+            ),
             ui.blank(),
         ),
     )
@@ -1622,7 +1656,8 @@ def _ensure_init_config_agents(
                 "# Custom Agent Navigation Rules\n"
                 "\n"
                 "Add your project-specific WHEN rules here.\n"
-                "These rules are loaded alongside the generated rules in `{cf-studio-path}/.gen/" + _AGENTS_FILENAME + "`.\n",
+                "These rules are loaded alongside the generated rules in "
+                f"`{{cf-studio-path}}/.gen/{_AGENTS_FILENAME}`.\n",
                 encoding="utf-8",
             )
         actions["config_agents"] = "unchanged" if config_agents_existed else "created"

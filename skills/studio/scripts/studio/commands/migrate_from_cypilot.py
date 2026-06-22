@@ -899,7 +899,13 @@ def _post_copy_rewrites(
     """Build the ordered rewrite steps for migration after the directory copy."""
     return [
         ("core_toml", lambda: _migrate_core_toml(target_dir / "config" / "core.toml", warnings=warnings)),
-        ("artifacts_toml", lambda: _migrate_artifacts_toml(target_dir / "config" / "artifacts.toml", warnings=warnings)),
+        (
+            "artifacts_toml",
+            lambda: _migrate_artifacts_toml(
+                target_dir / "config" / "artifacts.toml",
+                warnings=warnings,
+            ),
+        ),
         ("config_toml_template_vars", lambda: _migrate_config_toml_template_vars(target_dir / "config")),
         ("config_markdown", lambda: _migrate_config_markdown(target_dir / "config")),
         ("root_agents", lambda: _replace_root_block_with_warnings(project_root / "AGENTS.md", target_rel, warnings)),

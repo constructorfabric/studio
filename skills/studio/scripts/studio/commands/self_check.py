@@ -369,7 +369,11 @@ def _append_missing_reference_issue(
 ) -> None:
     issues[target].append(constraints_error(
         "template",
-        "Template missing required reference placeholder" if required else "Template missing optional reference placeholder",
+        (
+            "Template missing required reference placeholder"
+            if required
+            else "Template missing optional reference placeholder"
+        ),
         path=template_path,
         line=1,
         kit_id=kit_id,

@@ -215,7 +215,10 @@ def _resolve_loaded_kit_constraints_path(
     return (kit_root / _CONSTRAINTS_FILE).resolve()
 
 
-def load_resource_bindings(adapter_dir: Path, kit_id: str) -> Tuple[Optional[Dict[str, str]], Dict[str, Path], List[Dict[str, object]]]:
+def load_resource_bindings(
+    adapter_dir: Path,
+    kit_id: str,
+) -> Tuple[Optional[Dict[str, str]], Dict[str, Path], List[Dict[str, object]]]:
     """Load manifest resource bindings for a kit, preserving context errors."""
     rb: Optional[Dict[str, str]] = None
     resolved_bindings: Dict[str, Path] = {}
@@ -654,7 +657,11 @@ class WorkspaceContext:
         return systems
 
     # @cpt-algo:cpt-studio-algo-workspace-resolve-artifact:p1
-    def resolve_artifact_path(self, artifact: Union[Artifact, CodebaseEntry, Kit], fallback_root: Path) -> Optional[Path]:
+    def resolve_artifact_path(
+        self,
+        artifact: Union[Artifact, CodebaseEntry, Kit],
+        fallback_root: Path,
+    ) -> Optional[Path]:
         """Resolve an artifact's filesystem path, routing through workspace source if set.
 
         When ``artifact.source`` names a reachable workspace source, the path is
@@ -875,7 +882,8 @@ def get_expanded_meta(sc: "SourceContext") -> Optional[ArtifactsMeta]:
     """
     if sc.adapter_context is not None:
         return sc.adapter_context.meta
-    if not sc._adapter_resolved and sc.adapter_dir is not None:  # pylint: disable=protected-access  # module-level helper is part of SourceContext implementation
+    if not sc._adapter_resolved and sc.adapter_dir is not None:  # pylint: disable=protected-access
+        # module-level helper is part of SourceContext implementation
         ctx = resolve_adapter_context(sc)
         if ctx is not None:
             return ctx.meta
@@ -1092,7 +1100,8 @@ def get_context() -> Optional[Union[StudioContext, WorkspaceContext]]:
     operations for git URL sources) is deferred until a command actually
     needs the context.
     """
-    global _global_context, _workspace_upgrade_attempted, _workspace_upgrade_error  # pylint: disable=global-statement  # module-level singleton pattern for CLI context
+    global _global_context, _workspace_upgrade_attempted, _workspace_upgrade_error  # pylint: disable=global-statement
+    # module-level singleton pattern for CLI context
     if not _workspace_upgrade_attempted and isinstance(_global_context, StudioContext):
         _workspace_upgrade_attempted = True
         try:
@@ -1108,7 +1117,8 @@ def get_context() -> Optional[Union[StudioContext, WorkspaceContext]]:
 
 def set_context(ctx: Optional[Union[StudioContext, WorkspaceContext]]) -> None:
     """Set the global Studio context."""
-    global _global_context, _workspace_upgrade_attempted, _workspace_upgrade_error  # pylint: disable=global-statement  # module-level singleton pattern for CLI context
+    global _global_context, _workspace_upgrade_attempted, _workspace_upgrade_error  # pylint: disable=global-statement
+    # module-level singleton pattern for CLI context
     _global_context = ctx
     _workspace_upgrade_error = None
     # If caller already provides a WorkspaceContext, skip lazy upgrade
@@ -1117,7 +1127,8 @@ def set_context(ctx: Optional[Union[StudioContext, WorkspaceContext]]) -> None:
 
 def ensure_context(start_path: Optional[Path] = None) -> Optional[Union[StudioContext, WorkspaceContext]]:
     """Ensure context is loaded, loading if necessary."""
-    global _global_context, _workspace_upgrade_attempted, _workspace_upgrade_error  # pylint: disable=global-statement  # module-level singleton pattern for CLI context
+    global _global_context, _workspace_upgrade_attempted, _workspace_upgrade_error  # pylint: disable=global-statement
+    # module-level singleton pattern for CLI context
     if _global_context is None:
         base_ctx = StudioContext.load(start_path)
         if base_ctx is not None:

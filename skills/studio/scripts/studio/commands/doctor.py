@@ -52,7 +52,11 @@ def _render_doctor_checks(checks: list[dict]) -> tuple[bool, bool]:
 def _doctor_result_payload(checks: list[dict], has_fail: bool, has_warn: bool, summary: str) -> dict:
     level_to_status = {"PASS": "pass", "WARN": "warn", "FAIL": "fail"}
     spec_checks = [
-        {"name": check["name"], "status": level_to_status.get(check["level"], check["level"].lower()), "detail": check["message"]}
+        {
+            "name": check["name"],
+            "status": level_to_status.get(check["level"], check["level"].lower()),
+            "detail": check["message"],
+        }
         for check in checks
     ]
     overall = "unhealthy" if has_fail else "degraded" if has_warn else "healthy"
