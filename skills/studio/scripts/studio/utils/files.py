@@ -259,7 +259,11 @@ def _has_valid_extends_marker(path: Path, content: str, studio_root: Optional[Pa
         return True
     extends_path = extends_match.group(1)
     resolved = (path / extends_path).resolve()
-    return resolved.parent == studio_root or (studio_root / "AGENTS.md") == resolved
+    studio_root_resolved = studio_root.resolve()
+    return (
+        resolved.parent == studio_root_resolved
+        or (studio_root_resolved / "AGENTS.md") == resolved
+    )
 
 
 def _has_adapter_markers(path: Path, content_lower: str) -> bool:

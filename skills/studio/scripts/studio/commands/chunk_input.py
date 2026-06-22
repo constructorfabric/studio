@@ -452,6 +452,7 @@ def _write_chunks(
     output_dir.parent.mkdir(parents=True, exist_ok=True)
     staging_dir = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}.tmp-", dir=output_dir.parent))
     backup_dir: Path | None = None
+    preserve_ok = True
     swap_succeeded = False
     chunks: List[Dict[str, object]] = []
     try:

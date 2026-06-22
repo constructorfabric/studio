@@ -248,9 +248,11 @@ def _with_core_toml_lock(core_toml_path: Path) -> Generator[None, None, None]:
         fcntl = None
 
     if fcntl is not None:
-        yield from _with_posix_core_toml_lock(core_toml_path, fcntl)
+        with _with_posix_core_toml_lock(core_toml_path, fcntl):
+            yield
         return
-    yield from _with_windows_core_toml_lock(core_toml_path)
+    with _with_windows_core_toml_lock(core_toml_path):
+        yield
 
 
 @contextlib.contextmanager

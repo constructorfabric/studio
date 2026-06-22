@@ -782,16 +782,22 @@ def _perform_registered_kit_update(  # pylint: disable=too-many-arguments,too-ma
     kit_slug: str,
     kit_src: Path,
     studio_dir: Path,
+    update_context_cls,
     update_kit,
 ) -> Dict[str, Any]:
     """Run one registered kit update and attach manifest-migration details."""
-    kit_result = update_kit(
-        kit_slug, kit_src, studio_dir,
+    update_context = update_context_cls(
         dry_run=args.dry_run,
         interactive=interactive,
         auto_approve=args.yes,
-        source=kit_data.get("source", ""),
+        source=str(kit_data.get("source", "") or ""),
         authority_metadata=authority_metadata,
+    )
+    kit_result = update_kit(
+        kit_slug,
+        kit_src,
+        studio_dir,
+        update_context=update_context,
     )
     _record_manifest_migration_result(
         args=args,
@@ -815,6 +821,7 @@ def _update_single_registered_kit(
     studio_dir: Path,
     config_dir: Path,
     interactive: bool,
+    update_context_cls,
     update_kit,
     _read_kit_version_from_core,
 ) -> Optional[Dict[str, Any]]:
@@ -848,6 +855,7 @@ def _update_single_registered_kit(
             kit_slug=kit_slug,
             kit_src=resolution.kit_src,
             studio_dir=studio_dir,
+            update_context_cls=update_context_cls,
             update_kit=update_kit,
         )
     except (OSError, ValueError, KeyError, RuntimeError) as exc:
@@ -873,6 +881,7 @@ def _update_registered_kits(  # pylint: disable=too-many-locals
     kit_tracking: str,
 ) -> Dict[str, Any]:
     from .kit import (
+        _UpdateContext,
         _read_kits_from_core_toml,
         _read_kit_version_from_core,
         update_kit,
@@ -902,6 +911,7 @@ def _update_registered_kits(  # pylint: disable=too-many-locals
                 studio_dir=studio_dir,
                 config_dir=config_dir,
                 interactive=interactive,
+                update_context_cls=_UpdateContext,
                 update_kit=update_kit,
                 _read_kit_version_from_core=_read_kit_version_from_core,
             ),

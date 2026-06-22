@@ -167,6 +167,81 @@ class _KitUpdateRunContext:
     result: Dict[str, Any]
 
 
+def _merge_install_context(
+    install_context: Optional[_InstallContext],
+    *,
+    interactive: Optional[bool] = None,
+    install_mode: Optional[str] = None,
+    project_root: Optional[Path] = None,
+    source: Optional[str] = None,
+    authority_metadata: Optional[Dict[str, Any]] = None,
+    approved_overwrites: Optional[List[str]] = None,
+    approved_tool_risks: Optional[List[str]] = None,
+) -> _InstallContext:
+    """Preserve the legacy install_kit* kwargs contract."""
+    base = install_context or _InstallContext()
+    return _InstallContext(
+        interactive=base.interactive if interactive is None else interactive,
+        install_mode=base.install_mode if install_mode is None else install_mode,
+        project_root=base.project_root if project_root is None else project_root,
+        source=base.source if source is None else source,
+        authority_metadata=(
+            base.authority_metadata if authority_metadata is None else authority_metadata
+        ),
+        approved_overwrites=(
+            list(base.approved_overwrites)
+            if approved_overwrites is None else list(approved_overwrites)
+        ),
+        approved_tool_risks=(
+            list(base.approved_tool_risks)
+            if approved_tool_risks is None else list(approved_tool_risks)
+        ),
+    )
+
+
+def _merge_update_context(
+    update_context: Optional[_UpdateContext],
+    *,
+    dry_run: Optional[bool] = None,
+    interactive: Optional[bool] = None,
+    auto_approve: Optional[bool] = None,
+    force: Optional[bool] = None,
+    source: Optional[str] = None,
+    authority_metadata: Optional[Dict[str, Any]] = None,
+    approved_overwrites: Optional[List[str]] = None,
+    approved_tool_risks: Optional[List[str]] = None,
+    prune_mode: Optional[bool] = None,
+    approved_prunes: Optional[List[str]] = None,
+    project_root: Optional[Path] = None,
+) -> _UpdateContext:
+    """Preserve the legacy update_kit kwargs contract."""
+    base = update_context or _UpdateContext()
+    return _UpdateContext(
+        dry_run=base.dry_run if dry_run is None else dry_run,
+        interactive=base.interactive if interactive is None else interactive,
+        auto_approve=base.auto_approve if auto_approve is None else auto_approve,
+        force=base.force if force is None else force,
+        source=base.source if source is None else source,
+        authority_metadata=(
+            base.authority_metadata if authority_metadata is None else authority_metadata
+        ),
+        approved_overwrites=(
+            list(base.approved_overwrites)
+            if approved_overwrites is None else list(approved_overwrites)
+        ),
+        approved_tool_risks=(
+            list(base.approved_tool_risks)
+            if approved_tool_risks is None else list(approved_tool_risks)
+        ),
+        prune_mode=base.prune_mode if prune_mode is None else prune_mode,
+        approved_prunes=(
+            list(base.approved_prunes)
+            if approved_prunes is None else list(approved_prunes)
+        ),
+        project_root=base.project_root if project_root is None else project_root,
+    )
+
+
 def _result_with_failure(
     result: Dict[str, Any],
     errors: List[str],
@@ -1199,7 +1274,7 @@ def _collect_registered_kit_metadata(
     kit_data = kit_entry if isinstance(kit_entry, dict) else {}
     resources = _load_registered_metadata_resources(studio_dir, kit_slug, kit_data)
     if not isinstance(resources, dict) or not resources:
-        return {"skill_nav": "", "agents_content": ""}
+        return {}
 
     result: Dict[str, str] = {"skill_nav": "", "agents_content": ""}
     agents_parts: List[str] = []
@@ -1260,7 +1335,7 @@ def regenerate_gen_aggregates(studio_dir: Path) -> Dict[str, Any]:
     for kit_slug in sorted(kits_map):
         # @cpt-begin:cpt-studio-algo-kit-regen-gen:p1:inst-collect-all-metadata
         meta = _collect_registered_kit_metadata(studio_dir, kit_slug, kits_map.get(kit_slug, {}))
-        if meta["agents_content"]:
+        if meta.get("agents_content"):
             gen_agents_parts.append(meta["agents_content"])
         # @cpt-end:cpt-studio-algo-kit-regen-gen:p1:inst-collect-all-metadata
     # @cpt-end:cpt-studio-algo-kit-regen-gen:p1:inst-scan-kits
@@ -2216,8 +2291,8 @@ def _build_install_success_result(
         ),
         "local_metadata": success_context.local_metadata,
         "errors": errors,
-        "skill_nav": meta["skill_nav"],
-        "agents_content": meta["agents_content"],
+        "skill_nav": meta.get("skill_nav", ""),
+        "agents_content": meta.get("agents_content", ""),
         "actions": success_context.actions,
     }
 
@@ -2509,8 +2584,8 @@ def _register_manifest_install_in_place(
         "resource_bindings": {key: value["path"] for key, value in resource_bindings.items()},
         "local_metadata": local_metadata,
         "errors": [],
-        "skill_nav": meta["skill_nav"],
-        "agents_content": meta["agents_content"],
+        "skill_nav": meta.get("skill_nav", ""),
+        "agents_content": meta.get("agents_content", ""),
     }
 
 
@@ -2636,8 +2711,8 @@ def _finalize_manifest_copy_install(  # pylint: disable=too-many-locals,too-many
         },
         "local_metadata": local_metadata,
         "errors": [],
-        "skill_nav": meta["skill_nav"],
-        "agents_content": meta["agents_content"],
+        "skill_nav": meta.get("skill_nav", ""),
+        "agents_content": meta.get("agents_content", ""),
     }
 
 
@@ -2654,6 +2729,14 @@ def install_kit(
     kit_slug: str,
     kit_version: str = "",
     install_context: Optional[_InstallContext] = None,
+    *,
+    interactive: Optional[bool] = None,
+    install_mode: Optional[str] = None,
+    project_root: Optional[Path] = None,
+    source: Optional[str] = None,
+    authority_metadata: Optional[Dict[str, Any]] = None,
+    approved_overwrites: Optional[List[str]] = None,
+    approved_tool_risks: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Install a kit: copy ready files from source into config/kits/{slug}/.
 
@@ -2672,7 +2755,18 @@ def install_kit(
         Dict with: status, kit, version, files_copied,
         errors, actions, skill_nav, agents_content.
     """
-    install_context = install_context or _InstallContext()
+    install_context = _merge_install_context(
+        install_context,
+        interactive=interactive,
+        install_mode=install_mode,
+        project_root=project_root,
+        source=source,
+        authority_metadata=authority_metadata,
+        approved_overwrites=approved_overwrites,
+        approved_tool_risks=approved_tool_risks,
+    )
+    kit_source = kit_source.resolve()
+    studio_dir = studio_dir.resolve()
     install_error, manifest, config_dir, config_kit_dir, config_kit_rel = _prepare_install_kit_state(
         kit_source,
         studio_dir,
@@ -2722,6 +2816,14 @@ def install_kit_with_manifest(
     manifest: Manifest,
     kit_path: str = "",
     install_context: Optional[_InstallContext] = None,
+    *,
+    interactive: Optional[bool] = None,
+    install_mode: Optional[str] = None,
+    project_root: Optional[Path] = None,
+    source: Optional[str] = None,
+    authority_metadata: Optional[Dict[str, Any]] = None,
+    approved_overwrites: Optional[List[str]] = None,
+    approved_tool_risks: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Install a kit using its manifest.toml — manifest-driven installation.
 
@@ -2741,7 +2843,18 @@ def install_kit_with_manifest(
         Dict with: status, kit, version, files_copied, resource_bindings,
         errors, skill_nav, agents_content.
     """
-    install_context = install_context or _InstallContext()
+    install_context = _merge_install_context(
+        install_context,
+        interactive=interactive,
+        install_mode=install_mode,
+        project_root=project_root,
+        source=source,
+        authority_metadata=authority_metadata,
+        approved_overwrites=approved_overwrites,
+        approved_tool_risks=approved_tool_risks,
+    )
+    kit_source = kit_source.resolve()
+    studio_dir = studio_dir.resolve()
     artifacts, install_error, config_dir = _prepare_manifest_install_state(
         kit_source,
         studio_dir,
@@ -5527,6 +5640,8 @@ def _resolve_update_source_version(
         return str(authority.get("resolved_ref") or ""), local_conf_version
     if authority.get("installed_version"):
         return str(authority.get("installed_version") or ""), local_conf_version
+    if local_conf_version:
+        return local_conf_version, local_conf_version
     return local_source_version, local_conf_version
 
 
@@ -5622,9 +5737,9 @@ def _append_registered_kit_metadata(
 ) -> Dict[str, Any]:
     current_entry = _read_kits_from_core_toml(config_dir).get(kit_slug, fallback_entry)
     meta = _collect_registered_kit_metadata(studio_dir, kit_slug, current_entry)
-    if meta["skill_nav"]:
+    if meta.get("skill_nav"):
         result["skill_nav"] = meta["skill_nav"]
-    if meta["agents_content"]:
+    if meta.get("agents_content"):
         result["agents_content"] = meta["agents_content"]
     return result
 
@@ -6169,6 +6284,18 @@ def update_kit(
     source_dir: Path,
     studio_dir: Path,
     update_context: Optional[_UpdateContext] = None,
+    *,
+    dry_run: Optional[bool] = None,
+    interactive: Optional[bool] = None,
+    auto_approve: Optional[bool] = None,
+    force: Optional[bool] = None,
+    source: Optional[str] = None,
+    authority_metadata: Optional[Dict[str, Any]] = None,
+    approved_overwrites: Optional[List[str]] = None,
+    approved_tool_risks: Optional[List[str]] = None,
+    prune_mode: Optional[bool] = None,
+    approved_prunes: Optional[List[str]] = None,
+    project_root: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """Full update cycle for a single kit.
 
@@ -6192,7 +6319,22 @@ def update_kit(
     Returns dict consumed by update.py / cmd_kit_update:
         kit, version, gen, skill_nav?, agents_content?, gen_errors?
     """
-    update_context = update_context or _UpdateContext()
+    update_context = _merge_update_context(
+        update_context,
+        dry_run=dry_run,
+        interactive=interactive,
+        auto_approve=auto_approve,
+        force=force,
+        source=source,
+        authority_metadata=authority_metadata,
+        approved_overwrites=approved_overwrites,
+        approved_tool_risks=approved_tool_risks,
+        prune_mode=prune_mode,
+        approved_prunes=approved_prunes,
+        project_root=project_root,
+    )
+    source_dir = source_dir.resolve()
+    studio_dir = studio_dir.resolve()
     if update_context.dry_run:
         result = _init_update_result(kit_slug, update_context)
         result["version"] = {"status": "dry_run"}
@@ -6787,10 +6929,41 @@ def _register_kit_in_core_toml(
     kit_version: str,
     _studio_dir: Path,  # reserved for future studio-dir-relative path computation
     register_context: Optional[_RegisterKitContext] = None,
+    *,
+    source: Optional[str] = None,
+    resources: Optional[Dict[str, Dict[str, Any]]] = None,
+    kit_path: Optional[str] = None,
+    install_mode: Optional[str] = None,
+    authority_metadata: Optional[Dict[str, Any]] = None,
+    source_provenance: Optional[Dict[str, Any]] = None,
+    local_metadata: Optional[Dict[str, Any]] = None,
+    tool_risk_fingerprint: Optional[str] = None,
 ) -> List[str]:
     """Register or update a kit entry in config/core.toml."""
     # @cpt-begin:cpt-studio-algo-kit-config-helpers:p1:inst-register-core
-    register_context = register_context or _RegisterKitContext()
+    base_context = register_context or _RegisterKitContext()
+    register_context = _RegisterKitContext(
+        source=base_context.source if source is None else source,
+        resources=base_context.resources if resources is None else resources,
+        kit_path=base_context.kit_path if kit_path is None else kit_path,
+        install_mode=base_context.install_mode if install_mode is None else install_mode,
+        authority_metadata=(
+            base_context.authority_metadata
+            if authority_metadata is None else authority_metadata
+        ),
+        source_provenance=(
+            base_context.source_provenance
+            if source_provenance is None else source_provenance
+        ),
+        local_metadata=(
+            base_context.local_metadata
+            if local_metadata is None else local_metadata
+        ),
+        tool_risk_fingerprint=(
+            base_context.tool_risk_fingerprint
+            if tool_risk_fingerprint is None else tool_risk_fingerprint
+        ),
+    )
     core_toml = config_dir / _KIT_CORE_TOML
     data, load_errors = _load_core_toml_registration_data(core_toml, kit_slug)
     if load_errors:

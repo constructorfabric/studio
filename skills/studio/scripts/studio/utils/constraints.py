@@ -1023,6 +1023,7 @@ def _build_artifact_identifier_rules(
     artifact_path: Path,
     constraints: ArtifactKindConstraints,
     kind: str,
+    registered_systems: Optional[Iterable[str]],
 ) -> ArtifactDefinitionValidationRules:
     allowed_defs = {constraint.kind.strip().lower() for constraint in (constraints.defined_id or [])}
     constraint_by_kind = {
@@ -1038,7 +1039,11 @@ def _build_artifact_identifier_rules(
     return ArtifactDefinitionValidationRules(
         kind=kind,
         artifact_path=artifact_path,
-        systems_set=set(),
+        systems_set={
+            str(system).strip().lower()
+            for system in (registered_systems or [])
+            if str(system).strip()
+        },
         all_kind_tokens=set(allowed_defs),
         composite_nested_by_base={kind.strip().lower(): nested} if nested else {},
         allowed_defs=allowed_defs,
@@ -1053,6 +1058,7 @@ def _build_artifact_identifier_phase_context(
     artifact_path: Path,
     constraints: ArtifactKindConstraints,
     kind: str,
+    registered_systems: Optional[Iterable[str]],
     scan_cpt_ids,
 ) -> ArtifactIdentifierPhaseContext:
     hits = scan_cpt_ids(artifact_path)
@@ -1069,6 +1075,7 @@ def _build_artifact_identifier_phase_context(
             artifact_path=artifact_path,
             constraints=constraints,
             kind=kind,
+            registered_systems=registered_systems,
         ),
     )
 
@@ -1280,6 +1287,7 @@ def _validate_artifact_identifier_phase(
     artifact_path: Path,
     constraints: ArtifactKindConstraints,
     kind: str,
+    registered_systems: Optional[Iterable[str]],
     errors: List[Dict[str, object]],
 ) -> None:
     from .document import scan_cpt_ids, scan_cdsl_instructions
@@ -1288,6 +1296,7 @@ def _validate_artifact_identifier_phase(
         artifact_path=artifact_path,
         constraints=constraints,
         kind=kind,
+        registered_systems=registered_systems,
         scan_cpt_ids=scan_cpt_ids,
     )
     cdsl_hits = scan_cdsl_instructions(artifact_path)
@@ -1374,6 +1383,7 @@ def validate_artifact_file(
         artifact_path=artifact_path,
         constraints=constraints,
         kind=kind,
+        registered_systems=registered_systems,
         errors=errors,
     )
 
