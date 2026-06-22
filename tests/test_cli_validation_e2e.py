@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import os
 import sys
 import unittest
@@ -89,6 +90,28 @@ class TestRunMainIsolation(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertFalse(json.loads(stdout)["json_mode"])
             set_json_mode(False)
+
+    def test_run_main_routes_ui_to_stdout_and_logger_to_stderr(self):
+        from studio.utils.ui import ui
+
+        def _fake_doctor(_argv):
+            ui.info("legal stdout")
+            logging.getLogger("studio.test").warning("diagnostic warning")
+            return 0
+
+        with TemporaryDirectory() as td:
+            with patch.object(cli, "_load_startup_context", lambda: None), patch.object(
+                cli,
+                "_cmd_doctor",
+                side_effect=_fake_doctor,
+            ):
+                rc, stdout, stderr = _run_main(["doctor"], cwd=Path(td))
+
+        self.assertEqual(rc, 0)
+        self.assertIn("legal stdout", stdout)
+        self.assertNotIn("diagnostic warning", stdout)
+        self.assertIn("diagnostic warning", stderr)
+        self.assertNotIn("legal stdout", stderr)
 
 
 class TestCLIValidateTocE2E(unittest.TestCase):
