@@ -28,6 +28,10 @@ local_scheme = "no-local-version"
 jobs = 0
 persistent = false
 py-version = "3.11"
+init-hook = "import sys; sys.path[:0] = ['src', 'skills/studio/scripts']"
+load-plugins = [
+    "studio.pylint_plugins.silent_exceptions",
+]
 ignore-paths = [
     "^\\.bootstrap/",
     "^examples/",
@@ -155,6 +159,7 @@ enable = [
     "W0716",
     "W0718",
     "W0719",
+    "W9001",
     "W1113",
     "W1114",
     "W1115",
