@@ -1353,7 +1353,7 @@ def _prompt_to_continue_waiting(timeout_seconds: int) -> bool:
         try:
             answer = input().strip().lower()
         except EOFError:
-            return True
+            return False
         except KeyboardInterrupt:
             return False
     except KeyboardInterrupt:

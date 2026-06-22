@@ -623,6 +623,8 @@ def _generated_toml_description_matches(
 # @cpt-begin:cpt-studio-algo-agent-integration-generate-shims:p1:inst-file-has-studio-follow-link
 def _file_has_studio_follow_link(path: Path) -> bool:
     """Return True when *path* exists and contains a Constructor Studio follow-link."""
+    if not path.is_file():
+        return False
     try:
         return bool(_extract_studio_follow_target(path.read_text(encoding="utf-8")))
     except (OSError, UnicodeDecodeError) as exc:

@@ -1112,7 +1112,7 @@ class TestHumanFormatters(unittest.TestCase):
         set_json_mode(False)
         try:
             buf = io.StringIO()
-            with contextlib.redirect_stderr(buf):
+            with contextlib.redirect_stdout(buf):
                 _human_flat({"variables": {
                     "cf-studio-path": "/tmp/test/cypilot",
                     "adr_template": "/tmp/test/cypilot/config/kits/sdlc/artifacts/ADR/template.md",
@@ -1129,7 +1129,7 @@ class TestHumanFormatters(unittest.TestCase):
         set_json_mode(False)
         try:
             buf = io.StringIO()
-            with contextlib.redirect_stderr(buf):
+            with contextlib.redirect_stdout(buf):
                 _human_structured({
                     "status": "OK",
                     "system": {
@@ -1160,7 +1160,7 @@ class TestHumanFormatters(unittest.TestCase):
         set_json_mode(False)
         try:
             buf = io.StringIO()
-            with contextlib.redirect_stderr(buf):
+            with contextlib.redirect_stdout(buf):
                 _human_structured({
                     "status": "OK",
                     "system": {"cf-studio-path": "/tmp/x"},
@@ -1186,7 +1186,7 @@ class TestHumanFormatters(unittest.TestCase):
                     "kits": {"sdlc": {"resources": {"var_a": {"path": "a"}}}},
                 })
                 buf = io.StringIO()
-                with contextlib.redirect_stderr(buf):
+                with contextlib.redirect_stdout(buf):
                     rc = cmd_resolve_vars(["--root", str(root)])
                 self.assertEqual(rc, 0)
                 output = buf.getvalue()
@@ -1208,7 +1208,7 @@ class TestHumanFormatters(unittest.TestCase):
                     "kits": {},
                 })
                 buf = io.StringIO()
-                with contextlib.redirect_stderr(buf):
+                with contextlib.redirect_stdout(buf):
                     rc = cmd_resolve_vars(["--root", str(root), "--flat"])
                 self.assertEqual(rc, 0)
                 output = buf.getvalue()

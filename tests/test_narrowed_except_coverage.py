@@ -63,12 +63,11 @@ class TestDeduplicateLegacyKitsErrors(unittest.TestCase):
         with TemporaryDirectory() as td:
             config = Path(td)
             (config / "core.toml").write_bytes(b"\x80\x81")
-            err = io.StringIO()
-            with redirect_stderr(err):
+            with self.assertLogs("studio.commands.update", level="WARNING") as logs:
                 result = _deduplicate_legacy_kits(config)
             self.assertEqual(result, {})
-            self.assertIn("cannot parse", err.getvalue())
-            self.assertIn("skipping migration", err.getvalue())
+            self.assertTrue(any("Cannot parse" in message for message in logs.output))
+            self.assertTrue(any("deduplicating legacy kits" in message for message in logs.output))
 
     def test_write_failure_still_returns_renamed(self):
         """toml_utils.dump raises → except swallows, still returns renamed."""
@@ -124,12 +123,11 @@ class TestMigrateKitSourcesErrors(unittest.TestCase):
         with TemporaryDirectory() as td:
             config = Path(td)
             (config / "core.toml").write_bytes(b"\xff\xfe")
-            err = io.StringIO()
-            with redirect_stderr(err):
+            with self.assertLogs("studio.commands.update", level="WARNING") as logs:
                 result = _migrate_kit_sources(config)
             self.assertEqual(result, {})
-            self.assertIn("cannot parse", err.getvalue())
-            self.assertIn("skipping migration", err.getvalue())
+            self.assertTrue(any("Cannot parse" in message for message in logs.output))
+            self.assertTrue(any("migrating kit sources" in message for message in logs.output))
 
     def test_write_failure_still_returns_migrated(self):
         from studio.commands.update import _migrate_kit_sources
@@ -138,12 +136,11 @@ class TestMigrateKitSourcesErrors(unittest.TestCase):
             _write_toml(config / "core.toml", {
                 "kits": {"sdlc": {"path": "config/kits/sdlc"}},
             })
-            err = io.StringIO()
-            with redirect_stderr(err), \
+            with self.assertLogs("studio.commands.update", level="WARNING") as logs, \
                  patch("studio.utils.toml_utils.dump", side_effect=OSError("no space")):
                 result = _migrate_kit_sources(config)
             self.assertIn("sdlc", result)
-            self.assertIn("kit source migration write failed", err.getvalue())
+            self.assertTrue(any("Kit source migration write failed" in message for message in logs.output))
 
 
 # =========================================================================
@@ -178,11 +175,10 @@ class TestKitHelperErrors(unittest.TestCase):
         with TemporaryDirectory() as td:
             config = Path(td)
             _write_toml(config / "core.toml", {"kits": {}})
-            err = io.StringIO()
-            with redirect_stderr(err), \
+            with self.assertLogs("studio.commands.kit", level="WARNING") as logs, \
                  patch("studio.utils.toml_utils.dump", side_effect=OSError("full")):
-                _register_kit_in_core_toml(config, Path(td), "test-kit", "1.0")
-            self.assertIn("failed to register", err.getvalue())
+                _register_kit_in_core_toml(config, "test-kit", "1.0", Path(td))
+            self.assertTrue(any("failed to register" in message for message in logs.output))
 
 
 # =========================================================================
@@ -343,13 +339,12 @@ class TestContextAdapterLoadFailure(unittest.TestCase):
             sc.adapter_dir = adapter
             sc._adapter_resolved = False
             sc.adapter_context = None
-            err = io.StringIO()
-            with redirect_stderr(err), \
+            with self.assertLogs("studio.utils.context", level="WARNING") as logs, \
                  patch.object(StudioContext, "load_from_dir", side_effect=OSError("broken")):
                 result = resolve_adapter_context(sc)
             self.assertIsNone(result)
             self.assertTrue(sc._adapter_resolved)
-            self.assertIn("broken", err.getvalue())
+            self.assertTrue(any("broken" in message for message in logs.output))
 
 
 # =========================================================================

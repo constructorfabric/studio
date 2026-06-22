@@ -770,6 +770,7 @@ class TestInstallKitWithManifest(unittest.TestCase):
         """Install plan shows all resources, edit menu contains only editable paths."""
         from studio.commands.kit import install_kit_with_manifest
         from unittest.mock import patch
+        from studio.utils.ui import set_json_mode
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -810,31 +811,43 @@ class TestInstallKitWithManifest(unittest.TestCase):
 
             custom_editable = "docs/editable.md"
             inputs = iter(["y", "1", custom_editable, "n"])
+            stdout = io.StringIO()
             stderr = io.StringIO()
-            with patch("sys.stdin") as mock_stdin, \
-                 patch("builtins.input", side_effect=lambda prompt: next(inputs)), \
-                 redirect_stderr(stderr):
-                mock_stdin.isatty.return_value = True
-                result = install_kit_with_manifest(
-                    kit_src, adapter, "mixedkit", "2.0", manifest,
-                    interactive=True,
-                )
+            set_json_mode(False)
+            try:
+                with patch("sys.stdin") as mock_stdin, \
+                     patch("builtins.input", side_effect=lambda *_args: next(inputs)), \
+                     redirect_stdout(stdout), \
+                     redirect_stderr(stderr):
+                    mock_stdin.isatty.return_value = True
+                    result = install_kit_with_manifest(
+                        kit_src, adapter, "mixedkit", "2.0", manifest,
+                        interactive=True,
+                    )
+            finally:
+                set_json_mode(True)
 
             self.assertEqual(result["status"], "PASS")
             self.assertTrue((adapter / "config" / "kits" / "mixedkit" / "locked.toml").is_file())
             self.assertTrue((adapter / "config" / "kits" / "mixedkit" / custom_editable).is_file())
             self.assertEqual(result["resource_bindings"]["editable"], f"config/kits/mixedkit/{custom_editable}")
+            plan_text = stdout.getvalue()
             prompt_text = stderr.getvalue()
-            self.assertIn("locked (file, locked)", prompt_text)
-            self.assertIn("editable (file, editable)", prompt_text)
-            edit_menu = prompt_text.split("Select path to change", 1)[1].split("Choice:", 1)[0]
+            self.assertIn("Kit install plan: mixedkit", plan_text)
+            self.assertIn("locked (file, locked)", plan_text)
+            self.assertIn("editable (file, editable)", plan_text)
+            self.assertIn("Select path to change", plan_text)
+            edit_menu = plan_text.split("Select path to change", 1)[1]
             self.assertNotIn("locked ->", edit_menu)
             self.assertIn("editable ->", edit_menu)
+            self.assertIn("Change kit install paths?", prompt_text)
+            self.assertNotIn("Select path to change", prompt_text)
 
     def test_interactive_prompt_custom_path(self):
         """When user_modifiable=true and user provides a path, resource goes there."""
         from studio.commands.kit import install_kit_with_manifest
         from unittest.mock import patch
+        from studio.utils.ui import set_json_mode
 
         with TemporaryDirectory() as td:
             td_path = Path(td)
@@ -870,15 +883,21 @@ class TestInstallKitWithManifest(unittest.TestCase):
             # Mock isatty → True. New UX shows a full plan, then lets the
             # user select the resource path by number before accepting it.
             inputs = iter(["y", "2", str(custom_dest), "n"])
+            stdout = io.StringIO()
             stderr = io.StringIO()
-            with patch("sys.stdin") as mock_stdin, \
-                 patch("builtins.input", side_effect=lambda prompt: next(inputs)), \
-                 redirect_stderr(stderr):
-                mock_stdin.isatty.return_value = True
-                result = install_kit_with_manifest(
-                    kit_src, adapter, "ikit", "1.0", manifest,
-                    interactive=True,
-                )
+            set_json_mode(False)
+            try:
+                with patch("sys.stdin") as mock_stdin, \
+                     patch("builtins.input", side_effect=lambda *_args: next(inputs)), \
+                     redirect_stdout(stdout), \
+                     redirect_stderr(stderr):
+                    mock_stdin.isatty.return_value = True
+                    result = install_kit_with_manifest(
+                        kit_src, adapter, "ikit", "1.0", manifest,
+                        interactive=True,
+                    )
+            finally:
+                set_json_mode(True)
 
             self.assertEqual(result["status"], "PASS")
             self.assertEqual(result["files_copied"], 1)
@@ -887,9 +906,11 @@ class TestInstallKitWithManifest(unittest.TestCase):
             self.assertEqual(custom_dest.read_text(), "# Rules\n")
             # Binding reflects the custom path (absolute, outside cypilot_dir)
             self.assertIn("rules", result["resource_bindings"])
-            self.assertIn("Kit install plan: ikit", stderr.getvalue())
-            self.assertIn("Select path to change", stderr.getvalue())
-            self.assertIn("(file, editable)", stderr.getvalue())
+            self.assertEqual(result["resource_bindings"]["rules"], "../custom/my_rules.md")
+            self.assertIn("Kit install plan: ikit", stdout.getvalue())
+            self.assertIn("Select path to change", stdout.getvalue())
+            self.assertIn("(file, editable)", stdout.getvalue())
+            self.assertIn("Resource 'rules' path", stderr.getvalue())
 
     def test_version_read_from_conf_toml(self):
         """If kit_version is empty, version is read from source conf.toml."""

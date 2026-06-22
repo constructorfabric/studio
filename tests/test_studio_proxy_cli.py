@@ -473,7 +473,7 @@ def test_init_uses_project_root_pinned_version_for_repair(monkeypatch, tmp_path)
 def test_download_and_cache_warns_when_github_whatsnew_generation_fails(
     monkeypatch,
     tmp_path,
-    capsys,
+    caplog,
 ):
     import studio_proxy.cache as cache
 
@@ -500,11 +500,12 @@ def test_download_and_cache_warns_when_github_whatsnew_generation_fails(
 
     monkeypatch.setattr(cache, "urlopen", fake_urlopen)
 
-    success, _message = cache.download_and_cache()
+    with caplog.at_level("WARNING"):
+        success, _message = cache.download_and_cache()
 
     assert success is True
     assert not (tmp_path / "cache" / "whatsnew.toml").exists()
-    assert "unable to generate Studio cache whatsnew.toml" in capsys.readouterr().err
+    assert "unable to generate Studio cache whatsnew.toml" in caplog.text
 
 
 def test_download_and_cache_no_releases_uses_default_branch_snapshot(monkeypatch, tmp_path):

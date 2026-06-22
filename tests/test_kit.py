@@ -1178,7 +1178,7 @@ class TestKitUpdateCheckCoverage(unittest.TestCase):
             buf = io.StringIO()
             set_json_mode(False)
             try:
-                with redirect_stderr(buf):
+                with redirect_stdout(buf):
                     rc = cmd_kit_normalize([str(kit_src), "--dry-run"])
             finally:
                 set_json_mode(True)
@@ -3821,7 +3821,7 @@ class TestCmdKitInstall(unittest.TestCase):
             inputs = iter(["y", "1", external_kit_dir.as_posix(), "n"])
 
             with patch.object(kit_module.sys, "stdin", fake_stdin):
-                with patch("builtins.input", side_effect=lambda prompt: next(inputs)):
+                with patch("builtins.input", side_effect=lambda *_args: next(inputs)):
                     with patch.object(kit_module.os.path, "relpath", side_effect=_patched_relpath):
                         result = install_kit(kit_src, adapter, "customroot", interactive=True)
 
@@ -4135,12 +4135,17 @@ class TestCmdKitMigrateDeprecated(unittest.TestCase):
 
     def test_migrate_warns_and_returns_error(self):
         from studio.commands.kit import cmd_kit_migrate
-        err = io.StringIO()
-        with redirect_stderr(err):
-            rc = cmd_kit_migrate([])
+        out = io.StringIO()
+        from studio.utils.ui import set_json_mode
+        set_json_mode(False)
+        try:
+            with redirect_stdout(out):
+                rc = cmd_kit_migrate([])
+        finally:
+            set_json_mode(True)
         self.assertEqual(rc, 1)
-        self.assertIn("deprecated", err.getvalue().lower())
-        self.assertIn("kit update", err.getvalue())
+        self.assertIn("deprecated", out.getvalue().lower())
+        self.assertIn("kit update", out.getvalue())
 
 
 class TestCmdKitDispatcherRoutes(unittest.TestCase):
@@ -4178,15 +4183,20 @@ class TestCmdKitDispatcherRoutes(unittest.TestCase):
 
     def test_route_migrate(self):
         from studio.commands.kit import cmd_kit
+        from studio.utils.ui import set_json_mode
         with TemporaryDirectory() as td:
             cwd = os.getcwd()
             try:
                 os.chdir(td)
-                err = io.StringIO()
                 buf = io.StringIO()
-                with redirect_stderr(err), redirect_stdout(buf):
-                    rc = cmd_kit(["migrate"])
-                self.assertIn("deprecated", err.getvalue().lower())
+                set_json_mode(False)
+                try:
+                    with redirect_stdout(buf):
+                        rc = cmd_kit(["migrate"])
+                finally:
+                    set_json_mode(True)
+                self.assertEqual(rc, 1)
+                self.assertIn("deprecated", buf.getvalue().lower())
             finally:
                 os.chdir(cwd)
 
@@ -5855,13 +5865,13 @@ class TestRegisterKitInCoreToml(unittest.TestCase):
         with TemporaryDirectory() as td:
             config = Path(td)
             toml_utils.dump({"kits": {}}, config / "core.toml")
-            err = io.StringIO()
-            with redirect_stderr(err), patch("studio.utils.toml_utils.dump", side_effect=OSError("full")):
-                errors = _register_kit_in_core_toml(config, "mykit", "1.0", Path(td))
+            with self.assertLogs("studio.commands.kit", level="WARNING") as logs:
+                with patch("studio.utils.toml_utils.dump", side_effect=OSError("full")):
+                    errors = _register_kit_in_core_toml(config, "mykit", "1.0", Path(td))
 
             self.assertEqual(len(errors), 1)
             self.assertIn("failed to register mykit", errors[0])
-            self.assertIn("failed to register mykit", err.getvalue())
+            self.assertTrue(any("failed to register mykit" in message for message in logs.output))
 
     def test_install_kit_fails_when_core_registration_fails(self):
         from studio.commands.kit import install_kit
