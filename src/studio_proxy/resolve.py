@@ -14,6 +14,8 @@ import tomllib
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
+from studio.utils.files import read_root_agents_marked_text
+
 MARKER_START = "<!-- @cf:root-agents -->"
 
 _TOML_FENCE_RE = re.compile(r"```toml\s*\n(.*?)```", re.DOTALL)
@@ -49,14 +51,8 @@ def read_cf_studio_path(project_root: Path) -> Optional[str]:
 
     Returns the install directory path (relative to project root) or None.
     """
-    agents_file = project_root / "AGENTS.md"
-    if not agents_file.is_file():
-        return None
-    try:
-        content = agents_file.read_text(encoding="utf-8")
-    except OSError:
-        return None
-    if MARKER_START not in content:
+    content = read_root_agents_marked_text(project_root)
+    if content is None:
         return None
 
     toml_data = _parse_toml_from_markdown(content)
