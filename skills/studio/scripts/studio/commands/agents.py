@@ -32,6 +32,7 @@ import argparse
 from dataclasses import dataclass
 import functools
 import json
+import logging
 import re
 import shutil
 import sys
@@ -73,12 +74,14 @@ from ..utils.manifest import (
     MergedComponents as _MergedComponents,
     ProvenanceRecord as _ProvenanceRecord,
 )  # type: ignore
+from ..utils.layer_discovery import discover_layers as _discover_layers
+from ..commands.resolve_vars import add_layer_variables as _add_layer_variables
+logger = logging.getLogger(__name__)
 try:
     from ..utils.kit_model import load_installed_kit_model
 except ImportError:  # pragma: no cover - defensive fallback for partial installs
+    logger.info("Installed kit model support unavailable; continuing without ..utils.kit_model")
     load_installed_kit_model = None  # type: ignore[assignment]
-from ..utils.layer_discovery import discover_layers as _discover_layers
-from ..commands.resolve_vars import add_layer_variables as _add_layer_variables
 
 # Regex for valid TOML bare key / agent name: ASCII letters, digits, hyphen, underscore.
 _VALID_AGENT_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -108,7 +111,32 @@ GITIGNORE_FILENAME = ".gitignore"
 
 
 def _warn_agents(message: str) -> None:
-    sys.stderr.write(f"agents: warning: {message}\n")
+    logger.warning("agents: %s", message)
+
+
+def _info_agents(message: str) -> None:
+    logger.info("agents: %s", message)
+
+
+def _error_agents(message: str) -> None:
+    logger.error("agents: %s", message)
+
+
+def _prompt_continue_answer(
+    preview_create: int,
+    preview_update: int,
+    preview_delete: int,
+) -> str:
+    """Render the interactive confirmation prompt and return the normalized answer."""
+    ui.info(
+        f"Will create {preview_create} file(s), update {preview_update} file(s), "
+        f"delete {preview_delete} file(s)."
+    )
+    ui.info("Reply with `y` to continue or `n` to abort.")
+    ui.info("Suggested: `y` when this preview matches your intended agent/skill changes.")
+    ui.info("`y` = write the generated changes. `n` = stop without writing.")
+    ui.info("Continue? [Y/n]")
+    return sys.stdin.readline().strip().lower()
 
 
 # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-determine-agent-path
@@ -411,7 +439,8 @@ def _resolve_generated_prompt_path(
     prompt_path = studio_root_resolved.joinpath(*suffix_parts).resolve()
     try:
         prompt_path.relative_to(studio_root_resolved)
-    except ValueError:  # pragma: no cover - defense-in-depth for path traversal (.. filter is primary)
+    except ValueError as exc:  # pragma: no cover - defense-in-depth for path traversal (.. filter is primary)
+        _warn_agents(f"generated prompt path escaped studio root {studio_root_resolved}: {exc}")
         return None
     if not prompt_path.is_file() or prompt_path.stem != expected_name:
         return None
@@ -799,9 +828,7 @@ _CODEX_EFFORT_MAP: Dict[str, str] = {
 
 
 def _warn_invalid_agent_value(name: str, field: str, value: object, action: str) -> None:
-    sys.stderr.write(
-        f"WARNING: agent {name!r} has invalid {field} {value!r}, {action}\n"
-    )
+    _warn_agents(f"agent {name!r} has invalid {field} {value!r}, {action}")
 
 
 def _resolve_agent_prompt_file(
@@ -813,9 +840,7 @@ def _resolve_agent_prompt_file(
         prompt_source_abs = _default_agent_prompt_source(name, source_dir)
         return prompt_source_abs, prompt_source_abs, f"agents/{name}.md"
     if not isinstance(raw_prompt_file, str):
-        sys.stderr.write(
-            f"WARNING: agent {name!r} prompt_file must be a string, skipping\n"
-        )
+        _warn_agents(f"agent {name!r} prompt_file must be a string, skipping")
         return None
     if not raw_prompt_file.strip():
         return None, None, ""
@@ -829,9 +854,7 @@ def _resolve_agent_prompt_file(
     try:
         prompt_source_abs.relative_to(source_dir.resolve())
     except ValueError:
-        sys.stderr.write(
-            f"WARNING: agent {name!r} prompt source escapes source dir, skipping\n"
-        )
+        _warn_agents(f"agent {name!r} prompt source escapes source dir, skipping")
         return None
     return prompt_source_abs, prompt_source_abs, raw_prompt_file
 
@@ -863,16 +886,10 @@ def _normalize_agent_model(name: str, raw_model: object) -> str:
     model = _AGENT_MODEL_ALIASES.get(raw_model, raw_model)
     if model in _VALID_AGENT_MODEL_TIERS or not model.startswith("cf:"):
         if model not in _VALID_AGENT_MODEL_TIERS:
-            sys.stderr.write(
-                f"WARNING: agent {name!r} has unknown model {raw_model!r}, "
-                "using as passthrough\n"
-            )
+            _warn_agents(f"agent {name!r} has unknown model {raw_model!r}, using as passthrough")
         return model
 
-    sys.stderr.write(
-        f"WARNING: agent {name!r} has unknown Constructor Studio model "
-        f"{raw_model!r}, using 'cf:inherit'\n"
-    )
+    _warn_agents(f"agent {name!r} has unknown Constructor Studio model {raw_model!r}, using 'cf:inherit'")
     return "cf:inherit"
 
 
@@ -901,7 +918,7 @@ def _validate_agent_entry(
     if name in seen_names:
         return None
     if "/" in name or "\\" in name or ".." in name:
-        sys.stderr.write(f"WARNING: skipping agent with unsafe name: {name!r}\n")
+        _warn_agents(f"skipping agent with unsafe name: {name!r}")
         return None
     prompt_info = _resolve_agent_prompt_file(name, info.get("prompt_file"), source_dir)
     if prompt_info is None:
@@ -1019,9 +1036,9 @@ def _target_path_from_root(target: Path, project_root: Path, studio_root: Option
         rel = target.relative_to(project_root).as_posix()
         return "{cf-studio-path}/" + rel if studio_root is None else f"@/{rel}"
     except ValueError:
-        sys.stderr.write(
-            f"WARNING: path {target} is outside project root {project_root}, "
-            "agent proxy will contain an absolute path\n"
+        _warn_agents(
+            f"path {target} is outside project root {project_root}, "
+            "agent proxy will contain an absolute path"
         )
         return target.as_posix()
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-path-helpers
@@ -1158,7 +1175,8 @@ def _write_or_skip(
     else:
         try:
             old = canonical.read_text(encoding="utf-8")
-        except OSError:
+        except OSError as exc:
+            _warn_agents(f"failed to read existing generated output {canonical}: {exc}")
             old = ""
         if old != content:
             result["updated"].append(canonical.as_posix())
@@ -1200,7 +1218,8 @@ def _delete_generated_file_if_owned(
         return False
     try:
         old = canonical.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):  # pragma: no cover - defensive filesystem error handling
+    except (OSError, UnicodeDecodeError) as exc:  # pragma: no cover - defensive filesystem error handling
+        _warn_agents(f"failed to verify generated file ownership for {canonical}: {exc}")
         return False
 
     exact_match = expected_content is not None and old == expected_content
@@ -1240,7 +1259,8 @@ def _preserve_unverifiable_generated_file(
         return False
     try:
         old = canonical.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):  # pragma: no cover - defensive filesystem error handling
+    except (OSError, UnicodeDecodeError) as exc:  # pragma: no cover - defensive filesystem error handling
+        _warn_agents(f"failed to inspect unverifiable generated file {canonical}: {exc}")
         return False
     if marker not in old:
         return False
@@ -1249,9 +1269,9 @@ def _preserve_unverifiable_generated_file(
     warning = {"path": rel, "action": "preserved", "reason": reason}
     result.setdefault("warnings", []).append(warning)
     result["outputs"].append(warning)
-    sys.stderr.write(
-        f"WARNING: preserved generated agent output '{rel}' because "
-        "the expected generated payload could not be rebuilt\n"
+    _warn_agents(
+        f"preserved generated agent output '{rel}' because "
+        "the expected generated payload could not be rebuilt"
     )
     return True
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-preserve-unverifiable-generated-file
@@ -1293,7 +1313,8 @@ def _delete_generated_legacy_file(
         return False
     try:
         old = canonical.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):  # pragma: no cover - defensive filesystem error handling
+    except (OSError, UnicodeDecodeError) as exc:  # pragma: no cover - defensive filesystem error handling
+        _warn_agents(f"failed to verify legacy OpenAI agent ownership for {canonical}: {exc}")
         return False
 
     if not _matches_legacy_openai_agent_output(old, agent_id):
@@ -1308,9 +1329,9 @@ def _delete_generated_legacy_file(
         }
         result.setdefault("warnings", []).append(warning)
         result["outputs"].append(warning)
-        sys.stderr.write(
-            f"WARNING: preserved legacy OpenAI agent output '{rel}' because "
-            "it has diverged from the known generated payload\n"
+        _warn_agents(
+            f"preserved legacy OpenAI agent output '{rel}' because "
+            "it has diverged from the known generated payload"
         )
         return False
 
@@ -1354,7 +1375,7 @@ def _discover_kit_agents(
             with open(toml_path, "rb") as f:
                 data = tomllib.load(f)
         except (OSError, tomllib.TOMLDecodeError) as exc:
-            sys.stderr.write(f"WARNING: failed to parse {toml_path}: {exc}\n")
+            _warn_agents(f"failed to parse {toml_path}: {exc}")
             return
         agents_section = data.get("agents")
         if not isinstance(agents_section, dict):
@@ -1365,9 +1386,7 @@ def _discover_kit_agents(
                 continue
             prompt_source_abs = entry.get("prompt_source_abs")
             if prompt_source_abs is not None and not prompt_source_abs.is_file():
-                sys.stderr.write(
-                    f"WARNING: agent {name!r} prompt source not found: {prompt_source_abs}, skipping\n"
-                )
+                _warn_agents(f"agent {name!r} prompt source not found: {prompt_source_abs}, skipping")
                 continue
             seen_names.add(name)
             out.append(entry)
@@ -1414,9 +1433,9 @@ def _agent_template_claude(agent: Dict[str, Any]) -> List[str]:
             model_id = f"{model_id}[1m]"
         lines.append(f"model: {model_id}")
     elif agent.get("context_window") == "max":
-        sys.stderr.write(
-            f"WARNING: agent '{agent.get('name', '?')}': context_window=max has no effect "
-            "because no model_id could be resolved for this agent\n"
+        _warn_agents(
+            f"agent '{agent.get('name', '?')}': context_window=max has no effect "
+            "because no model_id could be resolved for this agent"
         )
 
     effort = agent.get("reasoning_effort")
@@ -2471,8 +2490,8 @@ def _resolve_registered_public_skill_source(
         source_path = studio_root / source_path
     source_path = source_path.resolve()
     if not _path_within_any_root(source_path, (studio_root, project_root)):
-        sys.stderr.write(
-            f"WARNING: kit {kit_slug!r} public skill source escapes project/studio root: {source_path}, skipping\n"
+        _warn_agents(
+            f"kit {kit_slug!r} public skill source escapes project/studio root: {source_path}, skipping"
         )
         return None
     return source_path if source_path.is_file() else None
@@ -3120,9 +3139,7 @@ def _cleanup_studio_legacy_subagents(
                     entry.unlink()
                     deleted.append(rel)
                 except OSError as exc:
-                    sys.stderr.write(
-                        f"warning: failed to remove legacy subagent file {entry}: {exc}\n"
-                    )
+                    _warn_agents(f"failed to remove legacy subagent file {entry}: {exc}")
     return deleted
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-cleanup-legacy-subagents
 
@@ -3245,9 +3262,7 @@ def _cleanup_studio_legacy_markers(
                 abs_path.unlink()
                 deleted.append(rel)
             except OSError as exc:
-                sys.stderr.write(
-                    f"warning: failed to remove legacy marker file {abs_path}: {exc}\n"
-                )
+                _warn_agents(f"failed to remove legacy marker file {abs_path}: {exc}")
     return deleted
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-cleanup-legacy-markers
 
@@ -3328,9 +3343,7 @@ def _cleanup_legacy_skill_dirs(
                     shutil.rmtree(entry)
                     deleted.append(rel)
                 except OSError as exc:
-                    sys.stderr.write(
-                        f"warning: failed to remove legacy skill dir {entry}: {exc}\n"
-                    )
+                    _warn_agents(f"failed to remove legacy skill dir {entry}: {exc}")
     return deleted
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-cleanup-legacy-skill-dirs
 
@@ -3519,7 +3532,7 @@ def _rename_workflow_files(
             studio_root,
         )
         if error:
-            sys.stderr.write(f"WARNING: {error}\n")
+            _warn_agents(error)
             workflows_result["errors"].append(error)
             continue
         if target_rel is None:
@@ -3549,7 +3562,8 @@ def _sync_desired_workflow_files(
             continue
         try:
             old = path.read_text(encoding="utf-8")
-        except OSError:
+        except OSError as exc:
+            _warn_agents(f"failed to read existing workflow file {path}: {exc}")
             old = ""
         if old != meta["content"]:
             workflows_result["updated"].append(path_str)
@@ -3574,6 +3588,72 @@ def _resolve_expected_workflow_target(
     return (path.parent / target_rel).resolve()
 
 
+def _is_cleanup_candidate_workflow_alias(path: Path, prefix: str) -> bool:
+    return (
+        path.name.startswith(prefix)
+        or path.name.startswith("cf-")
+        or path.name.startswith("studio-")
+    )
+
+
+def _workflow_target_is_supported_alias(
+    expected: Path,
+    project_root: Path,
+    studio_root: Path,
+) -> bool:
+    try:
+        expected.relative_to(core_subpath(studio_root, "workflows"))
+        return True
+    except ValueError as exc:
+        _warn_agents(f"workflow target {expected} is not under core workflows: {exc}")
+    try:
+        expected.relative_to(_resolve_config_kits(studio_root, project_root))
+        return True
+    except ValueError as exc:
+        _warn_agents(f"workflow target {expected} is not under config kits: {exc}")
+        return False
+
+
+def _cleanup_stale_workflow_file(
+    path: Path,
+    desired_paths: Set[str],
+    prefix: str,
+    workflows_result: Dict[str, Any],
+    project_root: Path,
+    studio_root: Path,
+    dry_run: bool,
+) -> None:
+    path_str = path.as_posix()
+    is_candidate = (
+        path_str not in desired_paths
+        and _is_cleanup_candidate_workflow_alias(path, prefix)
+    )
+    if not is_candidate:
+        return
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        _warn_agents(f"failed to inspect workflow alias {path}: {exc}")
+        return
+    match = _FOLLOW_LINK_RE.search(text)
+    if match:
+        target_rel = match.group(1)
+        if "workflows/" in target_rel or "/workflows/" in target_rel:
+            expected = _resolve_expected_workflow_target(path, target_rel, project_root, studio_root)
+            if (
+                expected is not None
+                and _workflow_target_is_supported_alias(expected, project_root, studio_root)
+                and not expected.exists()
+            ):
+                workflows_result["deleted"].append(path_str)
+                if dry_run:
+                    return
+                try:
+                    path.unlink()
+                except (PermissionError, FileNotFoundError, OSError) as exc:
+                    _warn_agents(f"failed to delete stale workflow alias {path}: {exc}")
+
+
 def _cleanup_stale_workflow_files(
     workflow_dir: Path,
     desired: Dict[str, Dict[str, str]],
@@ -3584,48 +3664,16 @@ def _cleanup_stale_workflow_files(
     dry_run: bool,
 ) -> None:
     desired_paths = set(desired.keys())
-    existing_files = list(workflow_dir.glob("*.md")) if workflow_dir.is_dir() else []
-    for path in existing_files:
-        path_str = path.as_posix()
-        if path_str in desired_paths:
-            continue
-        if (
-            not path.name.startswith(prefix)
-            and not path.name.startswith("cf-")
-            and not path.name.startswith("studio-")
-        ):
-            continue
-        try:
-            text = path.read_text(encoding="utf-8")
-        except OSError as exc:
-            _warn_agents(f"failed to inspect workflow alias {path}: {exc}")
-            continue
-        match = _FOLLOW_LINK_RE.search(text)
-        if not match:
-            continue
-        target_rel = match.group(1)
-        if "workflows/" not in target_rel and "/workflows/" not in target_rel:
-            continue
-        expected = _resolve_expected_workflow_target(path, target_rel, project_root, studio_root)
-        if expected is None:
-            continue
-        try:
-            expected.relative_to(core_subpath(studio_root, "workflows"))
-        except ValueError as exc:
-            _warn_agents(f"workflow target {expected} is not under core workflows: {exc}")
-            try:
-                expected.relative_to(_resolve_config_kits(studio_root, project_root))
-            except ValueError as nested_exc:
-                _warn_agents(f"workflow target {expected} is not under config kits: {nested_exc}")
-                continue
-        if expected.exists():
-            continue
-        workflows_result["deleted"].append(path_str)
-        if not dry_run:
-            try:
-                path.unlink()
-            except (PermissionError, FileNotFoundError, OSError) as exc:
-                _warn_agents(f"failed to delete stale workflow alias {path}: {exc}")
+    for path in list(workflow_dir.glob("*.md")) if workflow_dir.is_dir() else []:
+        _cleanup_stale_workflow_file(
+            path,
+            desired_paths,
+            prefix,
+            workflows_result,
+            project_root,
+            studio_root,
+            dry_run,
+        )
 
 
 def _process_workflows(
@@ -4142,9 +4190,7 @@ def _subagent_list(subagent: Dict[str, Any], target_config: Dict[str, Any], key:
 
 
 def _warn_invalid_subagent_scalar(subagent_name: str, field: str, value: Any) -> bool:
-    sys.stderr.write(
-        f"WARNING: agent {subagent_name!r} has invalid {field} {value!r}, skipping\n"
-    )
+    _warn_agents(f"agent {subagent_name!r} has invalid {field} {value!r}, skipping")
     return False
 
 
@@ -4928,33 +4974,49 @@ def _cleanup_claude_workflow_commands(
     legacy_commands_dir = project_root / ".claude" / "commands"
     if not legacy_commands_dir.is_dir():
         return
-    for wf_filename, _wf_full_path, kit_slug, explicit_skill_id in cached_kit_workflows:
-        wf_name = Path(wf_filename).stem
-        cmd_name = explicit_skill_id or _compute_workflow_skill_id(wf_name, kit_slug)
-        legacy_file = legacy_commands_dir / f"{cmd_name}.md"
-        if not legacy_file.is_file():
-            continue
-        rel_path = legacy_file.relative_to(project_root).as_posix()
-        try:
-            content = legacy_file.read_text(encoding="utf-8")
-        except OSError as exc:
-            _warn_agents(f"failed to inspect legacy workflow file {legacy_file}: {exc}")
-            continue
-        follow_target = _extract_studio_follow_target(content)
-        if not follow_target or "workflows/" not in follow_target:
-            continue
-        if Path(follow_target).name != wf_filename:
-            continue
-        if not _is_pure_studio_generated(content, expected_name=cmd_name):
-            continue
-        if dry_run:
-            skills_result["deleted"].append(rel_path)
-            continue
-        try:
-            legacy_file.unlink()
-            skills_result["deleted"].append(rel_path)
-        except OSError:
-            skills_result["errors"].append(f"failed to delete {rel_path}")
+    for workflow_info in cached_kit_workflows:
+        _cleanup_claude_workflow_command(
+            workflow_info,
+            legacy_commands_dir,
+            project_root,
+            skills_result,
+            dry_run,
+        )
+
+
+def _cleanup_claude_workflow_command(
+    workflow_info: Tuple[str, str, str, Optional[str]],
+    legacy_commands_dir: Path,
+    project_root: Path,
+    skills_result: Dict[str, Any],
+    dry_run: bool,
+) -> None:
+    wf_filename, _wf_full_path, kit_slug, explicit_skill_id = workflow_info
+    cmd_name = explicit_skill_id or _compute_workflow_skill_id(Path(wf_filename).stem, kit_slug)
+    legacy_file = legacy_commands_dir / f"{cmd_name}.md"
+    if not legacy_file.is_file():
+        return
+    rel_path = legacy_file.relative_to(project_root).as_posix()
+    try:
+        content = legacy_file.read_text(encoding="utf-8")
+    except OSError as exc:
+        _warn_agents(f"failed to inspect legacy workflow file {legacy_file}: {exc}")
+        return
+    follow_target = _extract_studio_follow_target(content)
+    if not follow_target or "workflows/" not in follow_target:
+        return
+    if Path(follow_target).name != wf_filename:
+        return
+    if not _is_pure_studio_generated(content, expected_name=cmd_name):
+        return
+    if dry_run:
+        skills_result["deleted"].append(rel_path)
+        return
+    try:
+        legacy_file.unlink()
+        skills_result["deleted"].append(rel_path)
+    except OSError:
+        skills_result["errors"].append(f"failed to delete {rel_path}")
 
 
 def _cleanup_legacy_skill_files(
@@ -5134,9 +5196,7 @@ def _mark_missing_subagent_target(
     agent_name: str,
     subagents_result: Dict[str, Any],
 ) -> None:
-    sys.stderr.write(
-        f"WARNING: agent {agent_name!r} has no resolved prompt target, skipping subagent proxy\n"
-    )
+    _warn_agents(f"agent {agent_name!r} has no resolved prompt target, skipping subagent proxy")
     subagents_result["skipped"] = True
     subagents_result["skip_reason"] = (
         subagents_result.get("skip_reason", "")
@@ -5197,7 +5257,8 @@ def _cleanup_stale_subagent_toml(
         return
     try:
         stale_files = list(output_dir.glob("cf*.toml")) + list(output_dir.glob("studio*.toml"))
-    except OSError:
+    except OSError as exc:
+        _warn_agents(f"failed to scan stale subagent TOML files in {output_dir}: {exc}")
         return
     for toml_file in stale_files:
         if toml_file.name in desired_toml_names:
@@ -5221,9 +5282,7 @@ def _cleanup_stale_subagent_toml(
             subagents_result["outputs"].append(
                 {"path": rel_path, "action": "preserved", "reason": "stale_subagent_toml_not_owned"}
             )
-            sys.stderr.write(
-                f"WARNING: preserved stale TOML file {toml_file} because ownership could not be verified\n"
-            )
+            _warn_agents(f"preserved stale TOML file {toml_file} because ownership could not be verified")
             continue
         if dry_run:
             subagents_result["deleted"].append(toml_file.as_posix())
@@ -5238,9 +5297,7 @@ def _cleanup_stale_subagent_toml(
             subagents_result["outputs"].append(
                 {"path": rel_path, "action": "preserved", "reason": "stale_subagent_toml_delete_failed"}
             )
-            sys.stderr.write(
-                f"warning: failed to remove stale TOML file {toml_file}: {exc}\n"
-            )
+            _warn_agents(f"failed to remove stale TOML file {toml_file}: {exc}")
             continue
         subagents_result["deleted"].append(toml_file.as_posix())
         subagents_result["outputs"].append(
@@ -5859,7 +5916,7 @@ def _resolve_includes_for_layers(layers: List, project_root: Path) -> Tuple[List
                 resolved_layer = _dc.replace(layer, manifest=resolved_manifest)
                 resolved_layers.append(resolved_layer)
             except ValueError as exc:
-                sys.stderr.write(f"ERROR: failed to resolve includes for {layer.path}: {exc}\n")
+                _error_agents(f"failed to resolve includes for {layer.path}: {exc}")
                 has_v2_errors = True
                 resolved_layers.append(layer)
         else:
@@ -5876,7 +5933,7 @@ def _run_discover_flag(args: Any, project_root: Path, studio_root: Path) -> Opti
     manifest_existed = manifest_out.exists()
     if not args.dry_run:
         write_discovered_manifest(discovered, manifest_out)
-        sys.stderr.write(f"INFO: wrote discovered manifest to {manifest_out}\n")
+        _info_agents(f"wrote discovered manifest to {manifest_out}")
     if not manifest_existed and manifest_out.is_file():
         return _safe_relpath(manifest_out, project_root)
     return None
@@ -5897,7 +5954,7 @@ def _handle_show_layers_v2(args: Any, merged: Any, project_root: Path) -> Option
         ui.result({"status": "OK", "provenance": report})
     else:
         human_text = format_provenance_human(report)
-        sys.stdout.write(human_text + "\n")
+        ui.info(human_text)
     return 0
 # @cpt-end:cpt-studio-flow-project-extensibility-generate-with-multi-layer:p1:inst-show-layers-flag
 
@@ -5925,16 +5982,7 @@ def _confirm_v2_generation(
         if not auto_approve:
             if not sys.stdin.isatty():
                 return "PROCEED"  # non-interactive: proceed
-            sys.stdout.write(
-                f"Will create {preview_create} file(s), update {preview_update} file(s), "
-                f"delete {preview_delete} file(s).\n"
-                "Reply with `y` to continue or `n` to abort.\n"
-                "Suggested: `y` when this preview matches your intended agent/skill changes.\n"
-                "`y` = write the generated changes. `n` = stop without writing.\n"
-                "Continue? [Y/n] "
-            )
-            sys.stdout.flush()
-            answer = sys.stdin.readline().strip().lower()
+            answer = _prompt_continue_answer(preview_create, preview_update, preview_delete)
             if answer and answer not in ("y", "yes"):
                 return "ABORTED"
     return "PROCEED"
@@ -6534,9 +6582,7 @@ def _emit_empty_layer_provenance() -> int:
     if is_json_mode():
         ui.result({"status": "OK", "provenance": report})
     else:
-        sys.stdout.write(
-            "Layer Provenance Report\n=======================\n(no v2.0 manifest layers found)\n"
-        )
+        ui.info("Layer Provenance Report\n=======================\n(no v2.0 manifest layers found)")
     return 0
 
 
@@ -7629,23 +7675,17 @@ def _read_source_content(
                 except ValueError as exc:
                     _warn_agents(f"trusted root {root} does not contain {resolved}: {exc}")
         if not allowed:
-            sys.stderr.write(
-                f"WARNING: {entity_kind} '{entity_id}' source escapes project root: {src_path}, skipping\n"
-            )
+            _warn_agents(f"{entity_kind} '{entity_id}' source escapes project root: {src_path}, skipping")
             return None
 
     if not resolved.is_file():
-        sys.stderr.write(
-            f"WARNING: {entity_kind} '{entity_id}' source not found: {resolved}, skipping\n"
-        )
+        _warn_agents(f"{entity_kind} '{entity_id}' source not found: {resolved}, skipping")
         return None
 
     try:
         content = resolved.read_text(encoding="utf-8")
     except OSError as exc:
-        sys.stderr.write(
-            f"WARNING: {entity_kind} '{entity_id}' failed to read source: {exc}, skipping\n"
-        )
+        _warn_agents(f"{entity_kind} '{entity_id}' failed to read source: {exc}, skipping")
         return None
 
     # Strip existing frontmatter block (---\n...\n---\n) from source
@@ -7737,9 +7777,7 @@ def _process_manifest_skill(
 ) -> None:
     src_str = skill.source or skill.prompt_file
     if not src_str:
-        sys.stderr.write(
-            f"WARNING: skill '{skill_id}' has no source or prompt_file, skipping\n"
-        )
+        _warn_agents(f"skill '{skill_id}' has no source or prompt_file, skipping")
         return
     source_content = _read_source_content(
         "skill",
@@ -7764,6 +7802,49 @@ def _finalize_generated_result(result: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
+_LEGACY_SKILL_OUTPUT_PATHS: Dict[str, str] = {
+    "cursor": ".cursor/rules/{id}.mdc",
+    "copilot": ".github/skills/{id}.md",
+    "windsurf": ".windsurf/skills/{id}/SKILL.md",
+}
+
+
+def _cleanup_legacy_manifest_skill_output(
+    skill_id: str,
+    skill: "_SkillEntry",
+    legacy_pattern: str,
+    project_root: Path,
+    dry_run: bool,
+    generated_skill_contents: Dict[str, str],
+    result: Dict[str, Any],
+) -> None:
+    legacy_rel = legacy_pattern.replace("{id}", skill_id)
+    legacy_path = project_root / legacy_rel
+    if not legacy_path.is_file():
+        return
+    try:
+        content = legacy_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        _warn_agents(f"failed to inspect legacy skill file {legacy_path}: {exc}")
+        return
+    expected_generated = generated_skill_contents.get(skill_id, "")
+    matches_generated_body = bool(expected_generated) and content.rstrip("\n") == expected_generated.rstrip("\n")
+    if not _is_pure_studio_generated(
+        content,
+        expected_name=skill_id,
+        expected_description=skill.description or None,
+    ) and not matches_generated_body:
+        return
+    if not dry_run:
+        try:
+            legacy_path.unlink()
+        except OSError as exc:
+            _warn_agents(f"failed to delete legacy skill file {legacy_path}: {exc}")
+            return
+    result["deleted"].append(legacy_rel)
+    result["outputs"].append({"path": legacy_rel, "action": "deleted"})
+
+
 def _cleanup_legacy_manifest_skill_outputs(
     target_skills: List[Tuple[str, "_SkillEntry"]],
     target: str,
@@ -7772,40 +7853,19 @@ def _cleanup_legacy_manifest_skill_outputs(
     generated_skill_contents: Dict[str, str],
     result: Dict[str, Any],
 ) -> None:
-    legacy_skill_output_paths: Dict[str, str] = {
-        "cursor": ".cursor/rules/{id}.mdc",
-        "copilot": ".github/skills/{id}.md",
-        "windsurf": ".windsurf/skills/{id}/SKILL.md",
-    }
-    legacy_pattern = legacy_skill_output_paths.get(target)
+    legacy_pattern = _LEGACY_SKILL_OUTPUT_PATHS.get(target)
     if not legacy_pattern:
         return
     for skill_id, skill in target_skills:
-        legacy_rel = legacy_pattern.replace("{id}", skill_id)
-        legacy_path = project_root / legacy_rel
-        if not legacy_path.is_file():
-            continue
-        try:
-            content = legacy_path.read_text(encoding="utf-8")
-        except OSError as exc:
-            _warn_agents(f"failed to inspect legacy skill file {legacy_path}: {exc}")
-            continue
-        expected_generated = generated_skill_contents.get(skill_id, "")
-        matches_generated_body = bool(expected_generated) and content.rstrip("\n") == expected_generated.rstrip("\n")
-        if not _is_pure_studio_generated(
-            content,
-            expected_name=skill_id,
-            expected_description=skill.description or None,
-        ) and not matches_generated_body:
-            continue
-        if not dry_run:
-            try:
-                legacy_path.unlink()
-            except OSError as exc:
-                _warn_agents(f"failed to delete legacy skill file {legacy_path}: {exc}")
-                continue
-        result["deleted"].append(legacy_rel)
-        result["outputs"].append({"path": legacy_rel, "action": "deleted"})
+        _cleanup_legacy_manifest_skill_output(
+            skill_id,
+            skill,
+            legacy_pattern,
+            project_root,
+            dry_run,
+            generated_skill_contents,
+            result,
+        )
 
 
 # @cpt-begin:cpt-studio-algo-project-extensibility-generate-skills:p1:inst-generate-manifest-skills
@@ -7922,9 +7982,9 @@ def _append_claude_model_frontmatter(frontmatter: List[str], agent: "_AgentEntry
         frontmatter.append(f"model: {model_id}")
         return
     if getattr(agent, "context_window", None) == "max":
-        sys.stderr.write(
-            f"WARNING: agent '{getattr(agent, 'id', '?')}': context_window=max has no effect "
-            "because no model_id could be resolved for this agent\n"
+        _warn_agents(
+            f"agent '{getattr(agent, 'id', '?')}': context_window=max has no effect "
+            "because no model_id could be resolved for this agent"
         )
 
 
@@ -7981,9 +8041,7 @@ def _build_openai_agent_file(
     Returns ``(content, rel_out)`` using the OpenAI/Codex ``.codex/agents/{id}.toml`` convention.
     """
     if not _is_safe_generated_id(agent_id):
-        sys.stderr.write(
-            f"WARNING: agent '{agent_id}' has unsafe id for OpenAI output path, skipping\n"
-        )
+        _warn_agents(f"agent '{agent_id}' has unsafe id for OpenAI output path, skipping")
         return "", ""
 
     sandbox_mode = translated.get("sandbox_mode", "workspace-write")
@@ -8107,9 +8165,9 @@ def _legacy_claude_mcp_broadening_translation(agent: Any) -> Dict[str, Any]:
             model_id = f"{model_id}[1m]"
         frontmatter.append(f"model: {model_id}")
     elif getattr(agent, "context_window", None) == "max":
-        sys.stderr.write(
-            f"WARNING: agent '{getattr(agent, 'id', '?')}': context_window=max has no effect "
-            "because no model_id could be resolved for this agent\n"
+        _warn_agents(
+            f"agent '{getattr(agent, 'id', '?')}': context_window=max has no effect "
+            "because no model_id could be resolved for this agent"
         )
 
     effort = getattr(agent, "reasoning_effort", None)
@@ -8149,9 +8207,7 @@ def _read_manifest_agent_source(
 ) -> Optional[str]:
     src_str = agent.source or agent.prompt_file
     if not src_str:
-        sys.stderr.write(
-            f"WARNING: agent '{agent_id}' has no source or prompt_file, skipping\n"
-        )
+        _warn_agents(f"agent '{agent_id}' has no source or prompt_file, skipping")
         return None
     return _read_source_content(
         "agent",
@@ -8273,9 +8329,9 @@ def _cleanup_skipped_manifest_agent(
     translated: Dict[str, Any],
     ctx: _SkippedManifestCleanupContext,
 ) -> None:
-    sys.stderr.write(
-        f"INFO: agent '{agent_id}' skipped for target '{target}': "
-        f"{translated.get('skip_reason', '')}\n"
+    _info_agents(
+        f"agent '{agent_id}' skipped for target '{target}': "
+        f"{translated.get('skip_reason', '')}"
     )
     if target == "claude":
         _cleanup_skipped_claude_manifest_agent(agent_id, agent, ctx)
@@ -8359,9 +8415,7 @@ def _process_manifest_agent(
     try:
         translated = translate_agent_schema(agent, target)
     except ValueError as exc:
-        sys.stderr.write(
-            f"WARNING: agent '{agent_id}' schema translation failed for target '{target}': {exc}, skipping\n"
-        )
+        _warn_agents(f"agent '{agent_id}' schema translation failed for target '{target}': {exc}, skipping")
         ctx.result.setdefault("errors", []).append({"agent": agent_id, "error": str(exc)})
         return
     if translated.get("skip"):
@@ -8382,9 +8436,7 @@ def _process_manifest_agent(
         )
         return
     if not agent.description and target == "claude":
-        sys.stderr.write(
-            f"WARNING: agent '{agent_id}' has no description — agent will not register with Claude CLI\n"
-        )
+        _warn_agents(f"agent '{agent_id}' has no description — agent will not register with Claude CLI")
         return
     source_content = _read_manifest_agent_source(
         agent_id,
@@ -8483,7 +8535,8 @@ def _build_provenance_record(
         if source_path_obj.is_absolute():
             try:
                 source_path = source_path_obj.relative_to(project_root).as_posix()
-            except ValueError:
+            except ValueError as exc:
+                _warn_agents(f"provenance source path {source_path_obj} is outside project root {project_root}: {exc}")
                 source_path = source_path_obj.as_posix()
     record: Dict[str, Any] = {
         "id": cid,
@@ -8762,7 +8815,8 @@ def write_discovered_manifest(
     if manifest_path.is_file():
         try:
             existing_content = manifest_path.read_text(encoding="utf-8")
-        except OSError:
+        except OSError as exc:
+            _warn_agents(f"failed to read existing discovered manifest {manifest_path}: {exc}")
             existing_content = None
 
     if existing_content is not None:

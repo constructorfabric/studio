@@ -4,12 +4,13 @@
 """
 # @cpt-begin:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-imports
 import argparse
-import sys
+import logging
 from pathlib import Path
 from typing import List
 
 from ..utils import error_codes as EC
 from ..utils.ui import ui
+logger = logging.getLogger(__name__)
 # @cpt-end:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-imports
 
 
@@ -213,9 +214,11 @@ def _default_roots() -> List[Path]:
         if ctx is not None:
             return [ctx.project_root / "architecture"]
     except (ImportError, AttributeError, RuntimeError) as exc:
-        sys.stderr.write(
-            "check-language: warning: project context discovery failed; "
-            f"falling back to {Path.cwd() / 'architecture'}: {type(exc).__name__}: {exc}\n"
+        logger.warning(
+            "check-language: project context discovery failed; falling back to %s: %s: %s",
+            Path.cwd() / "architecture",
+            type(exc).__name__,
+            exc,
         )
     return [Path.cwd() / "architecture"]
 

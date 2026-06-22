@@ -10,8 +10,8 @@ File I/O, project root discovery, studio detection, path resolution.
 
 # @cpt-begin:cpt-studio-algo-core-infra-project-root-detection:p1:inst-root-datamodel
 import json
+import logging
 import re
-import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -26,6 +26,7 @@ _ADAPTER_SEARCH_SKIP_DIRS = {
     "target", "build", "dist", ".idea", ".vscode", "vendor",
     "coverage", ".tox", ".mypy_cache", ".eggs",
 }
+logger = logging.getLogger(__name__)
 
 def core_subpath(studio_root: Path, *parts: str) -> Path:
     """Resolve a subpath within a studio root, checking .core/ first.
@@ -76,7 +77,7 @@ def find_project_root(start: Path) -> Optional[Path]:
             try:
                 head = agents.read_text(encoding="utf-8")[:512]
             except (OSError, UnicodeDecodeError) as exc:
-                sys.stderr.write(f"Warning: failed to read {agents}: {exc}\n")
+                logger.warning("Failed to read %s: %s", agents, exc)
                 head = ""
             if _MARKER_START in head:
                 return current
@@ -125,7 +126,7 @@ def load_project_config(project_root: Path) -> Optional[dict]:
     try:
         return toml_utils.load(core_toml)
     except (OSError, ValueError, KeyError) as exc:
-        sys.stderr.write(f"Warning: failed to load project config {core_toml}: {exc}\n")
+        logger.warning("Failed to load project config %s: %s", core_toml, exc)
         return None
 # @cpt-end:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-load-core
 
@@ -206,7 +207,7 @@ def find_studio_directory(start: Path, studio_root: Optional[Path] = None) -> Op
                 if marker.lower() in content_lower and _has_adapter_markers(path, content_lower):
                     return True
         except (OSError, UnicodeDecodeError) as exc:
-            sys.stderr.write(f"Warning: failed to inspect adapter candidate {agents_file}: {exc}\n")
+            logger.warning("Failed to inspect adapter candidate %s: %s", agents_file, exc)
 
         # Fallback: verify it has rules/ or specs/ directory (strong structural indicator)
         return _has_adapter_structure(path)
@@ -219,7 +220,7 @@ def find_studio_directory(start: Path, studio_root: Optional[Path] = None) -> Op
         try:
             entries = list(root.iterdir())
         except (PermissionError, OSError) as exc:
-            sys.stderr.write(f"Warning: failed to scan directory {root}: {exc}\n")
+            logger.warning("Failed to scan directory %s: %s", root, exc)
             return None
 
         # First pass: check current level directories
@@ -297,7 +298,7 @@ def load_studio_config(adapter_dir: Path) -> Dict[str, object]:
                     config["project_name"] = line.replace("# Constructor Studio Adapter:", "").strip()
                     break
         except (OSError, UnicodeDecodeError) as exc:
-            sys.stderr.write(f"Warning: failed to read optional adapter metadata from {agents_file}: {exc}\n")
+            logger.warning("Failed to read optional adapter metadata from %s: %s", agents_file, exc)
 
     # List available rules (config/ layout, fallback to flat)
     rules_dir = adapter_dir / "config" / "rules"

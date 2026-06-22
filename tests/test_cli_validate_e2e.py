@@ -510,7 +510,7 @@ class TestCLIValidateE2E(unittest.TestCase):
 
             self.assertEqual(exit_code, 2)
             self.assertEqual(after, before)
-            self.assertIn("Warning: workspace config error:", stderr)
+            self.assertIn("Workspace config error:", stderr)
             self.assertIn("xx_fake", stderr)
             payload = json.loads(stdout)
             self.assertEqual(payload["status"], "FAIL")

@@ -11,17 +11,20 @@ Entry point: ``file_level_kit_update()``.
 # @cpt-begin:cpt-studio-algo-kit-diff-display:p1:inst-diff-datamodel
 import difflib
 import hashlib
+import logging
 import os
 import re
 import shlex
 import subprocess
-import sys
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from .stderr_logging import emit_stderr_message
 from .toc import _expand_blank_line_region
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class DiffReport:
@@ -36,6 +39,11 @@ class DiffReport:
         """Return whether the diff contains any changes."""
         return bool(self.added or self.removed or self.modified)
 # @cpt-end:cpt-studio-algo-kit-diff-display:p1:inst-diff-datamodel
+
+
+def _emit_terminal_message(message: str) -> None:
+    """Emit human-facing interactive text through the logger channel."""
+    emit_stderr_message(message.rstrip("\n"), logger_name=f"{__name__}.stderr")
 
 
 # @cpt-begin:cpt-studio-algo-kit-update-drift-prune:p1:inst-update-explicit-prune
@@ -62,7 +70,7 @@ def show_file_diff(
         old_lines = old_content.decode("utf-8").splitlines(keepends=True)
         new_lines = new_content.decode("utf-8").splitlines(keepends=True)
     except UnicodeDecodeError:
-        sys.stderr.write(f"{prefix}(binary file \u2014 diff not shown)\n")
+        _emit_terminal_message(f"{prefix}(binary file \u2014 diff not shown)")
         return
 
     diff = list(difflib.unified_diff(
@@ -76,13 +84,13 @@ def show_file_diff(
     for line in diff:
         line_s = line.rstrip("\n")
         if line_s.startswith("+++") or line_s.startswith("---"):
-            sys.stderr.write(f"{prefix}{line_s}\n")
+            _emit_terminal_message(f"{prefix}{line_s}")
         elif line_s.startswith("+"):
-            sys.stderr.write(f"{prefix}\033[32m{line_s}\033[0m\n")
+            _emit_terminal_message(f"{prefix}\033[32m{line_s}\033[0m")
         elif line_s.startswith("-"):
-            sys.stderr.write(f"{prefix}\033[31m{line_s}\033[0m\n")
+            _emit_terminal_message(f"{prefix}\033[31m{line_s}\033[0m")
         elif line_s.startswith("@@"):
-            sys.stderr.write(f"{prefix}\033[36m{line_s}\033[0m\n")
+            _emit_terminal_message(f"{prefix}\033[36m{line_s}\033[0m")
     # @cpt-end:cpt-studio-algo-kit-diff-display:p1:inst-show-file-diff
 
 
@@ -173,7 +181,7 @@ def _prompt_unresolved(rel_path: str) -> str:
     Returns one of: ``"retry"``, ``"accept"``, ``"decline"``.
     """
     # @cpt-begin:cpt-studio-algo-kit-conflict-merge:p1:inst-prompt-unresolved
-    sys.stderr.write(
+    _emit_terminal_message(
         (
             f"    \033[33m\u26a0 {rel_path}: unresolved conflict markers remain\033[0m\n"
             "      Reply with `r`, `a`, or `d`.\n"
@@ -186,7 +194,6 @@ def _prompt_unresolved(rel_path: str) -> str:
             "\033[1m[d]\033[0mecline (keep yours)  "
         )
     )
-    sys.stderr.flush()
     try:
         response = input().strip().lower()
     except EOFError:
@@ -220,7 +227,7 @@ def _open_editor_for_file(  # pylint: disable=too-many-return-statements
         old_text = old_content.decode("utf-8")
         new_text = new_content.decode("utf-8")
     except UnicodeDecodeError:
-        sys.stderr.write("    (binary file \u2014 cannot edit)\n")
+        _emit_terminal_message("    (binary file \u2014 cannot edit)")
         return None
 
     conflict_text = _build_conflict_content(rel_path, old_text, new_text)
@@ -244,17 +251,17 @@ def _open_editor_for_file(  # pylint: disable=too-many-return-statements
             with open(tmp_path, encoding="utf-8") as f:
                 edited = f.read()
         except FileNotFoundError:
-            sys.stderr.write(f"    editor not found: {editor}\n")
+            _emit_terminal_message(f"    editor not found: {editor}")
             return None
         except (OSError, subprocess.SubprocessError, ValueError) as exc:
-            sys.stderr.write(f"    editor failed: {exc}\n")
+            _emit_terminal_message(f"    editor failed: {exc}")
             return None
         finally:
             if tmp_path:
                 try:
                     os.unlink(tmp_path)
                 except OSError as exc:
-                    sys.stderr.write(f"    warning: failed to remove temp editor file {tmp_path}: {exc}\n")
+                    logger.warning("Failed to remove temp editor file %s: %s", tmp_path, exc)
 
         if not edited.strip():
             return None
@@ -346,7 +353,7 @@ def _enumerate_kit_files(
         try:
             files[str(rel)] = f.read_bytes()
         except OSError as exc:
-            sys.stderr.write(f"Warning: failed to read {f}: {exc}\n")
+            logger.warning("Failed to read %s: %s", f, exc)
         # @cpt-end:cpt-studio-algo-kit-file-enumerate:p1:inst-read-bytes
     return files
     # @cpt-end:cpt-studio-algo-kit-snapshot:p1:inst-read-files
@@ -409,7 +416,7 @@ def _prompt_kit_file(  # pylint: disable=too-many-return-statements
     # @cpt-end:cpt-studio-algo-kit-interactive-review:p1:inst-check-bulk
 
     # @cpt-begin:cpt-studio-algo-kit-interactive-review:p1:inst-prompt
-    sys.stderr.write(
+    _emit_terminal_message(
         (
             f"    {rel_path}\n"
             "      Reply with `a`, `d`, `A`, `D`, or `m`.\n"
@@ -425,7 +432,6 @@ def _prompt_kit_file(  # pylint: disable=too-many-return-statements
             "\033[1m[m]\033[0modify  "
         )
     )
-    sys.stderr.flush()
     try:
         response = input().strip()
     except EOFError:
@@ -462,14 +468,14 @@ def _show_kit_update_summary(report: DiffReport, prefix: str = "    ") -> None:
     if report.modified:
         counts.append(f"\033[33m{len(report.modified)} modified\033[0m")
     counts.append(f"{len(report.unchanged)} unchanged")
-    sys.stderr.write(f"{prefix}Kit files: {', '.join(counts)}\n")
+    _emit_terminal_message(f"{prefix}Kit files: {', '.join(counts)}")
 
     for p in report.added:
-        sys.stderr.write(f"{prefix}  \033[32m+ {p}\033[0m  (new)\n")
+        _emit_terminal_message(f"{prefix}  \033[32m+ {p}\033[0m  (new)")
     for p in report.removed:
-        sys.stderr.write(f"{prefix}  \033[31m- {p}\033[0m  (deleted upstream)\n")
+        _emit_terminal_message(f"{prefix}  \033[31m- {p}\033[0m  (deleted upstream)")
     for p in report.modified:
-        sys.stderr.write(f"{prefix}  \033[33m~ {p}\033[0m\n")
+        _emit_terminal_message(f"{prefix}  \033[33m~ {p}\033[0m")
     # @cpt-end:cpt-studio-algo-kit-diff-display:p1:inst-show-summary
 
 
@@ -558,14 +564,13 @@ def _prompt_toc_regen(rel_path: str) -> str:
     Returns ``"yes"`` or ``"no"``.
     """
     # @cpt-begin:cpt-studio-algo-kit-toc-handling:p1:inst-prompt-regen
-    sys.stderr.write(
+    _emit_terminal_message(
         f"\n      TOC detected in \033[1m{rel_path}\033[0m.\n"
         "      Why this input is needed: decide whether to rewrite the table of contents after applying this change.\n"
         "      Reply with `y` to regenerate the TOC or `n` to keep the current file content as written.\n"
         "      Suggested: `y` when you want headings and TOC to stay in sync automatically.\n"
         f"      Regenerate? [\033[32my\033[0m]es / [\033[31mn\033[0m]o: "
     )
-    sys.stderr.flush()
     try:
         answer = input().strip().lower()
     except EOFError:
@@ -582,18 +587,17 @@ def _prompt_toc_error_continue(rel_path: str, err: Exception) -> bool:
     Returns True to continue processing, False to stop.
     """
     # @cpt-begin:cpt-studio-algo-kit-toc-handling:p1:inst-handle-error
-    sys.stderr.write(
+    _emit_terminal_message(
         f"\n      \033[31mTOC regeneration failed for {rel_path}: {err}\033[0m\n"
         "      Previous content was restored.\n"
         "      Reply with `c` to continue updating other files or `s` to stop the update now.\n"
         "      Suggested: `c` when this file can be fixed later without blocking the rest of the update.\n"
         f"      [\033[32mc\033[0m]ontinue / [\033[31ms\033[0m]top: "
     )
-    sys.stderr.flush()
     try:
         answer = input().strip().lower()
     except EOFError:
-        sys.stderr.write(f"      warning: input closed while handling TOC regeneration failure for {rel_path}\n")
+        logger.warning("Input closed while handling TOC regeneration failure for %s", rel_path)
         return False
     return answer != "s"
     # @cpt-end:cpt-studio-algo-kit-toc-handling:p1:inst-handle-error
@@ -636,9 +640,10 @@ def _target_path_for_bound_resource(
     info = resource_info.get(res_id)
     if not info or getattr(info, "type", "") != "directory":
         if binding_path.is_dir():
-            sys.stderr.write(
-                f"    [warn] file resource binding is a directory: "
-                f"binding_path={binding_path}, src_rel_path={src_rel_path}\n"
+            logger.warning(
+                "File resource binding is a directory: binding_path=%s, src_rel_path=%s",
+                binding_path,
+                src_rel_path,
             )
             return binding_path / src_rel_path.split("/")[-1]
         return binding_path
@@ -652,10 +657,11 @@ def _target_path_for_bound_resource(
         rel_within_dir = Path(src_rel_path).relative_to(source_base).as_posix()
         return binding_path / rel_within_dir
     except ValueError:
-        sys.stderr.write(
-            f"    [debug] directory resource fallback: "
-            f"source_base={source_base}, src_rel_path={src_rel_path}, "
-            f"binding_path={binding_path}\n"
+        logger.warning(
+            "Directory resource fallback: source_base=%s, src_rel_path=%s, binding_path=%s",
+            source_base,
+            src_rel_path,
+            binding_path,
         )
         return binding_path / src_rel_path.split("/")[-1]
 
@@ -689,7 +695,7 @@ def _read_file_if_available(path: Path) -> Optional[bytes]:
     try:
         return path.read_bytes()
     except (OSError, IOError) as exc:
-        sys.stderr.write(f"Warning: failed to read bound resource file {path}: {exc}\n")
+        logger.warning("Failed to read bound resource file %s: %s", path, exc)
         return None
 
 
@@ -896,18 +902,16 @@ def _decide_noninteractive_action(
 def _show_change_context(rel_path: str, change_type: str, old_content: bytes, new_content: bytes) -> None:
     """Render the diff context shown before interactive review."""
     if change_type == "added":
-        sys.stderr.write(
-            f"\n    \033[32m+ {rel_path}\033[0m  (new file, "
-            f"{len(new_content)} bytes)\n"
+        _emit_terminal_message(
+            f"\n    \033[32m+ {rel_path}\033[0m  (new file, {len(new_content)} bytes)"
         )
         return
     if change_type == "removed":
-        sys.stderr.write(
-            f"\n    \033[31m- {rel_path}\033[0m  (deleted upstream, "
-            f"{len(old_content)} bytes in your copy)\n"
+        _emit_terminal_message(
+            f"\n    \033[31m- {rel_path}\033[0m  (deleted upstream, {len(old_content)} bytes in your copy)"
         )
         return
-    sys.stderr.write(f"\n    \033[33m~ {rel_path}\033[0m\n")
+    _emit_terminal_message(f"\n    \033[33m~ {rel_path}\033[0m")
     show_file_diff(rel_path, old_content, new_content, prefix="      ")
 
 
@@ -922,8 +926,8 @@ def _decide_interactive_action(
 ) -> Tuple[str, bytes]:
     """Prompt for and resolve an interactive action for a changed file."""
     if change_type == "removed" and prune_fingerprint:
-        sys.stderr.write(
-            f"\n    \033[31m- {rel_path}\033[0m  (deleted upstream; prune fingerprint {prune_fingerprint})\n"
+        _emit_terminal_message(
+            f"\n    \033[31m- {rel_path}\033[0m  (deleted upstream; prune fingerprint {prune_fingerprint})"
         )
         if prune_mode:
             decision = _prompt_kit_file(rel_path, review_state)

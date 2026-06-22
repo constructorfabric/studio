@@ -6,9 +6,11 @@ Functions for working with documents and file paths.
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-scan-ids-datamodel
 import re
-import sys
+import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 _CPT_ID_RE = re.compile(r"(cpt-[a-z0-9][a-z0-9-]+)")
 _HEADING_RE = re.compile(r"^\s*(#{1,6})\s+(.+?)\s*$")
@@ -545,7 +547,7 @@ def _should_skip_text_file(
     try:
         return path.stat().st_size > max_bytes
     except OSError as exc:
-        sys.stderr.write(f"Warning: failed to stat {path}: {exc}\n")
+        logger.warning("Failed to stat %s: %s", path, exc)
         return True
 
 def read_text_safe(path: Path) -> Optional[List[str]]:
@@ -563,7 +565,7 @@ def read_text_safe(path: Path) -> Optional[List[str]]:
     try:
         raw = path.read_bytes()
     except OSError as exc:
-        sys.stderr.write(f"Warning: failed to read text file {path}: {exc}\n")
+        logger.warning("Failed to read text file %s: %s", path, exc)
         return None
 
     if b"\x00" in raw:
@@ -572,7 +574,7 @@ def read_text_safe(path: Path) -> Optional[List[str]]:
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError as exc:
-        sys.stderr.write(f"Warning: non-UTF-8 bytes ignored while reading {path}: {exc}\n")
+        logger.warning("Non-UTF-8 bytes ignored while reading %s: %s", path, exc)
         text = raw.decode("utf-8", errors="ignore")
 
     if os.linesep != "\n":

@@ -113,7 +113,7 @@ def test_proxy_check_updates_runs_full_manual_report(monkeypatch, capsys):
             "updates_available": 3,
             "checks": {
                 "proxy": {
-                    "component": "constructor-studio-proxy",
+                    "component": "constructor-studio",
                     "action": "update_available",
                     "current_version": "1.0.0",
                     "latest_version": "1.1.0",
@@ -146,7 +146,7 @@ def test_proxy_check_updates_runs_full_manual_report(monkeypatch, capsys):
     assert "  installed: 1\n" not in out
 
 
-def test_background_update_check_prints_cached_notices(monkeypatch, tmp_path, capsys):
+def test_background_update_check_prints_cached_notices(monkeypatch, tmp_path, caplog):
     from studio_proxy import cli
     import studio_proxy.update_check as update_check
 
@@ -168,11 +168,11 @@ def test_background_update_check_prints_cached_notices(monkeypatch, tmp_path, ca
         },
     })
 
-    cli._background_version_check(Path("/tmp/studio.py"), ["info"])
+    with caplog.at_level("WARNING"):
+        cli._background_version_check(Path("/tmp/studio.py"), ["info"])
 
-    err = capsys.readouterr().err
-    assert "pipx upgrade constructor-studio" in err
-    assert "cfs kit update sdlc" in err
+    assert "pipx upgrade constructor-studio" in caplog.text
+    assert "cfs kit update sdlc" in caplog.text
 
 
 def test_background_update_check_spawns_refresh_when_stale(monkeypatch, tmp_path):

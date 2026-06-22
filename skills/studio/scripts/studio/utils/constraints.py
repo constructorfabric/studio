@@ -4,12 +4,14 @@
 from __future__ import annotations
 
 import re
-import sys
+import logging
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from . import error_codes as EC
+
+logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class ReferenceRule:
@@ -180,7 +182,7 @@ def _compile_heading_patterns(
         try:
             compiled.append((hc, re.compile(pat_s, flags=re.IGNORECASE)))
         except re.error as exc:
-            sys.stderr.write(f"Warning: invalid heading regex {pat_s!r}: {exc}\n")
+            logger.warning("Invalid heading regex %r: %s", pat_s, exc)
             compiled.append((hc, re.compile(r"$^")))
     return compiled
 
@@ -3074,6 +3076,37 @@ _HEADING_LINE_RE = re.compile(r"^\s*(#{1,6})\s+(.+?)\s*$")
 _HEADING_NUMBER_PREFIX_RE = re.compile(r"^(?P<prefix>\d+(?:\.\d+)*)(?:\.)?\s+(?P<title>.+)$")
 # @cpt-end:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-headings-datamodel
 
+
+def _parse_heading_numbering(
+    raw_title: str,
+    path: Path,
+) -> Tuple[bool, str, Optional[str], Optional[List[int]]]:
+    """Extract numbering metadata from one heading title."""
+    numbered = False
+    title_text = raw_title
+    number_prefix: Optional[str] = None
+    number_parts: Optional[List[int]] = None
+    match = _HEADING_NUMBER_PREFIX_RE.match(raw_title)
+    if not match:
+        return numbered, title_text, number_prefix, number_parts
+
+    numbered = True
+    number_prefix = str(match.group("prefix") or "").strip() or None
+    if number_prefix:
+        try:
+            number_parts = [int(x) for x in number_prefix.split(".") if x.strip()]
+        except ValueError as exc:
+            logger.warning(
+                "Invalid heading number prefix %r in %s: %s",
+                number_prefix,
+                path,
+                exc,
+            )
+            number_parts = None
+    title_text = str(match.group("title") or "").strip()
+    return numbered, title_text, number_prefix, number_parts
+
+
 def _scan_headings(path: Path) -> List[Dict[str, object]]:
     # @cpt-begin:cpt-studio-algo-traceability-validation-headings-contract:p1:inst-scan-headings
     from .document import read_text_safe
@@ -3095,23 +3128,7 @@ def _scan_headings(path: Path) -> List[Dict[str, object]]:
             continue
         level = len(m.group(1))
         raw_title = str(m.group(2) or "").strip()
-        numbered = False
-        title_text = raw_title
-        number_prefix: Optional[str] = None
-        number_parts: Optional[List[int]] = None
-        mp = _HEADING_NUMBER_PREFIX_RE.match(raw_title)
-        if mp:
-            numbered = True
-            number_prefix = str(mp.group("prefix") or "").strip() or None
-            if number_prefix:
-                try:
-                    number_parts = [int(x) for x in number_prefix.split(".") if x.strip()]
-                except ValueError as exc:
-                    sys.stderr.write(
-                        f"Warning: invalid heading number prefix {number_prefix!r} in {artifact_path}: {exc}\n"
-                    )
-                    number_parts = None
-            title_text = str(mp.group("title") or "").strip()
+        numbered, title_text, number_prefix, number_parts = _parse_heading_numbering(raw_title, path)
         out.append({
             "line": idx0 + 1,
             "level": level,
@@ -3287,7 +3304,7 @@ def _match_heading_constraint(
     try:
         return re.search(pattern_s, title, flags=re.IGNORECASE) is not None
     except re.error as exc:
-        sys.stderr.write(f"Warning: invalid heading match regex {pattern_s!r}: {exc}\n")
+        logger.warning("Invalid heading match regex %r: %s", pattern_s, exc)
         return False
 
 

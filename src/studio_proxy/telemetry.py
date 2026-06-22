@@ -10,6 +10,7 @@ Uses only Python stdlib. Never blocks or slows down the main CLI.
 """
 
 import json
+import logging
 import os
 import subprocess
 import threading
@@ -25,6 +26,7 @@ DEFAULT_RETENTION_DAYS = 5
 HTTP_TIMEOUT = 5
 _SKIP_COMMANDS = {"--version", "--help", "-h"}
 _ALLOWED_SCHEMES = ("http://", "https://")  # NOSONAR(S5332) HTTP is acceptable for internal OTEL collectors
+LOGGER = logging.getLogger(__name__)
 
 
 def track_invocation(args: List[str]) -> None:
@@ -133,8 +135,8 @@ def _append_log(record: dict, now: Optional[datetime] = None) -> bool:
 
     is_new = not log_file.exists()
 
-    with log_file.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    with log_file.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     return is_new
 
@@ -145,7 +147,12 @@ def _rotate_logs() -> None:
         retention_days = int(
             os.environ.get("CFS_TELEMETRY_RETENTION_DAYS", DEFAULT_RETENTION_DAYS)
         )
-    except ValueError:
+    except ValueError as exc:
+        LOGGER.warning(
+            "Warning: invalid CFS_TELEMETRY_RETENTION_DAYS value; using default %s (%s)",
+            DEFAULT_RETENTION_DAYS,
+            exc,
+        )
         retention_days = DEFAULT_RETENTION_DAYS
 
     retention_days = max(1, retention_days)
@@ -225,7 +232,7 @@ def _log_error(message: str) -> None:
             "level": "ERROR",
             "message": message,
         }
-        with log_file.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(error_record, ensure_ascii=False) + "\n")
+        with log_file.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(error_record, ensure_ascii=False) + "\n")
     except OSError as exc:
-        sys.stderr.write(f"Warning: unable to record telemetry error locally: {exc}\n")
+        LOGGER.warning("Warning: unable to record telemetry error locally: %s", exc)

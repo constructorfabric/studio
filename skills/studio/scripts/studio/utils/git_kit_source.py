@@ -26,17 +26,19 @@ from __future__ import annotations
 # @cpt-begin:cpt-studio-state-generic-git-kit-installer-source:p1:inst-git-prov-schema-source
 import hashlib
 import json
+import logging
 import os
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote, unquote, urlsplit, urlunsplit
+
+logger = logging.getLogger(__name__)
 
 
 _KIT_SLUG_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
@@ -676,7 +678,7 @@ def _materialize_offline_last_known(
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, ValueError, json.JSONDecodeError) as exc:
-        sys.stderr.write(f"Warning: failed to read offline cache manifest {manifest_path}: {exc}\n")
+        logger.warning("Failed to read offline cache manifest %s: %s", manifest_path, exc)
         return None
     if not _manifest_matches_offline_cache(
         manifest,

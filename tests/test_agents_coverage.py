@@ -13,13 +13,15 @@ import io
 import json
 import sys
 import unittest
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "studio" / "scripts"))
+
+_redirect_human_output = redirect_stdout
 
 
 class TestStudioEndpointTarget(unittest.TestCase):
@@ -50,12 +52,11 @@ class TestStudioEndpointTarget(unittest.TestCase):
         from studio.commands.agents import _target_path_from_root
 
         target = Path("/outside/project/agent.md")
-        buf = io.StringIO()
-        with redirect_stderr(buf):
+        with self.assertLogs("studio.commands.agents", level="WARNING") as captured:
             result = _target_path_from_root(target, Path("/workspace/project"))
 
         self.assertEqual(result, target.as_posix())
-        self.assertIn("outside project root", buf.getvalue())
+        self.assertIn("outside project root", "\n".join(captured.output))
 
     def test_registered_legacy_studio_path_allows_parent_traversal_within_project(self):
         from studio.commands.agents import _resolve_registered_legacy_studio_path
@@ -1166,14 +1167,15 @@ class TestCanonicalKitPublicComponentGeneration(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with patch("sys.stderr") as stderr:
+            with self.assertLogs("studio.commands.agents", level="WARNING") as captured:
                 components, kit_slugs = _list_registered_public_resource_skills(studio_root, root)
 
             paths = [entry[1] for entry in components]
             self.assertNotIn(outside_skill.resolve(), paths)
             self.assertEqual(kit_slugs, set())
-            stderr.write.assert_any_call(
-                f"WARNING: kit 'pubkit' public skill source escapes project/studio root: {outside_skill.resolve()}, skipping\n"
+            self.assertIn(
+                f"kit 'pubkit' public skill source escapes project/studio root: {outside_skill.resolve()}, skipping",
+                "\n".join(captured.output),
             )
 
     def test_list_public_components_skips_unresolvable_source(self):
@@ -1759,7 +1761,7 @@ class TestHumanAgentsList(unittest.TestCase):
     def test_agents_with_existing_files(self):
         from studio.commands.agents import _human_agents_list
         import io
-        from contextlib import redirect_stderr
+        from contextlib import redirect_stdout as redirect_stderr
 
         results = {
             "windsurf": {
@@ -1768,7 +1770,7 @@ class TestHumanAgentsList(unittest.TestCase):
             },
         }
         err = io.StringIO()
-        with redirect_stderr(err):
+        with _redirect_human_output(err):
             _human_agents_list({}, ["windsurf"], results, Path("/p"))
         output = err.getvalue()
         self.assertIn("windsurf", output)
@@ -1778,7 +1780,7 @@ class TestHumanAgentsList(unittest.TestCase):
     def test_agents_with_no_files(self):
         from studio.commands.agents import _human_agents_list
         import io
-        from contextlib import redirect_stderr
+        from contextlib import redirect_stdout as redirect_stderr
 
         results = {
             "cursor": {
@@ -1787,7 +1789,7 @@ class TestHumanAgentsList(unittest.TestCase):
             },
         }
         err = io.StringIO()
-        with redirect_stderr(err):
+        with _redirect_human_output(err):
             _human_agents_list({}, ["cursor"], results, Path("/p"))
         output = err.getvalue()
         self.assertIn("no files", output)
@@ -1796,7 +1798,7 @@ class TestHumanAgentsList(unittest.TestCase):
     def test_agents_not_configured(self):
         from studio.commands.agents import _human_agents_list
         import io
-        from contextlib import redirect_stderr
+        from contextlib import redirect_stdout as redirect_stderr
 
         results = {
             "copilot": {
@@ -1805,7 +1807,7 @@ class TestHumanAgentsList(unittest.TestCase):
             },
         }
         err = io.StringIO()
-        with redirect_stderr(err):
+        with _redirect_human_output(err):
             _human_agents_list({}, ["copilot"], results, Path("/p"))
         output = err.getvalue()
         self.assertIn("not configured", output)
@@ -1814,7 +1816,7 @@ class TestHumanAgentsList(unittest.TestCase):
     def test_no_agents_installed_hint(self):
         from studio.commands.agents import _human_agents_list
         import io
-        from contextlib import redirect_stderr
+        from contextlib import redirect_stdout as redirect_stderr
 
         results = {
             "windsurf": {
@@ -1823,7 +1825,7 @@ class TestHumanAgentsList(unittest.TestCase):
             },
         }
         err = io.StringIO()
-        with redirect_stderr(err):
+        with _redirect_human_output(err):
             _human_agents_list({}, ["windsurf"], results, Path("/p"))
         output = err.getvalue()
         self.assertIn("cfs generate-agents", output)
@@ -1832,7 +1834,7 @@ class TestHumanAgentsList(unittest.TestCase):
     def test_unchanged_outputs_count_as_existing_files(self):
         from studio.commands.agents import _human_agents_list
         import io
-        from contextlib import redirect_stderr
+        from contextlib import redirect_stdout as redirect_stderr
 
         results = {
             "cursor": {
@@ -1845,7 +1847,7 @@ class TestHumanAgentsList(unittest.TestCase):
             },
         }
         err = io.StringIO()
-        with redirect_stderr(err):
+        with _redirect_human_output(err):
             _human_agents_list({}, ["cursor"], results, Path("/p"))
         output = err.getvalue()
         self.assertIn("installed", output)
@@ -1859,7 +1861,7 @@ class TestHumanGenerateAgentsPreview(unittest.TestCase):
     def test_preview_with_changes(self):
         from studio.commands.agents import _human_generate_agents_preview
         import io
-        from contextlib import redirect_stderr
+        from contextlib import redirect_stdout as redirect_stderr
 
         results = {
             "windsurf": {
@@ -1874,7 +1876,7 @@ class TestHumanGenerateAgentsPreview(unittest.TestCase):
             },
         }
         err = io.StringIO()
-        with redirect_stderr(err):
+        with _redirect_human_output(err):
             _human_generate_agents_preview(["windsurf"], results, Path("/p"))
         output = err.getvalue()
         self.assertIn("windsurf", output)
@@ -1883,7 +1885,7 @@ class TestHumanGenerateAgentsPreview(unittest.TestCase):
     def test_preview_up_to_date(self):
         from studio.commands.agents import _human_generate_agents_preview
         import io
-        from contextlib import redirect_stderr
+        from contextlib import redirect_stdout as redirect_stderr
 
         results = {
             "cursor": {
@@ -1892,7 +1894,7 @@ class TestHumanGenerateAgentsPreview(unittest.TestCase):
             },
         }
         err = io.StringIO()
-        with redirect_stderr(err):
+        with _redirect_human_output(err):
             _human_generate_agents_preview(["cursor"], results, Path("/p"))
         output = err.getvalue()
         self.assertIn("up to date", output)
@@ -1901,7 +1903,7 @@ class TestHumanGenerateAgentsPreview(unittest.TestCase):
     def test_preview_up_to_date_reports_skipped_subagents(self):
         from studio.commands.agents import _human_generate_agents_preview
         import io
-        from contextlib import redirect_stderr
+        from contextlib import redirect_stdout as redirect_stderr
 
         results = {
             "openai": {
@@ -1916,7 +1918,7 @@ class TestHumanGenerateAgentsPreview(unittest.TestCase):
             },
         }
         err = io.StringIO()
-        with redirect_stderr(err):
+        with _redirect_human_output(err):
             _human_generate_agents_preview(["openai"], results, Path("/p"))
         output = err.getvalue()
         self.assertIn("up to date", output)
@@ -1926,7 +1928,7 @@ class TestHumanGenerateAgentsPreview(unittest.TestCase):
     def test_preview_includes_deletion_only_changes(self):
         from studio.commands.agents import _human_generate_agents_preview
         import io
-        from contextlib import redirect_stderr
+        from contextlib import redirect_stdout as redirect_stderr
 
         results = {
             "claude": {
@@ -1939,7 +1941,7 @@ class TestHumanGenerateAgentsPreview(unittest.TestCase):
             },
         }
         err = io.StringIO()
-        with redirect_stderr(err):
+        with _redirect_human_output(err):
             _human_generate_agents_preview(["claude"], results, Path("/p"))
         output = err.getvalue()
         self.assertIn("claude", output)
@@ -1949,7 +1951,7 @@ class TestHumanGenerateAgentsPreview(unittest.TestCase):
     def test_preview_includes_workflow_renames_and_subagents(self):
         from studio.commands.agents import _human_generate_agents_preview
         import io
-        from contextlib import redirect_stderr
+        from contextlib import redirect_stdout as redirect_stderr
 
         results = {
             "claude": {
@@ -1969,7 +1971,7 @@ class TestHumanGenerateAgentsPreview(unittest.TestCase):
             },
         }
         err = io.StringIO()
-        with redirect_stderr(err):
+        with _redirect_human_output(err):
             _human_generate_agents_preview(["claude"], results, Path("/p"))
         output = err.getvalue()
         self.assertIn("workflow renamed", output)
@@ -1989,7 +1991,7 @@ class TestHumanGenerateAgentsPreview(unittest.TestCase):
             },
         }
         err = io.StringIO()
-        with redirect_stderr(err):
+        with _redirect_human_output(err):
             _human_generate_agents_preview(["claude"], results, Path("/p"), gitignore_action="updated")
         output = err.getvalue()
         self.assertIn("cf-old.md", output)
@@ -2025,7 +2027,7 @@ class TestHumanGenerateAgentsOk(unittest.TestCase):
             },
         }
         err = io.StringIO()
-        with redirect_stderr(err):
+        with _redirect_human_output(err):
             _human_generate_agents_ok({"status": "PASS"}, ["windsurf"], results, dry_run=False)
         output = err.getvalue()
         self.assertIn("Agent integration complete", output)
@@ -2044,7 +2046,7 @@ class TestHumanGenerateAgentsOk(unittest.TestCase):
             },
         }
         err = io.StringIO()
-        with redirect_stderr(err):
+        with _redirect_human_output(err):
             _human_generate_agents_ok({"status": "PASS"}, ["cursor"], results, dry_run=True)
         output = err.getvalue()
         self.assertIn("Dry run", output)
@@ -2072,7 +2074,7 @@ class TestHumanGenerateAgentsOk(unittest.TestCase):
             },
         }
         err = io.StringIO()
-        with redirect_stderr(err):
+        with redirect_stdout(err):
             _human_generate_agents_ok({"status": "PASS", "gitignore": "updated"}, ["cursor"], results, dry_run=True)
         output = err.getvalue()
         self.assertIn("cf-extra/SKILL.md", output)
@@ -2112,7 +2114,7 @@ class TestHumanGenerateAgentsOk(unittest.TestCase):
             },
         }
         err = io.StringIO()
-        with redirect_stderr(err):
+        with redirect_stdout(err):
             _human_generate_agents_ok({"status": "PASS"}, ["claude"], results, dry_run=True)
         output = err.getvalue()
         self.assertIn("workflow renamed", output)
@@ -2124,7 +2126,7 @@ class TestHumanGenerateAgentsOk(unittest.TestCase):
     def test_ok_renders_extra_skill_and_subagent_branches_and_v2_fallback(self):
         from studio.commands.agents import _human_generate_agents_ok
         import io
-        from contextlib import redirect_stderr
+        from contextlib import redirect_stdout as redirect_stderr
 
         results = {
             "claude": {
@@ -2184,7 +2186,7 @@ class TestHumanGenerateAgentsOk(unittest.TestCase):
     def test_ok_skips_non_dict_v2_output_and_renders_warning_variants(self):
         from studio.commands.agents import _human_generate_agents_ok
         import io
-        from contextlib import redirect_stderr
+        from contextlib import redirect_stdout as redirect_stderr
 
         results = {
             "cursor": {
@@ -2219,7 +2221,7 @@ class TestHumanGenerateAgentsOk(unittest.TestCase):
     def test_ok_with_errors(self):
         from studio.commands.agents import _human_generate_agents_ok
         import io
-        from contextlib import redirect_stderr
+        from contextlib import redirect_stdout as redirect_stderr
 
         results = {
             "custom": {
@@ -3927,19 +3929,13 @@ class TestManifestSkillAgentFiltering(unittest.TestCase):
 
             skills = {'broken': skill_entry}
 
-            # Capture stderr
-            old_stderr = sys.stderr
-            sys.stderr = StringIO()
-
-            try:
+            with self.assertLogs("studio.commands.agents", level="WARNING") as captured:
                 result = generate_manifest_skills(skills, 'cursor', root, dry_run=False)
-                stderr_output = sys.stderr.getvalue()
-            finally:
-                sys.stderr = old_stderr
 
             # Should warn about missing source
-            self.assertIn("WARNING", stderr_output)
-            self.assertIn("broken", stderr_output)
+            log_output = "\n".join(captured.output)
+            self.assertIn("WARNING", log_output)
+            self.assertIn("broken", log_output)
             # No files should be created
             self.assertFalse((root / ".agents" / "skills" / "broken" / "SKILL.md").exists())
 
@@ -4364,24 +4360,18 @@ class TestValidateAgentEntry(unittest.TestCase):
 
         with TemporaryDirectory() as tmpdir:
             source_dir = Path(tmpdir)
-            err = io.StringIO()
-            import sys
-            old_stderr = sys.stderr
-            sys.stderr = err
-            try:
+            with self.assertLogs("studio.commands.agents", level="WARNING") as captured:
                 result = _validate_agent_entry(
                     "test-agent",
                     {"description": "Test", "model": 999},  # integer model
                     source_dir,
                     set(),
                 )
-            finally:
-                sys.stderr = old_stderr
 
             # Should return an entry (not None) with model defaulted to cf:inherit
             self.assertIsNotNone(result)
             self.assertEqual(result["model"], "cf:inherit")
-            self.assertIn("invalid model", err.getvalue())
+            self.assertIn("invalid model", "\n".join(captured.output))
 
 
 class TestFileHasCypilotFollowLink(unittest.TestCase):

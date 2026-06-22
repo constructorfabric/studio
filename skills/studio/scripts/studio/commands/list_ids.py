@@ -2,8 +2,8 @@
 
 # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-imports
 import argparse
+import logging
 import re
-import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -12,9 +12,11 @@ from ..utils.document import scan_cpt_ids
 from ..utils.ui import ui
 # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-imports
 
+logger = logging.getLogger(__name__)
+
 
 def _warn_list_ids(message: str) -> None:
-    sys.stderr.write(f"list-ids: warning: {message}\n")
+    logger.warning("list-ids: %s", message)
 
 
 ArtifactScanList = List[Tuple[Path, str]]
@@ -113,8 +115,14 @@ def _resolve_registered_artifact_scan(
 
     try:
         rel_path = artifact_path.relative_to(ctx.project_root).as_posix()
-    except ValueError:
+    except ValueError as exc:
         if outside_root_message:
+            logger.warning(
+                "artifact %s is outside project root %s: %s",
+                artifact_path,
+                ctx.project_root,
+                exc,
+            )
             ui.result({"status": "ERROR", "message": outside_root_message.format(artifact=artifact_path)})
             return None
         rel_path = None

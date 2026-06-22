@@ -4,12 +4,19 @@ workspace-init: Initialize a new workspace by scanning nested sub-directories fo
 # @cpt-algo:cpt-studio-feature-workspace:p1
 # @cpt-begin:cpt-studio-algo-workspace-discover-nested:p1:inst-disc-helpers
 import argparse
+import logging
 import os
-import sys
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from ..utils.ui import ui
+
+logger = logging.getLogger(__name__)
+
+
+def _warn_workspace_init(message: str) -> None:
+    logger.warning("workspace-init: %s", message)
 
 
 def _is_project_dir(entry: Path) -> bool:
@@ -23,7 +30,7 @@ def _is_project_dir(entry: Path) -> bool:
         head = agents_file.read_text(encoding="utf-8")[:512]
         return "<!-- @cf:root-agents -->" in head
     except OSError as exc:
-        print(f"Warning: cannot read {agents_file}: {exc}", file=sys.stderr)
+        _warn_workspace_init(f"cannot read {agents_file}: {exc}")
         return False
 
 
@@ -44,9 +51,8 @@ def _find_adapter_path(entry: Path) -> Optional[str]:
         try:
             return str(found_dir.relative_to(entry))
         except ValueError as exc:
-            print(
-                f"Warning: adapter path {found_dir} is outside {entry}; using absolute path: {exc}",
-                file=sys.stderr,
+            _warn_workspace_init(
+                f"adapter path {found_dir} is outside {entry}; using absolute path: {exc}"
             )
             return str(found_dir)
     return None
@@ -58,9 +64,8 @@ def _compute_source_path(entry: Path, output_dir: Path) -> str:
         return Path(os.path.relpath(entry, output_dir)).as_posix()
     except ValueError as exc:
         # Windows: entry and output_dir are on different drives
-        print(
-            f"Warning: cannot relativize {entry} against {output_dir}; using absolute path: {exc}",
-            file=sys.stderr,
+        _warn_workspace_init(
+            f"cannot relativize {entry} against {output_dir}; using absolute path: {exc}"
         )
         return entry.resolve().as_posix()
 # @cpt-end:cpt-studio-algo-workspace-discover-nested:p1:inst-disc-helpers
@@ -103,7 +108,6 @@ def _infer_role(repo_path: Path) -> str:
 
 def _sanitize_source_name(name: str) -> str:
     """Sanitize an auto-discovered source name to safe characters."""
-    import re
     # Replace unsafe characters with hyphens
     sanitized = re.sub(r"[^A-Za-z0-9._-]", "-", name)
     # Strip leading non-alphanumeric characters
@@ -122,11 +126,10 @@ def _dedup_source_key(key: str, existing: Dict[str, dict], new_path: str) -> str
     while f"{key}-{n}" in existing:
         n += 1
     new_key = f"{key}-{n}"
-    print(
-        f"Warning: source name '{key}' collision — "
+    _warn_workspace_init(
+        f"source name '{key}' collision; "
         f"'{new_path}' conflicts with '{existing[key].get('path', '?')}'; "
-        f"renaming to '{new_key}'",
-        file=sys.stderr,
+        f"renaming to '{new_key}'"
     )
     return new_key
 
@@ -148,7 +151,7 @@ def _scan_nested_repos(
     try:
         entries = sorted(scan_root.iterdir(), key=lambda p: p.name)
     except OSError as exc:
-        print(f"Warning: cannot scan {scan_root}: {exc}", file=sys.stderr)
+        _warn_workspace_init(f"cannot scan {scan_root}: {exc}")
         entries = []
     # @cpt-end:cpt-studio-algo-workspace-discover-nested:p1:inst-disc-list-entries
 
@@ -210,8 +213,9 @@ def _write_inline(
     existing["workspace"] = workspace_data
     try:
         toml_utils.dump(existing, config_path)
-    except OSError as e:
-        return 1, {"status": "ERROR", "message": f"Failed to write workspace to {config_path}: {e}"}
+    except OSError as exc:
+        logger.error("failed to write inline workspace config to %s: %s", config_path, exc)
+        return 1, {"status": "ERROR", "message": f"Failed to write workspace to {config_path}: {exc}"}
 
     return 0, {
         "status": "CREATED",
@@ -240,8 +244,9 @@ def _write_standalone(
 
     try:
         toml_utils.dump(workspace_data, output_path)
-    except OSError as e:
-        return 1, {"status": "ERROR", "message": f"Failed to write workspace config to {output_path}: {e}"}
+    except OSError as exc:
+        logger.error("failed to write workspace config to %s: %s", output_path, exc)
+        return 1, {"status": "ERROR", "message": f"Failed to write workspace config to {output_path}: {exc}"}
 
     return 0, {
         "status": "CREATED",

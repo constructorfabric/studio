@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-import sys
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional
@@ -12,6 +12,8 @@ from typing import Any, Dict, List, Optional
 from . import toml_utils
 from ._tomllib_compat import tomllib
 from .manifest import AgentEntry, ComponentEntry, Manifest, ManifestResource, ManifestV2, load_manifest
+
+logger = logging.getLogger(__name__)
 
 _CANONICAL_MANIFEST = ".cf-studio-kit.toml"
 _CANONICAL_MANIFEST_VERSION = "1.0"
@@ -320,7 +322,7 @@ def _frontmatter_name(path: Path) -> str:
     try:
         content = path.read_text(encoding="utf-8").lstrip("\ufeff")
     except (OSError, UnicodeDecodeError) as exc:
-        sys.stderr.write(f"Warning: failed to read frontmatter from {path}: {exc}\n")
+        logger.warning("Failed to read frontmatter from %s: %s", path, exc)
         return ""
     if content.startswith("---\r\n"):
         start_len = 5
@@ -347,8 +349,10 @@ def _resolved_source_path_within_kit(kit_source: Path, source: str) -> Optional[
     resolved = (kit_source / source).resolve()
     resolved_root = kit_source.resolve()
     if not resolved.is_relative_to(resolved_root):
-        sys.stderr.write(
-            f"Warning: resolved kit source path escapes kit root: {resolved} not under {resolved_root}\n"
+        logger.warning(
+            "Resolved kit source path escapes kit root: %s not under %s",
+            resolved,
+            resolved_root,
         )
         return None
     return resolved
@@ -868,7 +872,7 @@ def _read_conf_metadata(kit_source: Path) -> tuple[str, str]:
     try:
         data = toml_utils.load(conf_path)
     except (OSError, tomllib.TOMLDecodeError) as exc:
-        sys.stderr.write(f"Warning: failed to read kit metadata from {conf_path}: {exc}\n")
+        logger.warning("Failed to read kit metadata from %s: %s", conf_path, exc)
         return "", ""
     slug = data.get("slug", "")
     version = data.get("version", "")
@@ -1555,7 +1559,7 @@ def load_installed_kit_model(
         try:
             core_model = load_kit_model(kit_source, source_hint="core", kit_slug=kit_slug)
         except ValueError as exc:
-            sys.stderr.write(f"Warning: failed to load core-preferred kit model from {kit_source}: {exc}\n")
+            logger.warning("Failed to load core-preferred kit model from %s: %s", kit_source, exc)
             core_model = None
         if core_model is not None:
             try:

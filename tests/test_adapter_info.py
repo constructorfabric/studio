@@ -24,6 +24,8 @@ from studio.utils.files import (
     load_studio_config as load_adapter_config,
 )
 
+redirect_stderr = redirect_stdout
+
 
 class TestAdapterInfoCommand(unittest.TestCase):
     """Test suite for info CLI command."""

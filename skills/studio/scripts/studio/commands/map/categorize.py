@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import fnmatch
+import logging
 import re
 import sys
 from dataclasses import dataclass, field
@@ -13,6 +14,19 @@ from pathlib import Path
 from typing import List, Optional, Sequence
 
 from .model import Node
+
+def _emit_warning(message: str) -> None:
+    """Emit a warning to stderr via a dedicated logger handler."""
+    stderr_handler = logging.StreamHandler(sys.stderr)
+    stderr_handler.setFormatter(logging.Formatter("%(message)s"))
+    category_logger = logging.getLogger(f"{__name__}.category_warning")
+    category_logger.handlers = [stderr_handler]
+    category_logger.setLevel(logging.WARNING)
+    category_logger.propagate = False
+    try:
+        category_logger.warning("%s", message.rstrip("\n"))
+    finally:
+        stderr_handler.close()
 
 
 @dataclass(frozen=True)
@@ -161,10 +175,9 @@ def _build_registry_index(project_root: Path) -> List[_RegistryEntry]:
         if meta is None:
             return []
     except Exception as exc:  # pylint: disable=broad-exception-caught  # registry is optional; categorize must not raise
-        print(
+        _emit_warning(
             f"map: warning: registry category discovery failed for {project_root}: "
-            f"{type(exc).__name__}: {exc}",
-            file=sys.stderr,
+            f"{type(exc).__name__}: {exc}"
         )
         return []
 

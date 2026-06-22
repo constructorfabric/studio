@@ -334,8 +334,8 @@ class TestChunkInputCommand(unittest.TestCase):
                 ])
 
             self.assertEqual(rc, 0)
-            self.assertEqual(stdout_buf.getvalue(), "")
-            output = stderr_buf.getvalue()
+            self.assertEqual(stderr_buf.getvalue(), "")
+            output = stdout_buf.getvalue()
             self.assertIn("Chunk Input", output)
             self.assertIn("direct_prompt_file", output)
             self.assertIn("created", output)
@@ -743,8 +743,8 @@ class TestChunkInputCommand(unittest.TestCase):
                 rc = cmd_chunk_input([str(src), "--output-dir", str(out_dir), "--dry-run"])
 
             self.assertEqual(rc, 0)
-            self.assertEqual(stdout_buf.getvalue(), "")
-            output = stderr_buf.getvalue()
+            self.assertEqual(stderr_buf.getvalue(), "")
+            output = stdout_buf.getvalue()
             self.assertIn("dry run", output)
             self.assertIn("input_signature", output)
             self.assertFalse(out_dir.exists())

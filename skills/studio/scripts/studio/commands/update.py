@@ -27,6 +27,7 @@ Pipeline:
 
 # @cpt-begin:cpt-studio-flow-version-config-update:p1:inst-update-imports
 import argparse
+import logging
 import shutil
 import sys
 from dataclasses import dataclass
@@ -58,6 +59,8 @@ from .init import (
 from ..utils.ui import ui
 from ..utils.whatsnew import read_whatsnew, show_core_whatsnew, show_kit_whatsnew
 # @cpt-end:cpt-studio-flow-version-config-update:p1:inst-update-imports
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -635,6 +638,7 @@ def _resolve_github_update_source(
         cache_kit = CACHE_DIR / "kits" / kit_slug
         if not cache_kit.is_dir():
             errors.append({"path": kit_slug, "error": f"Download failed: {exc}"})
+            logger.warning("%s: download failed without cached kit fallback", kit_slug, exc_info=exc)
             ui.warn(f"{kit_slug}: download failed: {exc}")
             return _KitSourceResolution(None, None, None, None)
         authority_metadata = None
@@ -648,6 +652,7 @@ def _resolve_github_update_source(
                 version=version,
                 kit_data=kit_data,
             )
+        logger.warning("%s: download failed, using cached kit", kit_slug, exc_info=exc)
         ui.warn(f"{kit_slug}: download failed, using cached kit: {exc}")
         return _KitSourceResolution(cache_kit, None, authority_metadata, None)
 
@@ -715,7 +720,7 @@ def _record_manifest_migration_result(
             f"(kit update was not aborted): {exc}"
         )
         errors.append({"path": kit_slug, "error": mig_error})
-        sys.stderr.write(f"update: warning: {kit_slug}: {mig_error}\n")
+        logger.exception("%s: manifest migration raised unexpected exception", kit_slug)
 
 
 def _report_updated_kit_progress(kit_slug: str, kit_result: Dict[str, Any]) -> None:  # pylint: disable=too-many-locals
@@ -1305,12 +1310,14 @@ def _maybe_migrate_legacy_to_manifest(
     try:
         manifest = load_manifest(kit_src)
     except FileNotFoundError:
-        # manifest.toml legitimately absent — not an error
+        logger.info("No manifest.toml found for kit '%s' at %s; skipping manifest migration", kit_slug, kit_src)
         return None
     except (ValueError, OSError) as exc:
-        sys.stderr.write(
-            f"update: warning: skipping manifest migration for kit '{kit_slug}' "
-            f"at {kit_src}: {exc}\n"
+        logger.warning(
+            "Skipping manifest migration for kit '%s' at %s: %s",
+            kit_slug,
+            kit_src,
+            exc,
         )
         return None
 
@@ -1428,7 +1435,7 @@ def _remove_system_from_core_toml(config_dir: Path) -> bool:
                 with open(core_toml, "rb") as f:
                     data = tomllib.load(f)
             except (OSError, ValueError, TypeError) as exc:
-                sys.stderr.write(f"update: warning: cannot read {core_toml}: {exc}\n")
+                logger.warning("Cannot read %s while removing legacy [system]: %s", core_toml, exc)
                 return False
 
             if "system" not in data:
@@ -1437,7 +1444,7 @@ def _remove_system_from_core_toml(config_dir: Path) -> bool:
             del data["system"]
             toml_utils.dump(data, core_toml, header_comment="Constructor Studio project configuration")
     except (OSError, ValueError, TypeError) as exc:
-        sys.stderr.write(f"update: warning: cannot write {core_toml}: {exc}\n")
+        logger.warning("Cannot write %s while removing legacy [system]: %s", core_toml, exc)
         return False
 
     return True
@@ -1497,7 +1504,7 @@ def _rewrite_artifacts_legacy_kit_refs(
         if changed:
             toml_utils.dump(reg, artifacts_toml, header_comment="Constructor Studio artifacts registry")
     except (OSError, ValueError, TypeError) as exc:
-        sys.stderr.write(f"warning: legacy kit dedup {artifacts_toml} write failed: {exc}\n")
+        logger.warning("Legacy kit dedup write failed for %s: %s", artifacts_toml, exc)
 
 
 def _deduplicate_legacy_kits(config_dir: Path) -> Dict[str, str]:
@@ -1523,7 +1530,7 @@ def _deduplicate_legacy_kits(config_dir: Path) -> Dict[str, str]:
                 with open(core_toml, "rb") as f:
                     data = tomllib.load(f)
             except (OSError, ValueError, TypeError) as exc:
-                sys.stderr.write(f"update: warning: cannot parse {core_toml}: skipping migration: {exc}\n")
+                logger.warning("Cannot parse %s while deduplicating legacy kits: %s", core_toml, exc)
                 return {}
 
             kits = data.get("kits", {})
@@ -1550,7 +1557,7 @@ def _deduplicate_legacy_kits(config_dir: Path) -> Dict[str, str]:
             )
 
     except (OSError, ValueError, TypeError) as exc:
-        sys.stderr.write(f"warning: legacy kit dedup core.toml write failed: {exc}\n")
+        logger.warning("Legacy kit dedup write failed for %s: %s", core_toml, exc)
 
     return renamed
 
@@ -1581,7 +1588,7 @@ def _migrate_kit_sources(config_dir: Path) -> Dict[str, str]:
                 with open(core_toml, "rb") as f:
                     data = tomllib.load(f)
             except (OSError, ValueError, TypeError) as exc:
-                sys.stderr.write(f"update: warning: cannot parse {core_toml}: skipping migration: {exc}\n")
+                logger.warning("Cannot parse %s while migrating kit sources: %s", core_toml, exc)
                 return {}
 
             kits = data.get("kits", {})
@@ -1606,7 +1613,7 @@ def _migrate_kit_sources(config_dir: Path) -> Dict[str, str]:
                 header_comment="Constructor Studio project configuration",
             )
     except (OSError, ValueError, TypeError) as exc:
-        sys.stderr.write(f"update: warning: kit source migration write failed: {exc}\n")
+        logger.warning("Kit source migration write failed for %s: %s", core_toml, exc)
 
     return migrated
 

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -18,11 +19,12 @@ from urllib.request import Request, urlopen
 
 _DEFAULT_TTL_SECONDS = 6 * 60 * 60
 _ALLOWED_SKILL_ENTRYPOINTS = {"studio.py", "cypilot.py"}
+LOGGER = logging.getLogger(__name__)
 # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
 
 
 def _warn(message: str) -> None:
-    sys.stderr.write(f"Warning: {message}\n")
+    LOGGER.warning("Warning: %s", message)
 
 
 # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-bg-version-check
@@ -106,14 +108,22 @@ def check_proxy() -> Dict[str, Any]:
     """Check whether the installed proxy package has an update."""
     current = _proxy_current_version()
     result: Dict[str, Any] = {
-        "component": "constructor-studio-proxy",
+        "component": "constructor-studio",
         "current_version": current,
         "command": "pipx upgrade constructor-studio",
         "action": "current",
     }
     try:
         latest = _proxy_latest_version()
-    except (HTTPError, URLError, OSError, ValueError, json.JSONDecodeError) as exc:
+    except HTTPError as exc:
+        message = (
+            "constructor-studio is not published on PyPI"
+            if exc.code == 404
+            else str(exc)
+        )
+        result.update({"action": "unknown", "message": message})
+        return result
+    except (URLError, OSError, ValueError, json.JSONDecodeError) as exc:
         result.update({"action": "unknown", "message": str(exc)})
         return result
     result["latest_version"] = latest

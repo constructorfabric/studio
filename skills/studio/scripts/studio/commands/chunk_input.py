@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import logging
 import math
 import re
 import shutil
@@ -24,6 +25,8 @@ from typing import Dict, List, Sequence, Tuple
 
 from ..utils.ui import ui
 
+logger = logging.getLogger(__name__)
+
 DEFAULT_MAX_LINES = 300
 DEFAULT_THRESHOLD_LINES = 500
 CHUNK_FILE_RE = re.compile(r"^\d+-\d+-.+-part-\d+\.[^.]+$")
@@ -32,7 +35,7 @@ PACKAGE_MANIFEST_FILE = "manifest.json"
 
 
 def _warn_chunk_input(message: str) -> None:
-    sys.stderr.write(f"chunk-input: warning: {message}\n")
+    logger.warning("chunk-input: %s", message)
 
 
 # @cpt-begin:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-parse-args

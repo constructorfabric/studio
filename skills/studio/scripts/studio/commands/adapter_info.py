@@ -9,8 +9,8 @@ Shows project root, studio directory, rules, systems, and registry status.
 
 import argparse
 import json
+import logging
 import os
-import sys
 from pathlib import Path, PureWindowsPath
 from typing import Optional
 
@@ -25,9 +25,11 @@ from ..utils.manifest import resolve_resource_bindings_with_errors
 from ..utils.ui import ui
 from .resolve_vars import _load_core_data_with_error
 
+logger = logging.getLogger(__name__)
+
 
 def _warn_adapter_info(message: str) -> None:
-    sys.stderr.write(f"info: warning: {message}\n")
+    logger.warning("info: %s", message)
 
 
 def _parse_adapter_info_args(argv: list[str]) -> tuple[Path, Optional[Path]]:
@@ -658,7 +660,8 @@ def _expand_registry_with_context(adapter_dir: Path, registry: dict) -> dict:
         from ..utils.context import StudioContext
 
         ctx = StudioContext.load(adapter_dir)
-    except (OSError, ValueError, KeyError):
+    except (OSError, ValueError, KeyError) as exc:
+        logger.warning("failed to expand registry with context from %s: %s", adapter_dir, exc)
         return registry
     if ctx is None:
         return registry
@@ -687,7 +690,8 @@ def _expand_registry_with_context(adapter_dir: Path, registry: dict) -> dict:
 def _relative_adapter_path(adapter_dir: Path, project_root: Path) -> str:
     try:
         return adapter_dir.relative_to(project_root).as_posix()
-    except ValueError:
+    except ValueError as exc:
+        logger.warning("adapter dir %s is outside project root %s: %s", adapter_dir, project_root, exc)
         return adapter_dir.as_posix()
 
 
@@ -717,6 +721,7 @@ def _collect_kit_info(adapter_dir: Path, core_data: Optional[dict]) -> tuple[dic
             kit_models[slug] = model_info
             kit_details[slug] = kit_detail
         except (OSError, ValueError) as exc:
+            logger.warning("falling back to legacy kit info for %s at %s: %s", slug, kit_dir, exc)
             kit_details[slug] = _legacy_kit_detail(adapter_dir, slug, kit_dir, core_kit)
             if kit_details[slug]:
                 kit_details[slug]["model_error"] = str(exc)
@@ -757,6 +762,7 @@ def _apply_variables_metadata(
 
         vars_result = _collect_all_variables(project_root, adapter_dir, core_data)
     except (ImportError, OSError, ValueError) as exc:
+        logger.warning("failed to collect adapter info variables for %s: %s", adapter_dir, exc)
         config["variables"] = None
         config["variables_error"] = str(exc)
         config["variables_degraded"] = True
@@ -797,6 +803,7 @@ def _load_workspace_info(project_root: Path) -> dict:
 
         ws_cfg, ws_err = find_workspace_config(project_root)
     except (OSError, ValueError, KeyError) as exc:
+        logger.warning("failed to load workspace info for %s: %s", project_root, exc)
         return {"active": False, "error": str(exc)}
     if ws_cfg is None:
         workspace_info: dict = {"active": False}

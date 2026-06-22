@@ -33,8 +33,7 @@ _RALPHEX_ALLOWED_FLAGS = {"--review", "--tasks-only", "--worktree", "--serve"}
 
 
 def _warn_ralphex_export(message: str) -> None:
-    logger.warning("%s", message)
-    sys.stderr.write(f"ralphex-export: warning: {message}\n")
+    logger.warning("ralphex-export: warning: %s", message)
 
 
 @dataclass(frozen=True)
@@ -856,8 +855,10 @@ def _run_validation_command(cmd: str, cwd: Optional[str]) -> dict:
         entry["stdout"] = proc.stdout
         entry["stderr"] = proc.stderr
     except subprocess.TimeoutExpired:
+        logger.warning("Validation command timed out after 120s: %s", cmd)
         entry["error"] = f"Timeout after 120s: {cmd}"
     except OSError as exc:
+        logger.warning("OS error while running validation command %s: %s", cmd, exc)
         entry["error"] = f"OS error running {cmd}: {exc}"
     return entry
 
@@ -1339,12 +1340,12 @@ def _wait_for_delegation_process(
 
 def _prompt_to_continue_waiting(timeout_seconds: int) -> bool:
     """Ask an interactive caller whether to continue waiting for ralphex."""
-    sys.stderr.write(
+    logger.warning(
+        "%s",
         "\n"
         f"ralphex is still running after {timeout_seconds} seconds. "
-        "Continue waiting? [y] [n] [Enter=continue]: "
+        "Continue waiting? [y] [n] [Enter=continue]: ",
     )
-    sys.stderr.flush()
     try:
         with open("/dev/tty", "r", encoding="utf-8") as tty:
             answer = tty.readline().strip().lower()

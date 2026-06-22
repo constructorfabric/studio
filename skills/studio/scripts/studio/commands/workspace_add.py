@@ -4,6 +4,7 @@ workspace-add: Add a source to workspace config (standalone or inline).
 # @cpt-algo:cpt-studio-feature-workspace:p1
 
 import argparse
+import logging
 import re
 from pathlib import Path
 from typing import List
@@ -14,6 +15,7 @@ from ..utils.workspace import WorkspaceConfig
 
 # SCP-style SSH: git@host:org/repo or user@host:path
 _SCP_SSH_RE = re.compile(r"^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+:.+")
+logger = logging.getLogger(__name__)
 
 
 def _is_scp_style_ssh(url: str) -> bool:
@@ -276,8 +278,9 @@ def _add_to_inline(args: argparse.Namespace, project_root: Path) -> int:
 
     try:
         toml_utils.dump(existing, config_path)
-    except OSError as e:
-        ui.result({"status": "ERROR", "message": f"Failed to write to {config_path}: {e}"})
+    except OSError as exc:
+        logger.error("Failed to write inline workspace config %s", config_path, exc_info=exc)
+        ui.result({"status": "ERROR", "message": f"Failed to write to {config_path}: {exc}"})
         return 1
 
     verb = "updated in" if replaced else "added inline to"

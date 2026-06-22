@@ -367,10 +367,10 @@ class TestCLISpecCoverageE2E(unittest.TestCase):
             )
 
             self.assertEqual(exit_code, 2)
-            self.assertEqual(stdout, "")
-            self.assertIn("Unknown system selector(s)", stderr)
-            self.assertIn("unknown system: missing", stderr)
-            self.assertNotIn("Threshold check failed", stderr)
+            self.assertIn("Unknown system selector(s)", stdout)
+            self.assertIn("unknown system: missing", stdout)
+            self.assertNotIn("Threshold check failed", stdout)
+            self.assertEqual(stderr, "")
 
     def test_spec_coverage_output_writes_report_only(self):
         with TemporaryDirectory() as tmpdir:
@@ -746,13 +746,12 @@ class TestCLICheckLanguageE2E(unittest.TestCase):
             )
 
             self.assertEqual(exit_code, 2)
-            self.assertEqual(stdout, "")
-            self.assertNotIn("Allowed languages", stderr)
-            self.assertNotIn("Files scanned", stderr)
-            self.assertIn("FAIL", stderr)
-            self.assertIn("PRD.md", stderr)
+            self.assertNotIn("Allowed languages", stdout)
+            self.assertNotIn("Files scanned", stdout)
+            self.assertIn("FAIL", stdout)
+            self.assertIn("PRD.md", stdout)
             self.assertEqual(_snapshot_files(root), before)
-            self.assertNotEqual(stderr, "")
+            self.assertEqual(stderr, "")
 
     def test_check_language_real_violation_reports_details(self):
         with TemporaryDirectory() as tmpdir:

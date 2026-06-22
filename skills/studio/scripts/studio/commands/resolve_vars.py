@@ -13,8 +13,8 @@ to absolute file paths.  Output is a flat dict suitable for
 """
 
 import argparse
+import logging
 import re
-import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -31,6 +31,8 @@ from ..utils.manifest import (
     resolve_resource_bindings_with_errors,
 )
 from ..utils.ui import ui
+
+logger = logging.getLogger(__name__)
 
 
 def _binding_rel_path_and_aliases(binding: object) -> Tuple[str | None, list[str]]:
@@ -122,9 +124,7 @@ def _load_core_data_with_error(adapter_dir: Path) -> Tuple[Optional[dict], Optio
 
 def _warn_optional_resolution(context: str, exc: Exception) -> None:
     """Report a best-effort resolve-vars fallback without aborting the command."""
-    sys.stderr.write(
-        f"WARNING: {context}: {type(exc).__name__}: {exc}\n"
-    )
+    logger.warning("%s: %s: %s", context, type(exc).__name__, exc)
 
 
 def _project_context_result(start_path: Path) -> Tuple[Optional[Path], Optional[Path], Optional[dict]]:
@@ -158,8 +158,7 @@ def _add_discovered_layer_variables(
         layers = discover_layers(project_root, adapter_dir)
         result["variables"] = add_layer_variables(result["variables"], layers, project_root)
     except (ValueError, OSError) as exc:
-        import sys
-        sys.stderr.write(f"WARNING: layer discovery failed: {exc}\n")
+        logger.warning("layer discovery failed for %s: %s", project_root, exc)
 
 
 def _filter_result_to_kit(result: Dict[str, Any], slug: str) -> Dict[str, Any]:
@@ -643,8 +642,7 @@ def cmd_resolve_vars(argv: list[str]) -> int:
     # -- Load core.toml --
     core_data, core_load_error, core_path = _load_core_data_with_error(adapter_dir)
     if core_load_error and core_path:
-        import sys
-        sys.stderr.write(f"WARNING: Failed to parse {core_path}: {core_load_error}\n")
+        logger.warning("failed to parse %s: %s", core_path, core_load_error)
     # @cpt-end:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-load-core
 
     # @cpt-begin:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-merge
@@ -652,6 +650,7 @@ def cmd_resolve_vars(argv: list[str]) -> int:
     try:
         result = _collect_all_variables(project_root, adapter_dir, core_data)
     except ValueError as exc:
+        logger.exception("failed to resolve variables for %s", adapter_dir)
         # @cpt-begin:cpt-studio-flow-developer-experience-resolve-vars:p1:inst-resolve-vars-return
         ui.result({
             "status": "ERROR",
@@ -673,6 +672,11 @@ def cmd_resolve_vars(argv: list[str]) -> int:
         try:
             result = _filter_result_to_kit(result, slug)
         except KeyError:
+            logger.warning(
+                "requested unknown kit '%s'; available kits: %s",
+                slug,
+                sorted(result["kits"].keys()),
+            )
             ui.result({
                 "status": "ERROR",
                 "message": f"Kit '{slug}' not found or has no resource bindings",

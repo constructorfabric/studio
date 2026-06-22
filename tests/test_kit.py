@@ -790,7 +790,7 @@ class TestKitUpdateCheckCoverage(unittest.TestCase):
         set_json_mode(False)
         try:
             buf = io.StringIO()
-            with redirect_stderr(buf):
+            with redirect_stdout(buf):
                 _human_kit_check_updates({
                     "status": "WARN",
                     "updates_available": 1,
@@ -924,7 +924,7 @@ class TestKitUpdateCheckCoverage(unittest.TestCase):
         set_json_mode(False)
         try:
             buf = io.StringIO()
-            with redirect_stderr(buf):
+            with redirect_stdout(buf):
                 _human_kit_update({
                     "status": "WARN",
                     "kits_updated": 1,
@@ -960,7 +960,7 @@ class TestKitUpdateCheckCoverage(unittest.TestCase):
         set_json_mode(False)
         try:
             buf = io.StringIO()
-            with redirect_stderr(buf):
+            with redirect_stdout(buf):
                 _human_kit_install({
                     "status": "DRY_RUN",
                     "kit": "sdlc",
@@ -3121,7 +3121,7 @@ class TestKitHelpers(unittest.TestCase):
                 },
             ]
             err = io.StringIO()
-            with redirect_stderr(err):
+            with redirect_stdout(err):
                 for case in cases:
                     _human_kit_install(case)
             rendered = err.getvalue()
@@ -3139,7 +3139,7 @@ class TestKitHelpers(unittest.TestCase):
         set_json_mode(False)
         try:
             err = io.StringIO()
-            with redirect_stderr(err):
+            with redirect_stdout(err):
                 _human_kit_update({
                     "status": "PASS",
                     "kits_updated": 1,
@@ -4467,28 +4467,28 @@ class TestHumanKitInstall(unittest.TestCase):
     def test_pass(self):
         from studio.commands.kit import _human_kit_install
         buf = io.StringIO()
-        with redirect_stderr(buf):
+        with redirect_stdout(buf):
             _human_kit_install({"status": "PASS", "kit": "sdlc", "version": "1", "action": "installed", "files_written": 5})
         self.assertIn("sdlc", buf.getvalue())
 
     def test_dry_run(self):
         from studio.commands.kit import _human_kit_install
         buf = io.StringIO()
-        with redirect_stderr(buf):
+        with redirect_stdout(buf):
             _human_kit_install({"status": "DRY_RUN", "kit": "sdlc", "version": "1", "source": "/a", "target": "/b"})
         self.assertIn("Dry run", buf.getvalue())
 
     def test_fail(self):
         from studio.commands.kit import _human_kit_install
         buf = io.StringIO()
-        with redirect_stderr(buf):
+        with redirect_stdout(buf):
             _human_kit_install({"status": "FAIL", "kit": "sdlc", "message": "not found", "hint": "check path"})
         self.assertIn("not found", buf.getvalue())
 
     def test_with_errors(self):
         from studio.commands.kit import _human_kit_install
         buf = io.StringIO()
-        with redirect_stderr(buf):
+        with redirect_stdout(buf):
             _human_kit_install({"status": "WARN", "kit": "sdlc", "version": "1", "errors": ["err1"]})
         self.assertIn("err1", buf.getvalue())
 
@@ -4503,7 +4503,7 @@ class TestHumanKitUpdate(unittest.TestCase):
     def test_pass_with_results(self):
         from studio.commands.kit import _human_kit_update
         buf = io.StringIO()
-        with redirect_stderr(buf):
+        with redirect_stdout(buf):
             _human_kit_update({
                 "status": "PASS",
                 "kits_updated": 1,
@@ -4521,7 +4521,7 @@ class TestHumanKitUpdate(unittest.TestCase):
     def test_authority_summary(self):
         from studio.commands.kit import _human_kit_update
         buf = io.StringIO()
-        with redirect_stderr(buf):
+        with redirect_stdout(buf):
             _human_kit_update({
                 "status": "PASS",
                 "kits_updated": 1,
@@ -4548,7 +4548,7 @@ class TestHumanKitUpdate(unittest.TestCase):
     def test_warn_with_errors(self):
         from studio.commands.kit import _human_kit_update
         buf = io.StringIO()
-        with redirect_stderr(buf):
+        with redirect_stdout(buf):
             _human_kit_update({
                 "status": "WARN",
                 "kits_updated": 1,
@@ -4568,14 +4568,14 @@ class TestHumanKitUpdate(unittest.TestCase):
     def test_unknown_status(self):
         from studio.commands.kit import _human_kit_update
         buf = io.StringIO()
-        with redirect_stderr(buf):
+        with redirect_stdout(buf):
             _human_kit_update({"status": "CUSTOM", "results": []})
         self.assertIn("CUSTOM", buf.getvalue())
 
     def test_no_results(self):
         from studio.commands.kit import _human_kit_update
         buf = io.StringIO()
-        with redirect_stderr(buf):
+        with redirect_stdout(buf):
             _human_kit_update({"status": "PASS", "kits_updated": 0, "results": []})
         self.assertIn("0", buf.getvalue())
 

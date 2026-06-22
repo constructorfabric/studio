@@ -153,7 +153,7 @@ class TestCLIAgentsE2E(unittest.TestCase):
             after = _snapshot_tree(root)
 
             self.assertEqual(exit_code, 1)
-            self.assertEqual(stderr, "")
+            self.assertIn("failed to load JSON file", stderr)
             self.assertEqual(after, before)
             payload = json.loads(stdout)
             self.assertEqual(payload["status"], "CONFIG_ERROR")

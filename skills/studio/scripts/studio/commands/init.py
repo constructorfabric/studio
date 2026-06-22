@@ -3,6 +3,7 @@
 # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-init-helpers
 import argparse
 import json
+import logging
 import re
 import shutil
 import sys
@@ -14,9 +15,12 @@ from ..constants import ROOT_AGENTS_PIPELINE_INSTRUCTION
 from ..utils._tomllib_compat import tomllib
 from ..utils.artifacts_meta import create_backup, generate_default_registry, generate_slug
 from ..utils.files import read_root_agents_marked_text
+from ..utils.stderr_logging import emit_stderr_message
 from ..utils import toml_utils
 from ..utils.ui import ui
 from .agents import list_managed_agent_output_paths
+
+logger = logging.getLogger(__name__)
 
 # Cache-managed install content: core directories go into .core/, root files go into the install root.
 # Full directories (copied entirely)
@@ -54,7 +58,17 @@ _CONFIG_README_PREAMBLE = (
 
 
 def _warn_init(message: str) -> None:
-    sys.stderr.write(f"init: warning: {message}\n")
+    logger.warning("init: %s", message)
+
+
+def _emit_stderr(message: str) -> None:
+    """Emit a line or prompt through a handler bound to the current stderr."""
+    emit_stderr_message(message, logger_name=f"{__name__}.stderr")
+
+
+def _emit_stderr_lines(*lines: str) -> None:
+    for line in lines:
+        _emit_stderr(line)
 
 
 def _cache_allows_root_metadata(cache_dir: Path) -> bool:
@@ -614,19 +628,23 @@ def _parse_init_args(
 def _show_init_welcome(interactive: bool) -> None:
     if not interactive:
         return
-    sys.stderr.write("\n")
-    sys.stderr.write("  \033[1mWelcome to Constructor Studio\033[0m\n")
-    sys.stderr.write("  Set up AI-powered architecture traceability for your project.\n")
-    sys.stderr.write("  Constructor Studio will create a configuration directory with design artifacts,\n")
-    sys.stderr.write("  validation rules, and agent integration files.\n")
-    sys.stderr.write("\n")
+    _emit_stderr_lines(
+        "\n",
+        "  \033[1mWelcome to Constructor Studio\033[0m\n",
+        "  Set up AI-powered architecture traceability for your project.\n",
+        "  Constructor Studio will create a configuration directory with design artifacts,\n",
+        "  validation rules, and agent integration files.\n",
+        "\n",
+    )
 
 
 def _resolve_init_project_root(args: argparse.Namespace, cwd: Path, interactive: bool) -> Path:
     default_project_root = cwd
     if args.project_root is None and interactive:
-        sys.stderr.write("  \033[2mThe project root is the top-level directory of your repository.\033[0m\n")
-        sys.stderr.write("  \033[2mPress Enter to use the current directory.\033[0m\n")
+        _emit_stderr_lines(
+            "  \033[2mThe project root is the top-level directory of your repository.\033[0m\n",
+            "  \033[2mPress Enter to use the current directory.\033[0m\n",
+        )
         raw_root = _prompt_path("Project root directory?", default_project_root.as_posix())
         return _resolve_user_path(raw_root, cwd)
     raw_root = args.project_root or default_project_root.as_posix()
@@ -915,7 +933,8 @@ def _normalize_ignored_kit_path(
     try:
         resolved = candidate.resolve()
         project_resolved = project_root.resolve()
-    except OSError:
+    except OSError as exc:
+        _warn_init(f"failed to resolve ignored kit path '{raw_path}': {exc}")
         resolved = candidate
         project_resolved = project_root
     try:
@@ -1102,7 +1121,8 @@ def _persist_install_metadata(
     if existed:
         try:
             data = toml_utils.load(core_toml_path)
-        except (OSError, ValueError):
+        except (OSError, ValueError) as exc:
+            _warn_init(f"failed to load install metadata from {core_toml_path}: {exc}")
             data = _default_core_toml()
     else:
         data = _default_core_toml()
@@ -1154,8 +1174,7 @@ def _prompt_path(question: str, default: Optional[str]) -> str:
         prompt += f" [{default}]"
     prompt += ": "
     try:
-        sys.stderr.write(prompt)
-        sys.stderr.flush()
+        _emit_stderr(prompt)
         ans = input().strip()
     except EOFError:
         ans = ""
@@ -1173,23 +1192,27 @@ def _emit_install_options(
     kit_tracking: str,
     kit_tracking_overrides: Dict[str, str],
 ) -> None:
-    sys.stderr.write("\n")
-    sys.stderr.write("  Installation options\n")
-    sys.stderr.write(f"  - Project root: {project_root.as_posix()}\n")
-    sys.stderr.write(f"  - Project name: {project_name}\n")
-    sys.stderr.write(f"  - Constructor Studio directory: {install_rel}/\n")
-    sys.stderr.write(f"  - Runtime files (.core/.gen) git tracking: {runtime_tracking}\n")
-    sys.stderr.write(f"  - Agent integration files git tracking: {agent_tracking}\n")
-    sys.stderr.write(f"  - Default kit git tracking: {kit_tracking}\n")
+    _emit_stderr_lines(
+        "\n",
+        "  Installation options\n",
+        f"  - Project root: {project_root.as_posix()}\n",
+        f"  - Project name: {project_name}\n",
+        f"  - Constructor Studio directory: {install_rel}/\n",
+        f"  - Runtime files (.core/.gen) git tracking: {runtime_tracking}\n",
+        f"  - Agent integration files git tracking: {agent_tracking}\n",
+        f"  - Default kit git tracking: {kit_tracking}\n",
+    )
     if kit_tracking_overrides:
         for slug, policy in sorted(kit_tracking_overrides.items()):
-            sys.stderr.write(f"  - Kit {slug} git tracking: {policy}\n")
+            _emit_stderr(f"  - Kit {slug} git tracking: {policy}\n")
     else:
-        sys.stderr.write("  - Per-kit git tracking: ask when installing each kit\n")
-    sys.stderr.write("  - Runtime files: ignored files may be overwritten by repair/update\n")
-    sys.stderr.write("  - Agent integration files: ignored files may be regenerated by Constructor Studio\n")
-    sys.stderr.write("  - Kit files: tracked or ignored per kit; ignored kit files may be overwritten\n")
-    sys.stderr.write("\n")
+        _emit_stderr("  - Per-kit git tracking: ask when installing each kit\n")
+    _emit_stderr_lines(
+        "  - Runtime files: ignored files may be overwritten by repair/update\n",
+        "  - Agent integration files: ignored files may be regenerated by Constructor Studio\n",
+        "  - Kit files: tracked or ignored per kit; ignored kit files may be overwritten\n",
+        "\n",
+    )
 
 
 def _prompt_kit_tracking_policy(
@@ -1202,16 +1225,17 @@ def _prompt_kit_tracking_policy(
         return explicit_policy
     if interactive and sys.stdin.isatty():
         if kit_slug == "default":
-            sys.stderr.write("\n  Default git tracking for kits?\n")
+            _emit_stderr("\n  Default git tracking for kits?\n")
         elif kit_slug in ("runtime files (.core/.gen)", "agent integration files"):
-            sys.stderr.write(f"\n  Git tracking for {kit_slug}?\n")
+            _emit_stderr(f"\n  Git tracking for {kit_slug}?\n")
         else:
-            sys.stderr.write(f"\n  Git tracking for kit '{kit_slug}'?\n")
-        sys.stderr.write("  `tracked` keeps these files in git so you can review and commit them.\n")
-        sys.stderr.write("  `ignored` keeps these files out of git; Constructor Studio owns and may overwrite them.\n")
-        sys.stderr.write(f"  Press Enter to use default: {default_policy}.\n")
-        sys.stderr.write("  [t]racked / [i]gnored: ")
-        sys.stderr.flush()
+            _emit_stderr(f"\n  Git tracking for kit '{kit_slug}'?\n")
+        _emit_stderr_lines(
+            "  `tracked` keeps these files in git so you can review and commit them.\n",
+            "  `ignored` keeps these files out of git; Constructor Studio owns and may overwrite them.\n",
+            f"  Press Enter to use default: {default_policy}.\n",
+            "  [t]racked / [i]gnored: ",
+        )
         try:
             answer = input().strip().lower()
         except EOFError:
@@ -1246,8 +1270,7 @@ def _prompt_install_options(
             kit_tracking,
             kit_tracking_overrides,
         )
-        sys.stderr.write("  Review or change installation options? [y/N]: ")
-        sys.stderr.flush()
+        _emit_stderr("  Review or change installation options? [y/N]: ")
         try:
             answer = input().strip().lower()
         except EOFError:
@@ -1255,17 +1278,18 @@ def _prompt_install_options(
         if answer not in ("y", "yes"):
             return install_rel, project_name, runtime_tracking, agent_tracking, kit_tracking, kit_tracking_overrides
 
-        sys.stderr.write("\n")
-        sys.stderr.write("  Select installation option\n")
-        sys.stderr.write("  [1] Constructor Studio directory\n")
-        sys.stderr.write("  [2] Project name\n")
-        sys.stderr.write("  [3] Runtime files (.core/.gen) git tracking\n")
-        sys.stderr.write("  [4] Agent integration files git tracking\n")
-        sys.stderr.write("  [5] Default kit git tracking\n")
-        sys.stderr.write("  [6] SDLC kit git tracking\n")
-        sys.stderr.write("  [7] Done\n")
-        sys.stderr.write("  Choice: ")
-        sys.stderr.flush()
+        _emit_stderr_lines(
+            "\n",
+            "  Select installation option\n",
+            "  [1] Constructor Studio directory\n",
+            "  [2] Project name\n",
+            "  [3] Runtime files (.core/.gen) git tracking\n",
+            "  [4] Agent integration files git tracking\n",
+            "  [5] Default kit git tracking\n",
+            "  [6] SDLC kit git tracking\n",
+            "  [7] Done\n",
+            "  Choice: ",
+        )
         try:
             choice = input().strip().lower()
         except EOFError:
@@ -1420,22 +1444,17 @@ def _prompt_kit_install_flag(interactive: bool) -> bool:
     """Return True if the user accepted kit installation (or --yes mode)."""
     # @cpt-begin:cpt-studio-flow-core-infra-project-init:p1:inst-prompt-kit
     if interactive and sys.stdin.isatty():
-        sys.stderr.write(f"\n  Install SDLC kit ({_DEFAULT_KIT_SOURCE})?\n")
-        sys.stderr.write(
+        _emit_stderr_lines(
+            f"\n  Install SDLC kit ({_DEFAULT_KIT_SOURCE})?\n",
             "  This adds the default Constructor Studio SDLC templates, "
-            "workflows, and rules for typical project setup.\n"
-        )
-        sys.stderr.write("  Reply with `a` to install it now or `d` to skip it.\n")
-        sys.stderr.write(
+            "workflows, and rules for typical project setup.\n",
+            "  Reply with `a` to install it now or `d` to skip it.\n",
             "  Suggested: `a` for first-time setup; `d` only if you want to "
-            "install or manage kits manually.\n"
-        )
-        sys.stderr.write(
+            "install or manage kits manually.\n",
             "  `a` = download and install the default kit now. `d` = continue "
-            "without installing the kit.\n"
+            "without installing the kit.\n",
+            "  [a]ccept / [d]ecline: ",
         )
-        sys.stderr.write("  [a]ccept / [d]ecline: ")
-        sys.stderr.flush()
         try:
             answer = input().strip().lower()
         except EOFError:
@@ -1521,6 +1540,7 @@ def _install_default_kit(
         if kit_result.get("status", "") in ("", "PASS"):
             ui.substep(f"Kit '{kit_slug}' installed (v{resolved_version or 'dev'})")
     except (OSError, ValueError, RuntimeError) as exc:
+        logger.warning("default kit installation failed for %s: %s", studio_dir, exc)
         ui.warn(f"Kit installation failed: {exc}")
         errors.append({"path": "kit", "error": str(exc)})
     finally:

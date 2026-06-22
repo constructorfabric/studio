@@ -12,11 +12,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+import logging
 import re
-import sys
 
 from ..constants import WORKSPACE_CONFIG_FILENAME
 from . import toml_utils
+
+logger = logging.getLogger(__name__)
 
 # Valid source roles
 VALID_ROLES = {"artifacts", "codebase", "kits", "full"}
@@ -412,9 +414,10 @@ class WorkspaceConfig:
                         f"(supported: {', '.join(sorted(_SUPPORTED))})"
                     )
             except ImportError as exc:
-                sys.stderr.write(
-                    "Warning: content-language validation skipped because the language catalog "
-                    f"could not be imported: {exc}\n"
+                logger.warning(
+                    "Content-language validation skipped because the language catalog "
+                    "could not be imported: %s",
+                    exc,
                 )
         return errors
 

@@ -9,7 +9,7 @@
 # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-coverage-imports
 import argparse
 import json
-import sys
+import logging
 from pathlib import Path
 from typing import List
 
@@ -20,11 +20,12 @@ from ..utils.coverage import (
     scan_file_coverage,
 )
 from ..utils.ui import ui
+logger = logging.getLogger(__name__)
 # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-coverage-imports
 
 
 def _warn_spec_coverage(message: str) -> None:
-    sys.stderr.write(f"spec-coverage: warning: {message}\n")
+    logger.warning("spec-coverage: %s", message)
 
 
 def _build_spec_coverage_parser() -> argparse.ArgumentParser:

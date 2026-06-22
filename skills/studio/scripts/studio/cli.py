@@ -11,10 +11,22 @@ IMPORTANT: This module MUST NOT contain business logic.
 """
 
 # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-route-helpers
-import json
 import sys
+import logging
 from pathlib import Path
 from typing import Callable, List, Optional
+
+
+def _configure_studio_logging() -> None:
+    """Route studio diagnostics to stderr with a stable handler."""
+    studio_logger = logging.getLogger("studio")
+    for handler in studio_logger.handlers:
+        handler.close()
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    studio_logger.handlers = [handler]
+    studio_logger.setLevel(logging.WARNING)
+    studio_logger.propagate = False
 
 
 def _cmd_agents(argv: List[str]) -> int:
@@ -79,10 +91,10 @@ def _cmd_kit(argv: List[str]) -> int:
     return cmd_kit(argv)
 
 def _cmd_generate_resources(_argv: List[str]) -> int:
-    sys.stderr.write(
-        "WARNING: 'generate-resources' is deprecated.\n"
-        "         Kits are direct file packages — use 'cfs kit update <path>' instead.\n"
-    )
+    from .utils.ui import ui
+
+    ui.warn("'generate-resources' is deprecated.")
+    ui.hint("Kits are direct file packages; use 'cfs kit update <path>' instead.")
     return 1
 
 # =============================================================================
@@ -285,6 +297,7 @@ _ALL_COMMANDS = list(_COMMAND_HANDLERS)
 # @cpt-begin:cpt-studio-algo-core-infra-route-command:p1:inst-route-helpers
 def main(argv: Optional[List[str]] = None) -> int:
     """Run the command-line entry point."""
+    _configure_studio_logging()
     argv_list = list(argv) if argv is not None else sys.argv[1:]
 
     # Extract global --json flag (must come before command dispatch)
@@ -328,11 +341,11 @@ def _render_top_level_help() -> int:
     from .utils.ui import is_json_mode, ui
 
     if is_json_mode():
-        print(json.dumps({
+        ui.result({
             "usage": "cfs <command> [options]",
             "commands": _COMMAND_DESCRIPTIONS,
             "sections": dict(_COMMAND_SECTIONS),
-        }, indent=2, ensure_ascii=False))
+        })
         return 0
 
     ui.header("Constructor Studio CLI")

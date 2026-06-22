@@ -63,7 +63,7 @@ def _emit_pdsl_help() -> None:
             ui.info("Validate PDSL instruction blocks in prompts and files."),
             ui.blank(),
             ui.step("Commands"),
-            sys.stderr.write("      validate               Validate PDSL from --text, stdin -, or files\n"),
+            ui.substep("validate               Validate PDSL from --text, stdin -, or files"),
             ui.blank(),
             ui.info("Scope: v1 is validate-only."),
             ui.hint("Scaffold generation and aliases such as cfs validate --pdsl are deferred."),

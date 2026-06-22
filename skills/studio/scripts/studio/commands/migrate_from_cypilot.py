@@ -12,6 +12,7 @@ core and kit refresh to ``cfs update``.
 import contextlib
 import io
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -23,6 +24,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from ..utils.artifacts_meta import create_backup
 from ..utils import toml_utils
 from ..utils._tomllib_compat import tomllib
+from ..utils.stderr_logging import emit_stderr_message
 from ..utils.ui import is_json_mode, ui
 from .agents import _read_existing_text_file
 from .init import DEFAULT_INSTALL_DIR, _inject_root_agents, _inject_root_claude
@@ -46,9 +48,16 @@ SUPPORTED_LEGACY_MIGRATION_VERSIONS = {"3.9.0", "3.10.0"}
 CONSTRUCTOR_KIT_VERSION = "0"
 # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-migration-module
 
+logger = logging.getLogger(__name__)
+
+
+def _emit_stderr(message: str) -> None:
+    """Emit a line or prompt through a handler bound to the current stderr."""
+    emit_stderr_message(message, logger_name=f"{__name__}.stderr")
+
 
 def _warn_migrate_from_cypilot(message: str) -> None:
-    sys.stderr.write(f"migrate-from-cypilot: warning: {message}\n")
+    logger.warning("migrate-from-cypilot: %s", message)
 
 
 @dataclass
@@ -697,14 +706,11 @@ def _normalize_legacy_version(version: Optional[str]) -> Optional[str]:
 
 def _prompt_update_legacy_cypilot(project_root: Path, legacy_rel: str, version: Optional[str]) -> bool:
     # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-prompt-update-ui
-    sys.stderr.write("\n")
-    sys.stderr.write(
-        f"  Cyber Pilot version {version or 'unknown'} is not directly migratable.\n"
-    )
-    sys.stderr.write(f"  Project root: {project_root.as_posix()}\n")
-    sys.stderr.write(f"  Legacy dir:   {legacy_rel}\n")
-    sys.stderr.write(f"  Update project Cyber Pilot skill to {LEGACY_BASELINE_VERSION} first, then migrate? [y/N] ")
-    sys.stderr.flush()
+    _emit_stderr("\n")
+    _emit_stderr(f"  Cyber Pilot version {version or 'unknown'} is not directly migratable.\n")
+    _emit_stderr(f"  Project root: {project_root.as_posix()}\n")
+    _emit_stderr(f"  Legacy dir:   {legacy_rel}\n")
+    _emit_stderr(f"  Update project Cyber Pilot skill to {LEGACY_BASELINE_VERSION} first, then migrate? [y/N] ")
     try:
         answer = input().strip().lower()
     except (EOFError, KeyboardInterrupt):
@@ -718,7 +724,7 @@ def _run_legacy_update_to_baseline(project_root: Path) -> Dict[str, Any]:
     env = dict(os.environ)
     env["CYPILOT_LEGACY_UPDATE_TO_BASELINE"] = "1"
     cmd = ["cpt", "update", "--version", LEGACY_BASELINE_VERSION, "-y"]
-    sys.stderr.write(
+    _emit_stderr(
         f"Updating Cyber Pilot to the migration baseline ({LEGACY_BASELINE_VERSION}) "
         "— this may take ~30-90s.\n"
         "Press Ctrl+C to cancel; if interrupted, your Cyber Pilot install "
@@ -736,7 +742,7 @@ def _run_legacy_update_to_baseline(project_root: Path) -> Dict[str, Any]:
     except (OSError, ValueError) as exc:
         return {"status": "ERROR", "command": cmd, "error": str(exc)}
     except KeyboardInterrupt:
-        sys.stderr.write(
+        _emit_stderr(
             "\nInterrupted by user (Ctrl+C). Your Cyber Pilot install may be "
             "in a partial state; re-run cfs init or cfs update to retry.\n"
         )
@@ -765,14 +771,13 @@ def _prompt_migrate_from_cypilot(
     decline_hint: Optional[str] = None,
 ) -> bool:
     # @cpt-begin:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-prompt-migration-ui
-    sys.stderr.write("\n")
-    sys.stderr.write(f"  {heading or 'Existing Cyber Pilot project detected.'}\n")
-    sys.stderr.write(f"  Project root: {project_root.as_posix()}\n")
-    sys.stderr.write(f"  Legacy dir:   {legacy_rel}\n")
+    _emit_stderr("\n")
+    _emit_stderr(f"  {heading or 'Existing Cyber Pilot project detected.'}\n")
+    _emit_stderr(f"  Project root: {project_root.as_posix()}\n")
+    _emit_stderr(f"  Legacy dir:   {legacy_rel}\n")
     if decline_hint:
-        sys.stderr.write(f"  {decline_hint}\n")
-    sys.stderr.write(f"  {prompt or 'Migrate it to Constructor Studio now? [y/N] '}")
-    sys.stderr.flush()
+        _emit_stderr(f"  {decline_hint}\n")
+    _emit_stderr(f"  {prompt or 'Migrate it to Constructor Studio now? [y/N] '}")
     try:
         answer = input().strip().lower()
     except (EOFError, KeyboardInterrupt):
@@ -1055,7 +1060,8 @@ def _read_legacy_install_dir(project_root: Path) -> Optional[str]:
     if agents_file.is_file():
         try:
             content = agents_file.read_text(encoding="utf-8")
-        except OSError:
+        except OSError as exc:
+            logger.info("Failed to read legacy AGENTS.md at %s", agents_file, exc_info=exc)
             content = ""
         data = toml_utils.parse_toml_from_markdown(content)
         # Legacy cypilot installs used cypilot_path or cypilot key

@@ -20,11 +20,13 @@ Read locations (merged; brand-home wins on duplicate ``from``):
 """
 
 import os
-import sys
+import logging
 from pathlib import Path
 from typing import List, Tuple
 
 from ._tomllib_compat import tomllib
+
+logger = logging.getLogger(__name__)
 
 # @cpt-begin:cpt-studio-algo-core-infra-mirror-override:p1:inst-mirror-config-paths
 def _xdg_path() -> Path:
@@ -61,7 +63,7 @@ def _load_file(path: Path) -> List[Tuple[str, str]]:
     try:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
     except (OSError, tomllib.TOMLDecodeError) as exc:
-        print(f"Warning: failed to read mirrors config {path}: {exc}", file=sys.stderr)
+        logger.warning("Failed to read mirrors config %s: %s", path, exc)
         return []
     return _mirror_items(data)
 # @cpt-end:cpt-studio-algo-core-infra-mirror-override:p1:inst-mirror-load-file

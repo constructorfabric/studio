@@ -2,6 +2,7 @@
 
 # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-imports
 import argparse
+import logging
 from pathlib import Path
 from typing import List
 
@@ -10,6 +11,8 @@ from ..utils.document import get_content_scoped
 from ..utils.ui import ui
 from .list_ids import _resolve_registered_artifact_scan
 # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-imports
+
+logger = logging.getLogger(__name__)
 
 
 def _emit_code_content(args: argparse.Namespace) -> int:
@@ -55,7 +58,13 @@ def _emit_artifact_content(args: argparse.Namespace) -> int:
 
     try:
         rel_path = artifact_path.relative_to(ctx.project_root).as_posix()
-    except ValueError:
+    except ValueError as exc:
+        logger.warning(
+            "Artifact path %s is not under project root %s",
+            artifact_path,
+            ctx.project_root,
+            exc_info=exc,
+        )
         ui.result({"status": "ERROR", "message": f"Artifact not under project root: {artifact_path}"})
         return 1
 

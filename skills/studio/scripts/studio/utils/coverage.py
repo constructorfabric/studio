@@ -14,13 +14,15 @@ Measures two metrics:
 # @cpt-begin:cpt-studio-algo-spec-coverage-scan:p1:inst-scan-datamodel
 from __future__ import annotations
 
-import sys
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .codebase import _SCOPE_MARKER_RE, _BLOCK_BEGIN_RE, _BLOCK_END_RE
 from .language_config import EXTENSION_COMMENT_DEFAULTS
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Data structures
@@ -247,7 +249,7 @@ def scan_file_coverage(path: Path) -> Optional[FileCoverage]:
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
-        sys.stderr.write(f"Warning: failed to scan coverage for {path}: {exc}\n")
+        logger.warning("Failed to scan coverage for %s: %s", path, exc)
         return None
 
     lines = text.splitlines()

@@ -11,9 +11,9 @@ Uses only Python stdlib (urllib.request) — no third-party dependencies.
 # @cpt-begin:cpt-studio-algo-core-infra-cache-skill:p1:inst-cache-helpers
 import io
 import json
+import logging
 import os
 import shutil
-import sys
 import tarfile
 import zipfile
 from datetime import datetime, timezone
@@ -34,6 +34,7 @@ GITHUB_OWNER = "constructorfabric"
 GITHUB_REPO = "studio"
 GITHUB_API_BASE = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}"
 USER_AGENT = "constructor-studio/1.0"
+LOGGER = logging.getLogger(__name__)
 
 
 class _WhatsnewGenerationError(RuntimeError):
@@ -41,7 +42,7 @@ class _WhatsnewGenerationError(RuntimeError):
 
 
 def _warn(message: str) -> None:
-    sys.stderr.write(f"Warning: {message}\n")
+    LOGGER.warning("Warning: %s", message)
 
 
 def _patch_cached_version(cache_dir: Path, version: str) -> None:
@@ -140,8 +141,10 @@ def _github_json_list(url: str) -> List[Dict[str, Any]]:
 
 
 def _warn_whatsnew_generation_failed(scope: str, exc: BaseException) -> None:
-    sys.stderr.write(
-        f"Warning: unable to generate {scope} whatsnew.toml from GitHub release notes: {exc}\n"
+    LOGGER.warning(
+        "Warning: unable to generate %s whatsnew.toml from GitHub release notes: %s",
+        scope,
+        exc,
     )
 
 
@@ -402,14 +405,15 @@ def _latest_release_snapshot_fallback(api_base: str) -> Tuple[Optional[str], Opt
     try:
         snapshot = _resolve_default_branch_snapshot(api_base)
     except (HTTPError, URLError, json.JSONDecodeError, OSError) as exc:
-        sys.stderr.write(f"No releases found and default branch resolution failed: {exc}\n")
+        LOGGER.warning("No releases found and default branch resolution failed: %s", exc)
         return None, None, {}
     if not snapshot:
-        sys.stderr.write("No releases found and default branch could not be resolved.\n")
+        LOGGER.warning("No releases found and default branch could not be resolved.")
         return None, None, {}
-    sys.stderr.write(
-        "No releases found. Using default branch commit "
-        f"{snapshot['branch']}@{snapshot['commit_sha']}.\n"
+    LOGGER.warning(
+        "No releases found. Using default branch commit %s@%s.",
+        snapshot["branch"],
+        snapshot["commit_sha"],
     )
     return snapshot["commit_sha"], snapshot["download_url"], {
         "resolver_mode": "default_branch_snapshot",
@@ -426,19 +430,19 @@ def _report_github_http_error(exc: HTTPError) -> Tuple[Optional[str], Optional[s
         body = exc.read().decode("utf-8", errors="replace")
     except OSError as read_exc:
         _warn(f"unable to read GitHub error body: {read_exc}")
-    sys.stderr.write(f"GitHub API error: HTTP {exc.code} - {exc.reason}\n")
+    LOGGER.error("GitHub API error: HTTP %s - %s", exc.code, exc.reason)
     if body:
         try:
             err_data = json.loads(body)
             if "message" in err_data:
-                sys.stderr.write(f"  {err_data['message']}\n")
+                LOGGER.error("  %s", err_data["message"])
         except json.JSONDecodeError:
-            sys.stderr.write(f"  {body[:200]}\n")
+            LOGGER.error("  %s", body[:200])
     return None, None, {}
 
 
 def _report_github_error(exc: BaseException) -> Tuple[Optional[str], Optional[str], Dict[str, str]]:
-    sys.stderr.write(f"GitHub API error: {exc}\n")
+    LOGGER.error("GitHub API error: %s", exc)
     return None, None, {}
 
 

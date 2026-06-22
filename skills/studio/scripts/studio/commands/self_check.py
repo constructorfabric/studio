@@ -10,7 +10,7 @@ pass the same heading contract and constraint checks used for user artifacts.
 """
 
 import re
-import sys
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -25,9 +25,11 @@ from ..utils.constraints import (
 from ..utils import error_codes as EC
 from ..utils.document import read_text_safe
 
+logger = logging.getLogger(__name__)
+
 
 def _warn_self_check(message: str) -> None:
-    sys.stderr.write(f"self-check: warning: {message}\n")
+    logger.warning("self-check: %s", message)
 
 
 @dataclass
@@ -775,14 +777,16 @@ def _resolve_kit_kind_paths(  # pylint: disable=too-many-locals
         if str(rel or "").strip():
             candidate = (adapter_dir / rel).resolve()
             template_path = candidate if candidate.is_file() else (project_root / rel).resolve()
-    except (OSError, ValueError, KeyError):
+    except (OSError, ValueError, KeyError) as exc:
+        logger.warning("Failed to resolve template path for kit kind %s: %s", kind, exc)
         template_path = None
     try:
         rel = kit_obj.get_examples_path(kind)
         if str(rel or "").strip():
             candidate = (adapter_dir / rel).resolve()
             examples_dir = candidate if candidate.exists() else (project_root / rel).resolve()
-    except (OSError, ValueError, KeyError):
+    except (OSError, ValueError, KeyError) as exc:
+        logger.warning("Failed to resolve examples path for kit kind %s: %s", kind, exc)
         examples_dir = None
 
     kind_dir = artifacts_dir / kind

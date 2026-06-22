@@ -11,6 +11,7 @@ from __future__ import annotations
 # @cpt-begin:cpt-studio-algo-kit-github-helpers:p1:inst-kit-imports
 import argparse
 import json
+import logging
 import os
 import re
 import shutil
@@ -32,14 +33,42 @@ from ..utils.git_kit_source import (
 )
 from ..utils.ui import ui
 from ..utils.whatsnew import show_kit_whatsnew
+from ..utils.stderr_logging import emit_stderr_message
 # @cpt-end:cpt-studio-algo-kit-github-helpers:p1:inst-kit-imports
 
 if TYPE_CHECKING:
     from ..utils.manifest import Manifest, ManifestResource
 
+logger = logging.getLogger(__name__)
+
 
 def _warn_kit(message: str) -> None:
-    sys.stderr.write(f"kit: warning: {message}\n")
+    logger.warning("kit: %s", message)
+
+
+def _warn_user(message: str) -> None:
+    _warn_kit(message)
+    ui.warn(message)
+
+
+def _ui_lines(*lines: str, blank_before: bool = False, blank_after: bool = False) -> None:
+    if blank_before:
+        ui.blank()
+    for line in lines:
+        ui.info(line)
+    if blank_after:
+        ui.blank()
+
+
+def _emit_stdout_text(text: str) -> None:
+    print(  # pylint: disable=stdout-bypass
+        text,
+        end="" if text.endswith("\n") else "\n",
+    )
+
+
+def _emit_stderr_text(text: str) -> None:
+    emit_stderr_message(text, logger_name=f"{__name__}.stderr")
 
 
 @dataclass(frozen=True)
@@ -1414,17 +1443,16 @@ def _read_project_name_from_registry(config_dir: Path) -> Optional[str]:
                 if isinstance(name, str) and name.strip():
                     return name.strip()
     except (OSError, ValueError) as exc:
-        sys.stderr.write(f"kit: warning: cannot read project name from {artifacts_toml}: {exc}\n")
+        _warn_kit(f"cannot read project name from {artifacts_toml}: {exc}")
     return None
 # @cpt-end:cpt-studio-algo-kit-regen-gen:p1:inst-read-project-name-fn
 
 
 def _input_stderr(prompt: str) -> str:
     # @cpt-begin:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
-    sys.stderr.write(prompt)
-    sys.stderr.flush()
     try:
-        return input("").strip()
+        _emit_stderr_text(prompt)
+        return input().strip()
     except EOFError:
         return ""
     # @cpt-end:cpt-studio-flow-kit-install-cli:p1:inst-resolve-local-install-mode
@@ -1760,11 +1788,16 @@ def _append_installed_public_component_conflicts(
 ) -> None:
     try:
         from ..utils.kit_model import load_installed_kit_model
-    except ImportError:
+    except ImportError as exc:
+        logger.debug(
+            "kit: installed kit model unavailable while checking public component conflicts",
+            exc_info=exc,
+        )
         return
 
-    config_dir = studio_dir / "config"
-    for existing_slug, kit_entry in sorted(_read_kits_from_core_toml(config_dir).items()):
+    for existing_slug, kit_entry in sorted(
+        _read_kits_from_core_toml(studio_dir / "config").items()
+    ):
         existing_slug_str = str(existing_slug)
         if existing_slug_str == str(installing_slug):
             continue
@@ -1932,13 +1965,15 @@ def _prompt_local_manifest_install_mode(
     register_available = not register_errors
     default_mode = "register" if register_available else "copy"
     while True:
-        sys.stderr.write("\n")
-        sys.stderr.write(f"  Local kit install mode: {kit_slug}\n")
-        sys.stderr.write("  - copy: copy resources into Studio-managed storage\n")
+        _ui_lines(
+            f"Local kit install mode: {kit_slug}",
+            "  - copy: copy resources into Studio-managed storage",
+            blank_before=True,
+        )
         if register_available:
-            sys.stderr.write("  - register: leave in-project resources in place and bind them\n")
+            ui.info("  - register: leave in-project resources in place and bind them")
         else:
-            sys.stderr.write("  - register: unavailable for this source\n")
+            ui.info("  - register: unavailable for this source")
         answer = _input_stderr(
             f"  Install mode [copy/register] (default {default_mode}): "
         ).lower()
@@ -1949,9 +1984,9 @@ def _prompt_local_manifest_install_mode(
         if answer in {"r", "register"}:
             if register_available:
                 return "register"
-            sys.stderr.write("  Register mode is unavailable:\n")
+            ui.info("  Register mode is unavailable:")
             for error in register_errors:
-                sys.stderr.write(f"  - {error}\n")
+                ui.info(f"  - {error}")
 # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-mode-always-ask
 
 
@@ -1961,21 +1996,22 @@ def _emit_manifest_install_plan(
     resources: List[Any],
     resource_overrides: Dict[str, Path],
 ) -> None:
-    sys.stderr.write("\n")
-    sys.stderr.write(f"  Kit install plan: {kit_slug}\n")
-    sys.stderr.write(f"  - Kit root: {kit_root}\n")
+    _ui_lines(
+        f"Kit install plan: {kit_slug}",
+        f"  - Kit root: {kit_root}",
+        blank_before=True,
+    )
     if not resources:
-        sys.stderr.write("  - Resources: none declared\n")
+        ui.info("  - Resources: none declared")
     else:
-        sys.stderr.write("  - Files to write:\n")
+        ui.info("  - Files to write:")
         for idx, res in enumerate(resources, start=1):
             target = _manifest_resource_target(kit_root, res, resource_overrides)
             mod = "editable" if res.user_modifiable else "locked"
-            sys.stderr.write(
-                f"    [{idx}] {res.id} ({res.type}, {mod}): "
-                f"{res.source} -> {target}\n"
+            ui.info(
+                f"    [{idx}] {res.id} ({res.type}, {mod}): {res.source} -> {target}"
             )
-    sys.stderr.write("\n")
+    ui.blank()
 
 
 def _manifest_install_plan_result(
@@ -2095,8 +2131,7 @@ def _prompt_manifest_install_plan_interactive(  # pylint: disable=too-many-local
                 root_changed,
             )
 
-        sys.stderr.write("\n")
-        sys.stderr.write("  Select path to change\n")
+        _ui_lines("Select path to change", blank_before=True)
         menu = _manifest_install_edit_menu(
             manifest,
             kit_root,
@@ -2104,9 +2139,9 @@ def _prompt_manifest_install_plan_interactive(  # pylint: disable=too-many-local
             resource_overrides,
         )
         for idx, (_, label, _res) in enumerate(menu, start=1):
-            sys.stderr.write(f"  [{idx}] {label}\n")
+            ui.info(f"  [{idx}] {label}")
         done_idx = len(menu) + 1
-        sys.stderr.write(f"  [{done_idx}] Done\n")
+        ui.info(f"  [{done_idx}] Done")
         choice_raw = _input_stderr("  Choice: ").lower()
         if choice_raw in ("", "d", "done", str(done_idx)):
             return _manifest_install_plan_snapshot(
@@ -3042,9 +3077,9 @@ def _tool_risk_approval_errors(
         return []
     dangerous = summary.get("dangerous_tools", {})
     if interactive and sys.stdin.isatty():
-        sys.stderr.write("\n  Dangerous tool permissions changed:\n")
+        _ui_lines("Dangerous tool permissions changed:", blank_before=True)
         for resource_id, tools in sorted(dangerous.items()):
-            sys.stderr.write(f"  - {resource_id}: {', '.join(tools)}\n")
+            ui.info(f"  - {resource_id}: {', '.join(tools)}")
         answer = _input_stderr(
             f"  Approve tool risk fingerprint {fingerprint}? [y/N]: "
         ).lower()
@@ -3293,6 +3328,7 @@ def _resolve_install_source_github(
     try:
         owner, repo, version = _parse_github_source(source_arg)
     except ValueError as exc:
+        logger.warning("Invalid GitHub kit source %r: %s", source_arg, exc)
         ui.result({
             "status": "FAIL",
             "message": str(exc),
@@ -3308,6 +3344,7 @@ def _resolve_install_source_github(
             requested_ref or version,
         )
     except RuntimeError as exc:
+        logger.exception("Failed to download GitHub kit source for %s/%s", owner, repo)
         ui.result({"status": "FAIL", "message": str(exc)})
         return (Path("."), "", "", "", None, 1, None)
 
@@ -3331,6 +3368,7 @@ def _resolve_install_source_git(
         parsed = parse_git_kit_source(source_arg)
         resolution = materialize_git_kit_source(parsed, requested_ref=requested_ref)
     except GitSourceError as exc:
+        logger.warning("Invalid Git kit source %r: %s", source_arg, exc)
         ui.result({
             "status": "FAIL",
             "message": str(exc),
@@ -3338,6 +3376,7 @@ def _resolve_install_source_git(
         })
         return None
     except RuntimeError as exc:
+        logger.exception("Failed to resolve Git kit source %r", source_arg)
         ui.result({"status": "FAIL", "message": f"Git source resolution failed: {exc}"})
         return (Path("."), "", "", "", None, 1, None)
 
@@ -3742,7 +3781,12 @@ def _resolve_selected_install_mode(
     if args.local_path and not args.install_mode and sys.stdin.isatty():
         try:
             local_manifest = _load_manifest_install_adapter(kit_source, kit_slug=kit_slug)
-        except (OSError, ValueError):
+        except (OSError, ValueError) as exc:
+            logger.debug(
+                "kit: failed to inspect manifest install adapter for %s",
+                kit_source,
+                exc_info=exc,
+            )
             local_manifest = None
         if local_manifest is not None:
             selected_install_mode = _prompt_local_manifest_install_mode(
@@ -3948,6 +3992,7 @@ def _resolve_github_update_target(
         owner, repo, version = _parse_github_source(owner_repo)
     except ValueError as exc:
         msg = f"Kit '{slug}': invalid source '{source_str}': {exc}"
+        logger.warning("Kit '%s' has invalid GitHub source %r: %s", slug, source_str, exc)
         ui.warn(msg)
         return None, {"kit": slug, "action": "ERROR", "message": msg, "source": source_str}
 
@@ -3961,6 +4006,7 @@ def _resolve_github_update_target(
         )
     except RuntimeError as exc:
         msg = f"Kit '{slug}': download failed: {exc}"
+        logger.warning("Kit '%s' GitHub download failed", slug, exc_info=exc)
         ui.warn(msg)
         return None, _github_update_download_failure(
             slug,
@@ -3990,7 +4036,14 @@ def _github_update_download_failure(
             version,
             previous_entry=kit_data,
         )
-    except RuntimeError:
+    except RuntimeError as exc:
+        logger.debug(
+            "kit: failed to refresh GitHub authority metadata for %s/%s@%s",
+            owner,
+            repo,
+            version,
+            exc_info=exc,
+        )
         authority_metadata = None
     if authority_metadata and authority_metadata.get("freshness") == "last_known":
         current_version = str(kit_data.get("version") or "")
@@ -5090,9 +5143,7 @@ def _emit_kit_normalize_result(
     manifest_text: str,
 ) -> int:
     if args.stdout:
-        sys.stdout.write(manifest_text)
-        if not manifest_text.endswith("\n"):
-            sys.stdout.write("\n")
+        _emit_stdout_text(manifest_text)
         return 0
     payload: Dict[str, Any] = {
         "status": "PASS",
@@ -5134,6 +5185,7 @@ def cmd_kit_normalize(argv: List[str]) -> int:
     try:
         selected_models, manifest_text = _load_kit_normalize_output(args, kit_source)
     except ValueError as exc:
+        logger.warning("Failed to load kit normalize output from %s: %s", kit_source, exc)
         ui.result({
             "status": "FAIL",
             "message": str(exc),
@@ -5223,9 +5275,7 @@ def _human_kit_normalize(data: dict) -> None:
         if manifest:
             ui.blank()
             ui.info("Generated .cf-studio-kit.toml preview:")
-            sys.stderr.write(manifest)
-            if not manifest.endswith("\n"):
-                sys.stderr.write("\n")
+            _emit_stdout_text(manifest)
     else:
         ui.success("Canonical manifest written.")
     ui.blank()
@@ -5898,9 +5948,9 @@ def _maybe_migrate_legacy_manifest_install(
     result["manifest_migration"] = migration_result
     if migration_result.get("status") != "FAIL":
         return None
-    sys.stderr.write(
-        f"kit: warning: manifest migration for '{kit_slug}' failed: "
-        f"{migration_result.get('errors', [])}\n"
+    _warn_user(
+        f"manifest migration for '{kit_slug}' failed: "
+        f"{migration_result.get('errors', [])}"
     )
     return _result_with_failure(
         result,
@@ -6416,9 +6466,9 @@ def cmd_kit_migrate(_argv: List[str]) -> int:
     The migrate command was part of the blueprint-based three-way merge system
     which has been removed.  File-level updates are now handled by 'kit update'.
     """
-    sys.stderr.write(
-        "WARNING: 'cfs kit migrate' is deprecated.\n"
-        "         Use 'cfs kit update <path>' instead.\n"
+    _ui_lines(
+        "WARNING: 'cfs kit migrate' is deprecated.",
+        "         Use 'cfs kit update <path>' instead.",
     )
     return 1
 # @cpt-end:cpt-studio-flow-kit-dispatch:p1:inst-migrate-deprecated
@@ -6432,15 +6482,13 @@ def _emit_kit_command_help(
     usage: str,
     descriptions: Dict[str, List[Tuple[str, str]]],
 ) -> tuple:
-    writes = [
-        sys.stderr.write(f"Usage: {usage}\n\n"),
-        sys.stderr.write("Subcommands:\n"),
-    ]
+    lines = [f"Usage: {usage}", "", "Subcommands:"]
     for name in subcommands:
         for args, description in descriptions.get(name, [("", "")]):
             command = f"{name} {args}".rstrip()
-            writes.append(sys.stderr.write(f"  {command:<30} {description}\n"))
-    return tuple(writes)
+            lines.append(f"  {command:<30} {description}")
+    _ui_lines(*lines)
+    return tuple(lines)
 
 
 def _dispatch_kit_subcommand(subcmd: str, rest: List[str]) -> int:
@@ -6578,7 +6626,7 @@ def _read_kit_slug(kit_source: Path) -> str:
         if len(canonical_models) > 1:
             return ""
     except ValueError as exc:
-        sys.stderr.write(f"kit: warning: cannot read canonical kit metadata from {kit_source}: {exc}\n")
+        _warn_kit(f"cannot read canonical kit metadata from {kit_source}: {exc}")
 
     conf_toml = kit_source / "conf.toml"
     if not conf_toml.is_file():
@@ -6590,7 +6638,7 @@ def _read_kit_slug(kit_source: Path) -> str:
         if isinstance(slug, str) and slug.strip():
             return slug.strip()
     except (OSError, ValueError) as exc:
-        sys.stderr.write(f"kit: warning: cannot read {conf_toml}: {exc}\n")
+        _warn_kit(f"cannot read {conf_toml}: {exc}")
     return ""
     # @cpt-end:cpt-studio-algo-kit-config-helpers:p1:inst-read-slug
 # @cpt-end:cpt-studio-algo-kit-config-helpers:p1:inst-read-slug-fn
@@ -6606,7 +6654,7 @@ def _read_kit_source_version(kit_source: Path) -> str:
         if len(canonical_models) > 1:
             return ""
     except ValueError as exc:
-        sys.stderr.write(f"kit: warning: cannot read canonical kit metadata from {kit_source}: {exc}\n")
+        _warn_kit(f"cannot read canonical kit metadata from {kit_source}: {exc}")
 
     conf_toml = kit_source / _KIT_CONF_FILE
     return _read_kit_version(conf_toml) if conf_toml.is_file() else ""
@@ -6661,9 +6709,9 @@ def _validate_requested_kit_models(
 
 
 def _prompt_for_canonical_kit_selection(models: List[Any]) -> List[str]:
-    sys.stderr.write("\n  Multiple kits are declared:\n")
+    _ui_lines("Multiple kits are declared:", blank_before=True)
     for idx, model in enumerate(models, start=1):
-        sys.stderr.write(f"  [{idx}] {model.slug}  {model.version or ''}\n")
+        ui.info(f"  [{idx}] {model.slug}  {model.version or ''}")
     answer = _input_stderr("  Install which kits? (number/slug, comma-separated, or all): ")
     requested = _split_kit_selectors([answer])
     if not requested:
@@ -6783,7 +6831,7 @@ def _read_kit_version_from_core(config_dir: Path, kit_slug: str) -> str:
         if ver is not None:
             return str(ver)
     except (OSError, ValueError) as exc:
-        sys.stderr.write(f"kit: warning: cannot read version for '{kit_slug}' from {core_toml}: {exc}\n")
+        _warn_kit(f"cannot read version for '{kit_slug}' from {core_toml}: {exc}")
     return ""
     # @cpt-end:cpt-studio-algo-kit-config-helpers:p1:inst-read-version-from-core
 # @cpt-end:cpt-studio-algo-kit-config-helpers:p1:inst-read-version-core-fn
@@ -6799,7 +6847,7 @@ def _read_kit_version(conf_path: Path) -> str:
         if ver is not None:
             return str(ver)
     except (OSError, ValueError) as exc:
-        sys.stderr.write(f"kit: warning: cannot read version from {conf_path}: {exc}\n")
+        _warn_kit(f"cannot read version from {conf_path}: {exc}")
     return ""
     # @cpt-end:cpt-studio-algo-kit-config-helpers:p1:inst-read-kit-version
 # @cpt-end:cpt-studio-algo-kit-config-helpers:p1:inst-read-kit-version-fn
@@ -6966,7 +7014,7 @@ def _persist_core_registration(core_toml: Path, data: Dict[str, Any], kit_slug: 
         )
     except (OSError, ValueError) as exc:
         message = f"kit: warning: failed to register {kit_slug} in {core_toml}: {exc}"
-        sys.stderr.write(f"{message}\n")
+        _warn_kit(f"failed to register {kit_slug} in {core_toml}: {exc}")
         return [message]
     return []
 

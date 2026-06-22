@@ -3,7 +3,7 @@
 # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-imports
 import argparse
 import json
-import sys
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
@@ -21,9 +21,11 @@ from ..utils.fixing import enrich_issues
 from ..utils.ui import ui
 # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-imports
 
+logger = logging.getLogger(__name__)
+
 
 def _warn_validate(message: str) -> None:
-    sys.stderr.write(f"validate: warning: {message}\n")
+    logger.warning("validate: %s", message)
 
 
 @dataclass
@@ -260,6 +262,7 @@ def _run_validate_kits_gate(project_root: Path, ctx: object, verbose: bool) -> O
             verbose=bool(verbose),
         )
     except (OSError, ValueError, KeyError) as exc:
+        logger.exception("validate-kits gate failed")
         ui.result({
             "status": "ERROR",
             "message": "self-check failed to run",
@@ -407,7 +410,13 @@ def _resolve_explicit_artifact(session: _ValidateSession, artifact_path: Path) -
     _extend_known_kinds(session.ctx, session.known_kinds)
     try:
         rel_path = artifact_path.relative_to(session.project_root).as_posix()
-    except ValueError:
+    except ValueError as exc:
+        logger.info(
+            "Artifact path %s is not under project root %s",
+            artifact_path,
+            session.project_root,
+            exc_info=exc,
+        )
         rel_path = None
     result = session.meta.get_artifact_by_path(rel_path) if rel_path else None
     if result is None:
@@ -480,7 +489,8 @@ def _resolve_constraints_for_artifact(
         if not isinstance(adapter_dir, Path):
             adapter_dir = session.project_root
         constraints_path = _resolve_loaded_kit_constraints_path(adapter_dir, session.project_root, loaded_kit)
-    except (OSError, ValueError, KeyError):
+    except (OSError, ValueError, KeyError) as exc:
+        logger.warning("Failed to resolve loaded kit constraints path for %s", loaded_kit, exc_info=exc)
         constraints_path = None
     return constraints_for_kind, constraints_path
 
@@ -506,6 +516,28 @@ def _validate_one_artifact(
         constraints_path=constraints_path,
         kit_id=str(kit_id),
     )
+    artifact_report = _build_artifact_report(
+        artifact_path=artifact_path,
+        artifact_type=artifact_type,
+        traceability=traceability,
+        report=report,
+        verbose=bool(session.args.verbose),
+    )
+    results.artifact_reports.append(artifact_report)
+    results.artifact_report_by_path[str(artifact_path)] = artifact_report
+    results.all_errors.extend(report.get("errors", []))
+    results.all_warnings.extend(report.get("warnings", []))
+
+
+def _build_artifact_report(
+    *,
+    artifact_path: Path,
+    artifact_type: str,
+    traceability: str,
+    report: Dict[str, object],
+    verbose: bool,
+) -> Dict[str, object]:
+    """Build one per-artifact validate report, including optional ID stats."""
     errors = report.get("errors", [])
     warnings = report.get("warnings", [])
     artifact_report: Dict[str, object] = {
@@ -516,22 +548,25 @@ def _validate_one_artifact(
         "error_count": len(errors),
         "warning_count": len(warnings),
     }
-    if session.args.verbose or errors:
+    if verbose or errors:
         artifact_report["errors"] = errors
-    if session.args.verbose or warnings:
+    if verbose or warnings:
         artifact_report["warnings"] = warnings
-        try:
-            hits = scan_cpt_ids(artifact_path)
-            artifact_report["id_definitions"] = len([hit for hit in hits if hit.get("type") == "definition"])
-            artifact_report["id_references"] = len([hit for hit in hits if hit.get("type") == "reference"])
-        except (OSError, ValueError) as exc:
-            _warn_validate(f"failed to scan traceability ids in {artifact_path}: {exc}")
-            artifact_report["id_definitions"] = 0
-            artifact_report["id_references"] = 0
-    results.artifact_reports.append(artifact_report)
-    results.artifact_report_by_path[str(artifact_path)] = artifact_report
-    results.all_errors.extend(errors)
-    results.all_warnings.extend(warnings)
+        artifact_report.update(_artifact_traceability_counts(artifact_path))
+    return artifact_report
+
+
+def _artifact_traceability_counts(artifact_path: Path) -> Dict[str, int]:
+    """Count traceability definitions and references for one artifact."""
+    try:
+        hits = scan_cpt_ids(artifact_path)
+    except (OSError, ValueError) as exc:
+        _warn_validate(f"failed to scan traceability ids in {artifact_path}: {exc}")
+        return {"id_definitions": 0, "id_references": 0}
+    return {
+        "id_definitions": len([hit for hit in hits if hit.get("type") == "definition"]),
+        "id_references": len([hit for hit in hits if hit.get("type") == "reference"]),
+    }
 
 
 def _attach_issue_to_artifact_report(
@@ -661,7 +696,13 @@ def _scan_codebase_entry(
     for file_path in _resolve_code_scan_targets(session, entry):
         try:
             rel_path = file_path.resolve().relative_to(session.project_root).as_posix()
-        except ValueError:
+        except ValueError as exc:
+            logger.info(
+                "Code file path %s is not under project root %s",
+                file_path,
+                session.project_root,
+                exc_info=exc,
+            )
             rel_path = None
         if rel_path and session.meta.is_ignored(rel_path):
             continue

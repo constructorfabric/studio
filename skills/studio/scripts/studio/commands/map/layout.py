@@ -8,6 +8,7 @@ model (no buckets/views — each category is a single bucket).
 from __future__ import annotations
 
 import hashlib
+import logging
 import math
 import sys
 from dataclasses import dataclass
@@ -17,6 +18,24 @@ from typing import Any
 from studio.vendor import rectpack
 
 from .model import Edge, Node
+
+logger = logging.getLogger(__name__)
+
+
+def _emit_stdout(message: str) -> None:
+    """Emit verbose layout output to stdout without altering existing text."""
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setFormatter(logging.Formatter("%(message)s"))
+    logger_name = ".".join((__name__, "verbose"))
+    emit_logger = logging.getLogger(logger_name)
+    emit_logger.handlers = [stream_handler]
+    emit_logger.setLevel(logging.INFO)
+    emit_logger.propagate = False
+    try:
+        payload = message.rstrip("\n")
+        emit_logger.log(logging.INFO, "%s", payload)
+    finally:
+        stream_handler.close()
 
 # ---------------------------------------------------------------------------
 # Layout constants (from md-fabric.py)
@@ -407,10 +426,11 @@ def _category_input(cat_id: str, cat_nodes: list[Node], verbose: bool) -> dict[s
             limit=16,
         )
     except RuntimeError as exc:
-        print(
-            f"map: warning: rectpack candidate generation failed for category {cat_id}: {exc}; "
+        logger.warning(
+            "map: warning: rectpack candidate generation failed for category %s: %s; "
             "falling back to single-bucket layout",
-            file=sys.stderr,
+            cat_id,
+            exc,
         )
         bucket_width = width + 2 * CAT_PAD_SIDE
         bucket_height = CATEGORY_HEADER_H + CAT_PAD_TOP + height + CAT_PAD_BOTTOM
@@ -426,7 +446,7 @@ def _category_input(cat_id: str, cat_nodes: list[Node], verbose: bool) -> dict[s
             )
         ]
     if verbose:
-        print(
+        _emit_stdout(
             f"[layout] category {cat_id}: nodes={node_count} candidates={len(candidates)} "
             f"best={candidates[0].width}x{candidates[0].height} "
             f"aspect={candidates[0].aspect:.3f} density={candidates[0].density:.3f}"
@@ -452,7 +472,7 @@ def _optimize_stacked_layout(category_inputs: list[dict[str, Any]], verbose: boo
             category_gap=CATEGORY_GAP,
             target_aspect=TARGET_ASPECT,
         )
-        print(
+        _emit_stdout(
             f"[layout] final: total={final_metrics.total_width}x{final_metrics.total_height} "
             f"aspect={final_metrics.total_aspect:.3f} density={final_metrics.total_density:.3f}"
         )
@@ -506,10 +526,10 @@ def _try_repacked_layout(
     )
     if improves and better_score:
         if verbose:
-            print("[layout] category repack kept")
+            _emit_stdout("[layout] category repack kept")
         return repacked_positions, repacked_metrics
     if verbose:
-        print("[layout] category repack rolled back")
+        _emit_stdout("[layout] category repack rolled back")
     return chosen_positions, chosen_metrics
 
 
@@ -604,10 +624,10 @@ def _try_affinity_layout(layout_input: _AffinityLayoutInput):
             layout_input.choice_by_cat,
         ):
             if layout_input.verbose:
-                print("[layout] affinity layout kept")
+                _emit_stdout("[layout] affinity layout kept")
             return best_affinity_positions, best_affinity_metrics
         if layout_input.verbose:
-            print("[layout] affinity layout rolled back")
+            _emit_stdout("[layout] affinity layout rolled back")
     return layout_input.chosen_positions, layout_input.chosen_metrics
 
 

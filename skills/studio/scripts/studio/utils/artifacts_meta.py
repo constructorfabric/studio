@@ -9,14 +9,16 @@ Parses and provides access to artifacts.toml with the hierarchical system struct
 import fnmatch
 import glob
 import json
+import logging
 import re
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, Iterator, List, Optional, Set, Tuple
 
 from ._tomllib_compat import tomllib
 from ..constants import ARTIFACTS_REGISTRY_FILENAME
+
+logger = logging.getLogger(__name__)
 
 # @cpt-begin:cpt-studio-algo-core-infra-registry-parsing:p1:inst-reg-dataclasses
 # Slug validation pattern: lowercase letters, numbers, hyphens (no leading/trailing hyphens)
@@ -741,7 +743,7 @@ class ArtifactsMeta:
                 try:
                     h = h.resolve()
                 except OSError as exc:
-                    sys.stderr.write(f"Warning: failed to resolve autodetect path {h}: {exc}\n")
+                    logger.warning("Failed to resolve autodetect path %s: %s", h, exc)
                     continue
                 if not h.exists() or not h.is_dir():
                     continue
@@ -839,9 +841,7 @@ class ArtifactsMeta:
                 md_files = _iter_markdown_files(artifacts_root_abs)
                 for mf in md_files:
                     if not mf.is_relative_to(artifacts_root_abs):
-                        sys.stderr.write(
-                            f"Warning: skipping markdown file outside artifacts root: {mf}\n"
-                        )
+                        logger.warning("Skipping markdown file outside artifacts root: %s", mf)
                         continue
                     rel_to_root = mf.relative_to(artifacts_root_abs).as_posix()
                     matched = False
@@ -1089,7 +1089,7 @@ class ArtifactsMeta:
             try:
                 prefix = node.get_hierarchy_prefix()
             except (ValueError, AttributeError) as exc:
-                sys.stderr.write(f"Warning: failed to derive hierarchy prefix for system {node.slug}: {exc}\n")
+                logger.warning("Failed to derive hierarchy prefix for system %s: %s", node.slug, exc)
                 prefix = ""
             if prefix:
                 yield prefix
@@ -1208,7 +1208,7 @@ def create_backup(path: Path) -> Optional[Path]:
             shutil.copy2(path, backup_path)
         return backup_path
     except OSError as exc:
-        sys.stderr.write(f"Warning: failed to create backup for {path}: {exc}\n")
+        logger.warning("Failed to create backup for %s: %s", path, exc)
         return None
 
 def extract_system_slug_candidates(cpt_id: str, parent_prefix: str, kind_tokens: Set[str]) -> List[str]:

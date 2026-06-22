@@ -14,7 +14,7 @@ Use StudioContext.load() to initialize on CLI startup.
 @cpt-flow:cpt-studio-flow-core-infra-cli-invocation:p1
 """
 
-import sys
+import logging
 # @cpt-begin:cpt-studio-algo-core-infra-context-loading:p1:inst-ctx-datamodel
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from .workspace import SourceEntry, WorkspaceConfig
 
 _CONSTRAINTS_FILE = "constraints.toml"
+logger = logging.getLogger(__name__)
 
 @dataclass
 class LoadedKit:
@@ -249,7 +250,7 @@ def load_resource_bindings(
             kit=kit_id,
         ))
     except (OSError, ImportError) as exc:
-        sys.stderr.write(f"context: failed to load resource bindings for kit {kit_id}: {exc}\n")
+        logger.warning("Context: failed to load resource bindings for kit %s: %s", kit_id, exc)
     return rb, resolved_bindings, errors
 
 
@@ -310,8 +311,10 @@ def _load_registered_kit_manifest(
         from ..commands.kit import _resolve_registered_kit_root_dir
         from .manifest import load_manifest
     except (ImportError, OSError) as exc:
-        sys.stderr.write(
-            f"context: failed to import registered-kit manifest helpers for kit {kit_id}: {exc}\n"
+        logger.warning(
+            "Context: failed to import registered-kit manifest helpers for kit %s: %s",
+            kit_id,
+            exc,
         )
         return None
 
@@ -322,7 +325,7 @@ def _load_registered_kit_manifest(
     try:
         return load_manifest(kit_root, kit_slug=kit_id)
     except (OSError, ValueError, KeyError) as exc:
-        sys.stderr.write(f"context: failed to load registered-kit manifest for {kit_id}: {exc}\n")
+        logger.warning("Context: failed to load registered-kit manifest for %s: %s", kit_id, exc)
         return None
 
 
@@ -736,7 +739,7 @@ class WorkspaceContext:
         # @cpt-begin:cpt-studio-algo-workspace-load-context:p1:inst-ctx-if-error
         if ws_cfg is None:
             if ws_err:
-                print(f"Warning: workspace config error: {ws_err}", file=sys.stderr)
+                logger.warning("Workspace config error: %s", ws_err)
             # @cpt-end:cpt-studio-algo-workspace-load-context:p1:inst-ctx-if-error
             # @cpt-begin:cpt-studio-algo-workspace-load-context:p1:inst-ctx-if-no-config
             return None
@@ -774,7 +777,7 @@ class WorkspaceContext:
         ws_cfg, ws_err = find_workspace_config(project_root)
         if ws_cfg is None:
             if ws_err:
-                print(f"Warning: workspace config error: {ws_err}", file=sys.stderr)
+                logger.warning("Workspace config error: %s", ws_err)
             return None
 
         sources = {name: _load_source(name, src_entry, ws_cfg) for name, src_entry in ws_cfg.sources.items()}
@@ -858,7 +861,7 @@ def resolve_adapter_context(
 def _warn_adapter_context(emit_warnings: bool, message: str) -> None:
     """Emit adapter context warnings only when requested."""
     if emit_warnings:
-        print(message, file=sys.stderr)
+        logger.warning("%s", message)
 
 
 def _finalize_adapter_context(
@@ -954,7 +957,7 @@ def _scan_definition_ids(artifact_path: Path, ids: Set[str]) -> None:
             if h.get("type") == "definition" and h.get("id"):
                 ids.add(str(h["id"]))
     except (OSError, ValueError) as exc:
-        print(f"Warning: failed to scan IDs from {artifact_path}: {exc}", file=sys.stderr)
+        logger.warning("Failed to scan IDs from %s: %s", artifact_path, exc)
 
 
 def _collect_source_definition_ids(sc: "SourceContext", ids: Set[str]) -> None:
@@ -1305,7 +1308,7 @@ def resolve_target_and_artifacts(
         If *error_message* is not None the caller should emit it and return 1.
     """
     if args.id_positional and args.id:
-        sys.stderr.write("WARNING: both positional ID and --id given; using positional\n")
+        logger.warning("Both positional ID and --id given; using positional")
     target_id = (args.id_positional or args.id or "").strip()
     if not target_id:
         return None, None, [], {}, "ID cannot be empty"

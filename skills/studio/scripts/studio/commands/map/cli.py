@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import subprocess
 import sys
 from pathlib import Path
@@ -25,6 +26,33 @@ from .links import extract_file_links
 from .render_html import RenderHtmlInput, render_html
 from .render_json import RenderJsonInput, render_json
 from .scan import ScanOptions, _OPTIONAL_MAP_DISCOVERY_ERRORS, scan_repo
+
+def _emit_stdout(message: str) -> None:
+    """Emit user-facing map output to stdout without altering existing text."""
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    emit_logger = logging.getLogger(f"{__name__}.summary")
+    emit_logger.handlers = [handler]
+    emit_logger.setLevel(logging.INFO)
+    emit_logger.propagate = False
+    try:
+        emit_logger.log(logging.INFO, "%s", message.rstrip("\n"))
+    finally:
+        handler.close()
+
+
+def _emit_stderr(message: str, level: int = logging.WARNING) -> None:
+    """Emit diagnostics to stderr via a dedicated logger handler."""
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    emit_logger = logging.getLogger(f"{__name__}.stderr")
+    emit_logger.handlers = [handler]
+    emit_logger.setLevel(level)
+    emit_logger.propagate = False
+    try:
+        emit_logger.log(level, "%s", message.rstrip("\n"))
+    finally:
+        handler.close()
 
 
 def _build_map_parser() -> argparse.ArgumentParser:
@@ -77,10 +105,9 @@ def _apply_override_filter(all_nodes, override) -> list:
                 node.category_origin = "uncategorized-bucket"
         return all_nodes
     if not override.categories:
-        print(
+        _emit_stderr(
             "map: override config has zero categories and show_uncategorized=false;"
-            " result will be empty",
-            file=sys.stderr,
+            " result will be empty"
         )
     return [node for node in all_nodes if node.category_origin == "override"]
 
@@ -194,16 +221,15 @@ def _resolve_map_paths(args) -> tuple[Path, Path]:
 def _resolve_map_scan_meta(primary_root: Path) -> dict:
     art_toml, adapter_dir = _resolve_artifacts_toml(primary_root)
     if art_toml is None:
-        print(
-            "map: no artifacts.toml found via adapter resolution; source scanning disabled",
-            file=sys.stderr,
+        _emit_stderr(
+            "map: no artifacts.toml found via adapter resolution; source scanning disabled"
         )
     return _build_scan_meta(primary_root, art_toml, adapter_dir)
 
 
 def _warn_optional_discovery(context: str, exc: Exception) -> None:
     """Report a best-effort map discovery failure without aborting the command."""
-    print(f"map: warning: {context}: {type(exc).__name__}: {exc}", file=sys.stderr)
+    _emit_stderr(f"map: warning: {context}: {type(exc).__name__}: {exc}")
 
 
 def cmd_map(argv: List[str]) -> int:
@@ -282,7 +308,7 @@ def _load_override(primary_root: Path, explicit: Optional[str]) -> Optional[Over
         with path.open("rb") as f:
             data = tomllib.load(f)
     except (OSError, ValueError) as exc:  # override config validation
-        print(f"map: invalid {path}: {exc}", file=sys.stderr)
+        _emit_stderr(f"map: invalid {path}: {exc}", level=logging.ERROR)
         sys.exit(2)
     show_uncategorized = bool(data.get("show_uncategorized", False))
     cats = []
@@ -342,10 +368,9 @@ def _load_template_vars(primary_root: Path) -> Dict[str, str]:
             continue
     if data is None:
         if errors:
-            print(
+            _emit_stderr(
                 "map: warning: template variable discovery failed; continuing without template vars: "
-                + "; ".join(errors),
-                file=sys.stderr,
+                + "; ".join(errors)
             )
         return {}
     return _flatten_vars(data, primary_root)
@@ -469,19 +494,19 @@ def _print_summary(
     cpt_impl = sum(1 for e in edges if e.type == "cpt-impl")
     reachable = sum(1 for s in sources if s["reachable"])
     unreachable = sum(1 for s in sources if not s["reachable"])
-    print(f"Config       : {config_path or '(none)'}")
-    print(
+    _emit_stdout(f"Config       : {config_path or '(none)'}")
+    _emit_stdout(
         f"Mode         : {'federated' if reachable > 1 else 'single-repo'} "
         f"({reachable} reachable, {unreachable} unreachable)"
     )
-    print(
+    _emit_stdout(
         f"Source scan  : artifacts.toml: {scan_meta['systems_scanned']} systems, "
         f"{scan_meta['systems_docs_only']} DOCS-ONLY"
     )
-    print(f"Scanned      : {md} markdown, {src} source files")
-    print(f"Edges        : {file_edges} file-link, {cpt_doc} cpt-doc, {cpt_impl} cpt-impl")
-    print(f"Phantom IDs  : {phantom} dangling cpt uses")
-    print(f"Wrote        : {out_path}")
+    _emit_stdout(f"Scanned      : {md} markdown, {src} source files")
+    _emit_stdout(f"Edges        : {file_edges} file-link, {cpt_doc} cpt-doc, {cpt_impl} cpt-impl")
+    _emit_stdout(f"Phantom IDs  : {phantom} dangling cpt uses")
+    _emit_stdout(f"Wrote        : {out_path}")
     if sidecar_path is not None:
-        print(f"               {sidecar_path}")
+        _emit_stdout(f"               {sidecar_path}")
     # @cpt-end:cpt-studio-flow-map-cli:p1:inst-print-summary

@@ -9,21 +9,41 @@ Walks directory tree to find project-installed skill, falls back to cache.
 # @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-resolve-helpers
 import os
 import json
+import logging
 import re
-import sys
 import tomllib
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-from studio.utils.files import read_root_agents_marked_text
-
 MARKER_START = "<!-- @cf:root-agents -->"
 
 _TOML_FENCE_RE = re.compile(r"```toml\s*\n(.*?)```", re.DOTALL)
+LOGGER = logging.getLogger(__name__)
 
 
 def _warn(message: str) -> None:
-    sys.stderr.write(f"Warning: {message}\n")
+    LOGGER.warning("Warning: %s", message)
+
+
+def _load_text(path: Path) -> tuple[str, Optional[str]]:
+    """Load UTF-8 text from a file, returning an error string on failure."""
+    if not path.is_file():
+        if path.exists():
+            return "", f"Not a file: {path}"
+        return "", f"File not found: {path}"
+    try:
+        return path.read_text(encoding="utf-8"), None
+    except OSError as exc:
+        return "", f"Failed to read {path}: {exc}"
+
+
+def _read_root_agents_marked_text(project_root: Path) -> Optional[str]:
+    """Return root AGENTS.md text only when it includes the managed marker."""
+    agents_file = project_root / "AGENTS.md"
+    content, err = _load_text(agents_file)
+    if err or MARKER_START not in content:
+        return None
+    return content
 
 def find_project_root(start_dir: Optional[Path] = None) -> Optional[Path]:
     """Find the project root by walking up looking for AGENTS.md with @cf:root-agents marker."""
@@ -58,7 +78,7 @@ def read_cf_studio_path(project_root: Path) -> Optional[str]:
 
     Returns the install directory path (relative to project root) or None.
     """
-    content = read_root_agents_marked_text(project_root)
+    content = _read_root_agents_marked_text(project_root)
     if content is None:
         return None
 

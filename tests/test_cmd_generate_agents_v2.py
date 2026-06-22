@@ -267,17 +267,19 @@ class TestCmdGenerateAgentsShowLayers(unittest.TestCase):
 
             captured = io.StringIO()
             with mock.patch("sys.stdout", captured):
-                # Force non-JSON mode so human text is written to stdout
-                with mock.patch(
-                    "studio.utils.ui.is_json_mode",
-                    return_value=False,
-                ):
+                from studio.utils.ui import is_json_mode, set_json_mode
+
+                saved_json_mode = is_json_mode()
+                set_json_mode(False)
+                try:
                     cmd_generate_agents([
                         "--root", str(project_root),
                         "--cf-constructor-root", str(cypilot_root),
                         "--agent", "claude",
                         "--show-layers",
                     ])
+                finally:
+                    set_json_mode(saved_json_mode)
             output = captured.getvalue()
             self.assertIn("Layer Provenance Report", output)
 
@@ -526,12 +528,11 @@ class TestGenerateManifestAgentsEdgeCases(unittest.TestCase):
                     agents=["claude"],
                 )
             }
-            captured = io.StringIO()
-            with mock.patch("sys.stderr", captured):
+            with self.assertLogs("studio.commands.agents", level="WARNING") as captured_logs:
                 result = generate_manifest_agents(agents, "claude", project_root, dry_run=False)
 
             self.assertEqual(len(result["created"]), 0)
-            self.assertIn("no description", captured.getvalue())
+            self.assertIn("no description", "\n".join(captured_logs.output))
 
     def test_append_field_appended_to_output(self):
         """Agent with append field has content appended after main body."""
@@ -633,11 +634,10 @@ class TestDiscoverKitAgentsEdgeCases(unittest.TestCase):
                 '[agents.my-agent]\ndescription = "test"\nprompt_file = 42\n',
                 encoding="utf-8",
             )
-            captured = io.StringIO()
-            with mock.patch("sys.stderr", captured):
+            with self.assertLogs("studio.commands.agents", level="WARNING") as captured_logs:
                 agents = _discover_kit_agents(cypilot, root)
             self.assertEqual(agents, [])
-            self.assertIn("prompt_file must be a string", captured.getvalue())
+            self.assertIn("prompt_file must be a string", "\n".join(captured_logs.output))
 
     def test_empty_prompt_file_allowed(self):
         """Agent with empty prompt_file is allowed through with prompt_file_abs=None."""
@@ -670,11 +670,10 @@ class TestDiscoverKitAgentsEdgeCases(unittest.TestCase):
                 encoding="utf-8",
             )
             # Do NOT create missing.md
-            captured = io.StringIO()
-            with mock.patch("sys.stderr", captured):
+            with self.assertLogs("studio.commands.agents", level="WARNING") as captured_logs:
                 agents = _discover_kit_agents(cypilot, root)
             self.assertEqual(agents, [])
-            self.assertIn("not found", captured.getvalue())
+            self.assertIn("not found", "\n".join(captured_logs.output))
 
 
 # ---------------------------------------------------------------------------

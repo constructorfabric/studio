@@ -50,6 +50,7 @@ def _run_main(argv: list[str], *, cwd: Path, stdin_text: str | None = None) -> t
     saved_json_mode = is_json_mode()
     try:
         with _chdir(cwd), redirect_stdout(stdout), redirect_stderr(stderr):
+            set_json_mode(False)
             if stdin is None:
                 rc = main(argv)
             else:
@@ -811,7 +812,7 @@ class TestCliKitUtilityE2E(unittest.TestCase):
             rc, stdout, stderr = _run_main(["kit", "migrate"], cwd=root)
 
             self.assertEqual(rc, 1)
-            self.assertEqual(stdout, "")
-            self.assertIn("WARNING: 'cfs kit migrate' is deprecated.", stderr)
-            self.assertIn("Use 'cfs kit update <path>' instead.", stderr)
+            self.assertIn("WARNING: 'cfs kit migrate' is deprecated.", stdout)
+            self.assertIn("Use 'cfs kit update <path>' instead.", stdout)
+            self.assertEqual(stderr, "")
             self.assertEqual(_snapshot_tree(root), before)

@@ -16,8 +16,8 @@ installation and update: only declared resources are installed.
 from __future__ import annotations
 
 import dataclasses
+import logging
 import re
-import sys
 import string
 from dataclasses import dataclass, field, replace
 from enum import Enum
@@ -25,6 +25,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from ._tomllib_compat import tomllib
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -162,7 +164,7 @@ def load_toml_file(path: Path) -> Optional[Dict[str, Any]]:
         with open(path, "rb") as handle:
             data = tomllib.load(handle)
     except (OSError, ValueError) as exc:
-        sys.stderr.write(f"Warning: failed to load TOML file {path}: {exc}\n")
+        logger.warning("Failed to load TOML file %s: %s", path, exc)
         return None
     return data if isinstance(data, dict) else None
 

@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from dataclasses import dataclass, field
@@ -12,6 +13,19 @@ from pathlib import Path
 from typing import List, Optional, Sequence, Set, Tuple
 
 from .model import CptUse, Node, node_id
+
+def _emit_warning(message: str) -> None:
+    """Emit a warning to stderr via a dedicated logger handler."""
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    emit_logger = logging.getLogger(f"{__name__}.scan_warning")
+    emit_logger.handlers = [handler]
+    emit_logger.setLevel(logging.WARNING)
+    emit_logger.propagate = False
+    try:
+        emit_logger.log(logging.WARNING, "%s", message.rstrip("\n"))
+    finally:
+        handler.close()
 
 _OPTIONAL_MAP_DISCOVERY_ERRORS = (
     ImportError,
@@ -35,7 +49,7 @@ DEFAULT_SKIP_DIRS: Tuple[str, ...] = (".git",)
 
 def _warn_optional_discovery(context: str, exc: Exception) -> None:
     """Report a best-effort map scan discovery failure without aborting."""
-    print(f"map: warning: {context}: {type(exc).__name__}: {exc}", file=sys.stderr)
+    _emit_warning(f"map: warning: {context}: {type(exc).__name__}: {exc}")
 
 
 def _detect_adapter_dir(project_root: Path) -> Optional[str]:

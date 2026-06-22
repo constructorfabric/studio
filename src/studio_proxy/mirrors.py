@@ -52,10 +52,13 @@ Public API
 """
 
 import os
-import sys
+import logging
 import tomllib
 from pathlib import Path
 from typing import Dict, List, Tuple
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -86,7 +89,7 @@ def _read_mirror_data(path: Path) -> dict:
         raw_text = path.read_text(encoding="utf-8")
         data = tomllib.loads(raw_text)
     except (OSError, tomllib.TOMLDecodeError) as exc:
-        sys.stderr.write(f"Warning: unable to read mirror overrides from {path}: {exc}\n")
+        LOGGER.warning("Warning: unable to read mirror overrides from %s: %s", path, exc)
         return {}
     return data if isinstance(data, dict) else {}
 
