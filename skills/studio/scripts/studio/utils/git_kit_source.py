@@ -30,6 +30,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from dataclasses import dataclass
@@ -674,7 +675,8 @@ def _materialize_offline_last_known(
         return None
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, json.JSONDecodeError):
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        sys.stderr.write(f"Warning: failed to read offline cache manifest {manifest_path}: {exc}\n")
         return None
     if not _manifest_matches_offline_cache(
         manifest,

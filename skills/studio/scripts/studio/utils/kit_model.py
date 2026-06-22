@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional
@@ -318,7 +319,8 @@ def _frontmatter_name(path: Path) -> str:
     """Return YAML frontmatter ``name`` from a markdown file, if present."""
     try:
         content = path.read_text(encoding="utf-8").lstrip("\ufeff")
-    except (OSError, UnicodeDecodeError):
+    except (OSError, UnicodeDecodeError) as exc:
+        sys.stderr.write(f"Warning: failed to read frontmatter from {path}: {exc}\n")
         return ""
     if content.startswith("---\r\n"):
         start_len = 5
@@ -343,9 +345,11 @@ def _resolved_source_path_within_kit(kit_source: Path, source: str) -> Optional[
     if source_path.is_absolute() or ".." in source_path.parts:
         return None
     resolved = (kit_source / source).resolve()
-    try:
-        resolved.relative_to(kit_source.resolve())
-    except ValueError:
+    resolved_root = kit_source.resolve()
+    if not resolved.is_relative_to(resolved_root):
+        sys.stderr.write(
+            f"Warning: resolved kit source path escapes kit root: {resolved} not under {resolved_root}\n"
+        )
         return None
     return resolved
 # @cpt-end:cpt-studio-algo-kit-canonical-manifest:p1:inst-canonical-any-layout
@@ -863,7 +867,8 @@ def _read_conf_metadata(kit_source: Path) -> tuple[str, str]:
         return "", ""
     try:
         data = toml_utils.load(conf_path)
-    except (OSError, tomllib.TOMLDecodeError):
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        sys.stderr.write(f"Warning: failed to read kit metadata from {conf_path}: {exc}\n")
         return "", ""
     slug = data.get("slug", "")
     version = data.get("version", "")
@@ -1549,7 +1554,8 @@ def load_installed_kit_model(
     if install_mode != "register":
         try:
             core_model = load_kit_model(kit_source, source_hint="core", kit_slug=kit_slug)
-        except ValueError:
+        except ValueError as exc:
+            sys.stderr.write(f"Warning: failed to load core-preferred kit model from {kit_source}: {exc}\n")
             core_model = None
         if core_model is not None:
             try:

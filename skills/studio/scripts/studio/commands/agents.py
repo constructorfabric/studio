@@ -107,6 +107,10 @@ _MANIFEST_FILE = "manifest.toml"
 GITIGNORE_FILENAME = ".gitignore"
 
 
+def _warn_agents(message: str) -> None:
+    sys.stderr.write(f"agents: warning: {message}\n")
+
+
 # @cpt-begin:cpt-studio-algo-project-extensibility-generate-agents:p1:inst-determine-agent-path
 def _is_safe_generated_id(value: str) -> bool:
     return bool(
@@ -359,7 +363,8 @@ _GENERATED_TOML_ALLOWED_KEYS = _GENERATED_TOML_REQUIRED_KEYS | {
 def _load_toml_dict(content: str) -> Optional[dict]:
     try:
         data = tomllib.loads(content)
-    except tomllib.TOMLDecodeError:
+    except tomllib.TOMLDecodeError as exc:
+        _warn_agents(f"failed to parse generated TOML content: {exc}")
         return None
     return data if isinstance(data, dict) and data else None
 
@@ -591,7 +596,8 @@ def _file_has_studio_follow_link(path: Path) -> bool:
     """Return True when *path* exists and contains a Constructor Studio follow-link."""
     try:
         return bool(_extract_studio_follow_target(path.read_text(encoding="utf-8")))
-    except (OSError, UnicodeDecodeError):
+    except (OSError, UnicodeDecodeError) as exc:
+        _warn_agents(f"failed to inspect follow-link in {path}: {exc}")
         return False
 # @cpt-end:cpt-studio-algo-agent-integration-generate-shims:p1:inst-file-has-studio-follow-link
 
@@ -1007,8 +1013,8 @@ def _target_path_from_root(target: Path, project_root: Path, studio_root: Option
         try:
             rel = target.relative_to(studio_root).as_posix()
             return "{cf-studio-path}/" + rel
-        except ValueError:
-            pass
+        except ValueError as exc:
+            _warn_agents(f"path {target} is not relative to studio root {studio_root}: {exc}")
     try:
         rel = target.relative_to(project_root).as_posix()
         return "{cf-studio-path}/" + rel if studio_root is None else f"@/{rel}"
@@ -1104,7 +1110,8 @@ def _load_json_file(path: Path) -> Optional[dict]:
     try:
         data = json.loads(raw)
         return data if isinstance(data, dict) else None
-    except (json.JSONDecodeError, OSError, IOError, UnicodeDecodeError):
+    except (json.JSONDecodeError, OSError, IOError, UnicodeDecodeError) as exc:
+        _warn_agents(f"failed to load JSON file {path}: {exc}")
         return None
 
 
@@ -1114,7 +1121,8 @@ def _read_existing_text_file(path: Path) -> Optional[str]:
         return None
     try:
         return path.read_text(encoding="utf-8")
-    except (OSError, IOError, UnicodeDecodeError):
+    except (OSError, IOError, UnicodeDecodeError) as exc:
+        _warn_agents(f"failed to read text file {path}: {exc}")
         return None
 
 def _write_or_skip(
@@ -2099,15 +2107,16 @@ def _list_workflow_files(
                     continue
                 try:
                     head = "\n".join(p.read_text(encoding="utf-8").splitlines()[:30])
-                except OSError:
+                except OSError as exc:
+                    _warn_agents(f"failed to inspect workflow candidate {p}: {exc}")
                     continue
                 if "type: workflow" not in head:
                     continue
                 if p.name not in seen_names:
                     seen_names.add(p.name)
                     out.append((p.name, p.resolve(), kit_slug, None))
-        except OSError:
-            pass
+        except OSError as exc:
+            _warn_agents(f"failed to scan workflow directory {d}: {exc}")
 
     # 1. Core workflows (kit_slug = None)
     _scan_dir(core_subpath(studio_root, "workflows"), None)
@@ -2159,7 +2168,8 @@ def _resolve_registered_project_relative_path(
     resolved = (project_root / Path(normalized)).resolve()
     try:
         resolved.relative_to(project_root.resolve())
-    except ValueError:
+    except ValueError as exc:
+        _warn_agents(f"registered legacy project path escapes project root: {resolved} ({exc})")
         return None
     return resolved
 # @cpt-end:cpt-studio-algo-agent-integration-discover-agents:p1:inst-resolve-kits
@@ -2184,7 +2194,8 @@ def _resolve_registered_legacy_studio_path(
     resolved = (studio_root / Path(normalized)).resolve()
     try:
         resolved.relative_to(project_root.resolve())
-    except ValueError:
+    except ValueError as exc:
+        _warn_agents(f"registered legacy studio path escapes project root: {resolved} ({exc})")
         return None
     return resolved
 # @cpt-end:cpt-studio-algo-agent-integration-discover-agents:p1:inst-resolve-register-project-root-kit
@@ -2289,7 +2300,8 @@ def _list_public_components(
                 kit_entry if isinstance(kit_entry, dict) else {},
                 kit_slug=kit_slug,
             )
-        except (OSError, ValueError):
+        except (OSError, ValueError) as exc:
+            _warn_agents(f"failed to inspect installed kit model for '{kit_slug}': {exc}")
             continue
         # @cpt-begin:cpt-studio-algo-kit-public-component-generation:p1:inst-public-legacy-workflow-alias
         if model.manifest_source not in {"canonical", "legacy_manifest", "core"}:
@@ -2471,7 +2483,8 @@ def _path_within_any_root(path: Path, roots: Tuple[Path, ...]) -> bool:
         try:
             path.relative_to(root.resolve())
             return True
-        except ValueError:
+        except ValueError as exc:
+            _warn_agents(f"path {path} is not under trusted root {root}: {exc}")
             continue
     return False
 
@@ -2847,7 +2860,8 @@ def _has_openai_codex_agent_signal(project_root: Path) -> bool:
         return False
     try:
         agent_files = list(codex_agents.iterdir())
-    except OSError:
+    except OSError as exc:
+        _warn_agents(f"failed to scan Codex agents directory {codex_agents}: {exc}")
         return False
     for agent_file in agent_files:
         if not agent_file.is_file() or agent_file.suffix.lower() not in {".md", ".toml"}:
@@ -2856,7 +2870,8 @@ def _has_openai_codex_agent_signal(project_root: Path) -> bool:
             if agent_file.stat().st_size > 1_000_000:
                 continue
             content = agent_file.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+        except (OSError, UnicodeDecodeError) as exc:
+            _warn_agents(f"failed to inspect Codex agent file {agent_file}: {exc}")
             continue
         if _extract_studio_follow_target(content):
             return True
@@ -3091,7 +3106,8 @@ def _cleanup_studio_legacy_subagents(
         for entry in _iter_matching_legacy_subagent_entries(project_root, glob_path):
             try:
                 content = entry.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
+            except (OSError, UnicodeDecodeError) as exc:
+                _warn_agents(f"failed to inspect legacy subagent file {entry}: {exc}")
                 continue
             stem = _strip_generated_output_suffix(entry.name)
             if not _is_owned_legacy_subagent(content, stem, entry.suffix, name_prefix):
@@ -3119,7 +3135,8 @@ def _iter_matching_legacy_subagent_entries(project_root: Path, glob_path: Path) 
         return []
     try:
         entries = list(parent_abs.iterdir())
-    except OSError:
+    except OSError as exc:
+        _warn_agents(f"failed to list legacy subagent directory {parent_abs}: {exc}")
         return []
     name_prefix = glob_path.name.split("*", 1)[0]
     name_suffix = glob_path.name.rsplit("*", 1)[1]
@@ -3206,7 +3223,8 @@ def _cleanup_studio_legacy_markers(
             continue
         try:
             content = abs_path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+        except (OSError, UnicodeDecodeError) as exc:
+            _warn_agents(f"failed to inspect legacy marker file {abs_path}: {exc}")
             continue
         # Accept every legacy install-marker header form: "# Studio",
         # "# Cypilot", "# Cyber Constructor" (and case-folded variants).
@@ -3241,7 +3259,8 @@ def _iter_legacy_skill_dirs(project_root: Path, pattern_path: Path) -> List[Tupl
         return []
     try:
         entries = list(parent_abs.iterdir())
-    except OSError:
+    except OSError as exc:
+        _warn_agents(f"failed to list legacy skill directory {parent_abs}: {exc}")
         return []
     name_prefix = pattern_path.name.split("*", 1)[0]
     return [
@@ -3266,14 +3285,16 @@ def _legacy_skill_file_is_owned(path: Path, directory_name: str, content: str) -
 def _legacy_skill_dir_is_pure(entry: Path) -> bool:
     try:
         files = [path for path in entry.rglob("*") if path.is_file()]
-    except OSError:
+    except OSError as exc:
+        _warn_agents(f"failed to scan legacy skill directory {entry}: {exc}")
         return False
     if not files:
         return False
     for path in files:
         try:
             content = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+        except (OSError, UnicodeDecodeError) as exc:
+            _warn_agents(f"failed to inspect legacy skill file {path}: {exc}")
             return False
         if not _legacy_skill_file_is_owned(path, entry.name, content):
             return False
@@ -3457,7 +3478,8 @@ def _resolve_workflow_follow_target(
 def _read_existing_workflow_text(path: Path, prefix: str) -> Optional[str]:
     try:
         text = path.read_text(encoding="utf-8")
-    except OSError:
+    except OSError as exc:
+        _warn_agents(f"failed to read workflow file {path}: {exc}")
         return None
     if path.name.startswith(prefix):
         return text
@@ -3575,7 +3597,8 @@ def _cleanup_stale_workflow_files(
             continue
         try:
             text = path.read_text(encoding="utf-8")
-        except OSError:
+        except OSError as exc:
+            _warn_agents(f"failed to inspect workflow alias {path}: {exc}")
             continue
         match = _FOLLOW_LINK_RE.search(text)
         if not match:
@@ -3588,10 +3611,12 @@ def _cleanup_stale_workflow_files(
             continue
         try:
             expected.relative_to(core_subpath(studio_root, "workflows"))
-        except ValueError:
+        except ValueError as exc:
+            _warn_agents(f"workflow target {expected} is not under core workflows: {exc}")
             try:
                 expected.relative_to(_resolve_config_kits(studio_root, project_root))
-            except ValueError:
+            except ValueError as nested_exc:
+                _warn_agents(f"workflow target {expected} is not under config kits: {nested_exc}")
                 continue
         if expected.exists():
             continue
@@ -3599,8 +3624,8 @@ def _cleanup_stale_workflow_files(
         if not dry_run:
             try:
                 path.unlink()
-            except (PermissionError, FileNotFoundError, OSError):
-                pass
+            except (PermissionError, FileNotFoundError, OSError) as exc:
+                _warn_agents(f"failed to delete stale workflow alias {path}: {exc}")
 
 
 def _process_workflows(
@@ -4789,7 +4814,8 @@ def _scan_owned_generated_outputs(project_root: Path) -> List[ManagedOutput]:
 def _read_generated_output_text(path: Path) -> Optional[str]:
     try:
         return path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
+    except (OSError, UnicodeDecodeError) as exc:
+        _warn_agents(f"failed to read generated output {path}: {exc}")
         return None
 
 
@@ -4911,7 +4937,8 @@ def _cleanup_claude_workflow_commands(
         rel_path = legacy_file.relative_to(project_root).as_posix()
         try:
             content = legacy_file.read_text(encoding="utf-8")
-        except OSError:
+        except OSError as exc:
+            _warn_agents(f"failed to inspect legacy workflow file {legacy_file}: {exc}")
             continue
         follow_target = _extract_studio_follow_target(content)
         if not follow_target or "workflows/" not in follow_target:
@@ -7591,16 +7618,16 @@ def _read_source_content(
             try:
                 resolved.relative_to(studio_root.resolve())
                 allowed = True
-            except ValueError:
-                pass
+            except ValueError as exc:
+                _warn_agents(f"trusted studio root {studio_root} does not contain {resolved}: {exc}")
         if not allowed and trusted_roots:
             for root in trusted_roots:
                 try:
                     resolved.relative_to(root.resolve())
                     allowed = True
                     break
-                except ValueError:
-                    pass
+                except ValueError as exc:
+                    _warn_agents(f"trusted root {root} does not contain {resolved}: {exc}")
         if not allowed:
             sys.stderr.write(
                 f"WARNING: {entity_kind} '{entity_id}' source escapes project root: {src_path}, skipping\n"
@@ -7760,7 +7787,8 @@ def _cleanup_legacy_manifest_skill_outputs(
             continue
         try:
             content = legacy_path.read_text(encoding="utf-8")
-        except OSError:
+        except OSError as exc:
+            _warn_agents(f"failed to inspect legacy skill file {legacy_path}: {exc}")
             continue
         expected_generated = generated_skill_contents.get(skill_id, "")
         matches_generated_body = bool(expected_generated) and content.rstrip("\n") == expected_generated.rstrip("\n")
@@ -7773,7 +7801,8 @@ def _cleanup_legacy_manifest_skill_outputs(
         if not dry_run:
             try:
                 legacy_path.unlink()
-            except OSError:
+            except OSError as exc:
+                _warn_agents(f"failed to delete legacy skill file {legacy_path}: {exc}")
                 continue
         result["deleted"].append(legacy_rel)
         result["outputs"].append({"path": legacy_rel, "action": "deleted"})
@@ -8626,7 +8655,8 @@ def _extract_frontmatter_description(path: Path) -> str:
     """
     try:
         text = path.read_text(encoding="utf-8")
-    except OSError:
+    except OSError as exc:
+        _warn_agents(f"failed to read frontmatter from {path}: {exc}")
         return ""
 
     lines = text.splitlines()

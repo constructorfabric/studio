@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Sequence, Set, Tuple
@@ -32,6 +33,11 @@ _OPTIONAL_MAP_DISCOVERY_ERRORS = (
 DEFAULT_SKIP_DIRS: Tuple[str, ...] = (".git",)
 
 
+def _warn_optional_discovery(context: str, exc: Exception) -> None:
+    """Report a best-effort map scan discovery failure without aborting."""
+    print(f"map: warning: {context}: {type(exc).__name__}: {exc}", file=sys.stderr)
+
+
 def _detect_adapter_dir(project_root: Path) -> Optional[str]:
     """Read CLAUDE.md (or AGENTS.md) at the project root and extract the
     adapter directory name from a `cf-path` or `studio_path`
@@ -46,7 +52,8 @@ def _detect_adapter_dir(project_root: Path) -> Optional[str]:
             continue
         try:
             text = path.read_text(encoding="utf-8", errors="ignore")
-        except OSError:  # pragma: no cover
+        except OSError as exc:  # pragma: no cover
+            _warn_optional_discovery(f"failed to read adapter marker file {path}", exc)
             continue
         m = re.search(
             r'^\s*(?:cf-path|studio_path)\s*=\s*"([^"]+)"',
@@ -172,7 +179,8 @@ def _walk_files(root: Path, extensions: Sequence[str], skip_dirs: Set[str],
             try:
                 if fp.stat().st_size > max_bytes:
                     continue
-            except OSError:  # pragma: no cover
+            except OSError as exc:  # pragma: no cover
+                _warn_optional_discovery(f"failed to stat candidate file {fp}", exc)
                 continue
             out.append(fp)
     return out
@@ -339,8 +347,8 @@ def _resolve_registry_path_for_root(root: Path) -> Optional[Path]:
         # root is a sub-directory — use flat layout only.
         flat = root / "artifacts.toml"
         return flat if flat.is_file() else None
-    except _OPTIONAL_MAP_DISCOVERY_ERRORS:  # pragma: no cover
-        pass
+    except _OPTIONAL_MAP_DISCOVERY_ERRORS as exc:  # pragma: no cover
+        _warn_optional_discovery(f"registry resolution failed for {root}", exc)
     # Final fallback: flat layout at root.
     flat = root / "artifacts.toml"
     return flat if flat.is_file() else None  # pragma: no cover
@@ -368,7 +376,8 @@ def _scan_sources(root: Path, source_name: str, skip_dirs: Set[str]) -> List[Nod
 
     try:
         meta = _load_registry(registry_path)
-    except _OPTIONAL_MAP_DISCOVERY_ERRORS:  # pragma: no cover
+    except _OPTIONAL_MAP_DISCOVERY_ERRORS as exc:  # pragma: no cover
+        _warn_optional_discovery(f"failed to load registry {registry_path}", exc)
         return []
 
     if meta is None:  # pragma: no cover
@@ -382,8 +391,8 @@ def _scan_sources(root: Path, source_name: str, skip_dirs: Set[str]) -> List[Nod
     # picking up the parent project's adapter when scanning a fixture sub-dir.
     try:
         meta.expand_autodetect(adapter_dir=_adapter_dir_for_scan_root(root), project_root=root)
-    except _OPTIONAL_MAP_DISCOVERY_ERRORS:  # pragma: no cover
-        pass
+    except _OPTIONAL_MAP_DISCOVERY_ERRORS as exc:  # pragma: no cover
+        _warn_optional_discovery(f"autodetect expansion failed for {root}", exc)
 
     nodes: List[Node] = []
     seen: Set[Path] = set()
@@ -442,7 +451,8 @@ def _walk_source_dir(cb_dir: Path, ext_set: Set[str], skip_dirs: Set[str]) -> Li
 def _source_lines(path: Path) -> List[str]:
     try:
         return path.read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:  # pragma: no cover
+    except OSError as exc:  # pragma: no cover
+        _warn_optional_discovery(f"failed to read source file {path}", exc)
         return []
 
 
@@ -549,5 +559,6 @@ def _language_from_ext(suffix: str) -> Optional[str]:
 def _count_lines(path: Path) -> int:
     try:
         return sum(1 for _ in path.open("rb"))
-    except OSError:  # pragma: no cover
+    except OSError as exc:  # pragma: no cover
+        _warn_optional_discovery(f"failed to count lines for {path}", exc)
         return 0

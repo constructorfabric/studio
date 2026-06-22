@@ -201,6 +201,11 @@ def _resolve_map_scan_meta(primary_root: Path) -> dict:
     return _build_scan_meta(primary_root, art_toml, adapter_dir)
 
 
+def _warn_optional_discovery(context: str, exc: Exception) -> None:
+    """Report a best-effort map discovery failure without aborting the command."""
+    print(f"map: warning: {context}: {type(exc).__name__}: {exc}", file=sys.stderr)
+
+
 def cmd_map(argv: List[str]) -> int:
     """Run the map command."""
     # @cpt-begin:cpt-studio-flow-map-cli:p1:inst-cmd-map
@@ -258,8 +263,8 @@ def _discover_sources(primary_root: Path, local_only: bool) -> List[dict]:
                 "reachable": reachable,
                 "role": src_entry.role,
             })
-    except _OPTIONAL_MAP_DISCOVERY_ERRORS:  # pragma: no cover
-        pass
+    except _OPTIONAL_MAP_DISCOVERY_ERRORS as exc:  # pragma: no cover
+        _warn_optional_discovery("workspace source discovery failed", exc)
     return sources
     # @cpt-end:cpt-studio-flow-map-cli:p1:inst-discover-sources
 
@@ -310,21 +315,38 @@ def _load_template_vars(primary_root: Path) -> Dict[str, str]:
         [sys.executable, "-m", "studio.cli", "--json", "resolve-vars"],
     ]
     data = None
+    errors: list[str] = []
     for cmd in candidates:
         try:
             out = subprocess.run(
                 cmd, cwd=primary_root, capture_output=True, text=True, check=False, timeout=15,
             )
-        except (OSError, subprocess.SubprocessError):
+        except (OSError, subprocess.SubprocessError) as exc:
+            errors.append(f"{' '.join(cmd)} failed to run ({type(exc).__name__}: {exc})")
             continue
-        if out.returncode or not out.stdout.strip():
+        if out.returncode:
+            stderr = out.stderr.strip()
+            detail = f"exit {out.returncode}"
+            if stderr:
+                detail = f"{detail}: {stderr}"
+            errors.append(f"{' '.join(cmd)} {detail}")
+            continue
+        if not out.stdout.strip():
+            errors.append(f"{' '.join(cmd)} returned no output")
             continue
         try:
             data = json.loads(out.stdout)
             break
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            errors.append(f"{' '.join(cmd)} returned invalid JSON ({exc})")
             continue
     if data is None:
+        if errors:
+            print(
+                "map: warning: template variable discovery failed; continuing without template vars: "
+                + "; ".join(errors),
+                file=sys.stderr,
+            )
         return {}
     return _flatten_vars(data, primary_root)
     # @cpt-end:cpt-studio-flow-map-cli:p1:inst-load-template-vars
@@ -403,7 +425,8 @@ def _resolve_artifacts_toml(primary_root: Path):
         if registry_path is None:
             return None, adapter_dir
         return registry_path, adapter_dir
-    except _OPTIONAL_MAP_DISCOVERY_ERRORS:  # pragma: no cover
+    except _OPTIONAL_MAP_DISCOVERY_ERRORS as exc:  # pragma: no cover
+        _warn_optional_discovery("artifacts registry resolution failed", exc)
         return None, primary_root
 
 
@@ -423,7 +446,8 @@ def _count_systems(adapter_dir: Optional[Path], docs_only: bool = False) -> int:
                 if getattr(s, "traceability_mode", "FULL") == "DOCS-ONLY"
             )
         return len(meta.systems)
-    except _OPTIONAL_MAP_DISCOVERY_ERRORS:  # pragma: no cover
+    except _OPTIONAL_MAP_DISCOVERY_ERRORS as exc:  # pragma: no cover
+        _warn_optional_discovery("system counting failed", exc)
         return 0
 
 

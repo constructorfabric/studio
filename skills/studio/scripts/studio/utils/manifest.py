@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import dataclasses
 import re
+import sys
 import string
 from dataclasses import dataclass, field, replace
 from enum import Enum
@@ -160,7 +161,8 @@ def load_toml_file(path: Path) -> Optional[Dict[str, Any]]:
     try:
         with open(path, "rb") as handle:
             data = tomllib.load(handle)
-    except (OSError, ValueError):
+    except (OSError, ValueError) as exc:
+        sys.stderr.write(f"Warning: failed to load TOML file {path}: {exc}\n")
         return None
     return data if isinstance(data, dict) else None
 

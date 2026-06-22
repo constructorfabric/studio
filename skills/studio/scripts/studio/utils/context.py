@@ -309,7 +309,10 @@ def _load_registered_kit_manifest(
     try:
         from ..commands.kit import _resolve_registered_kit_root_dir
         from .manifest import load_manifest
-    except (ImportError, OSError):
+    except (ImportError, OSError) as exc:
+        sys.stderr.write(
+            f"context: failed to import registered-kit manifest helpers for kit {kit_id}: {exc}\n"
+        )
         return None
 
     kit_root = _resolve_registered_kit_root_dir(adapter_dir, registered_path)
@@ -318,7 +321,8 @@ def _load_registered_kit_manifest(
 
     try:
         return load_manifest(kit_root, kit_slug=kit_id)
-    except (OSError, ValueError, KeyError):
+    except (OSError, ValueError, KeyError) as exc:
+        sys.stderr.write(f"context: failed to load registered-kit manifest for {kit_id}: {exc}\n")
         return None
 
 
@@ -916,9 +920,8 @@ def determine_target_source(
         if not sc.reachable or sc.path is None:
             continue
         # @cpt-begin:cpt-studio-algo-workspace-determine-target:p1:inst-target-if-match
-        try:
-            abs_target.relative_to(sc.path.resolve())
-        except ValueError:
+        source_root = sc.path.resolve()
+        if not abs_target.is_relative_to(source_root):
             continue
         # @cpt-end:cpt-studio-algo-workspace-determine-target:p1:inst-target-if-match
         # @cpt-begin:cpt-studio-algo-workspace-determine-target:p1:inst-target-resolve-adapter
@@ -1238,10 +1241,11 @@ def _resolve_single_artifact(
     if not ctx:
         return None, [], "Constructor Studio not initialized. Run 'cfs init' first."
 
-    try:
-        rel_path = artifact_path.relative_to(ctx.project_root).as_posix()
-    except ValueError:
-        rel_path = None
+    rel_path = (
+        artifact_path.relative_to(ctx.project_root).as_posix()
+        if artifact_path.is_relative_to(ctx.project_root)
+        else None
+    )
 
     artifacts: List[Tuple[Path, str]] = []
     if rel_path:

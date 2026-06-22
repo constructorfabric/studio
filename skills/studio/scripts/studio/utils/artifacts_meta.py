@@ -10,6 +10,7 @@ import fnmatch
 import glob
 import json
 import re
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, Iterator, List, Optional, Set, Tuple
@@ -657,10 +658,9 @@ class ArtifactsMeta:
             return (project_root / e).resolve()
 
         def _rel_to_project_root(p: Path) -> Optional[str]:
-            try:
+            if p.is_relative_to(project_root):
                 return p.relative_to(project_root).as_posix()
-            except ValueError:
-                return None
+            return None
 
         def _glob_files(root_abs: Path, pat: str) -> List[Path]:
             if not pat:
@@ -740,7 +740,8 @@ class ArtifactsMeta:
             for h in hits:
                 try:
                     h = h.resolve()
-                except OSError:
+                except OSError as exc:
+                    sys.stderr.write(f"Warning: failed to resolve autodetect path {h}: {exc}\n")
                     continue
                 if not h.exists() or not h.is_dir():
                     continue
@@ -837,10 +838,12 @@ class ArtifactsMeta:
             if bool(rule.validation.get("fail_on_unmatched_markdown", False)):
                 md_files = _iter_markdown_files(artifacts_root_abs)
                 for mf in md_files:
-                    try:
-                        rel_to_root = mf.relative_to(artifacts_root_abs).as_posix()
-                    except ValueError:
+                    if not mf.is_relative_to(artifacts_root_abs):
+                        sys.stderr.write(
+                            f"Warning: skipping markdown file outside artifacts root: {mf}\n"
+                        )
                         continue
+                    rel_to_root = mf.relative_to(artifacts_root_abs).as_posix()
                     matched = False
                     for pat in used_patterns:
                         if pat and fnmatch.fnmatch(rel_to_root, pat):
@@ -1085,7 +1088,8 @@ class ArtifactsMeta:
         def _iter_system(node: SystemNode) -> Iterator[str]:
             try:
                 prefix = node.get_hierarchy_prefix()
-            except (ValueError, AttributeError):
+            except (ValueError, AttributeError) as exc:
+                sys.stderr.write(f"Warning: failed to derive hierarchy prefix for system {node.slug}: {exc}\n")
                 prefix = ""
             if prefix:
                 yield prefix
@@ -1203,7 +1207,8 @@ def create_backup(path: Path) -> Optional[Path]:
         else:
             shutil.copy2(path, backup_path)
         return backup_path
-    except OSError:
+    except OSError as exc:
+        sys.stderr.write(f"Warning: failed to create backup for {path}: {exc}\n")
         return None
 
 def extract_system_slug_candidates(cpt_id: str, parent_prefix: str, kind_tokens: Set[str]) -> List[str]:

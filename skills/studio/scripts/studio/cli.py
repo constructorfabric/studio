@@ -341,10 +341,10 @@ def _render_top_level_help() -> int:
     for section_name, commands in _COMMAND_SECTIONS:
         ui.step(section_name)
         for command in commands:
-            sys.stderr.write(f"      {command:<22} {_COMMAND_DESCRIPTIONS.get(command, '')}\n")
+            ui.substep(f"  {command:<22} {_COMMAND_DESCRIPTIONS.get(command, '')}")
         ui.blank()
     ui.info("Global flags:")
-    sys.stderr.write(f"      {'--json':<22} Machine-readable JSON output (for AI agents)\n")
+    ui.substep(f"  {'--json':<22} Machine-readable JSON output (for AI agents)")
     ui.blank()
     ui.hint("Run 'cfs <command> --help' for command-specific options.")
     ui.hint("Legacy aliases: validate-code -> validate, validate-rules/self-check -> validate-kits")

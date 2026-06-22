@@ -9,6 +9,7 @@
 # @cpt-begin:cpt-studio-flow-spec-coverage-report:p1:inst-coverage-imports
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import List
 
@@ -20,6 +21,10 @@ from ..utils.coverage import (
 )
 from ..utils.ui import ui
 # @cpt-end:cpt-studio-flow-spec-coverage-report:p1:inst-coverage-imports
+
+
+def _warn_spec_coverage(message: str) -> None:
+    sys.stderr.write(f"spec-coverage: warning: {message}\n")
 
 
 def _build_spec_coverage_parser() -> argparse.ArgumentParser:
@@ -155,7 +160,8 @@ def _filter_ignored_files(code_files_to_scan: List[Path], project_root: Path, me
     for file_path in code_files_to_scan:
         try:
             rel = file_path.resolve().relative_to(project_root).as_posix()
-        except ValueError:
+        except ValueError as exc:
+            _warn_spec_coverage(f"code file {file_path} is outside project root {project_root}: {exc}")
             rel = None
         if rel and meta.is_ignored(rel):
             continue
@@ -311,7 +317,8 @@ def _rel_path(p: str, project_root: Path) -> str:
     """Return path relative to project_root, or original if not possible."""
     try:
         return str(Path(p).relative_to(project_root))
-    except ValueError:
+    except ValueError as exc:
+        _warn_spec_coverage(f"path {p} is outside project root {project_root}: {exc}")
         return p
 
 def _output(data: dict, args: argparse.Namespace) -> None:

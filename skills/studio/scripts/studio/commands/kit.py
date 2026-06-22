@@ -38,6 +38,10 @@ if TYPE_CHECKING:
     from ..utils.manifest import Manifest, ManifestResource
 
 
+def _warn_kit(message: str) -> None:
+    sys.stderr.write(f"kit: warning: {message}\n")
+
+
 @dataclass(frozen=True)
 class _InstallContext:
     interactive: bool = False
@@ -1235,7 +1239,8 @@ def _load_registered_metadata_resources(
             kit_slug,
             studio_dir,
         )
-    except (OSError, ValueError):
+    except (OSError, ValueError) as exc:
+        _warn_kit(f"failed to load registered metadata resources for kit '{kit_slug}': {exc}")
         return {}
     public_by_id = {
         str(getattr(component, "id", "")): component
@@ -1297,8 +1302,8 @@ def _collect_registered_kit_metadata(
         if kind == "rule":
             try:
                 agents_parts.append(binding_abs.read_text(encoding="utf-8"))
-            except OSError:
-                pass
+            except OSError as exc:
+                _warn_kit(f"failed to read metadata resource {binding_abs}: {exc}")
     result["agents_content"] = "\n\n".join(part for part in agents_parts if part)
     return result
 # @cpt-end:cpt-studio-algo-kit-content-mgmt:p1:inst-collect-metadata
@@ -1478,7 +1483,8 @@ def _path_is_within(path: Path, root: Path) -> bool:
     try:
         path.resolve().relative_to(root.resolve())
         return True
-    except ValueError:
+    except ValueError as exc:
+        _warn_kit(f"path {path} is not within {root}: {exc}")
         return False
     # @cpt-end:cpt-studio-algo-kit-local-path-install-mode:p1:inst-local-register-containment
 
@@ -1774,7 +1780,8 @@ def _append_installed_public_component_conflicts(
                 kit_entry,
                 kit_slug=existing_slug_str,
             )
-        except (OSError, ValueError):
+        except (OSError, ValueError) as exc:
+            _warn_kit(f"failed to inspect installed kit model for '{existing_slug_str}': {exc}")
             continue
         for name, existing_component_id in _kit_model_public_component_names(existing_model).items():
             incoming_component_id = incoming.get(name)
@@ -2112,7 +2119,8 @@ def _prompt_manifest_install_plan_interactive(  # pylint: disable=too-many-local
             )
         try:
             choice = int(choice_raw)
-        except ValueError:
+        except ValueError as exc:
+            _warn_kit(f"ignoring non-numeric manifest install selection {choice_raw!r}: {exc}")
             continue
         if choice < 1 or choice > len(menu):
             continue
@@ -5236,7 +5244,8 @@ def _read_conf_version(conf_path: Path) -> int:
             data = tomllib.load(f)
         ver = data.get("version")
         return int(ver) if ver is not None else 0
-    except (OSError, ValueError):
+    except (OSError, ValueError) as exc:
+        _warn_kit(f"failed to read kit version from {conf_path}: {exc}")
         return 0
     # @cpt-end:cpt-studio-algo-kit-config-helpers:p1:inst-read-conf-version
 
@@ -5495,8 +5504,8 @@ def _finalize_layout_migration(
                 shutil.rmtree(kit_backup, ignore_errors=True)
         try:
             backup_dir.rmdir()
-        except OSError:
-            pass
+        except OSError as exc:
+            _warn_kit(f"failed to remove empty backup directory {backup_dir}: {exc}")
     # @cpt-end:cpt-studio-algo-version-config-layout-restructure:p1:inst-layout-rollback
 
 
@@ -6518,7 +6527,8 @@ def _read_kits_from_core_toml(config_dir: Path) -> Dict[str, Dict[str, Any]]:
     try:
         with open(core_toml, "rb") as f:
             data = tomllib.load(f)
-    except (OSError, ValueError):
+    except (OSError, ValueError) as exc:
+        _warn_kit(f"failed to read installed kits from {core_toml}: {exc}")
         return {}
     kits = data.get("kits", {})
     if not isinstance(kits, dict):
@@ -6607,7 +6617,8 @@ def _has_canonical_kit_models(kit_source: Path) -> bool:
     try:
         from ..utils.kit_model import load_canonical_kit_models
         return bool(load_canonical_kit_models(kit_source))
-    except ValueError:
+    except ValueError as exc:
+        _warn_kit(f"failed to validate canonical kit metadata in {kit_source}: {exc}")
         return False
 
 

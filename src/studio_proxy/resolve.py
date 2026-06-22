@@ -10,6 +10,7 @@ Walks directory tree to find project-installed skill, falls back to cache.
 import os
 import json
 import re
+import sys
 import tomllib
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
@@ -20,6 +21,10 @@ MARKER_START = "<!-- @cf:root-agents -->"
 
 _TOML_FENCE_RE = re.compile(r"```toml\s*\n(.*?)```", re.DOTALL)
 
+
+def _warn(message: str) -> None:
+    sys.stderr.write(f"Warning: {message}\n")
+
 def find_project_root(start_dir: Optional[Path] = None) -> Optional[Path]:
     """Find the project root by walking up looking for AGENTS.md with @cf:root-agents marker."""
     current = (start_dir or Path.cwd()).resolve()
@@ -28,7 +33,8 @@ def find_project_root(start_dir: Optional[Path] = None) -> Optional[Path]:
         if agents_file.is_file():
             try:
                 head = agents_file.read_text(encoding="utf-8")[:512]
-            except OSError:
+            except OSError as exc:
+                _warn(f"unable to read {agents_file}: {exc}")
                 continue
             if MARKER_START in head:
                 return parent
@@ -41,7 +47,8 @@ def _parse_toml_from_markdown(text: str) -> Dict[str, Any]:
         try:
             data = tomllib.loads(m.group(1))
             merged.update(data)
-        except (tomllib.TOMLDecodeError, ValueError):
+        except (tomllib.TOMLDecodeError, ValueError) as exc:
+            _warn(f"ignoring invalid TOML block in AGENTS.md: {exc}")
             continue
     return merged
 
@@ -225,7 +232,8 @@ def _version_toml_data(start_dir: Optional[Path] = None) -> Optional[Dict[str, A
         return None
     try:
         return tomllib.loads(version_toml.read_text(encoding="utf-8"))
-    except (OSError, tomllib.TOMLDecodeError, ValueError):
+    except (OSError, tomllib.TOMLDecodeError, ValueError) as exc:
+        _warn(f"unable to read pinned version metadata from {version_toml}: {exc}")
         return None
 
 
@@ -269,7 +277,8 @@ def _read_provenance_file(provenance_file: Path) -> Optional[Dict[str, Any]]:
         return None
     try:
         data = json.loads(provenance_file.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError) as exc:
+        _warn(f"unable to read cache provenance from {provenance_file}: {exc}")
         return None
     return data if isinstance(data, dict) else None
 
@@ -285,7 +294,7 @@ def get_project_version(skill_path: Path) -> Optional[str]:
                     if line.startswith("__version__"):
                         # Extract version string
                         return line.split("=", 1)[1].strip().strip("\"'")
-            except (OSError, ValueError):
-                pass
+            except (OSError, ValueError) as exc:
+                _warn(f"unable to read project version from {init_file}: {exc}")
     return None
 # @cpt-end:cpt-studio-algo-core-infra-resolve-skill:p1:inst-resolve-helpers

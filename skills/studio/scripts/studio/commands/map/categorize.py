@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import fnmatch
 import re
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Sequence
@@ -159,7 +160,12 @@ def _build_registry_index(project_root: Path) -> List[_RegistryEntry]:
         meta = _load_registry_meta(project_root)
         if meta is None:
             return []
-    except Exception:  # pylint: disable=broad-exception-caught  # registry is optional; categorize must not raise
+    except Exception as exc:  # pylint: disable=broad-exception-caught  # registry is optional; categorize must not raise
+        print(
+            f"map: warning: registry category discovery failed for {project_root}: "
+            f"{type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
         return []
 
     entries: List[_RegistryEntry] = []

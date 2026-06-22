@@ -10,6 +10,7 @@ pass the same heading contract and constraint checks used for user artifacts.
 """
 
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -23,6 +24,10 @@ from ..utils.constraints import (
 )
 from ..utils import error_codes as EC
 from ..utils.document import read_text_safe
+
+
+def _warn_self_check(message: str) -> None:
+    sys.stderr.write(f"self-check: warning: {message}\n")
 
 
 @dataclass
@@ -558,7 +563,8 @@ def _resolve_constraints_path(
         return constraints_path
     try:
         return (kit_base / "constraints.toml").resolve()
-    except OSError:
+    except OSError as exc:
+        _warn_self_check(f"failed to resolve constraints path under {kit_base}: {exc}")
         return None
 
 
@@ -592,7 +598,8 @@ def _load_kit_constraints(
     constraints, errors = load_constraints_toml(kit_base)
     try:
         constraints_path = (kit_base / "constraints.toml").resolve()
-    except OSError:
+    except OSError as exc:
+        _warn_self_check(f"failed to resolve constraints path under {kit_base}: {exc}")
         constraints_path = None
     return _KitConstraintsLoad(constraints=constraints, errors=list(errors), path=constraints_path)
 
@@ -796,7 +803,8 @@ def _collect_example_paths(examples_dir: Optional[Path]) -> List[Path]:
         if examples_dir.is_file():
             return [examples_dir]
         return sorted([p for p in Path(examples_dir).glob("*.md") if p.is_file()])
-    except OSError:
+    except OSError as exc:
+        _warn_self_check(f"failed to enumerate examples in {examples_dir}: {exc}")
         return []
 # @cpt-end:cpt-studio-algo-developer-experience-self-check:p1:inst-locate-files
 

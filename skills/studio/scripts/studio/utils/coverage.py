@@ -14,6 +14,7 @@ Measures two metrics:
 # @cpt-begin:cpt-studio-algo-spec-coverage-scan:p1:inst-scan-datamodel
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -245,7 +246,8 @@ def scan_file_coverage(path: Path) -> Optional[FileCoverage]:
     """
     try:
         text = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
+    except (OSError, UnicodeDecodeError) as exc:
+        sys.stderr.write(f"Warning: failed to scan coverage for {path}: {exc}\n")
         return None
 
     lines = text.splitlines()
@@ -374,10 +376,9 @@ def generate_report(report: CoverageReport, *, verbose: bool = False, project_ro
     """Generate JSON report matching coverage.py structure."""
     def _rel(p: str) -> str:
         if project_root is not None:
-            try:
-                return str(Path(p).relative_to(project_root))
-            except ValueError:
-                pass
+            candidate = Path(p)
+            if candidate.is_relative_to(project_root):
+                return str(candidate.relative_to(project_root))
         return p
     # @cpt-end:cpt-studio-algo-spec-coverage-report:p1:inst-report-datamodel
 

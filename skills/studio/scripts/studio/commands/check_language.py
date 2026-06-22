@@ -4,6 +4,7 @@
 """
 # @cpt-begin:cpt-studio-flow-traceability-validation-check-language:p1:inst-check-lang-imports
 import argparse
+import sys
 from pathlib import Path
 from typing import List
 
@@ -211,8 +212,11 @@ def _default_roots() -> List[Path]:
         ctx = get_context()
         if ctx is not None:
             return [ctx.project_root / "architecture"]
-    except (ImportError, AttributeError, RuntimeError):
-        pass
+    except (ImportError, AttributeError, RuntimeError) as exc:
+        sys.stderr.write(
+            "check-language: warning: project context discovery failed; "
+            f"falling back to {Path.cwd() / 'architecture'}: {type(exc).__name__}: {exc}\n"
+        )
     return [Path.cwd() / "architecture"]
 
 

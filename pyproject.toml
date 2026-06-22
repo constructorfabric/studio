@@ -30,6 +30,8 @@ persistent = false
 py-version = "3.11"
 init-hook = "import sys; sys.path[:0] = ['src', 'skills/studio/scripts']"
 load-plugins = [
+    "studio.pylint_plugins.error_surfaces",
+    "studio.pylint_plugins.output_channels",
     "studio.pylint_plugins.silent_exceptions",
 ]
 ignore-paths = [
@@ -160,6 +162,9 @@ enable = [
     "W0718",
     "W0719",
     "W9001",
+    "W9002",
+    "W9003",
+    "W9004",
     "W1113",
     "W1114",
     "W1115",

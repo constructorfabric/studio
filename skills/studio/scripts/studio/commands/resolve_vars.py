@@ -14,6 +14,7 @@ to absolute file paths.  Output is a flat dict suitable for
 
 import argparse
 import re
+import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -117,6 +118,13 @@ def _load_core_data_with_error(adapter_dir: Path) -> Tuple[Optional[dict], Optio
         except (tomllib.TOMLDecodeError, OSError) as exc:
             return None, f"{type(exc).__name__}: {exc}", str(core_path)
     return None, None, None
+
+
+def _warn_optional_resolution(context: str, exc: Exception) -> None:
+    """Report a best-effort resolve-vars fallback without aborting the command."""
+    sys.stderr.write(
+        f"WARNING: {context}: {type(exc).__name__}: {exc}\n"
+    )
 
 
 def _project_context_result(start_path: Path) -> Tuple[Optional[Path], Optional[Path], Optional[dict]]:
@@ -309,7 +317,11 @@ def _resolve_kit_variables_from_model(
     try:
         from ..utils.kit_model import load_installed_kit_model
         model = load_installed_kit_model(kit_root, core_kit, kit_slug=kit_slug)
-    except (OSError, ValueError, KeyError):
+    except (OSError, ValueError, KeyError) as exc:
+        _warn_optional_resolution(
+            f"failed to load kit model variables for kit '{kit_slug or '<unknown>'}' at {kit_root}",
+            exc,
+        )
         return {}
 
     result: Dict[str, str] = {}
@@ -340,7 +352,11 @@ def _resolve_kit_aliases_from_model(
     try:
         from ..utils.kit_model import load_installed_kit_model
         model = load_installed_kit_model(kit_root, core_kit, kit_slug=kit_slug)
-    except (OSError, ValueError, KeyError):
+    except (OSError, ValueError, KeyError) as exc:
+        _warn_optional_resolution(
+            f"failed to load kit model aliases for kit '{kit_slug or '<unknown>'}' at {kit_root}",
+            exc,
+        )
         return {}
 
     aliases: Dict[str, str] = {}

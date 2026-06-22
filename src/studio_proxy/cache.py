@@ -40,6 +40,10 @@ class _WhatsnewGenerationError(RuntimeError):
     """Internal sentinel for optional GitHub whatsnew generation failures."""
 
 
+def _warn(message: str) -> None:
+    sys.stderr.write(f"Warning: {message}\n")
+
+
 def _patch_cached_version(cache_dir: Path, version: str) -> None:
     """Patch __version__ in cached skill's __init__.py with the resolved version."""
     # Primary path for the renamed skill dir (Bucket B layout)
@@ -60,8 +64,8 @@ def _patch_cached_version(cache_dir: Path, version: str) -> None:
                 break
         if patched:
             init_file.write_text("".join(lines), encoding="utf-8")
-    except OSError:
-        pass  # Non-critical, version file is the source of truth
+    except OSError as exc:
+        _warn(f"unable to patch cached version in {init_file}: {exc}")
 
 
 def _get_github_headers() -> dict:
@@ -420,8 +424,8 @@ def _report_github_http_error(exc: HTTPError) -> Tuple[Optional[str], Optional[s
     body = ""
     try:
         body = exc.read().decode("utf-8", errors="replace")
-    except OSError:
-        pass
+    except OSError as read_exc:
+        _warn(f"unable to read GitHub error body: {read_exc}")
     sys.stderr.write(f"GitHub API error: HTTP {exc.code} - {exc.reason}\n")
     if body:
         try:
@@ -518,8 +522,8 @@ def copy_from_local(
                     if "__version__" in line and "=" in line:
                         local_version = line.split("=", 1)[1].strip().strip('"').strip("'")
                         break
-            except OSError:
-                pass
+            except OSError as exc:
+                _warn(f"unable to read local version from {init_candidate}: {exc}")
             break
 
     if not force and version_file.is_file():
@@ -727,7 +731,8 @@ def _extract_tar_archive(archive_data: bytes, cache_dir: Path) -> bool:
             prefix = _find_common_prefix(members)
             _extract_stripped(tf, members, prefix, cache_dir)
         return True
-    except (tarfile.TarError, OSError):
+    except (tarfile.TarError, OSError) as exc:
+        _warn(f"unable to extract tar archive into {cache_dir}: {exc}")
         return False
 
 
@@ -739,7 +744,8 @@ def _extract_zip_archive(archive_data: bytes, cache_dir: Path) -> bool:
             prefix = _find_zip_prefix(members)
             _extract_zip_stripped(zf, members, prefix, cache_dir)
         return True
-    except (zipfile.BadZipFile, OSError):
+    except (zipfile.BadZipFile, OSError) as exc:
+        _warn(f"unable to extract zip archive into {cache_dir}: {exc}")
         return False
 
 

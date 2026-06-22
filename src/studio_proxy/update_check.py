@@ -21,6 +21,10 @@ _ALLOWED_SKILL_ENTRYPOINTS = {"studio.py", "cypilot.py"}
 # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
 
 
+def _warn(message: str) -> None:
+    sys.stderr.write(f"Warning: {message}\n")
+
+
 # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-bg-version-check
 def update_check_file() -> Path:
     """Return the cache file path for update checks."""
@@ -35,7 +39,8 @@ def read_cached_update_check() -> Optional[Dict[str, Any]]:
     path = update_check_file()
     try:
         return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, json.JSONDecodeError):
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        _warn(f"unable to read cached update check from {path}: {exc}")
         return None
 
 
@@ -192,8 +197,9 @@ def check_kits(skill_path: Optional[Path], project_root: str = "") -> Dict[str, 
         return result
     try:
         payload = json.loads(proc.stdout or "{}")
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
         result["message"] = (proc.stderr or proc.stdout or "kit check failed").strip()
+        result["error"] = str(exc)
         return result
     result.update({
         "action": "update_available" if int(payload.get("updates_available", 0) or 0) else "current",

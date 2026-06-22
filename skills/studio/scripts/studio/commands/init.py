@@ -52,6 +52,11 @@ _CONFIG_README_PREAMBLE = (
     "\n"
 )
 
+
+def _warn_init(message: str) -> None:
+    sys.stderr.write(f"init: warning: {message}\n")
+
+
 def _cache_allows_root_metadata(cache_dir: Path) -> bool:
     """Return False for local/path cache sources where version metadata is not authoritative."""
     provenance_path = cache_dir / ".provenance.json"
@@ -59,7 +64,8 @@ def _cache_allows_root_metadata(cache_dir: Path) -> bool:
         return True
     try:
         data = json.loads(provenance_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError) as exc:
+        _warn_init(f"failed to read cache provenance from {provenance_path}: {exc}")
         return True
     source_type = str(data.get("source_type") or "").strip().lower()
     return source_type not in {"local", "local_path", "path"}
@@ -1363,7 +1369,8 @@ def _read_existing_install(project_root: Path) -> Optional[str]:
                 adapter_dir = project_root / val.strip()
                 if adapter_dir.is_dir():
                     return val.strip()
-        except (OSError, ValueError, KeyError):
+        except (OSError, ValueError, KeyError) as exc:
+            _warn_init(f"failed to inspect existing AGENTS.md TOML block: {exc}")
             continue
     return None
 # @cpt-end:cpt-studio-flow-core-infra-project-init:p1:inst-init-detect-existing

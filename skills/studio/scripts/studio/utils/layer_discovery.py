@@ -57,7 +57,8 @@ def _load_manifest_layer(scope: str, manifest_path: Path) -> ManifestLayer:
             manifest=manifest,
             state=ManifestLayerState.LOADED,
         )
-    except (ValueError, OSError):
+    except (ValueError, OSError) as exc:
+        logger.warning("Failed to parse manifest layer %s: %s", manifest_path, exc)
         return ManifestLayer(
             scope=scope,
             path=manifest_path,
@@ -163,7 +164,8 @@ def _load_kit_layers(studio_root: Path, project_root: Optional[Path] = None) -> 
     try:
         with open(core_toml, "rb") as f:
             data = tomllib.load(f)
-    except (tomllib.TOMLDecodeError, OSError):
+    except (tomllib.TOMLDecodeError, OSError) as exc:
+        logger.warning("Failed to read core manifest layer config %s: %s", core_toml, exc)
         return []
 
     kits_section = data.get("kits")

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -405,7 +406,12 @@ def _category_input(cat_id: str, cat_nodes: list[Node], verbose: bool) -> dict[s
             pack_algos=_RECTPACK_ALGOS,
             limit=16,
         )
-    except RuntimeError:
+    except RuntimeError as exc:
+        print(
+            f"map: warning: rectpack candidate generation failed for category {cat_id}: {exc}; "
+            "falling back to single-bucket layout",
+            file=sys.stderr,
+        )
         bucket_width = width + 2 * CAT_PAD_SIDE
         bucket_height = CATEGORY_HEADER_H + CAT_PAD_TOP + height + CAT_PAD_BOTTOM
         candidates = [

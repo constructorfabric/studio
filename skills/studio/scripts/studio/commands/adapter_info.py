@@ -10,6 +10,7 @@ Shows project root, studio directory, rules, systems, and registry status.
 import argparse
 import json
 import os
+import sys
 from pathlib import Path, PureWindowsPath
 from typing import Optional
 
@@ -23,6 +24,10 @@ from ..utils.git_utils import _redact_url
 from ..utils.manifest import resolve_resource_bindings_with_errors
 from ..utils.ui import ui
 from .resolve_vars import _load_core_data_with_error
+
+
+def _warn_adapter_info(message: str) -> None:
+    sys.stderr.write(f"info: warning: {message}\n")
 
 
 def _parse_adapter_info_args(argv: list[str]) -> tuple[Path, Optional[Path]]:
@@ -69,7 +74,8 @@ def _load_json_file(path: Path) -> Optional[dict]:
         raw = path.read_text(encoding="utf-8")
         data = json.loads(raw)
         return data if isinstance(data, dict) else None
-    except (json.JSONDecodeError, OSError, IOError):
+    except (json.JSONDecodeError, OSError, IOError) as exc:
+        _warn_adapter_info(f"failed to load JSON file {path}: {exc}")
         return None
     # @cpt-end:cpt-studio-algo-core-infra-display-info:p1:inst-info-load-json
 
@@ -148,7 +154,8 @@ def _read_kit_conf(conf_path: Path) -> dict:
             if k in data:
                 out[k] = data[k]
         return out
-    except (OSError, ValueError):
+    except (OSError, ValueError) as exc:
+        _warn_adapter_info(f"failed to read kit metadata from {conf_path}: {exc}")
         return {}
     # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-read-kit-conf
 
@@ -230,7 +237,8 @@ def _is_relative_to(path: Path, parent: Path) -> bool:
     try:
         path.resolve().relative_to(parent.resolve())
         return True
-    except ValueError:
+    except ValueError as exc:
+        _warn_adapter_info(f"path {path} is not relative to {parent}: {exc}")
         return False
     # @cpt-end:cpt-studio-algo-kit-info-model-output:p1:inst-info-is-relative-to
 
@@ -239,7 +247,8 @@ def _frontmatter_type(path: Path) -> str:
     # @cpt-begin:cpt-studio-algo-kit-info-model-output:p1:inst-info-frontmatter-type
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
-    except (OSError, UnicodeDecodeError):
+    except (OSError, UnicodeDecodeError) as exc:
+        _warn_adapter_info(f"failed to read frontmatter from {path}: {exc}")
         return ""
     if not lines or lines[0].strip() != "---":
         return ""
@@ -556,7 +565,8 @@ def _load_registry_data(registry_path: Path) -> Optional[dict]:
     try:
         with open(registry_path, "rb") as handle:
             loaded = tomllib.load(handle)
-    except (OSError, ValueError):
+    except (OSError, ValueError) as exc:
+        _warn_adapter_info(f"failed to read registry data from {registry_path}: {exc}")
         return None
     return loaded if isinstance(loaded, dict) else None
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import re
+import sys
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -178,7 +179,8 @@ def _compile_heading_patterns(
             continue
         try:
             compiled.append((hc, re.compile(pat_s, flags=re.IGNORECASE)))
-        except re.error:
+        except re.error as exc:
+            sys.stderr.write(f"Warning: invalid heading regex {pat_s!r}: {exc}\n")
             compiled.append((hc, re.compile(r"$^")))
     return compiled
 
@@ -3104,7 +3106,10 @@ def _scan_headings(path: Path) -> List[Dict[str, object]]:
             if number_prefix:
                 try:
                     number_parts = [int(x) for x in number_prefix.split(".") if x.strip()]
-                except ValueError:
+                except ValueError as exc:
+                    sys.stderr.write(
+                        f"Warning: invalid heading number prefix {number_prefix!r} in {artifact_path}: {exc}\n"
+                    )
                     number_parts = None
             title_text = str(mp.group("title") or "").strip()
         out.append({
@@ -3281,7 +3286,8 @@ def _match_heading_constraint(
         return pattern_s.casefold() == title.casefold()
     try:
         return re.search(pattern_s, title, flags=re.IGNORECASE) is not None
-    except re.error:
+    except re.error as exc:
+        sys.stderr.write(f"Warning: invalid heading match regex {pattern_s!r}: {exc}\n")
         return False
 
 

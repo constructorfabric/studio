@@ -187,7 +187,8 @@ def _compute_local_path(
     # @cpt-end:cpt-studio-algo-workspace-resolve-git-url:p1:inst-git-if-no-rule
     try:
         templated = _apply_template(template, org, repo)
-    except ValueError:
+    except ValueError as exc:
+        print(f"Warning: unsafe git workspace template for {_redact_url(source.url or '')}: {exc}", file=sys.stderr)
         return None
 
     workdir = getattr(resolve_config, "workdir", ".workspace-sources")
@@ -195,9 +196,11 @@ def _compute_local_path(
 
     # Defence-in-depth: ensure resolved path is inside the workspace
     expected_base = (workspace_parent / workdir).resolve()
-    try:
-        local_path.relative_to(expected_base)
-    except ValueError:
+    if not local_path.is_relative_to(expected_base):
+        print(
+            f"Warning: computed git local path escapes workspace: {local_path} not under {expected_base}",
+            file=sys.stderr,
+        )
         return None
 
     return local_path

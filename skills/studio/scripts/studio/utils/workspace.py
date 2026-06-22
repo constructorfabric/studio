@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import re
+import sys
 
 from ..constants import WORKSPACE_CONFIG_FILENAME
 from . import toml_utils
@@ -410,8 +411,11 @@ class WorkspaceConfig:
                         f"{', '.join(sorted(unknown))} "
                         f"(supported: {', '.join(sorted(_SUPPORTED))})"
                     )
-            except ImportError:
-                pass
+            except ImportError as exc:
+                sys.stderr.write(
+                    "Warning: content-language validation skipped because the language catalog "
+                    f"could not be imported: {exc}\n"
+                )
         return errors
 
     def add_source(

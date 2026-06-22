@@ -20,6 +20,7 @@ Read locations (merged; brand-home wins on duplicate ``from``):
 """
 
 import os
+import sys
 from pathlib import Path
 from typing import List, Tuple
 
@@ -59,7 +60,8 @@ def _load_file(path: Path) -> List[Tuple[str, str]]:
         return []
     try:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
-    except (OSError, tomllib.TOMLDecodeError):
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        print(f"Warning: failed to read mirrors config {path}: {exc}", file=sys.stderr)
         return []
     return _mirror_items(data)
 # @cpt-end:cpt-studio-algo-core-infra-mirror-override:p1:inst-mirror-load-file

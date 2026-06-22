@@ -31,6 +31,10 @@ DIRECT_PROMPT_FILE = "direct-prompt.md"
 PACKAGE_MANIFEST_FILE = "manifest.json"
 
 
+def _warn_chunk_input(message: str) -> None:
+    sys.stderr.write(f"chunk-input: warning: {message}\n")
+
+
 # @cpt-begin:cpt-studio-flow-execution-plans-chunk-raw-input:p1:inst-parse-args
 class _ChunkInputArgumentParser(argparse.ArgumentParser):
     def error(self, message: str) -> None:
@@ -270,7 +274,10 @@ def _swap_chunk_output(output_dir: Path, staging_dir: Path) -> Tuple[Path | None
         output_dir.replace(backup_dir)
         try:
             _preserve_non_generated(backup_dir, staging_dir)
-        except OSError:
+        except OSError as exc:
+            _warn_chunk_input(
+                f"failed to preserve non-generated files from {backup_dir} into {staging_dir}: {exc}"
+            )
             preserve_ok = False
     staging_dir.replace(output_dir)
     return backup_dir, preserve_ok
@@ -287,8 +294,10 @@ def _cleanup_chunk_swap(backup_dir: Path | None, output_dir: Path, preserve_ok: 
         try:
             _preserve_non_generated(backup_dir, output_dir)
             shutil.rmtree(backup_dir, ignore_errors=True)
-        except OSError:
-            pass
+        except OSError as exc:
+            _warn_chunk_input(
+                f"failed to restore preserved files from {backup_dir} into {output_dir}: {exc}"
+            )
 
 
 def _parse_chunk_args(argv: List[str]):

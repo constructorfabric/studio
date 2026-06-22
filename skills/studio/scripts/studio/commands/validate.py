@@ -3,6 +3,7 @@
 # @cpt-begin:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-imports
 import argparse
 import json
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
@@ -19,6 +20,10 @@ from ..utils.document import scan_cdsl_instructions, scan_cpt_ids
 from ..utils.fixing import enrich_issues
 from ..utils.ui import ui
 # @cpt-end:cpt-studio-flow-traceability-validation-validate:p1:inst-validate-imports
+
+
+def _warn_validate(message: str) -> None:
+    sys.stderr.write(f"validate: warning: {message}\n")
 
 
 @dataclass
@@ -182,7 +187,8 @@ def _collect_full_artifact_instances(
             continue
         try:
             steps = scan_cdsl_instructions(art.path)
-        except (OSError, ValueError):
+        except (OSError, ValueError) as exc:
+            _warn_validate(f"failed to scan CDSL instructions in {art.path}: {exc}")
             continue
         for step in steps:
             pid = str(step.get("parent_id") or "")
@@ -518,7 +524,8 @@ def _validate_one_artifact(
             hits = scan_cpt_ids(artifact_path)
             artifact_report["id_definitions"] = len([hit for hit in hits if hit.get("type") == "definition"])
             artifact_report["id_references"] = len([hit for hit in hits if hit.get("type") == "reference"])
-        except (OSError, ValueError):
+        except (OSError, ValueError) as exc:
+            _warn_validate(f"failed to scan traceability ids in {artifact_path}: {exc}")
             artifact_report["id_definitions"] = 0
             artifact_report["id_references"] = 0
     results.artifact_reports.append(artifact_report)
@@ -796,7 +803,8 @@ def _collect_full_traceability_ids(
             for hit in scan_cpt_ids(artifact_path):
                 if hit.get("type") == "definition" and hit.get("id"):
                     full_ids_to_check.add(str(hit["id"]))
-        except (OSError, ValueError):
+        except (OSError, ValueError) as exc:
+            _warn_validate(f"failed to collect definition ids from {artifact_path}: {exc}")
             continue
     return full_ids_to_check
 
@@ -841,7 +849,8 @@ def _build_reference_index(
                 ref_id = str(hit.get("id") or "").strip()
                 if ref_id:
                     refs_by_id.setdefault(ref_id, set()).add(kind)
-        except (OSError, ValueError):
+        except (OSError, ValueError) as exc:
+            _warn_validate(f"failed to index references in {artifact.path}: {exc}")
             continue
     return present_kinds, refs_by_id
 
@@ -866,7 +875,8 @@ def _apply_reference_coverage_for_artifact(
     art_traceability = traceability_by_path.get(artifact_path_str, "FULL")
     try:
         definitions = [hit for hit in scan_cpt_ids(artifact.path) if hit.get("type") == "definition" and hit.get("id")]
-    except (OSError, ValueError):
+    except (OSError, ValueError) as exc:
+        _warn_validate(f"failed to read definition ids from {artifact.path}: {exc}")
         definitions = []
     for definition in definitions:
         _apply_reference_coverage_for_definition(
@@ -1027,7 +1037,8 @@ def _enrich_target_artifact_paths(
         src_path = str(issue.get("path") or "")
         try:
             rel_src = Path(src_path).relative_to(project_root).as_posix()
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as exc:
+            _warn_validate(f"skipping issue with non-project path {src_path!r}: {exc}")
             continue
 
         result = meta.get_artifact_by_path(rel_src)
@@ -1195,7 +1206,8 @@ def _run_content_language_check(
     """
     try:
         from ..utils.content_language import build_allowed_ranges
-    except ImportError:
+    except ImportError as exc:
+        _warn_validate(f"content-language validation is unavailable: {exc}")
         return []
 
     allowed_langs, config_errors = _load_language_validation_settings(project_root)

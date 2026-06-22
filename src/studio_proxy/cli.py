@@ -576,8 +576,8 @@ def _background_version_check(project_skill_path: Path, args: Optional[List[str]
             _spawn_update_check_worker(project_skill_path, args)
         # @cpt-end:cpt-studio-state-core-infra-project-install:p1:inst-version-mismatch
         # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-if-version-mismatch
-    except (OSError, ValueError):
-        pass  # Never fail the actual command for a version check
+    except (OSError, ValueError) as exc:
+        sys.stderr.write(f"Warning: background update check unavailable: {exc}\n")
 
 
 def _print_cached_update_notices(cached: Optional[Dict[str, Any]]) -> None:
@@ -635,8 +635,8 @@ def _spawn_update_check_worker(project_skill_path: Path, args: List[str]) -> Non
                 stderr=devnull,
                 close_fds=True,
             )
-    except OSError:
-        pass
+    except OSError as exc:
+        sys.stderr.write(f"Warning: unable to start update-check worker: {exc}\n")
 
 
 def _normalize_version_for_compare(version: str) -> str:

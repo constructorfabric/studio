@@ -11,6 +11,7 @@ File I/O, project root discovery, studio detection, path resolution.
 # @cpt-begin:cpt-studio-algo-core-infra-project-root-detection:p1:inst-root-datamodel
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -74,7 +75,8 @@ def find_project_root(start: Path) -> Optional[Path]:
         if agents.is_file():
             try:
                 head = agents.read_text(encoding="utf-8")[:512]
-            except (OSError, UnicodeDecodeError):
+            except (OSError, UnicodeDecodeError) as exc:
+                sys.stderr.write(f"Warning: failed to read {agents}: {exc}\n")
                 head = ""
             if _MARKER_START in head:
                 return current
@@ -122,7 +124,8 @@ def load_project_config(project_root: Path) -> Optional[dict]:
         return None
     try:
         return toml_utils.load(core_toml)
-    except (OSError, ValueError, KeyError):
+    except (OSError, ValueError, KeyError) as exc:
+        sys.stderr.write(f"Warning: failed to load project config {core_toml}: {exc}\n")
         return None
 # @cpt-end:cpt-studio-algo-core-infra-config-management:p1:inst-cfg-load-core
 
@@ -202,8 +205,8 @@ def find_studio_directory(start: Path, studio_root: Optional[Path] = None) -> Op
             for marker in adapter_markers:
                 if marker.lower() in content_lower and _has_adapter_markers(path, content_lower):
                     return True
-        except (OSError, UnicodeDecodeError):
-            pass  # Expected: search continues if file read fails
+        except (OSError, UnicodeDecodeError) as exc:
+            sys.stderr.write(f"Warning: failed to inspect adapter candidate {agents_file}: {exc}\n")
 
         # Fallback: verify it has rules/ or specs/ directory (strong structural indicator)
         return _has_adapter_structure(path)
@@ -215,7 +218,8 @@ def find_studio_directory(start: Path, studio_root: Optional[Path] = None) -> Op
 
         try:
             entries = list(root.iterdir())
-        except (PermissionError, OSError):
+        except (PermissionError, OSError) as exc:
+            sys.stderr.write(f"Warning: failed to scan directory {root}: {exc}\n")
             return None
 
         # First pass: check current level directories
@@ -292,8 +296,8 @@ def load_studio_config(adapter_dir: Path) -> Dict[str, object]:
                 if line.startswith("# Constructor Studio Adapter:"):
                     config["project_name"] = line.replace("# Constructor Studio Adapter:", "").strip()
                     break
-        except (OSError, UnicodeDecodeError):
-            pass  # Expected: project_name is optional metadata
+        except (OSError, UnicodeDecodeError) as exc:
+            sys.stderr.write(f"Warning: failed to read optional adapter metadata from {agents_file}: {exc}\n")
 
     # List available rules (config/ layout, fallback to flat)
     rules_dir = adapter_dir / "config" / "rules"

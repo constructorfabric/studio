@@ -3,6 +3,7 @@
 # @cpt-begin:cpt-studio-flow-traceability-validation-query:p1:inst-query-imports
 import argparse
 import re
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -10,6 +11,10 @@ from ..utils.codebase import CodeFile
 from ..utils.document import scan_cpt_ids
 from ..utils.ui import ui
 # @cpt-end:cpt-studio-flow-traceability-validation-query:p1:inst-query-imports
+
+
+def _warn_list_ids(message: str) -> None:
+    sys.stderr.write(f"list-ids: warning: {message}\n")
 
 
 ArtifactScanList = List[Tuple[Path, str]]
@@ -56,7 +61,8 @@ def _scan_code_references(ctx) -> Tuple[List[Dict[str, object]], int]:
         for file_path in _code_paths_for_entry(code_path, cb_entry.extensions or [".py"]):
             try:
                 rel = file_path.resolve().relative_to(ctx.project_root).as_posix()
-            except (OSError, ValueError):
+            except (OSError, ValueError) as exc:
+                _warn_list_ids(f"failed to resolve {file_path} relative to {ctx.project_root}: {exc}")
                 rel = None
             if rel and ctx.meta.is_ignored(rel):
                 continue

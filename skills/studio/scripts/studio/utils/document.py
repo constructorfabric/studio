@@ -5,8 +5,9 @@ Functions for working with documents and file paths.
 """
 
 # @cpt-begin:cpt-studio-algo-traceability-validation-scan-ids:p1:inst-scan-ids-datamodel
-from pathlib import Path
 import re
+import sys
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 _CPT_ID_RE = re.compile(r"(cpt-[a-z0-9][a-z0-9-]+)")
@@ -523,10 +524,9 @@ def _iter_visible_dirs(dirnames, skip_dirs):
 
 def _relative_posix_or_none(path: Path, root: Path) -> Optional[str]:
     """Return root-relative POSIX path or None when outside the root."""
-    try:
+    if path.is_relative_to(root):
         return path.relative_to(root).as_posix()
-    except ValueError:
-        return None
+    return None
 
 
 def _should_skip_text_file(
@@ -544,7 +544,8 @@ def _should_skip_text_file(
         return True
     try:
         return path.stat().st_size > max_bytes
-    except OSError:
+    except OSError as exc:
+        sys.stderr.write(f"Warning: failed to stat {path}: {exc}\n")
         return True
 
 def read_text_safe(path: Path) -> Optional[List[str]]:
@@ -561,7 +562,8 @@ def read_text_safe(path: Path) -> Optional[List[str]]:
 
     try:
         raw = path.read_bytes()
-    except OSError:
+    except OSError as exc:
+        sys.stderr.write(f"Warning: failed to read text file {path}: {exc}\n")
         return None
 
     if b"\x00" in raw:
@@ -569,7 +571,8 @@ def read_text_safe(path: Path) -> Optional[List[str]]:
 
     try:
         text = raw.decode("utf-8")
-    except UnicodeDecodeError:
+    except UnicodeDecodeError as exc:
+        sys.stderr.write(f"Warning: non-UTF-8 bytes ignored while reading {path}: {exc}\n")
         text = raw.decode("utf-8", errors="ignore")
 
     if os.linesep != "\n":
@@ -588,11 +591,11 @@ def to_relative_posix(path: Path, root: Path) -> str:
     Returns:
         Relative POSIX path string
     """
-    try:
-        rel = path.resolve().relative_to(root.resolve())
-    except ValueError:
+    resolved_path = path.resolve()
+    resolved_root = root.resolve()
+    if not resolved_path.is_relative_to(resolved_root):
         return path.as_posix()
-    return rel.as_posix()
+    return resolved_path.relative_to(resolved_root).as_posix()
 
 __all__ = [
     "iter_text_files",

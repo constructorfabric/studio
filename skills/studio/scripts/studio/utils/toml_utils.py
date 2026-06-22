@@ -68,7 +68,8 @@ def parse_toml_from_markdown(text: str) -> TomlData:
         try:
             data = tomllib.loads(m.group(1))
             _deep_merge(merged, data)
-        except tomllib.TOMLDecodeError:
+        except tomllib.TOMLDecodeError as exc:
+            print(f"WARNING: invalid TOML fenced block ignored: {exc}", file=sys.stderr)
             continue
     return merged
 # @cpt-end:cpt-studio-algo-core-infra-toml-utils:p1:inst-toml-from-markdown
@@ -244,7 +245,8 @@ def _with_core_toml_lock(core_toml_path: Path) -> Generator[None, None, None]:
     """
     try:
         import fcntl  # type: ignore[import]
-    except ImportError:  # pragma: no cover
+    except ImportError as exc:  # pragma: no cover
+        print(f"WARNING: fcntl unavailable for TOML locking; falling back to sentinel lock files: {exc}", file=sys.stderr)
         fcntl = None
 
     if fcntl is not None:
@@ -269,8 +271,8 @@ def _with_posix_core_toml_lock(core_toml_path: Path, fcntl: Any) -> Generator[No
         if file_handle is not None:
             try:
                 fcntl.flock(file_handle, fcntl.LOCK_UN)
-            except OSError:  # pragma: no cover
-                pass
+            except OSError as exc:  # pragma: no cover
+                print(f"WARNING: failed to unlock {lock_file}: {exc}", file=sys.stderr)
             file_handle.close()
         # Intentionally leave the .lock sentinel on disk; advisory flock locking
         # is independent of the file's existence between runs and unlinking it
@@ -289,8 +291,8 @@ def _wait_for_windows_lock(lock_path: Path) -> Optional[int]:
                     mtime = lock_path.stat().st_mtime
                     if time.time() - mtime > 10.0:
                         lock_path.unlink(missing_ok=True)
-                except OSError:
-                    pass
+                except OSError as exc:
+                    print(f"WARNING: failed to inspect or clear stale lock {lock_path}: {exc}", file=sys.stderr)
                 print(
                     f"WARNING: cf could not acquire lock on "
                     f"{lock_path} within 10 s — proceeding without lock",
@@ -313,5 +315,5 @@ def _with_windows_core_toml_lock(core_toml_path: Path) -> Generator[None, None, 
             os.close(lock_fd)
             try:
                 os.unlink(str(lock_path))
-            except OSError:
-                pass
+            except OSError as exc:
+                print(f"WARNING: failed to remove lock file {lock_path}: {exc}", file=sys.stderr)

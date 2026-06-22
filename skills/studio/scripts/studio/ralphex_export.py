@@ -32,6 +32,11 @@ _GUIDANCE_SUBSECTIONS = {"Engineering", "Quality"}
 _RALPHEX_ALLOWED_FLAGS = {"--review", "--tasks-only", "--worktree", "--serve"}
 
 
+def _warn_ralphex_export(message: str) -> None:
+    logger.warning("%s", message)
+    sys.stderr.write(f"ralphex-export: warning: {message}\n")
+
+
 @dataclass(frozen=True)
 class DelegationOptions:
     """Runtime options for ralphex delegation execution."""
@@ -313,7 +318,10 @@ def _format_phase_reference_path(phase_file: Path, plan_dir: str) -> str:
     ):
         try:
             return candidate_file.relative_to(candidate_root).as_posix()
-        except ValueError:
+        except ValueError as exc:
+            _warn_ralphex_export(
+                f"phase file {candidate_file} is not relative to candidate root {candidate_root}: {exc}"
+            )
             continue
 
     return phase_file.name
@@ -1241,7 +1249,8 @@ def _cleanup_plan_file(plan_file: Optional[str]) -> None:
         return
     try:
         Path(plan_file).unlink(missing_ok=True)
-    except OSError:
+    except OSError as exc:
+        _warn_ralphex_export(f"failed to clean up generated plan file {plan_file}: {exc}")
         return
 
 
@@ -1486,8 +1495,8 @@ def _sync_review_override_prompts(repo_root: Path, analyze_workflow: str) -> lis
         for tmp in temp_files:
             try:
                 tmp.unlink(missing_ok=True)
-            except OSError:
-                pass
+            except OSError as exc:
+                _warn_ralphex_export(f"failed to remove temporary prompt file {tmp}: {exc}")
         raise
 
     return [p for p, _ in updates]
@@ -1549,7 +1558,8 @@ def _read_plans_dir_from_config(config_path: Path) -> Optional[str]:
         return None
     try:
         content = config_path.read_text(encoding="utf-8")
-    except OSError:
+    except OSError as exc:
+        _warn_ralphex_export(f"failed to read plans config {config_path}: {exc}")
         return None
 
     for line in content.splitlines():

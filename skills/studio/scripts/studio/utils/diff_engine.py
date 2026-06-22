@@ -253,8 +253,8 @@ def _open_editor_for_file(  # pylint: disable=too-many-return-statements
             if tmp_path:
                 try:
                     os.unlink(tmp_path)
-                except OSError:
-                    pass
+                except OSError as exc:
+                    sys.stderr.write(f"    warning: failed to remove temp editor file {tmp_path}: {exc}\n")
 
         if not edited.strip():
             return None
@@ -345,8 +345,8 @@ def _enumerate_kit_files(
         # @cpt-begin:cpt-studio-algo-kit-file-enumerate:p1:inst-read-bytes
         try:
             files[str(rel)] = f.read_bytes()
-        except OSError:
-            pass
+        except OSError as exc:
+            sys.stderr.write(f"Warning: failed to read {f}: {exc}\n")
         # @cpt-end:cpt-studio-algo-kit-file-enumerate:p1:inst-read-bytes
     return files
     # @cpt-end:cpt-studio-algo-kit-snapshot:p1:inst-read-files
@@ -593,6 +593,7 @@ def _prompt_toc_error_continue(rel_path: str, err: Exception) -> bool:
     try:
         answer = input().strip().lower()
     except EOFError:
+        sys.stderr.write(f"      warning: input closed while handling TOC regeneration failure for {rel_path}\n")
         return False
     return answer != "s"
     # @cpt-end:cpt-studio-algo-kit-toc-handling:p1:inst-handle-error
@@ -687,7 +688,8 @@ def _read_file_if_available(path: Path) -> Optional[bytes]:
         return None
     try:
         return path.read_bytes()
-    except (OSError, IOError):
+    except (OSError, IOError) as exc:
+        sys.stderr.write(f"Warning: failed to read bound resource file {path}: {exc}\n")
         return None
 
 
@@ -862,10 +864,9 @@ def _approval_tokens_for_overwrite(res_id: Optional[str], rel_path: str, dest: P
     """Return all overwrite-approval tokens accepted for a bound file."""
     approval_tokens = {str(res_id), rel_path, dest.as_posix()}
     if len(user_dir.parents) >= 3:
-        try:
-            approval_tokens.add(dest.relative_to(user_dir.parents[2]).as_posix())
-        except ValueError:
-            pass
+        base_dir = user_dir.parents[2]
+        if dest.is_relative_to(base_dir):
+            approval_tokens.add(dest.relative_to(base_dir).as_posix())
     return approval_tokens
 
 

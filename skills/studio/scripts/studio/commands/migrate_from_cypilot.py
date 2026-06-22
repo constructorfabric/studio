@@ -47,6 +47,10 @@ CONSTRUCTOR_KIT_VERSION = "0"
 # @cpt-end:cpt-studio-flow-core-infra-migrate-from-cypilot:p1:inst-migration-module
 
 
+def _warn_migrate_from_cypilot(message: str) -> None:
+    sys.stderr.write(f"migrate-from-cypilot: warning: {message}\n")
+
+
 @dataclass
 class _MigrationState:
     project_root: Path
@@ -669,7 +673,8 @@ def _read_version_from_init(init_file: Path) -> Optional[str]:
         return None
     try:
         content = init_file.read_text(encoding="utf-8")
-    except OSError:
+    except OSError as exc:
+        _warn_migrate_from_cypilot(f"failed to read version from {init_file}: {exc}")
         return None
     for line in content.splitlines():
         stripped = line.strip()
@@ -1019,7 +1024,8 @@ def _resolve_project_root(project_root_arg: Optional[str]) -> Optional[Path]:
             continue
         try:
             head = agents.read_text(encoding="utf-8")[:1024]
-        except OSError:
+        except OSError as exc:
+            _warn_migrate_from_cypilot(f"failed to inspect AGENTS.md at {agents}: {exc}")
             continue
         if LEGACY_MARKER_START in head or CF_MARKER_START in head:
             return parent
@@ -1095,7 +1101,8 @@ def _probe_root_files_dirty(project_root: Path, paths: List[Path]) -> List[str]:
             check=False,
             timeout=10,
         )
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
+        _warn_migrate_from_cypilot(f"failed to inspect git dirty paths in {project_root}: {exc}")
         return []
     if proc.returncode:
         return []
@@ -1326,13 +1333,15 @@ def _migrate_config_toml_template_vars(config_dir: Path) -> List[str]:  # pylint
     for path in sorted(config_dir.rglob("*.toml")):
         try:
             text = path.read_text(encoding="utf-8")
-        except OSError:
+        except OSError as exc:
+            _warn_migrate_from_cypilot(f"failed to read config TOML {path}: {exc}")
             continue
         new_text = text.replace("{cypilot_path}", "{cf-studio-path}")
         if new_text != text:
             try:
                 path.write_text(new_text, encoding="utf-8")
-            except OSError:
+            except OSError as exc:
+                _warn_migrate_from_cypilot(f"failed to rewrite config TOML {path}: {exc}")
                 continue
             changed.append(path.relative_to(config_dir).as_posix())
     return changed
@@ -1356,7 +1365,8 @@ def _migrate_config_markdown(config_dir: Path) -> List[str]:
     for path in sorted(config_dir.rglob("*.md")):
         try:
             text = path.read_text(encoding="utf-8")
-        except OSError:
+        except OSError as exc:
+            _warn_migrate_from_cypilot(f"failed to read config markdown {path}: {exc}")
             continue
         new_text = (
             text
@@ -1368,7 +1378,8 @@ def _migrate_config_markdown(config_dir: Path) -> List[str]:
         if new_text != text:
             try:
                 path.write_text(new_text, encoding="utf-8")
-            except OSError:
+            except OSError as exc:
+                _warn_migrate_from_cypilot(f"failed to rewrite config markdown {path}: {exc}")
                 continue
             changed.append(path.relative_to(config_dir).as_posix())
     return changed
@@ -1486,8 +1497,8 @@ def _cleanup_legacy_agent(
         try:
             legacy_file.unlink()
             removed.append(legacy_rel)
-        except OSError:
-            pass
+        except OSError as exc:
+            _warn_migrate_from_cypilot(f"failed to remove legacy generated file {legacy_file}: {exc}")
     return removed
 
 

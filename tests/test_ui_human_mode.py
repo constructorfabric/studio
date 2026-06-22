@@ -4,7 +4,7 @@ import io
 import json
 import sys
 import unittest
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import redirect_stdout
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -30,6 +30,8 @@ from studio.utils.ui import (
     _c,
     ui,
 )
+
+redirect_stderr = redirect_stdout
 
 
 class _HumanModeBase(unittest.TestCase):

@@ -22,7 +22,8 @@ def _is_project_dir(entry: Path) -> bool:
     try:
         head = agents_file.read_text(encoding="utf-8")[:512]
         return "<!-- @cf:root-agents -->" in head
-    except OSError:
+    except OSError as exc:
+        print(f"Warning: cannot read {agents_file}: {exc}", file=sys.stderr)
         return False
 
 
@@ -42,7 +43,11 @@ def _find_adapter_path(entry: Path) -> Optional[str]:
     if found_dir is not None:
         try:
             return str(found_dir.relative_to(entry))
-        except ValueError:
+        except ValueError as exc:
+            print(
+                f"Warning: adapter path {found_dir} is outside {entry}; using absolute path: {exc}",
+                file=sys.stderr,
+            )
             return str(found_dir)
     return None
 
@@ -51,8 +56,12 @@ def _compute_source_path(entry: Path, output_dir: Path) -> str:
     """Compute relative source path from the output location."""
     try:
         return Path(os.path.relpath(entry, output_dir)).as_posix()
-    except ValueError:
+    except ValueError as exc:
         # Windows: entry and output_dir are on different drives
+        print(
+            f"Warning: cannot relativize {entry} against {output_dir}; using absolute path: {exc}",
+            file=sys.stderr,
+        )
         return entry.resolve().as_posix()
 # @cpt-end:cpt-studio-algo-workspace-discover-nested:p1:inst-disc-helpers
 

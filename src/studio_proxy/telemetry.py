@@ -116,7 +116,8 @@ def _collect_git_info() -> Dict[str, str]:
             if len(parts) == 2:
                 info[parts[0]] = parts[1]
         return info
-    except (OSError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        _log_error(f"Telemetry git info unavailable: {exc}")
         return {}
 
 
@@ -154,8 +155,8 @@ def _rotate_logs() -> None:
         for log_file in LOG_DIR.glob("*.log"):
             if log_file.stat().st_mtime < cutoff:
                 log_file.unlink(missing_ok=True)
-    except OSError:
-        pass
+    except OSError as exc:
+        _log_error(f"Telemetry log rotation failed: {exc}")
 
 
 def _build_otlp_logs(
@@ -226,5 +227,5 @@ def _log_error(message: str) -> None:
         }
         with log_file.open("a", encoding="utf-8") as f:
             f.write(json.dumps(error_record, ensure_ascii=False) + "\n")
-    except OSError:
-        pass
+    except OSError as exc:
+        sys.stderr.write(f"Warning: unable to record telemetry error locally: {exc}\n")
