@@ -9,20 +9,19 @@ Walks directory tree to find project-installed skill, falls back to cache.
 # @cpt-begin:cpt-studio-algo-core-infra-resolve-skill:p1:inst-resolve-helpers
 import os
 import json
-import logging
 import re
 import tomllib
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
+from studio_proxy.stderr import write_stderr_warning
 
 MARKER_START = "<!-- @cf:root-agents -->"
 
 _TOML_FENCE_RE = re.compile(r"```toml\s*\n(.*?)```", re.DOTALL)
-LOGGER = logging.getLogger(__name__)
 
 
 def _warn(message: str) -> None:
-    LOGGER.warning("Warning: %s", message)
+    write_stderr_warning(message)
 
 
 def _load_text(path: Path) -> tuple[str, Optional[str]]:

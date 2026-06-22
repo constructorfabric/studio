@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
-import logging
 import os
 import subprocess
 import sys
@@ -15,16 +14,16 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from studio_proxy.stderr import write_stderr_warning
 
 
 _DEFAULT_TTL_SECONDS = 6 * 60 * 60
 _ALLOWED_SKILL_ENTRYPOINTS = {"studio.py", "cypilot.py"}
-LOGGER = logging.getLogger(__name__)
 # @cpt-end:cpt-studio-flow-core-infra-cli-invocation:p1:inst-cli-proxy-helpers
 
 
 def _warn(message: str) -> None:
-    LOGGER.warning("Warning: %s", message)
+    write_stderr_warning(message)
 
 
 # @cpt-begin:cpt-studio-flow-core-infra-cli-invocation:p1:inst-bg-version-check

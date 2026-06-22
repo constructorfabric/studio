@@ -1,7 +1,10 @@
 from pathlib import Path
+import io
+import logging
 import sys
 import subprocess
 import tarfile
+from contextlib import redirect_stderr
 from io import BytesIO
 import json
 import textwrap
@@ -147,7 +150,7 @@ def test_proxy_check_updates_runs_full_manual_report(monkeypatch, capsys):
     assert "  installed: 1\n" not in out
 
 
-def test_background_update_check_prints_cached_notices(monkeypatch, tmp_path, caplog):
+def test_background_update_check_prints_cached_notices(monkeypatch, tmp_path):
     from studio_proxy import cli
     import studio_proxy.update_check as update_check
 
@@ -169,11 +172,92 @@ def test_background_update_check_prints_cached_notices(monkeypatch, tmp_path, ca
         },
     })
 
-    with caplog.at_level("WARNING"):
+    stderr = io.StringIO()
+    with redirect_stderr(stderr):
         cli._background_version_check(Path("/tmp/studio.py"), ["info"])
 
-    assert "pipx upgrade constructor-studio" in caplog.text
-    assert "cfs kit update sdlc" in caplog.text
+    output = stderr.getvalue()
+    assert "pipx upgrade constructor-studio" in output
+    assert "cfs kit update sdlc" in output
+
+
+def test_ensure_skill_available_uses_plain_stderr_with_configured_logging(monkeypatch):
+    from studio_proxy import cli
+    import studio_proxy.cache as cache
+
+    def fake_download_and_cache():
+        return False, "network unavailable"
+
+    class FakeStdin(io.StringIO):
+        def isatty(self):
+            return False
+
+    root_logger = logging.getLogger()
+    original_handlers = list(root_logger.handlers)
+    original_level = root_logger.level
+    noisy_handler = logging.StreamHandler(io.StringIO())
+    noisy_handler.setFormatter(logging.Formatter("%(levelname)s:%(message)s"))
+    root_logger.handlers = [noisy_handler]
+    root_logger.setLevel(logging.INFO)
+
+    monkeypatch.setattr(cache, "download_and_cache", fake_download_and_cache)
+    monkeypatch.setattr(cli.sys, "stdin", FakeStdin())
+
+    stderr = io.StringIO()
+    try:
+        with redirect_stderr(stderr):
+            result = cli._ensure_skill_available(None)
+    finally:
+        root_logger.handlers = original_handlers
+        root_logger.setLevel(original_level)
+
+    assert result is None
+    output = stderr.getvalue()
+    assert "Constructor Studio skill engine not found." in output
+    assert "Downloading automatically (non-interactive mode)..." in output
+    assert "Error: network unavailable" in output
+    assert "ERROR:" not in output
+    assert "WARNING:" not in output
+
+
+def test_cached_update_notices_use_plain_stderr_with_configured_logging():
+    from studio_proxy import cli
+
+    root_logger = logging.getLogger()
+    original_handlers = list(root_logger.handlers)
+    original_level = root_logger.level
+    noisy_handler = logging.StreamHandler(io.StringIO())
+    noisy_handler.setFormatter(logging.Formatter("%(levelname)s:%(message)s"))
+    root_logger.handlers = [noisy_handler]
+    root_logger.setLevel(logging.INFO)
+
+    stderr = io.StringIO()
+    cached = {
+        "updates_available": 2,
+        "checks": {
+            "proxy": {
+                "action": "update_available",
+                "current_version": "1.0.0",
+                "latest_version": "1.1.0",
+            },
+            "skill_engine": {
+                "action": "update_available",
+                "current_version": "v1.0.0",
+                "latest_version": "v1.1.0",
+            },
+        },
+    }
+    try:
+        with redirect_stderr(stderr):
+            cli._print_cached_update_notices(cached)
+    finally:
+        root_logger.handlers = original_handlers
+        root_logger.setLevel(original_level)
+
+    output = stderr.getvalue()
+    assert "constructor-studio proxy update available (1.0.0 -> 1.1.0)" in output
+    assert "skill engine update available (v1.0.0 -> v1.1.0)" in output
+    assert "WARNING:" not in output
 
 
 def test_proxy_forwards_skill_stdout_and_preserves_skill_logger_stderr(monkeypatch, tmp_path, capfd):
@@ -515,7 +599,6 @@ def test_init_uses_project_root_pinned_version_for_repair(monkeypatch, tmp_path)
 def test_download_and_cache_warns_when_github_whatsnew_generation_fails(
     monkeypatch,
     tmp_path,
-    caplog,
 ):
     import studio_proxy.cache as cache
 
@@ -542,12 +625,13 @@ def test_download_and_cache_warns_when_github_whatsnew_generation_fails(
 
     monkeypatch.setattr(cache, "urlopen", fake_urlopen)
 
-    with caplog.at_level("WARNING"):
+    stderr = io.StringIO()
+    with redirect_stderr(stderr):
         success, _message = cache.download_and_cache()
 
     assert success is True
     assert not (tmp_path / "cache" / "whatsnew.toml").exists()
-    assert "unable to generate Studio cache whatsnew.toml" in caplog.text
+    assert "unable to generate Studio cache whatsnew.toml" in stderr.getvalue()
 
 
 def test_download_and_cache_no_releases_uses_default_branch_snapshot(monkeypatch, tmp_path):
